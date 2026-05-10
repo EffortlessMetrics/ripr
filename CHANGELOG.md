@@ -9,6 +9,24 @@ are scoped or reviewed.
 
 ## Unreleased
 
+### 0.5.1 — quality rollout planned
+
+The 0.5.1 patch release carries policy hardening, CI economics, DevEx improvements, and
+targeted Rust 1.95 API cleanup on top of the 1.95 MSRV foundation that landed in 0.5.0.
+No new user-visible features. No public API changes. MSRV remains 1.95.
+
+Planned scope:
+
+- No-panic allowlist exact-identity hardening (path + family + selector + snippet + count).
+- Clippy ledger and checker alignment for all active and planned lints.
+- Companion file-policy ledgers for generated, executable, dependency, workflow, process, and
+  network surfaces.
+- Evidence lane tuning: mutation stays targeted/nightly/release, not a default PR tax.
+- Targeted Rust 1.95 API cleanup in evidence and report builders.
+- Release readiness workflow and 0.5.1 dry-run proof.
+
+See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
+
 ## 0.5.0 - 2026-05-10
 
 ### Highlights
