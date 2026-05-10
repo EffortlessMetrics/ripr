@@ -3791,6 +3791,9 @@ producers and before artifact upload, upload `index.{json,md}` with the normal
 `ripr-reports` artifact, and append a compact index section to the job summary.
 The projection is advisory. Missing optional index entries must not fail CI
 unless the explicit gate decision already failed or reported `config_error`.
+See [Report packet index workflow](REPORT_PACKET_INDEX_WORKFLOW.md) for
+reviewer, maintainer, developer, and coding-agent use of the generated packet
+map.
 
 ### Review Guidance Outcome Receipt
 

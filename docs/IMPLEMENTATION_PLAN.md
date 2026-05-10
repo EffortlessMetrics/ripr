@@ -38,7 +38,8 @@ through multiple work items in a campaign, but each work item should follow the
 | Test-Oracle Assistant Report Producer (21) | Turn the proved assistant loop into a public read-only JSON/Markdown report producer and optional advisory CI projection. | Complete: report producer, generated-CI projection, proof-report docs, and `campaign/test-oracle-assistant-report-closeout`. |
 | First Useful Action (22) | Compress existing editor, PR, ledger, proof, receipt, optional gate, coverage/grip, and staleness evidence into one advisory next test action. | Complete: RIPR-SPEC-0020 defines the report contract, the routing corpus is pinned, `ripr first-action` writes the read-only advisory report, generated CI surfaces it as advisory summary/artifact content, VS Code status/Show Status project an existing report, workflow docs explain developer, reviewer, and agent use, dogfood receipts are checked, and `campaign/first-useful-action-closeout` records the final audit. |
 | Assistant Loop Health (23) | Summarize proof completeness, missing inputs, static evidence movement, recurring warnings, and next repair queues across one or more assistant proof reports. | Complete: RIPR-SPEC-0022 defines the report contract, the assistant-loop-health fixture corpus is pinned, `ripr assistant-loop health` writes advisory JSON/Markdown from explicit proof inputs, generated GitHub CI uploads and summarizes health artifacts when proof artifacts exist, `docs/ASSISTANT_LOOP_HEALTH_WORKFLOW.md` explains maintainer and agent use, and `campaign/assistant-loop-health-closeout` records the final audit. |
-| PR Review Front Panel (24) | Compose existing PR guidance, first useful action, assistant proof, assistant-loop health, PR evidence ledger, baseline delta, gate decision, receipts, calibration, and optional coverage/grip frontier artifacts into one advisory generated-CI first screen. | Active: RIPR-SPEC-0023 defines the report contract, the front-panel fixture corpus is pinned, `ripr pr-review front-panel` writes advisory JSON/Markdown from explicit inputs, generated CI uploads and summarizes the front panel when inputs exist, and `docs/pr-review-front-panel-workflow` is the next ready work item. |
+| PR Review Front Panel (24) | Compose existing PR guidance, first useful action, assistant proof, assistant-loop health, PR evidence ledger, baseline delta, gate decision, receipts, calibration, and optional coverage/grip frontier artifacts into one advisory generated-CI first screen. | Complete: report contract, fixture corpus, `ripr pr-review front-panel`, generated-CI projection, workflow docs, dogfood receipts, and closeout audit are in place. |
+| Report Packet Index (25) | Make the uploaded `ripr-reports` packet navigable as a reviewer-first index over explicit existing artifacts. | Active: RIPR-SPEC-0024 defines the contract, the fixture corpus is pinned, `ripr reports index` writes the read-only index, generated CI uploads and summarizes it, and the workflow guide explains reviewer and agent use. |
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Complete as an explicit parallel Lane 3 closeout: contract audit, hover hardening, evidence-aware actions, context packet, protocol smoke, VS Code smoke, status/staleness, workflow docs, and closeout audit. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
@@ -233,9 +234,10 @@ coverage/grip-present packet states. `ripr reports index` now writes the
 read-only `target/ripr/reports/index.{json,md}` producer output from explicit
 artifact directories. Generated GitHub CI now runs that producer when indexed
 artifacts exist, uploads `index.{json,md}` with the report packet, and appends
-the advisory packet-index summary without changing gate authority. The next
-ready slice is `docs/report-packet-index-workflow`, which should explain how
-reviewers, maintainers, developers, and coding agents use the index.
+the advisory packet-index summary without changing gate authority. The
+[report packet index workflow](REPORT_PACKET_INDEX_WORKFLOW.md) now explains
+how reviewers, maintainers, developers, and coding agents use the index. The
+next ready slice is `dogfood/report-packet-index-receipts`.
 
 ## PR 0: `planning-and-tracking-docs`
 

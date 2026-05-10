@@ -94,7 +94,7 @@ commands = [
 
 [[work_item]]
 id = "docs/report-packet-index-workflow"
-status = "ready"
+status = "done"
 branch = "docs-report-packet-index-workflow"
 stackable = false
 acceptance = "Document how reviewers, maintainers, developers, and coding agents use the report-packet index, follow artifact groups, regenerate missing surfaces, and preserve advisory gate limits"
@@ -107,12 +107,9 @@ commands = [
 
 [[work_item]]
 id = "dogfood/report-packet-index-receipts"
-status = "blocked"
+status = "ready"
 branch = "dogfood-report-packet-index-receipts"
 stackable = false
-blocked_by = [
-  "docs/report-packet-index-workflow",
-]
 acceptance = "Record repo-local report-packet index receipts for complete, sparse, missing-front-panel, blocked-gate, missing-proof, missing-receipts, and coverage/grip-present cases"
 commands = [
   "cargo xtask dogfood",

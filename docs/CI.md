@@ -1521,6 +1521,9 @@ renders index status, available and missing expected counts, start-here path,
 gate authority path, missing surfaces, warning kinds, and the Markdown index.
 If no indexed artifacts exist, the step logs that no report-packet index
 inputs were available and leaves CI pass/fail behavior unchanged.
+See [Report packet index workflow](REPORT_PACKET_INDEX_WORKFLOW.md) for how to
+read the grouped packet map, regenerate missing surfaces, and preserve gate
+authority.
 
 For every configured gate mode, the generated workflow behavior is:
 

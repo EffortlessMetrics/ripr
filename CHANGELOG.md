@@ -161,6 +161,9 @@ are scoped or reviewed.
 - Updated generated GitHub CI to run `ripr reports index` only when indexed
   artifacts exist, upload `index.{json,md}`, and append a compact packet-index
   section to the advisory summary without changing gate authority.
+- Added `docs/REPORT_PACKET_INDEX_WORKFLOW.md`, documenting how reviewers,
+  maintainers, developers, and coding agents use the grouped packet index,
+  regenerate missing surfaces, and preserve the advisory gate boundary.
 - Strengthened `cargo xtask check-no-panic-family` drift reporting with
   structured allowed, advisory-drift, stale, unallowed, and warning sections,
   plus exact selector-cardinality checks for ambiguous or duplicate no-panic
