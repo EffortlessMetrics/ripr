@@ -19090,12 +19090,13 @@ mod tests {
         parse_no_panic_allowlist_toml, parse_no_panic_allowlist_toml_v2, parse_reason,
         parse_repo_exposure_static_seams, parse_sarif_policy_args, parse_sarif_policy_results,
         parse_static_language_allowlist, parse_string_value, parse_targeted_test_outcome_args,
-        pr_shape_warnings, precommit_report_body, public_contract_rows, read_mutation_input_json,
-        receipt_json, receipt_specs, receipt_status_from_reports, repo_badge_artifact_command_args,
-        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
-        repo_exposure_latency_json, repo_exposure_latency_markdown, repo_exposure_latency_run,
+        pr_shape_warnings, precommit_report_body, public_contract_rows,
+        read_lsp_cockpit_json_value, read_mutation_input_json, receipt_json, receipt_specs,
+        receipt_status_from_reports, repo_badge_artifact_command_args, repo_badge_artifact_jobs,
+        repo_badge_artifacts_summary_markdown, repo_exposure_latency_json,
+        repo_exposure_latency_markdown, repo_exposure_latency_run,
         repo_exposure_latency_run_from_output, repo_exposure_latency_status,
-        repo_exposure_latency_trace, repo_seam_inventory_command_args_for_root,
+        repo_exposure_latency_trace, repo_root, repo_seam_inventory_command_args_for_root,
         report_index_markdown, report_index_missing_expected, report_status_from_text,
         ripr_command_literals_in_text, ripr_debug_binary, ripr_pre_commit_hook,
         run_ci_full_evidence_gates, sarif_policy_report_json, sarif_policy_report_markdown,
@@ -26717,6 +26718,77 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn editor_lsp_workflow_fixture_pins_saved_workspace_loop() -> Result<(), String> {
+        let report = with_repo_cwd(build_lsp_cockpit_report)?;
+        let Some(editor_fixture) = report
+            .fixtures
+            .iter()
+            .find(|fixture| fixture.fixture == "editor_lsp_workflow")
+        else {
+            return Err("expected editor_lsp_workflow LSP cockpit fixture".to_string());
+        };
+
+        assert_eq!(editor_fixture.diagnostic_count, 1);
+        assert_eq!(editor_fixture.seam_diagnostic_count, 1);
+        assert!(editor_fixture.context.seam_packet_available);
+        assert!(editor_fixture.context.targeted_test_brief_available);
+        assert!(editor_fixture.context.agent_packet_command_available);
+        assert!(editor_fixture.context.agent_brief_command_available);
+        assert!(editor_fixture.context.after_snapshot_command_available);
+        assert!(editor_fixture.context.agent_verify_command_available);
+        assert!(editor_fixture.context.agent_receipt_command_available);
+        assert!(editor_fixture.context.assertion_available);
+        assert!(editor_fixture.context.related_test_available);
+        assert!(editor_fixture.context.refresh_available);
+
+        let expected = repo_root()?.join("fixtures/editor_lsp_workflow/expected");
+        let hover = fs::read_to_string(expected.join("lsp-hover.md"))
+            .map_err(|err| format!("failed to read editor hover fixture: {err}"))?;
+        for needle in [
+            "## Evidence Path",
+            "## Missing discriminator",
+            "## Suggested test shape",
+            "## Handoff, verify, and receipt commands",
+            "## Status projection",
+            "## Limits",
+        ] {
+            if !hover.contains(needle) {
+                return Err(format!("editor hover fixture missing `{needle}`"));
+            }
+        }
+
+        let vscode_status = read_lsp_cockpit_json_value(&expected.join("vscode-status.json"))?;
+        assert_eq!(vscode_status["schema_version"], "0.1");
+        assert_eq!(vscode_status["fixture"], "editor_lsp_workflow");
+        let states = vscode_status["states"]
+            .as_array()
+            .ok_or_else(|| "vscode-status fixture should include states".to_string())?;
+        for state in [
+            "valid_first_useful_action",
+            "wrong_root_report",
+            "stale_saved_workspace",
+        ] {
+            if !states.iter().any(|entry| entry["name"] == state) {
+                return Err(format!("vscode-status fixture missing `{state}`"));
+            }
+        }
+
+        let first_action_status =
+            read_lsp_cockpit_json_value(&expected.join("first-useful-action-status.json"))?;
+        assert_eq!(first_action_status["schema_version"], "0.1");
+        assert_eq!(first_action_status["fixture"], "editor_lsp_workflow");
+        assert_eq!(
+            first_action_status["accepted"]["seam_id"],
+            "67fc764ba37d77bd"
+        );
+        assert_eq!(
+            first_action_status["stale_behavior"]["report_remains_visible"],
+            true
+        );
+        Ok(())
+    }
+
+    #[test]
     fn lsp_cockpit_report_json_and_markdown_are_structured() -> Result<(), String> {
         let report = with_repo_cwd(build_lsp_cockpit_report)?;
         let json = lsp_cockpit_report_json(&report)?;
@@ -26729,6 +26801,7 @@ covered_by = ["cargo xtask check-file-policy"]
         let markdown = lsp_cockpit_report_markdown(&report);
         assert!(markdown.contains("# ripr LSP cockpit report"));
         assert!(markdown.contains("## Fixture: boundary_gap"));
+        assert!(markdown.contains("## Fixture: editor_lsp_workflow"));
         assert!(markdown.contains("seam packet available: yes"));
         assert!(markdown.contains("agent verify command available: yes"));
         assert!(markdown.contains("agent receipt command available: yes"));

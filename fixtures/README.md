@@ -41,6 +41,10 @@ Optional expected outputs become required when the fixture claims that surface:
 - human output: `expected/human.txt`
 - agent context: `expected/context.json`
 - LSP diagnostics: `expected/lsp-diagnostics.json`
+- LSP code actions: `expected/lsp-code-actions.json`
+- editor workflow projection: `expected/lsp-hover.md`,
+  `expected/vscode-status.json`, and
+  `expected/first-useful-action-status.json`
 - GitHub annotations: `expected/github.txt`
 - editor-agent loop: `expected/editor-agent-loop/`
 
@@ -76,6 +80,7 @@ The current fixture baseline covers:
 - metamorphic syntax variants: `boundary_gap_multiline_assert`,
   `boundary_gap_nested_tests`, `boundary_gap_reordered_tests`,
   `weak_error_oracle_assert_matches`
+- editor/LSP workflow projection: `editor_lsp_workflow`
 
 For defaults-first adoption examples, see
 [`EXAMPLE_CORPUS.md`](EXAMPLE_CORPUS.md). For calibration scenarios, see

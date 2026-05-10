@@ -11,6 +11,10 @@ are scoped or reviewed.
 
 ### Added
 
+- Added `fixtures/editor_lsp_workflow` as the canonical Lane 3 editor/LSP
+  workflow fixture, pinning the saved-workspace diagnostic, hover, code action,
+  first-useful-action status, stale-refresh guidance, and LSP cockpit surfaces
+  without adding analyzer behavior or editor automation.
 - Added RIPR-SPEC-0021 and the additive repo-exposure
   `seams[].evidence_record` projection, giving Lane 1 a seam-native evidence
   spine with identity, evidence path, observed values, missing discriminators,
@@ -81,6 +85,12 @@ are scoped or reviewed.
   distinguishes event or outbound calls, state writes, persistence writes, log
   messages, configuration changes, and generic call-effect fallback sinks while
   preserving advisory static evidence semantics.
+- Promoted activation/value modeling to stable within fixture-backed
+  syntax-first scope, covering visible equality boundaries, exact error
+  variants, direct literals, let bindings, same-file constants, table rows,
+  rstest cases, builder or fixture overrides, enum variants, and one-level
+  Option/Result constructor values while keeping unsupported value sources as
+  explicit limitations.
 - Surfaced `assistant-loop-health.{json,md}` in generated GitHub CI when
   `test-oracle-assistant-proof.json` exists, uploads the reports with the
   normal `ripr-reports` packet, and appends a compact advisory health summary
@@ -492,6 +502,9 @@ are scoped or reviewed.
   documented v0.1 scope and added a dedicated Lane 1 evidence-spine tracker so
   future evidence work stays separate from active PR/CI, editor, policy, and
   release campaigns.
+- Promoted local delta flow to stable within its fixture-backed syntax-first
+  scope for visible return, error, field, match, and side-effect sink families
+  while keeping unsupported propagation as explicit static limitations.
 - Moved the declared workspace MSRV, pinned toolchain, `clippy.toml`, and
   `policy/clippy-lints.toml` MSRV ledger to Rust 1.95 after the compatibility
   audit passed; planned Clippy lint promotion remains deferred to the next
