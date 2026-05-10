@@ -1406,6 +1406,52 @@ jobs:
             echo 'No RIPR PR review front-panel inputs were available.'
           fi
 
+      - name: Render RIPR report packet index
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          index_has_input=false
+          for path in \
+            target/ripr/reports/pr-review-front-panel.md \
+            target/ripr/reports/first-useful-action.md \
+            target/ripr/review/comments.md \
+            target/ripr/review/comments.json \
+            target/ripr/reports/test-oracle-assistant-proof.md \
+            target/ripr/reports/assistant-loop-health.md \
+            target/ripr/reports/pr-evidence-ledger.md \
+            target/ripr/reports/baseline-debt-delta.md \
+            target/ripr/reports/ripr-zero-status.md \
+            target/ripr/reports/gate-decision.md \
+            target/ripr/reports/recommendation-calibration.md \
+            target/ripr/reports/mutation-calibration.md \
+            target/ripr/reports/coverage-grip-frontier.md \
+            target/ripr/reports/agent-receipt.json \
+            target/ripr/reports/pr-summary.md \
+            target/ripr/reports/check-pr.md \
+            target/ripr/reports/ripr.sarif.json \
+            target/ripr/reports/ripr-badge.json; do
+            if [ -f "$path" ]; then
+              index_has_input=true
+              break
+            fi
+          done
+          if [ "$index_has_input" = true ]; then
+            ripr reports index \
+              --root . \
+              --reports-dir target/ripr/reports \
+              --review-dir target/ripr/review \
+              --receipts-dir target/ripr/receipts \
+              --workflow-dir target/ripr/workflow \
+              --agent-dir target/ripr/agent \
+              --pilot-dir target/ripr/pilot \
+              --ci-dir target/ci \
+              --out target/ripr/reports/index.json \
+              --out-md target/ripr/reports/index.md
+          else
+            echo 'No RIPR report-packet index inputs were available.'
+          fi
+
       - name: Render RIPR LLM work-loop summaries
         if: always()
         continue-on-error: true
@@ -1625,6 +1671,48 @@ jobs:
               echo '- PR test guidance report: `target/ripr/review/`'
             else
               echo "- PR test guidance report: not generated yet"
+            fi
+            echo
+            echo '### Report packet index'
+            if [ -f target/ripr/reports/index.json ] || [ -f target/ripr/reports/index.md ]; then
+              if [ -f target/ripr/reports/index.json ]; then
+                index_json=target/ripr/reports/index.json
+                index_status="$(jq -r '.status // "unknown"' "$index_json" 2>/dev/null || echo unknown)"
+                index_entries="$(jq -r '.summary.entries // 0' "$index_json" 2>/dev/null || echo 0)"
+                index_available="$(jq -r '.summary.available // 0' "$index_json" 2>/dev/null || echo 0)"
+                index_missing="$(jq -r '.summary.missing_expected // 0' "$index_json" 2>/dev/null || echo 0)"
+                index_warnings="$(jq -r '.summary.warnings // 0' "$index_json" 2>/dev/null || echo 0)"
+                index_failures="$(jq -r '.summary.failures // 0' "$index_json" 2>/dev/null || echo 0)"
+                index_start="$(jq -r '.summary.start_here // "not_available"' "$index_json" 2>/dev/null || echo unknown)"
+                index_gate="$(jq -r '.summary.gate_authority // "not_available"' "$index_json" 2>/dev/null || echo unknown)"
+                index_missing_labels="$(jq -r '([.missing_expected[]?.label] | if length == 0 then "none" else join(", ") end)' "$index_json" 2>/dev/null || echo unknown)"
+                index_warning_kinds="$(jq -r '([.warnings[]?.kind] | if length == 0 then "none" else join(", ") end)' "$index_json" 2>/dev/null || echo unknown)"
+                index_status="$(markdown_inline "$index_status")"
+                index_entries="$(markdown_inline "$index_entries")"
+                index_available="$(markdown_inline "$index_available")"
+                index_missing="$(markdown_inline "$index_missing")"
+                index_warnings="$(markdown_inline "$index_warnings")"
+                index_failures="$(markdown_inline "$index_failures")"
+                index_start="$(markdown_inline "$index_start")"
+                index_gate="$(markdown_inline "$index_gate")"
+                index_missing_labels="$(markdown_inline "$index_missing_labels")"
+                index_warning_kinds="$(markdown_inline "$index_warning_kinds")"
+                echo '#### Packet index at a glance'
+                echo "- Status: \`$index_status\`"
+                echo "- Entries: total=\`$index_entries\`, available=\`$index_available\`, missing_expected=\`$index_missing\`, warnings=\`$index_warnings\`, failures=\`$index_failures\`"
+                echo "- Start here: \`$index_start\`"
+                echo "- Gate authority: \`$index_gate\`"
+                echo "- Missing expected: \`$index_missing_labels\`"
+                echo "- Warning kinds: \`$index_warning_kinds\`"
+                echo "- Index artifacts: \`target/ripr/reports/index.json\`, \`target/ripr/reports/index.md\`"
+                echo "- Boundary: advisory artifact map only; gate-decision remains configured pass/fail authority."
+                echo
+              fi
+              if [ -f target/ripr/reports/index.md ]; then
+                cat target/ripr/reports/index.md
+              fi
+            else
+              echo 'Report packet index was not generated. It runs when existing RIPR report, review, receipt, workflow, agent, pilot, or CI artifacts are available.'
             fi
             echo
             echo '### PR evidence ledger'
@@ -5107,6 +5195,7 @@ mod tests {
                 "assistant-loop health",
                 "first-action",
                 "pr-review front-panel",
+                "reports index",
                 "ripr agent status",
                 "ripr agent review-summary",
                 "cargo xtask operator-cockpit",
@@ -5148,6 +5237,8 @@ mod tests {
                 "target/ripr/reports/first-useful-action.md",
                 "target/ripr/reports/pr-review-front-panel.json",
                 "target/ripr/reports/pr-review-front-panel.md",
+                "target/ripr/reports/index.json",
+                "target/ripr/reports/index.md",
                 "target/ripr/review/comments.json",
                 "target/ci/labels.json",
             ],
@@ -5160,6 +5251,8 @@ mod tests {
                 "### Top recommendation",
                 "### Agent review packet",
                 "### Artifact packet",
+                "### Report packet index",
+                "#### Packet index at a glance",
                 "### Gate decision",
                 "#### Gate decision at a glance",
                 "### Baseline debt delta",
@@ -5191,6 +5284,7 @@ mod tests {
                 "Render RIPR assistant loop health",
                 "Render RIPR first useful action",
                 "Render RIPR PR review front panel",
+                "Render RIPR report packet index",
                 "Render RIPR LLM work-loop summaries",
                 "Run RIPR PR guidance report",
                 "Capture RIPR gate labels",
@@ -6979,6 +7073,8 @@ mod tests {
         assert!(workflow.contains("target/ripr/reports/first-useful-action.md"));
         assert!(workflow.contains("target/ripr/reports/pr-review-front-panel.json"));
         assert!(workflow.contains("target/ripr/reports/pr-review-front-panel.md"));
+        assert!(workflow.contains("target/ripr/reports/index.json"));
+        assert!(workflow.contains("target/ripr/reports/index.md"));
         assert!(workflow.contains("target/ci/labels.json"));
         assert!(workflow.contains("target/ripr/review/comments.json"));
         assert!(workflow.contains("target/ripr/review"));
@@ -6991,6 +7087,7 @@ mod tests {
         assert!(workflow.contains("name: Render RIPR assistant loop health"));
         assert!(workflow.contains("name: Render RIPR first useful action"));
         assert!(workflow.contains("name: Render RIPR PR review front panel"));
+        assert!(workflow.contains("name: Render RIPR report packet index"));
         assert!(workflow.contains("escape_github_property()"));
         assert!(workflow.contains("annotation_path=\"$(escape_github_property \"$path\")\""));
         assert!(workflow.contains("::warning file=$annotation_path,line=$annotation_line"));
@@ -7003,6 +7100,8 @@ mod tests {
         assert!(workflow.contains("#### First action at a glance"));
         assert!(workflow.contains("### Top recommendation"));
         assert!(workflow.contains("### Artifact packet"));
+        assert!(workflow.contains("### Report packet index"));
+        assert!(workflow.contains("#### Packet index at a glance"));
         assert!(workflow.contains("### Gate decision"));
         assert!(workflow.contains("#### Gate decision at a glance"));
         assert!(workflow.contains("### Baseline debt delta"));
@@ -7027,6 +7126,7 @@ mod tests {
         assert!(workflow.contains("Proof artifacts"));
         assert!(workflow.contains("Action artifacts"));
         assert!(workflow.contains("Front-panel artifacts"));
+        assert!(workflow.contains("Index artifacts"));
         assert!(workflow.contains("### SARIF and badge status"));
         assert!(workflow.contains("### PR guidance annotations"));
         assert!(workflow.contains("### Known limits"));
@@ -7111,6 +7211,7 @@ mod tests {
         );
         assert!(workflow.contains("--gate-decision target/ripr/reports/gate-decision.json"));
         assert!(workflow.contains("pr-review front-panel"));
+        assert!(workflow.contains("reports index"));
         assert!(workflow.contains("front_panel_has_input=true"));
         assert!(workflow.contains("--first-action target/ripr/reports/first-useful-action.json"));
         assert!(
@@ -7128,6 +7229,8 @@ mod tests {
         assert!(workflow.contains("ripr \"${proof_args[@]}\""));
         assert!(workflow.contains("ripr \"${first_action_args[@]}\""));
         assert!(workflow.contains("ripr \"${front_panel_args[@]}\""));
+        assert!(workflow.contains("ripr reports index"));
+        assert!(workflow.contains("index_has_input=true"));
         assert!(workflow.contains("Set `RIPR_GATE_MODE`"));
         assert!(workflow.contains("No runtime mutation execution is performed"));
         assert!(workflow.contains("hashFiles('crates/ripr/Cargo.toml')"));
@@ -7221,6 +7324,11 @@ mod tests {
         assert_step_before(
             &workflow,
             "Render RIPR PR review front panel",
+            "Render RIPR report packet index",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR report packet index",
             "Render RIPR LLM work-loop summaries",
         );
         assert_step_before(
@@ -7435,6 +7543,25 @@ mod tests {
         assert!(front_panel.contains("ripr \"${front_panel_args[@]}\""));
         assert!(front_panel.contains("No RIPR PR review front-panel inputs were available."));
 
+        let packet_index = workflow_step(&workflow, "Render RIPR report packet index");
+        assert!(packet_index.contains("continue-on-error: true"));
+        assert!(packet_index.contains("reports index"));
+        assert!(packet_index.contains("--reports-dir target/ripr/reports"));
+        assert!(packet_index.contains("--review-dir target/ripr/review"));
+        assert!(packet_index.contains("--receipts-dir target/ripr/receipts"));
+        assert!(packet_index.contains("--workflow-dir target/ripr/workflow"));
+        assert!(packet_index.contains("--agent-dir target/ripr/agent"));
+        assert!(packet_index.contains("--pilot-dir target/ripr/pilot"));
+        assert!(packet_index.contains("--ci-dir target/ci"));
+        assert!(packet_index.contains("--out target/ripr/reports/index.json"));
+        assert!(packet_index.contains("--out-md target/ripr/reports/index.md"));
+        assert!(packet_index.contains("target/ripr/reports/pr-review-front-panel.md"));
+        assert!(packet_index.contains("target/ripr/review/comments.json"));
+        assert!(packet_index.contains("target/ripr/reports/gate-decision.md"));
+        assert!(packet_index.contains("target/ripr/reports/agent-receipt.json"));
+        assert!(packet_index.contains("index_has_input=true"));
+        assert!(packet_index.contains("No RIPR report-packet index inputs were available."));
+
         let annotations = workflow_step(&workflow, "Emit RIPR PR guidance annotations");
         assert!(annotations.contains("hashFiles('target/ripr/review/comments.json')"));
         assert!(annotations.contains("escape_github_message()"));
@@ -7477,6 +7604,19 @@ mod tests {
         assert!(summary.contains("First useful action was not generated"));
         assert!(summary.contains("cat target/ripr/pilot/pilot-summary.md"));
         assert!(summary.contains("cat target/ripr/workflow/agent-review-summary.md"));
+        assert!(summary.contains("### Report packet index"));
+        assert!(summary.contains("#### Packet index at a glance"));
+        assert!(summary.contains("target/ripr/reports/index.json"));
+        assert!(summary.contains("target/ripr/reports/index.md"));
+        assert!(summary.contains(".summary.entries // 0"));
+        assert!(summary.contains(".summary.available // 0"));
+        assert!(summary.contains(".summary.missing_expected // 0"));
+        assert!(summary.contains(".summary.start_here // \"not_available\""));
+        assert!(summary.contains(".summary.gate_authority // \"not_available\""));
+        assert!(summary.contains(".missing_expected[]?.label"));
+        assert!(summary.contains(".warnings[]?.kind"));
+        assert!(summary.contains("cat target/ripr/reports/index.md"));
+        assert!(summary.contains("Report packet index was not generated"));
         assert!(summary.contains("#### Gate decision at a glance"));
         assert!(summary.contains("markdown_inline()"));
         assert!(summary.contains("gate_status=\"$(jq -r '.status // \"unknown\"'"));

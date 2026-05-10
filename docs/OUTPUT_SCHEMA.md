@@ -3654,9 +3654,9 @@ ripr reports index \
   --out-md target/ripr/reports/index.md
 ```
 
-Repo-local automation may keep `cargo xtask reports index` as a wrapper, but
-generated GitHub CI should use the public `ripr reports index` command when the
-index is projected into CI summaries.
+Repo-local automation may keep `cargo xtask reports index` as a wrapper.
+Generated GitHub CI uses the public `ripr reports index` command when indexed
+artifacts exist and projects the resulting index into the advisory summary.
 
 The report writes:
 

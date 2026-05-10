@@ -1624,6 +1624,9 @@ tests = [
   "crates/ripr/src/output/report_packet_index.rs::tests::report_packet_index_preserves_blocked_gate_authority",
   "crates/ripr/src/output/report_packet_index.rs::tests::report_packet_index_groups_coverage_grip_as_calibration",
   "crates/ripr/tests/cli_smoke.rs::report_packet_index_cli_writes_packet_index",
+  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_is_advisory",
+  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_uploads_reports_and_makes_sarif_optional",
+  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/report-packet-index/README.md",
@@ -1657,6 +1660,7 @@ outputs = [
   "docs/specs/RIPR-SPEC-0024-report-packet-index.md",
   "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/CI.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
   ".ripr/goals/active.toml",

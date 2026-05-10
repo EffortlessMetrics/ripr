@@ -270,8 +270,9 @@ source files, generated tests, inline-comment defaults, or default CI blocking.
 The spec contract is now
 [RIPR-SPEC-0024: Report Packet Index](specs/RIPR-SPEC-0024-report-packet-index.md);
 the fixture corpus pins the representative packet states, `ripr reports index`
-now writes the read-only index JSON/Markdown artifacts, and the next ready slice
-is `ci/report-packet-index-summary`.
+now writes the read-only index JSON/Markdown artifacts, generated GitHub CI
+projects those artifacts when indexed inputs exist, and the next ready slice is
+`docs/report-packet-index-workflow`.
 
 ## Strategic Sequence
 
