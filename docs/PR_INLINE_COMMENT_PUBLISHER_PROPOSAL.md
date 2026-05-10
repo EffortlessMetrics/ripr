@@ -2,6 +2,8 @@
 
 Campaign: 26, PR Inline Comment Publisher
 
+Spec: [RIPR-SPEC-0025](specs/RIPR-SPEC-0025-pr-inline-comment-publisher.md)
+
 ## Problem
 
 Lane 4 now has the PR review front panel, first useful action, assistant proof
@@ -118,8 +120,8 @@ spec pins the default and permission behavior.
 
 ## Proposed PR Sequence
 
-1. `spec: define PR inline comment publisher contract`
-2. `fixtures: pin PR inline comment publisher corpus`
+1. `spec: define PR inline comment publisher contract` - done
+2. `fixtures: pin PR inline comment publisher corpus` - next
 3. `report: add PR inline comment publish plan`
 4. `ci: add optional PR inline comment publisher`
 5. `docs: explain PR inline comment publisher workflow`

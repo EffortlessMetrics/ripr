@@ -82,7 +82,9 @@ generated workflow.
 
 If a repository builds its own inline review-comment publisher, it must be an
 explicit opt-in outside the pure `ripr review-comments` command. That publisher
-must preserve the RIPR-SPEC-0012 boundaries:
+must preserve the RIPR-SPEC-0012 boundaries and the
+[RIPR-SPEC-0025](specs/RIPR-SPEC-0025-pr-inline-comment-publisher.md)
+publish-plan contract:
 
 - post only from `comments[]`, never from `summary_only[]`;
 - target only changed lines;

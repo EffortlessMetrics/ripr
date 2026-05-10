@@ -2858,8 +2858,8 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `spec/pr-inline-comment-publisher-contract` | ready | Define the optional inline comment publisher contract, read-only publish-plan schema, explicit inputs, permission boundary, dedupe/upsert semantics, cap rules, summary-only exclusion, generated-CI default-off posture, and fixture-first implementation plan before changing producer or workflow behavior. |
-| `fixtures/pr-inline-comment-publisher-corpus` | blocked | Blocked on `spec/pr-inline-comment-publisher-contract`; pin inline comment publish-plan cases for publishable changed-line comments, summary-only exclusion, cap overflow, dedupe/upsert, stale existing RIPR comments, fork or no-token no-op, and missing review-comments input before adding publisher behavior. |
+| `spec/pr-inline-comment-publisher-contract` | done | Defined the optional inline comment publisher contract, read-only publish-plan schema, explicit inputs, permission boundary, dedupe/upsert semantics, cap rules, summary-only exclusion, generated-CI default-off posture, and fixture-first implementation plan before changing producer or workflow behavior. |
+| `fixtures/pr-inline-comment-publisher-corpus` | ready | Pin inline comment publish-plan cases for publishable changed-line comments, summary-only exclusion, cap overflow, dedupe/upsert, stale existing RIPR comments, fork or no-token no-op, and missing review-comments input before adding publisher behavior. |
 | `report/pr-inline-comment-publish-plan` | blocked | Blocked on `fixtures/pr-inline-comment-publisher-corpus`; add a read-only publish-plan producer that emits JSON/Markdown operations from explicit review-comments and optional existing-comment metadata without posting to GitHub or changing gate authority. |
 | `ci/pr-inline-comment-publisher` | blocked | Blocked on `report/pr-inline-comment-publish-plan`; add generated GitHub CI wiring that keeps inline comments off by default, can emit the publish plan as advisory artifacts, and posts or updates comments only when explicit comment mode and safe pull-request permissions are configured. |
 | `docs/pr-inline-comment-publisher-workflow` | blocked | Blocked on `ci/pr-inline-comment-publisher`; document how teams opt into inline comments, read the publish plan, avoid review-thread noise, handle forks or missing permissions, and preserve advisory gate limits. |
@@ -2869,6 +2869,7 @@ Work items:
 References:
 
 - [PR inline comment publisher proposal](PR_INLINE_COMMENT_PUBLISHER_PROPOSAL.md)
+- [RIPR-SPEC-0025: PR inline comment publisher](specs/RIPR-SPEC-0025-pr-inline-comment-publisher.md)
 - [RIPR-SPEC-0012: PR test guidance annotations](specs/RIPR-SPEC-0012-pr-test-guidance.md)
 - [PR review guidance](PR_REVIEW_GUIDANCE.md)
 - [PR review front panel workflow](PR_REVIEW_FRONT_PANEL_WORKFLOW.md)
@@ -2890,10 +2891,11 @@ Blocking conditions:
 
 Next:
 
-- Continue with `spec/pr-inline-comment-publisher-contract`. The proposal and
-  campaign tracker are now in place; the next slice should define the stable
-  publish-plan schema and permission boundary before changing any producer or
-  workflow behavior.
+- Continue with `fixtures/pr-inline-comment-publisher-corpus`. The spec now
+  defines the stable publish-plan schema and permission boundary; the next
+  slice should pin publishable, summary-only, capped, dedupe/upsert,
+  stale-existing, fork or no-token, and missing-input cases before changing any
+  producer or workflow behavior.
 
 ## Future Campaign: Editor Evidence UX
 

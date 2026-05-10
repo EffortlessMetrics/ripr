@@ -979,6 +979,21 @@ next = "maintenance"
 metric = "report_packet_index_reports, report_packet_index_pass, report_packet_index_warn, report_packet_index_fail, report_packet_index_incomplete, report_packet_index_available_entries, report_packet_index_missing_expected, report_packet_index_start_here_available, report_packet_index_gate_authority_present, report_packet_index_repair_commands, report_packet_index_warning_entries"
 
 [[capability]]
+id = "pr_inline_comment_publisher"
+name = "PR inline comment publisher"
+status = "planned"
+spec = "RIPR-SPEC-0025"
+evidence = [
+  "docs/specs/RIPR-SPEC-0025-pr-inline-comment-publisher.md defines the optional inline comment publisher contract, read-only publish-plan schema, explicit inputs, permission boundary, dedupe/upsert semantics, cap rules, summary-only exclusion, generated-CI default-off posture, and fixture-first implementation plan",
+  "docs/OUTPUT_SCHEMA.md documents the planned pr_inline_comment_publish_plan JSON and Markdown shape, operation vocabulary, skip and blocked reasons, existing-comment metadata shape, and advisory/default-off boundary",
+  "docs/PR_INLINE_COMMENT_PUBLISHER_PROPOSAL.md records Campaign 26's proposal and non-goals",
+  ".ripr/goals/active.toml tracks Campaign 26 with fixtures/pr-inline-comment-publisher-corpus as the next work item after the spec",
+]
+fixtures = []
+next = "fixtures/pr-inline-comment-publisher-corpus"
+metric = "pr_inline_comment_publish_plans, pr_inline_comment_publishable, pr_inline_comment_planned_create, pr_inline_comment_planned_update, pr_inline_comment_planned_keep, pr_inline_comment_planned_delete, pr_inline_comment_skipped, pr_inline_comment_blocked, pr_inline_comment_summary_only_skipped, pr_inline_comment_cap_reached, pr_inline_comment_dedupe_matches, pr_inline_comment_permission_blocked, pr_inline_comment_fork_blocked"
+
+[[capability]]
 id = "pilot_packet"
 name = "Pilot packet"
 status = "alpha"

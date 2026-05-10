@@ -1696,6 +1696,165 @@ them to three by default. See [PR review guidance](PR_REVIEW_GUIDANCE.md) for
 the command, generated CI behavior, placement-safe review flow, and
 inline-comment boundary.
 
+## PR Inline Comment Publish Plan
+
+RIPR-SPEC-0025 defines the optional inline comment publisher contract. The
+first surface is a read-only publish plan over existing PR guidance:
+
+```text
+target/ripr/review/comment-publish-plan.json
+target/ripr/review/comment-publish-plan.md
+```
+
+The plan consumes `target/ripr/review/comments.json`, optional existing RIPR
+comment metadata, explicit comment mode, and permission context. It does not
+post comments, call GitHub, rerun analysis, edit source files, generate tests,
+run mutation testing, or change gate authority. Generated CI keeps inline
+comments disabled by default.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "pr_inline_comment_publish_plan",
+  "status": "advisory",
+  "root": ".",
+  "generated_at": "2026-05-10T12:00:00Z",
+  "mode": "plan",
+  "inputs": {
+    "pr_guidance": "target/ripr/review/comments.json",
+    "existing_comments": "target/ripr/review/existing-comments.json",
+    "pull_request": 123,
+    "event_name": "pull_request",
+    "head_repo": "EffortlessMetrics/ripr",
+    "base_repo": "EffortlessMetrics/ripr"
+  },
+  "limits": {
+    "max_inline_comments": 3,
+    "advisory": true,
+    "comments_default": "off"
+  },
+  "summary": {
+    "guidance_comments": 4,
+    "summary_only": 1,
+    "suppressed": 1,
+    "publishable": 3,
+    "planned_create": 2,
+    "planned_update": 1,
+    "planned_keep": 0,
+    "planned_delete": 0,
+    "skipped": 2,
+    "blocked": 0,
+    "safe_to_publish": false
+  },
+  "operations": [
+    {
+      "operation": "create",
+      "safe_to_publish": false,
+      "dry_run": true,
+      "source_collection": "comments",
+      "source_id": "ripr-review-67fc764ba37d77bd",
+      "dedupe_key": "ripr:67fc764ba37d77bd:src/pricing.rs:88",
+      "placement": {
+        "path": "src/pricing.rs",
+        "line": 88,
+        "side": "RIGHT",
+        "mode": "exact_seam_line"
+      },
+      "body": "RIPR advisory: related tests reach this seam but miss `amount == discount_threshold`. Add one focused equality-boundary assertion. Verify with `ripr agent verify`.",
+      "existing_comment_id": null,
+      "skip_reason": null,
+      "blocked_reason": null
+    }
+  ],
+  "skipped": [
+    {
+      "source_collection": "summary_only",
+      "source_id": "ripr-review-summary-1",
+      "dedupe_key": "ripr:summary:67fc764ba37d77bd",
+      "skip_reason": "summary_only",
+      "message": "Summary-only guidance is visible in comments.md but is not eligible for inline publishing."
+    }
+  ],
+  "blocked": [],
+  "warnings": [],
+  "limits_note": "Advisory inline-comment publish plan only; default workflows do not post comments, summary-only guidance is never published inline, and gate decisions remain separate."
+}
+```
+
+Field contract:
+
+- `schema_version` is `0.1` until the plan shape changes.
+- `kind` is always `pr_inline_comment_publish_plan`.
+- `status` is `advisory`; this report is not gate authority.
+- `mode` is `off`, `plan`, or `inline`; generated CI defaults to `off`.
+- `inputs.pr_guidance` records the explicit `review-comments` source.
+- `inputs.existing_comments` records optional existing-comment metadata when
+  supplied.
+- `inputs.event_name`, `inputs.head_repo`, and `inputs.base_repo` preserve the
+  permission context used for plan decisions.
+- `limits.max_inline_comments` defaults to three.
+- `limits.comments_default` is `off`.
+- `summary.guidance_comments`, `summary.summary_only`, and
+  `summary.suppressed` mirror the input collections when available.
+- `summary.publishable` counts only `comments[]` items eligible under placement,
+  cap, permission, and dedupe rules.
+- `summary.safe_to_publish` is `true` only when mode is `inline` and every
+  planned publishing operation satisfies the permission boundary.
+- `operations[]` records candidate operations sourced only from `comments[]`.
+- `operations[].operation` is `create`, `update`, `keep`, `delete`, `skip`, or
+  `blocked`.
+- `operations[].source_collection` must be `comments` for publishable
+  operations.
+- `operations[].dedupe_key` is required for `create`, `update`, `keep`, and
+  `delete`.
+- `operations[].placement` is copied from the source `comments[]` item; the
+  plan must not invent placement.
+- `operations[].body` preserves advisory static-evidence language and must not
+  claim runtime mutation results.
+- `skipped[]` records capped, summary-only, suppressed, disabled, and
+  already-current items.
+- `skip_reason` is `mode_off`, `summary_only`, `suppressed`, `cap_reached`,
+  `unchanged_tests`, `not_publishable`, or `already_current`.
+- `blocked[]` records hard safety blockers such as missing permissions,
+  untrusted forks, missing PR context, unsafe events, missing dedupe keys, or
+  malformed inputs.
+- `blocked_reason` is `missing_pr_guidance`, `malformed_pr_guidance`,
+  `missing_pull_request`, `missing_token`, `missing_write_permission`,
+  `fork_untrusted`, `unsafe_event`, `missing_dedupe_key`,
+  `missing_changed_line_placement`, `unsupported_mode`, or `unknown`.
+- `warnings[]` records malformed optional inputs, stale existing comments,
+  unsupported optional metadata, and other non-authoritative context.
+- `limits_note` preserves the default-off, advisory, no-summary-only-inline,
+  and separate-gate-authority boundaries.
+
+Existing-comment metadata may be supplied to plan upsert behavior:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "pr_inline_comment_existing_comments",
+  "comments": [
+    {
+      "comment_id": 987654321,
+      "dedupe_key": "ripr:67fc764ba37d77bd:src/pricing.rs:88",
+      "path": "src/pricing.rs",
+      "line": 88,
+      "side": "RIGHT",
+      "body_hash": "sha256:...",
+      "outdated": false
+    }
+  ]
+}
+```
+
+Generated CI may upload and summarize the publish plan only when explicit
+configuration requests `plan` or `inline` mode. The default remains job summary,
+check annotations, and uploaded artifacts without durable PR comments.
+
 ## Recommendation Calibration Report
 
 RIPR-SPEC-0013 defines the recommendation calibration report contract.

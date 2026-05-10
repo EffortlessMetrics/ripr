@@ -22,6 +22,10 @@ are scoped or reviewed.
   `spec/pr-inline-comment-publisher-contract` as the first ready work item so
   optional durable PR comments can be planned, capped, deduped, and kept
   explicit opt-in before any GitHub posting behavior changes.
+- Added `RIPR-SPEC-0025` for the PR inline comment publisher, pinning the
+  read-only publish-plan schema, comment modes, permission boundary,
+  summary-only exclusion, cap and dedupe behavior, and generated-CI default-off
+  posture before producer or workflow changes.
 - Added the report-packet index fixture corpus under
   `fixtures/boundary_gap/expected/report-packet-index/`, pinning complete,
   sparse advisory, missing-front-panel, blocked-gate, missing-proof,

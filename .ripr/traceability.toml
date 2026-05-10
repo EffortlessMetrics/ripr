@@ -1689,3 +1689,40 @@ metrics = [
   "report_packet_index_repair_commands",
   "report_packet_index_warning_entries",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0025"
+name = "PR inline comment publisher"
+spec = "docs/specs/RIPR-SPEC-0025-pr-inline-comment-publisher.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0025-pr-inline-comment-publisher.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+  ".ripr/goals/active.toml",
+  ".ripr/traceability.toml",
+  "docs/PR_INLINE_COMMENT_PUBLISHER_PROPOSAL.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  "CHANGELOG.md",
+]
+metrics = [
+  "pr_inline_comment_publish_plans",
+  "pr_inline_comment_publishable",
+  "pr_inline_comment_planned_create",
+  "pr_inline_comment_planned_update",
+  "pr_inline_comment_planned_keep",
+  "pr_inline_comment_planned_delete",
+  "pr_inline_comment_skipped",
+  "pr_inline_comment_blocked",
+  "pr_inline_comment_summary_only_skipped",
+  "pr_inline_comment_cap_reached",
+  "pr_inline_comment_dedupe_matches",
+  "pr_inline_comment_permission_blocked",
+  "pr_inline_comment_fork_blocked",
+]

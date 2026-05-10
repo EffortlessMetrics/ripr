@@ -32,7 +32,7 @@ end_state = [
 
 [[work_item]]
 id = "spec/pr-inline-comment-publisher-contract"
-status = "ready"
+status = "done"
 branch = "spec-pr-inline-comment-publisher-contract"
 stackable = false
 acceptance = "Define the optional inline comment publisher contract, read-only publish-plan schema, explicit inputs, permission boundary, dedupe/upsert semantics, cap rules, summary-only exclusion, generated-CI default-off posture, and fixture-first implementation plan before changing producer or workflow behavior"
@@ -50,12 +50,9 @@ commands = [
 
 [[work_item]]
 id = "fixtures/pr-inline-comment-publisher-corpus"
-status = "blocked"
+status = "ready"
 branch = "fixtures-pr-inline-comment-publisher-corpus"
 stackable = false
-blocked_by = [
-  "spec/pr-inline-comment-publisher-contract",
-]
 acceptance = "Pin inline comment publish-plan cases for publishable changed-line comments, summary-only exclusion, cap overflow, dedupe/upsert, stale existing RIPR comments, fork or no-token no-op, and missing review-comments input before adding publisher behavior"
 commands = [
   "cargo xtask fixtures",
