@@ -16,6 +16,10 @@ are scoped or reviewed.
   spine with identity, evidence path, observed values, missing discriminators,
   related tests, recommendation/actionability, calibration placeholder, and
   static limitations while preserving existing repo-exposure fields.
+- Added advisory static/runtime confidence labels to mutation calibration
+  JSON/Markdown rows so imported runtime data can support, contradict, remain
+  ambiguous, or stay unavailable for a static gap/clean claim without changing
+  static classifications, gate behavior, or mutation execution.
 - Opened Campaign 23, Assistant Loop Health, with
   `spec/assistant-loop-health-report` as the first ready work item so existing
   assistant proof reports can be summarized into advisory health, missing-input,

@@ -404,6 +404,7 @@ metrics = [
   "runtime_signal_without_static_gap",
   "static_clean_and_runtime_clean",
   "runtime_inconclusive",
+  "static_runtime_confidence_labels",
   "runtime_outcome_counts",
   "join_method_counts"
 ]

@@ -5615,6 +5615,7 @@ JSON shape:
         "observed_values": ["50", "10000"],
         "missing_discriminators": []
       },
+      "confidence_label": "contradicts_static_clean",
       "reason": "runtime gap signal joined to a static-clean seam"
     }
   ],
@@ -5631,6 +5632,7 @@ JSON shape:
         "observed_values": [],
         "missing_discriminators": ["exact returned value assertion"]
       },
+      "confidence_label": "contradicts_static_gap",
       "reason": "static gap seam matched runtime data without a runtime gap signal"
     }
   ],
@@ -5657,7 +5659,8 @@ JSON shape:
         "runtime_outcome": "caught",
         "duration": "123",
         "test_command": "cargo test pricing"
-      }
+      },
+      "confidence_label": "contradicts_static_gap"
     }
   ],
   "ambiguous_file_line_matches": [
@@ -5672,6 +5675,7 @@ JSON shape:
         "duration": "99",
         "test_command": "cargo test pricing"
       },
+      "confidence_label": "ambiguous_runtime_join",
       "candidates": [
         {
           "seam_id": "f3c9e4d21a0b7c88",
@@ -5743,8 +5747,15 @@ Field contract:
 - `missed_runtime_signals[]` — capped sample of runtime gap signals that did
   not correspond to a static gap. `static` is `null` when the runtime record did
   not join to a seam.
+- `missed_runtime_signals[].confidence_label` — `contradicts_static_clean` when
+  a runtime gap signal joined to a static-clean seam, or `runtime_only_signal`
+  when a runtime gap signal did not join to any static seam. This is advisory
+  calibration context only and does not create a static gap.
 - `static_only_findings[]` — capped sample of static gap seams without a
   matched runtime gap signal.
+- `static_only_findings[].confidence_label` — `contradicts_static_gap` when a
+  static gap joined only to runtime-clean labels, or `no_runtime_data` when no
+  usable runtime signal was available for the static gap in this import.
 - `matches[].join_method` — `seam_id` when the runtime record carries a matching
   seam/probe ID; otherwise `file_line` when normalized path and line match.
 - `matches[].static` — static seam evidence copied from `repo-exposure.json`:
@@ -5753,9 +5764,17 @@ Field contract:
 - `matches[].runtime` — imported runtime mutation record: mutation ID when
   available, seam/probe ID when available, location, operator, outcome, duration,
   and test command.
+- `matches[].confidence_label` — per-match static/runtime confidence label:
+  `supports_static_gap`, `contradicts_static_gap`, `supports_static_clean`,
+  `contradicts_static_clean`, or `no_runtime_data`. Runtime-inconclusive labels
+  map to `no_runtime_data` because they provide no usable support or
+  contradiction for the static claim.
 - `ambiguous_file_line_matches[]` — runtime records that matched multiple
   static seams by normalized file/line. These records are intentionally not
   assigned to `matches[]` without a stronger seam/probe ID.
+- `ambiguous_file_line_matches[].confidence_label` — always
+  `ambiguous_runtime_join`; ambiguous joins do not raise or lower confidence for
+  any candidate seam.
 - `unmatched_mutants[]` — runtime records that did not match a static seam.
 - `static_without_runtime_sample[]` — capped sample of static seams with no
   definitive or ambiguous runtime data in this import. Use

@@ -38,9 +38,9 @@ No imported runtime gap signals lacked a matching static gap.
 
 ### Static gaps without runtime signals
 
-| Seam | Class | Location | Reason |
-| --- | --- | --- | --- |
-| `67fc764ba37d77bd` | `weakly_gripped` | src/lib.rs:2 | static gap seam matched runtime data without a runtime gap signal |
+| Seam | Class | Location | Confidence label | Reason |
+| --- | --- | --- | --- | --- |
+| `67fc764ba37d77bd` | `weakly_gripped` | src/lib.rs:2 | `contradicts_static_gap` | static gap seam matched runtime data without a runtime gap signal |
 
 ## Runtime Outcome Counts
 
@@ -50,9 +50,9 @@ No imported runtime gap signals lacked a matching static gap.
 
 ## Matched Mutants
 
-| Seam | Class | Oracle | Mutation operator | Runtime outcome | Join |
-| --- | --- | --- | --- | --- | --- |
-| `67fc764ba37d77bd` | `weakly_gripped` | `exact_value`/`strong` | replace >= with > | caught | `seam_id` |
+| Seam | Class | Oracle | Mutation operator | Runtime outcome | Join | Confidence label |
+| --- | --- | --- | --- | --- | --- | --- |
+| `67fc764ba37d77bd` | `weakly_gripped` | `exact_value`/`strong` | replace >= with > | caught | `seam_id` | `contradicts_static_gap` |
 
 ## Ambiguous File/Line Matches
 

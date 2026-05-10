@@ -65,12 +65,14 @@ struct MutationCalibrationAgreement {
 struct MutationCalibrationRuntimeSignal {
     runtime: MutationOutcomeRecord,
     static_seam: Option<StaticSeamRecord>,
+    confidence_label: &'static str,
     reason: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct MutationCalibrationStaticOnlyFinding {
     seam: StaticSeamRecord,
+    confidence_label: &'static str,
     reason: String,
 }
 
@@ -220,8 +222,8 @@ pub(crate) fn render_mutation_calibration_md(report: &MutationCalibrationReport)
     if report.missed_runtime_signals.is_empty() {
         out.push_str("No imported runtime gap signals lacked a matching static gap.\n");
     } else {
-        out.push_str("| Runtime mutant | Location | Runtime outcome | Static class | Reason |\n");
-        out.push_str("| --- | --- | --- | --- | --- |\n");
+        out.push_str("| Runtime mutant | Location | Runtime outcome | Static class | Confidence label | Reason |\n");
+        out.push_str("| --- | --- | --- | --- | --- | --- |\n");
         for record in &report.missed_runtime_signals {
             let mutant = record.runtime.mutant_id.as_deref().unwrap_or("unknown");
             let location = mutation_location_label(&record.runtime);
@@ -231,11 +233,12 @@ pub(crate) fn render_mutation_calibration_md(report: &MutationCalibrationReport)
                 .map(|seam| seam.seam_grip_class.as_str())
                 .unwrap_or("unmatched");
             out.push_str(&format!(
-                "| `{}` | {} | {} | `{}` | {} |\n",
+                "| `{}` | {} | {} | `{}` | `{}` | {} |\n",
                 md_cell(mutant),
                 md_cell(&location),
                 md_cell(&record.runtime.runtime_outcome),
                 md_cell(static_class),
+                record.confidence_label,
                 md_cell(&record.reason)
             ));
         }
@@ -245,15 +248,16 @@ pub(crate) fn render_mutation_calibration_md(report: &MutationCalibrationReport)
     if report.static_only_findings.is_empty() {
         out.push_str("No static gap seams lacked a runtime gap signal in this import.\n");
     } else {
-        out.push_str("| Seam | Class | Location | Reason |\n");
-        out.push_str("| --- | --- | --- | --- |\n");
+        out.push_str("| Seam | Class | Location | Confidence label | Reason |\n");
+        out.push_str("| --- | --- | --- | --- | --- |\n");
         for record in &report.static_only_findings {
             let location = format!("{}:{}", record.seam.file, record.seam.line);
             out.push_str(&format!(
-                "| `{}` | `{}` | {} | {} |\n",
+                "| `{}` | `{}` | {} | `{}` | {} |\n",
                 md_cell(&record.seam.seam_id),
                 md_cell(&record.seam.seam_grip_class),
                 md_cell(&location),
+                record.confidence_label,
                 md_cell(&record.reason)
             ));
         }
@@ -274,18 +278,19 @@ pub(crate) fn render_mutation_calibration_md(report: &MutationCalibrationReport)
     if report.matched.is_empty() {
         out.push_str("No runtime mutants matched static seams.\n");
     } else {
-        out.push_str("| Seam | Class | Oracle | Mutation operator | Runtime outcome | Join |\n");
-        out.push_str("| --- | --- | --- | --- | --- | --- |\n");
+        out.push_str("| Seam | Class | Oracle | Mutation operator | Runtime outcome | Join | Confidence label |\n");
+        out.push_str("| --- | --- | --- | --- | --- | --- | --- |\n");
         for record in &report.matched {
             out.push_str(&format!(
-                "| `{}` | `{}` | `{}`/`{}` | {} | {} | `{}` |\n",
+                "| `{}` | `{}` | `{}`/`{}` | {} | {} | `{}` | `{}` |\n",
                 md_cell(&record.seam.seam_id),
                 md_cell(&record.seam.seam_grip_class),
                 md_cell(&record.seam.oracle_kind),
                 md_cell(&record.seam.oracle_strength),
                 md_cell(&record.mutation.mutation_operator),
                 md_cell(&record.mutation.runtime_outcome),
-                record.join_method
+                record.join_method,
+                confidence_label_for_match(record)
             ));
         }
     }
@@ -296,8 +301,8 @@ pub(crate) fn render_mutation_calibration_md(report: &MutationCalibrationReport)
             "No runtime mutants matched multiple static seams at the same file and line.\n",
         );
     } else {
-        out.push_str("| Runtime mutant | Location | Runtime outcome | Candidate seams |\n");
-        out.push_str("| --- | --- | --- | --- |\n");
+        out.push_str("| Runtime mutant | Location | Runtime outcome | Confidence label | Candidate seams |\n");
+        out.push_str("| --- | --- | --- | --- | --- |\n");
         for record in &report.ambiguous_file_line {
             let mutant = record.mutation.mutant_id.as_deref().unwrap_or("unknown");
             let location = mutation_location_label(&record.mutation);
@@ -308,10 +313,11 @@ pub(crate) fn render_mutation_calibration_md(report: &MutationCalibrationReport)
                 .collect::<Vec<_>>()
                 .join(", ");
             out.push_str(&format!(
-                "| `{}` | {} | {} | {} |\n",
+                "| `{}` | {} | {} | `{}` | {} |\n",
                 md_cell(mutant),
                 md_cell(&location),
                 md_cell(&record.mutation.runtime_outcome),
+                "ambiguous_runtime_join",
                 md_cell(&candidates)
             ));
         }
@@ -345,15 +351,15 @@ pub(crate) fn render_mutation_calibration_md(report: &MutationCalibrationReport)
         out.push_str(
             "Sample only; see JSON `static_without_runtime_total` for the full count.\n\n",
         );
-        out.push_str("| Seam | Kind | Class | Location |\n");
-        out.push_str("| --- | --- | --- | --- |\n");
+        out.push_str("| Seam | Kind | Class | Location | Confidence label |\n");
+        out.push_str("| --- | --- | --- | --- | --- |\n");
         for seam in report
             .static_without_runtime
             .iter()
             .take(STATIC_WITHOUT_RUNTIME_SAMPLE_LIMIT)
         {
             out.push_str(&format!(
-                "| `{}` | `{}` | `{}` | {}:{} |\n",
+                "| `{}` | `{}` | `{}` | {}:{} | `no_runtime_data` |\n",
                 md_cell(&seam.seam_id),
                 md_cell(&seam.seam_kind),
                 md_cell(&seam.seam_grip_class),
@@ -772,6 +778,7 @@ fn mutation_calibration_agreement(
                 agreement.static_gap_without_runtime_signal += 1;
                 static_only_findings.push(MutationCalibrationStaticOnlyFinding {
                     seam: seam.clone(),
+                    confidence_label: static_only_confidence_label(records),
                     reason: static_only_reason(records),
                 });
             }
@@ -784,6 +791,7 @@ fn mutation_calibration_agreement(
                     missed_runtime_signals.push(MutationCalibrationRuntimeSignal {
                         runtime: record.mutation.clone(),
                         static_seam: Some(seam.clone()),
+                        confidence_label: "contradicts_static_clean",
                         reason: "runtime gap signal joined to a static-clean seam".to_string(),
                     });
                 }
@@ -805,6 +813,7 @@ fn mutation_calibration_agreement(
         missed_runtime_signals.push(MutationCalibrationRuntimeSignal {
             runtime: record.clone(),
             static_seam: None,
+            confidence_label: "runtime_only_signal",
             reason: "runtime gap signal did not join to a static seam".to_string(),
         });
     }
@@ -848,6 +857,17 @@ fn static_only_reason(records: &[&MutationCalibrationMatch]) -> String {
     }
 }
 
+fn static_only_confidence_label(records: &[&MutationCalibrationMatch]) -> &'static str {
+    if records
+        .iter()
+        .any(|record| runtime_clean_signal(&record.mutation.runtime_outcome))
+    {
+        "contradicts_static_gap"
+    } else {
+        "no_runtime_data"
+    }
+}
+
 fn static_gap_signal(seam: &StaticSeamRecord) -> bool {
     !matches!(
         seam.seam_grip_class.as_str(),
@@ -869,6 +889,25 @@ fn runtime_clean_signal(outcome: &str) -> bool {
     )
 }
 
+fn confidence_label_for_match(record: &MutationCalibrationMatch) -> &'static str {
+    let has_static_gap = static_gap_signal(&record.seam);
+    if runtime_gap_signal(&record.mutation.runtime_outcome) {
+        if has_static_gap {
+            "supports_static_gap"
+        } else {
+            "contradicts_static_clean"
+        }
+    } else if runtime_clean_signal(&record.mutation.runtime_outcome) {
+        if has_static_gap {
+            "contradicts_static_gap"
+        } else {
+            "supports_static_clean"
+        }
+    } else {
+        "no_runtime_data"
+    }
+}
+
 fn mutation_calibration_agreement_json(agreement: &MutationCalibrationAgreement) -> Value {
     serde_json::json!({
         "static_gap_and_runtime_signal": agreement.static_gap_and_runtime_signal,
@@ -883,6 +922,7 @@ fn mutation_calibration_runtime_signal_json(record: &MutationCalibrationRuntimeS
     serde_json::json!({
         "runtime": mutation_outcome_json(&record.runtime),
         "static": record.static_seam.as_ref().map(static_seam_json),
+        "confidence_label": record.confidence_label,
         "reason": record.reason.as_str(),
     })
 }
@@ -890,6 +930,7 @@ fn mutation_calibration_runtime_signal_json(record: &MutationCalibrationRuntimeS
 fn mutation_calibration_static_only_json(record: &MutationCalibrationStaticOnlyFinding) -> Value {
     serde_json::json!({
         "static": static_seam_json(&record.seam),
+        "confidence_label": record.confidence_label,
         "reason": record.reason.as_str(),
     })
 }
@@ -899,12 +940,14 @@ fn mutation_calibration_match_json(record: &MutationCalibrationMatch) -> Value {
         "join_method": record.join_method,
         "static": static_seam_json(&record.seam),
         "runtime": mutation_outcome_json(&record.mutation),
+        "confidence_label": confidence_label_for_match(record),
     })
 }
 
 fn ambiguous_mutation_calibration_match_json(record: &AmbiguousMutationCalibrationMatch) -> Value {
     serde_json::json!({
         "runtime": mutation_outcome_json(&record.mutation),
+        "confidence_label": "ambiguous_runtime_join",
         "candidates": record
             .candidates
             .iter()
@@ -1226,10 +1269,17 @@ mod tests {
         let json = render_mutation_calibration_json(&report)?;
         assert!(json.contains(r#""schema_version": "0.1""#));
         assert!(json.contains(r#""static_gap_and_runtime_signal": 1"#));
+        assert!(json.contains(r#""confidence_label": "supports_static_gap""#));
+        assert!(json.contains(r#""confidence_label": "contradicts_static_gap""#));
+        assert!(json.contains(r#""confidence_label": "supports_static_clean""#));
+        assert!(json.contains(r#""confidence_label": "contradicts_static_clean""#));
+        assert!(json.contains(r#""confidence_label": "runtime_only_signal""#));
+        assert!(json.contains(r#""confidence_label": "no_runtime_data""#));
 
         let markdown = render_mutation_calibration_md(&report);
         assert!(markdown.contains("# ripr mutation calibration report"));
         assert!(markdown.contains("| static_gap_and_runtime_signal | 1 |"));
+        assert!(markdown.contains("Confidence label"));
         assert!(markdown.contains("Runtime signals without static gaps"));
         assert!(markdown.contains("Static gaps without runtime signals"));
         Ok(())
@@ -1496,6 +1546,14 @@ mod tests {
                 .as_array()
                 .map(Vec::len),
             Some(1)
+        );
+        assert_eq!(
+            value["ambiguous_file_line_matches"][0]["confidence_label"],
+            "ambiguous_runtime_join"
+        );
+        assert_eq!(
+            value["static_only_findings"][0]["confidence_label"],
+            "no_runtime_data"
         );
         assert_eq!(value["unmatched_mutants"].as_array().map(Vec::len), Some(2));
         Ok(())
