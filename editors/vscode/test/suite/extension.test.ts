@@ -335,6 +335,8 @@ suite('Extension Smoke', () => {
 
       await context.controller.showStatus();
       assert.ok(context.infoMessages.at(-1)?.includes('First useful action: Add equality-boundary discriminator test'));
+      assert.ok(context.outputLines.join('\n').includes('First useful action: Add equality-boundary discriminator test'));
+      assert.ok(context.outputLines.join('\n').includes('Report: target/ripr/reports/first-useful-action.json'));
     } finally {
       await context.dispose();
     }
@@ -364,6 +366,8 @@ suite('Extension Smoke', () => {
 
       assert.ok(context.status.text.includes('ripr: queued'));
       assert.ok(!String(context.status.tooltip).includes('First useful action'));
+      await context.controller.showStatus();
+      assert.ok(!context.outputLines.join('\n').includes('First useful action:'));
     } finally {
       await context.dispose();
     }
@@ -396,6 +400,13 @@ suite('Extension Smoke', () => {
       assert.ok(context.status.text.includes('ripr: stale'));
       assert.ok(String(context.status.tooltip).includes('editor evidence is stale'));
       assert.ok(!context.status.text.includes('first action'));
+
+      await context.controller.showStatus();
+      const output = context.outputLines.join('\n');
+      assert.ok(output.includes('First useful action report: available, but editor evidence is stale.'));
+      assert.ok(output.includes('Save or refresh the Rust workspace before acting on this report.'));
+      assert.ok(output.includes('Report: target/ripr/reports/first-useful-action.json'));
+      assert.ok(!context.infoMessages.at(-1)?.includes('First useful action:'));
     } finally {
       await context.dispose();
     }
@@ -437,6 +448,10 @@ suite('Extension Smoke', () => {
         assert.ok(
           !context.infoMessages.at(-1)?.includes('First useful action:'),
           `${report.name} should not include first useful action in Show Status`
+        );
+        assert.ok(
+          !context.outputLines.join('\n').includes('First useful action:'),
+          `${report.name} should not write first useful action detail to Show Status output`
         );
       } finally {
         await context.dispose();
@@ -949,7 +964,8 @@ class FakeLanguageClient {
 
 function createControllerTestContext(options: ControllerTestOptions) {
   const client = new FakeLanguageClient(options);
-  const output = fakeOutputChannel();
+  const outputLines: string[] = [];
+  const output = fakeOutputChannel(outputLines);
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
   const runRiprCalls: Array<{ command: string; args: string[]; cwd: string }> = [];
   const clipboardWrites: string[] = [];
@@ -1009,6 +1025,7 @@ function createControllerTestContext(options: ControllerTestOptions) {
     infoMessages,
     warningMessages,
     errorMessages,
+    outputLines,
     dispose: async () => {
       await controller.stop();
       output.dispose();
@@ -1017,16 +1034,25 @@ function createControllerTestContext(options: ControllerTestOptions) {
   };
 }
 
-function fakeOutputChannel(): vscode.OutputChannel {
+function fakeOutputChannel(lines: string[] = []): vscode.OutputChannel {
   return {
     name: 'ripr test',
-    append: () => {},
-    appendLine: () => {},
-    clear: () => {},
+    append: (value: string) => {
+      lines.push(value);
+    },
+    appendLine: (value: string) => {
+      lines.push(value);
+    },
+    clear: () => {
+      lines.length = 0;
+    },
     show: () => {},
     hide: () => {},
     dispose: () => {},
-    replace: () => {}
+    replace: (value: string) => {
+      lines.length = 0;
+      lines.push(value);
+    }
   } as vscode.OutputChannel;
 }
 
