@@ -269,7 +269,8 @@ ranking, gate semantics, editor behavior, mutation execution, provider calls,
 source files, generated tests, inline-comment defaults, or default CI blocking.
 The spec contract is now
 [RIPR-SPEC-0024: Report Packet Index](specs/RIPR-SPEC-0024-report-packet-index.md);
-the next ready slice is `fixtures/report-packet-index-corpus`.
+the fixture corpus pins the representative packet states, and the next ready
+slice is `report/report-packet-index`.
 
 ## Strategic Sequence
 

@@ -1,0 +1,189 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "report_packet_index_corpus",
+  "status": "advisory",
+  "spec": "RIPR-SPEC-0024",
+  "fixture": "boundary_gap",
+  "limits_note": "Advisory report-packet index fixture expectations only; no hidden analysis reruns, source edits, generated tests, provider calls, mutation execution, ranking changes, gate changes, LSP/editor changes, inline comments, or default CI blocking.",
+  "canonical_command": "ripr reports index --root . --reports-dir target/ripr/reports --review-dir target/ripr/review --receipts-dir target/ripr/receipts --workflow-dir target/ripr/workflow --agent-dir target/ripr/agent --pilot-dir target/ripr/pilot --ci-dir target/ci --out target/ripr/reports/index.json --out-md target/ripr/reports/index.md",
+  "cases": [
+    {
+      "id": "complete_packet",
+      "scenario": "all reviewer-first packet surfaces are present",
+      "inputs": {
+        "reports_dir": "fixtures/boundary_gap/expected/report-packet-index/complete-packet/reports",
+        "review_dir": "fixtures/boundary_gap/expected/report-packet-index/complete-packet/review",
+        "receipts_dir": "fixtures/boundary_gap/expected/report-packet-index/complete-packet/receipts"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/report-packet-index/complete-packet/index.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/report-packet-index/complete-packet/index.md",
+      "expected": {
+        "status": "pass",
+        "missing_expected": 0,
+        "failures": 0,
+        "warnings": 0,
+        "start_here_available": true,
+        "gate_authority_present": true,
+        "required_groups": [
+          "start_here",
+          "pr_review_story",
+          "repair_agent_handoff",
+          "evidence_movement",
+          "policy_gates",
+          "calibration",
+          "validation_receipts",
+          "sarif_badges"
+        ]
+      },
+      "reason": "A complete packet should tell reviewers to start at the PR front panel while preserving gate-decision authority."
+    },
+    {
+      "id": "sparse_advisory",
+      "scenario": "advisory packet with only PR guidance and local validation reports",
+      "inputs": {
+        "reports_dir": "fixtures/boundary_gap/expected/report-packet-index/sparse-advisory/reports",
+        "review_dir": "fixtures/boundary_gap/expected/report-packet-index/sparse-advisory/review"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/report-packet-index/sparse-advisory/index.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/report-packet-index/sparse-advisory/index.md",
+      "expected": {
+        "status": "warn",
+        "missing_expected": 2,
+        "failures": 0,
+        "warnings": 2,
+        "start_here_available": true,
+        "gate_authority_present": false,
+        "required_groups": [
+          "start_here",
+          "pr_review_story",
+          "repair_agent_handoff",
+          "calibration",
+          "validation_receipts"
+        ]
+      },
+      "reason": "Sparse adoption should stay advisory and explain which optional surfaces can be regenerated."
+    },
+    {
+      "id": "missing_front_panel",
+      "scenario": "packet has supporting artifacts but no first-screen front panel",
+      "inputs": {
+        "reports_dir": "fixtures/boundary_gap/expected/report-packet-index/missing-front-panel/reports",
+        "review_dir": "fixtures/boundary_gap/expected/report-packet-index/missing-front-panel/review"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/report-packet-index/missing-front-panel/index.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/report-packet-index/missing-front-panel/index.md",
+      "expected": {
+        "status": "warn",
+        "missing_expected": 1,
+        "failures": 0,
+        "warnings": 1,
+        "start_here_available": false,
+        "gate_authority_present": false,
+        "required_groups": [
+          "start_here",
+          "pr_review_story",
+          "repair_agent_handoff"
+        ]
+      },
+      "reason": "Missing start-here front panel should be visible instead of forcing artifact archaeology."
+    },
+    {
+      "id": "blocked_gate",
+      "scenario": "configured gate blocked while packet remains advisory",
+      "inputs": {
+        "reports_dir": "fixtures/boundary_gap/expected/report-packet-index/blocked-gate/reports",
+        "review_dir": "fixtures/boundary_gap/expected/report-packet-index/blocked-gate/review"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/report-packet-index/blocked-gate/index.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/report-packet-index/blocked-gate/index.md",
+      "expected": {
+        "status": "fail",
+        "missing_expected": 0,
+        "failures": 1,
+        "warnings": 0,
+        "start_here_available": true,
+        "gate_authority_present": true,
+        "required_groups": [
+          "start_here",
+          "pr_review_story",
+          "repair_agent_handoff",
+          "policy_gates"
+        ]
+      },
+      "reason": "The index may report a blocked gate state but must point to gate-decision as pass/fail authority."
+    },
+    {
+      "id": "missing_assistant_proof",
+      "scenario": "PR guidance exists but assistant proof was not produced",
+      "inputs": {
+        "reports_dir": "fixtures/boundary_gap/expected/report-packet-index/missing-assistant-proof/reports",
+        "review_dir": "fixtures/boundary_gap/expected/report-packet-index/missing-assistant-proof/review"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/report-packet-index/missing-assistant-proof/index.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/report-packet-index/missing-assistant-proof/index.md",
+      "expected": {
+        "status": "warn",
+        "missing_expected": 1,
+        "failures": 0,
+        "warnings": 1,
+        "start_here_available": true,
+        "gate_authority_present": false,
+        "required_groups": [
+          "start_here",
+          "pr_review_story",
+          "repair_agent_handoff"
+        ]
+      },
+      "reason": "Missing assistant proof should remain visible as a repair or handoff gap."
+    },
+    {
+      "id": "missing_receipts",
+      "scenario": "review story exists but validation receipts are absent",
+      "inputs": {
+        "reports_dir": "fixtures/boundary_gap/expected/report-packet-index/missing-receipts/reports",
+        "review_dir": "fixtures/boundary_gap/expected/report-packet-index/missing-receipts/review"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/report-packet-index/missing-receipts/index.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/report-packet-index/missing-receipts/index.md",
+      "expected": {
+        "status": "warn",
+        "missing_expected": 2,
+        "failures": 0,
+        "warnings": 2,
+        "start_here_available": true,
+        "gate_authority_present": false,
+        "required_groups": [
+          "start_here",
+          "pr_review_story",
+          "validation_receipts"
+        ]
+      },
+      "reason": "Missing receipts should route users to validation commands without changing pass/fail authority."
+    },
+    {
+      "id": "coverage_grip_present",
+      "scenario": "coverage/grip frontier is present and grouped as calibration context",
+      "inputs": {
+        "reports_dir": "fixtures/boundary_gap/expected/report-packet-index/coverage-grip-present/reports",
+        "review_dir": "fixtures/boundary_gap/expected/report-packet-index/coverage-grip-present/review"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/report-packet-index/coverage-grip-present/index.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/report-packet-index/coverage-grip-present/index.md",
+      "expected": {
+        "status": "pass",
+        "missing_expected": 0,
+        "failures": 0,
+        "warnings": 0,
+        "start_here_available": true,
+        "gate_authority_present": false,
+        "required_groups": [
+          "start_here",
+          "pr_review_story",
+          "calibration"
+        ]
+      },
+      "reason": "Coverage/grip context should be easy to find but must not be presented as runtime confirmation."
+    }
+  ]
+}

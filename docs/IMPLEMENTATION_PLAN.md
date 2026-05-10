@@ -227,10 +227,11 @@ evidence, policy or gates, calibration, validation receipts, and SARIF or badge
 outputs. It must stay advisory and read-only: no analyzer behavior,
 recommendation ranking, gate semantics, editor behavior, mutation execution,
 provider calls, source edits, generated tests, inline-comment defaults, hidden
-analysis reruns, or default CI blocking. The first ready slice is
-`fixtures/report-packet-index-corpus`, after the spec defined the JSON and
-Markdown contract in
-[RIPR-SPEC-0024: Report Packet Index](specs/RIPR-SPEC-0024-report-packet-index.md).
+analysis reruns, or default CI blocking. The fixture corpus now pins complete,
+sparse, missing-front-panel, blocked-gate, missing-proof, missing-receipt, and
+coverage/grip-present packet states. The next ready slice is
+`report/report-packet-index`, which should update the read-only producer against
+those expected JSON and Markdown reports.
 
 ## PR 0: `planning-and-tracking-docs`
 

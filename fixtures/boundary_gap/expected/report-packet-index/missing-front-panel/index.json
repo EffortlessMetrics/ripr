@@ -1,0 +1,125 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "report_packet_index",
+  "status": "warn",
+  "root": ".",
+  "generated_at": "2026-05-10T12:00:00Z",
+  "inputs": {
+    "reports_dir": "target/ripr/reports",
+    "review_dir": "target/ripr/review"
+  },
+  "summary": {
+    "entries": 4,
+    "available": 3,
+    "missing_expected": 1,
+    "warnings": 1,
+    "failures": 0,
+    "start_here": null,
+    "gate_authority": null,
+    "advisory": true
+  },
+  "groups": [
+    {
+      "group": "start_here",
+      "label": "Start here",
+      "summary": "The expected front panel is missing.",
+      "entries": [
+        {
+          "id": "pr_review_front_panel",
+          "label": "PR review front panel",
+          "kind": "markdown",
+          "path": "target/ripr/reports/pr-review-front-panel.md",
+          "json_path": "target/ripr/reports/pr-review-front-panel.json",
+          "status": "missing",
+          "available": false,
+          "required": true,
+          "authority": false,
+          "description": "First-screen PR review story was not generated.",
+          "next_command": "ripr pr-review front-panel --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md"
+        }
+      ]
+    },
+    {
+      "group": "pr_review_story",
+      "label": "PR review story",
+      "summary": "Supporting guidance exists.",
+      "entries": [
+        {
+          "id": "first_useful_action",
+          "label": "First useful action",
+          "kind": "markdown",
+          "path": "target/ripr/reports/first-useful-action.md",
+          "json_path": "target/ripr/reports/first-useful-action.json",
+          "status": "available",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "One advisory next action.",
+          "next_command": null
+        },
+        {
+          "id": "review_comments",
+          "label": "Review guidance",
+          "kind": "markdown",
+          "path": "target/ripr/review/comments.md",
+          "json_path": "target/ripr/review/comments.json",
+          "status": "available",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "Bounded PR guidance comments.",
+          "next_command": null
+        }
+      ]
+    },
+    {
+      "group": "repair_agent_handoff",
+      "label": "Repair and agent handoff",
+      "summary": "Assistant proof is still available.",
+      "entries": [
+        {
+          "id": "assistant_proof",
+          "label": "Assistant proof",
+          "kind": "markdown",
+          "path": "target/ripr/reports/test-oracle-assistant-proof.md",
+          "json_path": "target/ripr/reports/test-oracle-assistant-proof.json",
+          "status": "available",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "Joined repair proof.",
+          "next_command": null
+        }
+      ]
+    }
+  ],
+  "missing_expected": [
+    {
+      "id": "pr_review_front_panel",
+      "label": "PR review front panel",
+      "group": "start_here",
+      "path": "target/ripr/reports/pr-review-front-panel.md",
+      "required": true,
+      "reason": "not_generated",
+      "next_command": "ripr pr-review front-panel --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md"
+    }
+  ],
+  "warnings": [
+    {
+      "kind": "missing_expected",
+      "message": "The PR review front panel is missing, so no start-here artifact was selected.",
+      "source_artifact": null
+    }
+  ],
+  "limits": [
+    "Advisory report-packet index only.",
+    "Does not rerun analysis.",
+    "Does not edit source or generate tests.",
+    "Does not call providers.",
+    "Does not run mutation testing.",
+    "Does not publish inline comments.",
+    "Does not change default CI blocking.",
+    "Gate decision remains pass/fail authority when configured."
+  ]
+}

@@ -1,0 +1,153 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "report_packet_index",
+  "status": "warn",
+  "root": ".",
+  "generated_at": "2026-05-10T12:00:00Z",
+  "inputs": {
+    "reports_dir": "target/ripr/reports",
+    "review_dir": "target/ripr/review",
+    "receipts_dir": "target/ripr/receipts"
+  },
+  "summary": {
+    "entries": 5,
+    "available": 3,
+    "missing_expected": 2,
+    "warnings": 2,
+    "failures": 0,
+    "start_here": "target/ripr/reports/pr-review-front-panel.md",
+    "gate_authority": null,
+    "advisory": true
+  },
+  "groups": [
+    {
+      "group": "start_here",
+      "label": "Start here",
+      "summary": "Reviewer-first PR story.",
+      "entries": [
+        {
+          "id": "pr_review_front_panel",
+          "label": "PR review front panel",
+          "kind": "markdown",
+          "path": "target/ripr/reports/pr-review-front-panel.md",
+          "json_path": "target/ripr/reports/pr-review-front-panel.json",
+          "status": "available",
+          "available": true,
+          "required": true,
+          "authority": false,
+          "description": "First-screen PR review story.",
+          "next_command": null
+        }
+      ]
+    },
+    {
+      "group": "pr_review_story",
+      "label": "PR review story",
+      "summary": "Guidance exists.",
+      "entries": [
+        {
+          "id": "first_useful_action",
+          "label": "First useful action",
+          "kind": "markdown",
+          "path": "target/ripr/reports/first-useful-action.md",
+          "json_path": "target/ripr/reports/first-useful-action.json",
+          "status": "available",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "One advisory next action.",
+          "next_command": null
+        },
+        {
+          "id": "review_comments",
+          "label": "Review guidance",
+          "kind": "markdown",
+          "path": "target/ripr/review/comments.md",
+          "json_path": "target/ripr/review/comments.json",
+          "status": "available",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "Bounded PR guidance comments.",
+          "next_command": null
+        }
+      ]
+    },
+    {
+      "group": "validation_receipts",
+      "label": "Validation receipts",
+      "summary": "Receipts are missing.",
+      "entries": [
+        {
+          "id": "agent_receipt",
+          "label": "Agent receipt",
+          "kind": "json",
+          "path": "target/ripr/reports/agent-receipt.json",
+          "json_path": "target/ripr/reports/agent-receipt.json",
+          "status": "missing",
+          "available": false,
+          "required": false,
+          "authority": false,
+          "description": "Focused repair receipt is absent.",
+          "next_command": "ripr agent receipt --out target/ripr/reports/agent-receipt.json"
+        },
+        {
+          "id": "check_pr",
+          "label": "Check PR",
+          "kind": "markdown",
+          "path": "target/ripr/reports/check-pr.md",
+          "json_path": null,
+          "status": "missing",
+          "available": false,
+          "required": false,
+          "authority": false,
+          "description": "Local review-ready gate receipt is absent.",
+          "next_command": "cargo xtask check-pr"
+        }
+      ]
+    }
+  ],
+  "missing_expected": [
+    {
+      "id": "agent_receipt",
+      "label": "Agent receipt",
+      "group": "validation_receipts",
+      "path": "target/ripr/reports/agent-receipt.json",
+      "required": false,
+      "reason": "not_generated",
+      "next_command": "ripr agent receipt --out target/ripr/reports/agent-receipt.json"
+    },
+    {
+      "id": "check_pr",
+      "label": "Check PR",
+      "group": "validation_receipts",
+      "path": "target/ripr/reports/check-pr.md",
+      "required": false,
+      "reason": "not_generated",
+      "next_command": "cargo xtask check-pr"
+    }
+  ],
+  "warnings": [
+    {
+      "kind": "missing_expected",
+      "message": "Agent receipt was not generated.",
+      "source_artifact": null
+    },
+    {
+      "kind": "missing_expected",
+      "message": "check-pr receipt was not generated.",
+      "source_artifact": null
+    }
+  ],
+  "limits": [
+    "Advisory report-packet index only.",
+    "Does not rerun analysis.",
+    "Does not edit source or generate tests.",
+    "Does not call providers.",
+    "Does not run mutation testing.",
+    "Does not publish inline comments.",
+    "Does not change default CI blocking.",
+    "Gate decision remains pass/fail authority when configured."
+  ]
+}

@@ -3,6 +3,20 @@
 ## Pending
 
 Reason:
+RIPR-SPEC-0024: pin report-packet index packet navigation cases before the producer changes
+
+Command:
+`cargo xtask check-fixture-contracts`
+
+Updated:
+- `expected/report-packet-index/README.md`
+- `expected/report-packet-index/corpus.json`
+- `expected/report-packet-index/*/index.json`
+- `expected/report-packet-index/*/index.md`
+
+## Pending
+
+Reason:
 RIPR-SPEC-0023: update PR review front-panel cases for the read-only producer
 
 Command:

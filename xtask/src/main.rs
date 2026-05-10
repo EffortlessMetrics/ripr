@@ -3605,6 +3605,7 @@ fn check_fixture_contracts() -> Result<(), String> {
     let mut violations = Vec::new();
     validate_evidence_record_contract_fixture_corpus(&mut violations)?;
     validate_pr_review_front_panel_fixture_corpus(&mut violations)?;
+    validate_report_packet_index_fixture_corpus(&mut violations)?;
     for entry in
         fs::read_dir(fixtures_dir).map_err(|err| format!("failed to read fixtures: {err}"))?
     {
@@ -4611,6 +4612,372 @@ fn validate_pr_review_front_panel_summary_count(
     if actual_count != expected_count {
         violations.push(format!(
             "pr-review-front-panel case {case_id} expected {key}={expected_count}, got {actual_count}"
+        ));
+    }
+}
+
+fn validate_report_packet_index_fixture_corpus(violations: &mut Vec<String>) -> Result<(), String> {
+    let base = Path::new("fixtures/boundary_gap/expected/report-packet-index");
+    validate_report_packet_index_fixture_corpus_at(base, violations)
+}
+
+fn validate_report_packet_index_fixture_corpus_at(
+    base: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !base.exists() {
+        violations.push(format!(
+            "report-packet-index corpus is missing {}",
+            normalize_path(base)
+        ));
+        return Ok(());
+    }
+
+    for required in ["README.md", "corpus.json"] {
+        let path = base.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "report-packet-index corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+
+    let corpus_path = base.join("corpus.json");
+    if !corpus_path.exists() {
+        return Ok(());
+    }
+
+    let corpus = match read_json_value(&corpus_path) {
+        Ok(value) => value,
+        Err(err) => {
+            violations.push(err);
+            return Ok(());
+        }
+    };
+    if json_string_field(&corpus, "kind").as_deref() != Some("report_packet_index_corpus") {
+        violations
+            .push("report-packet-index corpus kind must be report_packet_index_corpus".to_string());
+    }
+    if json_string_field(&corpus, "spec").as_deref() != Some("RIPR-SPEC-0024") {
+        violations.push("report-packet-index corpus spec must be RIPR-SPEC-0024".to_string());
+    }
+
+    let cases = match corpus.get("cases").and_then(Value::as_array) {
+        Some(cases) => cases,
+        None => {
+            violations.push("report-packet-index corpus is missing cases array".to_string());
+            return Ok(());
+        }
+    };
+
+    let required_cases = [
+        "complete_packet",
+        "sparse_advisory",
+        "missing_front_panel",
+        "blocked_gate",
+        "missing_assistant_proof",
+        "missing_receipts",
+        "coverage_grip_present",
+    ];
+    let mut seen_cases = BTreeSet::new();
+
+    for case in cases {
+        let case_id = json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string());
+        seen_cases.insert(case_id.clone());
+
+        let expected = match case.get("expected") {
+            Some(value) => value,
+            None => {
+                violations.push(format!(
+                    "report-packet-index case {case_id} is missing expected"
+                ));
+                continue;
+            }
+        };
+        let expected_status =
+            json_string_field(expected, "status").unwrap_or_else(|| "missing".to_string());
+
+        let report_path = match json_string_field(case, "expected_report") {
+            Some(path) => path,
+            None => {
+                violations.push(format!(
+                    "report-packet-index case {case_id} is missing expected_report"
+                ));
+                continue;
+            }
+        };
+        let markdown_path = match json_string_field(case, "expected_markdown") {
+            Some(path) => path,
+            None => {
+                violations.push(format!(
+                    "report-packet-index case {case_id} is missing expected_markdown"
+                ));
+                continue;
+            }
+        };
+
+        let report = match read_json_value(Path::new(&report_path)) {
+            Ok(value) => value,
+            Err(err) => {
+                violations.push(format!("report-packet-index case {case_id}: {err}"));
+                continue;
+            }
+        };
+        if json_string_field(&report, "schema_version").as_deref() != Some("0.1") {
+            violations.push(format!(
+                "report-packet-index case {case_id} schema_version must be 0.1"
+            ));
+        }
+        if json_string_field(&report, "kind").as_deref() != Some("report_packet_index") {
+            violations.push(format!(
+                "report-packet-index case {case_id} report kind must be report_packet_index"
+            ));
+        }
+        if json_string_field(&report, "status").as_deref() != Some(expected_status.as_str()) {
+            violations.push(format!(
+                "report-packet-index case {case_id} expected status {expected_status}"
+            ));
+        }
+        if !json_bool_summary_field(&report, "advisory").unwrap_or(false) {
+            violations.push(format!(
+                "report-packet-index case {case_id} summary.advisory must be true"
+            ));
+        }
+
+        for key in ["missing_expected", "failures", "warnings"] {
+            validate_report_packet_index_summary_count(
+                violations, &case_id, expected, &report, key,
+            );
+        }
+
+        let expected_start_here =
+            json_bool_field(expected, "start_here_available").unwrap_or(false);
+        let actual_start_here = report
+            .get("summary")
+            .and_then(|summary| summary.get("start_here"))
+            .is_some_and(|value| !value.is_null());
+        if actual_start_here != expected_start_here {
+            violations.push(format!(
+                "report-packet-index case {case_id} expected start_here_available={expected_start_here}, got {actual_start_here}"
+            ));
+        }
+
+        let expected_gate_authority =
+            json_bool_field(expected, "gate_authority_present").unwrap_or(false);
+        let actual_gate_authority = report
+            .get("summary")
+            .and_then(|summary| summary.get("gate_authority"))
+            .is_some_and(|value| !value.is_null());
+        if actual_gate_authority != expected_gate_authority {
+            violations.push(format!(
+                "report-packet-index case {case_id} expected gate_authority_present={expected_gate_authority}, got {actual_gate_authority}"
+            ));
+        }
+
+        validate_report_packet_index_groups(violations, &case_id, expected, &report);
+        validate_report_packet_index_missing_reasons(violations, &case_id, &report);
+
+        if !report
+            .get("limits")
+            .and_then(Value::as_array)
+            .is_some_and(|limits| {
+                limits
+                    .iter()
+                    .any(|limit| limit.as_str() == Some("Advisory report-packet index only."))
+            })
+        {
+            violations.push(format!(
+                "report-packet-index case {case_id} report is missing advisory index limit"
+            ));
+        }
+
+        let markdown = match fs::read_to_string(&markdown_path) {
+            Ok(markdown) => markdown,
+            Err(err) => {
+                violations.push(format!(
+                    "report-packet-index case {case_id} Markdown missing {}: {err}",
+                    markdown_path
+                ));
+                continue;
+            }
+        };
+        if !markdown.contains("# RIPR Report Packet Index") {
+            violations.push(format!(
+                "report-packet-index case {case_id} Markdown must use the report-packet index heading"
+            ));
+        }
+        if !markdown.contains(&format!("Status: {expected_status}")) {
+            violations.push(format!(
+                "report-packet-index case {case_id} Markdown must pin status {expected_status}"
+            ));
+        }
+        if expected_start_here && !markdown.contains("Start here:") {
+            violations.push(format!(
+                "report-packet-index case {case_id} Markdown must name start-here artifacts"
+            ));
+        }
+        if expected_gate_authority && !markdown.contains("Gate authority:") {
+            violations.push(format!(
+                "report-packet-index case {case_id} Markdown must name gate authority"
+            ));
+        }
+        if json_usize_field(expected, "missing_expected").unwrap_or(0) > 0
+            && !markdown.contains("Missing expected")
+        {
+            violations.push(format!(
+                "report-packet-index case {case_id} Markdown must list missing expected artifacts"
+            ));
+        }
+    }
+
+    for required in required_cases {
+        if !seen_cases.contains(required) {
+            violations.push(format!(
+                "report-packet-index corpus is missing required case {required}"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_report_packet_index_groups(
+    violations: &mut Vec<String>,
+    case_id: &str,
+    expected: &Value,
+    report: &Value,
+) {
+    let Some(groups) = report.get("groups").and_then(Value::as_array) else {
+        violations.push(format!(
+            "report-packet-index case {case_id} is missing groups array"
+        ));
+        return;
+    };
+    let mut seen_groups = BTreeSet::new();
+    for group in groups {
+        let group_name = json_string_field(group, "group").unwrap_or_else(|| "missing".to_string());
+        if !matches!(
+            group_name.as_str(),
+            "start_here"
+                | "pr_review_story"
+                | "repair_agent_handoff"
+                | "evidence_movement"
+                | "policy_gates"
+                | "calibration"
+                | "validation_receipts"
+                | "sarif_badges"
+                | "local_context"
+        ) {
+            violations.push(format!(
+                "report-packet-index case {case_id} groups must use known group vocabulary"
+            ));
+        }
+        seen_groups.insert(group_name);
+        let Some(entries) = group.get("entries").and_then(Value::as_array) else {
+            violations.push(format!(
+                "report-packet-index case {case_id} group entries must be arrays"
+            ));
+            continue;
+        };
+        if entries.is_empty() {
+            violations.push(format!(
+                "report-packet-index case {case_id} group entries must not be empty"
+            ));
+        }
+        for entry in entries {
+            if !matches!(
+                json_string_field(entry, "status").as_deref(),
+                Some(
+                    "available"
+                        | "missing"
+                        | "pass"
+                        | "warn"
+                        | "fail"
+                        | "blocked"
+                        | "acknowledged"
+                        | "suppressed"
+                        | "stale"
+                        | "incomplete"
+                        | "unreadable"
+                        | "not_applicable"
+                )
+            ) {
+                violations.push(format!(
+                    "report-packet-index case {case_id} entries must use known status vocabulary"
+                ));
+            }
+        }
+    }
+
+    if let Some(required_groups) = expected.get("required_groups").and_then(Value::as_array) {
+        for required_group in required_groups {
+            let Some(required_group) = required_group.as_str() else {
+                violations.push(format!(
+                    "report-packet-index case {case_id} expected required_groups must be strings"
+                ));
+                continue;
+            };
+            if !seen_groups.contains(required_group) {
+                violations.push(format!(
+                    "report-packet-index case {case_id} is missing required group {required_group}"
+                ));
+            }
+        }
+    } else {
+        violations.push(format!(
+            "report-packet-index case {case_id} expected is missing required_groups"
+        ));
+    }
+}
+
+fn validate_report_packet_index_missing_reasons(
+    violations: &mut Vec<String>,
+    case_id: &str,
+    report: &Value,
+) {
+    let Some(missing_expected) = report.get("missing_expected").and_then(Value::as_array) else {
+        violations.push(format!(
+            "report-packet-index case {case_id} is missing missing_expected array"
+        ));
+        return;
+    };
+    for missing in missing_expected {
+        if !matches!(
+            json_string_field(missing, "reason").as_deref(),
+            Some(
+                "not_generated"
+                    | "input_not_available"
+                    | "configured_off"
+                    | "missing_required_input"
+                    | "stale_upstream"
+                    | "unknown"
+            )
+        ) {
+            violations.push(format!(
+                "report-packet-index case {case_id} missing_expected entries must use known reasons"
+            ));
+        }
+    }
+}
+
+fn validate_report_packet_index_summary_count(
+    violations: &mut Vec<String>,
+    case_id: &str,
+    expected: &Value,
+    report: &Value,
+    key: &str,
+) {
+    let Some(expected_count) = json_usize_field(expected, key) else {
+        violations.push(format!(
+            "report-packet-index case {case_id} expected is missing {key}"
+        ));
+        return;
+    };
+    let actual_count = json_summary_count(report, key);
+    if actual_count != expected_count {
+        violations.push(format!(
+            "report-packet-index case {case_id} expected {key}={expected_count}, got {actual_count}"
         ));
     }
 }
@@ -8977,6 +9344,17 @@ fn json_string_field(value: &Value, key: &str) -> Option<String> {
 
 fn json_usize_field(value: &Value, key: &str) -> Option<usize> {
     value.get(key).and_then(json_scalar_as_usize)
+}
+
+fn json_bool_field(value: &Value, key: &str) -> Option<bool> {
+    value.get(key).and_then(Value::as_bool)
+}
+
+fn json_bool_summary_field(value: &Value, key: &str) -> Option<bool> {
+    value
+        .get("summary")
+        .and_then(|summary| summary.get(key))
+        .and_then(Value::as_bool)
 }
 
 fn md_escape(value: &str) -> String {
@@ -20388,6 +20766,66 @@ mod tests {
         );
     }
 
+    fn write_report_packet_index_corpus(
+        base: &Path,
+        report: &Path,
+        markdown: &Path,
+        expected_status: &str,
+        missing_expected: usize,
+        failures: usize,
+        gate_authority_present: bool,
+    ) {
+        write(&base.join("README.md"), "# Report Packet Index Corpus\n");
+        let expected = format!(
+            r#"{{
+        "status": "{expected_status}",
+        "missing_expected": {missing_expected},
+        "failures": {failures},
+        "warnings": 0,
+        "start_here_available": true,
+        "gate_authority_present": {gate_authority_present},
+        "required_groups": ["start_here", "pr_review_story"]
+      }}"#
+        );
+        let cases = [
+            "complete_packet",
+            "sparse_advisory",
+            "missing_front_panel",
+            "blocked_gate",
+            "missing_assistant_proof",
+            "missing_receipts",
+            "coverage_grip_present",
+        ]
+        .into_iter()
+        .map(|id| {
+            format!(
+                r#"{{
+      "id": "{id}",
+      "expected_report": "{}",
+      "expected_markdown": "{}",
+      "expected": {expected}
+    }}"#,
+                json_path(report),
+                json_path(markdown)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",\n");
+        write(
+            &base.join("corpus.json"),
+            &format!(
+                r#"{{
+  "kind": "report_packet_index_corpus",
+  "spec": "RIPR-SPEC-0024",
+  "cases": [
+{cases}
+  ]
+}}
+"#
+            ),
+        );
+    }
+
     #[cfg(unix)]
     fn success_exit_status() -> ExitStatus {
         use std::os::unix::process::ExitStatusExt;
@@ -20585,6 +21023,115 @@ mod tests {
         assert!(report.contains("Markdown must use the PR review heading"));
         assert!(report.contains("Markdown must pin status blocked"));
         assert!(report.contains("blocked Markdown must name gate authority"));
+        Ok(())
+    }
+
+    #[test]
+    fn report_packet_index_fixture_corpus_guard_accepts_complete_contract() -> Result<(), String> {
+        let root = temp_dir("report-packet-index-valid");
+        let base = root.join("report-packet-index");
+        let report = root.join("index.json");
+        let markdown = root.join("index.md");
+        write_report_packet_index_corpus(&base, &report, &markdown, "pass", 0, 0, true);
+        write(
+            &report,
+            r#"{
+  "schema_version": "0.1",
+  "kind": "report_packet_index",
+  "status": "pass",
+  "summary": {
+    "missing_expected": 0,
+    "failures": 0,
+    "warnings": 0,
+    "start_here": "target/ripr/reports/pr-review-front-panel.md",
+    "gate_authority": "target/ripr/reports/gate-decision.md",
+    "advisory": true
+  },
+  "groups": [
+    {
+      "group": "start_here",
+      "entries": [{"status": "available"}]
+    },
+    {
+      "group": "pr_review_story",
+      "entries": [{"status": "pass"}]
+    }
+  ],
+  "missing_expected": [],
+  "limits": ["Advisory report-packet index only."]
+}
+"#,
+        );
+        write(
+            &markdown,
+            "# RIPR Report Packet Index\n\nStatus: pass\n\nStart here:\n- PR review front panel: target/ripr/reports/pr-review-front-panel.md\n- Gate authority: target/ripr/reports/gate-decision.md\n",
+        );
+
+        let mut violations = Vec::new();
+        super::validate_report_packet_index_fixture_corpus_at(&base, &mut violations)?;
+
+        assert_eq!(violations, Vec::<String>::new());
+        Ok(())
+    }
+
+    #[test]
+    fn report_packet_index_fixture_corpus_guard_reports_contract_drift() -> Result<(), String> {
+        let root = temp_dir("report-packet-index-invalid");
+        let base = root.join("report-packet-index");
+        let report = root.join("index.json");
+        let markdown = root.join("index.md");
+        write_report_packet_index_corpus(&base, &report, &markdown, "fail", 1, 1, true);
+        write(
+            &report,
+            r#"{
+  "schema_version": "0.2",
+  "kind": "wrong_kind",
+  "status": "warn",
+  "summary": {
+    "missing_expected": 0,
+    "failures": 0,
+    "warnings": 0,
+    "start_here": null,
+    "gate_authority": null,
+    "advisory": false
+  },
+  "groups": [
+    {
+      "group": "unknown",
+      "entries": [{"status": "mystery"}]
+    }
+  ],
+  "missing_expected": [
+    {"reason": "surprise"}
+  ],
+  "limits": ["Does not run mutation testing."]
+}
+"#,
+        );
+        write(&markdown, "# Wrong\n\nStatus: warn\n");
+
+        let mut violations = Vec::new();
+        super::validate_report_packet_index_fixture_corpus_at(&base, &mut violations)?;
+        let report = violations.join("\n");
+
+        assert!(report.contains("schema_version must be 0.1"));
+        assert!(report.contains("report kind must be report_packet_index"));
+        assert!(report.contains("expected status fail"));
+        assert!(report.contains("summary.advisory must be true"));
+        assert!(report.contains("expected missing_expected=1, got 0"));
+        assert!(report.contains("expected failures=1, got 0"));
+        assert!(report.contains("expected start_here_available=true, got false"));
+        assert!(report.contains("expected gate_authority_present=true, got false"));
+        assert!(report.contains("groups must use known group vocabulary"));
+        assert!(report.contains("entries must use known status vocabulary"));
+        assert!(report.contains("is missing required group start_here"));
+        assert!(report.contains("missing_expected entries must use known reasons"));
+        assert!(report.contains("report is missing advisory index limit"));
+        assert!(report.contains("Markdown must use the report-packet index heading"));
+        assert!(report.contains("Markdown must pin status fail"));
+        assert!(report.contains("Markdown must name start-here artifacts"));
+        assert!(report.contains("Markdown must name gate authority"));
+        assert!(report.contains("Markdown must list missing expected artifacts"));
         Ok(())
     }
 

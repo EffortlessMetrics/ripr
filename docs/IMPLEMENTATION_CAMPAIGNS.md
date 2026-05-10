@@ -2775,8 +2775,8 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `spec/report-packet-index-contract` | done | Defined the report-packet index contract, explicit inputs, grouping model, missing-surface warnings, generated-CI projection boundary, advisory limits, and fixture-first implementation plan before changing the producer. |
-| `fixtures/report-packet-index-corpus` | ready | Pin report-packet index cases for complete packet, sparse advisory packet, missing front panel, blocked gate, missing assistant proof, missing receipts, and coverage/grip-present packet before changing the producer. |
-| `report/report-packet-index` | blocked | Blocked on `fixtures/report-packet-index-corpus`; update the read-only report-packet index producer to emit grouped reviewer-first JSON/Markdown from explicit existing artifact paths without rerunning analysis or changing gate authority. |
+| `fixtures/report-packet-index-corpus` | done | Pinned report-packet index cases for complete packet, sparse advisory packet, missing front panel, blocked gate, missing assistant proof, missing receipts, and coverage/grip-present packet before changing the producer. |
+| `report/report-packet-index` | ready | Update the read-only report-packet index producer to emit grouped reviewer-first JSON/Markdown from explicit existing artifact paths without rerunning analysis or changing gate authority. |
 | `ci/report-packet-index-summary` | blocked | Blocked on `report/report-packet-index`; generated GitHub CI uploads and summarizes the report-packet index only when inputs exist, while preserving advisory defaults and gate-decision pass/fail authority. |
 | `docs/report-packet-index-workflow` | blocked | Blocked on `ci/report-packet-index-summary`; document how reviewers, maintainers, developers, and coding agents use the report-packet index, follow artifact groups, regenerate missing surfaces, and preserve advisory gate limits. |
 | `dogfood/report-packet-index-receipts` | blocked | Blocked on `docs/report-packet-index-workflow`; record repo-local report-packet index receipts for complete, sparse, missing-front-panel, blocked-gate, missing-proof, missing-receipts, and coverage/grip-present cases. |
@@ -2802,9 +2802,9 @@ Blocking conditions:
 
 Next:
 
-- Continue with `fixtures/report-packet-index-corpus`. The spec is now in
-  place; the next slice should pin the packet states before changing the
-  existing index producer.
+- Continue with `report/report-packet-index`. The fixture corpus now pins the
+  packet states, so the next slice can update the read-only producer against
+  those expected JSON and Markdown reports.
 
 ## Future Campaign: Editor Evidence UX
 
