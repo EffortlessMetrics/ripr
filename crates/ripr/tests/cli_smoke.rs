@@ -1422,6 +1422,12 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
     assert!(workflow.contains("ripr agent verify"));
     assert!(workflow.contains("ripr agent receipt"));
     assert!(workflow.contains("ripr review-comments"));
+    assert!(workflow.contains("RIPR_COMMENT_MODE"));
+    assert!(workflow.contains("pr-comments plan"));
+    assert!(workflow.contains("target/ripr/review/comment-publish-plan.json"));
+    assert!(workflow.contains("Capture existing RIPR inline comments"));
+    assert!(workflow.contains("Plan RIPR inline comments"));
+    assert!(workflow.contains("Publish RIPR inline comments"));
     assert!(workflow.contains("ripr agent status"));
     assert!(workflow.contains("ripr agent review-summary"));
     assert!(workflow.contains("target/ripr/workflow/agent-packet.json"));

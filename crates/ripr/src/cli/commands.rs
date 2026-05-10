@@ -997,12 +997,14 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
   security-events: write
 
 env:
   RIPR_UPLOAD_SARIF: "true"
   RIPR_GATE_MODE: ${{ vars.RIPR_GATE_MODE || '' }}
   RIPR_GATE_BASELINE: ${{ vars.RIPR_GATE_BASELINE || '' }}
+  RIPR_COMMENT_MODE: ${{ vars.RIPR_COMMENT_MODE || 'off' }}
 
 jobs:
   ripr:
@@ -1104,6 +1106,114 @@ jobs:
             --base "origin/${{ github.base_ref }}" \
             --head HEAD \
             --out target/ripr/review/comments.json
+
+      - name: Capture existing RIPR inline comments
+        if: always() && github.event_name == 'pull_request' && env.RIPR_COMMENT_MODE != 'off'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p target/ripr/review
+          gh api --paginate --slurp "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments" \
+            > target/ripr/review/existing-comments.raw.json
+          jq '{
+            schema_version: "0.1",
+            tool: "ripr",
+            kind: "pr_inline_comment_existing_comments",
+            comments: [
+              .[]?[]?
+              | select((.body // "") | contains("<!-- ripr:dedupe="))
+              | {
+                  comment_id: .id,
+                  dedupe_key: ((.body // "") | capture("<!-- ripr:dedupe=(?<key>[^ ]+) -->").key),
+                  path: .path,
+                  line: (.line // .original_line),
+                  side: (.side // "RIGHT"),
+                  body: ((.body // "") | sub("\n\n<!-- ripr:dedupe=[^ ]+ -->\n?$"; "")),
+                  outdated: (.position == null and .line == null)
+                }
+            ]
+          }' target/ripr/review/existing-comments.raw.json \
+            > target/ripr/review/existing-comments.json
+
+      - name: Plan RIPR inline comments
+        if: always() && github.event_name == 'pull_request' && env.RIPR_COMMENT_MODE != 'off' && hashFiles('target/ripr/review/comments.json') != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p target/ripr/review
+          comment_args=(
+            pr-comments plan
+            --root .
+            --pr-guidance target/ripr/review/comments.json
+            --mode "$RIPR_COMMENT_MODE"
+            --event-name "${{ github.event_name }}"
+            --pull-request "${{ github.event.pull_request.number }}"
+            --head-repo "${{ github.event.pull_request.head.repo.full_name }}"
+            --base-repo "${{ github.repository }}"
+            --out target/ripr/review/comment-publish-plan.json
+            --out-md target/ripr/review/comment-publish-plan.md
+          )
+          if [ -f target/ripr/review/existing-comments.json ]; then
+            comment_args+=(--existing-comments target/ripr/review/existing-comments.json)
+          fi
+          if [ -n "${GH_TOKEN:-}" ]; then
+            comment_args+=(--token-available)
+          else
+            comment_args+=(--no-token)
+          fi
+          comment_args+=(--write-permission)
+          ripr "${comment_args[@]}"
+
+      - name: Publish RIPR inline comments
+        if: always() && github.event_name == 'pull_request' && env.RIPR_COMMENT_MODE == 'inline' && hashFiles('target/ripr/review/comment-publish-plan.json') != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          plan=target/ripr/review/comment-publish-plan.json
+          if ! jq -e '.summary.safe_to_publish == true' "$plan" >/dev/null; then
+            echo "RIPR inline comments were not published because the publish plan is not safe."
+            jq -r '.blocked[]? | "- \(.blocked_reason): \(.message)"' "$plan" || true
+            exit 0
+          fi
+
+          jq -c '.operations[]? | select(.safe_to_publish == true)' "$plan" \
+            | while IFS= read -r operation; do
+                op="$(jq -r '.operation' <<< "$operation")"
+                dedupe_key="$(jq -r '.dedupe_key' <<< "$operation")"
+                body="$(jq -r '.body // ""' <<< "$operation")"
+                body_with_marker="$(printf '%s\n\n<!-- ripr:dedupe=%s -->\n' "$body" "$dedupe_key")"
+                if [ "$op" = "keep" ]; then
+                  echo "RIPR inline comment already current: $dedupe_key"
+                  continue
+                fi
+                if [ "$op" = "create" ]; then
+                  path="$(jq -r '.placement.path' <<< "$operation")"
+                  line="$(jq -r '.placement.line' <<< "$operation")"
+                  side="$(jq -r '.placement.side // "RIGHT"' <<< "$operation")"
+                  payload="$(mktemp)"
+                  jq -n \
+                    --arg body "$body_with_marker" \
+                    --arg commit_id "${{ github.event.pull_request.head.sha }}" \
+                    --arg path "$path" \
+                    --arg side "$side" \
+                    --argjson line "$line" \
+                    '{body: $body, commit_id: $commit_id, path: $path, side: $side, line: $line}' \
+                    > "$payload"
+                  gh api --method POST "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments" --input "$payload" >/dev/null
+                  echo "Created RIPR inline comment: $dedupe_key"
+                elif [ "$op" = "update" ]; then
+                  comment_id="$(jq -r '.existing_comment_id' <<< "$operation")"
+                  payload="$(mktemp)"
+                  jq -n --arg body "$body_with_marker" '{body: $body}' > "$payload"
+                  gh api --method PATCH "repos/${{ github.repository }}/pulls/comments/$comment_id" --input "$payload" >/dev/null
+                  echo "Updated RIPR inline comment: $dedupe_key"
+                else
+                  echo "RIPR inline comment operation $op is review-only: $dedupe_key"
+                fi
+              done
 
       - name: Capture RIPR gate labels
         if: always() && github.event_name == 'pull_request'
@@ -1434,6 +1544,7 @@ jobs:
             target/ripr/reports/first-useful-action.md \
             target/ripr/review/comments.md \
             target/ripr/review/comments.json \
+            target/ripr/review/comment-publish-plan.md \
             target/ripr/reports/test-oracle-assistant-proof.md \
             target/ripr/reports/assistant-loop-health.md \
             target/ripr/reports/pr-evidence-ledger.md \
@@ -2043,6 +2154,34 @@ jobs:
               echo "- Suppressed recommendations: $suppressed"
             else
               echo 'No PR test guidance report was generated. When `ripr review-comments` writes `target/ripr/review/comments.json`, this workflow emits changed-line check annotations by default.'
+            fi
+            echo
+            echo '### PR inline comments'
+            comment_mode="$(markdown_inline "${RIPR_COMMENT_MODE:-off}")"
+            echo "- Mode: \`$comment_mode\`"
+            if [ -f target/ripr/review/comment-publish-plan.json ]; then
+              comment_plan=target/ripr/review/comment-publish-plan.json
+              comment_status="$(jq -r '.status // "unknown"' "$comment_plan" 2>/dev/null || echo unknown)"
+              comment_publishable="$(jq -r '.summary.publishable // 0' "$comment_plan" 2>/dev/null || echo 0)"
+              comment_skipped="$(jq -r '.summary.skipped // 0' "$comment_plan" 2>/dev/null || echo 0)"
+              comment_blocked="$(jq -r '.summary.blocked // 0' "$comment_plan" 2>/dev/null || echo 0)"
+              comment_safe="$(jq -r '.summary.safe_to_publish // false' "$comment_plan" 2>/dev/null || echo false)"
+              comment_status="$(markdown_inline "$comment_status")"
+              comment_publishable="$(markdown_inline "$comment_publishable")"
+              comment_skipped="$(markdown_inline "$comment_skipped")"
+              comment_blocked="$(markdown_inline "$comment_blocked")"
+              comment_safe="$(markdown_inline "$comment_safe")"
+              echo "- Status: \`$comment_status\`"
+              echo "- Counts: publishable=\`$comment_publishable\`, skipped=\`$comment_skipped\`, blocked=\`$comment_blocked\`"
+              echo "- Safe to publish: \`$comment_safe\`"
+              echo "- Plan artifacts: \`target/ripr/review/comment-publish-plan.json\`, \`target/ripr/review/comment-publish-plan.md\`"
+              echo "- Boundary: inline comments remain opt-in; gate decisions remain separate pass/fail authority."
+              echo
+              if [ -f target/ripr/review/comment-publish-plan.md ]; then
+                cat target/ripr/review/comment-publish-plan.md
+              fi
+            else
+              echo '- Inline comments are disabled by default. Set `RIPR_COMMENT_MODE` to `plan` to inspect a publish plan or `inline` to publish same-repo changed-line comments when permissions are safe.'
             fi
             echo
             echo '### Known limits'
@@ -5412,6 +5551,7 @@ mod tests {
                 "first-action",
                 "pr-review front-panel",
                 "reports index",
+                "pr-comments plan",
                 "ripr agent status",
                 "ripr agent review-summary",
                 "cargo xtask operator-cockpit",
@@ -5456,6 +5596,9 @@ mod tests {
                 "target/ripr/reports/index.json",
                 "target/ripr/reports/index.md",
                 "target/ripr/review/comments.json",
+                "target/ripr/review/existing-comments.json",
+                "target/ripr/review/comment-publish-plan.json",
+                "target/ripr/review/comment-publish-plan.md",
                 "target/ci/labels.json",
             ],
             summary_sections: &[
@@ -5483,6 +5626,7 @@ mod tests {
                 "#### Assistant loop health at a glance",
                 "### SARIF and badge status",
                 "### PR guidance annotations",
+                "### PR inline comments",
                 "### Known limits",
             ],
             non_blocking_steps: &[
@@ -5503,6 +5647,9 @@ mod tests {
                 "Render RIPR report packet index",
                 "Render RIPR LLM work-loop summaries",
                 "Run RIPR PR guidance report",
+                "Capture existing RIPR inline comments",
+                "Plan RIPR inline comments",
+                "Publish RIPR inline comments",
                 "Capture RIPR gate labels",
                 "Emit RIPR PR guidance annotations",
                 "Add RIPR advisory summary",
@@ -7364,6 +7511,8 @@ mod tests {
         assert!(workflow.contains("RIPR_UPLOAD_SARIF"));
         assert!(workflow.contains("RIPR_GATE_MODE: ${{ vars.RIPR_GATE_MODE || '' }}"));
         assert!(workflow.contains("RIPR_GATE_BASELINE: ${{ vars.RIPR_GATE_BASELINE || '' }}"));
+        assert!(workflow.contains("RIPR_COMMENT_MODE: ${{ vars.RIPR_COMMENT_MODE || 'off' }}"));
+        assert!(workflow.contains("pull-requests: write"));
         assert!(workflow.contains("--format sarif"));
         assert!(workflow.contains("--format repo-sarif"));
         assert!(workflow.contains("--format repo-badge-json"));
@@ -7408,8 +7557,14 @@ mod tests {
         assert!(workflow.contains("target/ripr/reports/index.md"));
         assert!(workflow.contains("target/ci/labels.json"));
         assert!(workflow.contains("target/ripr/review/comments.json"));
+        assert!(workflow.contains("target/ripr/review/existing-comments.json"));
+        assert!(workflow.contains("target/ripr/review/comment-publish-plan.json"));
+        assert!(workflow.contains("target/ripr/review/comment-publish-plan.md"));
         assert!(workflow.contains("target/ripr/review"));
         assert!(workflow.contains("target/ci"));
+        assert!(workflow.contains("name: Capture existing RIPR inline comments"));
+        assert!(workflow.contains("name: Plan RIPR inline comments"));
+        assert!(workflow.contains("name: Publish RIPR inline comments"));
         assert!(workflow.contains("name: Capture RIPR gate labels"));
         assert!(workflow.contains("name: Evaluate RIPR gate decision"));
         assert!(workflow.contains("name: Render RIPR baseline debt delta"));
@@ -7460,8 +7615,11 @@ mod tests {
         assert!(workflow.contains("Index artifacts"));
         assert!(workflow.contains("### SARIF and badge status"));
         assert!(workflow.contains("### PR guidance annotations"));
+        assert!(workflow.contains("### PR inline comments"));
         assert!(workflow.contains("### Known limits"));
+        assert!(workflow.contains("Inline comments are disabled by default"));
         assert!(!workflow.contains("fail-on-new-warning"));
+        assert!(!workflow.contains("pull_request_target"));
         assert!(!workflow.contains("RIPR_GATE_MODE: \"acknowledgeable\""));
         assert!(!workflow.contains("RIPR_GATE_MODE: \"baseline-check\""));
         assert!(!workflow.contains("RIPR_GATE_MODE: \"calibrated-gate\""));
@@ -7528,6 +7686,16 @@ mod tests {
         assert!(workflow.contains("Set `RIPR_GATE_BASELINE`"));
         assert!(workflow.contains("RIPR_GATE_MODE"));
         assert!(workflow.contains("RIPR_GATE_BASELINE"));
+        assert!(workflow.contains("RIPR_COMMENT_MODE"));
+        assert!(workflow.contains("existing-comments.raw.json"));
+        assert!(workflow.contains("<!-- ripr:dedupe="));
+        assert!(workflow.contains("--mode \"$RIPR_COMMENT_MODE\""));
+        assert!(workflow.contains("--existing-comments target/ripr/review/existing-comments.json"));
+        assert!(workflow.contains("--token-available"));
+        assert!(workflow.contains("--write-permission"));
+        assert!(workflow.contains("jq -e '.summary.safe_to_publish == true'"));
+        assert!(workflow.contains("gh api --method POST"));
+        assert!(workflow.contains("gh api --method PATCH"));
         assert!(workflow.contains("assistant-loop proof"));
         assert!(workflow.contains("first-action"));
         assert!(workflow.contains("--pr-guidance target/ripr/review/comments.json"));
@@ -7607,9 +7775,70 @@ mod tests {
         assert!(guidance.contains("--base \"origin/${{ github.base_ref }}\""));
         assert!(guidance.contains("--head HEAD"));
         assert!(guidance.contains("--out target/ripr/review/comments.json"));
+
+        let existing_comments = workflow_step(&workflow, "Capture existing RIPR inline comments");
+        assert!(existing_comments.contains("env.RIPR_COMMENT_MODE != 'off'"));
+        assert!(existing_comments.contains("GH_TOKEN: ${{ github.token }}"));
+        assert!(existing_comments.contains("gh api --paginate --slurp"));
+        assert!(
+            existing_comments.contains("pulls/${{ github.event.pull_request.number }}/comments")
+        );
+        assert!(existing_comments.contains("target/ripr/review/existing-comments.json"));
+        assert!(existing_comments.contains("capture(\"<!-- ripr:dedupe=(?<key>[^ ]+) -->\")"));
+
+        let comment_plan = workflow_step(&workflow, "Plan RIPR inline comments");
+        assert!(comment_plan.contains("env.RIPR_COMMENT_MODE != 'off'"));
+        assert!(comment_plan.contains("hashFiles('target/ripr/review/comments.json')"));
+        assert!(comment_plan.contains("pr-comments plan"));
+        assert!(comment_plan.contains("--pr-guidance target/ripr/review/comments.json"));
+        assert!(comment_plan.contains("--mode \"$RIPR_COMMENT_MODE\""));
+        assert!(comment_plan.contains("--event-name \"${{ github.event_name }}\""));
+        assert!(
+            comment_plan.contains("--pull-request \"${{ github.event.pull_request.number }}\"")
+        );
+        assert!(
+            comment_plan
+                .contains("--head-repo \"${{ github.event.pull_request.head.repo.full_name }}\"")
+        );
+        assert!(comment_plan.contains("--base-repo \"${{ github.repository }}\""));
+        assert!(comment_plan.contains("--out target/ripr/review/comment-publish-plan.json"));
+        assert!(comment_plan.contains("--out-md target/ripr/review/comment-publish-plan.md"));
+        assert!(
+            comment_plan.contains("--existing-comments target/ripr/review/existing-comments.json")
+        );
+        assert!(comment_plan.contains("--token-available"));
+        assert!(comment_plan.contains("--no-token"));
+        assert!(comment_plan.contains("--write-permission"));
+
+        let publish_comments = workflow_step(&workflow, "Publish RIPR inline comments");
+        assert!(publish_comments.contains("env.RIPR_COMMENT_MODE == 'inline'"));
+        assert!(
+            publish_comments.contains("hashFiles('target/ripr/review/comment-publish-plan.json')")
+        );
+        assert!(publish_comments.contains("jq -e '.summary.safe_to_publish == true'"));
+        assert!(publish_comments.contains("select(.safe_to_publish == true)"));
+        assert!(publish_comments.contains("<!-- ripr:dedupe=%s -->"));
+        assert!(publish_comments.contains("github.event.pull_request.head.sha"));
+        assert!(publish_comments.contains("gh api --method POST"));
+        assert!(publish_comments.contains("gh api --method PATCH"));
         assert_step_before(
             &workflow,
             "Run RIPR PR guidance report",
+            "Capture existing RIPR inline comments",
+        );
+        assert_step_before(
+            &workflow,
+            "Capture existing RIPR inline comments",
+            "Plan RIPR inline comments",
+        );
+        assert_step_before(
+            &workflow,
+            "Plan RIPR inline comments",
+            "Publish RIPR inline comments",
+        );
+        assert_step_before(
+            &workflow,
+            "Plan RIPR inline comments",
             "Evaluate RIPR gate decision",
         );
         assert_step_before(

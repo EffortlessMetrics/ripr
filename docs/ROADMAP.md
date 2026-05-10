@@ -294,8 +294,11 @@ defaults, inline-comment defaults, or default CI blocking. The fixture corpus
 under `fixtures/boundary_gap/expected/pr-inline-comment-publisher/` now pins
 the publisher plan cases before producer behavior changes, and
 `ripr pr-comments plan` now emits the read-only JSON/Markdown publish plan
-without posting to GitHub or changing gate authority. The next ready slice is
-`ci/pr-inline-comment-publisher`.
+without posting to GitHub or changing gate authority. Generated GitHub CI now
+keeps `RIPR_COMMENT_MODE=off` by default, uploads/summarizes the plan in opt-in
+modes, and posts or updates only safe inline operations when `inline` mode is
+explicitly configured. The next ready slice is
+`docs/pr-inline-comment-publisher-workflow`.
 
 ## Strategic Sequence
 
