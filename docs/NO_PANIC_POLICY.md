@@ -122,8 +122,8 @@ cargo xtask check-no-panic-family
 
 Run this locally before pushing. It runs in CI as a required gate.
 
-To generate review-only migration hints for legacy line/column entries or
-ambiguous selectors, run:
+To generate review-only migration hints for legacy line/column entries, current
+semantic entries, or ambiguous selectors, run:
 
 ```bash
 cargo xtask check-no-panic-family --propose

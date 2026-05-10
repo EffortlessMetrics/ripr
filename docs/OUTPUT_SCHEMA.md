@@ -5807,8 +5807,8 @@ target/ripr/reports/no-panic-allowlist-proposals.toml
 These reports are policy-maintenance aids, not product JSON contracts. They are
 generated from current panic-family findings and the canonical
 `policy/no-panic-allowlist.toml` ledger. They may propose semantic selectors
-for legacy line/column entries or narrower selectors for ambiguous entries, but
-they never rewrite the allowlist.
+for legacy line/column entries, current semantic entries, or narrower selectors
+for ambiguous entries, but they never rewrite the allowlist.
 
 The Markdown report records each candidate's current finding, confidence,
 whether it replaces a v0.1 entry, old coordinates when available, new

@@ -18030,14 +18030,12 @@ fn build_no_panic_allowlist_proposals(
                     .iter()
                     .filter(|finding| panic_allow_entry_matches(entry, finding))
                     .collect::<Vec<_>>();
-                if matching_findings.len() > 1 {
-                    for finding in matching_findings {
-                        push_no_panic_allowlist_proposal(
-                            &mut proposals,
-                            &mut seen,
-                            proposal_from_finding(finding, Some(entry), false, None, findings),
-                        );
-                    }
+                for finding in matching_findings {
+                    push_no_panic_allowlist_proposal(
+                        &mut proposals,
+                        &mut seen,
+                        proposal_from_finding(finding, Some(entry), false, None, findings),
+                    );
                 }
             }
         }
@@ -18251,7 +18249,7 @@ fn render_no_panic_allowlist_proposals_markdown(proposals: &[NoPanicAllowlistPro
     body.push_str("These proposals are generated hints. They do not rewrite the canonical allowlist and must be reviewed before adoption.\n\n");
     body.push_str(&format!("Candidates: {}\n\n", proposals.len()));
     if proposals.is_empty() {
-        body.push_str("No v0.1 entries or ambiguous selectors need migration proposals.\n");
+        body.push_str("No matching allowlist entries need migration proposals.\n");
         return body;
     }
 
@@ -18419,7 +18417,23 @@ fn render_no_panic_selector_toml(proposal: &NoPanicAllowlistProposal) -> String 
 }
 
 fn no_panic_toml_string(value: &str) -> String {
-    json_escape(value)
+    let mut escaped = String::new();
+    for ch in value.chars() {
+        match ch {
+            '\u{08}' => escaped.push_str("\\b"),
+            '\t' => escaped.push_str("\\t"),
+            '\n' => escaped.push_str("\\n"),
+            '\u{0c}' => escaped.push_str("\\f"),
+            '\r' => escaped.push_str("\\r"),
+            '"' => escaped.push_str("\\\""),
+            '\\' => escaped.push_str("\\\\"),
+            ch if ch <= '\u{1f}' || ch == '\u{7f}' => {
+                escaped.push_str(&format!("\\u{:04X}", ch as u32));
+            }
+            ch => escaped.push(ch),
+        }
+    }
+    escaped
 }
 
 fn panic_allow_entry_matches(
@@ -19610,10 +19624,10 @@ mod tests {
         lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
         markdown_links_in_text, mutation_calibration_report_json,
         mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
-        non_rust_programming_retention_reason, normalize_fixture_human_output,
-        normalize_fixture_json_output, normalize_golden_text, panic_family_from_pattern,
-        parse_campaign_manifest, parse_file_policy_allowlist, parse_inline_array,
-        parse_mutation_calibration_args, parse_mutation_outcomes_json,
+        no_panic_toml_string, non_rust_programming_retention_reason,
+        normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
+        panic_family_from_pattern, parse_campaign_manifest, parse_file_policy_allowlist,
+        parse_inline_array, parse_mutation_calibration_args, parse_mutation_outcomes_json,
         parse_no_panic_allowlist_toml, parse_no_panic_allowlist_toml_v2, parse_reason,
         parse_repo_exposure_static_seams, parse_sarif_policy_args, parse_sarif_policy_results,
         parse_static_language_allowlist, parse_string_value, parse_targeted_test_outcome_args,
@@ -21327,6 +21341,34 @@ column = 5
     }
 
     #[test]
+    fn no_panic_proposals_include_single_match_semantic_entries() -> Result<(), String> {
+        let findings = vec![semantic_panic_finding(20, "my_fn", Some("left()"))];
+        let entries = vec![semantic_panic_entry(
+            "panic-0001",
+            "my_fn",
+            Some("left()"),
+            Some(20),
+        )];
+
+        let proposals = build_no_panic_allowlist_proposals(&findings, &entries);
+        if proposals.len() != 1 {
+            return Err(format!("expected one proposal, got {proposals:?}"));
+        }
+        let proposal = &proposals[0];
+        if proposal.replaces_v1_entry {
+            return Err(format!(
+                "semantic entry proposal should not replace v0.1 entry: {proposal:?}"
+            ));
+        }
+        if proposal.confidence != "high" || !proposal.warnings.is_empty() {
+            return Err(format!(
+                "single-match semantic proposal should be high confidence: {proposal:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
     fn no_panic_proposals_split_ambiguous_semantic_selectors() -> Result<(), String> {
         let findings = vec![
             semantic_panic_finding(20, "my_fn", Some("left()")),
@@ -21350,6 +21392,17 @@ column = 5
             return Err(format!(
                 "expected ambiguity warnings on proposals, got {proposals:?}"
             ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn no_panic_toml_string_escapes_basic_string_control_characters() -> Result<(), String> {
+        let escaped = no_panic_toml_string(
+            "quote\" slash\\ back\u{08} tab\t line\n form\u{0c} cr\r del\u{7f}",
+        );
+        if escaped != "quote\\\" slash\\\\ back\\b tab\\t line\\n form\\f cr\\r del\\u007F" {
+            return Err(format!("unexpected TOML escaping: {escaped}"));
         }
         Ok(())
     }
