@@ -91,6 +91,10 @@ are scoped or reviewed.
   rstest cases, builder or fixture overrides, enum variants, and one-level
   Option/Result constructor values while keeping unsupported value sources as
   explicit limitations.
+- Promoted imported static/runtime calibration labels to calibrated for checked
+  runtime-fixture classes, covering agreement, disagreement, runtime-only,
+  ambiguous-join, unmatched, no-runtime-data, and seam-id/file-line join cases
+  without running mutation tests or changing static classifications.
 - Surfaced `assistant-loop-health.{json,md}` in generated GitHub CI when
   `test-oracle-assistant-proof.json` exists, uploads the reports with the
   normal `ripr-reports` packet, and appends a compact advisory health summary
