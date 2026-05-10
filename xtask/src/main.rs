@@ -433,6 +433,48 @@ struct DogfoodFrontPanelRun {
     errors: Vec<String>,
 }
 
+#[derive(Debug)]
+struct DogfoodReportPacketIndexScenario {
+    name: String,
+    scenario: String,
+    expected_report: PathBuf,
+    expected_markdown: PathBuf,
+    expected_status: String,
+    expected_missing_expected: usize,
+    expected_failures: usize,
+    expected_warnings: usize,
+    expected_start_here_available: bool,
+    expected_gate_authority_present: bool,
+    expected_required_groups: Vec<String>,
+    reason: String,
+}
+
+#[derive(Debug)]
+struct DogfoodReportPacketIndexRun {
+    name: String,
+    actual_dir: PathBuf,
+    json_path: PathBuf,
+    markdown_path: PathBuf,
+    status: String,
+    missing_expected: usize,
+    failures: usize,
+    warnings: usize,
+    start_here_available: bool,
+    gate_authority_present: bool,
+    groups: Vec<String>,
+    expected_status: String,
+    expected_missing_expected: usize,
+    expected_failures: usize,
+    expected_warnings: usize,
+    expected_start_here_available: bool,
+    expected_gate_authority_present: bool,
+    expected_required_groups: Vec<String>,
+    reason: String,
+    expected_report: PathBuf,
+    expected_markdown: PathBuf,
+    errors: Vec<String>,
+}
+
 #[derive(Clone, Debug)]
 struct ReportIndexEntry {
     file: String,
@@ -10881,13 +10923,29 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         .into_iter()
         .map(|scenario| dogfood_pr_review_front_panel_run(&scenario))
         .collect::<Vec<_>>();
+    let report_packet_index_runs = dogfood_report_packet_index_scenarios()
+        .into_iter()
+        .map(|scenario| dogfood_report_packet_index_run(&scenario))
+        .collect::<Result<Vec<_>, _>>()?;
     write_report(
         "dogfood.md",
-        &dogfood_report_markdown(&runs, &gate_runs, &first_action_runs, &front_panel_runs),
+        &dogfood_report_markdown(
+            &runs,
+            &gate_runs,
+            &first_action_runs,
+            &front_panel_runs,
+            &report_packet_index_runs,
+        ),
     )?;
     write_report(
         "dogfood.json",
-        &dogfood_report_json(&runs, &gate_runs, &first_action_runs, &front_panel_runs),
+        &dogfood_report_json(
+            &runs,
+            &gate_runs,
+            &first_action_runs,
+            &front_panel_runs,
+            &report_packet_index_runs,
+        ),
     )
 }
 
@@ -11694,6 +11752,251 @@ fn dogfood_pr_review_front_panel_run(scenario: &DogfoodFrontPanelScenario) -> Do
     }
 }
 
+fn dogfood_report_packet_index_scenarios() -> Vec<DogfoodReportPacketIndexScenario> {
+    let corpus_path = Path::new("fixtures/boundary_gap/expected/report-packet-index/corpus.json");
+    let fallback = |reason: String| {
+        vec![DogfoodReportPacketIndexScenario {
+            name: "corpus".to_string(),
+            scenario: reason.clone(),
+            expected_report: corpus_path.to_path_buf(),
+            expected_markdown: corpus_path.to_path_buf(),
+            expected_status: "missing".to_string(),
+            expected_missing_expected: 0,
+            expected_failures: 0,
+            expected_warnings: 0,
+            expected_start_here_available: false,
+            expected_gate_authority_present: false,
+            expected_required_groups: Vec::new(),
+            reason,
+        }]
+    };
+
+    let corpus = match read_json_value(corpus_path) {
+        Ok(value) => value,
+        Err(err) => return fallback(err),
+    };
+
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        return fallback("report-packet-index corpus is missing cases array".to_string());
+    };
+
+    cases
+        .iter()
+        .map(|case| {
+            let name = json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string());
+            let expected_report = json_string_field(case, "expected_report")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| corpus_path.to_path_buf());
+            let expected = case.get("expected").unwrap_or(&Value::Null);
+            DogfoodReportPacketIndexScenario {
+                name,
+                scenario: json_string_field(case, "scenario")
+                    .unwrap_or_else(|| "missing scenario".to_string()),
+                expected_report,
+                expected_markdown: json_string_field(case, "expected_markdown")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| corpus_path.to_path_buf()),
+                expected_status: json_string_field(expected, "status")
+                    .unwrap_or_else(|| "missing".to_string()),
+                expected_missing_expected: json_usize_field(expected, "missing_expected")
+                    .unwrap_or(0),
+                expected_failures: json_usize_field(expected, "failures").unwrap_or(0),
+                expected_warnings: json_usize_field(expected, "warnings").unwrap_or(0),
+                expected_start_here_available: json_bool_field(expected, "start_here_available")
+                    .unwrap_or(false),
+                expected_gate_authority_present: json_bool_field(
+                    expected,
+                    "gate_authority_present",
+                )
+                .unwrap_or(false),
+                expected_required_groups: json_string_array_field(expected, "required_groups"),
+                reason: json_string_field(case, "reason").unwrap_or_else(|| {
+                    "report-packet-index corpus case did not document a reason".to_string()
+                }),
+            }
+        })
+        .collect()
+}
+
+fn json_string_array_field(value: &Value, key: &str) -> Vec<String> {
+    value
+        .get(key)
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+fn dogfood_report_packet_index_run(
+    scenario: &DogfoodReportPacketIndexScenario,
+) -> Result<DogfoodReportPacketIndexRun, String> {
+    let actual_dir = scenario
+        .expected_report
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let json_path = scenario.expected_report.clone();
+    let markdown_path = scenario.expected_markdown.clone();
+    let mut errors = Vec::new();
+
+    if !scenario.expected_report.exists() {
+        errors.push(format!(
+            "expected report fixture is missing: {}",
+            normalize_path(&scenario.expected_report)
+        ));
+    }
+    if !scenario.expected_markdown.exists() {
+        errors.push(format!(
+            "expected Markdown fixture is missing: {}",
+            normalize_path(&scenario.expected_markdown)
+        ));
+    }
+
+    let mut status = "missing".to_string();
+    let mut missing_expected = 0usize;
+    let mut failures = 0usize;
+    let mut warnings = 0usize;
+    let mut start_here_available = false;
+    let mut gate_authority_present = false;
+    let mut groups = Vec::<String>::new();
+
+    match read_json_value(&json_path) {
+        Ok(report) => {
+            if json_string_field(&report, "kind").as_deref() != Some("report_packet_index") {
+                errors.push("report kind must be report_packet_index".to_string());
+            }
+            status = json_string_field(&report, "status").unwrap_or_else(|| "missing".to_string());
+            if let Some(summary) = report.get("summary") {
+                missing_expected = json_usize_field(summary, "missing_expected").unwrap_or(0);
+                failures = json_usize_field(summary, "failures").unwrap_or(0);
+                warnings = json_usize_field(summary, "warnings").unwrap_or(0);
+                start_here_available = json_string_field(summary, "start_here")
+                    .is_some_and(|value| !value.trim().is_empty());
+                gate_authority_present = json_string_field(summary, "gate_authority")
+                    .is_some_and(|value| !value.trim().is_empty());
+            } else {
+                errors.push("report summary is missing".to_string());
+            }
+            groups = report
+                .get("groups")
+                .and_then(Value::as_array)
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| json_string_field(item, "group"))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let limits = report
+                .get("limits")
+                .and_then(Value::as_array)
+                .map(|items| items.iter().filter_map(Value::as_str).collect::<Vec<_>>())
+                .unwrap_or_default();
+            if !limits.contains(&"Advisory report-packet index only.") {
+                errors.push("report is missing advisory report-packet index limit".to_string());
+            }
+            if !limits.contains(&"Gate decision remains pass/fail authority when configured.") {
+                errors.push("report is missing gate-authority limit".to_string());
+            }
+        }
+        Err(err) => errors.push(err),
+    }
+
+    match fs::read_to_string(&markdown_path) {
+        Ok(markdown) => {
+            if !markdown.contains("# RIPR Report Packet Index") {
+                errors.push("Markdown must use the report-packet index heading".to_string());
+            }
+            if !markdown.contains(&format!("Status: {}", scenario.expected_status)) {
+                errors.push(format!(
+                    "Markdown should pin status {}",
+                    scenario.expected_status
+                ));
+            }
+        }
+        Err(err) => errors.push(format!(
+            "failed to read report-packet index Markdown {}: {err}",
+            normalize_path(&markdown_path)
+        )),
+    }
+
+    if status != scenario.expected_status {
+        errors.push(format!(
+            "expected status {}, got {}",
+            scenario.expected_status, status
+        ));
+    }
+    if missing_expected != scenario.expected_missing_expected {
+        errors.push(format!(
+            "expected missing_expected {}, got {}",
+            scenario.expected_missing_expected, missing_expected
+        ));
+    }
+    if failures != scenario.expected_failures {
+        errors.push(format!(
+            "expected failures {}, got {}",
+            scenario.expected_failures, failures
+        ));
+    }
+    if warnings != scenario.expected_warnings {
+        errors.push(format!(
+            "expected warnings {}, got {}",
+            scenario.expected_warnings, warnings
+        ));
+    }
+    if start_here_available != scenario.expected_start_here_available {
+        errors.push(format!(
+            "expected start_here_available {}, got {}",
+            scenario.expected_start_here_available, start_here_available
+        ));
+    }
+    if gate_authority_present != scenario.expected_gate_authority_present {
+        errors.push(format!(
+            "expected gate_authority_present {}, got {}",
+            scenario.expected_gate_authority_present, gate_authority_present
+        ));
+    }
+    for expected_group in &scenario.expected_required_groups {
+        if !groups.iter().any(|group| group == expected_group) {
+            errors.push(format!("missing expected group `{expected_group}`"));
+        }
+    }
+
+    Ok(DogfoodReportPacketIndexRun {
+        name: scenario.name.clone(),
+        actual_dir,
+        json_path,
+        markdown_path,
+        status,
+        missing_expected,
+        failures,
+        warnings,
+        start_here_available,
+        gate_authority_present,
+        groups,
+        expected_status: scenario.expected_status.clone(),
+        expected_missing_expected: scenario.expected_missing_expected,
+        expected_failures: scenario.expected_failures,
+        expected_warnings: scenario.expected_warnings,
+        expected_start_here_available: scenario.expected_start_here_available,
+        expected_gate_authority_present: scenario.expected_gate_authority_present,
+        expected_required_groups: scenario.expected_required_groups.clone(),
+        reason: if scenario.scenario.trim().is_empty() {
+            scenario.reason.clone()
+        } else {
+            format!("{}: {}", scenario.scenario, scenario.reason)
+        },
+        expected_report: scenario.expected_report.clone(),
+        expected_markdown: scenario.expected_markdown.clone(),
+        errors,
+    })
+}
+
 fn compare_expected_text(
     actual_path: &Path,
     expected_path: &Path,
@@ -11781,11 +12084,15 @@ fn dogfood_report_status(
     gate_runs: &[DogfoodGateRun],
     first_action_runs: &[DogfoodFirstActionRun],
     front_panel_runs: &[DogfoodFrontPanelRun],
+    report_packet_index_runs: &[DogfoodReportPacketIndexRun],
 ) -> &'static str {
     if runs.iter().any(|run| !run.errors.is_empty())
         || gate_runs.iter().any(|run| !run.errors.is_empty())
         || first_action_runs.iter().any(|run| !run.errors.is_empty())
         || front_panel_runs.iter().any(|run| !run.errors.is_empty())
+        || report_packet_index_runs
+            .iter()
+            .any(|run| !run.errors.is_empty())
     {
         "warn"
     } else {
@@ -11798,10 +12105,17 @@ fn dogfood_report_markdown(
     gate_runs: &[DogfoodGateRun],
     first_action_runs: &[DogfoodFirstActionRun],
     front_panel_runs: &[DogfoodFrontPanelRun],
+    report_packet_index_runs: &[DogfoodReportPacketIndexRun],
 ) -> String {
     let mut body = format!(
         "# ripr dogfood report\n\nStatus: {}\n\nMode: advisory\n\nThis report runs `ripr check --mode fast` against stable in-repo fixture diffs. It records current product output for review without making dogfood a blocking gate yet.\n\n## Summary\n\n",
-        dogfood_report_status(runs, gate_runs, first_action_runs, front_panel_runs)
+        dogfood_report_status(
+            runs,
+            gate_runs,
+            first_action_runs,
+            front_panel_runs,
+            report_packet_index_runs
+        )
     );
     for run in runs {
         body.push_str(&format!(
@@ -12011,6 +12325,98 @@ fn dogfood_report_markdown(
             body.push('\n');
         }
     }
+    body.push_str("## Report Packet Index Receipts\n\n");
+    body.push_str("These receipts validate checked `report-packet-index` fixture outputs for the documented Campaign 25 packet-index routes. They verify reviewer-first grouping, missing-surface counts, start-here discovery, gate-authority visibility, and advisory limits without rerunning hidden analysis or changing pass/fail authority.\n\n");
+    body.push_str("- Default CI blocking: no\n");
+    body.push_str(
+        "- Receipt outputs: `fixtures/boundary_gap/expected/report-packet-index/<case>/index.{json,md}`\n\n",
+    );
+    body.push_str("| Case | Status | Missing | Warnings | Failures | Start here | Gate authority | Groups |\n");
+    body.push_str("| --- | --- | ---: | ---: | ---: | --- | --- | --- |\n");
+    for run in report_packet_index_runs {
+        body.push_str(&format!(
+            "| `{}` | `{}` | {} | {} | {} | {} | {} | `{}` |\n",
+            markdown_cell(&run.name),
+            markdown_cell(&run.status),
+            run.missing_expected,
+            run.warnings,
+            run.failures,
+            if run.start_here_available {
+                "yes"
+            } else {
+                "no"
+            },
+            if run.gate_authority_present {
+                "yes"
+            } else {
+                "no"
+            },
+            markdown_cell(&run.groups.join(", "))
+        ));
+    }
+    body.push('\n');
+    for run in report_packet_index_runs {
+        body.push_str(&format!("### Report Packet Index `{}`\n\n", run.name));
+        body.push_str(&format!("- Status: `{}`\n", markdown_cell(&run.status)));
+        body.push_str(&format!(
+            "- Expected status: `{}`\n",
+            markdown_cell(&run.expected_status)
+        ));
+        body.push_str(&format!(
+            "- Counts: missing {}, warnings {}, failures {}\n",
+            run.missing_expected, run.warnings, run.failures
+        ));
+        body.push_str(&format!(
+            "- Expected counts: missing {}, warnings {}, failures {}\n",
+            run.expected_missing_expected, run.expected_warnings, run.expected_failures
+        ));
+        body.push_str(&format!(
+            "- Start here available: {} (expected {})\n",
+            run.start_here_available, run.expected_start_here_available
+        ));
+        body.push_str(&format!(
+            "- Gate authority present: {} (expected {})\n",
+            run.gate_authority_present, run.expected_gate_authority_present
+        ));
+        body.push_str(&format!(
+            "- Required groups: `{}`\n",
+            markdown_cell(&run.expected_required_groups.join(", "))
+        ));
+        body.push_str(&format!(
+            "- Actual groups: `{}`\n",
+            markdown_cell(&run.groups.join(", "))
+        ));
+        body.push_str(&format!(
+            "- Receipt JSON: `{}`\n",
+            normalize_path(&run.json_path)
+        ));
+        body.push_str(&format!(
+            "- Receipt Markdown: `{}`\n",
+            normalize_path(&run.markdown_path)
+        ));
+        body.push_str(&format!(
+            "- Expected report: `{}`\n",
+            normalize_path(&run.expected_report)
+        ));
+        body.push_str(&format!(
+            "- Expected Markdown: `{}`\n",
+            normalize_path(&run.expected_markdown)
+        ));
+        body.push_str(&format!(
+            "- Actual outputs: `{}`\n",
+            normalize_path(&run.actual_dir)
+        ));
+        body.push_str(&format!("- Reason: {}\n", markdown_cell(&run.reason)));
+        if run.errors.is_empty() {
+            body.push_str("- Errors: none\n\n");
+        } else {
+            body.push_str("- Errors:\n");
+            for error in &run.errors {
+                body.push_str(&format!("  - `{}`\n", markdown_cell(error)));
+            }
+            body.push('\n');
+        }
+    }
     body.push_str("## Gate Adoption Receipts\n\n");
     body.push_str("These receipts run `ripr gate evaluate` against checked boundary-gap PR guidance and calibration evidence. They are repo-local dogfood for explicit gate modes; generated CI still leaves `RIPR_GATE_MODE` unset unless the repository configures it.\n\n");
     body.push_str("- Default CI blocking: no\n");
@@ -12086,10 +12492,17 @@ fn dogfood_report_json(
     gate_runs: &[DogfoodGateRun],
     first_action_runs: &[DogfoodFirstActionRun],
     front_panel_runs: &[DogfoodFrontPanelRun],
+    report_packet_index_runs: &[DogfoodReportPacketIndexRun],
 ) -> String {
     let mut body = format!(
         "{{\n  \"schema_version\": \"0.1\",\n  \"status\": \"{}\",\n  \"advisory\": true,\n  \"runs\": [\n",
-        dogfood_report_status(runs, gate_runs, first_action_runs, front_panel_runs)
+        dogfood_report_status(
+            runs,
+            gate_runs,
+            first_action_runs,
+            front_panel_runs,
+            report_packet_index_runs
+        )
     );
     for (index, run) in runs.iter().enumerate() {
         if index > 0 {
@@ -12296,6 +12709,96 @@ fn dogfood_report_json(
             "        \"expected_warnings\": {},\n",
             run.expected_warnings
         ));
+        body.push_str(&format!(
+            "        \"reason\": \"{}\",\n",
+            json_escape(&run.reason)
+        ));
+        body.push_str("        \"errors\": [");
+        write_json_string_array(&mut body, &run.errors);
+        body.push_str("]\n      }");
+    }
+    body.push_str("\n    ]\n  },\n  \"report_packet_index\": {\n");
+    body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str(
+        "    \"receipt_dir\": \"fixtures/boundary_gap/expected/report-packet-index\",\n    \"cases\": [\n",
+    );
+    for (index, run) in report_packet_index_runs.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("      {\n");
+        body.push_str(&format!(
+            "        \"name\": \"{}\",\n",
+            json_escape(&run.name)
+        ));
+        body.push_str(&format!(
+            "        \"actual_dir\": \"{}\",\n",
+            json_escape(&normalize_path(&run.actual_dir))
+        ));
+        body.push_str(&format!(
+            "        \"json_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.json_path))
+        ));
+        body.push_str(&format!(
+            "        \"markdown_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.markdown_path))
+        ));
+        body.push_str(&format!(
+            "        \"expected_report\": \"{}\",\n",
+            json_escape(&normalize_path(&run.expected_report))
+        ));
+        body.push_str(&format!(
+            "        \"expected_markdown\": \"{}\",\n",
+            json_escape(&normalize_path(&run.expected_markdown))
+        ));
+        body.push_str(&format!(
+            "        \"status\": \"{}\",\n",
+            json_escape(&run.status)
+        ));
+        body.push_str(&format!(
+            "        \"missing_expected\": {},\n",
+            run.missing_expected
+        ));
+        body.push_str(&format!("        \"warnings\": {},\n", run.warnings));
+        body.push_str(&format!("        \"failures\": {},\n", run.failures));
+        body.push_str(&format!(
+            "        \"start_here_available\": {},\n",
+            run.start_here_available
+        ));
+        body.push_str(&format!(
+            "        \"gate_authority_present\": {},\n",
+            run.gate_authority_present
+        ));
+        body.push_str("        \"groups\": [");
+        write_json_string_array(&mut body, &run.groups);
+        body.push_str("],\n");
+        body.push_str(&format!(
+            "        \"expected_status\": \"{}\",\n",
+            json_escape(&run.expected_status)
+        ));
+        body.push_str(&format!(
+            "        \"expected_missing_expected\": {},\n",
+            run.expected_missing_expected
+        ));
+        body.push_str(&format!(
+            "        \"expected_warnings\": {},\n",
+            run.expected_warnings
+        ));
+        body.push_str(&format!(
+            "        \"expected_failures\": {},\n",
+            run.expected_failures
+        ));
+        body.push_str(&format!(
+            "        \"expected_start_here_available\": {},\n",
+            run.expected_start_here_available
+        ));
+        body.push_str(&format!(
+            "        \"expected_gate_authority_present\": {},\n",
+            run.expected_gate_authority_present
+        ));
+        body.push_str("        \"expected_required_groups\": [");
+        write_json_string_array(&mut body, &run.expected_required_groups);
+        body.push_str("],\n");
         body.push_str(&format!(
             "        \"reason\": \"{}\",\n",
             json_escape(&run.reason)
@@ -20482,12 +20985,12 @@ mod tests {
     use super::{
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
         CheckStatus, CheckViolation, CiFullEvidenceGate, CwdCommand, DogfoodFirstActionRun,
-        DogfoodFrontPanelRun, DogfoodGateRun, DogfoodRun, FixKind, LocalContextAllow, MarkdownLink,
-        ReceiptRecord, RepoExposureLatencyReport, RepoExposureLatencyRun, RepoExposureLatencyTrace,
-        ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode, SarifPolicyResult,
-        SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass,
-        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
-        badge_artifacts_summary_markdown, build_lsp_cockpit_report,
+        DogfoodFrontPanelRun, DogfoodGateRun, DogfoodReportPacketIndexRun, DogfoodRun, FixKind,
+        LocalContextAllow, MarkdownLink, ReceiptRecord, RepoExposureLatencyReport,
+        RepoExposureLatencyRun, RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
+        SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry,
+        StaticLanguageMatcher, TestOracleClass, badge_artifact_command_args, badge_artifact_jobs,
+        badge_artifact_native_slot, badge_artifacts_summary_markdown, build_lsp_cockpit_report,
         build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
         build_targeted_test_outcome_report, check_allow_attributes, check_droid_review_config,
         check_executable_files, check_file_policy, check_local_context, check_network_policy,
@@ -20496,6 +20999,7 @@ mod tests {
         critic_findings, dogfood_class_counts, dogfood_first_action_scenarios,
         dogfood_gate_adoption_scenarios, dogfood_pr_review_front_panel_run,
         dogfood_pr_review_front_panel_scenarios, dogfood_report_json, dogfood_report_markdown,
+        dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
         evaluate_semantic_no_panic_policy, extract_json_object_usize_map, extract_json_string,
         extract_json_warnings, extract_workflow_run_blocks, first_line_difference,
         forbidden_panic_patterns, glob_matches, golden_changes_without_blessing,
@@ -24616,18 +25120,64 @@ fn exact_owner_call_has_external_expected_value() {
             reason: "The front panel should show the top focused-test action first.".to_string(),
             errors: Vec::new(),
         };
+        let report_packet_index_run = DogfoodReportPacketIndexRun {
+            name: "complete_packet".to_string(),
+            actual_dir: Path::new(
+                "fixtures/boundary_gap/expected/report-packet-index/complete-packet",
+            )
+            .to_path_buf(),
+            json_path: Path::new(
+                "fixtures/boundary_gap/expected/report-packet-index/complete-packet/index.json",
+            )
+            .to_path_buf(),
+            markdown_path: Path::new(
+                "fixtures/boundary_gap/expected/report-packet-index/complete-packet/index.md",
+            )
+            .to_path_buf(),
+            status: "pass".to_string(),
+            missing_expected: 0,
+            failures: 0,
+            warnings: 0,
+            start_here_available: true,
+            gate_authority_present: true,
+            groups: vec!["start_here".to_string(), "policy_gates".to_string()],
+            expected_status: "pass".to_string(),
+            expected_missing_expected: 0,
+            expected_failures: 0,
+            expected_warnings: 0,
+            expected_start_here_available: true,
+            expected_gate_authority_present: true,
+            expected_required_groups: vec!["start_here".to_string(), "policy_gates".to_string()],
+            reason: "complete packet receipt".to_string(),
+            expected_report: Path::new(
+                "fixtures/boundary_gap/expected/report-packet-index/complete-packet/index.json",
+            )
+            .to_path_buf(),
+            expected_markdown: Path::new(
+                "fixtures/boundary_gap/expected/report-packet-index/complete-packet/index.md",
+            )
+            .to_path_buf(),
+            errors: Vec::new(),
+        };
 
-        let markdown =
-            dogfood_report_markdown(&[run], &[gate_run], &[first_action_run], &[front_panel_run]);
-        let json = dogfood_report_json(&[], &[], &[], &[]);
+        let markdown = dogfood_report_markdown(
+            &[run],
+            &[gate_run],
+            &[first_action_run],
+            &[front_panel_run],
+            &[report_packet_index_run],
+        );
+        let json = dogfood_report_json(&[], &[], &[], &[], &[]);
 
         assert!(markdown.contains("Mode: advisory"));
         assert!(markdown.contains("boundary_gap"));
         assert!(markdown.contains("First Useful Action Receipts"));
         assert!(markdown.contains("PR Review Front Panel Receipts"));
+        assert!(markdown.contains("Report Packet Index Receipts"));
         assert!(markdown.contains("Gate Adoption Receipts"));
         assert!(markdown.contains("Default CI blocking: no"));
         assert!(markdown.contains("actionable"));
+        assert!(markdown.contains("complete_packet"));
         assert!(markdown.contains("calibrated-high-confidence-new-gap"));
         assert!(json.contains("\"advisory\": true"));
         assert!(json.contains("\"default_ci_blocking\": false"));
@@ -24834,6 +25384,42 @@ fn exact_owner_call_has_external_expected_value() {
                 assert!(
                     run.errors.is_empty(),
                     "{} front-panel receipt should validate: {:?}",
+                    run.name,
+                    run.errors
+                );
+            }
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn dogfood_report_packet_index_scenarios_have_checked_receipts() -> Result<(), String> {
+        with_repo_cwd(|| {
+            let scenarios = dogfood_report_packet_index_scenarios();
+            for required in [
+                ("complete_packet", "pass"),
+                ("sparse_advisory", "warn"),
+                ("missing_front_panel", "warn"),
+                ("blocked_gate", "fail"),
+                ("missing_assistant_proof", "warn"),
+                ("missing_receipts", "warn"),
+                ("coverage_grip_present", "pass"),
+            ] {
+                assert!(
+                    scenarios.iter().any(|scenario| scenario.name == required.0
+                        && scenario.expected_status == required.1),
+                    "{} report-packet index receipt should be checked as {}",
+                    required.0,
+                    required.1
+                );
+            }
+
+            for scenario in scenarios {
+                let run = dogfood_report_packet_index_run(&scenario)?;
+                assert!(
+                    run.errors.is_empty(),
+                    "{} report-packet index receipt should validate: {:?}",
                     run.name,
                     run.errors
                 );
