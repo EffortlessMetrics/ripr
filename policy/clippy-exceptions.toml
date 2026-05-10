@@ -36,3 +36,13 @@ status = "active"
 # reason = "CLI dispatch takes ownership intentionally to align with subcommand signatures."
 # covered_by = "cargo test -p ripr cli_smoke"
 # expires = "2026-09-01"
+
+[[exception]]
+id = "clippy-exception-0001"
+lint = "clippy::large_enum_variant"
+path = "xtask/src/main.rs"
+selector = "enum PanicAllowEntryVersioned"
+owner = "core/policy"
+reason = "V2 grows with exact-identity snippet/count fields; boxing is a post-0.5.1 refactor"
+covered_by = "cargo test -p xtask no_panic"
+expires = "2026-12-01"
