@@ -11,23 +11,200 @@ are scoped or reviewed.
 
 ## 0.5.0 - 2026-05-10
 
+`ripr` 0.5.0 is the review-surface release. It moves RIPR from a collection
+of static evidence reports into a coordinated advisory workflow for
+developers, reviewers, CI, editors, and coding agents. The core boundary is
+unchanged: RIPR does not run mutation testing, call LLM providers, generate
+tests, edit source, or make default CI blocking decisions.
+
 ### Highlights
 
-- Lane 1 evidence spine is stable in scope: a seam-native
-  `evidence_record` projection with canonical gap identity threads through
-  agent packets, repo exposure, gate evaluation, baseline diff, RIPR Zero
-  status, and assistant proof so headline gap classes group by behavior
-  instead of by raw line.
+- Lane 1 evidence spine is stable in scope: a seam-native `evidence_record`
+  projection with canonical gap identity threads through agent packets, repo
+  exposure, gate evaluation, baseline diff, RIPR Zero status, and assistant
+  proof so headline gap classes group by behavior instead of by raw line.
 - Campaigns 17 through 26 turn the read-only static-evidence loop into one
-  reviewer-first surface: RIPR Zero adoption (baseline create / diff /
-  shrink-only update), PR evidence ledger, RIPR Zero reporting, test-oracle
-  assistant proof and report producer, first useful action, assistant-loop
-  health, PR review front panel, report packet index, and the optional PR
-  inline comment publisher.
+  reviewer-first surface: RIPR Zero adoption, PR evidence ledger, RIPR Zero
+  reporting, test-oracle assistant proof and report producer, first useful
+  action, assistant-loop health, PR review front panel, report packet index,
+  and the optional PR inline comment publisher.
 - Editor Evidence UX matches the agent loop: saved-workspace seam
   diagnostics, hovers, and intent-titled code actions; first-useful-action
   hover and status projection; LSP `ripr.collectEvidenceContext`; and a
   status-bar / `ripr: Show Status` surface that keeps stale buffers visible.
+
+### Evidence spine and identity
+
+- Added the shared `RIPR-SPEC-0021` `evidence_record` projection for
+  seam-native evidence, giving Lane 1 an identity, evidence path, observed
+  values, missing discriminators, related tests, recommendation, calibration
+  placeholder, and static limits while preserving existing repo-exposure
+  fields.
+- Added generated canonical gap identity so headline-eligible raw seam gaps
+  group by owner, seam kind, flow sink, missing discriminator, and assertion
+  shape; line numbers remain locators but no longer act as durable identity.
+- Routed baseline ledgers, PR evidence ledgers, RIPR Zero status repair
+  routes, agent seam packets, targeted-test outcome, agent verify movement,
+  and test-oracle assistant proof through the shared evidence spine.
+- Routed calibrated gate baseline comparison through canonical evidence
+  identity so reviewed baseline debt matches across line movement before
+  falling back to legacy seam, source, and path/line/static-class identities.
+- Promoted the Lane 1 `evidence_record` capability to stable within its
+  documented v0.1 scope and added a dedicated Lane 1 evidence-spine tracker.
+- Stabilized related-test ranking v2 (relation confidence, reason, oracle
+  strength, activation overlap, file/name/line tie-breakers), oracle
+  semantics v3 (structured `oracle_semantics` explanations on related
+  tests), syntax-first side-effect propagation (event, state-write,
+  persistence, log, config-change, call-effect, generic-call sinks), and
+  fixture-backed activation/value modeling.
+- Added advisory static/runtime confidence labels to mutation calibration
+  rows so runtime data can support, contradict, remain ambiguous, or stay
+  unavailable for a static claim without changing static classifications.
+- Added the evidence-record contract corpus pinning representative v0.1
+  shapes for predicate, error, exact-value, broad-error, field,
+  whole-object, snapshot, side-effect, opaque static-limitation,
+  canonical-gap, and calibration-placeholder cases.
+
+### RIPR Zero adoption
+
+- Added `ripr baseline create --from <gate-decision.json>` writing reviewed
+  gate baselines from existing gate-decision evidence with `--dry-run`,
+  `--force`, and skip-on-malformed semantics.
+- Added `ripr baseline diff` writing advisory baseline-debt-delta JSON and
+  Markdown over still-present, resolved, new policy-eligible, acknowledged,
+  suppressed, stale, invalid, and missing-input identities without making
+  gate decisions or rewriting baselines.
+- Added `ripr baseline update --remove-resolved`, shrink-only refresh that
+  preserves malformed or ambiguous records and refuses to auto-adopt new
+  current debt.
+- Added baseline metadata support: owner, reason, created, review-after,
+  source fields preserved across baseline create / diff / shrink-only update
+  without breaking Campaign 17 baseline files.
+- Added `ripr zero status`, a read-only advisory report joining baseline
+  debt deltas, reviewed baseline metadata, optional gate decisions, PR
+  guidance, and recommendation calibration into repo-level RIPR Zero
+  progress.
+- Added generated CI baseline-debt-delta artifacts and RIPR Zero summary
+  wiring guarded on `RIPR_GATE_BASELINE` without changing advisory defaults.
+- Added `docs/BASELINE_LEDGER_WORKFLOW.md` and
+  `docs/RIPR_ZERO_REPORTING_WORKFLOW.md`, framing RIPR 0 as configured-scope
+  burn-down and documenting waiver / baseline / suppression boundaries.
+
+### Agent and reviewer workflow
+
+- Added `ripr agent start`, `ripr agent status`, `ripr agent verify`, and
+  `ripr agent receipt` LLM work-loop commands: a source-edit-free workflow
+  packet, read-only loop status, before/after comparison, and a
+  provenance-backed receipt with bounded next-action guidance.
+- Added `ripr assistant-loop proof` and `ripr assistant-loop health`, the
+  test-oracle assistant proof report and the multi-proof health summary
+  with proof completeness, missing inputs, static movement, recurring
+  warnings, and bounded repair queues.
+- Added `ripr first-action`, a read-only advisory report producer that
+  writes `first-useful-action.{json,md}` from explicit PR guidance,
+  assistant proof, PR evidence ledger, baseline delta, receipt, optional
+  gate, optional coverage/grip frontier, and editor context inputs.
+- Added `ripr pr-ledger record`, the per-PR evidence ledger joining PR
+  guidance, gate decisions, baseline debt deltas, RIPR Zero status,
+  recommendation calibration, agent receipts, optional coverage, and
+  optional history.
+- Added `ripr review-comments`, the bounded PR test guidance JSON and
+  Markdown producer; `ripr coverage-grip frontier`, an advisory report that
+  keeps coverage movement and behavioral grip movement visible as separate
+  axes; `ripr pr-review front-panel`, the composed reviewer front panel
+  over existing front-panel inputs; and `ripr reports index`, the reviewer
+  packet index over explicit artifact directories.
+- Added `ripr gate evaluate`, a read-only optional policy evaluator writing
+  `gate-decision.{json,md}` from existing PR guidance, labels, baselines,
+  and calibration without posting comments, editing source, or running
+  mutation tests.
+- Added `ripr pr-comments plan`, a read-only advisory publish plan from
+  explicit PR guidance and optional existing comment metadata, plus
+  generated CI wiring for `RIPR_COMMENT_MODE = off|plan|inline` that posts
+  or updates only safe same-repository changed-line operations from the
+  plan, capped, deduped, and default off.
+- Added `cargo xtask recommendation-calibration`, the advisory
+  PR-recommendation usefulness report (placement, suppression correctness,
+  target-file correctness, before/after static movement).
+- Generated GitHub CI now surfaces PR guidance, gate decisions, baseline
+  debt deltas, RIPR Zero status, assistant proof, assistant-loop health,
+  first useful action, PR review front panel, and the report packet index
+  only when their explicit inputs already exist; defaults remain advisory.
+
+### Editor evidence UX
+
+- Hardened saved-workspace seam diagnostics, evidence hovers, intent-titled
+  code actions (inspect seam, write targeted test, copy agent handoff,
+  verify after test, review receipt, refresh analysis), and
+  `ripr.collectEvidenceContext` handoff packet.
+- Added the VS Code status bar item and `ripr: Show Status` command
+  covering server, workspace, analysis, stale, failed, no-actionable-seam,
+  and first-useful-action states; stale Rust buffers keep stale status
+  visible until save or close.
+- Added first-useful-action projection in VS Code status and in the LSP
+  seam hover from existing workspace-matched reports without adding
+  diagnostics, editing source, generating tests, or making gate decisions.
+- Hardened LSP command payload contracts and first-action status edges so
+  saved-workspace command smoke and saved-workspace status output stay
+  pinned across analysis-queued, analysis-running, stale-buffer,
+  missing-input, and no-actionable-seam transitions.
+- Added the `fixtures/editor_lsp_workflow` canonical Lane 3 fixture and
+  extended VS Code e2e + framed LSP smoke coverage.
+- Added `docs/EDITOR_EVIDENCE_WORKFLOW.md`, the saved-workspace editor
+  guide from install and status through diagnostic, hover, related test,
+  context packet, focused test, after snapshot, verify, receipt, and
+  refresh with explicit static-evidence limits.
+
+### CI, policy, and release hygiene
+
+- Raised MSRV to Rust 1.95: workspace `rust-version`, pinned toolchain
+  (`rust-toolchain.toml` -> `1.95.0`), CI MSRV job toolchain and cache keys,
+  release-readiness preconditions, and doc/README references are aligned
+  with the 0.5.0 / Rust 1.95 release line.
+- Promoted clean Rust 1.94 / 1.95 Clippy ratchets into the active workspace
+  lint table (`same_length_and_capacity`, `manual_ilog2`,
+  `needless_type_cast`, `decimal_bitwise_operands`, `manual_checked_ops`,
+  `manual_take`, `duration_suboptimal_units`, `unnecessary_trailing_comma`,
+  plus `unsafe_op_in_unsafe_fn`, `undocumented_unsafe_blocks`,
+  `multiple_unsafe_ops_per_block`, `repr_packed_without_abi`,
+  `match_result_ok`); unsupported or config-dependent lints remain
+  explicitly deferred with blockers in `policy/clippy-lints.toml`.
+- Strengthened `cargo xtask check-no-panic-family` drift reporting (allowed
+  / advisory-drift / stale / unallowed / warning sections) and added
+  `--propose`, a review-only allowlist migration helper.
+- Made `policy/no-panic-allowlist.toml` the canonical schema 0.3 no-panic
+  allowlist with governed ids, owners, and expiry dates.
+- Documented the CI verification economics policy (required, advisory,
+  on-demand / release postures; LEM budget bands; label effects; artifact
+  families; cheaper-signal-first rules; CI actuals; and rollback
+  expectations) and added non-enforcing CI policy ledgers for LEM bands,
+  target lane IDs, risk packs, artifact families, labels, and rollout
+  exceptions.
+- Prepared the 0.5.0 release surface: crate, VSIX, generated CI workflow
+  artifacts, server archives and manifest, release-readiness flow, and the
+  related-release docs.
+
+### Release recovery (v0.5.0)
+
+The initial `v0.5.0` tag push exposed a Windows-only bug in the new Rust
+xtask release-server-archive path (PR #557 had moved the legacy
+PowerShell-driven packaging into xtask, but the Windows zip branch relied
+on `pwsh -Command` binding trailing positional args to `$args`, which
+PowerShell only does for `-File`). The Linux and macOS targets succeeded;
+the Windows target failed with a null `-Path` in `Compress-Archive`, and
+the `manifest` job correctly skipped.
+
+Recovery was fix-forward (#718): the zip branch was rewritten to use the
+Rust `zip` crate (deflate-only, `default-features = false`), the Zlib
+license used by the transitive `zlib-rs` dependency was added to
+`deny.toml`, a `create_zip_archive_writes_flat_package_contents` test
+exercises the new path on every platform including Windows, and
+`release-server-binaries.yml` was rerun via `workflow_dispatch` from
+`main` with `version=0.5.0`. The `v0.5.0` tag was kept at the release-prep
+commit; the server archives, per-target `.sha256` files, `checksums.txt`,
+and `ripr-server-manifest-v0.5.0.json` were attached to the existing
+GitHub Release. The marketplace VSIX publish and crates.io publish run
+separately once asset verification completes.
 
 ### Compatibility
 
