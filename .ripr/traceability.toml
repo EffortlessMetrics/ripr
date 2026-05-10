@@ -1695,6 +1695,12 @@ id = "RIPR-SPEC-0025"
 name = "PR inline comment publisher"
 spec = "docs/specs/RIPR-SPEC-0025-pr-inline-comment-publisher.md"
 tests = [
+  "crates/ripr/src/output/pr_inline_comment_publish_plan.rs::inline_comment_publish_plan_matches_fixture_corpus",
+  "crates/ripr/src/output/pr_inline_comment_publish_plan.rs::inline_comment_publish_plan_blocks_missing_dedupe_and_placement",
+  "crates/ripr/src/output/pr_inline_comment_publish_plan.rs::inline_comment_publish_plan_allows_same_repo_inline_when_context_is_safe",
+  "crates/ripr/src/cli/commands.rs::pr_comments_plan_parses_option_surface",
+  "crates/ripr/src/cli/commands.rs::pr_comments_plan_rejects_bad_subcommands_and_options",
+  "crates/ripr/src/cli/commands.rs::pr_comments_plan_writes_json_and_markdown_reports",
   "xtask/src/main.rs::pr_inline_comment_publisher_fixture_corpus_guard_accepts_complete_contract",
   "xtask/src/main.rs::pr_inline_comment_publisher_fixture_corpus_guard_reports_contract_drift",
 ]
@@ -1723,6 +1729,13 @@ fixtures = [
   "fixtures/boundary_gap/expected/pr-inline-comment-publisher/missing-input/comment-publish-plan.md",
 ]
 code = [
+  "crates/ripr/src/output/pr_inline_comment_publish_plan.rs",
+  "crates/ripr/src/output/mod.rs",
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/help.rs",
+  "crates/ripr/src/cli/parse.rs",
   "xtask/src/main.rs",
 ]
 outputs = [
