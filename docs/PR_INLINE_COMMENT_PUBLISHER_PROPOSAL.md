@@ -131,8 +131,8 @@ spec pins the default and permission behavior.
 2. `fixtures: pin PR inline comment publisher corpus` - done
 3. `report: add PR inline comment publish plan` - done
 4. `ci: add optional PR inline comment publisher` - done
-5. `docs: explain PR inline comment publisher workflow` - next
-6. `dogfood: add PR inline comment publisher receipts`
+5. `docs: explain PR inline comment publisher workflow` - done
+6. `dogfood: add PR inline comment publisher receipts` - next
 7. `campaign: close PR inline comment publisher`
 
 ## Validation Baseline

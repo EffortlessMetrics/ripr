@@ -1750,6 +1750,7 @@ outputs = [
   "metrics/capabilities.toml",
   ".ripr/goals/active.toml",
   ".ripr/traceability.toml",
+  "docs/PR_INLINE_COMMENT_PUBLISHER_WORKFLOW.md",
   "docs/PR_INLINE_COMMENT_PUBLISHER_PROPOSAL.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
