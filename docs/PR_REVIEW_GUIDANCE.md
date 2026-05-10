@@ -74,15 +74,19 @@ summary and annotation consumer steps. The generated workflow:
 - uploads `target/ripr/review/` with the rest of the RIPR artifact packet;
 - continues on error by default.
 
-The generated workflow does not post inline PR review comments. Inline review
-comments create durable review-thread noise and remain outside the default
-generated workflow.
+The generated workflow does not post inline PR review comments by default.
+Inline review comments create durable review-thread noise and remain opt-in
+through `RIPR_COMMENT_MODE`. See
+[PR inline comment publisher workflow](PR_INLINE_COMMENT_PUBLISHER_WORKFLOW.md)
+before enabling `plan` or `inline` mode.
 
 ## Inline Comment Boundary
 
 If a repository builds its own inline review-comment publisher, it must be an
-explicit opt-in outside the pure `ripr review-comments` command. That publisher
-must preserve the RIPR-SPEC-0012 boundaries and the
+explicit opt-in outside the pure `ripr review-comments` command. The generated
+publisher follows this same opt-in boundary through `RIPR_COMMENT_MODE` and the
+[PR inline comment publisher workflow](PR_INLINE_COMMENT_PUBLISHER_WORKFLOW.md).
+Any publisher must preserve the RIPR-SPEC-0012 boundaries and the
 [RIPR-SPEC-0025](specs/RIPR-SPEC-0025-pr-inline-comment-publisher.md)
 publish-plan contract:
 

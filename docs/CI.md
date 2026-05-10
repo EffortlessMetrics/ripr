@@ -600,6 +600,10 @@ operations. The publisher posts only from `comments[]`, targets changed lines
 only, caps comment count, deduplicates by `dedupe_key`, and leaves gate
 decisions as the separate pass/fail authority.
 
+See [PR inline comment publisher workflow](PR_INLINE_COMMENT_PUBLISHER_WORKFLOW.md)
+for rollout guidance, publish-plan review, fork and permission behavior,
+dedupe/upsert expectations, and rollback.
+
 The excerpt below shows the adoption shape. The generated workflow also captures
 existing RIPR inline-comment metadata, checks the publish plan's
 `safe_to_publish` result, and only calls GitHub for safe create/update

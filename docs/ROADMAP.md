@@ -297,8 +297,10 @@ the publisher plan cases before producer behavior changes, and
 without posting to GitHub or changing gate authority. Generated GitHub CI now
 keeps `RIPR_COMMENT_MODE=off` by default, uploads/summarizes the plan in opt-in
 modes, and posts or updates only safe inline operations when `inline` mode is
-explicitly configured. The next ready slice is
-`docs/pr-inline-comment-publisher-workflow`.
+explicitly configured. `docs/PR_INLINE_COMMENT_PUBLISHER_WORKFLOW.md` now
+documents opt-in modes, publish-plan review, forks, permissions, noise controls,
+dedupe/upsert behavior, rollback, and the advisory gate boundary. The next
+ready slice is `dogfood/pr-inline-comment-publisher-receipts`.
 
 ## Strategic Sequence
 

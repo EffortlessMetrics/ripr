@@ -97,13 +97,13 @@ commands = [
 
 [[work_item]]
 id = "docs/pr-inline-comment-publisher-workflow"
-status = "ready"
+status = "done"
 branch = "docs-pr-inline-comment-publisher-workflow"
 stackable = false
 blocked_by = [
   "ci/pr-inline-comment-publisher",
 ]
-acceptance = "Document how teams opt into inline comments, read the publish plan, avoid review-thread noise, handle forks or missing permissions, and preserve advisory gate limits"
+acceptance = "Documented how teams opt into inline comments, read the publish plan, avoid review-thread noise, handle forks or missing permissions, and preserve advisory gate limits"
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
@@ -113,7 +113,7 @@ commands = [
 
 [[work_item]]
 id = "dogfood/pr-inline-comment-publisher-receipts"
-status = "blocked"
+status = "ready"
 branch = "dogfood-pr-inline-comment-publisher-receipts"
 stackable = false
 blocked_by = [
