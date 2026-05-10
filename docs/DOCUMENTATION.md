@@ -114,6 +114,9 @@ Current reference docs:
 - [CI cost and verification policy](ci/cost-and-verification-policy.md)
 - [MSRV 1.95 rollout plan](ci/ripr-rollout-plan.md)
 - [Rust 1.95 compatibility audit](ci/msrv-1.95-audit.md)
+- [Rust 1.95 / 0.5.1 quality rollout](ci/rust-1.95-quality-rollout.md)
+- [Test evidence lanes](ci/test-evidence-lanes.md)
+- [ripr / mutation boundary](ci/ripr-mutation-boundary.md)
 
 Planned reference docs:
 
