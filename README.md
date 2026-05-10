@@ -7,7 +7,7 @@
 [![crates.io](https://img.shields.io/crates/v/ripr.svg)](https://crates.io/crates/ripr)
 [![crates.io downloads](https://img.shields.io/crates/d/ripr.svg)](https://crates.io/crates/ripr)
 [![docs.rs](https://docs.rs/ripr/badge.svg)](https://docs.rs/ripr)
-[![VS Marketplace Installs (manual)](https://img.shields.io/badge/VS%20Marketplace-2%20installs-0078D4)](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr)
+[![VS Marketplace Installs (manual)](https://img.shields.io/badge/VS%20Marketplace-4%20installs-0078D4)](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr)
 [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/EffortlessMetrics/ripr?label=Open%20VSX%20downloads)](https://open-vsx.org/extension/EffortlessMetrics/ripr)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](Cargo.toml)
 [![MSRV](https://img.shields.io/badge/MSRV-1.95-blue)](https://www.rust-lang.org/)
@@ -15,7 +15,7 @@
 <!-- The public `ripr` and `ripr+` badges count unresolved repo-scoped seam-native exposure gaps under the configured policy — inbox-zero, not coverage. Diff-scoped badge artifacts remain legacy finding-exposure artifacts for PR summaries. This repo commits the Shields endpoint JSON under `badges/` and Shields fetches it from `raw.githubusercontent.com`; refresh with `cargo xtask update-badge-endpoints`. The ripr product contract is "ripr emits Shields-compatible JSON" — downstream users can self-host the JSON anywhere stable and are not expected to enable GitHub Pages. See [docs/BADGE_POLICY.md](docs/BADGE_POLICY.md) and `deferred/hosted-badge-service` in [docs/DEFERRED.md](docs/DEFERRED.md). -->
 
 
-<!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-07 after the 0.4.0 publish; 0.5.0 publish completed 2026-05-10 (VS Marketplace + Open VSX). Refresh the count and date from publisher metrics whenever you check; do not use live VS Marketplace Shields routes. -->
+<!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-10 after the 0.5.0 publish: 4 installs. Refresh the count and date from publisher metrics whenever you check; do not use live VS Marketplace Shields routes. -->
 
 `ripr` helps Rust developers and coding agents answer a draft-time testing
 question:

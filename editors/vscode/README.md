@@ -1,9 +1,9 @@
 # ripr: Rust Test-Oracle Gaps
 
-[![VS Marketplace Installs (manual)](https://img.shields.io/badge/VS%20Marketplace-2%20installs-0078D4)](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr)
+[![VS Marketplace Installs (manual)](https://img.shields.io/badge/VS%20Marketplace-4%20installs-0078D4)](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr)
 [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/EffortlessMetrics/ripr?label=Open%20VSX%20downloads)](https://open-vsx.org/extension/EffortlessMetrics/ripr)
 
-<!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-07 after the 0.4.0 publish; 0.5.0 publish completed 2026-05-10 (VS Marketplace + Open VSX). Refresh the count and date from publisher metrics whenever you check; do not use live VS Marketplace Shields routes. -->
+<!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-10 after the 0.5.0 publish: 4 installs. Refresh the count and date from publisher metrics whenever you check; do not use live VS Marketplace Shields routes. -->
 
 Preview VS Code/Open VSX extension for `ripr`, a static Rust analysis tool that
 finds weak or missing test oracles and guides the next targeted test.
