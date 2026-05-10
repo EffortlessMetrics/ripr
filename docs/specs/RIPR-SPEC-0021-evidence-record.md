@@ -303,8 +303,10 @@ Additional examples:
 - An opaque seam carries a classification-level static limitation.
 - A supplied canonical gap identity remains a record field that baseline and PR
   ledger consumers may carry without turning baseline state into analyzer truth.
-- Current v0.1 calibration records use `no_runtime_data`; runtime-supported
-  confidence labels are reserved for the later static/runtime calibration slice.
+- Current v0.1 calibration records use `no_runtime_data`. Imported
+  static/runtime confidence labels live in mutation-calibration reports and do
+  not enter the shared record until a future schema revision explicitly adds
+  runtime-backed calibration context.
 
 ## Test Mapping
 
