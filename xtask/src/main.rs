@@ -1271,17 +1271,58 @@ fn create_tar_gz_archive(package_dir: &Path, asset_path: &Path) -> Result<(), St
 }
 
 fn create_zip_archive(package_dir: &Path, asset_path: &Path) -> Result<(), String> {
-    run_owned(
-        "pwsh",
-        &[
-            "-NoLogo".to_string(),
-            "-NoProfile".to_string(),
-            "-Command".to_string(),
-            "$source = Join-Path $args[0] '*'; Compress-Archive -Path $source -DestinationPath $args[1] -Force".to_string(),
-            package_dir.to_string_lossy().to_string(),
-            asset_path.to_string_lossy().to_string(),
-        ],
-    )
+    let file = fs::File::create(asset_path)
+        .map_err(|err| format!("failed to create {}: {err}", asset_path.display()))?;
+    let mut writer = zip::ZipWriter::new(file);
+    let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .unix_permissions(0o644);
+
+    let entries = fs::read_dir(package_dir)
+        .map_err(|err| format!("failed to read {}: {err}", package_dir.display()))?;
+    let mut sorted: Vec<PathBuf> = entries
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .collect();
+    sorted.sort();
+
+    for path in sorted {
+        let metadata = fs::metadata(&path)
+            .map_err(|err| format!("failed to stat {}: {err}", path.display()))?;
+        if !metadata.is_file() {
+            return Err(format!(
+                "release server package directory must be flat; found non-file `{}`",
+                path.display()
+            ));
+        }
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| format!("invalid file name in {}", path.display()))?
+            .to_string();
+        let entry_options = if file_name.ends_with(".exe") {
+            options.unix_permissions(0o755)
+        } else if metadata.permissions().readonly() {
+            options
+        } else {
+            // Best-effort executable bit for Unix-style binaries (ripr) without an extension.
+            if !file_name.contains('.') {
+                options.unix_permissions(0o755)
+            } else {
+                options
+            }
+        };
+        writer
+            .start_file(&file_name, entry_options)
+            .map_err(|err| format!("failed to start zip entry {file_name}: {err}"))?;
+        let mut input = fs::File::open(&path)
+            .map_err(|err| format!("failed to open {} for zip: {err}", path.display()))?;
+        std::io::copy(&mut input, &mut writer)
+            .map_err(|err| format!("failed to write zip entry {file_name}: {err}"))?;
+    }
+    writer
+        .finish()
+        .map_err(|err| format!("failed to finalize {}: {err}", asset_path.display()))?;
+    Ok(())
 }
 
 fn sha256_file(path: &Path) -> Result<String, String> {
@@ -21951,6 +21992,8 @@ fn check_droid_review_config_impl() -> Result<(), String> {
     reason = "xtask test code uses unwrap/expect for fail-fast assertion. Production paths are receipted via policy/no-panic-allowlist.toml; the test scope is governed by this single module-level expect."
 )]
 mod tests {
+    use std::io::Read;
+
     use super::XtaskCommand;
     use super::dispatch;
     use super::run::{
@@ -23060,6 +23103,55 @@ mod tests {
                 super::release_server_readme("1.2.3")
             );
             assert!(root.join("dist").is_dir());
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn create_zip_archive_writes_flat_package_contents() -> Result<(), String> {
+        with_temp_cwd("release-server-archive-zip", |root| {
+            let package = root.join("package");
+            fs::create_dir_all(&package).map_err(|err| format!("create package dir: {err}"))?;
+            write(&package.join("ripr.exe"), "binary");
+            write(&package.join("LICENSE-MIT"), "mit");
+            write(&package.join("LICENSE-APACHE"), "apache");
+            write(&package.join("README-server.txt"), "readme");
+
+            let dist = root.join("dist");
+            fs::create_dir_all(&dist).map_err(|err| format!("create dist dir: {err}"))?;
+            let asset = dist.join("ripr-server-v1.2.3.zip");
+            super::create_zip_archive(&package, &asset)?;
+
+            let zip_file =
+                fs::File::open(&asset).map_err(|err| format!("open written zip: {err}"))?;
+            let mut archive =
+                zip::ZipArchive::new(zip_file).map_err(|err| format!("read written zip: {err}"))?;
+
+            let mut names: Vec<String> = Vec::with_capacity(archive.len());
+            for index in 0..archive.len() {
+                let entry = archive
+                    .by_index(index)
+                    .map_err(|err| format!("zip entry {index}: {err}"))?;
+                names.push(entry.name().to_string());
+            }
+            names.sort();
+            assert_eq!(
+                names,
+                vec![
+                    "LICENSE-APACHE".to_string(),
+                    "LICENSE-MIT".to_string(),
+                    "README-server.txt".to_string(),
+                    "ripr.exe".to_string(),
+                ]
+            );
+
+            let mut binary_contents = String::new();
+            archive
+                .by_name("ripr.exe")
+                .map_err(|err| format!("locate ripr.exe entry: {err}"))?
+                .read_to_string(&mut binary_contents)
+                .map_err(|err| format!("read ripr.exe entry: {err}"))?;
+            assert_eq!(binary_contents, "binary");
             Ok(())
         })
     }
