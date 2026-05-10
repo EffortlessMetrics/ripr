@@ -3612,7 +3612,10 @@ Generated CI runs the producer only when configured input artifacts exist,
 uploads `pr-review-front-panel.{json,md}` with the normal report packet, and
 appends the Markdown plus compact at-a-glance fields to the job summary. The
 projection is advisory: `ripr gate evaluate` remains the only configured
-pass/fail authority.
+pass/fail authority. See
+[PR review front panel workflow](PR_REVIEW_FRONT_PANEL_WORKFLOW.md) for the
+reviewer, developer, maintainer, and coding-agent workflow over the generated
+panel.
 
 ### Review Guidance Outcome Receipt
 

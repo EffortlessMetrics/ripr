@@ -524,23 +524,30 @@ For a CI-first user, the useful output is the artifact packet:
   receipt JSON for the top seam when one is available;
 - `target/ripr/reports/` - targeted-test outcome, SARIF files when enabled,
   repo badge JSON, `agent-receipt.json`, `assistant-loop-health.{json,md}`,
-  `first-useful-action.{json,md}`, and any repo-local cockpit output.
+  `first-useful-action.{json,md}`, `pr-review-front-panel.{json,md}`, and any
+  repo-local cockpit output.
 - `target/ripr/review/` - PR test guidance JSON and Markdown when
   `ripr review-comments` runs on pull requests.
 
 The workflow also writes a `RIPR advisory summary` step summary. It includes
-the first useful action when existing inputs allow `ripr first-action` to run,
-assistant-loop health when proof artifacts exist, the top recommendation, the
-agent review packet when present, artifact links, SARIF and badge status, known
-limits, and PR guidance annotation counts when `target/ripr/review/comments.json`
-exists. On pull requests, the generated workflow writes that report before
-emitting changed-line check annotations by default without posting inline review
+the PR review front panel when existing inputs allow
+`ripr pr-review front-panel` to run, the first useful action when existing
+inputs allow `ripr first-action` to run, assistant-loop health when proof
+artifacts exist, the top recommendation, the agent review packet when present,
+artifact links, SARIF and badge status, known limits, and PR guidance
+annotation counts when `target/ripr/review/comments.json` exists. On pull
+requests, the generated workflow writes that report before emitting
+changed-line check annotations by default without posting inline review
 comments.
 
 See [LLM operator guide](LLM_OPERATOR_GUIDE.md) for the same status, workflow
 packet, verify, receipt, and reviewer-summary loop outside CI. See
 [PR review guidance](PR_REVIEW_GUIDANCE.md) for the PR-facing annotation
-contract and review workflow.
+contract and review workflow. See
+[PR review front panel workflow](PR_REVIEW_FRONT_PANEL_WORKFLOW.md) for the
+first-screen summary that composes PR guidance, first useful action, assistant
+proof, assistant-loop health, ledger, baseline, gate, calibration,
+coverage/grip, and receipt artifacts.
 
 ### PR Test Guidance Annotations
 
@@ -1486,6 +1493,24 @@ See [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) for how
 developers, reviewers, and coding agents should read that summary, act on the
 selected action, verify static movement, and emit receipts.
 
+Generated CI also projects the PR review front panel when at least one explicit
+front-panel input artifact is already present. It runs
+`ripr pr-review front-panel --root .` with existing PR guidance, first useful
+action, assistant proof, assistant-loop health, PR evidence ledger, baseline
+delta, RIPR Zero status, gate decision, recommendation calibration, imported
+mutation calibration, coverage/grip frontier, and receipt inputs when those
+files exist, then writes and uploads
+`target/ripr/reports/pr-review-front-panel.json` and
+`target/ripr/reports/pr-review-front-panel.md` with the normal report packet.
+The job summary appends the PR review at-a-glance fields plus the Markdown
+report. If no inputs exist, the step logs that no PR review front-panel inputs
+were available and leaves CI pass/fail behavior unchanged.
+
+See [PR review front panel workflow](PR_REVIEW_FRONT_PANEL_WORKFLOW.md) for how
+reviewers, maintainers, developers, and coding agents should read the
+first-screen PR story, follow repair routes, inspect receipts, and preserve
+the advisory gate boundary.
+
 For every configured gate mode, the generated workflow behavior is:
 
 1. capture active PR labels into `target/ci/labels.json`;
@@ -1513,12 +1538,17 @@ For every configured gate mode, the generated workflow behavior is:
 15. run `ripr first-action` when explicit first-action inputs exist;
 16. render the First Useful Action section from `first-useful-action.json` and
    append `first-useful-action.md` when present;
-17. append the detailed `gate-decision.md`, `baseline-debt-delta.md`, and
+17. run `ripr pr-review front-panel` when explicit front-panel inputs exist;
+18. render the PR review front-panel section from
+   `pr-review-front-panel.json` and append `pr-review-front-panel.md` when
+   present;
+19. append the detailed `gate-decision.md`, `baseline-debt-delta.md`, and
    `ripr-zero-status.md` reports when present;
-18. upload gate, baseline delta, RIPR Zero, PR evidence ledger,
-   test-oracle assistant proof, assistant-loop health, and first useful action
-   artifacts with the normal `ripr-reports` artifact packet;
-19. fail only when the explicit gate mode returns `blocked` or `config_error`.
+20. upload gate, baseline delta, RIPR Zero, PR evidence ledger,
+   test-oracle assistant proof, assistant-loop health, first useful action, and
+   PR review front-panel artifacts with the normal `ripr-reports` artifact
+   packet;
+21. fail only when the explicit gate mode returns `blocked` or `config_error`.
 
 Acknowledgeable policy:
 

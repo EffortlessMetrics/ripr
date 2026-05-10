@@ -116,6 +116,9 @@ are scoped or reviewed.
   explicit input artifacts exist, upload `pr-review-front-panel.{json,md}` with
   the report packet, and append the advisory PR review front panel to the job
   summary while preserving `ripr gate evaluate` as pass/fail authority.
+- Added `docs/PR_REVIEW_FRONT_PANEL_WORKFLOW.md`, documenting how reviewers,
+  developers, maintainers, and coding agents read the front panel, follow
+  repair routes, inspect receipts, and preserve the advisory gate boundary.
 - Opened Campaign 22, First Useful Action, with
   `spec/first-useful-action-report` as the first ready work item so existing
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,
@@ -489,6 +492,9 @@ are scoped or reviewed.
   documented v0.1 scope and added a dedicated Lane 1 evidence-spine tracker so
   future evidence work stays separate from active PR/CI, editor, policy, and
   release campaigns.
+- Promoted local delta flow to stable within its fixture-backed syntax-first
+  scope for visible return, error, field, match, and side-effect sink families
+  while keeping unsupported propagation as explicit static limitations.
 - Moved the declared workspace MSRV, pinned toolchain, `clippy.toml`, and
   `policy/clippy-lints.toml` MSRV ledger to Rust 1.95 after the compatibility
   audit passed; planned Clippy lint promotion remains deferred to the next
