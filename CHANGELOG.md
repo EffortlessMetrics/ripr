@@ -481,6 +481,10 @@ are scoped or reviewed.
 
 ### Changed
 
+- Promoted the Lane 1 `evidence_record` capability to stable within its
+  documented v0.1 scope and added a dedicated Lane 1 evidence-spine tracker so
+  future evidence work stays separate from active PR/CI, editor, policy, and
+  release campaigns.
 - Moved the declared workspace MSRV, pinned toolchain, `clippy.toml`, and
   `policy/clippy-lints.toml` MSRV ledger to Rust 1.95 after the compatibility
   audit passed; planned Clippy lint promotion remains deferred to the next

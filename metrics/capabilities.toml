@@ -557,10 +557,11 @@ metric = "per-class metric buckets stable across runs"
 [[capability]]
 id = "evidence_record"
 name = "Evidence record"
-status = "alpha"
+status = "stable"
 spec = "RIPR-SPEC-0021"
 evidence = [
   "docs/specs/RIPR-SPEC-0021-evidence-record.md defines the additive seam-native evidence record contract",
+  "docs/lanes/LANE_1_EVIDENCE_SPINE.md records the Lane 1 evidence-spine boundary, completed evidence-record consumer chain, and next evidence-only slices without replacing the active Codex Goals manifest",
   "crates/ripr/src/output/evidence_record.rs projects existing ClassifiedSeam facts into identity, evidence path, observed values, missing discriminators, related tests, recommendation, actionability, calibration placeholder, and static limitations",
   "crates/ripr/src/analysis/canonical_gap.rs generates deterministic canonical_gap_id values from owner, seam kind, flow sink, missing discriminator, and assertion shape while leaving line numbers as locators",
   "crates/ripr/src/output/repo_exposure.rs attaches seams[].evidence_record while preserving existing repo-exposure seam fields",
@@ -578,7 +579,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap/expected/evidence-record-contract/corpus.json"
 ]
-next = "analysis/local-delta-flow-v2"
+next = "maintenance"
 metric = "evidence_record_projected_seams, evidence_record_actionable_guidance, evidence_record_static_limitations"
 
 [[capability]]
