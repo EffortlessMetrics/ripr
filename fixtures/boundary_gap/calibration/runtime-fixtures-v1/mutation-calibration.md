@@ -34,18 +34,18 @@ Precision notes:
 
 ### Runtime signals without static gaps
 
-| Runtime mutant | Location | Runtime outcome | Static class | Reason |
-| --- | --- | --- | --- | --- |
-| `m-static-clean-runtime-signal` | seam:cal-static-clean-runtime-signal | missed | `strongly_gripped` | runtime gap signal joined to a static-clean seam |
-| `m-unmatched-runtime-signal` | src/pricing.rs:99 | missed | `unmatched` | runtime gap signal did not join to a static seam |
+| Runtime mutant | Location | Runtime outcome | Static class | Confidence label | Reason |
+| --- | --- | --- | --- | --- | --- |
+| `m-static-clean-runtime-signal` | seam:cal-static-clean-runtime-signal | missed | `strongly_gripped` | `contradicts_static_clean` | runtime gap signal joined to a static-clean seam |
+| `m-unmatched-runtime-signal` | src/pricing.rs:99 | missed | `unmatched` | `runtime_only_signal` | runtime gap signal did not join to a static seam |
 
 ### Static gaps without runtime signals
 
-| Seam | Class | Location | Reason |
-| --- | --- | --- | --- |
-| `cal-static-gap-runtime-clean` | `weakly_gripped` | src/pricing.rs:20 | static gap seam matched runtime data without a runtime gap signal |
-| `cal-static-gap-no-runtime` | `ungripped` | src/pricing.rs:60 | static gap seam has no matched runtime record in this import |
-| `cal-file-line-gap-clean` | `weakly_gripped` | src/pricing.rs:80 | static gap seam matched runtime data without a runtime gap signal |
+| Seam | Class | Location | Confidence label | Reason |
+| --- | --- | --- | --- | --- |
+| `cal-static-gap-runtime-clean` | `weakly_gripped` | src/pricing.rs:20 | `contradicts_static_gap` | static gap seam matched runtime data without a runtime gap signal |
+| `cal-static-gap-no-runtime` | `ungripped` | src/pricing.rs:60 | `no_runtime_data` | static gap seam has no matched runtime record in this import |
+| `cal-file-line-gap-clean` | `weakly_gripped` | src/pricing.rs:80 | `contradicts_static_gap` | static gap seam matched runtime data without a runtime gap signal |
 
 ## Runtime Outcome Counts
 
@@ -57,20 +57,20 @@ Precision notes:
 
 ## Matched Mutants
 
-| Seam | Class | Oracle | Mutation operator | Runtime outcome | Join |
-| --- | --- | --- | --- | --- | --- |
-| `cal-file-line-gap-clean` | `weakly_gripped` | `exact_value`/`strong` | replace is_some with is_none | caught | `file_line` |
-| `cal-static-clean-runtime-clean` | `strongly_gripped` | `exact_error_variant`/`strong` | replace error variant | caught | `seam_id` |
-| `cal-static-clean-runtime-inconclusive` | `strongly_gripped` | `side_effect_observer`/`strong` | delete side-effect call | error | `seam_id` |
-| `cal-static-clean-runtime-signal` | `strongly_gripped` | `exact_value`/`strong` | replace >= with > | missed | `seam_id` |
-| `cal-static-gap-runtime-clean` | `weakly_gripped` | `exact_value`/`strong` | replace > with >= | caught | `seam_id` |
-| `cal-static-gap-runtime-signal` | `weakly_gripped` | `exact_value`/`strong` | replace >= with > | missed | `seam_id` |
+| Seam | Class | Oracle | Mutation operator | Runtime outcome | Join | Confidence label |
+| --- | --- | --- | --- | --- | --- | --- |
+| `cal-file-line-gap-clean` | `weakly_gripped` | `exact_value`/`strong` | replace is_some with is_none | caught | `file_line` | `contradicts_static_gap` |
+| `cal-static-clean-runtime-clean` | `strongly_gripped` | `exact_error_variant`/`strong` | replace error variant | caught | `seam_id` | `supports_static_clean` |
+| `cal-static-clean-runtime-inconclusive` | `strongly_gripped` | `side_effect_observer`/`strong` | delete side-effect call | error | `seam_id` | `no_runtime_data` |
+| `cal-static-clean-runtime-signal` | `strongly_gripped` | `exact_value`/`strong` | replace >= with > | missed | `seam_id` | `contradicts_static_clean` |
+| `cal-static-gap-runtime-clean` | `weakly_gripped` | `exact_value`/`strong` | replace > with >= | caught | `seam_id` | `contradicts_static_gap` |
+| `cal-static-gap-runtime-signal` | `weakly_gripped` | `exact_value`/`strong` | replace >= with > | missed | `seam_id` | `supports_static_gap` |
 
 ## Ambiguous File/Line Matches
 
-| Runtime mutant | Location | Runtime outcome | Candidate seams |
-| --- | --- | --- | --- |
-| `m-ambiguous-file-line` | src/pricing.rs:70 | missed | `cal-ambiguous-candidate-a`, `cal-ambiguous-candidate-b` |
+| Runtime mutant | Location | Runtime outcome | Confidence label | Candidate seams |
+| --- | --- | --- | --- | --- |
+| `m-ambiguous-file-line` | src/pricing.rs:70 | missed | `ambiguous_runtime_join` | `cal-ambiguous-candidate-a`, `cal-ambiguous-candidate-b` |
 
 ## Unmatched Runtime Mutants
 
@@ -82,6 +82,6 @@ Precision notes:
 
 Sample only; see JSON `static_without_runtime_total` for the full count.
 
-| Seam | Kind | Class | Location |
-| --- | --- | --- | --- |
-| `cal-static-gap-no-runtime` | `predicate_boundary` | `ungripped` | src/pricing.rs:60 |
+| Seam | Kind | Class | Location | Confidence label |
+| --- | --- | --- | --- | --- |
+| `cal-static-gap-no-runtime` | `predicate_boundary` | `ungripped` | src/pricing.rs:60 | `no_runtime_data` |

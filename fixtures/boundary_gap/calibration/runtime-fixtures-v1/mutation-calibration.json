@@ -36,6 +36,7 @@
           "seam_kind": "predicate_boundary"
         }
       ],
+      "confidence_label": "ambiguous_runtime_join",
       "runtime": {
         "duration": "39ms",
         "file": "src/pricing.rs",
@@ -50,6 +51,7 @@
   ],
   "matches": [
     {
+      "confidence_label": "contradicts_static_gap",
       "join_method": "file_line",
       "runtime": {
         "duration": "40ms",
@@ -78,6 +80,7 @@
       }
     },
     {
+      "confidence_label": "supports_static_clean",
       "join_method": "seam_id",
       "runtime": {
         "duration": "44ms",
@@ -104,6 +107,7 @@
       }
     },
     {
+      "confidence_label": "no_runtime_data",
       "join_method": "seam_id",
       "runtime": {
         "duration": "2s",
@@ -130,6 +134,7 @@
       }
     },
     {
+      "confidence_label": "contradicts_static_clean",
       "join_method": "seam_id",
       "runtime": {
         "duration": "47ms",
@@ -158,6 +163,7 @@
       }
     },
     {
+      "confidence_label": "contradicts_static_gap",
       "join_method": "seam_id",
       "runtime": {
         "duration": "38ms",
@@ -186,6 +192,7 @@
       }
     },
     {
+      "confidence_label": "supports_static_gap",
       "join_method": "seam_id",
       "runtime": {
         "duration": "41ms",
@@ -233,6 +240,7 @@
   },
   "missed_runtime_signals": [
     {
+      "confidence_label": "contradicts_static_clean",
       "reason": "runtime gap signal joined to a static-clean seam",
       "runtime": {
         "duration": "47ms",
@@ -261,6 +269,7 @@
       }
     },
     {
+      "confidence_label": "runtime_only_signal",
       "reason": "runtime gap signal did not join to a static seam",
       "runtime": {
         "duration": "36ms",
@@ -285,6 +294,7 @@
   "scope": "repo",
   "static_only_findings": [
     {
+      "confidence_label": "contradicts_static_gap",
       "reason": "static gap seam matched runtime data without a runtime gap signal",
       "static": {
         "file": "src/pricing.rs",
@@ -303,6 +313,7 @@
       }
     },
     {
+      "confidence_label": "no_runtime_data",
       "reason": "static gap seam has no matched runtime record in this import",
       "static": {
         "file": "src/pricing.rs",
@@ -319,6 +330,7 @@
       }
     },
     {
+      "confidence_label": "contradicts_static_gap",
       "reason": "static gap seam matched runtime data without a runtime gap signal",
       "static": {
         "file": "src/pricing.rs",
