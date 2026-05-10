@@ -30064,7 +30064,7 @@ jobs:
                 XtaskCommand::AgentSeamPackets(Some(".".to_string())),
                 XtaskCommand::LspCockpitReport,
                 XtaskCommand::OperatorCockpitReport,
-                XtaskCommand::ReleaseReadiness(vec!["--version".to_string(), "0.4.0".to_string()]),
+                XtaskCommand::ReleaseReadiness(vec!["--version".to_string(), "0.5.0".to_string()]),
                 XtaskCommand::TargetedTestOutcome(Vec::new()),
                 XtaskCommand::MutationCalibration(Vec::new()),
                 XtaskCommand::SarifPolicy(Vec::new()),

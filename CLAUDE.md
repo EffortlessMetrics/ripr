@@ -44,7 +44,7 @@ Each module has a single product responsibility — parsing, fact extraction, pr
 
 ## Rust Baseline
 
-- Edition 2024, MSRV `1.93` (pinned in `rust-toolchain.toml` to `1.93.1`).
+- Edition 2024, MSRV `1.95` (pinned in `rust-toolchain.toml` to `1.95.0`).
 - `unsafe_code = "forbid"` workspace-wide. Also denied: `dbg_macro`, `todo`, `unimplemented`, `const_item_interior_mutations`, `function_casts_as_integer`.
 - No new `panic`, `unwrap`, `expect`, `todo`, or `unimplemented` in production or test code (enforced by `cargo xtask check-no-panic-family` against `.ripr/no-panic-allowlist.txt`).
 - Allow-attributes need an entry in `.ripr/allow-attributes.txt` (enforced by `cargo xtask check-allow-attributes`).

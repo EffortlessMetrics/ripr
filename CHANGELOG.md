@@ -9,6 +9,41 @@ are scoped or reviewed.
 
 ## Unreleased
 
+## 0.5.0 - 2026-05-10
+
+### Highlights
+
+- Lane 1 evidence spine is stable in scope: a seam-native
+  `evidence_record` projection with canonical gap identity threads through
+  agent packets, repo exposure, gate evaluation, baseline diff, RIPR Zero
+  status, and assistant proof so headline gap classes group by behavior
+  instead of by raw line.
+- Campaigns 17 through 26 turn the read-only static-evidence loop into one
+  reviewer-first surface: RIPR Zero adoption (baseline create / diff /
+  shrink-only update), PR evidence ledger, RIPR Zero reporting, test-oracle
+  assistant proof and report producer, first useful action, assistant-loop
+  health, PR review front panel, report packet index, and the optional PR
+  inline comment publisher.
+- Editor Evidence UX matches the agent loop: saved-workspace seam
+  diagnostics, hovers, and intent-titled code actions; first-useful-action
+  hover and status projection; LSP `ripr.collectEvidenceContext`; and a
+  status-bar / `ripr: Show Status` surface that keeps stale buffers visible.
+
+### Compatibility
+
+- Raised the declared workspace MSRV and pinned repository toolchain from
+  Rust 1.93 to Rust 1.95. CI MSRV jobs, release-readiness preconditions,
+  README/AGENTS/CLAUDE MSRV references, and the active Clippy ratchet table
+  are aligned with the 0.5.0 / Rust 1.95 release line; deferred Clippy
+  promotions remain tracked in `policy/clippy-lints.toml`.
+
+### Boundaries (unchanged)
+
+- No LLM provider integration, no generated tests, no automatic edits, no
+  runtime mutation execution, and no default CI blocking. RIPR remains a
+  static, advisory evidence layer; calibrated gate, inline-comment publisher,
+  and runtime calibration remain explicit opt-ins.
+
 ### Added
 
 - Extended `cargo xtask dogfood` with checked report-packet index receipts for
@@ -575,6 +610,10 @@ are scoped or reviewed.
   provenance-backed receipts, bounded next-action guidance, reviewer summaries,
   fixtures, generated CI packets, and the LLM operator guide aligned around a
   source-edit-free static work loop.
+- Extended the LSP seam evidence hover to project first-useful-action when an
+  existing workspace-matched report selects the same seam, so the editor hover
+  carries the same advisory next-action, target test, verify command, and
+  receipt command surfaces as the status bar without rerunning analysis.
 
 ### Changed
 
@@ -678,6 +717,28 @@ are scoped or reviewed.
   risk packs, artifact families, labels, and rollout exceptions. These seed
   files document the future PR planning surface without changing workflow
   behavior.
+- Tightened LSP command payload contracts and first-useful-action status edges
+  so saved-workspace command smoke and saved-workspace status output stay
+  pinned across analysis-queued, analysis-running, stale-buffer, missing-input,
+  and no-actionable-seam transitions.
+- Hardened the VS Code saved-workspace status output and command smoke
+  fixtures to keep the status bar item, `ripr: Show Status` text, and
+  intent-titled action payloads stable across the report-projection,
+  stale-buffer, and disabled-by-setting paths without changing user-visible
+  behavior.
+
+### Release prep
+
+- Bumped crate, extension, lockfile, agent-receipt fixture, doc, and xtask
+  release-readiness test-fixture references from 0.4.0 to 0.5.0; aligned the
+  CI MSRV job toolchain pin and cache keys to Rust 1.95.0; refreshed the
+  workspace and crate README MSRV badges, Distribution capability rows, and
+  Rust-requirement statements; advanced version refs in `docs/RELEASE.md`,
+  `docs/RELEASE_BINARIES.md`, `docs/RELEASE_MARKETPLACE.md`,
+  `docs/SERVER_PROVISIONING.md`, `docs/EDITOR_EXTENSION.md`, `docs/OPENVSX.md`,
+  `docs/specs/RIPR-SPEC-0011-llm-work-loop.md`, `docs/OUTPUT_SCHEMA.md`, and
+  the VS Code extension changelog and resolver fallback. The 0.4.0 release
+  receipts and historical rollout records are preserved unchanged.
 
 ## 0.4.0 - 2026-05-07
 

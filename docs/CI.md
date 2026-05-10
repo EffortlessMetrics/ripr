@@ -265,7 +265,7 @@ cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 ```
 
-The CI workflow also has an explicit MSRV job that pins Rust `1.93.1` and runs:
+The CI workflow also has an explicit MSRV job that pins Rust `1.95.0` and runs:
 
 ```bash
 cargo check --workspace --all-targets

@@ -319,7 +319,7 @@ fn installed_command_surface_check(binary: &Path) -> ReleaseReadinessCheck {
                     "pass",
                     true,
                     &command,
-                    "installed binary exposes the 0.4 public loop commands",
+                    "installed binary exposes the 0.5 public loop commands",
                     vec![crate::normalize_path(binary)],
                     Vec::new(),
                 )
@@ -1050,7 +1050,7 @@ fn release_readiness_markdown(report: &ReleaseReadinessReport) -> String {
     for command in &report.next_commands {
         out.push_str(&format!("- `{}`\n", md_escape_inline(command)));
     }
-    out.push_str("\nThis report records the 0.4 release surface from repo artifacts. It does not run mutation testing, enable CI blocking, change analyzer classifications, or expand LSP behavior.\n");
+    out.push_str("\nThis report records the 0.5 release surface from repo artifacts. It does not run mutation testing, enable CI blocking, change analyzer classifications, or expand LSP behavior.\n");
     out
 }
 
@@ -1160,9 +1160,9 @@ mod tests {
 
     #[test]
     fn release_readiness_args_parse_version() -> Result<(), String> {
-        let args = vec!["--version".to_string(), "0.4.0".to_string()];
+        let args = vec!["--version".to_string(), "0.5.0".to_string()];
         let parsed = parse_release_readiness_args(&args)?;
-        if parsed.version != "0.4.0" {
+        if parsed.version != "0.5.0" {
             return Err(format!("unexpected version {}", parsed.version));
         }
         Ok(())
@@ -1215,10 +1215,10 @@ mod tests {
             Vec::new(),
         )];
         let report = ReleaseReadinessReport {
-            version: "0.4.0".to_string(),
+            version: "0.5.0".to_string(),
             status: "pass".to_string(),
             checks,
-            next_commands: vec!["cargo xtask release-readiness --version 0.4.0".to_string()],
+            next_commands: vec!["cargo xtask release-readiness --version 0.5.0".to_string()],
         };
         let json_text = release_readiness_json(&report)?;
         let value: Value = serde_json::from_str(&json_text)

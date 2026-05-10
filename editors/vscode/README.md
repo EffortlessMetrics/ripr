@@ -3,7 +3,7 @@
 [![VS Marketplace Installs (manual)](https://img.shields.io/badge/VS%20Marketplace-2%20installs-0078D4)](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr)
 [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/EffortlessMetrics/ripr?label=Open%20VSX%20downloads)](https://open-vsx.org/extension/EffortlessMetrics/ripr)
 
-<!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-07 after the 0.4.0 publish from the public listing. Refresh from publisher metrics when updating this manual count. Do not use live VS Marketplace Shields routes. -->
+<!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-07 after the 0.4.0 publish from the public listing; 0.5.0 publish refresh pending. Refresh from publisher metrics when updating this manual count. Do not use live VS Marketplace Shields routes. -->
 
 Preview VS Code/Open VSX extension for `ripr`, a static Rust analysis tool that
 finds weak or missing test oracles and guides the next targeted test.
@@ -26,11 +26,18 @@ fallback rather than a required first step.
 
 After opening a Rust/Cargo workspace:
 
-1. Check the `ripr` status bar item for server, workspace, analysis, stale,
-   failed, or no-actionable-seam state.
+1. Check the `ripr` status bar item for server, workspace, analysis,
+   first-useful-action, stale, failed, or no-actionable-seam state. The status
+   bar projects an existing workspace-matched
+   `target/ripr/reports/first-useful-action.json` report when one is present,
+   without rerunning analysis.
 2. Use the Problems panel to find actionable saved-workspace seam diagnostics.
-3. Hover a diagnostic to see why RIPR flagged it.
-4. Copy the targeted test brief or agent command chain.
+3. Hover a diagnostic to see why RIPR flagged it. The seam hover names the
+   missing discriminator, related test, suggested test shape, verify and
+   receipt commands, and projects an existing first-useful-action match for
+   the same seam.
+4. Use the intent-titled code actions to copy the targeted test brief, the
+   suggested assertion, or the agent handoff command chain.
 5. Open the best related test when RIPR finds an imitation target.
 6. Add one focused test.
 7. Verify with the copied command chain or the CI artifact packet.
@@ -46,6 +53,13 @@ For the full editor loop from diagnostic to receipt, see
 tests appear to contain the discriminators needed to expose the changed
 behavior. It uses conservative static-exposure language and is meant to guide
 the next useful test, not to prove test adequacy.
+
+The 0.5.x extension surfaces saved-workspace seam diagnostics, evidence-aware
+hovers, intent-titled code actions for inspecting the seam / writing the
+targeted test / copying the agent handoff / verifying after the test /
+reviewing the receipt / refreshing analysis, an LSP `collectEvidenceContext`
+seam handoff packet, and a first-useful-action projection in the status bar
+and seam hover when a workspace-matched report already exists.
 
 It does not run mutation testing, report killed/survived, or prove test
 adequacy. Use real mutation testing, such as `cargo-mutants`, for ready-mode
@@ -87,7 +101,7 @@ confirmation.
 
 ## Preview Limitations
 
-The `0.4.x` extension uses a universal VSIX and downloads native server
+The `0.5.x` extension uses a universal VSIX and downloads native server
 binaries from matching GitHub Releases when available. It does not auto-install
 Rust tooling, run mutation tests, make automatic edits, or analyze unsaved
 buffer overlays by default. Bundled platform-specific VSIXs are planned after
