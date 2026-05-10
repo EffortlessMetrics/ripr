@@ -133,6 +133,10 @@ are scoped or reviewed.
 - Added `docs/PR_REVIEW_FRONT_PANEL_WORKFLOW.md`, documenting how reviewers,
   developers, maintainers, and coding agents read the front panel, follow
   repair routes, inspect receipts, and preserve the advisory gate boundary.
+- Added dogfood validation for PR review front-panel receipts covering
+  actionable, acknowledged, suppressed, baseline-resolved, blocked,
+  missing-proof, no-actionable, and coverage-flat-grip-improved reviewer states
+  without changing generated-CI blocking defaults.
 - Strengthened `cargo xtask check-no-panic-family` drift reporting with
   structured allowed, advisory-drift, stale, unallowed, and warning sections,
   plus exact selector-cardinality checks for ambiguous or duplicate no-panic

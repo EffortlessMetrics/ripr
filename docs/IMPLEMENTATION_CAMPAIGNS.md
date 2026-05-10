@@ -2696,8 +2696,8 @@ Work items:
 | `report/pr-review-front-panel` | done | Added `ripr pr-review front-panel`, a read-only producer that emits advisory JSON/Markdown from explicit existing artifact paths without rerunning analysis or changing gate authority. |
 | `ci/pr-review-front-panel-summary` | done | Generated GitHub CI now runs `ripr pr-review front-panel` only when explicit input artifacts exist, uploads `pr-review-front-panel.{json,md}` with the report packet, and appends an advisory first-screen summary while preserving gate-decision pass/fail authority. |
 | `docs/pr-review-front-panel-workflow` | done | Added the workflow guide for reviewers, maintainers, developers, and coding agents, including first-screen reading, repair routes, receipt inspection, and advisory gate limits. |
-| `dogfood/pr-review-front-panel-receipts` | ready | Record repo-local front-panel receipts for actionable, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, no-actionable, and coverage-flat-grip-improved cases. |
-| `campaign/pr-review-front-panel-closeout` | blocked | Blocked on `dogfood/pr-review-front-panel-receipts`; close Campaign 24 after the spec, fixtures, producer, generated-CI advisory projection, workflow docs, dogfood receipts, and validation show the front panel is advisory, explicit-input-only, and bounded to existing artifacts. |
+| `dogfood/pr-review-front-panel-receipts` | done | Added dogfood validation and output-schema documentation for checked front-panel receipts covering actionable, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, no-actionable, and coverage-flat-grip-improved cases while preserving advisory defaults. |
+| `campaign/pr-review-front-panel-closeout` | ready | Close Campaign 24 after the spec, fixtures, producer, generated-CI advisory projection, workflow docs, dogfood receipts, and validation show the front panel is advisory, explicit-input-only, and bounded to existing artifacts. |
 
 References:
 
@@ -2719,10 +2719,10 @@ Blocking conditions:
 
 Next:
 
-- Continue with `dogfood/pr-review-front-panel-receipts`. The report contract,
-  fixture corpus, read-only producer, generated-CI advisory projection, and
-  workflow guide are now in place; the next slice should record repo-local
-  receipts before campaign closeout.
+- Continue with `campaign/pr-review-front-panel-closeout`. The report
+  contract, fixture corpus, read-only producer, generated-CI advisory
+  projection, workflow guide, and dogfood receipts are now in place; the next
+  slice should close the campaign with the validation and boundary receipt.
 
 ## Future Campaign: Editor Evidence UX
 
