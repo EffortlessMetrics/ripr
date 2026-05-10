@@ -6,6 +6,7 @@
 //! baselines, or change seam grip classifications.
 
 use crate::analysis::ClassifiedSeam;
+use crate::analysis::canonical_gap::CanonicalGapIdentity;
 use crate::analysis::seams::{SeamGripClass, SeamKind};
 use crate::analysis::test_grip_evidence::oracle_semantics_for;
 use crate::domain::{OracleKind, OracleStrength, StageEvidence, StageState};
@@ -24,6 +25,8 @@ const VERIFY_COMMAND: &str = "ripr agent verify --root . --before target/ripr/pi
 pub(crate) struct EvidenceRecord {
     pub(crate) seam_id: String,
     pub(crate) canonical_gap_id: Option<String>,
+    pub(crate) canonical_gap_group_size: Option<usize>,
+    pub(crate) canonical_gap_reason: Option<String>,
     pub(crate) owner: String,
     pub(crate) location: EvidenceRecordLocation,
     pub(crate) seam_kind: String,
@@ -167,7 +170,10 @@ pub(crate) struct EvidenceRecordStaticLimitation {
     pub(crate) reason: String,
 }
 
-pub(crate) fn evidence_record_for(entry: &ClassifiedSeam) -> EvidenceRecord {
+pub(crate) fn evidence_record_for(
+    entry: &ClassifiedSeam,
+    canonical_gap: Option<&CanonicalGapIdentity>,
+) -> EvidenceRecord {
     let missing_records = missing_discriminator_records_for(entry);
     let actionability = actionability_for(entry, &missing_records);
     let recommendation = recommendation_for(entry, &missing_records, &actionability);
@@ -175,7 +181,9 @@ pub(crate) fn evidence_record_for(entry: &ClassifiedSeam) -> EvidenceRecord {
 
     EvidenceRecord {
         seam_id: entry.seam.id().as_str().to_string(),
-        canonical_gap_id: None,
+        canonical_gap_id: canonical_gap.map(|gap| gap.id.clone()),
+        canonical_gap_group_size: canonical_gap.map(|gap| gap.group_size),
+        canonical_gap_reason: canonical_gap.map(|gap| gap.reason.to_string()),
         owner: entry.seam.owner().to_string(),
         location: EvidenceRecordLocation {
             file: display_path(entry.seam.file()),
@@ -244,6 +252,8 @@ pub(crate) fn evidence_record_json_value(record: &EvidenceRecord) -> Value {
         "schema_version": EVIDENCE_RECORD_SCHEMA_VERSION,
         "seam_id": record.seam_id.as_str(),
         "canonical_gap_id": record.canonical_gap_id.as_deref(),
+        "canonical_gap_group_size": record.canonical_gap_group_size,
+        "canonical_gap_reason": record.canonical_gap_reason.as_deref(),
         "owner": record.owner.as_str(),
         "location": {
             "file": record.location.file.as_str(),
@@ -726,12 +736,14 @@ mod tests {
     fn evidence_record_carries_identity_path_guidance_and_calibration_placeholder() {
         let entry = sample_classified(StageState::Yes, SeamGripClass::WeaklyGripped);
         let seam_id = entry.seam.id().as_str().to_string();
-        let record = evidence_record_for(&entry);
+        let record = evidence_record_for(&entry, None);
         let json = evidence_record_json_value(&record);
 
         assert_eq!(json["schema_version"], "0.1");
         assert_eq!(json["seam_id"], seam_id);
         assert!(json["canonical_gap_id"].is_null());
+        assert!(json["canonical_gap_group_size"].is_null());
+        assert!(json["canonical_gap_reason"].is_null());
         assert_eq!(json["owner"], "pricing::discounted_total");
         assert_eq!(json["location"]["file"], "src/pricing.rs");
         assert_eq!(json["location"]["line"], 88);
@@ -774,10 +786,10 @@ mod tests {
 
     #[test]
     fn evidence_record_names_static_limitations_from_unknown_stages() {
-        let record = evidence_record_for(&sample_classified(
-            StageState::Unknown,
-            SeamGripClass::ActivationUnknown,
-        ));
+        let record = evidence_record_for(
+            &sample_classified(StageState::Unknown, SeamGripClass::ActivationUnknown),
+            None,
+        );
         let json = evidence_record_json_value(&record);
 
         assert_eq!(json["actionability"]["class"], "static_limitation");
@@ -792,14 +804,39 @@ mod tests {
 
     #[test]
     fn evidence_record_marks_opaque_seams_as_static_limitation_work() {
-        let record = evidence_record_for(&sample_classified(
-            StageState::Opaque,
-            SeamGripClass::Opaque,
-        ));
+        let record = evidence_record_for(
+            &sample_classified(StageState::Opaque, SeamGripClass::Opaque),
+            None,
+        );
         let json = evidence_record_json_value(&record);
 
         assert_eq!(json["actionability"]["class"], "static_limitation");
         assert_eq!(json["static_limitations"][0]["stage"], "activate");
         assert_eq!(json["static_limitations"][1]["stage"], "classification");
+    }
+
+    #[test]
+    fn evidence_record_carries_supplied_canonical_gap_identity() {
+        let entry = sample_classified(StageState::Yes, SeamGripClass::WeaklyGripped);
+        let canonical_gap = CanonicalGapIdentity {
+            id: "gap:abc123".to_string(),
+            group_size: 3,
+            reason: crate::analysis::canonical_gap::CANONICAL_GAP_REASON,
+            owner: "pricing::discounted_total".to_string(),
+            seam_kind: "predicate_boundary".to_string(),
+            flow_sink: "return_value".to_string(),
+            missing_discriminator: "amount == threshold".to_string(),
+            assertion_shape: "exact_return_value".to_string(),
+        };
+
+        let record = evidence_record_for(&entry, Some(&canonical_gap));
+        let json = evidence_record_json_value(&record);
+
+        assert_eq!(json["canonical_gap_id"], "gap:abc123");
+        assert_eq!(json["canonical_gap_group_size"], 3);
+        assert_eq!(
+            json["canonical_gap_reason"],
+            crate::analysis::canonical_gap::CANONICAL_GAP_REASON
+        );
     }
 }

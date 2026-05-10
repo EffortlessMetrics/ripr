@@ -704,7 +704,9 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
       "evidence_record": {
         "schema_version": "0.1",
         "seam_id": "f3c9e4d21a0b7c88",
-        "canonical_gap_id": null,
+        "canonical_gap_id": "gap:67fc764ba37d77bd",
+        "canonical_gap_group_size": 1,
+        "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
         "owner": "src/pricing.rs::discounted_total",
         "location": {
           "file": "src/pricing.rs",
@@ -886,9 +888,15 @@ Field contract:
 - `seams[].evidence_record` - additive Lane 1 evidence spine for the seam.
   It is schema versioned independently from repo exposure and currently uses
   `schema_version: "0.1"`.
-- `seams[].evidence_record.canonical_gap_id` - nullable until canonical
-  behavioral gap identity is available. Line numbers remain locators, not
-  durable canonical identity.
+- `seams[].evidence_record.canonical_gap_id` - generated canonical
+  behavioral gap identity for headline-eligible gap classes, or `null` for
+  strong, opaque, intentional, and suppressed seams. Line numbers remain
+  locators, not durable canonical identity.
+- `seams[].evidence_record.canonical_gap_group_size` - number of raw seams
+  in this repo-exposure snapshot that share the same canonical gap identity,
+  or `null` when no canonical gap identity is assigned.
+- `seams[].evidence_record.canonical_gap_reason` - grouping reason for the
+  canonical identity, or `null` when no canonical gap identity is assigned.
 - `seams[].evidence_record.evidence_path` - typed reach, activate,
   propagate, observe, and discriminate stages. Each stage carries `state`,
   `confidence`, and `summary`.
@@ -921,7 +929,7 @@ The fixture contract corpus at
 representative `evidence_record` v0.1 records for predicate boundaries, exact
 error variants, strong exact-value evidence, broad error assertions, field and
 whole-object oracles, snapshot evidence, side-effect observers, opaque static
-limitations, supplied canonical gap identity, and the current
+limitations, generated canonical gap identity, and the current
 `no_runtime_data` calibration placeholder. `cargo xtask check-fixture-contracts`
 validates the required case matrix and field shape; `cargo xtask
 check-output-contracts` validates the `evidence_record` schema version in code,
@@ -4454,7 +4462,9 @@ and seams whose configured severity is `off` return an actionable error.
       "evidence_record": {
         "schema_version": "0.1",
         "seam_id": "f3c9e4d21a0b7c88",
-        "canonical_gap_id": null,
+        "canonical_gap_id": "gap:67fc764ba37d77bd",
+        "canonical_gap_group_size": 1,
+        "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
         "owner": "src/pricing.rs::discounted_total",
         "location": {
           "file": "src/pricing.rs",

@@ -7,6 +7,7 @@
 //! doc and any downstream consumers in lockstep.
 
 use crate::analysis::ClassifiedSeam;
+use crate::analysis::canonical_gap::{CanonicalGapIdentity, canonical_gap_identities};
 use crate::analysis::seams::SeamGripClass;
 use crate::output::evidence_record::{evidence_record_for, evidence_record_json_value};
 use crate::output::json::escape as json_escape;
@@ -24,6 +25,7 @@ const MAX_RELATED_TESTS_PER_SEAM_JSON: usize = 8;
 /// Render the repo exposure JSON.
 pub(crate) fn render_repo_exposure_json(classified: &[ClassifiedSeam]) -> String {
     let metrics = ExposureMetrics::from(classified);
+    let canonical_gaps = canonical_gap_identities(classified);
 
     let mut out = String::new();
     out.push_str("{\n");
@@ -57,7 +59,7 @@ pub(crate) fn render_repo_exposure_json(classified: &[ClassifiedSeam]) -> String
         if idx == 0 {
             out.push('\n');
         }
-        push_classified_json(&mut out, entry);
+        push_classified_json(&mut out, entry, canonical_gaps.get(entry.seam.id()));
         if idx + 1 != classified.len() {
             out.push_str(",\n");
         } else {
@@ -72,7 +74,11 @@ pub(crate) fn render_repo_exposure_json(classified: &[ClassifiedSeam]) -> String
     out
 }
 
-fn push_classified_json(out: &mut String, entry: &ClassifiedSeam) {
+fn push_classified_json(
+    out: &mut String,
+    entry: &ClassifiedSeam,
+    canonical_gap: Option<&CanonicalGapIdentity>,
+) {
     let seam = &entry.seam;
     let evidence = &entry.evidence;
     out.push_str("    {\n");
@@ -206,7 +212,7 @@ fn push_classified_json(out: &mut String, entry: &ClassifiedSeam) {
         out.push_str("      ");
     }
     out.push_str("],\n");
-    let record = evidence_record_for(entry);
+    let record = evidence_record_for(entry, canonical_gap);
     out.push_str("      \"evidence_record\": ");
     out.push_str(&evidence_record_json_value(&record).to_string());
     out.push('\n');
@@ -519,7 +525,9 @@ mod tests {
             "\"discriminate\": \"yes\"",
             "\"evidence_record\":",
             "\"schema_version\":\"0.1\"",
-            "\"canonical_gap_id\":null",
+            "\"canonical_gap_id\":\"gap:",
+            "\"canonical_gap_group_size\":1",
+            "\"canonical_gap_reason\":\"same owner, seam kind, flow sink, missing discriminator, and assertion shape\"",
             "\"evidence_path\":",
             "\"actionable_related_test_extension\"",
             "\"agreement\":\"no_runtime_data\"",
