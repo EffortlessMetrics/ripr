@@ -1691,10 +1691,11 @@ Field contract:
 
 Default CI projection runs `ripr review-comments` on pull requests, writes
 summary items to the job summary, and emits check annotations only for changed
-lines. Inline PR review comments remain opt-in; any custom publisher must cap
-them to three by default. See [PR review guidance](PR_REVIEW_GUIDANCE.md) for
-the command, generated CI behavior, placement-safe review flow, and
-inline-comment boundary.
+lines. Inline PR review comments remain opt-in through `RIPR_COMMENT_MODE`; the
+generated workflow can emit a publish plan or publish safe same-repository
+changed-line comments only when explicitly configured, capped, and deduped. See
+[PR review guidance](PR_REVIEW_GUIDANCE.md) for the command, generated CI
+behavior, placement-safe review flow, and inline-comment boundary.
 
 ## PR Inline Comment Publish Plan
 
@@ -1707,10 +1708,12 @@ target/ripr/review/comment-publish-plan.md
 ```
 
 The plan consumes `target/ripr/review/comments.json`, optional existing RIPR
-comment metadata, explicit comment mode, and permission context. It does not
-post comments, call GitHub, rerun analysis, edit source files, generate tests,
-run mutation testing, or change gate authority. Generated CI keeps inline
-comments disabled by default.
+comment metadata, explicit comment mode, and permission context. The producer
+does not post comments, call GitHub, rerun analysis, edit source files,
+generate tests, run mutation testing, or change gate authority. Generated CI
+keeps inline comments disabled by default, writes the plan in opt-in `plan` or
+`inline` mode, and publishes only safe create/update operations in explicit
+`inline` mode.
 
 Producer:
 

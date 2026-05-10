@@ -592,10 +592,18 @@ one focused test, avoid production edits unless explicitly requested, and point
 to `ripr agent verify` after the edit. It must not ask an LLM to decide which
 diff regions matter, run mutation testing, or claim runtime confirmation.
 
-The generated workflow does not include an inline review-comment publisher.
-Teams that add one in their own workflow must make it explicit opt-in, post
-only from `comments[]`, target changed lines only, cap comment count, and
-deduplicate by `dedupe_key`.
+The generated workflow includes the optional inline review-comment publisher,
+but keeps it disabled by default. Set `RIPR_COMMENT_MODE=plan` to upload and
+summarize the read-only publish plan, or `RIPR_COMMENT_MODE=inline` to publish
+same-repository changed-line comments only when the plan reports safe
+operations. The publisher posts only from `comments[]`, targets changed lines
+only, caps comment count, deduplicates by `dedupe_key`, and leaves gate
+decisions as the separate pass/fail authority.
+
+The excerpt below shows the adoption shape. The generated workflow also captures
+existing RIPR inline-comment metadata, checks the publish plan's
+`safe_to_publish` result, and only calls GitHub for safe create/update
+operations in explicit `inline` mode.
 
 ```yaml
 name: RIPR
@@ -606,12 +614,14 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
   security-events: write
 
 env:
   RIPR_UPLOAD_SARIF: "true"
   RIPR_GATE_MODE: ${{ vars.RIPR_GATE_MODE || '' }}
   RIPR_GATE_BASELINE: ${{ vars.RIPR_GATE_BASELINE || '' }}
+  RIPR_COMMENT_MODE: ${{ vars.RIPR_COMMENT_MODE || 'off' }}
 
 jobs:
   ripr:
@@ -713,6 +723,27 @@ jobs:
             --base "origin/${{ github.base_ref }}" \
             --head HEAD \
             --out target/ripr/review/comments.json
+
+      - name: Plan RIPR inline comments
+        if: always() && github.event_name == 'pull_request' && env.RIPR_COMMENT_MODE != 'off' && hashFiles('target/ripr/review/comments.json') != ''
+        continue-on-error: true
+        run: |
+          ripr pr-comments plan \
+            --root . \
+            --pr-guidance target/ripr/review/comments.json \
+            --mode "$RIPR_COMMENT_MODE" \
+            --event-name "${{ github.event_name }}" \
+            --pull-request "${{ github.event.pull_request.number }}" \
+            --head-repo "${{ github.event.pull_request.head.repo.full_name }}" \
+            --base-repo "${{ github.repository }}" \
+            --out target/ripr/review/comment-publish-plan.json \
+            --out-md target/ripr/review/comment-publish-plan.md
+
+      - name: Publish RIPR inline comments
+        if: always() && github.event_name == 'pull_request' && env.RIPR_COMMENT_MODE == 'inline' && hashFiles('target/ripr/review/comment-publish-plan.json') != ''
+        continue-on-error: true
+        run: |
+          echo "Publishes only safe operations from target/ripr/review/comment-publish-plan.json."
 
       - name: Capture RIPR gate labels
         if: always() && github.event_name == 'pull_request'

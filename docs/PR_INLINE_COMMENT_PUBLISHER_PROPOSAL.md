@@ -44,8 +44,10 @@ upsert comments.
 
 Current implementation status: `ripr pr-comments plan` writes the read-only
 `comment-publish-plan.{json,md}` artifacts from explicit `review-comments`
-input and optional existing-comment metadata. Generated CI and real comment
-posting remain follow-up slices.
+input and optional existing-comment metadata. Generated CI keeps
+`RIPR_COMMENT_MODE=off` by default, emits the publish plan in opt-in modes, and
+publishes create/update operations only when `RIPR_COMMENT_MODE=inline` and the
+safe same-repository pull-request permission boundary is satisfied.
 
 ## Current Inputs
 
@@ -127,9 +129,9 @@ spec pins the default and permission behavior.
 
 1. `spec: define PR inline comment publisher contract` - done
 2. `fixtures: pin PR inline comment publisher corpus` - done
-3. `report: add PR inline comment publish plan` - next
-4. `ci: add optional PR inline comment publisher`
-5. `docs: explain PR inline comment publisher workflow`
+3. `report: add PR inline comment publish plan` - done
+4. `ci: add optional PR inline comment publisher` - done
+5. `docs: explain PR inline comment publisher workflow` - next
 6. `dogfood: add PR inline comment publisher receipts`
 7. `campaign: close PR inline comment publisher`
 

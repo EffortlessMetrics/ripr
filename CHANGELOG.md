@@ -34,6 +34,10 @@ are scoped or reviewed.
   `comment-publish-plan.{json,md}` artifacts from explicit PR guidance and
   optional existing-comment metadata without posting to GitHub or changing gate
   authority.
+- Added generated GitHub CI wiring for the optional PR inline comment publisher:
+  `RIPR_COMMENT_MODE` defaults to `off`, `plan` mode uploads and summarizes the
+  publish plan, and `inline` mode posts or updates only safe same-repository
+  changed-line operations from that plan.
 - Added the report-packet index fixture corpus under
   `fixtures/boundary_gap/expected/report-packet-index/`, pinning complete,
   sparse advisory, missing-front-panel, blocked-gate, missing-proof,

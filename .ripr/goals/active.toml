@@ -80,13 +80,13 @@ commands = [
 
 [[work_item]]
 id = "ci/pr-inline-comment-publisher"
-status = "ready"
+status = "done"
 branch = "ci-pr-inline-comment-publisher"
 stackable = false
 blocked_by = [
   "report/pr-inline-comment-publish-plan",
 ]
-acceptance = "Add generated GitHub CI wiring that keeps inline comments off by default, can emit the publish plan as advisory artifacts, and posts or updates comments only when explicit comment mode and safe pull-request permissions are configured"
+acceptance = "Added generated GitHub CI wiring that keeps inline comments off by default, can emit the publish plan as advisory artifacts, and posts or updates comments only when explicit comment mode and safe pull-request permissions are configured"
 commands = [
   "cargo test -p ripr init_generated_github_workflow",
   "cargo xtask check-workflows",
@@ -97,7 +97,7 @@ commands = [
 
 [[work_item]]
 id = "docs/pr-inline-comment-publisher-workflow"
-status = "blocked"
+status = "ready"
 branch = "docs-pr-inline-comment-publisher-workflow"
 stackable = false
 blocked_by = [
