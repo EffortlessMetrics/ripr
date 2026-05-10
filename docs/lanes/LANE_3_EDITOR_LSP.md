@@ -50,7 +50,12 @@ Completed slices:
 - first-useful-action status projection, including wrong-root and stale-state
   handling;
 - first-useful-action status edge fixtures for malformed, unsupported, missing,
-  stale, and fallback report states.
+  stale, and fallback report states;
+- command payload contracts for packet, brief, after-snapshot, verify, receipt,
+  and path-with-spaces handoffs;
+- live VS Code saved-workspace smoke executes the real seam copy actions for
+  packet, brief, after-snapshot, verify, receipt, suggested assertion, and
+  related-test opening.
 
 ## Current Open PRs
 
@@ -72,16 +77,8 @@ as editor/LSP work:
    - Show Status with valid first-useful-action state;
    - wrong-root report ignored;
    - bad or missing report handled without crashing;
-   - stale tooltip and refresh guidance visible;
-   - copy packet, brief, verify, and receipt commands registered.
-2. `lsp: harden command payload contracts`
-   - Windows path handling;
-   - workspace roots with spaces;
-   - stable artifact paths;
-   - root, base, mode, and seam ID propagation;
-   - no shell-unsafe command construction;
-   - no hidden editor-only state.
-3. `lsp: improve evidence hover rendering`
+   - stale tooltip and refresh guidance visible.
+2. `lsp: improve evidence hover rendering`
    - grip class;
    - missing discriminator or observation;
    - related test and oracle strength;
@@ -89,10 +86,10 @@ as editor/LSP work:
    - first useful action title/status when available;
    - verify and receipt availability;
    - static-evidence limits.
-4. `fixtures: add editor LSP workflow fixture`
+3. `fixtures: add editor LSP workflow fixture`
    - canonical fixture for diagnostic, hover, code action, status, and refresh
      guidance.
-5. `docs: document editor-first workflow`
+4. `docs: document editor-first workflow`
    - update user-facing editor docs when a later behavior change requires it.
 
 ## Validation Gates
