@@ -11,6 +11,10 @@ are scoped or reviewed.
 
 ### Added
 
+- Extended `cargo xtask dogfood` with checked report-packet index receipts for
+  complete, sparse advisory, missing-front-panel, blocked-gate, missing-proof,
+  missing-receipts, and coverage/grip-present packet cases, plus a handoff
+  receipt documenting the validation boundary.
 - Added the report-packet index fixture corpus under
   `fixtures/boundary_gap/expected/report-packet-index/`, pinning complete,
   sparse advisory, missing-front-panel, blocked-gate, missing-proof,

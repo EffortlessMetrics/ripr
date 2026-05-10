@@ -1621,6 +1621,7 @@ spec = "docs/specs/RIPR-SPEC-0024-report-packet-index.md"
 tests = [
   "xtask/src/main.rs::report_packet_index_fixture_corpus_guard_accepts_complete_contract",
   "xtask/src/main.rs::report_packet_index_fixture_corpus_guard_reports_contract_drift",
+  "xtask/src/main.rs::dogfood_report_packet_index_scenarios_have_checked_receipts",
   "crates/ripr/src/output/report_packet_index.rs::tests::report_packet_index_reports_missing_front_panel",
   "crates/ripr/src/output/report_packet_index.rs::tests::report_packet_index_preserves_blocked_gate_authority",
   "crates/ripr/src/output/report_packet_index.rs::tests::report_packet_index_groups_coverage_grip_as_calibration",
@@ -1670,6 +1671,8 @@ outputs = [
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
+  "docs/handoffs/2026-05-10-report-packet-index-receipts.md",
+  "docs/handoffs/README.md",
   "fixtures/boundary_gap/expected/CHANGELOG.md",
   "CHANGELOG.md",
 ]

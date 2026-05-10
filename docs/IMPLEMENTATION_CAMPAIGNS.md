@@ -2779,8 +2779,8 @@ Work items:
 | `report/report-packet-index` | done | Added the public read-only `ripr reports index` producer, JSON/Markdown renderer, CLI/help wiring, and CLI smoke coverage for grouped reviewer-first packet indexes over explicit artifact paths without rerunning analysis or changing gate authority. |
 | `ci/report-packet-index-summary` | done | Generated GitHub CI runs `ripr reports index` only when indexed artifacts exist, uploads `index.{json,md}` with the report packet, and appends a compact advisory packet-index summary while preserving gate-decision pass/fail authority. |
 | `docs/report-packet-index-workflow` | done | Added `docs/REPORT_PACKET_INDEX_WORKFLOW.md`, explaining reviewer, maintainer, developer, and coding-agent use of the grouped packet map, missing-surface regeneration, and advisory gate boundary. |
-| `dogfood/report-packet-index-receipts` | ready | Record repo-local report-packet index receipts for complete, sparse, missing-front-panel, blocked-gate, missing-proof, missing-receipts, and coverage/grip-present cases. |
-| `campaign/report-packet-index-closeout` | blocked | Blocked on `dogfood/report-packet-index-receipts`; close Campaign 25 after the spec, fixtures, producer, generated-CI advisory projection, workflow docs, dogfood receipts, and validation show the report-packet index is advisory, explicit-input-only, and bounded to existing artifacts. |
+| `dogfood/report-packet-index-receipts` | done | Extended `cargo xtask dogfood` with checked report-packet index receipts for complete, sparse, missing-front-panel, blocked-gate, missing-proof, missing-receipts, and coverage/grip-present cases. |
+| `campaign/report-packet-index-closeout` | ready | Close Campaign 25 after the spec, fixtures, producer, generated-CI advisory projection, workflow docs, dogfood receipts, and validation show the report-packet index is advisory, explicit-input-only, and bounded to existing artifacts. |
 
 References:
 
@@ -2803,9 +2803,9 @@ Blocking conditions:
 
 Next:
 
-- Continue with `dogfood/report-packet-index-receipts`. The workflow guide now
-  explains reviewer and agent use, so the next slice should record checked
-  repo-local index receipts without changing product behavior.
+- Continue with `campaign/report-packet-index-closeout`. The dogfood receipt now
+  checks the complete, sparse, missing-front-panel, blocked-gate,
+  missing-proof, missing-receipts, and coverage/grip-present packet cases.
 
 ## Future Campaign: Editor Evidence UX
 

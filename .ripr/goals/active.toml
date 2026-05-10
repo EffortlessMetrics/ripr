@@ -107,7 +107,7 @@ commands = [
 
 [[work_item]]
 id = "dogfood/report-packet-index-receipts"
-status = "ready"
+status = "done"
 branch = "dogfood-report-packet-index-receipts"
 stackable = false
 acceptance = "Record repo-local report-packet index receipts for complete, sparse, missing-front-panel, blocked-gate, missing-proof, missing-receipts, and coverage/grip-present cases"
@@ -120,12 +120,9 @@ commands = [
 
 [[work_item]]
 id = "campaign/report-packet-index-closeout"
-status = "blocked"
+status = "ready"
 branch = "campaign-report-packet-index-closeout"
 stackable = false
-blocked_by = [
-  "dogfood/report-packet-index-receipts",
-]
 acceptance = "Close Campaign 25 after the spec, fixtures, producer, generated-CI advisory projection, workflow docs, dogfood receipts, and validation show the report-packet index is advisory, explicit-input-only, and bounded to existing artifacts"
 commands = [
   "cargo xtask check-campaign",

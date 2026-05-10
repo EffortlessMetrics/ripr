@@ -236,8 +236,11 @@ artifact directories. Generated GitHub CI now runs that producer when indexed
 artifacts exist, uploads `index.{json,md}` with the report packet, and appends
 the advisory packet-index summary without changing gate authority. The
 [report packet index workflow](REPORT_PACKET_INDEX_WORKFLOW.md) now explains
-how reviewers, maintainers, developers, and coding agents use the index. The
-next ready slice is `dogfood/report-packet-index-receipts`.
+how reviewers, maintainers, developers, and coding agents use the index.
+`cargo xtask dogfood` now checks the repo-local report-packet index receipts
+for complete, sparse, missing-front-panel, blocked-gate, missing-proof,
+missing-receipts, and coverage/grip-present cases. The next ready slice is
+`campaign/report-packet-index-closeout`.
 
 ## PR 0: `planning-and-tracking-docs`
 

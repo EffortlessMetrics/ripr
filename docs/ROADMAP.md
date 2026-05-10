@@ -274,7 +274,10 @@ now writes the read-only index JSON/Markdown artifacts, generated GitHub CI
 projects those artifacts when indexed inputs exist, and the
 [report packet index workflow](REPORT_PACKET_INDEX_WORKFLOW.md) now documents
 reviewer, maintainer, developer, and coding-agent use of the grouped packet
-map. The next ready slice is `dogfood/report-packet-index-receipts`.
+map. `cargo xtask dogfood` now validates checked report-packet index receipts
+for complete, sparse, missing-front-panel, blocked-gate, missing-proof,
+missing-receipts, and coverage/grip-present cases. The next ready slice is
+`campaign/report-packet-index-closeout`.
 
 ## Strategic Sequence
 

@@ -5450,6 +5450,8 @@ fixtures/boundary_gap/expected/first-useful-action/<case>/first-useful-action.js
 fixtures/boundary_gap/expected/first-useful-action/<case>/first-useful-action.md
 fixtures/boundary_gap/expected/pr-review-front-panel/<case>/pr-review-front-panel.json
 fixtures/boundary_gap/expected/pr-review-front-panel/<case>/pr-review-front-panel.md
+fixtures/boundary_gap/expected/report-packet-index/<case>/index.json
+fixtures/boundary_gap/expected/report-packet-index/<case>/index.md
 ```
 
 The report is advisory. It runs `ripr check --mode fast` against stable fixture
@@ -5457,13 +5459,16 @@ diffs and runs `ripr gate evaluate` against checked boundary-gap PR guidance
 and calibration evidence for the explicit gate adoption modes. It also checks
 repo-local first useful action receipts for the documented first-action routes.
 It checks repo-local PR review front-panel receipts for the documented Campaign
-24 reviewer routes. It records `default_ci_blocking: false`; generated CI still
-leaves `RIPR_GATE_MODE` unset unless the repository configures it. The generated
-adoption receipts are compared with
+24 reviewer routes. It checks repo-local report-packet index receipts for the
+documented Campaign 25 packet-index routes. It records
+`default_ci_blocking: false`; generated CI still leaves `RIPR_GATE_MODE` unset
+unless the repository configures it. The generated adoption receipts are compared with
 `fixtures/boundary_gap/expected/gate-adoption/`. The checked first-action
 receipts are read from `fixtures/boundary_gap/expected/first-useful-action/`.
 The checked front-panel receipts are read from
-`fixtures/boundary_gap/expected/pr-review-front-panel/`.
+`fixtures/boundary_gap/expected/pr-review-front-panel/`. The checked
+report-packet index receipts are read from
+`fixtures/boundary_gap/expected/report-packet-index/`.
 The calibrated-gate dogfood case expects a non-zero evaluator exit only for the
 explicit blocking mode and treats that as healthy when the written decision
 report has the expected `blocked` status and count.
@@ -5552,6 +5557,54 @@ JSON shape:
       }
     ]
   },
+  "report_packet_index": {
+    "default_ci_blocking": false,
+    "receipt_dir": "fixtures/boundary_gap/expected/report-packet-index",
+    "cases": [
+      {
+        "name": "complete_packet",
+        "actual_dir": "fixtures/boundary_gap/expected/report-packet-index/complete-packet",
+        "json_path": "fixtures/boundary_gap/expected/report-packet-index/complete-packet/index.json",
+        "markdown_path": "fixtures/boundary_gap/expected/report-packet-index/complete-packet/index.md",
+        "expected_report": "fixtures/boundary_gap/expected/report-packet-index/complete-packet/index.json",
+        "expected_markdown": "fixtures/boundary_gap/expected/report-packet-index/complete-packet/index.md",
+        "status": "pass",
+        "missing_expected": 0,
+        "warnings": 0,
+        "failures": 0,
+        "start_here_available": true,
+        "gate_authority_present": true,
+        "groups": [
+          "start_here",
+          "pr_review_story",
+          "repair_agent_handoff",
+          "evidence_movement",
+          "policy_gates",
+          "calibration",
+          "validation_receipts",
+          "sarif_badges"
+        ],
+        "expected_status": "pass",
+        "expected_missing_expected": 0,
+        "expected_warnings": 0,
+        "expected_failures": 0,
+        "expected_start_here_available": true,
+        "expected_gate_authority_present": true,
+        "expected_required_groups": [
+          "start_here",
+          "pr_review_story",
+          "repair_agent_handoff",
+          "evidence_movement",
+          "policy_gates",
+          "calibration",
+          "validation_receipts",
+          "sarif_badges"
+        ],
+        "reason": "A complete packet should tell reviewers to start at the PR front panel while preserving gate-decision authority.",
+        "errors": []
+      }
+    ]
+  },
   "gate_adoption": {
     "default_ci_blocking": false,
     "receipt_dir": "target/ripr/dogfood/gate-adoption",
@@ -5603,6 +5656,18 @@ The checked PR review front-panel receipt cases are:
 | `missing_proof` | `missing_required_input` | Routes reviewers to regenerate the missing assistant proof artifact. |
 | `advisory_only` | `no_actionable_seam` | Records a no-action advisory state instead of silence. |
 | `coverage_flat_grip_improved` | `already_improved` | Shows static grip improvement while coverage stays flat. |
+
+The checked report-packet index receipt cases are:
+
+| Case | Expected status | Purpose |
+| --- | --- | --- |
+| `complete_packet` | `pass` | Shows the complete reviewer-first packet, including start-here and gate-authority links. |
+| `sparse_advisory` | `warn` | Keeps sparse adoption advisory while showing missing optional surfaces. |
+| `missing_front_panel` | `warn` | Makes a missing first-screen front panel visible instead of forcing artifact archaeology. |
+| `blocked_gate` | `fail` | Preserves a configured blocked gate state while naming gate decision as authority. |
+| `missing_assistant_proof` | `warn` | Routes users to regenerate missing assistant proof instead of hiding the gap. |
+| `missing_receipts` | `warn` | Shows missing validation receipts and their regeneration commands. |
+| `coverage_grip_present` | `pass` | Keeps coverage/grip context findable as calibration context, not runtime confirmation. |
 
 The checked adoption cases are:
 
