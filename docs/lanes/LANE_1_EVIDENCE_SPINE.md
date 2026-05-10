@@ -70,6 +70,12 @@ Completed slices:
   `canonical_gap_id`, group size, and grouping reason for headline-eligible
   gaps.
 
+Gate baseline comparison now also prefers supplied canonical evidence identity
+when matching current candidates to reviewed baseline debt, then falls back to
+legacy seam, source, and path/line/static-class identities. This keeps gate
+authority unchanged while making the optional gate consumer line-movement
+tolerant when Lane 1 identity is available.
+
 ## Stable Fixture-Backed Analysis Slices
 
 These Lane 1 analysis slices are stable within documented syntax-first scope:

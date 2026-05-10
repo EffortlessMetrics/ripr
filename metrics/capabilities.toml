@@ -573,6 +573,7 @@ evidence = [
   "crates/ripr/src/output/test_oracle_assistant_proof.rs prefers evidence_record selected-seam, recommendation, static-limit, and movement fields while preserving legacy proof fallbacks",
   "crates/ripr/src/output/baseline.rs, baseline_delta.rs, and baseline_update.rs carry canonical_gap_id when supplied directly, through identity.canonical_gap_id, or through evidence_record.canonical_gap_id, and match it before seam/source/id/dedupe/fallback selectors",
   "crates/ripr/src/output/pr_evidence_ledger.rs carries canonical_gap_id through waiver, suppression, repair receipt, and top repair route records when supplied by source artifacts",
+  "crates/ripr/src/output/gate.rs carries canonical_gap_id from PR guidance/evidence_record into gate decisions and baseline comparison before legacy identities",
   "docs/OUTPUT_SCHEMA.md documents evidence_record schema 0.1 under repo-exposure schema 0.3",
   "unit tests pin identity, generated canonical gap identity, grip class, evidence path, recommendation/actionability, calibration placeholder, static limitations, oracle semantics, packet projection, RIPR Zero repair-route consumption, evidence-record movement consumption, assistant-proof evidence-record consumption, and canonical gap identity routing",
   "fixtures/boundary_gap/expected/evidence-record-contract/corpus.json pins the v0.1 record contract matrix for predicate, error, strong value, broad error, field, whole-object, snapshot, side-effect, opaque limitation, canonical-gap, and calibration-placeholder cases with related-test oracle_semantics",
@@ -736,6 +737,7 @@ spec = "RIPR-SPEC-0014"
 evidence = [
   "docs/specs/RIPR-SPEC-0014-calibrated-gate-policy.md defines optional visible-only, acknowledgeable, baseline-check, and calibrated-gate modes",
   "ripr gate evaluate writes gate-decision JSON/Markdown from existing PR guidance and optional labels, baseline, recommendation calibration, and imported mutation calibration inputs",
+  "gate baseline comparison prefers supplied canonical_gap_id from direct, identity, or evidence_record fields before legacy seam, source, and path/line/static-class identities",
   "crates/ripr/src/output/gate.rs keeps the evaluator read-only and returns non-zero only after writing blocked or config_error reports",
   "fixtures/boundary_gap/expected/calibrated-gate pins advisory, acknowledged, baseline-check, fail-on-new-high-confidence-gap, suppression, missing-input, and calibration disagreement decisions",
   "ripr init --ci github generates optional gate evaluation only when RIPR_GATE_MODE is explicitly configured and uploads gate-decision artifacts with the advisory report packet",

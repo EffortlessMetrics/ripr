@@ -193,10 +193,17 @@ the same or stronger policy significance.
 
 Stable identity comparison order:
 
-1. `seam_id` when present;
-2. PR guidance item ID or dedupe key;
-3. finding ID or probe ID;
-4. normalized repo-relative path, line, and source class.
+1. `canonical_gap_id` when supplied directly, through
+   `identity.canonical_gap_id`, or through
+   `evidence_record.canonical_gap_id`;
+2. `seam_id` when present;
+3. PR guidance item ID or dedupe key;
+4. finding ID or probe ID;
+5. normalized repo-relative path, line, and source class.
+
+Canonical gap identity is semantic evidence identity, not a new policy mode.
+When present it lets reviewed baseline debt survive line movement and ordinary
+refactors without making generated workflows blocking by default.
 
 If the baseline is required but missing, unreadable, malformed, or produced by
 an incompatible schema, the evaluator returns `config_error`. It must not guess

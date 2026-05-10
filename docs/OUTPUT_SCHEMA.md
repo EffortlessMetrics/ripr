@@ -2037,6 +2037,10 @@ Field contract:
   high-confidence requirements.
 - `decisions[].source` - source artifact family such as `pr_guidance`,
   `repo_exposure`, `sarif_policy`, or `agent_receipt`.
+- `decisions[].canonical_gap_id` - optional semantic Lane 1 gap identity copied
+  from the source candidate when supplied directly, through
+  `identity.canonical_gap_id`, or through `evidence_record.canonical_gap_id`.
+  The field is omitted when unavailable.
 - `decisions[].decision` - one of `blocking`, `acknowledged`, `advisory`,
   `suppressed`, or `not_applicable`.
 - `decisions[].gate_reason` - short policy explanation for human summaries.
@@ -2045,6 +2049,9 @@ Field contract:
 - `decisions[].severity` - configured severity from the source surface.
 - `decisions[].policy` - mode, threshold, acknowledgement, and baseline facts
   that affected the candidate.
+- `decisions[].policy.baseline_identity` - identity used for baseline
+  comparison. Matching prefers `canonical_gap_id` before legacy seam, source,
+  ID, dedupe-key, and path/line/static-class fallback identities.
 - `decisions[].evidence` - static evidence and optional calibration confidence
   effects used for the candidate.
 - `warnings[]` - missing optional inputs, unsupported labels, ambiguous
