@@ -140,6 +140,12 @@ are scoped or reviewed.
 - Closed Campaign 24, PR Review Front Panel, with a prompt-to-artifact audit,
   validation plan, advisory boundary, and future-lane boundary in
   `docs/handoffs/2026-05-10-campaign-24-closeout.md`.
+- Opened Campaign 25, Report Packet Index, with
+  `spec/report-packet-index-contract` as the first ready work item so the
+  uploaded `ripr-reports` packet can become a reviewer-first index over
+  explicit existing artifacts without changing analyzer, gate, editor,
+  provider, mutation, source-edit, generated-test, inline-comment, or
+  default-blocking behavior.
 - Strengthened `cargo xtask check-no-panic-family` drift reporting with
   structured allowed, advisory-drift, stale, unallowed, and warning sections,
   plus exact selector-cardinality checks for ambiguous or duplicate no-panic

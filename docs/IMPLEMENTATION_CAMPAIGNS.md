@@ -2726,6 +2726,85 @@ Closeout:
 - The next Lane 4 adoption surface should be opened explicitly rather than
   folded into PR Review Front Panel closeout work.
 
+## Campaign 25: Report Packet Index
+
+Campaign ID: `report-packet-index`
+
+Status: active
+
+Campaigns 13 through 24 made PR guidance, gates, baselines, ledgers,
+assistant proof, first useful action, assistant-loop health, and the PR review
+front panel visible in generated CI. The next reviewer risk is artifact packet
+navigation: the uploaded `ripr-reports` artifact should have one index that
+shows where to start, what is missing, and which artifact answers each review
+question.
+
+Objective:
+
+```text
+Make the uploaded RIPR report packet navigable as a reviewer-first index over
+explicit existing artifacts: the front panel, PR guidance, first useful action,
+assistant proof and health, PR evidence ledger, baseline delta, RIPR Zero, gate
+decision, receipts, calibration, coverage/grip frontier, SARIF/badge outputs,
+and local validation reports. The index must group artifacts by reviewer use,
+show missing or stale expected surfaces, name the next command to regenerate a
+missing packet, and remain advisory without changing analyzer behavior,
+recommendation ranking, gate semantics, editor behavior, mutation execution,
+provider calls, source files, generated tests, inline-comment defaults, or
+default CI blocking.
+```
+
+End state:
+
+- `target/ripr/reports/index.json` and `.md` are the report-packet front door
+  for PR reviewers
+- the index groups artifacts by start-here, PR review story, repair or agent
+  handoff, evidence, policy or gates, calibration, validation receipts, and
+  SARIF or badge outputs
+- the index identifies missing expected report surfaces and suggests precise
+  commands to regenerate them
+- generated CI uploads and summarizes the index as advisory evidence only when
+  source artifacts exist
+- the index never becomes pass/fail authority and never hides gate, waiver,
+  suppression, baseline, missing-input, or warning states
+- fixtures and dogfood receipts cover complete packet, sparse packet, missing
+  front-panel, blocked gate, missing proof, and coverage/grip-present cases
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `spec/report-packet-index-contract` | ready | Define the report-packet index contract, explicit inputs, grouping model, missing-surface warnings, generated-CI projection boundary, advisory limits, and fixture-first implementation plan before changing the producer. |
+| `fixtures/report-packet-index-corpus` | blocked | Blocked on `spec/report-packet-index-contract`; pin report-packet index cases for complete packet, sparse advisory packet, missing front panel, blocked gate, missing assistant proof, missing receipts, and coverage/grip-present packet before changing the producer. |
+| `report/report-packet-index` | blocked | Blocked on `fixtures/report-packet-index-corpus`; update the read-only report-packet index producer to emit grouped reviewer-first JSON/Markdown from explicit existing artifact paths without rerunning analysis or changing gate authority. |
+| `ci/report-packet-index-summary` | blocked | Blocked on `report/report-packet-index`; generated GitHub CI uploads and summarizes the report-packet index only when inputs exist, while preserving advisory defaults and gate-decision pass/fail authority. |
+| `docs/report-packet-index-workflow` | blocked | Blocked on `ci/report-packet-index-summary`; document how reviewers, maintainers, developers, and coding agents use the report-packet index, follow artifact groups, regenerate missing surfaces, and preserve advisory gate limits. |
+| `dogfood/report-packet-index-receipts` | blocked | Blocked on `docs/report-packet-index-workflow`; record repo-local report-packet index receipts for complete, sparse, missing-front-panel, blocked-gate, missing-proof, missing-receipts, and coverage/grip-present cases. |
+| `campaign/report-packet-index-closeout` | blocked | Blocked on `dogfood/report-packet-index-receipts`; close Campaign 25 after the spec, fixtures, producer, generated-CI advisory projection, workflow docs, dogfood receipts, and validation show the report-packet index is advisory, explicit-input-only, and bounded to existing artifacts. |
+
+References:
+
+- [Report Packet Index proposal](REPORT_PACKET_INDEX_PROPOSAL.md)
+- [PR Review Front Panel workflow](PR_REVIEW_FRONT_PANEL_WORKFLOW.md)
+- [PR automation](PR_AUTOMATION.md)
+- [CI](CI.md)
+
+Blocking conditions:
+
+- analyzer behavior changes or recommendation ranking changes
+- gate policy, waiver, suppression, or baseline semantic changes
+- LSP/editor, provider, mutation, source-edit, generated-test, inline-comment,
+  or default-blocking changes
+- adequacy, correctness, or runtime mutation claims
+- hidden analysis reruns or artifact discovery that changes upstream report
+  semantics
+
+Next:
+
+- Continue with `spec/report-packet-index-contract`. The proposal and campaign
+  tracker are now in place; the next slice should define the stable JSON and
+  Markdown contract before changing the existing index producer.
+
 ## Future Campaign: Editor Evidence UX
 
 Campaign ID: `editor-evidence-ux`

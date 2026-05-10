@@ -1,38 +1,40 @@
-id = "pr-review-front-panel"
-title = "PR Review Front Panel"
+id = "report-packet-index"
+title = "Report Packet Index"
 status = "active"
 
-# This is Campaign 24 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 23 closed Assistant Loop Health. This campaign makes the GitHub PR
-# and generated-CI first screen tell one advisory test-oracle review story from
-# explicit existing artifacts.
+# This is Campaign 25 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 24 closed PR Review Front Panel. This campaign makes the uploaded
+# `ripr-reports` packet navigable as one reviewer map from explicit existing
+# artifacts.
 
 objective = """
-Compose existing PR guidance, first useful action, assistant proof,
-assistant-loop health, PR evidence ledger, baseline delta, gate decision,
-receipts, calibration, and optional coverage/grip frontier artifacts into one
-advisory PR review front panel that answers what matters, why, what to do next,
-how to verify it, what receipt exists, and what policy state applies without
-changing analyzer behavior, recommendation ranking, gate semantics, editor
-behavior, mutation execution, provider calls, source files, generated tests, or
+Make the uploaded RIPR report packet navigable as a reviewer-first index over
+explicit existing artifacts: the front panel, PR guidance, first useful action,
+assistant proof and health, PR evidence ledger, baseline delta, RIPR Zero, gate
+decision, receipts, calibration, coverage/grip frontier, SARIF/badge outputs,
+and local validation reports. The index must group artifacts by reviewer use,
+show missing or stale expected surfaces, name the next command to regenerate a
+missing packet, and remain advisory without changing analyzer behavior,
+recommendation ranking, gate semantics, editor behavior, mutation execution,
+provider calls, source files, generated tests, inline-comment defaults, or
 default CI blocking.
 """
 
 end_state = [
-  "`target/ripr/reports/pr-review-front-panel.json` and `.md` summarize the PR's test-oracle story from explicit existing inputs",
-  "the panel shows the selected top issue or explains why no safe action is available",
-  "the panel carries missing discriminator, related test, repair or agent handoff command, verify command, receipt path, and static movement when present",
-  "baseline, new policy-eligible, acknowledged, waived, suppressed, and gated states remain visible without becoming hidden success",
-  "optional coverage/grip and calibration inputs are surfaced as advisory context without adequacy claims",
-  "generated CI may upload and summarize the panel as advisory evidence only when source artifacts exist",
+  "`target/ripr/reports/index.json` and `.md` are the report-packet front door for PR reviewers",
+  "the index groups artifacts by start-here, PR review story, repair or agent handoff, evidence, policy or gates, calibration, validation receipts, and SARIF or badge outputs",
+  "the index identifies missing expected report surfaces and suggests precise commands to regenerate them",
+  "generated CI uploads and summarizes the index as advisory evidence only when source artifacts exist",
+  "the index never becomes pass/fail authority and never hides gate, waiver, suppression, baseline, missing-input, or warning states",
+  "fixtures and dogfood receipts cover complete packet, sparse packet, missing front-panel, blocked gate, missing proof, and coverage/grip-present cases",
 ]
 
 [[work_item]]
-id = "spec/pr-review-front-panel-report"
-status = "done"
-branch = "spec-pr-review-front-panel-report"
+id = "spec/report-packet-index-contract"
+status = "ready"
+branch = "spec-report-packet-index-contract"
 stackable = false
-acceptance = "Defined RIPR-SPEC-0023, OUTPUT_SCHEMA, traceability, capability, campaign, plan, roadmap, and changelog surfaces for the PR review front-panel JSON/Markdown contract, explicit inputs, first-screen fields, artifact grouping, advisory limits, and generated-CI projection boundaries before implementation"
+acceptance = "Define the report-packet index contract, explicit inputs, grouping model, missing-surface warnings, generated-CI projection boundary, advisory limits, and fixture-first implementation plan before changing the producer"
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",
@@ -46,11 +48,14 @@ commands = [
 ]
 
 [[work_item]]
-id = "fixtures/pr-review-front-panel-corpus"
-status = "done"
-branch = "fixtures-pr-review-front-panel-corpus"
+id = "fixtures/report-packet-index-corpus"
+status = "blocked"
+branch = "fixtures-report-packet-index-corpus"
 stackable = false
-acceptance = "Pinned advisory-only, actionable, summary-only, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, and coverage-flat-grip-improved front-panel cases before adding the producer"
+blocked_by = [
+  "spec/report-packet-index-contract",
+]
+acceptance = "Pin report-packet index cases for complete packet, sparse advisory packet, missing front panel, blocked gate, missing assistant proof, missing receipts, and coverage/grip-present packet before changing the producer"
 commands = [
   "cargo xtask fixtures",
   "cargo xtask goldens check",
@@ -61,13 +66,17 @@ commands = [
 ]
 
 [[work_item]]
-id = "report/pr-review-front-panel"
-status = "done"
-branch = "report-pr-review-front-panel"
+id = "report/report-packet-index"
+status = "blocked"
+branch = "report-report-packet-index"
 stackable = false
-acceptance = "Added a read-only `ripr pr-review front-panel` producer that emits advisory JSON/Markdown from explicit existing artifact paths without rerunning analysis or changing gate authority"
+blocked_by = [
+  "fixtures/report-packet-index-corpus",
+]
+acceptance = "Update the read-only report-packet index producer to emit grouped reviewer-first JSON/Markdown from explicit existing artifact paths without rerunning analysis or changing gate authority"
 commands = [
-  "cargo test -p ripr pr_review_front_panel",
+  "cargo test -p ripr report_packet_index",
+  "cargo test -p xtask report_index",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-traceability",
@@ -76,11 +85,14 @@ commands = [
 ]
 
 [[work_item]]
-id = "ci/pr-review-front-panel-summary"
-status = "done"
-branch = "ci-pr-review-front-panel-summary"
+id = "ci/report-packet-index-summary"
+status = "blocked"
+branch = "ci-report-packet-index-summary"
 stackable = false
-acceptance = "Generated GitHub CI uploads and summarizes PR review front-panel JSON/Markdown only when input artifacts exist, while preserving advisory defaults and gate-decision pass/fail authority"
+blocked_by = [
+  "report/report-packet-index",
+]
+acceptance = "Generated GitHub CI uploads and summarizes the report-packet index only when inputs exist, while preserving advisory defaults and gate-decision pass/fail authority"
 commands = [
   "cargo test -p ripr init_generated_github_workflow",
   "cargo xtask check-workflows",
@@ -90,11 +102,14 @@ commands = [
 ]
 
 [[work_item]]
-id = "docs/pr-review-front-panel-workflow"
-status = "done"
-branch = "docs-pr-review-front-panel-workflow"
+id = "docs/report-packet-index-workflow"
+status = "blocked"
+branch = "docs-report-packet-index-workflow"
 stackable = false
-acceptance = "Documented how reviewers, maintainers, developers, and coding agents read the PR review front panel, follow repair routes, inspect receipts, and interpret advisory limits"
+blocked_by = [
+  "ci/report-packet-index-summary",
+]
+acceptance = "Document how reviewers, maintainers, developers, and coding agents use the report-packet index, follow artifact groups, regenerate missing surfaces, and preserve advisory gate limits"
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
@@ -103,11 +118,14 @@ commands = [
 ]
 
 [[work_item]]
-id = "dogfood/pr-review-front-panel-receipts"
-status = "done"
-branch = "dogfood-pr-review-front-panel-receipts"
+id = "dogfood/report-packet-index-receipts"
+status = "blocked"
+branch = "dogfood-report-packet-index-receipts"
 stackable = false
-acceptance = "Record repo-local front-panel receipts for actionable, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, no-actionable, and coverage-flat-grip-improved cases"
+blocked_by = [
+  "docs/report-packet-index-workflow",
+]
+acceptance = "Record repo-local report-packet index receipts for complete, sparse, missing-front-panel, blocked-gate, missing-proof, missing-receipts, and coverage/grip-present cases"
 commands = [
   "cargo xtask dogfood",
   "cargo xtask check-output-contracts",
@@ -116,11 +134,14 @@ commands = [
 ]
 
 [[work_item]]
-id = "campaign/pr-review-front-panel-closeout"
-status = "done"
-branch = "campaign-pr-review-front-panel-closeout"
+id = "campaign/report-packet-index-closeout"
+status = "blocked"
+branch = "campaign-report-packet-index-closeout"
 stackable = false
-acceptance = "Close Campaign 24 after the spec, fixtures, producer, generated-CI advisory projection, workflow docs, dogfood receipts, and validation show the front panel is advisory, explicit-input-only, and bounded to existing artifacts"
+blocked_by = [
+  "dogfood/report-packet-index-receipts",
+]
+acceptance = "Close Campaign 25 after the spec, fixtures, producer, generated-CI advisory projection, workflow docs, dogfood receipts, and validation show the report-packet index is advisory, explicit-input-only, and bounded to existing artifacts"
 commands = [
   "cargo xtask check-campaign",
   "cargo xtask goals next",
