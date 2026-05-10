@@ -25181,6 +25181,7 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(markdown.contains("calibrated-high-confidence-new-gap"));
         assert!(json.contains("\"advisory\": true"));
         assert!(json.contains("\"default_ci_blocking\": false"));
+        assert!(json.contains("\"report_packet_index\""));
     }
 
     #[test]
