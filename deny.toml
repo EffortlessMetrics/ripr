@@ -25,6 +25,11 @@ allow = [
     "MIT",
     "MIT-0",
     "Unicode-3.0",
+    # OSI-approved and FSF Free/Libre. Permissive, universally accepted as
+    # compatible with MIT/Apache. Reached the dependency graph via
+    # `zlib-rs` (the pure-Rust zlib port pulled by `flate2` underneath the
+    # `zip` crate used by `cargo xtask release-server-archive`).
+    "Zlib",
 ]
 
 [licenses.private]
