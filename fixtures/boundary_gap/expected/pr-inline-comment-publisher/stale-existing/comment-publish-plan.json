@@ -1,0 +1,22 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "pr_inline_comment_publish_plan",
+  "status": "advisory",
+  "root": ".",
+  "generated_at": "2026-05-10T12:00:00Z",
+  "mode": "plan",
+  "inputs": {
+    "pr_guidance": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/stale-existing/comments.json",
+    "existing_comments": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/stale-existing/existing-comments.json"
+  },
+  "limits": {"max_inline_comments": 3, "advisory": true, "comments_default": "off"},
+  "summary": {"guidance_comments": 0, "summary_only": 0, "suppressed": 0, "publishable": 0, "planned_create": 0, "planned_update": 0, "planned_keep": 0, "planned_delete": 1, "skipped": 0, "blocked": 0, "safe_to_publish": false},
+  "operations": [
+    {"operation": "delete", "safe_to_publish": false, "dry_run": true, "source_collection": "existing_comments", "source_id": "201", "dedupe_key": "ripr:old:src/pricing.rs:70", "placement": {"path": "src/pricing.rs", "line": 70, "side": "RIGHT", "mode": "stale_existing"}, "body": null, "existing_comment_id": 201, "skip_reason": null, "blocked_reason": null}
+  ],
+  "skipped": [],
+  "blocked": [],
+  "warnings": [{"kind": "stale_existing_comment", "message": "Existing RIPR comment no longer has a matching publishable recommendation."}],
+  "limits_note": "Advisory inline-comment publish plan only; default workflows do not post comments, summary-only guidance is never published inline, and gate decisions remain separate."
+}

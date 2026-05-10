@@ -1,0 +1,13 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "advisory",
+  "summary": {"comments": 2, "summary_only": 0, "suppressed": 0, "unchanged_tests": true},
+  "comments": [
+    {"id": "ripr-review-update", "seam_id": "u", "dedupe_key": "ripr:u:src/pricing.rs:50", "placement": {"path": "src/pricing.rs", "line": 50, "side": "RIGHT", "mode": "exact_seam_line"}, "reason": "body changed"},
+    {"id": "ripr-review-keep", "seam_id": "k", "dedupe_key": "ripr:k:src/pricing.rs:60", "placement": {"path": "src/pricing.rs", "line": 60, "side": "RIGHT", "mode": "exact_seam_line"}, "reason": "body same"}
+  ],
+  "summary_only": [],
+  "suppressed": [],
+  "warnings": []
+}

@@ -50,7 +50,7 @@ commands = [
 
 [[work_item]]
 id = "fixtures/pr-inline-comment-publisher-corpus"
-status = "ready"
+status = "done"
 branch = "fixtures-pr-inline-comment-publisher-corpus"
 stackable = false
 acceptance = "Pin inline comment publish-plan cases for publishable changed-line comments, summary-only exclusion, cap overflow, dedupe/upsert, stale existing RIPR comments, fork or no-token no-op, and missing review-comments input before adding publisher behavior"
@@ -65,12 +65,9 @@ commands = [
 
 [[work_item]]
 id = "report/pr-inline-comment-publish-plan"
-status = "blocked"
+status = "ready"
 branch = "report-pr-inline-comment-publish-plan"
 stackable = false
-blocked_by = [
-  "fixtures/pr-inline-comment-publisher-corpus",
-]
 acceptance = "Add a read-only publish-plan producer that emits JSON/Markdown operations from explicit review-comments and optional existing-comment metadata without posting to GitHub or changing gate authority"
 commands = [
   "cargo test -p ripr inline_comment_publish_plan",

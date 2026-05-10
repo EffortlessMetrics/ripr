@@ -1,0 +1,29 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "advisory",
+  "root": ".",
+  "base": "main",
+  "head": "HEAD",
+  "mode": "draft",
+  "limits": {
+    "max_inline_comments": 3,
+    "max_summary_items": 10
+  },
+  "summary": {
+    "comments": 4,
+    "summary_only": 0,
+    "suppressed": 0,
+    "unchanged_tests": true
+  },
+  "comments": [
+    {"id": "ripr-review-a", "seam_id": "a", "dedupe_key": "ripr:a:src/pricing.rs:10", "placement": {"path": "src/pricing.rs", "line": 10, "side": "RIGHT", "mode": "exact_seam_line"}, "reason": "first"},
+    {"id": "ripr-review-b", "seam_id": "b", "dedupe_key": "ripr:b:src/pricing.rs:20", "placement": {"path": "src/pricing.rs", "line": 20, "side": "RIGHT", "mode": "exact_seam_line"}, "reason": "second"},
+    {"id": "ripr-review-c", "seam_id": "c", "dedupe_key": "ripr:c:src/pricing.rs:30", "placement": {"path": "src/pricing.rs", "line": 30, "side": "RIGHT", "mode": "exact_seam_line"}, "reason": "third"},
+    {"id": "ripr-review-d", "seam_id": "d", "dedupe_key": "ripr:d:src/pricing.rs:40", "placement": {"path": "src/pricing.rs", "line": 40, "side": "RIGHT", "mode": "exact_seam_line"}, "reason": "fourth"}
+  ],
+  "summary_only": [],
+  "suppressed": [],
+  "warnings": [],
+  "limits_note": "Advisory static evidence only; no automatic edits, generated tests, runtime mutation execution, or CI blocking."
+}

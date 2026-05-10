@@ -3,6 +3,22 @@
 ## Pending
 
 Reason:
+RIPR-SPEC-0025: pin PR inline comment publish-plan cases before the producer changes
+
+Command:
+`cargo xtask check-fixture-contracts`
+
+Updated:
+- `expected/pr-inline-comment-publisher/README.md`
+- `expected/pr-inline-comment-publisher/corpus.json`
+- `expected/pr-inline-comment-publisher/*/comments.json`
+- `expected/pr-inline-comment-publisher/*/existing-comments.json`
+- `expected/pr-inline-comment-publisher/*/comment-publish-plan.json`
+- `expected/pr-inline-comment-publisher/*/comment-publish-plan.md`
+
+## Pending
+
+Reason:
 RIPR-SPEC-0024: pin report-packet index packet navigation cases before the producer changes
 
 Command:

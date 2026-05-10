@@ -121,8 +121,8 @@ spec pins the default and permission behavior.
 ## Proposed PR Sequence
 
 1. `spec: define PR inline comment publisher contract` - done
-2. `fixtures: pin PR inline comment publisher corpus` - next
-3. `report: add PR inline comment publish plan`
+2. `fixtures: pin PR inline comment publisher corpus` - done
+3. `report: add PR inline comment publish plan` - next
 4. `ci: add optional PR inline comment publisher`
 5. `docs: explain PR inline comment publisher workflow`
 6. `dogfood: add PR inline comment publisher receipts`

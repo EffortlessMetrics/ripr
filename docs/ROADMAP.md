@@ -290,8 +290,10 @@ the publish-plan schema and permission boundary. The boundary stays Lane 4:
 consume explicit artifacts, do not change analyzer behavior, recommendation
 ranking, gate semantics, editor behavior, mutation execution, provider calls,
 source files, generated tests, branch protection, `pull_request_target`
-defaults, inline-comment defaults, or default CI blocking. The next ready slice
-is `fixtures/pr-inline-comment-publisher-corpus`.
+defaults, inline-comment defaults, or default CI blocking. The fixture corpus
+under `fixtures/boundary_gap/expected/pr-inline-comment-publisher/` now pins
+the publisher plan cases before producer behavior changes. The next ready slice
+is `report/pr-inline-comment-publish-plan`.
 
 ## Strategic Sequence
 
