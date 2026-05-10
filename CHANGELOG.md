@@ -67,6 +67,10 @@ are scoped or reviewed.
   `canonical_gap_id` and match it before legacy selectors, while PR evidence
   ledger waiver, suppression, receipt, and top repair route records carry the
   same identity when supplied.
+- Routed calibrated gate baseline comparison through canonical evidence
+  identity so `ripr gate evaluate` can preserve supplied `canonical_gap_id`
+  values and match reviewed baseline debt across line movement before falling
+  back to legacy seam, source, and path/line/static-class identities.
 - Added an evidence-record contract corpus that pins representative
   `evidence_record` v0.1 shapes for predicate, error, exact-value, broad-error,
   field, whole-object, snapshot, side-effect, opaque static-limitation,
@@ -91,6 +95,10 @@ are scoped or reviewed.
   rstest cases, builder or fixture overrides, enum variants, and one-level
   Option/Result constructor values while keeping unsupported value sources as
   explicit limitations.
+- Promoted imported static/runtime calibration labels to calibrated for checked
+  runtime-fixture classes, covering agreement, disagreement, runtime-only,
+  ambiguous-join, unmatched, no-runtime-data, and seam-id/file-line join cases
+  without running mutation tests or changing static classifications.
 - Surfaced `assistant-loop-health.{json,md}` in generated GitHub CI when
   `test-oracle-assistant-proof.json` exists, uploads the reports with the
   normal `ripr-reports` packet, and appends a compact advisory health summary

@@ -23,5 +23,7 @@ Current v0.1 calibration entries use the placeholder:
 }
 ```
 
-Runtime-supported confidence labels are intentionally left for the later
-static/runtime confidence-label slice.
+Imported static/runtime confidence labels are emitted by the separate mutation
+calibration reports. They do not enter the `evidence_record` v0.1 contract
+until a future schema revision explicitly adds runtime-backed calibration
+context to the shared record.

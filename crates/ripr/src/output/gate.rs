@@ -111,6 +111,7 @@ struct GateDecision {
     source: String,
     decision: String,
     gate_reason: String,
+    canonical_gap_id: Option<String>,
     seam_id: Option<String>,
     source_id: String,
     static_class: Option<String>,
@@ -158,6 +159,7 @@ struct CalibrationEvidence {
 struct GateCandidate {
     source: String,
     source_id: String,
+    canonical_gap_id: Option<String>,
     seam_id: Option<String>,
     static_class: Option<String>,
     severity: Option<String>,
@@ -634,11 +636,20 @@ fn baseline_index_from_value(value: &Value) -> BaselineIndex {
         .into_iter()
         .flatten()
     {
+        collect_identity(&mut index.identities, item.get("canonical_gap_id"));
+        collect_identity(
+            &mut index.identities,
+            item.pointer("/identity/canonical_gap_id"),
+        );
         collect_identity(&mut index.identities, item.pointer("/identity/seam_id"));
         collect_identity(&mut index.identities, item.pointer("/identity/source_id"));
         collect_identity(&mut index.identities, item.pointer("/identity/id"));
         collect_identity(&mut index.identities, item.pointer("/identity/dedupe_key"));
         collect_identity(&mut index.identities, item.pointer("/identity/fallback"));
+        collect_identity(
+            &mut index.identities,
+            item.pointer("/evidence_record/canonical_gap_id"),
+        );
     }
     for item in value
         .get("decisions")
@@ -646,6 +657,15 @@ fn baseline_index_from_value(value: &Value) -> BaselineIndex {
         .into_iter()
         .flatten()
     {
+        collect_identity(&mut index.identities, item.get("canonical_gap_id"));
+        collect_identity(
+            &mut index.identities,
+            item.pointer("/identity/canonical_gap_id"),
+        );
+        collect_identity(
+            &mut index.identities,
+            item.pointer("/evidence_record/canonical_gap_id"),
+        );
         collect_identity(&mut index.identities, item.get("seam_id"));
         collect_identity(&mut index.identities, item.get("source_id"));
     }
@@ -656,6 +676,15 @@ fn baseline_index_from_value(value: &Value) -> BaselineIndex {
             .into_iter()
             .flatten()
         {
+            collect_identity(&mut index.identities, item.get("canonical_gap_id"));
+            collect_identity(
+                &mut index.identities,
+                item.pointer("/identity/canonical_gap_id"),
+            );
+            collect_identity(
+                &mut index.identities,
+                item.pointer("/evidence_record/canonical_gap_id"),
+            );
             collect_identity(&mut index.identities, item.get("seam_id"));
             collect_identity(&mut index.identities, item.get("id"));
             collect_identity(&mut index.identities, item.get("dedupe_key"));
@@ -752,6 +781,7 @@ fn candidate_from_guidance_item(
     GateCandidate {
         source: source.to_string(),
         source_id,
+        canonical_gap_id: canonical_gap_id_from_value(item),
         seam_id: string_field(item.get("seam_id")),
         static_class: string_field(item.get("grip_class"))
             .or_else(|| string_field(item.get("class"))),
@@ -837,6 +867,7 @@ fn gate_decision(
         },
         decision,
         gate_reason,
+        canonical_gap_id: candidate.canonical_gap_id.clone(),
         seam_id: candidate.seam_id.clone(),
         source_id: candidate.source_id.clone(),
         static_class: candidate.static_class.clone(),
@@ -906,8 +937,9 @@ fn has_concrete_guidance(candidate: &GateCandidate) -> bool {
 
 fn baseline_identity(candidate: &GateCandidate) -> Option<String> {
     candidate
-        .seam_id
+        .canonical_gap_id
         .clone()
+        .or_else(|| candidate.seam_id.clone())
         .or_else(|| (!candidate.source_id.is_empty()).then(|| candidate.source_id.clone()))
         .or_else(|| {
             Some(format!(
@@ -1116,7 +1148,7 @@ fn summary_json(summary: &GateSummary) -> Value {
 }
 
 fn decision_json(decision: &GateDecision) -> Value {
-    json!({
+    let mut value = json!({
         "id": decision.id,
         "source": decision.source,
         "decision": decision.decision,
@@ -1146,7 +1178,16 @@ fn decision_json(decision: &GateDecision) -> Value {
             "recommendation_calibration": calibration_json(&decision.evidence.recommendation_calibration),
             "mutation_calibration": calibration_json(&decision.evidence.mutation_calibration),
         }
-    })
+    });
+    if let Some(canonical_gap_id) = &decision.canonical_gap_id
+        && let Some(object) = value.as_object_mut()
+    {
+        object.insert(
+            "canonical_gap_id".to_string(),
+            Value::String(canonical_gap_id.clone()),
+        );
+    }
+    value
 }
 
 fn calibration_json(evidence: &CalibrationEvidence) -> Value {
@@ -1214,6 +1255,12 @@ fn string_field(value: Option<&Value>) -> Option<String> {
         .and_then(Value::as_str)
         .filter(|text| !text.is_empty())
         .map(ToOwned::to_owned)
+}
+
+fn canonical_gap_id_from_value(value: &Value) -> Option<String> {
+    string_field(value.get("canonical_gap_id"))
+        .or_else(|| string_field(value.pointer("/identity/canonical_gap_id")))
+        .or_else(|| string_field(value.pointer("/evidence_record/canonical_gap_id")))
 }
 
 fn resolve_root_path(root: &Path, path: &Path) -> PathBuf {
@@ -1463,6 +1510,156 @@ mod tests {
         );
         let _ = fs::remove_dir_all(dir);
         Ok(())
+    }
+
+    #[test]
+    fn gate_baseline_check_matches_canonical_gap_id_from_evidence_record() -> Result<(), String> {
+        let dir = temp_dir("gate-baseline-canonical")?;
+        let baseline = write_temp_json(
+            &dir,
+            "baseline.json",
+            r#"{
+              "schema_version": "0.1",
+              "kind": "gate_baseline",
+              "entries": [
+                {
+                  "identity": {
+                    "canonical_gap_id": "pricing::discount::threshold_equality",
+                    "seam_id": "old-seam",
+                    "source_id": "old-review-id",
+                    "fallback": "src/pricing.rs:88:weakly_gripped"
+                  }
+                }
+              ]
+            }"#,
+        )?;
+        let guidance = write_temp_json(
+            &dir,
+            "comments.json",
+            r#"{
+              "schema_version": "0.1",
+              "summary": {"unchanged_tests": true},
+              "comments": [
+                {
+                  "id": "ripr-review-new-line",
+                  "seam_id": "new-seam",
+                  "grip_class": "weakly_gripped",
+                  "severity": "warning",
+                  "missing_discriminator": "amount == discount_threshold",
+                  "placement": {"path": "src/pricing.rs", "line": 144},
+                  "suggested_test": {
+                    "candidate_values": ["amount == discount_threshold"],
+                    "near_test": "above_threshold_gets_discount"
+                  },
+                  "evidence_record": {
+                    "canonical_gap_id": "pricing::discount::threshold_equality"
+                  }
+                }
+              ],
+              "summary_only": [],
+              "suppressed": []
+            }"#,
+        )?;
+        let mut input = fixture_input(GateMode::BaselineCheck);
+        input.pr_guidance = guidance;
+        input.baseline = Some(baseline);
+
+        let report = build_gate_decision_report(&input)?;
+        let rendered = render_gate_decision_json(&report)?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("gate decision JSON should parse: {err}"))?;
+
+        assert_eq!(report.status, "advisory");
+        assert_eq!(report.summary.blocking, 0);
+        assert_eq!(report.summary.advisory, 1);
+        assert_eq!(
+            report.decisions[0].policy.baseline_identity.as_deref(),
+            Some("pricing::discount::threshold_equality")
+        );
+        assert_eq!(
+            value["decisions"][0]["canonical_gap_id"],
+            "pricing::discount::threshold_equality"
+        );
+        assert_eq!(
+            value["decisions"][0]["policy"]["baseline_identity"],
+            "pricing::discount::threshold_equality"
+        );
+        assert!(
+            report.decisions[0]
+                .gate_reason
+                .contains("explicit baseline")
+        );
+        let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    #[test]
+    fn gate_baseline_index_reads_all_canonical_gap_identity_shapes() {
+        let value = json!({
+          "entries": [
+            {"canonical_gap_id": "gap:direct"},
+            {"identity": {"canonical_gap_id": "gap:identity"}},
+            {"evidence_record": {"canonical_gap_id": "gap:record"}}
+          ],
+          "decisions": [
+            {"canonical_gap_id": "gap:decision-direct"},
+            {"identity": {"canonical_gap_id": "gap:decision-identity"}},
+            {"evidence_record": {"canonical_gap_id": "gap:decision-record"}}
+          ],
+          "comments": [
+            {"canonical_gap_id": "gap:comment-direct"},
+            {"identity": {"canonical_gap_id": "gap:comment-identity"}},
+            {"evidence_record": {"canonical_gap_id": "gap:comment-record"}}
+          ],
+          "summary_only": [
+            {"canonical_gap_id": "gap:summary-direct"}
+          ],
+          "suppressed": [
+            {"canonical_gap_id": "gap:suppressed-direct"}
+          ]
+        });
+        let index = baseline_index_from_value(&value);
+
+        for expected in [
+            "gap:direct",
+            "gap:identity",
+            "gap:record",
+            "gap:decision-direct",
+            "gap:decision-identity",
+            "gap:decision-record",
+            "gap:comment-direct",
+            "gap:comment-identity",
+            "gap:comment-record",
+            "gap:summary-direct",
+            "gap:suppressed-direct",
+        ] {
+            assert!(
+                index.identities.contains(expected),
+                "expected baseline identity {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn gate_candidate_reads_canonical_gap_id_from_supported_shapes() {
+        for (value, expected) in [
+            (json!({"canonical_gap_id": "gap:direct"}), "gap:direct"),
+            (
+                json!({"identity": {"canonical_gap_id": "gap:identity"}}),
+                "gap:identity",
+            ),
+            (
+                json!({"evidence_record": {"canonical_gap_id": "gap:record"}}),
+                "gap:record",
+            ),
+        ] {
+            assert_eq!(
+                canonical_gap_id_from_value(&value).as_deref(),
+                Some(expected)
+            );
+        }
+
+        assert_eq!(canonical_gap_id_from_value(&json!({})), None);
     }
 
     #[test]

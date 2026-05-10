@@ -70,6 +70,12 @@ Completed slices:
   `canonical_gap_id`, group size, and grouping reason for headline-eligible
   gaps.
 
+Gate baseline comparison now also prefers supplied canonical evidence identity
+when matching current candidates to reviewed baseline debt, then falls back to
+legacy seam, source, and path/line/static-class identities. This keeps gate
+authority unchanged while making the optional gate consumer line-movement
+tolerant when Lane 1 identity is available.
+
 ## Stable Fixture-Backed Analysis Slices
 
 These Lane 1 analysis slices are stable within documented syntax-first scope:
@@ -88,6 +94,20 @@ These Lane 1 analysis slices are stable within documented syntax-first scope:
   unresolved or explicit static limitations rather than stronger activation
   claims.
 
+## Calibrated Runtime-Backed Slices
+
+These Lane 1 slices have checked imported-runtime calibration evidence for the
+named classes. They remain advisory and do not run mutation testing.
+
+- Static/runtime confidence labels are calibrated for the checked
+  `runtime-fixtures-v1` classes: static gap plus runtime signal,
+  static gap plus runtime clean, runtime signal without a static seam,
+  static clean plus runtime clean, inconclusive runtime outcomes, ambiguous
+  file-line joins, unmatched runtime data, static seams without runtime data,
+  and seam-id or unambiguous file-line joins. Planned side-effect, mock,
+  snapshot, and dynamic-dispatch runtime samples remain outside the calibrated
+  scope until checked fixtures land.
+
 ## Current Open PRs
 
 At tracker creation, there are no open upstream Lane 1 PRs. Current open PRs
@@ -104,10 +124,7 @@ When opening future Lane 1 PRs, list them here until they merge or close:
 These are Lane 1 candidates. Open them only when they are selected as evidence
 accuracy work:
 
-1. `calibration: promote covered static/runtime labels`
-   - promote only runtime-backed classes with fixture and calibration evidence;
-   - do not run cargo-mutants or change static reports.
-2. `fixtures: expand evidence record contract`
+1. `fixtures: expand evidence record contract`
    - add cases only when a new evidence class or consumer requirement changes
      the v0.1 contract.
 
