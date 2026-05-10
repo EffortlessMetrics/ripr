@@ -24,6 +24,7 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
         CliCommand::CoverageGrip(args) => commands::coverage_grip(&args),
         CliCommand::AssistantLoop(args) => commands::assistant_loop(&args),
         CliCommand::FirstAction(args) => commands::first_action(&args),
+        CliCommand::Reports(args) => commands::reports(&args),
         CliCommand::Calibrate(args) => commands::calibrate(&args),
         CliCommand::Agent(args) => commands::agent(&args),
         CliCommand::Check(args) => commands::check(&args),
@@ -112,6 +113,10 @@ mod tests {
         assert_eq!(
             execute(CliCommand::FirstAction(args(&["--pr-guidance"]))),
             Err("missing value for --pr-guidance".to_string())
+        );
+        assert_eq!(
+            execute(CliCommand::Reports(args(&["index", "--reports-dir"]))),
+            Err("missing value for --reports-dir".to_string())
         );
         assert_eq!(
             execute(CliCommand::Calibrate(args(&[

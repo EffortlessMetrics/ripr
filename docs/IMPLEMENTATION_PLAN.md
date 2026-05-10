@@ -229,9 +229,11 @@ recommendation ranking, gate semantics, editor behavior, mutation execution,
 provider calls, source edits, generated tests, inline-comment defaults, hidden
 analysis reruns, or default CI blocking. The fixture corpus now pins complete,
 sparse, missing-front-panel, blocked-gate, missing-proof, missing-receipt, and
-coverage/grip-present packet states. The next ready slice is
-`report/report-packet-index`, which should update the read-only producer against
-those expected JSON and Markdown reports.
+coverage/grip-present packet states. `ripr reports index` now writes the
+read-only `target/ripr/reports/index.{json,md}` producer output from explicit
+artifact directories. The next ready slice is `ci/report-packet-index-summary`,
+which should project that index into generated GitHub CI summaries and artifact
+uploads without changing advisory defaults or gate authority.
 
 ## PR 0: `planning-and-tracking-docs`
 

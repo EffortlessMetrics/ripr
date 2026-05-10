@@ -2776,8 +2776,8 @@ Work items:
 | --- | --- | --- |
 | `spec/report-packet-index-contract` | done | Defined the report-packet index contract, explicit inputs, grouping model, missing-surface warnings, generated-CI projection boundary, advisory limits, and fixture-first implementation plan before changing the producer. |
 | `fixtures/report-packet-index-corpus` | done | Pinned report-packet index cases for complete packet, sparse advisory packet, missing front panel, blocked gate, missing assistant proof, missing receipts, and coverage/grip-present packet before changing the producer. |
-| `report/report-packet-index` | ready | Update the read-only report-packet index producer to emit grouped reviewer-first JSON/Markdown from explicit existing artifact paths without rerunning analysis or changing gate authority. |
-| `ci/report-packet-index-summary` | blocked | Blocked on `report/report-packet-index`; generated GitHub CI uploads and summarizes the report-packet index only when inputs exist, while preserving advisory defaults and gate-decision pass/fail authority. |
+| `report/report-packet-index` | done | Added the public read-only `ripr reports index` producer, JSON/Markdown renderer, CLI/help wiring, and CLI smoke coverage for grouped reviewer-first packet indexes over explicit artifact paths without rerunning analysis or changing gate authority. |
+| `ci/report-packet-index-summary` | ready | Generated GitHub CI uploads and summarizes the report-packet index only when inputs exist, while preserving advisory defaults and gate-decision pass/fail authority. |
 | `docs/report-packet-index-workflow` | blocked | Blocked on `ci/report-packet-index-summary`; document how reviewers, maintainers, developers, and coding agents use the report-packet index, follow artifact groups, regenerate missing surfaces, and preserve advisory gate limits. |
 | `dogfood/report-packet-index-receipts` | blocked | Blocked on `docs/report-packet-index-workflow`; record repo-local report-packet index receipts for complete, sparse, missing-front-panel, blocked-gate, missing-proof, missing-receipts, and coverage/grip-present cases. |
 | `campaign/report-packet-index-closeout` | blocked | Blocked on `dogfood/report-packet-index-receipts`; close Campaign 25 after the spec, fixtures, producer, generated-CI advisory projection, workflow docs, dogfood receipts, and validation show the report-packet index is advisory, explicit-input-only, and bounded to existing artifacts. |
@@ -2802,9 +2802,10 @@ Blocking conditions:
 
 Next:
 
-- Continue with `report/report-packet-index`. The fixture corpus now pins the
-  packet states, so the next slice can update the read-only producer against
-  those expected JSON and Markdown reports.
+- Continue with `ci/report-packet-index-summary`. The public producer now
+  writes `target/ripr/reports/index.{json,md}`, so the next slice can project
+  the index into generated GitHub CI summaries and artifacts without changing
+  advisory defaults or gate authority.
 
 ## Future Campaign: Editor Evidence UX
 

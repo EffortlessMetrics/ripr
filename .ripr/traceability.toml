@@ -1620,6 +1620,10 @@ spec = "docs/specs/RIPR-SPEC-0024-report-packet-index.md"
 tests = [
   "xtask/src/main.rs::report_packet_index_fixture_corpus_guard_accepts_complete_contract",
   "xtask/src/main.rs::report_packet_index_fixture_corpus_guard_reports_contract_drift",
+  "crates/ripr/src/output/report_packet_index.rs::tests::report_packet_index_reports_missing_front_panel",
+  "crates/ripr/src/output/report_packet_index.rs::tests::report_packet_index_preserves_blocked_gate_authority",
+  "crates/ripr/src/output/report_packet_index.rs::tests::report_packet_index_groups_coverage_grip_as_calibration",
+  "crates/ripr/tests/cli_smoke.rs::report_packet_index_cli_writes_packet_index",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/report-packet-index/README.md",
@@ -1640,6 +1644,13 @@ fixtures = [
   "fixtures/boundary_gap/expected/report-packet-index/coverage-grip-present/index.md",
 ]
 code = [
+  "crates/ripr/src/output/report_packet_index.rs",
+  "crates/ripr/src/output/mod.rs",
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/help.rs",
+  "crates/ripr/src/cli/parse.rs",
   "xtask/src/main.rs",
 ]
 outputs = [

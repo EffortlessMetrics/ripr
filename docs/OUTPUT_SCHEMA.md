@@ -3655,8 +3655,8 @@ ripr reports index \
 ```
 
 Repo-local automation may keep `cargo xtask reports index` as a wrapper, but
-generated GitHub CI should use the public `ripr` command once Campaign 25 adds
-the producer.
+generated GitHub CI should use the public `ripr reports index` command when the
+index is projected into CI summaries.
 
 The report writes:
 

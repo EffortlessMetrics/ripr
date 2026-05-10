@@ -438,8 +438,9 @@ Follow-up implementation belongs to Campaign 25:
 - `fixtures/report-packet-index-corpus` pins the complete, sparse, missing
   front-panel, blocked-gate, missing-proof, missing-receipt, coverage/grip,
   malformed, stale, and warning packet cases before producer changes.
-- `report/report-packet-index` updates the read-only producer to emit grouped
-  reviewer-first JSON/Markdown from explicit existing artifact paths.
+- `report/report-packet-index` adds the read-only public `ripr reports index`
+  producer that emits grouped reviewer-first JSON/Markdown from explicit
+  existing artifact paths.
 - `ci/report-packet-index-summary` uploads and summarizes the index only when
   inputs exist and keeps gate decision as pass/fail authority.
 - `docs/report-packet-index-workflow` explains reviewer, maintainer,

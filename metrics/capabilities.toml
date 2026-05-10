@@ -955,19 +955,22 @@ metric = "pr_review_front_panel_reports, pr_review_front_panel_actionable, pr_re
 [[capability]]
 id = "report_packet_index"
 name = "Report packet index"
-status = "planned"
+status = "alpha"
 spec = "RIPR-SPEC-0024"
 evidence = [
-  "docs/specs/RIPR-SPEC-0024-report-packet-index.md defines the planned report-packet index contract over explicit existing report, review, receipt, workflow, agent, pilot, and CI artifact directories",
-  "docs/OUTPUT_SCHEMA.md documents the planned report-packet-index JSON and Markdown shape, group vocabulary, status vocabulary, missing-surface reasons, generated-CI projection boundary, and advisory limits",
+  "docs/specs/RIPR-SPEC-0024-report-packet-index.md defines the report-packet index contract over explicit existing report, review, receipt, workflow, agent, pilot, and CI artifact directories",
+  "ripr reports index writes advisory target/ripr/reports/index.{json,md} from explicit artifact directories without rerunning analysis or changing gate authority",
+  "crates/ripr/src/output/report_packet_index.rs groups artifacts by reviewer use, identifies the start-here front panel, preserves gate-decision authority, records missing expected surfaces, and emits regeneration commands when known",
+  "docs/OUTPUT_SCHEMA.md documents the implemented report_packet_index JSON and Markdown shape, group vocabulary, status vocabulary, missing-surface reasons, generated-CI projection boundary, and advisory limits",
   "fixtures/boundary_gap/expected/report-packet-index/ pins complete, sparse advisory, missing-front-panel, blocked-gate, missing-proof, missing-receipt, and coverage/grip-present packet cases",
   "xtask/src/main.rs validates the report-packet index fixture corpus through check-fixture-contracts",
+  "crates/ripr/tests/cli_smoke.rs::report_packet_index_cli_writes_packet_index validates the public CLI writes JSON and Markdown artifacts",
   "docs/REPORT_PACKET_INDEX_PROPOSAL.md records Campaign 25's proposal and non-goals"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/report-packet-index"
 ]
-next = "report/report-packet-index"
+next = "ci/report-packet-index-summary"
 metric = "report_packet_index_reports, report_packet_index_pass, report_packet_index_warn, report_packet_index_fail, report_packet_index_incomplete, report_packet_index_available_entries, report_packet_index_missing_expected, report_packet_index_start_here_available, report_packet_index_gate_authority_present, report_packet_index_repair_commands, report_packet_index_warning_entries"
 
 [[capability]]

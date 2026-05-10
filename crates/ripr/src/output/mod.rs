@@ -24,6 +24,7 @@ pub(crate) mod pr_review_front_panel;
 pub(crate) mod render;
 pub(crate) mod repo_exposure;
 pub(crate) mod repo_seams;
+pub(crate) mod report_packet_index;
 pub(crate) mod review_comments;
 pub(crate) mod ripr_zero_status;
 pub(crate) mod sarif;
