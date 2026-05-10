@@ -245,10 +245,10 @@ missing-receipts, and coverage/grip-present cases. The
 the PR chain, prompt-to-artifact audit, validation plan, advisory boundary, and
 future-lane boundary.
 
-Campaign 26 is now open as PR Inline Comment Publisher. It uses the
+Campaign 26 is closed as PR Inline Comment Publisher. It used the
 [PR Inline Comment Publisher proposal](PR_INLINE_COMMENT_PUBLISHER_PROPOSAL.md)
 and [RIPR-SPEC-0025](specs/RIPR-SPEC-0025-pr-inline-comment-publisher.md) as
-its design contract. The campaign should make optional durable PR comments safe
+its design contract. The campaign made optional durable PR comments safe
 by adding a read-only publish plan over existing `ripr review-comments`
 artifacts before anything posts to GitHub. It must stay explicit opt-in and
 advisory: no analyzer behavior, recommendation ranking, gate semantics, editor
