@@ -84,20 +84,24 @@ suite('Extension Smoke', () => {
       diagnostic.range
     );
     const contextCommand = assertCommandAction(actions, 'Inspect seam: copy packet', 'ripr.copyContext');
-    assertCommandAction(actions, 'Write targeted test: copy brief', 'ripr.copyTargetedTestBrief');
-    assertCommandAction(
+    const targetedBriefCommand = assertCommandAction(
+      actions,
+      'Write targeted test: copy brief',
+      'ripr.copyTargetedTestBrief'
+    );
+    const packetCommand = assertCommandAction(
       actions,
       'Agent handoff: copy packet command',
       'ripr.copyAgentPacketCommand',
       'ripr agent packet'
     );
-    assertCommandAction(
+    const briefCommand = assertCommandAction(
       actions,
       'Agent handoff: copy brief command',
       'ripr.copyAgentBriefCommand',
       'ripr agent brief'
     );
-    assertCommandAction(
+    const afterSnapshotCommand = assertCommandAction(
       actions,
       'Verify after test: copy after-snapshot command',
       'ripr.copyAfterSnapshotCommand',
@@ -109,11 +113,16 @@ suite('Extension Smoke', () => {
       'ripr.copyAgentVerifyCommand',
       'ripr agent verify'
     );
-    assertCommandAction(
+    const receiptCommand = assertCommandAction(
       actions,
       'Review result: copy receipt command',
       'ripr.copyAgentReceiptCommand',
       'ripr agent receipt'
+    );
+    const assertionCommand = assertCommandAction(
+      actions,
+      'Write targeted test: copy suggested assertion',
+      'ripr.copySuggestedAssertion'
     );
     const relatedTestCommand = assertCommandAction(
       actions,
@@ -130,10 +139,44 @@ suite('Extension Smoke', () => {
     assert.strictEqual(parsedContextPacket.schema_version, '0.3');
     assert.strictEqual(parsedContextPacket.packets?.[0]?.seam_id, '67fc764ba37d77bd');
 
+    await vscode.commands.executeCommand(targetedBriefCommand.command, ...(targetedBriefCommand.arguments ?? []));
+    const targetedBriefText = await vscode.env.clipboard.readText();
+    assert.ok(targetedBriefText.includes('Target seam:'), targetedBriefText);
+    assert.ok(targetedBriefText.includes('src/lib.rs:2'), targetedBriefText);
+    assert.ok(targetedBriefText.includes('predicate_boundary'), targetedBriefText);
+    assert.ok(targetedBriefText.includes('Missing discriminator'), targetedBriefText);
+    assert.ok(targetedBriefText.includes('tests/pricing.rs'), targetedBriefText);
+
+    await vscode.commands.executeCommand(packetCommand.command, ...(packetCommand.arguments ?? []));
+    const packetText = await vscode.env.clipboard.readText();
+    assert.ok(packetText.includes('ripr agent packet --root . --seam-id 67fc764ba37d77bd'), packetText);
+    assert.ok(packetText.includes('target/ripr/agent/agent-packet.json'), packetText);
+
+    await vscode.commands.executeCommand(briefCommand.command, ...(briefCommand.arguments ?? []));
+    const briefText = await vscode.env.clipboard.readText();
+    assert.ok(briefText.includes('ripr agent brief --root . --seam-id 67fc764ba37d77bd'), briefText);
+    assert.ok(briefText.includes('target/ripr/agent/agent-brief.json'), briefText);
+
+    await vscode.commands.executeCommand(afterSnapshotCommand.command, ...(afterSnapshotCommand.arguments ?? []));
+    const afterSnapshotText = await vscode.env.clipboard.readText();
+    assert.ok(afterSnapshotText.includes('ripr check --root . --base '), afterSnapshotText);
+    assert.ok(afterSnapshotText.includes('--format repo-exposure-json'), afterSnapshotText);
+    assert.ok(afterSnapshotText.includes('target/ripr/pilot/after.repo-exposure.json'), afterSnapshotText);
+
     await vscode.commands.executeCommand(verifyCommand.command, ...(verifyCommand.arguments ?? []));
     const verifyText = await vscode.env.clipboard.readText();
     assert.ok(verifyText.includes('ripr agent verify --root .'), verifyText);
     assert.ok(verifyText.includes('target/ripr/pilot/after.repo-exposure.json'), verifyText);
+
+    await vscode.commands.executeCommand(receiptCommand.command, ...(receiptCommand.arguments ?? []));
+    const receiptText = await vscode.env.clipboard.readText();
+    assert.ok(receiptText.includes('ripr agent receipt --root .'), receiptText);
+    assert.ok(receiptText.includes('--seam-id 67fc764ba37d77bd'), receiptText);
+    assert.ok(receiptText.includes('target/ripr/agent/agent-receipt.json'), receiptText);
+
+    await vscode.commands.executeCommand(assertionCommand.command, ...(assertionCommand.arguments ?? []));
+    const assertionText = await vscode.env.clipboard.readText();
+    assert.ok(assertionText.includes('assert_eq!(discounted_total('), assertionText);
 
     await vscode.commands.executeCommand(relatedTestCommand.command, ...(relatedTestCommand.arguments ?? []));
     const activeEditor = vscode.window.activeTextEditor;
