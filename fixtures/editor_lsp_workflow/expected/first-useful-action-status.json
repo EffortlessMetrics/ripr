@@ -1,0 +1,26 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_lsp_workflow",
+  "report": "target/ripr/reports/first-useful-action.json",
+  "accepted": {
+    "schema_version": "0.1",
+    "kind": "first_useful_action",
+    "status": "actionable",
+    "audience": "developer",
+    "action_kind": "write_focused_test",
+    "title": "Add equality-boundary discriminator test",
+    "seam_id": "67fc764ba37d77bd"
+  },
+  "fail_closed": [
+    "missing report",
+    "invalid JSON",
+    "unsupported schema_version",
+    "missing required fields",
+    "wrong workspace root"
+  ],
+  "stale_behavior": {
+    "status_bar": "ripr: stale",
+    "guidance": "Save or refresh the Rust workspace before acting on this report.",
+    "report_remains_visible": true
+  }
+}

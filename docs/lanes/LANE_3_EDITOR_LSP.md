@@ -60,7 +60,10 @@ Completed slices:
   the existing report is workspace-root and seam-ID matched;
 - saved-workspace `ripr: Show Status` tests pin valid first-useful-action
   output, wrong-root fail-closed behavior, stale refresh guidance, and malformed
-  or missing report handling.
+  or missing report handling;
+- `fixtures/editor_lsp_workflow` pins the saved-workspace editor loop across
+  diagnostics, hover, code actions, first-useful-action status projection, stale
+  refresh guidance, and LSP cockpit coverage.
 
 ## Current Open PRs
 
@@ -79,8 +82,7 @@ These are Lane 3 candidates. Open them only when they are explicitly selected
 as editor/LSP work:
 
 1. `fixtures: add editor LSP workflow fixture`
-   - canonical fixture for diagnostic, hover, code action, status, and refresh
-     guidance.
+   - done on the current Lane 3 branch; remove this item when the PR merges.
 2. `docs: document editor-first workflow`
    - update user-facing editor docs when a later behavior change requires it.
 
