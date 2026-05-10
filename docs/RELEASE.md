@@ -9,7 +9,7 @@ This document is the release checklist for publishing `ripr`.
 - For the defaults-first public install line, the version is newer than
   `0.3.0`; `0.3.0` predates `ripr pilot` and `ripr outcome`.
 - The root workspace uses Rust edition `2024`.
-- The root workspace `rust-version` is `1.93`.
+- The root workspace `rust-version` is `1.95`.
 - `repository` and `homepage` point at `https://github.com/EffortlessMetrics/ripr/`.
 - The README says `ripr` is alpha software and does not claim mutation execution.
 
@@ -23,7 +23,7 @@ cargo check --workspace --all-targets
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo doc --workspace --no-deps
-cargo xtask release-readiness --version 0.4.0
+cargo xtask release-readiness --version 0.5.0
 cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 ```
@@ -65,11 +65,11 @@ manifest, server archives, and checksums:
 
 ```bash
 gh release list --repo EffortlessMetrics/ripr --limit 5
-gh release view v0.4.0 --repo EffortlessMetrics/ripr --json name,tagName,publishedAt,assets,url,isDraft,isPrerelease
-gh release download v0.4.0 --repo EffortlessMetrics/ripr --pattern 'ripr-server-v0.4.0-x86_64-pc-windows-msvc.zip' --pattern 'ripr-server-manifest-v0.4.0.json' --dir target/ripr/release-smoke --clobber
+gh release view v0.5.0 --repo EffortlessMetrics/ripr --json name,tagName,publishedAt,assets,url,isDraft,isPrerelease
+gh release download v0.5.0 --repo EffortlessMetrics/ripr --pattern 'ripr-server-v0.5.0-x86_64-pc-windows-msvc.zip' --pattern 'ripr-server-manifest-v0.5.0.json' --dir target/ripr/release-smoke --clobber
 ```
 
-For the `v0.4.0` release, the GitHub Release must have the VSIX, server
+For the `v0.5.0` release, the GitHub Release must have the VSIX, server
 manifest, per-target server archives, checksums, and a server archive whose
 manifest checksum matches the downloaded archive. The extracted server must run
 `ripr --version`, `ripr lsp --version`, `ripr pilot`, `ripr outcome`, and
@@ -106,7 +106,7 @@ happens, check crates.io manually before retrying.
 ## Post-Publish
 
 ```bash
-cargo install ripr --version 0.4.0 --locked --root target/ripr/install-smoke-cratesio --force
+cargo install ripr --version 0.5.0 --locked --root target/ripr/install-smoke-cratesio --force
 target/ripr/install-smoke-cratesio/bin/ripr --version
 target/ripr/install-smoke-cratesio/bin/ripr doctor
 target/ripr/install-smoke-cratesio/bin/ripr pilot --root fixtures/boundary_gap/input --out target/ripr/install-smoke-cratesio/pilot
@@ -119,8 +119,8 @@ target/ripr/install-smoke-cratesio/bin/ripr agent receipt --root . --verify-json
 Tag the release:
 
 ```bash
-git tag v0.4.0
-git push origin v0.4.0
+git tag v0.5.0
+git push origin v0.5.0
 ```
 
 Update docs or release notes if the install command or package metadata changed.

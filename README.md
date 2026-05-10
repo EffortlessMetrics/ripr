@@ -10,12 +10,12 @@
 [![VS Marketplace Installs (manual)](https://img.shields.io/badge/VS%20Marketplace-2%20installs-0078D4)](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr)
 [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/EffortlessMetrics/ripr?label=Open%20VSX%20downloads)](https://open-vsx.org/extension/EffortlessMetrics/ripr)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](Cargo.toml)
-[![MSRV](https://img.shields.io/badge/MSRV-1.93-blue)](https://www.rust-lang.org/)
+[![MSRV](https://img.shields.io/badge/MSRV-1.95-blue)](https://www.rust-lang.org/)
 
 <!-- The public `ripr` and `ripr+` badges count unresolved repo-scoped seam-native exposure gaps under the configured policy — inbox-zero, not coverage. Diff-scoped badge artifacts remain legacy finding-exposure artifacts for PR summaries. This repo commits the Shields endpoint JSON under `badges/` and Shields fetches it from `raw.githubusercontent.com`; refresh with `cargo xtask update-badge-endpoints`. The ripr product contract is "ripr emits Shields-compatible JSON" — downstream users can self-host the JSON anywhere stable and are not expected to enable GitHub Pages. See [docs/BADGE_POLICY.md](docs/BADGE_POLICY.md) and `deferred/hosted-badge-service` in [docs/DEFERRED.md](docs/DEFERRED.md). -->
 
 
-<!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-07 after the 0.4.0 publish from the public listing. Refresh from publisher metrics when updating this manual count. Do not use live VS Marketplace Shields routes. -->
+<!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-07 after the 0.4.0 publish from the public listing; 0.5.0 publish refresh pending. Refresh from publisher metrics when updating this manual count. Do not use live VS Marketplace Shields routes. -->
 
 `ripr` helps Rust developers and coding agents answer a draft-time testing
 question:
@@ -170,7 +170,7 @@ For local development from this repository:
 cargo install --path crates/ripr
 ```
 
-`ripr` targets Rust 2024 and requires Rust `1.93` or newer.
+`ripr` targets Rust 2024 and requires Rust `1.95` or newer.
 
 Run a zero-config pilot packet:
 
@@ -280,7 +280,7 @@ Current capabilities:
 
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
-| Distribution | `0.4.0` is published on crates.io, GitHub Releases, VS Marketplace, and Open VSX with server archives, VSIX packaging, generated CI workflow artifacts, release-readiness proof, and installed editor-agent loop smoke checks. | Post-release maintenance; keep registry, server, and marketplace surfaces aligned. |
+| Distribution | `0.5.0` is the prepared release line for the Rust crate, VS Code/Open VSX extension, GitHub Release server assets, generated CI workflow artifacts, and the Rust 1.95 MSRV. `0.4.0` remains the last publicly verified release on crates.io, GitHub Releases, VS Marketplace, and Open VSX until the publish checklist completes. | Publish 0.5.0 and refresh public install / marketplace verification receipts; then return to post-release maintenance. |
 | Diff analysis | Evidence-first Voice A findings with syntax-backed changed-line probes, probe-relative oracle strength, local flow sinks, observed/missing activation values, and explicit stop reasons. | Maintenance; no active analyzer-refactor lane. |
 | Repo seam inventory | First-class `RepoSeam` model with deterministic seam IDs, cached seam fact layers, test-grip evidence across the five RIPR stages, and 11-class `SeamGripClass` classification. | Maintenance; no active analyzer-refactor lane. |
 | Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, custom-helper, side-effect observer, and unknown oracle kinds; per-test efficiency ledger with smoke/broad/disconnected/opaque/circular/likely-vacuous reasons and duplicate-discriminator groups. | Maintenance; no active analyzer-refactor lane. |
@@ -329,10 +329,25 @@ on the path toward RIPR 0. Campaigns 20 and 21 then made the test-oracle
 assistant proof loop and read-only proof report producer first-class advisory
 artifacts. Campaign 22 is closed as First Useful Action: `ripr first-action`
 now writes the read-only advisory report, generated CI projects it as advisory
-summary/artifact content, the VS Code status path can show an existing
-workspace-matched report without adding diagnostics or editor decorations, and
-checked dogfood receipts pin the documented routing cases. The default
-generated workflow remains advisory.
+summary/artifact content, the VS Code status path and the LSP seam hover both
+project an existing workspace-matched report without adding diagnostics or
+editor decorations, and checked dogfood receipts pin the documented routing
+cases. Campaign 23 closed Assistant Loop Health: `ripr assistant-loop health`
+summarizes existing assistant proof reports into advisory health, missing-input,
+static-movement, warning, and repair-queue surfaces, and generated CI uploads
+`assistant-loop-health.{json,md}` only when proof artifacts already exist.
+Campaign 24 closed PR Review Front Panel: `ripr pr-review front-panel`
+composes existing PR guidance, first useful action, assistant proof,
+assistant-loop health, ledger, baseline, gate, calibration, coverage/grip, and
+receipt artifacts into one advisory generated-CI first-screen summary.
+Campaign 25 closed Report Packet Index: `ripr reports index` writes a grouped
+reviewer-first index over explicit existing artifacts, and generated CI
+appends a compact packet-index summary without changing gate authority.
+Campaign 26 closed PR Inline Comment Publisher: `ripr pr-comments plan`
+emits a read-only publish plan, and generated CI keeps the publisher disabled
+by default with `RIPR_COMMENT_MODE=plan` and `RIPR_COMMENT_MODE=inline` as
+explicit opt-ins capped, deduped, and same-repository changed-line only. The
+default generated workflow remains advisory.
 
 Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)
 and [Metrics](docs/METRICS.md).

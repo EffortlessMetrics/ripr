@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0
+
+- Aligns the marketplace extension with RIPR 0.5.0 and the Rust 1.95 server
+  baseline.
+- Keeps the first-hour editor path centered on saved-workspace diagnostics,
+  hovers, intent-titled actions, targeted-test briefs, and copied verify or
+  receipt commands.
+- Keeps preview limits explicit: no mutation execution, no automatic edits, no
+  generated tests, no CI blocking, and no unsaved-buffer overlays by default.
+
 ## 0.4.0
 
 - Aligns the marketplace extension with the 0.4 editor-agent evidence loop:
