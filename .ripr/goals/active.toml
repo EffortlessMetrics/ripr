@@ -117,7 +117,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/pr-review-front-panel-closeout"
-status = "ready"
+status = "done"
 branch = "campaign-pr-review-front-panel-closeout"
 stackable = false
 acceptance = "Close Campaign 24 after the spec, fixtures, producer, generated-CI advisory projection, workflow docs, dogfood receipts, and validation show the front panel is advisory, explicit-input-only, and bounded to existing artifacts"

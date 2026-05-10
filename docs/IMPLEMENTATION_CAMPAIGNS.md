@@ -2641,16 +2641,16 @@ Closeout:
   producer, generated-CI advisory projection, workflow docs, and closeout audit
   are in place. No ready Campaign 23 work item remains in
   `.ripr/goals/active.toml`.
-- Campaign 24, PR Review Front Panel, is now open as the next Lane 4 adoption
-  surface. It composes existing artifacts into one advisory generated-CI first
-  screen without changing analyzer, ranking, gate, editor, provider, mutation,
-  source-edit, generated-test, or default-blocking behavior.
+- Campaign 24, PR Review Front Panel, is now closed. It composes existing
+  artifacts into one advisory generated-CI first screen without changing
+  analyzer, ranking, gate, editor, provider, mutation, source-edit,
+  generated-test, or default-blocking behavior.
 
 ## Campaign 24: PR Review Front Panel
 
 Campaign ID: `pr-review-front-panel`
 
-Status: active
+Status: complete
 
 Campaigns 13 through 23 built the PR guidance, calibration, optional gate,
 baseline, ledger, assistant proof, first useful action, and assistant-loop
@@ -2697,7 +2697,7 @@ Work items:
 | `ci/pr-review-front-panel-summary` | done | Generated GitHub CI now runs `ripr pr-review front-panel` only when explicit input artifacts exist, uploads `pr-review-front-panel.{json,md}` with the report packet, and appends an advisory first-screen summary while preserving gate-decision pass/fail authority. |
 | `docs/pr-review-front-panel-workflow` | done | Added the workflow guide for reviewers, maintainers, developers, and coding agents, including first-screen reading, repair routes, receipt inspection, and advisory gate limits. |
 | `dogfood/pr-review-front-panel-receipts` | done | Added dogfood validation and output-schema documentation for checked front-panel receipts covering actionable, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, no-actionable, and coverage-flat-grip-improved cases while preserving advisory defaults. |
-| `campaign/pr-review-front-panel-closeout` | ready | Close Campaign 24 after the spec, fixtures, producer, generated-CI advisory projection, workflow docs, dogfood receipts, and validation show the front panel is advisory, explicit-input-only, and bounded to existing artifacts. |
+| `campaign/pr-review-front-panel-closeout` | done | Closed Campaign 24 with a prompt-to-artifact audit, PR chain, validation plan, advisory boundary, and future-lane boundary at `docs/handoffs/2026-05-10-campaign-24-closeout.md`. |
 
 References:
 
@@ -2717,12 +2717,14 @@ Blocking conditions:
 - adequacy, correctness, or runtime mutation claims
 - hidden analysis reruns or source artifact discovery that changes semantics
 
-Next:
+Closeout:
 
-- Continue with `campaign/pr-review-front-panel-closeout`. The report
-  contract, fixture corpus, read-only producer, generated-CI advisory
-  projection, workflow guide, and dogfood receipts are now in place; the next
-  slice should close the campaign with the validation and boundary receipt.
+- Campaign 24 is closed. The report contract, fixture corpus, read-only
+  producer, generated-CI advisory projection, workflow docs, dogfood receipts,
+  and closeout audit are in place. No ready Campaign 24 work item remains in
+  `.ripr/goals/active.toml`.
+- The next Lane 4 adoption surface should be opened explicitly rather than
+  folded into PR Review Front Panel closeout work.
 
 ## Future Campaign: Editor Evidence UX
 

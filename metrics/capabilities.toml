@@ -932,8 +932,10 @@ evidence = [
   "docs/PR_REVIEW_FRONT_PANEL_WORKFLOW.md documents reviewer, maintainer, developer, and coding-agent use of the panel, repair routes, receipts, and advisory gate limits",
   "fixtures/boundary_gap/expected/pr-review-front-panel/ pins advisory-only, actionable, summary-only, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, and coverage-flat-grip-improved report cases",
   "xtask/src/main.rs validates the PR review front-panel fixture corpus through check-fixture-contracts so producer expectations stay fixture-backed",
+  "cargo xtask dogfood validates checked repo-local PR review front-panel receipts for actionable, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, no-actionable, and coverage-flat-grip-improved states",
   "crates/ripr/src/output/pr_review_front_panel.rs::pr_review_front_panel_matches_fixture_corpus validates the producer against the corpus",
-  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture validates the generated-CI projection"
+  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture validates the generated-CI projection",
+  "docs/handoffs/2026-05-10-campaign-24-closeout.md records the Campaign 24 audit, PR chain, validation plan, advisory boundary, and future-lane boundary"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/pr-review-front-panel/corpus.json",
@@ -947,7 +949,7 @@ fixtures = [
   "fixtures/boundary_gap/expected/pr-review-front-panel/missing-proof/pr-review-front-panel.json",
   "fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/pr-review-front-panel.json",
 ]
-next = "dogfood/pr-review-front-panel-receipts"
+next = "maintenance"
 metric = "pr_review_front_panel_reports, pr_review_front_panel_actionable, pr_review_front_panel_summary_only, pr_review_front_panel_no_actionable, pr_review_front_panel_acknowledged, pr_review_front_panel_waived, pr_review_front_panel_suppressed, pr_review_front_panel_blocked, pr_review_front_panel_config_error, pr_review_front_panel_baseline_still_present, pr_review_front_panel_baseline_resolved, pr_review_front_panel_new_policy_eligible, pr_review_front_panel_missing_required_input, pr_review_front_panel_flat_coverage_grip_improved, pr_review_front_panel_repair_routes, pr_review_front_panel_artifact_links"
 
 [[capability]]

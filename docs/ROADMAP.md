@@ -238,7 +238,7 @@ maintainer and agent use; and the
 [Campaign 23 closeout](handoffs/2026-05-09-campaign-23-closeout.md) records
 the final audit and future-lane boundary.
 
-[PR Review Front Panel](PR_REVIEW_FRONT_PANEL_PROPOSAL.md) is now open as
+[PR Review Front Panel](PR_REVIEW_FRONT_PANEL_PROPOSAL.md) is now closed as
 Campaign 24 after Assistant Loop Health. RIPR-SPEC-0023 now defines the PR
 review front-panel report contract over existing PR guidance, first useful
 action, assistant proof, assistant-loop health, PR evidence ledger, baseline
@@ -255,8 +255,9 @@ files, generated tests, inline-comment defaults, or default CI blocking. The
 documents reviewer, maintainer, developer, and coding-agent use of the
 first-screen panel. The dogfood report now validates checked front-panel
 receipts for actionable, acknowledged, suppressed, baseline-resolved, blocked,
-missing-proof, no-actionable, and coverage-flat-grip-improved states. The next
-ready slice is `campaign/pr-review-front-panel-closeout`.
+missing-proof, no-actionable, and coverage-flat-grip-improved states. The
+[Campaign 24 closeout](handoffs/2026-05-10-campaign-24-closeout.md) records the
+PR chain, validation plan, advisory boundary, and future-lane boundary.
 
 ## Strategic Sequence
 
