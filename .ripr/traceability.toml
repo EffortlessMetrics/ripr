@@ -1753,6 +1753,7 @@ outputs = [
   ".ripr/traceability.toml",
   "docs/PR_INLINE_COMMENT_PUBLISHER_WORKFLOW.md",
   "docs/handoffs/2026-05-10-pr-inline-comment-publisher-receipts.md",
+  "docs/handoffs/2026-05-10-campaign-26-closeout.md",
   "docs/handoffs/README.md",
   "docs/PR_INLINE_COMMENT_PUBLISHER_PROPOSAL.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",

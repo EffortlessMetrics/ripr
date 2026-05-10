@@ -129,13 +129,13 @@ commands = [
 
 [[work_item]]
 id = "campaign/pr-inline-comment-publisher-closeout"
-status = "ready"
+status = "done"
 branch = "campaign-pr-inline-comment-publisher-closeout"
 stackable = false
 blocked_by = [
   "dogfood/pr-inline-comment-publisher-receipts",
 ]
-acceptance = "Close Campaign 26 after the spec, fixtures, read-only publish plan, explicit generated-CI opt-in wiring, workflow docs, dogfood receipts, and validation show inline comments are safe, capped, deduped, advisory, and disabled by default"
+acceptance = "Closed Campaign 26 after the spec, fixtures, read-only publish plan, explicit generated-CI opt-in wiring, workflow docs, dogfood receipts, and validation showed inline comments are safe, capped, deduped, advisory, and disabled by default"
 commands = [
   "cargo xtask check-campaign",
   "cargo xtask goals next",

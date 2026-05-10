@@ -46,6 +46,9 @@ are scoped or reviewed.
   receipts for publishable, summary-only, capped, dedupe/upsert, stale-existing,
   fork or no-token, and missing-input publish plans without posting real PR
   comments.
+- Closed Campaign 26, PR Inline Comment Publisher, with a prompt-to-artifact
+  audit, validation plan, advisory/default-off boundary, and future-lane
+  boundary in `docs/handoffs/2026-05-10-campaign-26-closeout.md`.
 - Added the report-packet index fixture corpus under
   `fixtures/boundary_gap/expected/report-packet-index/`, pinning complete,
   sparse advisory, missing-front-panel, blocked-gate, missing-proof,
