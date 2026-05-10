@@ -15,6 +15,9 @@ are scoped or reviewed.
   complete, sparse advisory, missing-front-panel, blocked-gate, missing-proof,
   missing-receipts, and coverage/grip-present packet cases, plus a handoff
   receipt documenting the validation boundary.
+- Closed Campaign 25, Report Packet Index, with a prompt-to-artifact audit,
+  validation plan, advisory boundary, and future-lane boundary in
+  `docs/handoffs/2026-05-10-campaign-25-closeout.md`.
 - Added the report-packet index fixture corpus under
   `fixtures/boundary_gap/expected/report-packet-index/`, pinning complete,
   sparse advisory, missing-front-panel, blocked-gate, missing-proof,

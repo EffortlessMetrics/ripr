@@ -55,6 +55,7 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [Campaign 25 closeout](2026-05-10-campaign-25-closeout.md)
 - [Report packet index dogfood receipts](2026-05-10-report-packet-index-receipts.md)
 - [Campaign 24 closeout](2026-05-10-campaign-24-closeout.md)
 - [Campaign 23 closeout](2026-05-09-campaign-23-closeout.md)

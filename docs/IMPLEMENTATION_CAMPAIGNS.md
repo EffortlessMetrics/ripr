@@ -2730,7 +2730,7 @@ Closeout:
 
 Campaign ID: `report-packet-index`
 
-Status: active
+Status: complete
 
 Campaigns 13 through 24 made PR guidance, gates, baselines, ledgers,
 assistant proof, first useful action, assistant-loop health, and the PR review
@@ -2780,7 +2780,7 @@ Work items:
 | `ci/report-packet-index-summary` | done | Generated GitHub CI runs `ripr reports index` only when indexed artifacts exist, uploads `index.{json,md}` with the report packet, and appends a compact advisory packet-index summary while preserving gate-decision pass/fail authority. |
 | `docs/report-packet-index-workflow` | done | Added `docs/REPORT_PACKET_INDEX_WORKFLOW.md`, explaining reviewer, maintainer, developer, and coding-agent use of the grouped packet map, missing-surface regeneration, and advisory gate boundary. |
 | `dogfood/report-packet-index-receipts` | done | Extended `cargo xtask dogfood` with checked report-packet index receipts for complete, sparse, missing-front-panel, blocked-gate, missing-proof, missing-receipts, and coverage/grip-present cases. |
-| `campaign/report-packet-index-closeout` | ready | Close Campaign 25 after the spec, fixtures, producer, generated-CI advisory projection, workflow docs, dogfood receipts, and validation show the report-packet index is advisory, explicit-input-only, and bounded to existing artifacts. |
+| `campaign/report-packet-index-closeout` | done | Closed Campaign 25 with a prompt-to-artifact audit, PR chain, validation plan, advisory boundary, and future-lane boundary at `docs/handoffs/2026-05-10-campaign-25-closeout.md`. |
 
 References:
 
@@ -2801,11 +2801,14 @@ Blocking conditions:
 - hidden analysis reruns or artifact discovery that changes upstream report
   semantics
 
-Next:
+Closeout:
 
-- Continue with `campaign/report-packet-index-closeout`. The dogfood receipt now
-  checks the complete, sparse, missing-front-panel, blocked-gate,
-  missing-proof, missing-receipts, and coverage/grip-present packet cases.
+- Campaign 25 is closed. The report contract, fixture corpus, read-only
+  producer, generated-CI advisory projection, workflow docs, dogfood receipts,
+  and closeout audit are in place. No ready Campaign 25 work item remains in
+  `.ripr/goals/active.toml`.
+- The next Lane 4 adoption surface should be opened explicitly rather than
+  folded into Report Packet Index closeout work.
 
 ## Future Campaign: Editor Evidence UX
 
