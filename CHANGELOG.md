@@ -105,6 +105,10 @@ are scoped or reviewed.
 - Added `ripr pr-review front-panel`, a read-only advisory producer that writes
   `pr-review-front-panel.{json,md}` from explicit existing RIPR artifacts
   without rerunning analysis or changing gate authority.
+- Updated generated GitHub CI to run `ripr pr-review front-panel` only when
+  explicit input artifacts exist, upload `pr-review-front-panel.{json,md}` with
+  the report packet, and append the advisory PR review front panel to the job
+  summary while preserving `ripr gate evaluate` as pass/fail authority.
 - Opened Campaign 22, First Useful Action, with
   `spec/first-useful-action-report` as the first ready work item so existing
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,

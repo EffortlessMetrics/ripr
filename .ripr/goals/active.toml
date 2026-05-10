@@ -77,7 +77,7 @@ commands = [
 
 [[work_item]]
 id = "ci/pr-review-front-panel-summary"
-status = "ready"
+status = "done"
 branch = "ci-pr-review-front-panel-summary"
 stackable = false
 acceptance = "Generated GitHub CI uploads and summarizes PR review front-panel JSON/Markdown only when input artifacts exist, while preserving advisory defaults and gate-decision pass/fail authority"
@@ -91,12 +91,9 @@ commands = [
 
 [[work_item]]
 id = "docs/pr-review-front-panel-workflow"
-status = "blocked"
+status = "ready"
 branch = "docs-pr-review-front-panel-workflow"
 stackable = false
-blocked_by = [
-  "ci/pr-review-front-panel-summary",
-]
 acceptance = "Document how reviewers, maintainers, developers, and coding agents read the PR review front panel, follow repair routes, inspect receipts, and interpret advisory limits"
 commands = [
   "cargo xtask check-doc-index",

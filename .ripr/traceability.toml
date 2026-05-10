@@ -1518,6 +1518,9 @@ tests = [
   "xtask/src/main.rs::pr_review_front_panel_fixture_corpus_guard_reports_contract_drift",
   "crates/ripr/src/output/pr_review_front_panel.rs::pr_review_front_panel_matches_fixture_corpus",
   "crates/ripr/src/output/pr_review_front_panel.rs::pr_review_front_panel_reports_malformed_optional_input",
+  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_is_advisory",
+  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_uploads_reports_and_makes_sarif_optional",
+  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture",
   "crates/ripr/src/cli/execute.rs::execute_dispatches_subcommand_args_without_reparsing_argv",
   "crates/ripr/src/cli/help.rs::command_specific_help_usage_lines_are_stable",
 ]
