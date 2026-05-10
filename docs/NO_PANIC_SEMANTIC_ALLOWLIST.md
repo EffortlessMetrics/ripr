@@ -191,6 +191,23 @@ selectors. These proposals are **review-only**. They are not adoption-ready and
 must not be applied automatically. Each proposed selector should be verified
 against the actual call site before being committed to the allowlist.
 
+Generate proposals with:
+
+```bash
+cargo xtask check-no-panic-family --propose
+```
+
+The command writes:
+
+- `target/ripr/reports/no-panic-allowlist-proposals.md`
+- `target/ripr/reports/no-panic-allowlist-proposals.toml`
+
+Each candidate records the current finding, suggested selector, confidence,
+whether it replaces a v0.1 entry, old coordinates when available, new
+`last_seen` values, preserved reason text, and warnings for ambiguous containers
+or duplicate selector risk. The TOML report is a review aid, not an
+auto-adopted patch.
+
 ## Anti-patterns
 
 - **Do not** use `closure_NNNNN` (byte-offset closures) as stable selector
