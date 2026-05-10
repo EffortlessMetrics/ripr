@@ -299,8 +299,11 @@ keeps `RIPR_COMMENT_MODE=off` by default, uploads/summarizes the plan in opt-in
 modes, and posts or updates only safe inline operations when `inline` mode is
 explicitly configured. `docs/PR_INLINE_COMMENT_PUBLISHER_WORKFLOW.md` now
 documents opt-in modes, publish-plan review, forks, permissions, noise controls,
-dedupe/upsert behavior, rollback, and the advisory gate boundary. The next
-ready slice is `dogfood/pr-inline-comment-publisher-receipts`.
+dedupe/upsert behavior, rollback, and the advisory gate boundary. `cargo xtask
+dogfood` now checks repo-local receipts for publishable, summary-only, capped,
+dedupe/upsert, stale-existing, fork or no-token, and missing-input publish plans
+without posting real comments. The next ready slice is
+`campaign/pr-inline-comment-publisher-closeout`.
 
 ## Strategic Sequence
 

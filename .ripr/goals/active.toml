@@ -113,13 +113,13 @@ commands = [
 
 [[work_item]]
 id = "dogfood/pr-inline-comment-publisher-receipts"
-status = "ready"
+status = "done"
 branch = "dogfood-pr-inline-comment-publisher-receipts"
 stackable = false
 blocked_by = [
   "docs/pr-inline-comment-publisher-workflow",
 ]
-acceptance = "Record repo-local publish-plan receipts for publishable, summary-only, capped, dedupe/upsert, stale-existing, fork or no-token, and missing-input cases without posting real PR comments"
+acceptance = "Recorded repo-local publish-plan receipts for publishable, summary-only, capped, dedupe/upsert, stale-existing, fork or no-token, and missing-input cases without posting real PR comments"
 commands = [
   "cargo xtask dogfood",
   "cargo xtask check-output-contracts",
@@ -129,7 +129,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/pr-inline-comment-publisher-closeout"
-status = "blocked"
+status = "ready"
 branch = "campaign-pr-inline-comment-publisher-closeout"
 stackable = false
 blocked_by = [

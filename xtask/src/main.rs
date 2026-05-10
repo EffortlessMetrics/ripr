@@ -475,6 +475,54 @@ struct DogfoodReportPacketIndexRun {
     errors: Vec<String>,
 }
 
+#[derive(Debug)]
+struct DogfoodPrInlineCommentScenario {
+    name: String,
+    scenario: String,
+    expected_report: PathBuf,
+    expected_markdown: PathBuf,
+    expected_status: String,
+    expected_mode: String,
+    expected_publishable: usize,
+    expected_skipped: usize,
+    expected_blocked: usize,
+    expected_safe_to_publish: bool,
+    expected_operations: Vec<String>,
+    expected_skip_reasons: Vec<String>,
+    expected_blocked_reasons: Vec<String>,
+    reason: String,
+}
+
+#[derive(Debug)]
+struct DogfoodPrInlineCommentRun {
+    name: String,
+    actual_dir: PathBuf,
+    json_path: PathBuf,
+    markdown_path: PathBuf,
+    status: String,
+    mode: String,
+    publishable: usize,
+    skipped: usize,
+    blocked: usize,
+    safe_to_publish: bool,
+    operations: Vec<String>,
+    skip_reasons: Vec<String>,
+    blocked_reasons: Vec<String>,
+    expected_status: String,
+    expected_mode: String,
+    expected_publishable: usize,
+    expected_skipped: usize,
+    expected_blocked: usize,
+    expected_safe_to_publish: bool,
+    expected_operations: Vec<String>,
+    expected_skip_reasons: Vec<String>,
+    expected_blocked_reasons: Vec<String>,
+    reason: String,
+    expected_report: PathBuf,
+    expected_markdown: PathBuf,
+    errors: Vec<String>,
+}
+
 #[derive(Clone, Debug)]
 struct ReportIndexEntry {
     file: String,
@@ -11338,6 +11386,10 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         .into_iter()
         .map(|scenario| dogfood_report_packet_index_run(&scenario))
         .collect::<Result<Vec<_>, _>>()?;
+    let pr_inline_comment_runs = dogfood_pr_inline_comment_scenarios()
+        .into_iter()
+        .map(|scenario| dogfood_pr_inline_comment_run(&scenario))
+        .collect::<Result<Vec<_>, _>>()?;
     write_report(
         "dogfood.md",
         &dogfood_report_markdown(
@@ -11346,6 +11398,7 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
             &first_action_runs,
             &front_panel_runs,
             &report_packet_index_runs,
+            &pr_inline_comment_runs,
         ),
     )?;
     write_report(
@@ -11356,6 +11409,7 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
             &first_action_runs,
             &front_panel_runs,
             &report_packet_index_runs,
+            &pr_inline_comment_runs,
         ),
     )
 }
@@ -12243,6 +12297,26 @@ fn json_string_array_field(value: &Value, key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+fn sorted_unique_strings(mut values: Vec<String>) -> Vec<String> {
+    values.sort();
+    values.dedup();
+    values
+}
+
+fn json_string_values_from_array(value: &Value, array_key: &str, field_key: &str) -> Vec<String> {
+    let values = value
+        .get(array_key)
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| json_string_field(item, field_key))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    sorted_unique_strings(values)
+}
+
 fn dogfood_report_packet_index_run(
     scenario: &DogfoodReportPacketIndexScenario,
 ) -> Result<DogfoodReportPacketIndexRun, String> {
@@ -12408,6 +12482,283 @@ fn dogfood_report_packet_index_run(
     })
 }
 
+fn dogfood_pr_inline_comment_scenarios() -> Vec<DogfoodPrInlineCommentScenario> {
+    let corpus_path =
+        Path::new("fixtures/boundary_gap/expected/pr-inline-comment-publisher/corpus.json");
+    let fallback = |reason: String| {
+        vec![DogfoodPrInlineCommentScenario {
+            name: "corpus".to_string(),
+            scenario: reason.clone(),
+            expected_report: corpus_path.to_path_buf(),
+            expected_markdown: corpus_path.to_path_buf(),
+            expected_status: "missing".to_string(),
+            expected_mode: "missing".to_string(),
+            expected_publishable: 0,
+            expected_skipped: 0,
+            expected_blocked: 0,
+            expected_safe_to_publish: false,
+            expected_operations: Vec::new(),
+            expected_skip_reasons: Vec::new(),
+            expected_blocked_reasons: Vec::new(),
+            reason,
+        }]
+    };
+
+    let corpus = match read_json_value(corpus_path) {
+        Ok(value) => value,
+        Err(err) => return fallback(err),
+    };
+
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        return fallback("PR inline comment publisher corpus is missing cases array".to_string());
+    };
+
+    cases
+        .iter()
+        .map(|case| {
+            let expected = case.get("expected").unwrap_or(&Value::Null);
+            DogfoodPrInlineCommentScenario {
+                name: json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string()),
+                scenario: json_string_field(case, "scenario")
+                    .unwrap_or_else(|| "missing scenario".to_string()),
+                expected_report: json_string_field(case, "expected_report")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| corpus_path.to_path_buf()),
+                expected_markdown: json_string_field(case, "expected_markdown")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| corpus_path.to_path_buf()),
+                expected_status: json_string_field(expected, "status")
+                    .unwrap_or_else(|| "missing".to_string()),
+                expected_mode: json_string_field(expected, "mode")
+                    .unwrap_or_else(|| "missing".to_string()),
+                expected_publishable: json_usize_field(expected, "publishable").unwrap_or(0),
+                expected_skipped: json_usize_field(expected, "skipped").unwrap_or(0),
+                expected_blocked: json_usize_field(expected, "blocked").unwrap_or(0),
+                expected_safe_to_publish: json_bool_field(expected, "safe_to_publish")
+                    .unwrap_or(false),
+                expected_operations: sorted_unique_strings(json_string_array_field(
+                    expected,
+                    "operations",
+                )),
+                expected_skip_reasons: sorted_unique_strings(json_string_array_field(
+                    expected,
+                    "skip_reasons",
+                )),
+                expected_blocked_reasons: sorted_unique_strings(json_string_array_field(
+                    expected,
+                    "blocked_reasons",
+                )),
+                reason: json_string_field(case, "reason").unwrap_or_else(|| {
+                    "PR inline comment publisher corpus case did not document a reason".to_string()
+                }),
+            }
+        })
+        .collect()
+}
+
+fn dogfood_pr_inline_comment_run(
+    scenario: &DogfoodPrInlineCommentScenario,
+) -> Result<DogfoodPrInlineCommentRun, String> {
+    let actual_dir = scenario
+        .expected_report
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let json_path = scenario.expected_report.clone();
+    let markdown_path = scenario.expected_markdown.clone();
+    let mut errors = Vec::new();
+
+    if !scenario.expected_report.exists() {
+        errors.push(format!(
+            "expected PR inline comment publish-plan fixture is missing: {}",
+            normalize_path(&scenario.expected_report)
+        ));
+    }
+    if !scenario.expected_markdown.exists() {
+        errors.push(format!(
+            "expected PR inline comment publish-plan Markdown fixture is missing: {}",
+            normalize_path(&scenario.expected_markdown)
+        ));
+    }
+
+    let mut status = "missing".to_string();
+    let mut mode = "missing".to_string();
+    let mut publishable = 0usize;
+    let mut skipped = 0usize;
+    let mut blocked = 0usize;
+    let mut safe_to_publish = false;
+    let mut operations = Vec::<String>::new();
+    let mut skip_reasons = Vec::<String>::new();
+    let mut blocked_reasons = Vec::<String>::new();
+
+    match read_json_value(&json_path) {
+        Ok(report) => {
+            if json_string_field(&report, "kind").as_deref()
+                != Some("pr_inline_comment_publish_plan")
+            {
+                errors.push("report kind must be pr_inline_comment_publish_plan".to_string());
+            }
+            status = json_string_field(&report, "status").unwrap_or_else(|| "missing".to_string());
+            mode = json_string_field(&report, "mode").unwrap_or_else(|| "missing".to_string());
+            if let Some(summary) = report.get("summary") {
+                publishable = json_usize_field(summary, "publishable").unwrap_or(0);
+                skipped = json_usize_field(summary, "skipped").unwrap_or(0);
+                blocked = json_usize_field(summary, "blocked").unwrap_or(0);
+                safe_to_publish = json_bool_field(summary, "safe_to_publish").unwrap_or(false);
+            } else {
+                errors.push("report summary is missing".to_string());
+            }
+            operations = json_string_values_from_array(&report, "operations", "operation");
+            skip_reasons = json_string_values_from_array(&report, "skipped", "skip_reason");
+            blocked_reasons = json_string_values_from_array(&report, "blocked", "blocked_reason");
+            if report
+                .get("limits")
+                .and_then(|limits| limits.get("comments_default"))
+                .and_then(Value::as_str)
+                != Some("off")
+            {
+                errors.push("report must record comments_default=off".to_string());
+            }
+            if !report
+                .get("limits")
+                .and_then(|limits| limits.get("advisory"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+            {
+                errors.push("report must record advisory=true".to_string());
+            }
+            if json_summary_count(&report, "publishable") > 3 && mode != "off" {
+                errors.push("publishable comments should not exceed the default cap".to_string());
+            }
+            if !json_string_field(&report, "limits_note").is_some_and(|note| {
+                let lower = note.to_ascii_lowercase();
+                lower.contains("advisory inline-comment publish plan only")
+                    && lower.contains("gate decisions remain separate")
+            }) {
+                errors.push("report is missing advisory/gate-authority limits note".to_string());
+            }
+        }
+        Err(err) => errors.push(err),
+    }
+
+    match fs::read_to_string(&markdown_path) {
+        Ok(markdown) => {
+            if !markdown.contains("# RIPR Inline Comment Publish Plan") {
+                errors
+                    .push("Markdown must use the inline comment publish-plan heading".to_string());
+            }
+            if !markdown.contains(&format!("Mode: {}", scenario.expected_mode)) {
+                errors.push(format!(
+                    "Markdown should pin mode {}",
+                    scenario.expected_mode
+                ));
+            }
+            if !markdown.contains(&format!("Status: {}", scenario.expected_status)) {
+                errors.push(format!(
+                    "Markdown should pin status {}",
+                    scenario.expected_status
+                ));
+            }
+            if !markdown.contains("Advisory inline-comment publish plan only.") {
+                errors
+                    .push("Markdown must preserve the advisory publish-plan boundary".to_string());
+            }
+        }
+        Err(err) => errors.push(format!(
+            "failed to read PR inline comment publish-plan Markdown {}: {err}",
+            normalize_path(&markdown_path)
+        )),
+    }
+
+    if status != scenario.expected_status {
+        errors.push(format!(
+            "expected status {}, got {}",
+            scenario.expected_status, status
+        ));
+    }
+    if mode != scenario.expected_mode {
+        errors.push(format!(
+            "expected mode {}, got {}",
+            scenario.expected_mode, mode
+        ));
+    }
+    if publishable != scenario.expected_publishable {
+        errors.push(format!(
+            "expected publishable {}, got {}",
+            scenario.expected_publishable, publishable
+        ));
+    }
+    if skipped != scenario.expected_skipped {
+        errors.push(format!(
+            "expected skipped {}, got {}",
+            scenario.expected_skipped, skipped
+        ));
+    }
+    if blocked != scenario.expected_blocked {
+        errors.push(format!(
+            "expected blocked {}, got {}",
+            scenario.expected_blocked, blocked
+        ));
+    }
+    if safe_to_publish != scenario.expected_safe_to_publish {
+        errors.push(format!(
+            "expected safe_to_publish {}, got {}",
+            scenario.expected_safe_to_publish, safe_to_publish
+        ));
+    }
+    if operations != scenario.expected_operations {
+        errors.push(format!(
+            "expected operations {:?}, got {:?}",
+            scenario.expected_operations, operations
+        ));
+    }
+    if skip_reasons != scenario.expected_skip_reasons {
+        errors.push(format!(
+            "expected skip reasons {:?}, got {:?}",
+            scenario.expected_skip_reasons, skip_reasons
+        ));
+    }
+    if blocked_reasons != scenario.expected_blocked_reasons {
+        errors.push(format!(
+            "expected blocked reasons {:?}, got {:?}",
+            scenario.expected_blocked_reasons, blocked_reasons
+        ));
+    }
+
+    Ok(DogfoodPrInlineCommentRun {
+        name: scenario.name.clone(),
+        actual_dir,
+        json_path,
+        markdown_path,
+        status,
+        mode,
+        publishable,
+        skipped,
+        blocked,
+        safe_to_publish,
+        operations,
+        skip_reasons,
+        blocked_reasons,
+        expected_status: scenario.expected_status.clone(),
+        expected_mode: scenario.expected_mode.clone(),
+        expected_publishable: scenario.expected_publishable,
+        expected_skipped: scenario.expected_skipped,
+        expected_blocked: scenario.expected_blocked,
+        expected_safe_to_publish: scenario.expected_safe_to_publish,
+        expected_operations: scenario.expected_operations.clone(),
+        expected_skip_reasons: scenario.expected_skip_reasons.clone(),
+        expected_blocked_reasons: scenario.expected_blocked_reasons.clone(),
+        reason: if scenario.scenario.trim().is_empty() {
+            scenario.reason.clone()
+        } else {
+            format!("{}: {}", scenario.scenario, scenario.reason)
+        },
+        expected_report: scenario.expected_report.clone(),
+        expected_markdown: scenario.expected_markdown.clone(),
+        errors,
+    })
+}
+
 fn compare_expected_text(
     actual_path: &Path,
     expected_path: &Path,
@@ -12496,12 +12847,16 @@ fn dogfood_report_status(
     first_action_runs: &[DogfoodFirstActionRun],
     front_panel_runs: &[DogfoodFrontPanelRun],
     report_packet_index_runs: &[DogfoodReportPacketIndexRun],
+    pr_inline_comment_runs: &[DogfoodPrInlineCommentRun],
 ) -> &'static str {
     if runs.iter().any(|run| !run.errors.is_empty())
         || gate_runs.iter().any(|run| !run.errors.is_empty())
         || first_action_runs.iter().any(|run| !run.errors.is_empty())
         || front_panel_runs.iter().any(|run| !run.errors.is_empty())
         || report_packet_index_runs
+            .iter()
+            .any(|run| !run.errors.is_empty())
+        || pr_inline_comment_runs
             .iter()
             .any(|run| !run.errors.is_empty())
     {
@@ -12517,6 +12872,7 @@ fn dogfood_report_markdown(
     first_action_runs: &[DogfoodFirstActionRun],
     front_panel_runs: &[DogfoodFrontPanelRun],
     report_packet_index_runs: &[DogfoodReportPacketIndexRun],
+    pr_inline_comment_runs: &[DogfoodPrInlineCommentRun],
 ) -> String {
     let mut body = format!(
         "# ripr dogfood report\n\nStatus: {}\n\nMode: advisory\n\nThis report runs `ripr check --mode fast` against stable in-repo fixture diffs. It records current product output for review without making dogfood a blocking gate yet.\n\n## Summary\n\n",
@@ -12525,7 +12881,8 @@ fn dogfood_report_markdown(
             gate_runs,
             first_action_runs,
             front_panel_runs,
-            report_packet_index_runs
+            report_packet_index_runs,
+            pr_inline_comment_runs
         )
     );
     for run in runs {
@@ -12828,6 +13185,110 @@ fn dogfood_report_markdown(
             body.push('\n');
         }
     }
+    body.push_str("## PR Inline Comment Publisher Receipts\n\n");
+    body.push_str("These receipts validate checked `comment-publish-plan.{json,md}` fixture outputs for the documented Campaign 26 inline-comment publisher routes. They verify opt-in modes, safe publish flags, summary-only exclusion, cap behavior, dedupe/upsert, stale-existing cleanup planning, fork or token blockers, missing-input blockers, and advisory limits without posting real PR comments.\n\n");
+    body.push_str("- Default CI blocking: no\n");
+    body.push_str("- Default inline comments: off\n");
+    body.push_str(
+        "- Receipt outputs: `fixtures/boundary_gap/expected/pr-inline-comment-publisher/<case>/comment-publish-plan.{json,md}`\n\n",
+    );
+    body.push_str("| Case | Mode | Status | Publishable | Skipped | Blocked | Safe | Operations | Skip reasons | Block reasons |\n");
+    body.push_str("| --- | --- | --- | ---: | ---: | ---: | --- | --- | --- | --- |\n");
+    for run in pr_inline_comment_runs {
+        body.push_str(&format!(
+            "| `{}` | `{}` | `{}` | {} | {} | {} | {} | `{}` | `{}` | `{}` |\n",
+            markdown_cell(&run.name),
+            markdown_cell(&run.mode),
+            markdown_cell(&run.status),
+            run.publishable,
+            run.skipped,
+            run.blocked,
+            if run.safe_to_publish { "yes" } else { "no" },
+            markdown_cell(&run.operations.join(", ")),
+            markdown_cell(&run.skip_reasons.join(", ")),
+            markdown_cell(&run.blocked_reasons.join(", "))
+        ));
+    }
+    body.push('\n');
+    for run in pr_inline_comment_runs {
+        body.push_str(&format!("### PR Inline Comment `{}`\n\n", run.name));
+        body.push_str(&format!("- Mode: `{}`\n", markdown_cell(&run.mode)));
+        body.push_str(&format!(
+            "- Expected mode: `{}`\n",
+            markdown_cell(&run.expected_mode)
+        ));
+        body.push_str(&format!("- Status: `{}`\n", markdown_cell(&run.status)));
+        body.push_str(&format!(
+            "- Expected status: `{}`\n",
+            markdown_cell(&run.expected_status)
+        ));
+        body.push_str(&format!(
+            "- Counts: publishable {}, skipped {}, blocked {}\n",
+            run.publishable, run.skipped, run.blocked
+        ));
+        body.push_str(&format!(
+            "- Expected counts: publishable {}, skipped {}, blocked {}\n",
+            run.expected_publishable, run.expected_skipped, run.expected_blocked
+        ));
+        body.push_str(&format!(
+            "- Safe to publish: {} (expected {})\n",
+            run.safe_to_publish, run.expected_safe_to_publish
+        ));
+        body.push_str(&format!(
+            "- Operations: `{}`\n",
+            markdown_cell(&run.operations.join(", "))
+        ));
+        body.push_str(&format!(
+            "- Expected operations: `{}`\n",
+            markdown_cell(&run.expected_operations.join(", "))
+        ));
+        body.push_str(&format!(
+            "- Skip reasons: `{}`\n",
+            markdown_cell(&run.skip_reasons.join(", "))
+        ));
+        body.push_str(&format!(
+            "- Expected skip reasons: `{}`\n",
+            markdown_cell(&run.expected_skip_reasons.join(", "))
+        ));
+        body.push_str(&format!(
+            "- Block reasons: `{}`\n",
+            markdown_cell(&run.blocked_reasons.join(", "))
+        ));
+        body.push_str(&format!(
+            "- Expected block reasons: `{}`\n",
+            markdown_cell(&run.expected_blocked_reasons.join(", "))
+        ));
+        body.push_str(&format!(
+            "- Receipt JSON: `{}`\n",
+            normalize_path(&run.json_path)
+        ));
+        body.push_str(&format!(
+            "- Receipt Markdown: `{}`\n",
+            normalize_path(&run.markdown_path)
+        ));
+        body.push_str(&format!(
+            "- Expected report: `{}`\n",
+            normalize_path(&run.expected_report)
+        ));
+        body.push_str(&format!(
+            "- Expected Markdown: `{}`\n",
+            normalize_path(&run.expected_markdown)
+        ));
+        body.push_str(&format!(
+            "- Actual outputs: `{}`\n",
+            normalize_path(&run.actual_dir)
+        ));
+        body.push_str(&format!("- Reason: {}\n", markdown_cell(&run.reason)));
+        if run.errors.is_empty() {
+            body.push_str("- Errors: none\n\n");
+        } else {
+            body.push_str("- Errors:\n");
+            for error in &run.errors {
+                body.push_str(&format!("  - `{}`\n", markdown_cell(error)));
+            }
+            body.push('\n');
+        }
+    }
     body.push_str("## Gate Adoption Receipts\n\n");
     body.push_str("These receipts run `ripr gate evaluate` against checked boundary-gap PR guidance and calibration evidence. They are repo-local dogfood for explicit gate modes; generated CI still leaves `RIPR_GATE_MODE` unset unless the repository configures it.\n\n");
     body.push_str("- Default CI blocking: no\n");
@@ -12904,6 +13365,7 @@ fn dogfood_report_json(
     first_action_runs: &[DogfoodFirstActionRun],
     front_panel_runs: &[DogfoodFrontPanelRun],
     report_packet_index_runs: &[DogfoodReportPacketIndexRun],
+    pr_inline_comment_runs: &[DogfoodPrInlineCommentRun],
 ) -> String {
     let mut body = format!(
         "{{\n  \"schema_version\": \"0.1\",\n  \"status\": \"{}\",\n  \"advisory\": true,\n  \"runs\": [\n",
@@ -12912,7 +13374,8 @@ fn dogfood_report_json(
             gate_runs,
             first_action_runs,
             front_panel_runs,
-            report_packet_index_runs
+            report_packet_index_runs,
+            pr_inline_comment_runs
         )
     );
     for (index, run) in runs.iter().enumerate() {
@@ -13209,6 +13672,106 @@ fn dogfood_report_json(
         ));
         body.push_str("        \"expected_required_groups\": [");
         write_json_string_array(&mut body, &run.expected_required_groups);
+        body.push_str("],\n");
+        body.push_str(&format!(
+            "        \"reason\": \"{}\",\n",
+            json_escape(&run.reason)
+        ));
+        body.push_str("        \"errors\": [");
+        write_json_string_array(&mut body, &run.errors);
+        body.push_str("]\n      }");
+    }
+    body.push_str("\n    ]\n  },\n  \"pr_inline_comment_publisher\": {\n");
+    body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str("    \"default_inline_comments\": \"off\",\n");
+    body.push_str(
+        "    \"receipt_dir\": \"fixtures/boundary_gap/expected/pr-inline-comment-publisher\",\n    \"cases\": [\n",
+    );
+    for (index, run) in pr_inline_comment_runs.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("      {\n");
+        body.push_str(&format!(
+            "        \"name\": \"{}\",\n",
+            json_escape(&run.name)
+        ));
+        body.push_str(&format!(
+            "        \"actual_dir\": \"{}\",\n",
+            json_escape(&normalize_path(&run.actual_dir))
+        ));
+        body.push_str(&format!(
+            "        \"json_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.json_path))
+        ));
+        body.push_str(&format!(
+            "        \"markdown_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.markdown_path))
+        ));
+        body.push_str(&format!(
+            "        \"expected_report\": \"{}\",\n",
+            json_escape(&normalize_path(&run.expected_report))
+        ));
+        body.push_str(&format!(
+            "        \"expected_markdown\": \"{}\",\n",
+            json_escape(&normalize_path(&run.expected_markdown))
+        ));
+        body.push_str(&format!(
+            "        \"status\": \"{}\",\n",
+            json_escape(&run.status)
+        ));
+        body.push_str(&format!(
+            "        \"mode\": \"{}\",\n",
+            json_escape(&run.mode)
+        ));
+        body.push_str(&format!("        \"publishable\": {},\n", run.publishable));
+        body.push_str(&format!("        \"skipped\": {},\n", run.skipped));
+        body.push_str(&format!("        \"blocked\": {},\n", run.blocked));
+        body.push_str(&format!(
+            "        \"safe_to_publish\": {},\n",
+            run.safe_to_publish
+        ));
+        body.push_str("        \"operations\": [");
+        write_json_string_array(&mut body, &run.operations);
+        body.push_str("],\n");
+        body.push_str("        \"skip_reasons\": [");
+        write_json_string_array(&mut body, &run.skip_reasons);
+        body.push_str("],\n");
+        body.push_str("        \"blocked_reasons\": [");
+        write_json_string_array(&mut body, &run.blocked_reasons);
+        body.push_str("],\n");
+        body.push_str(&format!(
+            "        \"expected_status\": \"{}\",\n",
+            json_escape(&run.expected_status)
+        ));
+        body.push_str(&format!(
+            "        \"expected_mode\": \"{}\",\n",
+            json_escape(&run.expected_mode)
+        ));
+        body.push_str(&format!(
+            "        \"expected_publishable\": {},\n",
+            run.expected_publishable
+        ));
+        body.push_str(&format!(
+            "        \"expected_skipped\": {},\n",
+            run.expected_skipped
+        ));
+        body.push_str(&format!(
+            "        \"expected_blocked\": {},\n",
+            run.expected_blocked
+        ));
+        body.push_str(&format!(
+            "        \"expected_safe_to_publish\": {},\n",
+            run.expected_safe_to_publish
+        ));
+        body.push_str("        \"expected_operations\": [");
+        write_json_string_array(&mut body, &run.expected_operations);
+        body.push_str("],\n");
+        body.push_str("        \"expected_skip_reasons\": [");
+        write_json_string_array(&mut body, &run.expected_skip_reasons);
+        body.push_str("],\n");
+        body.push_str("        \"expected_blocked_reasons\": [");
+        write_json_string_array(&mut body, &run.expected_blocked_reasons);
         body.push_str("],\n");
         body.push_str(&format!(
             "        \"reason\": \"{}\",\n",
@@ -21396,19 +21959,21 @@ mod tests {
     use super::{
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
         CheckStatus, CheckViolation, CiFullEvidenceGate, CwdCommand, DogfoodFirstActionRun,
-        DogfoodFrontPanelRun, DogfoodGateRun, DogfoodReportPacketIndexRun, DogfoodRun, FixKind,
-        LocalContextAllow, MarkdownLink, ReceiptRecord, RepoExposureLatencyReport,
-        RepoExposureLatencyRun, RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
-        SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry,
-        StaticLanguageMatcher, TestOracleClass, badge_artifact_command_args, badge_artifact_jobs,
-        badge_artifact_native_slot, badge_artifacts_summary_markdown, build_lsp_cockpit_report,
+        DogfoodFrontPanelRun, DogfoodGateRun, DogfoodPrInlineCommentRun,
+        DogfoodReportPacketIndexRun, DogfoodRun, FixKind, LocalContextAllow, MarkdownLink,
+        ReceiptRecord, RepoExposureLatencyReport, RepoExposureLatencyRun, RepoExposureLatencyTrace,
+        ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode, SarifPolicyResult,
+        SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass,
+        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
+        badge_artifacts_summary_markdown, build_lsp_cockpit_report,
         build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
         build_targeted_test_outcome_report, check_allow_attributes, check_droid_review_config,
         check_executable_files, check_file_policy, check_local_context, check_network_policy,
         check_no_panic_family, check_process_policy, check_static_language, check_workflows,
         ci_full_evidence_gates, collect_panic_findings, collect_semantic_panic_findings,
         critic_findings, dogfood_class_counts, dogfood_first_action_scenarios,
-        dogfood_gate_adoption_scenarios, dogfood_pr_review_front_panel_run,
+        dogfood_gate_adoption_scenarios, dogfood_pr_inline_comment_run,
+        dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
         dogfood_pr_review_front_panel_scenarios, dogfood_report_json, dogfood_report_markdown,
         dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
         evaluate_semantic_no_panic_policy, extract_json_object_usize_map, extract_json_string,
@@ -25760,6 +26325,49 @@ fn exact_owner_call_has_external_expected_value() {
             .to_path_buf(),
             errors: Vec::new(),
         };
+        let pr_inline_comment_run = DogfoodPrInlineCommentRun {
+            name: "publishable_changed_line".to_string(),
+            actual_dir: Path::new(
+                "fixtures/boundary_gap/expected/pr-inline-comment-publisher/publishable-changed-line",
+            )
+            .to_path_buf(),
+            json_path: Path::new(
+                "fixtures/boundary_gap/expected/pr-inline-comment-publisher/publishable-changed-line/comment-publish-plan.json",
+            )
+            .to_path_buf(),
+            markdown_path: Path::new(
+                "fixtures/boundary_gap/expected/pr-inline-comment-publisher/publishable-changed-line/comment-publish-plan.md",
+            )
+            .to_path_buf(),
+            status: "advisory".to_string(),
+            mode: "plan".to_string(),
+            publishable: 1,
+            skipped: 0,
+            blocked: 0,
+            safe_to_publish: false,
+            operations: vec!["create".to_string()],
+            skip_reasons: Vec::new(),
+            blocked_reasons: Vec::new(),
+            expected_status: "advisory".to_string(),
+            expected_mode: "plan".to_string(),
+            expected_publishable: 1,
+            expected_skipped: 0,
+            expected_blocked: 0,
+            expected_safe_to_publish: false,
+            expected_operations: vec!["create".to_string()],
+            expected_skip_reasons: Vec::new(),
+            expected_blocked_reasons: Vec::new(),
+            reason: "publishable plan receipt".to_string(),
+            expected_report: Path::new(
+                "fixtures/boundary_gap/expected/pr-inline-comment-publisher/publishable-changed-line/comment-publish-plan.json",
+            )
+            .to_path_buf(),
+            expected_markdown: Path::new(
+                "fixtures/boundary_gap/expected/pr-inline-comment-publisher/publishable-changed-line/comment-publish-plan.md",
+            )
+            .to_path_buf(),
+            errors: Vec::new(),
+        };
 
         let markdown = dogfood_report_markdown(
             &[run],
@@ -25767,22 +26375,26 @@ fn exact_owner_call_has_external_expected_value() {
             &[first_action_run],
             &[front_panel_run],
             &[report_packet_index_run],
+            &[pr_inline_comment_run],
         );
-        let json = dogfood_report_json(&[], &[], &[], &[], &[]);
+        let json = dogfood_report_json(&[], &[], &[], &[], &[], &[]);
 
         assert!(markdown.contains("Mode: advisory"));
         assert!(markdown.contains("boundary_gap"));
         assert!(markdown.contains("First Useful Action Receipts"));
         assert!(markdown.contains("PR Review Front Panel Receipts"));
         assert!(markdown.contains("Report Packet Index Receipts"));
+        assert!(markdown.contains("PR Inline Comment Publisher Receipts"));
         assert!(markdown.contains("Gate Adoption Receipts"));
         assert!(markdown.contains("Default CI blocking: no"));
         assert!(markdown.contains("actionable"));
         assert!(markdown.contains("complete_packet"));
+        assert!(markdown.contains("publishable_changed_line"));
         assert!(markdown.contains("calibrated-high-confidence-new-gap"));
         assert!(json.contains("\"advisory\": true"));
         assert!(json.contains("\"default_ci_blocking\": false"));
         assert!(json.contains("\"report_packet_index\""));
+        assert!(json.contains("\"pr_inline_comment_publisher\""));
     }
 
     #[test]
@@ -26022,6 +26634,42 @@ fn exact_owner_call_has_external_expected_value() {
                 assert!(
                     run.errors.is_empty(),
                     "{} report-packet index receipt should validate: {:?}",
+                    run.name,
+                    run.errors
+                );
+            }
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn dogfood_pr_inline_comment_scenarios_have_checked_receipts() -> Result<(), String> {
+        with_repo_cwd(|| {
+            let scenarios = dogfood_pr_inline_comment_scenarios();
+            for required in [
+                ("publishable_changed_line", "plan"),
+                ("summary_only_excluded", "plan"),
+                ("cap_overflow", "plan"),
+                ("dedupe_upsert", "plan"),
+                ("stale_existing", "plan"),
+                ("fork_or_no_token", "inline"),
+                ("missing_input", "plan"),
+            ] {
+                assert!(
+                    scenarios.iter().any(|scenario| scenario.name == required.0
+                        && scenario.expected_mode == required.1),
+                    "{} PR inline comment receipt should be checked in {} mode",
+                    required.0,
+                    required.1
+                );
+            }
+
+            for scenario in scenarios {
+                let run = dogfood_pr_inline_comment_run(&scenario)?;
+                assert!(
+                    run.errors.is_empty(),
+                    "{} PR inline comment receipt should validate: {:?}",
                     run.name,
                     run.errors
                 );

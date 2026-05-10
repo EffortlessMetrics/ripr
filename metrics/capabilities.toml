@@ -992,15 +992,17 @@ evidence = [
   "docs/PR_INLINE_COMMENT_PUBLISHER_WORKFLOW.md documents off, plan, and inline rollout, publish-plan review, fork and permission behavior, review-thread noise controls, dedupe/upsert, rollback, and the advisory gate boundary",
   "crates/ripr/src/output/pr_inline_comment_publish_plan.rs::inline_comment_publish_plan_matches_fixture_corpus validates the producer against the fixture corpus",
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture validates the generated workflow default-off, plan artifact, safe-publish, and no-pull_request_target boundaries",
+  "cargo xtask dogfood checks publishable, summary-only, capped, dedupe/upsert, stale-existing, fork or no-token, and missing-input publish-plan receipts without posting real PR comments",
+  "docs/handoffs/2026-05-10-pr-inline-comment-publisher-receipts.md records the checked repo-local publish-plan receipt cases and validation boundary",
   "docs/PR_INLINE_COMMENT_PUBLISHER_PROPOSAL.md records Campaign 26's proposal and non-goals",
   "fixtures/boundary_gap/expected/pr-inline-comment-publisher/ pins publishable changed-line, summary-only excluded, cap overflow, dedupe/upsert, stale-existing, fork or no-token, and missing-input publish-plan cases",
-  "xtask/src/main.rs validates the PR inline comment publisher fixture corpus through check-fixture-contracts",
-  ".ripr/goals/active.toml tracks Campaign 26 with dogfood/pr-inline-comment-publisher-receipts as the next work item after workflow docs",
+  "xtask/src/main.rs validates the PR inline comment publisher fixture corpus through check-fixture-contracts and dogfood receipts",
+  ".ripr/goals/active.toml tracks Campaign 26 with campaign/pr-inline-comment-publisher-closeout as the next work item after dogfood receipts",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/pr-inline-comment-publisher"
 ]
-next = "dogfood/pr-inline-comment-publisher-receipts"
+next = "campaign/pr-inline-comment-publisher-closeout"
 metric = "pr_inline_comment_publish_plans, pr_inline_comment_publishable, pr_inline_comment_planned_create, pr_inline_comment_planned_update, pr_inline_comment_planned_keep, pr_inline_comment_planned_delete, pr_inline_comment_skipped, pr_inline_comment_blocked, pr_inline_comment_summary_only_skipped, pr_inline_comment_cap_reached, pr_inline_comment_dedupe_matches, pr_inline_comment_permission_blocked, pr_inline_comment_fork_blocked"
 
 [[capability]]
