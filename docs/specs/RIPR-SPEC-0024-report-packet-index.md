@@ -441,8 +441,9 @@ Follow-up implementation belongs to Campaign 25:
 - `report/report-packet-index` adds the read-only public `ripr reports index`
   producer that emits grouped reviewer-first JSON/Markdown from explicit
   existing artifact paths.
-- `ci/report-packet-index-summary` uploads and summarizes the index only when
-  inputs exist and keeps gate decision as pass/fail authority.
+- `ci/report-packet-index-summary` runs the public producer, uploads, and
+  summarizes the index only when indexed artifacts exist and keeps gate
+  decision as pass/fail authority.
 - `docs/report-packet-index-workflow` explains reviewer, maintainer,
   developer, and coding-agent use of the packet index.
 - `dogfood/report-packet-index-receipts` records repo-local receipts for the

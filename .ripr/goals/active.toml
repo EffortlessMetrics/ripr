@@ -80,7 +80,7 @@ commands = [
 
 [[work_item]]
 id = "ci/report-packet-index-summary"
-status = "ready"
+status = "done"
 branch = "ci-report-packet-index-summary"
 stackable = false
 acceptance = "Generated GitHub CI uploads and summarizes the report-packet index only when inputs exist, while preserving advisory defaults and gate-decision pass/fail authority"
@@ -94,12 +94,9 @@ commands = [
 
 [[work_item]]
 id = "docs/report-packet-index-workflow"
-status = "blocked"
+status = "ready"
 branch = "docs-report-packet-index-workflow"
 stackable = false
-blocked_by = [
-  "ci/report-packet-index-summary",
-]
 acceptance = "Document how reviewers, maintainers, developers, and coding agents use the report-packet index, follow artifact groups, regenerate missing surfaces, and preserve advisory gate limits"
 commands = [
   "cargo xtask check-doc-index",

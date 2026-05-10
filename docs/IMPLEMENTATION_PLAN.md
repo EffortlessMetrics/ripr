@@ -231,9 +231,11 @@ analysis reruns, or default CI blocking. The fixture corpus now pins complete,
 sparse, missing-front-panel, blocked-gate, missing-proof, missing-receipt, and
 coverage/grip-present packet states. `ripr reports index` now writes the
 read-only `target/ripr/reports/index.{json,md}` producer output from explicit
-artifact directories. The next ready slice is `ci/report-packet-index-summary`,
-which should project that index into generated GitHub CI summaries and artifact
-uploads without changing advisory defaults or gate authority.
+artifact directories. Generated GitHub CI now runs that producer when indexed
+artifacts exist, uploads `index.{json,md}` with the report packet, and appends
+the advisory packet-index summary without changing gate authority. The next
+ready slice is `docs/report-packet-index-workflow`, which should explain how
+reviewers, maintainers, developers, and coding agents use the index.
 
 ## PR 0: `planning-and-tracking-docs`
 

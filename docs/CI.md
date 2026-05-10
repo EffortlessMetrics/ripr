@@ -524,8 +524,8 @@ For a CI-first user, the useful output is the artifact packet:
   receipt JSON for the top seam when one is available;
 - `target/ripr/reports/` - targeted-test outcome, SARIF files when enabled,
   repo badge JSON, `agent-receipt.json`, `assistant-loop-health.{json,md}`,
-  `first-useful-action.{json,md}`, `pr-review-front-panel.{json,md}`, and any
-  repo-local cockpit output.
+  `first-useful-action.{json,md}`, `pr-review-front-panel.{json,md}`,
+  `index.{json,md}`, and any repo-local cockpit output.
 - `target/ripr/review/` - PR test guidance JSON and Markdown when
   `ripr review-comments` runs on pull requests.
 
@@ -533,9 +533,10 @@ The workflow also writes a `RIPR advisory summary` step summary. It includes
 the PR review front panel when existing inputs allow
 `ripr pr-review front-panel` to run, the first useful action when existing
 inputs allow `ripr first-action` to run, assistant-loop health when proof
-artifacts exist, the top recommendation, the agent review packet when present,
-artifact links, SARIF and badge status, known limits, and PR guidance
-annotation counts when `target/ripr/review/comments.json` exists. On pull
+artifacts exist, the report packet index when any indexed artifact exists, the
+top recommendation, the agent review packet when present, artifact links,
+SARIF and badge status, known limits, and PR guidance annotation counts when
+`target/ripr/review/comments.json` exists. On pull
 requests, the generated workflow writes that report before emitting
 changed-line check annotations by default without posting inline review
 comments.
@@ -1511,6 +1512,16 @@ reviewers, maintainers, developers, and coding agents should read the
 first-screen PR story, follow repair routes, inspect receipts, and preserve
 the advisory gate boundary.
 
+Generated CI also projects the report packet index when at least one indexed
+artifact is already present. It runs `ripr reports index --root .` with the
+explicit report, review, receipt, workflow, agent, pilot, and CI artifact
+directories, then writes and uploads `target/ripr/reports/index.json` and
+`target/ripr/reports/index.md` with the normal report packet. The job summary
+renders index status, available and missing expected counts, start-here path,
+gate authority path, missing surfaces, warning kinds, and the Markdown index.
+If no indexed artifacts exist, the step logs that no report-packet index
+inputs were available and leaves CI pass/fail behavior unchanged.
+
 For every configured gate mode, the generated workflow behavior is:
 
 1. capture active PR labels into `target/ci/labels.json`;
@@ -1542,13 +1553,16 @@ For every configured gate mode, the generated workflow behavior is:
 18. render the PR review front-panel section from
    `pr-review-front-panel.json` and append `pr-review-front-panel.md` when
    present;
-19. append the detailed `gate-decision.md`, `baseline-debt-delta.md`, and
+19. run `ripr reports index` when explicit indexed artifacts exist;
+20. render the report-packet index section from `index.json` and append
+   `index.md` when present;
+21. append the detailed `gate-decision.md`, `baseline-debt-delta.md`, and
    `ripr-zero-status.md` reports when present;
-20. upload gate, baseline delta, RIPR Zero, PR evidence ledger,
+22. upload gate, baseline delta, RIPR Zero, PR evidence ledger,
    test-oracle assistant proof, assistant-loop health, first useful action, and
-   PR review front-panel artifacts with the normal `ripr-reports` artifact
-   packet;
-21. fail only when the explicit gate mode returns `blocked` or `config_error`.
+   PR review front-panel plus report-packet index artifacts with the normal
+   `ripr-reports` artifact packet;
+23. fail only when the explicit gate mode returns `blocked` or `config_error`.
 
 Acknowledgeable policy:
 
