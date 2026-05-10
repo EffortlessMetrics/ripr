@@ -124,3 +124,32 @@ git push origin v0.5.0
 ```
 
 Update docs or release notes if the install command or package metadata changed.
+
+## Recovery
+
+If a release workflow fails after the tag has been pushed, prefer
+fix-forward over retagging. The tag is the release-prep snapshot; the
+release workflows can be rerun against `main` (or any commit that contains
+the fix) using `workflow_dispatch`, and uploaded assets attach to the
+existing GitHub Release rather than replacing it.
+
+1. Open a focused fix PR on `main` that reproduces the failure as a test
+   and fixes only the broken path. Merge it.
+2. Rerun the failed workflow via `workflow_dispatch` with the same
+   `version` input as the tag, for example
+   `gh workflow run release-server-binaries.yml -f version=0.5.0`. The
+   asset names continue to use the original version, so they overlay
+   correctly on the existing Release.
+3. After server assets are present and verified, rerun any downstream
+   workflow that was gated on them, for example
+   `gh workflow run publish-extension.yml -f version=0.5.0`.
+4. Do not retag and do not delete the GitHub Release. Leave the tag at
+   the release-prep commit; the fix-forward commit is on `main` and any
+   subsequent point release will include it.
+5. Update the GitHub Release body to document the recovery if the failure
+   was user-visible. crates.io publish remains a manual step and should
+   only run once asset verification is complete.
+
+This pattern is what the `v0.5.0` release used after the initial Windows
+server-archive failure; see CHANGELOG `Release recovery (v0.5.0)` for the
+record.
