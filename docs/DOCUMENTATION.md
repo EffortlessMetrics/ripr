@@ -50,6 +50,7 @@ Current how-to docs:
 - [PR review front panel proposal](PR_REVIEW_FRONT_PANEL_PROPOSAL.md)
 - [Report packet index workflow](REPORT_PACKET_INDEX_WORKFLOW.md)
 - [Report packet index proposal](REPORT_PACKET_INDEX_PROPOSAL.md)
+- [PR inline comment publisher proposal](PR_INLINE_COMMENT_PUBLISHER_PROPOSAL.md)
 - [Lane 1 evidence spine tracker](lanes/LANE_1_EVIDENCE_SPINE.md)
 - [Lane 3 editor/LSP tracker](lanes/LANE_3_EDITOR_LSP.md)
 - [Release](RELEASE.md)
@@ -94,6 +95,7 @@ Current reference docs:
 - [PR review front panel proposal](PR_REVIEW_FRONT_PANEL_PROPOSAL.md)
 - [Report packet index workflow](REPORT_PACKET_INDEX_WORKFLOW.md)
 - [Report packet index proposal](REPORT_PACKET_INDEX_PROPOSAL.md)
+- [PR inline comment publisher proposal](PR_INLINE_COMMENT_PUBLISHER_PROPOSAL.md)
 - [Test taxonomy](TEST_TAXONOMY.md)
 - [Engineering rules](ENGINEERING.md)
 - [File policy](FILE_POLICY.md)
@@ -164,6 +166,7 @@ Current explanation docs:
 - [PR review front panel proposal](PR_REVIEW_FRONT_PANEL_PROPOSAL.md)
 - [Report packet index workflow](REPORT_PACKET_INDEX_WORKFLOW.md)
 - [Report packet index proposal](REPORT_PACKET_INDEX_PROPOSAL.md)
+- [PR inline comment publisher proposal](PR_INLINE_COMMENT_PUBLISHER_PROPOSAL.md)
 - [Lane 1 evidence spine tracker](lanes/LANE_1_EVIDENCE_SPINE.md)
 - [Lane 3 editor/LSP tracker](lanes/LANE_3_EDITOR_LSP.md)
 

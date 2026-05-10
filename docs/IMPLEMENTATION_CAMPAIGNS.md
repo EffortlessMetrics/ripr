@@ -2810,6 +2810,91 @@ Closeout:
 - The next Lane 4 adoption surface should be opened explicitly rather than
   folded into Report Packet Index closeout work.
 
+## Campaign 26: PR Inline Comment Publisher
+
+Campaign ID: `pr-inline-comment-publisher`
+
+Status: active
+
+Campaigns 13 through 25 made PR guidance, generated-CI summaries, changed-line
+check annotations, optional gates, baselines, ledgers, assistant proof, first
+useful action, assistant-loop health, PR review front panel, and report-packet
+index artifacts visible without posting durable PR comments. The next adoption
+risk is explicit inline comment publishing for teams that choose review-thread
+visibility after the summary and annotation surfaces are trusted.
+
+Objective:
+
+```text
+Define and implement an explicit opt-in inline PR comment publisher over the
+existing `ripr review-comments` artifact without changing default generated CI.
+The lane must first produce a read-only publish plan from explicit
+`target/ripr/review/comments.json` input, then optionally publish only safe
+changed-line comments when a workflow explicitly enables it. The publisher must
+never post `summary_only` guidance, must cap comments, deduplicate by
+`dedupe_key`, upsert or replace prior RIPR comments, preserve advisory
+language, avoid hidden analysis reruns, and avoid analyzer, ranking, gate,
+editor, provider, mutation, source-edit, generated-test, branch-protection, or
+default-blocking changes.
+```
+
+End state:
+
+- `target/ripr/review/comment-publish-plan.json` and `.md` describe intended
+  inline comment operations before anything posts
+- the plan consumes only explicit `review-comments` artifacts and optional
+  existing-comment metadata
+- summary-only guidance is never publishable as an inline comment
+- publishable comments target changed lines only and are capped to three by
+  default
+- dedupe keys drive upsert or replace behavior so RIPR comments do not
+  duplicate across reruns
+- generated CI keeps inline comments disabled by default and only posts when
+  explicit configuration and safe permissions exist
+- fixtures and dogfood receipts cover publishable, summary-only, capped,
+  duplicate, stale-existing, fork or no-token, and missing-input cases
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `spec/pr-inline-comment-publisher-contract` | ready | Define the optional inline comment publisher contract, read-only publish-plan schema, explicit inputs, permission boundary, dedupe/upsert semantics, cap rules, summary-only exclusion, generated-CI default-off posture, and fixture-first implementation plan before changing producer or workflow behavior. |
+| `fixtures/pr-inline-comment-publisher-corpus` | blocked | Blocked on `spec/pr-inline-comment-publisher-contract`; pin inline comment publish-plan cases for publishable changed-line comments, summary-only exclusion, cap overflow, dedupe/upsert, stale existing RIPR comments, fork or no-token no-op, and missing review-comments input before adding publisher behavior. |
+| `report/pr-inline-comment-publish-plan` | blocked | Blocked on `fixtures/pr-inline-comment-publisher-corpus`; add a read-only publish-plan producer that emits JSON/Markdown operations from explicit review-comments and optional existing-comment metadata without posting to GitHub or changing gate authority. |
+| `ci/pr-inline-comment-publisher` | blocked | Blocked on `report/pr-inline-comment-publish-plan`; add generated GitHub CI wiring that keeps inline comments off by default, can emit the publish plan as advisory artifacts, and posts or updates comments only when explicit comment mode and safe pull-request permissions are configured. |
+| `docs/pr-inline-comment-publisher-workflow` | blocked | Blocked on `ci/pr-inline-comment-publisher`; document how teams opt into inline comments, read the publish plan, avoid review-thread noise, handle forks or missing permissions, and preserve advisory gate limits. |
+| `dogfood/pr-inline-comment-publisher-receipts` | blocked | Blocked on `docs/pr-inline-comment-publisher-workflow`; record repo-local publish-plan receipts for publishable, summary-only, capped, dedupe/upsert, stale-existing, fork or no-token, and missing-input cases without posting real PR comments. |
+| `campaign/pr-inline-comment-publisher-closeout` | blocked | Blocked on `dogfood/pr-inline-comment-publisher-receipts`; close Campaign 26 after the spec, fixtures, read-only publish plan, explicit generated-CI opt-in wiring, workflow docs, dogfood receipts, and validation show inline comments are safe, capped, deduped, advisory, and disabled by default. |
+
+References:
+
+- [PR inline comment publisher proposal](PR_INLINE_COMMENT_PUBLISHER_PROPOSAL.md)
+- [RIPR-SPEC-0012: PR test guidance annotations](specs/RIPR-SPEC-0012-pr-test-guidance.md)
+- [PR review guidance](PR_REVIEW_GUIDANCE.md)
+- [PR review front panel workflow](PR_REVIEW_FRONT_PANEL_WORKFLOW.md)
+- [Report packet index workflow](REPORT_PACKET_INDEX_WORKFLOW.md)
+- [CI](CI.md)
+
+Blocking conditions:
+
+- analyzer behavior changes or recommendation ranking changes
+- gate policy, waiver, suppression, or baseline semantic changes
+- LSP/editor, provider, mutation, source-edit, generated-test, branch
+  protection, or default-blocking changes
+- inline comments posted by default
+- `summary_only` guidance posted as inline comments
+- comments placed on unchanged or unsafe lines
+- duplicate durable comments across reruns
+- free-form LLM review comments
+- `pull_request_target` or unproven fork-permission behavior
+
+Next:
+
+- Continue with `spec/pr-inline-comment-publisher-contract`. The proposal and
+  campaign tracker are now in place; the next slice should define the stable
+  publish-plan schema and permission boundary before changing any producer or
+  workflow behavior.
+
 ## Future Campaign: Editor Evidence UX
 
 Campaign ID: `editor-evidence-ux`
