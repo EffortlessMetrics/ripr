@@ -245,12 +245,13 @@ action, assistant proof, assistant-loop health, PR evidence ledger, baseline
 delta, gate decision, receipts, calibration, and optional coverage/grip frontier
 artifacts, and the fixture corpus pins the first set of reviewer states before
 producer work. `ripr pr-review front-panel` now produces the advisory
-JSON/Markdown report from explicit existing artifacts. The campaign keeps Lane
-4's projection boundary: consume explicit artifacts, do not change analyzer
-behavior, recommendation ranking,
+JSON/Markdown report from explicit existing artifacts, and generated GitHub CI
+now uploads and summarizes `pr-review-front-panel.{json,md}` only when input
+artifacts exist. The campaign keeps Lane 4's projection boundary: consume
+explicit artifacts, do not change analyzer behavior, recommendation ranking,
 gate semantics, editor behavior, mutation execution, provider calls, source
 files, generated tests, inline-comment defaults, or default CI blocking. The
-next ready slice is `ci/pr-review-front-panel-summary`.
+next ready slice is `docs/pr-review-front-panel-workflow`.
 
 ## Strategic Sequence
 
