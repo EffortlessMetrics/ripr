@@ -9,6 +9,10 @@ edit source. `cargo xtask check-fixture-contracts` validates the required case
 matrix and field shape, while `cargo xtask check-output-contracts` validates the
 `schema_version` lock.
 
+Related-test entries include `oracle_semantics` so the contract pins what the
+oracle observes, what discriminator remains missing, and which assertion upgrade
+is available when RIPR can name one.
+
 Current v0.1 calibration entries use the placeholder:
 
 ```json

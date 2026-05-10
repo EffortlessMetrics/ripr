@@ -40,9 +40,22 @@ pub(crate) fn agent_start_command(root: &str, seam_id: &str, out_dir: &str) -> S
 }
 
 pub(crate) fn check_repo_exposure_command(root: &str, mode: &str, out_path: &str) -> String {
+    check_repo_exposure_command_with_base(root, None, mode, out_path)
+}
+
+pub(crate) fn check_repo_exposure_command_with_base(
+    root: &str,
+    base: Option<&str>,
+    mode: &str,
+    out_path: &str,
+) -> String {
+    let base_arg = base
+        .map(|base| format!(" --base {}", shell_arg(base)))
+        .unwrap_or_default();
     format!(
-        "ripr check --root {} --mode {} --format repo-exposure-json > {}",
+        "ripr check --root {}{} --mode {} --format repo-exposure-json > {}",
         shell_arg(root),
+        base_arg,
         shell_arg(mode),
         shell_arg(out_path)
     )
@@ -305,6 +318,15 @@ mod tests {
         assert_eq!(
             check_repo_exposure_command("repo root", "draft", "target/ripr/work flow/before.json"),
             "ripr check --root \"repo root\" --mode draft --format repo-exposure-json > \"target/ripr/work flow/before.json\""
+        );
+        assert_eq!(
+            check_repo_exposure_command_with_base(
+                "repo root",
+                Some("origin/main with space"),
+                "draft",
+                "target/ripr/work flow/before.json",
+            ),
+            "ripr check --root \"repo root\" --base \"origin/main with space\" --mode draft --format repo-exposure-json > \"target/ripr/work flow/before.json\""
         );
         assert_eq!(
             agent_verify_command(

@@ -507,12 +507,14 @@ struct MutationCalibrationAgreement {
 struct MutationCalibrationRuntimeSignal {
     runtime: MutationOutcomeRecord,
     static_seam: Option<StaticSeamRecord>,
+    confidence_label: &'static str,
     reason: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct MutationCalibrationStaticOnlyFinding {
     seam: StaticSeamRecord,
+    confidence_label: &'static str,
     reason: String,
 }
 
@@ -3825,10 +3827,72 @@ fn validate_evidence_record_contract_record(
     require_json_array_at(record, "missing_discriminators", case_id, violations);
     require_json_usize_at(record, "related_tests_total", case_id, violations);
     require_json_array_at(record, "related_tests", case_id, violations);
+    validate_evidence_record_related_tests(case_id, record.get("related_tests"), violations);
     validate_evidence_record_recommendation(case_id, record.get("recommendation"), violations);
     validate_evidence_record_actionability(case_id, record.get("actionability"), violations);
     validate_evidence_record_calibration(case_id, record.get("calibration"), violations);
     require_json_array_at(record, "static_limitations", case_id, violations);
+}
+
+fn validate_evidence_record_related_tests(
+    case_id: &str,
+    related_tests: Option<&Value>,
+    violations: &mut Vec<String>,
+) {
+    let Some(Value::Array(tests)) = related_tests else {
+        return;
+    };
+    for (idx, test) in tests.iter().enumerate() {
+        validate_evidence_record_related_test(
+            case_id,
+            &format!("related_tests[{idx}]"),
+            test,
+            violations,
+        );
+    }
+}
+
+fn validate_evidence_record_related_test(
+    case_id: &str,
+    path: &str,
+    test: &Value,
+    violations: &mut Vec<String>,
+) {
+    let Value::Object(_) = test else {
+        violations.push(format!(
+            "evidence-record case {case_id} {path} must be an object"
+        ));
+        return;
+    };
+    for field in [
+        "name",
+        "file",
+        "oracle_kind",
+        "oracle_strength",
+        "evidence_summary",
+        "relation_reason",
+        "relation_confidence",
+    ] {
+        require_json_string_at(test, field, case_id, violations);
+    }
+    require_json_usize_at(test, "line", case_id, violations);
+    match test.get("oracle_semantics") {
+        Some(semantics @ Value::Object(_)) => {
+            require_json_string_at(semantics, "observes", case_id, violations);
+            require_json_string_at(semantics, "missing", case_id, violations);
+            if !matches!(
+                semantics.get("upgrade_suggestion"),
+                Some(Value::Null | Value::String(_))
+            ) {
+                violations.push(format!(
+                    "evidence-record case {case_id} {path}.oracle_semantics.upgrade_suggestion must be string or null"
+                ));
+            }
+        }
+        _ => violations.push(format!(
+            "evidence-record case {case_id} {path}.oracle_semantics must be an object"
+        )),
+    }
 }
 
 fn validate_evidence_record_recommendation(
@@ -3859,6 +3923,14 @@ fn validate_evidence_record_recommendation(
                 "evidence-record case {case_id} recommendation.{optional} must be present"
             ));
         }
+    }
+    if let Some(nearest @ Value::Object(_)) = recommendation.get("nearest_test_to_imitate") {
+        validate_evidence_record_related_test(
+            case_id,
+            "recommendation.nearest_test_to_imitate",
+            nearest,
+            violations,
+        );
     }
 }
 
@@ -9437,6 +9509,7 @@ fn mutation_calibration_agreement(
                 agreement.static_gap_without_runtime_signal += 1;
                 static_only_findings.push(MutationCalibrationStaticOnlyFinding {
                     seam: seam.clone(),
+                    confidence_label: static_only_confidence_label(records),
                     reason: static_only_reason(records),
                 });
             }
@@ -9449,6 +9522,7 @@ fn mutation_calibration_agreement(
                     missed_runtime_signals.push(MutationCalibrationRuntimeSignal {
                         runtime: record.mutation.clone(),
                         static_seam: Some(seam.clone()),
+                        confidence_label: "contradicts_static_clean",
                         reason: "runtime gap signal joined to a static-clean seam".to_string(),
                     });
                 }
@@ -9470,6 +9544,7 @@ fn mutation_calibration_agreement(
         missed_runtime_signals.push(MutationCalibrationRuntimeSignal {
             runtime: record.clone(),
             static_seam: None,
+            confidence_label: "runtime_only_signal",
             reason: "runtime gap signal did not join to a static seam".to_string(),
         });
     }
@@ -9513,6 +9588,17 @@ fn static_only_reason(records: &[&MutationCalibrationMatch]) -> String {
     }
 }
 
+fn static_only_confidence_label(records: &[&MutationCalibrationMatch]) -> &'static str {
+    if records
+        .iter()
+        .any(|record| runtime_clean_signal(&record.mutation.runtime_outcome))
+    {
+        "contradicts_static_gap"
+    } else {
+        "no_runtime_data"
+    }
+}
+
 fn static_gap_signal(seam: &StaticSeamRecord) -> bool {
     !matches!(
         seam.seam_grip_class.as_str(),
@@ -9532,6 +9618,25 @@ fn runtime_clean_signal(outcome: &str) -> bool {
         normalize_runtime_label(outcome).as_str(),
         "caught" | "timeout" | "timed_out" | "killed"
     )
+}
+
+fn confidence_label_for_match(record: &MutationCalibrationMatch) -> &'static str {
+    let has_static_gap = static_gap_signal(&record.seam);
+    if runtime_gap_signal(&record.mutation.runtime_outcome) {
+        if has_static_gap {
+            "supports_static_gap"
+        } else {
+            "contradicts_static_clean"
+        }
+    } else if runtime_clean_signal(&record.mutation.runtime_outcome) {
+        if has_static_gap {
+            "contradicts_static_gap"
+        } else {
+            "supports_static_clean"
+        }
+    } else {
+        "no_runtime_data"
+    }
 }
 
 fn mutation_calibration_report_json(report: &MutationCalibrationReport) -> Result<String, String> {
@@ -9605,6 +9710,7 @@ fn mutation_calibration_runtime_signal_json(record: &MutationCalibrationRuntimeS
     serde_json::json!({
         "runtime": mutation_outcome_json(&record.runtime),
         "static": record.static_seam.as_ref().map(static_seam_json),
+        "confidence_label": record.confidence_label,
         "reason": record.reason.as_str(),
     })
 }
@@ -9612,6 +9718,7 @@ fn mutation_calibration_runtime_signal_json(record: &MutationCalibrationRuntimeS
 fn mutation_calibration_static_only_json(record: &MutationCalibrationStaticOnlyFinding) -> Value {
     serde_json::json!({
         "static": static_seam_json(&record.seam),
+        "confidence_label": record.confidence_label,
         "reason": record.reason.as_str(),
     })
 }
@@ -9621,12 +9728,14 @@ fn mutation_calibration_match_json(record: &MutationCalibrationMatch) -> Value {
         "join_method": record.join_method,
         "static": static_seam_json(&record.seam),
         "runtime": mutation_outcome_json(&record.mutation),
+        "confidence_label": confidence_label_for_match(record),
     })
 }
 
 fn ambiguous_mutation_calibration_match_json(record: &AmbiguousMutationCalibrationMatch) -> Value {
     serde_json::json!({
         "runtime": mutation_outcome_json(&record.mutation),
+        "confidence_label": "ambiguous_runtime_join",
         "candidates": record
             .candidates
             .iter()
@@ -9812,8 +9921,8 @@ fn mutation_calibration_report_markdown(report: &MutationCalibrationReport) -> S
     if report.missed_runtime_signals.is_empty() {
         out.push_str("No imported runtime gap signals lacked a matching static gap.\n");
     } else {
-        out.push_str("| Runtime mutant | Location | Runtime outcome | Static class | Reason |\n");
-        out.push_str("| --- | --- | --- | --- | --- |\n");
+        out.push_str("| Runtime mutant | Location | Runtime outcome | Static class | Confidence label | Reason |\n");
+        out.push_str("| --- | --- | --- | --- | --- | --- |\n");
         for record in &report.missed_runtime_signals {
             let mutant = record.runtime.mutant_id.as_deref().unwrap_or("unknown");
             let location = mutation_location_label(&record.runtime);
@@ -9823,11 +9932,12 @@ fn mutation_calibration_report_markdown(report: &MutationCalibrationReport) -> S
                 .map(|seam| seam.seam_grip_class.as_str())
                 .unwrap_or("unmatched");
             out.push_str(&format!(
-                "| `{}` | {} | {} | `{}` | {} |\n",
+                "| `{}` | {} | {} | `{}` | `{}` | {} |\n",
                 markdown_cell(mutant),
                 markdown_cell(&location),
                 markdown_cell(&record.runtime.runtime_outcome),
                 markdown_cell(static_class),
+                record.confidence_label,
                 markdown_cell(&record.reason)
             ));
         }
@@ -9837,15 +9947,16 @@ fn mutation_calibration_report_markdown(report: &MutationCalibrationReport) -> S
     if report.static_only_findings.is_empty() {
         out.push_str("No static gap seams lacked a runtime gap signal in this import.\n");
     } else {
-        out.push_str("| Seam | Class | Location | Reason |\n");
-        out.push_str("| --- | --- | --- | --- |\n");
+        out.push_str("| Seam | Class | Location | Confidence label | Reason |\n");
+        out.push_str("| --- | --- | --- | --- | --- |\n");
         for record in &report.static_only_findings {
             let location = format!("{}:{}", record.seam.file, record.seam.line);
             out.push_str(&format!(
-                "| `{}` | `{}` | {} | {} |\n",
+                "| `{}` | `{}` | {} | `{}` | {} |\n",
                 markdown_cell(&record.seam.seam_id),
                 markdown_cell(&record.seam.seam_grip_class),
                 markdown_cell(&location),
+                record.confidence_label,
                 markdown_cell(&record.reason)
             ));
         }
@@ -9866,18 +9977,19 @@ fn mutation_calibration_report_markdown(report: &MutationCalibrationReport) -> S
     if report.matched.is_empty() {
         out.push_str("No runtime mutants matched static seams.\n");
     } else {
-        out.push_str("| Seam | Class | Oracle | Mutation operator | Runtime outcome | Join |\n");
-        out.push_str("| --- | --- | --- | --- | --- | --- |\n");
+        out.push_str("| Seam | Class | Oracle | Mutation operator | Runtime outcome | Join | Confidence label |\n");
+        out.push_str("| --- | --- | --- | --- | --- | --- | --- |\n");
         for record in &report.matched {
             out.push_str(&format!(
-                "| `{}` | `{}` | `{}`/`{}` | {} | {} | `{}` |\n",
+                "| `{}` | `{}` | `{}`/`{}` | {} | {} | `{}` | `{}` |\n",
                 markdown_cell(&record.seam.seam_id),
                 markdown_cell(&record.seam.seam_grip_class),
                 markdown_cell(&record.seam.oracle_kind),
                 markdown_cell(&record.seam.oracle_strength),
                 markdown_cell(&record.mutation.mutation_operator),
                 markdown_cell(&record.mutation.runtime_outcome),
-                record.join_method
+                record.join_method,
+                confidence_label_for_match(record)
             ));
         }
     }
@@ -9888,8 +10000,8 @@ fn mutation_calibration_report_markdown(report: &MutationCalibrationReport) -> S
             "No runtime mutants matched multiple static seams at the same file and line.\n",
         );
     } else {
-        out.push_str("| Runtime mutant | Location | Runtime outcome | Candidate seams |\n");
-        out.push_str("| --- | --- | --- | --- |\n");
+        out.push_str("| Runtime mutant | Location | Runtime outcome | Confidence label | Candidate seams |\n");
+        out.push_str("| --- | --- | --- | --- | --- |\n");
         for record in &report.ambiguous_file_line {
             let mutant = record.mutation.mutant_id.as_deref().unwrap_or("unknown");
             let location = mutation_location_label(&record.mutation);
@@ -9900,10 +10012,11 @@ fn mutation_calibration_report_markdown(report: &MutationCalibrationReport) -> S
                 .collect::<Vec<_>>()
                 .join(", ");
             out.push_str(&format!(
-                "| `{}` | {} | {} | {} |\n",
+                "| `{}` | {} | {} | `{}` | {} |\n",
                 markdown_cell(mutant),
                 markdown_cell(&location),
                 markdown_cell(&record.mutation.runtime_outcome),
+                "ambiguous_runtime_join",
                 markdown_cell(&candidates)
             ));
         }
@@ -9937,15 +10050,15 @@ fn mutation_calibration_report_markdown(report: &MutationCalibrationReport) -> S
         out.push_str(
             "Sample only; see JSON `static_without_runtime_total` for the full count.\n\n",
         );
-        out.push_str("| Seam | Kind | Class | Location |\n");
-        out.push_str("| --- | --- | --- | --- |\n");
+        out.push_str("| Seam | Kind | Class | Location | Confidence label |\n");
+        out.push_str("| --- | --- | --- | --- | --- |\n");
         for seam in report
             .static_without_runtime
             .iter()
             .take(MUTATION_CALIBRATION_STATIC_WITHOUT_RUNTIME_SAMPLE_LIMIT)
         {
             out.push_str(&format!(
-                "| `{}` | `{}` | `{}` | {}:{} |\n",
+                "| `{}` | `{}` | `{}` | {}:{} | `no_runtime_data` |\n",
                 markdown_cell(&seam.seam_id),
                 markdown_cell(&seam.seam_kind),
                 markdown_cell(&seam.seam_grip_class),
@@ -11955,6 +12068,8 @@ fn check_output_contracts() -> Result<(), String> {
     }
     let app = read_text_lossy(Path::new("crates/ripr/src/app.rs"))?;
     let evidence_record = read_text_lossy(Path::new("crates/ripr/src/output/evidence_record.rs"))?;
+    let mutation_calibration =
+        read_text_lossy(Path::new("crates/ripr/src/output/mutation_calibration.rs"))?;
     let mut json_output = String::new();
     for path in [
         "crates/ripr/src/output/json/mod.rs",
@@ -12013,6 +12128,22 @@ fn check_output_contracts() -> Result<(), String> {
                 require_contract_value(
                     "crates/ripr/src/output/json/",
                     &json_output,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+                require_contract_value(
+                    "docs/OUTPUT_SCHEMA.md",
+                    &schema,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+            }
+            "confidence_label" => {
+                require_contract_value(
+                    "crates/ripr/src/output/mutation_calibration.rs",
+                    &mutation_calibration,
                     value,
                     kind,
                     &mut violations,
@@ -19198,6 +19329,78 @@ mod tests {
         assert!(report.contains("actionability.class is unsupported"));
         assert!(report.contains("calibration"));
         assert!(report.contains("missing case exact_error_variant_gap"));
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_record_contract_fixture_guard_requires_oracle_semantics() -> Result<(), String> {
+        let root = temp_dir("evidence-record-contract-oracle-semantics-invalid");
+        let corpus = root.join("corpus.json");
+        write(
+            &corpus,
+            r#"{
+  "kind": "evidence_record_contract_corpus",
+  "schema_version": "0.1",
+  "spec": "RIPR-SPEC-0021",
+  "cases": [
+    {
+      "id": "predicate_boundary_missing_equality",
+      "description": "invalid oracle semantics shape",
+      "source": "fixture",
+      "record": {
+        "schema_version": "0.1",
+        "seam_id": "contract-predicate-boundary",
+        "canonical_gap_id": null,
+        "owner": "src/pricing.rs::discounted_total",
+        "location": {"file": "src/pricing.rs", "line": 88},
+        "seam_kind": "predicate_boundary",
+        "grip_class": "weakly_gripped",
+        "headline_eligible": true,
+        "evidence_path": {
+          "reach": {"state": "yes", "confidence": "medium", "summary": "related tests call the owner"},
+          "activate": {"state": "yes", "confidence": "medium", "summary": "boundary values are visible"},
+          "propagate": {"state": "yes", "confidence": "low", "summary": "predicate flows to return value"},
+          "observe": {"state": "yes", "confidence": "medium", "summary": "related tests assert returned totals"},
+          "discriminate": {"state": "weak", "confidence": "medium", "summary": "boundary is not asserted"}
+        },
+        "observed_values": [],
+        "missing_discriminators": [],
+        "related_tests_total": 1,
+        "related_tests": [
+          {"name": "below_threshold_has_no_discount", "file": "tests/pricing.rs", "line": 10, "oracle_kind": "exact_value", "oracle_strength": "strong", "evidence_summary": "exact value assertion", "relation_reason": "direct_owner_call", "relation_confidence": "high"}
+        ],
+        "recommendation": {
+          "action": "write_targeted_test",
+          "reason": "extend the nearest related test",
+          "recommended_test": null,
+          "nearest_test_to_imitate": {"name": "below_threshold_has_no_discount", "file": "tests/pricing.rs", "line": 10, "oracle_kind": "exact_value", "oracle_strength": "strong", "evidence_summary": "exact value assertion", "oracle_semantics": {"observes": "exact value", "missing": "none", "upgrade_suggestion": false}, "relation_reason": "direct_owner_call", "relation_confidence": "high"},
+          "candidate_values": [],
+          "assertion_shape": null,
+          "verify_command": null
+        },
+        "actionability": {
+          "class": "actionable_related_test_extension",
+          "reason": "extend related test",
+          "has_concrete_guidance": true,
+          "signals": {"missing_discriminator": false, "candidate_value": false, "assertion_shape": false, "related_test": true, "recommended_test_target": false, "verification_command": false}
+        },
+        "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+        "static_limitations": []
+      }
+    }
+  ]
+}
+"#,
+        );
+
+        let mut violations = Vec::new();
+        super::validate_evidence_record_contract_fixture_corpus_at(&corpus, &mut violations)?;
+        let report = violations.join("\n");
+
+        assert!(report.contains("related_tests[0].oracle_semantics must be an object"));
+        assert!(report.contains(
+            "recommendation.nearest_test_to_imitate.oracle_semantics.upgrade_suggestion must be string or null"
+        ));
         Ok(())
     }
 
@@ -27273,17 +27476,28 @@ covered_by = ["cargo xtask check-file-policy"]
             value["static_only_findings"].as_array().map(Vec::len),
             Some(2)
         );
+        assert_eq!(
+            value["matches"][0]["confidence_label"],
+            "supports_static_gap"
+        );
+        assert!(json.contains(r#""confidence_label": "contradicts_static_gap""#));
+        assert!(json.contains(r#""confidence_label": "supports_static_clean""#));
+        assert!(json.contains(r#""confidence_label": "contradicts_static_clean""#));
+        assert!(json.contains(r#""confidence_label": "runtime_only_signal""#));
+        assert!(json.contains(r#""confidence_label": "no_runtime_data""#));
 
         let markdown = mutation_calibration_report_markdown(&report);
         assert!(markdown.contains("## Static/runtime agreement"));
         assert!(markdown.contains("static_gap_and_runtime_signal"));
+        assert!(markdown.contains("Confidence label"));
         assert!(markdown.contains("Runtime signals without static gaps"));
         assert!(markdown.contains("Static gaps without runtime signals"));
         Ok(())
     }
 
     #[test]
-    fn mutation_calibration_reports_ambiguous_file_line_without_selecting_first() {
+    fn mutation_calibration_reports_ambiguous_file_line_without_selecting_first()
+    -> Result<(), String> {
         let static_seams = vec![
             StaticSeamRecord {
                 seam_id: "seam-a".to_string(),
@@ -27326,6 +27540,9 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(report.ambiguous_file_line[0].candidates.len(), 2);
         assert!(report.unmatched_mutants.is_empty());
         assert!(report.static_without_runtime.is_empty());
+        let json = mutation_calibration_report_json(&report)?;
+        assert!(json.contains(r#""confidence_label": "ambiguous_runtime_join""#));
+        Ok(())
     }
 
     #[test]

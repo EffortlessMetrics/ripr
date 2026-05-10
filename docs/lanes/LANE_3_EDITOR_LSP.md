@@ -48,7 +48,16 @@ Completed slices:
 - status and staleness handling;
 - editor workflow docs;
 - first-useful-action status projection, including wrong-root and stale-state
-  handling.
+  handling;
+- first-useful-action status edge fixtures for malformed, unsupported, missing,
+  stale, and fallback report states;
+- command payload contracts for packet, brief, after-snapshot, verify, receipt,
+  and path-with-spaces handoffs;
+- live VS Code saved-workspace smoke executes the real seam copy actions for
+  packet, brief, after-snapshot, verify, receipt, suggested assertion, and
+  related-test opening;
+- evidence hover rendering projects matching first-useful-action reports when
+  the existing report is workspace-root and seam-ID matched.
 
 ## Current Open PRs
 
@@ -66,42 +75,15 @@ When opening future Lane 3 PRs, list them here until they merge or close:
 These are Lane 3 candidates. Open them only when they are explicitly selected
 as editor/LSP work:
 
-1. `test(lsp): add first-action status edge fixtures`
-   - valid first-useful-action report;
-   - wrong workspace root;
-   - missing report;
-   - invalid JSON;
-   - unsupported `schema_version`;
-   - missing required fields;
-   - `actionable`, `no_actionable_seam`, `unchanged_after_attempt`,
-     `missing_required_artifact`, `waived`, `suppressed`, and `acknowledged`
-     statuses;
-   - stale saved-workspace state.
-2. `test(vscode): harden saved-workspace e2e`
+1. `test(vscode): harden saved-workspace e2e`
    - Show Status with valid first-useful-action state;
    - wrong-root report ignored;
    - bad or missing report handled without crashing;
-   - stale tooltip and refresh guidance visible;
-   - copy packet, brief, verify, and receipt commands registered.
-3. `lsp: harden command payload contracts`
-   - Windows path handling;
-   - workspace roots with spaces;
-   - stable artifact paths;
-   - root, base, mode, and seam ID propagation;
-   - no shell-unsafe command construction;
-   - no hidden editor-only state.
-4. `lsp: improve evidence hover rendering`
-   - grip class;
-   - missing discriminator or observation;
-   - related test and oracle strength;
-   - suggested assertion shape;
-   - first useful action title/status when available;
-   - verify and receipt availability;
-   - static-evidence limits.
-5. `fixtures: add editor LSP workflow fixture`
+   - stale tooltip and refresh guidance visible.
+2. `fixtures: add editor LSP workflow fixture`
    - canonical fixture for diagnostic, hover, code action, status, and refresh
      guidance.
-6. `docs: document editor-first workflow`
+3. `docs: document editor-first workflow`
    - update user-facing editor docs when a later behavior change requires it.
 
 ## Validation Gates

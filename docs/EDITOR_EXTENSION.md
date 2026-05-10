@@ -375,9 +375,18 @@ Weak / missing evidence:
 - name: `discounted_total_boundary_discriminator`
 - assertion shape: assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)
 
+## First useful action
+- status: `actionable`
+- action: `write_focused_test`
+- title: Add equality-boundary discriminator test
+- target: `tests/pricing.rs`
+- verify: `ripr agent verify --root . --json`
+- receipt: `ripr agent receipt --root . --json`
+
 ## Handoff, verify, and receipt commands
 - packet: `ripr agent packet --root . --seam-id <seam-id> --json > target/ripr/agent/agent-packet.json`
 - brief: `ripr agent brief --root . --seam-id <seam-id> --json > target/ripr/agent/agent-brief.json`
+- after snapshot: `ripr check --root . --base <base-ref> --mode <mode> --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json`
 - verify: `ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json`
 - receipt: `ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id <seam-id> --json --out target/ripr/agent/agent-receipt.json`
 
@@ -386,6 +395,10 @@ Weak / missing evidence:
 
 Recommended next move: Add an exact-value assertion for the equality boundary.
 ```
+
+The first-useful-action block appears only when
+`target/ripr/reports/first-useful-action.json` exists, matches the current
+workspace root, and selects the same seam ID as the hover diagnostic.
 
 This keeps saved-workspace staleness visible without claiming that unsaved
 document text has been analyzed.
@@ -407,8 +420,10 @@ copying, related-test opening, malformed command argument handling, and
 `restartServer` callability. When a test server path is supplied, the suite also
 opens the boundary-gap fixture through the real server path, waits for a seam
 diagnostic, checks hover evidence and code actions, copies seam packet and
-verify command payloads, and opens the best related test. CI runs the suite
-headless with `xvfb-run`.
+verify command payloads, and opens the best related test. Agent-loop command
+copy handlers fail closed unless the payload matches the expected label, root,
+base, mode, seam, and target artifact contract. CI runs the suite headless with
+`xvfb-run`.
 
 ## Current Limitations
 

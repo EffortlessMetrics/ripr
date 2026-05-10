@@ -417,7 +417,12 @@ evidence = [
   "FlowSinkFact attached to findings",
   "predicate branch to return-value flow tests",
   "error variant flow sink tests",
-  "side-effect call flow sink tests",
+  "side-effect event/outbound call flow sink tests",
+  "side-effect state write flow sink tests",
+  "side-effect persistence write flow sink tests",
+  "side-effect log message flow sink tests",
+  "side-effect config change flow sink tests",
+  "generic call effect fallback flow sink tests",
   "match-arm result flow sink tests",
   "binding to return-value flow tests",
   "propagation_unknown stop reason regression test",
@@ -428,7 +433,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "test-efficiency-duplicate-discriminator-v1"
+next = "analysis/activation-value-modeling-v2"
 metric = "flow sink identification rate"
 
 [[capability]]
@@ -506,10 +511,11 @@ evidence = [
   "BDD coverage for boundary equality, error variant, side effect, opaque helper",
   "value-extraction-v2 BDD coverage for bindings, constants, rstest cases, table rows, builder and fixture override methods, Option/Result constructors, and negative false-positive guards",
   "oracle-shape-v2 side-effect observer seam evidence",
-  "related-test ranking v2 stabilizes relation confidence, relation reason, oracle strength, activation overlap, and file/name/line tie-breakers while preserving related_tests_total"
+  "related-test ranking v2 stabilizes relation confidence, relation reason, oracle strength, activation overlap, and file/name/line tie-breakers while preserving related_tests_total",
+  "oracle-semantics-v3 explains what related-test oracle shapes observe, what discriminator remains missing, and which assertion upgrade applies for broad, smoke-only, unknown, snapshot, and exact shapes"
 ]
 fixtures = []
-next = "analysis/oracle-semantics-v3-stabilization"
+next = "analysis/local-delta-flow-v2"
 metric = "per-stage evidence cited per seam"
 
 [[capability]]
@@ -564,14 +570,14 @@ evidence = [
   "crates/ripr/src/output/baseline.rs, baseline_delta.rs, and baseline_update.rs carry canonical_gap_id when supplied directly, through identity.canonical_gap_id, or through evidence_record.canonical_gap_id, and match it before seam/source/id/dedupe/fallback selectors",
   "crates/ripr/src/output/pr_evidence_ledger.rs carries canonical_gap_id through waiver, suppression, repair receipt, and top repair route records when supplied by source artifacts",
   "docs/OUTPUT_SCHEMA.md documents evidence_record schema 0.1 under repo-exposure schema 0.3",
-  "unit tests pin identity, grip class, evidence path, recommendation/actionability, calibration placeholder, static limitations, packet projection, RIPR Zero repair-route consumption, evidence-record movement consumption, assistant-proof evidence-record consumption, and canonical gap identity routing",
-  "fixtures/boundary_gap/expected/evidence-record-contract/corpus.json pins the v0.1 record contract matrix for predicate, error, strong value, broad error, field, whole-object, snapshot, side-effect, opaque limitation, canonical-gap, and calibration-placeholder cases",
+  "unit tests pin identity, grip class, evidence path, recommendation/actionability, calibration placeholder, static limitations, oracle semantics, packet projection, RIPR Zero repair-route consumption, evidence-record movement consumption, assistant-proof evidence-record consumption, and canonical gap identity routing",
+  "fixtures/boundary_gap/expected/evidence-record-contract/corpus.json pins the v0.1 record contract matrix for predicate, error, strong value, broad error, field, whole-object, snapshot, side-effect, opaque limitation, canonical-gap, and calibration-placeholder cases with related-test oracle_semantics",
   "cargo xtask check-fixture-contracts validates the evidence-record contract corpus case matrix and field shape; cargo xtask check-output-contracts validates the evidence_record schema version"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/evidence-record-contract/corpus.json"
 ]
-next = "analysis/oracle-semantics-v3-stabilization"
+next = "analysis/local-delta-flow-v2"
 metric = "evidence_record_projected_seams, evidence_record_actionable_guidance, evidence_record_static_limitations"
 
 [[capability]]
@@ -1157,6 +1163,7 @@ evidence = [
   "crates/ripr/tests/cli_smoke.rs calibrate cargo-mutants smoke tests",
   "crates/ripr/tests/cli_smoke.rs calibration_runtime_fixture_matches_checked_reports",
   "cargo xtask mutation-calibration",
+  "mutation calibration JSON/Markdown includes per-row static/runtime confidence labels",
   "target/ripr/reports/mutation-calibration.json",
   "target/ripr/reports/mutation-calibration.md",
   "xtask mutation-calibration importer and join unit tests",
@@ -1170,4 +1177,4 @@ evidence = [
 ]
 fixtures = ["fixtures/boundary_gap"]
 next = "campaign/hot-sidecar-latency-closeout"
-metric = "checked calibration fixtures cover static gap plus runtime signal, static gap plus runtime clean, runtime signal without static gap, static clean plus runtime clean, inconclusive runtime labels, ambiguous file_line joins, unmatched runtime data, static seams without runtime data, and seam_id/file_line join methods"
+metric = "checked calibration fixtures cover static gap plus runtime signal, static gap plus runtime clean, runtime signal without static gap, static clean plus runtime clean, inconclusive runtime labels, ambiguous file_line joins, unmatched runtime data, static seams without runtime data, confidence labels, and seam_id/file_line join methods"

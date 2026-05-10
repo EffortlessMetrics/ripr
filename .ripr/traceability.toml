@@ -9,9 +9,12 @@ id = "RIPR-SPEC-0001"
 name = "static exposure loop"
 spec = "docs/specs/RIPR-SPEC-0001-static-exposure-loop.md"
 tests = [
+  "crates/ripr/src/analysis/classify/flow.rs",
   "crates/ripr/src/analysis/classifier.rs",
+  "crates/ripr/src/analysis/probes/lexical.rs",
   "crates/ripr/src/analysis/rust_index.rs",
   "crates/ripr/src/analysis/mod.rs",
+  "crates/ripr/src/domain/probe.rs",
   "crates/ripr/src/output/human.rs",
   "crates/ripr/src/output/json",
   "crates/ripr/tests/cli_smoke.rs"
@@ -220,6 +223,10 @@ tests = [
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_unrelated_string_literal_mentions_value_when_extracting_values_then_no_observed_discriminator_is_recorded",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_related_tests_with_same_relation_when_ranked_then_strong_oracle_precedes_smoke_oracle",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_related_tests_with_same_relation_and_oracle_when_ranked_then_activation_overlap_precedes_file_order",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::oracle_semantics_explains_broad_error_gap_and_upgrade",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::oracle_semantics_explains_smoke_only_boundary_gap",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::oracle_semantics_keeps_exact_value_without_extra_upgrade",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::oracle_semantics_covers_supported_oracle_families",
   "crates/ripr/src/analysis/value_resolution.rs::tests::extract_let_bindings_picks_up_literal_rhs_and_skips_expressions",
   "crates/ripr/src/analysis/value_resolution.rs::tests::builder_method_match_accepts_fixture_override_prefixes_and_rejects_unrelated_methods",
   "crates/ripr/src/analysis/value_resolution.rs::tests::resolve_option_result_constructor_keeps_unresolved_inner_opaque",
@@ -397,6 +404,7 @@ metrics = [
   "runtime_signal_without_static_gap",
   "static_clean_and_runtime_clean",
   "runtime_inconclusive",
+  "static_runtime_confidence_labels",
   "runtime_outcome_counts",
   "join_method_counts"
 ]
@@ -1379,15 +1387,21 @@ tests = [
   "crates/ripr/src/output/pr_evidence_ledger.rs::tests::pr_evidence_ledger_joins_primary_artifacts",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_related_tests_with_same_relation_when_ranked_then_strong_oracle_precedes_smoke_oracle",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_related_tests_with_same_relation_and_oracle_when_ranked_then_activation_overlap_precedes_file_order",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::oracle_semantics_explains_broad_error_gap_and_upgrade",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::oracle_semantics_explains_smoke_only_boundary_gap",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::oracle_semantics_keeps_exact_value_without_extra_upgrade",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::oracle_semantics_covers_supported_oracle_families",
   "crates/ripr/src/output/render.rs::tests::render_dispatch_renders_repo_exposure_and_sarif_formats",
   "xtask::tests::evidence_record_contract_fixture_corpus_is_valid",
   "xtask::tests::evidence_record_contract_fixture_guard_reports_missing_fields",
+  "xtask::tests::evidence_record_contract_fixture_guard_requires_oracle_semantics",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/evidence-record-contract/corpus.json",
   "fixtures/boundary_gap/expected/evidence-record-contract/README.md",
 ]
 code = [
+  "crates/ripr/src/analysis/test_grip_evidence.rs",
   "crates/ripr/src/output/evidence_record.rs",
   "crates/ripr/src/output/repo_exposure.rs",
   "crates/ripr/src/output/agent_seam_packets.rs",

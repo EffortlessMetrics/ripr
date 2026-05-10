@@ -6,6 +6,9 @@ use crate::domain::{Finding, StageEvidence, StageState};
 use crate::output::agent_seam_packets::{
     suggested_assertion_for_classified_seam, targeted_test_brief_outline_for_classified_seam,
 };
+use crate::output::first_useful_action::DEFAULT_FIRST_USEFUL_ACTION_OUT;
+use serde_json::Value;
+use std::path::Path;
 use tower_lsp_server::ls_types::{
     Diagnostic, Hover, HoverContents, MarkupContent, MarkupKind, NumberOrString, Position, Range,
 };
@@ -267,6 +270,12 @@ fn classified_seam_hover_markdown(
         }
     }
 
+    if let Some(first_action) = snapshot
+        .and_then(|snapshot| first_useful_action_for_seam(&snapshot.root, entry.seam.id().as_str()))
+    {
+        push_first_useful_action(&mut lines, &first_action);
+    }
+
     push_test_shape(&mut lines, entry);
     push_editor_commands(&mut lines, entry, snapshot);
     push_static_limits(&mut lines);
@@ -293,12 +302,39 @@ fn push_test_shape(lines: &mut Vec<String>, entry: &ClassifiedSeam) {
     }
 }
 
+fn push_first_useful_action(lines: &mut Vec<String>, first_action: &FirstUsefulActionHover) {
+    lines.push(String::new());
+    lines.push("## First useful action".to_string());
+    lines.push(format!("- status: `{}`", first_action.status));
+    lines.push(format!("- action: `{}`", first_action.action_kind));
+    lines.push(format!("- title: {}", first_action.title));
+    if let Some(location) = &first_action.selected_location {
+        lines.push(format!("- seam: `{location}`"));
+    }
+    if let Some(missing) = &first_action.missing_discriminator {
+        lines.push(format!("- missing discriminator: `{missing}`"));
+    }
+    if let Some(target) = &first_action.target {
+        lines.push(format!("- target: `{target}`"));
+    }
+    if let Some(related_test) = &first_action.related_test {
+        lines.push(format!("- related test: `{related_test}`"));
+    }
+    if let Some(verify) = &first_action.verify_command {
+        lines.push(format!("- verify: `{verify}`"));
+    }
+    if let Some(receipt) = &first_action.receipt_command {
+        lines.push(format!("- receipt: `{receipt}`"));
+    }
+}
+
 fn push_editor_commands(
     lines: &mut Vec<String>,
     entry: &ClassifiedSeam,
     snapshot: Option<&AnalysisSnapshot>,
 ) {
     let mode = snapshot.map_or("draft", |snapshot| snapshot.mode.as_str());
+    let base = snapshot.and_then(|snapshot| snapshot.base.as_deref());
     let seam_id = entry.seam.id().as_str();
     lines.push(String::new());
     lines.push("## Handoff, verify, and receipt commands".to_string());
@@ -320,8 +356,9 @@ fn push_editor_commands(
     ));
     lines.push(format!(
         "- after snapshot: `{}`",
-        loop_commands::check_repo_exposure_command(
+        loop_commands::check_repo_exposure_command_with_base(
             ".",
+            base,
             mode,
             loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
         )
@@ -361,6 +398,141 @@ fn push_static_limits(lines: &mut Vec<String>) {
 
 fn display_hover_path(path: &std::path::Path) -> String {
     path.to_string_lossy().replace('\\', "/")
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct FirstUsefulActionHover {
+    status: String,
+    action_kind: String,
+    title: String,
+    selected_location: Option<String>,
+    missing_discriminator: Option<String>,
+    target: Option<String>,
+    related_test: Option<String>,
+    verify_command: Option<String>,
+    receipt_command: Option<String>,
+}
+
+fn first_useful_action_for_seam(root: &Path, seam_id: &str) -> Option<FirstUsefulActionHover> {
+    let report_path = root.join(DEFAULT_FIRST_USEFUL_ACTION_OUT);
+    let raw = std::fs::read_to_string(report_path).ok()?;
+    let report = serde_json::from_str::<Value>(&raw).ok()?;
+    let object = report.as_object()?;
+    if string_value(object.get("schema_version")?)? != "0.1" {
+        return None;
+    }
+    if string_value(object.get("kind")?)? != "first_useful_action" {
+        return None;
+    }
+    if !root_matches_report(root, object.get("root").and_then(string_value)) {
+        return None;
+    }
+    let status = bounded_string(object.get("status"), FIRST_USEFUL_ACTION_STATUSES)?;
+    let action_kind = bounded_string(object.get("action_kind"), FIRST_USEFUL_ACTION_ACTIONS)?;
+    let title = string_value(object.get("title")?)?.to_string();
+    bounded_string(object.get("audience"), FIRST_USEFUL_ACTION_AUDIENCES)?;
+    let selected = object.get("selected")?.as_object()?;
+    if string_value(selected.get("seam_id")?)? != seam_id {
+        return None;
+    }
+    let target = object.get("target").and_then(Value::as_object);
+    let commands = object.get("commands").and_then(Value::as_object);
+    Some(FirstUsefulActionHover {
+        status: status.to_string(),
+        action_kind: action_kind.to_string(),
+        title,
+        selected_location: selected_location(selected),
+        missing_discriminator: selected
+            .get("missing_discriminator")
+            .and_then(string_value)
+            .map(ToOwned::to_owned),
+        target: target
+            .and_then(|target| target.get("file"))
+            .and_then(string_value)
+            .map(ToOwned::to_owned),
+        related_test: target
+            .and_then(|target| target.get("related_test"))
+            .and_then(string_value)
+            .map(ToOwned::to_owned),
+        verify_command: commands
+            .and_then(|commands| commands.get("verify"))
+            .and_then(string_value)
+            .map(ToOwned::to_owned),
+        receipt_command: commands
+            .and_then(|commands| commands.get("receipt"))
+            .and_then(string_value)
+            .map(ToOwned::to_owned),
+    })
+}
+
+const FIRST_USEFUL_ACTION_STATUSES: &[&str] = &[
+    "actionable",
+    "stale",
+    "missing_required_artifact",
+    "baseline_only",
+    "acknowledged",
+    "waived",
+    "suppressed",
+    "no_actionable_seam",
+    "already_improved",
+    "unchanged_after_attempt",
+];
+
+const FIRST_USEFUL_ACTION_ACTIONS: &[&str] = &[
+    "write_focused_test",
+    "refresh_evidence",
+    "generate_missing_artifact",
+    "acknowledge_baseline",
+    "inspect_proof_report",
+    "revise_focused_test",
+    "no_action",
+];
+
+const FIRST_USEFUL_ACTION_AUDIENCES: &[&str] = &["developer", "reviewer", "agent"];
+
+fn bounded_string<'a>(value: Option<&'a Value>, allowed: &[&str]) -> Option<&'a str> {
+    let text = value.and_then(string_value)?;
+    allowed.contains(&text).then_some(text)
+}
+
+fn string_value(value: &Value) -> Option<&str> {
+    value.as_str().filter(|text| !text.trim().is_empty())
+}
+
+fn selected_location(selected: &serde_json::Map<String, Value>) -> Option<String> {
+    let path = selected.get("path").and_then(string_value)?;
+    let line = selected.get("line").and_then(Value::as_u64);
+    Some(match line {
+        Some(line) => format!("{path}:{line}"),
+        None => path.to_string(),
+    })
+}
+
+fn root_matches_report(root: &Path, report_root: Option<&str>) -> bool {
+    let Some(report_root) = report_root else {
+        return false;
+    };
+    if report_root == "." {
+        return true;
+    }
+    let resolved = {
+        let candidate = Path::new(report_root);
+        if candidate.is_absolute() {
+            normalize_path(candidate)
+        } else {
+            normalize_path(&root.join(candidate))
+        }
+    };
+    resolved == normalize_path(root)
+}
+
+fn normalize_path(path: &Path) -> String {
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    if cfg!(windows) {
+        normalized.to_lowercase()
+    } else {
+        normalized
+    }
 }
 
 fn seam_stage_line(name: &str, stage: &StageEvidence) -> String {
@@ -490,7 +662,9 @@ mod seam_hover_tests {
         StageState, ValueContext, ValueFact,
     };
     use std::collections::BTreeMap;
+    use std::fs;
     use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
     use tower_lsp_server::ls_types::{NumberOrString, Position, Range};
 
     fn stage(state: StageState, summary: &str) -> StageEvidence {
@@ -582,6 +756,56 @@ mod seam_hover_tests {
             classified_seams: Vec::new(),
             diagnostics_by_uri: BTreeMap::new(),
         }
+    }
+
+    fn unique_hover_root(label: &str) -> Result<PathBuf, String> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|err| format!("system time before epoch: {err}"))?;
+        Ok(std::env::temp_dir().join(format!(
+            "ripr-lsp-hover-{label}-{}-{}",
+            std::process::id(),
+            now.as_nanos()
+        )))
+    }
+
+    fn write_first_action_report(
+        root: &Path,
+        report_root: &str,
+        seam_id: &str,
+    ) -> Result<(), String> {
+        let report_path = root.join(DEFAULT_FIRST_USEFUL_ACTION_OUT);
+        let parent = report_path
+            .parent()
+            .ok_or_else(|| format!("missing parent for {}", report_path.display()))?;
+        fs::create_dir_all(parent).map_err(|err| format!("create {}: {err}", parent.display()))?;
+        let report = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "kind": "first_useful_action",
+            "root": report_root,
+            "status": "actionable",
+            "audience": "developer",
+            "action_kind": "write_focused_test",
+            "title": "Add equality-boundary discriminator test",
+            "selected": {
+                "seam_id": seam_id,
+                "path": "src/pricing.rs",
+                "line": 88,
+                "missing_discriminator": "discount_threshold (equality boundary)"
+            },
+            "target": {
+                "file": "tests/pricing.rs",
+                "related_test": "tests/pricing.rs::below_threshold_has_no_discount"
+            },
+            "commands": {
+                "verify": "ripr agent verify --root . --json",
+                "receipt": "ripr agent receipt --root . --json"
+            },
+            "warnings": []
+        });
+        fs::write(&report_path, format!("{report}\n"))
+            .map_err(|err| format!("write {}: {err}", report_path.display()))
     }
 
     fn extract_markup(hover: &Hover) -> Result<&str, String> {
@@ -714,6 +938,63 @@ mod seam_hover_tests {
             if !md.contains(needle) {
                 return Err(format!("missing {needle:?} in:\n{md}"));
             }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn given_matching_first_action_report_when_hover_is_rendered_then_hover_projects_action()
+    -> Result<(), String> {
+        let root = unique_hover_root("matching-action")?;
+        let seam = weakly_gripped_classified();
+        let seam_id = seam.seam.id().as_str().to_string();
+        write_first_action_report(&root, ".", &seam_id)?;
+        let diagnostic = sample_diagnostic();
+        let mut snapshot = sample_snapshot(Mode::Ready);
+        snapshot.root = root.clone();
+        let hover = classified_seam_hover_response(&seam, &diagnostic, Some(&snapshot));
+        let md = extract_markup(&hover)?;
+        for needle in [
+            "## First useful action",
+            "- status: `actionable`",
+            "- action: `write_focused_test`",
+            "- title: Add equality-boundary discriminator test",
+            "- seam: `src/pricing.rs:88`",
+            "- missing discriminator: `discount_threshold (equality boundary)`",
+            "- target: `tests/pricing.rs`",
+            "- related test: `tests/pricing.rs::below_threshold_has_no_discount`",
+            "- verify: `ripr agent verify --root . --json`",
+            "- receipt: `ripr agent receipt --root . --json`",
+        ] {
+            if !md.contains(needle) {
+                return Err(format!("missing {needle:?} in:\n{md}"));
+            }
+        }
+        fs::remove_dir_all(root).map_err(|err| format!("remove temp hover root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn given_wrong_root_or_seam_first_action_report_when_hover_is_rendered_then_action_is_ignored()
+    -> Result<(), String> {
+        let matching_seam = weakly_gripped_classified();
+        let matching_seam_id = matching_seam.seam.id().as_str().to_string();
+        for (label, report_root, seam_id) in [
+            ("wrong-root", "other-workspace", matching_seam_id.as_str()),
+            ("wrong-seam", ".", "deadbeef00000000"),
+        ] {
+            let root = unique_hover_root(label)?;
+            let seam = weakly_gripped_classified();
+            write_first_action_report(&root, report_root, seam_id)?;
+            let diagnostic = sample_diagnostic();
+            let mut snapshot = sample_snapshot(Mode::Ready);
+            snapshot.root = root.clone();
+            let hover = classified_seam_hover_response(&seam, &diagnostic, Some(&snapshot));
+            let md = extract_markup(&hover)?;
+            if md.contains("## First useful action") {
+                return Err(format!("{label} should fail closed, got:\n{md}"));
+            }
+            fs::remove_dir_all(root).map_err(|err| format!("remove temp hover root: {err}"))?;
         }
         Ok(())
     }

@@ -32,6 +32,11 @@ export interface RiprTargetedTestBriefTarget {
 export interface RiprAgentLoopCommandTarget {
   command?: string;
   label?: string;
+  root?: string;
+  base?: string;
+  mode?: string;
+  seam_id?: string;
+  target_artifact?: string;
 }
 
 export interface RiprRelatedTestTarget {
@@ -362,7 +367,7 @@ export class RiprClientController {
   }
 
   async copyAgentLoopCommand(target?: RiprAgentLoopCommandTarget): Promise<void> {
-    const command = typeof target?.command === 'string' ? target.command.trim() : '';
+    const command = validatedAgentLoopCommand(target);
     if (!command) {
       this.runtime.showInformationMessage('No ripr agent loop command is available for this diagnostic.');
       return;
@@ -578,6 +583,7 @@ function statusText(kind: RiprStatusKind, firstAction?: FirstUsefulActionStatus)
     }
     if (
       firstAction.status === 'already_improved' ||
+      firstAction.status === 'baseline_only' ||
       firstAction.status === 'no_actionable_seam' ||
       firstAction.status === 'suppressed' ||
       firstAction.status === 'acknowledged' ||
@@ -780,7 +786,19 @@ function parseFirstUsefulAction(
     return undefined;
   }
   const report = parsed as Record<string, unknown>;
+  if (stringField(report, 'schema_version') !== '0.1') {
+    return undefined;
+  }
   if (stringField(report, 'kind') !== 'first_useful_action') {
+    return undefined;
+  }
+  const status = boundedStringField(report, 'status', FIRST_USEFUL_ACTION_STATUSES);
+  const actionKind = boundedStringField(report, 'action_kind', FIRST_USEFUL_ACTION_ACTIONS);
+  const title = stringField(report, 'title');
+  if (!status || !actionKind || !title) {
+    return undefined;
+  }
+  if (!boundedStringField(report, 'audience', FIRST_USEFUL_ACTION_AUDIENCES)) {
     return undefined;
   }
   if (!rootMatchesWorkspace(stringField(report, 'root'), workspaceRoot)) {
@@ -791,9 +809,9 @@ function parseFirstUsefulAction(
   const commands = objectField(report, 'commands');
   const fallback = objectField(report, 'fallback');
   return {
-    status: stringField(report, 'status') ?? 'unknown',
-    actionKind: stringField(report, 'action_kind') ?? 'unknown',
-    title: stringField(report, 'title') ?? 'Review RIPR first useful action',
+    status,
+    actionKind,
+    title,
     selectedLocation: selectedLocation(selected),
     missingDiscriminator: selected ? stringField(selected, 'missing_discriminator') : undefined,
     target: target ? stringField(target, 'file') : undefined,
@@ -806,6 +824,149 @@ function parseFirstUsefulAction(
     reportPath: relativeWorkspacePath(workspaceRoot, reportPath),
     warningCount: arrayLength(report, 'warnings'),
   };
+}
+
+const FIRST_USEFUL_ACTION_STATUSES = new Set([
+  'actionable',
+  'stale',
+  'missing_required_artifact',
+  'baseline_only',
+  'acknowledged',
+  'waived',
+  'suppressed',
+  'no_actionable_seam',
+  'already_improved',
+  'unchanged_after_attempt'
+]);
+
+const FIRST_USEFUL_ACTION_ACTIONS = new Set([
+  'write_focused_test',
+  'refresh_evidence',
+  'generate_missing_artifact',
+  'acknowledge_baseline',
+  'inspect_proof_report',
+  'revise_focused_test',
+  'no_action'
+]);
+
+const FIRST_USEFUL_ACTION_AUDIENCES = new Set([
+  'developer',
+  'reviewer',
+  'agent'
+]);
+
+interface AgentLoopCommandContract {
+  targetArtifact: string;
+  startsWith: string;
+  includes: string[];
+  requiresSeamId: boolean;
+}
+
+const AGENT_LOOP_COMMAND_CONTRACTS: Record<string, AgentLoopCommandContract> = {
+  agent_packet: {
+    targetArtifact: 'target/ripr/agent/agent-packet.json',
+    startsWith: 'ripr agent packet --root . --seam-id ',
+    includes: [' --json > target/ripr/agent/agent-packet.json'],
+    requiresSeamId: true
+  },
+  agent_brief: {
+    targetArtifact: 'target/ripr/agent/agent-brief.json',
+    startsWith: 'ripr agent brief --root . --seam-id ',
+    includes: [' --json > target/ripr/agent/agent-brief.json'],
+    requiresSeamId: true
+  },
+  after_snapshot: {
+    targetArtifact: 'target/ripr/pilot/after.repo-exposure.json',
+    startsWith: 'ripr check --root .',
+    includes: [' --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json'],
+    requiresSeamId: false
+  },
+  agent_verify: {
+    targetArtifact: 'target/ripr/agent/agent-verify.json',
+    startsWith: 'ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json',
+    includes: [' > target/ripr/agent/agent-verify.json'],
+    requiresSeamId: false
+  },
+  agent_receipt: {
+    targetArtifact: 'target/ripr/agent/agent-receipt.json',
+    startsWith: 'ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id ',
+    includes: [' --json --out target/ripr/agent/agent-receipt.json'],
+    requiresSeamId: true
+  }
+};
+
+function validatedAgentLoopCommand(target?: RiprAgentLoopCommandTarget): string | undefined {
+  if (!target) {
+    return undefined;
+  }
+  const label = typeof target?.label === 'string' ? target.label : '';
+  const contract = AGENT_LOOP_COMMAND_CONTRACTS[label];
+  if (!contract) {
+    return undefined;
+  }
+  const command = typeof target?.command === 'string' ? target.command.trim() : '';
+  if (!command || hasUnsafeShellMetacharacter(command)) {
+    return undefined;
+  }
+  if (target.root !== '.') {
+    return undefined;
+  }
+  if (
+    typeof target.target_artifact !== 'string' ||
+    target.target_artifact !== contract.targetArtifact
+  ) {
+    return undefined;
+  }
+  if (contract.requiresSeamId && !boundedPayloadString(target.seam_id)) {
+    return undefined;
+  }
+  if (
+    contract.requiresSeamId &&
+    !command.includes(` --seam-id ${shellArgToken(target.seam_id)} `)
+  ) {
+    return undefined;
+  }
+  if (!command.startsWith(contract.startsWith)) {
+    return undefined;
+  }
+  if (!contract.includes.every((expected) => command.includes(expected))) {
+    return undefined;
+  }
+  if (label === 'after_snapshot' && !afterSnapshotModeMatches(target.mode, command)) {
+    return undefined;
+  }
+  if (
+    label === 'after_snapshot' &&
+    boundedPayloadString(target.base) &&
+    !command.includes(` --base ${shellArgToken(target.base)} `)
+  ) {
+    return undefined;
+  }
+  return command;
+}
+
+function afterSnapshotModeMatches(mode: unknown, command: string): boolean {
+  if (typeof mode !== 'string' || !['instant', 'draft', 'fast', 'deep', 'ready'].includes(mode)) {
+    return false;
+  }
+  return command.includes(` --mode ${mode} `);
+}
+
+function boundedPayloadString(value: unknown): boolean {
+  return typeof value === 'string' && value.length > 0 && value.length <= 256;
+}
+
+function hasUnsafeShellMetacharacter(command: string): boolean {
+  return /[\r\n\0`;&|\\]/.test(command);
+}
+
+function shellArgToken(value: unknown): string {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return /^[A-Za-z0-9_./:-]+$/.test(value)
+    ? value
+    : `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
 function rootMatchesWorkspace(root: string | undefined, workspaceRoot: string): boolean {
@@ -840,6 +1001,15 @@ function objectField(value: Record<string, unknown>, field: string): Record<stri
 function stringField(value: Record<string, unknown>, field: string): string | undefined {
   const child = value[field];
   return typeof child === 'string' && child.trim() !== '' ? child : undefined;
+}
+
+function boundedStringField(
+  value: Record<string, unknown>,
+  field: string,
+  allowed: Set<string>
+): string | undefined {
+  const child = stringField(value, field);
+  return child && allowed.has(child) ? child : undefined;
 }
 
 function numberFieldValue(value: Record<string, unknown>, field: string): number | undefined {

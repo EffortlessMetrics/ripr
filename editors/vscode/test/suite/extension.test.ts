@@ -2,7 +2,8 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 import {
   RiprClientController,
-  RiprClientRuntime
+  RiprClientRuntime,
+  RiprAgentLoopCommandTarget
 } from '../../src/client';
 
 suite('Extension Smoke', () => {
@@ -83,20 +84,24 @@ suite('Extension Smoke', () => {
       diagnostic.range
     );
     const contextCommand = assertCommandAction(actions, 'Inspect seam: copy packet', 'ripr.copyContext');
-    assertCommandAction(actions, 'Write targeted test: copy brief', 'ripr.copyTargetedTestBrief');
-    assertCommandAction(
+    const targetedBriefCommand = assertCommandAction(
+      actions,
+      'Write targeted test: copy brief',
+      'ripr.copyTargetedTestBrief'
+    );
+    const packetCommand = assertCommandAction(
       actions,
       'Agent handoff: copy packet command',
       'ripr.copyAgentPacketCommand',
       'ripr agent packet'
     );
-    assertCommandAction(
+    const briefCommand = assertCommandAction(
       actions,
       'Agent handoff: copy brief command',
       'ripr.copyAgentBriefCommand',
       'ripr agent brief'
     );
-    assertCommandAction(
+    const afterSnapshotCommand = assertCommandAction(
       actions,
       'Verify after test: copy after-snapshot command',
       'ripr.copyAfterSnapshotCommand',
@@ -108,11 +113,16 @@ suite('Extension Smoke', () => {
       'ripr.copyAgentVerifyCommand',
       'ripr agent verify'
     );
-    assertCommandAction(
+    const receiptCommand = assertCommandAction(
       actions,
       'Review result: copy receipt command',
       'ripr.copyAgentReceiptCommand',
       'ripr agent receipt'
+    );
+    const assertionCommand = assertCommandAction(
+      actions,
+      'Write targeted test: copy suggested assertion',
+      'ripr.copySuggestedAssertion'
     );
     const relatedTestCommand = assertCommandAction(
       actions,
@@ -129,10 +139,44 @@ suite('Extension Smoke', () => {
     assert.strictEqual(parsedContextPacket.schema_version, '0.3');
     assert.strictEqual(parsedContextPacket.packets?.[0]?.seam_id, '67fc764ba37d77bd');
 
+    await vscode.commands.executeCommand(targetedBriefCommand.command, ...(targetedBriefCommand.arguments ?? []));
+    const targetedBriefText = await vscode.env.clipboard.readText();
+    assert.ok(targetedBriefText.includes('Target seam:'), targetedBriefText);
+    assert.ok(targetedBriefText.includes('src/lib.rs:2'), targetedBriefText);
+    assert.ok(targetedBriefText.includes('predicate_boundary'), targetedBriefText);
+    assert.ok(targetedBriefText.includes('Missing discriminator'), targetedBriefText);
+    assert.ok(targetedBriefText.includes('tests/pricing.rs'), targetedBriefText);
+
+    await vscode.commands.executeCommand(packetCommand.command, ...(packetCommand.arguments ?? []));
+    const packetText = await vscode.env.clipboard.readText();
+    assert.ok(packetText.includes('ripr agent packet --root . --seam-id 67fc764ba37d77bd'), packetText);
+    assert.ok(packetText.includes('target/ripr/agent/agent-packet.json'), packetText);
+
+    await vscode.commands.executeCommand(briefCommand.command, ...(briefCommand.arguments ?? []));
+    const briefText = await vscode.env.clipboard.readText();
+    assert.ok(briefText.includes('ripr agent brief --root . --seam-id 67fc764ba37d77bd'), briefText);
+    assert.ok(briefText.includes('target/ripr/agent/agent-brief.json'), briefText);
+
+    await vscode.commands.executeCommand(afterSnapshotCommand.command, ...(afterSnapshotCommand.arguments ?? []));
+    const afterSnapshotText = await vscode.env.clipboard.readText();
+    assert.ok(afterSnapshotText.includes('ripr check --root . --base '), afterSnapshotText);
+    assert.ok(afterSnapshotText.includes('--format repo-exposure-json'), afterSnapshotText);
+    assert.ok(afterSnapshotText.includes('target/ripr/pilot/after.repo-exposure.json'), afterSnapshotText);
+
     await vscode.commands.executeCommand(verifyCommand.command, ...(verifyCommand.arguments ?? []));
     const verifyText = await vscode.env.clipboard.readText();
     assert.ok(verifyText.includes('ripr agent verify --root .'), verifyText);
     assert.ok(verifyText.includes('target/ripr/pilot/after.repo-exposure.json'), verifyText);
+
+    await vscode.commands.executeCommand(receiptCommand.command, ...(receiptCommand.arguments ?? []));
+    const receiptText = await vscode.env.clipboard.readText();
+    assert.ok(receiptText.includes('ripr agent receipt --root .'), receiptText);
+    assert.ok(receiptText.includes('--seam-id 67fc764ba37d77bd'), receiptText);
+    assert.ok(receiptText.includes('target/ripr/agent/agent-receipt.json'), receiptText);
+
+    await vscode.commands.executeCommand(assertionCommand.command, ...(assertionCommand.arguments ?? []));
+    const assertionText = await vscode.env.clipboard.readText();
+    assert.ok(assertionText.includes('assert_eq!(discounted_total('), assertionText);
 
     await vscode.commands.executeCommand(relatedTestCommand.command, ...(relatedTestCommand.arguments ?? []));
     const activeEditor = vscode.window.activeTextEditor;
@@ -260,6 +304,7 @@ suite('Extension Smoke', () => {
         tool: 'ripr',
         kind: 'first_useful_action',
         status: 'actionable',
+        audience: 'developer',
         action_kind: 'write_focused_test',
         title: 'Add equality-boundary discriminator test',
         selected: {
@@ -304,6 +349,7 @@ suite('Extension Smoke', () => {
         kind: 'first_useful_action',
         root: '/tmp/other-workspace',
         status: 'actionable',
+        audience: 'developer',
         action_kind: 'write_focused_test',
         title: 'Add equality-boundary discriminator test',
         selected: {
@@ -330,6 +376,7 @@ suite('Extension Smoke', () => {
         tool: 'ripr',
         kind: 'first_useful_action',
         status: 'actionable',
+        audience: 'developer',
         action_kind: 'write_focused_test',
         title: 'Add equality-boundary discriminator test',
         selected: {
@@ -351,6 +398,129 @@ suite('Extension Smoke', () => {
       assert.ok(!context.status.text.includes('first action'));
     } finally {
       await context.dispose();
+    }
+  });
+
+  test('first useful action report fails closed for unsupported or incomplete JSON', async () => {
+    const invalidReports: Array<{ name: string; firstActionJson?: string }> = [
+      { name: 'missing report' },
+      { name: 'invalid JSON', firstActionJson: '{' },
+      { name: 'wrong kind', firstActionJson: firstActionReport({ kind: 'pr_review_front_panel' }) },
+      { name: 'missing kind', firstActionJson: firstActionReport({ kind: undefined }) },
+      { name: 'unsupported schema', firstActionJson: firstActionReport({ schema_version: '9.9' }) },
+      { name: 'missing schema', firstActionJson: firstActionReport({ schema_version: undefined }) },
+      { name: 'missing status', firstActionJson: firstActionReport({ status: undefined }) },
+      { name: 'unknown status', firstActionJson: firstActionReport({ status: 'unknown_status' }) },
+      { name: 'missing action kind', firstActionJson: firstActionReport({ action_kind: undefined }) },
+      { name: 'unknown action kind', firstActionJson: firstActionReport({ action_kind: 'run_mutation' }) },
+      { name: 'missing audience', firstActionJson: firstActionReport({ audience: undefined }) },
+      { name: 'unknown audience', firstActionJson: firstActionReport({ audience: 'model' }) },
+      { name: 'missing title', firstActionJson: firstActionReport({ title: undefined }) },
+    ];
+
+    for (const report of invalidReports) {
+      const context = createControllerTestContext({
+        firstActionJson: report.firstActionJson
+      });
+      try {
+        await context.controller.start();
+
+        assert.ok(
+          context.status.text.includes('ripr: queued'),
+          `${report.name} should keep the normal queued status`
+        );
+        assert.ok(
+          !String(context.status.tooltip).includes('First useful action'),
+          `${report.name} should not project first useful action details`
+        );
+        await context.controller.showStatus();
+        assert.ok(
+          !context.infoMessages.at(-1)?.includes('First useful action:'),
+          `${report.name} should not include first useful action in Show Status`
+        );
+      } finally {
+        await context.dispose();
+      }
+    }
+  });
+
+  test('first useful action status projection covers fallback statuses', async () => {
+    const cases = [
+      {
+        status: 'stale',
+        actionKind: 'refresh_evidence',
+        icon: '$(warning)',
+        title: 'Refresh stale evidence before acting'
+      },
+      {
+        status: 'missing_required_artifact',
+        actionKind: 'generate_missing_artifact',
+        icon: '$(warning)',
+        title: 'Generate the missing first-action input'
+      },
+      {
+        status: 'unchanged_after_attempt',
+        actionKind: 'revise_focused_test',
+        icon: '$(warning)',
+        title: 'Revise the focused test'
+      },
+      {
+        status: 'baseline_only',
+        actionKind: 'acknowledge_baseline',
+        icon: '$(pass)',
+        title: 'Acknowledge baseline debt'
+      },
+      {
+        status: 'already_improved',
+        actionKind: 'no_action',
+        icon: '$(pass)',
+        title: 'Static evidence already improved'
+      },
+      {
+        status: 'no_actionable_seam',
+        actionKind: 'no_action',
+        icon: '$(pass)',
+        title: 'No actionable seam'
+      },
+      {
+        status: 'waived',
+        actionKind: 'no_action',
+        icon: '$(pass)',
+        title: 'Waived by existing review state'
+      },
+      {
+        status: 'suppressed',
+        actionKind: 'no_action',
+        icon: '$(pass)',
+        title: 'Suppressed by repo policy'
+      },
+      {
+        status: 'acknowledged',
+        actionKind: 'acknowledge_baseline',
+        icon: '$(pass)',
+        title: 'Acknowledged for this review'
+      },
+    ];
+
+    for (const entry of cases) {
+      const context = createControllerTestContext({
+        firstActionJson: firstActionReport({
+          status: entry.status,
+          action_kind: entry.actionKind,
+          title: entry.title
+        })
+      });
+      try {
+        await context.controller.start();
+
+        assert.ok(context.status.text.includes(entry.icon), `${entry.status} should use ${entry.icon}`);
+        assert.ok(context.status.text.includes('ripr: first action'));
+        assert.ok(String(context.status.tooltip).includes(`Status: ${entry.status}`));
+        assert.ok(String(context.status.tooltip).includes(`Action: ${entry.actionKind}`));
+        assert.ok(String(context.status.tooltip).includes(entry.title));
+      } finally {
+        await context.dispose();
+      }
     }
   });
 
@@ -534,12 +704,49 @@ suite('Extension Smoke', () => {
   });
 
   test('copyAgentLoopCommand copies command text', async () => {
-    const command = 'ripr agent verify --root . --before before.json --after after.json --json';
     const context = createControllerTestContext({});
     try {
-      await context.controller.copyAgentLoopCommand({ command });
+      const seamId = '67fc764ba37d77bd';
+      const targets = [
+        agentLoopCommandTarget(
+          'agent_packet',
+          `ripr agent packet --root . --seam-id ${seamId} --json > target/ripr/agent/agent-packet.json`,
+          'target/ripr/agent/agent-packet.json',
+          { seamId }
+        ),
+        agentLoopCommandTarget(
+          'agent_brief',
+          `ripr agent brief --root . --seam-id ${seamId} --json > target/ripr/agent/agent-brief.json`,
+          'target/ripr/agent/agent-brief.json',
+          { seamId }
+        ),
+        agentLoopCommandTarget(
+          'after_snapshot',
+          'ripr check --root . --base "origin/main with space" --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json',
+          'target/ripr/pilot/after.repo-exposure.json',
+          { base: 'origin/main with space', mode: 'ready' }
+        ),
+        agentLoopCommandTarget(
+          'agent_verify',
+          'ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json',
+          'target/ripr/agent/agent-verify.json'
+        ),
+        agentLoopCommandTarget(
+          'agent_receipt',
+          `ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id ${seamId} --json --out target/ripr/agent/agent-receipt.json`,
+          'target/ripr/agent/agent-receipt.json',
+          { seamId }
+        )
+      ];
 
-      assert.strictEqual(context.clipboardWrites[0], command);
+      for (const target of targets) {
+        await context.controller.copyAgentLoopCommand(target);
+      }
+
+      assert.deepStrictEqual(
+        context.clipboardWrites,
+        targets.map((target) => target.command)
+      );
     } finally {
       await context.dispose();
     }
@@ -557,6 +764,61 @@ suite('Extension Smoke', () => {
       command: ''
     });
     await vscode.commands.executeCommand('ripr.copyAgentReceiptCommand');
+  });
+
+  test('agent loop command handler rejects unsupported or unsafe payloads', async () => {
+    const context = createControllerTestContext({});
+    try {
+      const valid = agentLoopCommandTarget(
+        'agent_verify',
+        'ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json',
+        'target/ripr/agent/agent-verify.json'
+      );
+
+      await context.controller.copyAgentLoopCommand({
+        ...valid,
+        label: 'unknown'
+      });
+      await context.controller.copyAgentLoopCommand({
+        ...valid,
+        root: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+      });
+      await context.controller.copyAgentLoopCommand({
+        ...valid,
+        target_artifact: 'target/ripr/other.json'
+      });
+      await context.controller.copyAgentLoopCommand({
+        ...valid,
+        command: `${valid.command}; rm -rf target`
+      });
+      await context.controller.copyAgentLoopCommand(
+        agentLoopCommandTarget(
+          'agent_packet',
+          'ripr agent packet --root . --seam-id other-seam --json > target/ripr/agent/agent-packet.json',
+          'target/ripr/agent/agent-packet.json',
+          { seamId: '67fc764ba37d77bd' }
+        )
+      );
+      await context.controller.copyAgentLoopCommand(
+        agentLoopCommandTarget(
+          'agent_receipt',
+          'ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id 67fc764ba37d77bd --json --out target/ripr/agent/agent-receipt.json',
+          'target/ripr/agent/agent-receipt.json'
+        )
+      );
+      await context.controller.copyAgentLoopCommand(
+        agentLoopCommandTarget(
+          'after_snapshot',
+          'ripr check --root . --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json',
+          'target/ripr/pilot/after.repo-exposure.json',
+          { base: 'origin/main with space', mode: 'ready' }
+        )
+      );
+
+      assert.deepStrictEqual(context.clipboardWrites, []);
+    } finally {
+      await context.dispose();
+    }
   });
 
   test('openRelatedTest opens the target uri and line', async () => {
@@ -591,6 +853,58 @@ interface ControllerTestOptions {
   firstActionJson?: string | null;
   workspaceRoot?: string | null;
   resolveFailure?: { message: string; detail: string };
+}
+
+function agentLoopCommandTarget(
+  label: string,
+  command: string,
+  targetArtifact: string,
+  options: { seamId?: string; base?: string; mode?: string } = {}
+): RiprAgentLoopCommandTarget {
+  return {
+    label,
+    command,
+    root: '.',
+    base: options.base ?? 'origin/main',
+    mode: options.mode ?? 'draft',
+    seam_id: options.seamId,
+    target_artifact: targetArtifact
+  };
+}
+
+function firstActionReport(overrides: Record<string, unknown>): string {
+  const report: Record<string, unknown> = {
+    schema_version: '0.1',
+    tool: 'ripr',
+    kind: 'first_useful_action',
+    root: '.',
+    status: 'actionable',
+    audience: 'developer',
+    action_kind: 'write_focused_test',
+    title: 'Add equality-boundary discriminator test',
+    selected: {
+      path: 'src/lib.rs',
+      line: 2,
+      missing_discriminator: 'discount_threshold equality boundary'
+    },
+    target: {
+      file: 'tests/pricing.rs',
+      related_test: 'tests/pricing.rs::below_threshold_has_no_discount'
+    },
+    commands: {
+      verify: 'ripr agent verify --root . --json',
+      receipt: 'ripr agent receipt --root . --json'
+    },
+    warnings: []
+  };
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value === undefined) {
+      delete report[key];
+    } else {
+      report[key] = value;
+    }
+  }
+  return JSON.stringify(report);
 }
 
 class FakeLanguageClient {

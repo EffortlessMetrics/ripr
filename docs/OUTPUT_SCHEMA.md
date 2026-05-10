@@ -223,13 +223,20 @@ Reserved `flow_sink` values:
 - `return_value`
 - `error_variant`
 - `struct_field`
+- `event_call`
+- `state_write`
+- `persistence`
+- `log_message`
+- `config_change`
 - `call_effect`
 - `match_arm`
 - `unknown`
 
-These labels are internal analysis terms in schema `0.1`. They are documented
-now so future evidence-first output can expose them without inventing new
-contract language.
+These labels are internal analysis terms in schema `0.1`. The side-effect
+families are additive refinements of the older generic `call_effect` sink:
+event or outbound calls, state writes, persistence writes, log messages, and
+configuration changes are named when syntax-first analysis can identify them,
+while `call_effect` remains the fallback for other observable calls.
 
 `state` values:
 
@@ -757,6 +764,11 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
             "oracle_kind": "exact_value",
             "oracle_strength": "strong",
             "evidence_summary": "exact value assertion",
+            "oracle_semantics": {
+              "observes": "the exact value or value pattern asserted by the test",
+              "missing": "no obvious value-shape discriminator gap under static scope",
+              "upgrade_suggestion": null
+            },
             "relation_reason": "direct_owner_call",
             "relation_confidence": "high"
           }
@@ -776,6 +788,11 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
             "oracle_kind": "exact_value",
             "oracle_strength": "strong",
             "evidence_summary": "exact value assertion",
+            "oracle_semantics": {
+              "observes": "the exact value or value pattern asserted by the test",
+              "missing": "no obvious value-shape discriminator gap under static scope",
+              "upgrade_suggestion": null
+            },
             "relation_reason": "direct_owner_call",
             "relation_confidence": "high"
           },
@@ -880,6 +897,11 @@ Field contract:
   existing seam evidence, including related-test relation fields. The
   nested `related_tests` array is capped like the top-level array and keeps
   `related_tests_total`.
+- `seams[].evidence_record.related_tests[].oracle_semantics` - structured
+  oracle-shape explanation with `observes`, `missing`, and nullable
+  `upgrade_suggestion`. Weak, broad, smoke-only, and unknown oracle shapes
+  name the behavior they observe, the discriminator they fail to observe, and
+  the assertion upgrade RIPR recommends for this seam kind.
 - `seams[].evidence_record.recommendation` - bounded test-intent guidance
   derived from existing evidence: recommended test target, nearest test to
   imitate, candidate values, assertion shape, and verification command when
@@ -5593,6 +5615,7 @@ JSON shape:
         "observed_values": ["50", "10000"],
         "missing_discriminators": []
       },
+      "confidence_label": "contradicts_static_clean",
       "reason": "runtime gap signal joined to a static-clean seam"
     }
   ],
@@ -5609,6 +5632,7 @@ JSON shape:
         "observed_values": [],
         "missing_discriminators": ["exact returned value assertion"]
       },
+      "confidence_label": "contradicts_static_gap",
       "reason": "static gap seam matched runtime data without a runtime gap signal"
     }
   ],
@@ -5635,7 +5659,8 @@ JSON shape:
         "runtime_outcome": "caught",
         "duration": "123",
         "test_command": "cargo test pricing"
-      }
+      },
+      "confidence_label": "contradicts_static_gap"
     }
   ],
   "ambiguous_file_line_matches": [
@@ -5650,6 +5675,7 @@ JSON shape:
         "duration": "99",
         "test_command": "cargo test pricing"
       },
+      "confidence_label": "ambiguous_runtime_join",
       "candidates": [
         {
           "seam_id": "f3c9e4d21a0b7c88",
@@ -5721,8 +5747,15 @@ Field contract:
 - `missed_runtime_signals[]` — capped sample of runtime gap signals that did
   not correspond to a static gap. `static` is `null` when the runtime record did
   not join to a seam.
+- `missed_runtime_signals[].confidence_label` — `contradicts_static_clean` when
+  a runtime gap signal joined to a static-clean seam, or `runtime_only_signal`
+  when a runtime gap signal did not join to any static seam. This is advisory
+  calibration context only and does not create a static gap.
 - `static_only_findings[]` — capped sample of static gap seams without a
   matched runtime gap signal.
+- `static_only_findings[].confidence_label` — `contradicts_static_gap` when a
+  static gap joined only to runtime-clean labels, or `no_runtime_data` when no
+  usable runtime signal was available for the static gap in this import.
 - `matches[].join_method` — `seam_id` when the runtime record carries a matching
   seam/probe ID; otherwise `file_line` when normalized path and line match.
 - `matches[].static` — static seam evidence copied from `repo-exposure.json`:
@@ -5731,9 +5764,17 @@ Field contract:
 - `matches[].runtime` — imported runtime mutation record: mutation ID when
   available, seam/probe ID when available, location, operator, outcome, duration,
   and test command.
+- `matches[].confidence_label` — per-match static/runtime confidence label:
+  `supports_static_gap`, `contradicts_static_gap`, `supports_static_clean`,
+  `contradicts_static_clean`, or `no_runtime_data`. Runtime-inconclusive labels
+  map to `no_runtime_data` because they provide no usable support or
+  contradiction for the static claim.
 - `ambiguous_file_line_matches[]` — runtime records that matched multiple
   static seams by normalized file/line. These records are intentionally not
   assigned to `matches[]` without a stronger seam/probe ID.
+- `ambiguous_file_line_matches[].confidence_label` — always
+  `ambiguous_runtime_join`; ambiguous joins do not raise or lower confidence for
+  any candidate seam.
 - `unmatched_mutants[]` — runtime records that did not match a static seam.
 - `static_without_runtime_sample[]` — capped sample of static seams with no
   definitive or ambiguous runtime data in this import. Use
