@@ -2958,8 +2958,6 @@ fn check_no_panic_family_impl() -> Result<(), String> {
     };
 
     let mut violations = Vec::new();
-    let mut advisories = Vec::new();
-
     if has_semantic_allowlist {
         // Schema 0.2/0.3 mode: use semantic findings and versioned parser.
         let mut semantic_findings = Vec::new();
@@ -2976,94 +2974,9 @@ fn check_no_panic_family_impl() -> Result<(), String> {
             Vec::new()
         };
 
-        // Check each semantic finding against the allowlist
-        for finding in &semantic_findings {
-            let mut matched = false;
-            for entry in &versioned_entries {
-                match entry {
-                    PanicAllowEntryVersioned::V2(v2) => {
-                        if v2.path != finding.path || v2.family != finding.family {
-                            continue;
-                        }
-                        if let Some(ref selector) = v2.selector
-                            && semantic_selector_matches(selector, finding)
-                        {
-                            // Check last_seen drift
-                            if let Some(ref ls) = v2.last_seen
-                                && (ls.line != finding.line || ls.column != finding.column)
-                            {
-                                advisories.push(format!(
-                                    "allowed by semantic selector; last_seen changed from line {} to line {} ({}:{}:{})",
-                                    ls.line,
-                                    finding.line,
-                                    finding.path,
-                                    finding.line,
-                                    finding.column.unwrap_or(0),
-                                ));
-                            }
-                            matched = true;
-                            break;
-                        }
-                    }
-                    PanicAllowEntryVersioned::V1(v1) => {
-                        // For v0.1 entries in a semantic file, try to match
-                        // by finding a semantic finding at that location.
-                        if v1.path == finding.path
-                            && v1.family == finding.family
-                            && v1.line == finding.line
-                            && (v1.column.is_none() || v1.column == finding.column)
-                        {
-                            matched = true;
-                            break;
-                        }
-                    }
-                }
-            }
-            if !matched {
-                violations.push(format!(
-                    "{}:{}:{} contains unallowed panic-family '{}'; add exact allowlist entry with explanation",
-                    finding.path,
-                    finding.line,
-                    finding.column.unwrap_or(0),
-                    finding.family
-                ));
-            }
-        }
-
-        // Check for stale v0.1 entries
-        for entry in &versioned_entries {
-            match entry {
-                PanicAllowEntryVersioned::V1(v1) => {
-                    let matched = semantic_findings.iter().any(|f| {
-                        f.path == v1.path
-                            && f.family == v1.family
-                            && f.line == v1.line
-                            && (v1.column.is_none() || v1.column == f.column)
-                    });
-                    if !matched {
-                        violations.push(format!(
-                            "stale allowlist entry: {}:{}:{:?} ({}) does not match any current finding",
-                            v1.path, v1.line, v1.column, v1.family
-                        ));
-                    }
-                }
-                PanicAllowEntryVersioned::V2(v2) => {
-                    if let Some(ref selector) = v2.selector {
-                        let matched = semantic_findings.iter().any(|f| {
-                            v2.path == f.path
-                                && v2.family == f.family
-                                && semantic_selector_matches(selector, f)
-                        });
-                        if !matched {
-                            violations.push(format!(
-                                "stale semantic allowlist entry: {} ({}) classification={:?} [{}] selector does not match any current finding",
-                                v2.path, v2.family, v2.classification, v2.explanation
-                            ));
-                        }
-                    }
-                }
-            }
-        }
+        let report = evaluate_semantic_no_panic_policy(&semantic_findings, &versioned_entries);
+        print_no_panic_family_report(&report);
+        violations.extend(report.violations);
     } else {
         // v0.1 mode: existing behavior
         let allowlist = if Path::new(allowlist_path).exists() {
@@ -3104,10 +3017,6 @@ fn check_no_panic_family_impl() -> Result<(), String> {
                 ));
             }
         }
-    }
-
-    for advisory in &advisories {
-        println!("advisory: {advisory}");
     }
 
     finish_policy_report(
@@ -17844,6 +17753,252 @@ fn semantic_selector_matches(
             || finding.receiver_fingerprint.as_ref() == selector.receiver_fingerprint.as_ref())
 }
 
+#[derive(Default, Debug, Clone, Eq, PartialEq)]
+struct NoPanicFamilyReport {
+    allowed_findings: Vec<String>,
+    advisory_drift: Vec<String>,
+    stale_entries: Vec<String>,
+    unallowed_findings: Vec<String>,
+    warnings: Vec<String>,
+    violations: Vec<String>,
+}
+
+fn evaluate_semantic_no_panic_policy(
+    findings: &[SemanticPanicFinding],
+    entries: &[PanicAllowEntryVersioned],
+) -> NoPanicFamilyReport {
+    let mut report = NoPanicFamilyReport::default();
+    let mut match_counts_by_entry = vec![0usize; entries.len()];
+
+    for finding in findings {
+        let mut matched_entries = Vec::new();
+        for (index, entry) in entries.iter().enumerate() {
+            if panic_allow_entry_matches(entry, finding) {
+                matched_entries.push(index);
+                match_counts_by_entry[index] += 1;
+            }
+        }
+
+        if matched_entries.is_empty() {
+            let message = format!(
+                "{} contains unallowed panic-family '{}'; add exact allowlist entry with explanation",
+                semantic_panic_finding_label(finding),
+                finding.family
+            );
+            report.unallowed_findings.push(message.clone());
+            report.violations.push(message);
+            continue;
+        }
+
+        let allowed_by = matched_entries
+            .iter()
+            .map(|index| panic_allow_entry_label(&entries[*index]))
+            .collect::<Vec<_>>()
+            .join(", ");
+        report.allowed_findings.push(format!(
+            "{} allowed by {}",
+            semantic_panic_finding_label(finding),
+            allowed_by
+        ));
+
+        if matched_entries.len() > 1 {
+            let message = format!(
+                "duplicate semantic identity detected: {} matched {} allowlist entries ({allowed_by})",
+                semantic_panic_finding_label(finding),
+                matched_entries.len()
+            );
+            report.warnings.push(message.clone());
+            report.violations.push(message);
+        }
+
+        for index in matched_entries {
+            if let PanicAllowEntryVersioned::V2(entry) = &entries[index]
+                && let Some(last_seen) = &entry.last_seen
+                && (last_seen.line != finding.line || last_seen.column != finding.column)
+            {
+                report.advisory_drift.push(format!(
+                    "allowed by semantic selector; last_seen changed from {}:{} to {} ({})",
+                    last_seen.line,
+                    last_seen.column.unwrap_or(0),
+                    semantic_panic_finding_label(finding),
+                    panic_allow_entry_label(&entries[index])
+                ));
+            }
+        }
+    }
+
+    let mut identity_to_entries = BTreeMap::<String, Vec<String>>::new();
+    for (index, entry) in entries.iter().enumerate() {
+        match entry {
+            PanicAllowEntryVersioned::V1(v1) => {
+                if match_counts_by_entry[index] == 0 {
+                    let message = format!(
+                        "stale allowlist entry: {}:{}:{:?} ({}) does not match any current finding",
+                        v1.path, v1.line, v1.column, v1.family
+                    );
+                    report.stale_entries.push(message.clone());
+                    report.violations.push(message);
+                }
+            }
+            PanicAllowEntryVersioned::V2(v2) => {
+                if let Some(selector) = &v2.selector {
+                    identity_to_entries
+                        .entry(semantic_selector_identity(v2, selector))
+                        .or_default()
+                        .push(panic_allow_entry_label(entry));
+                }
+                match match_counts_by_entry[index] {
+                    0 => {
+                        let message = format!(
+                            "stale semantic allowlist entry: {} selector does not match any current finding",
+                            panic_allow_entry_label(entry)
+                        );
+                        report.stale_entries.push(message.clone());
+                        report.violations.push(message);
+                    }
+                    1 => {}
+                    count => {
+                        let message = format!(
+                            "ambiguous semantic allowlist entry: {} matches {count} current findings",
+                            panic_allow_entry_label(entry)
+                        );
+                        report.warnings.push(message.clone());
+                        report.violations.push(message);
+                    }
+                }
+            }
+        }
+    }
+
+    for labels in identity_to_entries.values() {
+        if labels.len() > 1 {
+            let message = format!(
+                "duplicate semantic allowlist identity detected: {}",
+                labels.join(", ")
+            );
+            report.warnings.push(message.clone());
+            report.violations.push(message);
+        }
+    }
+
+    report.allowed_findings.sort();
+    report.allowed_findings.dedup();
+    report.advisory_drift.sort();
+    report.advisory_drift.dedup();
+    report.stale_entries.sort();
+    report.stale_entries.dedup();
+    report.unallowed_findings.sort();
+    report.unallowed_findings.dedup();
+    report.warnings.sort();
+    report.warnings.dedup();
+    report.violations.sort();
+    report.violations.dedup();
+    report
+}
+
+fn panic_allow_entry_matches(
+    entry: &PanicAllowEntryVersioned,
+    finding: &SemanticPanicFinding,
+) -> bool {
+    match entry {
+        PanicAllowEntryVersioned::V1(v1) => {
+            v1.path == finding.path
+                && v1.family == finding.family
+                && v1.line == finding.line
+                && (v1.column.is_none() || v1.column == finding.column)
+        }
+        PanicAllowEntryVersioned::V2(v2) => {
+            v2.path == finding.path
+                && v2.family == finding.family
+                && v2
+                    .selector
+                    .as_ref()
+                    .is_some_and(|selector| semantic_selector_matches(selector, finding))
+        }
+    }
+}
+
+fn semantic_selector_identity(entry: &PanicAllowEntryV2, selector: &PanicFamilySelector) -> String {
+    format!(
+        "path={}|family={}|kind={}|container={}|callee={}|receiver={}|text={}",
+        entry.path,
+        entry.family,
+        selector.kind,
+        selector.container.as_deref().unwrap_or(""),
+        selector.callee.as_deref().unwrap_or(""),
+        selector.receiver_fingerprint.as_deref().unwrap_or(""),
+        selector.text_contains.as_deref().unwrap_or("")
+    )
+}
+
+fn panic_allow_entry_label(entry: &PanicAllowEntryVersioned) -> String {
+    match entry {
+        PanicAllowEntryVersioned::V1(v1) => format!(
+            "{}:{}:{} ({})",
+            v1.path,
+            v1.line,
+            v1.column.unwrap_or(0),
+            v1.family
+        ),
+        PanicAllowEntryVersioned::V2(v2) => {
+            let id = v2.id.as_deref().unwrap_or("unversioned");
+            let selector = v2
+                .selector
+                .as_ref()
+                .map(panic_selector_label)
+                .unwrap_or_else(|| "selector=missing".to_string());
+            format!("{id} {} ({}) {selector}", v2.path, v2.family)
+        }
+    }
+}
+
+fn panic_selector_label(selector: &PanicFamilySelector) -> String {
+    format!(
+        "selector={} container={} callee={} receiver={} text={}",
+        selector.kind,
+        selector.container.as_deref().unwrap_or(""),
+        selector.callee.as_deref().unwrap_or(""),
+        selector.receiver_fingerprint.as_deref().unwrap_or(""),
+        selector.text_contains.as_deref().unwrap_or("")
+    )
+}
+
+fn semantic_panic_finding_label(finding: &SemanticPanicFinding) -> String {
+    format!(
+        "{}:{}:{}",
+        finding.path,
+        finding.line,
+        finding.column.unwrap_or(0)
+    )
+}
+
+fn print_no_panic_family_report(report: &NoPanicFamilyReport) {
+    let status = if report.violations.is_empty() {
+        "pass"
+    } else {
+        "fail"
+    };
+    println!("Status: {status}");
+    println!();
+    print_report_section("Allowed findings", &report.allowed_findings);
+    print_report_section("Advisory drift", &report.advisory_drift);
+    print_report_section("Stale entries", &report.stale_entries);
+    print_report_section("Unallowed findings", &report.unallowed_findings);
+    print_report_section("Warnings", &report.warnings);
+}
+
+fn print_report_section(title: &str, items: &[String]) {
+    println!("{title}:");
+    if items.is_empty() {
+        println!("- none");
+    } else {
+        for item in items {
+            println!("- {item}");
+        }
+    }
+    println!();
+}
+
 fn parse_no_panic_allowlist_toml(path: &str) -> Result<Vec<PanicAllowEntry>, String> {
     let text = read_text_lossy(Path::new(path))?;
     let mut entries = Vec::new();
@@ -18507,6 +18662,39 @@ fn validate_panic_allow_entry_v2(
                 "{path}:{line_number} string_literal selector requires text_contains"
             ));
         }
+        if matches!(
+            selector.kind.as_str(),
+            "method_call" | "macro_call" | "call"
+        ) {
+            if selector
+                .container
+                .as_ref()
+                .is_none_or(|value| value.trim().is_empty())
+            {
+                return Err(format!(
+                    "{path}:{line_number} {} selector requires container",
+                    selector.kind
+                ));
+            }
+            if selector
+                .callee
+                .as_ref()
+                .is_none_or(|value| value.trim().is_empty())
+            {
+                return Err(format!(
+                    "{path}:{line_number} {} selector requires callee",
+                    selector.kind
+                ));
+            }
+            if let Some(container) = selector.container.as_deref()
+                && container.starts_with("closure_")
+            {
+                return Err(format!(
+                    "{path}:{line_number} {} selector uses unstable synthetic container `{container}`",
+                    selector.kind
+                ));
+            }
+        }
     }
     Ok(())
 }
@@ -18882,9 +19070,9 @@ mod tests {
         check_process_policy, check_static_language, check_workflows, ci_full_evidence_gates,
         collect_panic_findings, collect_semantic_panic_findings, critic_findings,
         dogfood_class_counts, dogfood_first_action_scenarios, dogfood_gate_adoption_scenarios,
-        dogfood_report_json, dogfood_report_markdown, extract_json_object_usize_map,
-        extract_json_string, extract_json_warnings, extract_workflow_run_blocks,
-        first_line_difference, forbidden_panic_patterns, glob_matches,
+        dogfood_report_json, dogfood_report_markdown, evaluate_semantic_no_panic_policy,
+        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
+        extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns, glob_matches,
         golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
         guarded_allow_attributes_in_text, install_hooks_in, is_bdd_test_name,
         is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
@@ -18931,7 +19119,10 @@ mod tests {
         build_mutation_calibration_report, parse_test_intent_manifest, test_efficiency_metrics,
     };
     use super::{MutationOutcomeRecord, StaticSeamRecord};
-    use super::{PanicAllowEntryVersioned, PanicFamilySelector, SemanticPanicFinding};
+    use super::{
+        PanicAllowEntryV2, PanicAllowEntryVersioned, PanicFamilyLastSeen, PanicFamilySelector,
+        SemanticPanicFinding,
+    };
     use super::{SarifMissingBaseline, build_sarif_policy_report};
     use super::{
         active_yaml_lines, check_droid_action_refs, check_droid_common,
@@ -18966,6 +19157,52 @@ mod tests {
             fs::create_dir_all(parent).unwrap();
         }
         fs::write(path, text).unwrap();
+    }
+
+    fn semantic_panic_finding(
+        line: usize,
+        container: &str,
+        receiver_fingerprint: Option<&str>,
+    ) -> SemanticPanicFinding {
+        SemanticPanicFinding {
+            path: "src/lib.rs".to_string(),
+            family: "unwrap".to_string(),
+            kind: "method_call".to_string(),
+            line,
+            column: Some(5),
+            container: Some(container.to_string()),
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: receiver_fingerprint.map(str::to_string),
+            snippet_fingerprint: "value.unwrap()".to_string(),
+        }
+    }
+
+    fn semantic_panic_entry(
+        id: &str,
+        container: &str,
+        receiver_fingerprint: Option<&str>,
+        last_seen_line: Option<usize>,
+    ) -> PanicAllowEntryVersioned {
+        PanicAllowEntryVersioned::V2(PanicAllowEntryV2 {
+            id: Some(id.to_string()),
+            path: "src/lib.rs".to_string(),
+            family: "unwrap".to_string(),
+            classification: Some("test_only".to_string()),
+            owner: Some("test-infra".to_string()),
+            explanation: "Test helper".to_string(),
+            expires: Some("2026-12-31".to_string()),
+            selector: Some(PanicFamilySelector {
+                kind: "method_call".to_string(),
+                container: Some(container.to_string()),
+                callee: Some("unwrap".to_string()),
+                receiver_fingerprint: receiver_fingerprint.map(str::to_string),
+                text_contains: None,
+            }),
+            last_seen: last_seen_line.map(|line| PanicFamilyLastSeen {
+                line,
+                column: Some(5),
+            }),
+        })
     }
 
     fn json_path(path: &Path) -> String {
@@ -20376,6 +20613,115 @@ column = 5
     }
 
     #[test]
+    fn no_panic_policy_reports_allowed_drift_and_unallowed_buckets() -> Result<(), String> {
+        let findings = vec![
+            semantic_panic_finding(20, "my_fn", Some("left()")),
+            semantic_panic_finding(30, "other_fn", None),
+        ];
+        let entries = vec![semantic_panic_entry(
+            "panic-0001",
+            "my_fn",
+            Some("left()"),
+            Some(10),
+        )];
+
+        let report = evaluate_semantic_no_panic_policy(&findings, &entries);
+        if report.allowed_findings.len() != 1 {
+            return Err(format!(
+                "expected one allowed finding, got {:?}",
+                report.allowed_findings
+            ));
+        }
+        if report.advisory_drift.len() != 1 {
+            return Err(format!(
+                "expected one advisory drift entry, got {:?}",
+                report.advisory_drift
+            ));
+        }
+        if report.unallowed_findings.len() != 1 {
+            return Err(format!(
+                "expected one unallowed finding, got {:?}",
+                report.unallowed_findings
+            ));
+        }
+        if !report
+            .violations
+            .iter()
+            .any(|violation| violation.contains("unallowed panic-family"))
+        {
+            return Err(format!(
+                "expected unallowed violation, got {:?}",
+                report.violations
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn no_panic_policy_rejects_ambiguous_selector_matches() -> Result<(), String> {
+        let findings = vec![
+            semantic_panic_finding(20, "my_fn", Some("left()")),
+            semantic_panic_finding(30, "my_fn", Some("right()")),
+        ];
+        let entries = vec![semantic_panic_entry("panic-0001", "my_fn", None, None)];
+
+        let report = evaluate_semantic_no_panic_policy(&findings, &entries);
+        if !report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("ambiguous semantic allowlist entry"))
+        {
+            return Err(format!(
+                "expected ambiguity warning, got {:?}",
+                report.warnings
+            ));
+        }
+        if !report
+            .violations
+            .iter()
+            .any(|violation| violation.contains("ambiguous semantic allowlist entry"))
+        {
+            return Err(format!(
+                "expected ambiguity violation, got {:?}",
+                report.violations
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn no_panic_policy_rejects_duplicate_semantic_identities() -> Result<(), String> {
+        let findings = vec![semantic_panic_finding(20, "my_fn", Some("left()"))];
+        let entries = vec![
+            semantic_panic_entry("panic-0001", "my_fn", Some("left()"), None),
+            semantic_panic_entry("panic-0002", "my_fn", Some("left()"), None),
+        ];
+
+        let report = evaluate_semantic_no_panic_policy(&findings, &entries);
+        if !report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("duplicate semantic allowlist identity"))
+        {
+            return Err(format!(
+                "expected duplicate identity warning, got {:?}",
+                report.warnings
+            ));
+        }
+        if !report
+            .violations
+            .iter()
+            .any(|violation| violation.contains("duplicate semantic"))
+        {
+            return Err(format!(
+                "expected duplicate identity violation, got {:?}",
+                report.violations
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
     fn v0_3_governed_entries_parse_with_semantic_selectors() -> Result<(), String> {
         with_temp_cwd("v03_governed_entry", |root| {
             let toml_content = r#"schema_version = "0.3"
@@ -20459,6 +20805,77 @@ callee = "unwrap"
                 .err()
                 .ok_or("expected parse error for missing schema 0.3 owner")?;
             if !err.contains("missing required field: owner") {
+                return Err(format!("unexpected error message: {err}"));
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn v0_3_call_selectors_require_container_and_callee() -> Result<(), String> {
+        with_temp_cwd("v03_requires_selector_specificity", |root| {
+            let toml_content = r#"schema_version = "0.3"
+policy = "no-panic-allowlist"
+owner = "core/policy"
+status = "canonical"
+
+[[allow]]
+id = "panic-0001"
+path = "src/lib.rs"
+family = "unwrap"
+classification = "test_only"
+owner = "core/tests"
+explanation = "Test helper"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+callee = "unwrap"
+"#;
+            write(&root.join("allowlist.toml"), toml_content);
+            let allowlist_path = root.join("allowlist.toml");
+            let allowlist_path = allowlist_path.to_str().ok_or("non-UTF-8 allowlist path")?;
+            let result = parse_no_panic_allowlist_toml_v2(allowlist_path);
+            let err = result
+                .err()
+                .ok_or("expected parse error for missing selector container")?;
+            if !err.contains("method_call selector requires container") {
+                return Err(format!("unexpected error message: {err}"));
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn v0_3_call_selectors_reject_synthetic_container() -> Result<(), String> {
+        with_temp_cwd("v03_rejects_synthetic_container", |root| {
+            let toml_content = r#"schema_version = "0.3"
+policy = "no-panic-allowlist"
+owner = "core/policy"
+status = "canonical"
+
+[[allow]]
+id = "panic-0001"
+path = "src/lib.rs"
+family = "unwrap"
+classification = "test_only"
+owner = "core/tests"
+explanation = "Test helper"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "closure_12345"
+callee = "unwrap"
+"#;
+            write(&root.join("allowlist.toml"), toml_content);
+            let allowlist_path = root.join("allowlist.toml");
+            let allowlist_path = allowlist_path.to_str().ok_or("non-UTF-8 allowlist path")?;
+            let result = parse_no_panic_allowlist_toml_v2(allowlist_path);
+            let err = result
+                .err()
+                .ok_or("expected parse error for synthetic selector container")?;
+            if !err.contains("uses unstable synthetic container") {
                 return Err(format!("unexpected error message: {err}"));
             }
             Ok(())

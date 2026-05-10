@@ -72,6 +72,10 @@ the matching xtask implementation.
 
 - `.ripr/no-panic-allowlist.toml` — legacy schema 0.2 compatibility mirror;
   the canonical checker reads `policy/no-panic-allowlist.toml`.
+- `cargo xtask check-no-panic-family` reports allowed findings, advisory
+  `last_seen` drift, stale entries, unallowed findings, and warnings. Ambiguous
+  selector matches and duplicate semantic identities fail until selectors are
+  made unique.
 
 ## MSRV state
 
