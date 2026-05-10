@@ -12,6 +12,7 @@ Usage:
   ripr baseline update --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json --remove-resolved [--out .ripr/gate-baseline.json]
   ripr zero status --delta target/ripr/reports/baseline-debt-delta.json [--baseline .ripr/gate-baseline.json] [--gate target/ripr/reports/gate-decision.json] [--out target/ripr/reports/ripr-zero-status.json] [--out-md target/ripr/reports/ripr-zero-status.md]
   ripr pr-ledger record --pr-number 123 --base SHA --head SHA [--gate target/ripr/reports/gate-decision.json] [--baseline-delta target/ripr/reports/baseline-debt-delta.json] [--zero-status target/ripr/reports/ripr-zero-status.json] [--out target/ripr/reports/pr-evidence-ledger.json]
+  ripr pr-comments plan --pr-guidance target/ripr/review/comments.json [--existing-comments target/ripr/review/existing-comments.json] [--mode off|plan|inline] [--out target/ripr/review/comment-publish-plan.json]
   ripr pr-review front-panel [--pr-guidance target/ripr/review/comments.json] [--first-action target/ripr/reports/first-useful-action.json] [--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json] [--assistant-health target/ripr/reports/assistant-loop-health.json] [--ledger target/ripr/reports/pr-evidence-ledger.json] [--out target/ripr/reports/pr-review-front-panel.json]
   ripr coverage-grip frontier (--ledger target/ripr/reports/pr-evidence-ledger.json|--baseline-delta target/ripr/reports/baseline-debt-delta.json|--zero-status target/ripr/reports/ripr-zero-status.json) [--coverage target/ripr/reports/coverage-summary.json] [--out target/ripr/reports/coverage-grip-frontier.json]
   ripr assistant-loop proof --pr-guidance target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-brief.json --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --receipt target/ripr/reports/agent-receipt.json [--out target/ripr/reports/test-oracle-assistant-proof.json]
@@ -49,6 +50,7 @@ Quick start:
   ripr baseline update --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json --remove-resolved
   ripr zero status --baseline .ripr/gate-baseline.json --delta target/ripr/reports/baseline-debt-delta.json --gate target/ripr/reports/gate-decision.json
   ripr pr-ledger record --pr-number 123 --base origin/main --head HEAD --baseline-delta target/ripr/reports/baseline-debt-delta.json --zero-status target/ripr/reports/ripr-zero-status.json
+  ripr pr-comments plan --pr-guidance target/ripr/review/comments.json --mode plan
   ripr pr-review front-panel --pr-guidance target/ripr/review/comments.json --first-action target/ripr/reports/first-useful-action.json --ledger target/ripr/reports/pr-evidence-ledger.json
   ripr coverage-grip frontier --ledger target/ripr/reports/pr-evidence-ledger.json --coverage target/ripr/reports/coverage-summary.json
   ripr assistant-loop proof --pr-guidance target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-brief.json --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --receipt target/ripr/reports/agent-receipt.json
@@ -273,6 +275,33 @@ artifacts. It records PR-local movement, waiver visibility, suppressions,
 repair receipts, and optional coverage/grip frontier signals. It does not run
 analysis, mutate baselines, post comments, edit source, generate tests, call an
 LLM, run mutation testing, change gate policy, or make CI blocking by default.
+"#;
+
+const PR_COMMENTS_HELP: &str = r#"Usage: ripr pr-comments plan [--root PATH] [--pr-guidance PATH] [--existing-comments PATH] [--mode off|plan|inline] [--pull-request N] [--event-name NAME] [--head-repo OWNER/REPO] [--base-repo OWNER/REPO] [--token-available] [--no-write-permission] [--out PATH] [--out-md PATH]
+
+Plan options:
+  --root PATH                 Workspace root label. Defaults to current directory.
+  --pr-guidance PATH          PR guidance JSON from `ripr review-comments`.
+  --existing-comments PATH    Optional existing RIPR comment metadata.
+  --mode MODE                 off, plan, or inline. Defaults to off.
+  --pull-request N            Pull request number for inline safety checks.
+  --event-name NAME           GitHub event name, usually pull_request.
+  --head-repo OWNER/REPO      Pull request head repository.
+  --base-repo OWNER/REPO      Pull request base repository.
+  --token-available           Mark a pull-request write token as available.
+  --no-token                  Mark the token as unavailable. This is the default.
+  --write-permission          Mark pull-request write permission as available. This is the default.
+  --no-write-permission       Mark pull-request write permission as unavailable.
+  --max-inline-comments N     Maximum publishable inline comments. Defaults to 3.
+  --out PATH                  JSON output path. Defaults to target/ripr/review/comment-publish-plan.json.
+  --out-md PATH               Markdown output path. Defaults to target/ripr/review/comment-publish-plan.md.
+
+The PR comments plan is a read-only advisory projection over existing
+`ripr review-comments` output and optional existing-comment metadata. It emits
+create/update/keep/delete/skip/blocked operations for a later explicit
+publisher, but it never posts comments, calls GitHub, edits source, generates
+tests, runs mutation testing, changes gate authority, or makes CI blocking by
+default.
 "#;
 
 const PR_REVIEW_HELP: &str = r#"Usage: ripr pr-review front-panel [--root PATH] [--pr-guidance PATH] [--first-action PATH] [--assistant-proof PATH] [--assistant-health PATH] [--ledger PATH] [--baseline-delta PATH] [--zero-status PATH] [--gate-decision PATH] [--recommendation-calibration PATH] [--mutation-calibration PATH] [--coverage-frontier PATH] [--receipt PATH] [--out PATH] [--out-md PATH]
@@ -630,6 +659,10 @@ pub(super) fn print_pr_ledger_help() {
     println!("{PR_LEDGER_HELP}");
 }
 
+pub(super) fn print_pr_comments_help() {
+    println!("{PR_COMMENTS_HELP}");
+}
+
 pub(super) fn print_pr_review_help() {
     println!("{PR_REVIEW_HELP}");
 }
@@ -709,8 +742,8 @@ mod tests {
         AGENT_REVIEW_SUMMARY_HELP, AGENT_START_HELP, AGENT_STATUS_HELP, AGENT_VERIFY_HELP,
         ASSISTANT_LOOP_HELP, BASELINE_HELP, CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP,
         COVERAGE_GRIP_HELP, DOCTOR_HELP, EVIDENCE_HEALTH_HELP, EXPLAIN_HELP, FIRST_ACTION_HELP,
-        GATE_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP, PR_LEDGER_HELP,
-        PR_REVIEW_HELP, REPORTS_HELP, REVIEW_COMMENTS_HELP, ZERO_HELP,
+        GATE_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP, PR_COMMENTS_HELP,
+        PR_LEDGER_HELP, PR_REVIEW_HELP, REPORTS_HELP, REVIEW_COMMENTS_HELP, ZERO_HELP,
     };
 
     #[test]
@@ -726,6 +759,7 @@ mod tests {
         assert!(HELP.contains("ripr baseline update"));
         assert!(HELP.contains("ripr zero status"));
         assert!(HELP.contains("ripr pr-ledger record"));
+        assert!(HELP.contains("ripr pr-comments plan"));
         assert!(HELP.contains("ripr pr-review front-panel"));
         assert!(HELP.contains("ripr coverage-grip frontier"));
         assert!(HELP.contains("ripr assistant-loop proof"));
@@ -787,6 +821,9 @@ mod tests {
         assert!(PR_LEDGER_HELP.starts_with("Usage: ripr pr-ledger record"));
         assert!(PR_LEDGER_HELP.contains("pr-evidence-ledger.json"));
         assert!(PR_LEDGER_HELP.contains("read-only advisory history"));
+        assert!(PR_COMMENTS_HELP.starts_with("Usage: ripr pr-comments plan"));
+        assert!(PR_COMMENTS_HELP.contains("comment-publish-plan.json"));
+        assert!(PR_COMMENTS_HELP.contains("read-only advisory projection"));
         assert!(PR_REVIEW_HELP.starts_with("Usage: ripr pr-review front-panel"));
         assert!(PR_REVIEW_HELP.contains("pr-review-front-panel.json"));
         assert!(PR_REVIEW_HELP.contains("read-only advisory first-screen report"));

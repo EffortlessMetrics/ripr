@@ -257,8 +257,10 @@ branch-protection changes, hidden analysis reruns, `pull_request_target`
 defaults, or default CI blocking. The fixture corpus under
 `fixtures/boundary_gap/expected/pr-inline-comment-publisher/` now pins the
 publishable, summary-only, capped, dedupe/upsert, stale-existing, fork or
-no-token, and missing-input cases. The next ready slice is
-`report/pr-inline-comment-publish-plan`.
+no-token, and missing-input cases. `ripr pr-comments plan` now writes the
+read-only JSON/Markdown publish plan from those explicit inputs without
+posting to GitHub or changing gate authority. The next ready slice is
+`ci/pr-inline-comment-publisher`.
 
 ## PR 0: `planning-and-tracking-docs`
 

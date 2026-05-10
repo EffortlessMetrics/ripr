@@ -131,6 +131,23 @@ struct PrEvidenceLedgerOptions {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+struct PrCommentsPlanOptions {
+    root: String,
+    pr_guidance: Option<PathBuf>,
+    existing_comments: Option<PathBuf>,
+    mode: output::pr_inline_comment_publish_plan::CommentMode,
+    pull_request: Option<u64>,
+    event_name: Option<String>,
+    head_repo: Option<String>,
+    base_repo: Option<String>,
+    token_available: bool,
+    write_permission: bool,
+    max_inline_comments: usize,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 struct PrReviewFrontPanelOptions {
     root: String,
     pr_guidance: Option<PathBuf>,
@@ -2548,6 +2565,22 @@ pub(super) fn pr_ledger(args: &[String]) -> Result<(), String> {
     pr_evidence_ledger_record(rest)
 }
 
+pub(super) fn pr_comments(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_pr_comments_help();
+        return Ok(());
+    }
+    let Some((subcommand, rest)) = args.split_first() else {
+        return Err("pr-comments requires subcommand `plan`".to_string());
+    };
+    if subcommand != "plan" {
+        return Err(format!(
+            "unknown pr-comments subcommand {subcommand:?}; expected `plan`"
+        ));
+    }
+    pr_comments_plan(rest)
+}
+
 pub(super) fn pr_review(args: &[String]) -> Result<(), String> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         help::print_pr_review_help();
@@ -2868,6 +2901,52 @@ fn pr_evidence_ledger_record(args: &[String]) -> Result<(), String> {
     let report = output::pr_evidence_ledger::build_pr_evidence_ledger_report(input);
     let rendered_json = output::pr_evidence_ledger::render_pr_evidence_ledger_json(&report)?;
     let rendered_md = output::pr_evidence_ledger::render_pr_evidence_ledger_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    Ok(())
+}
+
+fn pr_comments_plan(args: &[String]) -> Result<(), String> {
+    let options = parse_pr_comments_plan_options(args)?;
+    let pr_guidance_path = options
+        .pr_guidance
+        .as_ref()
+        .map(|path| output::pr_inline_comment_publish_plan::display_path(path));
+    let existing_comments_path = options
+        .existing_comments
+        .as_ref()
+        .map(|path| output::pr_inline_comment_publish_plan::display_path(path));
+    let input = output::pr_inline_comment_publish_plan::CommentPublishPlanInput {
+        root: options.root,
+        generated_at: comment_publish_plan_generated_at()?,
+        mode: options.mode,
+        max_inline_comments: options.max_inline_comments,
+        pr_guidance_path,
+        pr_guidance_json: options
+            .pr_guidance
+            .as_ref()
+            .map(|path| read_optional_text_for_report("PR guidance", path)),
+        existing_comments_path,
+        existing_comments_json: options
+            .existing_comments
+            .as_ref()
+            .map(|path| read_optional_text_for_report("existing comments", path)),
+        permission: output::pr_inline_comment_publish_plan::CommentPermissionContext {
+            pull_request: options.pull_request,
+            event_name: options.event_name,
+            head_repo: options.head_repo,
+            base_repo: options.base_repo,
+            token_available: options.token_available,
+            write_permission: options.write_permission,
+        },
+    };
+    let report = output::pr_inline_comment_publish_plan::build_comment_publish_plan_report(input);
+    let rendered_json =
+        output::pr_inline_comment_publish_plan::render_comment_publish_plan_json(&report)?;
+    let rendered_md =
+        output::pr_inline_comment_publish_plan::render_comment_publish_plan_markdown(&report);
     write_text_file(&options.out, &rendered_json)?;
     write_text_file(&options.out_md, &rendered_md)?;
     println!("Wrote {}", options.out.display());
@@ -4100,6 +4179,135 @@ fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerO
     })
 }
 
+fn parse_pr_comments_plan_options(args: &[String]) -> Result<PrCommentsPlanOptions, String> {
+    let mut root = ".".to_string();
+    let mut pr_guidance = None;
+    let mut existing_comments = None;
+    let mut mode = output::pr_inline_comment_publish_plan::CommentMode::Off;
+    let mut pull_request = None;
+    let mut event_name = None;
+    let mut head_repo = None;
+    let mut base_repo = None;
+    let mut token_available = false;
+    let mut write_permission = true;
+    let mut max_inline_comments =
+        output::pr_inline_comment_publish_plan::DEFAULT_MAX_INLINE_COMMENTS;
+    let mut out =
+        PathBuf::from(output::pr_inline_comment_publish_plan::DEFAULT_COMMENT_PUBLISH_PLAN_OUT);
+    let mut out_md =
+        PathBuf::from(output::pr_inline_comment_publish_plan::DEFAULT_COMMENT_PUBLISH_PLAN_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "pr-comments plan")?;
+            }
+            "--pr-guidance" => {
+                i += 1;
+                pr_guidance = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--pr-guidance",
+                    "pr-comments plan",
+                )?);
+            }
+            "--existing-comments" => {
+                i += 1;
+                existing_comments = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--existing-comments",
+                    "pr-comments plan",
+                )?);
+            }
+            "--mode" => {
+                i += 1;
+                mode = output::pr_inline_comment_publish_plan::CommentMode::parse(expect_value(
+                    args, i, "--mode",
+                )?)?;
+            }
+            "--pull-request" => {
+                i += 1;
+                let value = non_empty_string_arg(args, i, "--pull-request", "pr-comments plan")?;
+                pull_request = Some(value.parse::<u64>().map_err(|err| {
+                    format!("pr-comments plan --pull-request must be a positive integer: {err}")
+                })?);
+            }
+            "--event-name" => {
+                i += 1;
+                event_name = Some(non_empty_string_arg(
+                    args,
+                    i,
+                    "--event-name",
+                    "pr-comments plan",
+                )?);
+            }
+            "--head-repo" => {
+                i += 1;
+                head_repo = Some(non_empty_string_arg(
+                    args,
+                    i,
+                    "--head-repo",
+                    "pr-comments plan",
+                )?);
+            }
+            "--base-repo" => {
+                i += 1;
+                base_repo = Some(non_empty_string_arg(
+                    args,
+                    i,
+                    "--base-repo",
+                    "pr-comments plan",
+                )?);
+            }
+            "--token-available" => token_available = true,
+            "--no-token" => token_available = false,
+            "--write-permission" => write_permission = true,
+            "--no-write-permission" => write_permission = false,
+            "--max-inline-comments" => {
+                i += 1;
+                let value =
+                    non_empty_string_arg(args, i, "--max-inline-comments", "pr-comments plan")?;
+                max_inline_comments = value.parse::<usize>().map_err(|err| {
+                    format!("pr-comments plan --max-inline-comments must be a number: {err}")
+                })?;
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "pr-comments plan")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "pr-comments plan")?;
+            }
+            other => return Err(format!("unknown pr-comments plan argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    if max_inline_comments == 0 {
+        return Err("pr-comments plan --max-inline-comments must be greater than zero".to_string());
+    }
+
+    Ok(PrCommentsPlanOptions {
+        root,
+        pr_guidance,
+        existing_comments,
+        mode,
+        pull_request,
+        event_name,
+        head_repo,
+        base_repo,
+        token_available,
+        write_permission,
+        max_inline_comments,
+        out,
+        out_md,
+    })
+}
+
 fn parse_pr_review_front_panel_options(
     args: &[String],
 ) -> Result<PrReviewFrontPanelOptions, String> {
@@ -4765,6 +4973,14 @@ fn first_action_generated_at() -> Result<String, String> {
 }
 
 fn pr_review_front_panel_generated_at() -> Result<String, String> {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| format!("system clock before unix epoch: {err}"))?
+        .as_millis();
+    Ok(format!("unix_ms:{millis}"))
+}
+
+fn comment_publish_plan_generated_at() -> Result<String, String> {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|err| format!("system clock before unix epoch: {err}"))?
@@ -6080,6 +6296,121 @@ mod tests {
             parse_pr_evidence_ledger_options(&args(&["--bad"])),
             Err("unknown pr-ledger record argument \"--bad\"".to_string())
         );
+    }
+
+    #[test]
+    fn pr_comments_plan_parses_option_surface() {
+        assert_eq!(
+            parse_pr_comments_plan_options(&args(&[
+                "--root",
+                ".",
+                "--pr-guidance",
+                "target/ripr/review/comments.json",
+                "--existing-comments",
+                "target/ripr/review/existing-comments.json",
+                "--mode",
+                "inline",
+                "--pull-request",
+                "123",
+                "--event-name",
+                "pull_request",
+                "--head-repo",
+                "EffortlessMetrics/ripr",
+                "--base-repo",
+                "EffortlessMetrics/ripr",
+                "--token-available",
+                "--no-write-permission",
+                "--max-inline-comments",
+                "2",
+                "--out",
+                "target/ripr/review/comment-publish-plan.json",
+                "--out-md",
+                "target/ripr/review/comment-publish-plan.md",
+            ])),
+            Ok(PrCommentsPlanOptions {
+                root: ".".to_string(),
+                pr_guidance: Some(PathBuf::from("target/ripr/review/comments.json")),
+                existing_comments: Some(PathBuf::from("target/ripr/review/existing-comments.json")),
+                mode: output::pr_inline_comment_publish_plan::CommentMode::Inline,
+                pull_request: Some(123),
+                event_name: Some("pull_request".to_string()),
+                head_repo: Some("EffortlessMetrics/ripr".to_string()),
+                base_repo: Some("EffortlessMetrics/ripr".to_string()),
+                token_available: true,
+                write_permission: false,
+                max_inline_comments: 2,
+                out: PathBuf::from("target/ripr/review/comment-publish-plan.json"),
+                out_md: PathBuf::from("target/ripr/review/comment-publish-plan.md"),
+            })
+        );
+    }
+
+    #[test]
+    fn pr_comments_plan_rejects_bad_subcommands_and_options() {
+        assert_eq!(
+            pr_comments(&args(&[])),
+            Err("pr-comments requires subcommand `plan`".to_string())
+        );
+        assert_eq!(
+            pr_comments(&args(&["publish"])),
+            Err("unknown pr-comments subcommand \"publish\"; expected `plan`".to_string())
+        );
+        assert_eq!(
+            parse_pr_comments_plan_options(&args(&["--mode", "post"])),
+            Err(
+                "unknown pr-comments plan mode \"post\"; expected `off`, `plan`, or `inline`"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_pr_comments_plan_options(&args(&["--pr-guidance", ""])),
+            Err("pr-comments plan --pr-guidance requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_pr_comments_plan_options(&args(&["--max-inline-comments", "0"])),
+            Err("pr-comments plan --max-inline-comments must be greater than zero".to_string())
+        );
+        assert_eq!(
+            parse_pr_comments_plan_options(&args(&["--bad"])),
+            Err("unknown pr-comments plan argument \"--bad\"".to_string())
+        );
+    }
+
+    #[test]
+    fn pr_comments_plan_writes_json_and_markdown_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("pr-comments-plan");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir: {err}"))?;
+        let comments = dir.join("comments.json");
+        let out = dir.join("comment-publish-plan.json");
+        let out_md = dir.join("comment-publish-plan.md");
+        std::fs::write(
+            &comments,
+            r#"{"comments":[{"id":"ripr-review-a","dedupe_key":"ripr:a","placement":{"path":"src/lib.rs","line":7,"side":"RIGHT","mode":"exact_seam_line"},"reason":"add focused assertion"}],"summary_only":[],"suppressed":[]}"#,
+        )
+        .map_err(|err| format!("write comments: {err}"))?;
+
+        pr_comments(&args(&[
+            "plan",
+            "--pr-guidance",
+            &comments.display().to_string(),
+            "--mode",
+            "plan",
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json = std::fs::read_to_string(&out)
+            .map_err(|err| format!("read publish plan JSON: {err}"))?;
+        let markdown = std::fs::read_to_string(&out_md)
+            .map_err(|err| format!("read publish plan Markdown: {err}"))?;
+        assert!(json.contains(r#""kind": "pr_inline_comment_publish_plan""#));
+        assert!(json.contains(r#""planned_create": 1"#));
+        assert!(markdown.contains("# RIPR Inline Comment Publish Plan"));
+        assert!(markdown.contains("publishable comments: 1"));
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
     }
 
     #[test]

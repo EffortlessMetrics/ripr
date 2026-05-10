@@ -292,8 +292,10 @@ ranking, gate semantics, editor behavior, mutation execution, provider calls,
 source files, generated tests, branch protection, `pull_request_target`
 defaults, inline-comment defaults, or default CI blocking. The fixture corpus
 under `fixtures/boundary_gap/expected/pr-inline-comment-publisher/` now pins
-the publisher plan cases before producer behavior changes. The next ready slice
-is `report/pr-inline-comment-publish-plan`.
+the publisher plan cases before producer behavior changes, and
+`ripr pr-comments plan` now emits the read-only JSON/Markdown publish plan
+without posting to GitHub or changing gate authority. The next ready slice is
+`ci/pr-inline-comment-publisher`.
 
 ## Strategic Sequence
 

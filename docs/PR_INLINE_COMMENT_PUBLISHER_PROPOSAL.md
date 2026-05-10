@@ -42,6 +42,11 @@ The plan must show what would be posted, updated, skipped, capped, or blocked
 by permissions. A later explicit opt-in publisher can consume that plan to
 upsert comments.
 
+Current implementation status: `ripr pr-comments plan` writes the read-only
+`comment-publish-plan.{json,md}` artifacts from explicit `review-comments`
+input and optional existing-comment metadata. Generated CI and real comment
+posting remain follow-up slices.
+
 ## Current Inputs
 
 The campaign should account for these existing surfaces when present:

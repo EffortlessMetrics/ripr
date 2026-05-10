@@ -981,20 +981,23 @@ metric = "report_packet_index_reports, report_packet_index_pass, report_packet_i
 [[capability]]
 id = "pr_inline_comment_publisher"
 name = "PR inline comment publisher"
-status = "planned"
+status = "alpha"
 spec = "RIPR-SPEC-0025"
 evidence = [
   "docs/specs/RIPR-SPEC-0025-pr-inline-comment-publisher.md defines the optional inline comment publisher contract, read-only publish-plan schema, explicit inputs, permission boundary, dedupe/upsert semantics, cap rules, summary-only exclusion, generated-CI default-off posture, and fixture-first implementation plan",
-  "docs/OUTPUT_SCHEMA.md documents the planned pr_inline_comment_publish_plan JSON and Markdown shape, operation vocabulary, skip and blocked reasons, existing-comment metadata shape, and advisory/default-off boundary",
+  "docs/OUTPUT_SCHEMA.md documents the implemented pr_inline_comment_publish_plan JSON and Markdown shape, operation vocabulary, skip and blocked reasons, existing-comment metadata shape, command surface, and advisory/default-off boundary",
+  "crates/ripr/src/output/pr_inline_comment_publish_plan.rs builds the read-only publish plan from explicit review-comments and optional existing-comment metadata without posting to GitHub",
+  "crates/ripr/src/cli/commands.rs exposes ripr pr-comments plan and writes comment-publish-plan JSON/Markdown artifacts",
+  "crates/ripr/src/output/pr_inline_comment_publish_plan.rs::inline_comment_publish_plan_matches_fixture_corpus validates the producer against the fixture corpus",
   "docs/PR_INLINE_COMMENT_PUBLISHER_PROPOSAL.md records Campaign 26's proposal and non-goals",
   "fixtures/boundary_gap/expected/pr-inline-comment-publisher/ pins publishable changed-line, summary-only excluded, cap overflow, dedupe/upsert, stale-existing, fork or no-token, and missing-input publish-plan cases",
   "xtask/src/main.rs validates the PR inline comment publisher fixture corpus through check-fixture-contracts",
-  ".ripr/goals/active.toml tracks Campaign 26 with report/pr-inline-comment-publish-plan as the next work item after the fixture corpus",
+  ".ripr/goals/active.toml tracks Campaign 26 with ci/pr-inline-comment-publisher as the next work item after the read-only plan producer",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/pr-inline-comment-publisher"
 ]
-next = "report/pr-inline-comment-publish-plan"
+next = "ci/pr-inline-comment-publisher"
 metric = "pr_inline_comment_publish_plans, pr_inline_comment_publishable, pr_inline_comment_planned_create, pr_inline_comment_planned_update, pr_inline_comment_planned_keep, pr_inline_comment_planned_delete, pr_inline_comment_skipped, pr_inline_comment_blocked, pr_inline_comment_summary_only_skipped, pr_inline_comment_cap_reached, pr_inline_comment_dedupe_matches, pr_inline_comment_permission_blocked, pr_inline_comment_fork_blocked"
 
 [[capability]]

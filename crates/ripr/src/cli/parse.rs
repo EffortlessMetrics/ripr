@@ -92,6 +92,10 @@ mod tests {
             Ok(CliCommand::PrLedger(args(&["record"])))
         );
         assert_eq!(
+            parse_args(args(&["ripr", "pr-comments", "plan"])),
+            Ok(CliCommand::PrComments(args(&["plan"])))
+        );
+        assert_eq!(
             parse_args(args(&["ripr", "coverage-grip", "frontier"])),
             Ok(CliCommand::CoverageGrip(args(&["frontier"])))
         );

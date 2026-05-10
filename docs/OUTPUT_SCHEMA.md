@@ -1712,6 +1712,17 @@ post comments, call GitHub, rerun analysis, edit source files, generate tests,
 run mutation testing, or change gate authority. Generated CI keeps inline
 comments disabled by default.
 
+Producer:
+
+```bash
+ripr pr-comments plan \
+  --pr-guidance target/ripr/review/comments.json \
+  --existing-comments target/ripr/review/existing-comments.json \
+  --mode plan \
+  --out target/ripr/review/comment-publish-plan.json \
+  --out-md target/ripr/review/comment-publish-plan.md
+```
+
 JSON shape:
 
 ```json
@@ -1763,7 +1774,7 @@ JSON shape:
         "side": "RIGHT",
         "mode": "exact_seam_line"
       },
-      "body": "RIPR advisory: related tests reach this seam but miss `amount == discount_threshold`. Add one focused equality-boundary assertion. Verify with `ripr agent verify`.",
+      "body": "RIPR advisory: static evidence says this seam misses `amount == discount_threshold`. Add one focused boundary assertion and verify with `ripr agent verify`.",
       "existing_comment_id": null,
       "skip_reason": null,
       "blocked_reason": null
@@ -1803,9 +1814,9 @@ Field contract:
   cap, permission, and dedupe rules.
 - `summary.safe_to_publish` is `true` only when mode is `inline` and every
   planned publishing operation satisfies the permission boundary.
-- `operations[]` records candidate operations sourced only from `comments[]`.
-- `operations[].operation` is `create`, `update`, `keep`, `delete`, `skip`, or
-  `blocked`.
+- `operations[]` records publishable operations sourced from `comments[]` and
+  stale existing-comment cleanup candidates.
+- `operations[].operation` is `create`, `update`, `keep`, or `delete`.
 - `operations[].source_collection` must be `comments` for publishable
   operations.
 - `operations[].dedupe_key` is required for `create`, `update`, `keep`, and

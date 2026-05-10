@@ -141,7 +141,8 @@ surface.
 
 ## Publish Operation Vocabulary
 
-Each candidate operation must have one `operation`:
+Each publishable or stale-comment operation in `operations[]` must have one
+`operation`:
 
 - `create`: no existing RIPR comment matches the `dedupe_key`; create a new
   inline comment when publishing is enabled and safe.
@@ -152,12 +153,11 @@ Each candidate operation must have one `operation`:
 - `delete`: an existing RIPR comment is stale and no longer corresponds to a
   publishable `comments[]` item. Deletion is optional and must be explicit in
   implementation; the plan still records the stale state.
-- `skip`: the item is not publishable but is not an error.
-- `blocked`: publishing would require unsafe placement, missing permission,
-  missing context, unsupported event context, fork trust policy, missing
-  `dedupe_key`, or another hard safety condition.
+Skipped and blocked candidates are recorded in the sibling `skipped[]` and
+`blocked[]` arrays with bounded reasons rather than being posted or converted
+into publishable operations.
 
-`operation` values are plan semantics, not CI pass/fail outcomes.
+Operation and reason values are plan semantics, not CI pass/fail outcomes.
 
 ## Skip And Block Reasons
 
@@ -200,8 +200,8 @@ The publish-plan contract is proven only when the implementation can show:
   mode, PR context, repository trust context, and permission state;
 - `off`, `plan`, and `inline` mode handling with `off` as the generated-CI
   default;
-- operation vocabulary coverage for `create`, `update`, `keep`, `delete`,
-  `skip`, and `blocked`;
+- operation vocabulary coverage for `create`, `update`, `keep`, and `delete`,
+  plus skipped and blocked reason coverage;
 - summary-only guidance recorded as skipped, never inline-publishable;
 - cap behavior that defaults to three publishable comments;
 - dedupe/upsert behavior keyed by `dedupe_key`;
@@ -272,7 +272,7 @@ The JSON report uses schema version `0.1`:
         "side": "RIGHT",
         "mode": "exact_seam_line"
       },
-      "body": "RIPR advisory: related tests reach this seam but miss `amount == discount_threshold`. Add one focused equality-boundary assertion. Verify with `ripr agent verify`.",
+      "body": "RIPR advisory: static evidence says this seam misses `amount == discount_threshold`. Add one focused boundary assertion and verify with `ripr agent verify`.",
       "existing_comment_id": null,
       "skip_reason": null,
       "blocked_reason": null

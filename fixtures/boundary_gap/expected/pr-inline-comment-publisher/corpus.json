@@ -14,6 +14,7 @@
       "inputs": {
         "pr_guidance": "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
         "mode": "plan",
+        "pull_request": 123,
         "event_name": "pull_request",
         "head_repo": "EffortlessMetrics/ripr",
         "base_repo": "EffortlessMetrics/ripr"
@@ -129,6 +130,7 @@
       "inputs": {
         "pr_guidance": "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
         "mode": "inline",
+        "pull_request": 123,
         "event_name": "pull_request",
         "head_repo": "contributor/ripr",
         "base_repo": "EffortlessMetrics/ripr",

@@ -3,10 +3,10 @@
 ## Pending
 
 Reason:
-RIPR-SPEC-0025: pin PR inline comment publish-plan cases before the producer changes
+RIPR-SPEC-0025: pin and exercise PR inline comment publish-plan cases against the read-only producer
 
 Command:
-`cargo xtask check-fixture-contracts`
+`cargo test -p ripr inline_comment_publish_plan`
 
 Updated:
 - `expected/pr-inline-comment-publisher/README.md`

@@ -30,6 +30,10 @@ are scoped or reviewed.
   changed-line comments, summary-only exclusion, cap overflow, dedupe/upsert,
   stale-existing cleanup, fork or no-token blockers, and missing review-comments
   input before the publish-plan producer changes.
+- Added read-only `ripr pr-comments plan` support, emitting advisory
+  `comment-publish-plan.{json,md}` artifacts from explicit PR guidance and
+  optional existing-comment metadata without posting to GitHub or changing gate
+  authority.
 - Added the report-packet index fixture corpus under
   `fixtures/boundary_gap/expected/report-packet-index/`, pinning complete,
   sparse advisory, missing-front-panel, blocked-gate, missing-proof,

@@ -65,7 +65,7 @@ commands = [
 
 [[work_item]]
 id = "report/pr-inline-comment-publish-plan"
-status = "ready"
+status = "done"
 branch = "report-pr-inline-comment-publish-plan"
 stackable = false
 acceptance = "Add a read-only publish-plan producer that emits JSON/Markdown operations from explicit review-comments and optional existing-comment metadata without posting to GitHub or changing gate authority"
@@ -80,7 +80,7 @@ commands = [
 
 [[work_item]]
 id = "ci/pr-inline-comment-publisher"
-status = "blocked"
+status = "ready"
 branch = "ci-pr-inline-comment-publisher"
 stackable = false
 blocked_by = [

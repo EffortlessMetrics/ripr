@@ -20,6 +20,7 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
         CliCommand::Baseline(args) => commands::baseline(&args),
         CliCommand::Zero(args) => commands::zero(&args),
         CliCommand::PrLedger(args) => commands::pr_ledger(&args),
+        CliCommand::PrComments(args) => commands::pr_comments(&args),
         CliCommand::PrReview(args) => commands::pr_review(&args),
         CliCommand::CoverageGrip(args) => commands::coverage_grip(&args),
         CliCommand::AssistantLoop(args) => commands::assistant_loop(&args),
@@ -94,6 +95,10 @@ mod tests {
         assert_eq!(
             execute(CliCommand::PrLedger(args(&["record", "--pr-number"]))),
             Err("missing value for --pr-number".to_string())
+        );
+        assert_eq!(
+            execute(CliCommand::PrComments(args(&["plan", "--mode"]))),
+            Err("missing value for --mode".to_string())
         );
         assert_eq!(
             execute(CliCommand::PrReview(args(&[
