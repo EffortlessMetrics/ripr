@@ -1326,6 +1326,72 @@ jobs:
             echo 'No RIPR first-useful-action inputs were available.'
           fi
 
+      - name: Render RIPR PR review front panel
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          front_panel_has_input=false
+          front_panel_args=(
+            pr-review front-panel
+            --root .
+            --out target/ripr/reports/pr-review-front-panel.json
+            --out-md target/ripr/reports/pr-review-front-panel.md
+          )
+          if [ -f target/ripr/review/comments.json ]; then
+            front_panel_args+=(--pr-guidance target/ripr/review/comments.json)
+            front_panel_has_input=true
+          fi
+          if [ -f target/ripr/reports/first-useful-action.json ]; then
+            front_panel_args+=(--first-action target/ripr/reports/first-useful-action.json)
+            front_panel_has_input=true
+          fi
+          if [ -f target/ripr/reports/test-oracle-assistant-proof.json ]; then
+            front_panel_args+=(--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json)
+            front_panel_has_input=true
+          fi
+          if [ -f target/ripr/reports/assistant-loop-health.json ]; then
+            front_panel_args+=(--assistant-health target/ripr/reports/assistant-loop-health.json)
+            front_panel_has_input=true
+          fi
+          if [ -f target/ripr/reports/pr-evidence-ledger.json ]; then
+            front_panel_args+=(--ledger target/ripr/reports/pr-evidence-ledger.json)
+            front_panel_has_input=true
+          fi
+          if [ -f target/ripr/reports/baseline-debt-delta.json ]; then
+            front_panel_args+=(--baseline-delta target/ripr/reports/baseline-debt-delta.json)
+            front_panel_has_input=true
+          fi
+          if [ -f target/ripr/reports/ripr-zero-status.json ]; then
+            front_panel_args+=(--zero-status target/ripr/reports/ripr-zero-status.json)
+            front_panel_has_input=true
+          fi
+          if [ -f target/ripr/reports/gate-decision.json ]; then
+            front_panel_args+=(--gate-decision target/ripr/reports/gate-decision.json)
+            front_panel_has_input=true
+          fi
+          if [ -f target/ripr/reports/recommendation-calibration.json ]; then
+            front_panel_args+=(--recommendation-calibration target/ripr/reports/recommendation-calibration.json)
+            front_panel_has_input=true
+          fi
+          if [ -f target/ripr/reports/mutation-calibration.json ]; then
+            front_panel_args+=(--mutation-calibration target/ripr/reports/mutation-calibration.json)
+            front_panel_has_input=true
+          fi
+          if [ -f target/ripr/reports/coverage-grip-frontier.json ]; then
+            front_panel_args+=(--coverage-frontier target/ripr/reports/coverage-grip-frontier.json)
+            front_panel_has_input=true
+          fi
+          if [ -f target/ripr/reports/agent-receipt.json ]; then
+            front_panel_args+=(--receipt target/ripr/reports/agent-receipt.json)
+            front_panel_has_input=true
+          fi
+          if [ "$front_panel_has_input" = true ]; then
+            ripr "${front_panel_args[@]}"
+          else
+            echo 'No RIPR PR review front-panel inputs were available.'
+          fi
+
       - name: Render RIPR LLM work-loop summaries
         if: always()
         continue-on-error: true
@@ -1393,6 +1459,87 @@ jobs:
             echo '## RIPR advisory summary'
             echo
             echo "RIPR is advisory static evidence. It does not edit source, generate tests, or run mutation testing."
+            echo
+            echo '### PR review front panel'
+            if [ -f target/ripr/reports/pr-review-front-panel.json ] || [ -f target/ripr/reports/pr-review-front-panel.md ]; then
+              if [ -f target/ripr/reports/pr-review-front-panel.json ]; then
+                panel_json=target/ripr/reports/pr-review-front-panel.json
+                panel_status="$(jq -r '.status // "unknown"' "$panel_json" 2>/dev/null || echo unknown)"
+                panel_headline="$(jq -r '.summary.headline // "not_available"' "$panel_json" 2>/dev/null || echo unknown)"
+                panel_top_state="$(jq -r '.summary.top_issue_state // "unknown"' "$panel_json" 2>/dev/null || echo unknown)"
+                panel_policy_state="$(jq -r '.summary.policy_state // "none"' "$panel_json" 2>/dev/null || echo unknown)"
+                panel_placement="$(jq -r '.summary.placement // "not_available"' "$panel_json" 2>/dev/null || echo unknown)"
+                panel_movement="$(jq -r '.summary.movement_state // "unknown"' "$panel_json" 2>/dev/null || echo unknown)"
+                panel_coverage_grip="$(jq -r '.summary.coverage_grip_state // "not_available"' "$panel_json" 2>/dev/null || echo unknown)"
+                panel_new_policy_eligible="$(jq -r '.summary.new_policy_eligible // 0' "$panel_json" 2>/dev/null || echo 0)"
+                panel_baseline_present="$(jq -r '.summary.baseline_still_present // 0' "$panel_json" 2>/dev/null || echo 0)"
+                panel_baseline_resolved="$(jq -r '.summary.baseline_resolved // 0' "$panel_json" 2>/dev/null || echo 0)"
+                panel_acknowledged="$(jq -r '.summary.acknowledged // 0' "$panel_json" 2>/dev/null || echo 0)"
+                panel_suppressed="$(jq -r '.summary.suppressed // 0' "$panel_json" 2>/dev/null || echo 0)"
+                panel_blocking="$(jq -r '.summary.blocking_candidates // 0' "$panel_json" 2>/dev/null || echo 0)"
+                panel_issue="$(jq -r 'if .top_issue == null then "not_available" else ((.top_issue.path // "unknown") + (if .top_issue.line then ":" + (.top_issue.line|tostring) else "" end)) end' "$panel_json" 2>/dev/null || echo unknown)"
+                panel_class="$(jq -r '.top_issue.classification // "not_available"' "$panel_json" 2>/dev/null || echo unknown)"
+                panel_missing="$(jq -r '.top_issue.missing_discriminator // "not_available"' "$panel_json" 2>/dev/null || echo unknown)"
+                panel_related="$(jq -r '.top_issue.related_test // "not_available"' "$panel_json" 2>/dev/null || echo unknown)"
+                panel_suggested="$(jq -r '.top_issue.suggested_test // "not_available"' "$panel_json" 2>/dev/null || echo unknown)"
+                panel_verify="$(jq -r '.top_issue.verify_command // "not_available"' "$panel_json" 2>/dev/null || echo unknown)"
+                panel_agent="$(jq -r '.top_issue.agent_command // "not_available"' "$panel_json" 2>/dev/null || echo unknown)"
+                panel_receipt="$(jq -r '.top_issue.receipt.artifact // "not_available"' "$panel_json" 2>/dev/null || echo unknown)"
+                panel_gate_mode="$(jq -r '.policy.mode // "not_available"' "$panel_json" 2>/dev/null || echo unknown)"
+                panel_gate_decision="$(jq -r '.policy.decision // "not_available"' "$panel_json" 2>/dev/null || echo unknown)"
+                panel_warning_count="$(jq -r '(.warnings // [] | length)' "$panel_json" 2>/dev/null || echo 0)"
+                panel_status="$(markdown_inline "$panel_status")"
+                panel_headline="$(markdown_inline "$panel_headline")"
+                panel_top_state="$(markdown_inline "$panel_top_state")"
+                panel_policy_state="$(markdown_inline "$panel_policy_state")"
+                panel_placement="$(markdown_inline "$panel_placement")"
+                panel_movement="$(markdown_inline "$panel_movement")"
+                panel_coverage_grip="$(markdown_inline "$panel_coverage_grip")"
+                panel_new_policy_eligible="$(markdown_inline "$panel_new_policy_eligible")"
+                panel_baseline_present="$(markdown_inline "$panel_baseline_present")"
+                panel_baseline_resolved="$(markdown_inline "$panel_baseline_resolved")"
+                panel_acknowledged="$(markdown_inline "$panel_acknowledged")"
+                panel_suppressed="$(markdown_inline "$panel_suppressed")"
+                panel_blocking="$(markdown_inline "$panel_blocking")"
+                panel_issue="$(markdown_inline "$panel_issue")"
+                panel_class="$(markdown_inline "$panel_class")"
+                panel_missing="$(markdown_inline "$panel_missing")"
+                panel_related="$(markdown_inline "$panel_related")"
+                panel_suggested="$(markdown_inline "$panel_suggested")"
+                panel_verify="$(markdown_inline "$panel_verify")"
+                panel_agent="$(markdown_inline "$panel_agent")"
+                panel_receipt="$(markdown_inline "$panel_receipt")"
+                panel_gate_mode="$(markdown_inline "$panel_gate_mode")"
+                panel_gate_decision="$(markdown_inline "$panel_gate_decision")"
+                panel_warning_count="$(markdown_inline "$panel_warning_count")"
+                echo '#### PR review at a glance'
+                echo "- Status: \`$panel_status\`"
+                echo "- Headline: \`$panel_headline\`"
+                echo "- Top issue state: \`$panel_top_state\`"
+                echo "- Policy state: \`$panel_policy_state\`"
+                echo "- Placement: \`$panel_placement\`"
+                echo "- Static movement: \`$panel_movement\`"
+                echo "- Coverage/grip: \`$panel_coverage_grip\`"
+                echo "- Counts: new_policy_eligible=\`$panel_new_policy_eligible\`, baseline_still_present=\`$panel_baseline_present\`, baseline_resolved=\`$panel_baseline_resolved\`, acknowledged=\`$panel_acknowledged\`, suppressed=\`$panel_suppressed\`, blocking_candidates=\`$panel_blocking\`"
+                echo "- Top issue: \`$panel_issue\` class=\`$panel_class\`"
+                echo "- Missing discriminator: \`$panel_missing\`"
+                echo "- Suggested focused test: \`$panel_suggested\`"
+                echo "- Related test: \`$panel_related\`"
+                echo "- Verify command: \`$panel_verify\`"
+                echo "- Agent handoff: \`$panel_agent\`"
+                echo "- Receipt: \`$panel_receipt\`"
+                echo "- Gate: mode=\`$panel_gate_mode\`, decision=\`$panel_gate_decision\`"
+                echo "- Warnings: \`$panel_warning_count\`"
+                echo "- Front-panel artifacts: \`target/ripr/reports/pr-review-front-panel.json\`, \`target/ripr/reports/pr-review-front-panel.md\`"
+                echo "- Pass/fail authority remains \`ripr gate evaluate\` when an explicit gate mode is configured."
+                echo
+              fi
+              if [ -f target/ripr/reports/pr-review-front-panel.md ]; then
+                cat target/ripr/reports/pr-review-front-panel.md
+              fi
+            else
+              echo 'PR review front panel was not generated. It runs when existing PR guidance, first-useful-action, assistant proof, health, ledger, baseline, gate, calibration, coverage/grip, or receipt artifacts are available.'
+            fi
             echo
             echo '### First useful action'
             if [ -f target/ripr/reports/first-useful-action.json ] || [ -f target/ripr/reports/first-useful-action.md ]; then
@@ -4824,6 +4971,7 @@ mod tests {
                 "assistant-loop proof",
                 "assistant-loop health",
                 "first-action",
+                "pr-review front-panel",
                 "ripr agent status",
                 "ripr agent review-summary",
                 "cargo xtask operator-cockpit",
@@ -4863,11 +5011,15 @@ mod tests {
                 "target/ripr/reports/assistant-loop-health.md",
                 "target/ripr/reports/first-useful-action.json",
                 "target/ripr/reports/first-useful-action.md",
+                "target/ripr/reports/pr-review-front-panel.json",
+                "target/ripr/reports/pr-review-front-panel.md",
                 "target/ripr/review/comments.json",
                 "target/ci/labels.json",
             ],
             summary_sections: &[
                 "## RIPR advisory summary",
+                "### PR review front panel",
+                "#### PR review at a glance",
                 "### First useful action",
                 "#### First action at a glance",
                 "### Top recommendation",
@@ -4903,6 +5055,7 @@ mod tests {
                 "Render RIPR test-oracle assistant proof",
                 "Render RIPR assistant loop health",
                 "Render RIPR first useful action",
+                "Render RIPR PR review front panel",
                 "Render RIPR LLM work-loop summaries",
                 "Run RIPR PR guidance report",
                 "Capture RIPR gate labels",
@@ -6689,6 +6842,8 @@ mod tests {
         assert!(workflow.contains("target/ripr/reports/assistant-loop-health.md"));
         assert!(workflow.contains("target/ripr/reports/first-useful-action.json"));
         assert!(workflow.contains("target/ripr/reports/first-useful-action.md"));
+        assert!(workflow.contains("target/ripr/reports/pr-review-front-panel.json"));
+        assert!(workflow.contains("target/ripr/reports/pr-review-front-panel.md"));
         assert!(workflow.contains("target/ci/labels.json"));
         assert!(workflow.contains("target/ripr/review/comments.json"));
         assert!(workflow.contains("target/ripr/review"));
@@ -6700,12 +6855,15 @@ mod tests {
         assert!(workflow.contains("name: Render RIPR test-oracle assistant proof"));
         assert!(workflow.contains("name: Render RIPR assistant loop health"));
         assert!(workflow.contains("name: Render RIPR first useful action"));
+        assert!(workflow.contains("name: Render RIPR PR review front panel"));
         assert!(workflow.contains("escape_github_property()"));
         assert!(workflow.contains("annotation_path=\"$(escape_github_property \"$path\")\""));
         assert!(workflow.contains("::warning file=$annotation_path,line=$annotation_line"));
         assert!(workflow.contains("title=$annotation_title"));
         assert!(workflow.contains("name: Add RIPR advisory summary"));
         assert!(workflow.contains("## RIPR advisory summary"));
+        assert!(workflow.contains("### PR review front panel"));
+        assert!(workflow.contains("#### PR review at a glance"));
         assert!(workflow.contains("### First useful action"));
         assert!(workflow.contains("#### First action at a glance"));
         assert!(workflow.contains("### Top recommendation"));
@@ -6733,6 +6891,7 @@ mod tests {
         assert!(workflow.contains("Baseline delta artifacts"));
         assert!(workflow.contains("Proof artifacts"));
         assert!(workflow.contains("Action artifacts"));
+        assert!(workflow.contains("Front-panel artifacts"));
         assert!(workflow.contains("### SARIF and badge status"));
         assert!(workflow.contains("### PR guidance annotations"));
         assert!(workflow.contains("### Known limits"));
@@ -6816,9 +6975,24 @@ mod tests {
                 .contains("--coverage-frontier target/ripr/reports/coverage-grip-frontier.json")
         );
         assert!(workflow.contains("--gate-decision target/ripr/reports/gate-decision.json"));
+        assert!(workflow.contains("pr-review front-panel"));
+        assert!(workflow.contains("front_panel_has_input=true"));
+        assert!(workflow.contains("--first-action target/ripr/reports/first-useful-action.json"));
+        assert!(
+            workflow.contains("--assistant-health target/ripr/reports/assistant-loop-health.json")
+        );
+        assert!(workflow.contains("--ledger target/ripr/reports/pr-evidence-ledger.json"));
+        assert!(workflow.contains("--baseline-delta target/ripr/reports/baseline-debt-delta.json"));
+        assert!(workflow.contains("--zero-status target/ripr/reports/ripr-zero-status.json"));
+        assert!(
+            workflow
+                .contains("--mutation-calibration target/ripr/reports/mutation-calibration.json")
+        );
+        assert!(workflow.contains("--receipt target/ripr/reports/agent-receipt.json"));
         assert!(workflow.contains("ripr \"${gate_args[@]}\""));
         assert!(workflow.contains("ripr \"${proof_args[@]}\""));
         assert!(workflow.contains("ripr \"${first_action_args[@]}\""));
+        assert!(workflow.contains("ripr \"${front_panel_args[@]}\""));
         assert!(workflow.contains("Set `RIPR_GATE_MODE`"));
         assert!(workflow.contains("No runtime mutation execution is performed"));
         assert!(workflow.contains("hashFiles('crates/ripr/Cargo.toml')"));
@@ -6907,6 +7081,11 @@ mod tests {
         assert_step_before(
             &workflow,
             "Render RIPR first useful action",
+            "Render RIPR PR review front panel",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR PR review front panel",
             "Render RIPR LLM work-loop summaries",
         );
         assert_step_before(
@@ -7081,6 +7260,46 @@ mod tests {
         assert!(first_action.contains("first_action_has_input=true"));
         assert!(first_action.contains("ripr \"${first_action_args[@]}\""));
 
+        let front_panel = workflow_step(&workflow, "Render RIPR PR review front panel");
+        assert!(front_panel.contains("continue-on-error: true"));
+        assert!(front_panel.contains("pr-review front-panel"));
+        assert!(front_panel.contains("--root ."));
+        assert!(front_panel.contains("--pr-guidance target/ripr/review/comments.json"));
+        assert!(
+            front_panel.contains("--first-action target/ripr/reports/first-useful-action.json")
+        );
+        assert!(
+            front_panel
+                .contains("--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json")
+        );
+        assert!(
+            front_panel
+                .contains("--assistant-health target/ripr/reports/assistant-loop-health.json")
+        );
+        assert!(front_panel.contains("--ledger target/ripr/reports/pr-evidence-ledger.json"));
+        assert!(
+            front_panel.contains("--baseline-delta target/ripr/reports/baseline-debt-delta.json")
+        );
+        assert!(front_panel.contains("--zero-status target/ripr/reports/ripr-zero-status.json"));
+        assert!(front_panel.contains("--gate-decision target/ripr/reports/gate-decision.json"));
+        assert!(front_panel.contains(
+            "--recommendation-calibration target/ripr/reports/recommendation-calibration.json"
+        ));
+        assert!(
+            front_panel
+                .contains("--mutation-calibration target/ripr/reports/mutation-calibration.json")
+        );
+        assert!(
+            front_panel
+                .contains("--coverage-frontier target/ripr/reports/coverage-grip-frontier.json")
+        );
+        assert!(front_panel.contains("--receipt target/ripr/reports/agent-receipt.json"));
+        assert!(front_panel.contains("--out target/ripr/reports/pr-review-front-panel.json"));
+        assert!(front_panel.contains("--out-md target/ripr/reports/pr-review-front-panel.md"));
+        assert!(front_panel.contains("front_panel_has_input=true"));
+        assert!(front_panel.contains("ripr \"${front_panel_args[@]}\""));
+        assert!(front_panel.contains("No RIPR PR review front-panel inputs were available."));
+
         let annotations = workflow_step(&workflow, "Emit RIPR PR guidance annotations");
         assert!(annotations.contains("hashFiles('target/ripr/review/comments.json')"));
         assert!(annotations.contains("escape_github_message()"));
@@ -7088,6 +7307,29 @@ mod tests {
         assert!(annotations.contains("::warning file=$annotation_path,line=$annotation_line"));
 
         let summary = workflow_step(&workflow, "Add RIPR advisory summary");
+        assert!(summary.contains("### PR review front panel"));
+        assert!(summary.contains("#### PR review at a glance"));
+        assert!(summary.contains("target/ripr/reports/pr-review-front-panel.json"));
+        assert!(summary.contains("target/ripr/reports/pr-review-front-panel.md"));
+        assert!(summary.contains(".summary.headline // \"not_available\""));
+        assert!(summary.contains(".summary.top_issue_state // \"unknown\""));
+        assert!(summary.contains(".summary.policy_state // \"none\""));
+        assert!(summary.contains(".summary.placement // \"not_available\""));
+        assert!(summary.contains(".summary.movement_state // \"unknown\""));
+        assert!(summary.contains(".summary.coverage_grip_state // \"not_available\""));
+        assert!(summary.contains(".summary.new_policy_eligible // 0"));
+        assert!(summary.contains(".summary.baseline_still_present // 0"));
+        assert!(summary.contains(".summary.baseline_resolved // 0"));
+        assert!(summary.contains(".summary.blocking_candidates // 0"));
+        assert!(summary.contains(".top_issue.missing_discriminator // \"not_available\""));
+        assert!(summary.contains(".top_issue.suggested_test // \"not_available\""));
+        assert!(summary.contains(".top_issue.verify_command // \"not_available\""));
+        assert!(summary.contains(".top_issue.agent_command // \"not_available\""));
+        assert!(summary.contains(".top_issue.receipt.artifact // \"not_available\""));
+        assert!(summary.contains(".policy.mode // \"not_available\""));
+        assert!(summary.contains(".policy.decision // \"not_available\""));
+        assert!(summary.contains("cat target/ripr/reports/pr-review-front-panel.md"));
+        assert!(summary.contains("PR review front panel was not generated"));
         assert!(summary.contains("### First useful action"));
         assert!(summary.contains("#### First action at a glance"));
         assert!(summary.contains("target/ripr/reports/first-useful-action.json"));

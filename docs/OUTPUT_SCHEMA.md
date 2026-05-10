@@ -3608,10 +3608,11 @@ the safe next step before lower-priority detail. For example, missing required
 inputs should say to regenerate the missing PR guidance or first-useful-action
 artifact before acting on the panel.
 
-Generated CI may run the producer only when configured input artifacts exist,
-upload `pr-review-front-panel.{json,md}` with the normal report packet, and
-append the Markdown to the job summary. The projection is advisory:
-`ripr gate evaluate` remains the only configured pass/fail authority.
+Generated CI runs the producer only when configured input artifacts exist,
+uploads `pr-review-front-panel.{json,md}` with the normal report packet, and
+appends the Markdown plus compact at-a-glance fields to the job summary. The
+projection is advisory: `ripr gate evaluate` remains the only configured
+pass/fail authority.
 
 ### Review Guidance Outcome Receipt
 
