@@ -2863,8 +2863,8 @@ Work items:
 | `report/pr-inline-comment-publish-plan` | done | Added read-only `ripr pr-comments plan` JSON/Markdown producer over explicit review-comments and optional existing-comment metadata without posting to GitHub or changing gate authority. |
 | `ci/pr-inline-comment-publisher` | done | Added generated GitHub CI wiring with `RIPR_COMMENT_MODE=off` by default, opt-in existing-comment metadata capture, advisory publish-plan artifacts and summaries, and inline GitHub comment create/update calls only when `RIPR_COMMENT_MODE=inline` and the safe plan permits publishing. |
 | `docs/pr-inline-comment-publisher-workflow` | done | Documented `off`, `plan`, and `inline` rollout modes, publish-plan review, review-thread noise controls, forks, missing permissions, dedupe/upsert behavior, rollback, and the advisory gate boundary. |
-| `dogfood/pr-inline-comment-publisher-receipts` | ready | Record repo-local publish-plan receipts for publishable, summary-only, capped, dedupe/upsert, stale-existing, fork or no-token, and missing-input cases without posting real PR comments. |
-| `campaign/pr-inline-comment-publisher-closeout` | blocked | Blocked on `dogfood/pr-inline-comment-publisher-receipts`; close Campaign 26 after the spec, fixtures, read-only publish plan, explicit generated-CI opt-in wiring, workflow docs, dogfood receipts, and validation show inline comments are safe, capped, deduped, advisory, and disabled by default. |
+| `dogfood/pr-inline-comment-publisher-receipts` | done | Extended `cargo xtask dogfood` with checked repo-local receipts for publishable, summary-only, capped, dedupe/upsert, stale-existing, fork or no-token, and missing-input publish plans without posting real PR comments. |
+| `campaign/pr-inline-comment-publisher-closeout` | ready | Close Campaign 26 after the spec, fixtures, read-only publish plan, explicit generated-CI opt-in wiring, workflow docs, dogfood receipts, and validation show inline comments are safe, capped, deduped, advisory, and disabled by default. |
 
 References:
 
@@ -2891,10 +2891,9 @@ Blocking conditions:
 
 Next:
 
-- Continue with `dogfood/pr-inline-comment-publisher-receipts`. The workflow
-  guide now explains opt-in modes, publish-plan reading, permissions, fork
-  behavior, caps, dedupe, rollback, and the advisory gate boundary; the next
-  slice should record checked repo-local receipts without posting real PR
+- Continue with `campaign/pr-inline-comment-publisher-closeout`. Dogfood now
+  checks publishable, summary-only, capped, dedupe/upsert, stale-existing, fork
+  or no-token, and missing-input publish-plan receipts without posting real PR
   comments.
 
 ## Future Campaign: Editor Evidence UX

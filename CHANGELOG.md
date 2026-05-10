@@ -42,6 +42,10 @@ are scoped or reviewed.
   `plan`, and `inline` rollout, publish-plan review, fork and permission
   behavior, review-thread noise controls, dedupe/upsert, rollback, and the
   advisory gate boundary.
+- Extended `cargo xtask dogfood` with checked PR inline comment publisher
+  receipts for publishable, summary-only, capped, dedupe/upsert, stale-existing,
+  fork or no-token, and missing-input publish plans without posting real PR
+  comments.
 - Added the report-packet index fixture corpus under
   `fixtures/boundary_gap/expected/report-packet-index/`, pinning complete,
   sparse advisory, missing-front-panel, blocked-gate, missing-proof,
