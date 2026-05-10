@@ -16,6 +16,9 @@ are scoped or reviewed.
   spine with identity, evidence path, observed values, missing discriminators,
   related tests, recommendation/actionability, calibration placeholder, and
   static limitations while preserving existing repo-exposure fields.
+- Added generated canonical gap identity to evidence records so
+  headline-eligible raw seam gaps group by owner, seam kind, flow sink, missing
+  discriminator, and assertion shape while keeping line numbers as locators.
 - Added advisory static/runtime confidence labels to mutation calibration
   JSON/Markdown rows so imported runtime data can support, contradict, remain
   ambiguous, or stay unavailable for a static gap/clean claim without changing

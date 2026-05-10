@@ -562,6 +562,7 @@ spec = "RIPR-SPEC-0021"
 evidence = [
   "docs/specs/RIPR-SPEC-0021-evidence-record.md defines the additive seam-native evidence record contract",
   "crates/ripr/src/output/evidence_record.rs projects existing ClassifiedSeam facts into identity, evidence path, observed values, missing discriminators, related tests, recommendation, actionability, calibration placeholder, and static limitations",
+  "crates/ripr/src/analysis/canonical_gap.rs generates deterministic canonical_gap_id values from owner, seam kind, flow sink, missing discriminator, and assertion shape while leaving line numbers as locators",
   "crates/ripr/src/output/repo_exposure.rs attaches seams[].evidence_record while preserving existing repo-exposure seam fields",
   "crates/ripr/src/output/agent_seam_packets.rs includes packets[].evidence_record while preserving existing packet work-order fields",
   "crates/ripr/src/output/ripr_zero_status.rs prefers evidence_record repair context when supplied by baseline debt delta items and keeps legacy fields as fallback",
@@ -570,7 +571,7 @@ evidence = [
   "crates/ripr/src/output/baseline.rs, baseline_delta.rs, and baseline_update.rs carry canonical_gap_id when supplied directly, through identity.canonical_gap_id, or through evidence_record.canonical_gap_id, and match it before seam/source/id/dedupe/fallback selectors",
   "crates/ripr/src/output/pr_evidence_ledger.rs carries canonical_gap_id through waiver, suppression, repair receipt, and top repair route records when supplied by source artifacts",
   "docs/OUTPUT_SCHEMA.md documents evidence_record schema 0.1 under repo-exposure schema 0.3",
-  "unit tests pin identity, grip class, evidence path, recommendation/actionability, calibration placeholder, static limitations, oracle semantics, packet projection, RIPR Zero repair-route consumption, evidence-record movement consumption, assistant-proof evidence-record consumption, and canonical gap identity routing",
+  "unit tests pin identity, generated canonical gap identity, grip class, evidence path, recommendation/actionability, calibration placeholder, static limitations, oracle semantics, packet projection, RIPR Zero repair-route consumption, evidence-record movement consumption, assistant-proof evidence-record consumption, and canonical gap identity routing",
   "fixtures/boundary_gap/expected/evidence-record-contract/corpus.json pins the v0.1 record contract matrix for predicate, error, strong value, broad error, field, whole-object, snapshot, side-effect, opaque limitation, canonical-gap, and calibration-placeholder cases with related-test oracle_semantics",
   "cargo xtask check-fixture-contracts validates the evidence-record contract corpus case matrix and field shape; cargo xtask check-output-contracts validates the evidence_record schema version"
 ]

@@ -87,7 +87,12 @@ Each `seams[].evidence_record` must include:
 
 - `schema_version`: evidence record schema version, currently `"0.1"`.
 - `seam_id`: the seam identity copied from the containing seam.
-- `canonical_gap_id`: nullable until canonical behavioral gap identity exists.
+- `canonical_gap_id`: generated canonical behavioral gap identity for
+  headline-eligible gap classes, or `null` when the seam is not canonical
+  behavioral debt.
+- `canonical_gap_group_size`: number of raw seams in the current repo-exposure
+  snapshot that share the same canonical gap identity, or `null`.
+- `canonical_gap_reason`: the deterministic grouping reason, or `null`.
 - `owner`: owner symbol copied from the seam.
 - `location.file` and `location.line`: source locator fields.
 - `seam_kind`: seam kind copied from the seam.
@@ -158,9 +163,31 @@ Consumers that already read repo exposure may continue to use existing fields:
 - `observed_values`
 - `missing_discriminators`
 
-The first implementation did not route downstream surfaces through the new
-record. Follow-up consumer slices may read the record as an additive source of
-truth while preserving legacy fields as fallback.
+The first implementation kept the record additive. Follow-up consumer slices
+may read the record as an additive source of truth while preserving legacy
+fields as fallback.
+
+## Canonical Gap Identity
+
+Canonical gap identity is distinct from `seam_id`.
+
+`seam_id` stays source-location-sensitive so before/after movement can track a
+specific seam. `canonical_gap_id` ignores locators and groups headline-eligible
+gap records by:
+
+```text
+owner symbol
++ seam kind
++ flow sink kind
++ missing discriminator
++ assertion shape
+```
+
+The ID is deterministic across runs and line movement. Different missing
+discriminators or duplicate function names in different modules produce
+different IDs. Strong, opaque, intentional, and suppressed seams keep
+`canonical_gap_id: null` because they are not actionable canonical behavioral
+debt under this record.
 
 ## Related-Test Ranking
 
@@ -235,6 +262,12 @@ or mutate baselines.
 
 - `repo-exposure.json` includes `seams[].evidence_record`.
 - Existing repo exposure fields remain present.
+- Headline-eligible gap records carry generated `canonical_gap_id`,
+  `canonical_gap_group_size`, and `canonical_gap_reason`.
+- Line movement does not change canonical identity when owner, seam kind, flow
+  sink, missing discriminator, and assertion shape are unchanged.
+- Different missing discriminators and duplicate function names in different
+  modules do not collide.
 - Agent seam packets include `evidence_record` while preserving existing
   top-level work-order fields.
 - RIPR Zero status repair routes prefer supplied `evidence_record` guidance and
@@ -292,6 +325,9 @@ Additional examples:
 | Baseline diff matches moved lines by canonical gap identity | `baseline_delta_matches_by_canonical_gap_id_across_line_movement` |
 | Baseline update preserves refactored entries matched by canonical gap identity | `baseline_update_preserves_refactored_entry_matched_by_canonical_gap_id` |
 | PR evidence ledger carries canonical gap identity through joined records | `pr_evidence_ledger_joins_primary_artifacts` |
+| Generated canonical identity is stable across line movement | `canonical_gap_id_is_stable_across_line_movement` |
+| Generated canonical identity changes with the missing discriminator | `canonical_gap_id_changes_when_missing_discriminator_changes` |
+| Generated canonical identity groups equivalent raw seams | `canonical_gap_identities_report_group_size_for_equivalent_gaps` |
 | Related-test ranking prefers strong oracle imitation targets inside the same relation | `given_related_tests_with_same_relation_when_ranked_then_strong_oracle_precedes_smoke_oracle` |
 | Related-test ranking uses activation overlap before file ordering inside the same relation and oracle strength | `given_related_tests_with_same_relation_and_oracle_when_ranked_then_activation_overlap_precedes_file_order` |
 | Fixture contract corpus pins representative record shapes | `evidence_record_contract_fixture_corpus_is_valid` |
