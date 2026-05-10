@@ -445,7 +445,8 @@ Follow-up implementation belongs to Campaign 25:
   summarizes the index only when indexed artifacts exist and keeps gate
   decision as pass/fail authority.
 - `docs/report-packet-index-workflow` explains reviewer, maintainer,
-  developer, and coding-agent use of the packet index.
+  developer, and coding-agent use of the packet index, missing-surface
+  regeneration, grouped artifact navigation, and advisory gate boundaries.
 - `dogfood/report-packet-index-receipts` records repo-local receipts for the
   representative packet states.
 - `campaign/report-packet-index-closeout` records the final audit, validation,

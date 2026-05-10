@@ -963,6 +963,7 @@ evidence = [
   "crates/ripr/src/output/report_packet_index.rs groups artifacts by reviewer use, identifies the start-here front panel, preserves gate-decision authority, records missing expected surfaces, and emits regeneration commands when known",
   "docs/OUTPUT_SCHEMA.md documents the implemented report_packet_index JSON and Markdown shape, group vocabulary, status vocabulary, missing-surface reasons, generated-CI projection boundary, and advisory limits",
   "generated GitHub CI runs ripr reports index only when indexed artifacts exist, uploads target/ripr/reports/index.{json,md} with the normal report packet, and appends packet-index status, start-here, gate-authority, missing-surface, and warning summaries without changing pass/fail authority",
+  "docs/REPORT_PACKET_INDEX_WORKFLOW.md documents reviewer, maintainer, developer, and coding-agent use of the grouped packet map, missing-surface regeneration, and advisory gate boundary",
   "fixtures/boundary_gap/expected/report-packet-index/ pins complete, sparse advisory, missing-front-panel, blocked-gate, missing-proof, missing-receipt, and coverage/grip-present packet cases",
   "xtask/src/main.rs validates the report-packet index fixture corpus through check-fixture-contracts",
   "crates/ripr/tests/cli_smoke.rs::report_packet_index_cli_writes_packet_index validates the public CLI writes JSON and Markdown artifacts",
@@ -971,7 +972,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap/expected/report-packet-index"
 ]
-next = "docs/report-packet-index-workflow"
+next = "dogfood/report-packet-index-receipts"
 metric = "report_packet_index_reports, report_packet_index_pass, report_packet_index_warn, report_packet_index_fail, report_packet_index_incomplete, report_packet_index_available_entries, report_packet_index_missing_expected, report_packet_index_start_here_available, report_packet_index_gate_authority_present, report_packet_index_repair_commands, report_packet_index_warning_entries"
 
 [[capability]]
