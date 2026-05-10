@@ -1,0 +1,40 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_lsp_workflow",
+  "states": [
+    {
+      "name": "valid_first_useful_action",
+      "status_bar": "ripr: first action",
+      "show_status_contains": [
+        "First useful action: Add equality-boundary discriminator test",
+        "Report: target/ripr/reports/first-useful-action.json"
+      ],
+      "must_not": [
+        "run ripr first-action from the editor",
+        "create diagnostics from the report"
+      ]
+    },
+    {
+      "name": "wrong_root_report",
+      "status_bar": "ripr: queued",
+      "show_status_must_not_contain": [
+        "First useful action:"
+      ],
+      "must_not": [
+        "treat another workspace root as current"
+      ]
+    },
+    {
+      "name": "stale_saved_workspace",
+      "status_bar": "ripr: stale",
+      "show_status_contains": [
+        "First useful action report: available, but editor evidence is stale.",
+        "Save or refresh the Rust workspace before acting on this report.",
+        "Report: target/ripr/reports/first-useful-action.json"
+      ],
+      "must_not": [
+        "hide stale evidence behind first-action status"
+      ]
+    }
+  ]
+}

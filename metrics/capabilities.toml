@@ -1031,10 +1031,12 @@ evidence = [
   "docs/EDITOR_EVIDENCE_UX.md records the editor evidence contract",
   "docs/EDITOR_EVIDENCE_WORKFLOW.md documents the saved-workspace editor loop",
   "fixtures/boundary_gap/expected/lsp-diagnostics.json",
+  "fixtures/editor_lsp_workflow/expected/lsp-diagnostics.json",
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-packet.json"
 ]
 fixtures = [
-  "fixtures/boundary_gap"
+  "fixtures/boundary_gap",
+  "fixtures/editor_lsp_workflow"
 ]
 next = "maintenance"
 metric = "seam_id in diagnostic.data is the hover lookup key"
@@ -1054,10 +1056,12 @@ evidence = [
   "prefers seam-bearing diagnostics on overlap (chatgpt-codex review fix)",
   "preserves pre-4B Finding hover fallback",
   "fixtures/boundary_gap/expected/lsp-diagnostics.json",
+  "fixtures/editor_lsp_workflow/expected/lsp-hover.md",
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-brief.json"
 ]
 fixtures = [
-  "fixtures/boundary_gap"
+  "fixtures/boundary_gap",
+  "fixtures/editor_lsp_workflow"
 ]
 next = "maintenance"
 metric = "hover renders evidence path from ClassifiedSeam, never parses diagnostic message"
@@ -1082,11 +1086,15 @@ evidence = [
   "docs/TESTING.md documents VS Code e2e coverage for command registration, LSP-first seam context, targeted-test brief copying, suggested assertions, related-test opening, malformed argument handling, and restart behavior",
   "docs/QUICKSTART.md routes the VS Code first hour through intent-titled seam actions without changing command IDs or payloads",
   "fixtures/boundary_gap/expected/lsp-code-actions.json",
+  "fixtures/editor_lsp_workflow/expected/lsp-code-actions.json",
+  "fixtures/editor_lsp_workflow/expected/vscode-status.json",
+  "fixtures/editor_lsp_workflow/expected/first-useful-action-status.json",
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json",
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json"
 ]
 fixtures = [
-  "fixtures/boundary_gap"
+  "fixtures/boundary_gap",
+  "fixtures/editor_lsp_workflow"
 ]
 next = "maintenance"
 metric = "seam diagnostics expose only supported packet/assertion/test actions without automatic edits"

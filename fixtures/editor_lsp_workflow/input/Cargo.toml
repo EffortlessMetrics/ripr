@@ -1,0 +1,8 @@
+[package]
+name = "editor_lsp_workflow_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "editor_lsp_workflow_fixture"
+path = "src/lib.rs"

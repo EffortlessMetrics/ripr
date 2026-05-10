@@ -11,6 +11,10 @@ are scoped or reviewed.
 
 ### Added
 
+- Added `fixtures/editor_lsp_workflow` as the canonical Lane 3 editor/LSP
+  workflow fixture, pinning the saved-workspace diagnostic, hover, code action,
+  first-useful-action status, stale-refresh guidance, and LSP cockpit surfaces
+  without adding analyzer behavior or editor automation.
 - Added RIPR-SPEC-0021 and the additive repo-exposure
   `seams[].evidence_record` projection, giving Lane 1 a seam-native evidence
   spine with identity, evidence path, observed values, missing discriminators,
