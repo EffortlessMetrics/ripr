@@ -86,6 +86,8 @@ the matching xtask implementation.
 - Target: `1.95`
 - Rust 1.95 compatibility audit: pass on 2026-05-09; see
   [Rust 1.95 compatibility audit](msrv-1.95-audit.md).
+- Rust 1.95 consistency audit: pass on 2026-05-10; all surfaces confirmed at
+  `1.95`. See [Rust 1.95 consistency audit](rust-1.95-consistency-audit.md).
 - PR 03 promoted clean Rust 1.94/1.95 lints:
   `same_length_and_capacity`, `manual_ilog2`, `needless_type_cast`,
   `decimal_bitwise_operands`, `manual_checked_ops`, `manual_take`,

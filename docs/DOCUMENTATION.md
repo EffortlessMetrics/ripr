@@ -117,6 +117,7 @@ Current reference docs:
 - [Rust 1.95 / 0.5.1 quality rollout](ci/rust-1.95-quality-rollout.md)
 - [Test evidence lanes](ci/test-evidence-lanes.md)
 - [ripr / mutation boundary](ci/ripr-mutation-boundary.md)
+- [Rust 1.95 consistency audit](ci/rust-1.95-consistency-audit.md)
 
 Planned reference docs:
 
