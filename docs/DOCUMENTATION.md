@@ -48,6 +48,7 @@ Current how-to docs:
 - [Assistant loop health proposal](ASSISTANT_LOOP_HEALTH_PROPOSAL.md)
 - [PR review front panel workflow](PR_REVIEW_FRONT_PANEL_WORKFLOW.md)
 - [PR review front panel proposal](PR_REVIEW_FRONT_PANEL_PROPOSAL.md)
+- [Lane 1 evidence spine tracker](lanes/LANE_1_EVIDENCE_SPINE.md)
 - [Lane 3 editor/LSP tracker](lanes/LANE_3_EDITOR_LSP.md)
 - [Release](RELEASE.md)
 - [Installation verification](INSTALLATION_VERIFICATION.md)
@@ -157,6 +158,7 @@ Current explanation docs:
 - [Assistant loop health proposal](ASSISTANT_LOOP_HEALTH_PROPOSAL.md)
 - [PR review front panel workflow](PR_REVIEW_FRONT_PANEL_WORKFLOW.md)
 - [PR review front panel proposal](PR_REVIEW_FRONT_PANEL_PROPOSAL.md)
+- [Lane 1 evidence spine tracker](lanes/LANE_1_EVIDENCE_SPINE.md)
 - [Lane 3 editor/LSP tracker](lanes/LANE_3_EDITOR_LSP.md)
 
 ## README Rule

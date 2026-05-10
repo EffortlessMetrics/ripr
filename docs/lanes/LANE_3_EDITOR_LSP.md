@@ -57,7 +57,10 @@ Completed slices:
   packet, brief, after-snapshot, verify, receipt, suggested assertion, and
   related-test opening;
 - evidence hover rendering projects matching first-useful-action reports when
-  the existing report is workspace-root and seam-ID matched.
+  the existing report is workspace-root and seam-ID matched;
+- saved-workspace `ripr: Show Status` tests pin valid first-useful-action
+  output, wrong-root fail-closed behavior, stale refresh guidance, and malformed
+  or missing report handling.
 
 ## Current Open PRs
 
@@ -75,15 +78,10 @@ When opening future Lane 3 PRs, list them here until they merge or close:
 These are Lane 3 candidates. Open them only when they are explicitly selected
 as editor/LSP work:
 
-1. `test(vscode): harden saved-workspace e2e`
-   - Show Status with valid first-useful-action state;
-   - wrong-root report ignored;
-   - bad or missing report handled without crashing;
-   - stale tooltip and refresh guidance visible.
-2. `fixtures: add editor LSP workflow fixture`
+1. `fixtures: add editor LSP workflow fixture`
    - canonical fixture for diagnostic, hover, code action, status, and refresh
      guidance.
-3. `docs: document editor-first workflow`
+2. `docs: document editor-first workflow`
    - update user-facing editor docs when a later behavior change requires it.
 
 ## Validation Gates
