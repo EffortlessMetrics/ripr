@@ -1370,7 +1370,13 @@ id = "RIPR-SPEC-0021"
 name = "evidence record"
 spec = "docs/specs/RIPR-SPEC-0021-evidence-record.md"
 tests = [
+  "crates/ripr/src/analysis/canonical_gap.rs::tests::canonical_gap_id_is_stable_across_line_movement",
+  "crates/ripr/src/analysis/canonical_gap.rs::tests::canonical_gap_id_ignores_expression_locator_text",
+  "crates/ripr/src/analysis/canonical_gap.rs::tests::canonical_gap_id_changes_when_missing_discriminator_changes",
+  "crates/ripr/src/analysis/canonical_gap.rs::tests::canonical_gap_id_distinguishes_same_function_name_in_different_modules",
+  "crates/ripr/src/analysis/canonical_gap.rs::tests::canonical_gap_identities_report_group_size_for_equivalent_gaps",
   "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_carries_identity_path_guidance_and_calibration_placeholder",
+  "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_carries_supplied_canonical_gap_identity",
   "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_names_static_limitations_from_unknown_stages",
   "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_marks_opaque_seams_as_static_limitation_work",
   "crates/ripr/src/output/repo_exposure.rs::tests::json_carries_schema_version_scope_and_metrics",
@@ -1401,6 +1407,7 @@ fixtures = [
   "fixtures/boundary_gap/expected/evidence-record-contract/README.md",
 ]
 code = [
+  "crates/ripr/src/analysis/canonical_gap.rs",
   "crates/ripr/src/analysis/test_grip_evidence.rs",
   "crates/ripr/src/output/evidence_record.rs",
   "crates/ripr/src/output/repo_exposure.rs",

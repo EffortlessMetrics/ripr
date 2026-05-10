@@ -18,6 +18,7 @@
 //! contract aimed at coding agents rather than reviewers.
 
 use crate::analysis::ClassifiedSeam;
+use crate::analysis::canonical_gap::{CanonicalGapIdentity, canonical_gap_identities};
 use crate::analysis::seams::{ExpectedSink, RequiredDiscriminator, SeamGripClass, SeamKind};
 use crate::analysis::test_grip_evidence::TestGripEvidence;
 use crate::output::evidence_record::{evidence_record_for, evidence_record_json_value};
@@ -41,6 +42,7 @@ const RUNTIME_CONFIRMATION_NOTE: &str =
 /// conservative `inspect_static_limitation` packet so the agent at least
 /// sees the static boundary that hides evidence.
 pub(crate) fn render_agent_seam_packets_json(classified: &[ClassifiedSeam]) -> String {
+    let canonical_gaps = canonical_gap_identities(classified);
     let mut out = String::new();
     out.push_str("{\n");
     out.push_str(&format!(
@@ -60,7 +62,7 @@ pub(crate) fn render_agent_seam_packets_json(classified: &[ClassifiedSeam]) -> S
         if idx == 0 {
             out.push('\n');
         }
-        push_packet_json(&mut out, entry);
+        push_packet_json(&mut out, entry, canonical_gaps.get(entry.seam.id()));
         if idx + 1 != actionable.len() {
             out.push_str(",\n");
         } else {
@@ -218,7 +220,11 @@ fn task_for(class: SeamGripClass) -> &'static str {
     }
 }
 
-fn push_packet_json(out: &mut String, entry: &ClassifiedSeam) {
+fn push_packet_json(
+    out: &mut String,
+    entry: &ClassifiedSeam,
+    canonical_gap: Option<&CanonicalGapIdentity>,
+) {
     let seam = &entry.seam;
     let evidence = &entry.evidence;
     out.push_str("    {\n");
@@ -458,7 +464,7 @@ fn push_packet_json(out: &mut String, entry: &ClassifiedSeam) {
         "      \"confidence\": \"{}\",\n",
         packet_confidence_for(entry)
     ));
-    let evidence_record = evidence_record_json_value(&evidence_record_for(entry));
+    let evidence_record = evidence_record_json_value(&evidence_record_for(entry, canonical_gap));
     out.push_str("      \"evidence_record\": ");
     out.push_str(&evidence_record.to_string());
     out.push_str(",\n");
