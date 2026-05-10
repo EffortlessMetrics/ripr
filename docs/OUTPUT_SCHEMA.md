@@ -3388,17 +3388,17 @@ limits.
 
 ## PR Review Front Panel Report
 
-RIPR-SPEC-0023 defines the PR review front-panel report contract. The planned
-`ripr pr-review front-panel` producer reads explicit existing RIPR artifacts
-and writes advisory JSON and Markdown that summarize the PR's top test-oracle
-issue, policy state, baseline movement, repair route, receipt state, optional
+RIPR-SPEC-0023 defines the PR review front-panel report contract. The
+`ripr pr-review front-panel` producer reads explicit existing RIPR artifacts and
+writes advisory JSON and Markdown that summarize the PR's top test-oracle issue,
+policy state, baseline movement, repair route, receipt state, optional
 calibration, optional coverage/grip context, and artifact groups. The report is
-read-only and must not rerun hidden analysis, inspect source to infer missing
+read-only and does not rerun hidden analysis, inspect source to infer missing
 fields, edit source, generate tests, call providers, run mutation testing,
 change recommendation ranking, change gate policy, publish inline comments, or
 change default CI blocking.
 
-Planned command shape:
+Command shape:
 
 ```text
 ripr pr-review front-panel \

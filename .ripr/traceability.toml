@@ -1523,6 +1523,10 @@ spec = "docs/specs/RIPR-SPEC-0023-pr-review-front-panel-report.md"
 tests = [
   "xtask/src/main.rs::pr_review_front_panel_fixture_corpus_guard_accepts_complete_contract",
   "xtask/src/main.rs::pr_review_front_panel_fixture_corpus_guard_reports_contract_drift",
+  "crates/ripr/src/output/pr_review_front_panel.rs::pr_review_front_panel_matches_fixture_corpus",
+  "crates/ripr/src/output/pr_review_front_panel.rs::pr_review_front_panel_reports_malformed_optional_input",
+  "crates/ripr/src/cli/execute.rs::execute_dispatches_subcommand_args_without_reparsing_argv",
+  "crates/ripr/src/cli/help.rs::command_specific_help_usage_lines_are_stable",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/pr-review-front-panel/corpus.json",
@@ -1532,20 +1536,33 @@ fixtures = [
   "fixtures/boundary_gap/expected/pr-review-front-panel/actionable/pr-review-front-panel.md",
   "fixtures/boundary_gap/expected/pr-review-front-panel/summary-only/pr-review-front-panel.json",
   "fixtures/boundary_gap/expected/pr-review-front-panel/summary-only/pr-review-front-panel.md",
+  "fixtures/boundary_gap/expected/pr-review-front-panel/summary-only/comments.json",
+  "fixtures/boundary_gap/expected/pr-review-front-panel/summary-only/comments.md",
   "fixtures/boundary_gap/expected/pr-review-front-panel/acknowledged/pr-review-front-panel.json",
   "fixtures/boundary_gap/expected/pr-review-front-panel/acknowledged/pr-review-front-panel.md",
   "fixtures/boundary_gap/expected/pr-review-front-panel/suppressed/pr-review-front-panel.json",
   "fixtures/boundary_gap/expected/pr-review-front-panel/suppressed/pr-review-front-panel.md",
+  "fixtures/boundary_gap/expected/pr-review-front-panel/suppressed/gate-decision.json",
   "fixtures/boundary_gap/expected/pr-review-front-panel/baseline-resolved/pr-review-front-panel.json",
   "fixtures/boundary_gap/expected/pr-review-front-panel/baseline-resolved/pr-review-front-panel.md",
   "fixtures/boundary_gap/expected/pr-review-front-panel/blocked/pr-review-front-panel.json",
   "fixtures/boundary_gap/expected/pr-review-front-panel/blocked/pr-review-front-panel.md",
+  "fixtures/boundary_gap/expected/pr-review-front-panel/blocked/gate-decision.json",
+  "fixtures/boundary_gap/expected/pr-review-front-panel/blocked/gate-decision.md",
   "fixtures/boundary_gap/expected/pr-review-front-panel/missing-proof/pr-review-front-panel.json",
   "fixtures/boundary_gap/expected/pr-review-front-panel/missing-proof/pr-review-front-panel.md",
   "fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/pr-review-front-panel.json",
   "fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/pr-review-front-panel.md",
+  "fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/coverage-grip-frontier.json",
+  "fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/coverage-grip-frontier.md",
 ]
 code = [
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/help.rs",
+  "crates/ripr/src/output/mod.rs",
+  "crates/ripr/src/output/pr_review_front_panel.rs",
   "xtask/src/main.rs",
 ]
 outputs = [

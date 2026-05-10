@@ -375,6 +375,14 @@ Weak / missing evidence:
 - name: `discounted_total_boundary_discriminator`
 - assertion shape: assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)
 
+## First useful action
+- status: `actionable`
+- action: `write_focused_test`
+- title: Add equality-boundary discriminator test
+- target: `tests/pricing.rs`
+- verify: `ripr agent verify --root . --json`
+- receipt: `ripr agent receipt --root . --json`
+
 ## Handoff, verify, and receipt commands
 - packet: `ripr agent packet --root . --seam-id <seam-id> --json > target/ripr/agent/agent-packet.json`
 - brief: `ripr agent brief --root . --seam-id <seam-id> --json > target/ripr/agent/agent-brief.json`
@@ -387,6 +395,10 @@ Weak / missing evidence:
 
 Recommended next move: Add an exact-value assertion for the equality boundary.
 ```
+
+The first-useful-action block appears only when
+`target/ripr/reports/first-useful-action.json` exists, matches the current
+workspace root, and selects the same seam ID as the hover diagnostic.
 
 This keeps saved-workspace staleness visible without claiming that unsaved
 document text has been analyzed.
