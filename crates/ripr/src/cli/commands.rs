@@ -1648,7 +1648,7 @@ jobs:
             echo
             echo "RIPR is advisory static evidence. It does not edit source, generate tests, or run mutation testing."
             echo
-            echo '### PR review front panel'
+            echo '### PR review summary'
             if [ -f target/ripr/reports/pr-review-front-panel.json ] || [ -f target/ripr/reports/pr-review-front-panel.md ]; then
               if [ -f target/ripr/reports/pr-review-front-panel.json ]; then
                 panel_json=target/ripr/reports/pr-review-front-panel.json
@@ -1726,10 +1726,10 @@ jobs:
                 cat target/ripr/reports/pr-review-front-panel.md
               fi
             else
-              echo 'PR review front panel was not generated. It runs when existing PR guidance, first-useful-action, assistant proof, health, ledger, baseline, gate, calibration, coverage/grip, or receipt artifacts are available.'
+              echo 'PR review summary was not generated. It runs when existing PR guidance, first-useful-action, assistant proof, health, ledger, baseline, gate, calibration, coverage/grip, or receipt artifacts are available.'
             fi
             echo
-            echo '### First useful action'
+            echo '### Recommended next test'
             if [ -f target/ripr/reports/first-useful-action.json ] || [ -f target/ripr/reports/first-useful-action.md ]; then
               if [ -f target/ripr/reports/first-useful-action.json ]; then
                 action_json=target/ripr/reports/first-useful-action.json
@@ -1753,7 +1753,7 @@ jobs:
                 action_receipt="$(markdown_inline "$action_receipt")"
                 action_fallback="$(markdown_inline "$action_fallback")"
                 action_warning_count="$(markdown_inline "$action_warning_count")"
-                echo '#### First action at a glance'
+                echo '#### Recommended next test at a glance'
                 echo "- Status: \`$action_status\`"
                 echo "- Action: \`$action_kind\`"
                 echo "- Title: \`$action_title\`"
@@ -1772,7 +1772,7 @@ jobs:
                 cat target/ripr/reports/first-useful-action.md
               fi
             else
-              echo 'First useful action was not generated. It runs when existing PR guidance, assistant proof, ledger, baseline, receipt, gate, coverage/grip, or editor context artifacts are available.'
+              echo 'Recommended next test was not generated. It runs when existing PR guidance, assistant proof, ledger, baseline, receipt, gate, coverage/grip, or editor context artifacts are available.'
             fi
             echo
             echo '### Top recommendation'
@@ -1801,7 +1801,7 @@ jobs:
               echo "- PR test guidance report: not generated yet"
             fi
             echo
-            echo '### Report packet index'
+            echo '### Uploaded review artifacts'
             if [ -f target/ripr/reports/index.json ] || [ -f target/ripr/reports/index.md ]; then
               if [ -f target/ripr/reports/index.json ]; then
                 index_json=target/ripr/reports/index.json
@@ -1825,7 +1825,7 @@ jobs:
                 index_gate="$(markdown_inline "$index_gate")"
                 index_missing_labels="$(markdown_inline "$index_missing_labels")"
                 index_warning_kinds="$(markdown_inline "$index_warning_kinds")"
-                echo '#### Packet index at a glance'
+                echo '#### Uploaded artifacts at a glance'
                 echo "- Status: \`$index_status\`"
                 echo "- Entries: total=\`$index_entries\`, available=\`$index_available\`, missing_expected=\`$index_missing\`, warnings=\`$index_warnings\`, failures=\`$index_failures\`"
                 echo "- Start here: \`$index_start\`"
@@ -1840,7 +1840,7 @@ jobs:
                 cat target/ripr/reports/index.md
               fi
             else
-              echo 'Report packet index was not generated. It runs when existing RIPR report, review, receipt, workflow, agent, pilot, or CI artifacts are available.'
+              echo 'Uploaded review artifacts summary was not generated. It runs when existing RIPR report, review, receipt, workflow, agent, pilot, or CI artifacts are available.'
             fi
             echo
             echo '### PR evidence ledger'
@@ -1939,7 +1939,7 @@ jobs:
               echo
             fi
             if [ -f target/ripr/reports/assistant-loop-health.json ] || [ -f target/ripr/reports/assistant-loop-health.md ]; then
-              echo '### Assistant loop health'
+              echo '### Agent proof status'
               if [ -f target/ripr/reports/assistant-loop-health.json ]; then
                 health_json=target/ripr/reports/assistant-loop-health.json
                 health_status="$(jq -r '.status // "unknown"' "$health_json" 2>/dev/null || echo unknown)"
@@ -1970,7 +1970,7 @@ jobs:
                 health_repairs="$(markdown_inline "$health_repairs")"
                 health_top_warning="$(markdown_inline "$health_top_warning")"
                 health_top_repair="$(markdown_inline "$health_top_repair")"
-                echo '#### Assistant loop health at a glance'
+                echo '#### Agent proof status at a glance'
                 echo "- Status: \`$health_status\`"
                 echo "- Proof packets: total=\`$health_proofs\`, complete=\`$health_complete\`, partial=\`$health_partial\`, missing_required=\`$health_missing_required\`, missing_optional=\`$health_missing_optional\`"
                 echo "- Evidence movement: improved=\`$health_improved\`, unchanged=\`$health_unchanged\`, regressed=\`$health_regressed\`, unknown=\`$health_unknown\`"
@@ -5603,15 +5603,15 @@ mod tests {
             ],
             summary_sections: &[
                 "## RIPR advisory summary",
-                "### PR review front panel",
+                "### PR review summary",
                 "#### PR review at a glance",
-                "### First useful action",
-                "#### First action at a glance",
+                "### Recommended next test",
+                "#### Recommended next test at a glance",
                 "### Top recommendation",
                 "### Agent review packet",
                 "### Artifact packet",
-                "### Report packet index",
-                "#### Packet index at a glance",
+                "### Uploaded review artifacts",
+                "#### Uploaded artifacts at a glance",
                 "### Gate decision",
                 "#### Gate decision at a glance",
                 "### Baseline debt delta",
@@ -5622,8 +5622,8 @@ mod tests {
                 "#### PR movement at a glance",
                 "### Test-oracle assistant proof",
                 "#### Assistant proof at a glance",
-                "### Assistant loop health",
-                "#### Assistant loop health at a glance",
+                "### Agent proof status",
+                "#### Agent proof status at a glance",
                 "### SARIF and badge status",
                 "### PR guidance annotations",
                 "### PR inline comments",
@@ -7580,14 +7580,14 @@ mod tests {
         assert!(workflow.contains("title=$annotation_title"));
         assert!(workflow.contains("name: Add RIPR advisory summary"));
         assert!(workflow.contains("## RIPR advisory summary"));
-        assert!(workflow.contains("### PR review front panel"));
+        assert!(workflow.contains("### PR review summary"));
         assert!(workflow.contains("#### PR review at a glance"));
-        assert!(workflow.contains("### First useful action"));
-        assert!(workflow.contains("#### First action at a glance"));
+        assert!(workflow.contains("### Recommended next test"));
+        assert!(workflow.contains("#### Recommended next test at a glance"));
         assert!(workflow.contains("### Top recommendation"));
         assert!(workflow.contains("### Artifact packet"));
-        assert!(workflow.contains("### Report packet index"));
-        assert!(workflow.contains("#### Packet index at a glance"));
+        assert!(workflow.contains("### Uploaded review artifacts"));
+        assert!(workflow.contains("#### Uploaded artifacts at a glance"));
         assert!(workflow.contains("### Gate decision"));
         assert!(workflow.contains("#### Gate decision at a glance"));
         assert!(workflow.contains("### Baseline debt delta"));
@@ -7598,8 +7598,8 @@ mod tests {
         assert!(workflow.contains("#### PR movement at a glance"));
         assert!(workflow.contains("### Test-oracle assistant proof"));
         assert!(workflow.contains("#### Assistant proof at a glance"));
-        assert!(workflow.contains("### Assistant loop health"));
-        assert!(workflow.contains("#### Assistant loop health at a glance"));
+        assert!(workflow.contains("### Agent proof status"));
+        assert!(workflow.contains("#### Agent proof status at a glance"));
         assert!(workflow.contains("markdown_inline()"));
         assert!(workflow.contains("Active PR labels"));
         assert!(workflow.contains("Applied waiver label"));
@@ -8129,7 +8129,7 @@ mod tests {
         assert!(annotations.contains("::warning file=$annotation_path,line=$annotation_line"));
 
         let summary = workflow_step(&workflow, "Add RIPR advisory summary");
-        assert!(summary.contains("### PR review front panel"));
+        assert!(summary.contains("### PR review summary"));
         assert!(summary.contains("#### PR review at a glance"));
         assert!(summary.contains("target/ripr/reports/pr-review-front-panel.json"));
         assert!(summary.contains("target/ripr/reports/pr-review-front-panel.md"));
@@ -8151,9 +8151,9 @@ mod tests {
         assert!(summary.contains(".policy.mode // \"not_available\""));
         assert!(summary.contains(".policy.decision // \"not_available\""));
         assert!(summary.contains("cat target/ripr/reports/pr-review-front-panel.md"));
-        assert!(summary.contains("PR review front panel was not generated"));
-        assert!(summary.contains("### First useful action"));
-        assert!(summary.contains("#### First action at a glance"));
+        assert!(summary.contains("PR review summary was not generated"));
+        assert!(summary.contains("### Recommended next test"));
+        assert!(summary.contains("#### Recommended next test at a glance"));
         assert!(summary.contains("target/ripr/reports/first-useful-action.json"));
         assert!(summary.contains("target/ripr/reports/first-useful-action.md"));
         assert!(summary.contains(".action_kind // \"unknown\""));
@@ -8161,11 +8161,11 @@ mod tests {
         assert!(summary.contains(".commands.receipt // \"not_available\""));
         assert!(summary.contains(".fallback.kind // \"none\""));
         assert!(summary.contains("cat target/ripr/reports/first-useful-action.md"));
-        assert!(summary.contains("First useful action was not generated"));
+        assert!(summary.contains("Recommended next test was not generated"));
         assert!(summary.contains("cat target/ripr/pilot/pilot-summary.md"));
         assert!(summary.contains("cat target/ripr/workflow/agent-review-summary.md"));
-        assert!(summary.contains("### Report packet index"));
-        assert!(summary.contains("#### Packet index at a glance"));
+        assert!(summary.contains("### Uploaded review artifacts"));
+        assert!(summary.contains("#### Uploaded artifacts at a glance"));
         assert!(summary.contains("target/ripr/reports/index.json"));
         assert!(summary.contains("target/ripr/reports/index.md"));
         assert!(summary.contains(".summary.entries // 0"));
@@ -8176,7 +8176,7 @@ mod tests {
         assert!(summary.contains(".missing_expected[]?.label"));
         assert!(summary.contains(".warnings[]?.kind"));
         assert!(summary.contains("cat target/ripr/reports/index.md"));
-        assert!(summary.contains("Report packet index was not generated"));
+        assert!(summary.contains("Uploaded review artifacts summary was not generated"));
         assert!(summary.contains("#### Gate decision at a glance"));
         assert!(summary.contains("markdown_inline()"));
         assert!(summary.contains("gate_status=\"$(jq -r '.status // \"unknown\"'"));
@@ -8259,8 +8259,8 @@ mod tests {
         assert!(summary.contains(".ci_projection.gate_decision // \"not_supplied\""));
         assert!(summary.contains(".ci_projection.coverage_frontier // \"not_supplied\""));
         assert!(summary.contains("cat target/ripr/reports/test-oracle-assistant-proof.md"));
-        assert!(summary.contains("### Assistant loop health"));
-        assert!(summary.contains("#### Assistant loop health at a glance"));
+        assert!(summary.contains("### Agent proof status"));
+        assert!(summary.contains("#### Agent proof status at a glance"));
         assert!(summary.contains("target/ripr/reports/assistant-loop-health.json"));
         assert!(summary.contains("target/ripr/reports/assistant-loop-health.md"));
         assert!(summary.contains(".summary.proofs // 0"));
