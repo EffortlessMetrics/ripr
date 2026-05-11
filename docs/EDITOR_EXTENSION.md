@@ -164,7 +164,7 @@ quieter.
 - `ripr: Restart Server`
 - `ripr: Show Status`
 - `ripr: Show Output`
-- `ripr: Copy Finding Context`
+- `ripr: Inspect Test Gap - Copy Context`
 - `ripr: Write Targeted Test - Copy Suggested Assertion`
 - `ripr: Write Targeted Test - Copy Brief`
 - `ripr: Agent Handoff - Copy Packet Command`
@@ -175,14 +175,14 @@ quieter.
 - `ripr: Write Targeted Test - Open Best Related Test`
 - `ripr: Open Settings`
 
-### Copy Finding Context
+### Inspect Test Gap - Copy Context
 
-The `ripr: Copy Finding Context` command first attempts to collect context
-through the running LSP server via `workspace/executeCommand` with
-`ripr.collectContext`. If the server has a matching analysis snapshot, it
-returns a JSON context packet directly. If the LSP command is unavailable or
-returns no result, the extension falls back to shelling out to the `ripr`
-CLI (`ripr context --at <selector> --json`).
+The `ripr: Inspect Test Gap - Copy Context` command (command ID
+`ripr.copyContext`) first attempts to collect context through the running LSP
+server via `workspace/executeCommand` with `ripr.collectContext`. If the server
+has a matching analysis snapshot, it returns a JSON context packet directly.
+If the LSP command is unavailable or returns no result, the extension falls
+back to shelling out to the `ripr` CLI (`ripr context --at <selector> --json`).
 
 The code action `Inspect finding: copy context packet` includes `finding_id` and
 `probe_id` from the diagnostic data so the server can resolve the finding

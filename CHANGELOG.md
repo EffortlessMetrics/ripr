@@ -47,6 +47,13 @@ Planned scope:
   write a packet you can act on."). The canonical `Usage: ripr <cmd>` syntax
   and all options remain in place. Command names, subcommand names, JSON
   fields, artifact filenames, schemas, and CLI behavior are unchanged.
+- VS Code command palette title for `ripr.copyContext` renamed from
+  `ripr: Copy Finding Context` to `ripr: Inspect Test Gap - Copy Context` so
+  it groups alongside the existing workflow-step categories ("Write Targeted
+  Test - …", "Agent Handoff - …", "Verify After Test - …", "Review Result - …").
+  Other command palette titles are already action-oriented and stay
+  unchanged. Command IDs, settings IDs, LSP requests, JSON fields, schemas,
+  status IDs, report names, artifact paths, and behavior are unchanged.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 
