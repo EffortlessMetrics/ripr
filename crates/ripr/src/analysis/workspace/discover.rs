@@ -1,3 +1,4 @@
+use crate::analysis::language::{LanguageAdapter, RustAdapter};
 use std::path::{Path, PathBuf};
 
 const DEFAULT_IGNORED_DIRS: &[&str] = &[
@@ -11,12 +12,18 @@ const DEFAULT_IGNORED_DIRS: &[&str] = &[
 
 pub fn discover_rust_files(root: &Path) -> Result<Vec<PathBuf>, String> {
     let mut out = Vec::new();
-    visit(root, root, &mut out)?;
+    let adapter = RustAdapter;
+    visit(root, root, &adapter, &mut out)?;
     out.sort();
     Ok(out)
 }
 
-fn visit(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
+fn visit(
+    root: &Path,
+    dir: &Path,
+    adapter: &RustAdapter,
+    out: &mut Vec<PathBuf>,
+) -> Result<(), String> {
     let entries =
         std::fs::read_dir(dir).map_err(|err| format!("failed to read {}: {err}", dir.display()))?;
     for entry in entries {
@@ -27,8 +34,8 @@ fn visit(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> 
             if DEFAULT_IGNORED_DIRS.contains(&name) {
                 continue;
             }
-            visit(root, &path, out)?;
-        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+            visit(root, &path, adapter, out)?;
+        } else if adapter.accepts_path(&path) {
             let relative = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
             out.push(relative);
         }

@@ -1,41 +1,50 @@
-id = "pr-inline-comment-publisher"
-title = "PR Inline Comment Publisher"
+id = "language-adapter-preview"
+title = "Language Adapter Preview"
 status = "active"
 
-# This is Campaign 26 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 25 closed Report Packet Index. This campaign makes optional durable
-# PR comments reviewable before posting and keeps default generated workflows
-# comment-free.
+# This is Campaign 27 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 26 closed PR Inline Comment Publisher (archived under
+# `.ripr/goals/archive/2026-05-11-pr-inline-comment-publisher.toml`). This
+# campaign introduces a language-neutral analysis adapter boundary inside
+# the existing `crates/ripr` package, keeps Rust as the reference adapter,
+# and adds syntax-first TypeScript and Python preview adapters that feed
+# the same RIPR domain, output, LSP, agent, and Lane 4 review surfaces.
 
 objective = """
-Define and implement an explicit opt-in inline PR comment publisher over the
-existing `ripr review-comments` artifact without changing default generated CI.
-The lane must first produce a read-only publish plan from explicit
-`target/ripr/review/comments.json` input, then optionally publish only safe
-changed-line comments when a workflow explicitly enables it. The publisher must
-never post `summary_only` guidance, must cap comments, deduplicate by
-`dedupe_key`, upsert or replace prior RIPR comments, preserve advisory
-language, avoid hidden analysis reruns, and avoid analyzer, ranking, gate,
-editor, provider, mutation, source-edit, generated-test, branch-protection, or
-default-blocking changes.
+Introduce a language-neutral analysis adapter boundary inside the existing
+`crates/ripr` package. Keep Rust as the reference adapter. Add syntax-first
+TypeScript and Python preview adapters that feed the same RIPR domain,
+output, LSP, agent, and Lane 4 review surfaces. The adapter boundary must
+preserve current Rust behavior, fixtures, and goldens; the output schema
+must gain only additive optional `language` and `language_status` fields;
+preview adapters must be opt-in via `[languages]` repo configuration and
+labeled `preview` in every public surface; preview adapters must report
+explicit static limits instead of guessing; generated CI stays Rust-default
+and advisory; Rust analyzer behavior, recommendation ranking, gate
+semantics, LSP/editor behavior for Rust seams, mutation execution, provider
+behavior, source files, generated tests, branch protection,
+`pull_request_target` defaults, and default CI blocking do not change.
 """
 
 end_state = [
-  "`target/ripr/review/comment-publish-plan.json` and `.md` describe intended inline comment operations before anything posts",
-  "the plan consumes only explicit `review-comments` artifacts and optional existing-comment metadata",
-  "summary-only guidance is never publishable as an inline comment",
-  "publishable comments target changed lines only and are capped to three by default",
-  "dedupe keys drive upsert or replace behavior so RIPR comments do not duplicate across reruns",
-  "generated CI keeps inline comments disabled by default and only posts when explicit configuration and safe permissions exist",
-  "fixtures and dogfood receipts cover publishable, summary-only, capped, duplicate, stale-existing, fork or no-token, and missing-input cases",
+  "`LanguageId`, `LanguageAdapter`, `LanguageFacts`, `OwnerFact`, `TestFact`, `AssertionFact`, `RelatedTest`, `FlowSink`, `Probe`, and `StaticLimit` are language-neutral domain or analysis types",
+  "Rust fact extraction sits behind `RustAdapter` with no observable fixture, golden, or output schema change",
+  "existing reports carry additive optional `language` and `language_status` fields without forking schemas",
+  "TypeScript/JavaScript preview adapter emits syntax-first owners, tests, assertions, related tests, probes, and explicit static limits",
+  "Python preview adapter emits syntax-first owners, tests, assertions, related tests, probes, and explicit static limits",
+  "repo configuration adds `[languages] enabled = [\"rust\"]` as the default, with explicit opt-in to enable preview adapters",
+  "VS Code extension language selectors cover Rust plus TypeScript, TypeScript React, JavaScript, JavaScript React, and Python once preview adapters are enabled, without changing saved-workspace defaults",
+  "generated GitHub CI groups advisory summaries by language only when `[languages]` declares more than Rust, and Rust-default behavior is unchanged",
+  "fixtures and `cargo xtask dogfood` receipts cover at least one TypeScript and one Python preview scenario plus the language router and static-limit cases",
+  "the workspace remains one published package, one binary, one library, one LSP server, and one VS Code extension",
 ]
 
 [[work_item]]
-id = "spec/pr-inline-comment-publisher-contract"
+id = "spec/language-adapter-preview-contract"
 status = "done"
-branch = "spec-pr-inline-comment-publisher-contract"
+branch = "roadmap-language-adapter-preview"
 stackable = false
-acceptance = "Define the optional inline comment publisher contract, read-only publish-plan schema, explicit inputs, permission boundary, dedupe/upsert semantics, cap rules, summary-only exclusion, generated-CI default-off posture, and fixture-first implementation plan before changing producer or workflow behavior"
+acceptance = "Land the proposal/spec set before changing analyzer behavior: RIPR-PROP-0001 records design intent and alternatives; RIPR-SPEC-0026 pins the language-adapter boundary, additive optional output metadata, [languages] opt-in, preview labeling, and static-limit vocabulary; RIPR-SPEC-0027 and RIPR-SPEC-0028 pin the TypeScript and Python per-language static-fact contracts"
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",
@@ -49,101 +58,114 @@ commands = [
 ]
 
 [[work_item]]
-id = "fixtures/pr-inline-comment-publisher-corpus"
-status = "done"
-branch = "fixtures-pr-inline-comment-publisher-corpus"
+id = "analysis/language-adapter-boundary"
+status = "active"
+branch = "analysis-language-adapter-boundary"
 stackable = false
-acceptance = "Pin inline comment publish-plan cases for publishable changed-line comments, summary-only exclusion, cap overflow, dedupe/upsert, stale existing RIPR comments, fork or no-token no-op, and missing review-comments input before adding publisher behavior"
+blocked_by = [
+  "spec/language-adapter-preview-contract",
+]
+acceptance = "Introduce LanguageId, LanguageAdapter, and the language router inside crates/ripr/src/analysis/ without changing Rust fixture, golden, or output schema behavior; the Rust reference adapter (RustAdapter) is wired into workspace discovery as a functional no-op so the seam is alive"
 commands = [
+  "cargo check -p ripr",
+  "cargo test -p ripr --lib analysis::language",
   "cargo xtask fixtures",
   "cargo xtask goldens check",
-  "cargo xtask check-fixture-contracts",
   "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-workspace-shape",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "report/pr-inline-comment-publish-plan"
-status = "done"
-branch = "report-pr-inline-comment-publish-plan"
-stackable = false
-acceptance = "Add a read-only publish-plan producer that emits JSON/Markdown operations from explicit review-comments and optional existing-comment metadata without posting to GitHub or changing gate authority"
-commands = [
-  "cargo test -p ripr inline_comment_publish_plan",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-traceability",
-  "cargo xtask check-capabilities",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "ci/pr-inline-comment-publisher"
-status = "done"
-branch = "ci-pr-inline-comment-publisher"
+id = "analysis/rust-adapter-behind-boundary"
+status = "blocked"
+branch = "analysis-rust-adapter-behind-boundary"
 stackable = false
 blocked_by = [
-  "report/pr-inline-comment-publish-plan",
+  "analysis/language-adapter-boundary",
 ]
-acceptance = "Added generated GitHub CI wiring that keeps inline comments off by default, can emit the publish plan as advisory artifacts, and posts or updates comments only when explicit comment mode and safe pull-request permissions are configured"
-commands = [
-  "cargo test -p ripr init_generated_github_workflow",
-  "cargo xtask check-workflows",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
+acceptance = "Move Rust fact extraction behind the LanguageAdapter trait as the reference adapter while preserving every existing Rust fixture, golden, capability, and output contract; LanguageFacts, OwnerFact, TestFact, AssertionFact, OwnerKind, and StaticLimitKind shells land alongside their production consumers"
 
 [[work_item]]
-id = "docs/pr-inline-comment-publisher-workflow"
-status = "done"
-branch = "docs-pr-inline-comment-publisher-workflow"
+id = "output/language-metadata"
+status = "blocked"
+branch = "output-language-metadata"
 stackable = false
 blocked_by = [
-  "ci/pr-inline-comment-publisher",
+  "analysis/rust-adapter-behind-boundary",
 ]
-acceptance = "Documented how teams opt into inline comments, read the publish plan, avoid review-thread noise, handle forks or missing permissions, and preserve advisory gate limits"
-commands = [
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
+acceptance = "Add additive optional `language`, `language_status`, `owner_kind`, and `static_limit_kind` fields to existing reports without changing their schema versions or Rust-only outputs"
 
 [[work_item]]
-id = "dogfood/pr-inline-comment-publisher-receipts"
-status = "done"
-branch = "dogfood-pr-inline-comment-publisher-receipts"
+id = "analysis/typescript-preview-adapter"
+status = "blocked"
+branch = "analysis-typescript-preview-adapter"
 stackable = false
 blocked_by = [
-  "docs/pr-inline-comment-publisher-workflow",
+  "output/language-metadata",
 ]
-acceptance = "Recorded repo-local publish-plan receipts for publishable, summary-only, capped, dedupe/upsert, stale-existing, fork or no-token, and missing-input cases without posting real PR comments"
-commands = [
-  "cargo xtask dogfood",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
+acceptance = "Add the TypeScript/JavaScript syntax-first adapter, the TypeScript fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults"
 
 [[work_item]]
-id = "campaign/pr-inline-comment-publisher-closeout"
-status = "done"
-branch = "campaign-pr-inline-comment-publisher-closeout"
+id = "analysis/python-preview-adapter"
+status = "blocked"
+branch = "analysis-python-preview-adapter"
 stackable = false
 blocked_by = [
-  "dogfood/pr-inline-comment-publisher-receipts",
+  "output/language-metadata",
 ]
-acceptance = "Closed Campaign 26 after the spec, fixtures, read-only publish plan, explicit generated-CI opt-in wiring, workflow docs, dogfood receipts, and validation showed inline comments are safe, capped, deduped, advisory, and disabled by default"
-commands = [
-  "cargo xtask check-campaign",
-  "cargo xtask goals next",
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
-  "cargo xtask check-static-language",
-  "cargo xtask check-traceability",
-  "cargo xtask check-capabilities",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-pr",
+acceptance = "Add the Python syntax-first adapter, the Python fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults"
+
+[[work_item]]
+id = "lsp/editor-language-routing"
+status = "blocked"
+branch = "lsp-editor-language-routing"
+stackable = false
+blocked_by = [
+  "analysis/typescript-preview-adapter",
+  "analysis/python-preview-adapter",
 ]
+acceptance = "Extend the VS Code extension to register the TypeScript, TypeScript React, JavaScript, JavaScript React, and Python selectors and route saved-workspace analysis through the adapter layer without changing Rust saved-workspace defaults"
+
+[[work_item]]
+id = "ci/language-aware-grouping"
+status = "blocked"
+branch = "ci-language-aware-grouping"
+stackable = false
+blocked_by = [
+  "analysis/typescript-preview-adapter",
+  "analysis/python-preview-adapter",
+]
+acceptance = "Update generated GitHub CI summaries to group advisory output by language only when [languages] declares more than Rust, keeping Rust-default behavior identical and gate authority unchanged"
+
+[[work_item]]
+id = "docs/language-adapter-preview-workflow"
+status = "blocked"
+branch = "docs-language-adapter-preview-workflow"
+stackable = false
+blocked_by = [
+  "ci/language-aware-grouping",
+]
+acceptance = "Document enabling preview adapters, reading mixed-language reports, interpreting preview labels, the static-limit boundary, and rollback"
+
+[[work_item]]
+id = "dogfood/language-adapter-preview-receipts"
+status = "blocked"
+branch = "dogfood-language-adapter-preview-receipts"
+stackable = false
+blocked_by = [
+  "docs/language-adapter-preview-workflow",
+]
+acceptance = "Extend cargo xtask dogfood with checked TypeScript and Python preview receipts without changing analyzer behavior, default CI, or inline-comment defaults"
+
+[[work_item]]
+id = "campaign/language-adapter-preview-closeout"
+status = "blocked"
+branch = "campaign-language-adapter-preview-closeout"
+stackable = false
+blocked_by = [
+  "dogfood/language-adapter-preview-receipts",
+]
+acceptance = "Close Campaign 27 after the spec, adapter boundary, Rust adapter, output metadata, preview adapters, editor routing, CI grouping, workflow docs, dogfood receipts, and validation show preview adapters are syntax-first, opt-in, advisory, and label-correct, while Rust behavior is preserved"
