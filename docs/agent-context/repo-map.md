@@ -2,6 +2,12 @@
 
 This file gives agents a fast orientation before review or repair work.
 
+For the typed graph that connects proposals, specs, ADRs, campaigns, the
+active goal manifest, work items, surfaces, traceability, reports, and
+handoffs, see the [repo context system](CONTEXT_SYSTEM.md). The
+human-facing layering doctrine lives in
+[REPO_TRACKING_MODEL.md](../REPO_TRACKING_MODEL.md).
+
 ## Primary surfaces
 
 - Rust workspace: core implementation and server-side logic.
