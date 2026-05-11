@@ -128,6 +128,7 @@ Templates:
 
 - [ADR template](templates/ADR_TEMPLATE.md)
 - [Spec template](templates/SPEC_TEMPLATE.md)
+- [Proposal template](templates/PROPOSAL_TEMPLATE.md)
 
 ## Explanation
 
@@ -138,8 +139,10 @@ Current explanation docs:
 - [Charter](CHARTER.md)
 - [Architecture](ARCHITECTURE.md)
 - [Roadmap](ROADMAP.md)
+- [Repo tracking model](REPO_TRACKING_MODEL.md)
 - [Implementation plan](IMPLEMENTATION_PLAN.md)
 - [Implementation campaigns](IMPLEMENTATION_CAMPAIGNS.md)
+- [Proposals](proposals/README.md)
 - [Codex Goals](CODEX_GOALS.md)
 - [Scoped PR contract](SCOPED_PR_CONTRACT.md)
 - [PR automation](PR_AUTOMATION.md)

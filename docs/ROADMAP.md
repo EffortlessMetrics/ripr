@@ -305,6 +305,30 @@ dedupe/upsert, stale-existing, fork or no-token, and missing-input publish plans
 without posting real comments. Campaign 26 is closed by
 `docs/handoffs/2026-05-10-campaign-26-closeout.md`.
 
+[Multi-Language Adapter Preview](proposals/RIPR-PROP-0001-multi-language-adapter-preview.md)
+is now open as Campaign 27 after PR Inline Comment Publisher. The campaign
+should introduce a language-neutral analysis adapter boundary inside the
+existing `crates/ripr` package, keep Rust as the reference adapter, and
+add syntax-first TypeScript and Python preview adapters that feed the same
+RIPR domain, output, LSP, agent, and Lane 4 review surfaces. The boundary
+stays explicit: one published package, one binary, one library, one LSP
+server, one editor extension; preview adapters are syntax-first, opt-in,
+and labeled `preview` in every public surface; Rust analyzer behavior,
+recommendation ranking, gate semantics, LSP/editor behavior for Rust seams,
+mutation execution, provider behavior, source files, generated tests,
+branch protection, `pull_request_target` defaults, and default CI blocking
+do not change.
+[RIPR-SPEC-0026](specs/RIPR-SPEC-0026-language-adapter-contract.md) pins
+the language-neutral adapter contract, additive optional `language` and
+`language_status` output fields, the `[languages]` repo-config opt-in, and
+explicit preview static-limit vocabulary.
+[RIPR-SPEC-0027](specs/RIPR-SPEC-0027-typescript-preview-static-facts.md)
+pins the TypeScript preview static-fact contract, and
+[RIPR-SPEC-0028](specs/RIPR-SPEC-0028-python-preview-static-facts.md) pins
+the Python preview static-fact contract. This is also the first user of
+the repo's centralized
+[proposal -> spec -> campaign tracking model](REPO_TRACKING_MODEL.md).
+
 ## Strategic Sequence
 
 The load-bearing path is:
@@ -357,6 +381,11 @@ quality rails
 -> test-oracle assistant proof
 -> test-oracle assistant report producer
 -> first useful action
+-> assistant loop health
+-> PR review front panel
+-> report packet index
+-> PR inline comment publisher
+-> language adapter preview
 ```
 
 The analyzer path is:
@@ -490,6 +519,7 @@ Nice later, not blocking:
 | 35 | `seam-native-count-mapping` | Remap `ripr` and `ripr+` badge artifacts onto seam-native unresolved gap counts. | `0.6.x` |
 | done | `repo-seam-facts-cache` | Cache seam fact layers after the fact model became stable enough. | Campaign 5A |
 | done | `cargo-mutants-calibration-scaffold` | Import real mutation results for offline calibration. | Campaign 5A |
+| 36 | `language-adapter-preview` | Introduce a language-neutral adapter boundary, keep Rust as the reference adapter, and add TypeScript and Python preview adapters that feed the existing RIPR domain, output, LSP, agent, and Lane 4 surfaces without changing Rust behavior or default CI blocking. | `0.9.0` |
 
 ## Release Frames
 
@@ -583,6 +613,40 @@ Success condition:
 
 ```text
 ripr can compare static exposure classes with real mutation results when explicit mutation data is present.
+```
+
+### `0.9.0` - Language Adapter Preview
+
+Ship:
+
+- a `LanguageAdapter` boundary inside `crates/ripr/src/analysis/` with Rust
+  as the reference adapter
+- additive optional `language` and `language_status` output fields across
+  existing reports without schema forks
+- a TypeScript/JavaScript preview adapter with syntax-first owner, test,
+  assertion, related-test, and probe extraction plus explicit static-limit
+  reporting
+- a Python preview adapter with syntax-first owner, test, assertion,
+  related-test, and probe extraction plus explicit static-limit reporting
+- repo configuration through `[languages] enabled = ["rust", ...]`, default
+  Rust-only
+- VS Code extension language selectors covering TypeScript, JavaScript, and
+  Python once preview adapters are enabled, without changing saved-workspace
+  defaults
+- generated CI advisory grouping by language when more than Rust is
+  enabled, with Rust-default behavior unchanged
+- fixture and dogfood coverage for the preview adapters
+
+Success condition:
+
+```text
+A TypeScript or Python PR produces the same kind of advisory answer as
+Rust: what behavior changed, whether related tests appear to reach it,
+whether an assertion appears to discriminate it, what static limits apply,
+and what focused test action to take next, all without changing Rust
+behavior, recommendation ranking, gate semantics, LSP/editor behavior for
+Rust seams, mutation execution, provider behavior, source files, generated
+tests, or default CI blocking.
 ```
 
 ### `0.8.0` - Hot Sidecar

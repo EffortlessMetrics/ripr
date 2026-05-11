@@ -2891,10 +2891,145 @@ Blocking conditions:
 
 Next:
 
-- Campaign 26 is closed. Choose the next campaign explicitly before opening
-  another product lane. Do not fold PR summary polish, comment-policy
+- Campaign 26 is closed. Campaign 27 (Language Adapter Preview) is the
+  explicit next product lane. Do not fold PR summary polish, comment-policy
   extensions, analyzer, ranking, gate policy, editor, platform, release,
   dependency, or MSRV work into this closeout.
+
+## Campaign 27: Language Adapter Preview
+
+Campaign ID: `language-adapter-preview`
+
+Status: active
+
+Campaigns 1 through 26 built a credible Rust static oracle-gap analyzer with
+an editor evidence loop, an advisory PR review front panel, baselines, RIPR
+Zero status, an assistant proof loop, first useful action, a report packet
+index, and an opt-in inline comment publisher. Every surface is
+language-neutral by intent but single-language by accident. The next
+adoption gap is mixed-language repositories that want the same evidence
+surface across Rust, TypeScript/JavaScript, and Python without forking RIPR
+into separate tools, separate schemas, or separate UX.
+
+Objective:
+
+```text
+Introduce a language-neutral analysis adapter boundary inside the existing
+`crates/ripr` package. Keep Rust as the reference adapter. Add syntax-first
+TypeScript and Python preview adapters that feed the same RIPR domain,
+output, LSP, agent, and Lane 4 review surfaces. The adapter boundary must
+preserve current Rust behavior, fixtures, and goldens; the output schema
+must gain only additive optional `language` and `language_status` fields;
+preview adapters must be opt-in via `[languages]` repo configuration and
+labeled `preview` in every public surface; preview adapters must report
+explicit static limits instead of guessing; generated CI stays Rust-default
+and advisory; Rust analyzer behavior, recommendation ranking, gate
+semantics, LSP/editor behavior for Rust seams, mutation execution, provider
+behavior, source files, generated tests, branch protection,
+`pull_request_target` defaults, and default CI blocking do not change.
+```
+
+End state:
+
+- `LanguageId`, `LanguageAdapter`, `LanguageFacts`, `OwnerFact`, `TestFact`,
+  `AssertionFact`, `RelatedTest`, `FlowSink`, `Probe`, and `StaticLimit` are
+  language-neutral domain or analysis types
+- Rust fact extraction sits behind `RustAdapter` with no observable
+  fixture, golden, or output schema change
+- existing reports carry additive optional `language` and `language_status`
+  fields without forking schemas
+- TypeScript/JavaScript preview adapter emits syntax-first owners, tests,
+  assertions, related tests, probes, and explicit static limits
+- Python preview adapter emits syntax-first owners, tests, assertions,
+  related tests, probes, and explicit static limits
+- repo configuration adds `[languages] enabled = ["rust"]` as the default,
+  with explicit opt-in to enable preview adapters
+- VS Code extension language selectors cover Rust plus TypeScript,
+  TypeScript React, JavaScript, JavaScript React, and Python once preview
+  adapters are enabled, without changing saved-workspace defaults
+- generated GitHub CI groups advisory summaries by language only when
+  `[languages]` declares more than Rust, and Rust-default behavior is
+  unchanged
+- fixtures and `cargo xtask dogfood` receipts cover at least one TypeScript
+  and one Python preview scenario plus the language router and static-limit
+  cases
+- the workspace remains one published package, one binary, one library, one
+  LSP server, and one VS Code extension
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `spec/language-adapter-preview-contract` | active | Land the proposal/spec set before changing analyzer behavior: RIPR-PROP-0001 records design intent and alternatives; RIPR-SPEC-0026 pins the language-adapter boundary, additive optional output metadata, `[languages]` opt-in, preview labeling, and static-limit vocabulary; RIPR-SPEC-0027 and RIPR-SPEC-0028 pin the TypeScript and Python per-language static-fact contracts. |
+| `analysis/language-adapter-boundary` | ready | Introduce `LanguageId`, `LanguageAdapter`, `LanguageFacts`, and the language router inside `crates/ripr/src/analysis/` without changing Rust fixture, golden, or output schema behavior. |
+| `analysis/rust-adapter-behind-boundary` | blocked | Move Rust fact extraction behind the `LanguageAdapter` trait as the reference adapter while preserving every existing Rust fixture, golden, capability, and output contract. |
+| `output/language-metadata` | blocked | Add additive optional `language`, `language_status`, `owner_kind`, and `static_limit_kind` fields to existing reports without changing their schema versions or Rust-only outputs. |
+| `analysis/typescript-preview-adapter` | blocked | Add the TypeScript/JavaScript syntax-first adapter, the TypeScript fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. |
+| `analysis/python-preview-adapter` | blocked | Add the Python syntax-first adapter, the Python fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. |
+| `lsp/editor-language-routing` | blocked | Extend the VS Code extension to register the TypeScript, TypeScript React, JavaScript, JavaScript React, and Python selectors and route saved-workspace analysis through the adapter layer without changing Rust saved-workspace defaults. |
+| `ci/language-aware-grouping` | blocked | Update generated GitHub CI summaries to group advisory output by language only when `[languages]` declares more than Rust, keeping Rust-default behavior identical and gate authority unchanged. |
+| `docs/language-adapter-preview-workflow` | blocked | Document enabling preview adapters, reading mixed-language reports, interpreting preview labels, the static-limit boundary, and rollback. |
+| `dogfood/language-adapter-preview-receipts` | blocked | Extend `cargo xtask dogfood` with checked TypeScript and Python preview receipts without changing analyzer behavior, default CI, or inline-comment defaults. |
+| `campaign/language-adapter-preview-closeout` | blocked | Close Campaign 27 after the spec, adapter boundary, Rust adapter, output metadata, preview adapters, editor routing, CI grouping, workflow docs, dogfood receipts, and validation show preview adapters are syntax-first, opt-in, advisory, and label-correct, while Rust behavior is preserved. |
+
+References:
+
+- [RIPR-PROP-0001: Multi-Language Adapter Preview](proposals/RIPR-PROP-0001-multi-language-adapter-preview.md)
+- [RIPR-SPEC-0026: Language adapter contract](specs/RIPR-SPEC-0026-language-adapter-contract.md)
+- [RIPR-SPEC-0027: TypeScript preview static facts](specs/RIPR-SPEC-0027-typescript-preview-static-facts.md)
+- [RIPR-SPEC-0028: Python preview static facts](specs/RIPR-SPEC-0028-python-preview-static-facts.md)
+- [Repo tracking model](REPO_TRACKING_MODEL.md)
+- [Architecture](ARCHITECTURE.md)
+- [Static exposure model](STATIC_EXPOSURE_MODEL.md)
+- [Output schema](OUTPUT_SCHEMA.md)
+- [Roadmap](ROADMAP.md)
+
+Blocking conditions:
+
+- Rust analyzer behavior, recommendation ranking, gate semantics, LSP/editor
+  behavior for Rust seams, mutation execution, provider behavior, source
+  files, generated tests, branch protection, `pull_request_target` defaults,
+  or default CI blocking change
+- output schema versions change instead of gaining additive optional fields
+- preview adapters run by default
+- preview adapters claim parity or adequacy with Rust
+- preview adapters depend on a runtime typechecker, build graph, or other
+  external tool by default
+- workspace splits into a second published crate, binary, LSP server, or
+  editor extension
+- preview adapters introduce a second JSON schema, second SARIF rule set,
+  or second LSP server
+- preview adapters reinterpret the existing exposure vocabulary
+- preview adapters bypass the `unsafe_code = "forbid"`, panic-family,
+  allow-attribute, dependency, process, or network policy rails
+
+Commands:
+
+```bash
+cargo xtask check-spec-format
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-campaign
+cargo xtask goals next
+cargo xtask check-output-contracts
+cargo xtask check-architecture
+cargo xtask check-workspace-shape
+cargo xtask check-public-api
+cargo xtask check-file-policy
+cargo xtask check-dependencies
+cargo xtask check-pr
+```
+
+Next:
+
+- Land the spec slice first, then open the adapter boundary work item with
+  no observable Rust behavior change. Do not fold analyzer rewrites,
+  policy, gate, mutation, provider, generated-test, source-edit,
+  inline-comment, branch-protection, or default-CI changes into this
+  campaign.
 
 ## Future Campaign: Editor Evidence UX
 

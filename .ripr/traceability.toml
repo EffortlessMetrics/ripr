@@ -1777,3 +1777,98 @@ metrics = [
   "pr_inline_comment_permission_blocked",
   "pr_inline_comment_fork_blocked",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0026"
+name = "Language adapter contract"
+spec = "docs/specs/RIPR-SPEC-0026-language-adapter-contract.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0026-language-adapter-contract.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0001-multi-language-adapter-preview.md",
+  "docs/proposals/README.md",
+  "docs/REPO_TRACKING_MODEL.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "language_adapter_router_routed_files",
+  "language_adapter_router_unmatched_files",
+  "language_adapter_languages_enabled",
+  "language_adapter_rust_findings",
+  "language_adapter_preview_findings_visible",
+  "language_adapter_preview_findings_suppressed",
+  "language_adapter_static_limit_dynamic_dispatch",
+  "language_adapter_static_limit_decorator_indirection",
+  "language_adapter_static_limit_missing_import_graph",
+  "language_adapter_static_limit_metaprogramming",
+  "language_adapter_static_limit_mocked_module",
+  "language_adapter_static_limit_unsupported_syntax",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0027"
+name = "TypeScript preview static facts"
+spec = "docs/specs/RIPR-SPEC-0027-typescript-preview-static-facts.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0027-typescript-preview-static-facts.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0001-multi-language-adapter-preview.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "language_adapter_typescript_findings_preview",
+  "language_adapter_typescript_owner_function",
+  "language_adapter_typescript_owner_method",
+  "language_adapter_typescript_owner_class_method",
+  "language_adapter_typescript_owner_arrow_function",
+  "language_adapter_typescript_owner_component",
+  "language_adapter_typescript_oracle_exact_value",
+  "language_adapter_typescript_oracle_error_path",
+  "language_adapter_typescript_oracle_side_effect",
+  "language_adapter_typescript_oracle_snapshot_weak",
+  "language_adapter_typescript_oracle_smoke",
+  "language_adapter_typescript_static_limit_mocked_module",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0028"
+name = "Python preview static facts"
+spec = "docs/specs/RIPR-SPEC-0028-python-preview-static-facts.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0028-python-preview-static-facts.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0001-multi-language-adapter-preview.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "language_adapter_python_findings_preview",
+  "language_adapter_python_owner_function",
+  "language_adapter_python_owner_method",
+  "language_adapter_python_owner_class_method",
+  "language_adapter_python_owner_module_function",
+  "language_adapter_python_oracle_exact_value",
+  "language_adapter_python_oracle_error_path",
+  "language_adapter_python_oracle_side_effect",
+  "language_adapter_python_oracle_smoke",
+  "language_adapter_python_oracle_broad_type",
+  "language_adapter_python_static_limit_decorator_indirection",
+  "language_adapter_python_static_limit_mocked_module",
+]
