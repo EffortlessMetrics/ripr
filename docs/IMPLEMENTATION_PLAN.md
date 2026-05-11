@@ -5,9 +5,17 @@ operational than the [roadmap](ROADMAP.md): each entry should become a scoped PR
 with clear artifacts, tests, documentation updates, and gates.
 
 The checklist is grouped into
-[implementation campaigns](IMPLEMENTATION_CAMPAIGNS.md). A Codex Goal may work
-through multiple work items in a campaign, but each work item should follow the
+[implementation campaigns](IMPLEMENTATION_CAMPAIGNS.md). A campaign may work
+through multiple work items, but each work item should follow the
 [scoped PR contract](SCOPED_PR_CONTRACT.md).
+
+This file is one layer of the repo's centralized, agent-neutral tracking
+model. The full layering — proposals (why), specs (what), ADRs (durable
+decisions), this plan (work queue), campaign ledger, active manifest, and
+closeout handoffs — is documented in the
+[repo tracking model](REPO_TRACKING_MODEL.md). Reach for a proposal in
+[`docs/proposals/`](proposals/) before a spec when the change spans more
+than one behavior contract or touches repo shape.
 
 ## Campaign Map
 
@@ -41,6 +49,7 @@ through multiple work items in a campaign, but each work item should follow the
 | PR Review Front Panel (24) | Compose existing PR guidance, first useful action, assistant proof, assistant-loop health, PR evidence ledger, baseline delta, gate decision, receipts, calibration, and optional coverage/grip frontier artifacts into one advisory generated-CI first screen. | Complete: report contract, fixture corpus, `ripr pr-review front-panel`, generated-CI projection, workflow docs, dogfood receipts, and closeout audit are in place. |
 | Report Packet Index (25) | Make the uploaded `ripr-reports` packet navigable as a reviewer-first index over explicit existing artifacts. | Complete: report contract, fixture corpus, `ripr reports index`, generated-CI projection, workflow docs, dogfood receipts, and closeout audit are in place. |
 | PR Inline Comment Publisher (26) | Make optional durable PR comments safe and explicit by planning, capping, deduplicating, and publishing only changed-line `review-comments` entries when configured. | Complete: spec, fixture corpus, read-only publish plan, generated-CI opt-in wiring, workflow docs, dogfood receipts, and closeout audit are in place. |
+| Language Adapter Preview (27) | Introduce a language-neutral analysis adapter boundary, keep Rust as the reference adapter, and add syntax-first TypeScript and Python preview adapters that feed the existing RIPR domain, output, LSP, agent, and Lane 4 surfaces without changing Rust behavior or default CI blocking. | Active: RIPR-PROP-0001 records the design intent, RIPR-SPEC-0026 pins the adapter contract, RIPR-SPEC-0027 pins the TypeScript preview static-fact contract, and RIPR-SPEC-0028 pins the Python preview static-fact contract; remaining work items cover the adapter boundary, Rust adapter, output metadata, TypeScript and Python preview adapters, editor routing, language-aware advisory CI grouping, workflow docs, dogfood receipts, and `campaign/language-adapter-preview-closeout`. |
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Complete as an explicit parallel Lane 3 closeout: contract audit, hover hardening, evidence-aware actions, context packet, protocol smoke, VS Code smoke, status/staleness, workflow docs, and closeout audit. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
