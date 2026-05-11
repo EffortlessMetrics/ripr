@@ -1025,7 +1025,7 @@ jobs:
             echo
             echo "RIPR is advisory static evidence. It does not edit source, generate tests, or run mutation testing."
             echo
-            echo '### First useful action'
+            echo '### Recommended next test'
             if [ -f target/ripr/reports/first-useful-action.json ] || [ -f target/ripr/reports/first-useful-action.md ]; then
               if [ -f target/ripr/reports/first-useful-action.json ]; then
                 action_json=target/ripr/reports/first-useful-action.json
@@ -1049,7 +1049,7 @@ jobs:
                 action_receipt="$(markdown_inline "$action_receipt")"
                 action_fallback="$(markdown_inline "$action_fallback")"
                 action_warning_count="$(markdown_inline "$action_warning_count")"
-                echo '#### First action at a glance'
+                echo '#### Recommended next test at a glance'
                 echo "- Status: \`$action_status\`"
                 echo "- Action: \`$action_kind\`"
                 echo "- Title: \`$action_title\`"
@@ -1068,7 +1068,7 @@ jobs:
                 cat target/ripr/reports/first-useful-action.md
               fi
             else
-              echo 'First useful action was not generated. It runs when existing PR guidance, assistant proof, ledger, baseline, receipt, gate, coverage/grip, or editor context artifacts are available.'
+              echo 'Recommended next test was not generated. It runs when existing PR guidance, assistant proof, ledger, baseline, receipt, gate, coverage/grip, or editor context artifacts are available.'
             fi
             echo
             echo '### Top recommendation'
@@ -1139,7 +1139,7 @@ jobs:
               echo
             fi
             if [ -f target/ripr/reports/assistant-loop-health.json ] || [ -f target/ripr/reports/assistant-loop-health.md ]; then
-              echo '### Assistant loop health'
+              echo '### Agent proof status'
               if [ -f target/ripr/reports/assistant-loop-health.json ]; then
                 health_json=target/ripr/reports/assistant-loop-health.json
                 health_status="$(jq -r '.status // "unknown"' "$health_json" 2>/dev/null || echo unknown)"
@@ -1170,7 +1170,7 @@ jobs:
                 health_repairs="$(markdown_inline "$health_repairs")"
                 health_top_warning="$(markdown_inline "$health_top_warning")"
                 health_top_repair="$(markdown_inline "$health_top_repair")"
-                echo '#### Assistant loop health at a glance'
+                echo '#### Agent proof status at a glance'
                 echo "- Status: \`$health_status\`"
                 echo "- Proof packets: total=\`$health_proofs\`, complete=\`$health_complete\`, partial=\`$health_partial\`, missing_required=\`$health_missing_required\`, missing_optional=\`$health_missing_optional\`"
                 echo "- Evidence movement: improved=\`$health_improved\`, unchanged=\`$health_unchanged\`, regressed=\`$health_regressed\`, unknown=\`$health_unknown\`"
@@ -1521,7 +1521,7 @@ agent receipt, gate decision, coverage/grip frontier, and editor context
 inputs when those files exist, then writes and uploads
 `target/ripr/reports/first-useful-action.json` and
 `target/ripr/reports/first-useful-action.md` with the normal report packet. The
-job summary appends the first action at a glance plus the Markdown report. If
+job summary appends the recommended next test at a glance plus the Markdown report. If
 no inputs exist, the step logs that no first-useful-action inputs were
 available and leaves CI pass/fail behavior unchanged.
 

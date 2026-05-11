@@ -33,6 +33,14 @@ Planned scope:
   vocabulary bridge linked from `README.md`, `docs/QUICKSTART.md`,
   `docs/EDITOR_EXTENSION.md`, and `editors/vscode/README.md`. No schema, JSON,
   status ID, or command renames.
+- Generated CI advisory job summary now uses reviewer-friendly section
+  headings: `PR review front panel` → `PR review summary`, `First useful
+  action` → `Recommended next test`, `Report packet index` → `Uploaded review
+  artifacts`, `Assistant loop health` → `Agent proof status`. The matching
+  `… at a glance` subsection headings move with each section, and fallback
+  "X was not generated" messages stay aligned. Artifact filenames, JSON
+  fields, command names, status IDs, workflow step `name:` values, and
+  schemas are unchanged.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 
