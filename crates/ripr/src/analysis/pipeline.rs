@@ -1,6 +1,5 @@
-use super::{
-    AnalysisOptions, AnalysisResult, classifier, diff, probes, rust_index, sort, summary, workspace,
-};
+use super::language::{LanguageAdapter, RustAdapter};
+use super::{AnalysisOptions, AnalysisResult, diff, sort, summary};
 use crate::config::OraclePolicy;
 
 pub(crate) fn run_diff_pipeline_with_oracle_policy(
@@ -13,41 +12,17 @@ pub(crate) fn run_diff_pipeline_with_oracle_policy(
         options.diff_file.as_ref(),
     )?;
     let changed_files = diff::parse_unified_diff(&diff_text);
-    let changed_rust_paths = changed_files
-        .iter()
-        .filter(|file| file.path.extension().and_then(|e| e.to_str()) == Some("rs"))
-        .map(|file| file.path.clone())
-        .collect::<Vec<_>>();
-    let rust_files = workspace::discover_rust_files(&options.root)?;
-    let index_files = workspace::select_rust_files_for_mode(
-        &rust_files,
-        &changed_rust_paths,
-        options.mode,
-        options.include_unchanged_tests,
-    );
-    let mut index = rust_index::build_index(&options.root, &index_files)?;
-    rust_index::apply_oracle_policy(&mut index, oracle_policy);
 
-    let mut findings = Vec::new();
-    let mut changed_rust_files = 0usize;
+    let adapter = RustAdapter;
+    let mut adapter_result = adapter.analyze_diff(options, oracle_policy, &changed_files)?;
 
-    for changed in changed_files
-        .iter()
-        .filter(|file| file.path.extension().and_then(|e| e.to_str()) == Some("rs"))
-    {
-        changed_rust_files += 1;
-        let probes = probes::probes_for_file(&options.root, changed, &index);
-        for probe in probes {
-            findings.push(classifier::classify_probe(&probe, &index));
-        }
-    }
-
-    sort::sort_findings(&mut findings);
-    let summary_result = summary::summarize_findings(changed_rust_files, &findings);
+    sort::sort_findings(&mut adapter_result.findings);
+    let summary_result =
+        summary::summarize_findings(adapter_result.changed_files, &adapter_result.findings);
 
     Ok(AnalysisResult {
         summary: summary_result,
-        findings,
+        findings: adapter_result.findings,
     })
 }
 
@@ -55,37 +30,16 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
     options: &AnalysisOptions,
     oracle_policy: &OraclePolicy,
 ) -> Result<AnalysisResult, String> {
-    let rust_files = workspace::discover_rust_files(&options.root)?;
-    let production_files = rust_files
-        .iter()
-        .filter(|path| workspace::is_production_rust_path(path))
-        .cloned()
-        .collect::<Vec<_>>();
+    let adapter = RustAdapter;
+    let mut adapter_result = adapter.analyze_repo(options, oracle_policy)?;
 
-    // Index all discovered Rust files (production + tests + benches +
-    // examples). The classifier's `find_related_tests` looks up tests
-    // in the index; without test files the repo headline silently
-    // inflates `no_static_path` for owners that *are* exercised by
-    // integration tests under `tests/` or `examples/`. Probe seeding
-    // stays production-only so test bodies do not generate findings.
-    let mut index = rust_index::build_index(&options.root, &rust_files)?;
-    rust_index::apply_oracle_policy(&mut index, oracle_policy);
-
-    let mut findings = Vec::new();
-
-    for path in &production_files {
-        let probes = probes::probes_for_repo_file(&options.root, path, &index);
-        for probe in probes {
-            findings.push(classifier::classify_probe(&probe, &index));
-        }
-    }
-
-    sort::sort_findings(&mut findings);
-    let summary_result = summary::summarize_findings(production_files.len(), &findings);
+    sort::sort_findings(&mut adapter_result.findings);
+    let summary_result =
+        summary::summarize_findings(adapter_result.production_files, &adapter_result.findings);
 
     Ok(AnalysisResult {
         summary: summary_result,
-        findings,
+        findings: adapter_result.findings,
     })
 }
 

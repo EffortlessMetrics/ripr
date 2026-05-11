@@ -59,7 +59,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/language-adapter-boundary"
-status = "active"
+status = "done"
 branch = "analysis-language-adapter-boundary"
 stackable = false
 blocked_by = [
@@ -80,13 +80,24 @@ commands = [
 
 [[work_item]]
 id = "analysis/rust-adapter-behind-boundary"
-status = "blocked"
+status = "active"
 branch = "analysis-rust-adapter-behind-boundary"
 stackable = false
 blocked_by = [
   "analysis/language-adapter-boundary",
 ]
 acceptance = "Move Rust fact extraction behind the LanguageAdapter trait as the reference adapter while preserving every existing Rust fixture, golden, capability, and output contract; LanguageFacts, OwnerFact, TestFact, AssertionFact, OwnerKind, and StaticLimitKind shells land alongside their production consumers"
+commands = [
+  "cargo check -p ripr",
+  "cargo test -p ripr --lib",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-workspace-shape",
+  "cargo xtask check-pr",
+]
 
 [[work_item]]
 id = "output/language-metadata"
