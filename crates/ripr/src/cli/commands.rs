@@ -5456,6 +5456,14 @@ fn report_config_status(root: &Path, ok: &mut bool) {
                 "- Suppressions path: {}",
                 config.suppressions().display_path()
             );
+            let languages = config
+                .languages()
+                .enabled()
+                .iter()
+                .map(|language| language.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            println!("- Enabled languages: {languages}");
         }
         Err(err) => {
             println!("! Config: invalid {CONFIG_FILE_NAME}");
