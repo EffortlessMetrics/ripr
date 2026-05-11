@@ -129,6 +129,34 @@ If a slip is caught after the dependent publish:
 5. Add an `INSTALLATION_VERIFICATION.md`-style smoke artifact when the
    user-visible behavior changed.
 
+## Automated guard
+
+`cargo xtask check-product-copy` runs a lightweight scan over the public
+surfaces this checklist names (root `README.md`, `crates/ripr/README.md`,
+`docs/QUICKSTART.md`, `docs/EDITOR_EXTENSION.md`,
+`editors/vscode/README.md`, `editors/vscode/package.json`,
+`docs/RELEASE.md`, `docs/RELEASE_MARKETPLACE.md`, this checklist) and flags
+unbridged use of internal terms (`test oracle`, `discriminator`,
+`seam-native`, `grip`, `evidence spine`, `canonical gap`,
+`no-actionable-seam`, `front panel`, `report packet`).
+
+A file is "bridged" if it links to [TERMINOLOGY.md](TERMINOLOGY.md). The
+rule is **not** "never use these terms" — it is "public copy explains the
+user job first or links to the terminology bridge before using internal
+terms." Specs, output schema, fixtures, metrics, implementation
+campaigns, and CHANGELOG entries are allowlisted as internal surfaces and
+are not scanned.
+
+The current baseline is clean. A `cargo test -p xtask product_copy` unit
+test asserts the baseline and catches regressions; if a new public file
+or a new copy edit reintroduces unbridged internal vocabulary, that test
+fails and `cargo xtask check-product-copy` reports the location and a
+suggested user-facing replacement.
+
+The guard is **not** wired into `cargo xtask check-pr` yet; running the
+command is an advisory step during release prep. Promote it to a gate
+only after a release cycle confirms it stays low-noise.
+
 ## Origin
 
 This checklist captures the v0.5.0 release lessons:

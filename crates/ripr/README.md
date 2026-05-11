@@ -16,6 +16,11 @@ useful for early feedback, not a proof system.
 This is the product repository for `ripr`. The `0.5.x` line keeps the analyzer,
 editor, CI, and agent loops aligned around static evidence for targeted tests.
 
+The first-hour docs lead with plain language; internal terms (seam,
+discriminator, oracle, grip, canonical gap) live in the spec/schema layer.
+See the [Terminology bridge](https://github.com/EffortlessMetrics/ripr/blob/main/docs/TERMINOLOGY.md)
+for the mapping.
+
 ## Mission
 
 `ripr` helps Rust developers and coding agents write tests that actually notice
