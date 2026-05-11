@@ -929,47 +929,37 @@ enabled = []
 
     #[test]
     fn languages_section_rejects_unknown_language() {
-        let err = parse_config(
+        let result = parse_config(
             r#"
 [languages]
 enabled = ["ruby"]
 "#,
-        )
-        .expect_err("unknown language should error");
-        assert!(
-            err.contains("ruby"),
-            "error message should name the value: {err}"
         );
+        assert!(matches!(result, Err(ref message) if message.contains("ruby")));
     }
 
     #[test]
     fn languages_section_rejects_duplicate_entry() {
-        let err = parse_config(
+        let result = parse_config(
             r#"
 [languages]
 enabled = ["rust", "rust"]
 "#,
-        )
-        .expect_err("duplicate entry should error");
-        assert!(
-            err.contains("more than once"),
-            "error message should name the duplication: {err}"
         );
+        assert!(matches!(result, Err(ref message) if message.contains("more than once")));
     }
 
     #[test]
     fn languages_section_rejects_unknown_field() {
-        let err = parse_config(
+        let result = parse_config(
             r#"
 [languages]
 enabled = ["rust"]
 extra = true
 "#,
-        )
-        .expect_err("unknown field should error via deny_unknown_fields");
+        );
         assert!(
-            err.contains("extra") || err.contains("unknown field"),
-            "error message should name the unknown field: {err}"
+            matches!(result, Err(ref message) if message.contains("extra") || message.contains("unknown field"))
         );
     }
 
