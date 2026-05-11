@@ -41,6 +41,12 @@ Planned scope:
   "X was not generated" messages stay aligned. Artifact filenames, JSON
   fields, command names, status IDs, workflow step `name:` values, and
   schemas are unchanged.
+- `ripr --help` and every `ripr <subcommand> --help` now lead with an
+  action-oriented one-liner before the `Usage:` block (e.g.,
+  `ripr pilot --help` opens with "Find the top test gap in this repo and
+  write a packet you can act on."). The canonical `Usage: ripr <cmd>` syntax
+  and all options remain in place. Command names, subcommand names, JSON
+  fields, artifact filenames, schemas, and CLI behavior are unchanged.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 

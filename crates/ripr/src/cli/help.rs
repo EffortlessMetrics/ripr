@@ -1,4 +1,4 @@
-const HELP: &str = r#"ripr — static RIPR mutation exposure analysis for Rust
+const HELP: &str = r#"ripr — find changed Rust code where nearby tests may not actually catch the changed behavior.
 
 Usage:
   ripr init [--root PATH] [--ci github] [--dry-run] [--force]
@@ -70,7 +70,9 @@ Quick start:
   ripr explain --diff crates/ripr/examples/sample/example.diff <finding-id>
 "#;
 
-const INIT_HELP: &str = r#"Usage: ripr init [--root PATH] [--ci github] [--dry-run] [--force]
+const INIT_HELP: &str = r#"Write an optional repo policy file (ripr.toml) and, with --ci github, a non-blocking advisory workflow.
+
+Usage: ripr init [--root PATH] [--ci github] [--dry-run] [--force]
 
 `ripr init` is optional. It writes the built-in defaults to a repo-local
 ripr.toml so teams can commit, review, and tune policy. Missing ripr.toml is
@@ -99,7 +101,9 @@ Generated GitHub workflow:
   - does not enable baseline failure policy by default
 "#;
 
-const PILOT_HELP: &str = r#"Usage: ripr pilot [--root PATH] [--out PATH] [--mode MODE] [--max-seams N] [--timeout-ms MS]
+const PILOT_HELP: &str = r#"Find the top test gap in this repo and write a packet you can act on.
+
+Usage: ripr pilot [--root PATH] [--out PATH] [--mode MODE] [--max-seams N] [--timeout-ms MS]
 
 Options:
   --root PATH       Workspace root to analyze. Defaults to current directory.
@@ -120,7 +124,9 @@ pilot-summary.json and pilot-summary.md are written with status=partial and an
 explicit retry command.
 "#;
 
-const OUTCOME_HELP: &str = r#"Usage: ripr outcome --before PATH --after PATH [--format md|json] [--out PATH]
+const OUTCOME_HELP: &str = r#"Compare before/after static evidence after adding a focused test.
+
+Usage: ripr outcome --before PATH --after PATH [--format md|json] [--out PATH]
 
 Options:
   --before PATH    Repo-exposure JSON snapshot before the focused test.
@@ -133,7 +139,9 @@ seam_id and reports moved, unchanged, regressed, new, and removed seams; it
 does not run analysis, mutation testing, or CI policy.
 "#;
 
-const EVIDENCE_HEALTH_HELP: &str = r#"Usage: ripr evidence-health [--root PATH] [--out PATH] [--out-md PATH] [--mutation-calibration PATH]
+const EVIDENCE_HEALTH_HELP: &str = r#"Summarize how strong the current static evidence looks across the workspace.
+
+Usage: ripr evidence-health [--root PATH] [--out PATH] [--out-md PATH] [--mutation-calibration PATH]
 
 Options:
   --root PATH                    Workspace root to summarize. Defaults to current directory.
@@ -148,7 +156,9 @@ calibration availability. It does not change analyzer behavior, run mutation
 testing, edit source files, configure CI policy, or make gate decisions.
 "#;
 
-const REVIEW_COMMENTS_HELP: &str = r#"Usage: ripr review-comments [--root PATH] --base SHA --head SHA [--out PATH]
+const REVIEW_COMMENTS_HELP: &str = r#"Write advisory PR test guidance on changed lines (does not post to GitHub).
+
+Usage: ripr review-comments [--root PATH] --base SHA --head SHA [--out PATH]
 
 Options:
   --root PATH    Workspace root. Defaults to current directory.
@@ -163,7 +173,9 @@ not post to GitHub, edit source, generate tests, run mutation testing, or make
 CI blocking by default.
 "#;
 
-const GATE_HELP: &str = r#"Usage: ripr gate evaluate --pr-guidance PATH [--mode MODE] [--out PATH] [--out-md PATH]
+const GATE_HELP: &str = r#"Evaluate the optional pass/fail gate against existing PR guidance (advisory unless explicitly enabled).
+
+Usage: ripr gate evaluate --pr-guidance PATH [--mode MODE] [--out PATH] [--out-md PATH]
 
 Options:
   --root PATH                         Workspace root. Defaults to current directory.
@@ -189,7 +201,9 @@ tests, run mutation testing, upload SARIF, mutate GitHub state, or change
 generated workflow defaults.
 "#;
 
-const BASELINE_HELP: &str = r#"Usage:
+const BASELINE_HELP: &str = r#"Create, diff, and shrink a reviewed baseline of acknowledged test gaps.
+
+Usage:
   ripr baseline create --from PATH [--out PATH] [--dry-run] [--force]
   ripr baseline diff --baseline PATH --current PATH [--out PATH] [--out-md PATH]
   ripr baseline update --baseline PATH --current PATH --remove-resolved [--out PATH]
@@ -233,7 +247,9 @@ manual review, and never adopts new current debt. Generated CI should not use
 this command to rewrite checked-in baselines automatically.
 "#;
 
-const ZERO_HELP: &str = r#"Usage: ripr zero status --delta PATH [--baseline PATH] [--gate PATH] [--pr-guidance PATH] [--recommendation-calibration PATH] [--out PATH] [--out-md PATH]
+const ZERO_HELP: &str = r#"Summarize current RIPR Zero progress over existing baselines and gate decisions.
+
+Usage: ripr zero status --delta PATH [--baseline PATH] [--gate PATH] [--pr-guidance PATH] [--recommendation-calibration PATH] [--out PATH] [--out-md PATH]
 
 Status options:
   --baseline PATH                       Optional reviewed gate baseline ledger.
@@ -252,7 +268,9 @@ not run analysis, mutate baselines, edit source, generate tests, call an LLM,
 run mutation testing, change gate policy, or make CI blocking by default.
 "#;
 
-const PR_LEDGER_HELP: &str = r#"Usage: ripr pr-ledger record --pr-number VALUE --base REV --head REV [--gate PATH] [--baseline-delta PATH] [--zero-status PATH] [--pr-guidance PATH] [--recommendation-calibration PATH] [--agent-receipt PATH] [--coverage PATH] [--history PATH] [--out PATH] [--out-md PATH]
+const PR_LEDGER_HELP: &str = r#"Record a read-only PR evidence ledger entry over existing reports.
+
+Usage: ripr pr-ledger record --pr-number VALUE --base REV --head REV [--gate PATH] [--baseline-delta PATH] [--zero-status PATH] [--pr-guidance PATH] [--recommendation-calibration PATH] [--agent-receipt PATH] [--coverage PATH] [--history PATH] [--out PATH] [--out-md PATH]
 
 Record options:
   --pr-number VALUE                    Pull request number or local identifier.
@@ -277,7 +295,9 @@ analysis, mutate baselines, post comments, edit source, generate tests, call an
 LLM, run mutation testing, change gate policy, or make CI blocking by default.
 "#;
 
-const PR_COMMENTS_HELP: &str = r#"Usage: ripr pr-comments plan [--root PATH] [--pr-guidance PATH] [--existing-comments PATH] [--mode off|plan|inline] [--pull-request N] [--event-name NAME] [--head-repo OWNER/REPO] [--base-repo OWNER/REPO] [--token-available] [--no-write-permission] [--out PATH] [--out-md PATH]
+const PR_COMMENTS_HELP: &str = r#"Plan or publish bounded inline PR comments (off / plan / inline).
+
+Usage: ripr pr-comments plan [--root PATH] [--pr-guidance PATH] [--existing-comments PATH] [--mode off|plan|inline] [--pull-request N] [--event-name NAME] [--head-repo OWNER/REPO] [--base-repo OWNER/REPO] [--token-available] [--no-write-permission] [--out PATH] [--out-md PATH]
 
 Plan options:
   --root PATH                 Workspace root label. Defaults to current directory.
@@ -304,7 +324,9 @@ tests, runs mutation testing, changes gate authority, or makes CI blocking by
 default.
 "#;
 
-const PR_REVIEW_HELP: &str = r#"Usage: ripr pr-review front-panel [--root PATH] [--pr-guidance PATH] [--first-action PATH] [--assistant-proof PATH] [--assistant-health PATH] [--ledger PATH] [--baseline-delta PATH] [--zero-status PATH] [--gate-decision PATH] [--recommendation-calibration PATH] [--mutation-calibration PATH] [--coverage-frontier PATH] [--receipt PATH] [--out PATH] [--out-md PATH]
+const PR_REVIEW_HELP: &str = r#"Compose the first-screen PR review summary from existing review artifacts.
+
+Usage: ripr pr-review front-panel [--root PATH] [--pr-guidance PATH] [--first-action PATH] [--assistant-proof PATH] [--assistant-health PATH] [--ledger PATH] [--baseline-delta PATH] [--zero-status PATH] [--gate-decision PATH] [--recommendation-calibration PATH] [--mutation-calibration PATH] [--coverage-frontier PATH] [--receipt PATH] [--out PATH] [--out-md PATH]
 
 Front-panel options:
   --root PATH                         Workspace root label. Defaults to current directory.
@@ -331,7 +353,9 @@ provider, run mutation testing, publish inline comments, or make CI blocking by
 default.
 "#;
 
-const REPORTS_HELP: &str = r#"Usage: ripr reports index [--root PATH] [--reports-dir PATH] [--review-dir PATH] [--receipts-dir PATH] [--workflow-dir PATH] [--agent-dir PATH] [--pilot-dir PATH] [--ci-dir PATH] [--out PATH] [--out-md PATH]
+const REPORTS_HELP: &str = r#"Write a reviewer-first index of the uploaded review artifacts.
+
+Usage: ripr reports index [--root PATH] [--reports-dir PATH] [--review-dir PATH] [--receipts-dir PATH] [--workflow-dir PATH] [--agent-dir PATH] [--pilot-dir PATH] [--ci-dir PATH] [--out PATH] [--out-md PATH]
 
 Index options:
   --root PATH           Workspace root label. Defaults to current directory.
@@ -353,7 +377,9 @@ does not rerun analysis, edit source, generate tests, call providers, run
 mutation testing, publish inline comments, or make CI blocking by default.
 "#;
 
-const COVERAGE_GRIP_HELP: &str = r#"Usage: ripr coverage-grip frontier (--ledger PATH|--baseline-delta PATH|--zero-status PATH) [--coverage PATH] [--out PATH] [--out-md PATH]
+const COVERAGE_GRIP_HELP: &str = r#"Report whether line coverage and behavior evidence moved together.
+
+Usage: ripr coverage-grip frontier (--ledger PATH|--baseline-delta PATH|--zero-status PATH) [--coverage PATH] [--out PATH] [--out-md PATH]
 
 Frontier options:
   --coverage PATH          Optional coverage summary JSON.
@@ -369,7 +395,9 @@ does not treat coverage as adequacy, run mutation testing, change gate policy,
 or make CI blocking by default.
 "#;
 
-const ASSISTANT_LOOP_HELP: &str = r#"Usage:
+const ASSISTANT_LOOP_HELP: &str = r#"Produce or summarize advisory agent proof and proof-loop health.
+
+Usage:
   ripr assistant-loop proof [--pr-guidance PATH] [--agent-packet PATH] [--before PATH] [--after PATH] [--receipt PATH] [--ledger PATH] [--coverage-frontier PATH] [--gate-decision PATH] [--out PATH] [--out-md PATH]
   ripr assistant-loop health --proof PATH [--proof PATH ...] [--out PATH] [--out-md PATH]
 
@@ -408,7 +436,9 @@ generate tests, call a provider, run mutation testing, change gate policy, or
 make CI blocking by default.
 "#;
 
-const FIRST_ACTION_HELP: &str = r#"Usage: ripr first-action [--root PATH] [--pr-guidance PATH] [--assistant-proof PATH] [--ledger PATH] [--baseline-delta PATH] [--receipt PATH] [--gate-decision PATH] [--coverage-frontier PATH] [--editor-context PATH] [--out PATH] [--out-md PATH]
+const FIRST_ACTION_HELP: &str = r#"Recommend the next focused test to add from existing review artifacts.
+
+Usage: ripr first-action [--root PATH] [--pr-guidance PATH] [--assistant-proof PATH] [--ledger PATH] [--baseline-delta PATH] [--receipt PATH] [--gate-decision PATH] [--coverage-frontier PATH] [--editor-context PATH] [--out PATH] [--out-md PATH]
 
 Options:
   --root PATH                Workspace root label. Defaults to current directory.
@@ -430,7 +460,9 @@ comments, edit source, generate tests, call a provider, run mutation testing,
 invent policy, or make CI blocking by default.
 "#;
 
-const CALIBRATE_HELP: &str = r#"Usage: ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
+const CALIBRATE_HELP: &str = r#"Import cargo-mutants outcomes as advisory calibration over static evidence.
+
+Usage: ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
 
 Options:
   --mutants-json PATH          cargo-mutants JSON file, or directory containing outcomes.json and/or mutants.json.
@@ -444,7 +476,9 @@ unambiguous file/line. It does not run mutation testing, alter static
 classifications, or configure CI policy.
 "#;
 
-const AGENT_HELP: &str = r#"Usage: ripr agent <subcommand>
+const AGENT_HELP: &str = r#"Create a bounded packet for a coding agent and verify what it did.
+
+Usage: ripr agent <subcommand>
 
 Subcommands:
   start      Write a source-edit-free workflow manifest for one seam.
@@ -463,7 +497,9 @@ receipt surface, `ripr agent status --help` for the artifact status lens, and
 `ripr agent review-summary --help` for the PR-review packet.
 "#;
 
-const AGENT_START_HELP: &str = r#"Usage: ripr agent start [--root PATH] --seam-id ID [--out PATH]
+const AGENT_START_HELP: &str = r#"Start a source-edit-free workflow packet for one selected change.
+
+Usage: ripr agent start [--root PATH] --seam-id ID [--out PATH]
 
 Options:
   --root PATH      Workspace root. Defaults to current directory.
@@ -478,7 +514,9 @@ does not call an LLM API, run mutation testing, generate tests, edit files,
 change cache behavior, or touch LSP/MCP surfaces.
 "#;
 
-const AGENT_BRIEF_HELP: &str = r#"Usage: ripr agent brief [--root PATH] (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json [--max-seams N]
+const AGENT_BRIEF_HELP: &str = r#"Write a bounded brief for a coding agent over the current diff or change.
+
+Usage: ripr agent brief [--root PATH] (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json [--max-seams N]
 
 Options:
   --root PATH      Workspace root. Defaults to current directory.
@@ -494,7 +532,9 @@ router remains advisory and static; it does not run mutation testing, generate
 tests, edit files, change cache behavior, or touch LSP/MCP surfaces.
 "#;
 
-const AGENT_PACKET_HELP: &str = r#"Usage: ripr agent packet [--root PATH] --seam-id ID --json
+const AGENT_PACKET_HELP: &str = r#"Write a per-change handoff packet for a coding agent.
+
+Usage: ripr agent packet [--root PATH] --seam-id ID --json
 
 Options:
   --root PATH      Workspace root. Defaults to current directory.
@@ -507,7 +547,9 @@ and static; it does not run mutation testing, generate tests, edit files, change
 cache behavior, or touch LSP/MCP surfaces.
 "#;
 
-const AGENT_VERIFY_HELP: &str = r#"Usage: ripr agent verify [--root PATH] --before PATH --after PATH --json
+const AGENT_VERIFY_HELP: &str = r#"Verify static-evidence movement between a before and after snapshot.
+
+Usage: ripr agent verify [--root PATH] --before PATH --after PATH --json
 
 Options:
   --root PATH      Workspace root. Defaults to current directory.
@@ -522,7 +564,9 @@ mutation testing, generate tests, edit files, change cache behavior, or touch
 LSP/MCP surfaces.
 "#;
 
-const AGENT_RECEIPT_HELP: &str = r#"Usage: ripr agent receipt [--root PATH] --verify-json PATH --seam-id ID --json [--test NAME] [--command CMD] [--out PATH]
+const AGENT_RECEIPT_HELP: &str = r#"Write a provenance receipt with bounded next-action guidance for one change.
+
+Usage: ripr agent receipt [--root PATH] --verify-json PATH --seam-id ID --json [--test NAME] [--command CMD] [--out PATH]
 
 Options:
   --root PATH         Workspace root. Defaults to current directory.
@@ -541,7 +585,9 @@ static; it does not run analysis, mutation testing, generate tests, edit files,
 change cache behavior, or touch LSP/MCP surfaces.
 "#;
 
-const AGENT_STATUS_HELP: &str = r#"Usage: ripr agent status [--root PATH] [--json]
+const AGENT_STATUS_HELP: &str = r#"Report local agent-loop artifact state and the next command to run.
+
+Usage: ripr agent status [--root PATH] [--json]
 
 Options:
   --root PATH      Workspace root. Defaults to current directory.
@@ -555,7 +601,9 @@ advisory and static; it does not run analysis, mutation testing, generate
 tests, edit files, change cache behavior, or touch LSP/MCP surfaces.
 "#;
 
-const AGENT_REVIEW_SUMMARY_HELP: &str = r#"Usage: ripr agent review-summary [--root PATH] [--json]
+const AGENT_REVIEW_SUMMARY_HELP: &str = r#"Summarize agent-loop artifacts into a compact review packet.
+
+Usage: ripr agent review-summary [--root PATH] [--json]
 
 Options:
   --root PATH      Workspace root. Defaults to current directory.
@@ -568,7 +616,9 @@ advisory and static; it does not run analysis, mutation testing, generate
 tests, edit files, change cache behavior, or touch LSP/MCP surfaces.
 "#;
 
-const CHECK_HELP: &str = r#"Usage: ripr check [OPTIONS]
+const CHECK_HELP: &str = r#"Analyze a diff or workspace and emit findings in human, JSON, SARIF, or badge form.
+
+Usage: ripr check [OPTIONS]
 
 Options:
   --root PATH              Workspace root. Defaults to current directory.
@@ -597,10 +647,17 @@ Examples:
   ripr check --mode ready --json
 "#;
 
-const EXPLAIN_HELP: &str =
-    "Usage: ripr explain [--root PATH] [--base REV|--diff PATH] <finding-id|file:line>";
-const CONTEXT_HELP: &str = "Usage: ripr context [--root PATH] [--base REV|--diff PATH] --at <finding-id|file:line> [--max-related-tests N] [--json]";
-const DOCTOR_HELP: &str = r#"Usage: ripr doctor [--root PATH]
+const EXPLAIN_HELP: &str = r#"Print why ripr flagged a specific change.
+
+Usage: ripr explain [--root PATH] [--base REV|--diff PATH] <finding-id|file:line>
+"#;
+const CONTEXT_HELP: &str = r#"Print the per-change context packet for one finding or location.
+
+Usage: ripr context [--root PATH] [--base REV|--diff PATH] --at <finding-id|file:line> [--max-related-tests N] [--json]
+"#;
+const DOCTOR_HELP: &str = r#"Diagnose the local ripr setup (Rust toolchain, workspace, paths).
+
+Usage: ripr doctor [--root PATH]
 
 Checks:
   - root directory exists
@@ -608,7 +665,9 @@ Checks:
   - ripr.toml load status and effective defaults are visible
   - git, cargo, and rustc are available
 "#;
-const LSP_HELP: &str = r#"Usage: ripr lsp [--stdio] [--version]
+const LSP_HELP: &str = r#"Start the experimental ripr LSP server over stdio.
+
+Usage: ripr lsp [--stdio] [--version]
 
 Options:
   --stdio       Run the language server over stdio LSP framing. This is the default.
@@ -792,78 +851,113 @@ mod tests {
 
     #[test]
     fn command_specific_help_usage_lines_are_stable() {
-        assert!(INIT_HELP.starts_with("Usage: ripr init"));
+        // Each subcommand help block leads with a one-line action-oriented opener,
+        // followed by a blank line and the canonical `Usage: ripr <cmd>` line.
+        // Tests check both surfaces so the user-facing copy and the syntax stay aligned.
+        assert!(INIT_HELP.starts_with("Write an optional repo policy file"));
+        assert!(INIT_HELP.contains("Usage: ripr init"));
         assert!(INIT_HELP.contains("--ci github"));
         assert!(INIT_HELP.contains("--dry-run"));
         assert!(INIT_HELP.contains("--force"));
-        assert!(PILOT_HELP.starts_with("Usage: ripr pilot"));
+        assert!(PILOT_HELP.starts_with("Find the top test gap in this repo"));
+        assert!(PILOT_HELP.contains("Usage: ripr pilot"));
         assert!(PILOT_HELP.contains("pilot-summary.json"));
         assert!(PILOT_HELP.contains("--timeout-ms MS"));
-        assert!(OUTCOME_HELP.starts_with("Usage: ripr outcome"));
+        assert!(OUTCOME_HELP.starts_with("Compare before/after static evidence"));
+        assert!(OUTCOME_HELP.contains("Usage: ripr outcome"));
         assert!(OUTCOME_HELP.contains("--before PATH"));
-        assert!(EVIDENCE_HEALTH_HELP.starts_with("Usage: ripr evidence-health"));
+        assert!(
+            EVIDENCE_HEALTH_HELP.starts_with("Summarize how strong the current static evidence")
+        );
+        assert!(EVIDENCE_HEALTH_HELP.contains("Usage: ripr evidence-health"));
         assert!(EVIDENCE_HEALTH_HELP.contains("--mutation-calibration PATH"));
-        assert!(REVIEW_COMMENTS_HELP.starts_with("Usage: ripr review-comments"));
+        assert!(REVIEW_COMMENTS_HELP.starts_with("Write advisory PR test guidance"));
+        assert!(REVIEW_COMMENTS_HELP.contains("Usage: ripr review-comments"));
         assert!(REVIEW_COMMENTS_HELP.contains("target/ripr/review/comments.json"));
-        assert!(GATE_HELP.starts_with("Usage: ripr gate evaluate"));
+        assert!(GATE_HELP.starts_with("Evaluate the optional pass/fail gate"));
+        assert!(GATE_HELP.contains("Usage: ripr gate evaluate"));
         assert!(GATE_HELP.contains("visible-only"));
         assert!(GATE_HELP.contains("ripr-waive"));
-        assert!(BASELINE_HELP.starts_with("Usage:"));
+        assert!(BASELINE_HELP.starts_with("Create, diff, and shrink a reviewed baseline"));
+        assert!(BASELINE_HELP.contains("Usage:"));
         assert!(BASELINE_HELP.contains("ripr baseline create"));
         assert!(BASELINE_HELP.contains("ripr baseline diff"));
         assert!(BASELINE_HELP.contains("ripr baseline update"));
         assert!(BASELINE_HELP.contains(".ripr/gate-baseline.json"));
         assert!(BASELINE_HELP.contains("baseline-debt-delta.json"));
         assert!(BASELINE_HELP.contains("--remove-resolved"));
-        assert!(ZERO_HELP.starts_with("Usage: ripr zero status"));
+        assert!(ZERO_HELP.starts_with("Summarize current RIPR Zero progress"));
+        assert!(ZERO_HELP.contains("Usage: ripr zero status"));
         assert!(ZERO_HELP.contains("baseline-debt-delta JSON"));
         assert!(ZERO_HELP.contains("RIPR Zero status report"));
-        assert!(PR_LEDGER_HELP.starts_with("Usage: ripr pr-ledger record"));
+        assert!(PR_LEDGER_HELP.starts_with("Record a read-only PR evidence ledger"));
+        assert!(PR_LEDGER_HELP.contains("Usage: ripr pr-ledger record"));
         assert!(PR_LEDGER_HELP.contains("pr-evidence-ledger.json"));
         assert!(PR_LEDGER_HELP.contains("read-only advisory history"));
-        assert!(PR_COMMENTS_HELP.starts_with("Usage: ripr pr-comments plan"));
+        assert!(PR_COMMENTS_HELP.starts_with("Plan or publish bounded inline PR comments"));
+        assert!(PR_COMMENTS_HELP.contains("Usage: ripr pr-comments plan"));
         assert!(PR_COMMENTS_HELP.contains("comment-publish-plan.json"));
         assert!(PR_COMMENTS_HELP.contains("read-only advisory projection"));
-        assert!(PR_REVIEW_HELP.starts_with("Usage: ripr pr-review front-panel"));
+        assert!(PR_REVIEW_HELP.starts_with("Compose the first-screen PR review summary"));
+        assert!(PR_REVIEW_HELP.contains("Usage: ripr pr-review front-panel"));
         assert!(PR_REVIEW_HELP.contains("pr-review-front-panel.json"));
         assert!(PR_REVIEW_HELP.contains("read-only advisory first-screen report"));
-        assert!(COVERAGE_GRIP_HELP.starts_with("Usage: ripr coverage-grip frontier"));
+        assert!(
+            COVERAGE_GRIP_HELP.starts_with("Report whether line coverage and behavior evidence")
+        );
+        assert!(COVERAGE_GRIP_HELP.contains("Usage: ripr coverage-grip frontier"));
         assert!(COVERAGE_GRIP_HELP.contains("coverage-grip-frontier.json"));
         assert!(COVERAGE_GRIP_HELP.contains("separate axes"));
-        assert!(ASSISTANT_LOOP_HELP.starts_with("Usage:"));
+        assert!(ASSISTANT_LOOP_HELP.starts_with("Produce or summarize advisory agent proof"));
+        assert!(ASSISTANT_LOOP_HELP.contains("Usage:"));
         assert!(ASSISTANT_LOOP_HELP.contains("ripr assistant-loop proof"));
         assert!(ASSISTANT_LOOP_HELP.contains("ripr assistant-loop health"));
         assert!(ASSISTANT_LOOP_HELP.contains("test-oracle-assistant-proof.json"));
         assert!(ASSISTANT_LOOP_HELP.contains("assistant-loop-health.json"));
         assert!(ASSISTANT_LOOP_HELP.contains("Campaign 20 artifacts"));
-        assert!(FIRST_ACTION_HELP.starts_with("Usage: ripr first-action"));
+        assert!(FIRST_ACTION_HELP.starts_with("Recommend the next focused test"));
+        assert!(FIRST_ACTION_HELP.contains("Usage: ripr first-action"));
         assert!(FIRST_ACTION_HELP.contains("first-useful-action.json"));
         assert!(FIRST_ACTION_HELP.contains("read-only advisory router"));
-        assert!(REPORTS_HELP.starts_with("Usage: ripr reports index"));
+        assert!(REPORTS_HELP.starts_with("Write a reviewer-first index"));
+        assert!(REPORTS_HELP.contains("Usage: ripr reports index"));
         assert!(REPORTS_HELP.contains("target/ripr/reports/index.json"));
         assert!(REPORTS_HELP.contains("read-only advisory map"));
-        assert!(CALIBRATE_HELP.starts_with("Usage: ripr calibrate cargo-mutants"));
+        assert!(CALIBRATE_HELP.starts_with("Import cargo-mutants outcomes"));
+        assert!(CALIBRATE_HELP.contains("Usage: ripr calibrate cargo-mutants"));
         assert!(CALIBRATE_HELP.contains("--mutants-json PATH"));
-        assert!(AGENT_HELP.starts_with("Usage: ripr agent"));
-        assert!(AGENT_START_HELP.starts_with("Usage: ripr agent start"));
+        assert!(AGENT_HELP.starts_with("Create a bounded packet for a coding agent"));
+        assert!(AGENT_HELP.contains("Usage: ripr agent"));
+        assert!(AGENT_START_HELP.starts_with("Start a source-edit-free workflow packet"));
+        assert!(AGENT_START_HELP.contains("Usage: ripr agent start"));
         assert!(AGENT_START_HELP.contains("workflow.json"));
-        assert!(AGENT_BRIEF_HELP.starts_with("Usage: ripr agent brief"));
+        assert!(AGENT_BRIEF_HELP.starts_with("Write a bounded brief for a coding agent"));
+        assert!(AGENT_BRIEF_HELP.contains("Usage: ripr agent brief"));
         assert!(AGENT_BRIEF_HELP.contains("--max-seams N"));
         assert!(AGENT_BRIEF_HELP.contains("RIPR-SPEC-0010"));
-        assert!(AGENT_PACKET_HELP.starts_with("Usage: ripr agent packet"));
+        assert!(AGENT_PACKET_HELP.starts_with("Write a per-change handoff packet"));
+        assert!(AGENT_PACKET_HELP.contains("Usage: ripr agent packet"));
         assert!(AGENT_PACKET_HELP.contains("agent-seam-packets-json"));
-        assert!(AGENT_VERIFY_HELP.starts_with("Usage: ripr agent verify"));
+        assert!(AGENT_VERIFY_HELP.starts_with("Verify static-evidence movement"));
+        assert!(AGENT_VERIFY_HELP.contains("Usage: ripr agent verify"));
         assert!(AGENT_VERIFY_HELP.contains("repo-exposure-json"));
-        assert!(AGENT_RECEIPT_HELP.starts_with("Usage: ripr agent receipt"));
+        assert!(AGENT_RECEIPT_HELP.starts_with("Write a provenance receipt"));
+        assert!(AGENT_RECEIPT_HELP.contains("Usage: ripr agent receipt"));
         assert!(AGENT_RECEIPT_HELP.contains("--verify-json PATH"));
-        assert!(AGENT_STATUS_HELP.starts_with("Usage: ripr agent status"));
+        assert!(AGENT_STATUS_HELP.starts_with("Report local agent-loop artifact state"));
+        assert!(AGENT_STATUS_HELP.contains("Usage: ripr agent status"));
         assert!(AGENT_STATUS_HELP.contains("before snapshot"));
-        assert!(AGENT_REVIEW_SUMMARY_HELP.starts_with("Usage: ripr agent review-summary"));
+        assert!(AGENT_REVIEW_SUMMARY_HELP.starts_with("Summarize agent-loop artifacts"));
+        assert!(AGENT_REVIEW_SUMMARY_HELP.contains("Usage: ripr agent review-summary"));
         assert!(AGENT_REVIEW_SUMMARY_HELP.contains("Human Markdown is the default"));
-        assert!(EXPLAIN_HELP.starts_with("Usage: ripr explain"));
-        assert!(CONTEXT_HELP.starts_with("Usage: ripr context"));
-        assert!(DOCTOR_HELP.starts_with("Usage: ripr doctor [--root PATH]"));
+        assert!(EXPLAIN_HELP.starts_with("Print why ripr flagged"));
+        assert!(EXPLAIN_HELP.contains("Usage: ripr explain"));
+        assert!(CONTEXT_HELP.starts_with("Print the per-change context packet"));
+        assert!(CONTEXT_HELP.contains("Usage: ripr context"));
+        assert!(DOCTOR_HELP.starts_with("Diagnose the local ripr setup"));
+        assert!(DOCTOR_HELP.contains("Usage: ripr doctor [--root PATH]"));
         assert!(DOCTOR_HELP.contains("Cargo.toml"));
+        assert!(LSP_HELP.starts_with("Start the experimental ripr LSP server"));
         assert!(LSP_HELP.contains("--stdio"));
         assert!(LSP_HELP.contains("--version"));
     }

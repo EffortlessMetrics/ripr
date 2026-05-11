@@ -183,7 +183,8 @@ fn help_runs() {
     let output = run_ripr(&["--help"]);
     assert_success(&output);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("static RIPR"));
+    assert!(stdout.contains("find changed Rust code where nearby tests"));
+    assert!(stdout.contains("Usage:"));
 }
 
 #[test]
