@@ -39,7 +39,7 @@ Under the hood, ripr uses the RIPR model: **Reachability**, **Infection**,
 **Propagation**, and **Revealability**. JSON output, specs, and report
 artifacts keep this precise vocabulary; the editor and first-hour docs lead
 with plain language and use the internal terms only where they earn their
-keep.
+keep. [Terminology](docs/TERMINOLOGY.md) is the bridge.
 
 ## The Problem
 
@@ -399,6 +399,7 @@ Start here:
 | Need | Doc |
 | --- | --- |
 | Choose the first-hour path by user type | [Quickstart](docs/QUICKSTART.md) |
+| Map plain language to the internal model | [Terminology](docs/TERMINOLOGY.md) |
 | Understand the model | [Static exposure model](docs/STATIC_EXPOSURE_MODEL.md) |
 | Understand JSON/context output | [Output schema](docs/OUTPUT_SCHEMA.md) |
 | Turn seam evidence into a test | [Targeted test workflow](docs/TARGETED_TEST_WORKFLOW.md) |

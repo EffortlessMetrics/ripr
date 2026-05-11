@@ -83,7 +83,9 @@ The extension owns normal first-run server provisioning. A separate
 environments.
 
 For the complete saved-workspace loop from diagnostic to receipt, see
-[Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md).
+[Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md). For the plain-language
+↔ internal vocabulary bridge (seam, discriminator, grip, canonical gap, etc.),
+see [Terminology](TERMINOLOGY.md).
 
 ## Settings
 

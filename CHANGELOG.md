@@ -29,6 +29,10 @@ Planned scope:
   `README.md`, `editors/vscode/README.md`, `docs/QUICKSTART.md`, and
   `docs/EDITOR_EXTENSION.md`. Internal vocabulary (seams, discriminators,
   status IDs, schemas, commands) is unchanged.
+- Added [docs/TERMINOLOGY.md](docs/TERMINOLOGY.md): plain-language ↔ internal
+  vocabulary bridge linked from `README.md`, `docs/QUICKSTART.md`,
+  `docs/EDITOR_EXTENSION.md`, and `editors/vscode/README.md`. No schema, JSON,
+  status ID, or command renames.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 
