@@ -20344,7 +20344,12 @@ fn evaluate_semantic_no_panic_policy(
                     );
                     report.stale_entries.push(message.clone());
                     report.violations.push(message);
-                } else if actual != expected {
+                } else if actual < expected {
+                    report.advisory_drift.push(format!(
+                        "stale-count drift: {} expected entry match count {expected}, matched {actual} (entry match count shrank; debt moved or was removed)",
+                        panic_allow_entry_label(entry)
+                    ));
+                } else if actual > expected {
                     let message = if expected == 1 {
                         format!(
                             "ambiguous semantic allowlist entry: {} matches {actual} current findings",
@@ -20352,7 +20357,7 @@ fn evaluate_semantic_no_panic_policy(
                         )
                     } else {
                         format!(
-                            "counted entry mismatch: {} expected {expected} findings, matched {actual}",
+                            "count exceeded: {} expected entry match count {expected}, matched {actual} (new panic-family call site under existing entry)",
                             panic_allow_entry_label(entry)
                         )
                     };
@@ -24282,7 +24287,7 @@ column = 5
     }
 
     #[test]
-    fn no_panic_policy_counted_entry_rejects_wrong_count() -> Result<(), String> {
+    fn no_panic_policy_counted_entry_too_few_is_advisory_drift() -> Result<(), String> {
         let findings = vec![
             semantic_panic_finding(20, "my_fn", Some("left()")),
             semantic_panic_finding(30, "my_fn", Some("right()")),
@@ -24293,13 +24298,68 @@ column = 5
         }
 
         let report = evaluate_semantic_no_panic_policy(&findings, &[entry]);
+        if !report.violations.is_empty() {
+            return Err(format!(
+                "expected entry match count {{3}} with actual {{2}} should be advisory drift, not a violation; got: {:?}",
+                report.violations
+            ));
+        }
+        if !report
+            .advisory_drift
+            .iter()
+            .any(|d| d.contains("stale-count drift"))
+        {
+            return Err(format!(
+                "expected stale-count drift advisory when entry match count shrank, got: {:?}",
+                report.advisory_drift
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn no_panic_policy_counted_entry_too_many_is_count_exceeded() -> Result<(), String> {
+        let findings = vec![
+            semantic_panic_finding(20, "my_fn", Some("left()")),
+            semantic_panic_finding(30, "my_fn", Some("right()")),
+            semantic_panic_finding(40, "my_fn", Some("third()")),
+        ];
+        let mut entry = semantic_panic_entry("panic-0001", "my_fn", None, None);
+        if let PanicAllowEntryVersioned::V2(ref mut v2) = entry {
+            v2.count = Some(2);
+        }
+
+        let report = evaluate_semantic_no_panic_policy(&findings, &[entry]);
         if !report
             .violations
             .iter()
-            .any(|v| v.contains("counted entry mismatch"))
+            .any(|v| v.contains("count exceeded"))
         {
             return Err(format!(
-                "count=3 entry matching 2 findings should produce mismatch violation, got: {:?}",
+                "expected entry match count {{2}} with actual {{3}} should produce 'count exceeded' violation, got: {:?}",
+                report.violations
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn no_panic_policy_default_count_one_multi_match_remains_ambiguous() -> Result<(), String> {
+        let findings = vec![
+            semantic_panic_finding(20, "my_fn", Some("left()")),
+            semantic_panic_finding(30, "my_fn", Some("right()")),
+        ];
+        // No explicit count; defaults to 1.
+        let entry = semantic_panic_entry("panic-0001", "my_fn", None, None);
+
+        let report = evaluate_semantic_no_panic_policy(&findings, &[entry]);
+        if !report
+            .violations
+            .iter()
+            .any(|v| v.contains("ambiguous semantic allowlist entry"))
+        {
+            return Err(format!(
+                "default entry match count {{1}} with actual {{2}} should preserve 'ambiguous semantic allowlist entry' wording, got: {:?}",
                 report.violations
             ));
         }
