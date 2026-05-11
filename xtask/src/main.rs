@@ -19887,6 +19887,7 @@ struct PanicFamilySelector {
     callee: Option<String>,
     receiver_fingerprint: Option<String>,
     text_contains: Option<String>,
+    snippet: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -19906,6 +19907,7 @@ struct PanicAllowEntryV2 {
     expires: Option<String>,
     selector: Option<PanicFamilySelector>,
     last_seen: Option<PanicFamilyLastSeen>,
+    count: Option<usize>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -20208,6 +20210,11 @@ fn semantic_selector_matches(
         && (selector.callee.is_none() || finding.callee.as_ref() == selector.callee.as_ref())
         && (selector.receiver_fingerprint.is_none()
             || finding.receiver_fingerprint.as_ref() == selector.receiver_fingerprint.as_ref())
+        && (selector.snippet.is_none()
+            || selector
+                .snippet
+                .as_deref()
+                .is_some_and(|s| finding.snippet_fingerprint.contains(s)))
 }
 
 #[derive(Default, Debug, Clone, Eq, PartialEq)]
@@ -20328,24 +20335,34 @@ fn evaluate_semantic_no_panic_policy(
                         .or_default()
                         .push(panic_allow_entry_label(entry));
                 }
-                match match_counts_by_entry[index] {
-                    0 => {
-                        let message = format!(
-                            "stale semantic allowlist entry: {} selector does not match any current finding",
+                let expected = v2.count.unwrap_or(1);
+                let actual = match_counts_by_entry[index];
+                if actual == 0 {
+                    let message = format!(
+                        "stale semantic allowlist entry: {} selector does not match any current finding",
+                        panic_allow_entry_label(entry)
+                    );
+                    report.stale_entries.push(message.clone());
+                    report.violations.push(message);
+                } else if actual < expected {
+                    report.advisory_drift.push(format!(
+                        "stale-count drift: {} expected entry match count {expected}, matched {actual} (entry match count shrank; debt moved or was removed)",
+                        panic_allow_entry_label(entry)
+                    ));
+                } else if actual > expected {
+                    let message = if expected == 1 {
+                        format!(
+                            "ambiguous semantic allowlist entry: {} matches {actual} current findings",
                             panic_allow_entry_label(entry)
-                        );
-                        report.stale_entries.push(message.clone());
-                        report.violations.push(message);
-                    }
-                    1 => {}
-                    count => {
-                        let message = format!(
-                            "ambiguous semantic allowlist entry: {} matches {count} current findings",
+                        )
+                    } else {
+                        format!(
+                            "count exceeded: {} expected entry match count {expected}, matched {actual} (new panic-family call site under existing entry)",
                             panic_allow_entry_label(entry)
-                        );
-                        report.warnings.push(message.clone());
-                        report.violations.push(message);
-                    }
+                        )
+                    };
+                    report.warnings.push(message.clone());
+                    report.violations.push(message);
                 }
             }
         }
@@ -20573,6 +20590,7 @@ fn selector_from_semantic_panic_finding(finding: &SemanticPanicFinding) -> Panic
             callee: None,
             receiver_fingerprint: None,
             text_contains: Some(finding.snippet_fingerprint.clone()),
+            snippet: None,
         };
     }
 
@@ -20582,6 +20600,7 @@ fn selector_from_semantic_panic_finding(finding: &SemanticPanicFinding) -> Panic
         callee: finding.callee.clone(),
         receiver_fingerprint: finding.receiver_fingerprint.clone(),
         text_contains: None,
+        snippet: None,
     }
 }
 
@@ -20862,14 +20881,15 @@ fn panic_allow_entry_matches(
 
 fn semantic_selector_identity(entry: &PanicAllowEntryV2, selector: &PanicFamilySelector) -> String {
     format!(
-        "path={}|family={}|kind={}|container={}|callee={}|receiver={}|text={}",
+        "path={}|family={}|kind={}|container={}|callee={}|receiver={}|text={}|snippet={}",
         entry.path,
         entry.family,
         selector.kind,
         selector.container.as_deref().unwrap_or(""),
         selector.callee.as_deref().unwrap_or(""),
         selector.receiver_fingerprint.as_deref().unwrap_or(""),
-        selector.text_contains.as_deref().unwrap_or("")
+        selector.text_contains.as_deref().unwrap_or(""),
+        selector.snippet.as_deref().unwrap_or("")
     )
 }
 
@@ -20896,12 +20916,13 @@ fn panic_allow_entry_label(entry: &PanicAllowEntryVersioned) -> String {
 
 fn panic_selector_label(selector: &PanicFamilySelector) -> String {
     format!(
-        "selector={} container={} callee={} receiver={} text={}",
+        "selector={} container={} callee={} receiver={} text={} snippet={}",
         selector.kind,
         selector.container.as_deref().unwrap_or(""),
         selector.callee.as_deref().unwrap_or(""),
         selector.receiver_fingerprint.as_deref().unwrap_or(""),
-        selector.text_contains.as_deref().unwrap_or("")
+        selector.text_contains.as_deref().unwrap_or(""),
+        selector.snippet.as_deref().unwrap_or("")
     )
 }
 
@@ -21176,6 +21197,10 @@ fn check_old_panic_allowlist_exists() -> Result<(), String> {
 }
 
 #[derive(Debug, Clone)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "V2 grows with exact-identity snippet/count fields; boxing is a post-0.5.1 refactor"
+)]
 enum PanicAllowEntryVersioned {
     V1(PanicAllowEntry),
     V2(PanicAllowEntryV2),
@@ -21201,8 +21226,10 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
     let mut selector_callee: Option<String> = None;
     let mut selector_receiver_fingerprint: Option<String> = None;
     let mut selector_text_contains: Option<String> = None;
+    let mut selector_snippet: Option<String> = None;
     let mut last_seen_line: usize = 0;
     let mut last_seen_column: Option<usize> = None;
+    let mut entry_count: Option<usize> = None;
 
     let mut in_allow_section = false;
     let mut in_selector_section = false;
@@ -21220,11 +21247,13 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
                        e_owner: &Option<String>,
                        e_explanation: &str,
                        e_expires: &Option<String>,
+                       e_count: Option<usize>,
                        s_kind: &str,
                        s_container: &Option<String>,
                        s_callee: &Option<String>,
                        s_receiver_fp: &Option<String>,
                        s_text_contains: &Option<String>,
+                       s_snippet: &Option<String>,
                        ls_line: usize,
                        ls_column: Option<usize>,
                        schema_version: &str,
@@ -21285,6 +21314,7 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
                 callee: s_callee.clone(),
                 receiver_fingerprint: s_receiver_fp.clone(),
                 text_contains: s_text_contains.clone(),
+                snippet: s_snippet.clone(),
             };
             let last_seen = if ls_line > 0 {
                 Some(PanicFamilyLastSeen {
@@ -21304,6 +21334,7 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
                 expires: e_expires.clone(),
                 selector: Some(selector),
                 last_seen,
+                count: e_count,
             };
             validate_panic_allow_entry_v2(&entry, path, start_line, schema_version)?;
             Ok(Some(PanicAllowEntryVersioned::V2(entry)))
@@ -21382,11 +21413,13 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
                 &entry_owner,
                 &entry_explanation,
                 &entry_expires,
+                entry_count,
                 &selector_kind,
                 &selector_container,
                 &selector_callee,
                 &selector_receiver_fingerprint,
                 &selector_text_contains,
+                &selector_snippet,
                 last_seen_line,
                 last_seen_column,
                 &schema_version,
@@ -21412,8 +21445,10 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
             selector_callee = None;
             selector_receiver_fingerprint = None;
             selector_text_contains = None;
+            selector_snippet = None;
             last_seen_line = 0;
             last_seen_column = None;
+            entry_count = None;
 
             in_selector_section = false;
             in_last_seen_section = false;
@@ -21452,6 +21487,9 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
                 }
                 "text_contains" => {
                     selector_text_contains = Some(parse_string_value(value, path, line_number)?);
+                }
+                "snippet" => {
+                    selector_snippet = Some(parse_string_value(value, path, line_number)?);
                 }
                 _ => {
                     return Err(format!(
@@ -21492,6 +21530,7 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
             "owner" => entry_owner = Some(parse_string_value(value, path, line_number)?),
             "explanation" => entry_explanation = parse_string_value(value, path, line_number)?,
             "expires" => entry_expires = Some(parse_string_value(value, path, line_number)?),
+            "count" => entry_count = Some(parse_usize_value(value, path, line_number)?),
             _ => {
                 return Err(format!(
                     "{path}:{line_number} unknown field '{key}' in [[allow]] section"
@@ -21512,11 +21551,13 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
         &entry_owner,
         &entry_explanation,
         &entry_expires,
+        entry_count,
         &selector_kind,
         &selector_container,
         &selector_callee,
         &selector_receiver_fingerprint,
         &selector_text_contains,
+        &selector_snippet,
         last_seen_line,
         last_seen_column,
         &schema_version,
@@ -22147,11 +22188,13 @@ mod tests {
                 callee: Some("unwrap".to_string()),
                 receiver_fingerprint: receiver_fingerprint.map(str::to_string),
                 text_contains: None,
+                snippet: None,
             }),
             last_seen: last_seen_line.map(|line| PanicFamilyLastSeen {
                 line,
                 column: Some(5),
             }),
+            count: None,
         })
     }
 
@@ -23524,6 +23567,7 @@ explanation = "Duplicate entry"
             callee: Some("unwrap".to_string()),
             receiver_fingerprint: None,
             text_contains: None,
+            snippet: None,
         };
         let finding_at_10 = SemanticPanicFinding {
             path: "src/lib.rs".to_string(),
@@ -23566,6 +23610,7 @@ explanation = "Duplicate entry"
             callee: Some("unwrap".to_string()),
             receiver_fingerprint: Some("left_side()".to_string()),
             text_contains: None,
+            snippet: None,
         };
         let matching = SemanticPanicFinding {
             path: "src/lib.rs".to_string(),
@@ -23600,6 +23645,7 @@ explanation = "Duplicate entry"
             callee: Some("panic!".to_string()),
             receiver_fingerprint: None,
             text_contains: None,
+            snippet: None,
         };
         let finding = SemanticPanicFinding {
             path: "src/lib.rs".to_string(),
@@ -23635,6 +23681,7 @@ explanation = "Duplicate entry"
             callee: Some("panic".to_string()),
             receiver_fingerprint: None,
             text_contains: None,
+            snippet: None,
         };
         let finding = SemanticPanicFinding {
             path: "src/lib.rs".to_string(),
@@ -23668,6 +23715,7 @@ explanation = "Duplicate entry"
             callee: None,
             receiver_fingerprint: None,
             text_contains: Some("error".to_string()),
+            snippet: None,
         };
         let finding = SemanticPanicFinding {
             path: "src/lib.rs".to_string(),
@@ -23689,6 +23737,7 @@ explanation = "Duplicate entry"
             callee: None,
             receiver_fingerprint: None,
             text_contains: None,
+            snippet: None,
         };
         if semantic_selector_matches(&selector_no_text, &finding) {
             return Err(
@@ -23713,6 +23762,7 @@ explanation = "Duplicate entry"
             callee: Some("unwrap".to_string()),
             receiver_fingerprint: None,
             text_contains: None,
+            snippet: None,
         };
         let macro_finding = SemanticPanicFinding {
             path: "src/lib.rs".to_string(),
@@ -23734,6 +23784,7 @@ explanation = "Duplicate entry"
             callee: None,
             receiver_fingerprint: None,
             text_contains: None,
+            snippet: None,
         };
         if semantic_selector_matches(&invalid_selector, &macro_finding) {
             return Err("invalid selector kind should reject all findings".to_string());
@@ -23866,6 +23917,7 @@ kind = "string_literal"
             callee: Some("unwrap".to_string()),
             receiver_fingerprint: None,
             text_contains: None,
+            snippet: None,
         };
         // Option::unwrap(x) produces kind=call, not method_call
         let call_finding = SemanticPanicFinding {
@@ -23892,6 +23944,7 @@ kind = "string_literal"
             callee: Some("unwrap".to_string()),
             receiver_fingerprint: None,
             text_contains: None,
+            snippet: None,
         };
         let method_finding = SemanticPanicFinding {
             path: "src/lib.rs".to_string(),
@@ -24210,6 +24263,215 @@ column = 5
             ));
         }
         Ok(())
+    }
+
+    #[test]
+    fn no_panic_policy_counted_entry_allows_exact_match() -> Result<(), String> {
+        let findings = vec![
+            semantic_panic_finding(20, "my_fn", Some("left()")),
+            semantic_panic_finding(30, "my_fn", Some("right()")),
+        ];
+        let mut entry = semantic_panic_entry("panic-0001", "my_fn", None, None);
+        if let PanicAllowEntryVersioned::V2(ref mut v2) = entry {
+            v2.count = Some(2);
+        }
+
+        let report = evaluate_semantic_no_panic_policy(&findings, &[entry]);
+        if !report.violations.is_empty() {
+            return Err(format!(
+                "count=2 entry matching 2 findings should have no violations, got: {:?}",
+                report.violations
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn no_panic_policy_counted_entry_too_few_is_advisory_drift() -> Result<(), String> {
+        let findings = vec![
+            semantic_panic_finding(20, "my_fn", Some("left()")),
+            semantic_panic_finding(30, "my_fn", Some("right()")),
+        ];
+        let mut entry = semantic_panic_entry("panic-0001", "my_fn", None, None);
+        if let PanicAllowEntryVersioned::V2(ref mut v2) = entry {
+            v2.count = Some(3);
+        }
+
+        let report = evaluate_semantic_no_panic_policy(&findings, &[entry]);
+        if !report.violations.is_empty() {
+            return Err(format!(
+                "expected entry match count {{3}} with actual {{2}} should be advisory drift, not a violation; got: {:?}",
+                report.violations
+            ));
+        }
+        if !report
+            .advisory_drift
+            .iter()
+            .any(|d| d.contains("stale-count drift"))
+        {
+            return Err(format!(
+                "expected stale-count drift advisory when entry match count shrank, got: {:?}",
+                report.advisory_drift
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn no_panic_policy_counted_entry_too_many_is_count_exceeded() -> Result<(), String> {
+        let findings = vec![
+            semantic_panic_finding(20, "my_fn", Some("left()")),
+            semantic_panic_finding(30, "my_fn", Some("right()")),
+            semantic_panic_finding(40, "my_fn", Some("third()")),
+        ];
+        let mut entry = semantic_panic_entry("panic-0001", "my_fn", None, None);
+        if let PanicAllowEntryVersioned::V2(ref mut v2) = entry {
+            v2.count = Some(2);
+        }
+
+        let report = evaluate_semantic_no_panic_policy(&findings, &[entry]);
+        if !report
+            .violations
+            .iter()
+            .any(|v| v.contains("count exceeded"))
+        {
+            return Err(format!(
+                "expected entry match count {{2}} with actual {{3}} should produce 'count exceeded' violation, got: {:?}",
+                report.violations
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn no_panic_policy_default_count_one_multi_match_remains_ambiguous() -> Result<(), String> {
+        let findings = vec![
+            semantic_panic_finding(20, "my_fn", Some("left()")),
+            semantic_panic_finding(30, "my_fn", Some("right()")),
+        ];
+        // No explicit count; defaults to 1.
+        let entry = semantic_panic_entry("panic-0001", "my_fn", None, None);
+
+        let report = evaluate_semantic_no_panic_policy(&findings, &[entry]);
+        if !report
+            .violations
+            .iter()
+            .any(|v| v.contains("ambiguous semantic allowlist entry"))
+        {
+            return Err(format!(
+                "default entry match count {{1}} with actual {{2}} should preserve 'ambiguous semantic allowlist entry' wording, got: {:?}",
+                report.violations
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn no_panic_policy_snippet_narrows_to_matching_finding() -> Result<(), String> {
+        let findings = vec![
+            SemanticPanicFinding {
+                path: "src/lib.rs".to_string(),
+                family: "unwrap".to_string(),
+                kind: "method_call".to_string(),
+                line: 10,
+                column: Some(5),
+                container: Some("my_fn".to_string()),
+                callee: Some("unwrap".to_string()),
+                receiver_fingerprint: None,
+                snippet_fingerprint: "SystemTime::now().duration_since(UNIX_EPOCH).unwrap()"
+                    .to_string(),
+            },
+            SemanticPanicFinding {
+                path: "src/lib.rs".to_string(),
+                family: "unwrap".to_string(),
+                kind: "method_call".to_string(),
+                line: 20,
+                column: Some(5),
+                container: Some("my_fn".to_string()),
+                callee: Some("unwrap".to_string()),
+                receiver_fingerprint: None,
+                snippet_fingerprint: "some_result.unwrap()".to_string(),
+            },
+        ];
+        let mut entry = semantic_panic_entry("panic-0001", "my_fn", None, None);
+        if let PanicAllowEntryVersioned::V2(ref mut v2) = entry
+            && let Some(ref mut sel) = v2.selector
+        {
+            sel.snippet = Some("UNIX_EPOCH".to_string());
+        }
+
+        let report = evaluate_semantic_no_panic_policy(&findings, &[entry]);
+        // The second finding (some_result.unwrap()) should be unallowed.
+        if !report
+            .unallowed_findings
+            .iter()
+            .any(|f| f.contains("src/lib.rs:20"))
+        {
+            return Err(format!(
+                "finding at line 20 should be unallowed when snippet only matches line 10, got: {:?}",
+                report.unallowed_findings
+            ));
+        }
+        if report
+            .violations
+            .iter()
+            .any(|v| v.contains("src/lib.rs:10"))
+        {
+            return Err(format!(
+                "finding at line 10 should be allowed by snippet, but got violation: {:?}",
+                report.violations
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_no_panic_allowlist_toml_parses_snippet_and_count() -> Result<(), String> {
+        with_temp_cwd("snippet_count_parsing", |root| {
+            let toml_content = r#"schema_version = "0.3"
+
+[[allow]]
+id = "panic-0001"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+owner = "test-infra"
+explanation = "Exactly two unwrap calls in setup helper"
+expires = "2026-12-31"
+count = 2
+
+[allow.selector]
+kind = "method_call"
+container = "setup_helper"
+callee = "unwrap"
+snippet = "duration_since(UNIX_EPOCH)"
+"#;
+            write(&root.join("allowlist.toml"), toml_content);
+            let toml_path = root
+                .join("allowlist.toml")
+                .to_str()
+                .ok_or("non-UTF-8 path")?
+                .to_string();
+            let entries = parse_no_panic_allowlist_toml_v2(&toml_path)
+                .map_err(|e| format!("parse failed: {e}"))?;
+            if entries.len() != 1 {
+                return Err(format!("expected 1 entry, got {}", entries.len()));
+            }
+            let PanicAllowEntryVersioned::V2(ref v2) = entries[0] else {
+                return Err("expected V2 entry".to_string());
+            };
+            if v2.count != Some(2) {
+                return Err(format!("expected count=2, got {:?}", v2.count));
+            }
+            let sel = v2.selector.as_ref().ok_or("expected selector")?;
+            if sel.snippet.as_deref() != Some("duration_since(UNIX_EPOCH)") {
+                return Err(format!(
+                    "expected snippet=duration_since(UNIX_EPOCH), got {:?}",
+                    sel.snippet
+                ));
+            }
+            Ok(())
+        })
     }
 
     #[test]
