@@ -129,6 +129,7 @@ Templates:
 - [ADR template](templates/ADR_TEMPLATE.md)
 - [Spec template](templates/SPEC_TEMPLATE.md)
 - [Proposal template](templates/PROPOSAL_TEMPLATE.md)
+- [Handoff template](templates/HANDOFF_TEMPLATE.md)
 
 ## Explanation
 
@@ -140,6 +141,7 @@ Current explanation docs:
 - [Architecture](ARCHITECTURE.md)
 - [Roadmap](ROADMAP.md)
 - [Repo tracking model](REPO_TRACKING_MODEL.md)
+- [Repo context system](agent-context/CONTEXT_SYSTEM.md)
 - [Implementation plan](IMPLEMENTATION_PLAN.md)
 - [Implementation campaigns](IMPLEMENTATION_CAMPAIGNS.md)
 - [Proposals](proposals/README.md)
