@@ -138,6 +138,8 @@ mod tests {
                 stop_reasons: vec![],
                 related_tests: vec![],
                 recommended_next_step: None,
+                language: None,
+                language_status: None,
             }],
         };
 
@@ -189,6 +191,8 @@ mod tests {
                 stop_reasons: vec![],
                 related_tests: vec![],
                 recommended_next_step: Some("Add discriminator assertion".to_string()),
+                language: None,
+                language_status: None,
             }],
         };
 
@@ -240,6 +244,8 @@ mod tests {
                 recommended_next_step: Some(
                     "Add: case, with 100% coverage\nthen verify\routcome".to_string(),
                 ),
+                language: None,
+                language_status: None,
             }],
         }
     }

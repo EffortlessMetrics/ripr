@@ -80,7 +80,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/rust-adapter-behind-boundary"
-status = "active"
+status = "done"
 branch = "analysis-rust-adapter-behind-boundary"
 stackable = false
 blocked_by = [
@@ -101,13 +101,24 @@ commands = [
 
 [[work_item]]
 id = "output/language-metadata"
-status = "blocked"
+status = "active"
 branch = "output-language-metadata"
 stackable = false
 blocked_by = [
   "analysis/rust-adapter-behind-boundary",
 ]
 acceptance = "Add additive optional `language`, `language_status`, `owner_kind`, and `static_limit_kind` fields to existing reports without changing their schema versions or Rust-only outputs"
+commands = [
+  "cargo check -p ripr",
+  "cargo test -p ripr --lib",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-workspace-shape",
+  "cargo xtask check-pr",
+]
 
 [[work_item]]
 id = "analysis/typescript-preview-adapter"

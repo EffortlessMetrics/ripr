@@ -999,6 +999,8 @@ mod tests {
             stop_reasons: Vec::new(),
             related_tests: related,
             recommended_next_step: None,
+            language: None,
+            language_status: None,
         }
     }
 

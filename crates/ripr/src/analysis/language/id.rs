@@ -1,20 +1,12 @@
-//! Language identifiers.
+//! Language identifiers (re-exported from the domain layer).
 //!
 //! See `docs/specs/RIPR-SPEC-0026-language-adapter-contract.md`.
 //!
-//! `LanguageStatus` (`Stable` vs `Preview`) and the wire-string helpers are
-//! deferred to the output-metadata work item in Campaign 27 where they gain
-//! real serialization consumers alongside the additive optional `language`
-//! and `language_status` output fields.
+//! `LanguageId` is canonical in `crate::domain` so output renderers can
+//! serialize it without depending on the analysis layer. This module
+//! re-exports it (and `LanguageStatus`) for the analysis-side adapter
+//! seam.
 
-/// The set of source languages an adapter can identify itself as.
-///
-/// `Rust` is the reference language. `TypeScript` and `Python` are preview
-/// adapters added in later work items in Campaign 27. Adding a new variant
-/// here is a deliberate contract change and must update RIPR-SPEC-0026.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum LanguageId {
-    Rust,
-    TypeScript,
-    Python,
-}
+// LanguageStatus is reached via `crate::domain::LanguageStatus` directly;
+// it has no analysis-side consumer in this work item.
+pub(crate) use crate::domain::LanguageId;

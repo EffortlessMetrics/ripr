@@ -224,6 +224,8 @@ mod tests {
                 oracle_strength: OracleStrength::Weak,
             }],
             recommended_next_step: Some("add stronger assertion".to_string()),
+            language: None,
+            language_status: None,
         }
     }
 

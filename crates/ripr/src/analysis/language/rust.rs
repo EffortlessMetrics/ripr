@@ -54,7 +54,10 @@ impl LanguageAdapter for RustAdapter {
             changed_rust_files += 1;
             let probes = probes::probes_for_file(&options.root, changed, &index);
             for probe in probes {
-                findings.push(classifier::classify_probe(&probe, &index));
+                let mut finding = classifier::classify_probe(&probe, &index);
+                finding.language = Some(LanguageId::Rust);
+                // `language_status` is omitted for Rust per RIPR-SPEC-0026.
+                findings.push(finding);
             }
         }
 
@@ -90,7 +93,10 @@ impl LanguageAdapter for RustAdapter {
         for path in &production_files {
             let probes = probes::probes_for_repo_file(&options.root, path, &index);
             for probe in probes {
-                findings.push(classifier::classify_probe(&probe, &index));
+                let mut finding = classifier::classify_probe(&probe, &index);
+                finding.language = Some(LanguageId::Rust);
+                // `language_status` is omitted for Rust per RIPR-SPEC-0026.
+                findings.push(finding);
             }
         }
 

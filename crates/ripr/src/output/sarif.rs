@@ -772,6 +772,8 @@ weakly_gripped = "note"
                 oracle_strength: OracleStrength::Strong,
             }],
             recommended_next_step: Some("Add an equality-boundary assertion".to_string()),
+            language: None,
+            language_status: None,
         }
     }
 

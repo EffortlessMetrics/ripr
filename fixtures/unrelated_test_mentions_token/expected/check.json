@@ -48,7 +48,8 @@
       "oracle_kind": "unknown",
       "oracle_strength": "none",
       "recommended_next_step": "Add or identify a test path that reaches the changed owner, or run ready-mode mutation to confirm coverage.",
-      "suggested_next_action": "Add or identify a test path that reaches the changed owner, or run ready-mode mutation to confirm coverage."
+      "suggested_next_action": "Add or identify a test path that reaches the changed owner, or run ready-mode mutation to confirm coverage.",
+      "language": "rust"
     }
   ]
 }

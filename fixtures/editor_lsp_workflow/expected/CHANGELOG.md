@@ -6,3 +6,15 @@
   boundary-gap behavior while pinning the saved-workspace editor projection:
   diagnostics, hover, code actions, first-useful-action status, stale refresh
   guidance, and static-only limits.
+
+## Pending
+
+Reason:
+RIPR-SPEC-0026 output(language): RustAdapter tags each Finding with language=rust; check.json gains the additive optional language field
+
+Command:
+`cargo xtask goldens bless editor_lsp_workflow --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

@@ -89,6 +89,11 @@ pub fn classify_probe(probe: &Probe, index: &RustIndex) -> Finding {
         stop_reasons,
         related_tests: related,
         recommended_next_step,
+        // Language metadata is populated by the per-language adapter
+        // (e.g. `analysis::language::RustAdapter::analyze_diff`) after
+        // classification. The classifier itself stays language-neutral.
+        language: None,
+        language_status: None,
     }
 }
 

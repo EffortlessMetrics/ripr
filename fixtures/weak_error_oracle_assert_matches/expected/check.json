@@ -80,7 +80,8 @@
       "oracle_kind": "exact_error_variant",
       "oracle_strength": "medium",
       "recommended_next_step": "Strengthen the related assertion so it discriminates the changed behavior.",
-      "suggested_next_action": "Strengthen the related assertion so it discriminates the changed behavior."
+      "suggested_next_action": "Strengthen the related assertion so it discriminates the changed behavior.",
+      "language": "rust"
     },
     {
       "id": "probe:src_lib.rs:7:error_path",
@@ -156,7 +157,8 @@
       "oracle_kind": "exact_error_variant",
       "oracle_strength": "strong",
       "recommended_next_step": "",
-      "suggested_next_action": ""
+      "suggested_next_action": "",
+      "language": "rust"
     },
     {
       "id": "probe:src_lib.rs:7:return_value",
@@ -232,7 +234,8 @@
       "oracle_kind": "exact_error_variant",
       "oracle_strength": "strong",
       "recommended_next_step": "",
-      "suggested_next_action": ""
+      "suggested_next_action": "",
+      "language": "rust"
     }
   ]
 }

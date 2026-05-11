@@ -78,7 +78,8 @@
       "oracle_kind": "snapshot",
       "oracle_strength": "medium",
       "recommended_next_step": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
-      "suggested_next_action": "Add boundary tests for below, equal, and above the changed threshold with exact assertions."
+      "suggested_next_action": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "language": "rust"
     }
   ]
 }
