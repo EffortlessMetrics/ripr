@@ -2,6 +2,12 @@
 
 This document is the release checklist for publishing `ripr`.
 
+Run the [Release copy checklist](RELEASE_COPY_CHECKLIST.md) before finalizing
+the GitHub Release body, triggering `publish-extension.yml`, or running
+`cargo publish`. It captures the public-surface rules (release body vs.
+process narrative, marketplace metadata, install truth, badge freshness,
+public vocabulary, asset verification) that the v0.5.0 release surfaced.
+
 ## Preconditions
 
 - The release branch has been reviewed and merged.
@@ -124,6 +130,13 @@ git push origin v0.5.0
 ```
 
 Update docs or release notes if the install command or package metadata changed.
+
+## Public-Surface Copy
+
+Before publishing, run the
+[Release copy checklist](RELEASE_COPY_CHECKLIST.md). It covers the GitHub
+Release body, marketplace metadata, README install commands, badge freshness
+disclosure, public vocabulary, and asset/dependent-channel verification.
 
 ## Recovery
 

@@ -50,6 +50,12 @@ The extension icon should be regenerated from the canonical brand asset at
 `assets/logo/ripr-icon-dark.svg`. The committed marketplace PNG derivative is
 kept at `assets/logo/ripr-icon-dark.png` and copied to `editors/vscode/icon.png`.
 
+Before triggering `publish-extension.yml`, run the
+[Release copy checklist](RELEASE_COPY_CHECKLIST.md). It covers the VSIX
+package metadata (`displayName`, `description`), the marketplace README
+opener, badge freshness disclosure, and the VSIX-rebuild step that prevents a
+stale package attached to an earlier tag from being published with old copy.
+
 ## Local Package Gates
 
 ```bash

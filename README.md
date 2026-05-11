@@ -421,7 +421,7 @@ Start here:
 | Understand dogfooding | [Dogfooding](docs/DOGFOODING.md) |
 | Understand docs organization | [Documentation system](docs/DOCUMENTATION.md) |
 | Capture repo knowledge | [Learnings](docs/LEARNINGS.md) |
-| Release the crate or extension | [Release](docs/RELEASE.md), [Publishing](docs/PUBLISHING.md), and [Open VSX](docs/OPENVSX.md) |
+| Release the crate or extension | [Release](docs/RELEASE.md), [Release copy checklist](docs/RELEASE_COPY_CHECKLIST.md), [Publishing](docs/PUBLISHING.md), and [Open VSX](docs/OPENVSX.md) |
 | Work on extension assets | [Brand assets](assets/logo/README.md) |
 | Find repo instructions for agents | [Agent instructions](AGENTS.md) |
 

@@ -54,6 +54,14 @@ Planned scope:
   Other command palette titles are already action-oriented and stay
   unchanged. Command IDs, settings IDs, LSP requests, JSON fields, schemas,
   status IDs, report names, artifact paths, and behavior are unchanged.
+- Added [docs/RELEASE_COPY_CHECKLIST.md](docs/RELEASE_COPY_CHECKLIST.md):
+  the reusable public-surface checklist captured from the v0.5.0 release.
+  Covers GitHub Release body vs. process narrative, marketplace metadata,
+  install truth, README badge freshness disclosure, public vocabulary,
+  VSIX rebuild before publish, and dependent-channel asset verification.
+  Linked from [docs/RELEASE.md](docs/RELEASE.md),
+  [docs/RELEASE_MARKETPLACE.md](docs/RELEASE_MARKETPLACE.md), and the root
+  README docs table. No publish workflow, schema, JSON, or behavior change.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 
