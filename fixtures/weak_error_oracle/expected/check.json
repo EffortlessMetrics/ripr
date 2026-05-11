@@ -78,7 +78,8 @@
       "oracle_kind": "broad_error",
       "oracle_strength": "weak",
       "recommended_next_step": "Strengthen the related assertion so it discriminates the changed behavior.",
-      "suggested_next_action": "Strengthen the related assertion so it discriminates the changed behavior."
+      "suggested_next_action": "Strengthen the related assertion so it discriminates the changed behavior.",
+      "language": "rust"
     },
     {
       "id": "probe:src_lib.rs:7:error_path",
@@ -152,7 +153,8 @@
       "oracle_kind": "broad_error",
       "oracle_strength": "weak",
       "recommended_next_step": "Assert the exact error variant or payload instead of only is_err().",
-      "suggested_next_action": "Assert the exact error variant or payload instead of only is_err()."
+      "suggested_next_action": "Assert the exact error variant or payload instead of only is_err().",
+      "language": "rust"
     },
     {
       "id": "probe:src_lib.rs:7:return_value",
@@ -226,7 +228,8 @@
       "oracle_kind": "broad_error",
       "oracle_strength": "weak",
       "recommended_next_step": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
-      "suggested_next_action": "Replace broad assertions with exact equality or a property that constrains the changed returned value."
+      "suggested_next_action": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "language": "rust"
     }
   ]
 }

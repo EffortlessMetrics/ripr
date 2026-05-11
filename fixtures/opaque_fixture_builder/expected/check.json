@@ -56,7 +56,8 @@
       "oracle_kind": "exact_value",
       "oracle_strength": "strong",
       "recommended_next_step": "Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.",
-      "suggested_next_action": "Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml."
+      "suggested_next_action": "Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.",
+      "language": "rust"
     }
   ]
 }

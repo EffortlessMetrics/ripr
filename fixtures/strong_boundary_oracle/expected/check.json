@@ -192,7 +192,8 @@
       "oracle_kind": "exact_value",
       "oracle_strength": "strong",
       "recommended_next_step": "",
-      "suggested_next_action": ""
+      "suggested_next_action": "",
+      "language": "rust"
     }
   ]
 }

@@ -390,6 +390,8 @@ mod tests {
                 oracle_strength: OracleStrength::Strong,
             }],
             recommended_next_step: Some("Add assertion for disabled path result.".to_string()),
+            language: None,
+            language_status: None,
         }
     }
 
@@ -426,6 +428,8 @@ mod tests {
             stop_reasons: vec![],
             related_tests: vec![],
             recommended_next_step: Some("Escalate to real mutation testing.".to_string()),
+            language: None,
+            language_status: None,
         }
     }
 

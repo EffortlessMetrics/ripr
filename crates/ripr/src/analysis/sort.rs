@@ -56,6 +56,8 @@ mod tests {
             stop_reasons: Vec::new(),
             related_tests: Vec::new(),
             recommended_next_step: None,
+            language: None,
+            language_status: None,
         }
     }
 

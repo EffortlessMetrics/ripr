@@ -234,6 +234,14 @@ pub struct Finding {
     pub stop_reasons: Vec<StopReason>,
     pub related_tests: Vec<RelatedTest>,
     pub recommended_next_step: Option<String>,
+    /// Source language the adapter that produced this finding identifies as.
+    /// Additive optional per RIPR-SPEC-0026; populated by the per-language
+    /// adapter (e.g. `RustAdapter` sets `Some(LanguageId::Rust)`).
+    pub language: Option<crate::domain::LanguageId>,
+    /// Adapter status for the source language. Omitted for `Rust` per the
+    /// spec; preview adapters (TypeScript, Python) will set
+    /// `Some(LanguageStatus::Preview)` when they land.
+    pub language_status: Option<crate::domain::LanguageStatus>,
 }
 
 impl Finding {

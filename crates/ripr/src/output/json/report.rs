@@ -195,13 +195,21 @@ pub(super) fn finding_json_with_config(
         finding.recommended_next_step.as_deref().unwrap_or(""),
         true,
     );
+    let has_language = finding.language.is_some();
+    let has_status = finding.language_status.is_some();
     field(
         out,
         indent + 1,
         "suggested_next_action",
         finding.recommended_next_step.as_deref().unwrap_or(""),
-        false,
+        has_language || has_status,
     );
+    if let Some(language) = finding.language {
+        field(out, indent + 1, "language", language.as_str(), has_status);
+    }
+    if let Some(status) = finding.language_status {
+        field(out, indent + 1, "language_status", status.as_str(), false);
+    }
     out.push_str(&format!("{sp}}}"));
 }
 

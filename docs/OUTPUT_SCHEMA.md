@@ -165,7 +165,8 @@ A finding contains:
   "oracle_kind": "exact_value",
   "oracle_strength": "strong",
   "recommended_next_step": "Add boundary tests with exact assertions.",
-  "suggested_next_action": "Add boundary tests with exact assertions."
+  "suggested_next_action": "Add boundary tests with exact assertions.",
+  "language": "rust"
 }
 ```
 
@@ -181,6 +182,14 @@ The evidence-first fields are additive in schema `0.1`:
   currently visible to the finding.
 - `suggested_next_action` mirrors `recommended_next_step` for action-oriented
   integrations.
+- `language` is the per-finding source language reported by the language
+  adapter that produced it (see [RIPR-SPEC-0026](specs/RIPR-SPEC-0026-language-adapter-contract.md)).
+  Values are `rust`, `typescript`, or `python`. Omitted when no adapter
+  populated it. Rust findings always carry `language: "rust"`; TypeScript
+  and Python preview adapters land in later Campaign 27 work items.
+- `language_status` is the per-finding adapter status. Values are `stable`
+  or `preview`. **Omitted for Rust** per RIPR-SPEC-0026; preview adapters
+  (TypeScript, Python) will set `preview` when they land.
 
 ## Enums
 
