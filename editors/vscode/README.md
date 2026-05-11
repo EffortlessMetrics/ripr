@@ -102,7 +102,7 @@ confirmation.
 - `ripr: Restart Server`
 - `ripr: Show Status`
 - `ripr: Show Output`
-- `ripr: Copy Finding Context`
+- `ripr: Inspect Test Gap - Copy Context`
 - `ripr: Write Targeted Test - Copy Suggested Assertion`
 - `ripr: Write Targeted Test - Copy Brief`
 - `ripr: Agent Handoff - Copy Packet Command`

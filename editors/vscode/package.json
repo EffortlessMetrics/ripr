@@ -143,7 +143,7 @@
       },
       {
         "command": "ripr.copyContext",
-        "title": "ripr: Copy Finding Context"
+        "title": "ripr: Inspect Test Gap - Copy Context"
       },
       {
         "command": "ripr.copySuggestedAssertion",
