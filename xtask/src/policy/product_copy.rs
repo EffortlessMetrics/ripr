@@ -204,48 +204,54 @@ pub(crate) fn check_product_copy() -> Result<(), String> {
 }
 
 fn print_report(report: &ProductCopyReport) {
+    print!("{}", format_report(report));
+}
+
+pub(crate) fn format_report(report: &ProductCopyReport) -> String {
+    let mut out = String::new();
     let status = if report.findings.is_empty() {
         "pass"
     } else {
         "fail"
     };
-    println!("Status: {status}");
-    println!(
-        "Public surfaces checked: {} (bridged: {})",
+    out.push_str(&format!("Status: {status}\n"));
+    out.push_str(&format!(
+        "Public surfaces checked: {} (bridged: {})\n",
         report.total_files, report.bridged_files
-    );
+    ));
     if !report.missing_files.is_empty() {
-        println!("Missing public surface files (skipped):");
+        out.push_str("Missing public surface files (skipped):\n");
         for f in &report.missing_files {
-            println!("  - {f}");
+            out.push_str(&format!("  - {f}\n"));
         }
     }
-    println!("Allowlisted internal surfaces (not scanned):");
+    out.push_str("Allowlisted internal surfaces (not scanned):\n");
     for s in ALLOWLISTED_INTERNAL_SURFACES {
-        println!("  - {s}");
+        out.push_str(&format!("  - {s}\n"));
     }
-    println!();
+    out.push('\n');
     if report.findings.is_empty() {
-        println!("No unbridged internal vocabulary in public surfaces.");
-        return;
+        out.push_str("No unbridged internal vocabulary in public surfaces.\n");
+        return out;
     }
-    println!("Findings ({}):", report.findings.len());
+    out.push_str(&format!("Findings ({}):\n", report.findings.len()));
     let mut current_file = String::new();
     for finding in &report.findings {
         if finding.file != current_file {
             current_file = finding.file.clone();
-            println!();
-            println!("{current_file}:");
+            out.push('\n');
+            out.push_str(&format!("{current_file}:\n"));
         }
-        println!(
-            "  line {}: `{}` -> {} ({})",
+        out.push_str(&format!(
+            "  line {}: `{}` -> {} ({})\n",
             finding.line, finding.term, finding.suggestion, finding.excerpt
-        );
+        ));
     }
-    println!();
-    println!("Repair: link to docs/TERMINOLOGY.md before the internal term appears,");
-    println!("or replace with the plain-language suggestion. The bridge link makes");
-    println!("the term teachable; the suggestion makes the first-hour copy readable.");
+    out.push('\n');
+    out.push_str("Repair: link to docs/TERMINOLOGY.md before the internal term appears,\n");
+    out.push_str("or replace with the plain-language suggestion. The bridge link makes\n");
+    out.push_str("the term teachable; the suggestion makes the first-hour copy readable.\n");
+    out
 }
 
 fn repo_root() -> Result<PathBuf, String> {
@@ -346,6 +352,167 @@ mod tests {
             .copied();
         if bridged_marker.is_none() {
             return Err("expected TERMINOLOGY.md to be among the bridge patterns".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn product_copy_line_excerpt_truncates_long_lines() -> Result<(), String> {
+        let short = line_excerpt("  short line  ");
+        if short != "short line" {
+            return Err(format!("expected trimmed short line, got {short:?}"));
+        }
+        let long_input: String = "x".repeat(200);
+        let excerpt = line_excerpt(&long_input);
+        let char_count = excerpt.chars().count();
+        if char_count != 141 {
+            return Err(format!(
+                "expected truncated line to be exactly 140 chars plus ellipsis (141 total), got {char_count}"
+            ));
+        }
+        if !excerpt.ends_with('…') {
+            return Err(format!(
+                "expected truncated line to end with ellipsis, got {excerpt:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn product_copy_scan_flags_unbridged_tempdir_file() -> Result<(), String> {
+        let root = unique_temp_root("product-copy-unbridged");
+        write_synthetic_workspace(
+            &root,
+            "Find weak test oracles and write a discriminator-aware test.",
+            None,
+        )?;
+        let report = run_product_copy_scan(&root).map_err(|err| format!("scan tempdir: {err}"))?;
+        let terms: Vec<&str> = report.findings.iter().map(|f| f.term.as_str()).collect();
+        if !terms.contains(&"test oracle") {
+            return Err(format!(
+                "expected 'test oracle' to be flagged in unbridged tempdir; got terms: {terms:?}"
+            ));
+        }
+        if !terms.contains(&"discriminator") {
+            return Err(format!(
+                "expected 'discriminator' to be flagged in unbridged tempdir; got terms: {terms:?}"
+            ));
+        }
+        let formatted = format_report(&report);
+        if !formatted.contains("Status: fail") {
+            return Err(format!(
+                "expected formatted report to mark fail status; got:\n{formatted}"
+            ));
+        }
+        if !formatted.contains("Repair: link to docs/TERMINOLOGY.md") {
+            return Err(format!(
+                "expected formatted report to include repair guidance; got:\n{formatted}"
+            ));
+        }
+        clean_temp_root(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn product_copy_scan_skips_bridged_tempdir_file() -> Result<(), String> {
+        let root = unique_temp_root("product-copy-bridged");
+        let bridged_marker = "See [Terminology](https://github.com/EffortlessMetrics/ripr/blob/main/docs/TERMINOLOGY.md).";
+        write_synthetic_workspace(
+            &root,
+            &format!(
+                "{bridged_marker}\n\nFind weak test oracles and write a discriminator-aware test.\n"
+            ),
+            None,
+        )?;
+        let report = run_product_copy_scan(&root).map_err(|err| format!("scan tempdir: {err}"))?;
+        if !report.findings.is_empty() {
+            return Err(format!(
+                "expected no findings when file links to TERMINOLOGY.md; got: {:?}",
+                report.findings
+            ));
+        }
+        if report.bridged_files == 0 {
+            return Err("expected at least one bridged file to be counted".to_string());
+        }
+        let formatted = format_report(&report);
+        if !formatted.contains("Status: pass") {
+            return Err(format!(
+                "expected formatted report to mark pass status; got:\n{formatted}"
+            ));
+        }
+        if !formatted.contains("No unbridged internal vocabulary in public surfaces.") {
+            return Err(format!("expected clean-status message; got:\n{formatted}"));
+        }
+        clean_temp_root(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn product_copy_scan_records_missing_files() -> Result<(), String> {
+        let root = unique_temp_root("product-copy-missing");
+        // Build only some of the expected public-surface files; the rest should be
+        // reported as missing without producing scan errors.
+        std::fs::create_dir_all(root.join("docs"))
+            .map_err(|err| format!("create docs dir: {err}"))?;
+        std::fs::write(
+            root.join("README.md"),
+            "Bridged README. See docs/TERMINOLOGY.md.\n",
+        )
+        .map_err(|err| format!("write README.md: {err}"))?;
+        let report = run_product_copy_scan(&root).map_err(|err| format!("scan tempdir: {err}"))?;
+        if report.total_files != 1 {
+            return Err(format!(
+                "expected exactly one public-surface file to exist; got {}",
+                report.total_files
+            ));
+        }
+        let expected_missing = PUBLIC_FILES.len() - 1;
+        if report.missing_files.len() != expected_missing {
+            return Err(format!(
+                "expected {expected_missing} missing public-surface files; got {} ({:?})",
+                report.missing_files.len(),
+                report.missing_files
+            ));
+        }
+        let formatted = format_report(&report);
+        if !formatted.contains("Missing public surface files (skipped):") {
+            return Err(format!(
+                "expected formatted report to mention missing files; got:\n{formatted}"
+            ));
+        }
+        clean_temp_root(&root);
+        Ok(())
+    }
+
+    fn unique_temp_root(label: &str) -> PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!("ripr-{label}-{}-{nanos}", std::process::id()));
+        clean_temp_root(&dir);
+        dir
+    }
+
+    fn clean_temp_root(root: &Path) {
+        if root.exists() {
+            let _ = std::fs::remove_dir_all(root);
+        }
+    }
+
+    fn write_synthetic_workspace(
+        root: &Path,
+        readme_body: &str,
+        crate_readme_body: Option<&str>,
+    ) -> Result<(), String> {
+        std::fs::create_dir_all(root).map_err(|err| format!("create root: {err}"))?;
+        std::fs::write(root.join("README.md"), readme_body)
+            .map_err(|err| format!("write README.md: {err}"))?;
+        if let Some(body) = crate_readme_body {
+            std::fs::create_dir_all(root.join("crates").join("ripr"))
+                .map_err(|err| format!("create crates/ripr dir: {err}"))?;
+            std::fs::write(root.join("crates").join("ripr").join("README.md"), body)
+                .map_err(|err| format!("write crates/ripr/README.md: {err}"))?;
         }
         Ok(())
     }
