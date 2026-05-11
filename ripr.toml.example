@@ -49,3 +49,9 @@ max_related_tests = 5
 [suppressions]
 # Repo-relative, slash-separated path. Badge renderers load this path.
 path = ".ripr/suppressions.toml"
+
+[languages]
+# Per RIPR-SPEC-0026, only `rust` is enabled by default. Add `typescript` or
+# `python` to opt into preview adapters once they land in Campaign 27.
+# Valid values: rust, typescript, python.
+enabled = ["rust"]

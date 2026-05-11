@@ -7,7 +7,7 @@
 
 use crate::analysis::seams::SeamGripClass;
 use crate::app::{CheckInput, Mode};
-use crate::domain::{ExposureClass, OracleStrength};
+use crate::domain::{ExposureClass, LanguageId, OracleStrength};
 use serde::Deserialize;
 use std::path::{Component, Path, PathBuf};
 
@@ -66,6 +66,12 @@ max_related_tests = 5
 [suppressions]
 # Repo-relative, slash-separated path. Badge renderers load this path.
 path = ".ripr/suppressions.toml"
+
+[languages]
+# Per RIPR-SPEC-0026, only `rust` is enabled by default. Add `typescript` or
+# `python` to opt into preview adapters once they land in Campaign 27.
+# Valid values: rust, typescript, python.
+enabled = ["rust"]
 "#;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -76,6 +82,7 @@ pub(crate) struct RiprConfig {
     lsp: LspConfig,
     reports: ReportsConfig,
     suppressions: SuppressionsConfig,
+    languages: LanguagesConfig,
     source_path: Option<PathBuf>,
     source_text: Option<String>,
 }
@@ -103,6 +110,10 @@ impl RiprConfig {
 
     pub(crate) fn suppressions(&self) -> &SuppressionsConfig {
         &self.suppressions
+    }
+
+    pub(crate) fn languages(&self) -> &LanguagesConfig {
+        &self.languages
     }
 
     pub(crate) fn source_text(&self) -> Option<&str> {
@@ -235,6 +246,35 @@ impl SuppressionsConfig {
 
     pub(crate) fn display_path(&self) -> String {
         self.path.to_string_lossy().replace('\\', "/")
+    }
+}
+
+/// `[languages]` repository configuration per RIPR-SPEC-0026.
+///
+/// `enabled` is the ordered list of source languages the analysis pipeline
+/// will dispatch to. The default is `["rust"]`. Adding `typescript` or
+/// `python` opts in to the preview adapters once they ship.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct LanguagesConfig {
+    enabled: Vec<LanguageId>,
+}
+
+impl Default for LanguagesConfig {
+    fn default() -> Self {
+        Self {
+            enabled: vec![LanguageId::Rust],
+        }
+    }
+}
+
+impl LanguagesConfig {
+    pub(crate) fn enabled(&self) -> &[LanguageId] {
+        &self.enabled
+    }
+
+    #[cfg(test)]
+    pub(crate) fn enabled_owned(&self) -> Vec<LanguageId> {
+        self.enabled.clone()
     }
 }
 
@@ -470,8 +510,36 @@ impl RiprConfig {
         {
             config.suppressions.path = parse_relative_path("suppressions.path", &path)?;
         }
+        if let Some(languages) = raw.languages
+            && let Some(enabled) = languages.enabled
+        {
+            config.languages.enabled = parse_languages_enabled(&enabled)?;
+        }
         Ok(config)
     }
+}
+
+fn parse_languages_enabled(values: &[String]) -> Result<Vec<LanguageId>, String> {
+    let mut parsed = Vec::with_capacity(values.len());
+    for value in values {
+        let language = match value.as_str() {
+            "rust" => LanguageId::Rust,
+            "typescript" => LanguageId::TypeScript,
+            "python" => LanguageId::Python,
+            other => {
+                return Err(format!(
+                    "languages.enabled lists unknown language `{other}`; valid values are rust, typescript, python"
+                ));
+            }
+        };
+        if parsed.contains(&language) {
+            return Err(format!(
+                "languages.enabled lists `{value}` more than once; remove the duplicate"
+            ));
+        }
+        parsed.push(language);
+    }
+    Ok(parsed)
 }
 
 #[derive(Deserialize)]
@@ -483,6 +551,13 @@ struct RawConfig {
     lsp: Option<RawLspConfig>,
     reports: Option<RawReportsConfig>,
     suppressions: Option<RawSuppressionsConfig>,
+    languages: Option<RawLanguagesConfig>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawLanguagesConfig {
+    enabled: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -802,7 +877,100 @@ mod tests {
             config.reports().max_related_tests(),
             DEFAULT_CONTEXT_RELATED_TESTS
         );
+        assert_eq!(config.languages().enabled_owned(), vec![LanguageId::Rust]);
         Ok(())
+    }
+
+    #[test]
+    fn languages_section_absent_defaults_to_rust() -> Result<(), String> {
+        let config = parse_config("[analysis]\nmode = \"draft\"\n")?;
+        assert_eq!(config.languages().enabled_owned(), vec![LanguageId::Rust]);
+        Ok(())
+    }
+
+    #[test]
+    fn languages_section_present_with_only_rust_matches_default() -> Result<(), String> {
+        let config = parse_config(
+            r#"
+[languages]
+enabled = ["rust"]
+"#,
+        )?;
+        assert_eq!(config.languages().enabled_owned(), vec![LanguageId::Rust]);
+        Ok(())
+    }
+
+    #[test]
+    fn languages_section_accepts_preview_adapters_in_order() -> Result<(), String> {
+        let config = parse_config(
+            r#"
+[languages]
+enabled = ["rust", "typescript", "python"]
+"#,
+        )?;
+        assert_eq!(
+            config.languages().enabled_owned(),
+            vec![LanguageId::Rust, LanguageId::TypeScript, LanguageId::Python]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn languages_section_allows_empty_enabled_list() -> Result<(), String> {
+        let config = parse_config(
+            r#"
+[languages]
+enabled = []
+"#,
+        )?;
+        assert!(config.languages().enabled_owned().is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn languages_section_rejects_unknown_language() {
+        let err = parse_config(
+            r#"
+[languages]
+enabled = ["ruby"]
+"#,
+        )
+        .expect_err("unknown language should error");
+        assert!(
+            err.contains("ruby"),
+            "error message should name the value: {err}"
+        );
+    }
+
+    #[test]
+    fn languages_section_rejects_duplicate_entry() {
+        let err = parse_config(
+            r#"
+[languages]
+enabled = ["rust", "rust"]
+"#,
+        )
+        .expect_err("duplicate entry should error");
+        assert!(
+            err.contains("more than once"),
+            "error message should name the duplication: {err}"
+        );
+    }
+
+    #[test]
+    fn languages_section_rejects_unknown_field() {
+        let err = parse_config(
+            r#"
+[languages]
+enabled = ["rust"]
+extra = true
+"#,
+        )
+        .expect_err("unknown field should error via deny_unknown_fields");
+        assert!(
+            err.contains("extra") || err.contains("unknown field"),
+            "error message should name the unknown field: {err}"
+        );
     }
 
     #[test]

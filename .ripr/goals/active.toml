@@ -101,7 +101,7 @@ commands = [
 
 [[work_item]]
 id = "output/language-metadata"
-status = "active"
+status = "done"
 branch = "output-language-metadata"
 stackable = false
 blocked_by = [
@@ -121,12 +121,31 @@ commands = [
 ]
 
 [[work_item]]
+id = "config/languages-opt-in"
+status = "active"
+branch = "config-languages-opt-in"
+stackable = false
+blocked_by = [
+  "output/language-metadata",
+]
+acceptance = "Add `[languages] enabled` to ripr.toml with default `[\"rust\"]`, vocabulary validation (rust/typescript/python), duplicate rejection, deny-unknown-fields, and a doctor surface. Update generated `ripr init` config plus `ripr.toml.example` and `docs/CONFIGURATION.md`. No analyzer dispatch wiring yet."
+commands = [
+  "cargo check -p ripr",
+  "cargo test -p ripr --lib config::",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-workspace-shape",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
 id = "analysis/typescript-preview-adapter"
 status = "blocked"
 branch = "analysis-typescript-preview-adapter"
 stackable = false
 blocked_by = [
-  "output/language-metadata",
+  "config/languages-opt-in",
 ]
 acceptance = "Add the TypeScript/JavaScript syntax-first adapter, the TypeScript fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults"
 
@@ -136,7 +155,7 @@ status = "blocked"
 branch = "analysis-python-preview-adapter"
 stackable = false
 blocked_by = [
-  "output/language-metadata",
+  "config/languages-opt-in",
 ]
 acceptance = "Add the Python syntax-first adapter, the Python fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults"
 

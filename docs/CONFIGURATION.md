@@ -579,6 +579,12 @@ Seam severities affect LSP seam diagnostics. Valid values are `off`, `info`,
 | --- | --- | --- | --- |
 | `path` | repo-relative path | `.ripr/suppressions.toml` | Badge renderers load suppressions from this path. Absolute paths, `..`, and backslashes are rejected. |
 
+### `[languages]`
+
+| Key | Type | Default | Effect |
+| --- | --- | --- | --- |
+| `enabled` | array of strings | `["rust"]` | Language adapters the analysis pipeline will dispatch to. Valid values: `rust`, `typescript`, `python`. Unknown values and duplicate entries are rejected. TypeScript and Python are preview adapters added in later Campaign 27 work items; including them now has no effect until those adapters ship. Per [RIPR-SPEC-0026](specs/RIPR-SPEC-0026-language-adapter-contract.md), Rust remains the reference adapter and the only adapter that may be `stable`. |
+
 ### Worked example
 
 ```toml
@@ -607,6 +613,9 @@ max_related_tests = 5
 
 [suppressions]
 path = ".ripr/suppressions.toml"
+
+[languages]
+enabled = ["rust"]
 ```
 
 ## Precedence
