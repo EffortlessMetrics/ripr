@@ -286,6 +286,15 @@ reason = "Codex Goals campaign metadata."
 covered_by = ["cargo xtask check-campaign"]
 
 [[allow]]
+glob = ".ripr/goals/archive/*.toml"
+kind = "policy_metadata"
+owner = "repo-policy"
+surface = "repo"
+classification = "metadata"
+reason = "Archived closed-campaign manifests; frozen history."
+covered_by = ["cargo xtask check-campaign"]
+
+[[allow]]
 glob = "metrics/*.toml"
 kind = "policy_metadata"
 owner = "repo-policy"

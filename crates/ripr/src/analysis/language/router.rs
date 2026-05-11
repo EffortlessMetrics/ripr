@@ -1,0 +1,26 @@
+//! Language router: maps source paths to language identifiers.
+//!
+//! See `docs/specs/RIPR-SPEC-0026-language-adapter-contract.md`.
+//!
+//! Routing is path-based and stable. Per-repo opt-in for preview adapters
+//! is enforced at the pipeline layer where adapter dispatch happens.
+
+use super::LanguageId;
+use std::path::Path;
+
+/// Map a source-file path to the language adapter that should handle it.
+///
+/// Returns `None` when no adapter handles the path. Matched paths route to
+/// at most one adapter. Preview adapters (TypeScript, Python) are reported
+/// here regardless of repo configuration; the pipeline layer is responsible
+/// for honoring `[languages]` opt-in before dispatching to a preview
+/// adapter.
+pub(crate) fn route(path: &Path) -> Option<LanguageId> {
+    let ext = path.extension()?.to_str()?;
+    match ext {
+        "rs" => Some(LanguageId::Rust),
+        "ts" | "tsx" | "js" | "jsx" => Some(LanguageId::TypeScript),
+        "py" => Some(LanguageId::Python),
+        _ => None,
+    }
+}

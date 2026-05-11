@@ -4,6 +4,7 @@ mod classify;
 mod diff;
 mod extract;
 mod facts;
+mod language;
 mod pipeline;
 mod probes;
 mod rust_index;
