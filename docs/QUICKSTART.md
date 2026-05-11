@@ -3,33 +3,38 @@
 Use this guide to get useful RIPR feedback in the first hour without learning
 the full report topology. Start from the surface you already use.
 
-RIPR answers a static, draft-time question:
+RIPR finds changed Rust code where the nearby tests may not actually catch
+the changed behavior. The static, draft-time question it answers is:
 
 ```text
-For the behavior changed in this diff, do the current tests appear to contain
-a discriminator that would notice if that behavior were wrong?
+For the behavior changed in this diff, do the current tests include an
+assertion or check that would catch the changed behavior?
 ```
 
 It does not edit source, generate tests, run mutation testing, or prove test
 adequacy. The normal loop is:
 
 ```text
-find the top weak seam
--> inspect the evidence
+find the top test gap
+-> inspect why ripr thinks the current tests are weak
 -> write one focused test outside RIPR
 -> capture an after snapshot
 -> verify static movement
 -> attach the receipt or review summary when useful
 ```
 
+RIPR calls these locations "seams" in its JSON, specs, and reports. First-hour
+docs use plain language; the precise vocabulary appears once you reach the
+output and policy surfaces.
+
 ## Choose Your Path
 
 | User type | Start here | You should see |
 | --- | --- | --- |
-| VS Code user | Install `EffortlessMetrics.ripr` and open a Rust/Cargo workspace. | Status bar state, Problems diagnostics, hover evidence, and intent-titled seam actions. |
+| VS Code user | Install `EffortlessMetrics.ripr` and open a Rust/Cargo workspace. | Status bar state, Problems diagnostics, hover evidence, and intent-titled focused-test actions. |
 | CI user | Run `ripr init --ci github` once or copy the workflow from [CI strategy](CI.md). | A non-blocking RIPR advisory summary plus uploaded pilot, workflow, agent, report, and review artifacts. |
-| CLI user | Run `ripr pilot --root .`. | A top actionable seam, why it matters, and before/after commands under `target/ripr/pilot`. |
-| Agent or reviewer | Run `ripr agent status --root .`. | Existing artifact state, the selected seam when recoverable, and the next command to run. |
+| CLI user | Run `ripr pilot --root .`. | The top actionable test gap, why it matters, and before/after commands under `target/ripr/pilot`. |
+| Agent or reviewer | Run `ripr agent status --root .`. | Existing artifact state, the selected change when recoverable, and the next command to run. |
 
 `ripr.toml` is optional. `ripr init` materializes repo-local policy when a team
 wants to review, version, and tune it. It is not activation, and it is not
@@ -43,9 +48,9 @@ reviewing Rust.
 1. Install `EffortlessMetrics.ripr` from VS Code Marketplace or Open VSX.
 2. Open a Rust/Cargo workspace.
 3. Check the `ripr` status bar item or run `ripr: Show Status`.
-4. Open the Problems panel and inspect RIPR diagnostics.
-5. Hover a diagnostic for the static evidence path.
-6. Use the seam actions around your intent:
+4. Open the Problems panel and inspect ripr-flagged changes.
+5. Hover a flagged change to see why ripr thinks the current tests are weak.
+6. Use the focused-test actions around your intent:
    - `Write targeted test: copy brief`
    - `Write targeted test: open best related test`
    - `Agent handoff: copy packet command`
@@ -147,8 +152,9 @@ target/ripr/pilot/pilot-summary.json
 target/ripr/pilot/pilot-summary.md
 ```
 
-Read `target/ripr/pilot/pilot-summary.md`. Pick one top actionable seam and
-write one focused test outside RIPR.
+Read `target/ripr/pilot/pilot-summary.md`. Pick the top actionable test gap
+and write one focused test outside RIPR — an assertion or check that would
+catch the changed behavior.
 
 After the test is added, capture the after snapshot:
 
@@ -224,7 +230,7 @@ See [LLM operator guide](LLM_OPERATOR_GUIDE.md).
 
 | Symptom | First check |
 | --- | --- |
-| VS Code shows no RIPR state. | Run `ripr: Show Status`, then `ripr: Show Output`. Confirm a Rust/Cargo workspace is open. |
+| VS Code shows no RIPR state, or shows "no focused test gap found." | Run `ripr: Show Status`, then `ripr: Show Output`. Confirm a Rust/Cargo workspace is open and saved. The internal status ID for the empty case is `no-actionable-seam`. |
 | VS Code cannot start the server. | Check `ripr.server.path`, `ripr.server.autoDownload`, network access to GitHub Releases, and PATH fallback. |
 | Diagnostics look stale. | Save the workspace file or run `Refresh analysis: rerun saved-workspace check`. |
 | CI has no top recommendation. | Open the `RIPR advisory summary`, then inspect `target/ripr/pilot/pilot-summary.md` in the uploaded artifact. |
