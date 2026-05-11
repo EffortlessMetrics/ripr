@@ -63,7 +63,9 @@ to prove test adequacy.
 Under the hood, ripr uses the RIPR model: reachability, infection,
 propagation, and revealability. Reports, JSON, and specs use the precise
 internal vocabulary (seams, discriminators, oracle strength); the editor
-surface keeps that vocabulary out of the first-hour path.
+surface keeps that vocabulary out of the first-hour path. See the
+[Terminology bridge](https://github.com/EffortlessMetrics/ripr/blob/main/docs/TERMINOLOGY.md)
+to map between the two.
 
 The 0.5.x extension surfaces saved-workspace diagnostics, evidence-aware
 hovers, intent-titled code actions for inspecting the flagged change /

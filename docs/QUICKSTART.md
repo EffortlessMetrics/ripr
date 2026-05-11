@@ -25,7 +25,8 @@ find the top test gap
 
 RIPR calls these locations "seams" in its JSON, specs, and reports. First-hour
 docs use plain language; the precise vocabulary appears once you reach the
-output and policy surfaces.
+output and policy surfaces. See [Terminology](TERMINOLOGY.md) for the bridge
+between plain wording and the internal model.
 
 ## Choose Your Path
 
@@ -272,6 +273,8 @@ RIPR findings.
 
 ## Next Docs
 
+- [Terminology](TERMINOLOGY.md) for the bridge between plain wording and the
+  internal model (seam, discriminator, grip, canonical gap, etc.).
 - [Editor extension](EDITOR_EXTENSION.md) for VS Code install, commands, and
   saved-workspace refresh behavior.
 - [CI strategy](CI.md) for the generated advisory workflow and artifact packet.
