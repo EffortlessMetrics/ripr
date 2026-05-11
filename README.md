@@ -17,22 +17,29 @@
 
 <!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-10 after the 0.5.0 publish: 4 installs. Refresh the count and date from publisher metrics whenever you check; do not use live VS Marketplace Shields routes. -->
 
-`ripr` helps Rust developers and coding agents answer a draft-time testing
-question:
+`ripr` finds changed Rust code where the nearby tests may run but not
+actually check the changed behavior.
+
+It is a fast static companion to mutation testing: it does not run mutants,
+but it points reviewers and coding agents at the focused test most likely to
+matter.
+
+The draft-time question `ripr` answers is:
 
 ```text
-For the behavior changed in this diff, do the current tests appear to contain
-a discriminator that would notice if that behavior were wrong?
+For the behavior changed in this diff, do the current tests include an
+assertion or check that would catch the changed behavior?
 ```
-
-`ripr` is a static **Reachability-Infection-Propagation-Revealability (RIPR)**
-exposure analyzer for Rust workspaces. It reads changed Rust code, builds
-mutation-shaped static probes, and reports whether existing tests appear to
-reach, affect, propagate, observe, and discriminate the changed behavior.
 
 It is alpha software. The current release is useful for fast feedback while a
 pull request is moving. It is not a proof system, and it does not replace real
 mutation testing.
+
+Under the hood, ripr uses the RIPR model: **Reachability**, **Infection**,
+**Propagation**, and **Revealability**. JSON output, specs, and report
+artifacts keep this precise vocabulary; the editor and first-hour docs lead
+with plain language and use the internal terms only where they earn their
+keep.
 
 ## The Problem
 
@@ -292,65 +299,25 @@ Current capabilities:
 | SARIF and CI policy | `ripr check --format sarif` emits diff-scoped Finding SARIF and `--format repo-sarif` emits repo seam SARIF with configured severity, suppression metadata, stable rule IDs, and stable fingerprints. `ripr init --ci github` generates a non-blocking GitHub Actions report workflow with pilot/report artifacts, repo badge JSON, and optional SARIF rendering/upload; `cargo xtask sarif-policy` compares current SARIF to a baseline only when explicitly requested. | Advisory policy feedback after adoption. |
 | Calibration | Advisory `ripr calibrate cargo-mutants` and repo-local `cargo xtask mutation-calibration` join imported cargo-mutants runtime data to static seam evidence by `seam_id` or unambiguous file/line; ambiguous file/line candidates stay unassigned. `fixtures/CALIBRATION_CORPUS.md` maps current fixtures to controlled calibration scenarios, `fixtures/EXAMPLE_CORPUS.md` links the checked boundary-gap calibration sample into the operator loop, and `fixtures/boundary_gap/calibration/runtime-fixtures-v1/` pins the main static/runtime agreement buckets. | Maintenance; runtime mutation language stays inside calibration/runtime reports. |
 
-Campaigns 5A, 5B, 6, 7, 8, 9, 10, and 11 are complete. Campaign 7 closed the
-defaults-first adoption lane: `ripr pilot`, `ripr outcome`, advisory
-calibration import, the operator cockpit, the generated GitHub Action
-entrypoint, the documented VS Code install path, the public example corpus, and
-release/install proof are in place. Campaign 8 keeps runtime calibration
-supplied and optional. Campaign 9 made the editor/operator warm paths measured
-and bounded. Campaign 10 aligned the saved-workspace editor loop with the agent
-CLI loop from diagnostic to evidence, packet or brief, focused test, outcome,
-agent verify, agent receipt, cockpit, CI artifacts, and release-readiness proof.
-Campaign 11 closed after the LLM work loop gained read-only artifact status,
-centralized command templates, workflow manifests, provenance-backed receipts,
-bounded next-action guidance, reviewer summaries, fixtures, generated CI packet
-uploads, and the LLM operator guide. Campaign 12 then closed the First-Hour UX
-lane: the editor first-run status path, intent-titled code actions, generated
-CI advisory summary, generated workflow smoke fixture, and user-type
-first-hour docs are pinned. Campaign 13 then closed PR Review Guidance:
-`ripr review-comments` writes the advisory review report, generated CI runs it
-before emitting advisory summaries and check annotations, placement and
-suppression cases are fixture-pinned, and
-[PR review guidance](docs/PR_REVIEW_GUIDANCE.md) documents the command, CI
-behavior, summary-only fallback, and inline-comment opt-in boundary. Campaign
-14 closed Recommendation Calibration: the checked advisory `cargo xtask
-recommendation-calibration` report now measures whether PR-time
-recommendations are useful, safely placed, properly suppressed, pointed at the
-expected test target, and correlated with before/after static movement.
-[Recommendation calibration workflow](docs/RECOMMENDATION_CALIBRATION.md)
-documents how to read that report. Campaign 15 is closed as Calibrated Gate
-Policy: RIPR-SPEC-0014 pins the optional gate contract, `ripr gate evaluate`
-writes the read-only decision report, generated CI can run it only when
-`RIPR_GATE_MODE` is explicitly configured, and
-[Calibrated gate policy](docs/CALIBRATED_GATE_POLICY.md) documents the
-operator workflow. [Baseline ledger workflow](docs/BASELINE_LEDGER_WORKFLOW.md)
-shows how to create, diff, and shrink reviewed behavioral-grip debt baselines
-on the path toward RIPR 0. Campaigns 20 and 21 then made the test-oracle
-assistant proof loop and read-only proof report producer first-class advisory
-artifacts. Campaign 22 is closed as First Useful Action: `ripr first-action`
-now writes the read-only advisory report, generated CI projects it as advisory
-summary/artifact content, the VS Code status path and the LSP seam hover both
-project an existing workspace-matched report without adding diagnostics or
-editor decorations, and checked dogfood receipts pin the documented routing
-cases. Campaign 23 closed Assistant Loop Health: `ripr assistant-loop health`
-summarizes existing assistant proof reports into advisory health, missing-input,
-static-movement, warning, and repair-queue surfaces, and generated CI uploads
-`assistant-loop-health.{json,md}` only when proof artifacts already exist.
-Campaign 24 closed PR Review Front Panel: `ripr pr-review front-panel`
-composes existing PR guidance, first useful action, assistant proof,
-assistant-loop health, ledger, baseline, gate, calibration, coverage/grip, and
-receipt artifacts into one advisory generated-CI first-screen summary.
-Campaign 25 closed Report Packet Index: `ripr reports index` writes a grouped
-reviewer-first index over explicit existing artifacts, and generated CI
-appends a compact packet-index summary without changing gate authority.
-Campaign 26 closed PR Inline Comment Publisher: `ripr pr-comments plan`
-emits a read-only publish plan, and generated CI keeps the publisher disabled
-by default with `RIPR_COMMENT_MODE=plan` and `RIPR_COMMENT_MODE=inline` as
-explicit opt-ins capped, deduped, and same-repository changed-line only. The
-default generated workflow remains advisory.
+Current product surfaces:
 
-Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)
-and [Metrics](docs/METRICS.md).
+- Editor: diagnostics, evidence-rich hovers, and intent-titled focused-test
+  actions in VS Code and Open VSX. Status bar projects an existing
+  first-useful-action report without rerunning analysis.
+- CLI: `ripr pilot`, `ripr outcome`, `ripr agent status / start / verify /
+  receipt / review-summary`, and `ripr review-comments` for local review and
+  agent handoff.
+- CI: advisory PR summaries with PR review front panel, report packet index,
+  and uploaded pilot/workflow/agent/report/review artifacts. The default
+  generated workflow is non-blocking.
+- Governance: optional `ripr.toml` policy, reviewed baselines, suppressions,
+  RIPR Zero status, calibration imports, and an opt-in calibrated gate for
+  teams that want explicit policy control.
+
+The full build history of these surfaces (Campaigns 5A through 26) lives in
+[Implementation campaigns](docs/IMPLEMENTATION_CAMPAIGNS.md). Deeper
+capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md) and
+[Metrics](docs/METRICS.md).
 
 ## Editor Extension
 

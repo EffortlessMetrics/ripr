@@ -24,6 +24,11 @@ Planned scope:
 - Evidence lane tuning: mutation stays targeted/nightly/release, not a default PR tax.
 - Targeted Rust 1.95 API cleanup in evidence and report builders.
 - Release readiness workflow and 0.5.1 dry-run proof.
+- Public product-copy cleanup: VS Code marketplace title restored to
+  `ripr: Static Mutation Exposure`, plain-language first-hour copy in
+  `README.md`, `editors/vscode/README.md`, `docs/QUICKSTART.md`, and
+  `docs/EDITOR_EXTENSION.md`. Internal vocabulary (seams, discriminators,
+  status IDs, schemas, commands) is unchanged.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 

@@ -66,10 +66,13 @@ The editor path should not require report-format knowledge:
 
 1. Install `EffortlessMetrics.ripr` from VS Code Marketplace or Open VSX.
 2. Open a Rust/Cargo workspace.
-3. Check the `ripr` status bar item for server, workspace, analysis, stale,
-   failed, no-actionable-seam, or first-useful-action state.
+3. Check the `ripr` status bar item for server state, workspace state,
+   analysis progress, stale analysis, analysis failure, recommended next
+   action, or "no focused test gap found." (Internal status IDs such as
+   `no-actionable-seam` and `first-useful-action` remain stable in the JSON
+   contract.)
 4. Let the saved-workspace analysis refresh or run `ripr: Restart Server`.
-5. Open the Problems panel and hover a RIPR diagnostic to inspect evidence.
+5. Open the Problems panel and hover a ripr-flagged change to inspect evidence.
 6. Use `Copy Targeted Test Brief`, the agent copy commands, or
    `Open Best Related Test`.
 7. Add one focused test and verify with the copied command chain or the CI
@@ -110,15 +113,16 @@ configuration.
 ## Status and Staleness
 
 The status bar item and `ripr: Show Status` command name the current
-saved-workspace state:
+saved-workspace state using user-readable copy. The underlying JSON keeps
+stable internal status IDs so editor automation and tests stay deterministic.
 
 - disabled by `ripr.enabled = false`
 - workspace unresolved
 - server unavailable
 - analysis queued
 - analysis running
-- analysis complete with diagnostics
-- no actionable seam diagnostics
+- analysis complete (ripr-flagged changes present)
+- no focused test gap found (internal status ID: `no-actionable-seam`)
 - stale because a Rust buffer has unsaved edits
 - analysis failed
 
