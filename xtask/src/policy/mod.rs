@@ -7,6 +7,7 @@ mod local_context;
 mod network;
 mod no_panic;
 mod process;
+mod product_copy;
 mod static_language;
 mod workflows;
 
@@ -19,5 +20,6 @@ pub(crate) use local_context::check_local_context;
 pub(crate) use network::check_network_policy;
 pub(crate) use no_panic::check_no_panic_family;
 pub(crate) use process::check_process_policy;
+pub(crate) use product_copy::check_product_copy;
 pub(crate) use static_language::check_static_language;
 pub(crate) use workflows::check_workflows;

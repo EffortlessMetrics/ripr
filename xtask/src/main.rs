@@ -21,7 +21,8 @@ use command::{XtaskCommand, known_command_root, known_commands};
 use policy::{
     check_allow_attributes, check_ci_lane_whitelist, check_droid_review_config,
     check_executable_files, check_file_policy, check_local_context, check_network_policy,
-    check_no_panic_family, check_process_policy, check_static_language, check_workflows,
+    check_no_panic_family, check_process_policy, check_product_copy, check_static_language,
+    check_workflows,
 };
 use reports::{
     dogfood, fixtures, metrics_report, pr_summary, receipts_write, repo_badge_artifacts,

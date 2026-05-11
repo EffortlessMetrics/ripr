@@ -72,6 +72,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckNetworkPolicy => super::check_network_policy(),
         XtaskCommand::CheckLintPolicy => super::check_lint_policy(),
         XtaskCommand::CheckCiLaneWhitelist => super::check_ci_lane_whitelist(),
+        XtaskCommand::CheckProductCopy => super::check_product_copy(),
         XtaskCommand::VscodeCompile => super::vscode_compile(),
         XtaskCommand::VscodePackage => super::vscode_package(),
         XtaskCommand::VscodeTest => super::vscode_test(),

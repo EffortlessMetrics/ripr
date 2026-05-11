@@ -62,6 +62,19 @@ Planned scope:
   Linked from [docs/RELEASE.md](docs/RELEASE.md),
   [docs/RELEASE_MARKETPLACE.md](docs/RELEASE_MARKETPLACE.md), and the root
   README docs table. No publish workflow, schema, JSON, or behavior change.
+- Added `cargo xtask check-product-copy`: a lightweight guard that scans
+  the public surfaces named in the release copy checklist and flags
+  unbridged use of internal vocabulary (`test oracle`, `discriminator`,
+  `seam-native`, `grip`, `evidence spine`, `canonical gap`,
+  `no-actionable-seam`, `front panel`, `report packet`). A file is
+  bridged if it links to `docs/TERMINOLOGY.md`. Specs, output schema,
+  fixtures, metrics, implementation campaigns, and the CHANGELOG are
+  allowlisted internal surfaces and are not scanned. The current
+  baseline is clean; the `product_copy_baseline_is_clean` unit test
+  catches regressions. The guard is not wired into `cargo xtask
+  check-pr` yet — promote it to a gate after a release cycle confirms
+  it stays low-noise. `crates/ripr/README.md` gains the bridge link so
+  the published crates.io README is also covered.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 
