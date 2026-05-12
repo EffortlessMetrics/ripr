@@ -113,6 +113,12 @@ Planned scope:
   coverage, movement availability, and top evidence-quality risks. The report
   remains advisory and does not change analyzer classifications, gate policy,
   CI behavior, mutation execution, or score definitions.
+- Added checked `runtime-fixtures-v2` calibration reports for the Lane 1
+  side-effect observer, mock expectation, snapshot oracle, and opaque dispatch
+  runtime classes. The fixture maps imported outcomes to existing static seams
+  where possible, keeps an ambiguous opaque dispatch file-line signal
+  ambiguous, and keeps a runtime-only signal from creating a static gap. No
+  CI mutation execution, gate behavior, schema, or score definition changes.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 

@@ -1,0 +1,172 @@
+{
+  "schema_version": "0.2",
+  "scope": "repo",
+  "metrics": {
+    "seams_total": 6,
+    "headline_eligible": 6,
+    "strongly_gripped": 3,
+    "weakly_gripped": 2,
+    "ungripped": 0,
+    "reachable_unrevealed": 1,
+    "activation_unknown": 0,
+    "propagation_unknown": 0,
+    "observation_unknown": 0,
+    "discrimination_unknown": 0,
+    "opaque": 1,
+    "intentional": 0,
+    "suppressed": 0
+  },
+  "seams": [
+    {
+      "seam_id": "cal-v2-side-effect-observer",
+      "kind": "call_presence",
+      "file": "src/checkout.rs",
+      "line": 12,
+      "owner": "src/checkout.rs::record_payment",
+      "expression": "ledger.record_payment(order.id, amount)",
+      "grip_class": "weakly_gripped",
+      "headline_eligible": true,
+      "related_tests": [
+        {
+          "name": "records_payment_in_ledger",
+          "file": "tests/checkout.rs",
+          "line": 9,
+          "oracle_kind": "side_effect_observer",
+          "oracle_strength": "medium"
+        }
+      ],
+      "observed_values": [
+        "record_payment"
+      ],
+      "missing_discriminators": [
+        {
+          "value": "ledger event fields",
+          "reason": "test observes a side effect but not the changed order id and amount fields"
+        }
+      ]
+    },
+    {
+      "seam_id": "cal-v2-mock-expectation",
+      "kind": "call_presence",
+      "file": "src/notifications.rs",
+      "line": 24,
+      "owner": "src/notifications.rs::send_receipt",
+      "expression": "gateway.send_receipt(order.id)",
+      "grip_class": "strongly_gripped",
+      "headline_eligible": true,
+      "related_tests": [
+        {
+          "name": "sends_receipt_with_gateway_expectation",
+          "file": "tests/notifications.rs",
+          "line": 18,
+          "oracle_kind": "mock_expectation",
+          "oracle_strength": "strong"
+        }
+      ],
+      "observed_values": [
+        "send_receipt"
+      ],
+      "missing_discriminators": []
+    },
+    {
+      "seam_id": "cal-v2-weak-snapshot-oracle",
+      "kind": "serialized_output",
+      "file": "src/summary.rs",
+      "line": 36,
+      "owner": "src/summary.rs::render_discount_summary",
+      "expression": "summary.discount_reason",
+      "grip_class": "weakly_gripped",
+      "headline_eligible": true,
+      "related_tests": [
+        {
+          "name": "summary_snapshot_stays_readable",
+          "file": "tests/summary.rs",
+          "line": 27,
+          "oracle_kind": "snapshot",
+          "oracle_strength": "weak"
+        }
+      ],
+      "observed_values": [
+        "total"
+      ],
+      "missing_discriminators": [
+        {
+          "value": "discount_reason",
+          "reason": "broad snapshot does not pin the changed field"
+        }
+      ]
+    },
+    {
+      "seam_id": "cal-v2-opaque-dispatch",
+      "kind": "dynamic_dispatch",
+      "file": "src/routing.rs",
+      "line": 48,
+      "owner": "src/routing.rs::route_discount",
+      "expression": "policy.apply(cart)",
+      "grip_class": "reachable_unrevealed",
+      "headline_eligible": true,
+      "related_tests": [
+        {
+          "name": "routes_discount_through_policy",
+          "file": "tests/routing.rs",
+          "line": 34,
+          "oracle_kind": "opaque_dispatch",
+          "oracle_strength": "none"
+        }
+      ],
+      "observed_values": [],
+      "missing_discriminators": [
+        {
+          "value": "policy target",
+          "reason": "dispatch target is opaque to static matching"
+        }
+      ]
+    },
+    {
+      "seam_id": "cal-v2-opaque-ambiguous-a",
+      "kind": "dynamic_dispatch",
+      "file": "src/routing.rs",
+      "line": 58,
+      "owner": "src/routing.rs::route_fee",
+      "expression": "fee_policy.apply(cart)",
+      "grip_class": "strongly_gripped",
+      "headline_eligible": true,
+      "related_tests": [
+        {
+          "name": "routes_fee_policy",
+          "file": "tests/routing.rs",
+          "line": 51,
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong"
+        }
+      ],
+      "observed_values": [
+        "fee_policy"
+      ],
+      "missing_discriminators": []
+    },
+    {
+      "seam_id": "cal-v2-opaque-ambiguous-b",
+      "kind": "dynamic_dispatch",
+      "file": "src/routing.rs",
+      "line": 58,
+      "owner": "src/routing.rs::route_fee",
+      "expression": "fallback_policy.apply(cart)",
+      "grip_class": "strongly_gripped",
+      "headline_eligible": true,
+      "related_tests": [
+        {
+          "name": "routes_fallback_policy",
+          "file": "tests/routing.rs",
+          "line": 59,
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong"
+        }
+      ],
+      "observed_values": [
+        "fallback_policy"
+      ],
+      "missing_discriminators": []
+    }
+  ]
+}

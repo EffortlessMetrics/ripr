@@ -1932,6 +1932,80 @@ fn calibrate_cargo_mutants_writes_json_when_requested() -> Result<(), String> {
 fn calibration_runtime_fixture_matches_checked_reports() -> Result<(), String> {
     let root = workspace_root();
     let fixture = root.join("fixtures/boundary_gap/calibration/runtime-fixtures-v1");
+    let value = assert_calibration_fixture_matches_checked_reports(&fixture)?;
+
+    assert_eq!(value["agreement"]["static_gap_and_runtime_signal"], 1);
+    assert_eq!(value["agreement"]["static_gap_without_runtime_signal"], 3);
+    assert_eq!(value["agreement"]["runtime_signal_without_static_gap"], 2);
+    assert_eq!(value["agreement"]["static_clean_and_runtime_clean"], 1);
+    assert_eq!(value["agreement"]["runtime_inconclusive"], 2);
+    assert_eq!(value["metrics"]["ambiguous_file_line_total"], 1);
+    assert_eq!(value["metrics"]["unmatched_mutants_total"], 1);
+    assert_eq!(value["metrics"]["static_without_runtime_total"], 1);
+    assert_eq!(value["metrics"]["join_method_counts"]["file_line"], 1);
+    assert_eq!(value["metrics"]["join_method_counts"]["seam_id"], 5);
+
+    Ok(())
+}
+
+#[test]
+fn calibration_runtime_fixture_v2_matches_checked_reports() -> Result<(), String> {
+    let root = workspace_root();
+    let fixture = root.join("fixtures/boundary_gap/calibration/runtime-fixtures-v2");
+    let value = assert_calibration_fixture_matches_checked_reports(&fixture)?;
+
+    assert_eq!(value["agreement"]["static_gap_and_runtime_signal"], 2);
+    assert_eq!(value["agreement"]["static_gap_without_runtime_signal"], 1);
+    assert_eq!(value["agreement"]["runtime_signal_without_static_gap"], 1);
+    assert_eq!(value["agreement"]["static_clean_and_runtime_clean"], 1);
+    assert_eq!(value["agreement"]["runtime_inconclusive"], 1);
+    assert_eq!(value["metrics"]["ambiguous_file_line_total"], 1);
+    assert_eq!(value["metrics"]["unmatched_mutants_total"], 1);
+    assert_eq!(value["metrics"]["static_without_runtime_total"], 0);
+    assert_eq!(value["metrics"]["join_method_counts"]["seam_id"], 4);
+
+    assert_eq!(
+        calibration_match_confidence(&value, "cal-v2-side-effect-observer")?,
+        "supports_static_gap"
+    );
+    assert_eq!(
+        calibration_match_confidence(&value, "cal-v2-mock-expectation")?,
+        "supports_static_clean"
+    );
+    assert_eq!(
+        calibration_match_confidence(&value, "cal-v2-weak-snapshot-oracle")?,
+        "contradicts_static_gap"
+    );
+    assert_eq!(
+        calibration_match_confidence(&value, "cal-v2-opaque-dispatch")?,
+        "supports_static_gap"
+    );
+
+    assert_eq!(
+        value["ambiguous_file_line_matches"][0]["confidence_label"],
+        "ambiguous_runtime_join"
+    );
+    assert_eq!(
+        value["ambiguous_file_line_matches"][0]["candidates"]
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+    assert_eq!(
+        value["missed_runtime_signals"][0]["confidence_label"],
+        "runtime_only_signal"
+    );
+    assert!(
+        value["missed_runtime_signals"][0]["static"].is_null(),
+        "runtime-only signal must not create a static gap"
+    );
+
+    Ok(())
+}
+
+fn assert_calibration_fixture_matches_checked_reports(
+    fixture: &Path,
+) -> Result<serde_json::Value, String> {
     let mutants = fixture.join("runtime-mutants.json").display().to_string();
     let repo = fixture.join("repo-exposure.json").display().to_string();
 
@@ -1954,16 +2028,6 @@ fn calibration_runtime_fixture_matches_checked_reports() -> Result<(), String> {
 
     let value: serde_json::Value = serde_json::from_str(&expected_json)
         .map_err(|e| format!("parse checked calibration json: {e}"))?;
-    assert_eq!(value["agreement"]["static_gap_and_runtime_signal"], 1);
-    assert_eq!(value["agreement"]["static_gap_without_runtime_signal"], 3);
-    assert_eq!(value["agreement"]["runtime_signal_without_static_gap"], 2);
-    assert_eq!(value["agreement"]["static_clean_and_runtime_clean"], 1);
-    assert_eq!(value["agreement"]["runtime_inconclusive"], 2);
-    assert_eq!(value["metrics"]["ambiguous_file_line_total"], 1);
-    assert_eq!(value["metrics"]["unmatched_mutants_total"], 1);
-    assert_eq!(value["metrics"]["static_without_runtime_total"], 1);
-    assert_eq!(value["metrics"]["join_method_counts"]["file_line"], 1);
-    assert_eq!(value["metrics"]["join_method_counts"]["seam_id"], 5);
 
     let md_output = run_ripr(&[
         "calibrate",
@@ -1982,7 +2046,23 @@ fn calibration_runtime_fixture_matches_checked_reports() -> Result<(), String> {
         .map_err(|e| format!("decode calibration markdown stdout: {e}"))?;
     assert_eq!(actual_md, expected_md);
 
-    Ok(())
+    Ok(value)
+}
+
+fn calibration_match_confidence<'a>(
+    value: &'a serde_json::Value,
+    seam_id: &str,
+) -> Result<&'a str, String> {
+    value["matches"]
+        .as_array()
+        .and_then(|matches| {
+            matches.iter().find_map(|record| {
+                (record["static"]["seam_id"] == seam_id)
+                    .then(|| record["confidence_label"].as_str())
+                    .flatten()
+            })
+        })
+        .ok_or_else(|| format!("missing calibration match for seam `{seam_id}`"))
 }
 
 fn write_outcome_snapshots(workspace: &Path) -> Result<(), String> {
