@@ -1880,6 +1880,7 @@ name = "policy readiness report"
 spec = "docs/specs/RIPR-SPEC-0029-policy-readiness-report.md"
 tests = [
   "crates/ripr/src/output/policy_readiness.rs",
+  "crates/ripr/src/output/waiver_aging.rs",
   "crates/ripr/src/cli/commands.rs",
   "crates/ripr/src/cli/command.rs",
   "crates/ripr/src/cli/execute.rs",
@@ -1888,6 +1889,7 @@ tests = [
 fixtures = []
 code = [
   "crates/ripr/src/output/policy_readiness.rs",
+  "crates/ripr/src/output/waiver_aging.rs",
   "crates/ripr/src/output/mod.rs",
   "crates/ripr/src/cli/commands.rs",
   "crates/ripr/src/cli/command.rs",
@@ -1917,6 +1919,12 @@ metrics = [
   "policy_readiness_preview_findings_calibrated_confidence",
   "policy_readiness_warning_count",
   "policy_readiness_unknown_count",
+  "waiver_aging_reports",
+  "waiver_aging_waiver_count",
+  "waiver_aging_repeated_seam_count",
+  "waiver_aging_repeated_file_count",
+  "waiver_aging_focused_test_candidates",
+  "waiver_aging_durable_suppression_candidates",
 ]
 
 [[behavior]]

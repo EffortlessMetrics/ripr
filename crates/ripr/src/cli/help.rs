@@ -12,6 +12,7 @@ Usage:
   ripr baseline update --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json --remove-resolved [--out .ripr/gate-baseline.json]
   ripr zero status --delta target/ripr/reports/baseline-debt-delta.json [--baseline .ripr/gate-baseline.json] [--gate target/ripr/reports/gate-decision.json] [--out target/ripr/reports/ripr-zero-status.json] [--out-md target/ripr/reports/ripr-zero-status.md]
   ripr policy readiness [--gate-decision target/ripr/reports/gate-decision.json] [--baseline-delta target/ripr/reports/baseline-debt-delta.json] [--out target/ripr/reports/policy-readiness.json] [--out-md target/ripr/reports/policy-readiness.md]
+  ripr policy waiver-aging [--ledger target/ripr/reports/pr-evidence-ledger.json] [--history .ripr/pr-evidence-ledger.jsonl] [--out target/ripr/reports/waiver-aging.json] [--out-md target/ripr/reports/waiver-aging.md]
   ripr pr-ledger record --pr-number 123 --base SHA --head SHA [--gate target/ripr/reports/gate-decision.json] [--baseline-delta target/ripr/reports/baseline-debt-delta.json] [--zero-status target/ripr/reports/ripr-zero-status.json] [--out target/ripr/reports/pr-evidence-ledger.json]
   ripr pr-comments plan --pr-guidance target/ripr/review/comments.json [--existing-comments target/ripr/review/existing-comments.json] [--mode off|plan|inline] [--out target/ripr/review/comment-publish-plan.json]
   ripr pr-review front-panel [--pr-guidance target/ripr/review/comments.json] [--first-action target/ripr/reports/first-useful-action.json] [--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json] [--assistant-health target/ripr/reports/assistant-loop-health.json] [--ledger target/ripr/reports/pr-evidence-ledger.json] [--out target/ripr/reports/pr-review-front-panel.json]
@@ -51,6 +52,7 @@ Quick start:
   ripr baseline update --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json --remove-resolved
   ripr zero status --baseline .ripr/gate-baseline.json --delta target/ripr/reports/baseline-debt-delta.json --gate target/ripr/reports/gate-decision.json
   ripr policy readiness --gate-decision target/ripr/reports/gate-decision.json --baseline-delta target/ripr/reports/baseline-debt-delta.json
+  ripr policy waiver-aging --ledger target/ripr/reports/pr-evidence-ledger.json --history .ripr/pr-evidence-ledger.jsonl
   ripr pr-ledger record --pr-number 123 --base origin/main --head HEAD --baseline-delta target/ripr/reports/baseline-debt-delta.json --zero-status target/ripr/reports/ripr-zero-status.json
   ripr pr-comments plan --pr-guidance target/ripr/review/comments.json --mode plan
   ripr pr-review front-panel --pr-guidance target/ripr/review/comments.json --first-action target/ripr/reports/first-useful-action.json --ledger target/ripr/reports/pr-evidence-ledger.json
@@ -273,6 +275,7 @@ run mutation testing, change gate policy, or make CI blocking by default.
 const POLICY_HELP: &str = r#"Summarize which RIPR policy posture is safe for the current repo.
 
 Usage: ripr policy readiness [--root PATH] [--gate-decision PATH] [--baseline-delta PATH] [--recommendation-calibration PATH] [--mutation-calibration PATH] [--waiver-aging PATH] [--suppression-health PATH] [--repo-config PATH] [--previous-readiness PATH] [--out PATH] [--out-md PATH]
+       ripr policy waiver-aging [--root PATH] [--ledger PATH] [--history PATH] [--out PATH] [--out-md PATH]
 
 Readiness options:
   --root PATH                           Display root for the report. Defaults to current directory.
@@ -287,12 +290,21 @@ Readiness options:
   --out PATH                            JSON output path. Defaults to target/ripr/reports/policy-readiness.json.
   --out-md PATH                         Markdown output path. Defaults to target/ripr/reports/policy-readiness.md.
 
+Waiver aging options:
+  --root PATH                           Display root for the report. Defaults to current directory.
+  --ledger PATH                         Optional current PR evidence ledger JSON.
+  --history PATH                        Optional PR evidence ledger JSONL history.
+  --out PATH                            JSON output path. Defaults to target/ripr/reports/waiver-aging.json.
+  --out-md PATH                         Markdown output path. Defaults to target/ripr/reports/waiver-aging.md.
+
 The policy readiness report is read-only advisory governance over explicit
 existing artifacts. It recommends advisory-only, visible-only, acknowledgeable,
 baseline-check, or calibrated-gate posture without executing a gate. Preview
-language evidence stays visible and advisory by default. The command does not
-run analysis, mutate baselines or suppressions, post comments, edit source,
-generate tests, run mutation testing, change gate policy, or make CI blocking.
+language evidence stays visible and advisory by default. The waiver-aging
+report keeps repeated waivers visible as repair or policy-review signals. These
+commands do not run analysis, mutate baselines or suppressions, post comments,
+edit source, generate tests, run mutation testing, change gate policy, or make
+CI blocking.
 "#;
 
 const PR_LEDGER_HELP: &str = r#"Record a read-only PR evidence ledger entry over existing reports.
@@ -850,6 +862,7 @@ mod tests {
         assert!(HELP.contains("ripr baseline update"));
         assert!(HELP.contains("ripr zero status"));
         assert!(HELP.contains("ripr policy readiness"));
+        assert!(HELP.contains("ripr policy waiver-aging"));
         assert!(HELP.contains("ripr pr-ledger record"));
         assert!(HELP.contains("ripr pr-comments plan"));
         assert!(HELP.contains("ripr pr-review front-panel"));
@@ -925,7 +938,9 @@ mod tests {
         assert!(ZERO_HELP.contains("RIPR Zero status report"));
         assert!(POLICY_HELP.starts_with("Summarize which RIPR policy posture"));
         assert!(POLICY_HELP.contains("Usage: ripr policy readiness"));
+        assert!(POLICY_HELP.contains("ripr policy waiver-aging"));
         assert!(POLICY_HELP.contains("policy-readiness.json"));
+        assert!(POLICY_HELP.contains("waiver-aging.json"));
         assert!(POLICY_HELP.contains("read-only advisory governance"));
         assert!(PR_LEDGER_HELP.starts_with("Record a read-only PR evidence ledger"));
         assert!(PR_LEDGER_HELP.contains("Usage: ripr pr-ledger record"));

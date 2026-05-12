@@ -95,7 +95,7 @@ answer:
 | 1 | `spec/policy-readiness-report` | Define a read-only report answering which policy mode is safe for the repo right now. | done: [RIPR-SPEC-0029](../specs/RIPR-SPEC-0029-policy-readiness-report.md) |
 | 2 | `spec/preview-evidence-policy-boundary` | Specify that preview-language findings are visible/advisory by default and not gate or RIPR Zero eligible without later promotion. | done: [RIPR-SPEC-0030](../specs/RIPR-SPEC-0030-preview-evidence-policy-boundary.md) |
 | 3 | `report/policy-readiness` | Implement `ripr policy readiness` over explicit existing artifacts only. | done: `ripr policy readiness` writes `policy-readiness.{json,md}` |
-| 4 | `report/waiver-aging` | Report repeated visible waivers as a signal, not as a failure. | planned |
+| 4 | `report/waiver-aging` | Report repeated visible waivers as a signal, not as a failure. | done: `ripr policy waiver-aging` writes `waiver-aging.{json,md}` |
 | 5 | `policy/suppression-ledger-health` | Require durable suppressions to carry identity, owner, reason, scope, dates, visibility, and static class. | planned |
 | 6 | `policy/baseline-refresh-guardrails` | Document and enforce shrink-only refresh; no CI auto-adopt-new. | planned |
 | 7 | `policy/exception-ledger-convergence` | Align no-panic, Clippy, non-Rust, workflow, suppression, baseline, and waiver semantics. | planned |
