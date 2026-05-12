@@ -58,7 +58,7 @@ at another lane without changing this Lane 1 plan.
 | --- | --- | --- |
 | `docs: open Lane 1 evidence accuracy evaluation` | Record evidence-spine completion and open this tracker. | No code behavior changes. |
 | `report: add Lane 1 evidence quality audit` | Generate `target/ripr/reports/lane1-evidence-audit.{json,md}` from existing repo exposure and `evidence_record` data. | Implemented by `cargo xtask lane1-evidence-audit`; repo-local report only. |
-| `fixtures: pin top evidence-quality failures` | Fixture the top 3-5 audit findings before changing analyzer behavior. | Positive and negative cases both present. |
+| `fixtures: pin top evidence-quality failures` | Fixture the top 3-5 audit findings before changing analyzer behavior. | `fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json` pins positive and negative cases. |
 | `analysis: reduce duplicate canonical gap overcount` | Refine grouping only if audit and fixtures show duplicate groups are a top issue. | Same owner, seam kind, flow sink, and missing discriminator group together; different discriminators and owners stay separate. |
 | `analysis: improve related-test ranking from audit cases` | Adjust ranking only for fixture-pinned misses from the audit. | Direct owner calls and stronger oracles remain primary; recency stays a tie-breaker. |
 | `analysis: improve oracle semantics from audit cases` | Add supported oracle shapes only when the audit identifies misclassified cases. | Observed and missed behavior are explicit; unsupported helpers stay static limitations. |
@@ -125,6 +125,19 @@ modes and fixture them before analyzer changes. Candidate fixture classes:
 
 Each fixture should state what RIPR should claim, what it should leave
 unknown, and what must not be inferred.
+
+The first fixture corpus is:
+
+```text
+fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json
+```
+
+It pins audit-derived cases for duplicate canonical groups, missing
+equality-boundary discriminators, activation static limitations,
+mock-expectation observer semantics, and no-runtime-data calibration gaps.
+`cargo xtask check-fixture-contracts` validates that each case includes the
+audit signal, expected `repo-exposure-json` `evidence_record` subset, positive
+claims, and `must_not_claim` guards.
 
 ## Calibration Rule
 

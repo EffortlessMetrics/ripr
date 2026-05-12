@@ -42,3 +42,4 @@ observable behavior.
 | [RIPR-SPEC-0029](RIPR-SPEC-0029-policy-readiness-report.md) | proposed | Policy readiness report |
 | [RIPR-SPEC-0030](RIPR-SPEC-0030-preview-evidence-policy-boundary.md) | proposed | Preview evidence policy boundary |
 | [RIPR-SPEC-0031](RIPR-SPEC-0031-lane1-evidence-quality-audit.md) | proposed | Lane 1 evidence quality audit |
+| [RIPR-SPEC-0032](RIPR-SPEC-0032-lane1-evidence-quality-fixtures.md) | proposed | Lane 1 evidence quality failure fixtures |
