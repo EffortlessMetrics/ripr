@@ -1,5 +1,6 @@
 mod allow_attributes;
 mod ci_lane_whitelist;
+mod doc_roles;
 mod droid_review;
 mod executable_files;
 mod file_policy;
@@ -14,6 +15,7 @@ mod workflows;
 
 pub(crate) use allow_attributes::check_allow_attributes;
 pub(crate) use ci_lane_whitelist::check_ci_lane_whitelist;
+pub(crate) use doc_roles::check_doc_roles;
 pub(crate) use droid_review::check_droid_review_config;
 pub(crate) use executable_files::check_executable_files;
 pub(crate) use file_policy::check_file_policy;
