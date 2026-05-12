@@ -31579,54 +31579,52 @@ jobs:
 
     #[test]
     fn xtask_run_helpers_report_success_failure_and_optional_output() -> Result<(), String> {
-        let version = run_output("cargo", &["--version"])?;
-        if !version.contains("cargo") {
-            return Err(format!("expected cargo version output, got {version:?}"));
+        let program = "rustc";
+        let invalid_flag = "--definitely-not-a-real-rustc-flag";
+
+        let version = run_output(program, &["--version"])?;
+        if !version.contains("rustc") {
+            return Err(format!("expected rustc version output, got {version:?}"));
         }
 
-        let owned_version = run_output_owned("cargo", &["--version".to_string()])?;
-        if !owned_version.contains("cargo") {
+        let owned_version = run_output_owned(program, &["--version".to_string()])?;
+        if !owned_version.contains("rustc") {
             return Err(format!(
-                "expected owned cargo version output, got {owned_version:?}"
+                "expected owned rustc version output, got {owned_version:?}"
             ));
         }
 
-        let status = run("cargo", &["--version"])?;
+        let status = run(program, &["--version"])?;
         if !status.success() {
-            return Err(format!("expected cargo --version to succeed, got {status}"));
+            return Err(format!("expected rustc --version to succeed, got {status}"));
         }
 
-        let captured = capture_output("cargo", &["--version"], "cargo version")?;
-        if !captured.status.success() || !captured.stdout.contains("cargo") {
+        let captured = capture_output(program, &["--version"], "rustc version")?;
+        if !captured.status.success() || !captured.stdout.contains("rustc") {
             return Err(format!(
-                "expected captured cargo version output, got status={} stdout={:?}",
+                "expected captured rustc version output, got status={} stdout={:?}",
                 captured.status, captured.stdout
             ));
         }
 
-        let failed_capture = capture_output(
-            "cargo",
-            &["--definitely-not-a-real-cargo-flag"],
-            "cargo invalid flag",
-        )?;
+        let failed_capture = capture_output(program, &[invalid_flag], "rustc invalid flag")?;
         if failed_capture.status.success() {
-            return Err("expected invalid cargo flag to fail".to_string());
+            return Err("expected invalid rustc flag to fail".to_string());
         }
 
-        let optional = run_output_optional("cargo", &["--definitely-not-a-real-cargo-flag"])?;
+        let optional = run_output_optional(program, &[invalid_flag])?;
         if !optional.is_empty() {
             return Err(format!(
                 "expected optional failure to return empty output, got {optional:?}"
             ));
         }
 
-        let failure = run_output("cargo", &["--definitely-not-a-real-cargo-flag"]).is_err();
+        let failure = run_output(program, &[invalid_flag]).is_err();
         if !failure {
             return Err("expected run_output to report non-zero exit".to_string());
         }
 
-        let owned_failure =
-            run_output_owned("cargo", &["--definitely-not-a-real-cargo-flag".to_string()]).is_err();
+        let owned_failure = run_output_owned(program, &[invalid_flag.to_string()]).is_err();
         if !owned_failure {
             return Err("expected run_output_owned to report non-zero exit".to_string());
         }
