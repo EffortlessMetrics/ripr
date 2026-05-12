@@ -63,7 +63,7 @@ at another lane without changing this Lane 1 plan.
 | `analysis: improve related-test ranking from audit cases` | Adjust ranking only for fixture-pinned misses from the audit. | Direct owner calls and stronger oracles remain primary; recency stays a tie-breaker. |
 | `analysis: improve oracle semantics from audit cases` | Add supported oracle shapes only when the audit identifies misclassified cases. | Observed and missed behavior are explicit; unsupported helpers stay static limitations. |
 | `calibration: expand runtime fixture classes` | Add checked runtime fixture classes for side effects, mock expectations, snapshots, and dynamic or opaque dispatch. | Runtime-only signal does not create a static gap; no CI mutation execution. |
-| `report: evidence health consumes audit findings` | Fold durable audit fields into evidence-health. | No policy decisions or blocking. |
+| `report: evidence health consumes audit findings` | Fold durable audit fields into evidence-health. | Implemented as additive evidence-health fields; no policy decisions or blocking. |
 | `campaign: close Lane 1 evidence accuracy evaluation` | Close after at least one audit-driven improvement lands. | Future work listed by evidence class, not surface. |
 
 ## Evidence Quality Audit
@@ -171,6 +171,25 @@ When expanding calibration:
 - do not create a static gap from runtime-only signal;
 - keep static vocabulary within RIPR's conservative terms;
 - do not run mutation execution in CI.
+
+## Evidence Health Audit Fields
+
+Evidence health now carries the durable audit fields that should remain visible
+between full Lane 1 audit runs:
+
+- canonical gap group totals and the largest canonical groups;
+- duplicate-looking group count;
+- actionability class distribution from `evidence_record.actionability`;
+- static limitation stage and reason distributions from
+  `evidence_record.static_limitations`;
+- evidence-record calibration availability counts;
+- movement availability for seam ID, canonical gap ID, complete evidence path,
+  recommendation, and verify-command fields;
+- top evidence-quality risks.
+
+These fields are advisory dashboard data. They do not change analyzer
+classification, gate policy, CI behavior, LSP output, mutation execution, or
+score definitions.
 
 ## Closeout Conditions
 

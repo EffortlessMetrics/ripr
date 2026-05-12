@@ -1003,6 +1003,7 @@ code = [
 ]
 outputs = [
   "docs/OUTPUT_SCHEMA.md",
+  "docs/lanes/LANE_1_EVIDENCE_ACCURACY.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
   "README.md",
@@ -1015,6 +1016,12 @@ metrics = [
   "evidence_health_related_tests_total",
   "evidence_health_opaque_oracle_count",
   "evidence_health_calibration_matched_total",
+  "evidence_health_canonical_gap_groups",
+  "evidence_health_duplicate_looking_groups",
+  "evidence_health_records_with_canonical_gap_id",
+  "evidence_health_static_limitation_reasons",
+  "evidence_health_calibration_not_imported",
+  "evidence_health_top_evidence_quality_risks",
 ]
 
 [[behavior]]
