@@ -75,6 +75,7 @@ impl Backend {
         let Some(config) = self.analysis_config() else {
             return;
         };
+        let enabled_language_count = config.repo_config().languages().enabled().len();
         let started = Instant::now();
         self.log_refresh_started(generation).await;
         let diagnostics = match tokio::task::spawn_blocking(move || {
@@ -106,7 +107,8 @@ impl Backend {
         if !self.is_current_refresh_generation(generation) {
             return;
         }
-        let summary = RefreshLogSummary::from_snapshot(generation, &diagnostics.snapshot);
+        let summary = RefreshLogSummary::from_snapshot(generation, &diagnostics.snapshot)
+            .with_enabled_language_count(enabled_language_count);
         let Some(refresh) = self.refresh_plan(diagnostics) else {
             self.report_refresh_failure_after(
                 "diagnostic snapshot was inconsistent with publish batches".to_string(),
@@ -308,6 +310,7 @@ pub(super) struct RefreshLogSummary {
     files: usize,
     findings: usize,
     seam_diagnostics: usize,
+    enabled_languages: usize,
 }
 
 impl RefreshLogSummary {
@@ -323,7 +326,13 @@ impl RefreshLogSummary {
             files: snapshot.diagnostic_uri_count(),
             findings: snapshot.finding_count(),
             seam_diagnostics: snapshot.seam_diagnostic_count(),
+            enabled_languages: 1,
         }
+    }
+
+    pub(super) fn with_enabled_language_count(mut self, enabled_languages: usize) -> Self {
+        self.enabled_languages = enabled_languages;
+        self
     }
 }
 
@@ -368,12 +377,13 @@ pub(super) fn refresh_completed_log_message(
 ) -> String {
     let duration = format_duration(summary.duration);
     format!(
-        "ripr analysis refresh completed in {duration}: generation={}, diagnostics={}, files={}, findings={}, seam_diagnostics={}, published_files={}, cleared_files={}",
+        "ripr analysis refresh completed in {duration}: generation={}, diagnostics={}, files={}, findings={}, seam_diagnostics={}, enabled_languages={}, published_files={}, cleared_files={}",
         summary.generation,
         summary.diagnostics,
         summary.files,
         summary.findings,
         summary.seam_diagnostics,
+        summary.enabled_languages,
         published_uri_count,
         cleared_uri_count
     )
