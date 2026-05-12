@@ -1,6 +1,11 @@
 # Static Exposure Model
 
-`ripr` uses mutation-testing concepts without running mutants.
+`ripr` is **static mutation-exposure analysis**. It catches the same class
+of signal mutation testing catches — weak test/oracle exposure on changed
+behavior — but earlier and cheaper, by reading the diff at draft time
+instead of running mutants. It does not find or run actual mutants;
+mutation testing remains the slower runtime backstop for what static
+analysis cannot predict.
 
 It creates mutation-shaped probes from changed code and asks whether existing
 tests appear to provide the RIPR chain needed to expose the changed behavior:

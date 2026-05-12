@@ -33,6 +33,12 @@ not in the public release body.
       only if real runtime data is part of this release. Static evidence
       stays inside the conservative classifications listed in
       [Terminology bridge](TERMINOLOGY.md).
+- [ ] Positioning copy matches the canonical doctrine: `ripr` is **static
+      mutation-exposure analysis**, catches the same class of signal
+      mutation testing catches but earlier and cheaper, does not run
+      mutants, and treats mutation testing as the runtime backstop. The
+      release body must not frame `ripr` and mutation testing as parallel
+      evidence lanes or as detecting different signals.
 
 ## VS Marketplace and Open VSX
 
