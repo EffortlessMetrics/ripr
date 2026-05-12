@@ -2111,3 +2111,26 @@ metrics = [
   "lane1_evidence_audit_canonical_gap_groups",
   "lane1_evidence_audit_static_limitations",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0034"
+name = "Evidence quality scorecard"
+spec = "docs/specs/RIPR-SPEC-0034-evidence-quality-scorecard.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0034-evidence-quality-scorecard.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0002-lane-1-evidence-quality-leadership.md",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "lane1_evidence_scorecard_maturity_classes",
+  "lane1_evidence_scorecard_top_risks",
+  "lane1_evidence_scorecard_recommended_repairs",
+  "lane1_evidence_scorecard_static_only_classes",
+  "lane1_evidence_scorecard_calibrated_classes",
+  "lane1_evidence_scorecard_uncalibrated_classes",
+  "lane1_evidence_scorecard_recent_delta_available",
+]
