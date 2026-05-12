@@ -11,6 +11,9 @@
 # ra_ap_syntax|production_analyzer|analysis|ADR 0006 approves Rust-native
 # parser-backed syntax extraction; add the Cargo dependency only in the scoped
 # parser PR.
+# oxc_parser|production_analyzer|analysis|ADR 0008 approves Rust-native
+# TypeScript/JavaScript syntax extraction for the Campaign 27 preview adapter;
+# add the Cargo dependency only in the scoped parser PR.
 
 Cargo.lock|rust_workspace_lockfile|rust|Pinned Cargo dependency graph.
 Cargo.toml|rust_workspace_manifest|rust|Root Cargo workspace manifest.
