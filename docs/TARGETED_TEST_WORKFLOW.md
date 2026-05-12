@@ -171,7 +171,7 @@ For the selected seam diagnostic:
 
 - Hover the diagnostic to read the evidence path and classification reason.
 - Use `Write targeted test: copy brief` for a human-readable work order.
-- Use `Inspect seam: copy packet` when a coding agent wants structured JSON.
+- Use `Inspect Test Gap - Copy Context` when a coding agent wants structured JSON.
 - Use `Write targeted test: copy suggested assertion` when a concrete
   assertion example exists.
 - Use `Write targeted test: open best related test` to jump to the strongest

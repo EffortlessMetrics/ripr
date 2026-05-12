@@ -193,8 +193,8 @@ without re-running workspace analysis.
 When seam diagnostics are enabled and a diagnostic carries `seam_id`, the LSP
 server can provide seam-aware code actions:
 
-- `Inspect seam: copy packet`: copies the server-owned agent seam packet for the
-  selected seam through `ripr.collectContext`.
+- `Inspect Test Gap - Copy Context`: copies the server-owned agent seam packet
+  for the selected test gap through `ripr.collectContext`.
 - `Write targeted test: copy brief`: copies a plain-language work order for
   adding one focused test from the same seam packet guidance.
 - `Agent handoff: copy packet command`: copies the `ripr agent packet` command
@@ -213,8 +213,8 @@ server can provide seam-aware code actions:
 - `Write targeted test: open best related test`: opens the strongest related
   test to imitate when one is available, then falls back to the
   highest-confidence related test.
-- `Refresh analysis: rerun saved-workspace check`: asks the LSP server to
-  refresh diagnostics with `ripr.refresh`.
+- `Refresh Analysis - Saved Workspace Check`: asks the LSP server to refresh
+  diagnostics with `ripr.refresh`.
 
 The targeted-test, assertion, and related-test actions are conditional.
 `Write targeted test: copy brief` is shown only when the seam has related-test

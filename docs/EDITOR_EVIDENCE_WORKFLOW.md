@@ -76,7 +76,7 @@ Use the seam code actions that match the available evidence:
   when RIPR has one.
 - `Write targeted test: copy brief` copies a focused plain-language test brief
   when the seam has related-test or assertion context.
-- `Inspect seam: copy packet` copies the full seam packet.
+- `Inspect Test Gap - Copy Context` copies the full test-gap context packet.
 
 These actions are conditional. If an action is not shown, the current snapshot
 does not have enough evidence for that specific handoff.
@@ -166,7 +166,7 @@ changed in RIPR evidence.
 Save the Rust buffer, then use:
 
 ```text
-Refresh analysis: rerun saved-workspace check
+Refresh Analysis - Saved Workspace Check
 ```
 
 or run `ripr: Restart Server` if the server state is unavailable or failed.
