@@ -1,10 +1,12 @@
-use super::language::{LanguageAdapter, RustAdapter};
+use super::language::{LanguageAdapter, LanguageId, RustAdapter, TypeScriptAdapter};
 use super::{AnalysisOptions, AnalysisResult, diff, sort, summary};
 use crate::config::OraclePolicy;
+use crate::domain::Finding;
 
 pub(crate) fn run_diff_pipeline_with_oracle_policy(
     options: &AnalysisOptions,
     oracle_policy: &OraclePolicy,
+    languages: &[LanguageId],
 ) -> Result<AnalysisResult, String> {
     let diff_text = diff::load_diff(
         &options.root,
@@ -13,33 +15,53 @@ pub(crate) fn run_diff_pipeline_with_oracle_policy(
     )?;
     let changed_files = diff::parse_unified_diff(&diff_text);
 
-    let adapter = RustAdapter;
-    let mut adapter_result = adapter.analyze_diff(options, oracle_policy, &changed_files)?;
+    let mut findings: Vec<Finding> = Vec::new();
+    let mut total_changed_files: usize = 0;
+    for language in languages {
+        let result = match language {
+            LanguageId::Rust => RustAdapter.analyze_diff(options, oracle_policy, &changed_files)?,
+            LanguageId::TypeScript => {
+                TypeScriptAdapter.analyze_diff(options, oracle_policy, &changed_files)?
+            }
+            // Python preview adapter lands in a later Campaign 27 work item.
+            LanguageId::Python => continue,
+        };
+        findings.extend(result.findings);
+        total_changed_files += result.changed_files;
+    }
 
-    sort::sort_findings(&mut adapter_result.findings);
-    let summary_result =
-        summary::summarize_findings(adapter_result.changed_files, &adapter_result.findings);
+    sort::sort_findings(&mut findings);
+    let summary_result = summary::summarize_findings(total_changed_files, &findings);
 
     Ok(AnalysisResult {
         summary: summary_result,
-        findings: adapter_result.findings,
+        findings,
     })
 }
 
 pub(crate) fn run_repo_pipeline_with_oracle_policy(
     options: &AnalysisOptions,
     oracle_policy: &OraclePolicy,
+    languages: &[LanguageId],
 ) -> Result<AnalysisResult, String> {
-    let adapter = RustAdapter;
-    let mut adapter_result = adapter.analyze_repo(options, oracle_policy)?;
+    let mut findings: Vec<Finding> = Vec::new();
+    let mut total_production_files: usize = 0;
+    for language in languages {
+        let result = match language {
+            LanguageId::Rust => RustAdapter.analyze_repo(options, oracle_policy)?,
+            LanguageId::TypeScript => TypeScriptAdapter.analyze_repo(options, oracle_policy)?,
+            LanguageId::Python => continue,
+        };
+        findings.extend(result.findings);
+        total_production_files += result.production_files;
+    }
 
-    sort::sort_findings(&mut adapter_result.findings);
-    let summary_result =
-        summary::summarize_findings(adapter_result.production_files, &adapter_result.findings);
+    sort::sort_findings(&mut findings);
+    let summary_result = summary::summarize_findings(total_production_files, &findings);
 
     Ok(AnalysisResult {
         summary: summary_result,
-        findings: adapter_result.findings,
+        findings,
     })
 }
 
@@ -69,6 +91,7 @@ mod tests {
                 include_unchanged_tests: false,
             },
             &OraclePolicy::default(),
+            &[LanguageId::Rust],
         );
         // Should fail with a file system error, not a panic.
         result.expect_err("expected pipeline to surface file-system error");
@@ -87,6 +110,7 @@ mod tests {
                 include_unchanged_tests: false,
             },
             &OraclePolicy::default(),
+            &[LanguageId::Rust],
         );
         // Should fail with a file system error, not a panic.
         result.expect_err("expected pipeline to surface file-system error");

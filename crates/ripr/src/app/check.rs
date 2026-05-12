@@ -36,7 +36,8 @@ pub(crate) fn check_workspace_with_config(
         mode: input.mode.analysis_mode(),
         include_unchanged_tests: input.include_unchanged_tests,
     };
-    let analysis = run_analysis_with_oracle_policy(&options, config.oracles())?;
+    let analysis =
+        run_analysis_with_oracle_policy(&options, config.oracles(), config.languages().enabled())?;
     Ok(CheckOutput {
         schema_version: "0.1".to_string(),
         tool: "ripr".to_string(),
@@ -73,7 +74,11 @@ pub(crate) fn check_workspace_repo_with_config(
         mode: input.mode.analysis_mode(),
         include_unchanged_tests: input.include_unchanged_tests,
     };
-    let analysis = run_repo_analysis_with_oracle_policy(&options, config.oracles())?;
+    let analysis = run_repo_analysis_with_oracle_policy(
+        &options,
+        config.oracles(),
+        config.languages().enabled(),
+    )?;
     Ok(CheckOutput {
         schema_version: "0.1".to_string(),
         tool: "ripr".to_string(),
