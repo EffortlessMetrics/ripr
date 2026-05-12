@@ -279,6 +279,26 @@ Maintenance audit evidence from 2026-05-12:
   `npm --prefix editors/vscode run test:e2e` passed 30 live VS Code smoke
   tests with the known post-success VS Code runner `path` warning exiting 0.
   The extension remains Rust-only until `lsp/editor-language-routing` is ready.
+- after #841 recorded the post-840 maintenance audit, current `main`
+  (`5c13f2e`) was refreshed against live GitHub and local artifacts. Issue
+  #771 remains open for `analysis/python-preview-adapter`, issue #772 remains
+  open and blocked for `lsp/editor-language-routing`, and `cargo xtask goals
+  next` still reports no ready work items. The open PR queue has no Lane 3
+  editor/LSP projection files; #787 was reviewed as a classifier-only refactor
+  with no actionable Lane 3 findings, while #788, #789, and #790 remain CLI
+  workflow refactors and #819/#820 are docs-learning PRs. Current code still
+  keeps `editors/vscode/package.json` on `onLanguage:rust` and
+  `editors/vscode/src/client.ts` on a Rust-only `documentSelector` plus
+  `isRustFileDocument` guards, with no CodeLens, inlay, semantic-token, or
+  preview-language selector registration. The saved-workspace cockpit was
+  rechecked with `cargo test -p ripr lsp --lib` (123 tests),
+  `cargo xtask lsp-cockpit-report`, `npm --prefix editors/vscode run compile`,
+  and `npm --prefix editors/vscode run test:e2e` (30 tests, known
+  post-success `path` warning exiting 0). Boundary gates
+  `cargo xtask check-output-contracts`, `cargo xtask check-capabilities`,
+  `cargo xtask check-traceability`, and `cargo xtask check-pr` also passed;
+  `check-pr` left only generated `crates/ripr/examples/sample/target/` build
+  output, which was removed, and the worktree returned clean.
 
 Objective audit status from 2026-05-12: not complete, blocked upstream.
 
