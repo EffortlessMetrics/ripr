@@ -1899,5 +1899,8 @@ metrics = [
   "policy_readiness_calibration_health_state",
   "policy_readiness_preview_findings_visible",
   "policy_readiness_preview_findings_gate_eligible",
+  "policy_readiness_preview_findings_ripr_zero_blocking",
+  "policy_readiness_preview_findings_calibrated_confidence",
   "policy_readiness_warning_count",
+  "policy_readiness_unknown_count",
 ]

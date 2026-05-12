@@ -155,13 +155,16 @@ Top-level `status` is one of:
 - `config_error` - supplied inputs or requested options are malformed or
   internally inconsistent.
 
-`recommended_mode` uses the deployable mode vocabulary:
+`recommended_mode` uses the deployable mode vocabulary. Values other than
+`advisory-only` must match the existing gate mode strings accepted by
+`RIPR_GATE_MODE` and the gate CLI. `advisory-only` is a readiness sentinel that
+means keep generated CI advisory and leave gate mode unset.
 
-- `advisory_only`
-- `visible_only`
+- `advisory-only`
+- `visible-only`
 - `acknowledgeable`
-- `baseline_check`
-- `calibrated_gate`
+- `baseline-check`
+- `calibrated-gate`
 
 `status` explains readiness. `recommended_mode` is the policy posture a
 maintainer can choose next.
@@ -226,7 +229,7 @@ current state. It is recommended when any stronger mode lacks evidence.
 - blocking remains explicit, narrow, and reversible.
 
 Preview TypeScript and Python evidence must keep the recommendation at or below
-`visible_only` for that evidence unless a later explicit policy says otherwise.
+`visible-only` for that evidence unless a later explicit policy says otherwise.
 Preview evidence can coexist with a stricter Rust-only recommendation only when
 the report records that preview candidates are excluded from blocking, RIPR Zero
 blocking debt, and calibrated confidence.
@@ -248,7 +251,7 @@ The JSON report uses schema version `0.1`:
   "tool": "ripr",
   "kind": "policy_readiness",
   "status": "ready_for_baseline_check",
-  "recommended_mode": "baseline_check",
+  "recommended_mode": "baseline-check",
   "root": ".",
   "generated_at": "2026-05-12T00:00:00Z",
   "inputs": {
@@ -455,8 +458,8 @@ Not ready for calibrated-gate:
 - Recommendation calibration is missing, noisy, or not tied to the same class.
 - Mutation calibration is missing, ambiguous, or runtime-only.
 - Preview findings dominate the current evidence.
-- Report may recommend `visible_only`, `acknowledgeable`, or `baseline_check`,
-  but not `calibrated_gate`.
+- Report may recommend `visible-only`, `acknowledgeable`, or `baseline-check`,
+  but not `calibrated-gate`.
 
 Preview evidence present:
 
