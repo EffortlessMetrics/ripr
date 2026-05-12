@@ -299,16 +299,17 @@ output, and the LSP all keep working without changes. Fixture
 re-bless touches the one file that actually gained evidence.
 
 Promote to a structured field on `Finding` (or wherever the spec
-places it) when a real second consumer appears. Until then, the
-text-with-prefix carries the information forward without paying for
-schema ceremony that nothing reads.
+places it) when a real second consumer appears. Until that trigger
+exists, the text-with-prefix carries the information forward without
+paying for schema ceremony that nothing reads.
 
 ### When text-with-prefix is the right call
 
-- A single adapter is the only producer of the signal today.
-- No live consumer reads the typed shape — no scanner aggregating
-  by kind, no LSP code-action keyed on the variant, no policy
-  aggregator counting cases.
+- At the time of the scoped text-prefix ship, a single adapter is the
+  only producer of the signal.
+- At that same decision point, no live consumer reads the typed shape:
+  no scanner aggregating by kind, no LSP code-action keyed on the
+  variant, no policy aggregator counting cases.
 - The scoped-PR contract is pushing for one production delta in
   this PR; promoting to a schema field would expand the diff several
   times over (constructor sites, every renderer, every TS fixture
@@ -345,12 +346,13 @@ is then recorded, not hidden.
 ### Concrete example
 
 - PR #791 (`analysis(ts): TypeScript preview facts — mocked-module
-  static-limit reporting`) chose the text-with-prefix form.
+  static-limit reporting`) chose the text-with-prefix form before a
+  live typed consumer existed.
 - Issue #807 (`domain: emit structured static_limit_kind field on
-  Finding`) records the follow-up and names the second-consumer
-  trigger.
-- The scanner that would aggregate by kind once the typed field is
-  emitted: `crates/ripr/src/output/policy_readiness.rs:800-810`.
+  Finding`) records the follow-up after the consumer pressure became
+  real.
+- The scanner that aggregates by kind once the typed field is emitted:
+  `crates/ripr/src/output/policy_readiness.rs:800-810`.
 - The spec defining the structured vocabulary:
   `docs/specs/RIPR-SPEC-0026-language-adapter-contract.md`
   (`static_limit_kind`).
