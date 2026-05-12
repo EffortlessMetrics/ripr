@@ -1860,9 +1860,16 @@ metrics = [
 id = "RIPR-SPEC-0028"
 name = "Python preview static facts"
 spec = "docs/specs/RIPR-SPEC-0028-python-preview-static-facts.md"
-tests = []
+tests = [
+  "crates/ripr/src/analysis/language/python.rs",
+]
 fixtures = []
-code = []
+code = [
+  "crates/ripr/src/analysis/language/python.rs",
+  "crates/ripr/src/analysis/language/mod.rs",
+  "crates/ripr/src/analysis/language/router.rs",
+  "crates/ripr/src/analysis/pipeline.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0028-python-preview-static-facts.md",
   "docs/specs/README.md",

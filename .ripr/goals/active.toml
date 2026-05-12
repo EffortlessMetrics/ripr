@@ -202,14 +202,14 @@ commands = [
 
 [[work_item]]
 id = "analysis/python-preview-adapter"
-status = "ready"
+status = "active"
 branch = "analysis-python-preview-adapter"
 stackable = false
 blocked_by = [
   "config/languages-opt-in",
   "adr/python-parser-substrate",
 ]
-acceptance = "Add the Python syntax-first adapter, the Python fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Mirrors the TypeScript scaffold pattern: add the `rustpython-parser` Cargo dependency approved by the corrected ADR 0009, add PythonAdapter wiring, route .py through the language router, and parse changed .py files when [languages] includes python. Empty findings until later sub-slices extract owners, tests, and assertions."
+acceptance = "Add the Python syntax-first adapter, the Python fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Scaffold sub-slice mirrors the TypeScript scaffold (PR #759): adds the `rustpython-parser` Cargo dependency approved by the corrected ADR 0009, the `PythonAdapter` type, language-aware pipeline dispatch through `[languages] enabled`, and a real production parse-validation use of `rustpython-parser`. To avoid an LGPL-3.0-only transitive (`malachite-bigint`), the dependency disables default features and selects `num-bigint` (MIT/Apache-2.0) for Python int-literal representation. Owner / test / assertion / probe / related-test fact extraction lands in subsequent sub-slices against RIPR-SPEC-0028's fixture corpus."
 commands = [
   "cargo check -p ripr",
   "cargo test -p ripr --lib analysis::language",
