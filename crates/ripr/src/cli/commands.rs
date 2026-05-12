@@ -5601,6 +5601,14 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     let config = load_for_root(&input.root)?;
     apply_to_check_input(&mut input, &config, explicit);
     let format = input.format.clone();
+    if matches!(format, OutputFormat::RepoExposureJson) {
+        let classified = analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
+        let stdout = std::io::stdout();
+        let mut handle = stdout.lock();
+        output::repo_exposure::write_repo_exposure_json(&classified, &mut handle)
+            .map_err(|err| format!("write repo exposure JSON failed: {err}"))?;
+        return Ok(());
+    }
     let output = if format.is_repo_seam_inventory() {
         // Repo seam-driven formats do not consume legacy repo `Findings`,
         // so skip `run_repo_analysis` and let `render_check` drive the
