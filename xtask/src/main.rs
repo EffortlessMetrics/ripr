@@ -19259,6 +19259,18 @@ fn non_rust_programming_retention_reason(path: &str) -> Option<&'static str> {
         );
     }
 
+    if path.starts_with("fixtures/")
+        && (path.ends_with(".ts")
+            || path.ends_with(".tsx")
+            || path.ends_with(".js")
+            || path.ends_with(".jsx")
+            || path.ends_with(".py"))
+    {
+        return Some(
+            "Fixture workspaces may contain TypeScript / JavaScript / Python source as analyzed inputs for the Campaign 27 preview adapters (RIPR-SPEC-0027 / RIPR-SPEC-0028).",
+        );
+    }
+
     None
 }
 
