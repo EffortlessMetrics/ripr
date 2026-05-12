@@ -119,6 +119,10 @@ Planned scope:
   where possible, keeps an ambiguous opaque dispatch file-line signal
   ambiguous, and keeps a runtime-only signal from creating a static gap. No
   CI mutation execution, gate behavior, schema, or score definition changes.
+- Closed the Lane 1 Evidence Accuracy Evaluation campaign in documented scope.
+  The closeout records the audit, fixture corpus, first analyzer improvement,
+  evidence-health dashboard fields, runtime-fixtures-v2 calibration expansion,
+  and future evidence-class boundary without changing `.ripr/goals/active.toml`.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 
