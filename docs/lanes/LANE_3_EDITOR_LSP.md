@@ -94,8 +94,10 @@ Current dependency state:
 
 - the TypeScript owner+test, assertion-shape, initial probe-shape, and
   mocked-module static-limit sub-slices have landed (#777, #781, #784, #791),
-  but TypeScript preview adapter work remains active;
-- TypeScript follow-ups still need visible preview metadata in human output
+  and #794 marked `analysis/typescript-preview-adapter` done as a first useful
+  preview loop;
+- `analysis/typescript-editor-readiness` now keeps the editor-impacting
+  TypeScript follow-ups explicit: visible preview metadata in human output
   (#779), file-first owner matching (#780), broad `toThrow()` handling (#782),
   awaited `Promise.reject(...)` error-path handling (#785), and
   fixture-per-probe-family evidence (#786) before editor projection can be
@@ -109,9 +111,9 @@ Current dependency state:
 - issue #780 tracks the landed owner-matching gap where TypeScript changed
   lines are matched by line range before file identity, which can attach the
   wrong owner and related-test evidence in mixed-file workspaces;
-- the Python preview adapter (#771) is still absent and blocked by the Python
-  parser substrate ADR (#770), so `lsp/editor-language-routing` remains blocked
-  even after TypeScript follow-ups land.
+- the Python parser substrate ADR (#770) landed in #794, so the Python preview
+  adapter (#771) is the next Python-side dependency before
+  `lsp/editor-language-routing`;
 - issue #772 now records the current VS Code routing files:
   `editors/vscode/package.json` for activation and
   `editors/vscode/src/client.ts` for `documentSelector` plus
@@ -123,9 +125,10 @@ Current dependency state:
 Before starting `lsp/editor-language-routing`, refresh this audit instead of
 inferring readiness from campaign momentum:
 
-- `.ripr/goals/active.toml` must show both `analysis/typescript-preview-adapter`
-  and `analysis/python-preview-adapter` complete, or `cargo xtask goals next`
-  must list `lsp/editor-language-routing` as ready;
+- `.ripr/goals/active.toml` must show both
+  `analysis/typescript-editor-readiness` and `analysis/python-preview-adapter`
+  complete, or `cargo xtask goals next` must list
+  `lsp/editor-language-routing` as ready;
 - TypeScript and Python preview outputs must visibly carry preview language
   metadata and explicit static limits in artifacts the editor can project;
 - the TypeScript gaps tracked by #779, #780, #782, #785, and #786 must be closed
@@ -146,9 +149,10 @@ Readiness boundary:
 
 Maintenance audit evidence from 2026-05-12:
 
-- `cargo xtask goals next` reported no ready work items, and
-  `.ripr/goals/active.toml` still marks `analysis/typescript-preview-adapter`
-  active, `analysis/python-preview-adapter` blocked, and
+- after #794 merged, `analysis/typescript-preview-adapter` and
+  `adr/python-parser-substrate` are done; this tracker adds
+  `analysis/typescript-editor-readiness` as the explicit TypeScript-side
+  blocker, leaves `analysis/python-preview-adapter` incomplete, and keeps
   `lsp/editor-language-routing` blocked;
 - `editors/vscode/package.json` still activates on `onLanguage:rust`, and
   `editors/vscode/src/client.ts` still uses a Rust-only `documentSelector` plus
@@ -177,7 +181,7 @@ Objective audit status from 2026-05-12: not complete, blocked upstream.
 | Editor behavior stays saved-workspace only and projection-only | `docs/EDITOR_EVIDENCE_UX.md`, `docs/EDITOR_EVIDENCE_WORKFLOW.md`, `editors/vscode/src/client.ts`, `fixtures/editor_lsp_workflow` | Current tracker evidence covers the saved-workspace path |
 | Wrong-root, missing, malformed, and stale reports fail closed | `fixtures/editor_lsp_workflow`, `cargo xtask lsp-cockpit-report`, VS Code e2e status tests | Current cockpit report and e2e smoke cover these states |
 | VS Code remains Rust-default until preview routing is selected | `editors/vscode/package.json`, `editors/vscode/src/client.ts` | Current extension activation and selector remain Rust-only |
-| TypeScript preview adapter readiness includes editor-projectable preview metadata, static limits, owner matching, oracle precision, and fixture evidence | `.ripr/goals/active.toml`, #779, #780, #782, #785, #786 | Incomplete; #769 static-limit reporting landed in #791, but TypeScript preview adapter work remains active |
+| TypeScript preview adapter readiness includes editor-projectable preview metadata, static limits, owner matching, oracle precision, and fixture evidence | `.ripr/goals/active.toml`, #779, #780, #782, #785, #786 | Incomplete; first useful TypeScript preview loop is done, but `analysis/typescript-editor-readiness` blocks routing until the open editor-readiness gaps close or are explicitly superseded |
 | Python preview adapter exists with editor-projectable preview metadata and static limits | `.ripr/goals/active.toml` | Missing; Python preview adapter remains blocked |
 | `lsp/editor-language-routing` is ready or selected | `cargo xtask goals next`, `.ripr/goals/active.toml` | Blocked; no ready work items |
 | Preview selectors for TypeScript, TSX, JavaScript, JSX, and Python are opt-in and preserve Rust defaults | `editors/vscode/package.json`, `editors/vscode/src/client.ts` | Not started; must wait for both preview adapters |
@@ -190,8 +194,8 @@ Lane 3 is in maintenance for the saved-workspace editor cockpit. Open a new
 slice only when it is explicitly selected as editor/LSP projection work.
 Likely future slices are incremental hardening, not campaign catch-up:
 
-1. `lsp/editor-language-routing` after TypeScript and Python preview adapters
-   land;
+1. `lsp/editor-language-routing` after TypeScript editor-readiness and the
+   Python preview adapter land;
 2. status, command, hover, or fixture updates required by a selected editor
    behavior change;
 3. user-facing editor docs updates when a later behavior change requires them.
