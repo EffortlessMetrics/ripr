@@ -29,6 +29,7 @@ path = "src/main.rs"
 
 [dependencies]
 oxc_allocator = "0.130"
+oxc_ast = "0.130"
 oxc_parser = "0.130"
 oxc_span = "0.130"
 ra_ap_syntax = "0.0.330"
