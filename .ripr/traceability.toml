@@ -1840,6 +1840,7 @@ fixtures = [
   "fixtures/typescript_return_value_shape",
   "fixtures/typescript_mocked_module_limit",
   "fixtures/typescript_awaited_promise_reject",
+  "fixtures/typescript_effect_probe_shapes",
 ]
 code = [
   "crates/ripr/src/analysis/language/typescript.rs",
