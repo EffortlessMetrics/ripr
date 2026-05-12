@@ -2909,6 +2909,115 @@ mode, each health axis, preview zero-count boundary, unknowns, warnings, next
 policy action, and limits. It must not claim runtime mutation outcomes or make
 the report a gate.
 
+## Waiver Aging Report
+
+`ripr policy waiver-aging` summarizes visible PR-time waivers from the current
+PR evidence ledger and optional prior ledger history. It exists so repeated
+waiver remains a visible signal for repair or explicit policy review without
+becoming a failure, a suppression, or a hidden exception.
+
+Command:
+
+```text
+ripr policy waiver-aging \
+  --ledger target/ripr/reports/pr-evidence-ledger.json \
+  --history .ripr/pr-evidence-ledger.jsonl \
+  --out target/ripr/reports/waiver-aging.json \
+  --out-md target/ripr/reports/waiver-aging.md
+```
+
+The report writes:
+
+```text
+target/ripr/reports/waiver-aging.json
+target/ripr/reports/waiver-aging.md
+```
+
+This report is advisory policy evidence. It does not run analysis, mutate
+baselines or suppressions, post comments, edit source, generate tests, run
+mutation testing, change gate policy, or make CI blocking.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "waiver_aging",
+  "status": "advisory",
+  "root": ".",
+  "generated_at": "unix_ms:1778277000000",
+  "inputs": {
+    "ledger": "target/ripr/reports/pr-evidence-ledger.json",
+    "history": ".ripr/pr-evidence-ledger.jsonl"
+  },
+  "summary": {
+    "waiver_count": 3,
+    "identity_count": 1,
+    "repeated_seam_count": 1,
+    "repeated_file_count": 1,
+    "max_age_prs": 3,
+    "max_age_days": 40,
+    "focused_test_candidates": 1,
+    "durable_suppression_candidates": 1,
+    "warnings": 0
+  },
+  "records": [
+    {
+      "identity": "pricing::discount::threshold_equality",
+      "canonical_gap_id": "pricing::discount::threshold_equality",
+      "seam_id": "67fc764ba37d77bd",
+      "file": "src/pricing.rs",
+      "owner": null,
+      "waiver_count": 3,
+      "first_seen": "pr#123",
+      "last_seen": "pr#125",
+      "age_prs": 3,
+      "age_days": 40,
+      "same_seam_waived_repeatedly": true,
+      "same_file_waived_repeatedly": true,
+      "candidate_for_focused_test": true,
+      "candidate_for_durable_suppression": true,
+      "reasons": ["accepted for this PR"],
+      "labels": ["ripr-waive"],
+      "still_visible": true,
+      "source_records": [
+        ".ripr/pr-evidence-ledger.jsonl:1",
+        ".ripr/pr-evidence-ledger.jsonl:2",
+        "target/ripr/reports/pr-evidence-ledger.json"
+      ]
+    }
+  ],
+  "warnings": [],
+  "limits_note": "Read-only advisory waiver-aging report over existing PR evidence ledgers; repeated waiver is a signal, not a failure or durable suppression."
+}
+```
+
+Field contract:
+
+- `status` - `advisory`, `no_waivers`, `incomplete`, or `config_error`.
+- `inputs` - supplied current PR ledger and JSONL history paths, or `null` when
+  omitted.
+- `summary.waiver_count` - visible waiver observations across supplied ledgers.
+- `summary.identity_count` - distinct canonical gap, seam, or waiver identities.
+- `summary.repeated_*` - repeated-waiver signals. These are not failures.
+- `records[].identity` - canonical gap id when available, else seam id,
+  decision id, or a source-local fallback.
+- `records[].file` and `records[].owner` - copied from source ledgers when
+  available; missing values stay `null`.
+- `records[].candidate_for_focused_test` - advisory signal for repeated or aged
+  waiver that should usually become a focused test.
+- `records[].candidate_for_durable_suppression` - advisory signal for policy
+  review only; it does not create or imply a suppression.
+- `records[].still_visible` - waivers remain visible acknowledgements.
+- `warnings[]` - malformed supplied inputs, invalid JSONL lines, or missing
+  optional history.
+- `limits_note` - advisory boundary text.
+
+Markdown should fit in a job summary. It should show waiver identities, counts,
+age, candidate signals, warnings, and the policy boundary that repeated waiver
+is a visible signal rather than pass/fail authority.
+
 ## PR Evidence Ledger
 
 RIPR-SPEC-0018 defines the PR evidence ledger. `ripr pr-ledger record` records
