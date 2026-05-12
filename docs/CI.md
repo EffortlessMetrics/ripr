@@ -1602,6 +1602,12 @@ For every configured gate mode, the generated workflow behavior is:
    `ripr-reports` artifact packet;
 23. fail only when the explicit gate mode returns `blocked` or `config_error`.
 
+The generated workflow reads the configured baseline for gate, delta, and RIPR
+Zero reports only. It must not run `ripr baseline update`, pass
+`--remove-resolved`, accept or synthesize `--adopt-new`, or write the configured
+baseline path. Baseline changes are repository changes that require a reviewed
+PR.
+
 Acknowledgeable policy:
 
 ```text
@@ -1840,6 +1846,12 @@ inputs. Generated CI writes the same
 `target/ripr/reports/baseline-debt-delta.{json,md}` artifacts automatically
 when `RIPR_GATE_BASELINE` is set and a gate decision exists. `ripr gate
 evaluate` remains the pass/fail authority.
+
+Generated CI never adopts new baseline entries. It does not invoke
+`ripr baseline update`, it does not pass `--remove-resolved`, and it does not
+write `.ripr/gate-baseline.json`. New policy-eligible debt must stay visible as
+new debt until a maintainer repairs it, acknowledges it for the PR, or creates a
+separate reviewed baseline change.
 
 `ripr gate evaluate` indexes identities from the new `entries[].identity`
 ledger shape. For compatibility with existing fixtures and reviewed hand-built

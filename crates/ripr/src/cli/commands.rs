@@ -8427,6 +8427,18 @@ language = "rust"
     }
 
     #[test]
+    fn init_generated_github_workflow_never_auto_refreshes_baseline() {
+        let workflow = generated_github_actions_workflow();
+        let baseline_delta = workflow_step(&workflow, "Render RIPR baseline debt delta");
+        assert!(baseline_delta.contains("ripr baseline diff"));
+        assert!(baseline_delta.contains("continue-on-error: true"));
+        assert!(!workflow.contains("ripr baseline update"));
+        assert!(!workflow.contains("--remove-resolved"));
+        assert!(!workflow.contains("--adopt-new"));
+        assert!(!workflow.contains("--out .ripr/gate-baseline.json"));
+    }
+
+    #[test]
     fn init_generated_github_workflow_uploads_reports_and_makes_sarif_optional() {
         let workflow = generated_github_actions_workflow();
         assert!(workflow.contains("name: RIPR advisory reports"));

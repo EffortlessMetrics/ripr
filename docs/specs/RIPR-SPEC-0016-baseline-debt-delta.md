@@ -328,7 +328,9 @@ ripr baseline update \
 identities that are absent from current gate-decision evidence, preserves
 malformed or ambiguous entries for manual review, and never adopts new current
 debt. Adopting new debt must require a later explicit flag and reviewed reason
-if it is implemented. Generated CI must not rewrite baselines.
+if it is implemented. Generated CI must not rewrite baselines, run
+`ripr baseline update`, pass `--remove-resolved`, or synthesize an
+`--adopt-new` path.
 
 ## Required Evidence
 
@@ -391,6 +393,8 @@ The implementation adds tests for:
   ignoring new current debt;
 - baseline create, diff, and shrink-only update preserving additive review
   metadata without rejecting older Campaign 17 baseline files;
+- generated CI assertions proving baseline projection is diff-only and never
+  auto-refreshes or auto-adopts baseline entries;
 - malformed or non-object legacy review metadata being treated as absent rather
   than rejecting the baseline entry;
 - fixture cases for still-present, resolved, new policy-eligible,
