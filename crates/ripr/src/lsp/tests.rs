@@ -8,8 +8,9 @@ use super::diagnostics::{
     DiagnosticBatch, WorkspaceDiagnostics, diagnostic_for_classified_seam, diagnostic_for_finding,
     diagnostic_refresh_plan, diagnostic_severity_for_class, take_all_uris,
     workspace_diagnostic_batches, workspace_diagnostic_batches_with_config,
+    workspace_diagnostics_with_config,
 };
-use super::hover::{hover_response, hover_with_snapshot_status};
+use super::hover::{classified_seam_hover_response, hover_response, hover_with_snapshot_status};
 use super::state::{AnalysisSnapshot, DocumentStore, RefreshMetadata, format_duration};
 use super::uri::{encode_uri_path, file_uri_for_path, file_uris_match, path_from_file_uri};
 use super::{
@@ -2330,13 +2331,8 @@ fn workspace_diagnostic_batches_uses_default_lsp_analysis_config() {
 
 #[test]
 fn boundary_gap_workspace_diagnostics_include_live_seam_diagnostic() -> Result<(), String> {
-    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let fixture_root = repo_root.join("fixtures/boundary_gap/input");
-    let config = LspAnalysisConfig {
-        base_ref: Some("HEAD".to_string()),
-        mode: Mode::Instant,
-        ..LspAnalysisConfig::default()
-    };
+    let fixture_root = boundary_gap_fixture_root();
+    let config = boundary_gap_lsp_config(crate::config::RiprConfig::default());
 
     let batches = workspace_diagnostic_batches_with_config(&fixture_root, &config)?;
     let seam_diagnostic = batches
@@ -2355,6 +2351,59 @@ fn boundary_gap_workspace_diagnostics_include_live_seam_diagnostic() -> Result<(
     assert!(
         seam_diagnostic,
         "expected boundary_gap live workspace diagnostics to include ripr-seam-weakly-gripped"
+    );
+    Ok(())
+}
+
+#[test]
+fn boundary_gap_lsp_explicit_rust_language_matches_default_projection() -> Result<(), String> {
+    let fixture_root = boundary_gap_fixture_root();
+    let default_config = boundary_gap_lsp_config(crate::config::RiprConfig::default());
+    let rust_only_config = boundary_gap_lsp_config(crate::config::tests_only_parse(
+        r#"
+[languages]
+enabled = ["rust"]
+"#,
+    )?);
+
+    let default_projection = workspace_projection_contract(&fixture_root, &default_config)?;
+    let rust_only_projection = workspace_projection_contract(&fixture_root, &rust_only_config)?;
+
+    assert_eq!(
+        rust_only_projection, default_projection,
+        "explicit [languages] enabled = [\"rust\"] must preserve the saved-workspace Rust editor projection"
+    );
+    Ok(())
+}
+
+#[test]
+fn boundary_gap_lsp_empty_languages_suppresses_saved_workspace_diagnostics() -> Result<(), String> {
+    let fixture_root = boundary_gap_fixture_root();
+    let config = boundary_gap_lsp_config(crate::config::tests_only_parse(
+        r#"
+[languages]
+enabled = []
+"#,
+    )?);
+
+    let diagnostics = workspace_diagnostics_with_config(&fixture_root, &config)?;
+    let diagnostic_count = diagnostics
+        .batches
+        .iter()
+        .map(|batch| batch.diagnostics.len())
+        .sum::<usize>();
+
+    assert_eq!(
+        diagnostic_count, 0,
+        "empty [languages] must publish no saved-workspace diagnostics"
+    );
+    assert!(
+        diagnostics.snapshot.findings.is_empty(),
+        "empty [languages] must not retain finding diagnostics in the LSP snapshot"
+    );
+    assert!(
+        diagnostics.snapshot.classified_seams.is_empty(),
+        "empty [languages] must not retain seam diagnostics in the LSP snapshot"
     );
     Ok(())
 }
@@ -2664,9 +2713,92 @@ fn code_action_commands(
     Ok(commands)
 }
 
+fn boundary_gap_fixture_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("fixtures/boundary_gap/input")
+}
+
+fn boundary_gap_lsp_config(repo_config: crate::config::RiprConfig) -> LspAnalysisConfig {
+    LspAnalysisConfig {
+        base_ref: Some("HEAD".to_string()),
+        mode: Mode::Instant,
+        repo_config,
+        ..LspAnalysisConfig::default()
+    }
+}
+
+fn workspace_projection_contract(
+    root: &Path,
+    config: &LspAnalysisConfig,
+) -> Result<serde_json::Value, String> {
+    let diagnostics = workspace_diagnostics_with_config(root, config)?;
+    let projected_diagnostics = diagnostics
+        .batches
+        .iter()
+        .flat_map(|batch| {
+            batch
+                .diagnostics
+                .iter()
+                .map(|diagnostic| project_diagnostic(root, &batch.uri, diagnostic))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let (uri, diagnostic) = first_seam_diagnostic(&diagnostics)?;
+    let seam = diagnostics
+        .snapshot
+        .classified_seam_for_diagnostic(&diagnostic)
+        .ok_or_else(|| "expected seam diagnostic to resolve to classified seam".to_string())?;
+    let hover = hover_with_snapshot_status(
+        classified_seam_hover_response(seam, &diagnostic, Some(&diagnostics.snapshot)),
+        &diagnostics.snapshot,
+    );
+    let hover_markdown = match hover.contents {
+        HoverContents::Markup(markup) => markup.value,
+        _ => return Err("expected markup hover".to_string()),
+    };
+    let actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic.clone()])?,
+        Some(&diagnostics.snapshot),
+    );
+
+    Ok(serde_json::json!({
+        "diagnostics": projected_diagnostics,
+        "hover": hover_markdown,
+        "actions": project_code_actions(root, &actions)?,
+    }))
+}
+
+fn first_seam_diagnostic(
+    diagnostics: &WorkspaceDiagnostics,
+) -> Result<
+    (
+        tower_lsp_server::ls_types::Uri,
+        tower_lsp_server::ls_types::Diagnostic,
+    ),
+    String,
+> {
+    diagnostics
+        .batches
+        .iter()
+        .flat_map(|batch| {
+            batch
+                .diagnostics
+                .iter()
+                .map(move |diagnostic| (&batch.uri, diagnostic))
+        })
+        .find(|(_, diagnostic)| {
+            diagnostic
+                .code
+                .as_ref()
+                .map(diagnostic_code_value)
+                .is_some_and(|code| code.starts_with("ripr-seam-"))
+        })
+        .map(|(uri, diagnostic)| (uri.clone(), diagnostic.clone()))
+        .ok_or_else(|| "expected at least one seam diagnostic".to_string())
+}
+
 fn boundary_gap_lsp_fixture_outputs() -> Result<(serde_json::Value, serde_json::Value), String> {
-    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let fixture_root = repo_root.join("fixtures/boundary_gap/input");
+    let fixture_root = boundary_gap_fixture_root();
     let mut seams = crate::analysis::inventory_classified_seams_at_with_config(
         &fixture_root,
         &crate::config::RiprConfig::default(),
