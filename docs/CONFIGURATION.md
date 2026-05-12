@@ -405,6 +405,13 @@ finding_id = "probe:src/pricing.rs:88:predicate"
 reason = "Covered by integration test in tests/billing/integration.rs that ripr cannot statically inspect yet."
 owner = "billing"
 expires = "2026-09-01"
+scope = "seam:pricing::threshold"
+created_at = "2026-01-01"
+last_seen = "2026-05-01"
+review_by = "2026-12-01"
+expected_visibility = "suppressed_visible"
+static_class = "weakly_exposed"
+language = "rust"
 
 [[suppressions]]
 kind = "test_efficiency"
@@ -424,10 +431,31 @@ Supported `kind` values (closed set): `exposure_gap`, `test_efficiency`.
 | `kind = "test_efficiency"` requires `test` | And rejects `finding_id`; `path` is optional for disambiguation. |
 | `path` repo-relative, slash-separated | Absolute paths and backslash paths fail at parse time. |
 | `expires` ISO `YYYY-MM-DD` if present | Other formats fail at parse time. |
+| `created_at`, `last_seen`, `review_by` ISO `YYYY-MM-DD` if present | Other formats fail at parse time. |
 | Unknown fields rejected | Catches typos. |
 | Duplicate selectors rejected | Same `finding_id` (or `(test, path)`) twice fails. |
 | Unmatched selectors surface as warnings | Selector that matches no current finding is reported but does not fail the badge. |
 | Expired suppressions do **not** apply | They surface as warnings on the badge so silent green-forever debt is impossible. |
+
+Policy-health metadata:
+
+| Field | Meaning |
+| --- | --- |
+| `scope` | Reviewed scope for the durable exception. Avoid broad values such as `repo`, `workspace`, `global`, `all`, or `*`. |
+| `created_at` | Date the durable exception was created. |
+| `last_seen` | Date the suppressed finding was last reviewed or observed. |
+| `review_by` | Date by which the exception should be reviewed again. |
+| `expected_visibility` | Expected reporting treatment, usually `suppressed_visible`. |
+| `static_class` | Static evidence class covered by the suppression, such as `weakly_exposed` or `reachable_unrevealed`. |
+| `language` | Optional evidence language, such as `rust`, `typescript`, or `python`. |
+| `language_status` | Required as `preview` for preview-language suppressions until an explicit policy promotes them. |
+
+`ripr policy suppression-health` reads the same manifest and writes
+`target/ripr/reports/suppression-health.json` plus Markdown. It flags missing
+owner, missing reason, stale review windows, overbroad scope, unknown
+selectors, missing policy-health metadata, and preview-language suppressions
+without `language_status = "preview"`. The report is advisory and read-only;
+it does not create, delete, apply, or gate suppressions.
 
 Suppressions and `declared_intent` are distinct concerns: intent is a
 positive declaration about test purpose; a suppression is an accepted

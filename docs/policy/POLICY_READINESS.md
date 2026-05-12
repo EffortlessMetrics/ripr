@@ -96,7 +96,7 @@ answer:
 | 2 | `spec/preview-evidence-policy-boundary` | Specify that preview-language findings are visible/advisory by default and not gate or RIPR Zero eligible without later promotion. | done: [RIPR-SPEC-0030](../specs/RIPR-SPEC-0030-preview-evidence-policy-boundary.md) |
 | 3 | `report/policy-readiness` | Implement `ripr policy readiness` over explicit existing artifacts only. | done: `ripr policy readiness` writes `policy-readiness.{json,md}` |
 | 4 | `report/waiver-aging` | Report repeated visible waivers as a signal, not as a failure. | done: `ripr policy waiver-aging` writes `waiver-aging.{json,md}` |
-| 5 | `policy/suppression-ledger-health` | Require durable suppressions to carry identity, owner, reason, scope, dates, visibility, and static class. | planned |
+| 5 | `policy/suppression-ledger-health` | Require durable suppressions to carry identity, owner, reason, scope, dates, visibility, static class, and preview labels. | done: `ripr policy suppression-health` writes `suppression-health.{json,md}` |
 | 6 | `policy/baseline-refresh-guardrails` | Document and enforce shrink-only refresh; no CI auto-adopt-new. | planned |
 | 7 | `policy/exception-ledger-convergence` | Align no-panic, Clippy, non-Rust, workflow, suppression, baseline, and waiver semantics. | planned |
 | 8 | `docs/blocking-readiness-guide` | Extend the advisory-to-blocking decision tree for preview evidence and readiness health. | planned |
@@ -114,6 +114,7 @@ ripr policy readiness \
   --recommendation-calibration target/ripr/reports/recommendation-calibration.json \
   --mutation-calibration target/ripr/reports/mutation-calibration.json \
   --waiver-aging target/ripr/reports/waiver-aging.json \
+  --suppression-health target/ripr/reports/suppression-health.json \
   --out target/ripr/reports/policy-readiness.json \
   --out-md target/ripr/reports/policy-readiness.md
 ```
