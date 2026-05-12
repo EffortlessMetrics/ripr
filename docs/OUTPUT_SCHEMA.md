@@ -2895,7 +2895,8 @@ Field contract:
   `state`, evidence facts, warnings, and a next action.
 - `preview_evidence_boundary` - RIPR-SPEC-0030 projection. Preview findings
   remain visible while default gate eligibility, RIPR Zero blocking, and
-  calibrated-confidence counts remain zero until explicit promotion.
+  calibrated-confidence counts remain zero until explicit promotion. Missing
+  preview labels keep the readiness recommendation advisory until repaired.
 - `unknowns[]` - missing recommended or optional inputs. Missing inputs are not
   treated as passing evidence.
 - `warnings[]` - malformed supplied inputs, preview metadata gaps, or policy

@@ -258,12 +258,17 @@ pub(crate) fn build_policy_readiness_report(input: PolicyReadinessInput) -> Poli
     let has_config_error = artifacts
         .iter()
         .any(|artifact| artifact.status == ArtifactStatus::Invalid);
-    let visible_only_ready = gate.status == ArtifactStatus::Loaded;
+    let preview_boundary_healthy = preview_evidence_boundary.missing_language_status == 0;
+    let baseline_delta_healthy = baseline_facts.stale == 0
+        && baseline_facts.invalid == 0
+        && baseline_facts.missing_input == 0;
+    let visible_only_ready = gate.status == ArtifactStatus::Loaded && preview_boundary_healthy;
     let acknowledgeable_ready = visible_only_ready
         && waiver.status == ArtifactStatus::Loaded
         && suppression.status == ArtifactStatus::Loaded;
     let baseline_check_ready = visible_only_ready
         && baseline.status == ArtifactStatus::Loaded
+        && baseline_delta_healthy
         && !baseline_facts.auto_adopt_new
         && preview_evidence_boundary.preview_findings_gate_eligible == 0;
     let calibrated_gate_ready = baseline_check_ready
@@ -1160,7 +1165,8 @@ mod tests {
 
         let report = build_policy_readiness_report(input);
 
-        assert_eq!(report.status, "ready_for_visible_only");
+        assert_eq!(report.status, "advisory_only");
+        assert_eq!(report.recommended_mode, "advisory-only");
         assert_eq!(report.preview_evidence_boundary.state, "warning");
         assert_eq!(report.preview_evidence_boundary.missing_language_status, 1);
         assert_eq!(
@@ -1225,7 +1231,8 @@ mod tests {
 
         let report = build_policy_readiness_report(input);
 
-        assert_eq!(report.status, "ready_for_baseline_check");
+        assert_eq!(report.status, "ready_for_visible_only");
+        assert!(!report.summary.baseline_check_ready);
         assert_eq!(report.baseline_health.state, "warning");
         for evidence in [
             "still_present=4",
