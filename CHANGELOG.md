@@ -80,6 +80,14 @@ Planned scope:
   closeout, keeps `.ripr/goals/active.toml` unchanged, and routes next work
   through a repo-local evidence-quality audit before analyzer or calibration
   changes.
+- Added `cargo xtask lane1-evidence-audit` with
+  `cargo xtask evidence-quality-audit` as an alias. The repo-local report writes
+  `target/ripr/reports/lane1-evidence-audit.{json,md}` from generated
+  repo-exposure `evidence_record` data and summarizes headline gaps, canonical
+  groups, duplicate-looking groups, missing discriminators, static limitations,
+  oracle semantics, related-test ranking, movement availability, calibration
+  availability, field health, and top files by unresolved evidence debt without
+  changing analyzer behavior or gate policy.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 

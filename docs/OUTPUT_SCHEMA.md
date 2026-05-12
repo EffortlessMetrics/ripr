@@ -1117,6 +1117,206 @@ remain complete in JSON and are capped in Markdown. Static-language constraints
 still apply: runtime-specific labels stay confined to the optional calibration
 availability section.
 
+## Lane 1 Evidence Quality Audit
+
+`cargo xtask lane1-evidence-audit` writes a repo-local audit over generated
+`ripr check --mode instant --format repo-exposure-json`
+`seams[].evidence_record` data:
+
+```text
+target/ripr/reports/lane1-evidence-audit.json
+target/ripr/reports/lane1-evidence-audit.md
+```
+
+`cargo xtask evidence-quality-audit` is an alias. The report is advisory and
+does not change analyzer behavior, gate policy, PR/CI projection, editor UX, or
+runtime execution.
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "report": "lane1-evidence-audit",
+  "scope": "repo",
+  "status": "advisory",
+  "inputs": {
+    "root": ".",
+    "source": "repo-exposure-json",
+    "repo_exposure_mode": "instant",
+    "repo_exposure_schema_version": "0.3"
+  },
+  "summary": {
+    "seams_total": 9355,
+    "raw_headline_gaps": 6114,
+    "evidence_records_total": 9355,
+    "evidence_records_missing": 0,
+    "canonical_gap_groups_total": 4800,
+    "duplicate_looking_groups_total": 240,
+    "headline_without_canonical_gap_id": 12,
+    "missing_discriminators_total": 1756,
+    "static_limitations_total": 4356,
+    "related_tests_total": 2200,
+    "seams_without_related_tests": 310,
+    "low_or_opaque_top_related_tests": 48,
+    "calibrated_records": 0,
+    "uncalibrated_records": 9355
+  },
+  "canonical_gap_groups": {
+    "total": 4800,
+    "largest": [
+      {
+        "key": "canonical:gap:abc",
+        "canonical_gap_id": "gap:abc",
+        "count": 8,
+        "reported_group_size": 8,
+        "owner": "pricing::discount",
+        "seam_kind": "predicate_boundary",
+        "flow_sink": "return_value",
+        "missing_discriminator": "amount == threshold",
+        "assertion_shape": "exact_value",
+        "example_seam_id": "f3c9e4d21a0b7c88",
+        "example_file": "src/pricing.rs"
+      }
+    ]
+  },
+  "duplicate_looking_groups": [],
+  "missing_discriminator_classes": {
+    "by_reason": {
+      "boundary value not observed": 900
+    },
+    "by_flow_sink": {
+      "return_value": 870
+    },
+    "by_value": {
+      "amount == threshold": 4
+    }
+  },
+  "static_limitations": {
+    "by_reason": {
+      "static evidence is opaque or unknown for this seam": 1200
+    },
+    "by_stage": {
+      "activate": 800
+    }
+  },
+  "oracle_semantics_distribution": {
+    "by_semantics": {
+      "observes=exact return value; missing=boundary equality; upgrade=add equality boundary": 42
+    },
+    "oracle_kind_counts": {
+      "exact_value": 700
+    },
+    "oracle_strength_counts": {
+      "strong": 800
+    }
+  },
+  "related_test_ranking": {
+    "all_confidence_counts": {
+      "high": 910,
+      "medium": 1060,
+      "low": 220,
+      "opaque": 10
+    },
+    "top_confidence_counts": {
+      "high": 600,
+      "medium": 900,
+      "low": 40,
+      "opaque": 8
+    },
+    "top_relation_reason_counts": {
+      "direct_owner_call": 600
+    },
+    "seams_without_related_tests": 310,
+    "low_or_opaque_top_related_tests": 48
+  },
+  "movement_availability": {
+    "records_with_seam_id": 9355,
+    "records_with_canonical_gap_id": 4800,
+    "records_with_complete_evidence_path": 9355,
+    "records_with_recommendation": 9355,
+    "records_with_verify_command": 1756
+  },
+  "calibration_availability": {
+    "availability_counts": {
+      "not_imported": 9355
+    },
+    "confidence_counts": {
+      "unknown": 9355
+    },
+    "agreement_counts": {
+      "no_runtime_data": 9355
+    },
+    "calibrated_records": 0,
+    "uncalibrated_records": 9355
+  },
+  "evidence_record_field_health": [
+    {
+      "field": "canonical_gap_id",
+      "present": 4800,
+      "missing": 0,
+      "null": 4555,
+      "empty": 0
+    }
+  ],
+  "top_files_by_unresolved_evidence_debt": [
+    {
+      "file": "src/pricing.rs",
+      "debt_score": 42,
+      "headline_gaps": 10,
+      "missing_discriminators": 10,
+      "static_limitations": 5,
+      "unknown_stage_records": 12,
+      "no_related_tests": 3,
+      "low_or_opaque_top_related_tests": 2,
+      "missing_evidence_records": 0
+    }
+  ]
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `tool` - always `"ripr"`.
+- `report` - always `"lane1-evidence-audit"`.
+- `scope` - always `"repo"`.
+- `status` - always `"advisory"`.
+- `inputs.root` - analyzed root for the generated repo exposure snapshot.
+- `inputs.source` - always `"repo-exposure-json"`.
+- `inputs.repo_exposure_mode` - currently `"instant"`; this keeps the
+  repo-local audit bounded while preserving the existing repo-exposure
+  `evidence_record` contract.
+- `inputs.repo_exposure_schema_version` - schema version read from the generated
+  repo exposure JSON, or `null` if absent.
+- `summary.raw_headline_gaps` - count of seams that are headline-eligible in
+  the record or top-level repo exposure row.
+- `canonical_gap_groups.total` - number of distinct canonical gap IDs among
+  headline records.
+- `canonical_gap_groups.largest` - top canonical groups by observed count,
+  capped for review.
+- `duplicate_looking_groups` - canonical or fallback groups with observed count
+  greater than one, or a reported group size greater than one.
+- `missing_discriminator_classes` - count maps by reason, flow sink, and value.
+- `static_limitations` - count maps by limitation reason and evidence stage.
+- `oracle_semantics_distribution` - rendered related-test oracle semantics plus
+  oracle kind and strength counts.
+- `related_test_ranking` - confidence and relation-reason counts for all
+  rendered related tests and for the top related test per seam.
+- `movement_availability` - counts of records carrying the identity and
+  recommendation fields needed by before/after evidence movement.
+- `calibration_availability` - counts of imported calibration placeholder
+  fields from `evidence_record`; this report does not import or execute
+  calibration itself.
+- `evidence_record_field_health` - per-field present, missing, null, and empty
+  counts for key `evidence_record` contract fields.
+- `top_files_by_unresolved_evidence_debt` - top files by an audit-local debt
+  score that combines headline gaps, missing discriminators, static
+  limitations, unknown stages, no related tests, low/opaque top related tests,
+  and missing evidence records.
+
+The Markdown sibling prints the same audit areas in bounded tables. JSON keeps
+the complete count maps.
+
 ## Repo Exposure Latency Report
 
 `cargo xtask repo-exposure-latency-report` writes a maintainer diagnostic

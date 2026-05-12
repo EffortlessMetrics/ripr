@@ -5879,6 +5879,14 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     let config = load_for_root(&input.root)?;
     apply_to_check_input(&mut input, &config, explicit);
     let format = input.format.clone();
+    if matches!(format, OutputFormat::RepoExposureJson) {
+        let classified = analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
+        let stdout = std::io::stdout();
+        let mut handle = stdout.lock();
+        output::repo_exposure::write_repo_exposure_json(&classified, &mut handle)
+            .map_err(|err| format!("write repo exposure JSON failed: {err}"))?;
+        return Ok(());
+    }
     let output = if format.is_repo_seam_inventory() {
         // Repo seam-driven formats do not consume legacy repo `Findings`,
         // so skip `run_repo_analysis` and let `render_check` drive the
@@ -6375,6 +6383,21 @@ mod tests {
     }
 
     #[test]
+    fn check_repo_exposure_json_streams_output() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/sample");
+        let root_arg = root.to_string_lossy().into_owned();
+        assert_eq!(
+            check(&[
+                "--root".to_string(),
+                root_arg,
+                "--format".to_string(),
+                "repo-exposure-json".to_string()
+            ]),
+            Ok(())
+        );
+    }
+
+    #[test]
     fn command_help_branches_return_ok() {
         assert_eq!(init(&args(&["--help"])), Ok(()));
         assert_eq!(pilot(&args(&["--help"])), Ok(()));
@@ -6473,8 +6496,9 @@ mod tests {
 
     #[test]
     fn pilot_analysis_timeout_returns_partial_result() {
-        let result = run_pilot_analysis_with_timeout(1, || {
-            std::thread::sleep(std::time::Duration::from_millis(20));
+        let (_hold_tx, hold_rx) = mpsc::channel::<()>();
+        let result = run_pilot_analysis_with_timeout(1, move || {
+            let _ignored = hold_rx.recv();
             Ok(Vec::new())
         });
 

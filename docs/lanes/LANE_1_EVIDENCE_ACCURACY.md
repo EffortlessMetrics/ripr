@@ -57,7 +57,7 @@ at another lane without changing this Lane 1 plan.
 | Slice | Intent | Gate |
 | --- | --- | --- |
 | `docs: open Lane 1 evidence accuracy evaluation` | Record evidence-spine completion and open this tracker. | No code behavior changes. |
-| `report: add Lane 1 evidence quality audit` | Generate `target/ripr/reports/lane1-evidence-audit.{json,md}` from existing repo exposure and `evidence_record` data. | Repo-local report only. |
+| `report: add Lane 1 evidence quality audit` | Generate `target/ripr/reports/lane1-evidence-audit.{json,md}` from existing repo exposure and `evidence_record` data. | Implemented by `cargo xtask lane1-evidence-audit`; repo-local report only. |
 | `fixtures: pin top evidence-quality failures` | Fixture the top 3-5 audit findings before changing analyzer behavior. | Positive and negative cases both present. |
 | `analysis: reduce duplicate canonical gap overcount` | Refine grouping only if audit and fixtures show duplicate groups are a top issue. | Same owner, seam kind, flow sink, and missing discriminator group together; different discriminators and owners stay separate. |
 | `analysis: improve related-test ranking from audit cases` | Adjust ranking only for fixture-pinned misses from the audit. | Direct owner calls and stronger oracles remain primary; recency stays a tie-breaker. |
@@ -68,13 +68,13 @@ at another lane without changing this Lane 1 plan.
 
 ## Evidence Quality Audit
 
-The next implementation PR should add a repo-local audit command, such as:
+The repo-local audit command is:
 
 ```bash
 cargo xtask lane1-evidence-audit
 ```
 
-or:
+The compatibility alias is:
 
 ```bash
 cargo xtask evidence-quality-audit
