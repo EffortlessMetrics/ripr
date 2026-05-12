@@ -113,6 +113,21 @@ struct RiprZeroStatusOptions {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+struct PolicyReadinessOptions {
+    root: String,
+    gate_decision: Option<PathBuf>,
+    baseline_delta: Option<PathBuf>,
+    recommendation_calibration: Option<PathBuf>,
+    mutation_calibration: Option<PathBuf>,
+    waiver_aging: Option<PathBuf>,
+    suppression_health: Option<PathBuf>,
+    repo_config: Option<PathBuf>,
+    previous_readiness: Option<PathBuf>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 struct PrEvidenceLedgerOptions {
     pr_number: String,
     base: String,
@@ -2688,6 +2703,22 @@ pub(super) fn zero(args: &[String]) -> Result<(), String> {
     ripr_zero_status(rest)
 }
 
+pub(super) fn policy(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_policy_help();
+        return Ok(());
+    }
+    let Some((subcommand, rest)) = args.split_first() else {
+        return Err("policy requires subcommand `readiness`".to_string());
+    };
+    if subcommand != "readiness" {
+        return Err(format!(
+            "unknown policy subcommand {subcommand:?}; expected `readiness`"
+        ));
+    }
+    policy_readiness(rest)
+}
+
 pub(super) fn pr_ledger(args: &[String]) -> Result<(), String> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         help::print_pr_ledger_help();
@@ -2952,6 +2983,94 @@ fn ripr_zero_status(args: &[String]) -> Result<(), String> {
     write_text_file(&options.out_md, &rendered_md)?;
     println!("Wrote {}", options.out.display());
     println!("Wrote {}", options.out_md.display());
+    Ok(())
+}
+
+fn policy_readiness(args: &[String]) -> Result<(), String> {
+    let options = parse_policy_readiness_options(args)?;
+    let input = output::policy_readiness::PolicyReadinessInput {
+        root: options.root,
+        generated_at: policy_readiness_generated_at()?,
+        gate_decision_path: options
+            .gate_decision
+            .as_ref()
+            .map(|path| output::policy_readiness::display_path(path)),
+        baseline_delta_path: options
+            .baseline_delta
+            .as_ref()
+            .map(|path| output::policy_readiness::display_path(path)),
+        recommendation_calibration_path: options
+            .recommendation_calibration
+            .as_ref()
+            .map(|path| output::policy_readiness::display_path(path)),
+        mutation_calibration_path: options
+            .mutation_calibration
+            .as_ref()
+            .map(|path| output::policy_readiness::display_path(path)),
+        waiver_aging_path: options
+            .waiver_aging
+            .as_ref()
+            .map(|path| output::policy_readiness::display_path(path)),
+        suppression_health_path: options
+            .suppression_health
+            .as_ref()
+            .map(|path| output::policy_readiness::display_path(path)),
+        repo_config_path: options
+            .repo_config
+            .as_ref()
+            .map(|path| output::policy_readiness::display_path(path)),
+        previous_readiness_path: options
+            .previous_readiness
+            .as_ref()
+            .map(|path| output::policy_readiness::display_path(path)),
+        gate_decision_json: options
+            .gate_decision
+            .as_ref()
+            .map(|path| read_optional_text_for_report("gate decision", path)),
+        baseline_delta_json: options
+            .baseline_delta
+            .as_ref()
+            .map(|path| read_optional_text_for_report("baseline debt delta", path)),
+        recommendation_calibration_json: options
+            .recommendation_calibration
+            .as_ref()
+            .map(|path| read_optional_text_for_report("recommendation calibration", path)),
+        mutation_calibration_json: options
+            .mutation_calibration
+            .as_ref()
+            .map(|path| read_optional_text_for_report("mutation calibration", path)),
+        waiver_aging_json: options
+            .waiver_aging
+            .as_ref()
+            .map(|path| read_optional_text_for_report("waiver aging", path)),
+        suppression_health_json: options
+            .suppression_health
+            .as_ref()
+            .map(|path| read_optional_text_for_report("suppression health", path)),
+        repo_config_json: options
+            .repo_config
+            .as_ref()
+            .map(|path| read_optional_text_for_report("repo config summary", path)),
+        previous_readiness_json: options
+            .previous_readiness
+            .as_ref()
+            .map(|path| read_optional_text_for_report("previous policy readiness", path)),
+    };
+    let report = output::policy_readiness::build_policy_readiness_report(input);
+    let rendered_json = output::policy_readiness::render_policy_readiness_json(&report)?;
+    let rendered_md = output::policy_readiness::render_policy_readiness_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    println!(
+        "Status: {}",
+        output::policy_readiness::policy_readiness_status(&report)
+    );
+    println!(
+        "Recommended mode: {}",
+        output::policy_readiness::policy_readiness_recommended_mode(&report)
+    );
     Ok(())
 }
 
@@ -4166,6 +4285,126 @@ fn parse_ripr_zero_status_options(args: &[String]) -> Result<RiprZeroStatusOptio
     })
 }
 
+fn parse_policy_readiness_options(args: &[String]) -> Result<PolicyReadinessOptions, String> {
+    let mut root = ".".to_string();
+    let mut gate_decision = None;
+    let mut baseline_delta = None;
+    let mut recommendation_calibration = None;
+    let mut mutation_calibration = None;
+    let mut waiver_aging = None;
+    let mut suppression_health = None;
+    let mut repo_config = None;
+    let mut previous_readiness = None;
+    let mut out = PathBuf::from(output::policy_readiness::DEFAULT_POLICY_READINESS_OUT);
+    let mut out_md = PathBuf::from(output::policy_readiness::DEFAULT_POLICY_READINESS_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "policy readiness")?;
+            }
+            "--gate-decision" => {
+                i += 1;
+                gate_decision = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--gate-decision",
+                    "policy readiness",
+                )?);
+            }
+            "--baseline-delta" => {
+                i += 1;
+                baseline_delta = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--baseline-delta",
+                    "policy readiness",
+                )?);
+            }
+            "--recommendation-calibration" => {
+                i += 1;
+                recommendation_calibration = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--recommendation-calibration",
+                    "policy readiness",
+                )?);
+            }
+            "--mutation-calibration" => {
+                i += 1;
+                mutation_calibration = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--mutation-calibration",
+                    "policy readiness",
+                )?);
+            }
+            "--waiver-aging" => {
+                i += 1;
+                waiver_aging = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--waiver-aging",
+                    "policy readiness",
+                )?);
+            }
+            "--suppression-health" => {
+                i += 1;
+                suppression_health = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--suppression-health",
+                    "policy readiness",
+                )?);
+            }
+            "--repo-config" => {
+                i += 1;
+                repo_config = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--repo-config",
+                    "policy readiness",
+                )?);
+            }
+            "--previous-readiness" => {
+                i += 1;
+                previous_readiness = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--previous-readiness",
+                    "policy readiness",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "policy readiness")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "policy readiness")?;
+            }
+            other => return Err(format!("unknown policy readiness argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    Ok(PolicyReadinessOptions {
+        root,
+        gate_decision,
+        baseline_delta,
+        recommendation_calibration,
+        mutation_calibration,
+        waiver_aging,
+        suppression_health,
+        repo_config,
+        previous_readiness,
+        out,
+        out_md,
+    })
+}
+
 fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerOptions, String> {
     let mut pr_number = None;
     let mut base = None;
@@ -5128,6 +5367,14 @@ fn comment_publish_plan_generated_at() -> Result<String, String> {
 }
 
 fn report_packet_index_generated_at() -> Result<String, String> {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| format!("system clock before unix epoch: {err}"))?
+        .as_millis();
+    Ok(format!("unix_ms:{millis}"))
+}
+
+fn policy_readiness_generated_at() -> Result<String, String> {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|err| format!("system clock before unix epoch: {err}"))?
@@ -6341,6 +6588,139 @@ mod tests {
             parse_ripr_zero_status_options(&args(&["--bad"])),
             Err("unknown zero status argument \"--bad\"".to_string())
         );
+    }
+
+    #[test]
+    fn policy_readiness_parses_option_surface() {
+        assert_eq!(
+            parse_policy_readiness_options(&args(&[
+                "--root",
+                ".",
+                "--gate-decision",
+                "target/ripr/reports/gate-decision.json",
+                "--baseline-delta",
+                "target/ripr/reports/baseline-debt-delta.json",
+                "--recommendation-calibration",
+                "target/ripr/reports/recommendation-calibration.json",
+                "--mutation-calibration",
+                "target/ripr/reports/mutation-calibration.json",
+                "--waiver-aging",
+                "target/ripr/reports/waiver-aging.json",
+                "--suppression-health",
+                "target/ripr/reports/suppression-health.json",
+                "--repo-config",
+                "target/ripr/reports/repo-config.json",
+                "--previous-readiness",
+                "target/ripr/reports/previous-policy-readiness.json",
+                "--out",
+                "target/ripr/reports/policy-readiness.json",
+                "--out-md",
+                "target/ripr/reports/policy-readiness.md",
+            ])),
+            Ok(PolicyReadinessOptions {
+                root: ".".to_string(),
+                gate_decision: Some(PathBuf::from("target/ripr/reports/gate-decision.json")),
+                baseline_delta: Some(PathBuf::from(
+                    "target/ripr/reports/baseline-debt-delta.json"
+                )),
+                recommendation_calibration: Some(PathBuf::from(
+                    "target/ripr/reports/recommendation-calibration.json"
+                )),
+                mutation_calibration: Some(PathBuf::from(
+                    "target/ripr/reports/mutation-calibration.json"
+                )),
+                waiver_aging: Some(PathBuf::from("target/ripr/reports/waiver-aging.json")),
+                suppression_health: Some(PathBuf::from(
+                    "target/ripr/reports/suppression-health.json"
+                )),
+                repo_config: Some(PathBuf::from("target/ripr/reports/repo-config.json")),
+                previous_readiness: Some(PathBuf::from(
+                    "target/ripr/reports/previous-policy-readiness.json"
+                )),
+                out: PathBuf::from("target/ripr/reports/policy-readiness.json"),
+                out_md: PathBuf::from("target/ripr/reports/policy-readiness.md"),
+            })
+        );
+    }
+
+    #[test]
+    fn policy_readiness_rejects_unknown_args() {
+        assert_eq!(
+            policy(&args(&[])),
+            Err("policy requires subcommand `readiness`".to_string())
+        );
+        assert_eq!(
+            policy(&args(&["unknown"])),
+            Err("unknown policy subcommand \"unknown\"; expected `readiness`".to_string())
+        );
+        assert_eq!(
+            parse_policy_readiness_options(&args(&["--gate-decision", ""])),
+            Err("policy readiness --gate-decision requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_policy_readiness_options(&args(&["--bad"])),
+            Err("unknown policy readiness argument \"--bad\"".to_string())
+        );
+    }
+
+    #[test]
+    fn policy_readiness_command_writes_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("policy-readiness");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create policy dir: {err}"))?;
+        let gate = dir.join("gate-decision.json");
+        let baseline = dir.join("baseline-debt-delta.json");
+        let out = dir.join("policy-readiness.json");
+        let out_md = dir.join("policy-readiness.md");
+        std::fs::write(
+            &gate,
+            r#"{
+              "schema_version": "0.1",
+              "status": "advisory",
+              "mode": "visible-only",
+              "summary": {"blocking": 0, "acknowledged": 0, "advisory": 1, "suppressed": 0, "not_applicable": 0},
+              "decisions": [{
+                "decision": "advisory",
+                "language": "typescript",
+                "language_status": "preview",
+                "static_limit_kind": "dynamic_dispatch"
+              }]
+            }"#,
+        )
+        .map_err(|err| format!("write gate: {err}"))?;
+        std::fs::write(
+            &baseline,
+            r#"{
+              "schema_version": "0.1",
+              "kind": "baseline_debt_delta",
+              "delta": {"still_present": 1, "resolved": 0, "new_policy_eligible": 0, "acknowledged": 0, "suppressed": 0, "stale_baseline_entry": 0, "invalid_baseline_entry": 0, "missing_current_input": 0}
+            }"#,
+        )
+        .map_err(|err| format!("write baseline: {err}"))?;
+
+        policy(&args(&[
+            "readiness",
+            "--gate-decision",
+            &gate.display().to_string(),
+            "--baseline-delta",
+            &baseline.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text =
+            std::fs::read_to_string(&out).map_err(|err| format!("read policy json: {err}"))?;
+        let md_text =
+            std::fs::read_to_string(&out_md).map_err(|err| format!("read policy md: {err}"))?;
+        assert!(json_text.contains("\"status\": \"ready_for_baseline_check\""));
+        assert!(json_text.contains("\"recommended_mode\": \"baseline-check\""));
+        assert!(json_text.contains("\"preview_findings_gate_eligible\": 0"));
+        assert!(json_text.contains("\"preview_findings_ripr_zero_blocking\": 0"));
+        assert!(md_text.contains("# RIPR Policy Readiness"));
+        assert!(md_text.contains("Recommended mode: baseline-check"));
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove policy dir: {err}"))?;
+        Ok(())
     }
 
     #[test]
