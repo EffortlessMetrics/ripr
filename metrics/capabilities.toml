@@ -783,8 +783,8 @@ evidence = [
   "ripr baseline create writes .ripr/gate-baseline.json ledgers from existing gate-decision JSON without overwriting by default and includes additive owner/reason/created/review-after/source metadata plus canonical_gap_id when supplied",
   "ripr baseline diff writes advisory baseline-debt-delta JSON and Markdown from a reviewed baseline and current gate-decision evidence while preserving present review metadata on baseline-derived items and matching canonical_gap_id before legacy selectors",
   "ripr baseline update --remove-resolved shrink-only refreshes reviewed baselines without adopting new current debt, preserving entry metadata and canonical_gap_id matches across line movement",
-  "generated CI runs ripr baseline diff when RIPR_GATE_BASELINE and gate-decision.json are present, uploads baseline-debt-delta JSON/Markdown, and summarizes debt movement without making the report the pass/fail authority",
-  "docs/BASELINE_LEDGER_WORKFLOW.md documents initial advisory adoption, reviewed baseline creation, baseline-check rollout, shrink-only refresh, new debt review, waiver versus baseline versus suppression boundaries, and the path toward RIPR 0",
+  "generated CI runs ripr baseline diff when RIPR_GATE_BASELINE and gate-decision.json are present, uploads baseline-debt-delta JSON/Markdown, summarizes debt movement without making the report the pass/fail authority, and never invokes baseline update or adopt-new",
+  "docs/BASELINE_LEDGER_WORKFLOW.md documents initial advisory adoption, reviewed baseline creation, baseline-check rollout, shrink-only refresh, new debt review, CI no-auto-adopt guardrails, waiver versus baseline versus suppression boundaries, and the path toward RIPR 0",
   "crates/ripr/src/output/baseline_delta.rs renders still-present, resolved, new policy-eligible, acknowledged, suppressed, stale, invalid, and missing-input buckets with canonical_gap_id in identity records when supplied",
   "crates/ripr/src/output/baseline_update.rs preserves malformed or ambiguous entries while removing resolved reviewed debt",
   "fixtures/boundary_gap/expected/baseline-debt-delta/mixed pins checked JSON and Markdown output including metadata compatibility",
@@ -1257,7 +1257,7 @@ evidence = [
   "suppression-health tests cover missing manifest, healthy manifest, metadata warnings, stale review windows, preview label gaps, and parser violations"
 ]
 fixtures = []
-next = "policy-baseline-refresh-guardrails"
+next = "policy-exception-ledger-convergence"
 metric = "suppression_health_missing_owner, suppression_health_missing_reason, suppression_health_stale, suppression_health_overbroad_scope, suppression_health_unknown_selector, suppression_health_preview_without_preview_label"
 
 [[capability]]

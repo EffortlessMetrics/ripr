@@ -97,7 +97,7 @@ answer:
 | 3 | `report/policy-readiness` | Implement `ripr policy readiness` over explicit existing artifacts only. | done: `ripr policy readiness` writes `policy-readiness.{json,md}` |
 | 4 | `report/waiver-aging` | Report repeated visible waivers as a signal, not as a failure. | done: `ripr policy waiver-aging` writes `waiver-aging.{json,md}` |
 | 5 | `policy/suppression-ledger-health` | Require durable suppressions to carry identity, owner, reason, scope, dates, visibility, static class, and preview labels. | done: `ripr policy suppression-health` writes `suppression-health.{json,md}` |
-| 6 | `policy/baseline-refresh-guardrails` | Document and enforce shrink-only refresh; no CI auto-adopt-new. | planned |
+| 6 | `policy/baseline-refresh-guardrails` | Document and enforce shrink-only refresh; no CI auto-adopt-new. | done: shrink-only update and generated-CI no-auto-refresh guardrails |
 | 7 | `policy/exception-ledger-convergence` | Align no-panic, Clippy, non-Rust, workflow, suppression, baseline, and waiver semantics. | planned |
 | 8 | `docs/blocking-readiness-guide` | Extend the advisory-to-blocking decision tree for preview evidence and readiness health. | planned |
 | 9 | `ci/policy-readiness-advisory-projection` | Surface policy-readiness and waiver-aging artifacts in generated CI without pass/fail authority. | planned |
@@ -141,6 +141,28 @@ Planned fields:
 - `unknowns`;
 - `warnings`;
 - `next_policy_action`.
+
+## Baseline Refresh Guardrails
+
+Baseline means known before policy. It does not mean accepted forever.
+
+Allowed:
+
+- `ripr baseline update --remove-resolved` can remove reviewed baseline
+  identities that no longer appear in current gate-decision evidence;
+- a maintainer can commit that shrink-only baseline update in a reviewed PR.
+
+Not allowed by default:
+
+- adding new current findings to a baseline during refresh;
+- treating `new_policy_eligible` as old debt;
+- generated CI calling `ripr baseline update`;
+- generated CI writing `.ripr/gate-baseline.json` or any configured
+  `RIPR_GATE_BASELINE` path;
+- generated CI inventing or accepting an `--adopt-new` path.
+
+If a future explicit manual adopt-new command exists, it must require a
+reviewed reason and stay outside generated CI.
 
 ## Non-Goals
 
