@@ -190,7 +190,7 @@ stackable = false
 blocked_by = [
   "analysis/typescript-preview-adapter",
 ]
-acceptance = "Pin the Python parser-substrate decision before any Cargo dependency or adapter code lands, mirroring how ADR 0008 (oxc_parser) was sequenced ahead of the TypeScript scaffold. Adds docs/adr/0009-python-parser-substrate.md, registers it in docs/adr/README.md, and adds the approved-decision comment for ruff_python_parser to policy/dependency_allowlist.txt. No Cargo dependency, no adapter code, no behavior change. Tracked as #770."
+acceptance = "Pin the Python parser-substrate decision before any Cargo dependency or adapter code lands, mirroring how ADR 0008 (oxc_parser) was sequenced ahead of the TypeScript scaffold. Landed via #794 (closes #770) — adds docs/adr/0009-python-parser-substrate.md, registers it in docs/adr/README.md, and adds the approved-decision comment to policy/dependency_allowlist.txt. ADR 0009 was superseded in-place by a follow-up correction PR after discovering the originally-picked `ruff_python_parser` is `publish = false` in the astral-sh/ruff workspace and unavailable on crates.io; the corrected pick is `rustpython-parser`, the documented natural fallback already named under the ADR's Revisit Criteria. No Cargo dependency, no adapter code, no behavior change."
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
@@ -209,7 +209,7 @@ blocked_by = [
   "config/languages-opt-in",
   "adr/python-parser-substrate",
 ]
-acceptance = "Add the Python syntax-first adapter, the Python fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Mirrors the TypeScript scaffold pattern: add the ruff_python_parser Cargo dependency approved by ADR 0009, add PythonAdapter wiring, route .py through the language router, and parse changed .py files when [languages] includes python. Empty findings until later sub-slices extract owners, tests, and assertions."
+acceptance = "Add the Python syntax-first adapter, the Python fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Mirrors the TypeScript scaffold pattern: add the `rustpython-parser` Cargo dependency approved by the corrected ADR 0009, add PythonAdapter wiring, route .py through the language router, and parse changed .py files when [languages] includes python. Empty findings until later sub-slices extract owners, tests, and assertions."
 
 [[work_item]]
 id = "lsp/editor-language-routing"
