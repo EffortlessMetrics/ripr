@@ -1,0 +1,65 @@
+{
+  "schema_version": "0.1",
+  "source": "fixture-runtime-sample",
+  "description": "Controlled imported cargo-mutants sample covering side-effect, mock, snapshot, and dynamic-dispatch calibration classes. This file is supplied input for calibration commands; RIPR does not run mutation testing.",
+  "mutants": [
+    {
+      "id": "m-v2-side-effect-observer",
+      "seam_id": "cal-v2-side-effect-observer",
+      "file": "src/checkout.rs",
+      "line": 12,
+      "operator": "delete ledger side-effect call",
+      "outcome": "missed",
+      "duration": "52ms",
+      "test_command": "cargo test records_payment_in_ledger"
+    },
+    {
+      "id": "m-v2-mock-expectation",
+      "seam_id": "cal-v2-mock-expectation",
+      "file": "src/notifications.rs",
+      "line": 24,
+      "operator": "delete gateway expectation call",
+      "outcome": "caught",
+      "duration": "45ms",
+      "test_command": "cargo test sends_receipt_with_gateway_expectation"
+    },
+    {
+      "id": "m-v2-weak-snapshot-oracle",
+      "seam_id": "cal-v2-weak-snapshot-oracle",
+      "file": "src/summary.rs",
+      "line": 36,
+      "operator": "replace serialized discount_reason field",
+      "outcome": "caught",
+      "duration": "49ms",
+      "test_command": "cargo test summary_snapshot_stays_readable"
+    },
+    {
+      "id": "m-v2-opaque-dispatch",
+      "seam_id": "cal-v2-opaque-dispatch",
+      "file": "src/routing.rs",
+      "line": 48,
+      "operator": "replace dynamic dispatch target",
+      "outcome": "missed",
+      "duration": "61ms",
+      "test_command": "cargo test routes_discount_through_policy"
+    },
+    {
+      "id": "m-v2-ambiguous-opaque-dispatch",
+      "file": "src/routing.rs",
+      "line": 58,
+      "operator": "replace opaque dispatch branch",
+      "outcome": "missed",
+      "duration": "57ms",
+      "test_command": "cargo test routes_fee_policy"
+    },
+    {
+      "id": "m-v2-runtime-only-signal",
+      "file": "src/runtime_only.rs",
+      "line": 99,
+      "operator": "replace observer value",
+      "outcome": "missed",
+      "duration": "43ms",
+      "test_command": "cargo test runtime_only_observer"
+    }
+  ]
+}

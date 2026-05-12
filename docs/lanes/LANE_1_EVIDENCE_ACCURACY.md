@@ -62,7 +62,7 @@ at another lane without changing this Lane 1 plan.
 | `analysis: reduce duplicate canonical gap overcount` | Refine grouping only if audit and fixtures show duplicate groups are a top issue. | Implemented for parser-backed match-arm discriminators: same owner, seam kind, flow sink, and missing discriminator group together; different discriminators and owners stay separate. |
 | `analysis: improve related-test ranking from audit cases` | Adjust ranking only for fixture-pinned misses from the audit. | Direct owner calls and stronger oracles remain primary; recency stays a tie-breaker. |
 | `analysis: improve oracle semantics from audit cases` | Add supported oracle shapes only when the audit identifies misclassified cases. | Observed and missed behavior are explicit; unsupported helpers stay static limitations. |
-| `calibration: expand runtime fixture classes` | Add checked runtime fixture classes for side effects, mock expectations, snapshots, and dynamic or opaque dispatch. | Runtime-only signal does not create a static gap; no CI mutation execution. |
+| `calibration: expand runtime fixture classes` | Add checked runtime fixture classes for side effects, mock expectations, snapshots, and dynamic or opaque dispatch. | Implemented by `runtime-fixtures-v2`: runtime-only signal does not create a static gap; no CI mutation execution. |
 | `report: evidence health consumes audit findings` | Fold durable audit fields into evidence-health. | Implemented as additive evidence-health fields; no policy decisions or blocking. |
 | `campaign: close Lane 1 evidence accuracy evaluation` | Close after at least one audit-driven improvement lands. | Future work listed by evidence class, not surface. |
 
@@ -160,9 +160,10 @@ The local audit delta after the change was:
 ## Calibration Rule
 
 The existing checked `runtime-fixtures-v1` classes define the calibrated
-boundary for imported static/runtime confidence labels. Side-effect observer,
-mock expectation, snapshot oracle, and dynamic or opaque dispatch samples stay
-outside calibrated scope until checked runtime fixtures land.
+boundary for imported static/runtime confidence labels over the main agreement
+buckets. The checked `runtime-fixtures-v2` sample expands that boundary to
+side-effect observer, mock expectation, snapshot oracle, and dynamic or opaque
+dispatch classes.
 
 When expanding calibration:
 
@@ -171,6 +172,12 @@ When expanding calibration:
 - do not create a static gap from runtime-only signal;
 - keep static vocabulary within RIPR's conservative terms;
 - do not run mutation execution in CI.
+
+The v2 fixture keeps those rules explicit: imported runtime outcomes map to
+existing side-effect, mock, snapshot, and opaque-dispatch seams where possible;
+an opaque dispatch file/line signal with two candidates remains ambiguous; and
+a runtime-only signal stays in the calibration report without creating a
+static gap.
 
 ## Evidence Health Audit Fields
 

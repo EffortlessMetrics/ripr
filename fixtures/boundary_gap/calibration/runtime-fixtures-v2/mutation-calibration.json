@@ -1,0 +1,241 @@
+{
+  "agreement": {
+    "runtime_inconclusive": 1,
+    "runtime_signal_without_static_gap": 1,
+    "static_clean_and_runtime_clean": 1,
+    "static_gap_and_runtime_signal": 2,
+    "static_gap_without_runtime_signal": 1
+  },
+  "ambiguous_file_line_matches": [
+    {
+      "candidates": [
+        {
+          "file": "src/routing.rs",
+          "line": 58,
+          "missing_discriminators": [],
+          "observed_values": [
+            "fee_policy"
+          ],
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong",
+          "seam_grip_class": "strongly_gripped",
+          "seam_id": "cal-v2-opaque-ambiguous-a",
+          "seam_kind": "dynamic_dispatch"
+        },
+        {
+          "file": "src/routing.rs",
+          "line": 58,
+          "missing_discriminators": [],
+          "observed_values": [
+            "fallback_policy"
+          ],
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong",
+          "seam_grip_class": "strongly_gripped",
+          "seam_id": "cal-v2-opaque-ambiguous-b",
+          "seam_kind": "dynamic_dispatch"
+        }
+      ],
+      "confidence_label": "ambiguous_runtime_join",
+      "runtime": {
+        "duration": "57ms",
+        "file": "src/routing.rs",
+        "line": 58,
+        "mutant_id": "m-v2-ambiguous-opaque-dispatch",
+        "mutation_operator": "replace opaque dispatch branch",
+        "runtime_outcome": "missed",
+        "seam_id": null,
+        "test_command": "cargo test routes_fee_policy"
+      }
+    }
+  ],
+  "matches": [
+    {
+      "confidence_label": "supports_static_clean",
+      "join_method": "seam_id",
+      "runtime": {
+        "duration": "45ms",
+        "file": "src/notifications.rs",
+        "line": 24,
+        "mutant_id": "m-v2-mock-expectation",
+        "mutation_operator": "delete gateway expectation call",
+        "runtime_outcome": "caught",
+        "seam_id": "cal-v2-mock-expectation",
+        "test_command": "cargo test sends_receipt_with_gateway_expectation"
+      },
+      "static": {
+        "file": "src/notifications.rs",
+        "line": 24,
+        "missing_discriminators": [],
+        "observed_values": [
+          "send_receipt"
+        ],
+        "oracle_kind": "mock_expectation",
+        "oracle_strength": "strong",
+        "seam_grip_class": "strongly_gripped",
+        "seam_id": "cal-v2-mock-expectation",
+        "seam_kind": "call_presence"
+      }
+    },
+    {
+      "confidence_label": "supports_static_gap",
+      "join_method": "seam_id",
+      "runtime": {
+        "duration": "61ms",
+        "file": "src/routing.rs",
+        "line": 48,
+        "mutant_id": "m-v2-opaque-dispatch",
+        "mutation_operator": "replace dynamic dispatch target",
+        "runtime_outcome": "missed",
+        "seam_id": "cal-v2-opaque-dispatch",
+        "test_command": "cargo test routes_discount_through_policy"
+      },
+      "static": {
+        "file": "src/routing.rs",
+        "line": 48,
+        "missing_discriminators": [
+          "policy target (dispatch target is opaque to static matching)"
+        ],
+        "observed_values": [],
+        "oracle_kind": "opaque_dispatch",
+        "oracle_strength": "none",
+        "seam_grip_class": "reachable_unrevealed",
+        "seam_id": "cal-v2-opaque-dispatch",
+        "seam_kind": "dynamic_dispatch"
+      }
+    },
+    {
+      "confidence_label": "supports_static_gap",
+      "join_method": "seam_id",
+      "runtime": {
+        "duration": "52ms",
+        "file": "src/checkout.rs",
+        "line": 12,
+        "mutant_id": "m-v2-side-effect-observer",
+        "mutation_operator": "delete ledger side-effect call",
+        "runtime_outcome": "missed",
+        "seam_id": "cal-v2-side-effect-observer",
+        "test_command": "cargo test records_payment_in_ledger"
+      },
+      "static": {
+        "file": "src/checkout.rs",
+        "line": 12,
+        "missing_discriminators": [
+          "ledger event fields (test observes a side effect but not the changed order id and amount fields)"
+        ],
+        "observed_values": [
+          "record_payment"
+        ],
+        "oracle_kind": "side_effect_observer",
+        "oracle_strength": "medium",
+        "seam_grip_class": "weakly_gripped",
+        "seam_id": "cal-v2-side-effect-observer",
+        "seam_kind": "call_presence"
+      }
+    },
+    {
+      "confidence_label": "contradicts_static_gap",
+      "join_method": "seam_id",
+      "runtime": {
+        "duration": "49ms",
+        "file": "src/summary.rs",
+        "line": 36,
+        "mutant_id": "m-v2-weak-snapshot-oracle",
+        "mutation_operator": "replace serialized discount_reason field",
+        "runtime_outcome": "caught",
+        "seam_id": "cal-v2-weak-snapshot-oracle",
+        "test_command": "cargo test summary_snapshot_stays_readable"
+      },
+      "static": {
+        "file": "src/summary.rs",
+        "line": 36,
+        "missing_discriminators": [
+          "discount_reason (broad snapshot does not pin the changed field)"
+        ],
+        "observed_values": [
+          "total"
+        ],
+        "oracle_kind": "snapshot",
+        "oracle_strength": "weak",
+        "seam_grip_class": "weakly_gripped",
+        "seam_id": "cal-v2-weak-snapshot-oracle",
+        "seam_kind": "serialized_output"
+      }
+    }
+  ],
+  "metrics": {
+    "ambiguous_file_line_total": 1,
+    "join_method_counts": {
+      "seam_id": 4
+    },
+    "matched_total": 4,
+    "mutants_total": 6,
+    "runtime_outcome_counts": {
+      "caught": 2,
+      "missed": 4
+    },
+    "static_seams_total": 6,
+    "static_without_runtime_total": 0,
+    "unmatched_mutants_total": 1
+  },
+  "missed_runtime_signals": [
+    {
+      "confidence_label": "runtime_only_signal",
+      "reason": "runtime gap signal did not join to a static seam",
+      "runtime": {
+        "duration": "43ms",
+        "file": "src/runtime_only.rs",
+        "line": 99,
+        "mutant_id": "m-v2-runtime-only-signal",
+        "mutation_operator": "replace observer value",
+        "runtime_outcome": "missed",
+        "seam_id": null,
+        "test_command": "cargo test runtime_only_observer"
+      },
+      "static": null
+    }
+  ],
+  "precision_notes": [
+    "runtime gap signals are imported runtime labels such as missed, survived, not_caught, or uncaught",
+    "runtime clean signals are imported runtime labels such as caught or timeout",
+    "static_gap_without_runtime_signal includes static gap seams with no matched runtime gap signal in this import",
+    "ambiguous file/line runtime gap signals are counted as runtime_inconclusive until a seam_id or unambiguous location is available"
+  ],
+  "schema_version": "0.1",
+  "scope": "repo",
+  "static_only_findings": [
+    {
+      "confidence_label": "contradicts_static_gap",
+      "reason": "static gap seam matched runtime data without a runtime gap signal",
+      "static": {
+        "file": "src/summary.rs",
+        "line": 36,
+        "missing_discriminators": [
+          "discount_reason (broad snapshot does not pin the changed field)"
+        ],
+        "observed_values": [
+          "total"
+        ],
+        "oracle_kind": "snapshot",
+        "oracle_strength": "weak",
+        "seam_grip_class": "weakly_gripped",
+        "seam_id": "cal-v2-weak-snapshot-oracle",
+        "seam_kind": "serialized_output"
+      }
+    }
+  ],
+  "static_without_runtime_sample": [],
+  "status": "advisory",
+  "unmatched_mutants": [
+    {
+      "duration": "43ms",
+      "file": "src/runtime_only.rs",
+      "line": 99,
+      "mutant_id": "m-v2-runtime-only-signal",
+      "mutation_operator": "replace observer value",
+      "runtime_outcome": "missed",
+      "seam_id": null,
+      "test_command": "cargo test runtime_only_observer"
+    }
+  ]
+}
