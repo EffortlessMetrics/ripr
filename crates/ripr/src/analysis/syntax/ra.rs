@@ -428,7 +428,11 @@ fn extract_parser_probe_shapes(
                 PROBE_SHAPE_MATCH_ARM,
                 token.text_range().start(),
                 token.text_range().end(),
-                match_expr_probe_text(text, match_expr.syntax().text_range()),
+                match_expr_probe_text(
+                    text,
+                    match_expr.expr().map(|expr| expr.syntax().text_range()),
+                    match_expr.syntax().text_range(),
+                ),
             );
         }
     }
@@ -508,8 +512,19 @@ fn push_probe_shape_with_text(
     });
 }
 
-fn match_expr_probe_text(text: &str, range: ra_ap_syntax::TextRange) -> String {
-    let raw = slice_text(text, range.start(), range.end());
+fn match_expr_probe_text(
+    text: &str,
+    scrutinee_range: Option<ra_ap_syntax::TextRange>,
+    fallback_range: ra_ap_syntax::TextRange,
+) -> String {
+    if let Some(range) = scrutinee_range {
+        let scrutinee = normalize_probe_shape_text(&slice_text(text, range.start(), range.end()));
+        if !scrutinee.is_empty() {
+            return format!("match {scrutinee}");
+        }
+    }
+
+    let raw = slice_text(text, fallback_range.start(), fallback_range.end());
     let snippet = raw.trim();
     let head = snippet
         .split_once('{')

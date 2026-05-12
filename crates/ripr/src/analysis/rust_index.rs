@@ -483,6 +483,11 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
         _ => 0,
     };
 
+    let _block_marker = match { service.kind() } {
+        "block" => 1,
+        _ => 0,
+    };
+
     match amount {
         0 => Err(Error::Zero),
         _ => Ok(Quote { total: amount }),
@@ -512,7 +517,9 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
             .collect::<Vec<_>>();
         assert!(match_shapes.contains(&"match amount"));
         assert!(match_shapes.contains(&"match service.kind()"));
+        assert!(match_shapes.contains(&"match { service.kind() }"));
         assert!(match_shapes.contains(&r#""=>" =>"#));
+        assert!(match_shapes.contains(&r#""block" =>"#));
         assert!(match_shapes.contains(&"0 =>"));
         assert!(match_shapes.contains(&"_ =>"));
         assert!(!match_shapes.contains(&"=>"));
