@@ -80,6 +80,15 @@ Planned scope:
   closeout, keeps `.ripr/goals/active.toml` unchanged, and routes next work
   through a repo-local evidence-quality audit before analyzer or calibration
   changes.
+- Closed the Lane 2 Policy Readiness and Preview Evidence Governance tracker.
+  The closeout leaves Campaign 27 active while documenting the policy-readiness
+  report, preview evidence boundary, waiver-aging report, suppression-health
+  report, shrink-only baseline refresh guardrails, exception-ledger alignment,
+  blocking readiness guide, and advisory generated CI projection. Preview
+  TypeScript/Python evidence remains visible and advisory by default, with no
+  gate eligibility, RIPR Zero blocking debt, calibrated-confidence authority,
+  automatic baseline adoption, generated tests, mutation execution, or default
+  CI blocking without later explicit promotion policy.
 - Added `cargo xtask lane1-evidence-audit` with
   `cargo xtask evidence-quality-audit` as an alias. The repo-local report writes
   `target/ripr/reports/lane1-evidence-audit.{json,md}` from generated
