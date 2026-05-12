@@ -43,13 +43,14 @@ non_goals = [
 
 [[work_item]]
 id = "spec/policy-readiness-report"
-status = "planned"
+status = "done"
 branch = "spec-policy-readiness-report"
-acceptance = "Define the read-only policy readiness report, statuses, inputs, fields, warnings, and no-mutation/no-gate boundary."
+acceptance = "RIPR-SPEC-0029 defines the read-only policy readiness report, statuses, inputs, fields, warnings, and no-mutation/no-gate boundary."
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
   "cargo xtask check-static-language",
+  "cargo xtask check-spec-format",
   "cargo xtask check-traceability",
   "cargo xtask check-capabilities",
   "cargo xtask check-output-contracts",
