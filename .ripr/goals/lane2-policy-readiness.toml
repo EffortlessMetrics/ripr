@@ -1,0 +1,120 @@
+id = "policy-readiness-preview-evidence-governance"
+title = "Policy Readiness and Preview Evidence Governance"
+status = "tracker"
+issue = "https://github.com/EffortlessMetrics/ripr/issues/755"
+
+# Focused Lane 2 tracker. This is not the active Codex Goals manifest.
+# `.ripr/goals/active.toml` remains the active execution manifest for
+# Campaign 27: Language Adapter Preview.
+
+objective = """
+Make RIPR policy decisions auditable across stable Rust evidence and preview
+language-adapter evidence. Preserve advisory defaults, keep preview findings
+visible but non-gating by default, and define when evidence is eligible for
+baseline, waiver, suppression, calibration, RIPR Zero, and gates.
+"""
+
+hard_rules = [
+  "Evidence stays visible.",
+  "Policy decides what evidence means.",
+  "Waivers are visible acknowledgements.",
+  "Suppressions are durable policy exceptions.",
+  "Baselines are adoption checkpoints.",
+  "Preview language evidence is advisory until promoted.",
+  "Blocking is explicit, narrow, and reversible.",
+  "No default CI blocking.",
+  "No hidden mutation or runtime-proof claims.",
+  "No automatic baseline adoption.",
+  "No generated tests.",
+]
+
+non_goals = [
+  "No analyzer changes.",
+  "No LSP/editor behavior changes.",
+  "No PR summary rendering changes.",
+  "No generated tests.",
+  "No mutation execution.",
+  "No provider calls.",
+  "No release/security changes.",
+  "No default CI blocking.",
+  "No automatic baseline adoption.",
+  "No preview-language gate promotion without explicit later policy.",
+]
+
+[[work_item]]
+id = "spec/policy-readiness-report"
+status = "planned"
+branch = "spec-policy-readiness-report"
+acceptance = "Define the read-only policy readiness report, statuses, inputs, fields, warnings, and no-mutation/no-gate boundary."
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "spec/preview-evidence-policy-boundary"
+status = "planned"
+branch = "spec-preview-evidence-policy-boundary"
+acceptance = "Specify that TypeScript and Python preview evidence is visible/advisory by default, carries preview/static-limit labels, and is not gate, RIPR Zero, or mutation-calibrated confidence eligible without later explicit promotion."
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "report/policy-readiness"
+status = "planned"
+branch = "report-policy-readiness"
+acceptance = "Implement `ripr policy readiness` over explicit existing artifacts only, writing policy-readiness JSON and Markdown without posting, source edits, hidden analysis, baseline mutation, gate execution, or CI failure authority."
+
+[[work_item]]
+id = "report/waiver-aging"
+status = "planned"
+branch = "report-waiver-aging"
+acceptance = "Add waiver-aging JSON and Markdown so repeated waiver is visible as a signal, not treated as a failure or hidden exception."
+
+[[work_item]]
+id = "policy/suppression-ledger-health"
+status = "planned"
+branch = "policy-suppression-ledger-health"
+acceptance = "Flag missing owner, missing reason, stale suppression, overbroad scope, unknown selector, and preview-language suppression without preview label while keeping suppressed findings visible."
+
+[[work_item]]
+id = "policy/baseline-refresh-guardrails"
+status = "planned"
+branch = "policy-baseline-refresh-guardrails"
+acceptance = "Document and enforce that shrink-only refresh can remove resolved debt, adopting new debt is explicit/manual if it exists, and CI never auto-adopts new baseline entries."
+
+[[work_item]]
+id = "policy/exception-ledger-convergence"
+status = "planned"
+branch = "policy-exception-ledger-convergence"
+acceptance = "Align no-panic, Clippy, non-Rust, workflow, RIPR suppression, baseline, and waiver ledgers around one reviewed reason per exception, semantic identity where available, and stale-entry behavior by class."
+
+[[work_item]]
+id = "docs/blocking-readiness-guide"
+status = "planned"
+branch = "docs-blocking-readiness-guide"
+acceptance = "Extend the blocking-readiness decision tree so advisory, acknowledgeable, baseline-check, and calibrated-gate promotion depends on calibration, baseline, waiver, suppression, and preview-evidence health."
+
+[[work_item]]
+id = "ci/policy-readiness-advisory-projection"
+status = "planned"
+branch = "ci-policy-readiness-advisory-projection"
+acceptance = "Surface policy-readiness and waiver-aging artifacts in generated CI as advisory uploads and summaries only: no pass/fail authority, no new required checks, no default blocking, and no comment posting."
+
+[[work_item]]
+id = "campaign/policy-readiness-closeout"
+status = "planned"
+branch = "campaign-policy-readiness-closeout"
+acceptance = "Close only after policy readiness, preview boundary, waiver aging, suppression health, baseline refresh guardrails, exception ledger semantics, blocking readiness guidance, and advisory CI projection exist."

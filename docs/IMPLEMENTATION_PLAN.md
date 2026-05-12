@@ -50,10 +50,15 @@ than one behavior contract or touches repo shape.
 | Report Packet Index (25) | Make the uploaded `ripr-reports` packet navigable as a reviewer-first index over explicit existing artifacts. | Complete: report contract, fixture corpus, `ripr reports index`, generated-CI projection, workflow docs, dogfood receipts, and closeout audit are in place. |
 | PR Inline Comment Publisher (26) | Make optional durable PR comments safe and explicit by planning, capping, deduplicating, and publishing only changed-line `review-comments` entries when configured. | Complete: spec, fixture corpus, read-only publish plan, generated-CI opt-in wiring, workflow docs, dogfood receipts, and closeout audit are in place. |
 | Language Adapter Preview (27) | Introduce a language-neutral analysis adapter boundary, keep Rust as the reference adapter, and add syntax-first TypeScript and Python preview adapters that feed the existing RIPR domain, output, LSP, agent, and Lane 4 surfaces without changing Rust behavior or default CI blocking. | Active: RIPR-PROP-0001 records the design intent, RIPR-SPEC-0026 pins the adapter contract, RIPR-SPEC-0027 pins the TypeScript preview static-fact contract, and RIPR-SPEC-0028 pins the Python preview static-fact contract; remaining work items cover the adapter boundary, Rust adapter, output metadata, TypeScript and Python preview adapters, editor routing, language-aware advisory CI grouping, workflow docs, dogfood receipts, and `campaign/language-adapter-preview-closeout`. |
+| Policy Readiness and Preview Evidence Governance (Lane 2 tracker) | Make policy decisions auditable across stable Rust evidence and preview-language evidence without changing advisory defaults. | Tracker: [#755](https://github.com/EffortlessMetrics/ripr/issues/755) and [Policy readiness](policy/POLICY_READINESS.md) define the focused Lane 2 board; planned work covers readiness reporting, preview evidence policy, waiver aging, suppression health, baseline refresh guardrails, exception ledger convergence, blocking guidance, advisory CI projection, and closeout. |
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Complete as an explicit parallel Lane 3 closeout: contract audit, hover hardening, evidence-aware actions, context packet, protocol smoke, VS Code smoke, status/staleness, workflow docs, and closeout audit. |
 
-The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
-through 8 are complete. Campaign 6 closed after the internal module SRP chain
+The active machine-readable campaign is `.ripr/goals/active.toml`. The focused
+Lane 2 policy readiness tracker lives in
+`.ripr/goals/lane2-policy-readiness.toml` and
+[Policy readiness](policy/POLICY_READINESS.md); it is a GitHub issue/PR board,
+not the active execution manifest. Campaigns 1 through 8 are complete.
+Campaign 6 closed after the internal module SRP chain
 landed through #405 while preserving the saved-workspace LSP cockpit contract,
 output schemas, public API, SARIF, and badge behavior. Campaign 7 closed after
 the defaults-first CLI, editor, CI, fixture, release, and report surfaces were
