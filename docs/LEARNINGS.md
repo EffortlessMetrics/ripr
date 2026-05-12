@@ -266,3 +266,91 @@ Observed inventory during PR 0:
 4 string-pattern matches in rust_index.rs intentionally detect unwrap/expect in
 analyzed user code and are not panic-family call sites.
 ```
+
+## 2026-05-12: Evidence Text Now, Structured Field When Second Consumer Appears
+
+### Context
+
+A recurring situation while extending analyzers: a new evidence kind
+needs to flow from an adapter to the rest of `ripr`, and a spec
+already documents a structured shape for it. The textbook move is to
+add the typed field today. In practice, doing that for a single
+producer with no consumer balloons the diff and pulls in renderer,
+fixture, and golden churn that defends nothing observable.
+
+Surfaced concretely during Campaign 27 work on TypeScript preview
+facts, where `mocked_module` static-limit detection had a choice
+between adding a structured `Finding.static_limit_kind` enum field
+and emitting a stable-prefix string in the existing
+`Finding.evidence` array.
+
+### The pattern
+
+For a new evidence kind, ship as a stable-prefix string in the
+existing `evidence` array first:
+
+```text
+static_limit mocked_module: `./api`
+```
+
+The prefix is grep-friendly (`starts_with("static_limit ")` is a
+stable contract). The renderer, JSON shape, SARIF emitter, badge
+output, and the LSP all keep working without changes. Fixture
+re-bless touches the one file that actually gained evidence.
+
+Promote to a structured field on `Finding` (or wherever the spec
+places it) when a real second consumer appears. Until then, the
+text-with-prefix carries the information forward without paying for
+schema ceremony that nothing reads.
+
+### When text-with-prefix is the right call
+
+- A single adapter is the only producer of the signal today.
+- No live consumer reads the typed shape — no scanner aggregating
+  by kind, no LSP code-action keyed on the variant, no policy
+  aggregator counting cases.
+- The scoped-PR contract is pushing for one production delta in
+  this PR; promoting to a schema field would expand the diff several
+  times over (constructor sites, every renderer, every TS fixture
+  re-blessed to confirm field absence, serialization tests).
+- The signal is straightforward enough that one stable prefix
+  encodes it cleanly.
+
+### When to promote to the structured field
+
+- A second adapter wants to emit the same kind of signal, and the
+  text prefix is starting to feel like a small parallel protocol.
+- A real consumer materializes: a policy-readiness scanner that
+  needs to aggregate by kind, an LSP code-action that branches on
+  the variant, a metric over the typed vocabulary.
+- The prefix family has grown past two or three forms and the
+  string-parser at the consumer side is becoming non-trivial.
+- The spec's structured vocabulary needs to be enforced — at that
+  point, the typed enum carries the closure over the variant set
+  and the text prefix cannot.
+
+### Hazard
+
+A structured field that exists on paper in a spec but is not yet
+emitted by any adapter is an attractive nuisance. The next reader
+sees the spec, sees the absence, and reads the text-only ship as
+under-delivery rather than as a deliberate deferral.
+
+Mitigation: file the follow-up issue at the same time as the
+text-only ship. Name the second-consumer trigger explicitly in the
+issue, link the spec line that documents the structured shape, and
+link the analyzer site that emits the text form today. The deferral
+is then recorded, not hidden.
+
+### Concrete example
+
+- PR #791 (`analysis(ts): TypeScript preview facts — mocked-module
+  static-limit reporting`) chose the text-with-prefix form.
+- Issue #807 (`domain: emit structured static_limit_kind field on
+  Finding`) records the follow-up and names the second-consumer
+  trigger.
+- The scanner that would aggregate by kind once the typed field is
+  emitted: `crates/ripr/src/output/policy_readiness.rs:800-810`.
+- The spec defining the structured vocabulary:
+  `docs/specs/RIPR-SPEC-0026-language-adapter-contract.md`
+  (`static_limit_kind`).
