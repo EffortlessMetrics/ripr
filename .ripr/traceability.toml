@@ -1920,6 +1920,7 @@ outputs = [
   "docs/specs/RIPR-SPEC-0029-policy-readiness-report.md",
   "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/CI.md",
   "docs/policy/POLICY_READINESS.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   ".ripr/goals/lane2-policy-readiness.toml",

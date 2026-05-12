@@ -336,7 +336,9 @@ and preview-language evidence are allowed to mean for acknowledgement,
 baseline, waiver, suppression, calibration, RIPR Zero, and gates. Preview
 TypeScript and Python findings remain visible and advisory by default; they do
 not become gate-eligible or RIPR Zero blocking debt without a later explicit
-policy promotion. The primary GitHub board is
+policy promotion. Generated CI may surface waiver-aging, suppression-health,
+and policy-readiness artifacts, but those remain advisory projections with no
+default blocking or comment posting. The primary GitHub board is
 [#755](https://github.com/EffortlessMetrics/ripr/issues/755).
 
 ## Strategic Sequence
