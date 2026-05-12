@@ -1435,6 +1435,7 @@ outputs = [
   "docs/specs/RIPR-SPEC-0021-evidence-record.md",
   "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/lanes/LANE_1_EVIDENCE_ACCURACY.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
   ".ripr/traceability.toml",

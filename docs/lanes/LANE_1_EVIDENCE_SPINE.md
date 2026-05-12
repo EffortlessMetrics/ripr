@@ -9,6 +9,10 @@ traceability manifest, and output contracts. It does not switch to another
 campaign merely because `.ripr/goals/active.toml` points at a PR/CI, editor, or
 policy surface.
 
+This document is now the stabilization record for the shared evidence spine.
+The next Lane 1 objective is Evidence Accuracy Evaluation, tracked in
+[LANE_1_EVIDENCE_ACCURACY.md](LANE_1_EVIDENCE_ACCURACY.md).
+
 ## Scope
 
 Lane 1 owns these evidence surfaces:
@@ -69,12 +73,13 @@ Completed slices:
 - `analysis: generate canonical gap identity` (#685) generated deterministic
   `canonical_gap_id`, group size, and grouping reason for headline-eligible
   gaps.
+- `gate: prefer canonical evidence identity` (#697) made gate baseline
+  comparison prefer supplied canonical evidence identity before legacy seam,
+  source, and path/line/static-class identities. This is the final consumer
+  closeout for the Evidence Spine Stabilization pass.
 
-Gate baseline comparison now also prefers supplied canonical evidence identity
-when matching current candidates to reviewed baseline debt, then falls back to
-legacy seam, source, and path/line/static-class identities. This keeps gate
-authority unchanged while making the optional gate consumer line-movement
-tolerant when Lane 1 identity is available.
+Gate authority remains unchanged; the optional gate consumer is now
+line-movement tolerant when Lane 1 identity is available.
 
 ## Stable Fixture-Backed Analysis Slices
 
@@ -121,8 +126,14 @@ When opening future Lane 1 PRs, list them here until they merge or close:
 
 ## Next Slices
 
-These are Lane 1 candidates. Open them only when they are selected as evidence
-accuracy work:
+Evidence Spine Stabilization is complete within v0.1 scope. The next Lane 1
+work should measure and improve the evidence inside the spine, not wire more
+consumers.
+
+Track that work in
+[LANE_1_EVIDENCE_ACCURACY.md](LANE_1_EVIDENCE_ACCURACY.md).
+
+The only standing evidence-spine contract expansion slice is:
 
 1. `fixtures: expand evidence record contract`
    - add cases only when a new evidence class or consumer requirement changes

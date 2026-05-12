@@ -75,6 +75,11 @@ Planned scope:
   check-pr` yet — promote it to a gate after a release cycle confirms
   it stays low-noise. `crates/ripr/README.md` gains the bridge link so
   the published crates.io README is also covered.
+- Opened the Lane 1 Evidence Accuracy Evaluation tracker after the v0.1
+  evidence spine stabilized. The tracker names PR #697 as the final consumer
+  closeout, keeps `.ripr/goals/active.toml` unchanged, and routes next work
+  through a repo-local evidence-quality audit before analyzer or calibration
+  changes.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 
