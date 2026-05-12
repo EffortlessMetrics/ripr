@@ -75,6 +75,13 @@ struct TypeScriptTest {
     line: usize,
     body_text: String,
     assertions: Vec<TypeScriptAssertion>,
+    /// Module paths referenced by syntactic `vi.mock("...")` /
+    /// `jest.mock("...")` calls discovered at the top level of the
+    /// containing test file. Populated once per file and cloned into
+    /// every `TypeScriptTest` parsed from that file so the classifier
+    /// can surface the `mocked_module` static-limit without re-parsing.
+    /// Empty when no syntactic mock indirection is present.
+    mocks_in_file: Vec<String>,
 }
 
 /// Assertion shape extracted from a single `expect(actual).matcher(...)`
@@ -208,13 +215,61 @@ fn extract_tests(file: &Path, source: &str) -> Vec<TypeScriptTest> {
     if !ret.errors.is_empty() {
         return Vec::new();
     }
+    let mocks = extract_mocks_from_statements(&ret.program.body);
     let mut tests = Vec::new();
     for stmt in &ret.program.body {
-        if let Some(test) = test_from_statement(stmt, file, source) {
+        if let Some(mut test) = test_from_statement(stmt, file, source) {
+            test.mocks_in_file = mocks.clone();
             tests.push(test);
         }
     }
     tests
+}
+
+/// Walk a list of top-level statements and collect every syntactic
+/// `vi.mock("path")` / `jest.mock("path")` argument we see. The list is
+/// deduplicated and used by the classifier to surface the
+/// `mocked_module` static-limit per RIPR-SPEC-0026.
+///
+/// This is purely syntactic — the adapter does not resolve the mocked
+/// module identifier through the project's import graph, so the limit
+/// surfaces exactly when the test file contains the mock call shape.
+fn extract_mocks_from_statements(
+    statements: &oxc_allocator::Vec<'_, Statement<'_>>,
+) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for stmt in statements {
+        let Statement::ExpressionStatement(expr_stmt) = stmt else {
+            continue;
+        };
+        let Expression::CallExpression(call) = &expr_stmt.expression else {
+            continue;
+        };
+        let Expression::StaticMemberExpression(member) = &call.callee else {
+            continue;
+        };
+        let Expression::Identifier(object_ident) = &member.object else {
+            continue;
+        };
+        let object_name = object_ident.name.as_str();
+        if object_name != "vi" && object_name != "jest" {
+            continue;
+        }
+        if member.property.name.as_str() != "mock" {
+            continue;
+        }
+        let Some(first_arg) = call.arguments.first() else {
+            continue;
+        };
+        let oxc_ast::ast::Argument::StringLiteral(literal) = first_arg else {
+            continue;
+        };
+        let path = literal.value.to_string();
+        if !out.iter().any(|existing| existing == &path) {
+            out.push(path);
+        }
+    }
+    out
 }
 
 fn test_from_statement(stmt: &Statement<'_>, file: &Path, source: &str) -> Option<TypeScriptTest> {
@@ -255,6 +310,9 @@ fn test_from_statement(stmt: &Statement<'_>, file: &Path, source: &str) -> Optio
         line: line_for_offset(source, call.span.start as usize),
         body_text: source[call.span.start as usize..call.span.end as usize].to_string(),
         assertions,
+        // Populated by `extract_tests` (the only public extractor) once
+        // per file before the test is returned to the caller.
+        mocks_in_file: Vec::new(),
     })
 }
 
@@ -363,6 +421,33 @@ fn strongest_assertion(assertions: &[TypeScriptAssertion]) -> Option<&TypeScript
     assertions
         .iter()
         .max_by_key(|assertion| assertion.oracle_strength.rank())
+}
+
+/// Collect the deduplicated set of module paths that any related test
+/// file mocks via syntactic `vi.mock("path")` / `jest.mock("path")`.
+///
+/// Related tests are identified the same way `find_related_tests` does
+/// (by name-call reference to the owner); each test's
+/// `mocks_in_file` list is contributed once. The classifier uses the
+/// resulting list to surface the `mocked_module` static-limit per
+/// RIPR-SPEC-0026.
+fn collect_related_mock_paths(
+    owner: &TypeScriptOwner,
+    all_tests: &[TypeScriptTest],
+) -> Vec<String> {
+    let needle = format!("{}(", owner.name);
+    let mut paths: Vec<String> = Vec::new();
+    for test in all_tests
+        .iter()
+        .filter(|test| test.body_text.contains(&needle))
+    {
+        for path in &test.mocks_in_file {
+            if !paths.iter().any(|existing| existing == path) {
+                paths.push(path.clone());
+            }
+        }
+    }
+    paths
 }
 
 /// Syntax-first probe-family classifier for a changed line of TypeScript
@@ -486,6 +571,7 @@ fn classify_change(
         .iter()
         .find(|owner| line >= owner.start_line && line <= owner.end_line)?;
     let related = find_related_tests(owner, all_tests);
+    let mock_paths = collect_related_mock_paths(owner, all_tests);
 
     let strongest_strength = related
         .iter()
@@ -498,7 +584,8 @@ fn classify_change(
         .map(|test| test.oracle_kind.clone())
         .unwrap_or(OracleKind::Unknown);
 
-    let (class, reach_state, observe_state, discriminate_state, missing) = if related.is_empty() {
+    let (class, reach_state, observe_state, discriminate_state, mut missing) = if related.is_empty()
+    {
         (
             ExposureClass::NoStaticPath,
             StageState::No,
@@ -534,6 +621,16 @@ fn classify_change(
             )],
         )
     };
+    if !mock_paths.is_empty() {
+        let preview: String = mock_paths
+            .iter()
+            .map(|path| format!("`{path}`"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        missing.push(format!(
+            "Static limit `mocked_module`: related test file mocks {preview} via `vi.mock(...)` / `jest.mock(...)`. The TypeScript preview adapter does not resolve mocked module semantics, so the substitution under test is opaque to static evidence."
+        ));
+    }
 
     let id_path: String = file
         .display()
@@ -605,6 +702,10 @@ fn classify_change(
         0.4
     };
 
+    let mut evidence = vec![format!("owner: {}", owner.name)];
+    for path in &mock_paths {
+        evidence.push(format!("static_limit mocked_module: `{path}`"));
+    }
     Some(Finding {
         id: probe.id.0.clone(),
         probe,
@@ -619,7 +720,7 @@ fn classify_change(
             },
         },
         confidence: confidence_value,
-        evidence: vec![format!("owner: {}", owner.name)],
+        evidence,
         missing,
         flow_sinks: Vec::new(),
         activation: Default::default(),
@@ -851,6 +952,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
                 body_text: r#"test("alpha", () => { expect(applyDiscount(50, 100)).toBe(50); });"#
                     .to_string(),
                 assertions: Vec::new(),
+                mocks_in_file: Vec::new(),
             },
             TypeScriptTest {
                 name: "unrelated".to_string(),
@@ -859,6 +961,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
                 body_text: r#"test("unrelated", () => { expect(otherHelper()).toBe(true); });"#
                     .to_string(),
                 assertions: Vec::new(),
+                mocks_in_file: Vec::new(),
             },
         ];
         let related = find_related_tests(&owner, &tests);
@@ -880,6 +983,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             line: 1,
             body_text: "applyDiscount(50, 100)".to_string(),
             assertions: Vec::new(),
+            mocks_in_file: Vec::new(),
         };
         let finding = classify_change(
             Path::new("src/lib.ts"),
@@ -1009,6 +1113,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
             }],
+            mocks_in_file: Vec::new(),
         };
         let finding = classify_change(
             Path::new("src/lib.ts"),
@@ -1189,5 +1294,139 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             classify_probe_shape("    const total = applyDiscount(amount, threshold);");
         assert_eq!(family, ProbeFamily::Predicate);
         assert_eq!(delta, DeltaKind::Control);
+    }
+
+    #[test]
+    fn extract_tests_collects_vi_mock_paths_in_file() {
+        let source = r#"
+import { vi } from "vitest";
+vi.mock("./api");
+vi.mock("./logger");
+test("alpha", () => {
+    expect(applyDiscount(50, 100)).toBe(50);
+});
+"#;
+        let tests = extract_tests(Path::new("tests/lib.test.ts"), source);
+        assert_eq!(tests.len(), 1);
+        assert_eq!(
+            tests[0].mocks_in_file,
+            vec!["./api".to_string(), "./logger".to_string()]
+        );
+    }
+
+    #[test]
+    fn extract_tests_collects_jest_mock_paths_in_file() {
+        let source = r#"
+jest.mock("./repository");
+test("alpha", () => {
+    expect(applyDiscount(50, 100)).toBe(50);
+});
+"#;
+        let tests = extract_tests(Path::new("tests/lib.test.ts"), source);
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests[0].mocks_in_file, vec!["./repository".to_string()]);
+    }
+
+    #[test]
+    fn extract_tests_returns_empty_mock_list_when_no_mock_call() {
+        let source = r#"
+test("alpha", () => {
+    expect(applyDiscount(50, 100)).toBe(50);
+});
+"#;
+        let tests = extract_tests(Path::new("tests/lib.test.ts"), source);
+        assert_eq!(tests.len(), 1);
+        assert!(tests[0].mocks_in_file.is_empty());
+    }
+
+    #[test]
+    fn collect_related_mock_paths_dedups_across_tests_in_same_file() {
+        let owner = TypeScriptOwner {
+            name: "applyDiscount".to_string(),
+            file: PathBuf::from("src/lib.ts"),
+            start_line: 1,
+            end_line: 5,
+        };
+        let tests = vec![
+            TypeScriptTest {
+                name: "alpha".to_string(),
+                file: PathBuf::from("tests/lib.test.ts"),
+                line: 1,
+                body_text: "applyDiscount(1, 2)".to_string(),
+                assertions: Vec::new(),
+                mocks_in_file: vec!["./api".to_string()],
+            },
+            TypeScriptTest {
+                name: "beta".to_string(),
+                file: PathBuf::from("tests/lib.test.ts"),
+                line: 2,
+                body_text: "applyDiscount(3, 4)".to_string(),
+                assertions: Vec::new(),
+                mocks_in_file: vec!["./api".to_string()],
+            },
+        ];
+        let paths = collect_related_mock_paths(&owner, &tests);
+        assert_eq!(paths, vec!["./api".to_string()]);
+    }
+
+    #[test]
+    fn collect_related_mock_paths_ignores_unrelated_tests() {
+        let owner = TypeScriptOwner {
+            name: "applyDiscount".to_string(),
+            file: PathBuf::from("src/lib.ts"),
+            start_line: 1,
+            end_line: 5,
+        };
+        let tests = vec![TypeScriptTest {
+            name: "unrelated".to_string(),
+            file: PathBuf::from("tests/other.test.ts"),
+            line: 1,
+            body_text: "otherHelper()".to_string(),
+            assertions: Vec::new(),
+            mocks_in_file: vec!["./api".to_string()],
+        }];
+        let paths = collect_related_mock_paths(&owner, &tests);
+        assert!(paths.is_empty());
+    }
+
+    #[test]
+    fn classify_change_surfaces_mocked_module_static_limit_in_missing_and_evidence()
+    -> Result<(), String> {
+        let owner = TypeScriptOwner {
+            name: "applyDiscount".to_string(),
+            file: PathBuf::from("src/lib.ts"),
+            start_line: 1,
+            end_line: 5,
+        };
+        let tests = vec![TypeScriptTest {
+            name: "alpha".to_string(),
+            file: PathBuf::from("tests/lib.test.ts"),
+            line: 1,
+            body_text: "applyDiscount(50, 100)".to_string(),
+            assertions: Vec::new(),
+            mocks_in_file: vec!["./api".to_string()],
+        }];
+        let finding = classify_change(
+            Path::new("src/lib.ts"),
+            2,
+            "    if (amount >= threshold) {",
+            &[owner],
+            &tests,
+        )
+        .ok_or_else(|| "expected a finding for the changed line".to_string())?;
+        assert!(
+            finding
+                .missing
+                .iter()
+                .any(|line| line.contains("Static limit `mocked_module`")
+                    && line.contains("./api"))
+        );
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .any(|line| line.starts_with("static_limit mocked_module:"))
+        );
+        Ok(())
     }
 }

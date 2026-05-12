@@ -1824,6 +1824,7 @@ fixtures = [
   "fixtures/typescript_boundary_gap",
   "fixtures/typescript_strong_oracle",
   "fixtures/typescript_return_value_shape",
+  "fixtures/typescript_mocked_module_limit",
 ]
 code = [
   "crates/ripr/src/analysis/language/typescript.rs",
