@@ -123,6 +123,7 @@ pub(crate) fn build_suppression_health_report(
             };
             count_finding(&mut summary, &finding);
             findings.push(finding);
+            summary.config_errors = 1;
             let status = "config_error".to_string();
             return SuppressionHealthReport {
                 root: input.root,
@@ -586,6 +587,26 @@ mod tests {
         assert_eq!(report.status, "no_suppressions");
         assert_eq!(report.summary.suppressions, 0);
         assert!(report.findings.is_empty());
+        let md = render_suppression_health_markdown(&report);
+        assert!(md.contains("no durable suppressions"));
+        assert_eq!(suppression_health_status(&report), "no_suppressions");
+    }
+
+    #[test]
+    fn unreadable_manifest_is_config_error() {
+        let report = build_suppression_health_report(input(Some(Err("read failed"))));
+        assert_eq!(report.status, "config_error");
+        assert_eq!(report.summary.config_errors, 1);
+        assert_eq!(report.findings[0].kind, "manifest_unreadable");
+    }
+
+    #[test]
+    fn empty_present_manifest_is_no_suppressions_with_warning() {
+        let report = build_suppression_health_report(input(Some(Ok("schema_version = 1\n"))));
+        assert_eq!(report.status, "no_suppressions");
+        assert_eq!(report.warnings.len(), 1);
+        let md = render_suppression_health_markdown(&report);
+        assert!(md.contains("suppression manifest is present but contains no entries"));
     }
 
     #[test]
@@ -636,6 +657,9 @@ reason = "temporary smoke exception"
         let rendered = render_suppression_health_json(&report)?;
         assert!(rendered.contains("\"overbroad_scope\": 1"));
         assert!(rendered.contains("suppression is missing reviewed scope metadata"));
+        let md = render_suppression_health_markdown(&report);
+        assert!(md.contains("missing_scope"));
+        assert!(md.contains("overbroad_scope"));
         Ok(())
     }
 
@@ -651,14 +675,61 @@ reason = "preview adapter false positive under review"
 scope = "seam:frontend"
 created_at = "2026-01-01"
 last_seen = "2026-05-01"
+expires = "2026-02-01"
 review_by = "2026-01-31"
 expected_visibility = "suppressed_visible"
 static_class = "weakly_exposed"
 language = "typescript"
 "#))));
         assert_eq!(report.status, "warning");
-        assert_eq!(report.summary.stale, 1);
+        assert_eq!(report.summary.stale, 2);
         assert_eq!(report.summary.preview_without_preview_label, 1);
+    }
+
+    #[test]
+    fn path_scoped_test_efficiency_suppression_can_be_healthy() {
+        let report = build_suppression_health_report(input(Some(Ok(r#"schema_version = 1
+
+[[suppressions]]
+kind = "test_efficiency"
+test = "cli_prints_help"
+path = "tests/cli.rs"
+owner = "devtools"
+reason = "accepted durable policy exception"
+scope = "test:tests/cli.rs::cli_prints_help"
+created_at = "2026-01-01"
+last_seen = "2026-05-01"
+review_by = "2026-12-01"
+expected_visibility = "suppressed_visible"
+static_class = "weakly_exposed"
+language = "rust"
+"#))));
+        assert_eq!(report.status, "healthy");
+        assert_eq!(report.records[0].identity, "cli_prints_help@tests/cli.rs");
+        let md = render_suppression_health_markdown(&report);
+        assert!(md.contains("cli_prints_help@tests/cli.rs"));
+    }
+
+    #[test]
+    fn explicit_broad_scope_is_flagged() {
+        let report = build_suppression_health_report(input(Some(Ok(r#"schema_version = 1
+
+[[suppressions]]
+kind = "exposure_gap"
+finding_id = "probe:src/lib.rs:1:predicate"
+owner = "team"
+reason = "repo-wide exception under review"
+scope = "repo"
+created_at = "2026-01-01"
+last_seen = "2026-05-01"
+review_by = "2026-12-01"
+expected_visibility = "suppressed_visible"
+static_class = "weakly_exposed"
+language = "rust"
+"#))));
+        assert_eq!(report.status, "warning");
+        assert_eq!(report.summary.overbroad_scope, 1);
+        assert_eq!(report.records[0].findings[0].kind, "overbroad_scope");
     }
 
     #[test]
@@ -671,13 +742,32 @@ finding_id = "probe:src/lib.rs:1:predicate"
 reason = "missing owner"
 
 [[suppressions]]
+kind = "exposure_gap"
+finding_id = "probe:src/lib.rs:2:predicate"
+owner = "team"
+
+[[suppressions]]
 kind = "wishful"
 owner = "team"
 reason = "bad selector"
+
+[[suppressions]]
+kind = "exposure_gap"
+finding_id = "probe:src/lib.rs:3:predicate"
+owner = "team"
+reason = "bad date"
+created_at = "2026/01/01"
 "#))));
         assert_eq!(report.status, "config_error");
         assert_eq!(report.summary.missing_owner, 1);
+        assert_eq!(report.summary.missing_reason, 1);
         assert_eq!(report.summary.unknown_selector, 1);
-        assert!(report.summary.config_errors >= 2);
+        assert!(report.summary.config_errors >= 4);
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|finding| finding.kind == "config_error")
+        );
     }
 }

@@ -7111,6 +7111,32 @@ language = "rust"
     }
 
     #[test]
+    fn policy_suppression_health_command_treats_missing_manifest_as_no_suppressions()
+    -> Result<(), String> {
+        let dir = unique_command_test_dir("suppression-health-missing");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create suppression dir: {err}"))?;
+        let out = dir.join("suppression-health.json");
+        let out_md = dir.join("suppression-health.md");
+
+        policy(&args(&[
+            "suppression-health",
+            "--root",
+            &dir.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text = std::fs::read_to_string(&out)
+            .map_err(|err| format!("read suppression health json: {err}"))?;
+        assert!(json_text.contains("\"status\": \"no_suppressions\""));
+        assert!(json_text.contains("\"suppressions\": 0"));
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove suppression dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
     fn pr_evidence_ledger_parses_option_surface() {
         assert_eq!(
             parse_pr_evidence_ledger_options(&args(&[
