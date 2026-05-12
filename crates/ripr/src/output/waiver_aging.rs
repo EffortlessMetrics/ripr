@@ -382,6 +382,7 @@ fn aggregate_observations(observations: Vec<WaiverObservation>) -> Vec<WaiverAgi
             let mut reasons = BTreeSet::new();
             let mut labels = BTreeSet::new();
             let mut sources = BTreeSet::new();
+            let mut seam_counts = BTreeMap::new();
             let mut canonical_gap_id = None;
             let mut seam_id = None;
             let mut file = None;
@@ -394,6 +395,11 @@ fn aggregate_observations(observations: Vec<WaiverObservation>) -> Vec<WaiverAgi
             for observation in &observations {
                 canonical_gap_id =
                     canonical_gap_id.or_else(|| observation.canonical_gap_id.clone());
+                if let Some(observed_seam_id) = observation.seam_id.as_ref() {
+                    *seam_counts
+                        .entry(observed_seam_id.clone())
+                        .or_insert(0usize) += 1;
+                }
                 seam_id = seam_id.or_else(|| observation.seam_id.clone());
                 file = file.or_else(|| observation.file.clone());
                 owner = owner.or_else(|| observation.owner.clone());
@@ -411,7 +417,7 @@ fn aggregate_observations(observations: Vec<WaiverObservation>) -> Vec<WaiverAgi
                 still_visible &= observation.still_visible;
             }
             let waiver_count = observations.len();
-            let same_seam_waived_repeatedly = seam_id.is_some() && waiver_count > 1;
+            let same_seam_waived_repeatedly = seam_counts.values().any(|count| *count > 1);
             let candidate_for_focused_test = waiver_count > 1 || age_days > 0;
             let candidate_for_durable_suppression = waiver_count >= 3 || age_days >= 30;
             WaiverAgingRecord {
@@ -528,10 +534,15 @@ fn record_json(record: &WaiverAgingRecord) -> Value {
 }
 
 fn seen_label(value: &Value, source_record: &str) -> String {
-    string_path(value, &["pr", "number"])
+    pr_number_label(value)
         .map(|number| format!("pr#{number}"))
         .or_else(|| string_path(value, &["generated_at"]))
         .unwrap_or_else(|| source_record.to_string())
+}
+
+fn pr_number_label(value: &Value) -> Option<String> {
+    let number = path_value(value, &["pr", "number"])?;
+    string_value(number).or_else(|| number.as_u64().map(|value| value.to_string()))
 }
 
 fn waiver_identity(
@@ -655,10 +666,29 @@ mod tests {
         )
     }
 
+    fn ledger_with_seam(pr: &str, canonical_gap_id: &str, seam_id: &str) -> String {
+        format!(
+            r#"{{
+              "pr": {{"number": "{pr}"}},
+              "top_repair_route": {{"seam_id": "{seam_id}", "path": "src/lib.rs"}},
+              "waivers": [{{
+                "canonical_gap_id": "{canonical_gap_id}",
+                "seam_id": "{seam_id}",
+                "file": "src/lib.rs",
+                "still_visible": true
+              }}]
+            }}"#
+        )
+    }
+
+    fn compact_record(text: &str) -> Result<String, String> {
+        let value: Value =
+            serde_json::from_str(text).map_err(|error| format!("parse fixture: {error}"))?;
+        serde_json::to_string(&value).map_err(|error| format!("compact fixture: {error}"))
+    }
+
     fn history_record(pr: &str, age_days: usize) -> Result<String, String> {
-        let value: Value = serde_json::from_str(&ledger(pr, age_days))
-            .map_err(|error| format!("parse ledger helper: {error}"))?;
-        serde_json::to_string(&value).map_err(|error| format!("compact history helper: {error}"))
+        compact_record(&ledger(pr, age_days))
     }
 
     #[test]
@@ -722,6 +752,45 @@ mod tests {
         assert!(record.candidate_for_focused_test);
         assert!(record.candidate_for_durable_suppression);
         Ok(())
+    }
+
+    #[test]
+    fn same_canonical_gap_with_different_seams_is_not_same_seam_repeat() -> Result<(), String> {
+        let mut input = input();
+        input.ledger_path = Some("target/ripr/reports/pr-evidence-ledger.json".to_string());
+        input.ledger_json = Some(Ok(ledger_with_seam("125", "gap-a", "seam-b")));
+        input.history_path = Some(".ripr/pr-evidence-ledger.jsonl".to_string());
+        input.history_json = Some(Ok(format!(
+            "{}\n",
+            compact_record(&ledger_with_seam("124", "gap-a", "seam-a"))?
+        )));
+
+        let report = build_waiver_aging_report(input);
+
+        assert_eq!(report.summary.waiver_count, 2);
+        assert_eq!(report.summary.identity_count, 1);
+        assert_eq!(report.summary.repeated_seam_count, 0);
+        assert!(!report.records[0].same_seam_waived_repeatedly);
+        assert!(report.records[0].candidate_for_focused_test);
+        Ok(())
+    }
+
+    #[test]
+    fn numeric_pr_numbers_render_seen_labels() {
+        let mut input = input();
+        input.ledger_path = Some("target/ripr/reports/pr-evidence-ledger.json".to_string());
+        input.ledger_json = Some(Ok(r#"{
+              "pr": {"number": 123},
+              "waivers": [
+                {"canonical_gap_id": "gap-a", "seam_id": "seam-a", "still_visible": true}
+              ]
+            }"#
+        .to_string()));
+
+        let report = build_waiver_aging_report(input);
+
+        assert_eq!(report.records[0].first_seen, "pr#123");
+        assert_eq!(report.records[0].last_seen, "pr#123");
     }
 
     #[test]
