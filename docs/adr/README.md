@@ -15,3 +15,4 @@ PR. They should be short, dated, and focused on consequences.
 | [0006](0006-rust-syntax-substrate.md) | accepted | Use `ra_ap_syntax` behind the syntax adapter for Campaign 2. |
 | [0007](0007-lsp-server-framework.md) | accepted | Use `tower-lsp-server` for the LSP sidecar. |
 | [0008](0008-typescript-parser-substrate.md) | proposed | Use `oxc_parser` for the TypeScript preview adapter. |
+| [0009](0009-python-parser-substrate.md) | proposed | Use `ruff_python_parser` for the Python preview adapter. |
