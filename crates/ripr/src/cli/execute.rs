@@ -67,7 +67,10 @@ mod tests {
         );
         assert_eq!(
             execute(CliCommand::Policy(args(&["unknown"]))),
-            Err("unknown policy subcommand \"unknown\"; expected `readiness`".to_string())
+            Err(
+                "unknown policy subcommand \"unknown\"; expected `readiness` or `waiver-aging`"
+                    .to_string()
+            )
         );
         assert_eq!(
             execute(CliCommand::Pilot(args(&["--max-seams", "0"]))),

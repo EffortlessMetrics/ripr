@@ -128,6 +128,15 @@ struct PolicyReadinessOptions {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+struct PolicyWaiverAgingOptions {
+    root: String,
+    ledger: Option<PathBuf>,
+    history: Option<PathBuf>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 struct PrEvidenceLedgerOptions {
     pr_number: String,
     base: String,
@@ -2709,14 +2718,15 @@ pub(super) fn policy(args: &[String]) -> Result<(), String> {
         return Ok(());
     }
     let Some((subcommand, rest)) = args.split_first() else {
-        return Err("policy requires subcommand `readiness`".to_string());
+        return Err("policy requires subcommand `readiness` or `waiver-aging`".to_string());
     };
-    if subcommand != "readiness" {
-        return Err(format!(
-            "unknown policy subcommand {subcommand:?}; expected `readiness`"
-        ));
+    match subcommand.as_str() {
+        "readiness" => policy_readiness(rest),
+        "waiver-aging" => policy_waiver_aging(rest),
+        _ => Err(format!(
+            "unknown policy subcommand {subcommand:?}; expected `readiness` or `waiver-aging`"
+        )),
     }
-    policy_readiness(rest)
 }
 
 pub(super) fn pr_ledger(args: &[String]) -> Result<(), String> {
@@ -3070,6 +3080,42 @@ fn policy_readiness(args: &[String]) -> Result<(), String> {
     println!(
         "Recommended mode: {}",
         output::policy_readiness::policy_readiness_recommended_mode(&report)
+    );
+    Ok(())
+}
+
+fn policy_waiver_aging(args: &[String]) -> Result<(), String> {
+    let options = parse_policy_waiver_aging_options(args)?;
+    let input = output::waiver_aging::WaiverAgingInput {
+        root: options.root,
+        generated_at: policy_readiness_generated_at()?,
+        ledger_path: options
+            .ledger
+            .as_ref()
+            .map(|path| output::waiver_aging::display_path(path)),
+        history_path: options
+            .history
+            .as_ref()
+            .map(|path| output::waiver_aging::display_path(path)),
+        ledger_json: options
+            .ledger
+            .as_ref()
+            .map(|path| read_optional_text_for_report("PR evidence ledger", path)),
+        history_json: options
+            .history
+            .as_ref()
+            .map(|path| read_optional_text_for_report("PR evidence ledger history", path)),
+    };
+    let report = output::waiver_aging::build_waiver_aging_report(input);
+    let rendered_json = output::waiver_aging::render_waiver_aging_json(&report)?;
+    let rendered_md = output::waiver_aging::render_waiver_aging_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    println!(
+        "Status: {}",
+        output::waiver_aging::waiver_aging_status(&report)
     );
     Ok(())
 }
@@ -4400,6 +4446,60 @@ fn parse_policy_readiness_options(args: &[String]) -> Result<PolicyReadinessOpti
         suppression_health,
         repo_config,
         previous_readiness,
+        out,
+        out_md,
+    })
+}
+
+fn parse_policy_waiver_aging_options(args: &[String]) -> Result<PolicyWaiverAgingOptions, String> {
+    let mut root = ".".to_string();
+    let mut ledger = None;
+    let mut history = None;
+    let mut out = PathBuf::from(output::waiver_aging::DEFAULT_WAIVER_AGING_OUT);
+    let mut out_md = PathBuf::from(output::waiver_aging::DEFAULT_WAIVER_AGING_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "policy waiver-aging")?;
+            }
+            "--ledger" => {
+                i += 1;
+                ledger = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--ledger",
+                    "policy waiver-aging",
+                )?);
+            }
+            "--history" => {
+                i += 1;
+                history = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--history",
+                    "policy waiver-aging",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "policy waiver-aging")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "policy waiver-aging")?;
+            }
+            other => return Err(format!("unknown policy waiver-aging argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    Ok(PolicyWaiverAgingOptions {
+        root,
+        ledger,
+        history,
         out,
         out_md,
     })
@@ -6647,11 +6747,14 @@ mod tests {
     fn policy_readiness_rejects_unknown_args() {
         assert_eq!(
             policy(&args(&[])),
-            Err("policy requires subcommand `readiness`".to_string())
+            Err("policy requires subcommand `readiness` or `waiver-aging`".to_string())
         );
         assert_eq!(
             policy(&args(&["unknown"])),
-            Err("unknown policy subcommand \"unknown\"; expected `readiness`".to_string())
+            Err(
+                "unknown policy subcommand \"unknown\"; expected `readiness` or `waiver-aging`"
+                    .to_string()
+            )
         );
         assert_eq!(
             parse_policy_readiness_options(&args(&["--gate-decision", ""])),
@@ -6660,6 +6763,43 @@ mod tests {
         assert_eq!(
             parse_policy_readiness_options(&args(&["--bad"])),
             Err("unknown policy readiness argument \"--bad\"".to_string())
+        );
+    }
+
+    #[test]
+    fn policy_waiver_aging_parses_option_surface() {
+        assert_eq!(
+            parse_policy_waiver_aging_options(&args(&[
+                "--root",
+                ".",
+                "--ledger",
+                "target/ripr/reports/pr-evidence-ledger.json",
+                "--history",
+                ".ripr/pr-evidence-ledger.jsonl",
+                "--out",
+                "target/ripr/reports/waiver-aging.json",
+                "--out-md",
+                "target/ripr/reports/waiver-aging.md",
+            ])),
+            Ok(PolicyWaiverAgingOptions {
+                root: ".".to_string(),
+                ledger: Some(PathBuf::from("target/ripr/reports/pr-evidence-ledger.json")),
+                history: Some(PathBuf::from(".ripr/pr-evidence-ledger.jsonl")),
+                out: PathBuf::from("target/ripr/reports/waiver-aging.json"),
+                out_md: PathBuf::from("target/ripr/reports/waiver-aging.md"),
+            })
+        );
+    }
+
+    #[test]
+    fn policy_waiver_aging_rejects_unknown_args() {
+        assert_eq!(
+            parse_policy_waiver_aging_options(&args(&["--ledger", ""])),
+            Err("policy waiver-aging --ledger requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_policy_waiver_aging_options(&args(&["--bad"])),
+            Err("unknown policy waiver-aging argument \"--bad\"".to_string())
         );
     }
 
@@ -6720,6 +6860,64 @@ mod tests {
         assert!(md_text.contains("# RIPR Policy Readiness"));
         assert!(md_text.contains("Recommended mode: baseline-check"));
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove policy dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn policy_waiver_aging_command_writes_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("waiver-aging");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create waiver dir: {err}"))?;
+        let ledger = dir.join("pr-evidence-ledger.json");
+        let history = dir.join("pr-evidence-ledger.jsonl");
+        let out = dir.join("waiver-aging.json");
+        let out_md = dir.join("waiver-aging.md");
+        let ledger_text = r#"{
+          "schema_version": "0.1",
+          "kind": "pr_evidence_ledger",
+          "pr": {"number": "10"},
+          "top_repair_route": {"seam_id": "seam-a", "path": "src/lib.rs"},
+          "waivers": [{
+            "label": "ripr-waive",
+            "canonical_gap_id": "gap-a",
+            "seam_id": "seam-a",
+            "age_prs": 1,
+            "age_days": 7,
+            "reason": "accepted for this PR",
+            "still_visible": true
+          }]
+        }"#;
+        std::fs::write(&ledger, ledger_text).map_err(|err| format!("write ledger: {err}"))?;
+        let history_text = serde_json::to_string(
+            &serde_json::from_str::<serde_json::Value>(ledger_text)
+                .map_err(|err| format!("parse ledger fixture: {err}"))?,
+        )
+        .map_err(|err| format!("compact history fixture: {err}"))?;
+        std::fs::write(&history, format!("{history_text}\n"))
+            .map_err(|err| format!("write history: {err}"))?;
+
+        policy(&args(&[
+            "waiver-aging",
+            "--ledger",
+            &ledger.display().to_string(),
+            "--history",
+            &history.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text =
+            std::fs::read_to_string(&out).map_err(|err| format!("read waiver json: {err}"))?;
+        let md_text =
+            std::fs::read_to_string(&out_md).map_err(|err| format!("read waiver md: {err}"))?;
+        assert!(json_text.contains("\"kind\": \"waiver_aging\""));
+        assert!(json_text.contains("\"status\": \"advisory\""));
+        assert!(json_text.contains("\"candidate_for_focused_test\": true"));
+        assert!(json_text.contains("\"warnings\": []"));
+        assert!(md_text.contains("# RIPR Waiver Aging"));
+        assert!(md_text.contains("Repeated waiver is not a failure."));
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove waiver dir: {err}"))?;
         Ok(())
     }
 
