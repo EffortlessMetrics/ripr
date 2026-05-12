@@ -109,9 +109,11 @@ named classes. They remain advisory and do not run mutation testing.
   static gap plus runtime clean, runtime signal without a static seam,
   static clean plus runtime clean, inconclusive runtime outcomes, ambiguous
   file-line joins, unmatched runtime data, static seams without runtime data,
-  and seam-id or unambiguous file-line joins. Planned side-effect, mock,
-  snapshot, and dynamic-dispatch runtime samples remain outside the calibrated
-  scope until checked fixtures land.
+  and seam-id or unambiguous file-line joins. The checked
+  `runtime-fixtures-v2` sample expands imported-runtime calibration to
+  side-effect observer, mock expectation, snapshot oracle, and dynamic or
+  opaque dispatch classes while keeping ambiguous joins ambiguous and
+  runtime-only signals out of static gap creation.
 
 ## Current Open PRs
 

@@ -96,6 +96,7 @@ struct TypeScriptTest {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct TypeScriptAssertion {
     matcher: String,
+    argument_count: usize,
     line: usize,
     oracle_kind: OracleKind,
     oracle_strength: OracleStrength,
@@ -104,7 +105,7 @@ struct TypeScriptAssertion {
 fn oracle_for_matcher(matcher: &str) -> (OracleKind, OracleStrength) {
     match matcher {
         "toBe" | "toEqual" | "toStrictEqual" => (OracleKind::ExactValue, OracleStrength::Strong),
-        "toThrow" | "toThrowError" => (OracleKind::ExactErrorVariant, OracleStrength::Strong),
+        "toThrow" | "toThrowError" => (OracleKind::BroadError, OracleStrength::Weak),
         "toMatchSnapshot" | "toMatchInlineSnapshot" => {
             (OracleKind::Snapshot, OracleStrength::Medium)
         }
@@ -162,6 +163,14 @@ fn line_for_offset(source: &str, offset: usize) -> usize {
         }
     }
     line
+}
+
+fn normalized_path(path: &Path) -> String {
+    let mut normalized = path.to_string_lossy().replace('\\', "/");
+    while let Some(stripped) = normalized.strip_prefix("./") {
+        normalized = stripped.to_string();
+    }
+    normalized
 }
 
 fn extract_owners(file: &Path, source: &str) -> Vec<TypeScriptOwner> {
@@ -382,6 +391,7 @@ fn expect_assertion_from_expression(
     let (oracle_kind, oracle_strength) = oracle_for_matcher(matcher);
     Some(TypeScriptAssertion {
         matcher: matcher.to_string(),
+        argument_count: outer_call.arguments.len(),
         line: line_for_offset(source, outer_call.span.start as usize),
         oracle_kind,
         oracle_strength,
@@ -399,7 +409,7 @@ fn find_related_tests(owner: &TypeScriptOwner, all_tests: &[TypeScriptTest]) -> 
                 Some(assertion) => (
                     assertion.oracle_kind.clone(),
                     assertion.oracle_strength.clone(),
-                    Some(format!("expect(...).{}(...)", assertion.matcher)),
+                    Some(assertion_oracle_text(assertion)),
                 ),
                 None => (OracleKind::Unknown, OracleStrength::Unknown, None),
             };
@@ -413,6 +423,16 @@ fn find_related_tests(owner: &TypeScriptOwner, all_tests: &[TypeScriptTest]) -> 
             }
         })
         .collect()
+}
+
+fn assertion_oracle_text(assertion: &TypeScriptAssertion) -> String {
+    if matches!(assertion.matcher.as_str(), "toThrow" | "toThrowError")
+        && assertion.argument_count == 0
+    {
+        format!("expect(...).{}()", assertion.matcher)
+    } else {
+        format!("expect(...).{}(...)", assertion.matcher)
+    }
 }
 
 /// Pick the highest-rank assertion from a test body. Used to summarise a
@@ -473,6 +493,10 @@ fn classify_probe_shape(line_text: &str) -> (ProbeFamily, DeltaKind) {
         || leading.starts_with("throw(")
         || leading.starts_with("return Promise.reject(")
         || leading.starts_with("return Promise.reject ")
+        || leading.starts_with("return await Promise.reject(")
+        || leading.starts_with("return await Promise.reject ")
+        || leading.starts_with("await Promise.reject(")
+        || leading.starts_with("await Promise.reject ")
         || leading.starts_with("} catch ")
         || leading.starts_with("catch ")
     {
@@ -567,8 +591,10 @@ fn classify_change(
     owners: &[TypeScriptOwner],
     all_tests: &[TypeScriptTest],
 ) -> Option<Finding> {
+    let changed_file = normalized_path(file);
     let owner = owners
         .iter()
+        .filter(|owner| normalized_path(&owner.file) == changed_file)
         .find(|owner| line >= owner.start_line && line <= owner.end_line)?;
     let related = find_related_tests(owner, all_tests);
     let mock_paths = collect_related_mock_paths(owner, all_tests);
@@ -615,7 +641,7 @@ fn classify_change(
             StageState::Weak,
             StageState::Weak,
             vec![format!(
-                "Related test reaches `{}` but the strongest extracted oracle is `{}`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) or exact-error-variant (`toThrow`) assertion.",
+                "Related test reaches `{}` but the strongest extracted oracle is `{}`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.",
                 owner.name,
                 strongest_kind.as_str()
             )],
@@ -680,7 +706,7 @@ fn classify_change(
             strongest_kind.as_str()
         )
     } else {
-        "TypeScript preview adapter found no strong discriminator; upgrade an assertion to `toBe` / `toEqual` / `toStrictEqual` / `toThrow` to escalate.".to_string()
+        "TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.".to_string()
     };
     let discriminate =
         StageEvidence::new(discriminate_state, Confidence::Low, &discriminate_summary);
@@ -902,6 +928,11 @@ mod tests {
     }
 
     #[test]
+    fn normalized_path_strips_dot_prefix_and_normalizes_separators() {
+        assert_eq!(normalized_path(Path::new(r".\src\b.ts")), "src/b.ts");
+    }
+
+    #[test]
     fn extract_owners_recognizes_function_declaration() {
         let owners = extract_owners(
             Path::new("src/lib.ts"),
@@ -1001,6 +1032,61 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
     }
 
     #[test]
+    fn classify_change_matches_owner_file_before_line_range() -> Result<(), String> {
+        let owners = vec![
+            TypeScriptOwner {
+                name: "alphaScore".to_string(),
+                file: PathBuf::from("src/a.ts"),
+                start_line: 1,
+                end_line: 5,
+            },
+            TypeScriptOwner {
+                name: "betaScore".to_string(),
+                file: PathBuf::from("src/b.ts"),
+                start_line: 1,
+                end_line: 5,
+            },
+        ];
+        let tests = vec![
+            TypeScriptTest {
+                name: "alpha keeps its threshold".to_string(),
+                file: PathBuf::from("tests/a.test.ts"),
+                line: 1,
+                body_text: "expect(alphaScore(12)).toBe(13);".to_string(),
+                assertions: Vec::new(),
+                mocks_in_file: Vec::new(),
+            },
+            TypeScriptTest {
+                name: "beta keeps its threshold".to_string(),
+                file: PathBuf::from("tests/b.test.ts"),
+                line: 1,
+                body_text: "expect(betaScore(12)).toBe(13);".to_string(),
+                assertions: Vec::new(),
+                mocks_in_file: Vec::new(),
+            },
+        ];
+
+        let finding = classify_change(
+            Path::new("src/b.ts"),
+            2,
+            "    if (value >= 10) {",
+            &owners,
+            &tests,
+        )
+        .ok_or_else(|| "expected the changed file's owner to be selected".to_string())?;
+
+        assert_eq!(finding.evidence, vec!["owner: betaScore"]);
+        assert_eq!(finding.related_tests.len(), 1);
+        assert_eq!(finding.related_tests[0].name, "beta keeps its threshold");
+        assert_eq!(
+            finding.related_tests[0].file,
+            PathBuf::from("tests/b.test.ts")
+        );
+        assert!(finding.missing.iter().all(|line| !line.contains("alpha")));
+        Ok(())
+    }
+
+    #[test]
     fn extract_tests_collects_expect_to_be_as_strong_oracle() {
         let tests = extract_tests(
             Path::new("tests/lib.test.ts"),
@@ -1059,6 +1145,40 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
     }
 
     #[test]
+    fn extract_tests_maps_bare_tothrow_to_broad_error_oracle() {
+        let tests = extract_tests(
+            Path::new("tests/lib.test.ts"),
+            r#"test("throws", () => {
+    expect(() => parseUser("")).toThrow();
+});
+"#,
+        );
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests[0].assertions.len(), 1);
+        assert_eq!(tests[0].assertions[0].matcher, "toThrow");
+        assert_eq!(tests[0].assertions[0].argument_count, 0);
+        assert_eq!(tests[0].assertions[0].oracle_kind, OracleKind::BroadError);
+        assert_eq!(tests[0].assertions[0].oracle_strength, OracleStrength::Weak);
+    }
+
+    #[test]
+    fn extract_tests_keeps_payload_tothrow_broad_until_payload_is_inspected() {
+        let tests = extract_tests(
+            Path::new("tests/lib.test.ts"),
+            r#"test("throws", () => {
+    expect(() => parseUser("")).toThrow("empty user");
+});
+"#,
+        );
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests[0].assertions.len(), 1);
+        assert_eq!(tests[0].assertions[0].matcher, "toThrow");
+        assert_eq!(tests[0].assertions[0].argument_count, 1);
+        assert_eq!(tests[0].assertions[0].oracle_kind, OracleKind::BroadError);
+        assert_eq!(tests[0].assertions[0].oracle_strength, OracleStrength::Weak);
+    }
+
+    #[test]
     fn oracle_for_matcher_covers_canonical_jest_vitest_set() {
         assert_eq!(
             oracle_for_matcher("toBe"),
@@ -1070,7 +1190,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
         );
         assert_eq!(
             oracle_for_matcher("toThrow"),
-            (OracleKind::ExactErrorVariant, OracleStrength::Strong)
+            (OracleKind::BroadError, OracleStrength::Weak)
         );
         assert_eq!(
             oracle_for_matcher("toMatchSnapshot"),
@@ -1109,6 +1229,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             body_text: "applyDiscount(50, 100)".to_string(),
             assertions: vec![TypeScriptAssertion {
                 matcher: "toBe".to_string(),
+                argument_count: 1,
                 line: 2,
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
@@ -1252,6 +1373,21 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
     #[test]
     fn classify_probe_shape_recognises_promise_reject_error_path() {
         let (family, delta) = classify_probe_shape("    return Promise.reject(new Error('boom'));");
+        assert_eq!(family, ProbeFamily::ErrorPath);
+        assert_eq!(delta, DeltaKind::Control);
+    }
+
+    #[test]
+    fn classify_probe_shape_recognises_return_await_promise_reject_error_path() {
+        let (family, delta) =
+            classify_probe_shape("    return await Promise.reject(new Error('boom'));");
+        assert_eq!(family, ProbeFamily::ErrorPath);
+        assert_eq!(delta, DeltaKind::Control);
+    }
+
+    #[test]
+    fn classify_probe_shape_recognises_bare_await_promise_reject_error_path() {
+        let (family, delta) = classify_probe_shape("    await Promise.reject(new Error('boom'));");
         assert_eq!(family, ProbeFamily::ErrorPath);
         assert_eq!(delta, DeltaKind::Control);
     }

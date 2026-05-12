@@ -28,6 +28,9 @@ async function main() {
     fs.mkdirSync(cachePath, { recursive: true });
     fs.mkdirSync(extensionsPath, { recursive: true });
     fs.mkdirSync(userDataPath, { recursive: true });
+    const clipboardCapturePath = path.join(userDataPath, 'ripr-test-clipboard.txt');
+    fs.rmSync(clipboardCapturePath, { force: true });
+    process.env.RIPR_TEST_CLIPBOARD_CAPTURE_PATH = clipboardCapturePath;
 
     const launchArgs = [
       workspacePath,

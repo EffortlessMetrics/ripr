@@ -1,0 +1,11 @@
+diff --git a/src/parser.ts b/src/parser.ts
+index 0000000..1111111 100644
+--- a/src/parser.ts
++++ b/src/parser.ts
+@@ -1,5 +1,5 @@
+ export function parseUser(input: string): string {
+-    if (input === "") {
++    if (input.trim() === "") {
+         throw new Error("empty user");
+     }
+     return input.trim();

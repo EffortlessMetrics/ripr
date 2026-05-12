@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -32,7 +32,8 @@ use reports::{
 use reports::{lsp_cockpit_report, targeted_test_outcome};
 use run::{
     TimedOutput, capture_output, capture_output_with_timeout, command_success_owned, run,
-    run_in_dir, run_in_dir_with_envs, run_output, run_output_optional, run_output_owned, run_owned,
+    run_in_dir, run_in_dir_with_envs, run_output, run_output_optional, run_output_owned,
+    run_output_to_file_owned, run_owned,
 };
 
 #[derive(Debug)]
@@ -3736,6 +3737,7 @@ fn check_fixture_contracts() -> Result<(), String> {
 
     let mut violations = Vec::new();
     validate_evidence_record_contract_fixture_corpus(&mut violations)?;
+    validate_lane1_evidence_quality_failure_fixture_corpus(&mut violations)?;
     validate_pr_review_front_panel_fixture_corpus(&mut violations)?;
     validate_report_packet_index_fixture_corpus(&mut violations)?;
     validate_pr_inline_comment_publisher_fixture_corpus(&mut violations)?;
@@ -3813,6 +3815,17 @@ const EVIDENCE_RECORD_REQUIRED_CASES: &[&str] = &[
     "opaque_helper_static_limitation",
     "baseline_known_canonical_gap_identity",
     "calibration_placeholder_no_runtime_data",
+];
+
+const LANE1_EVIDENCE_QUALITY_FAILURE_CORPUS: &str =
+    "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json";
+
+const LANE1_EVIDENCE_QUALITY_REQUIRED_CASES: &[&str] = &[
+    "duplicate_canonical_gap_overcount_suppressions_match_arm",
+    "missing_equality_boundary_discriminator",
+    "static_activation_limitation_without_candidate_values",
+    "side_effect_observer_not_static_limitation",
+    "calibration_no_runtime_data_gap",
 ];
 
 fn validate_evidence_record_contract_fixture_corpus(
@@ -3908,6 +3921,516 @@ fn validate_evidence_record_contract_corpus_value(
             violations.push(format!("evidence-record corpus is missing case {required}"));
         }
     }
+}
+
+fn validate_lane1_evidence_quality_failure_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    validate_lane1_evidence_quality_failure_fixture_corpus_at(
+        Path::new(LANE1_EVIDENCE_QUALITY_FAILURE_CORPUS),
+        violations,
+    )
+}
+
+fn validate_lane1_evidence_quality_failure_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !path.exists() {
+        violations.push(format!(
+            "Lane 1 evidence-quality failure corpus is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+
+    let corpus = match read_json_value(path) {
+        Ok(value) => value,
+        Err(err) => {
+            violations.push(err);
+            return Ok(());
+        }
+    };
+    validate_lane1_evidence_quality_failure_corpus_value(path, &corpus, violations);
+    Ok(())
+}
+
+fn validate_lane1_evidence_quality_failure_corpus_value(
+    path: &Path,
+    corpus: &Value,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(corpus, "kind").as_deref() != Some("lane1_evidence_quality_failure_corpus")
+    {
+        violations.push(format!(
+            "{} kind must be lane1_evidence_quality_failure_corpus",
+            normalize_path(path)
+        ));
+    }
+    if json_string_field(corpus, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "{} schema_version must be 0.1",
+            normalize_path(path)
+        ));
+    }
+    if json_string_field(corpus, "spec").as_deref() != Some("RIPR-SPEC-0032") {
+        violations.push(format!(
+            "{} spec must be RIPR-SPEC-0032",
+            normalize_path(path)
+        ));
+    }
+
+    match corpus.get("source_report") {
+        Some(source @ Value::Object(_)) => {
+            require_lane1_json_string_at(source, "command", "source_report", violations);
+            require_lane1_json_string_at(source, "report", "source_report", violations);
+            match source.get("summary") {
+                Some(summary @ Value::Object(_)) => {
+                    for field in [
+                        "raw_headline_gaps",
+                        "canonical_gap_groups",
+                        "duplicate_looking_groups",
+                        "missing_discriminators",
+                        "static_limitations",
+                        "uncalibrated_records",
+                    ] {
+                        require_lane1_json_usize_at(
+                            summary,
+                            field,
+                            "source_report.summary",
+                            violations,
+                        );
+                    }
+                }
+                _ => violations.push(
+                    "Lane 1 evidence-quality source_report is missing summary object".to_string(),
+                ),
+            }
+        }
+        _ => violations
+            .push("Lane 1 evidence-quality corpus is missing source_report object".to_string()),
+    }
+
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        violations.push(format!("{} is missing cases array", normalize_path(path)));
+        return;
+    };
+
+    let mut seen = BTreeSet::new();
+    let mut has_failure_mode = false;
+    let mut has_negative_guard = false;
+    for case in cases {
+        let case_id = json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string());
+        if !seen.insert(case_id.clone()) {
+            violations.push(format!(
+                "Lane 1 evidence-quality case {case_id} is duplicated"
+            ));
+        }
+        validate_lane1_evidence_quality_failure_case(
+            &case_id,
+            case,
+            &mut has_failure_mode,
+            &mut has_negative_guard,
+            violations,
+        );
+    }
+
+    for required in LANE1_EVIDENCE_QUALITY_REQUIRED_CASES {
+        if !seen.contains(*required) {
+            violations.push(format!(
+                "Lane 1 evidence-quality corpus is missing case {required}"
+            ));
+        }
+    }
+    if !has_failure_mode {
+        violations.push(
+            "Lane 1 evidence-quality corpus must include at least one failure_mode case"
+                .to_string(),
+        );
+    }
+    if !has_negative_guard {
+        violations.push(
+            "Lane 1 evidence-quality corpus must include at least one negative_guard case"
+                .to_string(),
+        );
+    }
+}
+
+fn validate_lane1_evidence_quality_failure_case(
+    case_id: &str,
+    case: &Value,
+    has_failure_mode: &mut bool,
+    has_negative_guard: &mut bool,
+    violations: &mut Vec<String>,
+) {
+    require_lane1_json_string_at(case, "description", case_id, violations);
+    require_lane1_json_string_at(case, "source", case_id, violations);
+
+    match json_string_field(case, "case_kind").as_deref() {
+        Some("failure_mode") => *has_failure_mode = true,
+        Some("negative_guard") => *has_negative_guard = true,
+        Some(other) => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} has unsupported case_kind {other}"
+        )),
+        None => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} is missing string field case_kind"
+        )),
+    }
+
+    let category = match case.get("audit_signal") {
+        Some(signal @ Value::Object(_)) => {
+            require_lane1_json_string_at(signal, "category", case_id, violations);
+            require_lane1_json_string_at(signal, "metric_path", case_id, violations);
+            require_lane1_json_string_at(signal, "evidence", case_id, violations);
+            require_lane1_json_usize_at(signal, "observed_count", case_id, violations);
+            json_string_field(signal, "category")
+        }
+        _ => {
+            violations.push(format!(
+                "Lane 1 evidence-quality case {case_id} is missing audit_signal object"
+            ));
+            None
+        }
+    };
+    if let Some(category) = &category
+        && !matches!(
+            category.as_str(),
+            "duplicate_canonical_gap"
+                | "missing_discriminator"
+                | "static_limitation"
+                | "oracle_semantics"
+                | "calibration_gap"
+        )
+    {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} has unsupported audit category {category}"
+        ));
+    }
+
+    let expected = match case.get("expected_repo_exposure") {
+        Some(expected @ Value::Object(_)) => {
+            require_lane1_json_string_at(expected, "source", case_id, violations);
+            expected
+        }
+        _ => {
+            violations.push(format!(
+                "Lane 1 evidence-quality case {case_id} is missing expected_repo_exposure object"
+            ));
+            return;
+        }
+    };
+    let record = match expected.get("evidence_record") {
+        Some(record @ Value::Object(_)) => record,
+        Some(_) => {
+            violations.push(format!(
+                "Lane 1 evidence-quality case {case_id} expected_repo_exposure.evidence_record must be an object"
+            ));
+            return;
+        }
+        None => {
+            violations.push(format!(
+                "Lane 1 evidence-quality case {case_id} is missing expected_repo_exposure.evidence_record"
+            ));
+            return;
+        }
+    };
+    validate_lane1_evidence_quality_record(case_id, record, violations);
+
+    require_non_empty_string_array_at(case, "expected_claims", case_id, violations);
+    require_non_empty_string_array_at(case, "must_not_claim", case_id, violations);
+
+    match category.as_deref() {
+        Some("duplicate_canonical_gap") => {
+            if json_string_field(record, "canonical_gap_id").is_none() {
+                violations.push(format!(
+                    "Lane 1 evidence-quality duplicate case {case_id} must pin canonical_gap_id"
+                ));
+            }
+            let group_size =
+                json_usize_field(record, "canonical_gap_group_size").unwrap_or_default();
+            let corrected_duplicate_case = group_size == 1
+                && string_array_contains_case_insensitive(case, "must_not_claim", "generic");
+            if group_size <= 1 && !corrected_duplicate_case {
+                violations.push(format!(
+                    "Lane 1 evidence-quality duplicate case {case_id} must pin group size greater than 1 or pin corrected group size 1 with a generic identity regression guard"
+                ));
+            }
+        }
+        Some("missing_discriminator")
+            if lane1_count_field(record, "missing_discriminators").unwrap_or_default() == 0 =>
+        {
+            violations.push(format!(
+                "Lane 1 evidence-quality missing-discriminator case {case_id} must pin missing discriminator count"
+            ));
+        }
+        Some("missing_discriminator") => {}
+        Some("static_limitation") => {
+            if lane1_count_field(record, "static_limitations").unwrap_or_default() == 0 {
+                violations.push(format!(
+                    "Lane 1 evidence-quality static-limitation case {case_id} must pin static limitation count"
+                ));
+            }
+            if !matches!(record.get("static_limitations"), Some(Value::Array(items)) if !items.is_empty())
+            {
+                violations.push(format!(
+                    "Lane 1 evidence-quality static-limitation case {case_id} must list static_limitations"
+                ));
+            }
+        }
+        Some("oracle_semantics") => {
+            let oracle_kind = record
+                .get("top_related_test")
+                .and_then(|test| json_string_field(test, "oracle_kind"));
+            if oracle_kind.as_deref() != Some("mock_expectation")
+                && json_string_field(record, "seam_kind").as_deref() != Some("side_effect")
+            {
+                violations.push(format!(
+                    "Lane 1 evidence-quality oracle-semantics case {case_id} must pin a mock_expectation or side_effect signal"
+                ));
+            }
+        }
+        Some("calibration_gap") => match record.get("calibration") {
+            Some(calibration) => {
+                if json_string_field(calibration, "availability").as_deref() != Some("not_imported")
+                    || json_string_field(calibration, "agreement").as_deref()
+                        != Some("no_runtime_data")
+                {
+                    violations.push(format!(
+                        "Lane 1 evidence-quality calibration case {case_id} must stay not_imported/no_runtime_data"
+                    ));
+                }
+            }
+            None => violations.push(format!(
+                "Lane 1 evidence-quality calibration case {case_id} is missing calibration"
+            )),
+        },
+        _ => {}
+    }
+}
+
+fn validate_lane1_evidence_quality_record(
+    case_id: &str,
+    record: &Value,
+    violations: &mut Vec<String>,
+) {
+    require_lane1_json_string_at(record, "schema_version", case_id, violations);
+    if json_string_field(record, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} evidence_record.schema_version must be 0.1"
+        ));
+    }
+    for field in ["seam_id", "owner", "seam_kind", "grip_class"] {
+        require_lane1_json_string_at(record, field, case_id, violations);
+    }
+    if !matches!(
+        record.get("canonical_gap_id"),
+        Some(Value::Null | Value::String(_))
+    ) {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} canonical_gap_id must be string or null"
+        ));
+    }
+    if !matches!(
+        record.get("canonical_gap_reason"),
+        Some(Value::Null | Value::String(_))
+    ) {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} canonical_gap_reason must be string or null"
+        ));
+    }
+    if !matches!(
+        record.get("canonical_gap_group_size"),
+        Some(Value::Null | Value::Number(_))
+    ) {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} canonical_gap_group_size must be number or null"
+        ));
+    }
+    if !matches!(record.get("headline_eligible"), Some(Value::Bool(_))) {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} headline_eligible must be boolean"
+        ));
+    }
+    match record.get("location") {
+        Some(location @ Value::Object(_)) => {
+            require_lane1_json_string_at(location, "file", case_id, violations);
+            require_lane1_json_usize_at(location, "line", case_id, violations);
+        }
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} location must be an object"
+        )),
+    }
+    match record.get("evidence_path") {
+        Some(path @ Value::Object(_)) => {
+            for stage in ["reach", "activate", "propagate", "observe", "discriminate"] {
+                match path.get(stage) {
+                    Some(stage_value @ Value::Object(_)) => {
+                        require_lane1_json_string_at(stage_value, "state", case_id, violations);
+                        require_lane1_json_string_at(
+                            stage_value,
+                            "confidence",
+                            case_id,
+                            violations,
+                        );
+                        require_lane1_json_string_at(stage_value, "summary", case_id, violations);
+                    }
+                    _ => violations.push(format!(
+                        "Lane 1 evidence-quality case {case_id} evidence_path.{stage} must be an object"
+                    )),
+                }
+            }
+        }
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} evidence_path must be an object"
+        )),
+    }
+    match record.get("counts") {
+        Some(counts @ Value::Object(_)) => {
+            for field in [
+                "observed_values",
+                "missing_discriminators",
+                "static_limitations",
+                "related_tests_total",
+            ] {
+                require_lane1_json_usize_at(counts, field, case_id, violations);
+            }
+        }
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} counts must be an object"
+        )),
+    }
+    match record.get("top_related_test") {
+        Some(test @ Value::Object(_)) => {
+            for field in [
+                "name",
+                "file",
+                "oracle_kind",
+                "oracle_strength",
+                "relation_reason",
+                "relation_confidence",
+            ] {
+                require_lane1_json_string_at(test, field, case_id, violations);
+            }
+            require_lane1_json_usize_at(test, "line", case_id, violations);
+        }
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} top_related_test must be an object"
+        )),
+    }
+    match record.get("recommendation") {
+        Some(recommendation @ Value::Object(_)) => {
+            require_lane1_json_string_at(recommendation, "action", case_id, violations);
+            require_lane1_json_string_at(recommendation, "reason", case_id, violations);
+            require_lane1_json_usize_at(
+                recommendation,
+                "candidate_values_count",
+                case_id,
+                violations,
+            );
+            if !matches!(
+                recommendation.get("verify_command"),
+                Some(Value::Null | Value::String(_))
+            ) {
+                violations.push(format!(
+                    "Lane 1 evidence-quality case {case_id} recommendation.verify_command must be string or null"
+                ));
+            }
+        }
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} recommendation must be an object"
+        )),
+    }
+    match record.get("actionability") {
+        Some(actionability @ Value::Object(_)) => {
+            require_lane1_json_string_at(actionability, "class", case_id, violations);
+            if !matches!(
+                actionability.get("has_concrete_guidance"),
+                Some(Value::Bool(_))
+            ) {
+                violations.push(format!(
+                    "Lane 1 evidence-quality case {case_id} actionability.has_concrete_guidance must be boolean"
+                ));
+            }
+        }
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} actionability must be an object"
+        )),
+    }
+    match record.get("calibration") {
+        Some(calibration @ Value::Object(_)) => {
+            for field in ["availability", "confidence", "agreement"] {
+                require_lane1_json_string_at(calibration, field, case_id, violations);
+            }
+        }
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} calibration must be an object"
+        )),
+    }
+    if !matches!(record.get("static_limitations"), Some(Value::Array(_))) {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} static_limitations must be an array"
+        ));
+    }
+}
+
+fn lane1_count_field(record: &Value, field: &str) -> Option<usize> {
+    record
+        .get("counts")
+        .and_then(|counts| json_usize_field(counts, field))
+}
+
+fn require_lane1_json_string_at(
+    value: &Value,
+    field: &str,
+    case_id: &str,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(value, field).is_none() {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} is missing string field {field}"
+        ));
+    }
+}
+
+fn require_lane1_json_usize_at(
+    value: &Value,
+    field: &str,
+    case_id: &str,
+    violations: &mut Vec<String>,
+) {
+    if json_usize_field(value, field).is_none() {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} is missing numeric field {field}"
+        ));
+    }
+}
+
+fn require_non_empty_string_array_at(
+    value: &Value,
+    field: &str,
+    case_id: &str,
+    violations: &mut Vec<String>,
+) {
+    match value.get(field) {
+        Some(Value::Array(items))
+            if !items.is_empty() && items.iter().all(|item| item.as_str().is_some()) => {}
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} {field} must be a non-empty string array"
+        )),
+    }
+}
+
+fn string_array_contains_case_insensitive(value: &Value, field: &str, needle: &str) -> bool {
+    let needle = needle.to_ascii_lowercase();
+    value
+        .get(field)
+        .and_then(Value::as_array)
+        .is_some_and(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .any(|item| item.to_ascii_lowercase().contains(&needle))
+        })
 }
 
 fn validate_evidence_record_contract_record(
@@ -8038,6 +8561,1115 @@ pub(crate) fn evidence_health_report_impl() -> Result<(), String> {
         args.push(calibration.display().to_string());
     }
     run_owned("cargo", &args)
+}
+
+const LANE1_EVIDENCE_AUDIT_SCHEMA_VERSION: &str = "0.1";
+const LANE1_EVIDENCE_AUDIT_TOP_LIMIT: usize = 10;
+const LANE1_EVIDENCE_AUDIT_DUPLICATE_LIMIT: usize = 25;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Lane1EvidenceAuditReport {
+    root: String,
+    repo_exposure_schema_version: Option<String>,
+    summary: Lane1EvidenceAuditSummary,
+    largest_canonical_groups: Vec<Lane1EvidenceAuditGroup>,
+    duplicate_looking_groups: Vec<Lane1EvidenceAuditGroup>,
+    missing_discriminator_reason_counts: BTreeMap<String, usize>,
+    missing_discriminator_flow_sink_counts: BTreeMap<String, usize>,
+    missing_discriminator_value_counts: BTreeMap<String, usize>,
+    static_limitation_reason_counts: BTreeMap<String, usize>,
+    static_limitation_stage_counts: BTreeMap<String, usize>,
+    oracle_semantics_counts: BTreeMap<String, usize>,
+    oracle_kind_counts: BTreeMap<String, usize>,
+    oracle_strength_counts: BTreeMap<String, usize>,
+    related_test_confidence_counts: BTreeMap<String, usize>,
+    top_related_test_confidence_counts: BTreeMap<String, usize>,
+    top_related_test_reason_counts: BTreeMap<String, usize>,
+    movement_availability: Lane1EvidenceAuditMovement,
+    calibration_availability_counts: BTreeMap<String, usize>,
+    calibration_confidence_counts: BTreeMap<String, usize>,
+    calibration_agreement_counts: BTreeMap<String, usize>,
+    evidence_record_field_health: Vec<Lane1EvidenceAuditFieldHealth>,
+    top_files_by_unresolved_evidence_debt: Vec<Lane1EvidenceAuditFileDebt>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct Lane1EvidenceAuditSummary {
+    seams_total: usize,
+    raw_headline_gaps: usize,
+    evidence_records_total: usize,
+    evidence_records_missing: usize,
+    canonical_gap_groups_total: usize,
+    duplicate_looking_groups_total: usize,
+    headline_without_canonical_gap_id: usize,
+    missing_discriminators_total: usize,
+    static_limitations_total: usize,
+    related_tests_total: usize,
+    seams_without_related_tests: usize,
+    low_or_opaque_top_related_tests: usize,
+    calibrated_records: usize,
+    uncalibrated_records: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct Lane1EvidenceAuditMovement {
+    records_with_seam_id: usize,
+    records_with_canonical_gap_id: usize,
+    records_with_complete_evidence_path: usize,
+    records_with_recommendation: usize,
+    records_with_verify_command: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Lane1EvidenceAuditGroup {
+    key: String,
+    canonical_gap_id: Option<String>,
+    count: usize,
+    reported_group_size: Option<usize>,
+    owner: Option<String>,
+    seam_kind: Option<String>,
+    flow_sink: Option<String>,
+    missing_discriminator: Option<String>,
+    assertion_shape: Option<String>,
+    example_seam_id: Option<String>,
+    example_file: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct Lane1EvidenceAuditFieldHealth {
+    field: String,
+    present: usize,
+    missing: usize,
+    null: usize,
+    empty: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct Lane1EvidenceAuditFileDebt {
+    file: String,
+    debt_score: usize,
+    headline_gaps: usize,
+    missing_discriminators: usize,
+    static_limitations: usize,
+    unknown_stage_records: usize,
+    no_related_tests: usize,
+    low_or_opaque_top_related_tests: usize,
+    missing_evidence_records: usize,
+}
+
+/// Generate the Lane 1 evidence quality audit from the current repo exposure
+/// data and write `target/ripr/reports/lane1-evidence-audit.{json,md}`.
+pub(crate) fn lane1_evidence_audit_report_impl() -> Result<(), String> {
+    ensure_reports_dir()?;
+    let repo_exposure_path = reports_dir().join("lane1-evidence-audit.repo-exposure.json");
+    write_lane1_evidence_audit_repo_exposure(&repo_exposure_path)?;
+    let report = lane1_evidence_audit_from_repo_exposure_file(".", &repo_exposure_path)?;
+    if let Err(err) = fs::remove_file(&repo_exposure_path) {
+        eprintln!(
+            "warning: failed to remove temporary Lane 1 repo exposure input {}: {err}",
+            repo_exposure_path.display()
+        );
+    }
+    write_report(
+        "lane1-evidence-audit.json",
+        &lane1_evidence_audit_json(&report)?,
+    )?;
+    write_report(
+        "lane1-evidence-audit.md",
+        &lane1_evidence_audit_markdown(&report),
+    )
+}
+
+fn write_lane1_evidence_audit_repo_exposure(path: &Path) -> Result<(), String> {
+    let args = vec![
+        "run".to_string(),
+        "-p".to_string(),
+        "ripr".to_string(),
+        "--quiet".to_string(),
+        "--".to_string(),
+        "check".to_string(),
+        "--root".to_string(),
+        ".".to_string(),
+        "--mode".to_string(),
+        "instant".to_string(),
+        "--format".to_string(),
+        "repo-exposure-json".to_string(),
+    ];
+    run_output_to_file_owned("cargo", &args, path)
+}
+
+fn lane1_evidence_audit_from_repo_exposure_file(
+    root: &str,
+    path: &Path,
+) -> Result<Lane1EvidenceAuditReport, String> {
+    let file = fs::File::open(path).map_err(|err| {
+        format!(
+            "failed to open temporary Lane 1 repo exposure input {}: {err}",
+            path.display()
+        )
+    })?;
+    let reader = BufReader::new(file);
+    let mut builder = Lane1EvidenceAuditBuilder::default();
+    let mut schema_version = None;
+    let mut saw_seams_array = false;
+
+    for line in reader.lines() {
+        let line = line.map_err(|err| {
+            format!(
+                "failed to read temporary Lane 1 repo exposure input {}: {err}",
+                path.display()
+            )
+        })?;
+        if schema_version.is_none() {
+            schema_version = audit_schema_version_from_line(&line);
+        }
+        if line.trim_start().starts_with("\"seams\":") {
+            saw_seams_array = true;
+        }
+        let Some(record_json) = audit_evidence_record_json_from_line(&line) else {
+            continue;
+        };
+        let record = serde_json::from_str::<Value>(record_json).map_err(|err| {
+            format!(
+                "failed to parse evidence_record from {}: {err}",
+                path.display()
+            )
+        })?;
+        let seam = serde_json::json!({ "evidence_record": record });
+        builder.ingest_seam(&seam);
+    }
+
+    if !saw_seams_array {
+        return Err("repo exposure JSON is missing `seams` array".to_string());
+    }
+
+    Ok(builder.finish(root.to_string(), schema_version))
+}
+
+#[cfg(test)]
+fn lane1_evidence_audit_from_repo_exposure(
+    root: &str,
+    repo_exposure_json: &str,
+) -> Result<Lane1EvidenceAuditReport, String> {
+    let value: Value = serde_json::from_str(repo_exposure_json)
+        .map_err(|err| format!("failed to parse repo exposure JSON: {err}"))?;
+    let seams = value
+        .get("seams")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "repo exposure JSON is missing `seams` array".to_string())?;
+
+    let mut builder = Lane1EvidenceAuditBuilder::default();
+    for seam in seams {
+        builder.ingest_seam(seam);
+    }
+
+    Ok(builder.finish(root.to_string(), audit_string(&value, &["schema_version"])))
+}
+
+#[derive(Default)]
+struct Lane1EvidenceAuditBuilder {
+    summary: Lane1EvidenceAuditSummary,
+    movement: Lane1EvidenceAuditMovement,
+    canonical_groups: BTreeMap<String, Lane1EvidenceAuditGroup>,
+    duplicate_groups: BTreeMap<String, Lane1EvidenceAuditGroup>,
+    field_health: BTreeMap<String, Lane1EvidenceAuditFieldHealth>,
+    file_debt: BTreeMap<String, Lane1EvidenceAuditFileDebt>,
+    missing_reason_counts: BTreeMap<String, usize>,
+    missing_flow_sink_counts: BTreeMap<String, usize>,
+    missing_value_counts: BTreeMap<String, usize>,
+    static_reason_counts: BTreeMap<String, usize>,
+    static_stage_counts: BTreeMap<String, usize>,
+    oracle_semantics_counts: BTreeMap<String, usize>,
+    oracle_kind_counts: BTreeMap<String, usize>,
+    oracle_strength_counts: BTreeMap<String, usize>,
+    related_confidence_counts: BTreeMap<String, usize>,
+    top_related_confidence_counts: BTreeMap<String, usize>,
+    top_related_reason_counts: BTreeMap<String, usize>,
+    calibration_availability_counts: BTreeMap<String, usize>,
+    calibration_confidence_counts: BTreeMap<String, usize>,
+    calibration_agreement_counts: BTreeMap<String, usize>,
+}
+
+impl Lane1EvidenceAuditBuilder {
+    fn ingest_seam(&mut self, seam: &Value) {
+        self.summary.seams_total += 1;
+        let record = seam
+            .get("evidence_record")
+            .filter(|value| value.is_object());
+        let headline = record
+            .and_then(|record| audit_bool(record, &["headline_eligible"]))
+            .or_else(|| audit_bool(seam, &["headline_eligible"]))
+            .unwrap_or(false);
+        if headline {
+            self.summary.raw_headline_gaps += 1;
+        }
+
+        let file = record
+            .and_then(|record| audit_string(record, &["location", "file"]))
+            .or_else(|| audit_string(seam, &["file"]))
+            .unwrap_or_else(|| "unknown".to_string());
+
+        let Some(record) = record else {
+            self.summary.evidence_records_missing += 1;
+            let debt = audit_file_debt(&mut self.file_debt, &file);
+            debt.debt_score += 1;
+            debt.missing_evidence_records += 1;
+            return;
+        };
+
+        self.summary.evidence_records_total += 1;
+        audit_evidence_record_field_health(record, &mut self.field_health);
+
+        let seam_id = audit_string(record, &["seam_id"]);
+        let canonical_gap_id = audit_string(record, &["canonical_gap_id"]);
+        let owner = audit_string(record, &["owner"]);
+        let seam_kind = audit_string(record, &["seam_kind"]);
+        let assertion_shape = audit_string(record, &["recommendation", "assertion_shape", "kind"]);
+        let group_size = audit_usize(record, &["canonical_gap_group_size"]);
+
+        if seam_id.is_some() {
+            self.movement.records_with_seam_id += 1;
+        }
+        if canonical_gap_id.is_some() {
+            self.movement.records_with_canonical_gap_id += 1;
+        } else if headline {
+            self.summary.headline_without_canonical_gap_id += 1;
+        }
+        if audit_evidence_path_complete(record) {
+            self.movement.records_with_complete_evidence_path += 1;
+        }
+        if audit_string(record, &["recommendation", "action"]).is_some() {
+            self.movement.records_with_recommendation += 1;
+        }
+        if audit_string(record, &["recommendation", "verify_command"]).is_some() {
+            self.movement.records_with_verify_command += 1;
+        }
+
+        let debt = audit_file_debt(&mut self.file_debt, &file);
+        if headline {
+            debt.debt_score += 1;
+            debt.headline_gaps += 1;
+        }
+
+        let missing = audit_array(record, &["missing_discriminators"]);
+        self.summary.missing_discriminators_total += missing.len();
+        debt.debt_score += missing.len();
+        debt.missing_discriminators += missing.len();
+        let missing_signature = audit_missing_discriminator_signature(missing);
+        let flow_sink = missing.iter().find_map(|missing| {
+            audit_string(missing, &["flow_sink", "kind"])
+                .or_else(|| audit_string(missing, &["flow_sink"]))
+        });
+        for missing in missing {
+            let reason =
+                audit_string(missing, &["reason"]).unwrap_or_else(|| "missing_reason".to_string());
+            let value =
+                audit_string(missing, &["value"]).unwrap_or_else(|| "missing_value".to_string());
+            let sink = audit_string(missing, &["flow_sink", "kind"])
+                .or_else(|| audit_string(missing, &["flow_sink"]))
+                .unwrap_or_else(|| "no_flow_sink".to_string());
+            audit_increment(&mut self.missing_reason_counts, &reason);
+            audit_increment(&mut self.missing_value_counts, &value);
+            audit_increment(&mut self.missing_flow_sink_counts, &sink);
+        }
+
+        let static_limitations = audit_array(record, &["static_limitations"]);
+        self.summary.static_limitations_total += static_limitations.len();
+        debt.debt_score += static_limitations.len();
+        debt.static_limitations += static_limitations.len();
+        for limitation in static_limitations {
+            let reason = audit_string(limitation, &["reason"])
+                .unwrap_or_else(|| "missing_reason".to_string());
+            let stage =
+                audit_string(limitation, &["stage"]).unwrap_or_else(|| "missing_stage".to_string());
+            audit_increment(&mut self.static_reason_counts, &reason);
+            audit_increment(&mut self.static_stage_counts, &stage);
+        }
+
+        let unknown_stage_count = audit_unknown_stage_count(record);
+        debt.debt_score += unknown_stage_count;
+        debt.unknown_stage_records += unknown_stage_count;
+
+        let related_tests = audit_array(record, &["related_tests"]);
+        let related_tests_total =
+            audit_usize(record, &["related_tests_total"]).unwrap_or(related_tests.len());
+        self.summary.related_tests_total += related_tests_total;
+        if related_tests_total == 0 {
+            self.summary.seams_without_related_tests += 1;
+            debt.debt_score += 1;
+            debt.no_related_tests += 1;
+        }
+        if let Some(top_related) = related_tests.first() {
+            let confidence = audit_string(top_related, &["relation_confidence"])
+                .unwrap_or_else(|| "missing".to_string());
+            let reason = audit_string(top_related, &["relation_reason"])
+                .unwrap_or_else(|| "missing".to_string());
+            audit_increment(&mut self.top_related_confidence_counts, &confidence);
+            audit_increment(&mut self.top_related_reason_counts, &reason);
+            if matches!(confidence.as_str(), "low" | "opaque") {
+                self.summary.low_or_opaque_top_related_tests += 1;
+                debt.debt_score += 1;
+                debt.low_or_opaque_top_related_tests += 1;
+            }
+        }
+        for related in related_tests {
+            let confidence = audit_string(related, &["relation_confidence"])
+                .unwrap_or_else(|| "missing".to_string());
+            let oracle_kind =
+                audit_string(related, &["oracle_kind"]).unwrap_or_else(|| "missing".to_string());
+            let oracle_strength = audit_string(related, &["oracle_strength"])
+                .unwrap_or_else(|| "missing".to_string());
+            audit_increment(&mut self.related_confidence_counts, &confidence);
+            audit_increment(&mut self.oracle_kind_counts, &oracle_kind);
+            audit_increment(&mut self.oracle_strength_counts, &oracle_strength);
+            audit_increment(
+                &mut self.oracle_semantics_counts,
+                &audit_oracle_semantics_key(related),
+            );
+        }
+
+        let availability = audit_string(record, &["calibration", "availability"])
+            .unwrap_or_else(|| "missing".to_string());
+        let confidence = audit_string(record, &["calibration", "confidence"])
+            .unwrap_or_else(|| "missing".to_string());
+        let agreement = audit_string(record, &["calibration", "agreement"])
+            .unwrap_or_else(|| "missing".to_string());
+        audit_increment(&mut self.calibration_availability_counts, &availability);
+        audit_increment(&mut self.calibration_confidence_counts, &confidence);
+        audit_increment(&mut self.calibration_agreement_counts, &agreement);
+        if availability == "not_imported" || availability == "missing" {
+            self.summary.uncalibrated_records += 1;
+        } else {
+            self.summary.calibrated_records += 1;
+        }
+
+        if headline {
+            if let Some(id) = canonical_gap_id.as_ref() {
+                audit_upsert_group(
+                    &mut self.canonical_groups,
+                    Lane1EvidenceAuditGroup {
+                        key: format!("canonical:{id}"),
+                        canonical_gap_id: canonical_gap_id.clone(),
+                        count: 0,
+                        reported_group_size: group_size,
+                        owner: owner.clone(),
+                        seam_kind: seam_kind.clone(),
+                        flow_sink: flow_sink.clone(),
+                        missing_discriminator: missing_signature.clone(),
+                        assertion_shape: assertion_shape.clone(),
+                        example_seam_id: seam_id.clone(),
+                        example_file: Some(file.clone()),
+                    },
+                );
+            }
+            let duplicate_key = if let Some(id) = canonical_gap_id.as_ref() {
+                format!("canonical:{id}")
+            } else {
+                format!(
+                    "fallback:{}|{}|{}|{}|{}",
+                    owner.as_deref().unwrap_or("missing_owner"),
+                    seam_kind.as_deref().unwrap_or("missing_kind"),
+                    flow_sink.as_deref().unwrap_or("missing_flow_sink"),
+                    missing_signature
+                        .as_deref()
+                        .unwrap_or("missing_discriminator"),
+                    assertion_shape
+                        .as_deref()
+                        .unwrap_or("missing_assertion_shape")
+                )
+            };
+            audit_upsert_group(
+                &mut self.duplicate_groups,
+                Lane1EvidenceAuditGroup {
+                    key: duplicate_key,
+                    canonical_gap_id: canonical_gap_id.clone(),
+                    count: 0,
+                    reported_group_size: group_size,
+                    owner,
+                    seam_kind,
+                    flow_sink,
+                    missing_discriminator: missing_signature,
+                    assertion_shape,
+                    example_seam_id: seam_id,
+                    example_file: Some(file),
+                },
+            );
+        }
+    }
+
+    fn finish(
+        mut self,
+        root: String,
+        repo_exposure_schema_version: Option<String>,
+    ) -> Lane1EvidenceAuditReport {
+        let mut largest_canonical_groups =
+            audit_sorted_groups(self.canonical_groups.into_values().collect());
+        self.summary.canonical_gap_groups_total = largest_canonical_groups.len();
+        largest_canonical_groups.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
+
+        let mut duplicate_looking_groups = audit_sorted_groups(
+            self.duplicate_groups
+                .into_values()
+                .filter(|group| {
+                    group.count > 1 || group.reported_group_size.is_some_and(|size| size > 1)
+                })
+                .collect(),
+        );
+        self.summary.duplicate_looking_groups_total = duplicate_looking_groups.len();
+        duplicate_looking_groups.truncate(LANE1_EVIDENCE_AUDIT_DUPLICATE_LIMIT);
+
+        let mut field_health = self.field_health.into_values().collect::<Vec<_>>();
+        field_health.sort_by(|left, right| left.field.cmp(&right.field));
+
+        let mut file_debt = self.file_debt.into_values().collect::<Vec<_>>();
+        file_debt.sort_by(|left, right| {
+            right
+                .debt_score
+                .cmp(&left.debt_score)
+                .then_with(|| left.file.cmp(&right.file))
+        });
+        file_debt.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
+
+        Lane1EvidenceAuditReport {
+            root,
+            repo_exposure_schema_version,
+            summary: self.summary,
+            largest_canonical_groups,
+            duplicate_looking_groups,
+            missing_discriminator_reason_counts: self.missing_reason_counts,
+            missing_discriminator_flow_sink_counts: self.missing_flow_sink_counts,
+            missing_discriminator_value_counts: self.missing_value_counts,
+            static_limitation_reason_counts: self.static_reason_counts,
+            static_limitation_stage_counts: self.static_stage_counts,
+            oracle_semantics_counts: self.oracle_semantics_counts,
+            oracle_kind_counts: self.oracle_kind_counts,
+            oracle_strength_counts: self.oracle_strength_counts,
+            related_test_confidence_counts: self.related_confidence_counts,
+            top_related_test_confidence_counts: self.top_related_confidence_counts,
+            top_related_test_reason_counts: self.top_related_reason_counts,
+            movement_availability: self.movement,
+            calibration_availability_counts: self.calibration_availability_counts,
+            calibration_confidence_counts: self.calibration_confidence_counts,
+            calibration_agreement_counts: self.calibration_agreement_counts,
+            evidence_record_field_health: field_health,
+            top_files_by_unresolved_evidence_debt: file_debt,
+        }
+    }
+}
+
+fn audit_schema_version_from_line(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    let value = trimmed
+        .strip_prefix("\"schema_version\":")?
+        .trim()
+        .trim_end_matches(',');
+    serde_json::from_str::<Value>(value)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_string))
+}
+
+fn audit_evidence_record_json_from_line(line: &str) -> Option<&str> {
+    let trimmed = line.trim_start();
+    let value = trimmed.strip_prefix("\"evidence_record\":")?.trim();
+    Some(value.trim_end_matches(',').trim())
+}
+
+fn lane1_evidence_audit_json(report: &Lane1EvidenceAuditReport) -> Result<String, String> {
+    let value = serde_json::json!({
+        "schema_version": LANE1_EVIDENCE_AUDIT_SCHEMA_VERSION,
+        "tool": "ripr",
+        "report": "lane1-evidence-audit",
+        "scope": "repo",
+        "status": "advisory",
+        "inputs": {
+            "root": report.root,
+            "source": "repo-exposure-json",
+            "repo_exposure_mode": "instant",
+            "repo_exposure_schema_version": report.repo_exposure_schema_version,
+        },
+        "summary": {
+            "seams_total": report.summary.seams_total,
+            "raw_headline_gaps": report.summary.raw_headline_gaps,
+            "evidence_records_total": report.summary.evidence_records_total,
+            "evidence_records_missing": report.summary.evidence_records_missing,
+            "canonical_gap_groups_total": report.summary.canonical_gap_groups_total,
+            "duplicate_looking_groups_total": report.summary.duplicate_looking_groups_total,
+            "headline_without_canonical_gap_id": report.summary.headline_without_canonical_gap_id,
+            "missing_discriminators_total": report.summary.missing_discriminators_total,
+            "static_limitations_total": report.summary.static_limitations_total,
+            "related_tests_total": report.summary.related_tests_total,
+            "seams_without_related_tests": report.summary.seams_without_related_tests,
+            "low_or_opaque_top_related_tests": report.summary.low_or_opaque_top_related_tests,
+            "calibrated_records": report.summary.calibrated_records,
+            "uncalibrated_records": report.summary.uncalibrated_records,
+        },
+        "canonical_gap_groups": {
+            "total": report.summary.canonical_gap_groups_total,
+            "largest": report.largest_canonical_groups.iter().map(audit_group_json).collect::<Vec<_>>(),
+        },
+        "duplicate_looking_groups": report
+            .duplicate_looking_groups
+            .iter()
+            .map(audit_group_json)
+            .collect::<Vec<_>>(),
+        "missing_discriminator_classes": {
+            "by_reason": report.missing_discriminator_reason_counts,
+            "by_flow_sink": report.missing_discriminator_flow_sink_counts,
+            "by_value": report.missing_discriminator_value_counts,
+        },
+        "static_limitations": {
+            "by_reason": report.static_limitation_reason_counts,
+            "by_stage": report.static_limitation_stage_counts,
+        },
+        "oracle_semantics_distribution": {
+            "by_semantics": report.oracle_semantics_counts,
+            "oracle_kind_counts": report.oracle_kind_counts,
+            "oracle_strength_counts": report.oracle_strength_counts,
+        },
+        "related_test_ranking": {
+            "all_confidence_counts": report.related_test_confidence_counts,
+            "top_confidence_counts": report.top_related_test_confidence_counts,
+            "top_relation_reason_counts": report.top_related_test_reason_counts,
+            "seams_without_related_tests": report.summary.seams_without_related_tests,
+            "low_or_opaque_top_related_tests": report.summary.low_or_opaque_top_related_tests,
+        },
+        "movement_availability": {
+            "records_with_seam_id": report.movement_availability.records_with_seam_id,
+            "records_with_canonical_gap_id": report.movement_availability.records_with_canonical_gap_id,
+            "records_with_complete_evidence_path": report.movement_availability.records_with_complete_evidence_path,
+            "records_with_recommendation": report.movement_availability.records_with_recommendation,
+            "records_with_verify_command": report.movement_availability.records_with_verify_command,
+        },
+        "calibration_availability": {
+            "availability_counts": report.calibration_availability_counts,
+            "confidence_counts": report.calibration_confidence_counts,
+            "agreement_counts": report.calibration_agreement_counts,
+            "calibrated_records": report.summary.calibrated_records,
+            "uncalibrated_records": report.summary.uncalibrated_records,
+        },
+        "evidence_record_field_health": report
+            .evidence_record_field_health
+            .iter()
+            .map(audit_field_health_json)
+            .collect::<Vec<_>>(),
+        "top_files_by_unresolved_evidence_debt": report
+            .top_files_by_unresolved_evidence_debt
+            .iter()
+            .map(audit_file_debt_json)
+            .collect::<Vec<_>>(),
+    });
+    serde_json::to_string_pretty(&value)
+        .map(|json| format!("{json}\n"))
+        .map_err(|err| format!("failed to render Lane 1 evidence audit JSON: {err}"))
+}
+
+fn lane1_evidence_audit_markdown(report: &Lane1EvidenceAuditReport) -> String {
+    let mut out = String::new();
+    out.push_str("# Lane 1 evidence quality audit\n\n");
+    out.push_str("Status: advisory\n\n");
+    out.push_str("This repo-local report summarizes evidence quality from `seams[].evidence_record`. It does not change analyzer behavior, gate policy, PR projection, LSP UX, or runtime execution.\n\n");
+
+    out.push_str("## Summary\n\n");
+    out.push_str("| Metric | Count |\n");
+    out.push_str("| --- | ---: |\n");
+    audit_push_count(&mut out, "Seams", report.summary.seams_total);
+    audit_push_count(
+        &mut out,
+        "Raw headline gaps",
+        report.summary.raw_headline_gaps,
+    );
+    audit_push_count(
+        &mut out,
+        "Canonical gap groups",
+        report.summary.canonical_gap_groups_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Duplicate-looking groups",
+        report.summary.duplicate_looking_groups_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Missing discriminators",
+        report.summary.missing_discriminators_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Static limitations",
+        report.summary.static_limitations_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Seams without related tests",
+        report.summary.seams_without_related_tests,
+    );
+    audit_push_count(
+        &mut out,
+        "Low or opaque top related tests",
+        report.summary.low_or_opaque_top_related_tests,
+    );
+    audit_push_count(
+        &mut out,
+        "Uncalibrated records",
+        report.summary.uncalibrated_records,
+    );
+    out.push('\n');
+
+    out.push_str("## Largest Canonical Gap Groups\n\n");
+    audit_push_group_table(&mut out, &report.largest_canonical_groups);
+
+    out.push_str("## Duplicate-Looking Groups\n\n");
+    audit_push_group_table(&mut out, &report.duplicate_looking_groups);
+
+    out.push_str("## Missing Discriminator Classes\n\n");
+    audit_push_counts_table_limited(
+        &mut out,
+        "Reason",
+        &report.missing_discriminator_reason_counts,
+        LANE1_EVIDENCE_AUDIT_TOP_LIMIT,
+    );
+    audit_push_counts_table_limited(
+        &mut out,
+        "Flow sink",
+        &report.missing_discriminator_flow_sink_counts,
+        LANE1_EVIDENCE_AUDIT_TOP_LIMIT,
+    );
+
+    out.push_str("## Static Limitations\n\n");
+    audit_push_counts_table_limited(
+        &mut out,
+        "Reason",
+        &report.static_limitation_reason_counts,
+        LANE1_EVIDENCE_AUDIT_TOP_LIMIT,
+    );
+    audit_push_counts_table_limited(
+        &mut out,
+        "Stage",
+        &report.static_limitation_stage_counts,
+        LANE1_EVIDENCE_AUDIT_TOP_LIMIT,
+    );
+
+    out.push_str("## Oracle Semantics\n\n");
+    audit_push_counts_table_limited(
+        &mut out,
+        "Oracle semantics",
+        &report.oracle_semantics_counts,
+        LANE1_EVIDENCE_AUDIT_TOP_LIMIT,
+    );
+    audit_push_counts_table_limited(
+        &mut out,
+        "Oracle kind",
+        &report.oracle_kind_counts,
+        LANE1_EVIDENCE_AUDIT_TOP_LIMIT,
+    );
+    audit_push_counts_table_limited(
+        &mut out,
+        "Oracle strength",
+        &report.oracle_strength_counts,
+        LANE1_EVIDENCE_AUDIT_TOP_LIMIT,
+    );
+
+    out.push_str("## Related-Test Ranking\n\n");
+    audit_push_counts_table_limited(
+        &mut out,
+        "Top relation confidence",
+        &report.top_related_test_confidence_counts,
+        LANE1_EVIDENCE_AUDIT_TOP_LIMIT,
+    );
+    audit_push_counts_table_limited(
+        &mut out,
+        "Top relation reason",
+        &report.top_related_test_reason_counts,
+        LANE1_EVIDENCE_AUDIT_TOP_LIMIT,
+    );
+
+    out.push_str("## Movement Availability\n\n");
+    out.push_str("| Field | Count |\n");
+    out.push_str("| --- | ---: |\n");
+    audit_push_count(
+        &mut out,
+        "Records with seam ID",
+        report.movement_availability.records_with_seam_id,
+    );
+    audit_push_count(
+        &mut out,
+        "Records with canonical gap ID",
+        report.movement_availability.records_with_canonical_gap_id,
+    );
+    audit_push_count(
+        &mut out,
+        "Records with complete evidence path",
+        report
+            .movement_availability
+            .records_with_complete_evidence_path,
+    );
+    audit_push_count(
+        &mut out,
+        "Records with recommendation",
+        report.movement_availability.records_with_recommendation,
+    );
+    audit_push_count(
+        &mut out,
+        "Records with verify command",
+        report.movement_availability.records_with_verify_command,
+    );
+    out.push('\n');
+
+    out.push_str("## Calibration Availability\n\n");
+    audit_push_counts_table_limited(
+        &mut out,
+        "Availability",
+        &report.calibration_availability_counts,
+        LANE1_EVIDENCE_AUDIT_TOP_LIMIT,
+    );
+    audit_push_counts_table_limited(
+        &mut out,
+        "Agreement",
+        &report.calibration_agreement_counts,
+        LANE1_EVIDENCE_AUDIT_TOP_LIMIT,
+    );
+
+    out.push_str("## Evidence Record Field Health\n\n");
+    out.push_str("| Field | Present | Missing | Null | Empty |\n");
+    out.push_str("| --- | ---: | ---: | ---: | ---: |\n");
+    for field in &report.evidence_record_field_health {
+        out.push_str(&format!(
+            "| {} | {} | {} | {} | {} |\n",
+            audit_markdown_cell(&field.field),
+            field.present,
+            field.missing,
+            field.null,
+            field.empty
+        ));
+    }
+    out.push('\n');
+
+    out.push_str("## Top Files By Unresolved Evidence Debt\n\n");
+    if report.top_files_by_unresolved_evidence_debt.is_empty() {
+        out.push_str("No unresolved evidence debt was found.\n");
+        return out;
+    }
+    out.push_str("| File | Debt | Headline gaps | Missing discriminators | Static limitations | Unknown stages | No related tests | Low/opaque top related | Missing records |\n");
+    out.push_str("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
+    for row in &report.top_files_by_unresolved_evidence_debt {
+        out.push_str(&format!(
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
+            audit_markdown_cell(&row.file),
+            row.debt_score,
+            row.headline_gaps,
+            row.missing_discriminators,
+            row.static_limitations,
+            row.unknown_stage_records,
+            row.no_related_tests,
+            row.low_or_opaque_top_related_tests,
+            row.missing_evidence_records
+        ));
+    }
+    out
+}
+
+fn audit_group_json(group: &Lane1EvidenceAuditGroup) -> Value {
+    serde_json::json!({
+        "key": group.key,
+        "canonical_gap_id": group.canonical_gap_id,
+        "count": group.count,
+        "reported_group_size": group.reported_group_size,
+        "owner": group.owner,
+        "seam_kind": group.seam_kind,
+        "flow_sink": group.flow_sink,
+        "missing_discriminator": group.missing_discriminator,
+        "assertion_shape": group.assertion_shape,
+        "example_seam_id": group.example_seam_id,
+        "example_file": group.example_file,
+    })
+}
+
+fn audit_field_health_json(field: &Lane1EvidenceAuditFieldHealth) -> Value {
+    serde_json::json!({
+        "field": field.field,
+        "present": field.present,
+        "missing": field.missing,
+        "null": field.null,
+        "empty": field.empty,
+    })
+}
+
+fn audit_file_debt_json(row: &Lane1EvidenceAuditFileDebt) -> Value {
+    serde_json::json!({
+        "file": row.file,
+        "debt_score": row.debt_score,
+        "headline_gaps": row.headline_gaps,
+        "missing_discriminators": row.missing_discriminators,
+        "static_limitations": row.static_limitations,
+        "unknown_stage_records": row.unknown_stage_records,
+        "no_related_tests": row.no_related_tests,
+        "low_or_opaque_top_related_tests": row.low_or_opaque_top_related_tests,
+        "missing_evidence_records": row.missing_evidence_records,
+    })
+}
+
+fn audit_get<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
+    let mut current = value;
+    for segment in path {
+        current = current.get(*segment)?;
+    }
+    Some(current)
+}
+
+fn audit_string(value: &Value, path: &[&str]) -> Option<String> {
+    audit_get(value, path)
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+}
+
+fn audit_bool(value: &Value, path: &[&str]) -> Option<bool> {
+    audit_get(value, path).and_then(Value::as_bool)
+}
+
+fn audit_usize(value: &Value, path: &[&str]) -> Option<usize> {
+    audit_get(value, path)
+        .and_then(Value::as_u64)
+        .map(|number| number as usize)
+}
+
+fn audit_array<'a>(value: &'a Value, path: &[&str]) -> &'a [Value] {
+    audit_get(value, path)
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[])
+}
+
+fn audit_increment(counts: &mut BTreeMap<String, usize>, key: &str) {
+    let entry = counts.entry(key.to_string()).or_insert(0);
+    *entry += 1;
+}
+
+fn audit_evidence_record_field_health(
+    record: &Value,
+    health: &mut BTreeMap<String, Lane1EvidenceAuditFieldHealth>,
+) {
+    for (field, path) in [
+        ("schema_version", &["schema_version"][..]),
+        ("seam_id", &["seam_id"]),
+        ("canonical_gap_id", &["canonical_gap_id"]),
+        ("canonical_gap_group_size", &["canonical_gap_group_size"]),
+        ("canonical_gap_reason", &["canonical_gap_reason"]),
+        ("owner", &["owner"]),
+        ("location.file", &["location", "file"]),
+        ("location.line", &["location", "line"]),
+        ("seam_kind", &["seam_kind"]),
+        ("grip_class", &["grip_class"]),
+        ("headline_eligible", &["headline_eligible"]),
+        ("evidence_path.reach", &["evidence_path", "reach"]),
+        ("evidence_path.activate", &["evidence_path", "activate"]),
+        ("evidence_path.propagate", &["evidence_path", "propagate"]),
+        ("evidence_path.observe", &["evidence_path", "observe"]),
+        (
+            "evidence_path.discriminate",
+            &["evidence_path", "discriminate"],
+        ),
+        ("observed_values", &["observed_values"]),
+        ("missing_discriminators", &["missing_discriminators"]),
+        ("related_tests_total", &["related_tests_total"]),
+        ("related_tests", &["related_tests"]),
+        ("recommendation.action", &["recommendation", "action"]),
+        (
+            "recommendation.verify_command",
+            &["recommendation", "verify_command"],
+        ),
+        ("actionability.class", &["actionability", "class"]),
+        ("calibration.availability", &["calibration", "availability"]),
+        ("calibration.confidence", &["calibration", "confidence"]),
+        ("calibration.agreement", &["calibration", "agreement"]),
+        ("static_limitations", &["static_limitations"]),
+    ] {
+        let entry =
+            health
+                .entry(field.to_string())
+                .or_insert_with(|| Lane1EvidenceAuditFieldHealth {
+                    field: field.to_string(),
+                    ..Lane1EvidenceAuditFieldHealth::default()
+                });
+        match audit_get(record, path) {
+            None => entry.missing += 1,
+            Some(value) if value.is_null() => entry.null += 1,
+            Some(value) if audit_value_is_empty(value) => {
+                entry.present += 1;
+                entry.empty += 1;
+            }
+            Some(_) => entry.present += 1,
+        }
+    }
+}
+
+fn audit_value_is_empty(value: &Value) -> bool {
+    value.as_str().is_some_and(str::is_empty)
+        || value.as_array().is_some_and(Vec::is_empty)
+        || value.as_object().is_some_and(serde_json::Map::is_empty)
+}
+
+fn audit_evidence_path_complete(record: &Value) -> bool {
+    ["reach", "activate", "propagate", "observe", "discriminate"]
+        .iter()
+        .all(|stage| {
+            let path = ["evidence_path", *stage];
+            let Some(stage_value) = audit_get(record, &path) else {
+                return false;
+            };
+            audit_string(stage_value, &["state"]).is_some()
+                && audit_string(stage_value, &["confidence"]).is_some()
+                && audit_string(stage_value, &["summary"]).is_some()
+        })
+}
+
+fn audit_unknown_stage_count(record: &Value) -> usize {
+    ["reach", "activate", "propagate", "observe", "discriminate"]
+        .iter()
+        .filter(|stage| {
+            let path = ["evidence_path", *stage, "state"];
+            audit_string(record, &path)
+                .is_some_and(|state| matches!(state.as_str(), "unknown" | "opaque" | "no"))
+        })
+        .count()
+}
+
+fn audit_missing_discriminator_signature(missing: &[Value]) -> Option<String> {
+    if missing.is_empty() {
+        return None;
+    }
+    let mut values = missing
+        .iter()
+        .filter_map(|value| audit_string(value, &["value"]))
+        .collect::<Vec<_>>();
+    values.sort();
+    values.dedup();
+    if values.is_empty() {
+        Some("missing_discriminator".to_string())
+    } else {
+        Some(values.join(" + "))
+    }
+}
+
+fn audit_oracle_semantics_key(related: &Value) -> String {
+    let observes = audit_string(related, &["oracle_semantics", "observes"])
+        .unwrap_or_else(|| "missing_observes".to_string());
+    let missing = audit_string(related, &["oracle_semantics", "missing"])
+        .unwrap_or_else(|| "missing_gap".to_string());
+    let upgrade = audit_get(related, &["oracle_semantics", "upgrade_suggestion"])
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("no_upgrade");
+    format!("observes={observes}; missing={missing}; upgrade={upgrade}")
+}
+
+fn audit_upsert_group(
+    groups: &mut BTreeMap<String, Lane1EvidenceAuditGroup>,
+    group: Lane1EvidenceAuditGroup,
+) {
+    let key = group.key.clone();
+    let reported_group_size = group.reported_group_size;
+    let entry = groups.entry(key).or_insert(group);
+    entry.count += 1;
+    entry.reported_group_size = match (entry.reported_group_size, reported_group_size) {
+        (Some(left), Some(right)) => Some(left.max(right)),
+        (None, Some(right)) => Some(right),
+        (current, None) => current,
+    };
+}
+
+fn audit_sorted_groups(mut groups: Vec<Lane1EvidenceAuditGroup>) -> Vec<Lane1EvidenceAuditGroup> {
+    groups.sort_by(|left, right| {
+        right
+            .count
+            .cmp(&left.count)
+            .then_with(|| {
+                right
+                    .reported_group_size
+                    .unwrap_or(0)
+                    .cmp(&left.reported_group_size.unwrap_or(0))
+            })
+            .then_with(|| left.key.cmp(&right.key))
+    });
+    groups
+}
+
+fn audit_file_debt<'a>(
+    files: &'a mut BTreeMap<String, Lane1EvidenceAuditFileDebt>,
+    file: &str,
+) -> &'a mut Lane1EvidenceAuditFileDebt {
+    files
+        .entry(file.to_string())
+        .or_insert_with(|| Lane1EvidenceAuditFileDebt {
+            file: file.to_string(),
+            ..Lane1EvidenceAuditFileDebt::default()
+        })
+}
+
+fn audit_push_count(out: &mut String, name: &str, count: usize) {
+    out.push_str(&format!("| {name} | {count} |\n"));
+}
+
+fn audit_push_counts_table_limited(
+    out: &mut String,
+    heading: &str,
+    counts: &BTreeMap<String, usize>,
+    limit: usize,
+) {
+    if counts.is_empty() {
+        out.push_str(&format!(
+            "No {} counts were reported.\n\n",
+            heading.to_lowercase()
+        ));
+        return;
+    }
+    out.push_str(&format!("| {heading} | Count |\n"));
+    out.push_str("| --- | ---: |\n");
+    let mut rows = counts.iter().collect::<Vec<_>>();
+    rows.sort_by(|(left_key, left_count), (right_key, right_count)| {
+        right_count
+            .cmp(left_count)
+            .then_with(|| left_key.cmp(right_key))
+    });
+    for (key, count) in rows.iter().take(limit) {
+        out.push_str(&format!("| {} | {} |\n", audit_markdown_cell(key), count));
+    }
+    out.push('\n');
+}
+
+fn audit_push_group_table(out: &mut String, groups: &[Lane1EvidenceAuditGroup]) {
+    if groups.is_empty() {
+        out.push_str("No groups were reported.\n\n");
+        return;
+    }
+    out.push_str("| Group | Count | Reported size | Owner | Seam kind | Flow sink | Missing discriminator | Assertion shape | Example seam | File |\n");
+    out.push_str("| --- | ---: | ---: | --- | --- | --- | --- | --- | --- | --- |\n");
+    for group in groups {
+        out.push_str(&format!(
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
+            audit_markdown_cell(
+                group
+                    .canonical_gap_id
+                    .as_deref()
+                    .unwrap_or(group.key.as_str())
+            ),
+            group.count,
+            group
+                .reported_group_size
+                .map_or_else(|| "n/a".to_string(), |size| size.to_string()),
+            audit_markdown_cell(group.owner.as_deref().unwrap_or("n/a")),
+            audit_markdown_cell(group.seam_kind.as_deref().unwrap_or("n/a")),
+            audit_markdown_cell(group.flow_sink.as_deref().unwrap_or("n/a")),
+            audit_markdown_cell(group.missing_discriminator.as_deref().unwrap_or("n/a")),
+            audit_markdown_cell(group.assertion_shape.as_deref().unwrap_or("n/a")),
+            audit_markdown_cell(group.example_seam_id.as_deref().unwrap_or("n/a")),
+            audit_markdown_cell(group.example_file.as_deref().unwrap_or("n/a")),
+        ));
+    }
+    out.push('\n');
+}
+
+fn audit_markdown_cell(value: &str) -> String {
+    value.replace('\n', " ").replace('|', "\\|")
 }
 
 const REPO_EXPOSURE_LATENCY_TRACE_ENV: &str = "RIPR_REPO_EXPOSURE_LATENCY_TRACE";
@@ -22082,7 +23714,8 @@ mod tests {
         is_policy_path, is_production_path, is_receipt_status, is_ripr_managed_hook,
         is_snake_case_id, is_spec_id, is_stale_agent_boundary_scan_target, json_escape,
         json_number_after, json_string_values_for_key, json_summary_count, known_commands,
-        known_xtask_command, local_context_line_findings, local_markdown_target,
+        known_xtask_command, lane1_evidence_audit_from_repo_exposure, lane1_evidence_audit_json,
+        lane1_evidence_audit_markdown, local_context_line_findings, local_markdown_target,
         lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
         markdown_links_in_text, mutation_calibration_report_json,
         mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
@@ -23053,6 +24686,116 @@ mod tests {
         assert!(report.contains(
             "recommendation.nearest_test_to_imitate.oracle_semantics.upgrade_suggestion must be string or null"
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_evidence_quality_failure_corpus_is_valid() -> Result<(), String> {
+        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask manifest must have workspace parent".to_string())?;
+        let corpus =
+            repo_root.join("fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json");
+        let mut violations = Vec::new();
+        super::validate_lane1_evidence_quality_failure_fixture_corpus_at(&corpus, &mut violations)?;
+
+        assert_eq!(violations, Vec::<String>::new());
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_evidence_quality_failure_guard_reports_contract_drift() -> Result<(), String> {
+        let root = temp_dir("lane1-evidence-quality-failure-invalid");
+        let corpus = root.join("corpus.json");
+        write(
+            &corpus,
+            r#"{
+  "kind": "wrong",
+  "schema_version": "0.2",
+  "spec": "RIPR-SPEC-9999",
+  "source_report": {
+    "command": "cargo xtask lane1-evidence-audit",
+    "report": "target/ripr/reports/lane1-evidence-audit.json",
+    "summary": {
+      "raw_headline_gaps": "many"
+    }
+  },
+  "cases": [
+    {
+      "id": "duplicate_canonical_gap_overcount_suppressions_match_arm",
+      "case_kind": "surprise",
+      "description": "bad duplicate case",
+      "source": "audit",
+      "audit_signal": {
+        "category": "duplicate_canonical_gap",
+        "metric_path": "canonical_gap_groups.largest[0]",
+        "observed_count": 1,
+        "evidence": "gap"
+      },
+      "expected_repo_exposure": {
+        "source": "repo-exposure-json",
+        "evidence_record": {
+          "schema_version": "0.2",
+          "seam_id": "bad",
+          "canonical_gap_id": null,
+          "canonical_gap_group_size": null,
+          "canonical_gap_reason": null,
+          "owner": "owner",
+          "location": {"file": "src/lib.rs", "line": 1},
+          "seam_kind": "match_arm",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true,
+          "evidence_path": {
+            "reach": {"state": "yes"},
+            "activate": {},
+            "propagate": {},
+            "observe": {},
+            "discriminate": {}
+          },
+          "counts": {
+            "observed_values": 0,
+            "missing_discriminators": 0,
+            "static_limitations": 0,
+            "related_tests_total": 0
+          },
+          "top_related_test": null,
+          "recommendation": {},
+          "actionability": {},
+          "calibration": {},
+          "static_limitations": []
+        }
+      },
+      "expected_claims": [],
+      "must_not_claim": []
+    }
+  ]
+}
+"#,
+        );
+
+        let mut violations = Vec::new();
+        super::validate_lane1_evidence_quality_failure_fixture_corpus_at(&corpus, &mut violations)?;
+        let report = violations.join("\n");
+
+        assert!(report.contains("kind must be lane1_evidence_quality_failure_corpus"));
+        assert!(report.contains("schema_version must be 0.1"));
+        assert!(report.contains("spec must be RIPR-SPEC-0032"));
+        assert!(report.contains("source_report.summary"));
+        assert!(report.contains("unsupported case_kind surprise"));
+        assert!(report.contains("evidence_record.schema_version must be 0.1"));
+        assert!(report.contains("is missing string field confidence"));
+        assert!(report.contains("top_related_test must be an object"));
+        assert!(report.contains("recommendation"));
+        assert!(report.contains("actionability.has_concrete_guidance must be boolean"));
+        assert!(report.contains("calibration"));
+        assert!(report.contains("expected_claims must be a non-empty string array"));
+        assert!(report.contains("must_not_claim must be a non-empty string array"));
+        assert!(report.contains("must pin canonical_gap_id"));
+        assert!(
+            report.contains("must pin group size greater than 1 or pin corrected group size 1")
+        );
+        assert!(report.contains("is missing case missing_equality_boundary_discriminator"));
+        assert!(report.contains("must include at least one negative_guard case"));
         Ok(())
     }
 
@@ -30399,6 +32142,10 @@ jobs:
             XtaskCommand::OperatorCockpitReport
         );
         assert_eq!(
+            XtaskCommand::parse(["evidence-quality-audit".to_string()]),
+            XtaskCommand::Lane1EvidenceAudit
+        );
+        assert_eq!(
             XtaskCommand::parse(["vscode-compile".to_string()]),
             XtaskCommand::VscodeCompile
         );
@@ -30428,6 +32175,7 @@ jobs:
                 XtaskCommand::RepoExposureReport,
                 XtaskCommand::RepoExposureLatencyReport,
                 XtaskCommand::EvidenceHealth,
+                XtaskCommand::Lane1EvidenceAudit,
                 XtaskCommand::AgentSeamPackets(Some(".".to_string())),
                 XtaskCommand::LspCockpitReport,
                 XtaskCommand::OperatorCockpitReport,
@@ -30463,54 +32211,52 @@ jobs:
 
     #[test]
     fn xtask_run_helpers_report_success_failure_and_optional_output() -> Result<(), String> {
-        let version = run_output("cargo", &["--version"])?;
-        if !version.contains("cargo") {
-            return Err(format!("expected cargo version output, got {version:?}"));
+        let program = "rustc";
+        let invalid_flag = "--definitely-not-a-real-rustc-flag";
+
+        let version = run_output(program, &["--version"])?;
+        if !version.contains("rustc") {
+            return Err(format!("expected rustc version output, got {version:?}"));
         }
 
-        let owned_version = run_output_owned("cargo", &["--version".to_string()])?;
-        if !owned_version.contains("cargo") {
+        let owned_version = run_output_owned(program, &["--version".to_string()])?;
+        if !owned_version.contains("rustc") {
             return Err(format!(
-                "expected owned cargo version output, got {owned_version:?}"
+                "expected owned rustc version output, got {owned_version:?}"
             ));
         }
 
-        let status = run("cargo", &["--version"])?;
+        let status = run(program, &["--version"])?;
         if !status.success() {
-            return Err(format!("expected cargo --version to succeed, got {status}"));
+            return Err(format!("expected rustc --version to succeed, got {status}"));
         }
 
-        let captured = capture_output("cargo", &["--version"], "cargo version")?;
-        if !captured.status.success() || !captured.stdout.contains("cargo") {
+        let captured = capture_output(program, &["--version"], "rustc version")?;
+        if !captured.status.success() || !captured.stdout.contains("rustc") {
             return Err(format!(
-                "expected captured cargo version output, got status={} stdout={:?}",
+                "expected captured rustc version output, got status={} stdout={:?}",
                 captured.status, captured.stdout
             ));
         }
 
-        let failed_capture = capture_output(
-            "cargo",
-            &["--definitely-not-a-real-cargo-flag"],
-            "cargo invalid flag",
-        )?;
+        let failed_capture = capture_output(program, &[invalid_flag], "rustc invalid flag")?;
         if failed_capture.status.success() {
-            return Err("expected invalid cargo flag to fail".to_string());
+            return Err("expected invalid rustc flag to fail".to_string());
         }
 
-        let optional = run_output_optional("cargo", &["--definitely-not-a-real-cargo-flag"])?;
+        let optional = run_output_optional(program, &[invalid_flag])?;
         if !optional.is_empty() {
             return Err(format!(
                 "expected optional failure to return empty output, got {optional:?}"
             ));
         }
 
-        let failure = run_output("cargo", &["--definitely-not-a-real-cargo-flag"]).is_err();
+        let failure = run_output(program, &[invalid_flag]).is_err();
         if !failure {
             return Err("expected run_output to report non-zero exit".to_string());
         }
 
-        let owned_failure =
-            run_output_owned("cargo", &["--definitely-not-a-real-cargo-flag".to_string()]).is_err();
+        let owned_failure = run_output_owned(program, &[invalid_flag.to_string()]).is_err();
         if !owned_failure {
             return Err("expected run_output_owned to report non-zero exit".to_string());
         }
@@ -30624,6 +32370,8 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(commands.contains(&"repo-seam-inventory"));
         assert!(commands.contains(&"repo-exposure-report"));
         assert!(commands.contains(&"repo-exposure-latency-report"));
+        assert!(commands.contains(&"lane1-evidence-audit"));
+        assert!(commands.contains(&"evidence-quality-audit"));
         assert!(commands.contains(&"agent-seam-packets [root]"));
         assert!(commands.contains(&"lsp-cockpit-report"));
         assert!(commands.contains(&"operator-cockpit"));
@@ -30638,6 +32386,228 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(commands.contains(&"vscode-package"));
         assert!(commands.contains(&"vscode-test"));
         assert!(commands.contains(&"vscode-test-e2e"));
+    }
+
+    #[test]
+    fn lane1_evidence_audit_counts_quality_gaps_from_evidence_record() -> Result<(), String> {
+        let report = lane1_evidence_audit_from_repo_exposure(".", lane1_audit_sample_json())?;
+        let json = lane1_evidence_audit_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+
+        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["summary"]["seams_total"], 4);
+        assert_eq!(value["summary"]["raw_headline_gaps"], 4);
+        assert_eq!(value["summary"]["evidence_records_total"], 3);
+        assert_eq!(value["summary"]["evidence_records_missing"], 1);
+        assert_eq!(value["summary"]["canonical_gap_groups_total"], 1);
+        assert_eq!(value["summary"]["duplicate_looking_groups_total"], 1);
+        assert_eq!(value["summary"]["missing_discriminators_total"], 2);
+        assert_eq!(value["summary"]["static_limitations_total"], 1);
+        assert_eq!(value["summary"]["low_or_opaque_top_related_tests"], 1);
+        assert_eq!(value["summary"]["calibrated_records"], 1);
+        assert_eq!(value["summary"]["uncalibrated_records"], 2);
+        assert_eq!(
+            value["canonical_gap_groups"]["largest"][0]["canonical_gap_id"],
+            "gap:shared"
+        );
+        assert_eq!(
+            value["canonical_gap_groups"]["largest"][0]["count"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(
+            value["missing_discriminator_classes"]["by_reason"]["boundary value not observed"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(
+            value["static_limitations"]["by_reason"]["opaque helper value"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["related_test_ranking"]["top_confidence_counts"]["low"],
+            serde_json::Value::from(1)
+        );
+
+        let fields = value["evidence_record_field_health"]
+            .as_array()
+            .ok_or_else(|| "field health should be an array".to_string())?;
+        let canonical = fields
+            .iter()
+            .find(|field| field["field"] == "canonical_gap_id")
+            .ok_or_else(|| "canonical_gap_id health missing".to_string())?;
+        assert_eq!(canonical["present"], serde_json::Value::from(2));
+        assert_eq!(canonical["null"], serde_json::Value::from(1));
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_evidence_audit_markdown_names_required_sections() -> Result<(), String> {
+        let report = lane1_evidence_audit_from_repo_exposure(".", lane1_audit_sample_json())?;
+        let markdown = lane1_evidence_audit_markdown(&report);
+
+        assert!(markdown.contains("Lane 1 evidence quality audit"));
+        assert!(markdown.contains("Largest Canonical Gap Groups"));
+        assert!(markdown.contains("Duplicate-Looking Groups"));
+        assert!(markdown.contains("Missing Discriminator Classes"));
+        assert!(markdown.contains("Evidence Record Field Health"));
+        assert!(markdown.contains("Top Files By Unresolved Evidence Debt"));
+        assert!(markdown.contains("gap:shared"));
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_evidence_audit_rejects_repo_exposure_without_seams() {
+        let err = lane1_evidence_audit_from_repo_exposure(".", r#"{"schema_version":"0.3"}"#)
+            .expect_err("missing seams should fail");
+        assert!(err.contains("missing `seams` array"));
+    }
+
+    fn lane1_audit_sample_json() -> &'static str {
+        r#"{
+          "schema_version": "0.3",
+          "scope": "repo",
+          "seams": [
+            {
+              "seam_id": "raw-1",
+              "headline_eligible": true,
+              "file": "src/lib.rs",
+              "evidence_record": {
+                "schema_version": "0.1",
+                "seam_id": "seam-1",
+                "canonical_gap_id": "gap:shared",
+                "canonical_gap_group_size": 2,
+                "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+                "owner": "pricing::discount",
+                "location": {"file": "src/lib.rs", "line": 12},
+                "seam_kind": "predicate_boundary",
+                "grip_class": "weakly_gripped",
+                "headline_eligible": true,
+                "evidence_path": {
+                  "reach": {"state": "yes", "confidence": "high", "summary": "direct call"},
+                  "activate": {"state": "yes", "confidence": "high", "summary": "value observed"},
+                  "propagate": {"state": "weak", "confidence": "medium", "summary": "return value"},
+                  "observe": {"state": "weak", "confidence": "medium", "summary": "assertion nearby"},
+                  "discriminate": {"state": "no", "confidence": "unknown", "summary": "boundary missing"}
+                },
+                "observed_values": [{"value": "101", "line": 20, "text": "discount(101)", "context": "function_argument"}],
+                "missing_discriminators": [{"value": "amount == threshold", "reason": "boundary value not observed", "flow_sink": {"kind": "return_value", "text": "discounted", "line": 12}}],
+                "related_tests_total": 1,
+                "related_tests": [{
+                  "name": "discounts_large_orders",
+                  "file": "tests/pricing.rs",
+                  "line": 7,
+                  "oracle_kind": "exact_value",
+                  "oracle_strength": "strong",
+                  "evidence_summary": "asserts exact discount",
+                  "relation_reason": "direct_owner_call",
+                  "relation_confidence": "high",
+                  "oracle_semantics": {
+                    "observes": "exact return value",
+                    "missing": "boundary equality",
+                    "upgrade_suggestion": "add equality boundary"
+                  }
+                }],
+                "recommendation": {
+                  "action": "write_targeted_test",
+                  "reason": "missing discriminator",
+                  "assertion_shape": {"kind": "exact_value", "example": "assert_eq!(...)"},
+                  "verify_command": "ripr agent verify --root . --before before.json --after after.json --json"
+                },
+                "actionability": {"class": "actionable_assertion_upgrade"},
+                "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+                "static_limitations": []
+              }
+            },
+            {
+              "seam_id": "raw-2",
+              "headline_eligible": true,
+              "file": "src/lib.rs",
+              "evidence_record": {
+                "schema_version": "0.1",
+                "seam_id": "seam-2",
+                "canonical_gap_id": "gap:shared",
+                "canonical_gap_group_size": 2,
+                "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+                "owner": "pricing::discount",
+                "location": {"file": "src/lib.rs", "line": 18},
+                "seam_kind": "predicate_boundary",
+                "grip_class": "weakly_gripped",
+                "headline_eligible": true,
+                "evidence_path": {
+                  "reach": {"state": "yes", "confidence": "high", "summary": "direct call"},
+                  "activate": {"state": "yes", "confidence": "medium", "summary": "value nearby"},
+                  "propagate": {"state": "weak", "confidence": "medium", "summary": "return value"},
+                  "observe": {"state": "weak", "confidence": "medium", "summary": "broad assertion"},
+                  "discriminate": {"state": "no", "confidence": "unknown", "summary": "boundary missing"}
+                },
+                "observed_values": [],
+                "missing_discriminators": [{"value": "amount == threshold", "reason": "boundary value not observed", "flow_sink": {"kind": "return_value", "text": "discounted", "line": 18}}],
+                "related_tests_total": 1,
+                "related_tests": [{
+                  "name": "discounts_smoke",
+                  "file": "tests/pricing.rs",
+                  "line": 22,
+                  "oracle_kind": "broad_error",
+                  "oracle_strength": "weak",
+                  "evidence_summary": "only checks broad behavior",
+                  "relation_reason": "same_test_file",
+                  "relation_confidence": "low",
+                  "oracle_semantics": {
+                    "observes": "broad behavior",
+                    "missing": "exact boundary",
+                    "upgrade_suggestion": null
+                  }
+                }],
+                "recommendation": {
+                  "action": "write_targeted_test",
+                  "reason": "missing discriminator",
+                  "assertion_shape": {"kind": "exact_value", "example": "assert_eq!(...)"},
+                  "verify_command": "ripr agent verify --root . --before before.json --after after.json --json"
+                },
+                "actionability": {"class": "actionable_assertion_upgrade"},
+                "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+                "static_limitations": []
+              }
+            },
+            {
+              "seam_id": "raw-3",
+              "headline_eligible": true,
+              "file": "src/opaque.rs",
+              "evidence_record": {
+                "schema_version": "0.1",
+                "seam_id": "seam-3",
+                "canonical_gap_id": null,
+                "canonical_gap_group_size": null,
+                "canonical_gap_reason": null,
+                "owner": "pricing::opaque",
+                "location": {"file": "src/opaque.rs", "line": 30},
+                "seam_kind": "call_presence",
+                "grip_class": "activation_unknown",
+                "headline_eligible": true,
+                "evidence_path": {
+                  "reach": {"state": "yes", "confidence": "medium", "summary": "same module"},
+                  "activate": {"state": "unknown", "confidence": "unknown", "summary": "opaque helper"},
+                  "propagate": {"state": "unknown", "confidence": "unknown", "summary": "opaque helper"},
+                  "observe": {"state": "unknown", "confidence": "unknown", "summary": "opaque helper"},
+                  "discriminate": {"state": "unknown", "confidence": "unknown", "summary": "opaque helper"}
+                },
+                "observed_values": [],
+                "missing_discriminators": [],
+                "related_tests_total": 0,
+                "related_tests": [],
+                "recommendation": {"action": "inspect_static_limitation", "reason": "opaque helper", "verify_command": null},
+                "actionability": {"class": "static_limitation"},
+                "calibration": {"availability": "imported", "confidence": "medium", "agreement": "static_runtime_agree"},
+                "static_limitations": [{"stage": "activate", "state": "unknown", "reason": "opaque helper value"}]
+              }
+            },
+            {
+              "seam_id": "raw-4",
+              "headline_eligible": true,
+              "file": "src/missing.rs"
+            }
+          ]
+        }"#
     }
 
     #[test]

@@ -394,6 +394,7 @@ evidence = [
   "parser-backed return and tail-expression probe shape facts",
   "parser-backed error-path probe shape facts",
   "parser-backed call, side-effect, field, and match probe shape facts",
+  "parser-backed match probe shape facts carry normalized match heads and arm patterns so canonical gap identity can distinguish match-arm discriminators",
   "fixture/golden output stability",
   "probe-relative oracle kind and strength",
   "typed local flow sink facts",
@@ -567,6 +568,7 @@ evidence = [
   "docs/lanes/LANE_1_EVIDENCE_ACCURACY.md defines the Evidence Accuracy Evaluation objective, audit-first next slices, fixture-first analyzer rule, calibration boundary, and non-goals",
   "crates/ripr/src/output/evidence_record.rs projects existing ClassifiedSeam facts into identity, evidence path, observed values, missing discriminators, related tests, recommendation, actionability, calibration placeholder, and static limitations",
   "crates/ripr/src/analysis/canonical_gap.rs generates deterministic canonical_gap_id values from owner, seam kind, flow sink, missing discriminator, and assertion shape while leaving line numbers as locators",
+  "crates/ripr/src/analysis/canonical_gap.rs tests pin match-arm discriminator splitting and same-arm line-movement grouping",
   "crates/ripr/src/output/repo_exposure.rs attaches seams[].evidence_record while preserving existing repo-exposure seam fields",
   "crates/ripr/src/output/agent_seam_packets.rs includes packets[].evidence_record while preserving existing packet work-order fields",
   "crates/ripr/src/output/ripr_zero_status.rs prefers evidence_record repair context when supplied by baseline debt delta items and keeps legacy fields as fallback",
@@ -578,12 +580,14 @@ evidence = [
   "docs/OUTPUT_SCHEMA.md documents evidence_record schema 0.1 under repo-exposure schema 0.3",
   "unit tests pin identity, generated canonical gap identity, grip class, evidence path, recommendation/actionability, calibration placeholder, static limitations, oracle semantics, packet projection, RIPR Zero repair-route consumption, evidence-record movement consumption, assistant-proof evidence-record consumption, and canonical gap identity routing",
   "fixtures/boundary_gap/expected/evidence-record-contract/corpus.json pins the v0.1 record contract matrix for predicate, error, strong value, broad error, field, whole-object, snapshot, side-effect, opaque limitation, canonical-gap, and calibration-placeholder cases with related-test oracle_semantics",
+  "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json pins audit-derived expected evidence_record subsets for duplicate canonical groups, match-arm overgrouping reduction, equality-boundary misses, activation static limitations, mock-expectation observer semantics, and no-runtime-data calibration gaps",
   "cargo xtask check-fixture-contracts validates the evidence-record contract corpus case matrix and field shape; cargo xtask check-output-contracts validates the evidence_record schema version"
 ]
 fixtures = [
-  "fixtures/boundary_gap/expected/evidence-record-contract/corpus.json"
+  "fixtures/boundary_gap/expected/evidence-record-contract/corpus.json",
+  "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json"
 ]
-next = "report/lane1-evidence-audit"
+next = "analysis/related-test-ranking-audit-fixes"
 metric = "evidence_record_projected_seams, evidence_record_actionable_guidance, evidence_record_static_limitations"
 
 [[capability]]
@@ -597,12 +601,34 @@ evidence = [
   "ripr evidence-health writes advisory JSON and Markdown",
   "cargo xtask evidence-health writes target/ripr/reports/evidence-health.json and evidence-health.md",
   "counts grip classes, stage states, missing discriminators, observed value contexts, related-test confidence, oracle strength, oracle kind, opaque oracles, and top static limitations",
+  "folds durable Lane 1 audit fields into evidence-health from the shared evidence_record: canonical gap group totals, largest groups, duplicate-looking groups, actionability classes, static limitation distributions, evidence-record calibration coverage, movement availability, and top evidence-quality risks",
   "optional imported mutation-calibration JSON contributes calibration availability counts without changing static classification",
   "docs/OUTPUT_SCHEMA.md Evidence Health Report section"
 ]
 fixtures = []
-next = "report/lane1-evidence-audit"
-metric = "Lane 1 evidence gaps summarized without analyzer behavior changes"
+next = "maintenance"
+metric = "evidence_health_seams_total, evidence_health_missing_discriminators_total, evidence_health_observed_values_total, evidence_health_related_tests_total, evidence_health_opaque_oracle_count, evidence_health_calibration_matched_total, evidence_health_canonical_gap_groups, evidence_health_duplicate_looking_groups, evidence_health_records_with_canonical_gap_id, evidence_health_static_limitation_reasons, evidence_health_calibration_not_imported, evidence_health_top_evidence_quality_risks"
+
+[[capability]]
+id = "lane1_evidence_quality_audit"
+name = "Lane 1 evidence quality audit"
+status = "alpha"
+spec = "RIPR-SPEC-0031"
+evidence = [
+  "docs/specs/RIPR-SPEC-0031-lane1-evidence-quality-audit.md defines the repo-local audit contract",
+  "cargo xtask lane1-evidence-audit writes target/ripr/reports/lane1-evidence-audit.json and lane1-evidence-audit.md from generated instant-mode repo-exposure JSON",
+  "cargo xtask evidence-quality-audit is a compatibility alias for the same report",
+  "xtask/src/main.rs summarizes raw headline gaps, canonical gap groups, duplicate-looking groups, missing discriminator classes, static limitations, oracle semantics, related-test ranking confidence, movement availability, calibration availability, evidence_record field health, and top files by unresolved evidence debt",
+  "docs/OUTPUT_SCHEMA.md documents the Lane 1 Evidence Quality Audit JSON and Markdown contract",
+  "xtask unit tests pin audit counting, Markdown sections, malformed input handling, command alias parsing, and report facade routing",
+  "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json turns the first audit findings into expected evidence_record subsets before analyzer behavior changes",
+  "the first audit-driven analyzer improvement split parser-backed match-arm discriminators, reducing duplicate-looking groups from 1287 to 926 and removing the generic match-arm duplicate group from the top rows"
+]
+fixtures = [
+  "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json"
+]
+next = "analysis/related-test-ranking-audit-fixes"
+metric = "lane1_evidence_audit_raw_headline_gaps, lane1_evidence_audit_canonical_gap_groups, lane1_evidence_audit_duplicate_looking_groups, lane1_evidence_audit_missing_discriminators, lane1_evidence_audit_static_limitations, lane1_evidence_audit_uncalibrated_records"
 
 [[capability]]
 id = "agent_seam_packets"
@@ -1258,6 +1284,7 @@ evidence = [
   "crates/ripr/src/output/mutation_calibration.rs",
   "crates/ripr/tests/cli_smoke.rs calibrate cargo-mutants smoke tests",
   "crates/ripr/tests/cli_smoke.rs calibration_runtime_fixture_matches_checked_reports",
+  "crates/ripr/tests/cli_smoke.rs calibration_runtime_fixture_v2_matches_checked_reports",
   "cargo xtask mutation-calibration",
   "mutation calibration JSON/Markdown includes per-row static/runtime confidence labels",
   "target/ripr/reports/mutation-calibration.json",
@@ -1270,12 +1297,17 @@ evidence = [
   "fixtures/boundary_gap/calibration/runtime-fixtures-v1/runtime-mutants.json",
   "fixtures/boundary_gap/calibration/runtime-fixtures-v1/mutation-calibration.json",
   "fixtures/boundary_gap/calibration/runtime-fixtures-v1/mutation-calibration.md",
-  "fixtures/CALIBRATION_CORPUS.md documents covered imported-runtime calibration classes and planned runtime samples outside the calibrated scope",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v2/repo-exposure.json",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v2/runtime-mutants.json",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v2/mutation-calibration.json",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v2/mutation-calibration.md",
+  "fixtures/CALIBRATION_CORPUS.md documents covered imported-runtime calibration classes, including the runtime-fixtures-v2 observer-class expansion",
   "docs/lanes/LANE_1_EVIDENCE_SPINE.md documents calibrated static/runtime confidence labels for checked runtime-fixture classes without mutation execution or static classification changes"
 ]
 fixtures = [
   "fixtures/boundary_gap",
-  "fixtures/boundary_gap/calibration/runtime-fixtures-v1"
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v1",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v2"
 ]
 next = "maintenance"
-metric = "checked calibration fixtures cover static gap plus runtime signal, static gap plus runtime clean, runtime signal without static gap, runtime signal without a static seam, static clean plus runtime clean, inconclusive runtime labels, ambiguous file_line joins, unmatched runtime data, static seams without runtime data, confidence labels, and seam_id/file_line join methods"
+metric = "checked calibration fixtures cover static gap plus runtime signal, static gap plus runtime clean, runtime signal without static gap, runtime signal without a static seam, static clean plus runtime clean, inconclusive runtime labels, ambiguous file_line joins, unmatched runtime data, static seams without runtime data, confidence labels, seam_id/file_line join methods, side-effect observer seams, mock expectations, weak snapshot oracles, opaque dispatch, ambiguous opaque dispatch joins, and runtime-only signals that do not create static gaps"
