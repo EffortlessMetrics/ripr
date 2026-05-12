@@ -193,7 +193,7 @@ Two ways to get the packet for a specific seam:
 - From the bulk artifact:
   `target/ripr/reports/agent-seam-packets.json` contains one packet
   per actionable seam. Find the one matching your `seam_id`.
-- From the editor: `Inspect seam: copy packet` copies the server-owned JSON
+- From the editor: `Inspect Test Gap - Copy Context` copies the server-owned JSON
   packet, while `Write targeted test: copy brief` copies a plain-language work
   order for the seam under the cursor. `Write targeted test: copy suggested
   assertion` and `Write targeted test: open best related test` appear when the

@@ -213,7 +213,7 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
         let actions = read_lsp_response(&mut client_read, 4).await?;
         assert_eq!(
             actions["result"][0]["title"],
-            "Refresh analysis: rerun saved-workspace check"
+            "Refresh Analysis - Saved Workspace Check"
         );
         assert_eq!(actions["result"][0]["command"]["command"], REFRESH_COMMAND);
 
@@ -395,7 +395,7 @@ fn framed_lsp_protocol_smoke_logs_successful_refresh_completion() -> Result<(), 
             .filter_map(|action| action.get("title").and_then(serde_json::Value::as_str))
             .collect::<Vec<_>>();
         for expected in [
-            "Inspect seam: copy packet",
+            "Inspect Test Gap - Copy Context",
             "Write targeted test: copy brief",
             "Verify after test: copy verify command",
             "Review result: copy receipt command",
@@ -1320,9 +1320,9 @@ fn code_action_response_keeps_current_commands() -> Result<(), String> {
                 COPY_CONTEXT_COMMAND,
             ),
             (
-                "Refresh analysis: rerun saved-workspace check",
+                "Refresh Analysis - Saved Workspace Check",
                 "source",
-                "Refresh analysis: rerun saved-workspace check",
+                "Refresh Analysis - Saved Workspace Check",
                 REFRESH_COMMAND,
             ),
         ]
@@ -1386,7 +1386,7 @@ fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Resu
             REFRESH_COMMAND,
         ]
     );
-    assert_eq!(commands[0].0, "Inspect seam: copy packet");
+    assert_eq!(commands[0].0, "Inspect Test Gap - Copy Context");
     assert_eq!(commands[0].2[0]["seam_id"], seam.seam.id().as_str());
     assert_eq!(commands[0].2[0]["seam_kind"], "predicate_boundary");
     assert_eq!(commands[0].2[0]["line"], 88);
@@ -1589,10 +1589,7 @@ fn seam_code_actions_fail_closed_for_stale_seam_diagnostic() -> Result<(), Strin
             .iter()
             .map(|(title, command, _)| (title.as_str(), command.as_str()))
             .collect::<Vec<_>>(),
-        vec![(
-            "Refresh analysis: rerun saved-workspace check",
-            REFRESH_COMMAND
-        )]
+        vec![("Refresh Analysis - Saved Workspace Check", REFRESH_COMMAND)]
     );
     Ok(())
 }
@@ -1624,7 +1621,7 @@ fn seam_code_actions_keep_legacy_finding_context_when_both_diagnostics_are_prese
             .map(|(title, _, _)| title.as_str())
             .collect::<Vec<_>>(),
         vec![
-            "Inspect seam: copy packet",
+            "Inspect Test Gap - Copy Context",
             "Write targeted test: copy brief",
             "Agent handoff: copy packet command",
             "Agent handoff: copy brief command",
@@ -1634,7 +1631,7 @@ fn seam_code_actions_keep_legacy_finding_context_when_both_diagnostics_are_prese
             "Write targeted test: copy suggested assertion",
             "Write targeted test: open best related test",
             "Inspect finding: copy context packet",
-            "Refresh analysis: rerun saved-workspace check",
+            "Refresh Analysis - Saved Workspace Check",
         ]
     );
     assert_eq!(commands[0].2[0]["seam_id"], seam.seam.id().as_str());
@@ -1810,7 +1807,7 @@ fn seam_code_actions_omit_assertion_and_related_test_when_evidence_is_missing() 
             REFRESH_COMMAND
         ]
     );
-    assert_eq!(commands[0].0, "Inspect seam: copy packet");
+    assert_eq!(commands[0].0, "Inspect Test Gap - Copy Context");
     assert_eq!(commands[1].0, "Agent handoff: copy packet command");
     assert_eq!(commands[5].0, "Review result: copy receipt command");
     Ok(())

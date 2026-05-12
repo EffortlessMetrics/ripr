@@ -83,7 +83,7 @@ suite('Extension Smoke', () => {
       uri,
       diagnostic.range
     );
-    const contextCommand = assertCommandAction(actions, 'Inspect seam: copy packet', 'ripr.copyContext');
+    const contextCommand = assertCommandAction(actions, 'Inspect Test Gap - Copy Context', 'ripr.copyContext');
     const targetedBriefCommand = assertCommandAction(
       actions,
       'Write targeted test: copy brief',
