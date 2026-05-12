@@ -19,6 +19,7 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
         CliCommand::Gate(args) => commands::gate(&args),
         CliCommand::Baseline(args) => commands::baseline(&args),
         CliCommand::Zero(args) => commands::zero(&args),
+        CliCommand::Policy(args) => commands::policy(&args),
         CliCommand::PrLedger(args) => commands::pr_ledger(&args),
         CliCommand::PrComments(args) => commands::pr_comments(&args),
         CliCommand::PrReview(args) => commands::pr_review(&args),
@@ -63,6 +64,10 @@ mod tests {
         assert_eq!(
             execute(CliCommand::Init(args(&["--root"]))),
             Err("missing value for --root".to_string())
+        );
+        assert_eq!(
+            execute(CliCommand::Policy(args(&["unknown"]))),
+            Err("unknown policy subcommand \"unknown\"; expected `readiness`".to_string())
         );
         assert_eq!(
             execute(CliCommand::Pilot(args(&["--max-seams", "0"]))),
