@@ -265,6 +265,20 @@ Maintenance audit evidence from 2026-05-12:
   `editors/vscode/package.json` still activates on `onLanguage:rust`, and
   `editors/vscode/src/client.ts` still uses a Rust-only document selector plus
   `isRustFileDocument` guards, so preview routing remains unstarted.
+- after #840 corrected the Campaign 27 manifest, current `main` (`d7d1b66`)
+  records that `output/language-metadata` emitted only `language` and
+  `language_status`; `owner_kind` and `static_limit_kind` remain deferred to
+  follow-up metadata work such as #807. Lane 3 added matching #771/#772
+  handoff notes so Python preview and editor routing both treat structured
+  static-limit metadata as unavailable until it lands. A fresh maintenance pass
+  found no stale open editor, LSP, VS Code, or `ripr: Show Status` issues beyond
+  #772. `cargo xtask goals next` still reported no ready work items;
+  `cargo xtask lsp-cockpit-report` passed; `cargo test -p ripr lsp --lib`
+  passed 123 tests; `cargo test -p ripr lsp::tests --lib` passed 84 tests;
+  `npm --prefix editors/vscode run compile` passed; and
+  `npm --prefix editors/vscode run test:e2e` passed 30 live VS Code smoke
+  tests with the known post-success VS Code runner `path` warning exiting 0.
+  The extension remains Rust-only until `lsp/editor-language-routing` is ready.
 
 Objective audit status from 2026-05-12: not complete, blocked upstream.
 
