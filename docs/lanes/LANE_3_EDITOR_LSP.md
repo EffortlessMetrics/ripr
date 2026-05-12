@@ -63,7 +63,11 @@ Completed slices:
   or missing report handling;
 - `fixtures/editor_lsp_workflow` pins the saved-workspace editor loop across
   diagnostics, hover, code actions, first-useful-action status projection, stale
-  refresh guidance, and LSP cockpit coverage.
+  refresh guidance, and LSP cockpit coverage;
+- Rust language-router contract tests pin that default saved-workspace behavior
+  and `[languages] enabled = ["rust"]` produce the same diagnostics, hover, and
+  actions, while `[languages] enabled = []` suppresses saved-workspace
+  diagnostics instead of inventing editor behavior.
 
 ## Current Open PRs
 
