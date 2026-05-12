@@ -74,6 +74,51 @@ struct TypeScriptTest {
     file: PathBuf,
     line: usize,
     body_text: String,
+    assertions: Vec<TypeScriptAssertion>,
+}
+
+/// Assertion shape extracted from a single `expect(actual).matcher(...)`
+/// chain inside a test body.
+///
+/// `matcher` is the canonical matcher name (`toBe`, `toEqual`, `toThrow`,
+/// `toMatchSnapshot`, `toHaveBeenCalledWith`, ...). The full Jest/Vitest
+/// matcher surface is large; this preview slice maps the most common
+/// matchers to oracle vocabulary and tags the rest as `Unknown`.
+/// Async-aware (`.resolves` / `.rejects`) chains and custom matchers
+/// land in follow-up work covered by issue #767.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TypeScriptAssertion {
+    matcher: String,
+    line: usize,
+    oracle_kind: OracleKind,
+    oracle_strength: OracleStrength,
+}
+
+fn oracle_for_matcher(matcher: &str) -> (OracleKind, OracleStrength) {
+    match matcher {
+        "toBe" | "toEqual" | "toStrictEqual" => (OracleKind::ExactValue, OracleStrength::Strong),
+        "toThrow" | "toThrowError" => (OracleKind::ExactErrorVariant, OracleStrength::Strong),
+        "toMatchSnapshot" | "toMatchInlineSnapshot" => {
+            (OracleKind::Snapshot, OracleStrength::Medium)
+        }
+        "toHaveBeenCalled"
+        | "toHaveBeenCalledWith"
+        | "toHaveBeenCalledTimes"
+        | "toHaveBeenLastCalledWith"
+        | "toHaveBeenNthCalledWith" => (OracleKind::MockExpectation, OracleStrength::Medium),
+        "toBeTruthy" | "toBeFalsy" | "toBeDefined" | "toBeUndefined" | "toBeNull" | "toBeNaN" => {
+            (OracleKind::SmokeOnly, OracleStrength::Smoke)
+        }
+        "toContain"
+        | "toMatch"
+        | "toBeGreaterThan"
+        | "toBeGreaterThanOrEqual"
+        | "toBeLessThan"
+        | "toBeLessThanOrEqual"
+        | "toHaveLength"
+        | "toHaveProperty" => (OracleKind::RelationalCheck, OracleStrength::Weak),
+        _ => (OracleKind::Unknown, OracleStrength::Unknown),
+    }
 }
 
 /// Whether a path is a test file by convention (`*.test.ts`, `*.spec.ts`,
@@ -193,11 +238,95 @@ fn test_from_statement(stmt: &Statement<'_>, file: &Path, source: &str) -> Optio
         oxc_ast::ast::Argument::StringLiteral(literal) => literal.value.to_string(),
         _ => return None,
     };
+    // Walk the second argument (the test body fn) for expect() chains.
+    let assertions = match args.next() {
+        Some(oxc_ast::ast::Argument::ArrowFunctionExpression(arrow)) => {
+            collect_expect_assertions_in_statements(&arrow.body.statements, source)
+        }
+        Some(oxc_ast::ast::Argument::FunctionExpression(func)) => match &func.body {
+            Some(body) => collect_expect_assertions_in_statements(&body.statements, source),
+            None => Vec::new(),
+        },
+        _ => Vec::new(),
+    };
     Some(TypeScriptTest {
         name,
         file: file.to_path_buf(),
         line: line_for_offset(source, call.span.start as usize),
         body_text: source[call.span.start as usize..call.span.end as usize].to_string(),
+        assertions,
+    })
+}
+
+/// Walk a list of statements (e.g., a function body) and collect every
+/// `expect(actual).matcher(...)` expression statement we recognise.
+fn collect_expect_assertions_in_statements(
+    statements: &oxc_allocator::Vec<'_, Statement<'_>>,
+    source: &str,
+) -> Vec<TypeScriptAssertion> {
+    let mut out = Vec::new();
+    for stmt in statements {
+        if let Statement::ExpressionStatement(expr_stmt) = stmt
+            && let Some(assertion) = expect_assertion_from_expression(&expr_stmt.expression, source)
+        {
+            out.push(assertion);
+        }
+    }
+    out
+}
+
+/// Match the simplest `expect(actual).matcher(...)` shape on a top-level
+/// expression. Async-aware `.resolves.matcher` / `.rejects.matcher`
+/// chains are recognised by checking for one extra member-access hop
+/// before the inner `expect(...)` call; the matcher remains the final
+/// property name.
+fn expect_assertion_from_expression(
+    expr: &Expression<'_>,
+    source: &str,
+) -> Option<TypeScriptAssertion> {
+    let Expression::CallExpression(outer_call) = expr else {
+        return None;
+    };
+    let Expression::StaticMemberExpression(outer_member) = &outer_call.callee else {
+        return None;
+    };
+    let matcher = outer_member.property.name.as_str();
+
+    // Inner shape is either `expect(...)` directly or an
+    // `expect(...).resolves` / `.rejects` chain.
+    let inner = &outer_member.object;
+    let inner_is_expect_call = match inner {
+        // Direct: expect(...).matcher(...)
+        Expression::CallExpression(inner_call) => {
+            matches!(
+                &inner_call.callee,
+                Expression::Identifier(ident) if ident.name.as_str() == "expect"
+            )
+        }
+        // Async chain: expect(...).resolves.matcher(...) etc.
+        Expression::StaticMemberExpression(inner_member) => {
+            let modifier = inner_member.property.name.as_str();
+            if modifier != "resolves" && modifier != "rejects" {
+                return None;
+            }
+            matches!(
+                &inner_member.object,
+                Expression::CallExpression(inner_call)
+                    if matches!(&inner_call.callee, Expression::Identifier(ident) if ident.name.as_str() == "expect")
+            )
+        }
+        _ => false,
+    };
+    if !inner_is_expect_call {
+        return None;
+    }
+
+    let (oracle_kind, oracle_strength) = oracle_for_matcher(matcher);
+    Some(TypeScriptAssertion {
+        matcher: matcher.to_string(),
+        line: line_for_offset(source, outer_call.span.start as usize),
+        oracle_kind,
+        oracle_strength,
     })
 }
 
@@ -206,15 +335,34 @@ fn find_related_tests(owner: &TypeScriptOwner, all_tests: &[TypeScriptTest]) -> 
     all_tests
         .iter()
         .filter(|test| test.body_text.contains(&needle))
-        .map(|test| RelatedTest {
-            name: test.name.clone(),
-            file: test.file.clone(),
-            line: test.line,
-            oracle: None,
-            oracle_kind: OracleKind::Unknown,
-            oracle_strength: OracleStrength::Unknown,
+        .map(|test| {
+            let strongest = strongest_assertion(&test.assertions);
+            let (oracle_kind, oracle_strength, oracle_text) = match strongest {
+                Some(assertion) => (
+                    assertion.oracle_kind.clone(),
+                    assertion.oracle_strength.clone(),
+                    Some(format!("expect(...).{}(...)", assertion.matcher)),
+                ),
+                None => (OracleKind::Unknown, OracleStrength::Unknown, None),
+            };
+            RelatedTest {
+                name: test.name.clone(),
+                file: test.file.clone(),
+                line: test.line,
+                oracle: oracle_text,
+                oracle_kind,
+                oracle_strength,
+            }
         })
         .collect()
+}
+
+/// Pick the highest-rank assertion from a test body. Used to summarise a
+/// related test's strongest oracle for the classifier.
+fn strongest_assertion(assertions: &[TypeScriptAssertion]) -> Option<&TypeScriptAssertion> {
+    assertions
+        .iter()
+        .max_by_key(|assertion| assertion.oracle_strength.rank())
 }
 
 fn classify_change(
@@ -229,9 +377,21 @@ fn classify_change(
         .find(|owner| line >= owner.start_line && line <= owner.end_line)?;
     let related = find_related_tests(owner, all_tests);
 
-    let (class, reach_state, observe_state, missing) = if related.is_empty() {
+    let strongest_strength = related
+        .iter()
+        .map(|test| test.oracle_strength.rank())
+        .max()
+        .unwrap_or(0);
+    let strongest_kind = related
+        .iter()
+        .max_by_key(|test| test.oracle_strength.rank())
+        .map(|test| test.oracle_kind.clone())
+        .unwrap_or(OracleKind::Unknown);
+
+    let (class, reach_state, observe_state, discriminate_state, missing) = if related.is_empty() {
         (
             ExposureClass::NoStaticPath,
+            StageState::No,
             StageState::No,
             StageState::No,
             vec![format!(
@@ -239,19 +399,29 @@ fn classify_change(
                 owner.name
             )],
         )
+    } else if strongest_strength >= OracleStrength::Strong.rank() {
+        (
+            ExposureClass::Exposed,
+            StageState::Yes,
+            StageState::Yes,
+            StageState::Yes,
+            vec![format!(
+                "Related test reaches `{}` with a `{}` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.",
+                owner.name,
+                strongest_kind.as_str()
+            )],
+        )
     } else {
         (
             ExposureClass::WeaklyExposed,
             StageState::Yes,
             StageState::Weak,
-            vec![
-                format!(
-                    "Related test reaches `{}` but assertion-shape extraction is preview-deferred (see issue #767).",
-                    owner.name
-                ),
-                "Add an exact-value or boundary-equality assertion to upgrade exposure."
-                    .to_string(),
-            ],
+            StageState::Weak,
+            vec![format!(
+                "Related test reaches `{}` but the strongest extracted oracle is `{}`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) or exact-error-variant (`toThrow`) assertion.",
+                owner.name,
+                strongest_kind.as_str()
+            )],
         )
     };
 
@@ -290,16 +460,39 @@ fn classify_change(
         Confidence::Low,
         "TypeScript preview adapter does not yet model propagation.",
     );
-    let observe = StageEvidence::new(
-        observe_state,
-        Confidence::Low,
-        "TypeScript preview adapter has not yet extracted oracle shape (see issue #767).",
+    let observe_summary = format!(
+        "Strongest extracted oracle kind: `{}` (rank {})",
+        strongest_kind.as_str(),
+        strongest_strength
     );
-    let discriminate = StageEvidence::new(
-        StageState::Unknown,
-        Confidence::Low,
-        "TypeScript preview adapter has not yet evaluated discriminator strength.",
-    );
+    let observe = StageEvidence::new(observe_state, Confidence::Low, &observe_summary);
+    let discriminate_summary = if strongest_strength >= OracleStrength::Strong.rank() {
+        format!(
+            "Related test uses a `{}` oracle; static evidence suggests the changed behavior is discriminated.",
+            strongest_kind.as_str()
+        )
+    } else {
+        "TypeScript preview adapter found no strong discriminator; upgrade an assertion to `toBe` / `toEqual` / `toStrictEqual` / `toThrow` to escalate.".to_string()
+    };
+    let discriminate =
+        StageEvidence::new(discriminate_state, Confidence::Low, &discriminate_summary);
+
+    let recommended = match &class {
+        ExposureClass::Exposed => {
+            "TypeScript preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.".to_string()
+        }
+        ExposureClass::NoStaticPath => {
+            "TypeScript preview: no test references the changed owner; add a test that calls the owner and asserts the changed behavior with `toBe` / `toEqual`.".to_string()
+        }
+        _ => {
+            "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).".to_string()
+        }
+    };
+    let confidence_value = if matches!(class, ExposureClass::Exposed) {
+        0.6
+    } else {
+        0.4
+    };
 
     Some(Finding {
         id: probe.id.0.clone(),
@@ -314,17 +507,14 @@ fn classify_change(
                 discriminate,
             },
         },
-        confidence: 0.4,
+        confidence: confidence_value,
         evidence: vec![format!("owner: {}", owner.name)],
         missing,
         flow_sinks: Vec::new(),
         activation: Default::default(),
         stop_reasons: Vec::new(),
         related_tests: related,
-        recommended_next_step: Some(
-            "TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion."
-                .to_string(),
-        ),
+        recommended_next_step: Some(recommended),
         language: Some(DomainLanguageId::TypeScript),
         language_status: Some(LanguageStatus::Preview),
     })
@@ -549,6 +739,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
                 line: 1,
                 body_text: r#"test("alpha", () => { expect(applyDiscount(50, 100)).toBe(50); });"#
                     .to_string(),
+                assertions: Vec::new(),
             },
             TypeScriptTest {
                 name: "unrelated".to_string(),
@@ -556,6 +747,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
                 line: 1,
                 body_text: r#"test("unrelated", () => { expect(otherHelper()).toBe(true); });"#
                     .to_string(),
+                assertions: Vec::new(),
             },
         ];
         let related = find_related_tests(&owner, &tests);
@@ -576,6 +768,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             file: PathBuf::from("tests/lib.test.ts"),
             line: 1,
             body_text: "applyDiscount(50, 100)".to_string(),
+            assertions: Vec::new(),
         };
         let finding = classify_change(
             Path::new("src/lib.ts"),
@@ -589,6 +782,138 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
         assert_eq!(finding.language, Some(DomainLanguageId::TypeScript));
         assert_eq!(finding.language_status, Some(LanguageStatus::Preview));
         assert_eq!(finding.related_tests.len(), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn extract_tests_collects_expect_to_be_as_strong_oracle() {
+        let tests = extract_tests(
+            Path::new("tests/lib.test.ts"),
+            r#"test("alpha", () => {
+    expect(applyDiscount(50, 100)).toBe(50);
+    expect(applyDiscount(10000, 100)).toEqual(9990);
+});
+"#,
+        );
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests[0].assertions.len(), 2);
+        assert_eq!(tests[0].assertions[0].matcher, "toBe");
+        assert_eq!(tests[0].assertions[0].oracle_kind, OracleKind::ExactValue);
+        assert_eq!(
+            tests[0].assertions[0].oracle_strength,
+            OracleStrength::Strong
+        );
+        assert_eq!(tests[0].assertions[1].matcher, "toEqual");
+    }
+
+    #[test]
+    fn extract_tests_recognizes_resolves_async_chain() {
+        let tests = extract_tests(
+            Path::new("tests/lib.test.ts"),
+            r#"test("async", async () => {
+    await expect(loader()).resolves.toBe(42);
+});
+"#,
+        );
+        assert_eq!(tests.len(), 1);
+        // The async chain is one level deeper; current scaffold matches
+        // only top-level expect().matcher() shapes inside the test body.
+        // The async `expect(...).resolves.toBe(...)` lives inside an
+        // `await` expression, which is not a top-level expression
+        // statement we walk yet (deferred to #767 follow-up). The test
+        // pins this current limit so a future change tightens it.
+        assert!(tests[0].assertions.is_empty());
+    }
+
+    #[test]
+    fn extract_tests_unknown_matcher_maps_to_unknown_oracle() {
+        let tests = extract_tests(
+            Path::new("tests/lib.test.ts"),
+            r#"test("alpha", () => {
+    expect(applyDiscount(50, 100)).customDomainMatcher(50);
+});
+"#,
+        );
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests[0].assertions.len(), 1);
+        assert_eq!(tests[0].assertions[0].oracle_kind, OracleKind::Unknown);
+        assert_eq!(
+            tests[0].assertions[0].oracle_strength,
+            OracleStrength::Unknown
+        );
+    }
+
+    #[test]
+    fn oracle_for_matcher_covers_canonical_jest_vitest_set() {
+        assert_eq!(
+            oracle_for_matcher("toBe"),
+            (OracleKind::ExactValue, OracleStrength::Strong)
+        );
+        assert_eq!(
+            oracle_for_matcher("toEqual"),
+            (OracleKind::ExactValue, OracleStrength::Strong)
+        );
+        assert_eq!(
+            oracle_for_matcher("toThrow"),
+            (OracleKind::ExactErrorVariant, OracleStrength::Strong)
+        );
+        assert_eq!(
+            oracle_for_matcher("toMatchSnapshot"),
+            (OracleKind::Snapshot, OracleStrength::Medium)
+        );
+        assert_eq!(
+            oracle_for_matcher("toHaveBeenCalledWith"),
+            (OracleKind::MockExpectation, OracleStrength::Medium)
+        );
+        assert_eq!(
+            oracle_for_matcher("toBeTruthy"),
+            (OracleKind::SmokeOnly, OracleStrength::Smoke)
+        );
+        assert_eq!(
+            oracle_for_matcher("toContain"),
+            (OracleKind::RelationalCheck, OracleStrength::Weak)
+        );
+        assert_eq!(
+            oracle_for_matcher("someUnknownMatcher"),
+            (OracleKind::Unknown, OracleStrength::Unknown)
+        );
+    }
+
+    #[test]
+    fn classify_change_returns_exposed_when_related_test_has_strong_oracle() -> Result<(), String> {
+        let owner = TypeScriptOwner {
+            name: "applyDiscount".to_string(),
+            file: PathBuf::from("src/lib.ts"),
+            start_line: 1,
+            end_line: 5,
+        };
+        let test = TypeScriptTest {
+            name: "alpha".to_string(),
+            file: PathBuf::from("tests/lib.test.ts"),
+            line: 1,
+            body_text: "applyDiscount(50, 100)".to_string(),
+            assertions: vec![TypeScriptAssertion {
+                matcher: "toBe".to_string(),
+                line: 2,
+                oracle_kind: OracleKind::ExactValue,
+                oracle_strength: OracleStrength::Strong,
+            }],
+        };
+        let finding = classify_change(
+            Path::new("src/lib.ts"),
+            2,
+            "    if (amount >= threshold) {",
+            &[owner],
+            &[test],
+        )
+        .ok_or_else(|| "expected a finding for the changed line".to_string())?;
+        assert!(matches!(finding.class, ExposureClass::Exposed));
+        assert_eq!(finding.related_tests.len(), 1);
+        assert_eq!(finding.related_tests[0].oracle_kind, OracleKind::ExactValue);
+        assert_eq!(
+            finding.related_tests[0].oracle_strength,
+            OracleStrength::Strong
+        );
         Ok(())
     }
 
