@@ -83,6 +83,7 @@ const defaultRuntime: RiprClientRuntime = {
   runRipr,
   writeClipboard: async (text) => {
     await vscode.env.clipboard.writeText(text);
+    await writeTestClipboardCapture(text);
   },
   showInformationMessage: (message) => vscode.window.showInformationMessage(message),
   showWarningMessage: (message) => vscode.window.showWarningMessage(message),
@@ -1056,6 +1057,18 @@ function firstWorkspaceFolder(): string | undefined {
 
 function isRustFileDocument(document: vscode.TextDocument): boolean {
   return document.languageId === 'rust' && document.uri.scheme === 'file';
+}
+
+async function writeTestClipboardCapture(text: string): Promise<void> {
+  const capturePath = process.env.RIPR_TEST_CLIPBOARD_CAPTURE_PATH;
+  if (!capturePath) {
+    return;
+  }
+  try {
+    await fs.writeFile(capturePath, text, 'utf8');
+  } catch {
+    // Test capture must not make the user-facing clipboard command fail.
+  }
 }
 
 function runRipr(command: string, args: string[], cwd: string): Promise<string> {
