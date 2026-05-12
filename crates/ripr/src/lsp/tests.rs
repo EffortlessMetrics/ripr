@@ -21,12 +21,13 @@ use super::{
 };
 use crate::app::Mode;
 use crate::domain::{
-    Confidence, DeltaKind, ExposureClass, Finding, OracleKind, OracleStrength, Probe, ProbeFamily,
-    ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
+    Confidence, DeltaKind, ExposureClass, Finding, LanguageId, OracleKind, OracleStrength, Probe,
+    ProbeFamily, ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence,
+    StageState,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tower_lsp_server::LanguageServer;
 use tower_lsp_server::ls_types::{
@@ -2307,6 +2308,59 @@ fn initialize_stores_lsp_analysis_config() -> Result<(), String> {
 }
 
 #[test]
+fn initialize_with_invalid_languages_config_falls_back_to_rust_defaults() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = unique_lsp_test_root("invalid-languages-config")?;
+        std::fs::write(
+            root.path().join("ripr.toml"),
+            r#"
+[languages]
+enabled = ["ruby"]
+"#,
+        )
+        .map_err(|err| format!("write invalid config failed: {err}"))?;
+        let config_error = match crate::config::load_for_root(root.path()) {
+            Ok(_) => {
+                return Err(
+                    "invalid language config should stay owned by config parsing".to_string(),
+                );
+            }
+            Err(err) => err,
+        };
+        assert!(
+            config_error.contains("languages.enabled") && config_error.contains("ruby"),
+            "expected config-owned language error, got: {config_error}"
+        );
+
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        backend
+            .initialize(initialize_params(
+                None,
+                Some(file_uri_for_path(root.path())?),
+            ))
+            .await
+            .map_err(|err| format!("initialize failed: {err}"))?;
+        let Some(config) = backend.analysis_config() else {
+            return Err("expected backend analysis config".to_string());
+        };
+
+        assert_eq!(config.repo_config().source_path(), None);
+        assert_eq!(
+            config.repo_config().languages().enabled(),
+            &[LanguageId::Rust]
+        );
+        assert_eq!(config.mode, Mode::Draft);
+        assert!(config.enable_seam_diagnostics);
+        Ok(())
+    })
+}
+
+#[test]
 fn backend_starts_with_default_lsp_analysis_config() -> Result<(), String> {
     let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
     let backend = service.inner();
@@ -2717,6 +2771,32 @@ fn boundary_gap_fixture_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join("fixtures/boundary_gap/input")
+}
+
+struct TempLspRoot {
+    path: PathBuf,
+}
+
+impl TempLspRoot {
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TempLspRoot {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+fn unique_lsp_test_root(name: &str) -> Result<TempLspRoot, String> {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let root = std::env::temp_dir().join(format!("ripr-lsp-{name}-{}-{stamp}", std::process::id()));
+    std::fs::create_dir_all(&root).map_err(|err| format!("create temp root failed: {err}"))?;
+    Ok(TempLspRoot { path: root })
 }
 
 fn boundary_gap_lsp_config(repo_config: crate::config::RiprConfig) -> LspAnalysisConfig {
