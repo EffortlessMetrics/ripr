@@ -122,7 +122,7 @@ commands = [
 
 [[work_item]]
 id = "config/languages-opt-in"
-status = "active"
+status = "done"
 branch = "config-languages-opt-in"
 stackable = false
 blocked_by = [
@@ -141,13 +141,25 @@ commands = [
 
 [[work_item]]
 id = "analysis/typescript-preview-adapter"
-status = "blocked"
-branch = "analysis-typescript-preview-adapter"
+status = "active"
+branch = "analysis-typescript-preview-adapter-scaffold"
 stackable = false
 blocked_by = [
   "config/languages-opt-in",
 ]
-acceptance = "Add the TypeScript/JavaScript syntax-first adapter, the TypeScript fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults"
+acceptance = "Add the TypeScript/JavaScript syntax-first adapter, the TypeScript fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Scaffold slice adds the oxc_parser dependency, the TypeScriptAdapter struct routing .ts/.tsx/.js/.jsx, language-aware dispatch through `[languages] enabled` in pipeline.rs, and a real production parse-validation use of oxc_parser; fact extraction lands in a follow-up slice."
+commands = [
+  "cargo check -p ripr",
+  "cargo test -p ripr --lib analysis::language",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-workspace-shape",
+  "cargo xtask check-dependencies",
+  "cargo xtask check-pr",
+]
 
 [[work_item]]
 id = "analysis/python-preview-adapter"
