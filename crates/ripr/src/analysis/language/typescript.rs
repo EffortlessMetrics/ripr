@@ -255,15 +255,14 @@ fn classify_change(
         )
     };
 
+    let id_path: String = file
+        .display()
+        .to_string()
+        .chars()
+        .map(|c| if c == '/' || c == '\\' { '_' } else { c })
+        .collect();
     let probe = Probe {
-        id: ProbeId(format!(
-            "probe:{}:{}:typescript_preview",
-            file.display()
-                .to_string()
-                .replace('/', "_")
-                .replace('\\', "_"),
-            line
-        )),
+        id: ProbeId(format!("probe:{id_path}:{line}:typescript_preview")),
         location: SourceLocation::new(file.to_string_lossy().as_ref(), line, 1),
         owner: None,
         family: ProbeFamily::Predicate,
@@ -275,15 +274,12 @@ fn classify_change(
         required_oracles: Vec::new(),
     };
 
-    let reach = StageEvidence::new(
-        reach_state.clone(),
-        Confidence::Low,
-        &format!(
-            "{} related test(s) found for owner `{}`",
-            related.len(),
-            owner.name
-        ),
+    let related_count = related.len();
+    let reach_summary = format!(
+        "{} related test(s) found for owner `{}`",
+        related_count, owner.name
     );
+    let reach = StageEvidence::new(reach_state.clone(), Confidence::Low, &reach_summary);
     let infect = StageEvidence::new(
         StageState::Unknown,
         Confidence::Low,
@@ -568,7 +564,7 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
     }
 
     #[test]
-    fn classify_change_returns_weakly_exposed_when_related_test_exists() {
+    fn classify_change_returns_weakly_exposed_when_related_test_exists() -> Result<(), String> {
         let owner = TypeScriptOwner {
             name: "applyDiscount".to_string(),
             file: PathBuf::from("src/lib.ts"),
@@ -587,23 +583,17 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             "    if (amount >= threshold) {",
             &[owner],
             &[test],
-        );
-        match finding {
-            Some(finding) => {
-                assert!(matches!(finding.class, ExposureClass::WeaklyExposed));
-                assert_eq!(finding.language, Some(DomainLanguageId::TypeScript));
-                assert_eq!(finding.language_status, Some(LanguageStatus::Preview));
-                assert_eq!(finding.related_tests.len(), 1);
-            }
-            None => assert!(
-                false,
-                "expected a finding when an owner contains the changed line"
-            ),
-        }
+        )
+        .ok_or_else(|| "expected a finding when an owner contains the changed line".to_string())?;
+        assert!(matches!(finding.class, ExposureClass::WeaklyExposed));
+        assert_eq!(finding.language, Some(DomainLanguageId::TypeScript));
+        assert_eq!(finding.language_status, Some(LanguageStatus::Preview));
+        assert_eq!(finding.related_tests.len(), 1);
+        Ok(())
     }
 
     #[test]
-    fn classify_change_returns_no_static_path_when_no_related_test() {
+    fn classify_change_returns_no_static_path_when_no_related_test() -> Result<(), String> {
         let owner = TypeScriptOwner {
             name: "applyDiscount".to_string(),
             file: PathBuf::from("src/lib.ts"),
@@ -616,17 +606,11 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             "    if (amount >= threshold) {",
             &[owner],
             &[],
-        );
-        match finding {
-            Some(finding) => {
-                assert!(matches!(finding.class, ExposureClass::NoStaticPath));
-                assert!(finding.related_tests.is_empty());
-            }
-            None => assert!(
-                false,
-                "expected a finding when an owner contains the changed line"
-            ),
-        }
+        )
+        .ok_or_else(|| "expected a finding when an owner contains the changed line".to_string())?;
+        assert!(matches!(finding.class, ExposureClass::NoStaticPath));
+        assert!(finding.related_tests.is_empty());
+        Ok(())
     }
 
     #[test]
