@@ -2316,14 +2316,14 @@ fn initialize_with_invalid_languages_config_falls_back_to_rust_defaults() -> Res
     runtime.block_on(async {
         let root = unique_lsp_test_root("invalid-languages-config")?;
         std::fs::write(
-            root.join("ripr.toml"),
+            root.path().join("ripr.toml"),
             r#"
 [languages]
 enabled = ["ruby"]
 "#,
         )
         .map_err(|err| format!("write invalid config failed: {err}"))?;
-        let config_error = match crate::config::load_for_root(&root) {
+        let config_error = match crate::config::load_for_root(root.path()) {
             Ok(_) => {
                 return Err(
                     "invalid language config should stay owned by config parsing".to_string(),
@@ -2339,7 +2339,10 @@ enabled = ["ruby"]
         let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
         let backend = service.inner();
         backend
-            .initialize(initialize_params(None, Some(file_uri_for_path(&root)?)))
+            .initialize(initialize_params(
+                None,
+                Some(file_uri_for_path(root.path())?),
+            ))
             .await
             .map_err(|err| format!("initialize failed: {err}"))?;
         let Some(config) = backend.analysis_config() else {
@@ -2770,14 +2773,30 @@ fn boundary_gap_fixture_root() -> PathBuf {
         .join("fixtures/boundary_gap/input")
 }
 
-fn unique_lsp_test_root(name: &str) -> Result<PathBuf, String> {
+struct TempLspRoot {
+    path: PathBuf,
+}
+
+impl TempLspRoot {
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TempLspRoot {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+fn unique_lsp_test_root(name: &str) -> Result<TempLspRoot, String> {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
         .unwrap_or(0);
     let root = std::env::temp_dir().join(format!("ripr-lsp-{name}-{}-{stamp}", std::process::id()));
     std::fs::create_dir_all(&root).map_err(|err| format!("create temp root failed: {err}"))?;
-    Ok(root)
+    Ok(TempLspRoot { path: root })
 }
 
 fn boundary_gap_lsp_config(repo_config: crate::config::RiprConfig) -> LspAnalysisConfig {
