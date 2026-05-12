@@ -97,21 +97,17 @@ Current dependency state:
   mocked-module static-limit sub-slices have landed (#777, #781, #784, #791),
   and #794 marked `analysis/typescript-preview-adapter` done as a first useful
   preview loop;
-- `analysis/typescript-editor-readiness` now keeps the editor-impacting
-  TypeScript follow-ups explicit: visible preview metadata in human output
-  (#779), file-first owner matching (#780), broad `toThrow()` handling (#782),
-  awaited `Promise.reject(...)` error-path handling (#785), and
-  fixture-per-probe-family evidence (#786) before editor projection can be
-  treated as ready;
+- `analysis/typescript-editor-readiness` is complete: #779 made preview
+  metadata visible in human output, #780 made owner matching file-first before
+  line-range matching, #782 kept broad `toThrow()` evidence weak, #785 made
+  awaited `Promise.reject(...)` an error-path preview shape, and #786 added
+  public fixture/golden coverage for every TypeScript probe family currently
+  emitted by the preview adapter;
 - assertion-shape extraction landed in #781, with a Lane 3 watchpoint that
   broad `toThrow()` assertions must not be surfaced as exact error-variant
   evidence;
-- issue #779 tracks the landed human-output gap where TypeScript JSON carries
-  `language_status = "preview"` but the human report does not visibly label the
-  finding as preview TypeScript evidence;
-- issue #780 tracks the landed owner-matching gap where TypeScript changed
-  lines are matched by line range before file identity, which can attach the
-  wrong owner and related-test evidence in mixed-file workspaces;
+- #832 closed #779, #833 closed #780, #834 closed #782, #835 closed #785, and
+  #836 closed #786 without changing VS Code selectors or LSP routing;
 - the Python parser substrate ADR (#770) landed in #794, was corrected to
   `rustpython-parser` in #801, and the Python scaffold landed in #804; the
   Python preview adapter (#771) remains the next Python-side dependency before
@@ -150,8 +146,7 @@ inferring readiness from campaign momentum:
 - if #814 remains open, do not add editor behavior that depends on
   text-parsing static-limit kinds; render the limit text as evidence only, and
   keep action semantics independent of the parsed kind;
-- the TypeScript gaps tracked by #779, #780, #782, #785, and #786 must be closed
-  or superseded by inspected artifacts with equivalent coverage;
+- the TypeScript gaps tracked by #779, #780, #782, #785, and #786 are closed;
 - `editors/vscode/package.json` and `editors/vscode/src/client.ts` should remain
   Rust-only until the routing slice deliberately adds preview selectors behind
   opt-in configuration.
@@ -170,10 +165,10 @@ Maintenance audit evidence from 2026-05-12:
 
 - after #804 merged, `analysis/typescript-preview-adapter` and the corrected
   `adr/python-parser-substrate` are done, and the Python scaffold is on `main`;
-  this tracker keeps `analysis/typescript-editor-readiness` as the explicit
-  TypeScript-side blocker, treats `analysis/python-preview-adapter` as active
-  upstream work, and keeps `lsp/editor-language-routing` blocked until that
-  adapter is complete;
+  at that point this tracker kept `analysis/typescript-editor-readiness` as the
+  explicit TypeScript-side blocker, treated `analysis/python-preview-adapter` as
+  active upstream work, and kept `lsp/editor-language-routing` blocked until
+  both dependencies were complete;
 - `editors/vscode/package.json` still activates on `onLanguage:rust`, and
   `editors/vscode/src/client.ts` still uses a Rust-only `documentSelector` plus
   `isRustFileDocument` guard;
@@ -206,8 +201,8 @@ Maintenance audit evidence from 2026-05-12:
   `cargo xtask check-pr`, and `git diff --check`.
 - later refreshes found #784 merged for #768 probe-shape refinement and #791
   merged for #769 mocked-module static-limit reporting; Lane 3 review captured
-  unresolved preview-readiness gaps in #779, #780, #782, #785, and #786, so the
-  routing slice remains blocked.
+  then-unresolved preview-readiness gaps in #779, #780, #782, #785, and #786,
+  so the routing slice remained blocked.
 - after #821 merged the static-limit consumer watchpoint, current `main`
   (`58709f7`) rechecked the Rust saved-workspace editor cockpit:
   `cargo xtask goals next` reported no ready work items,
@@ -250,6 +245,13 @@ Maintenance audit evidence from 2026-05-12:
   tests with the known post-success VS Code runner `path` warning exiting 0.
   `cargo xtask goals next` still reports no ready work items, so
   `lsp/editor-language-routing` remains blocked.
+- after #836 merged TypeScript probe-family fixture coverage, current `main`
+  (`d1fd943`) records `analysis/typescript-editor-readiness` as done in the
+  campaign tracker. The TypeScript editor-readiness issues #779, #780, #782,
+  #785, and #786 are closed, while Python preview adapter #771 remains open and
+  `cargo xtask goals next` still reports no ready work items. Therefore
+  `lsp/editor-language-routing` remains blocked by Python, and VS Code/LSP
+  selector work must not start yet.
 
 Objective audit status from 2026-05-12: not complete, blocked upstream.
 
@@ -259,9 +261,9 @@ Objective audit status from 2026-05-12: not complete, blocked upstream.
 | Editor behavior stays saved-workspace only and projection-only | `docs/EDITOR_EVIDENCE_UX.md`, `docs/EDITOR_EVIDENCE_WORKFLOW.md`, `editors/vscode/src/client.ts`, `fixtures/editor_lsp_workflow` | Current tracker evidence covers the saved-workspace path |
 | Wrong-root, missing, malformed, and stale reports fail closed | `fixtures/editor_lsp_workflow`, `cargo xtask lsp-cockpit-report`, VS Code e2e status tests | Current cockpit report and e2e smoke cover these states |
 | VS Code remains Rust-default until preview routing is selected | `editors/vscode/package.json`, `editors/vscode/src/client.ts` | Current extension activation and selector remain Rust-only |
-| TypeScript preview adapter readiness includes editor-projectable preview metadata, static limits, owner matching, oracle precision, and fixture evidence | `.ripr/goals/active.toml`, #779, #780, #782, #785, #786 | Incomplete; first useful TypeScript preview loop is done, but `analysis/typescript-editor-readiness` blocks routing until the open editor-readiness gaps close or are explicitly superseded |
+| TypeScript preview adapter readiness includes editor-projectable preview metadata, static limits, owner matching, oracle precision, and fixture evidence | `.ripr/goals/active.toml`, #779, #780, #782, #785, #786 | Complete for current Campaign 27 routing readiness; #779, #780, #782, #785, and #786 are closed |
 | Python preview adapter exists with editor-projectable preview metadata and static limits | `.ripr/goals/active.toml`, #804 | Partial; scaffold is merged and `analysis/python-preview-adapter` is active, but owner, test, assertion, probe, and static-limit extraction remain incomplete |
-| `lsp/editor-language-routing` is ready or selected | `cargo xtask goals next`, `.ripr/goals/active.toml` | Blocked; no ready work items, with `analysis/typescript-editor-readiness` blocked and `analysis/python-preview-adapter` active/incomplete |
+| `lsp/editor-language-routing` is ready or selected | `cargo xtask goals next`, `.ripr/goals/active.toml` | Blocked; no ready work items, with `analysis/python-preview-adapter` active/incomplete |
 | Preview selectors for TypeScript, TSX, JavaScript, JSX, and Python are opt-in and preserve Rust defaults | `editors/vscode/package.json`, `editors/vscode/src/client.ts` | Not started; must wait for both preview adapters |
 | Preview diagnostics, hover, status, and actions visibly label preview evidence and static limits | Future `lsp/editor-language-routing` artifacts and editor workflow fixtures | Not started; blocked by adapter outputs |
 | No editor hidden analysis reruns, source edits, generated tests, provider calls, mutation execution, gate semantics, default blocking, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays | Lane 3 Scope, Non-Goals, and Cross-Lane Rules in this tracker | Current tracker preserves the boundary; future routing must re-audit it |
@@ -285,8 +287,9 @@ Rust stable cockpit remains boringly reliable
 Planned PR path:
 
 1. `analysis: close TypeScript editor readiness`
-   - Not owned by Lane 3, but Lane 3 should review it as a hard dependency.
-   - Must resolve or explicitly supersede #779, #780, #782, #785, and #786.
+   - Done for current Campaign 27 routing readiness.
+   - Closed #779, #780, #782, #785, and #786 without VS Code selector or LSP
+     routing changes.
    - No VS Code selector or LSP routing changes belong in this work.
 2. `analysis: complete Python preview adapter`
    - Not owned by Lane 3, but Lane 3 should review editor-projectability.
