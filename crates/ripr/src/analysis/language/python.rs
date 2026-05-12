@@ -146,7 +146,7 @@ mod tests {
     fn parse_source_accepts_async_def_and_fstring() {
         let ok = PythonAdapter::parse_source(
             Path::new("src/http.py"),
-            "async def fetch(url: str) -> str:\n    return f\"{url}!\"\n",
+            "async def load(url: str) -> str:\n    return f\"{url}!\"\n",
         );
         assert!(ok, "async def + f-string should parse");
     }

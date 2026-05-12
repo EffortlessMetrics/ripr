@@ -16,7 +16,33 @@ targets = [
 
 [advisories]
 yanked = "deny"
-ignore = []
+ignore = [
+  # The `rust-unic` Unicode crate family is declared unmaintained
+  # (umbrella announcement: RUSTSEC-2025-0098). Each crate has its
+  # own RUSTSEC entry; cargo-deny treats them as separate errors so
+  # every transitive in the graph must be listed by ID. The crates
+  # reach our graph via `rustpython-parser` (the Python preview
+  # adapter substrate approved by the corrected ADR 0009 for
+  # Campaign 27); the advisory's own Solution line says "No safe
+  # upgrade is available" because the crates' upstream project
+  # (rust-unic) is no longer maintained.
+  #
+  # None of these crates are flagged for any known vulnerability —
+  # they ship Unicode character-database tables that ripr's adapter
+  # never touches directly. The recommended migration target
+  # (`icu_properties` / `unicode-ident`) requires `rustpython-parser`
+  # itself to migrate, which is outside our control. Suppression is
+  # bounded to these specific RUSTSEC IDs; any future advisory
+  # upgrade (e.g., a CVE) will produce a new ID that fails the
+  # check again. Revisit when `rustpython-parser` migrates off
+  # `rust-unic` or when ADR 0009 is itself superseded.
+  "RUSTSEC-2025-0075",  # unic-char-range
+  "RUSTSEC-2025-0080",  # unic-common
+  "RUSTSEC-2025-0081",  # unic-char-property
+  "RUSTSEC-2025-0090",  # unic-emoji-char
+  "RUSTSEC-2025-0098",  # rust-unic umbrella announcement
+  "RUSTSEC-2025-0100",  # unic-ucd-ident
+]
 
 [licenses]
 confidence-threshold = 0.8
