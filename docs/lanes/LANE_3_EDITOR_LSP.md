@@ -238,6 +238,17 @@ Maintenance audit evidence from 2026-05-12:
   tests after the review fix, and `cargo xtask check-pr` passed on merged
   `main`. `cargo xtask goals next` still reports no ready work items, so
   `lsp/editor-language-routing` remains blocked.
+- after #827 merged Lane 1 runtime calibration fixtures, current `main`
+  (`7d9001f`) was rechecked for Lane 3 impact because the merge touched shared
+  fixtures and traceability but no editor/LSP projection files. The Rust
+  saved-workspace cockpit stayed green: `cargo xtask lsp-cockpit-report`
+  passed, `cargo test -p ripr lsp --lib` passed 123 tests,
+  `cargo test -p ripr lsp::tests --lib` passed 84 tests,
+  `npm --prefix editors/vscode run compile` passed, and
+  `npm --prefix editors/vscode run test:e2e` passed 30 live VS Code smoke
+  tests with the known post-success VS Code runner `path` warning exiting 0.
+  `cargo xtask goals next` still reports no ready work items, so
+  `lsp/editor-language-routing` remains blocked.
 
 Objective audit status from 2026-05-12: not complete, blocked upstream.
 
