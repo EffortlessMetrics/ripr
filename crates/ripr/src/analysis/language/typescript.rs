@@ -493,6 +493,10 @@ fn classify_probe_shape(line_text: &str) -> (ProbeFamily, DeltaKind) {
         || leading.starts_with("throw(")
         || leading.starts_with("return Promise.reject(")
         || leading.starts_with("return Promise.reject ")
+        || leading.starts_with("return await Promise.reject(")
+        || leading.starts_with("return await Promise.reject ")
+        || leading.starts_with("await Promise.reject(")
+        || leading.starts_with("await Promise.reject ")
         || leading.starts_with("} catch ")
         || leading.starts_with("catch ")
     {
@@ -1369,6 +1373,21 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
     #[test]
     fn classify_probe_shape_recognises_promise_reject_error_path() {
         let (family, delta) = classify_probe_shape("    return Promise.reject(new Error('boom'));");
+        assert_eq!(family, ProbeFamily::ErrorPath);
+        assert_eq!(delta, DeltaKind::Control);
+    }
+
+    #[test]
+    fn classify_probe_shape_recognises_return_await_promise_reject_error_path() {
+        let (family, delta) =
+            classify_probe_shape("    return await Promise.reject(new Error('boom'));");
+        assert_eq!(family, ProbeFamily::ErrorPath);
+        assert_eq!(delta, DeltaKind::Control);
+    }
+
+    #[test]
+    fn classify_probe_shape_recognises_bare_await_promise_reject_error_path() {
+        let (family, delta) = classify_probe_shape("    await Promise.reject(new Error('boom'));");
         assert_eq!(family, ProbeFamily::ErrorPath);
         assert_eq!(delta, DeltaKind::Control);
     }
