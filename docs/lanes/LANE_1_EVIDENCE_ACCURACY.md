@@ -11,6 +11,9 @@ PR #697, `gate: prefer canonical evidence identity`, is the final consumer
 closeout for that stabilization pass. The next Lane 1 objective is no longer
 more consumer wiring. It is evidence accuracy evaluation.
 
+Status: closed in documented scope on 2026-05-12. See
+[`docs/handoffs/2026-05-12-lane-1-evidence-accuracy-closeout.md`](../handoffs/2026-05-12-lane-1-evidence-accuracy-closeout.md).
+
 ## Goal
 
 Use the stable `evidence_record` to measure and improve evidence quality under
@@ -64,7 +67,7 @@ at another lane without changing this Lane 1 plan.
 | `analysis: improve oracle semantics from audit cases` | Add supported oracle shapes only when the audit identifies misclassified cases. | Observed and missed behavior are explicit; unsupported helpers stay static limitations. |
 | `calibration: expand runtime fixture classes` | Add checked runtime fixture classes for side effects, mock expectations, snapshots, and dynamic or opaque dispatch. | Implemented by `runtime-fixtures-v2`: runtime-only signal does not create a static gap; no CI mutation execution. |
 | `report: evidence health consumes audit findings` | Fold durable audit fields into evidence-health. | Implemented as additive evidence-health fields; no policy decisions or blocking. |
-| `campaign: close Lane 1 evidence accuracy evaluation` | Close after at least one audit-driven improvement lands. | Future work listed by evidence class, not surface. |
+| `campaign: close Lane 1 evidence accuracy evaluation` | Close after at least one audit-driven improvement lands. | Closed by `docs/handoffs/2026-05-12-lane-1-evidence-accuracy-closeout.md`; future work is listed by evidence class, not surface. |
 
 ## Evidence Quality Audit
 
@@ -200,11 +203,18 @@ score definitions.
 
 ## Closeout Conditions
 
-Close this campaign only after:
+This campaign is closed in documented scope. Closeout evidence:
 
-- an evidence audit exists, or evidence-health has equivalent fields;
-- top evidence-quality failure modes are fixture-pinned;
-- at least one high-value analyzer or calibration improvement lands from the
-  audit;
-- capability matrix updates remain honest;
-- future work is listed by evidence class rather than downstream surface.
+- #761 added the repo-local evidence-quality audit, and #822 folded durable
+  audit fields into evidence-health.
+- #808 fixture-pinned the first audit-derived evidence-quality failure modes.
+- #813 landed the first audit-driven analyzer improvement for match-arm
+  canonical overcount.
+- #827 expanded checked runtime calibration classes without mutation execution,
+  gate behavior, or static gap creation from runtime-only signals.
+- Capability and traceability metadata name the checked scope and avoid broader
+  claims.
+- Future work is by evidence class:
+  related-test ranking misses, oracle-shape misclassifications, static
+  limitation reason buckets, canonical grouping refinements, and new runtime
+  calibration fixture classes.
