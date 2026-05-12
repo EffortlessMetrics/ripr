@@ -35,3 +35,12 @@ Negative:
 
 - docs require maintenance in every meaningful PR
 - stale docs become harmful if not treated as part of the gates
+
+## Alternatives Considered
+
+- Track planning in an external issue tracker only. Rejected: planning
+  state then lives outside the repo and is invisible to agents and to
+  future contributors recovering context from artifacts.
+- Use a single rolling planning document. Rejected: collapses roadmap,
+  specs, ADRs, and traceability into one surface and loses the typed
+  role separation that makes each doc useful.
