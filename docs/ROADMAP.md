@@ -330,16 +330,16 @@ the repo's centralized
 [proposal -> spec -> campaign tracking model](REPO_TRACKING_MODEL.md).
 
 [Policy Readiness and Preview Evidence Governance](policy/POLICY_READINESS.md)
-is open as a focused Lane 2 tracker alongside Campaign 27. It does not replace
-the active campaign manifest. Its job is to define what stable Rust evidence
-and preview-language evidence are allowed to mean for acknowledgement,
-baseline, waiver, suppression, calibration, RIPR Zero, and gates. Preview
-TypeScript and Python findings remain visible and advisory by default; they do
-not become gate-eligible or RIPR Zero blocking debt without a later explicit
-policy promotion. Generated CI may surface waiver-aging, suppression-health,
-and policy-readiness artifacts, but those remain advisory projections with no
-default blocking or comment posting. The primary GitHub board is
-[#755](https://github.com/EffortlessMetrics/ripr/issues/755).
+is closed as a focused Lane 2 tracker alongside Campaign 27. It does not
+replace the active campaign manifest. It defines what stable Rust evidence and
+preview-language evidence are allowed to mean for acknowledgement, baseline,
+waiver, suppression, calibration, RIPR Zero, and gates. Preview TypeScript and
+Python findings remain visible and advisory by default; they do not become
+gate-eligible or RIPR Zero blocking debt without a later explicit policy
+promotion. Generated CI may surface waiver-aging, suppression-health, and
+policy-readiness artifacts, but those remain advisory projections with no
+default blocking or comment posting. The closeout audit is
+[Policy Readiness closeout](handoffs/2026-05-12-policy-readiness-closeout.md).
 
 ## Strategic Sequence
 

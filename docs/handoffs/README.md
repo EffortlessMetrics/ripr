@@ -55,6 +55,7 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [Policy Readiness closeout](2026-05-12-policy-readiness-closeout.md)
 - [Campaign 26 closeout](2026-05-10-campaign-26-closeout.md)
 - [Campaign 25 closeout](2026-05-10-campaign-25-closeout.md)
 - [PR inline comment publisher dogfood receipts](2026-05-10-pr-inline-comment-publisher-receipts.md)

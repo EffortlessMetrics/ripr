@@ -178,6 +178,17 @@ commands = [
 
 [[work_item]]
 id = "campaign/policy-readiness-closeout"
-status = "planned"
+status = "done"
 branch = "campaign-policy-readiness-closeout"
 acceptance = "Close only after policy readiness, preview boundary, waiver aging, suppression health, baseline refresh guardrails, exception ledger semantics, blocking readiness guidance, and advisory CI projection exist."
+commands = [
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
