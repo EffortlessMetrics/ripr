@@ -1064,7 +1064,11 @@ async function writeTestClipboardCapture(text: string): Promise<void> {
   if (!capturePath) {
     return;
   }
-  await fs.writeFile(capturePath, text, 'utf8');
+  try {
+    await fs.writeFile(capturePath, text, 'utf8');
+  } catch {
+    // Test capture must not make the user-facing clipboard command fail.
+  }
 }
 
 function runRipr(command: string, args: string[], cwd: string): Promise<string> {
