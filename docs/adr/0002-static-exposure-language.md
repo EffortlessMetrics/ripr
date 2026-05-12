@@ -45,3 +45,13 @@ Negative:
 
 - output is less dramatic than traditional mutation testing language
 - users may need calibration docs to understand where real mutation fits
+
+## Alternatives Considered
+
+- Reuse mutation-runtime vocabulary (`killed`, `survived`, `untested`)
+  for static findings. Rejected: misleads consumers into thinking
+  `ripr` ran mutants; collapses the static-vs-runtime boundary that
+  calibration depends on.
+- Invent entirely new vocabulary unconnected to mutation testing.
+  Rejected: loses the conceptual mapping that makes RIPR evidence
+  legible to mutation-testing readers and to future calibration.

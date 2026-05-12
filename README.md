@@ -17,12 +17,16 @@
 
 <!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-10 after the 0.5.0 publish: 4 installs. Refresh the count and date from publisher metrics whenever you check; do not use live VS Marketplace Shields routes. -->
 
-`ripr` finds changed Rust code where the nearby tests may run but not
-actually check the changed behavior.
+`ripr` is **static mutation-exposure analysis**. It catches the same class
+of signal mutation testing catches — weak test/oracle exposure on changed
+behavior — but earlier and cheaper, by reading the diff at draft time
+instead of running mutants. `ripr` does not find or run actual mutants;
+mutation testing remains the slower runtime backstop for what static
+analysis cannot predict.
 
-It is a fast static companion to mutation testing: it does not run mutants,
-but it points reviewers and coding agents at the focused test most likely to
-matter.
+It finds changed Rust code where the nearby tests may run but not
+actually check the changed behavior, and points reviewers and coding
+agents at the focused test most likely to matter.
 
 The draft-time question `ripr` answers is:
 
@@ -35,11 +39,16 @@ It is alpha software. The current release is useful for fast feedback while a
 pull request is moving. It is not a proof system, and it does not replace real
 mutation testing.
 
-Under the hood, ripr uses the RIPR model: **Reachability**, **Infection**,
-**Propagation**, and **Revealability**. JSON output, specs, and report
-artifacts keep this precise vocabulary; the editor and first-hour docs lead
-with plain language and use the internal terms only where they earn their
-keep. [Terminology](docs/TERMINOLOGY.md) is the bridge.
+Under the hood, ripr is static mutation-exposure analysis using the RIPR
+model: **Reachability**, **Infection**, **Propagation**, and
+**Revealability**. It reads the diff, builds mutation-shaped probes from
+changed behavior, and asks whether existing tests appear to expose that
+behavior to a meaningful discriminator. Mutation testing answers the same
+question with execution; ripr shifts the signal left into draft time.
+JSON output, specs, and report artifacts keep this precise vocabulary;
+the editor and first-hour docs lead with plain language and use the
+internal terms only where they earn their keep.
+[Terminology](docs/TERMINOLOGY.md) is the bridge.
 
 ## The Problem
 
@@ -113,8 +122,11 @@ mutation testing:
   did tests fail when a concrete mutant was run?
 ```
 
-`ripr` is the middle layer: faster and more targeted than mutation testing, more
-oracle-aware than coverage.
+`ripr` shifts the mutation signal left: it answers the same
+weak-oracle question mutation testing answers, but at draft time and
+without running mutants. Mutation testing stays as the slower runtime
+backstop when the change is ready for execution-backed confirmation;
+coverage stays as the execution-surface signal.
 
 ## Coverage
 

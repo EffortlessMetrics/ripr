@@ -45,3 +45,12 @@ Negative:
 - PRs may look large in GitHub despite narrow production risk
 - contributors must maintain docs, specs, goldens, metrics, and traceability
 - automation is needed to keep the process lightweight
+
+## Alternatives Considered
+
+- Cap PR size by line count. Rejected: penalizes evidence-heavy PRs that
+  reduce review risk and rewards minimal-diff PRs that quietly change
+  multiple contracts.
+- Skip the evidence package on small production changes. Rejected: erodes
+  traceability and forces future contributors to re-derive intent from
+  commit messages.

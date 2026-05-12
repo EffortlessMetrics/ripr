@@ -43,3 +43,13 @@ Negative:
 
 - early fixture work delays parser implementation
 - fixture maintenance becomes part of every output-changing PR
+
+## Alternatives Considered
+
+- Iterate on the parser/analyzer first and add fixtures retroactively.
+  Rejected: output changes during analyzer churn become indistinguishable
+  from regressions without a stable golden baseline, eroding reviewer
+  trust.
+- Use ad-hoc snapshot tests inside the crate without a structured fixture
+  laboratory. Rejected: doesn't give specs and reviewers a discoverable
+  control bench.

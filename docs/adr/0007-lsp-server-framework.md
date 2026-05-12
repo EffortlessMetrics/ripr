@@ -46,3 +46,15 @@ Negative:
   loop.
 - LSP behavior still needs focused fixture and editor smoke coverage as the
   evidence fields mature.
+
+## Alternatives Considered
+
+- Keep the hand-rolled JSON-RPC loop. Rejected: protocol plumbing is not
+  product work and would slow every editor feature PR.
+- Adopt the original `tower-lsp` crate. Rejected: maintenance has shifted
+  to `tower-lsp-server`; staying on the older crate would compound
+  migration cost later.
+- Migrate through `lsp-server` (synchronous) as an intermediate step.
+  Rejected: an extra hop with no end-user benefit, and the synchronous
+  loop would block on analysis instead of letting async dispatch coexist
+  with `spawn_blocking`.

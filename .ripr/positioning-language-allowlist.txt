@@ -1,0 +1,16 @@
+# Files allowed to quote phrases that `cargo xtask check-positioning-language`
+# otherwise flags as misleading.
+#
+# Format: one repo-relative path per line. Comments start with `#`.
+#
+# Add an entry only when the file legitimately quotes the forbidden phrase
+# (e.g., the check's own implementation, the doctrine doc that explains
+# what the forbidden framing is *not*). For new public copy that drifts
+# into the bad framing, rewrite the copy instead.
+
+# The check's implementation lists every forbidden phrase as a literal.
+xtask/src/policy/positioning_language.rs
+
+# The doctrine doc explains the canonical positioning by quoting what
+# `ripr` is *not* (a parallel evidence lane).
+docs/ci/ripr-mutation-boundary.md

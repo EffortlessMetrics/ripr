@@ -73,6 +73,8 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckLintPolicy => super::check_lint_policy(),
         XtaskCommand::CheckCiLaneWhitelist => super::check_ci_lane_whitelist(),
         XtaskCommand::CheckProductCopy => super::check_product_copy(),
+        XtaskCommand::CheckPositioningLanguage => super::check_positioning_language(),
+        XtaskCommand::CheckDocRoles => super::check_doc_roles(),
         XtaskCommand::VscodeCompile => super::vscode_compile(),
         XtaskCommand::VscodePackage => super::vscode_package(),
         XtaskCommand::VscodeTest => super::vscode_test(),
