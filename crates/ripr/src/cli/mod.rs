@@ -3,6 +3,7 @@ mod command;
 mod commands;
 mod execute;
 mod help;
+mod init_workflow;
 mod parse;
 
 pub fn run(args: Vec<String>) -> Result<(), String> {
