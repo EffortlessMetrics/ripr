@@ -14,9 +14,11 @@
 # oxc_parser|production_analyzer|analysis|ADR 0008 approves Rust-native
 # TypeScript/JavaScript syntax extraction for the Campaign 27 preview adapter;
 # add the Cargo dependency only in the scoped parser PR.
-# ruff_python_parser|production_analyzer|analysis|ADR 0009 approves Rust-native
+# rustpython-parser|production_analyzer|analysis|ADR 0009 approves Rust-native
 # Python syntax extraction for the Campaign 27 preview adapter; add the Cargo
-# dependency only in the scoped parser PR.
+# dependency only in the scoped parser PR. The ADR's original `ruff_python_parser`
+# pick was superseded after discovering that crate is `publish = false` inside
+# the astral-sh/ruff workspace and unavailable on crates.io.
 
 Cargo.lock|rust_workspace_lockfile|rust|Pinned Cargo dependency graph.
 Cargo.toml|rust_workspace_manifest|rust|Root Cargo workspace manifest.

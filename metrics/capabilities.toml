@@ -1257,10 +1257,11 @@ evidence = [
   "suppression-health tests cover missing manifest, healthy manifest, metadata warnings, stale review windows, preview label gaps, and parser violations",
   "docs/POLICY_ALLOWLISTS.md aligns no-panic, Clippy, non-Rust, workflow, RIPR suppression, baseline, and waiver ledgers around reviewed reasons, durable identity, visibility, and stale-entry behavior",
   "docs/BLOCKING_READINESS.md uses policy readiness as the ceiling for visible-only, acknowledgeable, baseline-check, and calibrated-gate promotion, including preview evidence as advisory by default",
-  "generated CI writes, uploads, and summarizes waiver-aging, suppression-health, and policy-readiness artifacts as advisory-only projections without pass/fail authority, required checks, default blocking, comment posting, or baseline mutation"
+  "generated CI writes, uploads, and summarizes waiver-aging, suppression-health, and policy-readiness artifacts as advisory-only projections without pass/fail authority, required checks, default blocking, comment posting, or baseline mutation",
+  "docs/handoffs/2026-05-12-policy-readiness-closeout.md records the Lane 2 PR chain, prompt-to-artifact audit, validation plan, advisory boundary, and future-lane boundary"
 ]
 fixtures = []
-next = "campaign/policy-readiness-closeout"
+next = "maintenance"
 metric = "suppression_health_missing_owner, suppression_health_missing_reason, suppression_health_stale, suppression_health_overbroad_scope, suppression_health_unknown_selector, suppression_health_preview_without_preview_label"
 
 [[capability]]

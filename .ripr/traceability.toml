@@ -1922,6 +1922,8 @@ outputs = [
   "docs/OUTPUT_SCHEMA.md",
   "docs/CI.md",
   "docs/policy/POLICY_READINESS.md",
+  "docs/handoffs/2026-05-12-policy-readiness-closeout.md",
+  "docs/handoffs/README.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   ".ripr/goals/lane2-policy-readiness.toml",
   ".ripr/traceability.toml",
