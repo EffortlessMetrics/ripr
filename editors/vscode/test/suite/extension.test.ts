@@ -277,6 +277,14 @@ suite('Extension Smoke', () => {
       assert.ok(context.status.text.includes('ripr: no seams'));
 
       context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=1, diagnostics=0, files=0, findings=0, seam_diagnostics=0, enabled_languages=0, published_files=0, cleared_files=0'
+      });
+      assert.ok(context.status.text.includes('ripr: languages off'));
+      assert.ok(String(context.status.tooltip).includes('[languages] enabled = []'));
+      await context.controller.showStatus();
+      assert.ok(context.infoMessages.at(-1)?.includes('no enabled languages'));
+
+      context.client.emitNotification('window/logMessage', {
         message: 'ripr analysis refresh completed in 42 ms: generation=2, diagnostics=5, files=2, findings=4, seam_diagnostics=0, published_files=2, cleared_files=0'
       });
       assert.ok(context.status.text.includes('ripr: no seams'));
