@@ -1,6 +1,6 @@
 use crate::app::CheckOutput;
 use crate::config::RiprConfig;
-use crate::domain::Finding;
+use crate::domain::{Finding, LanguageId, LanguageStatus};
 
 /// Render the complete check report in the human-readable CLI format.
 pub fn render(output: &CheckOutput) -> String {
@@ -73,6 +73,16 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
         out.push_str(&format!("  owner:  {owner}\n"));
     }
 
+    if should_render_language_metadata(finding) {
+        out.push_str("\nLanguage\n");
+        if let Some(language) = finding.language {
+            out.push_str(&format!("  language: {}\n", language.as_str()));
+        }
+        if let Some(status) = finding.language_status {
+            out.push_str(&format!("  status: {}\n", status.as_str()));
+        }
+    }
+
     out.push_str("\nStatic exposure\n");
     out.push_str(&format!(
         "  {} ({}, confidence {:.2})\n",
@@ -108,6 +118,15 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
     }
 
     out
+}
+
+fn should_render_language_metadata(finding: &Finding) -> bool {
+    finding
+        .language
+        .is_some_and(|language| language != LanguageId::Rust)
+        || finding
+            .language_status
+            .is_some_and(|status| status != LanguageStatus::Stable)
 }
 
 fn evidence_path_lines(finding: &Finding) -> Vec<String> {
@@ -218,9 +237,9 @@ mod tests {
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FlowSinkFact,
-        FlowSinkKind, MissingDiscriminatorFact, OracleKind, OracleStrength, Probe, ProbeFamily,
-        ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence,
-        StageState, Summary, ValueContext, ValueFact,
+        FlowSinkKind, LanguageId, LanguageStatus, MissingDiscriminatorFact, OracleKind,
+        OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence, RiprEvidence,
+        SourceLocation, StageEvidence, StageState, Summary, ValueContext, ValueFact,
     };
     use std::path::PathBuf;
 
@@ -325,6 +344,42 @@ mod tests {
         );
         assert!(rendered.contains("  - another gap"));
     }
+
+    #[test]
+    fn render_finding_includes_language_metadata_when_present() {
+        let mut finding = sample_finding();
+        finding.language = Some(LanguageId::TypeScript);
+        finding.language_status = Some(LanguageStatus::Preview);
+
+        let rendered = render_finding(&finding);
+
+        assert!(rendered.contains("Language\n"));
+        assert!(rendered.contains("  language: typescript\n"));
+        assert!(rendered.contains("  status: preview\n"));
+    }
+
+    #[test]
+    fn render_finding_omits_language_metadata_when_absent() {
+        let rendered = render_finding(&sample_finding());
+
+        assert!(!rendered.contains("Language\n"));
+        assert!(!rendered.contains("language:"));
+        assert!(!rendered.contains("status:"));
+    }
+
+    #[test]
+    fn render_finding_omits_rust_default_language_metadata() {
+        let mut finding = sample_finding();
+        finding.language = Some(LanguageId::Rust);
+        finding.language_status = Some(LanguageStatus::Stable);
+
+        let rendered = render_finding(&finding);
+
+        assert!(!rendered.contains("Language\n"));
+        assert!(!rendered.contains("language: rust"));
+        assert!(!rendered.contains("status: stable"));
+    }
+
     #[test]
     fn human_output_includes_effective_stop_reasons_for_unknowns() {
         let output = render_finding(&unknown_finding());
