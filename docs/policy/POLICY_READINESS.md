@@ -101,7 +101,7 @@ answer:
 | 7 | `policy/exception-ledger-convergence` | Align no-panic, Clippy, non-Rust, workflow, suppression, baseline, and waiver semantics. | done: [Policy allowlists](../POLICY_ALLOWLISTS.md#shared-exception-semantics) |
 | 8 | `docs/blocking-readiness-guide` | Extend the advisory-to-blocking decision tree for preview evidence and readiness health. | done: [RIPR blocking readiness](../BLOCKING_READINESS.md) |
 | 9 | `ci/policy-readiness-advisory-projection` | Surface policy-readiness and waiver-aging artifacts in generated CI without pass/fail authority. | done: generated CI writes, uploads, and summarizes advisory readiness artifacts only |
-| 10 | `campaign/policy-readiness-closeout` | Close the tracker only after the readiness, preview, waiver, suppression, baseline, exception, guide, and CI projection surfaces exist. | planned |
+| 10 | `campaign/policy-readiness-closeout` | Close the tracker only after the readiness, preview, waiver, suppression, baseline, exception, guide, and CI projection surfaces exist. | done: [closeout handoff](../handoffs/2026-05-12-policy-readiness-closeout.md) |
 
 ## Policy Readiness Report Target
 
