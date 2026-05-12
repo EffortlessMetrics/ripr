@@ -41,6 +41,20 @@ allow = [
     # `zlib-rs` (the pure-Rust zlib port pulled by `flate2` underneath the
     # `zip` crate used by `cargo xtask release-server-archive`).
     "Zlib",
+    # FSF-recognised public-domain dedication (CC0). Reached the dependency
+    # graph via `tiny-keccak`, a build-time hash helper pulled by
+    # `rustpython-parser` (the Python preview adapter substrate approved by
+    # the corrected ADR 0009 for Campaign 27). CC0 places the work in the
+    # public domain with no attribution requirement, so it is strictly
+    # weaker than MIT/Apache and adds no obligations to downstream consumers.
+    "CC0-1.0",
+    # OSI-approved. Reached the dependency graph via `unicode_names2` (a
+    # transitive of `rustpython-parser`); the underlying crate dual-licenses
+    # as `(MIT OR Apache-2.0) AND Unicode-DFS-2016`, so allowing the Unicode
+    # data-file clause satisfies cargo-deny. The clause covers the bundled
+    # Unicode character-name tables and is the standard companion license
+    # for crates that ship Unicode data.
+    "Unicode-DFS-2016",
 ]
 
 [licenses.private]

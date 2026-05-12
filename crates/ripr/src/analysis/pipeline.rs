@@ -1,4 +1,4 @@
-use super::language::{LanguageAdapter, LanguageId, RustAdapter, TypeScriptAdapter};
+use super::language::{LanguageAdapter, LanguageId, PythonAdapter, RustAdapter, TypeScriptAdapter};
 use super::{AnalysisOptions, AnalysisResult, diff, sort, summary};
 use crate::config::OraclePolicy;
 use crate::domain::Finding;
@@ -23,8 +23,9 @@ pub(crate) fn run_diff_pipeline_with_oracle_policy(
             LanguageId::TypeScript => {
                 TypeScriptAdapter.analyze_diff(options, oracle_policy, &changed_files)?
             }
-            // Python preview adapter lands in a later Campaign 27 work item.
-            LanguageId::Python => continue,
+            LanguageId::Python => {
+                PythonAdapter.analyze_diff(options, oracle_policy, &changed_files)?
+            }
         };
         findings.extend(result.findings);
         total_changed_files += result.changed_files;
@@ -50,7 +51,7 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
         let result = match language {
             LanguageId::Rust => RustAdapter.analyze_repo(options, oracle_policy)?,
             LanguageId::TypeScript => TypeScriptAdapter.analyze_repo(options, oracle_policy)?,
-            LanguageId::Python => continue,
+            LanguageId::Python => PythonAdapter.analyze_repo(options, oracle_policy)?,
         };
         findings.extend(result.findings);
         total_production_files += result.production_files;

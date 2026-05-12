@@ -22,12 +22,14 @@
 
 mod adapter;
 mod id;
+mod python;
 mod router;
 mod rust;
 mod typescript;
 
 pub(crate) use adapter::{LanguageAdapter, LanguageDiffResult, LanguageRepoResult};
 pub(crate) use id::LanguageId;
+pub(crate) use python::PythonAdapter;
 pub(crate) use router::route;
 pub(crate) use rust::RustAdapter;
 pub(crate) use typescript::TypeScriptAdapter;
