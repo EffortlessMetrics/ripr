@@ -129,6 +129,11 @@ Current dependency state:
   but must still show explicit static-limit text before suggested action
   language if a preview adapter has not promoted its limit evidence to the
   structured field yet.
+- issue #814 records that the policy-readiness scanner already looks for
+  `static_limit_kind` even though findings do not emit it yet. Lane 3 should
+  treat that as a concrete consumer signal for promoting #807 before any editor
+  behavior branches on static-limit kind; until then, hover/status projection
+  may only display inspected stable static-limit text.
 
 Before starting `lsp/editor-language-routing`, refresh this audit instead of
 inferring readiness from campaign momentum:
@@ -142,6 +147,9 @@ inferring readiness from campaign momentum:
 - if `static_limit_kind` (#807) has landed by then, hover/status should consume
   it; otherwise the routing slice must inspect the preview artifacts and prove
   the text static-limit evidence is stable enough to project;
+- if #814 remains open, do not add editor behavior that depends on
+  text-parsing static-limit kinds; render the limit text as evidence only, and
+  keep action semantics independent of the parsed kind;
 - the TypeScript gaps tracked by #779, #780, #782, #785, and #786 must be closed
   or superseded by inspected artifacts with equivalent coverage;
 - `editors/vscode/package.json` and `editors/vscode/src/client.ts` should remain
