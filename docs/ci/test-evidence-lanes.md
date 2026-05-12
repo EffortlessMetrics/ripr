@@ -1,17 +1,21 @@
 # Test Evidence Lanes
 
-This document defines the evidence lane split for `ripr`. Each lane type answers a different
-question at a different cost point.
+This document defines the evidence lane split for `ripr`. Each lane type runs at a different
+cost point; the lanes do not target different signal classes.
 
 ## The core principle
 
-`ripr` is the PR-time static exposure filter. It answers:
+`ripr` is the PR-time **static mutation-exposure analysis** filter. It catches the same class
+of signal mutation testing catches — weak test/oracle exposure on changed behavior — by reading
+the diff at draft time instead of running mutants:
 
 > For the behavior changed in this diff, do the current tests appear to contain a discriminator
 > that would notice if that behavior were wrong?
 
-That is mutation-testing-lite value at static-analysis prices. Mutation testing remains
-runtime evidence for targeted, nightly, and release lanes.
+Mutation testing answers the same question with execution and remains the slower runtime
+backstop for targeted, nightly, and release lanes when the change is ready for execution-backed
+confirmation. The lane split is about *when* and *how expensively* the signal is taken, not
+about parallel evidence streams.
 
 Running `ripr` itself demonstrates disciplined CI economics. Every lane that runs here must be
 lean enough that running it often is obviously worthwhile.
