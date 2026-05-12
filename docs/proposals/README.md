@@ -77,3 +77,4 @@ Start new proposals from
 | Proposal | Status | Topic |
 | --- | --- | --- |
 | [RIPR-PROP-0001](RIPR-PROP-0001-multi-language-adapter-preview.md) | proposed | Multi-language adapter preview |
+| [RIPR-PROP-0002](RIPR-PROP-0002-lane-1-evidence-quality-leadership.md) | proposed | Lane 1 evidence quality leadership |
