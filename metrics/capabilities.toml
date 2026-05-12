@@ -1237,10 +1237,11 @@ evidence = [
   "crates/ripr/src/output/suppression_health.rs renders advisory suppression-health JSON and Markdown",
   "crates/ripr/src/output/policy_readiness.rs treats suppression-health warnings and config errors as not acknowledgement-ready",
   "crates/ripr/src/cli/commands.rs exposes ripr policy suppression-health",
-  "suppression-health tests cover missing manifest, healthy manifest, metadata warnings, stale review windows, preview label gaps, and parser violations"
+  "suppression-health tests cover missing manifest, healthy manifest, metadata warnings, stale review windows, preview label gaps, and parser violations",
+  "docs/POLICY_ALLOWLISTS.md aligns no-panic, Clippy, non-Rust, workflow, RIPR suppression, baseline, and waiver ledgers around reviewed reasons, durable identity, visibility, and stale-entry behavior"
 ]
 fixtures = []
-next = "policy-exception-ledger-convergence"
+next = "docs/blocking-readiness-guide"
 metric = "suppression_health_missing_owner, suppression_health_missing_reason, suppression_health_stale, suppression_health_overbroad_scope, suppression_health_unknown_selector, suppression_health_preview_without_preview_label"
 
 [[capability]]
