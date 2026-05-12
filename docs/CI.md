@@ -525,16 +525,19 @@ For a CI-first user, the useful output is the artifact packet:
 - `target/ripr/reports/` - targeted-test outcome, SARIF files when enabled,
   repo badge JSON, `agent-receipt.json`, `assistant-loop-health.{json,md}`,
   `first-useful-action.{json,md}`, `pr-review-front-panel.{json,md}`,
-  `index.{json,md}`, and any repo-local cockpit output.
+  `waiver-aging.{json,md}`, `suppression-health.{json,md}`,
+  `policy-readiness.{json,md}`, `index.{json,md}`, and any repo-local
+  cockpit output.
 - `target/ripr/review/` - PR test guidance JSON and Markdown when
   `ripr review-comments` runs on pull requests.
 
 The workflow also writes a `RIPR advisory summary` step summary. It includes
 the PR review front panel when existing inputs allow
 `ripr pr-review front-panel` to run, the first useful action when existing
-inputs allow `ripr first-action` to run, assistant-loop health when proof
-artifacts exist, the report packet index when any indexed artifact exists, the
-top recommendation, the agent review packet when present, artifact links,
+inputs allow `ripr first-action` to run, policy readiness, waiver aging, and
+suppression health when their input artifacts exist, assistant-loop health when
+proof artifacts exist, the report packet index when any indexed artifact exists,
+the top recommendation, the agent review packet when present, artifact links,
 SARIF and badge status, known limits, and PR guidance annotation counts when
 `target/ripr/review/comments.json` exists. On pull
 requests, the generated workflow writes that report before emitting
@@ -1487,6 +1490,23 @@ frontier status, and history trend when available. The ledger is evidence only;
 See [PR evidence ledger workflow](PR_EVIDENCE_LEDGER_WORKFLOW.md) for how to
 read the ledger as waiver aging, baseline burn-down, repair receipts, and
 coverage/grip frontier evidence.
+
+When the PR evidence ledger exists, generated CI also writes and uploads
+`target/ripr/reports/waiver-aging.json` and
+`target/ripr/reports/waiver-aging.md`. The report is advisory only: repeated
+waiver remains a visible signal for focused-test or suppression review, not a
+failure and not an automatic durable exception.
+
+Generated CI also writes and uploads
+`target/ripr/reports/suppression-health.{json,md}` and
+`target/ripr/reports/policy-readiness.{json,md}` as advisory readiness
+projection artifacts. The job summary names suppression-health metadata gaps
+directly, and policy readiness composes existing gate, baseline, calibration,
+waiver-aging, and suppression-health reports when present, then summarizes the
+safest current policy mode. It does not run a gate, change baseline state, post
+comments, create required checks, or add pass/fail authority beyond an
+explicitly configured `ripr gate evaluate`.
+
 See [Test-oracle assistant proof report](TEST_ORACLE_ASSISTANT_PROOF_REPORT.md)
 for how to read the proof report, warnings, static movement, optional CI
 projection, and advisory limits.

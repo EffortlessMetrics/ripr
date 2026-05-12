@@ -3079,7 +3079,7 @@ Work items:
 | `policy/baseline-refresh-guardrails` | done | Shrink-only `ripr baseline update --remove-resolved` remains the only refresh path, `--adopt-new` is rejected, generated CI is pinned to read-only `ripr baseline diff`, and docs state that CI never rewrites or auto-adopts baseline entries. |
 | `policy/exception-ledger-convergence` | done | `docs/POLICY_ALLOWLISTS.md` now aligns no-panic, Clippy, non-Rust, workflow, RIPR suppression, baseline, and waiver ledgers around one reviewed reason per exception, semantic identity where available, and stale-entry behavior by class. |
 | `docs/blocking-readiness-guide` | done | `docs/BLOCKING_READINESS.md` now uses policy readiness as the ceiling for advisory, visible-only, acknowledgeable, baseline-check, and calibrated-gate promotion, including calibration, baseline, waiver, suppression, and preview-evidence health. |
-| `ci/policy-readiness-advisory-projection` | planned | Surface policy-readiness and waiver-aging artifacts in generated CI as advisory uploads and summaries only: no pass/fail authority, no new required checks, no default blocking, and no comment posting. |
+| `ci/policy-readiness-advisory-projection` | done | Generated CI writes, uploads, and summarizes waiver-aging, suppression-health, and policy-readiness artifacts as advisory-only projections: no pass/fail authority, no new required checks, no default blocking, and no comment posting. |
 | `campaign/policy-readiness-closeout` | planned | Close only after policy readiness, preview boundary, waiver aging, suppression health, baseline refresh guardrails, exception ledger semantics, blocking readiness guidance, and advisory CI projection exist. |
 
 References:
