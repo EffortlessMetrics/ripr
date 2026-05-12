@@ -1816,9 +1816,19 @@ metrics = [
 id = "RIPR-SPEC-0027"
 name = "TypeScript preview static facts"
 spec = "docs/specs/RIPR-SPEC-0027-typescript-preview-static-facts.md"
-tests = []
-fixtures = []
-code = []
+tests = [
+  "crates/ripr/src/analysis/language/typescript.rs",
+]
+fixtures = [
+  "fixtures/typescript_boundary_gap",
+  "fixtures/typescript_strong_oracle",
+]
+code = [
+  "crates/ripr/src/analysis/language/typescript.rs",
+  "crates/ripr/src/analysis/language/mod.rs",
+  "crates/ripr/src/analysis/language/router.rs",
+  "crates/ripr/src/analysis/pipeline.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0027-typescript-preview-static-facts.md",
   "docs/specs/README.md",
