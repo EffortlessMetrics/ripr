@@ -232,7 +232,21 @@ blocked_by = [
   "analysis/typescript-editor-readiness",
   "analysis/python-preview-adapter",
 ]
-acceptance = "Extend the VS Code extension to register the TypeScript, TypeScript React, JavaScript, JavaScript React, and Python selectors and route saved-workspace analysis through the adapter layer without changing Rust saved-workspace defaults"
+acceptance = "Extend the VS Code extension to register the TypeScript, TypeScript React, JavaScript, JavaScript React, and Python selectors, and route saved-workspace diagnostics through the adapter layer only when repo config enables that language. Preserve Rust saved-workspace defaults for diagnostics, hover, actions, and status. Preview findings must be visibly labeled preview, hover/status must surface explicit static limits before suggested action language, and wrong-root/stale/malformed artifacts must still fail closed. No analyzer behavior, source edits, generated tests, provider calls, mutation execution, policy/gate/default-blocking behavior, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays."
+commands = [
+  "cargo test -p ripr lsp --lib",
+  "cargo test -p ripr lsp::tests --lib",
+  "cargo xtask lsp-cockpit-report",
+  "npm --prefix editors/vscode run compile",
+  "npm --prefix editors/vscode run test:e2e",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-pr",
+]
 
 [[work_item]]
 id = "ci/language-aware-grouping"
