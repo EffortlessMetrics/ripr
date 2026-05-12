@@ -2,6 +2,7 @@ mod agent;
 mod command;
 mod commands;
 mod execute;
+mod github_workflow;
 mod help;
 mod parse;
 
