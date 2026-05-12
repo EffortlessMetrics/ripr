@@ -83,7 +83,7 @@ When opening future Lane 3 PRs, list them here until they merge or close:
 ## Upcoming Dependency
 
 Campaign 27 Language Adapter Preview has one expected Lane 3 slice:
-`lsp/editor-language-routing`.
+`lsp/editor-language-routing` (#772).
 
 That slice is blocked until both TypeScript and Python preview adapters exist.
 Lane 3 should review upstream analyzer, config, and output work only as a
@@ -109,8 +109,16 @@ Current dependency state:
 - issue #780 tracks the landed owner-matching gap where TypeScript changed
   lines are matched by line range before file identity, which can attach the
   wrong owner and related-test evidence in mixed-file workspaces;
-- the Python preview adapter is still absent, so `lsp/editor-language-routing`
-  remains blocked even after TypeScript follow-ups land.
+- the Python preview adapter (#771) is still absent and blocked by the Python
+  parser substrate ADR (#770), so `lsp/editor-language-routing` remains blocked
+  even after TypeScript follow-ups land.
+- issue #772 now records the current VS Code routing files:
+  `editors/vscode/package.json` for activation and
+  `editors/vscode/src/client.ts` for `documentSelector` plus
+  `isRustFileDocument`;
+- issue #771 now records the Python-to-editor handoff contract: Python preview
+  artifacts need `language = "python"`, `language_status = "preview"`, and
+  projectable static limits before Lane 3 can safely add Python selectors.
 
 Before starting `lsp/editor-language-routing`, refresh this audit instead of
 inferring readiness from campaign momentum:
