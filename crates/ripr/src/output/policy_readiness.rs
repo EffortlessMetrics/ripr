@@ -945,6 +945,37 @@ mod tests {
         }
     }
 
+    fn supply_gate(input: &mut PolicyReadinessInput, body: &str) {
+        input.gate_decision_path = Some("target/ripr/reports/gate-decision.json".to_string());
+        input.gate_decision_json = Some(Ok(body.to_string()));
+    }
+
+    fn supply_baseline(input: &mut PolicyReadinessInput, body: &str) {
+        input.baseline_delta_path =
+            Some("target/ripr/reports/baseline-debt-delta.json".to_string());
+        input.baseline_delta_json = Some(Ok(body.to_string()));
+    }
+
+    fn gate_body(decisions: &str) -> String {
+        format!(
+            r#"{{
+              "schema_version": "0.1",
+              "status": "advisory",
+              "policy": {{"mode": "visible-only"}},
+              "summary": {{"blocking": 1, "acknowledged": 2, "advisory": 3, "suppressed": 4, "not_applicable": 5}},
+              "decisions": {decisions}
+            }}"#
+        )
+    }
+
+    fn clean_baseline_body() -> &'static str {
+        r#"{
+          "schema_version": "0.1",
+          "kind": "baseline_debt_delta",
+          "delta": {"still_present": 2, "resolved": 1, "new_policy_eligible": 0, "acknowledged": 0, "suppressed": 0, "stale_baseline_entry": 0, "invalid_baseline_entry": 0, "missing_current_input": 0}
+        }"#
+    }
+
     #[test]
     fn missing_inputs_keep_report_advisory() -> Result<(), String> {
         let report = build_policy_readiness_report(input());
@@ -960,8 +991,8 @@ mod tests {
     #[test]
     fn gate_and_baseline_inputs_enable_baseline_check_readiness() -> Result<(), String> {
         let mut input = input();
-        input.gate_decision_path = Some("target/ripr/reports/gate-decision.json".to_string());
-        input.gate_decision_json = Some(Ok(
+        supply_gate(
+            &mut input,
             r#"{
               "schema_version": "0.1",
               "status": "advisory",
@@ -973,19 +1004,9 @@ mod tests {
                 "language_status": "preview",
                 "static_limit_kind": "dynamic_dispatch"
               }]
-            }"#
-            .to_string(),
-        ));
-        input.baseline_delta_path =
-            Some("target/ripr/reports/baseline-debt-delta.json".to_string());
-        input.baseline_delta_json = Some(Ok(
-            r#"{
-              "schema_version": "0.1",
-              "kind": "baseline_debt_delta",
-              "delta": {"still_present": 2, "resolved": 1, "new_policy_eligible": 0, "acknowledged": 0, "suppressed": 0, "stale_baseline_entry": 0, "invalid_baseline_entry": 0, "missing_current_input": 0}
-            }"#
-            .to_string(),
-        ));
+            }"#,
+        );
+        supply_baseline(&mut input, clean_baseline_body());
 
         let report = build_policy_readiness_report(input);
         assert_eq!(report.status, "ready_for_baseline_check");
@@ -1013,6 +1034,239 @@ mod tests {
         assert!(rendered.contains("Recommended mode: baseline-check"));
         assert!(rendered.contains("gate_eligible: 0"));
         Ok(())
+    }
+
+    #[test]
+    fn gate_only_is_visible_only_ready_and_preserves_gate_facts() -> Result<(), String> {
+        let mut input = input();
+        supply_gate(&mut input, &gate_body("[]"));
+
+        let report = build_policy_readiness_report(input);
+
+        assert_eq!(report.status, "ready_for_visible_only");
+        assert_eq!(report.recommended_mode, "visible-only");
+        assert_eq!(report.blocking_readiness.state, "healthy");
+        assert!(report.summary.visible_only_ready);
+        assert!(!report.summary.baseline_check_ready);
+        assert!(
+            report
+                .blocking_readiness
+                .evidence
+                .contains(&"gate_status=advisory".to_string())
+        );
+        assert!(
+            report
+                .blocking_readiness
+                .evidence
+                .contains(&"current_gate_mode=visible-only".to_string())
+        );
+        assert!(
+            report
+                .blocking_readiness
+                .evidence
+                .contains(&"blocking_candidates=1".to_string())
+        );
+        let rendered = render_policy_readiness_json(&report)?;
+        assert!(rendered.contains("\"status\": \"ready_for_visible_only\""));
+        Ok(())
+    }
+
+    #[test]
+    fn waiver_and_suppression_inputs_enable_acknowledgeable_readiness() {
+        let mut input = input();
+        supply_gate(&mut input, &gate_body("[]"));
+        input.waiver_aging_path = Some("target/ripr/reports/waiver-aging.json".to_string());
+        input.waiver_aging_json = Some(Ok(r#"{"schema_version":"0.1"}"#.to_string()));
+        input.suppression_health_path =
+            Some("target/ripr/reports/suppression-health.json".to_string());
+        input.suppression_health_json = Some(Ok(r#"{"schema_version":"0.1"}"#.to_string()));
+
+        let report = build_policy_readiness_report(input);
+
+        assert_eq!(report.status, "ready_for_acknowledgeable");
+        assert_eq!(report.recommended_mode, "acknowledgeable");
+        assert!(report.summary.acknowledgeable_ready);
+        assert_eq!(report.waiver_health.state, "healthy");
+        assert_eq!(report.suppression_health.state, "healthy");
+        assert_eq!(
+            report.next_policy_action,
+            "Use acknowledgement only with visible waiver and suppression evidence."
+        );
+    }
+
+    #[test]
+    fn calibration_input_promotes_baseline_check_to_calibrated_gate() {
+        let mut input = input();
+        supply_gate(&mut input, &gate_body("[]"));
+        supply_baseline(&mut input, clean_baseline_body());
+        input.recommendation_calibration_path =
+            Some("target/ripr/reports/recommendation-calibration.json".to_string());
+        input.recommendation_calibration_json = Some(Ok(r#"{"schema_version":"0.1"}"#.to_string()));
+        input.mutation_calibration_path =
+            Some("target/ripr/reports/mutation-calibration.json".to_string());
+        input.mutation_calibration_json = Some(Ok(r#"{"schema_version":"0.1"}"#.to_string()));
+
+        let report = build_policy_readiness_report(input);
+
+        assert_eq!(report.status, "ready_for_calibrated_gate");
+        assert_eq!(report.recommended_mode, "calibrated-gate");
+        assert!(report.summary.calibrated_gate_ready);
+        assert_eq!(report.calibration_health.state, "healthy");
+        assert!(
+            report
+                .calibration_health
+                .evidence
+                .contains(&"mutation_calibration=supplied".to_string())
+        );
+    }
+
+    #[test]
+    fn auto_adopt_new_keeps_baseline_check_not_ready() {
+        let mut input = input();
+        supply_gate(&mut input, &gate_body("[]"));
+        supply_baseline(
+            &mut input,
+            r#"{
+              "schema_version": "0.1",
+              "policy": {"auto_adopt_new": true},
+              "delta": {"new_policy_eligible": 0}
+            }"#,
+        );
+
+        let report = build_policy_readiness_report(input);
+
+        assert_eq!(report.status, "ready_for_visible_only");
+        assert!(!report.summary.baseline_check_ready);
+        assert_eq!(report.baseline_health.state, "not_ready");
+        assert_eq!(
+            report.baseline_health.next_action,
+            "Disable auto-adopt-new; baseline refresh must be shrink-only."
+        );
+    }
+
+    #[test]
+    fn preview_language_without_status_is_warning_not_gate_eligibility() {
+        let mut input = input();
+        supply_gate(
+            &mut input,
+            &gate_body(
+                r#"[{
+                  "decision": "advisory",
+                  "language": "python",
+                  "static_limit_kind": "dynamic_dispatch"
+                }]"#,
+            ),
+        );
+
+        let report = build_policy_readiness_report(input);
+
+        assert_eq!(report.status, "ready_for_visible_only");
+        assert_eq!(report.preview_evidence_boundary.state, "warning");
+        assert_eq!(report.preview_evidence_boundary.missing_language_status, 1);
+        assert_eq!(
+            report
+                .preview_evidence_boundary
+                .preview_findings_gate_eligible,
+            0
+        );
+        assert_eq!(report.warnings.len(), 1);
+        assert_eq!(report.warnings[0].kind, "preview_language_status_missing");
+    }
+
+    #[test]
+    fn supplied_input_read_failures_are_config_errors() {
+        let mut input = input();
+        input.gate_decision_path = Some("target/ripr/reports/gate-decision.json".to_string());
+        input.gate_decision_json = Some(Err("read failed".to_string()));
+        input.baseline_delta_path =
+            Some("target/ripr/reports/baseline-debt-delta.json".to_string());
+
+        let report = build_policy_readiness_report(input);
+
+        assert_eq!(report.status, "config_error");
+        assert_eq!(report.blocking_readiness.state, "config_error");
+        assert_eq!(report.baseline_health.state, "config_error");
+        assert_eq!(report.warnings.len(), 2);
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.kind == "invalid_input")
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.kind == "missing_supplied_input")
+        );
+    }
+
+    #[test]
+    fn baseline_alias_counters_surface_warning_state() {
+        let mut input = input();
+        supply_gate(&mut input, &gate_body("[]"));
+        supply_baseline(
+            &mut input,
+            r#"{
+              "schema_version": "0.1",
+              "baseline": {"auto_adopt_new": false},
+              "debt_delta": {
+                "still_present": 4,
+                "resolved": 3,
+                "new_policy_eligible": 2,
+                "acknowledged": 1,
+                "suppressed": 1,
+                "stale": 1,
+                "invalid": 1,
+                "missing_input": 1
+              }
+            }"#,
+        );
+
+        let report = build_policy_readiness_report(input);
+
+        assert_eq!(report.status, "ready_for_baseline_check");
+        assert_eq!(report.baseline_health.state, "warning");
+        for evidence in [
+            "still_present=4",
+            "resolved=3",
+            "new_policy_eligible=2",
+            "acknowledged=1",
+            "suppressed=1",
+            "stale=1",
+            "invalid=1",
+            "missing_input=1",
+            "auto_adopt_new=false",
+        ] {
+            assert!(
+                report
+                    .baseline_health
+                    .evidence
+                    .contains(&evidence.to_string())
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_calibration_input_is_config_error() {
+        let mut input = input();
+        input.recommendation_calibration_path =
+            Some("target/ripr/reports/recommendation-calibration.json".to_string());
+        input.recommendation_calibration_json = Some(Ok(r#"{"schema_version":"0.1"}"#.to_string()));
+        input.mutation_calibration_path =
+            Some("target/ripr/reports/mutation-calibration.json".to_string());
+        input.mutation_calibration_json = Some(Ok("{".to_string()));
+
+        let report = build_policy_readiness_report(input);
+
+        assert_eq!(report.status, "config_error");
+        assert_eq!(report.calibration_health.state, "config_error");
+        assert_eq!(report.calibration_health.warnings.len(), 1);
+        assert!(
+            report.calibration_health.warnings[0]
+                .message
+                .contains("invalid JSON")
+        );
     }
 
     #[test]
