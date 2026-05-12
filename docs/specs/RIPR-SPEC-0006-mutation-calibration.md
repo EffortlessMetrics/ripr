@@ -193,6 +193,12 @@ Checked fixture-backed samples:
   static/runtime agreement buckets, ambiguous file/line joins, unmatched runtime
   mutants, static seams without runtime data, and both `seam_id` and
   unambiguous `file_line` joins.
+- `fixtures/boundary_gap/calibration/runtime-fixtures-v2/` covers checked
+  observer-class runtime imports for side-effect observers, mock expectations,
+  snapshot oracles, and opaque dispatch. The sample maps runtime outcomes to
+  existing static seams where possible, keeps ambiguous file/line opaque
+  dispatch joins ambiguous, and keeps a runtime-only signal out of static gap
+  creation.
 
 Planned tests:
 

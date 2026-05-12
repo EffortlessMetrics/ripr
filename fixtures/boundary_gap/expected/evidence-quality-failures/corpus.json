@@ -18,21 +18,21 @@
     {
       "id": "duplicate_canonical_gap_overcount_suppressions_match_arm",
       "case_kind": "failure_mode",
-      "description": "The largest dogfood duplicate-looking group keeps one canonical identity for 23 raw match-arm seams.",
+      "description": "The first dogfood duplicate-looking match-arm group is split by concrete match-arm discriminator; the suppressions seam now pins the \"kind\" => arm instead of generic =>.",
       "source": "target/ripr/reports/lane1-evidence-audit.json canonical_gap_groups.largest[0]",
       "audit_signal": {
         "category": "duplicate_canonical_gap",
         "metric_path": "canonical_gap_groups.largest[0]",
         "observed_count": 23,
-        "evidence": "gap:7c0cc088029acaf8 in parse_suppressions_manifest"
+        "evidence": "pre-fix gap:7c0cc088029acaf8 grouped 23 parse_suppressions_manifest match arms; post-fix seam 205829e99ffbd3ca uses \"kind\" =>"
       },
       "expected_repo_exposure": {
         "source": "repo-exposure-json seams[].evidence_record",
         "evidence_record": {
           "schema_version": "0.1",
           "seam_id": "205829e99ffbd3ca",
-          "canonical_gap_id": "gap:7c0cc088029acaf8",
-          "canonical_gap_group_size": 23,
+          "canonical_gap_id": "gap:5c2aa50e4b939ed2",
+          "canonical_gap_group_size": 1,
           "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
           "owner": "crates/ripr/src/output/suppressions.rs::parse_suppressions_manifest",
           "location": {
@@ -51,7 +51,7 @@
             "activate": {
               "state": "unknown",
               "confidence": "low",
-              "summary": "No concrete activation values observed for seam `=>`"
+              "summary": "No concrete activation values observed for seam `\"kind\" =>`"
             },
             "propagate": {
               "state": "yes",
@@ -73,7 +73,7 @@
             "observed_values": 0,
             "missing_discriminators": 0,
             "static_limitations": 1,
-            "related_tests_total": 330
+            "related_tests_total": 403
           },
           "top_related_test": {
             "name": "parse_accepts_well_formed_manifest_with_both_kinds",
@@ -103,17 +103,17 @@
             {
               "stage": "activate",
               "state": "unknown",
-              "reason": "No concrete activation values observed for seam `=>`"
+              "reason": "No concrete activation values observed for seam `\"kind\" =>`"
             }
           ]
         }
       },
       "expected_claims": [
-        "Report the raw seams as one duplicate-looking canonical group.",
-        "Keep the group size visible for downstream evidence-health work."
+        "Split match-arm seams by concrete discriminator such as `\"kind\" =>`.",
+        "Keep the resulting canonical group size visible for downstream evidence-health work."
       ],
       "must_not_claim": [
-        "Do not count each raw seam as a distinct behavioral gap.",
+        "Do not group different match arms under a generic `=>` or `match` discriminator.",
         "Do not claim a concrete activation value for the match arm."
       ]
     },

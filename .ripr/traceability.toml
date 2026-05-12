@@ -365,6 +365,7 @@ tests = [
   "crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_prints_markdown_by_default",
   "crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_writes_json_when_requested",
   "crates/ripr/tests/cli_smoke.rs::calibration_runtime_fixture_matches_checked_reports",
+  "crates/ripr/tests/cli_smoke.rs::calibration_runtime_fixture_v2_matches_checked_reports",
   "xtask/src/main.rs::mutation_calibration_args_parse_root_and_input_paths",
   "xtask/src/main.rs::mutation_calibration_imports_static_seams_and_runtime_outcomes",
   "xtask/src/main.rs::mutation_calibration_merges_mutants_and_outcomes_by_mutant_id",
@@ -376,7 +377,11 @@ tests = [
   "xtask/src/main.rs::mutation_calibration_uses_same_static_without_runtime_sample_limit_for_json_and_markdown",
   "xtask/src/main.rs::mutation_calibration_reports_are_advisory_and_structured"
 ]
-fixtures = ["fixtures/boundary_gap"]
+fixtures = [
+  "fixtures/boundary_gap",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v1",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v2"
+]
 code = [
   "crates/ripr/src/cli/command.rs",
   "crates/ripr/src/cli/commands.rs",
@@ -391,7 +396,9 @@ outputs = [
   "docs/CAPABILITY_MATRIX.md",
   "fixtures/CALIBRATION_CORPUS.md",
   "fixtures/boundary_gap/calibration/runtime-fixtures-v1/mutation-calibration.json",
-  "fixtures/boundary_gap/calibration/runtime-fixtures-v1/mutation-calibration.md"
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v1/mutation-calibration.md",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v2/mutation-calibration.json",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v2/mutation-calibration.md"
 ]
 metrics = [
   "static_seams_total",
@@ -1003,6 +1010,7 @@ code = [
 ]
 outputs = [
   "docs/OUTPUT_SCHEMA.md",
+  "docs/lanes/LANE_1_EVIDENCE_ACCURACY.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
   "README.md",
@@ -1015,6 +1023,12 @@ metrics = [
   "evidence_health_related_tests_total",
   "evidence_health_opaque_oracle_count",
   "evidence_health_calibration_matched_total",
+  "evidence_health_canonical_gap_groups",
+  "evidence_health_duplicate_looking_groups",
+  "evidence_health_records_with_canonical_gap_id",
+  "evidence_health_static_limitation_reasons",
+  "evidence_health_calibration_not_imported",
+  "evidence_health_top_evidence_quality_risks",
 ]
 
 [[behavior]]
@@ -1825,6 +1839,8 @@ fixtures = [
   "fixtures/typescript_strong_oracle",
   "fixtures/typescript_return_value_shape",
   "fixtures/typescript_mocked_module_limit",
+  "fixtures/typescript_awaited_promise_reject",
+  "fixtures/typescript_effect_probe_shapes",
 ]
 code = [
   "crates/ripr/src/analysis/language/typescript.rs",
@@ -2061,4 +2077,37 @@ metrics = [
   "lane1_evidence_audit_missing_discriminators",
   "lane1_evidence_audit_static_limitations",
   "lane1_evidence_audit_uncalibrated_records",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0033"
+name = "Match-arm canonical gap discriminators"
+spec = "docs/specs/RIPR-SPEC-0033-match-arm-canonical-gap-discriminators.md"
+tests = [
+  "crates/ripr/src/analysis/rust_index.rs::tests::parser_adapter_extracts_probe_shapes_from_syntax",
+  "crates/ripr/src/analysis/canonical_gap.rs::tests::canonical_gap_id_distinguishes_different_match_arm_discriminators",
+  "crates/ripr/src/analysis/canonical_gap.rs::tests::canonical_gap_id_groups_same_match_arm_across_line_movement",
+  "xtask::tests::lane1_evidence_quality_failure_corpus_is_valid",
+]
+fixtures = [
+  "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json",
+]
+code = [
+  "crates/ripr/src/analysis/syntax/ra.rs",
+  "crates/ripr/src/analysis/rust_index.rs",
+  "crates/ripr/src/analysis/canonical_gap.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0033-match-arm-canonical-gap-discriminators.md",
+  "docs/specs/README.md",
+  "docs/lanes/LANE_1_EVIDENCE_ACCURACY.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+  ".ripr/traceability.toml",
+  "CHANGELOG.md",
+]
+metrics = [
+  "lane1_evidence_audit_duplicate_looking_groups",
+  "lane1_evidence_audit_canonical_gap_groups",
+  "lane1_evidence_audit_static_limitations",
 ]

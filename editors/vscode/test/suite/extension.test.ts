@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import { promises as fs } from 'fs';
 import * as vscode from 'vscode';
 import {
   RiprClientController,
@@ -131,7 +132,9 @@ suite('Extension Smoke', () => {
     );
 
     await vscode.commands.executeCommand(contextCommand.command, ...(contextCommand.arguments ?? []));
-    const contextPacket = await vscode.env.clipboard.readText();
+    const contextPacket = await waitForClipboardText((text) =>
+      text.includes('"schema_version": "0.3"') && text.includes('"seam_id": "67fc764ba37d77bd"')
+    );
     const parsedContextPacket = JSON.parse(contextPacket) as {
       schema_version?: string;
       packets?: Array<{ seam_id?: string }>;
@@ -140,7 +143,7 @@ suite('Extension Smoke', () => {
     assert.strictEqual(parsedContextPacket.packets?.[0]?.seam_id, '67fc764ba37d77bd');
 
     await vscode.commands.executeCommand(targetedBriefCommand.command, ...(targetedBriefCommand.arguments ?? []));
-    const targetedBriefText = await vscode.env.clipboard.readText();
+    const targetedBriefText = await waitForClipboardText((text) => text.includes('Target seam:'));
     assert.ok(targetedBriefText.includes('Target seam:'), targetedBriefText);
     assert.ok(targetedBriefText.includes('src/lib.rs:2'), targetedBriefText);
     assert.ok(targetedBriefText.includes('predicate_boundary'), targetedBriefText);
@@ -148,34 +151,36 @@ suite('Extension Smoke', () => {
     assert.ok(targetedBriefText.includes('tests/pricing.rs'), targetedBriefText);
 
     await vscode.commands.executeCommand(packetCommand.command, ...(packetCommand.arguments ?? []));
-    const packetText = await vscode.env.clipboard.readText();
+    const packetText = await waitForClipboardText((text) => text.includes('ripr agent packet'));
     assert.ok(packetText.includes('ripr agent packet --root . --seam-id 67fc764ba37d77bd'), packetText);
     assert.ok(packetText.includes('target/ripr/agent/agent-packet.json'), packetText);
 
     await vscode.commands.executeCommand(briefCommand.command, ...(briefCommand.arguments ?? []));
-    const briefText = await vscode.env.clipboard.readText();
+    const briefText = await waitForClipboardText((text) => text.includes('ripr agent brief'));
     assert.ok(briefText.includes('ripr agent brief --root . --seam-id 67fc764ba37d77bd'), briefText);
     assert.ok(briefText.includes('target/ripr/agent/agent-brief.json'), briefText);
 
     await vscode.commands.executeCommand(afterSnapshotCommand.command, ...(afterSnapshotCommand.arguments ?? []));
-    const afterSnapshotText = await vscode.env.clipboard.readText();
+    const afterSnapshotText = await waitForClipboardText((text) =>
+      text.includes('ripr check') && text.includes('target/ripr/pilot/after.repo-exposure.json')
+    );
     assert.ok(afterSnapshotText.includes('ripr check --root . --base '), afterSnapshotText);
     assert.ok(afterSnapshotText.includes('--format repo-exposure-json'), afterSnapshotText);
     assert.ok(afterSnapshotText.includes('target/ripr/pilot/after.repo-exposure.json'), afterSnapshotText);
 
     await vscode.commands.executeCommand(verifyCommand.command, ...(verifyCommand.arguments ?? []));
-    const verifyText = await vscode.env.clipboard.readText();
+    const verifyText = await waitForClipboardText((text) => text.includes('ripr agent verify'));
     assert.ok(verifyText.includes('ripr agent verify --root .'), verifyText);
     assert.ok(verifyText.includes('target/ripr/pilot/after.repo-exposure.json'), verifyText);
 
     await vscode.commands.executeCommand(receiptCommand.command, ...(receiptCommand.arguments ?? []));
-    const receiptText = await vscode.env.clipboard.readText();
+    const receiptText = await waitForClipboardText((text) => text.includes('ripr agent receipt'));
     assert.ok(receiptText.includes('ripr agent receipt --root .'), receiptText);
     assert.ok(receiptText.includes('--seam-id 67fc764ba37d77bd'), receiptText);
     assert.ok(receiptText.includes('target/ripr/agent/agent-receipt.json'), receiptText);
 
     await vscode.commands.executeCommand(assertionCommand.command, ...(assertionCommand.arguments ?? []));
-    const assertionText = await vscode.env.clipboard.readText();
+    const assertionText = await waitForClipboardText((text) => text.includes('assert_eq!(discounted_total('));
     assert.ok(assertionText.includes('assert_eq!(discounted_total('), assertionText);
 
     await vscode.commands.executeCommand(relatedTestCommand.command, ...(relatedTestCommand.arguments ?? []));
@@ -275,6 +280,14 @@ suite('Extension Smoke', () => {
         message: 'ripr analysis refresh completed in 42 ms: generation=1, diagnostics=0, files=0, findings=0, seam_diagnostics=0, published_files=0, cleared_files=0'
       });
       assert.ok(context.status.text.includes('ripr: no seams'));
+
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=1, diagnostics=0, files=0, findings=0, seam_diagnostics=0, enabled_languages=0, published_files=0, cleared_files=0'
+      });
+      assert.ok(context.status.text.includes('ripr: languages off'));
+      assert.ok(String(context.status.tooltip).includes('[languages] enabled = []'));
+      await context.controller.showStatus();
+      assert.ok(context.infoMessages.at(-1)?.includes('no enabled languages'));
 
       context.client.emitNotification('window/logMessage', {
         message: 'ripr analysis refresh completed in 42 ms: generation=2, diagnostics=5, files=2, findings=4, seam_diagnostics=0, published_files=2, cleared_files=0'
@@ -1144,6 +1157,41 @@ async function waitForHoverText(
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForClipboardText(
+  predicate: (text: string) => boolean,
+  timeoutMs = 5000
+): Promise<string> {
+  const started = Date.now();
+  let lastText = '';
+  while (Date.now() - started < timeoutMs) {
+    lastText = await currentClipboardText();
+    if (predicate(lastText)) {
+      return lastText;
+    }
+    await sleep(50);
+  }
+  throw new Error(`timed out waiting for clipboard text. Last clipboard:\n${lastText}`);
+}
+
+async function currentClipboardText(): Promise<string> {
+  const capturePath = process.env.RIPR_TEST_CLIPBOARD_CAPTURE_PATH;
+  if (capturePath) {
+    try {
+      return await fs.readFile(capturePath, 'utf8');
+    } catch (error) {
+      if (isNodeError(error) && error.code === 'ENOENT') {
+        return '';
+      }
+      throw error;
+    }
+  }
+  return vscode.env.clipboard.readText();
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && 'code' in error;
 }
 
 function diagnosticCode(diagnostic: vscode.Diagnostic): string {

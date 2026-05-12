@@ -80,6 +80,15 @@ Planned scope:
   closeout, keeps `.ripr/goals/active.toml` unchanged, and routes next work
   through a repo-local evidence-quality audit before analyzer or calibration
   changes.
+- Closed the Lane 2 Policy Readiness and Preview Evidence Governance tracker.
+  The closeout leaves Campaign 27 active while documenting the policy-readiness
+  report, preview evidence boundary, waiver-aging report, suppression-health
+  report, shrink-only baseline refresh guardrails, exception-ledger alignment,
+  blocking readiness guide, and advisory generated CI projection. Preview
+  TypeScript/Python evidence remains visible and advisory by default, with no
+  gate eligibility, RIPR Zero blocking debt, calibrated-confidence authority,
+  automatic baseline adoption, generated tests, mutation execution, or default
+  CI blocking without later explicit promotion policy.
 - Added `cargo xtask lane1-evidence-audit` with
   `cargo xtask evidence-quality-audit` as an alias. The repo-local report writes
   `target/ripr/reports/lane1-evidence-audit.{json,md}` from generated
@@ -93,6 +102,27 @@ Planned scope:
   equality-boundary misses, activation static limitations, mock-expectation
   observer semantics, and no-runtime-data calibration gaps before analyzer
   tuning begins.
+- Reduced the first audit-pinned Lane 1 canonical overcount by emitting
+  parser-backed match-arm discriminators such as `"kind" =>` instead of generic
+  `=>` / `match` text. The repo-local audit now splits the suppressions
+  match-arm case to group size `1` and reduces duplicate-looking groups from
+  `1287` to `926` without changing gates, schemas, or public command surfaces.
+- Folded durable Lane 1 audit fields into `ripr evidence-health`: canonical
+  gap group totals, largest groups, duplicate-looking groups, actionability
+  classes, static limitation distributions, evidence-record calibration
+  coverage, movement availability, and top evidence-quality risks. The report
+  remains advisory and does not change analyzer classifications, gate policy,
+  CI behavior, mutation execution, or score definitions.
+- Added checked `runtime-fixtures-v2` calibration reports for the Lane 1
+  side-effect observer, mock expectation, snapshot oracle, and opaque dispatch
+  runtime classes. The fixture maps imported outcomes to existing static seams
+  where possible, keeps an ambiguous opaque dispatch file-line signal
+  ambiguous, and keeps a runtime-only signal from creating a static gap. No
+  CI mutation execution, gate behavior, schema, or score definition changes.
+- Closed the Lane 1 Evidence Accuracy Evaluation campaign in documented scope.
+  The closeout records the audit, fixture corpus, first analyzer improvement,
+  evidence-health dashboard fields, runtime-fixtures-v2 calibration expansion,
+  and future evidence-class boundary without changing `.ripr/goals/active.toml`.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 

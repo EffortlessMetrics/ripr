@@ -1059,6 +1059,51 @@ without changing analyzer behavior. The same report lands at
     },
     "opaque_oracle_count": 10
   },
+  "evidence_quality": {
+    "canonical_gap_groups_total": 4800,
+    "duplicate_looking_groups_total": 240,
+    "largest_canonical_groups": [
+      {
+        "canonical_gap_id": "gap:37d49d135d41fb52",
+        "count": 18,
+        "reported_group_size": 18,
+        "owner": "crates/ripr/src/output/first_useful_action.rs::selected_from_editor_context",
+        "seam_kind": "call_presence",
+        "flow_sink": "n/a",
+        "missing_discriminator": "n/a",
+        "assertion_shape": "n/a",
+        "example_seam_id": "f013a5a5798ec6c5",
+        "example_file": "crates/ripr/src/output/first_useful_action.rs"
+      }
+    ],
+    "actionability_class_counts": {
+      "actionable_related_test_extension": 1200,
+      "static_limitation": 3600
+    },
+    "static_limitation_stage_counts": {
+      "activate": 3600
+    },
+    "static_limitation_reason_counts": {
+      "No concrete activation values observed for seam `Vec::new()`": 255
+    },
+    "calibration_availability_counts": {
+      "not_imported": 9355
+    },
+    "movement_availability": {
+      "records_with_seam_id": 9355,
+      "records_with_canonical_gap_id": 6114,
+      "records_with_complete_evidence_path": 9355,
+      "records_with_recommendation": 9355,
+      "records_with_verify_command": 1756
+    },
+    "top_evidence_quality_risks": [
+      {
+        "kind": "static_limitations",
+        "count": 3600,
+        "summary": "Evidence records still contain static limitations."
+      }
+    ]
+  },
   "calibration": {
     "status": "loaded",
     "source": "target/ripr/reports/mutation-calibration.json",
@@ -1104,6 +1149,30 @@ Field contract:
   `opaque` related-test confidence buckets.
 - `metrics.oracle_strength_counts` and `metrics.oracle_kind_counts` - aggregate
   oracle evidence observed on related tests.
+- `evidence_quality` - audit-style fields derived from
+  `seams[].evidence_record` and canonical gap identity, without changing
+  classifications or policy.
+- `evidence_quality.canonical_gap_groups_total` - number of distinct canonical
+  gap IDs among headline-eligible evidence records.
+- `evidence_quality.duplicate_looking_groups_total` - number of canonical gap
+  groups with more than one raw seam.
+- `evidence_quality.largest_canonical_groups` - top canonical gap groups by raw
+  seam count, capped to 10 rows, including the canonical ID, reported group
+  size, owner, seam kind, flow sink, discriminator, assertion shape, and
+  example seam/file.
+- `evidence_quality.actionability_class_counts` - counts keyed by
+  `evidence_record.actionability.class`.
+- `evidence_quality.static_limitation_stage_counts` and
+  `static_limitation_reason_counts` - distributions from
+  `evidence_record.static_limitations`.
+- `evidence_quality.calibration_availability_counts` - counts keyed by
+  `evidence_record.calibration.availability`. These are placeholder coverage
+  labels from the static record and do not imply runtime execution.
+- `evidence_quality.movement_availability` - counts of records carrying seam
+  IDs, canonical gap IDs, complete evidence paths, recommendations, and verify
+  commands for movement-aware downstream reports.
+- `evidence_quality.top_evidence_quality_risks` - largest advisory risk buckets
+  for follow-up Lane 1 work. They are measurements, not gate decisions.
 - `calibration` - availability counts from an already-produced mutation
   calibration report when one is supplied. The evidence-health command does not
   run mutation testing, infer thresholds, or change static classification.
@@ -1111,10 +1180,13 @@ Field contract:
   to 10 rows and carrying one example seam ID for inspection.
 
 The Markdown sibling prints the same summary, grip-class, top missing
-discriminator, oracle-strength, related-test confidence, calibration, and top
-limitation sections for humans. High-cardinality missing-discriminator details
-remain complete in JSON and are capped in Markdown. Static-language constraints
-still apply: runtime-specific labels stay confined to the optional calibration
+discriminator, oracle-strength, related-test confidence, evidence-quality,
+largest canonical group, actionability, static limitation distribution,
+evidence-record calibration coverage, calibration, top evidence-quality risk,
+and top limitation sections for humans. High-cardinality
+missing-discriminator and static-limitation reason details remain complete in
+JSON and are capped in Markdown. Static-language constraints still apply:
+runtime-specific labels stay confined to the optional imported calibration
 availability section.
 
 ## Lane 1 Evidence Quality Audit

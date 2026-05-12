@@ -60,6 +60,7 @@ mutation testing.
 | --- | --- | --- | --- |
 | Boundary gap after targeted test | `fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json` | `fixtures/boundary_gap/calibration/runtime-mutants.json` | `cargo xtask mutation-calibration . --mutants-json fixtures/boundary_gap/calibration/runtime-mutants.json --repo-exposure-json fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json` |
 | Runtime agreement buckets v1 | `fixtures/boundary_gap/calibration/runtime-fixtures-v1/repo-exposure.json` | `fixtures/boundary_gap/calibration/runtime-fixtures-v1/runtime-mutants.json` | `cargo xtask mutation-calibration . --mutants-json fixtures/boundary_gap/calibration/runtime-fixtures-v1/runtime-mutants.json --repo-exposure-json fixtures/boundary_gap/calibration/runtime-fixtures-v1/repo-exposure.json` |
+| Runtime observer classes v2 | `fixtures/boundary_gap/calibration/runtime-fixtures-v2/repo-exposure.json` | `fixtures/boundary_gap/calibration/runtime-fixtures-v2/runtime-mutants.json` | `cargo xtask mutation-calibration . --mutants-json fixtures/boundary_gap/calibration/runtime-fixtures-v2/runtime-mutants.json --repo-exposure-json fixtures/boundary_gap/calibration/runtime-fixtures-v2/repo-exposure.json` |
 
 The boundary-gap runtime sample imports one `caught` outcome for seam
 `67fc764ba37d77bd`. It exists to exercise the calibration report path and to
@@ -85,17 +86,33 @@ The checked `runtime-fixtures-v1/mutation-calibration.{json,md}` reports are
 verified by
 `crates/ripr/tests/cli_smoke.rs::calibration_runtime_fixture_matches_checked_reports`.
 
+The `runtime-fixtures-v2` sample adds checked imported-runtime coverage for
+the Lane 1 observer classes that were previously outside calibrated scope:
+
+- `side_effect_observer`
+- `mock_expectation`
+- `snapshot`
+- `opaque_dispatch`
+
+It pins runtime outcomes that map to existing static seams where possible,
+keeps an opaque dispatch file/line signal ambiguous when two static seams share
+the location, and keeps a runtime-only signal in the calibration report without
+creating a static gap. The checked
+`runtime-fixtures-v2/mutation-calibration.{json,md}` reports are verified by
+`crates/ripr/tests/cli_smoke.rs::calibration_runtime_fixture_v2_matches_checked_reports`.
+
 ## Missing Runtime Calibration Artifacts
 
-Runtime mutation calibration can still add scenario-specific samples for these
-cases:
+Runtime mutation calibration can still add narrower scenario-specific samples
+when a future evidence class needs them. The first observer-class expansion is
+now checked by `runtime-fixtures-v2`.
 
 | Planned case | Purpose | Status |
 | --- | --- | --- |
-| `mock_expectation` | Show when a mock expectation observes a side effect strongly enough for a seam. | Planned. |
-| `side_effect_observer` | Compare static side-effect evidence with a runtime signal. | Planned. |
-| `opaque_dynamic_dispatch` | Keep static limitations explicit when runtime data sees behavior behind dynamic dispatch. | Planned. |
-| `weak_snapshot_oracle` | Compare broad snapshot evidence with runtime mutation data without changing static language. | Planned. |
+| `mock_expectation` | Show when a mock expectation observes a side effect strongly enough for a seam. | Covered by `runtime-fixtures-v2`. |
+| `side_effect_observer` | Compare static side-effect evidence with a runtime signal. | Covered by `runtime-fixtures-v2`. |
+| `opaque_dynamic_dispatch` | Keep static limitations explicit when runtime data sees behavior behind dynamic dispatch. | Covered by `runtime-fixtures-v2`. |
+| `weak_snapshot_oracle` | Compare broad snapshot evidence with runtime mutation data without changing static language. | Covered by `runtime-fixtures-v2`. |
 
 Runtime artifacts should be tiny, deterministic samples checked in only after
 their source and update command are documented. They should feed
