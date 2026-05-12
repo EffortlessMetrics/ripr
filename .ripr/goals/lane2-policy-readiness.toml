@@ -132,9 +132,17 @@ commands = [
 
 [[work_item]]
 id = "policy/exception-ledger-convergence"
-status = "planned"
+status = "done"
 branch = "policy-exception-ledger-convergence"
-acceptance = "Align no-panic, Clippy, non-Rust, workflow, RIPR suppression, baseline, and waiver ledgers around one reviewed reason per exception, semantic identity where available, and stale-entry behavior by class."
+acceptance = "docs/POLICY_ALLOWLISTS.md aligns no-panic, Clippy, non-Rust, workflow, RIPR suppression, baseline, and waiver ledgers around one reviewed reason per exception, semantic identity where available, and stale-entry behavior by class."
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-pr",
+]
 
 [[work_item]]
 id = "docs/blocking-readiness-guide"

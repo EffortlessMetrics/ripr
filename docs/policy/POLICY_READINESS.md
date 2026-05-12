@@ -98,7 +98,7 @@ answer:
 | 4 | `report/waiver-aging` | Report repeated visible waivers as a signal, not as a failure. | done: `ripr policy waiver-aging` writes `waiver-aging.{json,md}` |
 | 5 | `policy/suppression-ledger-health` | Require durable suppressions to carry identity, owner, reason, scope, dates, visibility, static class, and preview labels. | done: `ripr policy suppression-health` writes `suppression-health.{json,md}` |
 | 6 | `policy/baseline-refresh-guardrails` | Document and enforce shrink-only refresh; no CI auto-adopt-new. | done: shrink-only update and generated-CI no-auto-refresh guardrails |
-| 7 | `policy/exception-ledger-convergence` | Align no-panic, Clippy, non-Rust, workflow, suppression, baseline, and waiver semantics. | planned |
+| 7 | `policy/exception-ledger-convergence` | Align no-panic, Clippy, non-Rust, workflow, suppression, baseline, and waiver semantics. | done: [Policy allowlists](../POLICY_ALLOWLISTS.md#shared-exception-semantics) |
 | 8 | `docs/blocking-readiness-guide` | Extend the advisory-to-blocking decision tree for preview evidence and readiness health. | planned |
 | 9 | `ci/policy-readiness-advisory-projection` | Surface policy-readiness and waiver-aging artifacts in generated CI without pass/fail authority. | planned |
 | 10 | `campaign/policy-readiness-closeout` | Close the tracker only after the readiness, preview, waiver, suppression, baseline, exception, guide, and CI projection surfaces exist. | planned |
@@ -163,6 +163,27 @@ Not allowed by default:
 
 If a future explicit manual adopt-new command exists, it must require a
 reviewed reason and stay outside generated CI.
+
+## Exception Ledger Convergence
+
+Lane 2 keeps policy exceptions distinct while giving each ledger the same
+auditable shape: a reviewed reason, a durable identity where available, and
+class-specific stale-entry behavior.
+
+The convergence surface is [Policy allowlists](../POLICY_ALLOWLISTS.md), which
+now covers:
+
+- no-panic allowlist entries;
+- Clippy lint, debt, and source-suppression ledgers;
+- non-Rust file policy exceptions;
+- workflow run-block and action-runtime allowlists;
+- RIPR durable suppressions;
+- gate baselines;
+- PR waiver records.
+
+The shared rule is that exceptions are not budgets. Baselines checkpoint known
+debt, waivers acknowledge one PR, and suppressions record durable policy
+exceptions with owner and reason while keeping the underlying evidence visible.
 
 ## Non-Goals
 
