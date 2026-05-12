@@ -246,26 +246,26 @@ pub(crate) fn build_policy_readiness_report(input: PolicyReadinessInput) -> Poli
         "Waiver aging is available; repeated waivers stay visible as signals.",
         "Add waiver-aging input before requiring acknowledgement.",
     );
-    let suppression_health = generic_axis(
-        &suppression,
-        "Suppression health is available; durable exceptions can be audited.",
-        "Add suppression-health input before tightening policy.",
-    );
+    let suppression_health = suppression_health_axis(&suppression);
     let calibration_health = calibration_axis(&recommendation, &mutation);
     let preview_evidence_boundary = preview_axis(preview);
+    warnings.extend(suppression_health.warnings.clone());
     warnings.extend(preview_evidence_boundary.warnings.clone());
 
     let has_config_error = artifacts
         .iter()
-        .any(|artifact| artifact.status == ArtifactStatus::Invalid);
+        .any(|artifact| artifact.status == ArtifactStatus::Invalid)
+        || suppression_health.state == "config_error";
     let preview_boundary_healthy = preview_evidence_boundary.missing_language_status == 0;
     let baseline_delta_healthy = baseline_facts.stale == 0
         && baseline_facts.invalid == 0
         && baseline_facts.missing_input == 0;
+    let suppression_health_ready = suppression_health.state == "healthy";
     let visible_only_ready = gate.status == ArtifactStatus::Loaded && preview_boundary_healthy;
     let acknowledgeable_ready = visible_only_ready
         && waiver.status == ArtifactStatus::Loaded
-        && suppression.status == ArtifactStatus::Loaded;
+        && suppression.status == ArtifactStatus::Loaded
+        && suppression_health_ready;
     let baseline_check_ready = visible_only_ready
         && baseline.status == ArtifactStatus::Loaded
         && baseline_delta_healthy
@@ -610,6 +610,103 @@ fn generic_axis(artifact: &ArtifactParse, loaded_evidence: &str, missing_action:
             evidence: Vec::new(),
             warnings: Vec::new(),
             next_action: missing_action.to_string(),
+        },
+    }
+}
+
+fn suppression_health_axis(artifact: &ArtifactParse) -> Axis {
+    match artifact.status {
+        ArtifactStatus::Loaded => {
+            let value = artifact.value.as_ref();
+            let status = value
+                .and_then(|value| string_path(value, &["status"]))
+                .unwrap_or_else(|| "unknown".to_string());
+            let suppressions = value
+                .map(|value| usize_path(value, &["summary", "suppressions"]))
+                .unwrap_or(0);
+            let missing_owner = value
+                .map(|value| usize_path(value, &["summary", "missing_owner"]))
+                .unwrap_or(0);
+            let missing_reason = value
+                .map(|value| usize_path(value, &["summary", "missing_reason"]))
+                .unwrap_or(0);
+            let stale = value
+                .map(|value| usize_path(value, &["summary", "stale"]))
+                .unwrap_or(0);
+            let overbroad_scope = value
+                .map(|value| usize_path(value, &["summary", "overbroad_scope"]))
+                .unwrap_or(0);
+            let unknown_selector = value
+                .map(|value| usize_path(value, &["summary", "unknown_selector"]))
+                .unwrap_or(0);
+            let preview_without_preview_label = value
+                .map(|value| usize_path(value, &["summary", "preview_without_preview_label"]))
+                .unwrap_or(0);
+            let config_errors = value
+                .map(|value| usize_path(value, &["summary", "config_errors"]))
+                .unwrap_or(0);
+            let warnings = value
+                .map(|value| usize_path(value, &["summary", "warnings"]))
+                .unwrap_or(0);
+
+            let state = match status.as_str() {
+                "healthy" | "no_suppressions" => "healthy",
+                "config_error" => "config_error",
+                "warning" => "warning",
+                _ => "warning",
+            };
+            let mut notices = Vec::new();
+            if state == "warning" {
+                notices.push(Notice {
+                    kind: "suppression_health_warning".to_string(),
+                    message: "suppression-health reports durable exception metadata warnings."
+                        .to_string(),
+                    source_artifact: artifact.path.clone(),
+                });
+            } else if state == "config_error" {
+                notices.push(Notice {
+                    kind: "suppression_health_config_error".to_string(),
+                    message: "suppression-health reports malformed durable exception metadata."
+                        .to_string(),
+                    source_artifact: artifact.path.clone(),
+                });
+            }
+            Axis {
+                state: state.to_string(),
+                evidence: vec![
+                    format!("suppression_health_status={status}"),
+                    format!("suppressions={suppressions}"),
+                    format!("missing_owner={missing_owner}"),
+                    format!("missing_reason={missing_reason}"),
+                    format!("stale={stale}"),
+                    format!("overbroad_scope={overbroad_scope}"),
+                    format!("unknown_selector={unknown_selector}"),
+                    format!("preview_without_preview_label={preview_without_preview_label}"),
+                    format!("warnings={warnings}"),
+                    format!("config_errors={config_errors}"),
+                ],
+                warnings: notices,
+                next_action: match state {
+                    "healthy" => "Keep suppressions visible with owner and reason.",
+                    "config_error" => {
+                        "Repair malformed suppression metadata before tightening policy."
+                    }
+                    _ => "Review suppression-health warnings before tightening policy.",
+                }
+                .to_string(),
+            }
+        }
+        ArtifactStatus::Invalid => Axis {
+            state: "config_error".to_string(),
+            evidence: Vec::new(),
+            warnings: artifact.notice.clone().into_iter().collect(),
+            next_action: "Repair the supplied suppression-health input.".to_string(),
+        },
+        ArtifactStatus::Missing => Axis {
+            state: "missing".to_string(),
+            evidence: Vec::new(),
+            warnings: Vec::new(),
+            next_action: "Add suppression-health input before tightening policy.".to_string(),
         },
     }
 }
@@ -981,6 +1078,15 @@ mod tests {
         }"#
     }
 
+    fn healthy_suppression_health_body() -> &'static str {
+        r#"{
+          "schema_version": "0.1",
+          "kind": "suppression_health",
+          "status": "healthy",
+          "summary": {"suppressions": 1, "missing_owner": 0, "missing_reason": 0, "stale": 0, "overbroad_scope": 0, "unknown_selector": 0, "preview_without_preview_label": 0, "warnings": 0, "config_errors": 0}
+        }"#
+    }
+
     #[test]
     fn missing_inputs_keep_report_advisory() -> Result<(), String> {
         let report = build_policy_readiness_report(input());
@@ -1084,7 +1190,7 @@ mod tests {
         input.waiver_aging_json = Some(Ok(r#"{"schema_version":"0.1"}"#.to_string()));
         input.suppression_health_path =
             Some("target/ripr/reports/suppression-health.json".to_string());
-        input.suppression_health_json = Some(Ok(r#"{"schema_version":"0.1"}"#.to_string()));
+        input.suppression_health_json = Some(Ok(healthy_suppression_health_body().to_string()));
 
         let report = build_policy_readiness_report(input);
 
@@ -1097,6 +1203,32 @@ mod tests {
             report.next_policy_action,
             "Use acknowledgement only with visible waiver and suppression evidence."
         );
+    }
+
+    #[test]
+    fn suppression_health_warning_blocks_acknowledgeable_readiness() {
+        let mut input = input();
+        supply_gate(&mut input, &gate_body("[]"));
+        input.waiver_aging_path = Some("target/ripr/reports/waiver-aging.json".to_string());
+        input.waiver_aging_json = Some(Ok(r#"{"schema_version":"0.1"}"#.to_string()));
+        input.suppression_health_path =
+            Some("target/ripr/reports/suppression-health.json".to_string());
+        input.suppression_health_json = Some(Ok(
+            r#"{
+              "schema_version": "0.1",
+              "kind": "suppression_health",
+              "status": "warning",
+              "summary": {"suppressions": 1, "missing_owner": 0, "missing_reason": 0, "stale": 1, "overbroad_scope": 0, "unknown_selector": 0, "preview_without_preview_label": 0, "warnings": 1, "config_errors": 0}
+            }"#
+            .to_string(),
+        ));
+
+        let report = build_policy_readiness_report(input);
+
+        assert_eq!(report.status, "ready_for_visible_only");
+        assert!(!report.summary.acknowledgeable_ready);
+        assert_eq!(report.suppression_health.state, "warning");
+        assert_eq!(report.warnings.len(), 1);
     }
 
     #[test]

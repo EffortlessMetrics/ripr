@@ -1736,6 +1736,14 @@ weakly_gripped = "off"
             reason: "x".to_string(),
             owner: "y".to_string(),
             expires: expires.map(str::to_string),
+            scope: None,
+            created_at: None,
+            last_seen: None,
+            review_by: None,
+            expected_visibility: None,
+            static_class: None,
+            language: None,
+            language_status: None,
             block_line: 10,
         }
     }
@@ -1749,6 +1757,14 @@ weakly_gripped = "off"
             reason: "x".to_string(),
             owner: "y".to_string(),
             expires: expires.map(str::to_string),
+            scope: None,
+            created_at: None,
+            last_seen: None,
+            review_by: None,
+            expected_visibility: None,
+            static_class: None,
+            language: None,
+            language_status: None,
             block_line: 20,
         }
     }

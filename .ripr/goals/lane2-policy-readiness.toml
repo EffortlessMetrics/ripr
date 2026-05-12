@@ -97,9 +97,21 @@ acceptance = "`ripr policy waiver-aging` writes advisory waiver-aging JSON and M
 
 [[work_item]]
 id = "policy/suppression-ledger-health"
-status = "planned"
+status = "done"
 branch = "policy-suppression-ledger-health"
 acceptance = "Flag missing owner, missing reason, stale suppression, overbroad scope, unknown selector, and preview-language suppression without preview label while keeping suppressed findings visible."
+commands = [
+  "cargo test -p ripr suppression_health",
+  "cargo test -p ripr suppressions",
+  "cargo test -p ripr policy_readiness",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
 
 [[work_item]]
 id = "policy/baseline-refresh-guardrails"

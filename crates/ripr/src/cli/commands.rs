@@ -137,6 +137,14 @@ struct PolicyWaiverAgingOptions {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+struct PolicySuppressionHealthOptions {
+    root: PathBuf,
+    manifest: PathBuf,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 struct PrEvidenceLedgerOptions {
     pr_number: String,
     base: String,
@@ -2718,13 +2726,17 @@ pub(super) fn policy(args: &[String]) -> Result<(), String> {
         return Ok(());
     }
     let Some((subcommand, rest)) = args.split_first() else {
-        return Err("policy requires subcommand `readiness` or `waiver-aging`".to_string());
+        return Err(
+            "policy requires subcommand `readiness`, `waiver-aging`, or `suppression-health`"
+                .to_string(),
+        );
     };
     match subcommand.as_str() {
         "readiness" => policy_readiness(rest),
         "waiver-aging" => policy_waiver_aging(rest),
+        "suppression-health" => policy_suppression_health(rest),
         _ => Err(format!(
-            "unknown policy subcommand {subcommand:?}; expected `readiness` or `waiver-aging`"
+            "unknown policy subcommand {subcommand:?}; expected `readiness`, `waiver-aging`, or `suppression-health`"
         )),
     }
 }
@@ -3116,6 +3128,29 @@ fn policy_waiver_aging(args: &[String]) -> Result<(), String> {
     println!(
         "Status: {}",
         output::waiver_aging::waiver_aging_status(&report)
+    );
+    Ok(())
+}
+
+fn policy_suppression_health(args: &[String]) -> Result<(), String> {
+    let options = parse_policy_suppression_health_options(args)?;
+    let input = output::suppression_health::SuppressionHealthInput {
+        root: output::suppression_health::display_path(&options.root),
+        generated_at: policy_readiness_generated_at()?,
+        today: output::suppressions::current_iso_date(),
+        manifest_path: output::suppression_health::display_path(&options.manifest),
+        manifest_text: read_optional_manifest_for_report(&options.root, &options.manifest),
+    };
+    let report = output::suppression_health::build_suppression_health_report(input);
+    let rendered_json = output::suppression_health::render_suppression_health_json(&report)?;
+    let rendered_md = output::suppression_health::render_suppression_health_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    println!(
+        "Status: {}",
+        output::suppression_health::suppression_health_status(&report)
     );
     Ok(())
 }
@@ -4505,6 +4540,50 @@ fn parse_policy_waiver_aging_options(args: &[String]) -> Result<PolicyWaiverAgin
     })
 }
 
+fn parse_policy_suppression_health_options(
+    args: &[String],
+) -> Result<PolicySuppressionHealthOptions, String> {
+    let mut root = PathBuf::from(".");
+    let mut manifest = PathBuf::from(output::suppressions::SUPPRESSIONS_PATH);
+    let mut out = PathBuf::from(output::suppression_health::DEFAULT_SUPPRESSION_HEALTH_OUT);
+    let mut out_md = PathBuf::from(output::suppression_health::DEFAULT_SUPPRESSION_HEALTH_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_path_arg(args, i, "--root", "policy suppression-health")?;
+            }
+            "--manifest" => {
+                i += 1;
+                manifest = non_empty_path_arg(args, i, "--manifest", "policy suppression-health")?;
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "policy suppression-health")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "policy suppression-health")?;
+            }
+            other => {
+                return Err(format!(
+                    "unknown policy suppression-health argument {other:?}"
+                ));
+            }
+        }
+        i += 1;
+    }
+
+    Ok(PolicySuppressionHealthOptions {
+        root,
+        manifest,
+        out,
+        out_md,
+    })
+}
+
 fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerOptions, String> {
     let mut pr_number = None;
     let mut base = None;
@@ -5497,6 +5576,25 @@ fn read_optional_text_for_report(label: &str, path: &Path) -> Result<String, Str
             output::baseline_delta::display_path(path)
         )
     })
+}
+
+fn read_optional_manifest_for_report(
+    root: &Path,
+    manifest: &Path,
+) -> Option<Result<String, String>> {
+    let read_path = if manifest.is_absolute() {
+        manifest.to_path_buf()
+    } else {
+        root.join(manifest)
+    };
+    match std::fs::read_to_string(&read_path) {
+        Ok(text) => Some(Ok(text)),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
+        Err(err) => Some(Err(format!(
+            "read suppression manifest {} failed: {err}",
+            output::suppression_health::display_path(&read_path)
+        ))),
+    }
 }
 
 fn non_empty_path_arg(
@@ -6770,12 +6868,15 @@ mod tests {
     fn policy_readiness_rejects_unknown_args() {
         assert_eq!(
             policy(&args(&[])),
-            Err("policy requires subcommand `readiness` or `waiver-aging`".to_string())
+            Err(
+                "policy requires subcommand `readiness`, `waiver-aging`, or `suppression-health`"
+                    .to_string()
+            )
         );
         assert_eq!(
             policy(&args(&["unknown"])),
             Err(
-                "unknown policy subcommand \"unknown\"; expected `readiness` or `waiver-aging`"
+                "unknown policy subcommand \"unknown\"; expected `readiness`, `waiver-aging`, or `suppression-health`"
                     .to_string()
             )
         );
@@ -6823,6 +6924,40 @@ mod tests {
         assert_eq!(
             parse_policy_waiver_aging_options(&args(&["--bad"])),
             Err("unknown policy waiver-aging argument \"--bad\"".to_string())
+        );
+    }
+
+    #[test]
+    fn policy_suppression_health_parses_option_surface() {
+        assert_eq!(
+            parse_policy_suppression_health_options(&args(&[
+                "--root",
+                ".",
+                "--manifest",
+                ".ripr/suppressions.toml",
+                "--out",
+                "target/ripr/reports/suppression-health.json",
+                "--out-md",
+                "target/ripr/reports/suppression-health.md",
+            ])),
+            Ok(PolicySuppressionHealthOptions {
+                root: PathBuf::from("."),
+                manifest: PathBuf::from(".ripr/suppressions.toml"),
+                out: PathBuf::from("target/ripr/reports/suppression-health.json"),
+                out_md: PathBuf::from("target/ripr/reports/suppression-health.md"),
+            })
+        );
+    }
+
+    #[test]
+    fn policy_suppression_health_rejects_unknown_args() {
+        assert_eq!(
+            parse_policy_suppression_health_options(&args(&["--manifest", ""])),
+            Err("policy suppression-health --manifest requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_policy_suppression_health_options(&args(&["--bad"])),
+            Err("unknown policy suppression-health argument \"--bad\"".to_string())
         );
     }
 
@@ -6941,6 +7076,86 @@ mod tests {
         assert!(md_text.contains("# RIPR Waiver Aging"));
         assert!(md_text.contains("Repeated waiver is not a failure."));
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove waiver dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn policy_suppression_health_command_writes_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("suppression-health");
+        let ripr_dir = dir.join(".ripr");
+        std::fs::create_dir_all(&ripr_dir)
+            .map_err(|err| format!("create suppression dir: {err}"))?;
+        let manifest = ripr_dir.join("suppressions.toml");
+        let out = dir.join("suppression-health.json");
+        let out_md = dir.join("suppression-health.md");
+        std::fs::write(
+            &manifest,
+            r#"schema_version = 1
+
+[[suppressions]]
+kind = "exposure_gap"
+finding_id = "probe:src/pricing.rs:88:predicate"
+owner = "billing"
+reason = "accepted durable policy exception"
+scope = "seam:pricing::threshold"
+created_at = "2026-01-01"
+last_seen = "2026-05-01"
+review_by = "2026-12-01"
+expected_visibility = "suppressed_visible"
+static_class = "weakly_exposed"
+language = "rust"
+"#,
+        )
+        .map_err(|err| format!("write suppression manifest: {err}"))?;
+
+        policy(&args(&[
+            "suppression-health",
+            "--root",
+            &dir.display().to_string(),
+            "--manifest",
+            ".ripr/suppressions.toml",
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text = std::fs::read_to_string(&out)
+            .map_err(|err| format!("read suppression health json: {err}"))?;
+        let md_text = std::fs::read_to_string(&out_md)
+            .map_err(|err| format!("read suppression health md: {err}"))?;
+        assert!(json_text.contains("\"kind\": \"suppression_health\""));
+        assert!(json_text.contains("\"status\": \"healthy\""));
+        assert!(json_text.contains("\"still_visible\": true"));
+        assert!(md_text.contains("# RIPR Suppression Health"));
+        assert!(md_text.contains("Suppressed findings remain visible"));
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove suppression dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn policy_suppression_health_command_treats_missing_manifest_as_no_suppressions()
+    -> Result<(), String> {
+        let dir = unique_command_test_dir("suppression-health-missing");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create suppression dir: {err}"))?;
+        let out = dir.join("suppression-health.json");
+        let out_md = dir.join("suppression-health.md");
+
+        policy(&args(&[
+            "suppression-health",
+            "--root",
+            &dir.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text = std::fs::read_to_string(&out)
+            .map_err(|err| format!("read suppression health json: {err}"))?;
+        assert!(json_text.contains("\"status\": \"no_suppressions\""));
+        assert!(json_text.contains("\"suppressions\": 0"));
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove suppression dir: {err}"))?;
         Ok(())
     }
 

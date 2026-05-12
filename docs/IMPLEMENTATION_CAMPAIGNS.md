@@ -3073,7 +3073,7 @@ Work items:
 | `spec/preview-evidence-policy-boundary` | done | RIPR-SPEC-0030 specifies that TypeScript and Python preview evidence is visible/advisory by default, carries preview/static-limit labels, and is not gate, RIPR Zero, default baseline-check, or mutation-calibrated confidence eligible without later explicit promotion. |
 | `report/policy-readiness` | done | `ripr policy readiness` writes policy-readiness JSON and Markdown over explicit existing artifacts only, with independent readiness axes and preview-evidence zero-count boundaries, without posting, source edits, hidden analysis, baseline mutation, gate execution, or CI failure authority. |
 | `report/waiver-aging` | done | `ripr policy waiver-aging` writes advisory waiver-aging JSON and Markdown from current PR evidence ledgers plus optional JSONL history, keeping repeated waiver visible as a repair or policy-review signal without pass/fail authority. |
-| `policy/suppression-ledger-health` | planned | Flag missing owner, missing reason, stale suppression, overbroad scope, unknown selector, and preview-language suppression without preview label while keeping suppressed findings visible. |
+| `policy/suppression-ledger-health` | done | `ripr policy suppression-health` writes advisory suppression-health JSON and Markdown over `.ripr/suppressions.toml`, flags missing owner, missing reason, stale review windows, overbroad scope, unknown selectors, and preview-language suppressions without `language_status = "preview"`, and keeps suppressed findings visible with `still_visible = true`. |
 | `policy/baseline-refresh-guardrails` | planned | Document and enforce that shrink-only refresh can remove resolved debt, adopting new debt is explicit/manual if it exists, and CI never auto-adopts new baseline entries. |
 | `policy/exception-ledger-convergence` | planned | Align no-panic, Clippy, non-Rust, workflow, RIPR suppression, baseline, and waiver ledgers around one reviewed reason per exception, semantic identity where available, and stale-entry behavior by class. |
 | `docs/blocking-readiness-guide` | planned | Extend the blocking-readiness decision tree so advisory, acknowledgeable, baseline-check, and calibrated-gate promotion depends on calibration, baseline, waiver, suppression, and preview-evidence health. |
@@ -3086,6 +3086,7 @@ References:
 - [RIPR-SPEC-0029: Policy readiness report](specs/RIPR-SPEC-0029-policy-readiness-report.md)
 - [RIPR-SPEC-0030: Preview evidence policy boundary](specs/RIPR-SPEC-0030-preview-evidence-policy-boundary.md)
 - [Output schema: Policy readiness report](OUTPUT_SCHEMA.md#policy-readiness-report)
+- [Output schema: Suppression health report](OUTPUT_SCHEMA.md#suppression-health-report)
 - [Focused Lane 2 tracker manifest](../.ripr/goals/lane2-policy-readiness.toml)
 - [Language Adapter Preview](#campaign-27-language-adapter-preview)
 - [Calibrated gate policy](CALIBRATED_GATE_POLICY.md)

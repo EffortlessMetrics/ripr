@@ -494,7 +494,9 @@ This spec is the contract for the focused Lane 2 tracker:
 - `spec/policy-readiness-report` defines this report contract.
 - `report/policy-readiness` implements the read-only JSON/Markdown producer.
 - `report/waiver-aging` supplies the waiver-health input.
-- `policy/suppression-ledger-health` supplies the suppression-health input.
+- `policy/suppression-ledger-health` supplies the suppression-health input and
+  keeps warning/config-error suppression ledgers from qualifying
+  acknowledgeable readiness.
 - `policy/baseline-refresh-guardrails` defines the no-auto-adopt-new baseline
   rule used by `baseline_health`.
 - `policy/exception-ledger-convergence` aligns exception ledger semantics used
