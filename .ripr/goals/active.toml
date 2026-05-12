@@ -141,13 +141,13 @@ commands = [
 
 [[work_item]]
 id = "analysis/typescript-preview-adapter"
-status = "active"
+status = "done"
 branch = "analysis-typescript-preview-facts"
 stackable = false
 blocked_by = [
   "config/languages-opt-in",
 ]
-acceptance = "Add the TypeScript/JavaScript syntax-first adapter, the TypeScript fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Scaffold sub-slice landed the oxc_parser dependency, TypeScriptAdapter routing, language-aware pipeline dispatch through `[languages] enabled`, and a real production parse-validation use of oxc_parser. Owner+test sub-slice adds top-level function-declaration + test()/it() extraction, related-test matching by name reference, a minimal WeaklyExposed/NoStaticPath classifier, and `fixtures/typescript_boundary_gap/`. Remaining sub-slices tracked as issues: #767 (assertion shapes), #768 (probe shapes), #769 (static limits)."
+acceptance = "Add the TypeScript/JavaScript syntax-first adapter, the TypeScript fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Scaffold sub-slice landed the oxc_parser dependency, TypeScriptAdapter routing, language-aware pipeline dispatch through `[languages] enabled`, and a real production parse-validation use of oxc_parser. Owner+test sub-slice (#777) landed top-level function-declaration + test()/it() extraction, related-test matching by name reference, a minimal WeaklyExposed/NoStaticPath classifier, and `fixtures/typescript_boundary_gap/`. Assertion-shape extraction (#781 closes #767) refined the gradient to Exposed/WeaklyExposed/NoStaticPath via toBe/toEqual/toThrow + async resolves/rejects. Probe-shape classification (#784 closes #768) replaced the placeholder Predicate/Control default with syntax-first ProbeFamily/DeltaKind classification per changed line, with `fixtures/typescript_return_value_shape/`. Mocked-module static-limit reporting (#791 closes #769) surfaces vi.mock(...)/jest.mock(...) via evidence/missing text without downgrading classification, with `fixtures/typescript_mocked_module_limit/`. Together these slices establish the first useful TypeScript preview loop end-to-end. Remaining preview polish — structured static_limit_kind field, additional limit kinds (dynamic_dispatch / unsupported_syntax / metaprogramming / etc.), arrow-function const owners, class methods — is intentionally deferred to follow-up issues and is not on the Campaign 27 critical path."
 commands = [
   "cargo check -p ripr",
   "cargo test -p ripr --lib analysis::language",
@@ -162,14 +162,33 @@ commands = [
 ]
 
 [[work_item]]
+id = "adr/python-parser-substrate"
+status = "active"
+branch = "adr-python-parser-substrate"
+stackable = false
+blocked_by = [
+  "analysis/typescript-preview-adapter",
+]
+acceptance = "Pin the Python parser-substrate decision before any Cargo dependency or adapter code lands, mirroring how ADR 0008 (oxc_parser) was sequenced ahead of the TypeScript scaffold. Adds docs/adr/0009-python-parser-substrate.md, registers it in docs/adr/README.md, and adds the approved-decision comment for ruff_python_parser to policy/dependency_allowlist.txt. No Cargo dependency, no adapter code, no behavior change. Tracked as #770."
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-dependencies",
+  "cargo xtask check-campaign",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
 id = "analysis/python-preview-adapter"
 status = "blocked"
 branch = "analysis-python-preview-adapter"
 stackable = false
 blocked_by = [
   "config/languages-opt-in",
+  "adr/python-parser-substrate",
 ]
-acceptance = "Add the Python syntax-first adapter, the Python fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults"
+acceptance = "Add the Python syntax-first adapter, the Python fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Mirrors the TypeScript scaffold pattern: add the ruff_python_parser Cargo dependency approved by ADR 0009, add PythonAdapter wiring, route .py through the language router, and parse changed .py files when [languages] includes python. Empty findings until later sub-slices extract owners, tests, and assertions."
 
 [[work_item]]
 id = "lsp/editor-language-routing"
