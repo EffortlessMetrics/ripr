@@ -229,6 +229,15 @@ Maintenance audit evidence from 2026-05-12:
   tests with the same post-success `path` warning exiting 0. `cargo xtask goals
   next` still reported no ready work items, so `lsp/editor-language-routing`
   remained blocked.
+- after #826 merged the Lane 3 VS Code command-copy smoke stabilization,
+  current `main` (`fe8714f`) keeps the extension Rust-only while the live e2e
+  command-copy assertions use a test-only clipboard capture file to avoid
+  relying on the VS Code test host clipboard read path. The PR required checks
+  passed, `npm --prefix editors/vscode run compile` passed,
+  `npm --prefix editors/vscode run test:e2e` passed 30 live VS Code smoke
+  tests after the review fix, and `cargo xtask check-pr` passed on merged
+  `main`. `cargo xtask goals next` still reports no ready work items, so
+  `lsp/editor-language-routing` remains blocked.
 
 Objective audit status from 2026-05-12: not complete, blocked upstream.
 
