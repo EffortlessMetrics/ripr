@@ -190,8 +190,9 @@ Maintenance audit evidence from 2026-05-12:
   passing saved-workspace cockpit report, `npm --prefix editors/vscode run
   compile` passed, and `npm --prefix editors/vscode run test:e2e` passed 30
   live VS Code extension smoke tests;
-- after #809 merged the preview-routing path, the saved-workspace Rust editor
-  cockpit was rechecked on current `main`: `cargo test -p ripr lsp --lib`
+- after #809 merged the docs-only preview-routing path, the saved-workspace
+  Rust editor cockpit was rechecked on current `main`:
+  `cargo test -p ripr lsp --lib`
   passed 123 tests, `cargo xtask lsp-cockpit-report` produced a passing report,
   `npm --prefix editors/vscode run compile` passed, and
   `npm --prefix editors/vscode run test:e2e` passed 30 live VS Code extension
