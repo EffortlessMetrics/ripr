@@ -49,17 +49,23 @@ The TypeScript preview adapter:
 - finds the `applyDiscount` owner in `src/discount.ts`,
 - finds the `test('...')` call in `tests/discount.test.ts` that
   references `applyDiscount(`,
+- runs the assertion-shape walker (#767) but extracts no
+  `expect(...).matcher(...)` chain — the tests use raw control flow
+  (`if (result !== ...) throw`) instead — so the strongest oracle is
+  `unknown`,
 - classifies the changed predicate line as `weakly_exposed` because a
-  related test exists but assertion-shape extraction (issue #767) has
-  not yet refined the oracle.
+  related test reaches the owner but no strong discriminator is
+  observable.
 
 The finding carries `language = "typescript"` and
 `language_status = "preview"` per RIPR-SPEC-0026.
 
-This is the owner+test sub-slice baseline. Assertion-shape extraction
-(#767), probe-shape facts (#768), and explicit static-limit reporting
-(#769) will refine subsequent goldens; this fixture's current goldens
-should be re-blessed when those slices land.
+This is the weak-oracle baseline. The companion fixture
+`typescript_strong_oracle` pins the `exposed` end of the same
+gradient by adding an `expect(...).toBe(...)` assertion. Probe-shape
+facts (#768) and explicit static-limit reporting (#769) will refine
+subsequent goldens; this fixture's current goldens should be re-blessed
+when those slices land.
 
 ## Must Not
 
