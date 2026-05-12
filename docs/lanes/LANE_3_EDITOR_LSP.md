@@ -122,7 +122,12 @@ Current dependency state:
   `isRustFileDocument`;
 - issue #771 now records the Python-to-editor handoff contract: Python preview
   artifacts need `language = "python"`, `language_status = "preview"`, and
-  projectable static limits before Lane 3 can safely add Python selectors.
+  projectable static limits before Lane 3 can safely add Python selectors;
+- issue #807 tracks the optional structured `static_limit_kind` field. Lane 3
+  should prefer that field for future hover/status projection when it exists,
+  but must still show explicit static-limit text before suggested action
+  language if a preview adapter has not promoted its limit evidence to the
+  structured field yet.
 
 Before starting `lsp/editor-language-routing`, refresh this audit instead of
 inferring readiness from campaign momentum:
@@ -133,6 +138,9 @@ inferring readiness from campaign momentum:
   `lsp/editor-language-routing` as ready;
 - TypeScript and Python preview outputs must visibly carry preview language
   metadata and explicit static limits in artifacts the editor can project;
+- if `static_limit_kind` (#807) has landed by then, hover/status should consume
+  it; otherwise the routing slice must inspect the preview artifacts and prove
+  the text static-limit evidence is stable enough to project;
 - the TypeScript gaps tracked by #779, #780, #782, #785, and #786 must be closed
   or superseded by inspected artifacts with equivalent coverage;
 - `editors/vscode/package.json` and `editors/vscode/src/client.ts` should remain
@@ -173,6 +181,12 @@ Maintenance audit evidence from 2026-05-12:
   passing saved-workspace cockpit report, `npm --prefix editors/vscode run
   compile` passed, and `npm --prefix editors/vscode run test:e2e` passed 30
   live VS Code extension smoke tests;
+- after #809 merged the preview-routing path, the saved-workspace Rust editor
+  cockpit was rechecked on current `main`: `cargo test -p ripr lsp --lib`
+  passed 123 tests, `cargo xtask lsp-cockpit-report` produced a passing report,
+  `npm --prefix editors/vscode run compile` passed, and
+  `npm --prefix editors/vscode run test:e2e` passed 30 live VS Code extension
+  smoke tests;
 - the current #787 merge-result tree changes only the classifier refactor files;
   a detached merge-result check passed `cargo test -p ripr lsp --lib` with 123
   tests and `cargo xtask lsp-cockpit-report`, so that stale refactor branch has
@@ -200,17 +214,84 @@ Objective audit status from 2026-05-12: not complete, blocked upstream.
 | Preview diagnostics, hover, status, and actions visibly label preview evidence and static limits | Future `lsp/editor-language-routing` artifacts and editor workflow fixtures | Not started; blocked by adapter outputs |
 | No editor hidden analysis reruns, source edits, generated tests, provider calls, mutation execution, gate semantics, default blocking, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays | Lane 3 Scope, Non-Goals, and Cross-Lane Rules in this tracker | Current tracker preserves the boundary; future routing must re-audit it |
 
-## Next Slices
+## Preview Routing Path
 
-Lane 3 is in maintenance for the saved-workspace editor cockpit. Open a new
-slice only when it is explicitly selected as editor/LSP projection work.
-Likely future slices are incremental hardening, not campaign catch-up:
+Lane 3 stays in maintenance until `lsp/editor-language-routing` is unblocked.
+The lane's useful end state is not "more editor UI"; it is the existing Rust
+saved-workspace cockpit plus opt-in preview-language projection that makes
+syntax-first limits impossible to miss.
 
-1. `lsp/editor-language-routing` after TypeScript editor-readiness and the
-   Python preview adapter land;
-2. status, command, hover, or fixture updates required by a selected editor
-   behavior change;
-3. user-facing editor docs updates when a later behavior change requires them.
+User-facing target:
+
+```text
+Rust stable cockpit remains boringly reliable
+-> TypeScript/Python preview evidence becomes opt-in
+-> editor projection makes preview limits obvious
+-> users can act without over-trusting syntax-first evidence
+```
+
+Planned PR path:
+
+1. `analysis: close TypeScript editor readiness`
+   - Not owned by Lane 3, but Lane 3 should review it as a hard dependency.
+   - Must resolve or explicitly supersede #779, #780, #782, #785, and #786.
+   - No VS Code selector or LSP routing changes belong in this work.
+2. `analysis: complete Python preview adapter`
+   - Not owned by Lane 3, but Lane 3 should review editor-projectability.
+   - Python output must carry `language = "python"`,
+     `language_status = "preview"`, owner facts, test facts, assertion facts,
+     probe facts, related-test facts, static limits, and fixture/golden
+     coverage.
+   - No editor selector work belongs in this work.
+3. `test(lsp): preserve Rust routing contract`
+   - Pin `[languages]` absent, `["rust"]`, `[]`, and invalid-config behavior
+     before adding preview selectors.
+   - Rust diagnostics, hover, actions, and status must remain unchanged by
+     default.
+4. `lsp(language): add editor language routing`
+   - Extend VS Code activation and selectors for `typescript`,
+     `typescriptreact`, `javascript`, `javascriptreact`, and `python`.
+   - Route saved-workspace diagnostics only when repo config enables that
+     language.
+   - Preserve wrong-root, stale, and malformed fail-closed behavior.
+5. `lsp(language): surface preview labels and static limits`
+   - Show language, preview status, static-limit kind/explanation, and the
+     advisory boundary in hover/status before suggested action language.
+   - Keep the same cockpit action model; do not invent preview-only action
+     semantics.
+6. `fixtures: add preview editor workflow fixtures`
+   - Add explicit `rust_default`, `typescript_preview`, `python_preview`,
+     `mixed_language_opt_in`, and `preview_disabled` editor fixtures.
+   - Pin diagnostics, hover, code actions, status, and static-limit artifacts.
+7. `test(vscode): smoke preview saved-workspace routing`
+   - Prove the packaged extension path for Rust default behavior, opt-in
+     TypeScript/Python preview diagnostics, hover preview/static-limit text,
+     bounded actions, status, and disabled-preview no-diagnostic behavior.
+8. `docs(editor): document preview language workflow`
+   - Document Rust as stable/default and TypeScript/Python as opt-in preview.
+   - Explain syntax-first evidence, static limits, advisory-only diagnostics,
+     and the source-edit-free command loop.
+9. `campaign(lane3): close editor preview routing`
+   - Close only after Rust defaults are unchanged, preview routing is opt-in and
+     fixture-pinned, preview labels/static limits are visible, VS Code e2e and
+     `lsp-cockpit-report` prove the path, and docs cover the preview limits.
+
+Hard boundaries for every slice:
+
+- saved-workspace only;
+- projection-only;
+- Rust default unchanged;
+- preview languages opt-in only;
+- preview findings labeled preview;
+- static limits visible before suggested action language;
+- wrong-root, stale, and malformed artifacts fail closed;
+- no source edits;
+- no generated tests;
+- no provider calls;
+- no mutation execution;
+- no policy, gate, or default-blocking behavior;
+- no CodeLens, inlay hint, semantic token, or unsaved-buffer overlay work unless
+  a later editor campaign explicitly opens that scope.
 
 ## Validation Gates
 
