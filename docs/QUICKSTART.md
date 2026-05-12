@@ -59,7 +59,7 @@ reviewing Rust.
    - `Verify after test: copy after-snapshot command`
    - `Verify after test: copy verify command`
    - `Review result: copy receipt command`
-   - `Refresh analysis: rerun saved-workspace check`
+   - `Refresh Analysis - Saved Workspace Check`
 
 Normal editor install should not require `cargo install ripr`. The extension
 resolves the server from `ripr.server.path`, bundled or cached assets, verified
@@ -233,7 +233,7 @@ See [LLM operator guide](LLM_OPERATOR_GUIDE.md).
 | --- | --- |
 | VS Code shows no RIPR state, or shows "no focused test gap found." | Run `ripr: Show Status`, then `ripr: Show Output`. Confirm a Rust/Cargo workspace is open and saved. The internal status ID for the empty case is `no-actionable-seam`. |
 | VS Code cannot start the server. | Check `ripr.server.path`, `ripr.server.autoDownload`, network access to GitHub Releases, and PATH fallback. |
-| Diagnostics look stale. | Save the workspace file or run `Refresh analysis: rerun saved-workspace check`. |
+| Diagnostics look stale. | Save the workspace file or run `Refresh Analysis - Saved Workspace Check`. |
 | CI has no top recommendation. | Open the `RIPR advisory summary`, then inspect `target/ripr/pilot/pilot-summary.md` in the uploaded artifact. |
 | CI did not upload SARIF. | Confirm `RIPR_UPLOAD_SARIF` is `"true"` and that GitHub code scanning permissions are available. |
 | Agent status says artifacts are missing. | Run the `next_command` printed by `ripr agent status`. |

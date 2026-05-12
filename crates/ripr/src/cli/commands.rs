@@ -1413,6 +1413,67 @@ jobs:
           fi
           ripr "${ledger_args[@]}"
 
+      - name: Render RIPR waiver aging
+        if: always() && hashFiles('target/ripr/reports/pr-evidence-ledger.json') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          waiver_args=(
+            policy waiver-aging
+            --root .
+            --ledger target/ripr/reports/pr-evidence-ledger.json
+            --out target/ripr/reports/waiver-aging.json
+            --out-md target/ripr/reports/waiver-aging.md
+          )
+          if [ -f .ripr/pr-evidence-ledger.jsonl ]; then
+            waiver_args+=(--history .ripr/pr-evidence-ledger.jsonl)
+          fi
+          ripr "${waiver_args[@]}"
+
+      - name: Render RIPR suppression health
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          suppression_args=(
+            policy suppression-health
+            --root .
+            --out target/ripr/reports/suppression-health.json
+            --out-md target/ripr/reports/suppression-health.md
+          )
+          ripr "${suppression_args[@]}"
+
+      - name: Render RIPR policy readiness
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          policy_args=(
+            policy readiness
+            --root .
+            --out target/ripr/reports/policy-readiness.json
+            --out-md target/ripr/reports/policy-readiness.md
+          )
+          if [ -f target/ripr/reports/gate-decision.json ]; then
+            policy_args+=(--gate-decision target/ripr/reports/gate-decision.json)
+          fi
+          if [ -f target/ripr/reports/baseline-debt-delta.json ]; then
+            policy_args+=(--baseline-delta target/ripr/reports/baseline-debt-delta.json)
+          fi
+          if [ -f target/ripr/reports/recommendation-calibration.json ]; then
+            policy_args+=(--recommendation-calibration target/ripr/reports/recommendation-calibration.json)
+          fi
+          if [ -f target/ripr/reports/mutation-calibration.json ]; then
+            policy_args+=(--mutation-calibration target/ripr/reports/mutation-calibration.json)
+          fi
+          if [ -f target/ripr/reports/waiver-aging.json ]; then
+            policy_args+=(--waiver-aging target/ripr/reports/waiver-aging.json)
+          fi
+          if [ -f target/ripr/reports/suppression-health.json ]; then
+            policy_args+=(--suppression-health target/ripr/reports/suppression-health.json)
+          fi
+          ripr "${policy_args[@]}"
+
       - name: Render RIPR test-oracle assistant proof
         if: always() && hashFiles('target/ripr/review/comments.json') != '' && hashFiles('target/ripr/workflow/agent-brief.json') != '' && hashFiles('target/ripr/workflow/before.repo-exposure.json') != '' && hashFiles('target/ripr/workflow/after.repo-exposure.json') != '' && hashFiles('target/ripr/reports/agent-receipt.json') != '' && hashFiles('target/ripr/reports/pr-evidence-ledger.json') != ''
         continue-on-error: true
@@ -1580,6 +1641,9 @@ jobs:
             target/ripr/reports/test-oracle-assistant-proof.md \
             target/ripr/reports/assistant-loop-health.md \
             target/ripr/reports/pr-evidence-ledger.md \
+            target/ripr/reports/waiver-aging.md \
+            target/ripr/reports/suppression-health.md \
+            target/ripr/reports/policy-readiness.md \
             target/ripr/reports/baseline-debt-delta.md \
             target/ripr/reports/ripr-zero-status.md \
             target/ripr/reports/gate-decision.md \
@@ -2017,6 +2081,122 @@ jobs:
               fi
               echo
             fi
+            echo '### Policy readiness'
+            if [ -f target/ripr/reports/policy-readiness.json ]; then
+              readiness_json=target/ripr/reports/policy-readiness.json
+              readiness_status="$(jq -r '.status // "unknown"' "$readiness_json" 2>/dev/null || echo unknown)"
+              readiness_mode="$(jq -r '.recommended_mode // "unknown"' "$readiness_json" 2>/dev/null || echo unknown)"
+              blocking_status="$(jq -r '.blocking_readiness.state // "unknown"' "$readiness_json" 2>/dev/null || echo unknown)"
+              baseline_status="$(jq -r '.baseline_health.state // "unknown"' "$readiness_json" 2>/dev/null || echo unknown)"
+              waiver_status="$(jq -r '.waiver_health.state // "unknown"' "$readiness_json" 2>/dev/null || echo unknown)"
+              suppression_status="$(jq -r '.suppression_health.state // "unknown"' "$readiness_json" 2>/dev/null || echo unknown)"
+              calibration_status="$(jq -r '.calibration_health.state // "unknown"' "$readiness_json" 2>/dev/null || echo unknown)"
+              preview_status="$(jq -r '.preview_evidence_boundary.state // "unknown"' "$readiness_json" 2>/dev/null || echo unknown)"
+              readiness_warnings="$(jq -r '(.warnings // [] | length)' "$readiness_json" 2>/dev/null || echo 0)"
+              readiness_unknowns="$(jq -r '(.unknowns // [] | length)' "$readiness_json" 2>/dev/null || echo 0)"
+              next_policy_action="$(jq -r '.next_policy_action // "not_available"' "$readiness_json" 2>/dev/null || echo unknown)"
+              readiness_status="$(markdown_inline "$readiness_status")"
+              readiness_mode="$(markdown_inline "$readiness_mode")"
+              blocking_status="$(markdown_inline "$blocking_status")"
+              baseline_status="$(markdown_inline "$baseline_status")"
+              waiver_status="$(markdown_inline "$waiver_status")"
+              suppression_status="$(markdown_inline "$suppression_status")"
+              calibration_status="$(markdown_inline "$calibration_status")"
+              preview_status="$(markdown_inline "$preview_status")"
+              readiness_warnings="$(markdown_inline "$readiness_warnings")"
+              readiness_unknowns="$(markdown_inline "$readiness_unknowns")"
+              next_policy_action="$(markdown_inline "$next_policy_action")"
+              echo '#### Policy readiness at a glance'
+              echo "- Status: \`$readiness_status\`"
+              echo "- Recommended mode: \`$readiness_mode\`"
+              echo "- Axes: blocking=\`$blocking_status\`, baseline=\`$baseline_status\`, waiver=\`$waiver_status\`, suppression=\`$suppression_status\`, calibration=\`$calibration_status\`, preview=\`$preview_status\`"
+              echo "- Warnings: \`$readiness_warnings\`; unknowns: \`$readiness_unknowns\`"
+              echo "- Next policy action: \`$next_policy_action\`"
+              echo "- Policy readiness artifacts: \`target/ripr/reports/policy-readiness.json\`, \`target/ripr/reports/policy-readiness.md\`"
+              echo "- Boundary: advisory readiness projection only; \`ripr gate evaluate\` remains pass/fail authority when configured."
+              echo
+            fi
+            if [ -f target/ripr/reports/policy-readiness.md ]; then
+              cat target/ripr/reports/policy-readiness.md
+            else
+              echo 'Policy readiness was not generated. It is advisory and requires existing policy artifacts to be useful.'
+            fi
+            echo
+            echo '### Waiver aging'
+            if [ -f target/ripr/reports/waiver-aging.json ]; then
+              waiver_json=target/ripr/reports/waiver-aging.json
+              waiver_status="$(jq -r '.status // "unknown"' "$waiver_json" 2>/dev/null || echo unknown)"
+              waiver_count="$(jq -r '.summary.waiver_count // 0' "$waiver_json" 2>/dev/null || echo 0)"
+              waiver_identities="$(jq -r '.summary.identity_count // 0' "$waiver_json" 2>/dev/null || echo 0)"
+              waiver_repeated_seams="$(jq -r '.summary.repeated_seam_count // 0' "$waiver_json" 2>/dev/null || echo 0)"
+              waiver_repeated_files="$(jq -r '.summary.repeated_file_count // 0' "$waiver_json" 2>/dev/null || echo 0)"
+              waiver_focused_candidates="$(jq -r '.summary.focused_test_candidates // 0' "$waiver_json" 2>/dev/null || echo 0)"
+              waiver_suppression_candidates="$(jq -r '.summary.durable_suppression_candidates // 0' "$waiver_json" 2>/dev/null || echo 0)"
+              waiver_warnings="$(jq -r '.summary.warnings // 0' "$waiver_json" 2>/dev/null || echo 0)"
+              waiver_status="$(markdown_inline "$waiver_status")"
+              waiver_count="$(markdown_inline "$waiver_count")"
+              waiver_identities="$(markdown_inline "$waiver_identities")"
+              waiver_repeated_seams="$(markdown_inline "$waiver_repeated_seams")"
+              waiver_repeated_files="$(markdown_inline "$waiver_repeated_files")"
+              waiver_focused_candidates="$(markdown_inline "$waiver_focused_candidates")"
+              waiver_suppression_candidates="$(markdown_inline "$waiver_suppression_candidates")"
+              waiver_warnings="$(markdown_inline "$waiver_warnings")"
+              echo '#### Waiver aging at a glance'
+              echo "- Status: \`$waiver_status\`"
+              echo "- Counts: waivers=\`$waiver_count\`, identities=\`$waiver_identities\`, repeated_seams=\`$waiver_repeated_seams\`, repeated_files=\`$waiver_repeated_files\`"
+              echo "- Review signals: focused_test_candidates=\`$waiver_focused_candidates\`, durable_suppression_candidates=\`$waiver_suppression_candidates\`, warnings=\`$waiver_warnings\`"
+              echo "- Waiver-aging artifacts: \`target/ripr/reports/waiver-aging.json\`, \`target/ripr/reports/waiver-aging.md\`"
+              echo "- Boundary: repeated waiver is a visible signal, not a failure or durable suppression."
+              echo
+            fi
+            if [ -f target/ripr/reports/waiver-aging.md ]; then
+              cat target/ripr/reports/waiver-aging.md
+            elif [ -f target/ripr/reports/pr-evidence-ledger.json ]; then
+              echo 'Waiver aging was not generated. Inspect `target/ripr/reports/pr-evidence-ledger.json` and rerun `ripr policy waiver-aging` locally.'
+            else
+              echo 'Waiver aging was not run. It requires a PR evidence ledger.'
+            fi
+            echo
+            echo '### Suppression health'
+            if [ -f target/ripr/reports/suppression-health.json ]; then
+              suppression_json=target/ripr/reports/suppression-health.json
+              suppression_status="$(jq -r '.status // "unknown"' "$suppression_json" 2>/dev/null || echo unknown)"
+              suppression_total="$(jq -r '.summary.suppressions // 0' "$suppression_json" 2>/dev/null || echo 0)"
+              suppression_healthy="$(jq -r '.summary.healthy // 0' "$suppression_json" 2>/dev/null || echo 0)"
+              suppression_missing_owner="$(jq -r '.summary.missing_owner // 0' "$suppression_json" 2>/dev/null || echo 0)"
+              suppression_missing_reason="$(jq -r '.summary.missing_reason // 0' "$suppression_json" 2>/dev/null || echo 0)"
+              suppression_stale="$(jq -r '.summary.stale // 0' "$suppression_json" 2>/dev/null || echo 0)"
+              suppression_overbroad="$(jq -r '.summary.overbroad_scope // 0' "$suppression_json" 2>/dev/null || echo 0)"
+              suppression_unknown_selector="$(jq -r '.summary.unknown_selector // 0' "$suppression_json" 2>/dev/null || echo 0)"
+              suppression_preview_gap="$(jq -r '.summary.preview_without_preview_label // 0' "$suppression_json" 2>/dev/null || echo 0)"
+              suppression_warnings="$(jq -r '.summary.warnings // 0' "$suppression_json" 2>/dev/null || echo 0)"
+              suppression_config_errors="$(jq -r '.summary.config_errors // 0' "$suppression_json" 2>/dev/null || echo 0)"
+              suppression_status="$(markdown_inline "$suppression_status")"
+              suppression_total="$(markdown_inline "$suppression_total")"
+              suppression_healthy="$(markdown_inline "$suppression_healthy")"
+              suppression_missing_owner="$(markdown_inline "$suppression_missing_owner")"
+              suppression_missing_reason="$(markdown_inline "$suppression_missing_reason")"
+              suppression_stale="$(markdown_inline "$suppression_stale")"
+              suppression_overbroad="$(markdown_inline "$suppression_overbroad")"
+              suppression_unknown_selector="$(markdown_inline "$suppression_unknown_selector")"
+              suppression_preview_gap="$(markdown_inline "$suppression_preview_gap")"
+              suppression_warnings="$(markdown_inline "$suppression_warnings")"
+              suppression_config_errors="$(markdown_inline "$suppression_config_errors")"
+              echo '#### Suppression health at a glance'
+              echo "- Status: \`$suppression_status\`"
+              echo "- Counts: suppressions=\`$suppression_total\`, healthy=\`$suppression_healthy\`, missing_owner=\`$suppression_missing_owner\`, missing_reason=\`$suppression_missing_reason\`"
+              echo "- Review signals: stale=\`$suppression_stale\`, overbroad_scope=\`$suppression_overbroad\`, unknown_selector=\`$suppression_unknown_selector\`, preview_without_preview_label=\`$suppression_preview_gap\`"
+              echo "- Warnings: \`$suppression_warnings\`; config_errors: \`$suppression_config_errors\`"
+              echo "- Suppression-health artifacts: \`target/ripr/reports/suppression-health.json\`, \`target/ripr/reports/suppression-health.md\`"
+              echo "- Boundary: suppressions remain visible durable exceptions; this report never applies or gates on suppressions."
+              echo
+            fi
+            if [ -f target/ripr/reports/suppression-health.md ]; then
+              cat target/ripr/reports/suppression-health.md
+            else
+              echo 'Suppression health was not generated. It is advisory and reads the durable suppression manifest when present.'
+            fi
+            echo
             echo '### Gate decision'
             if [ -f target/ripr/reports/gate-decision.json ]; then
               gate_json=target/ripr/reports/gate-decision.json
@@ -6007,6 +6187,9 @@ mod tests {
                 "ripr baseline diff",
                 "zero status",
                 "pr-ledger record",
+                "policy waiver-aging",
+                "policy suppression-health",
+                "policy readiness",
                 "assistant-loop proof",
                 "assistant-loop health",
                 "first-action",
@@ -6046,6 +6229,12 @@ mod tests {
                 "target/ripr/reports/ripr-zero-status.md",
                 "target/ripr/reports/pr-evidence-ledger.json",
                 "target/ripr/reports/pr-evidence-ledger.md",
+                "target/ripr/reports/waiver-aging.json",
+                "target/ripr/reports/waiver-aging.md",
+                "target/ripr/reports/suppression-health.json",
+                "target/ripr/reports/suppression-health.md",
+                "target/ripr/reports/policy-readiness.json",
+                "target/ripr/reports/policy-readiness.md",
                 "target/ripr/reports/test-oracle-assistant-proof.json",
                 "target/ripr/reports/test-oracle-assistant-proof.md",
                 "target/ripr/reports/assistant-loop-health.json",
@@ -6081,6 +6270,12 @@ mod tests {
                 "#### RIPR Zero at a glance",
                 "### PR evidence ledger",
                 "#### PR movement at a glance",
+                "### Policy readiness",
+                "#### Policy readiness at a glance",
+                "### Waiver aging",
+                "#### Waiver aging at a glance",
+                "### Suppression health",
+                "#### Suppression health at a glance",
                 "### Test-oracle assistant proof",
                 "#### Assistant proof at a glance",
                 "### Agent proof status",
@@ -6101,6 +6296,9 @@ mod tests {
                 "Render RIPR baseline debt delta",
                 "Render RIPR Zero status",
                 "Render RIPR PR evidence ledger",
+                "Render RIPR waiver aging",
+                "Render RIPR suppression health",
+                "Render RIPR policy readiness",
                 "Render RIPR test-oracle assistant proof",
                 "Render RIPR assistant loop health",
                 "Render RIPR first useful action",
@@ -8369,6 +8567,12 @@ language = "rust"
         assert!(workflow.contains("target/ripr/reports/ripr-zero-status.md"));
         assert!(workflow.contains("target/ripr/reports/pr-evidence-ledger.json"));
         assert!(workflow.contains("target/ripr/reports/pr-evidence-ledger.md"));
+        assert!(workflow.contains("target/ripr/reports/waiver-aging.json"));
+        assert!(workflow.contains("target/ripr/reports/waiver-aging.md"));
+        assert!(workflow.contains("target/ripr/reports/suppression-health.json"));
+        assert!(workflow.contains("target/ripr/reports/suppression-health.md"));
+        assert!(workflow.contains("target/ripr/reports/policy-readiness.json"));
+        assert!(workflow.contains("target/ripr/reports/policy-readiness.md"));
         assert!(workflow.contains("target/ripr/reports/test-oracle-assistant-proof.json"));
         assert!(workflow.contains("target/ripr/reports/test-oracle-assistant-proof.md"));
         assert!(workflow.contains("target/ripr/reports/assistant-loop-health.json"));
@@ -8393,6 +8597,9 @@ language = "rust"
         assert!(workflow.contains("name: Evaluate RIPR gate decision"));
         assert!(workflow.contains("name: Render RIPR baseline debt delta"));
         assert!(workflow.contains("name: Emit RIPR PR guidance annotations"));
+        assert!(workflow.contains("name: Render RIPR waiver aging"));
+        assert!(workflow.contains("name: Render RIPR suppression health"));
+        assert!(workflow.contains("name: Render RIPR policy readiness"));
         assert!(workflow.contains("name: Render RIPR test-oracle assistant proof"));
         assert!(workflow.contains("name: Render RIPR assistant loop health"));
         assert!(workflow.contains("name: Render RIPR first useful action"));
@@ -8420,6 +8627,12 @@ language = "rust"
         assert!(workflow.contains("#### RIPR Zero at a glance"));
         assert!(workflow.contains("### PR evidence ledger"));
         assert!(workflow.contains("#### PR movement at a glance"));
+        assert!(workflow.contains("### Policy readiness"));
+        assert!(workflow.contains("#### Policy readiness at a glance"));
+        assert!(workflow.contains("### Waiver aging"));
+        assert!(workflow.contains("#### Waiver aging at a glance"));
+        assert!(workflow.contains("### Suppression health"));
+        assert!(workflow.contains("#### Suppression health at a glance"));
         assert!(workflow.contains("### Test-oracle assistant proof"));
         assert!(workflow.contains("#### Assistant proof at a glance"));
         assert!(workflow.contains("### Agent proof status"));
@@ -8433,6 +8646,9 @@ language = "rust"
         assert!(workflow.contains("Blocking reason"));
         assert!(workflow.contains("Gate artifacts"));
         assert!(workflow.contains("Baseline delta artifacts"));
+        assert!(workflow.contains("Policy readiness artifacts"));
+        assert!(workflow.contains("Waiver-aging artifacts"));
+        assert!(workflow.contains("Suppression-health artifacts"));
         assert!(workflow.contains("Proof artifacts"));
         assert!(workflow.contains("Action artifacts"));
         assert!(workflow.contains("Front-panel artifacts"));
@@ -8700,6 +8916,21 @@ language = "rust"
         assert_step_before(
             &workflow,
             "Render RIPR PR evidence ledger",
+            "Render RIPR waiver aging",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR waiver aging",
+            "Render RIPR suppression health",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR suppression health",
+            "Render RIPR policy readiness",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR policy readiness",
             "Render RIPR test-oracle assistant proof",
         );
         assert_step_before(
@@ -8819,6 +9050,54 @@ language = "rust"
         assert!(pr_ledger.contains("--history .ripr/pr-evidence-ledger.jsonl"));
         assert!(pr_ledger.contains("ledger_args+=(--label \"$label\")"));
         assert!(pr_ledger.contains("ripr \"${ledger_args[@]}\""));
+
+        let waiver_aging = workflow_step(&workflow, "Render RIPR waiver aging");
+        assert!(waiver_aging.contains("hashFiles('target/ripr/reports/pr-evidence-ledger.json')"));
+        assert!(waiver_aging.contains("continue-on-error: true"));
+        assert!(waiver_aging.contains("policy waiver-aging"));
+        assert!(waiver_aging.contains("--root ."));
+        assert!(waiver_aging.contains("--ledger target/ripr/reports/pr-evidence-ledger.json"));
+        assert!(waiver_aging.contains("--out target/ripr/reports/waiver-aging.json"));
+        assert!(waiver_aging.contains("--out-md target/ripr/reports/waiver-aging.md"));
+        assert!(waiver_aging.contains("--history .ripr/pr-evidence-ledger.jsonl"));
+        assert!(waiver_aging.contains("ripr \"${waiver_args[@]}\""));
+
+        let suppression_health = workflow_step(&workflow, "Render RIPR suppression health");
+        assert!(suppression_health.contains("if: always()"));
+        assert!(suppression_health.contains("continue-on-error: true"));
+        assert!(suppression_health.contains("policy suppression-health"));
+        assert!(suppression_health.contains("--root ."));
+        assert!(suppression_health.contains("--out target/ripr/reports/suppression-health.json"));
+        assert!(suppression_health.contains("--out-md target/ripr/reports/suppression-health.md"));
+        assert!(suppression_health.contains("ripr \"${suppression_args[@]}\""));
+
+        let policy_readiness = workflow_step(&workflow, "Render RIPR policy readiness");
+        assert!(policy_readiness.contains("if: always()"));
+        assert!(policy_readiness.contains("continue-on-error: true"));
+        assert!(policy_readiness.contains("policy readiness"));
+        assert!(policy_readiness.contains("--root ."));
+        assert!(policy_readiness.contains("--out target/ripr/reports/policy-readiness.json"));
+        assert!(policy_readiness.contains("--out-md target/ripr/reports/policy-readiness.md"));
+        assert!(
+            policy_readiness.contains("--gate-decision target/ripr/reports/gate-decision.json")
+        );
+        assert!(
+            policy_readiness
+                .contains("--baseline-delta target/ripr/reports/baseline-debt-delta.json")
+        );
+        assert!(policy_readiness.contains(
+            "--recommendation-calibration target/ripr/reports/recommendation-calibration.json"
+        ));
+        assert!(
+            policy_readiness
+                .contains("--mutation-calibration target/ripr/reports/mutation-calibration.json")
+        );
+        assert!(policy_readiness.contains("--waiver-aging target/ripr/reports/waiver-aging.json"));
+        assert!(
+            policy_readiness
+                .contains("--suppression-health target/ripr/reports/suppression-health.json")
+        );
+        assert!(policy_readiness.contains("ripr \"${policy_args[@]}\""));
 
         let assistant_proof = workflow_step(&workflow, "Render RIPR test-oracle assistant proof");
         assert!(assistant_proof.contains("hashFiles('target/ripr/review/comments.json')"));
@@ -9085,6 +9364,48 @@ language = "rust"
         assert!(summary.contains("cat target/ripr/reports/pr-evidence-ledger.md"));
         assert!(summary.contains("PR evidence ledger was not generated"));
         assert!(summary.contains("PR evidence ledger was not run"));
+        assert!(summary.contains("### Policy readiness"));
+        assert!(summary.contains("#### Policy readiness at a glance"));
+        assert!(summary.contains("target/ripr/reports/policy-readiness.json"));
+        assert!(summary.contains("target/ripr/reports/policy-readiness.md"));
+        assert!(summary.contains(".recommended_mode // \"unknown\""));
+        assert!(summary.contains(".blocking_readiness.state // \"unknown\""));
+        assert!(summary.contains(".baseline_health.state // \"unknown\""));
+        assert!(summary.contains(".waiver_health.state // \"unknown\""));
+        assert!(summary.contains(".suppression_health.state // \"unknown\""));
+        assert!(summary.contains(".calibration_health.state // \"unknown\""));
+        assert!(summary.contains(".preview_evidence_boundary.state // \"unknown\""));
+        assert!(summary.contains("advisory readiness projection only"));
+        assert!(summary.contains("cat target/ripr/reports/policy-readiness.md"));
+        assert!(summary.contains("Policy readiness was not generated"));
+        assert!(summary.contains("### Waiver aging"));
+        assert!(summary.contains("#### Waiver aging at a glance"));
+        assert!(summary.contains("target/ripr/reports/waiver-aging.json"));
+        assert!(summary.contains("target/ripr/reports/waiver-aging.md"));
+        assert!(summary.contains(".summary.waiver_count // 0"));
+        assert!(summary.contains(".summary.identity_count // 0"));
+        assert!(summary.contains(".summary.repeated_seam_count // 0"));
+        assert!(summary.contains(".summary.repeated_file_count // 0"));
+        assert!(summary.contains(".summary.focused_test_candidates // 0"));
+        assert!(summary.contains(".summary.durable_suppression_candidates // 0"));
+        assert!(summary.contains("repeated waiver is a visible signal"));
+        assert!(summary.contains("cat target/ripr/reports/waiver-aging.md"));
+        assert!(summary.contains("Waiver aging was not generated"));
+        assert!(summary.contains("### Suppression health"));
+        assert!(summary.contains("#### Suppression health at a glance"));
+        assert!(summary.contains("target/ripr/reports/suppression-health.json"));
+        assert!(summary.contains("target/ripr/reports/suppression-health.md"));
+        assert!(summary.contains(".summary.suppressions // 0"));
+        assert!(summary.contains(".summary.healthy // 0"));
+        assert!(summary.contains(".summary.missing_owner // 0"));
+        assert!(summary.contains(".summary.missing_reason // 0"));
+        assert!(summary.contains(".summary.stale // 0"));
+        assert!(summary.contains(".summary.overbroad_scope // 0"));
+        assert!(summary.contains(".summary.unknown_selector // 0"));
+        assert!(summary.contains(".summary.preview_without_preview_label // 0"));
+        assert!(summary.contains("suppressions remain visible durable exceptions"));
+        assert!(summary.contains("cat target/ripr/reports/suppression-health.md"));
+        assert!(summary.contains("Suppression health was not generated"));
         assert!(summary.contains("### Test-oracle assistant proof"));
         assert!(summary.contains("#### Assistant proof at a glance"));
         assert!(summary.contains("target/ripr/reports/test-oracle-assistant-proof.json"));

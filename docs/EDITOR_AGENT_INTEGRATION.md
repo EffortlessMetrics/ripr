@@ -50,11 +50,11 @@ rewrite the active manifest explicitly.
 | LSP seam diagnostic | Saved-workspace LSP diagnostics with seam IDs | Starts the editor path from the same seam identity used by repo exposure and agent packet output |
 | Hover evidence | LSP hover on seam diagnostics | Shows evidence, related tests, missing discriminator text, and next-step wording without changing files |
 | LSP cockpit | `cargo xtask lsp-cockpit-report` | Checks fixture-pinned diagnostics, hovers, code actions, and VS Code command registration |
-| Inspect seam: copy packet | `ripr.copyContext` / `ripr agent packet --root . --seam-id <id> --json` | Copies or emits the selected seam packet |
+| Inspect Test Gap - Copy Context | `ripr.copyContext` / `ripr agent packet --root . --seam-id <id> --json` | Copies or emits the selected test-gap packet |
 | Write targeted test: copy brief | `ripr.copyTargetedTestBrief` / `ripr agent brief --root . --diff <patch> --json` | Copies or emits a focused test brief for an agent working set |
 | Write targeted test: open best related test | `ripr.openRelatedTest` | Opens the strongest related test without editing it |
 | Write targeted test: copy suggested assertion | `ripr.copySuggestedAssertion` | Copies assertion text when the packet has a concrete assertion shape |
-| Refresh analysis: rerun saved-workspace check | `ripr.refresh` | Refreshes saved-workspace diagnostics and latency status |
+| Refresh Analysis - Saved Workspace Check | `ripr.refresh` | Refreshes saved-workspace diagnostics and latency status |
 | After snapshot | `ripr check --root . --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json` | Captures the post-test static exposure state |
 | Agent verify | `ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json` | Compares before and after repo-exposure snapshots |
 | Agent receipt | `ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id <id> --json --out target/ripr/agent/agent-receipt.json` | Narrows verify output to one seam for review handoff |

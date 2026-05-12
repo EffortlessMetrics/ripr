@@ -6139,7 +6139,7 @@ file via the (now reserved) `_root` parameter on
 
 Seam diagnostics also drive editor code actions:
 
-- `Inspect seam: copy packet` calls `ripr.collectContext` with `seam_id` and
+- `Inspect Test Gap - Copy Context` calls `ripr.collectContext` with `seam_id` and
   copies the selected agent seam packet JSON.
 - `Write targeted test: copy brief` copies a plain-language work order derived
   from the same seam packet guidance.
@@ -6154,7 +6154,7 @@ Seam diagnostics also drive editor code actions:
   seam packet assertion shape contains a concrete assertion example.
 - `Write targeted test: open best related test` appears only when ranked
   related-test evidence has a visible file/line.
-- `Refresh analysis: rerun saved-workspace check` remains available for every
+- `Refresh Analysis - Saved Workspace Check` remains available for every
   request.
 
 These actions do not edit files, generate tests, or add CodeLens
@@ -6518,7 +6518,7 @@ JSON shape:
       },
       "actions": {
         "titles": [
-          "Inspect seam: copy packet",
+          "Inspect Test Gap - Copy Context",
           "Write targeted test: copy brief",
           "Agent handoff: copy packet command",
           "Agent handoff: copy brief command",
@@ -6527,7 +6527,7 @@ JSON shape:
           "Review result: copy receipt command",
           "Write targeted test: copy suggested assertion",
           "Write targeted test: open best related test",
-          "Refresh analysis: rerun saved-workspace check"
+          "Refresh Analysis - Saved Workspace Check"
         ],
         "commands": [
           "ripr.copyContext",

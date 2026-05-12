@@ -180,3 +180,14 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+audit LSP code-action titles: seam->test gap, analysis->Refresh Analysis
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/lsp-code-actions.json`

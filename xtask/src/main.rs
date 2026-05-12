@@ -9629,7 +9629,7 @@ fn lsp_cockpit_fixture_report(fixture: &Path) -> Result<Option<LspCockpitFixture
             }
         }
         match command {
-            "ripr.copyContext" if title == "Inspect seam: copy packet" => {
+            "ripr.copyContext" if title == "Inspect Test Gap - Copy Context" => {
                 context.seam_packet_available = true;
             }
             "ripr.copyTargetedTestBrief" => {
@@ -32046,7 +32046,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(
             boundary_gap
                 .action_titles
-                .contains(&"Inspect seam: copy packet".to_string())
+                .contains(&"Inspect Test Gap - Copy Context".to_string())
         );
         assert!(
             boundary_gap

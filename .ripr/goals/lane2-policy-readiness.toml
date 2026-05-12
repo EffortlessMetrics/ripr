@@ -146,15 +146,35 @@ commands = [
 
 [[work_item]]
 id = "docs/blocking-readiness-guide"
-status = "planned"
-branch = "docs-blocking-readiness-guide"
-acceptance = "Extend the blocking-readiness decision tree so advisory, acknowledgeable, baseline-check, and calibrated-gate promotion depends on calibration, baseline, waiver, suppression, and preview-evidence health."
+status = "done"
+branch = "docs-lane2-blocking-readiness-guide"
+acceptance = "docs/BLOCKING_READINESS.md extends the blocking-readiness decision tree so advisory, acknowledgeable, baseline-check, and calibrated-gate promotion depends on calibration, baseline, waiver, suppression, and preview-evidence health."
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
 
 [[work_item]]
 id = "ci/policy-readiness-advisory-projection"
-status = "planned"
+status = "done"
 branch = "ci-policy-readiness-advisory-projection"
 acceptance = "Surface policy-readiness and waiver-aging artifacts in generated CI as advisory uploads and summaries only: no pass/fail authority, no new required checks, no default blocking, and no comment posting."
+commands = [
+  "cargo test -p ripr init_generated_github_workflow",
+  "cargo xtask check-generated",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
 
 [[work_item]]
 id = "campaign/policy-readiness-closeout"

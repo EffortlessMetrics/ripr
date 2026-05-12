@@ -207,7 +207,7 @@ const COMMAND_ROOT: &str = ".";
 
 const INSPECT_FINDING_CONTEXT_TITLE: &str = "Inspect finding: copy context packet";
 const INSPECT_FINDING_CONTEXT_COMMAND_TITLE: &str = "Inspect finding: copy context";
-const INSPECT_SEAM_PACKET_TITLE: &str = "Inspect seam: copy packet";
+const INSPECT_SEAM_PACKET_TITLE: &str = "Inspect Test Gap - Copy Context";
 const TARGETED_TEST_BRIEF_TITLE: &str = "Write targeted test: copy brief";
 const SUGGESTED_ASSERTION_TITLE: &str = "Write targeted test: copy suggested assertion";
 const OPEN_RELATED_TEST_TITLE: &str = "Write targeted test: open best related test";
@@ -216,7 +216,7 @@ const AGENT_BRIEF_COMMAND_TITLE: &str = "Agent handoff: copy brief command";
 const AFTER_SNAPSHOT_COMMAND_TITLE: &str = "Verify after test: copy after-snapshot command";
 const AGENT_VERIFY_COMMAND_TITLE: &str = "Verify after test: copy verify command";
 const AGENT_RECEIPT_COMMAND_TITLE: &str = "Review result: copy receipt command";
-const REFRESH_ANALYSIS_TITLE: &str = "Refresh analysis: rerun saved-workspace check";
+const REFRESH_ANALYSIS_TITLE: &str = "Refresh Analysis - Saved Workspace Check";
 
 fn copy_agent_loop_command_action(
     title: &str,

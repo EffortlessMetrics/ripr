@@ -99,13 +99,13 @@ answer:
 | 5 | `policy/suppression-ledger-health` | Require durable suppressions to carry identity, owner, reason, scope, dates, visibility, static class, and preview labels. | done: `ripr policy suppression-health` writes `suppression-health.{json,md}` |
 | 6 | `policy/baseline-refresh-guardrails` | Document and enforce shrink-only refresh; no CI auto-adopt-new. | done: shrink-only update and generated-CI no-auto-refresh guardrails |
 | 7 | `policy/exception-ledger-convergence` | Align no-panic, Clippy, non-Rust, workflow, suppression, baseline, and waiver semantics. | done: [Policy allowlists](../POLICY_ALLOWLISTS.md#shared-exception-semantics) |
-| 8 | `docs/blocking-readiness-guide` | Extend the advisory-to-blocking decision tree for preview evidence and readiness health. | planned |
-| 9 | `ci/policy-readiness-advisory-projection` | Surface policy-readiness and waiver-aging artifacts in generated CI without pass/fail authority. | planned |
+| 8 | `docs/blocking-readiness-guide` | Extend the advisory-to-blocking decision tree for preview evidence and readiness health. | done: [RIPR blocking readiness](../BLOCKING_READINESS.md) |
+| 9 | `ci/policy-readiness-advisory-projection` | Surface policy-readiness and waiver-aging artifacts in generated CI without pass/fail authority. | done: generated CI writes, uploads, and summarizes advisory readiness artifacts only |
 | 10 | `campaign/policy-readiness-closeout` | Close the tracker only after the readiness, preview, waiver, suppression, baseline, exception, guide, and CI projection surfaces exist. | planned |
 
 ## Policy Readiness Report Target
 
-Planned command:
+Command:
 
 ```bash
 ripr policy readiness \
@@ -119,7 +119,7 @@ ripr policy readiness \
   --out-md target/ripr/reports/policy-readiness.md
 ```
 
-Planned statuses:
+Statuses:
 
 - `advisory_only`;
 - `ready_for_visible_only`;
@@ -129,7 +129,7 @@ Planned statuses:
 - `not_ready`;
 - `config_error`.
 
-Planned fields:
+Fields:
 
 - `recommended_mode`;
 - `blocking_readiness`;
@@ -184,6 +184,46 @@ now covers:
 The shared rule is that exceptions are not budgets. Baselines checkpoint known
 debt, waivers acknowledge one PR, and suppressions record durable policy
 exceptions with owner and reason while keeping the underlying evidence visible.
+
+## Blocking Readiness Guide
+
+[RIPR blocking readiness](../BLOCKING_READINESS.md) is the operator decision
+tree for moving from advisory evidence toward stricter configured modes. It
+uses the policy-readiness status as a ceiling:
+
+- `config_error`, `not_ready`, and `advisory_only` stay advisory;
+- `ready_for_visible_only` allows visible evidence without acknowledgement;
+- `ready_for_acknowledgeable` allows PR-time acknowledgement for eligible
+  stable Rust gaps;
+- `ready_for_baseline_check` allows baseline-aware blocking for new eligible
+  stable Rust debt;
+- `ready_for_calibrated_gate` allows only the narrow eligible class backed by
+  same-class recommendation calibration.
+
+The guide keeps preview TypeScript and Python evidence visible and advisory by
+default. Preview findings can be acknowledged, waived, suppressed with
+metadata, or placed in an advisory baseline partition, but they cannot become
+gate-eligible, RIPR Zero blocking debt, or calibrated confidence without a
+later explicit promotion policy.
+
+## Generated CI Advisory Projection
+
+`ripr init --ci github` projects Lane 2 readiness into generated CI as uploaded
+artifacts and job-summary sections only.
+
+Generated CI may write:
+
+- `target/ripr/reports/waiver-aging.json`;
+- `target/ripr/reports/waiver-aging.md`;
+- `target/ripr/reports/suppression-health.json`;
+- `target/ripr/reports/suppression-health.md`;
+- `target/ripr/reports/policy-readiness.json`;
+- `target/ripr/reports/policy-readiness.md`.
+
+Those steps are `continue-on-error: true`. They do not post comments, create
+required checks, run mutation testing, mutate baselines, change source files, or
+decide pass/fail. The only generated workflow step with gate authority remains
+an explicitly configured `ripr gate evaluate`.
 
 ## Non-Goals
 
