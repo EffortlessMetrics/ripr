@@ -14,6 +14,11 @@ more consumer wiring. It is evidence accuracy evaluation.
 Status: closed in documented scope on 2026-05-12. See
 [`docs/handoffs/2026-05-12-lane-1-evidence-accuracy-closeout.md`](../handoffs/2026-05-12-lane-1-evidence-accuracy-closeout.md).
 
+The Lane 1 source-of-truth stack is defined in
+[docs/lanes/README.md](README.md). This tracker records the closed Evidence
+Accuracy Evaluation campaign; it does not make `.ripr/goals/active.toml` the
+whole product board.
+
 ## Goal
 
 Use the stable `evidence_record` to measure and improve evidence quality under
@@ -54,6 +59,16 @@ Non-goals:
 Do not change `.ripr/goals/active.toml` for this lane unless the shared
 tracker explicitly makes Lane 1 active. The repo-wide active manifest may point
 at another lane without changing this Lane 1 plan.
+
+For follow-on Lane 1 work, keep document responsibilities separate:
+
+- proposal: why evidence quality leadership matters;
+- spec: scorecard, benchmark, calibration, or report behavior;
+- ADR: durable evidence-model decisions only;
+- lane tracker: PR-sized sequence and current lane state;
+- capability matrix: class-scoped maturity and proof;
+- traceability: spec, fixture, test, code, and metric linkage;
+- closeout: landed work, proof, and remaining unknowns.
 
 ## Planned Slices
 
