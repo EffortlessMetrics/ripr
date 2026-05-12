@@ -2031,3 +2031,34 @@ metrics = [
   "lane1_evidence_audit_static_limitations",
   "lane1_evidence_audit_uncalibrated_records",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0032"
+name = "Lane 1 evidence quality failure fixtures"
+spec = "docs/specs/RIPR-SPEC-0032-lane1-evidence-quality-fixtures.md"
+tests = [
+  "xtask::tests::lane1_evidence_quality_failure_corpus_is_valid",
+  "xtask::tests::lane1_evidence_quality_failure_guard_reports_contract_drift",
+]
+fixtures = [
+  "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json",
+  "fixtures/boundary_gap/expected/evidence-quality-failures/README.md",
+]
+code = [
+  "xtask/src/main.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0032-lane1-evidence-quality-fixtures.md",
+  "docs/specs/README.md",
+  "docs/lanes/LANE_1_EVIDENCE_ACCURACY.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+  ".ripr/traceability.toml",
+  "CHANGELOG.md",
+]
+metrics = [
+  "lane1_evidence_audit_duplicate_looking_groups",
+  "lane1_evidence_audit_missing_discriminators",
+  "lane1_evidence_audit_static_limitations",
+  "lane1_evidence_audit_uncalibrated_records",
+]

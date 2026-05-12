@@ -88,6 +88,11 @@ Planned scope:
   oracle semantics, related-test ranking, movement availability, calibration
   availability, field health, and top files by unresolved evidence debt without
   changing analyzer behavior or gate policy.
+- Added the Lane 1 evidence-quality failure fixture corpus, pinning the first
+  audit-derived `evidence_record` subsets for duplicate canonical groups,
+  equality-boundary misses, activation static limitations, mock-expectation
+  observer semantics, and no-runtime-data calibration gaps before analyzer
+  tuning begins.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 

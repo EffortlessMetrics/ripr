@@ -3737,6 +3737,7 @@ fn check_fixture_contracts() -> Result<(), String> {
 
     let mut violations = Vec::new();
     validate_evidence_record_contract_fixture_corpus(&mut violations)?;
+    validate_lane1_evidence_quality_failure_fixture_corpus(&mut violations)?;
     validate_pr_review_front_panel_fixture_corpus(&mut violations)?;
     validate_report_packet_index_fixture_corpus(&mut violations)?;
     validate_pr_inline_comment_publisher_fixture_corpus(&mut violations)?;
@@ -3814,6 +3815,17 @@ const EVIDENCE_RECORD_REQUIRED_CASES: &[&str] = &[
     "opaque_helper_static_limitation",
     "baseline_known_canonical_gap_identity",
     "calibration_placeholder_no_runtime_data",
+];
+
+const LANE1_EVIDENCE_QUALITY_FAILURE_CORPUS: &str =
+    "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json";
+
+const LANE1_EVIDENCE_QUALITY_REQUIRED_CASES: &[&str] = &[
+    "duplicate_canonical_gap_overcount_suppressions_match_arm",
+    "missing_equality_boundary_discriminator",
+    "static_activation_limitation_without_candidate_values",
+    "side_effect_observer_not_static_limitation",
+    "calibration_no_runtime_data_gap",
 ];
 
 fn validate_evidence_record_contract_fixture_corpus(
@@ -3908,6 +3920,499 @@ fn validate_evidence_record_contract_corpus_value(
         if !seen.contains(*required) {
             violations.push(format!("evidence-record corpus is missing case {required}"));
         }
+    }
+}
+
+fn validate_lane1_evidence_quality_failure_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    validate_lane1_evidence_quality_failure_fixture_corpus_at(
+        Path::new(LANE1_EVIDENCE_QUALITY_FAILURE_CORPUS),
+        violations,
+    )
+}
+
+fn validate_lane1_evidence_quality_failure_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !path.exists() {
+        violations.push(format!(
+            "Lane 1 evidence-quality failure corpus is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+
+    let corpus = match read_json_value(path) {
+        Ok(value) => value,
+        Err(err) => {
+            violations.push(err);
+            return Ok(());
+        }
+    };
+    validate_lane1_evidence_quality_failure_corpus_value(path, &corpus, violations);
+    Ok(())
+}
+
+fn validate_lane1_evidence_quality_failure_corpus_value(
+    path: &Path,
+    corpus: &Value,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(corpus, "kind").as_deref() != Some("lane1_evidence_quality_failure_corpus")
+    {
+        violations.push(format!(
+            "{} kind must be lane1_evidence_quality_failure_corpus",
+            normalize_path(path)
+        ));
+    }
+    if json_string_field(corpus, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "{} schema_version must be 0.1",
+            normalize_path(path)
+        ));
+    }
+    if json_string_field(corpus, "spec").as_deref() != Some("RIPR-SPEC-0032") {
+        violations.push(format!(
+            "{} spec must be RIPR-SPEC-0032",
+            normalize_path(path)
+        ));
+    }
+
+    match corpus.get("source_report") {
+        Some(source @ Value::Object(_)) => {
+            require_lane1_json_string_at(source, "command", "source_report", violations);
+            require_lane1_json_string_at(source, "report", "source_report", violations);
+            match source.get("summary") {
+                Some(summary @ Value::Object(_)) => {
+                    for field in [
+                        "raw_headline_gaps",
+                        "canonical_gap_groups",
+                        "duplicate_looking_groups",
+                        "missing_discriminators",
+                        "static_limitations",
+                        "uncalibrated_records",
+                    ] {
+                        require_lane1_json_usize_at(
+                            summary,
+                            field,
+                            "source_report.summary",
+                            violations,
+                        );
+                    }
+                }
+                _ => violations.push(
+                    "Lane 1 evidence-quality source_report is missing summary object".to_string(),
+                ),
+            }
+        }
+        _ => violations
+            .push("Lane 1 evidence-quality corpus is missing source_report object".to_string()),
+    }
+
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        violations.push(format!("{} is missing cases array", normalize_path(path)));
+        return;
+    };
+
+    let mut seen = BTreeSet::new();
+    let mut has_failure_mode = false;
+    let mut has_negative_guard = false;
+    for case in cases {
+        let case_id = json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string());
+        if !seen.insert(case_id.clone()) {
+            violations.push(format!(
+                "Lane 1 evidence-quality case {case_id} is duplicated"
+            ));
+        }
+        validate_lane1_evidence_quality_failure_case(
+            &case_id,
+            case,
+            &mut has_failure_mode,
+            &mut has_negative_guard,
+            violations,
+        );
+    }
+
+    for required in LANE1_EVIDENCE_QUALITY_REQUIRED_CASES {
+        if !seen.contains(*required) {
+            violations.push(format!(
+                "Lane 1 evidence-quality corpus is missing case {required}"
+            ));
+        }
+    }
+    if !has_failure_mode {
+        violations.push(
+            "Lane 1 evidence-quality corpus must include at least one failure_mode case"
+                .to_string(),
+        );
+    }
+    if !has_negative_guard {
+        violations.push(
+            "Lane 1 evidence-quality corpus must include at least one negative_guard case"
+                .to_string(),
+        );
+    }
+}
+
+fn validate_lane1_evidence_quality_failure_case(
+    case_id: &str,
+    case: &Value,
+    has_failure_mode: &mut bool,
+    has_negative_guard: &mut bool,
+    violations: &mut Vec<String>,
+) {
+    require_lane1_json_string_at(case, "description", case_id, violations);
+    require_lane1_json_string_at(case, "source", case_id, violations);
+
+    match json_string_field(case, "case_kind").as_deref() {
+        Some("failure_mode") => *has_failure_mode = true,
+        Some("negative_guard") => *has_negative_guard = true,
+        Some(other) => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} has unsupported case_kind {other}"
+        )),
+        None => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} is missing string field case_kind"
+        )),
+    }
+
+    let category = match case.get("audit_signal") {
+        Some(signal @ Value::Object(_)) => {
+            require_lane1_json_string_at(signal, "category", case_id, violations);
+            require_lane1_json_string_at(signal, "metric_path", case_id, violations);
+            require_lane1_json_string_at(signal, "evidence", case_id, violations);
+            require_lane1_json_usize_at(signal, "observed_count", case_id, violations);
+            json_string_field(signal, "category")
+        }
+        _ => {
+            violations.push(format!(
+                "Lane 1 evidence-quality case {case_id} is missing audit_signal object"
+            ));
+            None
+        }
+    };
+    if let Some(category) = &category
+        && !matches!(
+            category.as_str(),
+            "duplicate_canonical_gap"
+                | "missing_discriminator"
+                | "static_limitation"
+                | "oracle_semantics"
+                | "calibration_gap"
+        )
+    {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} has unsupported audit category {category}"
+        ));
+    }
+
+    let expected = match case.get("expected_repo_exposure") {
+        Some(expected @ Value::Object(_)) => {
+            require_lane1_json_string_at(expected, "source", case_id, violations);
+            expected
+        }
+        _ => {
+            violations.push(format!(
+                "Lane 1 evidence-quality case {case_id} is missing expected_repo_exposure object"
+            ));
+            return;
+        }
+    };
+    let record = match expected.get("evidence_record") {
+        Some(record @ Value::Object(_)) => record,
+        Some(_) => {
+            violations.push(format!(
+                "Lane 1 evidence-quality case {case_id} expected_repo_exposure.evidence_record must be an object"
+            ));
+            return;
+        }
+        None => {
+            violations.push(format!(
+                "Lane 1 evidence-quality case {case_id} is missing expected_repo_exposure.evidence_record"
+            ));
+            return;
+        }
+    };
+    validate_lane1_evidence_quality_record(case_id, record, violations);
+
+    require_non_empty_string_array_at(case, "expected_claims", case_id, violations);
+    require_non_empty_string_array_at(case, "must_not_claim", case_id, violations);
+
+    match category.as_deref() {
+        Some("duplicate_canonical_gap") => {
+            if json_string_field(record, "canonical_gap_id").is_none() {
+                violations.push(format!(
+                    "Lane 1 evidence-quality duplicate case {case_id} must pin canonical_gap_id"
+                ));
+            }
+            if json_usize_field(record, "canonical_gap_group_size").unwrap_or_default() <= 1 {
+                violations.push(format!(
+                    "Lane 1 evidence-quality duplicate case {case_id} must pin group size greater than 1"
+                ));
+            }
+        }
+        Some("missing_discriminator")
+            if lane1_count_field(record, "missing_discriminators").unwrap_or_default() == 0 =>
+        {
+            violations.push(format!(
+                "Lane 1 evidence-quality missing-discriminator case {case_id} must pin missing discriminator count"
+            ));
+        }
+        Some("missing_discriminator") => {}
+        Some("static_limitation") => {
+            if lane1_count_field(record, "static_limitations").unwrap_or_default() == 0 {
+                violations.push(format!(
+                    "Lane 1 evidence-quality static-limitation case {case_id} must pin static limitation count"
+                ));
+            }
+            if !matches!(record.get("static_limitations"), Some(Value::Array(items)) if !items.is_empty())
+            {
+                violations.push(format!(
+                    "Lane 1 evidence-quality static-limitation case {case_id} must list static_limitations"
+                ));
+            }
+        }
+        Some("oracle_semantics") => {
+            let oracle_kind = record
+                .get("top_related_test")
+                .and_then(|test| json_string_field(test, "oracle_kind"));
+            if oracle_kind.as_deref() != Some("mock_expectation")
+                && json_string_field(record, "seam_kind").as_deref() != Some("side_effect")
+            {
+                violations.push(format!(
+                    "Lane 1 evidence-quality oracle-semantics case {case_id} must pin a mock_expectation or side_effect signal"
+                ));
+            }
+        }
+        Some("calibration_gap") => match record.get("calibration") {
+            Some(calibration) => {
+                if json_string_field(calibration, "availability").as_deref() != Some("not_imported")
+                    || json_string_field(calibration, "agreement").as_deref()
+                        != Some("no_runtime_data")
+                {
+                    violations.push(format!(
+                        "Lane 1 evidence-quality calibration case {case_id} must stay not_imported/no_runtime_data"
+                    ));
+                }
+            }
+            None => violations.push(format!(
+                "Lane 1 evidence-quality calibration case {case_id} is missing calibration"
+            )),
+        },
+        _ => {}
+    }
+}
+
+fn validate_lane1_evidence_quality_record(
+    case_id: &str,
+    record: &Value,
+    violations: &mut Vec<String>,
+) {
+    require_lane1_json_string_at(record, "schema_version", case_id, violations);
+    if json_string_field(record, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} evidence_record.schema_version must be 0.1"
+        ));
+    }
+    for field in ["seam_id", "owner", "seam_kind", "grip_class"] {
+        require_lane1_json_string_at(record, field, case_id, violations);
+    }
+    if !matches!(
+        record.get("canonical_gap_id"),
+        Some(Value::Null | Value::String(_))
+    ) {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} canonical_gap_id must be string or null"
+        ));
+    }
+    if !matches!(
+        record.get("canonical_gap_reason"),
+        Some(Value::Null | Value::String(_))
+    ) {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} canonical_gap_reason must be string or null"
+        ));
+    }
+    if !matches!(
+        record.get("canonical_gap_group_size"),
+        Some(Value::Null | Value::Number(_))
+    ) {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} canonical_gap_group_size must be number or null"
+        ));
+    }
+    if !matches!(record.get("headline_eligible"), Some(Value::Bool(_))) {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} headline_eligible must be boolean"
+        ));
+    }
+    match record.get("location") {
+        Some(location @ Value::Object(_)) => {
+            require_lane1_json_string_at(location, "file", case_id, violations);
+            require_lane1_json_usize_at(location, "line", case_id, violations);
+        }
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} location must be an object"
+        )),
+    }
+    match record.get("evidence_path") {
+        Some(path @ Value::Object(_)) => {
+            for stage in ["reach", "activate", "propagate", "observe", "discriminate"] {
+                match path.get(stage) {
+                    Some(stage_value @ Value::Object(_)) => {
+                        require_lane1_json_string_at(stage_value, "state", case_id, violations);
+                        require_lane1_json_string_at(
+                            stage_value,
+                            "confidence",
+                            case_id,
+                            violations,
+                        );
+                        require_lane1_json_string_at(stage_value, "summary", case_id, violations);
+                    }
+                    _ => violations.push(format!(
+                        "Lane 1 evidence-quality case {case_id} evidence_path.{stage} must be an object"
+                    )),
+                }
+            }
+        }
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} evidence_path must be an object"
+        )),
+    }
+    match record.get("counts") {
+        Some(counts @ Value::Object(_)) => {
+            for field in [
+                "observed_values",
+                "missing_discriminators",
+                "static_limitations",
+                "related_tests_total",
+            ] {
+                require_lane1_json_usize_at(counts, field, case_id, violations);
+            }
+        }
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} counts must be an object"
+        )),
+    }
+    match record.get("top_related_test") {
+        Some(test @ Value::Object(_)) => {
+            for field in [
+                "name",
+                "file",
+                "oracle_kind",
+                "oracle_strength",
+                "relation_reason",
+                "relation_confidence",
+            ] {
+                require_lane1_json_string_at(test, field, case_id, violations);
+            }
+            require_lane1_json_usize_at(test, "line", case_id, violations);
+        }
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} top_related_test must be an object"
+        )),
+    }
+    match record.get("recommendation") {
+        Some(recommendation @ Value::Object(_)) => {
+            require_lane1_json_string_at(recommendation, "action", case_id, violations);
+            require_lane1_json_string_at(recommendation, "reason", case_id, violations);
+            require_lane1_json_usize_at(
+                recommendation,
+                "candidate_values_count",
+                case_id,
+                violations,
+            );
+            if !matches!(
+                recommendation.get("verify_command"),
+                Some(Value::Null | Value::String(_))
+            ) {
+                violations.push(format!(
+                    "Lane 1 evidence-quality case {case_id} recommendation.verify_command must be string or null"
+                ));
+            }
+        }
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} recommendation must be an object"
+        )),
+    }
+    match record.get("actionability") {
+        Some(actionability @ Value::Object(_)) => {
+            require_lane1_json_string_at(actionability, "class", case_id, violations);
+            if !matches!(
+                actionability.get("has_concrete_guidance"),
+                Some(Value::Bool(_))
+            ) {
+                violations.push(format!(
+                    "Lane 1 evidence-quality case {case_id} actionability.has_concrete_guidance must be boolean"
+                ));
+            }
+        }
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} actionability must be an object"
+        )),
+    }
+    match record.get("calibration") {
+        Some(calibration @ Value::Object(_)) => {
+            for field in ["availability", "confidence", "agreement"] {
+                require_lane1_json_string_at(calibration, field, case_id, violations);
+            }
+        }
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} calibration must be an object"
+        )),
+    }
+    if !matches!(record.get("static_limitations"), Some(Value::Array(_))) {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} static_limitations must be an array"
+        ));
+    }
+}
+
+fn lane1_count_field(record: &Value, field: &str) -> Option<usize> {
+    record
+        .get("counts")
+        .and_then(|counts| json_usize_field(counts, field))
+}
+
+fn require_lane1_json_string_at(
+    value: &Value,
+    field: &str,
+    case_id: &str,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(value, field).is_none() {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} is missing string field {field}"
+        ));
+    }
+}
+
+fn require_lane1_json_usize_at(
+    value: &Value,
+    field: &str,
+    case_id: &str,
+    violations: &mut Vec<String>,
+) {
+    if json_usize_field(value, field).is_none() {
+        violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} is missing numeric field {field}"
+        ));
+    }
+}
+
+fn require_non_empty_string_array_at(
+    value: &Value,
+    field: &str,
+    case_id: &str,
+    violations: &mut Vec<String>,
+) {
+    match value.get(field) {
+        Some(Value::Array(items))
+            if !items.is_empty() && items.iter().all(|item| item.as_str().is_some()) => {}
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality case {case_id} {field} must be a non-empty string array"
+        )),
     }
 }
 
@@ -24164,6 +24669,114 @@ mod tests {
         assert!(report.contains(
             "recommendation.nearest_test_to_imitate.oracle_semantics.upgrade_suggestion must be string or null"
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_evidence_quality_failure_corpus_is_valid() -> Result<(), String> {
+        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask manifest must have workspace parent".to_string())?;
+        let corpus =
+            repo_root.join("fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json");
+        let mut violations = Vec::new();
+        super::validate_lane1_evidence_quality_failure_fixture_corpus_at(&corpus, &mut violations)?;
+
+        assert_eq!(violations, Vec::<String>::new());
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_evidence_quality_failure_guard_reports_contract_drift() -> Result<(), String> {
+        let root = temp_dir("lane1-evidence-quality-failure-invalid");
+        let corpus = root.join("corpus.json");
+        write(
+            &corpus,
+            r#"{
+  "kind": "wrong",
+  "schema_version": "0.2",
+  "spec": "RIPR-SPEC-9999",
+  "source_report": {
+    "command": "cargo xtask lane1-evidence-audit",
+    "report": "target/ripr/reports/lane1-evidence-audit.json",
+    "summary": {
+      "raw_headline_gaps": "many"
+    }
+  },
+  "cases": [
+    {
+      "id": "duplicate_canonical_gap_overcount_suppressions_match_arm",
+      "case_kind": "surprise",
+      "description": "bad duplicate case",
+      "source": "audit",
+      "audit_signal": {
+        "category": "duplicate_canonical_gap",
+        "metric_path": "canonical_gap_groups.largest[0]",
+        "observed_count": 1,
+        "evidence": "gap"
+      },
+      "expected_repo_exposure": {
+        "source": "repo-exposure-json",
+        "evidence_record": {
+          "schema_version": "0.2",
+          "seam_id": "bad",
+          "canonical_gap_id": null,
+          "canonical_gap_group_size": null,
+          "canonical_gap_reason": null,
+          "owner": "owner",
+          "location": {"file": "src/lib.rs", "line": 1},
+          "seam_kind": "match_arm",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true,
+          "evidence_path": {
+            "reach": {"state": "yes"},
+            "activate": {},
+            "propagate": {},
+            "observe": {},
+            "discriminate": {}
+          },
+          "counts": {
+            "observed_values": 0,
+            "missing_discriminators": 0,
+            "static_limitations": 0,
+            "related_tests_total": 0
+          },
+          "top_related_test": null,
+          "recommendation": {},
+          "actionability": {},
+          "calibration": {},
+          "static_limitations": []
+        }
+      },
+      "expected_claims": [],
+      "must_not_claim": []
+    }
+  ]
+}
+"#,
+        );
+
+        let mut violations = Vec::new();
+        super::validate_lane1_evidence_quality_failure_fixture_corpus_at(&corpus, &mut violations)?;
+        let report = violations.join("\n");
+
+        assert!(report.contains("kind must be lane1_evidence_quality_failure_corpus"));
+        assert!(report.contains("schema_version must be 0.1"));
+        assert!(report.contains("spec must be RIPR-SPEC-0032"));
+        assert!(report.contains("source_report.summary"));
+        assert!(report.contains("unsupported case_kind surprise"));
+        assert!(report.contains("evidence_record.schema_version must be 0.1"));
+        assert!(report.contains("is missing string field confidence"));
+        assert!(report.contains("top_related_test must be an object"));
+        assert!(report.contains("recommendation"));
+        assert!(report.contains("actionability.has_concrete_guidance must be boolean"));
+        assert!(report.contains("calibration"));
+        assert!(report.contains("expected_claims must be a non-empty string array"));
+        assert!(report.contains("must_not_claim must be a non-empty string array"));
+        assert!(report.contains("must pin canonical_gap_id"));
+        assert!(report.contains("must pin group size greater than 1"));
+        assert!(report.contains("is missing case missing_equality_boundary_discriminator"));
+        assert!(report.contains("must include at least one negative_guard case"));
         Ok(())
     }
 
