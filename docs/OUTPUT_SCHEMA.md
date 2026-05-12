@@ -2923,6 +2923,192 @@ metadata, the top repair route, warnings, and the advisory boundary. It must
 say that RIPR 0 is not perfect tests, 100 percent coverage, or runtime mutation
 adequacy.
 
+## Policy Readiness Report
+
+RIPR-SPEC-0029 defines the policy readiness report. `ripr policy readiness`
+joins explicit existing policy artifacts so maintainers can see the strictest
+safe policy posture for the current repository without executing a gate or
+changing any policy decision.
+
+Command:
+
+```text
+ripr policy readiness \
+  --gate-decision target/ripr/reports/gate-decision.json \
+  --baseline-delta target/ripr/reports/baseline-debt-delta.json \
+  --recommendation-calibration target/ripr/reports/recommendation-calibration.json \
+  --mutation-calibration target/ripr/reports/mutation-calibration.json \
+  --waiver-aging target/ripr/reports/waiver-aging.json \
+  --suppression-health target/ripr/reports/suppression-health.json \
+  --out target/ripr/reports/policy-readiness.json \
+  --out-md target/ripr/reports/policy-readiness.md
+```
+
+The report writes:
+
+```text
+target/ripr/reports/policy-readiness.json
+target/ripr/reports/policy-readiness.md
+```
+
+This report is advisory readiness evidence. `ripr gate evaluate` remains the
+only pass/fail authority when an explicit gate mode is configured. The command
+does not run analysis, mutate baselines or suppressions, post comments, edit
+source, generate tests, run mutation testing, change gate policy, or make CI
+blocking.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "policy_readiness",
+  "status": "ready_for_baseline_check",
+  "recommended_mode": "baseline-check",
+  "root": ".",
+  "generated_at": "unix_ms:1778277000000",
+  "inputs": {
+    "gate_decision": "target/ripr/reports/gate-decision.json",
+    "baseline_delta": "target/ripr/reports/baseline-debt-delta.json",
+    "recommendation_calibration": null,
+    "mutation_calibration": null,
+    "waiver_aging": null,
+    "suppression_health": null,
+    "repo_config": null,
+    "previous_readiness": null
+  },
+  "summary": {
+    "blocking_ready": true,
+    "visible_only_ready": true,
+    "acknowledgeable_ready": false,
+    "baseline_check_ready": true,
+    "calibrated_gate_ready": false,
+    "preview_candidates": 1,
+    "preview_candidates_gate_eligible": 0,
+    "warnings": 0,
+    "unknowns": 6
+  },
+  "blocking_readiness": {
+    "state": "healthy",
+    "evidence": [
+      "gate_status=advisory",
+      "current_gate_mode=visible-only",
+      "blocking_candidates=0"
+    ],
+    "warnings": [],
+    "next_action": "Keep generated CI advisory unless RIPR_GATE_MODE is explicitly configured."
+  },
+  "baseline_health": {
+    "state": "healthy",
+    "evidence": ["new_policy_eligible=0", "auto_adopt_new=false"],
+    "warnings": [],
+    "next_action": "Use baseline-check only with the reviewed baseline path supplied."
+  },
+  "waiver_health": {
+    "state": "missing",
+    "evidence": [],
+    "warnings": [],
+    "next_action": "Add waiver-aging input before requiring acknowledgement."
+  },
+  "suppression_health": {
+    "state": "missing",
+    "evidence": [],
+    "warnings": [],
+    "next_action": "Add suppression-health input before tightening policy."
+  },
+  "calibration_health": {
+    "state": "not_ready",
+    "evidence": [],
+    "warnings": [],
+    "next_action": "Collect same-class recommendation calibration before calibrated-gate."
+  },
+  "preview_evidence_boundary": {
+    "state": "healthy",
+    "preview_languages": ["typescript"],
+    "preview_findings_visible": 1,
+    "preview_findings_acknowledgeable": 1,
+    "preview_findings_suppressible": 1,
+    "preview_findings_baseline_advisory": 1,
+    "preview_findings_gate_eligible": 0,
+    "preview_findings_ripr_zero_blocking": 0,
+    "preview_findings_calibrated_confidence": 0,
+    "missing_language_status": 0,
+    "static_limits_seen": 1,
+    "static_limits_required": true,
+    "promotion_policy": null,
+    "warnings": [],
+    "next_action": "Keep preview evidence advisory until an explicit promotion policy exists."
+  },
+  "unknowns": [
+    {
+      "kind": "missing_input",
+      "message": "recommendation_calibration input not supplied.",
+      "source_artifact": null
+    },
+    {
+      "kind": "missing_input",
+      "message": "mutation_calibration input not supplied.",
+      "source_artifact": null
+    },
+    {
+      "kind": "missing_input",
+      "message": "waiver_aging input not supplied.",
+      "source_artifact": null
+    },
+    {
+      "kind": "missing_input",
+      "message": "suppression_health input not supplied.",
+      "source_artifact": null
+    },
+    {
+      "kind": "missing_input",
+      "message": "repo_config input not supplied.",
+      "source_artifact": null
+    },
+    {
+      "kind": "missing_input",
+      "message": "previous_readiness input not supplied.",
+      "source_artifact": null
+    }
+  ],
+  "warnings": [],
+  "next_policy_action": "Enable baseline-check for stable Rust evidence only; keep preview evidence advisory.",
+  "limits_note": "Read-only advisory readiness over explicit artifacts; gate-decision remains the only pass/fail authority when configured.",
+  "preview_limits_note": "Preview-language evidence is visible and advisory by default; it is not gate-eligible, RIPR Zero blocking debt, or calibrated confidence without explicit promotion."
+}
+```
+
+Field contract:
+
+- `status` - one of `advisory_only`, `ready_for_visible_only`,
+  `ready_for_acknowledgeable`, `ready_for_baseline_check`,
+  `ready_for_calibrated_gate`, or `config_error`.
+- `recommended_mode` - `advisory-only`, `visible-only`, `acknowledgeable`,
+  `baseline-check`, or `calibrated-gate`. Values other than `advisory-only`
+  match gate mode strings.
+- `inputs` - supplied artifact paths, or `null` when omitted.
+- `summary.*_ready` - boolean projection of which policy modes currently have
+  enough readable input evidence.
+- `blocking_readiness`, `baseline_health`, `waiver_health`,
+  `suppression_health`, and `calibration_health` - independent health axes with
+  `state`, evidence facts, warnings, and a next action.
+- `preview_evidence_boundary` - RIPR-SPEC-0030 projection. Preview findings
+  remain visible while default gate eligibility, RIPR Zero blocking, and
+  calibrated-confidence counts remain zero until explicit promotion. Missing
+  preview labels keep the readiness recommendation advisory until repaired.
+- `unknowns[]` - missing recommended or optional inputs. Missing inputs are not
+  treated as passing evidence.
+- `warnings[]` - malformed supplied inputs, preview metadata gaps, or policy
+  readiness limitations.
+- `limits_note` and `preview_limits_note` - advisory, pass/fail, and preview
+  policy boundary text.
+
+Markdown should fit in a job summary. It should show the status, recommended
+mode, each health axis, preview zero-count boundary, unknowns, warnings, next
+policy action, and limits. It must not claim runtime mutation outcomes or make
+the report a gate.
+
 ## PR Evidence Ledger
 
 RIPR-SPEC-0018 defines the PR evidence ledger. `ripr pr-ledger record` records

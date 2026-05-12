@@ -1878,12 +1878,26 @@ metrics = [
 id = "RIPR-SPEC-0029"
 name = "policy readiness report"
 spec = "docs/specs/RIPR-SPEC-0029-policy-readiness-report.md"
-tests = []
+tests = [
+  "crates/ripr/src/output/policy_readiness.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/help.rs",
+]
 fixtures = []
-code = []
+code = [
+  "crates/ripr/src/output/policy_readiness.rs",
+  "crates/ripr/src/output/mod.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/help.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0029-policy-readiness-report.md",
   "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
   "docs/policy/POLICY_READINESS.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   ".ripr/goals/lane2-policy-readiness.toml",
@@ -1907,8 +1921,36 @@ metrics = [
 
 [[behavior]]
 id = "RIPR-SPEC-0030"
+name = "preview evidence policy boundary"
+spec = "docs/specs/RIPR-SPEC-0030-preview-evidence-policy-boundary.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0030-preview-evidence-policy-boundary.md",
+  "docs/specs/README.md",
+  "docs/policy/POLICY_READINESS.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  ".ripr/goals/lane2-policy-readiness.toml",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "preview_policy_findings_visible",
+  "preview_policy_findings_acknowledgeable",
+  "preview_policy_findings_suppressible",
+  "preview_policy_findings_baseline_advisory",
+  "preview_policy_findings_gate_eligible",
+  "preview_policy_findings_ripr_zero_blocking",
+  "preview_policy_findings_calibrated_confidence",
+  "preview_policy_missing_language_status",
+  "preview_policy_missing_static_limit_kind",
+  "preview_policy_promotion_policy_count",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0031"
 name = "Lane 1 evidence quality audit"
-spec = "docs/specs/RIPR-SPEC-0030-lane1-evidence-quality-audit.md"
+spec = "docs/specs/RIPR-SPEC-0031-lane1-evidence-quality-audit.md"
 tests = [
   "xtask::tests::lane1_evidence_audit_counts_quality_gaps_from_evidence_record",
   "xtask::tests::lane1_evidence_audit_markdown_names_required_sections",
@@ -1926,7 +1968,7 @@ code = [
   "xtask/src/run.rs",
 ]
 outputs = [
-  "docs/specs/RIPR-SPEC-0030-lane1-evidence-quality-audit.md",
+  "docs/specs/RIPR-SPEC-0031-lane1-evidence-quality-audit.md",
   "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
   "docs/lanes/LANE_1_EVIDENCE_ACCURACY.md",

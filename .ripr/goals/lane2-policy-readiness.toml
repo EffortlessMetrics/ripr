@@ -59,13 +59,14 @@ commands = [
 
 [[work_item]]
 id = "spec/preview-evidence-policy-boundary"
-status = "planned"
+status = "done"
 branch = "spec-preview-evidence-policy-boundary"
-acceptance = "Specify that TypeScript and Python preview evidence is visible/advisory by default, carries preview/static-limit labels, and is not gate, RIPR Zero, or mutation-calibrated confidence eligible without later explicit promotion."
+acceptance = "RIPR-SPEC-0030 specifies that TypeScript and Python preview evidence is visible/advisory by default, carries preview/static-limit labels, and is not gate, RIPR Zero, default baseline-check, or mutation-calibrated confidence eligible without later explicit promotion."
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
   "cargo xtask check-static-language",
+  "cargo xtask check-spec-format",
   "cargo xtask check-traceability",
   "cargo xtask check-capabilities",
   "cargo xtask check-output-contracts",
@@ -74,9 +75,19 @@ commands = [
 
 [[work_item]]
 id = "report/policy-readiness"
-status = "planned"
+status = "done"
 branch = "report-policy-readiness"
-acceptance = "Implement `ripr policy readiness` over explicit existing artifacts only, writing policy-readiness JSON and Markdown without posting, source edits, hidden analysis, baseline mutation, gate execution, or CI failure authority."
+acceptance = "`ripr policy readiness` writes policy-readiness JSON and Markdown over explicit existing artifacts only, with independent readiness axes and preview-evidence zero-count boundaries, without posting, source edits, hidden analysis, baseline mutation, gate execution, or CI failure authority."
+commands = [
+  "cargo test -p ripr policy_readiness",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
 
 [[work_item]]
 id = "report/waiver-aging"
