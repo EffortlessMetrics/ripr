@@ -67,8 +67,9 @@ Completed slices:
 - Rust language-router contract tests pin that default saved-workspace behavior
   and `[languages] enabled = ["rust"]` produce the same diagnostics, hover, and
   actions, while `[languages] enabled = []` suppresses saved-workspace
-  diagnostics instead of inventing editor behavior, and invalid language config
-  stays config-owned while the LSP session falls back to Rust defaults.
+  diagnostics and surfaces an explicit `languages off` editor status instead
+  of inventing editor behavior, and invalid language config stays config-owned
+  while the LSP session falls back to Rust defaults.
 
 ## Current Open PRs
 

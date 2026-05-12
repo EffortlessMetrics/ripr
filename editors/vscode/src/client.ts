@@ -547,6 +547,7 @@ type RiprStatusKind =
   | 'analysisRunning'
   | 'analysisReady'
   | 'noActionableSeams'
+  | 'noEnabledLanguages'
   | 'stale'
   | 'analysisFailed'
   | 'stopped';
@@ -614,6 +615,8 @@ function statusText(kind: RiprStatusKind, firstAction?: FirstUsefulActionStatus)
       return '$(check) ripr: diagnostics';
     case 'noActionableSeams':
       return '$(circle-slash) ripr: no seams';
+    case 'noEnabledLanguages':
+      return '$(circle-slash) ripr: languages off';
     case 'stale':
       return '$(warning) ripr: stale';
     case 'analysisFailed':
@@ -688,6 +691,7 @@ function canProjectFirstUsefulAction(kind: RiprStatusKind): boolean {
     || kind === 'analysisRunning'
     || kind === 'analysisReady'
     || kind === 'noActionableSeams'
+    || kind === 'noEnabledLanguages'
     || kind === 'ready';
 }
 
@@ -701,6 +705,18 @@ function serverLogMessage(params: unknown): string | undefined {
 
 function statusFromRefreshCompletedMessage(message: string): RiprStatusState {
   const diagnostics = numberField(message, 'diagnostics');
+  const enabledLanguages = numberField(message, 'enabled_languages');
+  if (enabledLanguages === 0) {
+    return {
+      kind: 'noEnabledLanguages',
+      summary: 'ripr analysis completed with no enabled languages.',
+      detail: [
+        message,
+        'No saved-workspace diagnostics are published because ripr.toml has [languages] enabled = [].',
+        'Enable rust, or an available preview language when that routing exists, to restore editor diagnostics.'
+      ].join('\n')
+    };
+  }
   const seamDiagnostics = numberField(message, 'seam_diagnostics');
   if (seamDiagnostics !== undefined && seamDiagnostics === 0) {
     return {
