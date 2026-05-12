@@ -1873,3 +1873,31 @@ metrics = [
   "language_adapter_python_static_limit_decorator_indirection",
   "language_adapter_python_static_limit_mocked_module",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0029"
+name = "policy readiness report"
+spec = "docs/specs/RIPR-SPEC-0029-policy-readiness-report.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0029-policy-readiness-report.md",
+  "docs/specs/README.md",
+  "docs/policy/POLICY_READINESS.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  ".ripr/goals/lane2-policy-readiness.toml",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "policy_readiness_reports",
+  "policy_readiness_recommended_mode",
+  "policy_readiness_blocking_ready",
+  "policy_readiness_baseline_health_state",
+  "policy_readiness_waiver_health_state",
+  "policy_readiness_suppression_health_state",
+  "policy_readiness_calibration_health_state",
+  "policy_readiness_preview_findings_visible",
+  "policy_readiness_preview_findings_gate_eligible",
+  "policy_readiness_warning_count",
+]
