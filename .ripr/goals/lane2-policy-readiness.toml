@@ -115,9 +115,20 @@ commands = [
 
 [[work_item]]
 id = "policy/baseline-refresh-guardrails"
-status = "planned"
+status = "done"
 branch = "policy-baseline-refresh-guardrails"
 acceptance = "Document and enforce that shrink-only refresh can remove resolved debt, adopting new debt is explicit/manual if it exists, and CI never auto-adopts new baseline entries."
+commands = [
+  "cargo test -p ripr baseline_update",
+  "cargo test -p ripr init_generated_github_workflow_never_auto_refreshes_baseline",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
 
 [[work_item]]
 id = "policy/exception-ledger-convergence"
