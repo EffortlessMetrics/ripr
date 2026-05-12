@@ -1866,10 +1866,13 @@ code = []
 outputs = [
   "docs/specs/RIPR-SPEC-0028-python-preview-static-facts.md",
   "docs/specs/README.md",
+  "docs/adr/0009-python-parser-substrate.md",
+  "docs/adr/README.md",
   "docs/proposals/RIPR-PROP-0001-multi-language-adapter-preview.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
+  "policy/dependency_allowlist.txt",
   ".ripr/traceability.toml",
 ]
 metrics = [
