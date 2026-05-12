@@ -266,3 +266,91 @@ Observed inventory during PR 0:
 4 string-pattern matches in rust_index.rs intentionally detect unwrap/expect in
 analyzed user code and are not panic-family call sites.
 ```
+
+## 2026-05-12: Cache-TTL-Aware CI Watcher Economics
+
+### Context
+
+Agent loops that poll external state during a long-running task — CI
+watchers, deploy waiters, queue drainers, anything that sleeps and
+then checks — have a non-obvious cost dimension beyond API rate
+limits: the LLM's prompt-cache TTL shapes the optimal polling
+interval. Surfaced concretely during Campaign 27's PR watcher work
+(PRs #794, #801, #804).
+
+### The math
+
+The Anthropic prompt cache TTL is roughly five minutes. Around that
+window, three regions emerge:
+
+```text
+warm zone:        sleep <  ~5 min   conversation stays cached
+danger zone:      sleep ~= 5 min    cache miss, no amortization
+committed sleep:  sleep >> ~5 min   one cache miss across a long wait
+```
+
+- A watcher that sleeps under the TTL wakes up against a warm cache
+  and reads only the new tool output.
+- A watcher that sleeps exactly through the TTL pays a full re-read
+  of the conversation context every cycle. This is the worst-case
+  region: highest token cost per useful poll.
+- A watcher that commits to a long sleep (twenty-plus minutes) pays
+  one cache miss, but spreads that cost across many minutes of
+  external progress.
+
+This is a generally-true coordination protocol for any agentic system
+that polls external state. The specific TTL is an Anthropic-prompt-
+cache fact today; other providers have their own cache windows, but
+the three-region structure is the same.
+
+### What works
+
+- Active CI watch: 180–270 s backoff. Stays inside the warm zone,
+  with enough headroom that one slow tool call does not push the
+  cycle over the TTL.
+- Genuinely idle ticks (no active PR, waiting for an unrelated
+  trigger): 1200–1800 s. Commits to one cache miss per long wait
+  instead of churning.
+- Exit-early signals on every wake: a CI state of `CLEAN`,
+  `UNSTABLE`, or `HAS_HOOKS` means ready to merge; a failure
+  conclusion means stop and report; a `BEHIND` mergeable state
+  means rebase, then re-watch.
+
+### What doesn't
+
+- `gh pr watch` default cadence (three-second polling). Burns the
+  authenticated GitHub API rate limit fast, and re-enters the agent
+  loop too often to amortize cache cost meaningfully.
+- ~300 s polling. Lands in the danger zone — each wake pays a full
+  cache miss without buying much external progress.
+- Tight infinite loops with no backoff. Same failure mode as the
+  default `gh pr watch`, plus the agent has no chance to terminate
+  on the exit-early signals above.
+
+### Operational signals to watch for
+
+For GitHub PR watchers specifically, the merge-readiness signals
+worth handling explicitly:
+
+```text
+CLEAN       ready
+UNSTABLE    ready (non-required check failing)
+HAS_HOOKS   ready (waiting on optional hook)
+BEHIND      needs rebase, then re-watch
+DIRTY       conflict, stop and report
+```
+
+Without GitHub merge-queue / auto-merge enabled, concurrent merges
+on a busy repo produce repeated `BEHIND` transitions; Campaign 27
+saw five to six rebase cycles per PR. Merge queue removes that
+class of loop entirely.
+
+### Limitations
+
+- The five-minute number is the current Anthropic prompt-cache TTL.
+  If that window changes, or if the watcher runs on a different
+  provider, the warm/danger/committed boundaries shift but the
+  three-region structure does not.
+- The exit-early signals above are GitHub-specific. The general
+  principle — wake, check, exit on a small set of terminal states,
+  back off otherwise — transfers to other coordination targets.
