@@ -216,6 +216,19 @@ Maintenance audit evidence from 2026-05-12:
   `npm --prefix editors/vscode run test:e2e` passed 30 live VS Code smoke
   tests; the known VS Code runner `path` warning still appears after the
   passing e2e run and exits 0.
+- after #824 merged the Lane 2 policy-readiness changelog closeout, current
+  `main` (`0337f43`) rechecked the saved-workspace cockpit again:
+  `cargo xtask lsp-cockpit-report` passed and wrote
+  `target/ripr/reports/lsp-cockpit.{md,json}` with diagnostics, code actions,
+  context availability, agent packet/brief/after-snapshot/verify/receipt
+  command payload fields, related-test opening, refresh, and VS Code command
+  coverage; `cargo test -p ripr lsp --lib` passed 123 tests,
+  `cargo test -p ripr lsp::tests --lib` passed 84 tests,
+  `npm --prefix editors/vscode run compile` passed, and
+  `npm --prefix editors/vscode run test:e2e` passed 30 live VS Code smoke
+  tests with the same post-success `path` warning exiting 0. `cargo xtask goals
+  next` still reported no ready work items, so `lsp/editor-language-routing`
+  remained blocked.
 
 Objective audit status from 2026-05-12: not complete, blocked upstream.
 
