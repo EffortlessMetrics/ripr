@@ -85,7 +85,7 @@ It should avoid claims like:
 - this mutant would survive
 - no test checks this
 - `ripr` proves adequacy
-- `ripr` replaces mutation testing
+- runtime mutation confirmation is no longer needed
 
 It should use defensible language:
 
@@ -132,4 +132,3 @@ Bad primary metrics:
 - coverage percentage
 - number of probes generated
 - whole-workspace graph size
-

@@ -47,9 +47,9 @@ pub(crate) fn check_positioning_language() -> Result<(), String> {
         }
         let text = read_text_lossy(&path)?;
         for (line_number, line) in text.lines().enumerate() {
-            let lower = line.to_ascii_lowercase();
+            let scan_line = normalize_positioning_scan_line(line);
             for phrase in &forbidden {
-                if lower.contains(phrase.as_str()) {
+                if scan_line.contains(phrase.as_str()) {
                     violations.push(format!(
                         "{normalized}:{} contains misleading positioning phrase `{phrase}`",
                         line_number + 1
@@ -77,6 +77,10 @@ fn forbidden_positioning_phrases() -> Vec<String> {
     .iter()
     .map(|value| value.to_string())
     .collect()
+}
+
+fn normalize_positioning_scan_line(line: &str) -> String {
+    line.replace('`', "").to_ascii_lowercase()
 }
 
 fn is_positioning_language_candidate(path: &str) -> bool {
@@ -146,6 +150,18 @@ mod tests {
                 "phrase `{phrase}` should already be lowercase",
             );
         }
+    }
+
+    #[test]
+    fn forbidden_phrase_matching_ignores_markdown_code_ticks_around_ripr() {
+        let normalized = normalize_positioning_scan_line("`ripr` is not mutation testing.");
+        assert!(normalized.contains("ripr is not mutation"));
+    }
+
+    #[test]
+    fn forbidden_phrase_matching_is_case_insensitive() {
+        let normalized = normalize_positioning_scan_line("RIPR REPLACES MUTATION TESTING.");
+        assert!(normalized.contains("ripr replaces mutation testing"));
     }
 
     #[test]
