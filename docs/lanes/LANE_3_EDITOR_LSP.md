@@ -86,7 +86,9 @@ When opening future Lane 3 PRs, list them here until they merge or close:
 Campaign 27 Language Adapter Preview has one expected Lane 3 slice:
 `lsp/editor-language-routing` (#772).
 
-That slice is blocked until both TypeScript and Python preview adapters exist.
+That slice remains blocked by the Python preview adapter. TypeScript adapter
+readiness is already complete, so Lane 3 should not reopen TypeScript editor
+readiness unless a new editor-facing regression appears.
 Lane 3 should review upstream analyzer, config, and output work only as a
 consumer of future editor projection inputs. Rust saved-workspace editor
 behavior must stay unchanged while this dependency is prepared.
@@ -275,7 +277,7 @@ Objective audit status from 2026-05-12: not complete, blocked upstream.
 | TypeScript preview adapter readiness includes editor-projectable preview metadata, static limits, owner matching, oracle precision, and fixture evidence | `.ripr/goals/active.toml`, #779, #780, #782, #785, #786 | Complete for current Campaign 27 routing readiness; #779, #780, #782, #785, and #786 are closed |
 | Python preview adapter exists with editor-projectable preview metadata and static limits | `.ripr/goals/active.toml`, #804 | Partial; scaffold is merged and `analysis/python-preview-adapter` is active, but owner, test, assertion, probe, and static-limit extraction remain incomplete |
 | `lsp/editor-language-routing` is ready or selected | `cargo xtask goals next`, `.ripr/goals/active.toml` | Blocked; no ready work items, with `analysis/python-preview-adapter` active/incomplete |
-| Preview selectors for TypeScript, TSX, JavaScript, JSX, and Python are opt-in and preserve Rust defaults | `editors/vscode/package.json`, `editors/vscode/src/client.ts` | Not started; must wait for both preview adapters |
+| Preview selectors for TypeScript, TSX, JavaScript, JSX, and Python are opt-in and preserve Rust defaults | `editors/vscode/package.json`, `editors/vscode/src/client.ts` | Not started; must wait for Python preview adapter completion and explicit routing selection |
 | Preview diagnostics, hover, status, and actions visibly label preview evidence and static limits | Future `lsp/editor-language-routing` artifacts and editor workflow fixtures | Not started; blocked by adapter outputs |
 | No editor hidden analysis reruns, source edits, generated tests, provider calls, mutation execution, gate semantics, default blocking, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays | Lane 3 Scope, Non-Goals, and Cross-Lane Rules in this tracker | Current tracker preserves the boundary; future routing must re-audit it |
 
