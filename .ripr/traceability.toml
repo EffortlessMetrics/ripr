@@ -1991,3 +1991,43 @@ metrics = [
   "preview_policy_missing_static_limit_kind",
   "preview_policy_promotion_policy_count",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0031"
+name = "Lane 1 evidence quality audit"
+spec = "docs/specs/RIPR-SPEC-0031-lane1-evidence-quality-audit.md"
+tests = [
+  "xtask::tests::lane1_evidence_audit_counts_quality_gaps_from_evidence_record",
+  "xtask::tests::lane1_evidence_audit_markdown_names_required_sections",
+  "xtask::tests::lane1_evidence_audit_rejects_repo_exposure_without_seams",
+  "xtask::tests::xtask_command_parse_preserves_compatibility_aliases",
+  "xtask::tests::report_commands_dispatch_through_report_facades",
+]
+fixtures = []
+code = [
+  "xtask/src/command.rs",
+  "xtask/src/dispatch.rs",
+  "xtask/src/main.rs",
+  "xtask/src/reports/mod.rs",
+  "xtask/src/reports/repo.rs",
+  "xtask/src/run.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0031-lane1-evidence-quality-audit.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/lanes/LANE_1_EVIDENCE_ACCURACY.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+  "policy/process_allowlist.txt",
+  ".ripr/traceability.toml",
+  "CHANGELOG.md",
+]
+metrics = [
+  "lane1_evidence_audit_raw_headline_gaps",
+  "lane1_evidence_audit_canonical_gap_groups",
+  "lane1_evidence_audit_duplicate_looking_groups",
+  "lane1_evidence_audit_missing_discriminators",
+  "lane1_evidence_audit_static_limitations",
+  "lane1_evidence_audit_uncalibrated_records",
+]

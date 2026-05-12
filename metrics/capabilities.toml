@@ -583,7 +583,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap/expected/evidence-record-contract/corpus.json"
 ]
-next = "report/lane1-evidence-audit"
+next = "fixtures/top-evidence-quality-failures"
 metric = "evidence_record_projected_seams, evidence_record_actionable_guidance, evidence_record_static_limitations"
 
 [[capability]]
@@ -601,8 +601,25 @@ evidence = [
   "docs/OUTPUT_SCHEMA.md Evidence Health Report section"
 ]
 fixtures = []
-next = "report/lane1-evidence-audit"
+next = "report/evidence-health-audit-fields"
 metric = "Lane 1 evidence gaps summarized without analyzer behavior changes"
+
+[[capability]]
+id = "lane1_evidence_quality_audit"
+name = "Lane 1 evidence quality audit"
+status = "alpha"
+spec = "RIPR-SPEC-0031"
+evidence = [
+  "docs/specs/RIPR-SPEC-0031-lane1-evidence-quality-audit.md defines the repo-local audit contract",
+  "cargo xtask lane1-evidence-audit writes target/ripr/reports/lane1-evidence-audit.json and lane1-evidence-audit.md from generated instant-mode repo-exposure JSON",
+  "cargo xtask evidence-quality-audit is a compatibility alias for the same report",
+  "xtask/src/main.rs summarizes raw headline gaps, canonical gap groups, duplicate-looking groups, missing discriminator classes, static limitations, oracle semantics, related-test ranking confidence, movement availability, calibration availability, evidence_record field health, and top files by unresolved evidence debt",
+  "docs/OUTPUT_SCHEMA.md documents the Lane 1 Evidence Quality Audit JSON and Markdown contract",
+  "xtask unit tests pin audit counting, Markdown sections, malformed input handling, command alias parsing, and report facade routing"
+]
+fixtures = []
+next = "fixtures/top-evidence-quality-failures"
+metric = "lane1_evidence_audit_raw_headline_gaps, lane1_evidence_audit_canonical_gap_groups, lane1_evidence_audit_duplicate_looking_groups, lane1_evidence_audit_missing_discriminators, lane1_evidence_audit_static_limitations, lane1_evidence_audit_uncalibrated_records"
 
 [[capability]]
 id = "agent_seam_packets"
