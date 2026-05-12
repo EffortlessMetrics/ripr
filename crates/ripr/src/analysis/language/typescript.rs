@@ -164,6 +164,14 @@ fn line_for_offset(source: &str, offset: usize) -> usize {
     line
 }
 
+fn normalized_path(path: &Path) -> String {
+    let mut normalized = path.to_string_lossy().replace('\\', "/");
+    while let Some(stripped) = normalized.strip_prefix("./") {
+        normalized = stripped.to_string();
+    }
+    normalized
+}
+
 fn extract_owners(file: &Path, source: &str) -> Vec<TypeScriptOwner> {
     let allocator = Allocator::default();
     let ret = Parser::new(&allocator, source, source_type_for(file)).parse();
@@ -567,8 +575,10 @@ fn classify_change(
     owners: &[TypeScriptOwner],
     all_tests: &[TypeScriptTest],
 ) -> Option<Finding> {
+    let changed_file = normalized_path(file);
     let owner = owners
         .iter()
+        .filter(|owner| normalized_path(&owner.file) == changed_file)
         .find(|owner| line >= owner.start_line && line <= owner.end_line)?;
     let related = find_related_tests(owner, all_tests);
     let mock_paths = collect_related_mock_paths(owner, all_tests);
@@ -902,6 +912,11 @@ mod tests {
     }
 
     #[test]
+    fn normalized_path_strips_dot_prefix_and_normalizes_separators() {
+        assert_eq!(normalized_path(Path::new(r".\src\b.ts")), "src/b.ts");
+    }
+
+    #[test]
     fn extract_owners_recognizes_function_declaration() {
         let owners = extract_owners(
             Path::new("src/lib.ts"),
@@ -997,6 +1012,61 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
         assert_eq!(finding.language, Some(DomainLanguageId::TypeScript));
         assert_eq!(finding.language_status, Some(LanguageStatus::Preview));
         assert_eq!(finding.related_tests.len(), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_matches_owner_file_before_line_range() -> Result<(), String> {
+        let owners = vec![
+            TypeScriptOwner {
+                name: "alphaScore".to_string(),
+                file: PathBuf::from("src/a.ts"),
+                start_line: 1,
+                end_line: 5,
+            },
+            TypeScriptOwner {
+                name: "betaScore".to_string(),
+                file: PathBuf::from("src/b.ts"),
+                start_line: 1,
+                end_line: 5,
+            },
+        ];
+        let tests = vec![
+            TypeScriptTest {
+                name: "alpha keeps its threshold".to_string(),
+                file: PathBuf::from("tests/a.test.ts"),
+                line: 1,
+                body_text: "expect(alphaScore(12)).toBe(13);".to_string(),
+                assertions: Vec::new(),
+                mocks_in_file: Vec::new(),
+            },
+            TypeScriptTest {
+                name: "beta keeps its threshold".to_string(),
+                file: PathBuf::from("tests/b.test.ts"),
+                line: 1,
+                body_text: "expect(betaScore(12)).toBe(13);".to_string(),
+                assertions: Vec::new(),
+                mocks_in_file: Vec::new(),
+            },
+        ];
+
+        let finding = classify_change(
+            Path::new("src/b.ts"),
+            2,
+            "    if (value >= 10) {",
+            &owners,
+            &tests,
+        )
+        .ok_or_else(|| "expected the changed file's owner to be selected".to_string())?;
+
+        assert_eq!(finding.evidence, vec!["owner: betaScore"]);
+        assert_eq!(finding.related_tests.len(), 1);
+        assert_eq!(finding.related_tests[0].name, "beta keeps its threshold");
+        assert_eq!(
+            finding.related_tests[0].file,
+            PathBuf::from("tests/b.test.ts")
+        );
+        assert!(finding.missing.iter().all(|line| !line.contains("alpha")));
         Ok(())
     }
 
