@@ -10,7 +10,7 @@
         }
       ],
       "command": "ripr.copyContext",
-      "title": "Inspect seam: copy packet"
+      "title": "Inspect Test Gap - Copy Context"
     },
     {
       "arguments": [
@@ -226,7 +226,7 @@
     {
       "arguments": [],
       "command": "ripr.refresh",
-      "title": "Refresh analysis: rerun saved-workspace check"
+      "title": "Refresh Analysis - Saved Workspace Check"
     }
   ],
   "fixture": "editor_lsp_workflow"
