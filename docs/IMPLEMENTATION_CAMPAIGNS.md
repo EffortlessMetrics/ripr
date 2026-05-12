@@ -3070,7 +3070,7 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `spec/policy-readiness-report` | done | RIPR-SPEC-0029 defines the read-only policy readiness report answering which mode is safe for the repo right now, including statuses, inputs, fields, warnings, preview-boundary health, and no-mutation/no-gate authority. |
-| `spec/preview-evidence-policy-boundary` | planned | Specify that TypeScript and Python preview evidence is visible/advisory by default, carries preview/static-limit labels, and is not gate, RIPR Zero, or mutation-calibrated confidence eligible without later explicit promotion. |
+| `spec/preview-evidence-policy-boundary` | done | RIPR-SPEC-0030 specifies that TypeScript and Python preview evidence is visible/advisory by default, carries preview/static-limit labels, and is not gate, RIPR Zero, default baseline-check, or mutation-calibrated confidence eligible without later explicit promotion. |
 | `report/policy-readiness` | planned | Implement `ripr policy readiness` over explicit existing artifacts only, writing policy-readiness JSON and Markdown without posting, source edits, hidden analysis, baseline mutation, gate execution, or CI failure authority. |
 | `report/waiver-aging` | planned | Add waiver-aging JSON and Markdown so repeated waiver is visible as a signal, not treated as a failure or hidden exception. |
 | `policy/suppression-ledger-health` | planned | Flag missing owner, missing reason, stale suppression, overbroad scope, unknown selector, and preview-language suppression without preview label while keeping suppressed findings visible. |
@@ -3084,6 +3084,7 @@ References:
 
 - [Policy readiness tracker](policy/POLICY_READINESS.md)
 - [RIPR-SPEC-0029: Policy readiness report](specs/RIPR-SPEC-0029-policy-readiness-report.md)
+- [RIPR-SPEC-0030: Preview evidence policy boundary](specs/RIPR-SPEC-0030-preview-evidence-policy-boundary.md)
 - [Focused Lane 2 tracker manifest](../.ripr/goals/lane2-policy-readiness.toml)
 - [Language Adapter Preview](#campaign-27-language-adapter-preview)
 - [Calibrated gate policy](CALIBRATED_GATE_POLICY.md)

@@ -1904,3 +1904,31 @@ metrics = [
   "policy_readiness_warning_count",
   "policy_readiness_unknown_count",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0030"
+name = "preview evidence policy boundary"
+spec = "docs/specs/RIPR-SPEC-0030-preview-evidence-policy-boundary.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0030-preview-evidence-policy-boundary.md",
+  "docs/specs/README.md",
+  "docs/policy/POLICY_READINESS.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  ".ripr/goals/lane2-policy-readiness.toml",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "preview_policy_findings_visible",
+  "preview_policy_findings_acknowledgeable",
+  "preview_policy_findings_suppressible",
+  "preview_policy_findings_baseline_advisory",
+  "preview_policy_findings_gate_eligible",
+  "preview_policy_findings_ripr_zero_blocking",
+  "preview_policy_findings_calibrated_confidence",
+  "preview_policy_missing_language_status",
+  "preview_policy_missing_static_limit_kind",
+  "preview_policy_promotion_policy_count",
+]
