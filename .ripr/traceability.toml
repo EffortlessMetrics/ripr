@@ -1878,12 +1878,26 @@ metrics = [
 id = "RIPR-SPEC-0029"
 name = "policy readiness report"
 spec = "docs/specs/RIPR-SPEC-0029-policy-readiness-report.md"
-tests = []
+tests = [
+  "crates/ripr/src/output/policy_readiness.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/help.rs",
+]
 fixtures = []
-code = []
+code = [
+  "crates/ripr/src/output/policy_readiness.rs",
+  "crates/ripr/src/output/mod.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/help.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0029-policy-readiness-report.md",
   "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
   "docs/policy/POLICY_READINESS.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   ".ripr/goals/lane2-policy-readiness.toml",

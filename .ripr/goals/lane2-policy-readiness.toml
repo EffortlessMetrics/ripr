@@ -75,9 +75,19 @@ commands = [
 
 [[work_item]]
 id = "report/policy-readiness"
-status = "planned"
+status = "done"
 branch = "report-policy-readiness"
-acceptance = "Implement `ripr policy readiness` over explicit existing artifacts only, writing policy-readiness JSON and Markdown without posting, source edits, hidden analysis, baseline mutation, gate execution, or CI failure authority."
+acceptance = "`ripr policy readiness` writes policy-readiness JSON and Markdown over explicit existing artifacts only, with independent readiness axes and preview-evidence zero-count boundaries, without posting, source edits, hidden analysis, baseline mutation, gate execution, or CI failure authority."
+commands = [
+  "cargo test -p ripr policy_readiness",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
 
 [[work_item]]
 id = "report/waiver-aging"
