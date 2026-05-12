@@ -422,13 +422,13 @@ fn extract_parser_probe_shapes(
         .filter_map(ast::MatchExpr::cast)
     {
         if let Some(token) = match_expr.match_token() {
-            push_probe_shape(
+            push_probe_shape_with_text(
                 &mut shapes,
                 line_index,
-                text,
                 PROBE_SHAPE_MATCH_ARM,
                 token.text_range().start(),
                 token.text_range().end(),
+                match_expr_probe_text(text, match_expr.syntax().text_range()),
             );
         }
     }
@@ -439,13 +439,17 @@ fn extract_parser_probe_shapes(
         .filter_map(ast::MatchArm::cast)
     {
         if let Some(token) = arm.fat_arrow_token() {
-            push_probe_shape(
+            push_probe_shape_with_text(
                 &mut shapes,
                 line_index,
-                text,
                 PROBE_SHAPE_MATCH_ARM,
                 token.text_range().start(),
                 token.text_range().end(),
+                match_arm_probe_text(
+                    text,
+                    arm.syntax().text_range().start(),
+                    token.text_range().start(),
+                ),
             );
         }
     }
@@ -481,6 +485,20 @@ fn push_probe_shape(
     if snippet.is_empty() {
         return;
     }
+    push_probe_shape_with_text(shapes, line_index, kind, start, end, snippet);
+}
+
+fn push_probe_shape_with_text(
+    shapes: &mut Vec<ProbeShapeFact>,
+    line_index: &LineIndex,
+    kind: &str,
+    start: TextSize,
+    end: TextSize,
+    snippet: String,
+) {
+    if snippet.is_empty() {
+        return;
+    }
     shapes.push(ProbeShapeFact {
         start_line: line_index.line(start),
         end_line: line_index.line_for_range_end(end),
@@ -488,6 +506,27 @@ fn push_probe_shape(
         kind: kind.to_string(),
         text: snippet,
     });
+}
+
+fn match_expr_probe_text(text: &str, range: ra_ap_syntax::TextRange) -> String {
+    let raw = slice_text(text, range.start(), range.end());
+    let snippet = raw.trim();
+    let head = snippet
+        .split_once('{')
+        .map(|(head, _)| head)
+        .unwrap_or(snippet);
+    normalize_probe_shape_text(head)
+}
+
+fn match_arm_probe_text(text: &str, start: TextSize, arrow_start: TextSize) -> String {
+    let raw = slice_text(text, start, arrow_start);
+    let pattern = raw.trim();
+    let head = format!("{pattern} =>");
+    normalize_probe_shape_text(&head)
+}
+
+fn normalize_probe_shape_text(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn is_predicate_operator(operator: &str) -> bool {

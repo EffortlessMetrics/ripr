@@ -478,6 +478,11 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
         });
     }
 
+    let _marker = match service.kind() {
+        "=>" => 1,
+        _ => 0,
+    };
+
     match amount {
         0 => Err(Error::Zero),
         _ => Ok(Quote { total: amount }),
@@ -498,6 +503,19 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
         assert!(kinds.contains(&PROBE_SHAPE_FIELD_CONSTRUCTION));
         assert!(kinds.contains(&PROBE_SHAPE_SIDE_EFFECT));
         assert!(kinds.contains(&PROBE_SHAPE_MATCH_ARM));
+
+        let match_shapes = facts
+            .probe_shapes
+            .iter()
+            .filter(|shape| shape.kind == PROBE_SHAPE_MATCH_ARM)
+            .map(|shape| shape.text.as_str())
+            .collect::<Vec<_>>();
+        assert!(match_shapes.contains(&"match amount"));
+        assert!(match_shapes.contains(&"match service.kind()"));
+        assert!(match_shapes.contains(&r#""=>" =>"#));
+        assert!(match_shapes.contains(&"0 =>"));
+        assert!(match_shapes.contains(&"_ =>"));
+        assert!(!match_shapes.contains(&"=>"));
         Ok(())
     }
 

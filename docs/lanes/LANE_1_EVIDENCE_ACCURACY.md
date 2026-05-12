@@ -59,7 +59,7 @@ at another lane without changing this Lane 1 plan.
 | `docs: open Lane 1 evidence accuracy evaluation` | Record evidence-spine completion and open this tracker. | No code behavior changes. |
 | `report: add Lane 1 evidence quality audit` | Generate `target/ripr/reports/lane1-evidence-audit.{json,md}` from existing repo exposure and `evidence_record` data. | Implemented by `cargo xtask lane1-evidence-audit`; repo-local report only. |
 | `fixtures: pin top evidence-quality failures` | Fixture the top 3-5 audit findings before changing analyzer behavior. | `fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json` pins positive and negative cases. |
-| `analysis: reduce duplicate canonical gap overcount` | Refine grouping only if audit and fixtures show duplicate groups are a top issue. | Same owner, seam kind, flow sink, and missing discriminator group together; different discriminators and owners stay separate. |
+| `analysis: reduce duplicate canonical gap overcount` | Refine grouping only if audit and fixtures show duplicate groups are a top issue. | Implemented for parser-backed match-arm discriminators: same owner, seam kind, flow sink, and missing discriminator group together; different discriminators and owners stay separate. |
 | `analysis: improve related-test ranking from audit cases` | Adjust ranking only for fixture-pinned misses from the audit. | Direct owner calls and stronger oracles remain primary; recency stays a tie-breaker. |
 | `analysis: improve oracle semantics from audit cases` | Add supported oracle shapes only when the audit identifies misclassified cases. | Observed and missed behavior are explicit; unsupported helpers stay static limitations. |
 | `calibration: expand runtime fixture classes` | Add checked runtime fixture classes for side effects, mock expectations, snapshots, and dynamic or opaque dispatch. | Runtime-only signal does not create a static gap; no CI mutation execution. |
@@ -138,6 +138,24 @@ mock-expectation observer semantics, and no-runtime-data calibration gaps.
 `cargo xtask check-fixture-contracts` validates that each case includes the
 audit signal, expected `repo-exposure-json` `evidence_record` subset, positive
 claims, and `must_not_claim` guards.
+
+## Audit-Driven Analyzer Improvement
+
+The first analyzer improvement targets the audit-pinned suppressions match-arm
+overgrouping case. Parser-backed match expressions now carry normalized match
+heads such as `match key`, and match arms carry concrete arm patterns such as
+`"kind" =>` instead of generic `match` or `=>` text. Canonical gap identity can
+therefore split different match arms while still grouping the same arm across
+line movement.
+
+The local audit delta after the change was:
+
+- duplicate-looking groups dropped from `1287` to `926`;
+- the generic `match_arm` duplicate-looking group disappeared from the top
+  audit rows;
+- generic static limitation reasons for `=>` and `match` disappeared;
+- the suppressions fixture seam `205829e99ffbd3ca` now records `"kind" =>` with
+  canonical group size `1`.
 
 ## Calibration Rule
 
