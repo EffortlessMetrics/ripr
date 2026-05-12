@@ -168,6 +168,15 @@ Maintenance audit evidence from 2026-05-12:
 - `cargo test -p ripr lsp::tests --lib` passed 84 LSP tests, and
   `npm --prefix editors/vscode run test:e2e` passed 30 live VS Code extension
   smoke tests for the saved-workspace Rust editor path;
+- after #805 refreshed the Python-adapter blocker state, `cargo test -p ripr
+  lsp --lib` passed 123 tests, `cargo xtask lsp-cockpit-report` produced a
+  passing saved-workspace cockpit report, `npm --prefix editors/vscode run
+  compile` passed, and `npm --prefix editors/vscode run test:e2e` passed 30
+  live VS Code extension smoke tests;
+- the current #787 merge-result tree changes only the classifier refactor files;
+  a detached merge-result check passed `cargo test -p ripr lsp --lib` with 123
+  tests and `cargo xtask lsp-cockpit-report`, so that stale refactor branch has
+  no current Lane 3 file delta or cockpit regression signal;
 - docs-only tracker validation passed with `cargo xtask check-doc-index`,
   `cargo xtask markdown-links`, `cargo xtask check-static-language`,
   `cargo xtask check-pr`, and `git diff --check`.
