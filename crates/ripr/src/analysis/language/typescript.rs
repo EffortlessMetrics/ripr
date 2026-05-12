@@ -365,6 +365,116 @@ fn strongest_assertion(assertions: &[TypeScriptAssertion]) -> Option<&TypeScript
         .max_by_key(|assertion| assertion.oracle_strength.rank())
 }
 
+/// Syntax-first probe-family classifier for a changed line of TypeScript
+/// or JavaScript source.
+///
+/// Inspects the leading non-whitespace tokens of `line_text` and falls
+/// back to substring shape checks for ternary / arrow-bodied expressions.
+/// Matches the families documented in RIPR-SPEC-0027 and pinned by the
+/// `typescript_probe_shapes_*` fixture row of #768.
+///
+/// The adapter operates without a type checker, so this classifier is
+/// intentionally conservative: ambiguous shapes fall through to
+/// `Predicate` / `Control` (the default established by the owner+test
+/// sub-slice in #777) rather than guessing across families.
+fn classify_probe_shape(line_text: &str) -> (ProbeFamily, DeltaKind) {
+    let trimmed = line_text.trim_start();
+    // Strip a leading `} ` (e.g., `} else if (...)`, `} else {`) so the
+    // dedicated-keyword check still fires on close-brace-continuation
+    // shapes that are common in JavaScript-style if/else ladders.
+    let leading = trimmed.strip_prefix("} ").unwrap_or(trimmed).trim_start();
+
+    if leading.starts_with("throw ")
+        || leading.starts_with("throw(")
+        || leading.starts_with("return Promise.reject(")
+        || leading.starts_with("return Promise.reject ")
+        || leading.starts_with("} catch ")
+        || leading.starts_with("catch ")
+    {
+        return (ProbeFamily::ErrorPath, DeltaKind::Control);
+    }
+    if leading.starts_with("return ") || leading == "return;" || leading.starts_with("return;") {
+        return (ProbeFamily::ReturnValue, DeltaKind::Value);
+    }
+    if leading.starts_with("if (")
+        || leading.starts_with("if(")
+        || leading.starts_with("else if (")
+        || leading.starts_with("else if(")
+        || leading.starts_with("while (")
+        || leading.starts_with("while(")
+        || leading.starts_with("for (")
+        || leading.starts_with("for(")
+        || leading.starts_with("switch (")
+        || leading.starts_with("switch(")
+        || leading.starts_with("case ")
+        || leading.starts_with("default:")
+    {
+        return (ProbeFamily::Predicate, DeltaKind::Control);
+    }
+    // Top-level ternary or short-circuit expression that is *not* embedded
+    // in a `return` or assignment — treat as a predicate boundary.
+    if (leading.contains("? ") && leading.contains(" : "))
+        && !leading.starts_with("const ")
+        && !leading.starts_with("let ")
+        && !leading.starts_with("var ")
+    {
+        return (ProbeFamily::Predicate, DeltaKind::Control);
+    }
+    // Field / property assignments: `this.x = ...`, `obj.x = ...`, or
+    // top-level binding declarations inside a constructor / setter body.
+    // Detected only when the line has the form `<ident chain> = <expr>`
+    // without a leading function-call shape; this keeps statement-level
+    // call expressions in the SideEffect bucket below.
+    if let Some(eq_idx) = leading.find(" = ")
+        && !leading.starts_with("if ")
+        && !leading.starts_with("else ")
+        && !leading.starts_with("return")
+        && !leading.starts_with("throw")
+    {
+        let lhs = &leading[..eq_idx];
+        let looks_like_assignment = lhs
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '[' || c == ']');
+        let looks_like_declaration =
+            lhs.starts_with("const ") || lhs.starts_with("let ") || lhs.starts_with("var ");
+        if looks_like_assignment && !looks_like_declaration {
+            return (ProbeFamily::FieldConstruction, DeltaKind::Value);
+        }
+    }
+    // Bare call-expression statement (e.g., `tracker.record(event);`,
+    // `await logger.flush();`). Detected by trailing `);` after stripping
+    // optional `await ` / `void ` / trailing comments.
+    let call_candidate = leading
+        .strip_prefix("await ")
+        .unwrap_or(leading)
+        .strip_prefix("void ")
+        .unwrap_or_else(|| leading.strip_prefix("await ").unwrap_or(leading))
+        .trim_end();
+    let call_candidate = call_candidate
+        .strip_suffix(';')
+        .unwrap_or(call_candidate)
+        .trim_end();
+    if call_candidate.ends_with(')')
+        && call_candidate.contains('(')
+        && !call_candidate.starts_with("if")
+        && !call_candidate.starts_with("while")
+        && !call_candidate.starts_with("for")
+        && !call_candidate.starts_with("switch")
+        && !call_candidate.starts_with("return")
+        && !call_candidate.starts_with("throw")
+        && !call_candidate.starts_with("const ")
+        && !call_candidate.starts_with("let ")
+        && !call_candidate.starts_with("var ")
+    {
+        return (ProbeFamily::SideEffect, DeltaKind::Effect);
+    }
+    // Fall through: keep the pre-#768 default. The adapter does not yet
+    // recognise this shape, so flagging it as a generic predicate-control
+    // change matches the owner+test sub-slice baseline rather than
+    // committing to a more specific family the adapter cannot confirm.
+    (ProbeFamily::Predicate, DeltaKind::Control)
+}
+
 fn classify_change(
     file: &Path,
     line: usize,
@@ -431,12 +541,13 @@ fn classify_change(
         .chars()
         .map(|c| if c == '/' || c == '\\' { '_' } else { c })
         .collect();
+    let (family, delta) = classify_probe_shape(line_text);
     let probe = Probe {
         id: ProbeId(format!("probe:{id_path}:{line}:typescript_preview")),
         location: SourceLocation::new(file.to_string_lossy().as_ref(), line, 1),
         owner: None,
-        family: ProbeFamily::Predicate,
-        delta: DeltaKind::Control,
+        family,
+        delta,
         before: None,
         after: Some(line_text.to_string()),
         expression: line_text.to_string(),
@@ -996,5 +1107,87 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
         assert!(result.findings.is_empty());
         assert_eq!(result.production_files, 0);
         Ok(())
+    }
+
+    #[test]
+    fn classify_probe_shape_recognises_if_predicate() {
+        let (family, delta) = classify_probe_shape("    if (amount >= threshold) {");
+        assert_eq!(family, ProbeFamily::Predicate);
+        assert_eq!(delta, DeltaKind::Control);
+    }
+
+    #[test]
+    fn classify_probe_shape_recognises_else_if_predicate() {
+        let (family, delta) = classify_probe_shape("    } else if (amount === 0) {");
+        assert_eq!(family, ProbeFamily::Predicate);
+        assert_eq!(delta, DeltaKind::Control);
+    }
+
+    #[test]
+    fn classify_probe_shape_recognises_return_value() {
+        let (family, delta) = classify_probe_shape("    return amount - 10;");
+        assert_eq!(family, ProbeFamily::ReturnValue);
+        assert_eq!(delta, DeltaKind::Value);
+    }
+
+    #[test]
+    fn classify_probe_shape_recognises_bare_return() {
+        let (family, delta) = classify_probe_shape("    return;");
+        assert_eq!(family, ProbeFamily::ReturnValue);
+        assert_eq!(delta, DeltaKind::Value);
+    }
+
+    #[test]
+    fn classify_probe_shape_recognises_throw_error_path() {
+        let (family, delta) = classify_probe_shape("    throw new Error('out of range');");
+        assert_eq!(family, ProbeFamily::ErrorPath);
+        assert_eq!(delta, DeltaKind::Control);
+    }
+
+    #[test]
+    fn classify_probe_shape_recognises_promise_reject_error_path() {
+        let (family, delta) = classify_probe_shape("    return Promise.reject(new Error('boom'));");
+        assert_eq!(family, ProbeFamily::ErrorPath);
+        assert_eq!(delta, DeltaKind::Control);
+    }
+
+    #[test]
+    fn classify_probe_shape_recognises_field_construction() {
+        let (family, delta) = classify_probe_shape("    this.count = next;");
+        assert_eq!(family, ProbeFamily::FieldConstruction);
+        assert_eq!(delta, DeltaKind::Value);
+    }
+
+    #[test]
+    fn classify_probe_shape_recognises_side_effect_call() {
+        let (family, delta) = classify_probe_shape("    logger.record(event);");
+        assert_eq!(family, ProbeFamily::SideEffect);
+        assert_eq!(delta, DeltaKind::Effect);
+    }
+
+    #[test]
+    fn classify_probe_shape_recognises_await_side_effect_call() {
+        let (family, delta) = classify_probe_shape("    await logger.flush();");
+        assert_eq!(family, ProbeFamily::SideEffect);
+        assert_eq!(delta, DeltaKind::Effect);
+    }
+
+    #[test]
+    fn classify_probe_shape_recognises_ternary_as_predicate() {
+        let (family, delta) =
+            classify_probe_shape("    amount >= threshold ? amount - 10 : amount;");
+        assert_eq!(family, ProbeFamily::Predicate);
+        assert_eq!(delta, DeltaKind::Control);
+    }
+
+    #[test]
+    fn classify_probe_shape_falls_through_to_predicate_default_for_const_decl() {
+        // `const` declarations do not match a specific family in the
+        // preview adapter; conservative fall-through keeps the historical
+        // owner+test sub-slice default (#777) rather than guessing.
+        let (family, delta) =
+            classify_probe_shape("    const total = applyDiscount(amount, threshold);");
+        assert_eq!(family, ProbeFamily::Predicate);
+        assert_eq!(delta, DeltaKind::Control);
     }
 }

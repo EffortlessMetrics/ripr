@@ -1,0 +1,31 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/typescript_return_value_shape/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING src/rounding.ts:2
+
+Changed
+  after:      return Math.round(amount * 100) / 100;
+
+Probe
+  family: return_value
+  delta:  value
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `roundCents`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted oracle kind: `unknown` (rank 1)
+  - discriminator weak: TypeScript preview adapter found no strong discriminator; upgrade an assertion to `toBe` / `toEqual` / `toStrictEqual` / `toThrow` to escalate.
+  - related test tests/rounding.test.ts:6 rounds two decimals uses unknown unknown oracle
+
+Weakness
+  - Related test reaches `roundCents` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) or exact-error-variant (`toThrow`) assertion.
+
+Next step
+  TypeScript preview: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`).
