@@ -9,6 +9,11 @@ traceability manifest, and output contracts. It does not switch to another
 campaign merely because `.ripr/goals/active.toml` points at a PR/CI, editor, or
 policy surface.
 
+The Lane 1 source-of-truth stack is defined in
+[docs/lanes/README.md](README.md). This tracker records the evidence-spine
+stabilization state; it does not replace proposals, specs, ADRs, capability
+evidence, traceability, closeouts, or the active operator manifest.
+
 This document is now the stabilization record for the shared evidence spine.
 The next Lane 1 objective is Evidence Accuracy Evaluation, tracked in
 [LANE_1_EVIDENCE_ACCURACY.md](LANE_1_EVIDENCE_ACCURACY.md).
@@ -30,6 +35,15 @@ Lane 1 owns these evidence surfaces:
 
 Downstream surfaces may consume this evidence, but they should not reinterpret
 it independently.
+
+For new Lane 1 work, use the layered source-of-truth model:
+
+- proposal for why the evidence-quality work matters;
+- spec for behavior contracts and acceptance examples;
+- ADR only for durable evidence-model decisions;
+- lane tracker for current slices and non-goals;
+- capability matrix and traceability for proof;
+- closeout handoff for what landed and what remains.
 
 ## Current Stable Spine
 
