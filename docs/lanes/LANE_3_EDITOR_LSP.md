@@ -90,6 +90,42 @@ Lane 3 should review upstream analyzer, config, and output work only as a
 consumer of future editor projection inputs. Rust saved-workspace editor
 behavior must stay unchanged while this dependency is prepared.
 
+Current dependency state:
+
+- the TypeScript owner+test, assertion-shape, and initial probe-shape
+  sub-slices have landed (#777, #781, #784), but TypeScript preview adapter work
+  remains active;
+- TypeScript follow-ups still need static-limit reporting (#769), visible
+  preview metadata in human output (#779), file-first owner matching (#780),
+  broad `toThrow()` handling (#782), awaited `Promise.reject(...)` error-path
+  handling (#785), and fixture-per-probe-family evidence (#786) before editor
+  projection can be treated as ready;
+- assertion-shape extraction landed in #781, with a Lane 3 watchpoint that
+  broad `toThrow()` assertions must not be surfaced as exact error-variant
+  evidence;
+- issue #779 tracks the landed human-output gap where TypeScript JSON carries
+  `language_status = "preview"` but the human report does not visibly label the
+  finding as preview TypeScript evidence;
+- issue #780 tracks the landed owner-matching gap where TypeScript changed
+  lines are matched by line range before file identity, which can attach the
+  wrong owner and related-test evidence in mixed-file workspaces;
+- the Python preview adapter is still absent, so `lsp/editor-language-routing`
+  remains blocked even after TypeScript follow-ups land.
+
+Before starting `lsp/editor-language-routing`, refresh this audit instead of
+inferring readiness from campaign momentum:
+
+- `.ripr/goals/active.toml` must show both `analysis/typescript-preview-adapter`
+  and `analysis/python-preview-adapter` complete, or `cargo xtask goals next`
+  must list `lsp/editor-language-routing` as ready;
+- TypeScript and Python preview outputs must visibly carry preview language
+  metadata and explicit static limits in artifacts the editor can project;
+- the TypeScript gaps tracked by #769, #779, #780, #782, #785, and #786 must be
+  closed or superseded by inspected artifacts with equivalent coverage;
+- `editors/vscode/package.json` and `editors/vscode/src/client.ts` should remain
+  Rust-only until the routing slice deliberately adds preview selectors behind
+  opt-in configuration.
+
 Readiness boundary:
 
 - preview adapters must be opt-in;
@@ -99,6 +135,46 @@ Readiness boundary:
   selected language is enabled;
 - Rust defaults, gate semantics, generated CI, and Rust LSP/editor behavior must
   not change.
+
+Maintenance audit evidence from 2026-05-12:
+
+- `cargo xtask goals next` reported no ready work items, and
+  `.ripr/goals/active.toml` still marks `analysis/typescript-preview-adapter`
+  active, `analysis/python-preview-adapter` blocked, and
+  `lsp/editor-language-routing` blocked;
+- `editors/vscode/package.json` still activates on `onLanguage:rust`, and
+  `editors/vscode/src/client.ts` still uses a Rust-only `documentSelector` plus
+  `isRustFileDocument` guard;
+- `fixtures/editor_lsp_workflow` exists and `cargo xtask lsp-cockpit-report`
+  produced a passing cockpit report for the saved-workspace editor loop;
+- `cargo test -p ripr lsp --lib` and
+  `npm --prefix editors/vscode run compile` passed for the existing Rust editor
+  cockpit, and were rerun after #784 landed on `main`;
+- `cargo test -p ripr lsp::tests --lib` passed 84 LSP tests, and
+  `npm --prefix editors/vscode run test:e2e` passed 30 live VS Code extension
+  smoke tests for the saved-workspace Rust editor path;
+- docs-only tracker validation passed with `cargo xtask check-doc-index`,
+  `cargo xtask markdown-links`, `cargo xtask check-static-language`,
+  `cargo xtask check-pr`, and `git diff --check`.
+- a later refresh found #784 merged for #768 probe-shape refinement; Lane 3
+  review captured the unresolved awaited `Promise.reject(...)` classification
+  and fixture-per-probe-family evidence gaps in #785 and #786, so the routing
+  slice remains blocked.
+
+Objective audit status from 2026-05-12: not complete, blocked upstream.
+
+| Requirement | Current artifact or command | Audit status |
+| --- | --- | --- |
+| Rust saved-workspace diagnostics, hover, actions, context packets, status, related-test opening, and copy commands remain stable | `cargo test -p ripr lsp --lib`, `cargo test -p ripr lsp::tests --lib`, `npm --prefix editors/vscode run test:e2e`, `fixtures/editor_lsp_workflow` | Current Rust cockpit checks pass |
+| Editor behavior stays saved-workspace only and projection-only | `docs/EDITOR_EVIDENCE_UX.md`, `docs/EDITOR_EVIDENCE_WORKFLOW.md`, `editors/vscode/src/client.ts`, `fixtures/editor_lsp_workflow` | Current tracker evidence covers the saved-workspace path |
+| Wrong-root, missing, malformed, and stale reports fail closed | `fixtures/editor_lsp_workflow`, `cargo xtask lsp-cockpit-report`, VS Code e2e status tests | Current cockpit report and e2e smoke cover these states |
+| VS Code remains Rust-default until preview routing is selected | `editors/vscode/package.json`, `editors/vscode/src/client.ts` | Current extension activation and selector remain Rust-only |
+| TypeScript preview adapter exists with editor-projectable preview metadata and static limits | `.ripr/goals/active.toml`, #769, #779, #780, #782, #785, #786 | Incomplete; TypeScript preview adapter work remains active |
+| Python preview adapter exists with editor-projectable preview metadata and static limits | `.ripr/goals/active.toml` | Missing; Python preview adapter remains blocked |
+| `lsp/editor-language-routing` is ready or selected | `cargo xtask goals next`, `.ripr/goals/active.toml` | Blocked; no ready work items |
+| Preview selectors for TypeScript, TSX, JavaScript, JSX, and Python are opt-in and preserve Rust defaults | `editors/vscode/package.json`, `editors/vscode/src/client.ts` | Not started; must wait for both preview adapters |
+| Preview diagnostics, hover, status, and actions visibly label preview evidence and static limits | Future `lsp/editor-language-routing` artifacts and editor workflow fixtures | Not started; blocked by adapter outputs |
+| No editor hidden analysis reruns, source edits, generated tests, provider calls, mutation execution, gate semantics, default blocking, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays | Lane 3 Scope, Non-Goals, and Cross-Lane Rules in this tracker | Current tracker preserves the boundary; future routing must re-audit it |
 
 ## Next Slices
 
