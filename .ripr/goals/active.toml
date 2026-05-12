@@ -202,7 +202,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/python-preview-adapter"
-status = "blocked"
+status = "ready"
 branch = "analysis-python-preview-adapter"
 stackable = false
 blocked_by = [
@@ -210,6 +210,18 @@ blocked_by = [
   "adr/python-parser-substrate",
 ]
 acceptance = "Add the Python syntax-first adapter, the Python fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Mirrors the TypeScript scaffold pattern: add the `rustpython-parser` Cargo dependency approved by the corrected ADR 0009, add PythonAdapter wiring, route .py through the language router, and parse changed .py files when [languages] includes python. Empty findings until later sub-slices extract owners, tests, and assertions."
+commands = [
+  "cargo check -p ripr",
+  "cargo test -p ripr --lib analysis::language",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-workspace-shape",
+  "cargo xtask check-dependencies",
+  "cargo xtask check-pr",
+]
 
 [[work_item]]
 id = "lsp/editor-language-routing"
