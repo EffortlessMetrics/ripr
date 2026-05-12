@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -32,7 +32,8 @@ use reports::{
 use reports::{lsp_cockpit_report, targeted_test_outcome};
 use run::{
     TimedOutput, capture_output, capture_output_with_timeout, command_success_owned, run,
-    run_in_dir, run_in_dir_with_envs, run_output, run_output_optional, run_output_owned, run_owned,
+    run_in_dir, run_in_dir_with_envs, run_output, run_output_optional, run_output_owned,
+    run_output_to_file_owned, run_owned,
 };
 
 #[derive(Debug)]
@@ -8137,9 +8138,16 @@ struct Lane1EvidenceAuditFileDebt {
 /// Generate the Lane 1 evidence quality audit from the current repo exposure
 /// data and write `target/ripr/reports/lane1-evidence-audit.{json,md}`.
 pub(crate) fn lane1_evidence_audit_report_impl() -> Result<(), String> {
-    let json_args = repo_seam_inventory_command_args("repo-exposure-json");
-    let repo_exposure_json = run_output_owned("cargo", &json_args)?;
-    let report = lane1_evidence_audit_from_repo_exposure(".", &repo_exposure_json)?;
+    ensure_reports_dir()?;
+    let repo_exposure_path = reports_dir().join("lane1-evidence-audit.repo-exposure.json");
+    write_lane1_evidence_audit_repo_exposure(&repo_exposure_path)?;
+    let report = lane1_evidence_audit_from_repo_exposure_file(".", &repo_exposure_path)?;
+    if let Err(err) = fs::remove_file(&repo_exposure_path) {
+        eprintln!(
+            "warning: failed to remove temporary Lane 1 repo exposure input {}: {err}",
+            repo_exposure_path.display()
+        );
+    }
     write_report(
         "lane1-evidence-audit.json",
         &lane1_evidence_audit_json(&report)?,
@@ -8150,6 +8158,73 @@ pub(crate) fn lane1_evidence_audit_report_impl() -> Result<(), String> {
     )
 }
 
+fn write_lane1_evidence_audit_repo_exposure(path: &Path) -> Result<(), String> {
+    let args = vec![
+        "run".to_string(),
+        "-p".to_string(),
+        "ripr".to_string(),
+        "--quiet".to_string(),
+        "--".to_string(),
+        "check".to_string(),
+        "--root".to_string(),
+        ".".to_string(),
+        "--mode".to_string(),
+        "instant".to_string(),
+        "--format".to_string(),
+        "repo-exposure-json".to_string(),
+    ];
+    run_output_to_file_owned("cargo", &args, path)
+}
+
+fn lane1_evidence_audit_from_repo_exposure_file(
+    root: &str,
+    path: &Path,
+) -> Result<Lane1EvidenceAuditReport, String> {
+    let file = fs::File::open(path).map_err(|err| {
+        format!(
+            "failed to open temporary Lane 1 repo exposure input {}: {err}",
+            path.display()
+        )
+    })?;
+    let reader = BufReader::new(file);
+    let mut builder = Lane1EvidenceAuditBuilder::default();
+    let mut schema_version = None;
+    let mut saw_seams_array = false;
+
+    for line in reader.lines() {
+        let line = line.map_err(|err| {
+            format!(
+                "failed to read temporary Lane 1 repo exposure input {}: {err}",
+                path.display()
+            )
+        })?;
+        if schema_version.is_none() {
+            schema_version = audit_schema_version_from_line(&line);
+        }
+        if line.trim_start().starts_with("\"seams\":") {
+            saw_seams_array = true;
+        }
+        let Some(record_json) = audit_evidence_record_json_from_line(&line) else {
+            continue;
+        };
+        let record = serde_json::from_str::<Value>(record_json).map_err(|err| {
+            format!(
+                "failed to parse evidence_record from {}: {err}",
+                path.display()
+            )
+        })?;
+        let seam = serde_json::json!({ "evidence_record": record });
+        builder.ingest_seam(&seam);
+    }
+
+    if !saw_seams_array {
+        return Err("repo exposure JSON is missing `seams` array".to_string());
+    }
+
+    Ok(builder.finish(root.to_string(), schema_version))
+}
+
+#[cfg(test)]
 fn lane1_evidence_audit_from_repo_exposure(
     root: &str,
     repo_exposure_json: &str,
@@ -8161,30 +8236,41 @@ fn lane1_evidence_audit_from_repo_exposure(
         .and_then(Value::as_array)
         .ok_or_else(|| "repo exposure JSON is missing `seams` array".to_string())?;
 
-    let mut summary = Lane1EvidenceAuditSummary::default();
-    let mut movement = Lane1EvidenceAuditMovement::default();
-    let mut canonical_groups = BTreeMap::new();
-    let mut duplicate_groups = BTreeMap::new();
-    let mut field_health = BTreeMap::new();
-    let mut file_debt = BTreeMap::new();
-
-    let mut missing_reason_counts = BTreeMap::new();
-    let mut missing_flow_sink_counts = BTreeMap::new();
-    let mut missing_value_counts = BTreeMap::new();
-    let mut static_reason_counts = BTreeMap::new();
-    let mut static_stage_counts = BTreeMap::new();
-    let mut oracle_semantics_counts = BTreeMap::new();
-    let mut oracle_kind_counts = BTreeMap::new();
-    let mut oracle_strength_counts = BTreeMap::new();
-    let mut related_confidence_counts = BTreeMap::new();
-    let mut top_related_confidence_counts = BTreeMap::new();
-    let mut top_related_reason_counts = BTreeMap::new();
-    let mut calibration_availability_counts = BTreeMap::new();
-    let mut calibration_confidence_counts = BTreeMap::new();
-    let mut calibration_agreement_counts = BTreeMap::new();
-
+    let mut builder = Lane1EvidenceAuditBuilder::default();
     for seam in seams {
-        summary.seams_total += 1;
+        builder.ingest_seam(seam);
+    }
+
+    Ok(builder.finish(root.to_string(), audit_string(&value, &["schema_version"])))
+}
+
+#[derive(Default)]
+struct Lane1EvidenceAuditBuilder {
+    summary: Lane1EvidenceAuditSummary,
+    movement: Lane1EvidenceAuditMovement,
+    canonical_groups: BTreeMap<String, Lane1EvidenceAuditGroup>,
+    duplicate_groups: BTreeMap<String, Lane1EvidenceAuditGroup>,
+    field_health: BTreeMap<String, Lane1EvidenceAuditFieldHealth>,
+    file_debt: BTreeMap<String, Lane1EvidenceAuditFileDebt>,
+    missing_reason_counts: BTreeMap<String, usize>,
+    missing_flow_sink_counts: BTreeMap<String, usize>,
+    missing_value_counts: BTreeMap<String, usize>,
+    static_reason_counts: BTreeMap<String, usize>,
+    static_stage_counts: BTreeMap<String, usize>,
+    oracle_semantics_counts: BTreeMap<String, usize>,
+    oracle_kind_counts: BTreeMap<String, usize>,
+    oracle_strength_counts: BTreeMap<String, usize>,
+    related_confidence_counts: BTreeMap<String, usize>,
+    top_related_confidence_counts: BTreeMap<String, usize>,
+    top_related_reason_counts: BTreeMap<String, usize>,
+    calibration_availability_counts: BTreeMap<String, usize>,
+    calibration_confidence_counts: BTreeMap<String, usize>,
+    calibration_agreement_counts: BTreeMap<String, usize>,
+}
+
+impl Lane1EvidenceAuditBuilder {
+    fn ingest_seam(&mut self, seam: &Value) {
+        self.summary.seams_total += 1;
         let record = seam
             .get("evidence_record")
             .filter(|value| value.is_object());
@@ -8193,7 +8279,7 @@ fn lane1_evidence_audit_from_repo_exposure(
             .or_else(|| audit_bool(seam, &["headline_eligible"]))
             .unwrap_or(false);
         if headline {
-            summary.raw_headline_gaps += 1;
+            self.summary.raw_headline_gaps += 1;
         }
 
         let file = record
@@ -8202,15 +8288,15 @@ fn lane1_evidence_audit_from_repo_exposure(
             .unwrap_or_else(|| "unknown".to_string());
 
         let Some(record) = record else {
-            summary.evidence_records_missing += 1;
-            let debt = audit_file_debt(&mut file_debt, &file);
+            self.summary.evidence_records_missing += 1;
+            let debt = audit_file_debt(&mut self.file_debt, &file);
             debt.debt_score += 1;
             debt.missing_evidence_records += 1;
-            continue;
+            return;
         };
 
-        summary.evidence_records_total += 1;
-        audit_evidence_record_field_health(record, &mut field_health);
+        self.summary.evidence_records_total += 1;
+        audit_evidence_record_field_health(record, &mut self.field_health);
 
         let seam_id = audit_string(record, &["seam_id"]);
         let canonical_gap_id = audit_string(record, &["canonical_gap_id"]);
@@ -8220,31 +8306,31 @@ fn lane1_evidence_audit_from_repo_exposure(
         let group_size = audit_usize(record, &["canonical_gap_group_size"]);
 
         if seam_id.is_some() {
-            movement.records_with_seam_id += 1;
+            self.movement.records_with_seam_id += 1;
         }
         if canonical_gap_id.is_some() {
-            movement.records_with_canonical_gap_id += 1;
+            self.movement.records_with_canonical_gap_id += 1;
         } else if headline {
-            summary.headline_without_canonical_gap_id += 1;
+            self.summary.headline_without_canonical_gap_id += 1;
         }
         if audit_evidence_path_complete(record) {
-            movement.records_with_complete_evidence_path += 1;
+            self.movement.records_with_complete_evidence_path += 1;
         }
         if audit_string(record, &["recommendation", "action"]).is_some() {
-            movement.records_with_recommendation += 1;
+            self.movement.records_with_recommendation += 1;
         }
         if audit_string(record, &["recommendation", "verify_command"]).is_some() {
-            movement.records_with_verify_command += 1;
+            self.movement.records_with_verify_command += 1;
         }
 
-        let debt = audit_file_debt(&mut file_debt, &file);
+        let debt = audit_file_debt(&mut self.file_debt, &file);
         if headline {
             debt.debt_score += 1;
             debt.headline_gaps += 1;
         }
 
         let missing = audit_array(record, &["missing_discriminators"]);
-        summary.missing_discriminators_total += missing.len();
+        self.summary.missing_discriminators_total += missing.len();
         debt.debt_score += missing.len();
         debt.missing_discriminators += missing.len();
         let missing_signature = audit_missing_discriminator_signature(missing);
@@ -8260,13 +8346,13 @@ fn lane1_evidence_audit_from_repo_exposure(
             let sink = audit_string(missing, &["flow_sink", "kind"])
                 .or_else(|| audit_string(missing, &["flow_sink"]))
                 .unwrap_or_else(|| "no_flow_sink".to_string());
-            audit_increment(&mut missing_reason_counts, &reason);
-            audit_increment(&mut missing_value_counts, &value);
-            audit_increment(&mut missing_flow_sink_counts, &sink);
+            audit_increment(&mut self.missing_reason_counts, &reason);
+            audit_increment(&mut self.missing_value_counts, &value);
+            audit_increment(&mut self.missing_flow_sink_counts, &sink);
         }
 
         let static_limitations = audit_array(record, &["static_limitations"]);
-        summary.static_limitations_total += static_limitations.len();
+        self.summary.static_limitations_total += static_limitations.len();
         debt.debt_score += static_limitations.len();
         debt.static_limitations += static_limitations.len();
         for limitation in static_limitations {
@@ -8274,8 +8360,8 @@ fn lane1_evidence_audit_from_repo_exposure(
                 .unwrap_or_else(|| "missing_reason".to_string());
             let stage =
                 audit_string(limitation, &["stage"]).unwrap_or_else(|| "missing_stage".to_string());
-            audit_increment(&mut static_reason_counts, &reason);
-            audit_increment(&mut static_stage_counts, &stage);
+            audit_increment(&mut self.static_reason_counts, &reason);
+            audit_increment(&mut self.static_stage_counts, &stage);
         }
 
         let unknown_stage_count = audit_unknown_stage_count(record);
@@ -8285,9 +8371,9 @@ fn lane1_evidence_audit_from_repo_exposure(
         let related_tests = audit_array(record, &["related_tests"]);
         let related_tests_total =
             audit_usize(record, &["related_tests_total"]).unwrap_or(related_tests.len());
-        summary.related_tests_total += related_tests_total;
+        self.summary.related_tests_total += related_tests_total;
         if related_tests_total == 0 {
-            summary.seams_without_related_tests += 1;
+            self.summary.seams_without_related_tests += 1;
             debt.debt_score += 1;
             debt.no_related_tests += 1;
         }
@@ -8296,10 +8382,10 @@ fn lane1_evidence_audit_from_repo_exposure(
                 .unwrap_or_else(|| "missing".to_string());
             let reason = audit_string(top_related, &["relation_reason"])
                 .unwrap_or_else(|| "missing".to_string());
-            audit_increment(&mut top_related_confidence_counts, &confidence);
-            audit_increment(&mut top_related_reason_counts, &reason);
+            audit_increment(&mut self.top_related_confidence_counts, &confidence);
+            audit_increment(&mut self.top_related_reason_counts, &reason);
             if matches!(confidence.as_str(), "low" | "opaque") {
-                summary.low_or_opaque_top_related_tests += 1;
+                self.summary.low_or_opaque_top_related_tests += 1;
                 debt.debt_score += 1;
                 debt.low_or_opaque_top_related_tests += 1;
             }
@@ -8311,11 +8397,11 @@ fn lane1_evidence_audit_from_repo_exposure(
                 audit_string(related, &["oracle_kind"]).unwrap_or_else(|| "missing".to_string());
             let oracle_strength = audit_string(related, &["oracle_strength"])
                 .unwrap_or_else(|| "missing".to_string());
-            audit_increment(&mut related_confidence_counts, &confidence);
-            audit_increment(&mut oracle_kind_counts, &oracle_kind);
-            audit_increment(&mut oracle_strength_counts, &oracle_strength);
+            audit_increment(&mut self.related_confidence_counts, &confidence);
+            audit_increment(&mut self.oracle_kind_counts, &oracle_kind);
+            audit_increment(&mut self.oracle_strength_counts, &oracle_strength);
             audit_increment(
-                &mut oracle_semantics_counts,
+                &mut self.oracle_semantics_counts,
                 &audit_oracle_semantics_key(related),
             );
         }
@@ -8326,19 +8412,19 @@ fn lane1_evidence_audit_from_repo_exposure(
             .unwrap_or_else(|| "missing".to_string());
         let agreement = audit_string(record, &["calibration", "agreement"])
             .unwrap_or_else(|| "missing".to_string());
-        audit_increment(&mut calibration_availability_counts, &availability);
-        audit_increment(&mut calibration_confidence_counts, &confidence);
-        audit_increment(&mut calibration_agreement_counts, &agreement);
+        audit_increment(&mut self.calibration_availability_counts, &availability);
+        audit_increment(&mut self.calibration_confidence_counts, &confidence);
+        audit_increment(&mut self.calibration_agreement_counts, &agreement);
         if availability == "not_imported" || availability == "missing" {
-            summary.uncalibrated_records += 1;
+            self.summary.uncalibrated_records += 1;
         } else {
-            summary.calibrated_records += 1;
+            self.summary.calibrated_records += 1;
         }
 
         if headline {
             if let Some(id) = canonical_gap_id.as_ref() {
                 audit_upsert_group(
-                    &mut canonical_groups,
+                    &mut self.canonical_groups,
                     Lane1EvidenceAuditGroup {
                         key: format!("canonical:{id}"),
                         canonical_gap_id: canonical_gap_id.clone(),
@@ -8371,7 +8457,7 @@ fn lane1_evidence_audit_from_repo_exposure(
                 )
             };
             audit_upsert_group(
-                &mut duplicate_groups,
+                &mut self.duplicate_groups,
                 Lane1EvidenceAuditGroup {
                     key: duplicate_key,
                     canonical_gap_id: canonical_gap_id.clone(),
@@ -8389,58 +8475,81 @@ fn lane1_evidence_audit_from_repo_exposure(
         }
     }
 
-    let mut largest_canonical_groups =
-        audit_sorted_groups(canonical_groups.into_values().collect());
-    summary.canonical_gap_groups_total = largest_canonical_groups.len();
-    largest_canonical_groups.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
+    fn finish(
+        mut self,
+        root: String,
+        repo_exposure_schema_version: Option<String>,
+    ) -> Lane1EvidenceAuditReport {
+        let mut largest_canonical_groups =
+            audit_sorted_groups(self.canonical_groups.into_values().collect());
+        self.summary.canonical_gap_groups_total = largest_canonical_groups.len();
+        largest_canonical_groups.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
 
-    let mut duplicate_looking_groups = audit_sorted_groups(
-        duplicate_groups
-            .into_values()
-            .filter(|group| {
-                group.count > 1 || group.reported_group_size.is_some_and(|size| size > 1)
-            })
-            .collect(),
-    );
-    summary.duplicate_looking_groups_total = duplicate_looking_groups.len();
-    duplicate_looking_groups.truncate(LANE1_EVIDENCE_AUDIT_DUPLICATE_LIMIT);
+        let mut duplicate_looking_groups = audit_sorted_groups(
+            self.duplicate_groups
+                .into_values()
+                .filter(|group| {
+                    group.count > 1 || group.reported_group_size.is_some_and(|size| size > 1)
+                })
+                .collect(),
+        );
+        self.summary.duplicate_looking_groups_total = duplicate_looking_groups.len();
+        duplicate_looking_groups.truncate(LANE1_EVIDENCE_AUDIT_DUPLICATE_LIMIT);
 
-    let mut field_health = field_health.into_values().collect::<Vec<_>>();
-    field_health.sort_by(|left, right| left.field.cmp(&right.field));
+        let mut field_health = self.field_health.into_values().collect::<Vec<_>>();
+        field_health.sort_by(|left, right| left.field.cmp(&right.field));
 
-    let mut file_debt = file_debt.into_values().collect::<Vec<_>>();
-    file_debt.sort_by(|left, right| {
-        right
-            .debt_score
-            .cmp(&left.debt_score)
-            .then_with(|| left.file.cmp(&right.file))
-    });
-    file_debt.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
+        let mut file_debt = self.file_debt.into_values().collect::<Vec<_>>();
+        file_debt.sort_by(|left, right| {
+            right
+                .debt_score
+                .cmp(&left.debt_score)
+                .then_with(|| left.file.cmp(&right.file))
+        });
+        file_debt.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
 
-    Ok(Lane1EvidenceAuditReport {
-        root: root.to_string(),
-        repo_exposure_schema_version: audit_string(&value, &["schema_version"]),
-        summary,
-        largest_canonical_groups,
-        duplicate_looking_groups,
-        missing_discriminator_reason_counts: missing_reason_counts,
-        missing_discriminator_flow_sink_counts: missing_flow_sink_counts,
-        missing_discriminator_value_counts: missing_value_counts,
-        static_limitation_reason_counts: static_reason_counts,
-        static_limitation_stage_counts: static_stage_counts,
-        oracle_semantics_counts,
-        oracle_kind_counts,
-        oracle_strength_counts,
-        related_test_confidence_counts: related_confidence_counts,
-        top_related_test_confidence_counts: top_related_confidence_counts,
-        top_related_test_reason_counts: top_related_reason_counts,
-        movement_availability: movement,
-        calibration_availability_counts,
-        calibration_confidence_counts,
-        calibration_agreement_counts,
-        evidence_record_field_health: field_health,
-        top_files_by_unresolved_evidence_debt: file_debt,
-    })
+        Lane1EvidenceAuditReport {
+            root,
+            repo_exposure_schema_version,
+            summary: self.summary,
+            largest_canonical_groups,
+            duplicate_looking_groups,
+            missing_discriminator_reason_counts: self.missing_reason_counts,
+            missing_discriminator_flow_sink_counts: self.missing_flow_sink_counts,
+            missing_discriminator_value_counts: self.missing_value_counts,
+            static_limitation_reason_counts: self.static_reason_counts,
+            static_limitation_stage_counts: self.static_stage_counts,
+            oracle_semantics_counts: self.oracle_semantics_counts,
+            oracle_kind_counts: self.oracle_kind_counts,
+            oracle_strength_counts: self.oracle_strength_counts,
+            related_test_confidence_counts: self.related_confidence_counts,
+            top_related_test_confidence_counts: self.top_related_confidence_counts,
+            top_related_test_reason_counts: self.top_related_reason_counts,
+            movement_availability: self.movement,
+            calibration_availability_counts: self.calibration_availability_counts,
+            calibration_confidence_counts: self.calibration_confidence_counts,
+            calibration_agreement_counts: self.calibration_agreement_counts,
+            evidence_record_field_health: field_health,
+            top_files_by_unresolved_evidence_debt: file_debt,
+        }
+    }
+}
+
+fn audit_schema_version_from_line(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    let value = trimmed
+        .strip_prefix("\"schema_version\":")?
+        .trim()
+        .trim_end_matches(',');
+    serde_json::from_str::<Value>(value)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_string))
+}
+
+fn audit_evidence_record_json_from_line(line: &str) -> Option<&str> {
+    let trimmed = line.trim_start();
+    let value = trimmed.strip_prefix("\"evidence_record\":")?.trim();
+    Some(value.trim_end_matches(',').trim())
 }
 
 fn lane1_evidence_audit_json(report: &Lane1EvidenceAuditReport) -> Result<String, String> {
@@ -8453,6 +8562,7 @@ fn lane1_evidence_audit_json(report: &Lane1EvidenceAuditReport) -> Result<String
         "inputs": {
             "root": report.root,
             "source": "repo-exposure-json",
+            "repo_exposure_mode": "instant",
             "repo_exposure_schema_version": report.repo_exposure_schema_version,
         },
         "summary": {

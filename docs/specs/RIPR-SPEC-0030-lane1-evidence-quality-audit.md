@@ -1,4 +1,4 @@
-# RIPR-SPEC-0029: Lane 1 Evidence Quality Audit
+# RIPR-SPEC-0030: Lane 1 Evidence Quality Audit
 
 Status: proposed
 
@@ -19,9 +19,10 @@ measures those gaps from the existing repo exposure artifact.
 
 The command:
 
-- generates repo exposure through the existing `ripr check --format
-  repo-exposure-json` path;
-- reads only the generated repo exposure JSON in memory;
+- generates repo exposure through the existing `ripr check --mode instant
+  --format repo-exposure-json` path;
+- streams `seams[].evidence_record` from the generated repo exposure JSON so
+  the audit does not need to retain the full repo-exposure artifact in memory;
 - writes deterministic JSON and Markdown reports under `target/ripr/reports`;
 - summarizes evidence quality without changing classifications;
 - does not alter gates, PR/CI projection, editor behavior, schemas outside this
@@ -150,6 +151,9 @@ audit report only; it does not change static classifications.
   `xtask/src/reports/repo.rs` route the report facade.
 - `xtask/src/main.rs` generates repo exposure, builds the audit, renders JSON
   and Markdown, and writes the artifacts.
+- `xtask/src/run.rs` provides the stdout-to-file command runner used to stream
+  the generated repo-exposure input without adding process-spawn logic to the
+  report implementation.
 - `docs/OUTPUT_SCHEMA.md` documents the report shape.
 - `docs/lanes/LANE_1_EVIDENCE_ACCURACY.md` records this as the audit-first
   Lane 1 slice.

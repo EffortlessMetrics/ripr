@@ -75,15 +75,37 @@ When opening future Lane 3 PRs, list them here until they merge or close:
 | --- | --- | --- | --- |
 | none | - | - | - |
 
+## Upcoming Dependency
+
+Campaign 27 Language Adapter Preview has one expected Lane 3 slice:
+`lsp/editor-language-routing`.
+
+That slice is blocked until both TypeScript and Python preview adapters exist.
+Lane 3 should review upstream analyzer, config, and output work only as a
+consumer of future editor projection inputs. Rust saved-workspace editor
+behavior must stay unchanged while this dependency is prepared.
+
+Readiness boundary:
+
+- preview adapters must be opt-in;
+- preview evidence must be labeled preview;
+- static limits must be visible;
+- saved-workspace analysis must route through the adapter layer only when the
+  selected language is enabled;
+- Rust defaults, gate semantics, generated CI, and Rust LSP/editor behavior must
+  not change.
+
 ## Next Slices
 
 Lane 3 is in maintenance for the saved-workspace editor cockpit. Open a new
 slice only when it is explicitly selected as editor/LSP projection work.
 Likely future slices are incremental hardening, not campaign catch-up:
 
-1. status, command, hover, or fixture updates required by a selected editor
+1. `lsp/editor-language-routing` after TypeScript and Python preview adapters
+   land;
+2. status, command, hover, or fixture updates required by a selected editor
    behavior change;
-2. user-facing editor docs updates when a later behavior change requires them.
+3. user-facing editor docs updates when a later behavior change requires them.
 
 ## Validation Gates
 

@@ -136,6 +136,31 @@ pub(crate) fn run_output_owned(program: &str, args: &[String]) -> Result<String,
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
+pub(crate) fn run_output_to_file_owned(
+    program: &str,
+    args: &[String],
+    stdout_path: &Path,
+) -> Result<(), String> {
+    let stdout = std::fs::File::create(stdout_path)
+        .map_err(|err| format!("failed to create {}: {err}", stdout_path.display()))?;
+    let output = Command::new(program)
+        .args(args)
+        .stdout(Stdio::from(stdout))
+        .output()
+        .map_err(|err| format!("failed to run {program}: {err}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!(
+            "{program} {} failed with {}\nstderr:\n{}",
+            args.join(" "),
+            output.status,
+            stderr.trim()
+        ))
+    }
+}
+
 pub(crate) fn run_output_optional(program: &str, args: &[&str]) -> Result<String, String> {
     let output = Command::new(program)
         .args(args)

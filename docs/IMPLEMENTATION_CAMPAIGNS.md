@@ -2964,8 +2964,8 @@ Work items:
 | `analysis/language-adapter-boundary` | done | Introduced `LanguageId`, `LanguageAdapter`, and the language router inside `crates/ripr/src/analysis/` without changing Rust fixture, golden, or output schema behavior. The `RustAdapter` reference type is wired into workspace discovery as a functional no-op so the seam is alive. |
 | `analysis/rust-adapter-behind-boundary` | done | Moved Rust fact extraction behind the `LanguageAdapter` trait as the reference adapter while preserving every existing Rust fixture, golden, capability, and output contract. Pipeline orchestration loads diffs, dispatches `analyze_diff`/`analyze_repo` to the adapter, and applies the language-neutral sort + summary on returned `Finding`s. |
 | `output/language-metadata` | done | Added additive optional `language` field on each `Finding` (Rust adapter sets `"rust"`, omitted otherwise) and `language_status` (preview adapters set `"preview"`; omitted for Rust per spec). `LanguageId`/`LanguageStatus` moved to `domain::language` as pure-data enums so output renderers can serialize without depending on the analysis layer. JSON renderer emits the fields when populated; goldens refreshed accordingly. `owner_kind` and `static_limit_kind` remain deferred until preview adapters populate them. |
-| `config/languages-opt-in` | active | Add `[languages] enabled` to `ripr.toml` with default `["rust"]`, vocabulary validation (rust/typescript/python), duplicate rejection, `deny_unknown_fields`, and a doctor-command surface. Update generated `ripr init` config, `ripr.toml.example`, and `docs/CONFIGURATION.md`. No analyzer dispatch wiring yet — preview adapters land in the next work items with their parser-dependency ADR. |
-| `analysis/typescript-preview-adapter` | blocked | Add the TypeScript/JavaScript syntax-first adapter, the TypeScript fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. |
+| `config/languages-opt-in` | done | Added `[languages] enabled` to `ripr.toml` with default `["rust"]`, vocabulary validation (rust/typescript/python), duplicate rejection, `deny_unknown_fields`, and a doctor-command surface. Generated `ripr init` config, `ripr.toml.example`, and `docs/CONFIGURATION.md` updated. |
+| `analysis/typescript-preview-adapter` | active | Add the TypeScript/JavaScript syntax-first adapter, the TypeScript fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Scaffold slice adds `oxc_parser` (per ADR 0008), a `TypeScriptAdapter` struct routing `.ts/.tsx/.js/.jsx` through the shared router, language-aware pipeline dispatch through `config.languages().enabled()`, and a real production parse-validation use of `oxc_parser`; syntax-first owner/test/assertion/probe extraction lands in a follow-up slice. Targets 0.6.0. |
 | `analysis/python-preview-adapter` | blocked | Add the Python syntax-first adapter, the Python fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. |
 | `lsp/editor-language-routing` | blocked | Extend the VS Code extension to register the TypeScript, TypeScript React, JavaScript, JavaScript React, and Python selectors and route saved-workspace analysis through the adapter layer without changing Rust saved-workspace defaults. |
 | `ci/language-aware-grouping` | blocked | Update generated GitHub CI summaries to group advisory output by language only when `[languages]` declares more than Rust, keeping Rust-default behavior identical and gate authority unchanged. |
@@ -3031,6 +3031,89 @@ Next:
   policy, gate, mutation, provider, generated-test, source-edit,
   inline-comment, branch-protection, or default-CI changes into this
   campaign.
+
+## Focused Lane 2 Tracker: Policy Readiness and Preview Evidence Governance
+
+Tracker ID: `policy-readiness-preview-evidence-governance`
+
+Status: tracker
+
+GitHub issue: [#755](https://github.com/EffortlessMetrics/ripr/issues/755)
+
+Campaign 27 is the active machine-readable campaign. This focused Lane 2
+tracker is not a replacement for `.ripr/goals/active.toml`; it records the
+policy boundary that Campaign 27 and later policy work must not cross.
+
+Objective:
+
+```text
+Make RIPR policy decisions auditable across stable Rust evidence and preview
+language-adapter evidence. Preserve advisory defaults, keep preview findings
+visible but non-gating by default, and define when evidence is eligible for
+baseline, waiver, suppression, calibration, RIPR Zero, and gates.
+```
+
+End state:
+
+- policy readiness defines which mode is safe for a repo right now
+- preview-language evidence is visible and advisory by default
+- preview-language evidence is not gate-eligible, RIPR Zero blocking debt, or
+  mutation-calibrated confidence unless a later explicit policy promotes it
+- waivers remain visible acknowledgements
+- suppressions remain durable policy exceptions with owner, reason, scope, and
+  review state
+- baselines remain adoption checkpoints, not acceptance forever
+- generated CI can surface readiness artifacts only as advisory evidence
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `spec/policy-readiness-report` | done | RIPR-SPEC-0029 defines the read-only policy readiness report answering which mode is safe for the repo right now, including statuses, inputs, fields, warnings, preview-boundary health, and no-mutation/no-gate authority. |
+| `spec/preview-evidence-policy-boundary` | planned | Specify that TypeScript and Python preview evidence is visible/advisory by default, carries preview/static-limit labels, and is not gate, RIPR Zero, or mutation-calibrated confidence eligible without later explicit promotion. |
+| `report/policy-readiness` | planned | Implement `ripr policy readiness` over explicit existing artifacts only, writing policy-readiness JSON and Markdown without posting, source edits, hidden analysis, baseline mutation, gate execution, or CI failure authority. |
+| `report/waiver-aging` | planned | Add waiver-aging JSON and Markdown so repeated waiver is visible as a signal, not treated as a failure or hidden exception. |
+| `policy/suppression-ledger-health` | planned | Flag missing owner, missing reason, stale suppression, overbroad scope, unknown selector, and preview-language suppression without preview label while keeping suppressed findings visible. |
+| `policy/baseline-refresh-guardrails` | planned | Document and enforce that shrink-only refresh can remove resolved debt, adopting new debt is explicit/manual if it exists, and CI never auto-adopts new baseline entries. |
+| `policy/exception-ledger-convergence` | planned | Align no-panic, Clippy, non-Rust, workflow, RIPR suppression, baseline, and waiver ledgers around one reviewed reason per exception, semantic identity where available, and stale-entry behavior by class. |
+| `docs/blocking-readiness-guide` | planned | Extend the blocking-readiness decision tree so advisory, acknowledgeable, baseline-check, and calibrated-gate promotion depends on calibration, baseline, waiver, suppression, and preview-evidence health. |
+| `ci/policy-readiness-advisory-projection` | planned | Surface policy-readiness and waiver-aging artifacts in generated CI as advisory uploads and summaries only: no pass/fail authority, no new required checks, no default blocking, and no comment posting. |
+| `campaign/policy-readiness-closeout` | planned | Close only after policy readiness, preview boundary, waiver aging, suppression health, baseline refresh guardrails, exception ledger semantics, blocking readiness guidance, and advisory CI projection exist. |
+
+References:
+
+- [Policy readiness tracker](policy/POLICY_READINESS.md)
+- [RIPR-SPEC-0029: Policy readiness report](specs/RIPR-SPEC-0029-policy-readiness-report.md)
+- [Focused Lane 2 tracker manifest](../.ripr/goals/lane2-policy-readiness.toml)
+- [Language Adapter Preview](#campaign-27-language-adapter-preview)
+- [Calibrated gate policy](CALIBRATED_GATE_POLICY.md)
+- [RIPR blocking readiness](BLOCKING_READINESS.md)
+- [Baseline ledger workflow](BASELINE_LEDGER_WORKFLOW.md)
+- [RIPR Zero reporting workflow](RIPR_ZERO_REPORTING_WORKFLOW.md)
+- [PR evidence ledger workflow](PR_EVIDENCE_LEDGER_WORKFLOW.md)
+
+Blocking conditions:
+
+- analyzer behavior changes or recommendation ranking changes
+- LSP/editor, PR summary rendering, provider, mutation, source-edit,
+  generated-test, release, or security changes
+- default CI blocking, new required checks, or comment posting
+- automatic baseline adoption
+- preview-language gate promotion without explicit later policy
+- hidden runtime mutation or proof claims
+- treating suppressions as invisible success or waivers as durable exceptions
+
+Commands:
+
+```bash
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-output-contracts
+cargo xtask check-pr
+```
 
 ## Future Campaign: Editor Evidence UX
 

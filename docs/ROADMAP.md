@@ -329,6 +329,16 @@ the Python preview static-fact contract. This is also the first user of
 the repo's centralized
 [proposal -> spec -> campaign tracking model](REPO_TRACKING_MODEL.md).
 
+[Policy Readiness and Preview Evidence Governance](policy/POLICY_READINESS.md)
+is open as a focused Lane 2 tracker alongside Campaign 27. It does not replace
+the active campaign manifest. Its job is to define what stable Rust evidence
+and preview-language evidence are allowed to mean for acknowledgement,
+baseline, waiver, suppression, calibration, RIPR Zero, and gates. Preview
+TypeScript and Python findings remain visible and advisory by default; they do
+not become gate-eligible or RIPR Zero blocking debt without a later explicit
+policy promotion. The primary GitHub board is
+[#755](https://github.com/EffortlessMetrics/ripr/issues/755).
+
 ## Strategic Sequence
 
 The load-bearing path is:
@@ -386,6 +396,7 @@ quality rails
 -> report packet index
 -> PR inline comment publisher
 -> language adapter preview
+-> policy readiness and preview evidence governance
 ```
 
 The analyzer path is:
@@ -520,6 +531,7 @@ Nice later, not blocking:
 | done | `repo-seam-facts-cache` | Cache seam fact layers after the fact model became stable enough. | Campaign 5A |
 | done | `cargo-mutants-calibration-scaffold` | Import real mutation results for offline calibration. | Campaign 5A |
 | 36 | `language-adapter-preview` | Introduce a language-neutral adapter boundary, keep Rust as the reference adapter, and add TypeScript and Python preview adapters that feed the existing RIPR domain, output, LSP, agent, and Lane 4 surfaces without changing Rust behavior or default CI blocking. | `0.9.0` |
+| 37 | `policy-readiness-preview-evidence-governance` | Define when stable Rust and preview-language evidence can be shown, acknowledged, suppressed, baselined, calibrated, counted toward RIPR Zero, or gated without changing advisory defaults. | Lane 2 |
 
 ## Release Frames
 

@@ -1120,7 +1120,8 @@ availability section.
 ## Lane 1 Evidence Quality Audit
 
 `cargo xtask lane1-evidence-audit` writes a repo-local audit over generated
-repo exposure `seams[].evidence_record` data:
+`ripr check --mode instant --format repo-exposure-json`
+`seams[].evidence_record` data:
 
 ```text
 target/ripr/reports/lane1-evidence-audit.json
@@ -1141,6 +1142,7 @@ runtime execution.
   "inputs": {
     "root": ".",
     "source": "repo-exposure-json",
+    "repo_exposure_mode": "instant",
     "repo_exposure_schema_version": "0.3"
   },
   "summary": {
@@ -1281,6 +1283,9 @@ Field contract:
 - `status` - always `"advisory"`.
 - `inputs.root` - analyzed root for the generated repo exposure snapshot.
 - `inputs.source` - always `"repo-exposure-json"`.
+- `inputs.repo_exposure_mode` - currently `"instant"`; this keeps the
+  repo-local audit bounded while preserving the existing repo-exposure
+  `evidence_record` contract.
 - `inputs.repo_exposure_schema_version` - schema version read from the generated
   repo exposure JSON, or `null` if absent.
 - `summary.raw_headline_gaps` - count of seams that are headline-eligible in

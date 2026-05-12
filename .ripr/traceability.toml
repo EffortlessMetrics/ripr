@@ -1876,8 +1876,39 @@ metrics = [
 
 [[behavior]]
 id = "RIPR-SPEC-0029"
+name = "policy readiness report"
+spec = "docs/specs/RIPR-SPEC-0029-policy-readiness-report.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0029-policy-readiness-report.md",
+  "docs/specs/README.md",
+  "docs/policy/POLICY_READINESS.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  ".ripr/goals/lane2-policy-readiness.toml",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "policy_readiness_reports",
+  "policy_readiness_recommended_mode",
+  "policy_readiness_blocking_ready",
+  "policy_readiness_baseline_health_state",
+  "policy_readiness_waiver_health_state",
+  "policy_readiness_suppression_health_state",
+  "policy_readiness_calibration_health_state",
+  "policy_readiness_preview_findings_visible",
+  "policy_readiness_preview_findings_gate_eligible",
+  "policy_readiness_preview_findings_ripr_zero_blocking",
+  "policy_readiness_preview_findings_calibrated_confidence",
+  "policy_readiness_warning_count",
+  "policy_readiness_unknown_count",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0030"
 name = "Lane 1 evidence quality audit"
-spec = "docs/specs/RIPR-SPEC-0029-lane1-evidence-quality-audit.md"
+spec = "docs/specs/RIPR-SPEC-0030-lane1-evidence-quality-audit.md"
 tests = [
   "xtask::tests::lane1_evidence_audit_counts_quality_gaps_from_evidence_record",
   "xtask::tests::lane1_evidence_audit_markdown_names_required_sections",
@@ -1892,14 +1923,16 @@ code = [
   "xtask/src/main.rs",
   "xtask/src/reports/mod.rs",
   "xtask/src/reports/repo.rs",
+  "xtask/src/run.rs",
 ]
 outputs = [
-  "docs/specs/RIPR-SPEC-0029-lane1-evidence-quality-audit.md",
+  "docs/specs/RIPR-SPEC-0030-lane1-evidence-quality-audit.md",
   "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
   "docs/lanes/LANE_1_EVIDENCE_ACCURACY.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
+  "policy/process_allowlist.txt",
   ".ripr/traceability.toml",
   "CHANGELOG.md",
 ]
