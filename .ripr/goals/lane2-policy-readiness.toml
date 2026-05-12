@@ -146,9 +146,18 @@ commands = [
 
 [[work_item]]
 id = "docs/blocking-readiness-guide"
-status = "planned"
-branch = "docs-blocking-readiness-guide"
-acceptance = "Extend the blocking-readiness decision tree so advisory, acknowledgeable, baseline-check, and calibrated-gate promotion depends on calibration, baseline, waiver, suppression, and preview-evidence health."
+status = "done"
+branch = "docs-lane2-blocking-readiness-guide"
+acceptance = "docs/BLOCKING_READINESS.md extends the blocking-readiness decision tree so advisory, acknowledgeable, baseline-check, and calibrated-gate promotion depends on calibration, baseline, waiver, suppression, and preview-evidence health."
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
 
 [[work_item]]
 id = "ci/policy-readiness-advisory-projection"
