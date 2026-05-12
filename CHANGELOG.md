@@ -107,6 +107,12 @@ Planned scope:
   `=>` / `match` text. The repo-local audit now splits the suppressions
   match-arm case to group size `1` and reduces duplicate-looking groups from
   `1287` to `926` without changing gates, schemas, or public command surfaces.
+- Folded durable Lane 1 audit fields into `ripr evidence-health`: canonical
+  gap group totals, largest groups, duplicate-looking groups, actionability
+  classes, static limitation distributions, evidence-record calibration
+  coverage, movement availability, and top evidence-quality risks. The report
+  remains advisory and does not change analyzer classifications, gate policy,
+  CI behavior, mutation execution, or score definitions.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 

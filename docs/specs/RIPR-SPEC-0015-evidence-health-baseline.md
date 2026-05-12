@@ -32,6 +32,8 @@ The contract is:
 
 - missing config keeps normal defaults;
 - static seam evidence is computed the same way as repo exposure;
+- audit-style fields are derived from the shared `evidence_record` projection
+  and canonical gap identity;
 - the command writes deterministic JSON and Markdown;
 - calibration input is optional and read-only;
 - imported calibration contributes availability counts only;
@@ -79,6 +81,7 @@ The JSON shape is defined in
 - `status`;
 - `inputs`;
 - `metrics`;
+- `evidence_quality`;
 - `calibration`;
 - `top_static_limitations`.
 
@@ -95,6 +98,18 @@ The `metrics` object includes:
 - oracle kind and strength counts;
 - opaque-oracle counts.
 
+The `evidence_quality` object includes:
+
+- canonical gap group totals and largest groups;
+- duplicate-looking canonical group totals;
+- actionability class counts from `evidence_record.actionability`;
+- static limitation stage and reason distributions from
+  `evidence_record.static_limitations`;
+- calibration availability counts from `evidence_record.calibration`;
+- evidence movement availability counts for seam ID, canonical gap ID, complete
+  evidence path, recommendation, and verify command fields;
+- top evidence-quality risks.
+
 The `calibration` object includes availability counts from imported calibration
 JSON when supplied. It does not infer trust thresholds or change static output.
 
@@ -107,6 +122,12 @@ The Markdown sibling is reviewer-facing and bounded:
 - top missing discriminator counts, capped for readability;
 - oracle strength table;
 - related-test confidence table;
+- evidence-quality summary;
+- largest canonical gap groups;
+- actionability distribution;
+- static limitation distribution;
+- evidence-record calibration coverage;
+- top evidence-quality risks;
 - calibration availability table;
 - top static limitations.
 
@@ -125,6 +146,12 @@ The report must include:
 - related-test confidence counts;
 - oracle kind and strength counts;
 - opaque-oracle counts;
+- canonical gap group and duplicate-looking group counts;
+- actionability class counts from the shared evidence record;
+- static limitation stage and reason counts from the shared evidence record;
+- evidence-record calibration availability counts;
+- evidence movement availability counts;
+- top evidence-quality risks;
 - top static limitations with an example seam ID;
 - optional calibration availability counts when a calibration report is
   supplied.
@@ -135,6 +162,10 @@ Given classified seams with one weakly gripped boundary gap and one ungripped
 opaque call seam, the report counts both grip classes, counts the missing
 boundary discriminator, counts the observed activation value, and records the
 opaque oracle as a top static limitation.
+
+Given two line-moved seams for the same canonical behavioral gap, the report
+keeps both raw seams visible while counting one duplicate-looking canonical gap
+group and listing that group in the largest canonical groups table.
 
 Given an imported calibration report with matched rows, static-only rows,
 runtime rows without static seams, ambiguous file-line joins, and unmatched
@@ -147,9 +178,10 @@ still succeeds.
 ## Test Mapping
 
 - `crates/ripr/src/output/evidence_health.rs::tests::evidence_health_counts_core_metrics`
-  pins core JSON metric counting.
+  pins core JSON metric counting and evidence-quality audit fields.
 - `crates/ripr/src/output/evidence_health.rs::tests::evidence_health_markdown_names_calibration_and_limitations`
-  pins Markdown rendering and calibration availability rows.
+  pins Markdown rendering, evidence-quality sections, and calibration
+  availability rows.
 - `crates/ripr/src/cli/commands.rs::tests::evidence_health_parses_default_and_full_option_surface`
   pins CLI defaults and optional inputs.
 - `crates/ripr/src/cli/commands.rs::tests::evidence_health_rejects_unknown_arguments`
@@ -174,7 +206,13 @@ The evidence-health baseline feeds these Lane 1 metrics:
 - `evidence_health_observed_values_total`;
 - `evidence_health_related_tests_total`;
 - `evidence_health_opaque_oracle_count`;
-- `evidence_health_calibration_matched_total`.
+- `evidence_health_calibration_matched_total`;
+- `evidence_health_canonical_gap_groups`;
+- `evidence_health_duplicate_looking_groups`;
+- `evidence_health_records_with_canonical_gap_id`;
+- `evidence_health_static_limitation_reasons`;
+- `evidence_health_calibration_not_imported`;
+- `evidence_health_top_evidence_quality_risks`.
 
 ## Non-Goals
 
