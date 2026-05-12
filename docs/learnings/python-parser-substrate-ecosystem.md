@@ -166,7 +166,7 @@ the current configuration.
   (entry for `rustpython-parser`; rationale captured inline)
 - [`deny.toml`](../../deny.toml) (`advisories.ignore` block with per-id
   comments for the six `rust-unic` advisories)
-- PR #770 (Campaign 27 issue)
+- Issue #770 (Campaign 27 parser-substrate issue)
 - PR #794 (initial ADR 0009; picked `ruff_python_parser`)
 - PR #801 (ADR 0009 correction onto `rustpython-parser`)
 - PR #804 (Python adapter scaffold)
