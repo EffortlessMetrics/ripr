@@ -6496,8 +6496,9 @@ mod tests {
 
     #[test]
     fn pilot_analysis_timeout_returns_partial_result() {
-        let result = run_pilot_analysis_with_timeout(1, || {
-            std::thread::sleep(std::time::Duration::from_millis(20));
+        let (_hold_tx, hold_rx) = mpsc::channel::<()>();
+        let result = run_pilot_analysis_with_timeout(1, move || {
+            let _ignored = hold_rx.recv();
             Ok(Vec::new())
         });
 
