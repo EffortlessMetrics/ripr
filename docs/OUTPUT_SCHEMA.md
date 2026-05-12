@@ -2893,6 +2893,11 @@ Field contract:
 - `blocking_readiness`, `baseline_health`, `waiver_health`,
   `suppression_health`, and `calibration_health` - independent health axes with
   `state`, evidence facts, warnings, and a next action.
+- `suppression_health.evidence[]` - includes the supplied
+  `suppression_health_status`, suppression count, missing owner/reason counts,
+  stale count, overbroad scope count, unknown selector count, preview label gap
+  count, warning count, and config-error count. `warning` or `config_error`
+  status prevents acknowledgeable readiness.
 - `preview_evidence_boundary` - RIPR-SPEC-0030 projection. Preview findings
   remain visible while default gate eligibility, RIPR Zero blocking, and
   calibrated-confidence counts remain zero until explicit promotion. Missing
@@ -2908,6 +2913,125 @@ Markdown should fit in a job summary. It should show the status, recommended
 mode, each health axis, preview zero-count boundary, unknowns, warnings, next
 policy action, and limits. It must not claim runtime mutation outcomes or make
 the report a gate.
+
+## Suppression Health Report
+
+`ripr policy suppression-health` summarizes the durable suppression manifest
+without applying suppressions or changing policy. It exists so teams can audit
+whether durable exceptions have enough metadata before stricter policy modes
+depend on them.
+
+Command:
+
+```text
+ripr policy suppression-health \
+  --root . \
+  --manifest .ripr/suppressions.toml \
+  --out target/ripr/reports/suppression-health.json \
+  --out-md target/ripr/reports/suppression-health.md
+```
+
+The report writes:
+
+```text
+target/ripr/reports/suppression-health.json
+target/ripr/reports/suppression-health.md
+```
+
+This report is advisory policy evidence. It does not run analysis, mutate
+baselines or suppressions, post comments, edit source, generate tests, run
+mutation testing, change gate policy, or make CI blocking.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "suppression_health",
+  "status": "warning",
+  "root": ".",
+  "generated_at": "unix_ms:1778277000000",
+  "inputs": {
+    "manifest": ".ripr/suppressions.toml"
+  },
+  "summary": {
+    "suppressions": 2,
+    "healthy": 1,
+    "missing_owner": 0,
+    "missing_reason": 0,
+    "missing_scope": 1,
+    "missing_created_at": 0,
+    "missing_last_seen": 0,
+    "missing_review_by_or_expires": 0,
+    "missing_expected_visibility": 0,
+    "missing_static_class": 0,
+    "stale": 0,
+    "overbroad_scope": 1,
+    "unknown_selector": 0,
+    "preview_without_preview_label": 1,
+    "warnings": 3,
+    "config_errors": 0
+  },
+  "records": [
+    {
+      "identity": "probe:src/pricing.rs:88:predicate",
+      "kind": "exposure_gap",
+      "owner": "billing",
+      "reason": "accepted durable policy exception",
+      "scope": "seam:pricing::threshold",
+      "created_at": "2026-01-01",
+      "last_seen": "2026-05-01",
+      "expires": null,
+      "review_by": "2026-12-01",
+      "expected_visibility": "suppressed_visible",
+      "static_class": "weakly_exposed",
+      "language": "rust",
+      "language_status": null,
+      "health": "healthy",
+      "still_visible": true,
+      "source": ".ripr/suppressions.toml:4",
+      "findings": []
+    }
+  ],
+  "findings": [
+    {
+      "kind": "preview_without_preview_label",
+      "severity": "warning",
+      "message": "preview-language suppression is missing language_status = \"preview\"",
+      "source": ".ripr/suppressions.toml:18"
+    }
+  ],
+  "warnings": [],
+  "limits_note": "Read-only advisory suppression-health report over the durable suppression manifest; suppressions remain visible and the report never creates, deletes, applies, or gates on suppressions."
+}
+```
+
+Field contract:
+
+- `status` - `no_suppressions` when the manifest is missing or empty,
+  `healthy` when all parsed records have complete policy metadata, `warning`
+  when valid records need review, or `config_error` when the manifest is
+  malformed.
+- `summary.missing_owner` and `summary.missing_reason` - parser-level
+  structural errors. Owner and reason remain required for every durable
+  suppression.
+- `summary.stale` - entries whose `expires` or `review_by` date is before the
+  report date.
+- `summary.overbroad_scope` - entries whose scope is explicitly broad, or
+  test-efficiency suppressions that omit `path`.
+- `summary.unknown_selector` - unsupported kinds, missing required selectors,
+  blank selectors, or duplicate selectors.
+- `summary.preview_without_preview_label` - preview-language suppressions that
+  omit `language_status = "preview"`.
+- `records[].still_visible` - always `true`; suppression health never hides
+  suppressed findings.
+- `findings[]` - normalized findings with `kind`, `severity`, `message`, and
+  optional source.
+- `limits_note` - advisory/read-only boundary text.
+
+Markdown should fit in a job summary. It should show the status, each durable
+suppression identity, owner, review date, findings, and the advisory boundary.
 
 ## Waiver Aging Report
 

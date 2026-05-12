@@ -60,6 +60,22 @@ pub struct SuppressionEntry {
     pub owner: String,
     /// ISO-8601 `YYYY-MM-DD` date string, validated at parse time.
     pub expires: Option<String>,
+    /// Optional reviewed scope metadata for policy-health reports.
+    pub scope: Option<String>,
+    /// ISO-8601 `YYYY-MM-DD` date string, validated at parse time.
+    pub created_at: Option<String>,
+    /// ISO-8601 `YYYY-MM-DD` date string, validated at parse time.
+    pub last_seen: Option<String>,
+    /// ISO-8601 `YYYY-MM-DD` date string, validated at parse time.
+    pub review_by: Option<String>,
+    /// Expected suppression visibility, such as `suppressed_visible`.
+    pub expected_visibility: Option<String>,
+    /// Static evidence class covered by this durable exception.
+    pub static_class: Option<String>,
+    /// Optional language metadata for preview-adapter policy boundaries.
+    pub language: Option<String>,
+    /// Optional language status, such as `preview`.
+    pub language_status: Option<String>,
     pub block_line: usize,
 }
 
@@ -120,6 +136,32 @@ pub fn parse_suppressions_manifest(text: &str) -> (Vec<SuppressionEntry>, Vec<St
                 }),
                 "expires" => assign_field(raw, line_number, &mut violations, |parsed| {
                     pending.expires = Some((parsed, line_number));
+                }),
+                "scope" => assign_field(raw, line_number, &mut violations, |parsed| {
+                    pending.scope = Some((parsed, line_number));
+                }),
+                "created_at" => assign_field(raw, line_number, &mut violations, |parsed| {
+                    pending.created_at = Some((parsed, line_number));
+                }),
+                "last_seen" => assign_field(raw, line_number, &mut violations, |parsed| {
+                    pending.last_seen = Some((parsed, line_number));
+                }),
+                "review_by" => assign_field(raw, line_number, &mut violations, |parsed| {
+                    pending.review_by = Some((parsed, line_number));
+                }),
+                "expected_visibility" => {
+                    assign_field(raw, line_number, &mut violations, |parsed| {
+                        pending.expected_visibility = Some((parsed, line_number));
+                    });
+                }
+                "static_class" => assign_field(raw, line_number, &mut violations, |parsed| {
+                    pending.static_class = Some((parsed, line_number));
+                }),
+                "language" => assign_field(raw, line_number, &mut violations, |parsed| {
+                    pending.language = Some((parsed, line_number));
+                }),
+                "language_status" => assign_field(raw, line_number, &mut violations, |parsed| {
+                    pending.language_status = Some((parsed, line_number));
                 }),
                 _ => violations.push(format!(
                     "{SUPPRESSIONS_PATH}:{line_number} unsupported `[[suppressions]]` field `{key}`"
@@ -198,6 +240,14 @@ struct PendingSuppression {
     reason: Option<(String, usize)>,
     owner: Option<(String, usize)>,
     expires: Option<(String, usize)>,
+    scope: Option<(String, usize)>,
+    created_at: Option<(String, usize)>,
+    last_seen: Option<(String, usize)>,
+    review_by: Option<(String, usize)>,
+    expected_visibility: Option<(String, usize)>,
+    static_class: Option<(String, usize)>,
+    language: Option<(String, usize)>,
+    language_status: Option<(String, usize)>,
 }
 
 impl PendingSuppression {
@@ -211,6 +261,14 @@ impl PendingSuppression {
             reason: None,
             owner: None,
             expires: None,
+            scope: None,
+            created_at: None,
+            last_seen: None,
+            review_by: None,
+            expected_visibility: None,
+            static_class: None,
+            language: None,
+            language_status: None,
         }
     }
 }
@@ -316,23 +374,14 @@ fn finalize_suppression(
         None => None,
     };
 
-    // expires validation (when present): YYYY-MM-DD literal.
-    let expires = match pending.expires {
-        Some((value, line)) => {
-            if !is_iso_date(&value) {
-                violations.push(format!(
-                    "{SUPPRESSIONS_PATH}:{line} `expires` `{value}` is not in YYYY-MM-DD format"
-                ));
-                None
-            } else {
-                Some(value)
-            }
-        }
-        None => None,
-    };
+    // date validation (when present): YYYY-MM-DD literal.
+    let expires = validate_optional_date("expires", pending.expires, violations);
+    let created_at = validate_optional_date("created_at", pending.created_at, violations);
+    let last_seen = validate_optional_date("last_seen", pending.last_seen, violations);
+    let review_by = validate_optional_date("review_by", pending.review_by, violations);
 
-    let finding_id = pending.finding_id.map(|(value, _)| value);
-    let test = pending.test.map(|(value, _)| value);
+    let finding_id = non_blank_selector("finding_id", pending.finding_id, violations);
+    let test = non_blank_selector("test", pending.test, violations);
 
     if let Some(kind) = kind {
         match kind {
@@ -374,9 +423,55 @@ fn finalize_suppression(
                 reason,
                 owner,
                 expires,
+                scope: pending.scope.map(|(value, _)| value),
+                created_at,
+                last_seen,
+                review_by,
+                expected_visibility: pending.expected_visibility.map(|(value, _)| value),
+                static_class: pending.static_class.map(|(value, _)| value),
+                language: pending.language.map(|(value, _)| value),
+                language_status: pending.language_status.map(|(value, _)| value),
                 block_line,
             });
         }
+    }
+}
+
+fn validate_optional_date(
+    field: &str,
+    raw: Option<(String, usize)>,
+    violations: &mut Vec<String>,
+) -> Option<String> {
+    match raw {
+        Some((value, line)) => {
+            if !is_iso_date(&value) {
+                violations.push(format!(
+                    "{SUPPRESSIONS_PATH}:{line} `{field}` `{value}` is not in YYYY-MM-DD format"
+                ));
+                None
+            } else {
+                Some(value)
+            }
+        }
+        None => None,
+    }
+}
+
+fn non_blank_selector(
+    field: &str,
+    raw: Option<(String, usize)>,
+    violations: &mut Vec<String>,
+) -> Option<String> {
+    match raw {
+        Some((value, line)) => {
+            if value.trim().is_empty() {
+                violations.push(format!("{SUPPRESSIONS_PATH}:{line} `{field}` is blank"));
+                None
+            } else {
+                Some(value)
+            }
+        }
+        None => None,
     }
 }
 
@@ -599,6 +694,14 @@ finding_id = "probe:src/pricing.rs:88:predicate"
 reason = "Covered by integration test."
 owner = "billing"
 expires = "2026-09-01"
+scope = "seam:pricing::threshold"
+created_at = "2026-01-01"
+last_seen = "2026-05-01"
+review_by = "2026-12-01"
+expected_visibility = "suppressed_visible"
+static_class = "weakly_exposed"
+language = "typescript"
+language_status = "preview"
 
 [[suppressions]]
 kind = "test_efficiency"
@@ -622,6 +725,17 @@ owner = "devtools"
         assert_eq!(entries[1].kind, SuppressionKind::TestEfficiency);
         assert_eq!(entries[1].test.as_deref(), Some("cli_prints_help"));
         assert_eq!(entries[1].path.as_deref(), Some("tests/cli.rs"));
+        assert_eq!(entries[0].scope.as_deref(), Some("seam:pricing::threshold"));
+        assert_eq!(entries[0].created_at.as_deref(), Some("2026-01-01"));
+        assert_eq!(entries[0].last_seen.as_deref(), Some("2026-05-01"));
+        assert_eq!(entries[0].review_by.as_deref(), Some("2026-12-01"));
+        assert_eq!(
+            entries[0].expected_visibility.as_deref(),
+            Some("suppressed_visible")
+        );
+        assert_eq!(entries[0].static_class.as_deref(), Some("weakly_exposed"));
+        assert_eq!(entries[0].language.as_deref(), Some("typescript"));
+        assert_eq!(entries[0].language_status.as_deref(), Some("preview"));
     }
 
     #[test]
@@ -838,6 +952,25 @@ expires = "Sept 1, 2026"
     }
 
     #[test]
+    fn parse_rejects_invalid_policy_date_formats() {
+        let text = r#"schema_version = 1
+
+[[suppressions]]
+kind = "exposure_gap"
+finding_id = "probe:x"
+owner = "z"
+reason = "y"
+created_at = "2026/01/01"
+last_seen = "2026/02/01"
+review_by = "2026/03/01"
+"#;
+        let (_, violations) = parse_suppressions_manifest(text);
+        assert!(violations.iter().any(|v| v.contains("`created_at`")));
+        assert!(violations.iter().any(|v| v.contains("`last_seen`")));
+        assert!(violations.iter().any(|v| v.contains("`review_by`")));
+    }
+
+    #[test]
     fn parse_rejects_duplicate_selectors() {
         let text = r#"schema_version = 1
 
@@ -930,6 +1063,14 @@ reason = "second"
             reason: "stated".to_string(),
             owner: "team".to_string(),
             expires: expires.map(str::to_string),
+            scope: None,
+            created_at: None,
+            last_seen: None,
+            review_by: None,
+            expected_visibility: None,
+            static_class: None,
+            language: None,
+            language_status: None,
             block_line,
         }
     }
@@ -948,6 +1089,14 @@ reason = "second"
             reason: "stated".to_string(),
             owner: "team".to_string(),
             expires: expires.map(str::to_string),
+            scope: None,
+            created_at: None,
+            last_seen: None,
+            review_by: None,
+            expected_visibility: None,
+            static_class: None,
+            language: None,
+            language_status: None,
             block_line,
         }
     }

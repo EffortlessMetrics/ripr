@@ -1892,6 +1892,8 @@ spec = "docs/specs/RIPR-SPEC-0029-policy-readiness-report.md"
 tests = [
   "crates/ripr/src/output/policy_readiness.rs",
   "crates/ripr/src/output/waiver_aging.rs",
+  "crates/ripr/src/output/suppression_health.rs",
+  "crates/ripr/src/output/suppressions.rs",
   "crates/ripr/src/cli/commands.rs",
   "crates/ripr/src/cli/command.rs",
   "crates/ripr/src/cli/execute.rs",
@@ -1901,6 +1903,8 @@ fixtures = []
 code = [
   "crates/ripr/src/output/policy_readiness.rs",
   "crates/ripr/src/output/waiver_aging.rs",
+  "crates/ripr/src/output/suppression_health.rs",
+  "crates/ripr/src/output/suppressions.rs",
   "crates/ripr/src/output/mod.rs",
   "crates/ripr/src/cli/commands.rs",
   "crates/ripr/src/cli/command.rs",
@@ -1936,6 +1940,13 @@ metrics = [
   "waiver_aging_repeated_file_count",
   "waiver_aging_focused_test_candidates",
   "waiver_aging_durable_suppression_candidates",
+  "suppression_health_reports",
+  "suppression_health_missing_owner",
+  "suppression_health_missing_reason",
+  "suppression_health_stale",
+  "suppression_health_overbroad_scope",
+  "suppression_health_unknown_selector",
+  "suppression_health_preview_without_preview_label",
 ]
 
 [[behavior]]
