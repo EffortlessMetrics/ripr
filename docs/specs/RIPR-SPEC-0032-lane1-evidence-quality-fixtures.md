@@ -45,13 +45,17 @@ has:
 The expected `evidence_record` subset pins stable fields that matter for audit
 driven work: identity, owner, seam kind, grip class, headline eligibility,
 evidence path states, counts, top related test, recommendation action,
-actionability class, calibration state, and static limitations.
+actionability class, calibration state, and static limitations. After an
+audit-driven analyzer improvement lands, the same case may keep the original
+audit signal while updating the expected record to pin the corrected behavior
+and guard against regression.
 
 ## Required Evidence
 
 The corpus must pin audit-derived examples for:
 
-- duplicate-looking canonical groups;
+- duplicate-looking canonical groups and their corrected post-fix behavior when
+  an audit-driven fix has landed;
 - missing equality-boundary discriminators;
 - activation static limitations with no observed values;
 - side-effect or mock observer semantics;
@@ -66,9 +70,11 @@ Every case must include:
 
 ## Acceptance Examples
 
-Given a duplicate-looking canonical group from the audit, the fixture records a
-canonical gap ID and group size greater than one, and must not allow future work
-to silently split the group into separate behavioral gaps.
+Given a duplicate-looking canonical group from the audit, the fixture records
+the original audit signal and the current expected canonical behavior. Before a
+fix, that may be a canonical gap ID and group size greater than one. After a
+fix, it may be a concrete discriminator and group size `1`, with a
+`must_not_claim` guard against returning to generic identity.
 
 Given a missing equality-boundary discriminator, the fixture records the missing
 discriminator count, concrete guidance, and nearest related test, and must not
@@ -106,7 +112,9 @@ calibrated.
 
 ## Non-Goals
 
-- No analyzer behavior changes.
+- No analyzer behavior changes in the initial fixture-pinning slice. Later
+  audit-driven analyzer slices may update the expected records to pin corrected
+  behavior.
 - No gate or policy decision.
 - No PR or CI projection.
 - No evidence-health field folding.

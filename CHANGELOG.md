@@ -93,6 +93,11 @@ Planned scope:
   equality-boundary misses, activation static limitations, mock-expectation
   observer semantics, and no-runtime-data calibration gaps before analyzer
   tuning begins.
+- Reduced the first audit-pinned Lane 1 canonical overcount by emitting
+  parser-backed match-arm discriminators such as `"kind" =>` instead of generic
+  `=>` / `match` text. The repo-local audit now splits the suppressions
+  match-arm case to group size `1` and reduces duplicate-looking groups from
+  `1287` to `926` without changing gates, schemas, or public command surfaces.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 

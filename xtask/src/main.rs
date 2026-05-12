@@ -4146,9 +4146,13 @@ fn validate_lane1_evidence_quality_failure_case(
                     "Lane 1 evidence-quality duplicate case {case_id} must pin canonical_gap_id"
                 ));
             }
-            if json_usize_field(record, "canonical_gap_group_size").unwrap_or_default() <= 1 {
+            let group_size =
+                json_usize_field(record, "canonical_gap_group_size").unwrap_or_default();
+            let corrected_duplicate_case = group_size == 1
+                && string_array_contains_case_insensitive(case, "must_not_claim", "generic");
+            if group_size <= 1 && !corrected_duplicate_case {
                 violations.push(format!(
-                    "Lane 1 evidence-quality duplicate case {case_id} must pin group size greater than 1"
+                    "Lane 1 evidence-quality duplicate case {case_id} must pin group size greater than 1 or pin corrected group size 1 with a generic identity regression guard"
                 ));
             }
         }
@@ -4414,6 +4418,19 @@ fn require_non_empty_string_array_at(
             "Lane 1 evidence-quality case {case_id} {field} must be a non-empty string array"
         )),
     }
+}
+
+fn string_array_contains_case_insensitive(value: &Value, field: &str, needle: &str) -> bool {
+    let needle = needle.to_ascii_lowercase();
+    value
+        .get(field)
+        .and_then(Value::as_array)
+        .is_some_and(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .any(|item| item.to_ascii_lowercase().contains(&needle))
+        })
 }
 
 fn validate_evidence_record_contract_record(
@@ -24774,7 +24791,9 @@ mod tests {
         assert!(report.contains("expected_claims must be a non-empty string array"));
         assert!(report.contains("must_not_claim must be a non-empty string array"));
         assert!(report.contains("must pin canonical_gap_id"));
-        assert!(report.contains("must pin group size greater than 1"));
+        assert!(
+            report.contains("must pin group size greater than 1 or pin corrected group size 1")
+        );
         assert!(report.contains("is missing case missing_equality_boundary_discriminator"));
         assert!(report.contains("must include at least one negative_guard case"));
         Ok(())

@@ -2062,3 +2062,36 @@ metrics = [
   "lane1_evidence_audit_static_limitations",
   "lane1_evidence_audit_uncalibrated_records",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0033"
+name = "Match-arm canonical gap discriminators"
+spec = "docs/specs/RIPR-SPEC-0033-match-arm-canonical-gap-discriminators.md"
+tests = [
+  "crates/ripr/src/analysis/rust_index.rs::tests::parser_adapter_extracts_probe_shapes_from_syntax",
+  "crates/ripr/src/analysis/canonical_gap.rs::tests::canonical_gap_id_distinguishes_different_match_arm_discriminators",
+  "crates/ripr/src/analysis/canonical_gap.rs::tests::canonical_gap_id_groups_same_match_arm_across_line_movement",
+  "xtask::tests::lane1_evidence_quality_failure_corpus_is_valid",
+]
+fixtures = [
+  "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json",
+]
+code = [
+  "crates/ripr/src/analysis/syntax/ra.rs",
+  "crates/ripr/src/analysis/rust_index.rs",
+  "crates/ripr/src/analysis/canonical_gap.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0033-match-arm-canonical-gap-discriminators.md",
+  "docs/specs/README.md",
+  "docs/lanes/LANE_1_EVIDENCE_ACCURACY.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+  ".ripr/traceability.toml",
+  "CHANGELOG.md",
+]
+metrics = [
+  "lane1_evidence_audit_duplicate_looking_groups",
+  "lane1_evidence_audit_canonical_gap_groups",
+  "lane1_evidence_audit_static_limitations",
+]
