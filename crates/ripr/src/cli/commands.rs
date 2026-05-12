@@ -6087,6 +6087,21 @@ mod tests {
     }
 
     #[test]
+    fn check_repo_exposure_json_streams_output() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/sample");
+        let root_arg = root.to_string_lossy().into_owned();
+        assert_eq!(
+            check(&[
+                "--root".to_string(),
+                root_arg,
+                "--format".to_string(),
+                "repo-exposure-json".to_string()
+            ]),
+            Ok(())
+        );
+    }
+
+    #[test]
     fn command_help_branches_return_ok() {
         assert_eq!(init(&args(&["--help"])), Ok(()));
         assert_eq!(pilot(&args(&["--help"])), Ok(()));
