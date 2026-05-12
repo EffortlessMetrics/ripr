@@ -207,6 +207,15 @@ Maintenance audit evidence from 2026-05-12:
   merged for #769 mocked-module static-limit reporting; Lane 3 review captured
   unresolved preview-readiness gaps in #779, #780, #782, #785, and #786, so the
   routing slice remains blocked.
+- after #821 merged the static-limit consumer watchpoint, current `main`
+  (`58709f7`) rechecked the Rust saved-workspace editor cockpit:
+  `cargo xtask goals next` reported no ready work items,
+  `cargo xtask lsp-cockpit-report` passed, `cargo test -p ripr lsp --lib`
+  passed 123 tests, `cargo test -p ripr lsp::tests --lib` passed 84 tests,
+  `npm --prefix editors/vscode run compile` passed, and
+  `npm --prefix editors/vscode run test:e2e` passed 30 live VS Code smoke
+  tests; the known VS Code runner `path` warning still appears after the
+  passing e2e run and exits 0.
 
 Objective audit status from 2026-05-12: not complete, blocked upstream.
 
