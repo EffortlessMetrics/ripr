@@ -56,26 +56,34 @@ pub struct AnalysisResult {
     pub findings: Vec<Finding>,
 }
 
+/// Default language list when callers do not pass `[languages]` config.
+///
+/// Keeps existing public entry points (`run_analysis`, `run_repo_analysis`)
+/// behaviorally identical to the pre-Campaign-27 Rust-only pipeline.
+const DEFAULT_LANGUAGES: &[language::LanguageId] = &[language::LanguageId::Rust];
+
 pub fn run_analysis(options: &AnalysisOptions) -> Result<AnalysisResult, String> {
-    run_analysis_with_oracle_policy(options, &OraclePolicy::default())
+    run_analysis_with_oracle_policy(options, &OraclePolicy::default(), DEFAULT_LANGUAGES)
 }
 
 pub(crate) fn run_analysis_with_oracle_policy(
     options: &AnalysisOptions,
     oracle_policy: &OraclePolicy,
+    languages: &[language::LanguageId],
 ) -> Result<AnalysisResult, String> {
-    pipeline::run_diff_pipeline_with_oracle_policy(options, oracle_policy)
+    pipeline::run_diff_pipeline_with_oracle_policy(options, oracle_policy, languages)
 }
 
 pub fn run_repo_analysis(options: &AnalysisOptions) -> Result<AnalysisResult, String> {
-    run_repo_analysis_with_oracle_policy(options, &OraclePolicy::default())
+    run_repo_analysis_with_oracle_policy(options, &OraclePolicy::default(), DEFAULT_LANGUAGES)
 }
 
 pub(crate) fn run_repo_analysis_with_oracle_policy(
     options: &AnalysisOptions,
     oracle_policy: &OraclePolicy,
+    languages: &[language::LanguageId],
 ) -> Result<AnalysisResult, String> {
-    pipeline::run_repo_pipeline_with_oracle_policy(options, oracle_policy)
+    pipeline::run_repo_pipeline_with_oracle_policy(options, oracle_policy, languages)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
