@@ -6,7 +6,7 @@ use crate::analysis::inventory_classified_seams_at_with_config;
 use crate::analysis::seams::SeamGripClass;
 use crate::app::check_workspace_with_config;
 use crate::config::{ConfigSeverity, SeverityConfig};
-use crate::domain::{Finding, RelatedTest};
+use crate::domain::{Finding, LanguageId, RelatedTest};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use tower_lsp_server::ls_types::{
@@ -102,7 +102,13 @@ pub(super) fn workspace_diagnostics_with_config(
     // feature must not take down baseline Finding diagnostics if
     // some unrelated repo file confuses the walker. Caught by
     // chatgpt-codex on PR #241.
-    let classified_seams = if config.enable_seam_diagnostics {
+    let classified_seams = if config.enable_seam_diagnostics
+        && config
+            .repo_config()
+            .languages()
+            .enabled()
+            .contains(&LanguageId::Rust)
+    {
         match inventory_classified_seams_at_with_config(&root, config.repo_config()) {
             Ok(seams) => {
                 seams
