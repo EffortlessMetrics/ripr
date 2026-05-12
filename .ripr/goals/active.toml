@@ -107,7 +107,7 @@ stackable = false
 blocked_by = [
   "analysis/rust-adapter-behind-boundary",
 ]
-acceptance = "Add additive optional `language`, `language_status`, `owner_kind`, and `static_limit_kind` fields to existing reports without changing their schema versions or Rust-only outputs"
+acceptance = "Add additive optional `language` and `language_status` fields to existing reports without changing their schema versions or Rust-only outputs. `owner_kind` and `static_limit_kind` remain deferred until preview adapters populate them through follow-up slices such as #807."
 commands = [
   "cargo check -p ripr",
   "cargo test -p ripr --lib",
