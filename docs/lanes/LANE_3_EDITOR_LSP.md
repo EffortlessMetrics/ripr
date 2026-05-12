@@ -122,7 +122,12 @@ Current dependency state:
   `isRustFileDocument`;
 - issue #771 now records the Python-to-editor handoff contract: Python preview
   artifacts need `language = "python"`, `language_status = "preview"`, and
-  projectable static limits before Lane 3 can safely add Python selectors.
+  projectable static limits before Lane 3 can safely add Python selectors;
+- issue #807 tracks the optional structured `static_limit_kind` field. Lane 3
+  should prefer that field for future hover/status projection when it exists,
+  but must still show explicit static-limit text before suggested action
+  language if a preview adapter has not promoted its limit evidence to the
+  structured field yet.
 
 Before starting `lsp/editor-language-routing`, refresh this audit instead of
 inferring readiness from campaign momentum:
@@ -133,6 +138,9 @@ inferring readiness from campaign momentum:
   `lsp/editor-language-routing` as ready;
 - TypeScript and Python preview outputs must visibly carry preview language
   metadata and explicit static limits in artifacts the editor can project;
+- if `static_limit_kind` (#807) has landed by then, hover/status should consume
+  it; otherwise the routing slice must inspect the preview artifacts and prove
+  the text static-limit evidence is stable enough to project;
 - the TypeScript gaps tracked by #779, #780, #782, #785, and #786 must be closed
   or superseded by inspected artifacts with equivalent coverage;
 - `editors/vscode/package.json` and `editors/vscode/src/client.ts` should remain
