@@ -39,6 +39,9 @@ receipt coverage, or closeout.
 
 ## Current Generated Workflow Shape
 
+Current baseline audit:
+[generated-ci-baseline-audit.md](generated-ci-baseline-audit.md).
+
 The generated GitHub workflow currently has the right high-level cockpit
 ordering for the shipped surfaces:
 
@@ -69,9 +72,9 @@ Important current behavior:
 | Gap | Owner slice | Notes |
 | --- | --- | --- |
 | Generated CI contract | `docs/generated-pr-ci-review-workflow-spec` | Done by [RIPR-SPEC-0038](../../docs/specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md). |
-| Current workflow audit | `audit/generated-ci-cockpit-baseline` | Record exact commands, uploaded paths, summary sections, missing-artifact behavior, and gate authority wording from current generated YAML. |
+| Current workflow audit | `audit/generated-ci-cockpit-baseline` | Done by [generated-ci-baseline-audit.md](generated-ci-baseline-audit.md). |
 | Reviewer-first summary polish | `ci/generated-summary-cockpit-contract` | Only if the audit finds wording or ordering gaps against `RIPR-SPEC-0038`. |
-| Missing-artifact repair command audit | `audit/generated-ci-cockpit-baseline` | Confirm every expected missing cockpit surface either has a command or says no command is known. |
+| Missing-artifact repair command audit | `audit/generated-ci-cockpit-baseline` | Audit found no-input messages and identified exact regeneration commands as the remaining generated-summary gap. |
 | Language-aware grouping | `ci/language-aware-grouping` | Wait until preview adapters provide enough TypeScript and Python evidence, or explicitly defer. |
 | Preview-language packet receipts | `dogfood/lane4-cockpit-gap-receipts` | Add only remaining mixed-language or missing-proof cases; do not duplicate Campaign 24/25 receipts. |
 | Lane closeout | `docs/lane4-closeout` | Record what shipped, what did not change, validation, known limits, and next-lane handoff. |
@@ -96,21 +99,13 @@ The following are not Lane 4 implementation gaps:
 The next implementation-facing work item is:
 
 ```text
-audit(lane4): record generated CI cockpit baseline
+ci(lane4): align generated summary with cockpit contract
 ```
 
-That PR should inspect the generated workflow and record:
-
-- public `ripr` commands already run;
-- artifacts already uploaded;
-- job-summary sections already appended;
-- where the front panel appears;
-- where the packet index appears;
-- missing-artifact behavior;
-- gate authority wording;
-- language grouping that is still absent or deferred.
-
-The audit should not change generated CI unless it finds a tiny docs mismatch.
+That PR should use the baseline audit to add exact repair or regeneration
+commands where they are known, and decide whether the generated job summary
+should literally start with `Start here` while preserving advisory defaults and
+gate authority boundaries.
 
 ## Validation
 

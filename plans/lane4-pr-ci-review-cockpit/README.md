@@ -11,6 +11,11 @@ Start with the [Lane 4 tracker](../../docs/lanes/LANE_4_PR_CI_REVIEW.md).
 
 - [Implementation plan](implementation-plan.md) - PR-sized sequence for the
   PR/CI review cockpit lane.
+- [Generated CI gap map](generated-ci-gap-map.md) - shipped generated-CI
+  cockpit surfaces, remaining gaps, and non-gaps.
+- [Generated CI baseline audit](generated-ci-baseline-audit.md) - current
+  generated workflow commands, summary shape, uploads, missing-artifact
+  behavior, and gate boundary.
 
 ## Role Model
 
