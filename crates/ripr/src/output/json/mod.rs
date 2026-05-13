@@ -15,9 +15,10 @@ mod tests {
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FlowSinkFact,
-        FlowSinkKind, MissingDiscriminatorFact, OracleKind, OracleStrength, Probe, ProbeFamily,
-        ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence,
-        StageState, StaticLimitKind, Summary, ValueContext, ValueFact,
+        FlowSinkKind, LanguageId, LanguageStatus, MissingDiscriminatorFact, OracleKind,
+        OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence, RiprEvidence,
+        SourceLocation, StageEvidence, StageState, StaticLimitKind, Summary, ValueContext,
+        ValueFact,
     };
     use std::path::PathBuf;
 
@@ -219,6 +220,24 @@ mod tests {
         finding_json(&mut out, &finding, 0);
 
         assert!(out.contains("\"static_limit_kind\": \"mocked_module\""));
+    }
+
+    #[test]
+    fn finding_json_preserves_language_metadata_order_with_static_limit_kind() {
+        let mut finding = unknown_finding();
+        finding.language = Some(LanguageId::TypeScript);
+        finding.language_status = Some(LanguageStatus::Preview);
+        finding.static_limit_kind = Some(StaticLimitKind::MockedModule);
+        let mut out = String::new();
+
+        finding_json(&mut out, &finding, 0);
+
+        assert!(out.contains(
+            "\"suggested_next_action\": \"Escalate to real mutation testing.\",\n  \
+             \"language\": \"typescript\",\n  \
+             \"language_status\": \"preview\",\n  \
+             \"static_limit_kind\": \"mocked_module\""
+        ));
     }
 
     fn unknown_finding() -> Finding {
