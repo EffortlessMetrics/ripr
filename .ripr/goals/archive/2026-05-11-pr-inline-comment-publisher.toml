@@ -1,6 +1,6 @@
 id = "pr-inline-comment-publisher"
 title = "PR Inline Comment Publisher"
-status = "active"
+status = "closed"
 
 # This is Campaign 26 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
 # Campaign 25 closed Report Packet Index. This campaign makes optional durable

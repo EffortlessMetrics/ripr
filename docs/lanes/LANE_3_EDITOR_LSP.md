@@ -81,19 +81,18 @@ When opening future Lane 3 PRs, list them here until they merge or close:
 | --- | --- | --- | --- |
 | none | - | - | - |
 
-## Upcoming Dependency
+## Campaign 27 Routing State
 
-Campaign 27 Language Adapter Preview has one expected Lane 3 slice:
-`lsp/editor-language-routing` (#772).
+Campaign 27 Language Adapter Preview closed the Lane 3
+`lsp/editor-language-routing` slice in #772.
 
-That slice has started after the Python preview adapter produced
-fixture-backed owner, test, assertion/oracle, probe, related-test, and
-structured static-limit facts. TypeScript adapter readiness is already
-complete, so Lane 3 should not reopen TypeScript editor readiness unless a
-new editor-facing regression appears.
-Lane 3 should review upstream analyzer, config, and output work only as a
-consumer of future editor projection inputs. Rust saved-workspace editor
-behavior must stay unchanged while this dependency is prepared.
+The slice landed after the Python preview adapter produced fixture-backed
+owner, test, assertion/oracle, probe, related-test, and structured static-limit
+facts. TypeScript adapter readiness is also complete, so Lane 3 should not
+reopen TypeScript or Python editor readiness unless a new editor-facing
+regression appears. Lane 3 should review future analyzer, config, and output
+work only as a consumer of editor projection inputs. Rust saved-workspace
+editor behavior must stay unchanged.
 
 Current dependency state:
 
@@ -133,13 +132,12 @@ Current dependency state:
   it, while still rendering inspected text-only limits as evidence for adapters
   that have not promoted a particular limit kind.
 
-Before starting `lsp/editor-language-routing`, refresh this audit instead of
-inferring readiness from campaign momentum:
+Before starting any future preview-routing follow-up, refresh this audit
+instead of inferring readiness from campaign momentum:
 
-- `.ripr/goals/active.toml` must show both
-  `analysis/typescript-editor-readiness` and `analysis/python-preview-adapter`
-  complete, or `cargo xtask goals next` must list
-  `lsp/editor-language-routing` as ready;
+- `.ripr/goals/active.toml` must show the relevant upstream analyzer or
+  projection work complete, or `cargo xtask goals next` must list the follow-up
+  work item as ready;
 - TypeScript and Python preview outputs must visibly carry preview language
   metadata and explicit static limits in artifacts the editor can project;
 - `static_limit_kind` is available for structured limits after #857; hover and
@@ -453,7 +451,7 @@ or unsaved-buffer overlays.
 | VS Code remains Rust-default until preview routing is selected | `editors/vscode/package.json`, `editors/vscode/src/client.ts` | Routing selected; Rust behavior remains the default while preview file selectors are registered |
 | TypeScript preview adapter readiness includes editor-projectable preview metadata, static limits, owner matching, oracle precision, and fixture evidence | `.ripr/goals/active.toml`, #779, #780, #782, #785, #786 | Complete for current Campaign 27 routing readiness; #779, #780, #782, #785, and #786 are closed |
 | Python preview adapter exists with editor-projectable preview metadata and static limits | `.ripr/goals/active.toml`, #804, Python owner/test/assertion/probe/related-test/static-limit fixtures | Complete for current Campaign 27 routing readiness; preview output is opt-in, labeled, fixture-backed, and uses structured `static_limit_kind` values |
-| `lsp/editor-language-routing` is ready or selected | `cargo xtask goals next`, `.ripr/goals/active.toml` | Ready; `analysis/python-preview-adapter` is done and the next work item preserves Rust defaults before adding preview selectors |
+| `lsp/editor-language-routing` is ready or selected | `cargo xtask goals next`, `.ripr/goals/active.toml` | Done; preview selectors landed behind `[languages]` while preserving Rust defaults |
 | Preview selectors for TypeScript, TSX, JavaScript, JSX, and Python are opt-in and preserve Rust defaults | `editors/vscode/package.json`, `editors/vscode/src/client.ts` | Implemented in the routing slice; LSP analysis remains gated by `[languages]` |
 | Preview diagnostics, hover, status, and actions visibly label preview evidence and static limits | LSP diagnostic data, hover markdown, status refresh logs, existing cockpit actions, `fixtures/python_missing_import_graph_limit`, `fixtures/typescript_mocked_module_limit`, `fixtures/python_disabled`, `cargo xtask lsp-cockpit-report` | Implemented for diagnostic metadata, hover boundary text, status preview/static-limit counts, bounded finding actions, and disabled-preview no-diagnostic behavior; actions keep the existing cockpit model |
 | No editor hidden analysis reruns, source edits, generated tests, provider calls, mutation execution, gate semantics, default blocking, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays | Lane 3 Scope, Non-Goals, and Cross-Lane Rules in this tracker | Current tracker preserves the boundary; future routing must re-audit it |
@@ -491,15 +489,15 @@ The editor-preview routing proposal and specs currently use `RIPR-PROP-0003`,
 owns `RIPR-PROP-0002`, `RIPR-SPEC-0034`, `RIPR-SPEC-0035`, and `ADR-0010`
 for the Lane 1 evidence quality stack.
 
-Traceability for proposed, blocked editor-preview specs should list the docs
-outputs that define the contract, but leave tests, fixtures, and code empty
-until the behavior PRs land. Do not point proposed preview-routing specs at the
-existing Rust cockpit tests as if those tests prove preview-language routing.
+Traceability for future editor-preview specs should list the docs outputs that
+define the contract and add tests, fixtures, code, and reports only as the
+behavior PRs land. Do not point future preview-routing specs at the existing
+Rust cockpit tests as if those tests prove a new preview-language behavior.
 
 ## Preview Routing Path
 
-Lane 3 stays in maintenance until `lsp/editor-language-routing` is unblocked.
-The lane's useful end state is not "more editor UI"; it is the existing Rust
+Lane 3 returns to maintenance after `lsp/editor-language-routing` closeout. The
+lane's useful end state was not "more editor UI"; it is the existing Rust
 saved-workspace cockpit plus opt-in preview-language projection that makes
 syntax-first limits impossible to miss.
 
@@ -512,7 +510,7 @@ Rust stable cockpit remains boringly reliable
 -> users can act without over-trusting syntax-first evidence
 ```
 
-Planned PR path:
+Completed Campaign 27 PR path:
 
 1. `docs(lane3): define editor preview routing source-of-truth stack`
    - Records where Lane 3 stores why, behavior contracts, architecture
@@ -635,8 +633,9 @@ git diff --check
 
 ## Cross-Lane Rules
 
-- `.ripr/goals/active.toml` is the active Codex Goals manifest, not the whole
-  product board.
+- `.ripr/goals/active.toml` is the current Codex Goals manifest, not the whole
+  product board. Its top-level status may be `closed` after campaign closeout
+  until a successor campaign is selected.
 - Campaign 24 PR Review Front Panel is a PR/CI composition lane. It explicitly
   excludes editor behavior changes.
 - Lane 3 may project existing first-action or front-panel artifacts in editor
