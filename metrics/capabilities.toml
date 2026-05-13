@@ -670,7 +670,7 @@ status = "alpha"
 spec = "RIPR-SPEC-0035"
 evidence = [
   "fixtures/evidence-quality-benchmark/corpus.json defines a manifest-only Lane 1 benchmark corpus",
-  "the corpus covers duplicate canonical gap, match-arm discriminator split, wrong related-test top choice, broad versus exact error oracle, self-computed expected value and duplicative equality guards, opaque helper limitation, cross-file constant limitation, side-effect observer, snapshot discriminator, mock expectation, runtime-only signal, and ambiguous runtime join classes",
+  "the corpus covers duplicate canonical gap, match-arm discriminator split, wrong related-test top choice, broad versus exact error oracle, self-computed expected value and duplicative equality guards, opaque helper limitation, cross-file constant limitation, presentation text constants, side-effect observer, snapshot discriminator, mock expectation, runtime-only signal, and ambiguous runtime join classes",
   "each case records expected claims, must-not-claim guards, expected repo-exposure evidence_record subsets or runtime-only nonstatic calibration, audit signals, maturity scope, and repair route",
   "cargo xtask check-fixture-contracts validates the corpus shape through xtask/src/main.rs",
   "xtask unit tests pin required case kinds, missing guard detection, runtime-only nonstatic behavior, and line-movement canonical identity"
@@ -1423,10 +1423,13 @@ spec = "RIPR-SPEC-0043"
 evidence = [
   "docs/specs/RIPR-SPEC-0043-presentation-text-evidence.md defines the planned Lane 1 evidence class for changed presentation/help/report/table text",
   "docs/proposals/RIPR-PROP-0005-user-visible-output-evidence.md records the user-visible output evidence motivation and non-goals",
-  "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md records the PR-sized sequence and Lane 1 boundary"
+  "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md records the PR-sized sequence and Lane 1 boundary",
+  "fixtures/evidence-quality-benchmark/corpus.json#presentation_text_constant_visibility_unknown pins the screenshot-derived declaration/literal grouping and visibility-unknown static limitation guard"
 ]
-fixtures = []
-next = "fixtures/presentation-text-evidence-benchmark"
+fixtures = [
+  "fixtures/evidence-quality-benchmark/corpus.json"
+]
+next = "analysis/presentation-text-evidence-fields"
 metric = "presentation_text_total, presentation_text_user_visible, presentation_text_observed, presentation_text_unobserved, presentation_text_internal_only, presentation_text_visibility_unknown, presentation_text_observer_unknown, presentation_text_duplicate_groups, presentation_text_actionable_snapshot, presentation_text_no_action, presentation_text_static_limitations"
 
 [[capability]]
