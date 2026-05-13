@@ -50,8 +50,8 @@ explicitly makes this Lane 1 tracker active.
 
 - proposal: [RIPR-PROP-0005: User-Visible Output Evidence](../proposals/RIPR-PROP-0005-user-visible-output-evidence.md)
   explains why this evidence class exists;
-- spec: `RIPR-SPEC-0043: Presentation Text Evidence` is planned to define
-  behavior;
+- spec: [RIPR-SPEC-0043: Presentation Text Evidence](../specs/RIPR-SPEC-0043-presentation-text-evidence.md)
+  defines behavior;
 - ADR: [ADR 0010: Fixture-First Evidence Confidence](../adr/0010-fixture-first-evidence-confidence.md)
   remains the maturity rule;
 - lane tracker: this file records sequencing, state, validation, and non-goals;
@@ -80,8 +80,8 @@ explicitly makes this Lane 1 tracker active.
 
 | Slice | Intent | Status |
 | --- | --- | --- |
-| `docs/proposal-user-visible-output-evidence` | Open the proposal and lane tracker for presentation/help/report/table text evidence. | current |
-| `docs/spec-presentation-text-evidence` | Define visibility, observer, actionability, canonical grouping, static limitation, and must-not-claim behavior. | planned |
+| `docs/proposal-user-visible-output-evidence` | Open the proposal and lane tracker for presentation/help/report/table text evidence. | merged in #904 |
+| `docs/spec-presentation-text-evidence` | Define visibility, observer, actionability, canonical grouping, static limitation, and must-not-claim behavior. | current |
 | `fixtures/presentation-text-evidence-benchmark` | Add benchmark cases for user-visible observed/unobserved text, internal-only labels, visibility unknowns, declaration/literal grouping, and unrelated strings. | open candidate in #900; wait for spec foundation |
 | `analysis/presentation-text-evidence-fields` | Add additive evidence-record fields for presentation text visibility, observer, actionability, source kind, and grouping. | planned |
 | `analysis/presentation-text-visibility` | Conservatively classify obvious output sinks and keep opaque or indirect routes as limitations. | planned |
@@ -170,7 +170,8 @@ git diff --check
 
 | Slice | PR | Status | Notes |
 | --- | --- | --- | --- |
-| `docs/proposal-user-visible-output-evidence` | TBD | current | Adds RIPR-PROP-0005 and this tracker; no behavior changes. |
+| `docs/proposal-user-visible-output-evidence` | #904 | merged | Added RIPR-PROP-0005 and this tracker; no behavior changes. |
+| `docs/spec-presentation-text-evidence` | TBD | current | Adds RIPR-SPEC-0043; no analyzer, projection, gate, generated-test, provider, mutation-execution, or score-definition changes. |
 | `fixtures/presentation-text-evidence-benchmark` | #900 | open candidate | Contains the screenshot-derived constant benchmark; should land after the proposal/spec foundation. |
 
 ## Closeout Conditions
