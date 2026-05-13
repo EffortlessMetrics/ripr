@@ -10,6 +10,7 @@
     "self_computed_expected_value",
     "opaque_helper_static_limitation",
     "cross_file_constant_limitation",
+    "presentation_text",
     "side_effect_observer",
     "snapshot_discriminator",
     "mock_expectation",
@@ -351,6 +352,65 @@
         "Do not treat unresolved constants as missing user assertions."
       ],
       "repair_route": "analysis/static-limitation-taxonomy"
+    },
+    {
+      "id": "presentation_text_constant_visibility_unknown",
+      "case_kind": "static_limitation",
+      "evidence_class": "presentation_text",
+      "maturity_scope": "unsupported",
+      "description": "A changed label/help-text constant should become one presentation-text evidence item with visibility and actionability, not two raw line-local actions.",
+      "fixture_reference": "screenshot-derived benchmark: APPLE_M3_AIR_DEVICE_LABELS_TEXT declaration plus string literal",
+      "sample": {
+        "file": "src/device_labels.rs",
+        "declaration_line": 46,
+        "literal_line": 47,
+        "source": "pub const APPLE_M3_AIR_DEVICE_LABELS_TEXT: &str =\n    \"apple-m3-air-cpu-neon = M3 MacBook Air Apple CPU/NEON lane\";"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-presentation-text-apple-m3-air",
+          "canonical_gap_id": "presentation_text::APPLE_M3_AIR_DEVICE_LABELS_TEXT",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "APPLE_M3_AIR_DEVICE_LABELS_TEXT",
+          "location": {
+            "file": "src/device_labels.rs",
+            "line": 46
+          },
+          "seam_kind": "presentation_text_constant",
+          "grip_class": "static_unknown",
+          "headline_eligible": false,
+          "evidence_class": "presentation_text",
+          "presentation_text": {
+            "constant_name": "APPLE_M3_AIR_DEVICE_LABELS_TEXT",
+            "text_literal": "apple-m3-air-cpu-neon = M3 MacBook Air Apple CPU/NEON lane",
+            "visibility": "unknown",
+            "actionability": "static_limitation",
+            "recommended_observer": "unknown"
+          },
+          "static_limitation": {
+            "repair_route": "trace_string_constant_to_output_or_snapshot_test",
+            "user_actionability": "unknown_until_visibility_known"
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "presentation_text_visibility_unknown",
+        "value": 1
+      },
+      "static_limitation_category": "presentation_text_visibility_unknown",
+      "expected_claim": "Changed presentation text is only actionable when RIPR can identify a plausible observable output path or observer.",
+      "must_not_claim": [
+        "Do not create user test debt from text alone.",
+        "Do not recommend mutation testing as the first action for a visibility-unknown text label.",
+        "Do not produce independent actions for the declaration line and string literal line.",
+        "Do not treat internal labels as user-visible presentation text.",
+        "Do not infer user visibility through opaque helpers."
+      ],
+      "repair_route": "analysis/presentation-text-visibility"
     },
     {
       "id": "side_effect_observer_positive",

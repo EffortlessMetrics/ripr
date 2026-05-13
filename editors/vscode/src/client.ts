@@ -12,6 +12,17 @@ import {
 import { getConfig, RiprConfig } from './config';
 import { resolveServer, ResolveFailure, ResolvedServer } from './serverResolver';
 
+const RIPR_DOCUMENT_SELECTORS: Array<{ language: string; scheme: 'file' }> = [
+  { language: 'rust', scheme: 'file' },
+  { language: 'typescript', scheme: 'file' },
+  { language: 'typescriptreact', scheme: 'file' },
+  { language: 'javascript', scheme: 'file' },
+  { language: 'javascriptreact', scheme: 'file' },
+  { language: 'python', scheme: 'file' }
+];
+
+const RIPR_FILE_LANGUAGES = new Set(RIPR_DOCUMENT_SELECTORS.map((selector) => selector.language));
+
 export interface RiprContextTarget {
   uri?: string;
   line?: number;
@@ -94,7 +105,7 @@ export class RiprClientController {
   private client: RiprLanguageClient | undefined;
   private server: ResolvedServer | undefined;
   private readonly notificationDisposables: vscode.Disposable[] = [];
-  private readonly dirtyRustDocuments = new Set<string>();
+  private readonly dirtyRiprDocuments = new Set<string>();
   private firstUsefulAction: FirstUsefulActionStatus | undefined;
   private status: RiprStatusState = {
     kind: 'stopped',
@@ -170,7 +181,7 @@ export class RiprClientController {
     };
 
     const clientOptions: LanguageClientOptions = {
-      documentSelector: [{ language: 'rust', scheme: 'file' }],
+      documentSelector: RIPR_DOCUMENT_SELECTORS,
       initializationOptions: {
         baseRef: config.baseRef,
         checkMode: config.checkMode,
@@ -195,7 +206,7 @@ export class RiprClientController {
     this.updateStatus({
       kind: 'analysisQueued',
       summary: 'ripr saved-workspace analysis is queued.',
-      detail: `Server: ${server.source} (${server.detail})\nWorkspace: ${this.workspaceRoot}\nOpen or save a Rust file to refresh diagnostics.`
+      detail: `Server: ${server.source} (${server.detail})\nWorkspace: ${this.workspaceRoot}\nOpen or save a Rust or enabled preview-language file to refresh diagnostics.`
     });
     await this.refreshFirstUsefulActionStatus();
   }
@@ -210,7 +221,7 @@ export class RiprClientController {
     this.client = undefined;
     this.server = undefined;
     this.firstUsefulAction = undefined;
-    this.dirtyRustDocuments.clear();
+    this.dirtyRiprDocuments.clear();
     while (this.notificationDisposables.length > 0) {
       this.notificationDisposables.pop()?.dispose();
     }
@@ -225,23 +236,23 @@ export class RiprClientController {
   }
 
   markWorkspaceStale(document: vscode.TextDocument): void {
-    if (!this.client || !isRustFileDocument(document)) {
+    if (!this.client || !isRiprFileDocument(document)) {
       return;
     }
-    this.dirtyRustDocuments.add(document.uri.toString());
+    this.dirtyRiprDocuments.add(document.uri.toString());
     this.updateStatus({
       kind: 'stale',
-      summary: 'ripr analysis is stale until the Rust file is saved.',
+      summary: 'ripr analysis is stale until the file is saved.',
       detail: `Unsaved changes: ${document.uri.fsPath}`
     });
   }
 
   markWorkspaceSaved(document: vscode.TextDocument): void {
-    if (!this.client || !isRustFileDocument(document)) {
+    if (!this.client || !isRiprFileDocument(document)) {
       return;
     }
-    this.dirtyRustDocuments.delete(document.uri.toString());
-    if (this.dirtyRustDocuments.size === 0 && this.status.kind === 'stale') {
+    this.dirtyRiprDocuments.delete(document.uri.toString());
+    if (this.dirtyRiprDocuments.size === 0 && this.status.kind === 'stale') {
       this.updateStatus({
         kind: 'analysisQueued',
         summary: 'ripr saved-workspace analysis is queued after save.',
@@ -251,15 +262,15 @@ export class RiprClientController {
   }
 
   markWorkspaceClosed(document: vscode.TextDocument): void {
-    if (!isRustFileDocument(document)) {
+    if (!isRiprFileDocument(document)) {
       return;
     }
-    this.dirtyRustDocuments.delete(document.uri.toString());
-    if (this.client && this.dirtyRustDocuments.size === 0 && this.status.kind === 'stale') {
+    this.dirtyRiprDocuments.delete(document.uri.toString());
+    if (this.client && this.dirtyRiprDocuments.size === 0 && this.status.kind === 'stale') {
       this.updateStatus({
         kind: 'analysisQueued',
         summary: 'ripr saved-workspace analysis is queued after close.',
-        detail: `Closed unsaved Rust buffer: ${document.uri.fsPath}`
+        detail: `Closed unsaved ${document.languageId} buffer: ${document.uri.fsPath}`
       });
     }
   }
@@ -447,16 +458,16 @@ export class RiprClientController {
   }
 
   private statusAfterRefreshCompleted(message: string): RiprStatusState {
-    if (this.dirtyRustDocuments.size === 0) {
+    if (this.dirtyRiprDocuments.size === 0) {
       return statusFromRefreshCompletedMessage(message);
     }
     return {
       kind: 'stale',
-      summary: 'ripr analysis completed, but unsaved Rust changes remain.',
+      summary: 'ripr analysis completed, but unsaved routed-file changes remain.',
       detail: [
         message,
         'Current diagnostics describe the last saved workspace state.',
-        `Unsaved Rust files: ${Array.from(this.dirtyRustDocuments).join(', ')}`
+        `Unsaved routed files: ${Array.from(this.dirtyRiprDocuments).join(', ')}`
       ].join('\n')
     };
   }
@@ -707,6 +718,8 @@ function serverLogMessage(params: unknown): string | undefined {
 function statusFromRefreshCompletedMessage(message: string): RiprStatusState {
   const diagnostics = numberField(message, 'diagnostics');
   const enabledLanguages = numberField(message, 'enabled_languages');
+  const previewFindings = numberField(message, 'preview_findings') ?? 0;
+  const staticLimits = numberField(message, 'static_limits') ?? 0;
   if (enabledLanguages === 0) {
     return {
       kind: 'noEnabledLanguages',
@@ -719,6 +732,22 @@ function statusFromRefreshCompletedMessage(message: string): RiprStatusState {
     };
   }
   const seamDiagnostics = numberField(message, 'seam_diagnostics');
+  if (previewFindings > 0) {
+    const details = [
+      message,
+      `${previewFindings} preview finding${previewFindings === 1 ? '' : 's'} are syntax-first and advisory.`
+    ];
+    if (staticLimits > 0) {
+      details.push(
+        `${staticLimits} preview static limit${staticLimits === 1 ? '' : 's'} must be read before action language.`
+      );
+    }
+    return {
+      kind: 'analysisReady',
+      summary: `ripr analysis completed with ${diagnostics ?? 0} diagnostics (${previewFindings} preview).`,
+      detail: details.join('\n')
+    };
+  }
   if (seamDiagnostics !== undefined && seamDiagnostics === 0) {
     return {
       kind: 'noActionableSeams',
@@ -1055,8 +1084,8 @@ function firstWorkspaceFolder(): string | undefined {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 }
 
-function isRustFileDocument(document: vscode.TextDocument): boolean {
-  return document.languageId === 'rust' && document.uri.scheme === 'file';
+function isRiprFileDocument(document: vscode.TextDocument): boolean {
+  return document.uri.scheme === 'file' && RIPR_FILE_LANGUAGES.has(document.languageId);
 }
 
 async function writeTestClipboardCapture(text: string): Promise<void> {

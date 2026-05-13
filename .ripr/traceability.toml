@@ -1460,6 +1460,7 @@ outputs = [
   "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
   "docs/lanes/LANE_1_EVIDENCE_ACCURACY.md",
+  "docs/handoffs/2026-05-13-lane-1-evidence-quality-leadership-closeout.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
   ".ripr/traceability.toml",
@@ -1827,6 +1828,7 @@ outputs = [
   "docs/proposals/RIPR-PROP-0001-multi-language-adapter-preview.md",
   "docs/proposals/README.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/LANGUAGE_ADAPTER_PREVIEW.md",
   "fixtures/typescript_mocked_module_limit/expected/check.json",
   "docs/REPO_TRACKING_MODEL.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
@@ -1878,6 +1880,7 @@ outputs = [
   "docs/specs/RIPR-SPEC-0027-typescript-preview-static-facts.md",
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0001-multi-language-adapter-preview.md",
+  "docs/LANGUAGE_ADAPTER_PREVIEW.md",
   "fixtures/typescript_mocked_module_limit/expected/check.json",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
@@ -1906,7 +1909,37 @@ spec = "docs/specs/RIPR-SPEC-0028-python-preview-static-facts.md"
 tests = [
   "crates/ripr/src/analysis/language/python.rs",
 ]
-fixtures = []
+fixtures = [
+  "fixtures/python_boundary_gap",
+  "fixtures/python_async_owner",
+  "fixtures/python_unittest_basic",
+  "fixtures/python_method_owner",
+  "fixtures/python_class_method_owner",
+  "fixtures/python_parametrize_basic",
+  "fixtures/python_strong_oracle",
+  "fixtures/python_pytest_raises",
+  "fixtures/python_unittest_assertions",
+  "fixtures/python_mock_assert_called",
+  "fixtures/python_broad_boolean_assertion",
+  "fixtures/python_return_value_shape",
+  "fixtures/python_error_path_shape",
+  "fixtures/python_field_assignment_shape",
+  "fixtures/python_call_argument_shape",
+  "fixtures/python_mock_interaction_shape",
+  "fixtures/python_owner_file_match",
+  "fixtures/python_cross_file_import_reference",
+  "fixtures/python_same_stem_test",
+  "fixtures/python_unrelated_test_mention",
+  "fixtures/python_dynamic_dispatch_limit",
+  "fixtures/python_decorator_indirection_limit",
+  "fixtures/python_mocked_module_limit",
+  "fixtures/python_missing_import_graph_limit",
+  "fixtures/python_metaprogramming_limit",
+  "fixtures/python_unsupported_syntax_limit",
+  "fixtures/python_no_projectable_owner",
+  "fixtures/python_mixed_language_no_cross_route",
+  "fixtures/python_disabled",
+]
 code = [
   "crates/ripr/src/analysis/language/python.rs",
   "crates/ripr/src/analysis/language/mod.rs",
@@ -1919,6 +1952,7 @@ outputs = [
   "docs/adr/0009-python-parser-substrate.md",
   "docs/adr/README.md",
   "docs/proposals/RIPR-PROP-0001-multi-language-adapter-preview.md",
+  "docs/LANGUAGE_ADAPTER_PREVIEW.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
@@ -1936,8 +1970,12 @@ metrics = [
   "language_adapter_python_oracle_side_effect",
   "language_adapter_python_oracle_smoke",
   "language_adapter_python_oracle_broad_type",
+  "language_adapter_python_static_limit_dynamic_dispatch",
   "language_adapter_python_static_limit_decorator_indirection",
+  "language_adapter_python_static_limit_missing_import_graph",
+  "language_adapter_python_static_limit_metaprogramming",
   "language_adapter_python_static_limit_mocked_module",
+  "language_adapter_python_static_limit_unsupported_syntax",
 ]
 
 [[behavior]]
@@ -2150,6 +2188,9 @@ name = "Evidence quality scorecard"
 spec = "docs/specs/RIPR-SPEC-0034-evidence-quality-scorecard.md"
 tests = [
   "xtask/src/main.rs",
+  "xtask::tests::evidence_quality_trend_reports_no_history_explicitly",
+  "xtask::tests::evidence_quality_trend_distinguishes_improvement_regression_and_unchanged",
+  "xtask::tests::evidence_quality_trend_reports_static_limitation_category_deltas",
 ]
 fixtures = []
 code = [
@@ -2163,9 +2204,12 @@ outputs = [
   "docs/specs/RIPR-SPEC-0034-evidence-quality-scorecard.md",
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0002-lane-1-evidence-quality-leadership.md",
+  "docs/lanes/LANE_1_EVIDENCE_QUALITY_LEADERSHIP.md",
+  "docs/handoffs/2026-05-13-lane-1-evidence-quality-leadership-closeout.md",
   "docs/OUTPUT_SCHEMA.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
+  "CHANGELOG.md",
   ".ripr/traceability.toml",
 ]
 metrics = [
@@ -2176,6 +2220,13 @@ metrics = [
   "lane1_evidence_scorecard_calibrated_classes",
   "lane1_evidence_scorecard_uncalibrated_classes",
   "lane1_evidence_scorecard_recent_delta_available",
+  "lane1_evidence_trend_compared_metrics",
+  "lane1_evidence_trend_improved_metrics",
+  "lane1_evidence_trend_regressed_metrics",
+  "lane1_evidence_trend_unchanged_metrics",
+  "lane1_evidence_trend_unknown_metrics",
+  "lane1_evidence_trend_no_history",
+  "lane1_evidence_trend_static_limitation_category_rows",
 ]
 
 [[behavior]]
@@ -2201,6 +2252,7 @@ outputs = [
   "docs/proposals/RIPR-PROP-0002-lane-1-evidence-quality-leadership.md",
   "fixtures/evidence-quality-benchmark/README.md",
   "fixtures/evidence-quality-benchmark/corpus.json",
+  "docs/handoffs/2026-05-13-lane-1-evidence-quality-leadership-closeout.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
   ".ripr/traceability.toml",
@@ -2221,18 +2273,45 @@ id = "RIPR-SPEC-0036"
 name = "Editor preview routing"
 spec = "docs/specs/RIPR-SPEC-0036-editor-preview-routing.md"
 tests = [
+  "crates/ripr/src/lsp/tests.rs",
+  "editors/vscode/test/suite/extension.test.ts",
+  "xtask/src/main.rs",
 ]
 fixtures = [
+  "fixtures/python_disabled",
+  "fixtures/python_missing_import_graph_limit",
+  "fixtures/typescript_mocked_module_limit",
 ]
 code = [
+  "crates/ripr/src/lsp/backend.rs",
+  "crates/ripr/src/lsp/diagnostics.rs",
+  "editors/vscode/package.json",
+  "editors/vscode/src/client.ts",
+  "xtask/src/main.rs",
 ]
 outputs = [
+  "fixtures/python_disabled/expected/lsp-code-actions.json",
+  "fixtures/python_disabled/expected/lsp-diagnostics.json",
+  "fixtures/python_disabled/expected/static-limits.md",
+  "fixtures/python_disabled/expected/vscode-status.json",
+  "fixtures/python_missing_import_graph_limit/expected/lsp-code-actions.json",
+  "fixtures/python_missing_import_graph_limit/expected/lsp-diagnostics.json",
+  "fixtures/python_missing_import_graph_limit/expected/lsp-hover.md",
+  "fixtures/python_missing_import_graph_limit/expected/static-limits.md",
+  "fixtures/python_missing_import_graph_limit/expected/vscode-status.json",
+  "fixtures/typescript_mocked_module_limit/expected/lsp-code-actions.json",
+  "fixtures/typescript_mocked_module_limit/expected/lsp-diagnostics.json",
+  "fixtures/typescript_mocked_module_limit/expected/lsp-hover.md",
+  "fixtures/typescript_mocked_module_limit/expected/static-limits.md",
+  "fixtures/typescript_mocked_module_limit/expected/vscode-status.json",
   "docs/specs/RIPR-SPEC-0036-editor-preview-routing.md",
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0003-editor-preview-routing.md",
   "docs/proposals/README.md",
   "docs/lanes/LANE_3_EDITOR_LSP.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "docs/status/SUPPORT_TIERS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "plans/campaign-27/README.md",
   "plans/campaign-27/lane3-editor-preview-routing.md",
@@ -2255,18 +2334,45 @@ id = "RIPR-SPEC-0037"
 name = "Editor preview static-limit projection"
 spec = "docs/specs/RIPR-SPEC-0037-editor-preview-static-limit-projection.md"
 tests = [
+  "crates/ripr/src/lsp/tests.rs",
+  "editors/vscode/test/suite/extension.test.ts",
+  "xtask/src/main.rs",
 ]
 fixtures = [
+  "fixtures/python_disabled",
+  "fixtures/python_missing_import_graph_limit",
+  "fixtures/typescript_mocked_module_limit",
 ]
 code = [
+  "crates/ripr/src/lsp/backend.rs",
+  "crates/ripr/src/lsp/diagnostics.rs",
+  "crates/ripr/src/lsp/hover.rs",
+  "editors/vscode/src/client.ts",
+  "xtask/src/main.rs",
 ]
 outputs = [
+  "fixtures/python_disabled/expected/lsp-code-actions.json",
+  "fixtures/python_disabled/expected/lsp-diagnostics.json",
+  "fixtures/python_disabled/expected/static-limits.md",
+  "fixtures/python_disabled/expected/vscode-status.json",
+  "fixtures/python_missing_import_graph_limit/expected/lsp-code-actions.json",
+  "fixtures/python_missing_import_graph_limit/expected/lsp-diagnostics.json",
+  "fixtures/python_missing_import_graph_limit/expected/lsp-hover.md",
+  "fixtures/python_missing_import_graph_limit/expected/static-limits.md",
+  "fixtures/python_missing_import_graph_limit/expected/vscode-status.json",
+  "fixtures/typescript_mocked_module_limit/expected/lsp-code-actions.json",
+  "fixtures/typescript_mocked_module_limit/expected/lsp-diagnostics.json",
+  "fixtures/typescript_mocked_module_limit/expected/lsp-hover.md",
+  "fixtures/typescript_mocked_module_limit/expected/static-limits.md",
+  "fixtures/typescript_mocked_module_limit/expected/vscode-status.json",
   "docs/specs/RIPR-SPEC-0037-editor-preview-static-limit-projection.md",
   "docs/specs/RIPR-SPEC-0036-editor-preview-routing.md",
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0003-editor-preview-routing.md",
   "docs/lanes/LANE_3_EDITOR_LSP.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "docs/status/SUPPORT_TIERS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "plans/campaign-27/lane3-editor-preview-routing.md",
   ".ripr/traceability.toml",
@@ -2290,6 +2396,7 @@ tests = [
   "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_is_advisory",
   "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_never_auto_refreshes_baseline",
   "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_uploads_reports_and_makes_sarif_optional",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_groups_preview_languages_only_when_configured",
   "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_matches_smoke_fixture",
   "crates/ripr/tests/cli_smoke.rs::init_ci_github_dry_run_prints_config_and_workflow_without_writing",
   "crates/ripr/tests/cli_smoke.rs::init_ci_github_writes_non_blocking_report_workflow",
@@ -2305,6 +2412,12 @@ outputs = [
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0004-pr-ci-review-cockpit.md",
   "docs/lanes/LANE_4_PR_CI_REVIEW.md",
+  "docs/status/SUPPORT_TIERS.md",
+  "docs/LANGUAGE_ADAPTER_PREVIEW.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "docs/CI.md",
+  "metrics/capabilities.toml",
+  ".ripr/goals/active.toml",
   "plans/lane4-pr-ci-review-cockpit/implementation-plan.md",
   ".ripr/traceability.toml",
 ]
@@ -2396,6 +2509,7 @@ outputs = [
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0002-lane-1-evidence-quality-leadership.md",
   "docs/lanes/LANE_1_EVIDENCE_QUALITY_LEADERSHIP.md",
+  "docs/handoffs/2026-05-13-lane-1-evidence-quality-leadership-closeout.md",
   "fixtures/CALIBRATION_CORPUS.md",
   "fixtures/boundary_gap/calibration/runtime-fixtures-v3/README.md",
   "fixtures/boundary_gap/calibration/runtime-fixtures-v3/repo-exposure.json",
@@ -2422,4 +2536,191 @@ metrics = [
   "static_runtime_confidence_ambiguous_runtime_join",
   "static_runtime_confidence_runtime_only_signal",
   "static_runtime_confidence_no_runtime_data",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0041"
+name = "Policy history ledger"
+spec = "docs/specs/RIPR-SPEC-0041-policy-history-ledger.md"
+tests = [
+  "crates/ripr/src/output/policy_history.rs::tests::policy_history_single_snapshot_marks_trends_unknown",
+  "crates/ripr/src/output/policy_history.rs::tests::policy_history_detects_readiness_improvement",
+  "crates/ripr/src/output/policy_history.rs::tests::policy_history_detects_waiver_pressure_regression",
+  "crates/ripr/src/output/policy_history.rs::tests::policy_history_detects_baseline_shrink",
+  "crates/ripr/src/output/policy_history.rs::tests::policy_history_marks_preview_boundary_still_advisory",
+  "crates/ripr/src/output/policy_history.rs::tests::policy_history_keeps_usable_history_with_malformed_line_warning",
+  "crates/ripr/src/output/policy_history.rs::tests::policy_history_malformed_current_is_config_error_snapshot",
+  "crates/ripr/src/output/policy_history.rs::tests::policy_history_json_and_markdown_are_structured",
+  "crates/ripr/src/cli/commands.rs::tests::policy_history_parses_option_surface",
+  "crates/ripr/src/cli/commands.rs::tests::policy_history_command_writes_reports",
+]
+fixtures = [
+]
+code = [
+  "crates/ripr/src/output/policy_history.rs",
+  "crates/ripr/src/output/mod.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/help.rs",
+  "crates/ripr/src/cli/execute.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0041-policy-history-ledger.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/policy/POLICY_OPERATIONS.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  "docs/CAPABILITY_MATRIX.md",
+  ".ripr/goals/lane2-policy-operations.toml",
+  ".ripr/traceability.toml",
+  "metrics/capabilities.toml",
+]
+metrics = [
+  "policy_history_reports",
+  "policy_history_entries",
+  "policy_history_readiness_improved",
+  "policy_history_waiver_pressure_increased",
+  "policy_history_suppression_health_regressed",
+  "policy_history_baseline_shrank",
+  "policy_history_preview_remained_advisory",
+  "policy_history_calibration_changed_ceiling",
+  "policy_history_warning_count",
+  "policy_history_unknown_count",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0042"
+name = "Policy promotion packets"
+spec = "docs/specs/RIPR-SPEC-0042-policy-promotion-packets.md"
+tests = [
+  "crates/ripr/src/output/policy_promotion.rs::tests::promotion_visible_only_allowed_has_empty_repairs",
+  "crates/ripr/src/output/policy_promotion.rs::tests::promotion_acknowledgeable_blocked_uses_blocker_repairs",
+  "crates/ripr/src/output/policy_promotion.rs::tests::promotion_baseline_check_blocked_uses_baseline_repairs",
+  "crates/ripr/src/output/policy_promotion.rs::tests::promotion_calibrated_gate_allowed_keeps_stable_rust_limit",
+  "crates/ripr/src/output/policy_promotion.rs::tests::promotion_missing_history_records_unknown",
+  "crates/ripr/src/output/policy_promotion.rs::tests::promotion_malformed_operations_blocks_all_modes",
+  "crates/ripr/src/output/policy_promotion.rs::tests::promotion_json_and_markdown_are_structured",
+  "crates/ripr/src/cli/commands.rs::tests::policy_promotion_parses_option_surface",
+  "crates/ripr/src/cli/commands.rs::tests::policy_promotion_command_writes_reports",
+]
+fixtures = [
+]
+code = [
+  "crates/ripr/src/output/policy_promotion.rs",
+  "crates/ripr/src/output/mod.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/help.rs",
+  "crates/ripr/src/cli/execute.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0042-policy-promotion-packets.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/policy/POLICY_OPERATIONS.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  "docs/CAPABILITY_MATRIX.md",
+  ".ripr/goals/lane2-policy-operations.toml",
+  ".ripr/traceability.toml",
+  "metrics/capabilities.toml",
+]
+metrics = [
+  "policy_promotion_packets",
+  "policy_promotion_allowed",
+  "policy_promotion_blocked",
+  "policy_promotion_required_repairs",
+  "policy_promotion_required_receipts",
+  "policy_promotion_missing_history",
+  "policy_promotion_warning_count",
+  "policy_promotion_unknown_count",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0043"
+name = "Presentation text evidence"
+spec = "docs/specs/RIPR-SPEC-0043-presentation-text-evidence.md"
+tests = [
+  "xtask/src/main.rs::tests::evidence_quality_benchmark_corpus_is_valid",
+  "xtask/src/main.rs::tests::evidence_quality_benchmark_requires_static_limitation_category_at_case_level",
+]
+fixtures = [
+  "fixtures/evidence-quality-benchmark/corpus.json",
+]
+code = [
+  "xtask/src/main.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0043-presentation-text-evidence.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0005-user-visible-output-evidence.md",
+  "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md",
+  "fixtures/evidence-quality-benchmark/README.md",
+  "fixtures/evidence-quality-benchmark/corpus.json",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+  ".ripr/traceability.toml",
+  "CHANGELOG.md",
+]
+metrics = [
+  "presentation_text_total",
+  "presentation_text_user_visible",
+  "presentation_text_observed",
+  "presentation_text_unobserved",
+  "presentation_text_internal_only",
+  "presentation_text_visibility_unknown",
+  "presentation_text_observer_unknown",
+  "presentation_text_duplicate_groups",
+  "presentation_text_actionable_snapshot",
+  "presentation_text_no_action",
+  "presentation_text_static_limitations",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0044"
+name = "Preview evidence promotion packet"
+spec = "docs/specs/RIPR-SPEC-0044-preview-evidence-promotion-packet.md"
+tests = [
+  "crates/ripr/src/output/policy_preview_promotion.rs::tests::preview_promotion_default_typescript_is_blocked",
+  "crates/ripr/src/output/policy_preview_promotion.rs::tests::preview_promotion_default_python_is_blocked",
+  "crates/ripr/src/output/policy_preview_promotion.rs::tests::preview_promotion_partial_evidence_remains_blocked",
+  "crates/ripr/src/output/policy_preview_promotion.rs::tests::preview_promotion_complete_evidence_stays_advisory_until_later_policy",
+  "crates/ripr/src/output/policy_preview_promotion.rs::tests::preview_promotion_optional_mutation_calibration_does_not_block",
+  "crates/ripr/src/output/policy_preview_promotion.rs::tests::preview_promotion_malformed_evidence_warns",
+  "crates/ripr/src/output/policy_preview_promotion.rs::tests::preview_promotion_ignores_supplied_status_promotion",
+  "crates/ripr/src/output/policy_preview_promotion.rs::tests::preview_promotion_json_and_markdown_are_structured",
+  "crates/ripr/src/output/policy_preview_promotion.rs::tests::preview_promotion_default_paths_use_dash_class_label",
+  "crates/ripr/src/cli/commands.rs::tests::policy_preview_promotion_parses_option_surface",
+  "crates/ripr/src/cli/commands.rs::tests::policy_preview_promotion_command_writes_reports",
+]
+fixtures = [
+]
+code = [
+  "crates/ripr/src/output/policy_preview_promotion.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/help.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0044-preview-evidence-promotion-packet.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/policy/POLICY_OPERATIONS.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  "docs/CAPABILITY_MATRIX.md",
+  ".ripr/goals/lane2-policy-operations.toml",
+  ".ripr/traceability.toml",
+  "metrics/capabilities.toml",
+]
+metrics = [
+  "preview_promotion_packets",
+  "preview_promotion_allowed",
+  "preview_promotion_blocked",
+  "preview_promotion_required_evidence",
+  "preview_promotion_supplied_evidence",
+  "preview_promotion_missing_evidence",
+  "preview_promotion_warning_count",
+  "preview_promotion_unknown_count",
 ]

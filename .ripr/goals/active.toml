@@ -202,14 +202,14 @@ commands = [
 
 [[work_item]]
 id = "analysis/python-preview-adapter"
-status = "active"
+status = "done"
 branch = "analysis-python-preview-adapter"
 stackable = false
 blocked_by = [
   "config/languages-opt-in",
   "adr/python-parser-substrate",
 ]
-acceptance = "Add the Python syntax-first adapter, the Python fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Scaffold sub-slice mirrors the TypeScript scaffold (PR #759): adds the `rustpython-parser` Cargo dependency approved by the corrected ADR 0009, the `PythonAdapter` type, language-aware pipeline dispatch through `[languages] enabled`, and a real production parse-validation use of `rustpython-parser`. To avoid an LGPL-3.0-only transitive (`malachite-bigint`), the dependency disables default features and selects `num-bigint` (MIT/Apache-2.0) for Python int-literal representation. Owner / test / assertion / probe / related-test fact extraction lands in subsequent sub-slices against RIPR-SPEC-0028's fixture corpus."
+acceptance = "Add the Python syntax-first adapter, the Python fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Scaffold sub-slice mirrors the TypeScript scaffold (PR #759): adds the `rustpython-parser` Cargo dependency approved by the corrected ADR 0009, the `PythonAdapter` type, language-aware pipeline dispatch through `[languages] enabled`, and a real production parse-validation use of `rustpython-parser`. To avoid an LGPL-3.0-only transitive (`malachite-bigint`), the dependency disables default features and selects `num-bigint` (MIT/Apache-2.0) for Python int-literal representation. Owner/test sub-slice adds syntax-first `def` / `async def` / method owner facts, pytest and unittest test discovery, preview `owner_kind` output, and Python owner/test fixture families. Assertion/oracle sub-slice adds syntax-first pytest, unittest, boolean, broad-error, and mock-call oracle facts plus fixture families. Probe-shape sub-slice adds syntax-first predicate, return-value, error-path, field-assignment, call, and mock-initializer probe families plus fixture coverage. Related-test sub-slice adds direct-call, import-alias, same-stem, and unrelated-mention fixtures with conservative weak proximity behavior. Static-limit sub-slice adds structured `dynamic_dispatch`, `decorator_indirection`, `mocked_module`, `missing_import_graph`, `metaprogramming`, and `unsupported_syntax` facts plus fixture coverage while preserving strong related-test classifications. Final corpus-completion audit records that owner/test/assertion/probe/related-test/static-limit Python preview facts are fixture-backed and editor-projectable; downstream editor and CI projection remain separate work items."
 commands = [
   "cargo check -p ripr",
   "cargo test -p ripr --lib analysis::language",
@@ -225,14 +225,11 @@ commands = [
 
 [[work_item]]
 id = "lsp/editor-language-routing"
-status = "blocked"
+status = "done"
 branch = "lsp-editor-language-routing"
 stackable = false
-blocked_by = [
-  "analysis/typescript-editor-readiness",
-  "analysis/python-preview-adapter",
-]
-acceptance = "Extend the VS Code extension to register the TypeScript, TypeScript React, JavaScript, JavaScript React, and Python selectors, and route saved-workspace diagnostics through the adapter layer only when repo config enables that language. Preserve Rust saved-workspace defaults for diagnostics, hover, actions, and status. Preview findings must be visibly labeled preview, hover/status must surface explicit static limits before suggested action language, and wrong-root/stale/malformed artifacts must still fail closed. No analyzer behavior, source edits, generated tests, provider calls, mutation execution, policy/gate/default-blocking behavior, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays."
+blocked_by = []
+acceptance = "Extended the VS Code extension activation events and document selector to TypeScript, TypeScript React, JavaScript, JavaScript React, and Python while preserving Rust saved-workspace defaults. Routed stale-buffer guards through the same supported-language selector set; preview findings now carry language/language_status/owner_kind/static_limit_kind through LSP diagnostic data, hover shows the preview syntax-first/advisory boundary before RIPR evidence, and status text surfaces preview/static-limit counts from refresh logs. LSP analysis remains config-gated by [languages] through the existing adapter layer. Landed without analyzer behavior changes, source edits, generated tests, provider calls, mutation execution, policy/gate/default-blocking behavior, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays."
 commands = [
   "cargo test -p ripr lsp --lib",
   "cargo test -p ripr lsp::tests --lib",
@@ -250,34 +247,53 @@ commands = [
 
 [[work_item]]
 id = "ci/language-aware-grouping"
-status = "blocked"
+status = "done"
 branch = "ci-language-aware-grouping"
 stackable = false
-blocked_by = [
-  "analysis/typescript-preview-adapter",
-  "analysis/python-preview-adapter",
+blocked_by = []
+acceptance = "Updated generated GitHub CI summaries to group TypeScript/Python advisory output by language only when [languages] declares preview adapters through the public ripr doctor surface. Rust-only generated summary output remains unchanged at runtime, preview groups are visibly advisory, static-limit kinds remain visible, and gate authority remains with ripr gate evaluate when explicitly configured."
+commands = [
+  "cargo xtask check-workflows",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-traceability",
+  "cargo xtask check-pr",
 ]
-acceptance = "Update generated GitHub CI summaries to group advisory output by language only when [languages] declares more than Rust, keeping Rust-default behavior identical and gate authority unchanged"
 
 [[work_item]]
 id = "docs/language-adapter-preview-workflow"
-status = "blocked"
+status = "done"
 branch = "docs-language-adapter-preview-workflow"
 stackable = false
-blocked_by = [
-  "ci/language-aware-grouping",
+blocked_by = []
+acceptance = "Documented enabling preview adapters, reading mixed-language reports, interpreting preview labels, the static-limit boundary, generated-CI grouping, editor projection, and rollback in docs/LANGUAGE_ADAPTER_PREVIEW.md, with links from Quickstart, Configuration, Support Tiers, and the documentation index."
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-traceability",
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo xtask check-pr",
 ]
-acceptance = "Document enabling preview adapters, reading mixed-language reports, interpreting preview labels, the static-limit boundary, and rollback"
 
 [[work_item]]
 id = "dogfood/language-adapter-preview-receipts"
-status = "blocked"
+status = "ready"
 branch = "dogfood-language-adapter-preview-receipts"
 stackable = false
-blocked_by = [
-  "docs/language-adapter-preview-workflow",
-]
+blocked_by = []
 acceptance = "Extend cargo xtask dogfood with checked TypeScript and Python preview receipts without changing analyzer behavior, default CI, or inline-comment defaults"
+commands = [
+  "cargo xtask dogfood",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-traceability",
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo xtask check-pr",
+]
 
 [[work_item]]
 id = "campaign/language-adapter-preview-closeout"

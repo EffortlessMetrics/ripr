@@ -190,6 +190,10 @@ The evidence-first fields are additive in schema `0.1`:
 - `language_status` is the per-finding adapter status. Values are `stable`
   or `preview`. **Omitted for Rust** per RIPR-SPEC-0026; preview adapters
   (TypeScript, Python) will set `preview` when they land.
+- `owner_kind` is an additive optional per-finding syntactic owner
+  discriminator. It is omitted when no preview adapter populated a bounded
+  owner. Values are `function`, `method`, `class_method`, `arrow_function`,
+  `component`, or `module_function`.
 - `static_limit_kind` is an additive optional per-finding static limitation
   discriminator. It is omitted when no structured static limit is known. Values
   are `dynamic_dispatch`, `metaprogramming`, `missing_import_graph`,
@@ -1592,6 +1596,106 @@ The Markdown sibling prints bounded sections for summary, maturity by class,
 top evidence-quality risks, recommended repairs, duplicate/canonical group
 signals, static limitations, missing discriminators, related-test and oracle
 distributions, movement and calibration coverage, recent deltas, and unknowns.
+
+## Evidence Quality Trend
+
+`cargo xtask evidence-quality-trend` writes a repo-local Lane 1 trend report
+over existing scorecard or audit snapshots:
+
+```text
+target/ripr/reports/evidence-quality-trend.json
+target/ripr/reports/evidence-quality-trend.md
+```
+
+By default the command reads the current
+`target/ripr/reports/evidence-quality-scorecard.json`, regenerating the
+scorecard first only when that required input is absent. It compares against
+`target/ripr/reports/evidence-quality-scorecard.previous.json` or
+`target/ripr/reports/lane1-evidence-audit.previous.json` when one exists.
+Operators may also pass `--current <path>` and `--previous <path>`. Missing
+history is reported explicitly as `unknown`; the command does not change
+analyzer behavior, gate policy, PR/CI projection, editor output, source files,
+generated tests, provider calls, score definitions, or runtime execution.
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "report": "evidence-quality-trend",
+  "generated_at": "unix_ms:1778620000000",
+  "scope": {
+    "kind": "repo",
+    "root": "."
+  },
+  "inputs": {
+    "current_scorecard": {
+      "path": "target/ripr/reports/evidence-quality-scorecard.json",
+      "status": "loaded",
+      "schema_version": "0.1",
+      "sha256": "0123456789abcdef",
+      "note": "current evidence-quality scorecard"
+    },
+    "previous_artifact": {
+      "path": "target/ripr/reports/evidence-quality-scorecard.previous.json",
+      "status": "missing",
+      "schema_version": null,
+      "sha256": null,
+      "note": "optional previous scorecard or audit snapshot for trend comparison"
+    }
+  },
+  "summary": {
+    "status": "unknown",
+    "compared_metrics": 0,
+    "improved_metrics": 0,
+    "regressed_metrics": 0,
+    "unchanged_metrics": 0,
+    "unknown_metrics": 9,
+    "no_history": true
+  },
+  "metric_trends": [
+    {
+      "metric": "duplicate_looking_groups_total",
+      "label": "Duplicate-looking groups",
+      "before": null,
+      "after": 926,
+      "delta": null,
+      "direction": "unknown",
+      "interpretation": "No comparable previous value was available."
+    }
+  ],
+  "static_limitation_category_trends": [],
+  "unknowns": [
+    {
+      "kind": "trend_history_unavailable",
+      "summary": "No previous scorecard or audit snapshot was available, so the report cannot claim improvement or regression.",
+      "next_repair": "report/evidence-quality-trend"
+    }
+  ]
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `tool` - always `"ripr"`.
+- `report` - always `"evidence-quality-trend"`.
+- `inputs.current_scorecard` - current scorecard artifact identity. The
+  command creates the default scorecard first if it is missing.
+- `inputs.previous_artifact` - optional previous scorecard or audit snapshot.
+  Missing history is an explicit unknown, not a failure.
+- `summary.status` - `improvement`, `regression`, `mixed`, `unchanged`, or
+  `unknown`.
+- `metric_trends[]` - comparable Lane 1 evidence-quality metrics with
+  nullable `before`, `after`, and `delta` values plus a direction. Lower counts
+  are better for debt and uncertainty metrics; higher counts are better for
+  calibrated records.
+- `static_limitation_category_trends[]` - bounded category-level deltas for
+  normalized static limitation classes.
+- `unknowns[]` - missing history or missing current metric fields that must
+  stay visible until later audit or scorecard inputs exist.
+
+The Markdown sibling prints bounded sections for summary, metric trends,
+static limitation category trends, and unknowns.
 
 ## Repo Exposure Latency Report
 
@@ -3558,6 +3662,495 @@ Markdown should fit in a job summary. It should show current ceiling, next safe
 action, can-promote and cannot-promote sections, top blockers, grouped actions,
 warnings, unknowns, input artifact status, and limits. It must not make a gate
 decision or promote preview-language evidence.
+
+## Policy History Report
+
+RIPR-SPEC-0041 defines the policy history report. `ripr policy history` reads a
+current `policy-operations.json` report plus an optional append-only history
+JSONL input and writes a read-only advisory trend packet. The report shows
+whether readiness, waiver pressure, suppression health, baseline movement,
+preview-boundary state, and calibration health improved, regressed, stayed
+unchanged, or are unknown.
+
+Command:
+
+```text
+ripr policy history \
+  --current target/ripr/reports/policy-operations.json \
+  --history .ripr/policy-history.jsonl \
+  --commit HEAD \
+  --pr-number 123 \
+  --out target/ripr/reports/policy-history.json \
+  --out-md target/ripr/reports/policy-history.md
+```
+
+The report writes:
+
+```text
+target/ripr/reports/policy-history.json
+target/ripr/reports/policy-history.md
+```
+
+This report is advisory policy trend evidence. It does not append to
+`.ripr/policy-history.jsonl`, execute gates, collect telemetry, mutate config,
+baselines, suppressions, workflows, branch protection, generated CI defaults,
+or source files, promote preview-language evidence, run analysis, generate
+tests, call providers, post comments, or run mutation testing.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "policy_history",
+  "root": ".",
+  "generated_at": "unix_ms:1778277000000",
+  "current": {
+    "commit": "HEAD",
+    "pr_number": "123",
+    "generated_at": "unix_ms:1778277000000",
+    "recommended_mode": "acknowledgeable",
+    "current_policy_ceiling": "ready_for_acknowledgeable",
+    "baseline_health": "warning",
+    "waiver_health": "advisory",
+    "suppression_health": "healthy",
+    "calibration_health": "not_ready",
+    "preview_boundary_state": "healthy",
+    "new_policy_eligible_count": 1,
+    "waiver_count": 2,
+    "stale_suppression_count": 0,
+    "baseline_still_present": 4,
+    "baseline_resolved": 1
+  },
+  "history_summary": {
+    "entries": 3,
+    "oldest_generated_at": "unix_ms:1778190600000",
+    "newest_generated_at": "unix_ms:1778277000000",
+    "readiness_improved": true,
+    "waiver_pressure_increased": false,
+    "suppression_health_regressed": false,
+    "baseline_shrank": true,
+    "preview_remained_advisory": true,
+    "calibration_changed_ceiling": false
+  },
+  "trend": {
+    "ceiling": {
+      "previous": "ready_for_visible_only",
+      "current": "ready_for_acknowledgeable",
+      "direction": "improved"
+    },
+    "waiver_count": {
+      "previous": 3,
+      "current": 2,
+      "direction": "improved"
+    },
+    "stale_suppression_count": {
+      "previous": 0,
+      "current": 0,
+      "direction": "unchanged"
+    },
+    "baseline_still_present": {
+      "previous": 5,
+      "current": 4,
+      "direction": "improved"
+    },
+    "baseline_resolved": {
+      "previous": 0,
+      "current": 1,
+      "direction": "improved"
+    },
+    "preview_boundary_state": {
+      "previous": "healthy",
+      "current": "healthy",
+      "direction": "unchanged"
+    },
+    "calibration_health": {
+      "previous": "not_ready",
+      "current": "not_ready",
+      "direction": "unchanged"
+    }
+  },
+  "example_append_record": {
+    "commit": "HEAD",
+    "pr_number": "123",
+    "generated_at": "unix_ms:1778277000000",
+    "current_policy_ceiling": "ready_for_acknowledgeable",
+    "recommended_mode": "acknowledgeable"
+  },
+  "warnings": [],
+  "unknowns": [
+    {
+      "kind": "history_not_supplied",
+      "message": "No policy history JSONL was supplied; trend is limited to the current snapshot.",
+      "source_artifact": null
+    }
+  ],
+  "input_artifacts": [
+    {
+      "kind": "policy_operations",
+      "path": "target/ripr/reports/policy-operations.json",
+      "status": "read"
+    },
+    {
+      "kind": "policy_history_jsonl",
+      "path": ".ripr/policy-history.jsonl",
+      "status": "missing"
+    }
+  ],
+  "limits_note": "Read-only advisory policy history report. It reads explicit history inputs and never appends, mutates policy, or changes gate authority."
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `tool` - always `"ripr"`.
+- `kind` - always `"policy_history"`.
+- `current` - normalized snapshot derived from `policy-operations.json` plus
+  optional commit and PR metadata.
+- `current.recommended_mode` - derived from the highest safe promotion mode or
+  current policy operations ceiling.
+- `current.current_policy_ceiling` - copied from policy operations.
+- `current.*_health` fields - normalized policy surface states derived from
+  operations actions, blockers, and input artifacts.
+- `current.new_policy_eligible_count`, `waiver_count`,
+  `stale_suppression_count`, `baseline_still_present`, and
+  `baseline_resolved` - current movement counters when available, otherwise
+  zero with an unknown.
+- `history_summary.entries` - count of prior plus current snapshots included in
+  the trend.
+- `history_summary.readiness_improved` - true only when the current ceiling
+  ranks higher than the previous comparable snapshot.
+- `history_summary.waiver_pressure_increased` - true when waiver count rises.
+- `history_summary.suppression_health_regressed` - true when stale or malformed
+  suppression signals rise.
+- `history_summary.baseline_shrank` - true when still-present baseline debt
+  falls or resolved baseline debt rises without adopt-new behavior.
+- `history_summary.preview_remained_advisory` - true only when preview evidence
+  stayed non-gating across comparable snapshots.
+- `history_summary.calibration_changed_ceiling` - true when calibration health
+  improvement is the reason the ceiling changed.
+- `trend.*.direction` - `improved`, `regressed`, `unchanged`, or `unknown`.
+- `example_append_record` - the current snapshot in appendable JSONL shape. It
+  is advisory output only and must not be written automatically.
+- `warnings[]` - malformed supplied history lines, malformed current input, or
+  unsupported historical shapes.
+- `unknowns[]` - missing optional history, commit, PR number, or unavailable
+  metric fields.
+- `input_artifacts[]` - per-input status. Status values are `read`, `omitted`,
+  `missing`, `malformed`, and `not_applicable`.
+- `limits_note` - read-only/no-telemetry/no-mutation/no-gate boundary.
+
+Markdown should fit in generated CI summaries and report packets. It should
+show the current ceiling, recommended mode, history entry count, trend summary,
+current snapshot counters, input artifact status, an optional manual append
+record, warnings, unknowns, and limits. It must not append history
+automatically, make a gate decision, or promote preview-language evidence.
+
+## Policy Promotion Packet
+
+RIPR-SPEC-0042 defines the policy promotion packet. `ripr policy promote`
+reads a current `policy-operations.json` report plus optional
+`policy-history.json` and writes a read-only manual-review packet for one target
+mode.
+
+Command:
+
+```text
+ripr policy promote \
+  --to baseline-check \
+  --operations target/ripr/reports/policy-operations.json \
+  --history target/ripr/reports/policy-history.json \
+  --out target/ripr/reports/policy-promotion-baseline-check.json \
+  --out-md target/ripr/reports/policy-promotion-baseline-check.md
+```
+
+The report writes:
+
+```text
+target/ripr/reports/policy-promotion-visible-only.json
+target/ripr/reports/policy-promotion-visible-only.md
+target/ripr/reports/policy-promotion-acknowledgeable.json
+target/ripr/reports/policy-promotion-acknowledgeable.md
+target/ripr/reports/policy-promotion-baseline-check.json
+target/ripr/reports/policy-promotion-baseline-check.md
+target/ripr/reports/policy-promotion-calibrated-gate.json
+target/ripr/reports/policy-promotion-calibrated-gate.md
+```
+
+This report is advisory policy review evidence. It does not mutate `ripr.toml`,
+baselines, suppressions, workflows, branch protection, generated CI defaults,
+source files, history ledgers, or preview-language eligibility. It does not
+execute gates, post comments, run analysis, generate tests, call providers, run
+mutation testing, or make CI blocking by default.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "policy_promotion_packet",
+  "root": ".",
+  "generated_at": "unix_ms:1778277000000",
+  "target_mode": "baseline-check",
+  "allowed_now": false,
+  "why_or_why_not": "Baseline contains stale entries and suppression health has warnings.",
+  "required_repairs": [
+    "Run shrink-only baseline review and remove resolved entries.",
+    "Repair suppression-health warnings before tightening policy."
+  ],
+  "required_receipts": [
+    "policy-operations.json showing baseline-check in safe_to_promote_to",
+    "policy-history.json showing baseline debt is not being normalized",
+    "baseline-debt-delta.json showing reviewed shrink-only movement",
+    "suppression-health.json showing durable exception metadata is healthy"
+  ],
+  "rollback_path": [
+    "Revert the manual gate-mode config change.",
+    "Return to visible-only or acknowledgeable policy mode.",
+    "Keep policy operations and history artifacts for audit."
+  ],
+  "example_config_change": {
+    "file": "ripr.toml",
+    "change": "Set the reviewed policy gate mode to baseline-check.",
+    "manual_only": true
+  },
+  "input_artifacts": [
+    {
+      "kind": "policy_operations",
+      "path": "target/ripr/reports/policy-operations.json",
+      "status": "read"
+    },
+    {
+      "kind": "policy_history",
+      "path": "target/ripr/reports/policy-history.json",
+      "status": "read"
+    }
+  ],
+  "warnings": [],
+  "unknowns": [],
+  "non_goals": [
+    "No automatic config mutation.",
+    "No automatic baseline adoption.",
+    "No suppression creation.",
+    "No default CI blocking.",
+    "No preview-language promotion."
+  ],
+  "limits_note": "Read-only advisory promotion packet. It supports manual review only and never mutates policy configuration or gate authority."
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `tool` - always `"ripr"`.
+- `kind` - always `"policy_promotion_packet"`.
+- `target_mode` - one of `visible-only`, `acknowledgeable`,
+  `baseline-check`, or `calibrated-gate`.
+- `allowed_now` - true only when policy operations lists the target in
+  `safe_to_promote_to`.
+- `why_or_why_not` - explanation from the operations safe/not-safe entry and
+  blockers.
+- `required_repairs[]` - blocker repair actions required before manual
+  promotion review.
+- `required_receipts[]` - artifacts reviewers should inspect before accepting
+  a manual config change.
+- `rollback_path[]` - explicit steps to return to a less strict posture.
+- `example_config_change` - manual review guidance only. The command must not
+  write this change.
+- `input_artifacts[]` - per-input status.
+- `warnings[]` - malformed supplied inputs, unsupported history shape, or
+  target-mode limitations.
+- `unknowns[]` - missing optional history or unavailable supporting context.
+- `non_goals[]` - hard boundaries repeated in the packet.
+- `limits_note` - read-only/manual-review/no-mutation boundary.
+
+Markdown should fit in generated CI summaries and report packets. It should
+show the target mode, allowed status, why/why not explanation, required
+repairs, required receipts, rollback path, manual-only config example, input
+artifact status, warnings, unknowns, non-goals, and limits. It must not mutate
+policy configuration or promote preview-language evidence.
+
+## Preview Evidence Promotion Packet
+
+RIPR-SPEC-0044 defines the preview evidence promotion packet. The
+`ripr policy preview-promote` command writes a read-only advisory packet for a
+preview language and evidence class. The default result is blocked:
+`allowed_now = false` with reason `preview promotion evidence not supplied`.
+
+Command:
+
+```text
+ripr policy preview-promote \
+  --language typescript \
+  --class boundary_gap \
+  --evidence target/ripr/reports/preview-promotion-evidence.json \
+  --out target/ripr/reports/preview-promotion-typescript-boundary-gap.json \
+  --out-md target/ripr/reports/preview-promotion-typescript-boundary-gap.md
+```
+
+The report writes:
+
+```text
+target/ripr/reports/preview-promotion-<language>-<class>.json
+target/ripr/reports/preview-promotion-<language>-<class>.md
+```
+
+This report is advisory policy review evidence. It does not mutate `ripr.toml`,
+baselines, suppressions, workflows, branch protection, generated CI defaults,
+source files, history ledgers, gate configuration, RIPR Zero membership,
+calibrated confidence, or preview-language eligibility. It does not execute
+gates, post comments, run analysis, generate tests, call providers, run
+mutation testing, or make CI blocking by default.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "preview_evidence_promotion_packet",
+  "root": ".",
+  "generated_at": "unix_ms:1778277000000",
+  "language": "typescript",
+  "language_status": "preview",
+  "candidate_class": "boundary_gap",
+  "target_status": "policy_eligible",
+  "allowed_now": false,
+  "reason": "preview promotion evidence not supplied",
+  "required_evidence": [
+    {
+      "kind": "fixture_corpus_coverage",
+      "required": true,
+      "description": "Representative fixtures cover the candidate class and known static limits."
+    },
+    {
+      "kind": "static_limit_exclusions",
+      "required": true,
+      "description": "Known static parser and language-adapter limits are excluded or labeled."
+    },
+    {
+      "kind": "false_positive_review",
+      "required": true,
+      "description": "Maintainer-reviewed false-positive sample is documented for this language and class."
+    },
+    {
+      "kind": "recommendation_calibration",
+      "required": true,
+      "description": "Same-class recommendation calibration supports policy eligibility."
+    },
+    {
+      "kind": "mutation_calibration",
+      "required": false,
+      "description": "Optional runtime calibration exists for this language and class without being inferred from Rust."
+    },
+    {
+      "kind": "baseline_behavior",
+      "required": true,
+      "description": "Baseline handling keeps preview debt visible and does not auto-adopt new preview findings."
+    },
+    {
+      "kind": "waiver_suppression_behavior",
+      "required": true,
+      "description": "Waivers and suppressions preserve owner, reason, scope, and preview status."
+    },
+    {
+      "kind": "rollback_path",
+      "required": true,
+      "description": "Manual rollback to advisory preview status is documented."
+    },
+    {
+      "kind": "generated_ci_posture",
+      "required": true,
+      "description": "Generated CI remains advisory and non-blocking unless a later explicit gate mode is configured."
+    }
+  ],
+  "supplied_evidence": [],
+  "missing_evidence": [
+    "fixture_corpus_coverage",
+    "static_limit_exclusions",
+    "false_positive_review",
+    "recommendation_calibration",
+    "baseline_behavior",
+    "waiver_suppression_behavior",
+    "rollback_path",
+    "generated_ci_posture"
+  ],
+  "required_repairs": [
+    "Supply explicit preview promotion evidence before policy eligibility review."
+  ],
+  "required_receipts": [
+    "preview-promotion-typescript-boundary-gap.json",
+    "preview-boundary report showing advisory language status",
+    "fixture corpus coverage receipt for TypeScript boundary_gap",
+    "static-limit exclusions receipt for TypeScript boundary_gap",
+    "false-positive review receipt for TypeScript boundary_gap",
+    "recommendation-calibration receipt for TypeScript boundary_gap",
+    "baseline behavior receipt for TypeScript boundary_gap",
+    "waiver/suppression behavior receipt for TypeScript boundary_gap",
+    "rollback path receipt for TypeScript boundary_gap",
+    "generated CI posture receipt for TypeScript boundary_gap"
+  ],
+  "rollback_path": [
+    "Keep TypeScript boundary_gap evidence advisory.",
+    "Remove any manual preview promotion config if one was reviewed later.",
+    "Regenerate policy operations and preview promotion packets after rollback."
+  ],
+  "generated_ci_posture": {
+    "may_upload_artifact": true,
+    "may_summarize_artifact": true,
+    "may_fail_check": false,
+    "may_post_comment": false,
+    "may_mutate_config": false
+  },
+  "input_artifacts": [],
+  "warnings": [],
+  "unknowns": [],
+  "non_goals": [
+    "No actual promotion.",
+    "No gate eligibility change.",
+    "No RIPR Zero inclusion.",
+    "No calibrated confidence.",
+    "No CI blocking."
+  ],
+  "limits_note": "Read-only advisory preview promotion packet. Preview evidence remains visible and non-gating until a later explicit promotion policy is reviewed."
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `tool` - always `"ripr"`.
+- `kind` - always `"preview_evidence_promotion_packet"`.
+- `language` - requested preview language.
+- `language_status` - current status, initially `"preview"`.
+- `candidate_class` - requested evidence class.
+- `target_status` - requested future policy status. The packet may describe it
+  but must not apply it.
+- `allowed_now` - false unless every required evidence item is supplied and a
+  later implementation explicitly recognizes those receipts.
+- `reason` - concise explanation for the decision.
+- `required_evidence[]` - full evidence checklist for preview promotion.
+- `supplied_evidence[]` - evidence receipts accepted by the packet.
+- `missing_evidence[]` - required evidence still absent.
+- `required_repairs[]` - concrete work before a maintainer can review
+  promotion.
+- `required_receipts[]` - artifacts reviewers should inspect before promotion.
+- `rollback_path[]` - explicit return path to advisory preview status.
+- `generated_ci_posture` - advisory CI permissions and hard denials.
+- `input_artifacts[]` - optional explicit evidence input status.
+- `warnings[]` - malformed supplied inputs or target-language limitations.
+- `unknowns[]` - unavailable context that must stay visible.
+- `non_goals[]` - hard boundaries repeated in the packet.
+- `limits_note` - read-only/manual-review/no-promotion boundary.
+
+Markdown should fit in generated CI summaries and report packets. It should
+show language, class, current status, target status, allowed status, reason,
+supplied and missing evidence, required repairs, required receipts, rollback
+path, generated CI posture, input artifact status, warnings, unknowns,
+non-goals, and limits. It must not promote preview evidence or mutate policy.
 
 ## Suppression Health Report
 

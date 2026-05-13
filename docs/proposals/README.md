@@ -80,3 +80,4 @@ Start new proposals from
 | [RIPR-PROP-0002](RIPR-PROP-0002-lane-1-evidence-quality-leadership.md) | proposed | Lane 1 evidence quality leadership |
 | [RIPR-PROP-0003](RIPR-PROP-0003-editor-preview-routing.md) | proposed | Editor preview routing |
 | [RIPR-PROP-0004](RIPR-PROP-0004-pr-ci-review-cockpit.md) | proposed | PR / CI review cockpit |
+| [RIPR-PROP-0005](RIPR-PROP-0005-user-visible-output-evidence.md) | proposed | User-visible output evidence |

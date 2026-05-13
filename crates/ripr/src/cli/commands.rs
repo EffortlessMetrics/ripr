@@ -143,6 +143,37 @@ struct PolicyOperationsOptions {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+struct PolicyHistoryOptions {
+    root: String,
+    current: PathBuf,
+    history: Option<PathBuf>,
+    commit: Option<String>,
+    pr_number: Option<String>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct PolicyPromotionOptions {
+    root: String,
+    target_mode: String,
+    operations: PathBuf,
+    history: Option<PathBuf>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct PolicyPreviewPromotionOptions {
+    root: String,
+    language: String,
+    candidate_class: String,
+    evidence: Option<PathBuf>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 struct PolicyWaiverAgingOptions {
     root: String,
     ledger: Option<PathBuf>,
@@ -1768,6 +1799,75 @@ jobs:
             echo '- Repair route: use the verify or agent command shown in the front panel or first useful action.'
             echo '- Gate authority: `ripr gate evaluate` remains the pass/fail source only when `RIPR_GATE_MODE` is configured.'
             echo
+            configured_languages="$(
+              ripr doctor --root . 2>/dev/null \
+                | sed -n 's/^- Enabled languages: //p' \
+                | tail -n 1 \
+                || true
+            )"
+            if [ -z "$configured_languages" ]; then
+              configured_languages="rust"
+            fi
+            preview_languages="$(
+              printf '%s\n' "$configured_languages" \
+                | tr ',' '\n' \
+                | sed 's/^ *//; s/ *$//' \
+                | sed -n '/^typescript$/p; /^python$/p' \
+                | sort -u \
+                | tr '\n' ' ' \
+                | sed 's/ $//' \
+                || true
+            )"
+            if [ -n "$preview_languages" ]; then
+              configured_inline="$(markdown_inline "$configured_languages")"
+              echo '### Language preview grouping'
+              echo "- Configured languages: \`$configured_inline\`"
+              echo "- Boundary: preview-language groups are advisory presentation only; \`ripr gate evaluate\` remains pass/fail authority when explicitly configured."
+              for language in $preview_languages; do
+                language_inputs=()
+                if [ -f target/ripr/reports/repo-exposure.json ]; then
+                  language_inputs+=(target/ripr/reports/repo-exposure.json)
+                elif [ -f target/ripr/pilot/repo-exposure.json ]; then
+                  language_inputs+=(target/ripr/pilot/repo-exposure.json)
+                fi
+                for language_json in \
+                  target/ripr/review/comments.json \
+                  target/ripr/reports/gate-decision.json \
+                  target/ripr/reports/pr-evidence-ledger.json; do
+                  if [ -f "$language_json" ]; then
+                    language_inputs+=("$language_json")
+                  fi
+                done
+
+                artifact_entries=0
+                preview_entries=0
+                missing_preview_status=0
+                static_limit_entries=0
+                class_counts="none"
+                static_limit_kinds="none"
+                if [ "${#language_inputs[@]}" -gt 0 ]; then
+                  artifact_entries="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language)] | length' "${language_inputs[@]}" 2>/dev/null || echo 0)"
+                  preview_entries="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language and .language_status? == "preview")] | length' "${language_inputs[@]}" 2>/dev/null || echo 0)"
+                  missing_preview_status="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language and .language_status? != "preview")] | length' "${language_inputs[@]}" 2>/dev/null || echo 0)"
+                  static_limit_entries="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language and .static_limit_kind? != null)] | length' "${language_inputs[@]}" 2>/dev/null || echo 0)"
+                  class_counts="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language and .classification? != null) | .classification] | sort | group_by(.) | map("\(.[0])=\(length)") | if length == 0 then "none" else join(", ") end' "${language_inputs[@]}" 2>/dev/null || echo none)"
+                  static_limit_kinds="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language) | .static_limit_kind? | select(. != null)] | unique | if length == 0 then "none" else join(", ") end' "${language_inputs[@]}" 2>/dev/null || echo none)"
+                fi
+                language_inline="$(markdown_inline "$language")"
+                artifact_entries="$(markdown_inline "$artifact_entries")"
+                preview_entries="$(markdown_inline "$preview_entries")"
+                missing_preview_status="$(markdown_inline "$missing_preview_status")"
+                static_limit_entries="$(markdown_inline "$static_limit_entries")"
+                class_counts="$(markdown_inline "$class_counts")"
+                static_limit_kinds="$(markdown_inline "$static_limit_kinds")"
+                if [ "$artifact_entries" = "0" ]; then
+                  echo "- \`$language_inline\`: configured preview/advisory; no language findings were emitted in this run."
+                else
+                  echo "- \`$language_inline\`: artifact_entries=\`$artifact_entries\`, preview_entries=\`$preview_entries\`, missing_preview_status=\`$missing_preview_status\`, static_limit_entries=\`$static_limit_entries\`, classifications=\`$class_counts\`, static_limit_kinds=\`$static_limit_kinds\`"
+                fi
+              done
+              echo
+            fi
             echo '### PR review summary'
             if [ -f target/ripr/reports/pr-review-front-panel.json ] || [ -f target/ripr/reports/pr-review-front-panel.md ]; then
               if [ -f target/ripr/reports/pr-review-front-panel.json ]; then
@@ -2934,17 +3034,20 @@ pub(super) fn policy(args: &[String]) -> Result<(), String> {
     }
     let Some((subcommand, rest)) = args.split_first() else {
         return Err(
-            "policy requires subcommand `readiness`, `operations`, `waiver-aging`, or `suppression-health`"
+            "policy requires subcommand `readiness`, `operations`, `history`, `promote`, `preview-promote`, `waiver-aging`, or `suppression-health`"
                 .to_string(),
         );
     };
     match subcommand.as_str() {
         "readiness" => policy_readiness(rest),
         "operations" => policy_operations(rest),
+        "history" => policy_history(rest),
+        "promote" => policy_promotion(rest),
+        "preview-promote" => policy_preview_promotion(rest),
         "waiver-aging" => policy_waiver_aging(rest),
         "suppression-health" => policy_suppression_health(rest),
         _ => Err(format!(
-            "unknown policy subcommand {subcommand:?}; expected `readiness`, `operations`, `waiver-aging`, or `suppression-health`"
+            "unknown policy subcommand {subcommand:?}; expected `readiness`, `operations`, `history`, `promote`, `preview-promote`, `waiver-aging`, or `suppression-health`"
         )),
     }
 }
@@ -3388,6 +3491,111 @@ fn policy_operations(args: &[String]) -> Result<(), String> {
     println!(
         "Next safe action: {}",
         output::policy_operations::policy_operations_next_action(&report)
+    );
+    Ok(())
+}
+
+fn policy_history(args: &[String]) -> Result<(), String> {
+    let options = parse_policy_history_options(args)?;
+    let input = output::policy_history::PolicyHistoryInput {
+        root: options.root,
+        generated_at: policy_readiness_generated_at()?,
+        current_path: output::policy_history::display_path(&options.current),
+        history_path: options
+            .history
+            .as_ref()
+            .map(|path| output::policy_history::display_path(path)),
+        commit: options.commit,
+        pr_number: options.pr_number,
+        current_json: read_optional_text_for_report("policy operations", &options.current),
+        history_jsonl: options
+            .history
+            .as_ref()
+            .map(|path| read_optional_text_for_report("policy history", path)),
+    };
+    let report = output::policy_history::build_policy_history_report(input);
+    let rendered_json = output::policy_history::render_policy_history_json(&report)?;
+    let rendered_md = output::policy_history::render_policy_history_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    println!(
+        "Current ceiling: {}",
+        output::policy_history::policy_history_current_ceiling(&report)
+    );
+    println!(
+        "Readiness trend: {}",
+        output::policy_history::policy_history_trend_direction(&report)
+    );
+    Ok(())
+}
+
+fn policy_promotion(args: &[String]) -> Result<(), String> {
+    let options = parse_policy_promotion_options(args)?;
+    let input = output::policy_promotion::PolicyPromotionInput {
+        root: options.root,
+        generated_at: policy_readiness_generated_at()?,
+        target_mode: options.target_mode,
+        operations_path: output::policy_promotion::display_path(&options.operations),
+        history_path: options
+            .history
+            .as_ref()
+            .map(|path| output::policy_promotion::display_path(path)),
+        operations_json: read_optional_text_for_report("policy operations", &options.operations),
+        history_json: options
+            .history
+            .as_ref()
+            .map(|path| read_optional_text_for_report("policy history", path)),
+    };
+    let report = output::policy_promotion::build_policy_promotion_report(input);
+    let rendered_json = output::policy_promotion::render_policy_promotion_json(&report)?;
+    let rendered_md = output::policy_promotion::render_policy_promotion_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    println!(
+        "Allowed now: {}",
+        if output::policy_promotion::policy_promotion_allowed_now(&report) {
+            "yes"
+        } else {
+            "no"
+        }
+    );
+    Ok(())
+}
+
+fn policy_preview_promotion(args: &[String]) -> Result<(), String> {
+    let options = parse_policy_preview_promotion_options(args)?;
+    let input = output::policy_preview_promotion::PreviewPromotionInput {
+        root: options.root,
+        generated_at: policy_readiness_generated_at()?,
+        language: options.language,
+        candidate_class: options.candidate_class,
+        evidence_path: options
+            .evidence
+            .as_ref()
+            .map(|path| output::policy_preview_promotion::display_path(path)),
+        evidence_json: options
+            .evidence
+            .as_ref()
+            .map(|path| read_optional_text_for_report("preview promotion evidence", path)),
+    };
+    let report = output::policy_preview_promotion::build_preview_promotion_report(input);
+    let rendered_json = output::policy_preview_promotion::render_preview_promotion_json(&report)?;
+    let rendered_md = output::policy_preview_promotion::render_preview_promotion_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    println!(
+        "Allowed now: {}",
+        if output::policy_preview_promotion::preview_promotion_allowed_now(&report) {
+            "yes"
+        } else {
+            "no"
+        }
     );
     Ok(())
 }
@@ -4900,6 +5108,247 @@ fn parse_policy_operations_options(args: &[String]) -> Result<PolicyOperationsOp
         recommendation_calibration,
         mutation_calibration,
         preview_boundary,
+        out,
+        out_md,
+    })
+}
+
+fn parse_policy_history_options(args: &[String]) -> Result<PolicyHistoryOptions, String> {
+    let mut root = ".".to_string();
+    let mut current = None;
+    let mut history = None;
+    let mut commit = None;
+    let mut pr_number = None;
+    let mut out = PathBuf::from(output::policy_history::DEFAULT_POLICY_HISTORY_OUT);
+    let mut out_md = PathBuf::from(output::policy_history::DEFAULT_POLICY_HISTORY_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "policy history")?;
+            }
+            "--current" => {
+                i += 1;
+                current = Some(non_empty_path_arg(args, i, "--current", "policy history")?);
+            }
+            "--history" => {
+                i += 1;
+                history = Some(non_empty_path_arg(args, i, "--history", "policy history")?);
+            }
+            "--commit" => {
+                i += 1;
+                commit = Some(non_empty_string_arg(args, i, "--commit", "policy history")?);
+            }
+            "--pr-number" => {
+                i += 1;
+                pr_number = Some(non_empty_string_arg(
+                    args,
+                    i,
+                    "--pr-number",
+                    "policy history",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "policy history")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "policy history")?;
+            }
+            other => return Err(format!("unknown policy history argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    Ok(PolicyHistoryOptions {
+        root,
+        current: current.ok_or_else(|| "policy history requires --current <path>".to_string())?,
+        history,
+        commit,
+        pr_number,
+        out,
+        out_md,
+    })
+}
+
+fn parse_policy_promotion_options(args: &[String]) -> Result<PolicyPromotionOptions, String> {
+    let mut root = ".".to_string();
+    let mut target_mode = None;
+    let mut operations = None;
+    let mut history = None;
+    let mut out = None;
+    let mut out_md = None;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "policy promote")?;
+            }
+            "--to" => {
+                i += 1;
+                target_mode = Some(non_empty_string_arg(args, i, "--to", "policy promote")?);
+            }
+            "--operations" => {
+                i += 1;
+                operations = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--operations",
+                    "policy promote",
+                )?);
+            }
+            "--history" => {
+                i += 1;
+                history = Some(non_empty_path_arg(args, i, "--history", "policy promote")?);
+            }
+            "--out" => {
+                i += 1;
+                out = Some(non_empty_path_arg(args, i, "--out", "policy promote")?);
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = Some(non_empty_path_arg(args, i, "--out-md", "policy promote")?);
+            }
+            other => return Err(format!("unknown policy promote argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    let target_mode =
+        target_mode.ok_or_else(|| "policy promote requires --to <mode>".to_string())?;
+    if !output::policy_promotion::is_supported_target_mode(&target_mode) {
+        return Err(format!(
+            "unknown policy promotion target {target_mode:?}; expected `visible-only`, `acknowledgeable`, `baseline-check`, or `calibrated-gate`"
+        ));
+    }
+    let operations =
+        operations.ok_or_else(|| "policy promote requires --operations <path>".to_string())?;
+    let out = out.unwrap_or_else(|| {
+        PathBuf::from(output::policy_promotion::default_policy_promotion_out(
+            &target_mode,
+        ))
+    });
+    let out_md = out_md.unwrap_or_else(|| {
+        PathBuf::from(output::policy_promotion::default_policy_promotion_md_out(
+            &target_mode,
+        ))
+    });
+
+    Ok(PolicyPromotionOptions {
+        root,
+        target_mode,
+        operations,
+        history,
+        out,
+        out_md,
+    })
+}
+
+fn parse_policy_preview_promotion_options(
+    args: &[String],
+) -> Result<PolicyPreviewPromotionOptions, String> {
+    let mut root = ".".to_string();
+    let mut language = None;
+    let mut candidate_class = None;
+    let mut evidence = None;
+    let mut out = None;
+    let mut out_md = None;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "policy preview-promote")?;
+            }
+            "--language" => {
+                i += 1;
+                language = Some(non_empty_string_arg(
+                    args,
+                    i,
+                    "--language",
+                    "policy preview-promote",
+                )?);
+            }
+            "--class" => {
+                i += 1;
+                candidate_class = Some(non_empty_string_arg(
+                    args,
+                    i,
+                    "--class",
+                    "policy preview-promote",
+                )?);
+            }
+            "--evidence" => {
+                i += 1;
+                evidence = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--evidence",
+                    "policy preview-promote",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--out",
+                    "policy preview-promote",
+                )?);
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--out-md",
+                    "policy preview-promote",
+                )?);
+            }
+            other => {
+                return Err(format!("unknown policy preview-promote argument {other:?}"));
+            }
+        }
+        i += 1;
+    }
+
+    let language = language
+        .ok_or_else(|| "policy preview-promote requires --language <language>".to_string())?;
+    if !output::policy_preview_promotion::is_supported_language(&language) {
+        return Err(format!(
+            "unknown preview promotion language {language:?}; expected `typescript` or `python`"
+        ));
+    }
+    let candidate_class = candidate_class
+        .ok_or_else(|| "policy preview-promote requires --class <class>".to_string())?;
+    let out = out.unwrap_or_else(|| {
+        PathBuf::from(
+            output::policy_preview_promotion::default_preview_promotion_out(
+                &language,
+                &candidate_class,
+            ),
+        )
+    });
+    let out_md = out_md.unwrap_or_else(|| {
+        PathBuf::from(
+            output::policy_preview_promotion::default_preview_promotion_md_out(
+                &language,
+                &candidate_class,
+            ),
+        )
+    });
+
+    Ok(PolicyPreviewPromotionOptions {
+        root,
+        language,
+        candidate_class,
+        evidence,
         out,
         out_md,
     })
@@ -6493,6 +6942,7 @@ mod tests {
             summary_sections: &[
                 "## RIPR advisory summary",
                 "### Start here",
+                "### Language preview grouping",
                 "### PR review summary",
                 "#### PR review at a glance",
                 "### Recommended next test",
@@ -7359,14 +7809,14 @@ mod tests {
         assert_eq!(
             policy(&args(&[])),
             Err(
-                "policy requires subcommand `readiness`, `operations`, `waiver-aging`, or `suppression-health`"
+                "policy requires subcommand `readiness`, `operations`, `history`, `promote`, `preview-promote`, `waiver-aging`, or `suppression-health`"
                     .to_string()
             )
         );
         assert_eq!(
             policy(&args(&["unknown"])),
             Err(
-                "unknown policy subcommand \"unknown\"; expected `readiness`, `operations`, `waiver-aging`, or `suppression-health`"
+                "unknown policy subcommand \"unknown\"; expected `readiness`, `operations`, `history`, `promote`, `preview-promote`, `waiver-aging`, or `suppression-health`"
                     .to_string()
             )
         );
@@ -7389,6 +7839,198 @@ mod tests {
         assert_eq!(
             parse_policy_operations_options(&args(&["--bad"])),
             Err("unknown policy operations argument \"--bad\"".to_string())
+        );
+        assert_eq!(
+            parse_policy_promotion_options(&args(&[])),
+            Err("policy promote requires --to <mode>".to_string())
+        );
+        assert_eq!(
+            parse_policy_promotion_options(&args(&["--to", "strict"])),
+            Err(
+                "unknown policy promotion target \"strict\"; expected `visible-only`, `acknowledgeable`, `baseline-check`, or `calibrated-gate`"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_policy_promotion_options(&args(&["--to", "visible-only"])),
+            Err("policy promote requires --operations <path>".to_string())
+        );
+        assert_eq!(
+            parse_policy_promotion_options(&args(&["--to", "visible-only", "--operations", ""])),
+            Err("policy promote --operations requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_policy_promotion_options(&args(&["--bad"])),
+            Err("unknown policy promote argument \"--bad\"".to_string())
+        );
+        assert_eq!(
+            parse_policy_preview_promotion_options(&args(&[])),
+            Err("policy preview-promote requires --language <language>".to_string())
+        );
+        assert_eq!(
+            parse_policy_preview_promotion_options(&args(&["--language", "ruby"])),
+            Err(
+                "unknown preview promotion language \"ruby\"; expected `typescript` or `python`"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_policy_preview_promotion_options(&args(&["--language", "typescript"])),
+            Err("policy preview-promote requires --class <class>".to_string())
+        );
+        assert_eq!(
+            parse_policy_preview_promotion_options(&args(&[
+                "--language",
+                "typescript",
+                "--class",
+                "",
+            ])),
+            Err("policy preview-promote --class requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_policy_preview_promotion_options(&args(&["--bad"])),
+            Err("unknown policy preview-promote argument \"--bad\"".to_string())
+        );
+    }
+
+    #[test]
+    fn policy_history_parses_option_surface() {
+        assert_eq!(
+            parse_policy_history_options(&args(&[
+                "--root",
+                ".",
+                "--current",
+                "target/ripr/reports/policy-operations.json",
+                "--history",
+                ".ripr/policy-history.jsonl",
+                "--commit",
+                "HEAD",
+                "--pr-number",
+                "123",
+                "--out",
+                "target/ripr/reports/policy-history.json",
+                "--out-md",
+                "target/ripr/reports/policy-history.md",
+            ])),
+            Ok(PolicyHistoryOptions {
+                root: ".".to_string(),
+                current: PathBuf::from("target/ripr/reports/policy-operations.json"),
+                history: Some(PathBuf::from(".ripr/policy-history.jsonl")),
+                commit: Some("HEAD".to_string()),
+                pr_number: Some("123".to_string()),
+                out: PathBuf::from("target/ripr/reports/policy-history.json"),
+                out_md: PathBuf::from("target/ripr/reports/policy-history.md"),
+            })
+        );
+        assert_eq!(
+            parse_policy_history_options(&args(&[])),
+            Err("policy history requires --current <path>".to_string())
+        );
+        assert_eq!(
+            parse_policy_history_options(&args(&["--current", ""])),
+            Err("policy history --current requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_policy_history_options(&args(&["--current", "ops.json", "--bad"])),
+            Err("unknown policy history argument \"--bad\"".to_string())
+        );
+    }
+
+    #[test]
+    fn policy_promotion_parses_option_surface() {
+        assert_eq!(
+            parse_policy_promotion_options(&args(&[
+                "--root",
+                ".",
+                "--to",
+                "baseline-check",
+                "--operations",
+                "target/ripr/reports/policy-operations.json",
+                "--history",
+                "target/ripr/reports/policy-history.json",
+                "--out",
+                "target/ripr/reports/policy-promotion-baseline-check.json",
+                "--out-md",
+                "target/ripr/reports/policy-promotion-baseline-check.md",
+            ])),
+            Ok(PolicyPromotionOptions {
+                root: ".".to_string(),
+                target_mode: "baseline-check".to_string(),
+                operations: PathBuf::from("target/ripr/reports/policy-operations.json"),
+                history: Some(PathBuf::from("target/ripr/reports/policy-history.json")),
+                out: PathBuf::from("target/ripr/reports/policy-promotion-baseline-check.json"),
+                out_md: PathBuf::from("target/ripr/reports/policy-promotion-baseline-check.md"),
+            })
+        );
+        assert_eq!(
+            parse_policy_promotion_options(&args(&[
+                "--to",
+                "visible-only",
+                "--operations",
+                "target/ripr/reports/policy-operations.json",
+            ])),
+            Ok(PolicyPromotionOptions {
+                root: ".".to_string(),
+                target_mode: "visible-only".to_string(),
+                operations: PathBuf::from("target/ripr/reports/policy-operations.json"),
+                history: None,
+                out: PathBuf::from("target/ripr/reports/policy-promotion-visible-only.json"),
+                out_md: PathBuf::from("target/ripr/reports/policy-promotion-visible-only.md"),
+            })
+        );
+    }
+
+    #[test]
+    fn policy_preview_promotion_parses_option_surface() {
+        assert_eq!(
+            parse_policy_preview_promotion_options(&args(&[
+                "--root",
+                ".",
+                "--language",
+                "typescript",
+                "--class",
+                "boundary_gap",
+                "--evidence",
+                "target/ripr/reports/preview-promotion-evidence.json",
+                "--out",
+                "target/ripr/reports/preview-promotion-typescript-boundary-gap.json",
+                "--out-md",
+                "target/ripr/reports/preview-promotion-typescript-boundary-gap.md",
+            ])),
+            Ok(PolicyPreviewPromotionOptions {
+                root: ".".to_string(),
+                language: "typescript".to_string(),
+                candidate_class: "boundary_gap".to_string(),
+                evidence: Some(PathBuf::from(
+                    "target/ripr/reports/preview-promotion-evidence.json"
+                )),
+                out: PathBuf::from(
+                    "target/ripr/reports/preview-promotion-typescript-boundary-gap.json"
+                ),
+                out_md: PathBuf::from(
+                    "target/ripr/reports/preview-promotion-typescript-boundary-gap.md"
+                ),
+            })
+        );
+        assert_eq!(
+            parse_policy_preview_promotion_options(&args(&[
+                "--language",
+                "python",
+                "--class",
+                "boundary_gap",
+            ])),
+            Ok(PolicyPreviewPromotionOptions {
+                root: ".".to_string(),
+                language: "python".to_string(),
+                candidate_class: "boundary_gap".to_string(),
+                evidence: None,
+                out: PathBuf::from(
+                    "target/ripr/reports/preview-promotion-python-boundary-gap.json"
+                ),
+                out_md: PathBuf::from(
+                    "target/ripr/reports/preview-promotion-python-boundary-gap.md"
+                ),
+            })
         );
     }
 
@@ -7609,6 +8251,215 @@ mod tests {
         assert!(md_text.contains("# RIPR Policy Operations"));
         assert!(md_text.contains("Current ceiling: ready_for_acknowledgeable"));
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove operations dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn policy_history_command_writes_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("policy-history");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create history dir: {err}"))?;
+        let current = dir.join("policy-operations.json");
+        let history = dir.join("policy-history.jsonl");
+        let out = dir.join("policy-history.json");
+        let out_md = dir.join("policy-history.md");
+        std::fs::write(
+            &current,
+            r#"{
+              "schema_version": "0.1",
+              "kind": "policy_operations",
+              "generated_at": "unix_ms:10",
+              "current_policy_ceiling": "ready_for_acknowledgeable",
+              "safe_to_promote_to": [
+                {"mode": "visible-only", "allowed_now": true, "reason": "ok", "source_artifacts": []},
+                {"mode": "acknowledgeable", "allowed_now": true, "reason": "ok", "source_artifacts": []}
+              ],
+              "not_safe_to_promote_to": [],
+              "promotion_blockers": [],
+              "input_artifacts": [
+                {"kind":"baseline_delta","path":"baseline.json","status":"read"},
+                {"kind":"waiver_aging","path":"waiver.json","status":"read"},
+                {"kind":"suppression_health","path":"suppression.json","status":"read"},
+                {"kind":"recommendation_calibration","path":"recommendation.json","status":"omitted"}
+              ],
+              "current": {
+                "new_policy_eligible_count": 1,
+                "waiver_count": 2,
+                "stale_suppression_count": 0,
+                "baseline_still_present": 4,
+                "baseline_resolved": 1
+              }
+            }"#,
+        )
+        .map_err(|err| format!("write current: {err}"))?;
+        let history_text = r#"{"generated_at":"unix_ms:1","current_policy_ceiling":"ready_for_visible_only","recommended_mode":"visible-only","baseline_health":"healthy","waiver_health":"healthy","suppression_health":"healthy","calibration_health":"not_ready","preview_boundary_state":"healthy","new_policy_eligible_count":1,"waiver_count":2,"stale_suppression_count":0,"baseline_still_present":5,"baseline_resolved":0}
+"#;
+        std::fs::write(&history, history_text).map_err(|err| format!("write history: {err}"))?;
+
+        policy(&args(&[
+            "history",
+            "--current",
+            &current.display().to_string(),
+            "--history",
+            &history.display().to_string(),
+            "--commit",
+            "HEAD",
+            "--pr-number",
+            "123",
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text =
+            std::fs::read_to_string(&out).map_err(|err| format!("read history json: {err}"))?;
+        let md_text =
+            std::fs::read_to_string(&out_md).map_err(|err| format!("read history md: {err}"))?;
+        assert!(json_text.contains("\"kind\": \"policy_history\""));
+        assert!(json_text.contains("\"readiness_improved\": true"));
+        assert!(json_text.contains("\"example_append_record\""));
+        assert!(md_text.contains("# RIPR Policy History"));
+        assert!(md_text.contains("Readiness: improved"));
+        assert_eq!(
+            std::fs::read_to_string(&history).map_err(|err| format!("read history: {err}"))?,
+            history_text
+        );
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove history dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn policy_promotion_command_writes_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("policy-promotion");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create promotion dir: {err}"))?;
+        let operations = dir.join("policy-operations.json");
+        let history = dir.join("policy-history.json");
+        let out = dir.join("policy-promotion-baseline-check.json");
+        let out_md = dir.join("policy-promotion-baseline-check.md");
+        std::fs::write(
+            &operations,
+            r#"{
+              "schema_version": "0.1",
+              "kind": "policy_operations",
+              "current_policy_ceiling": "ready_for_acknowledgeable",
+              "safe_to_promote_to": [
+                {"mode": "visible-only", "allowed_now": true, "reason": "visible ok", "source_artifacts": []},
+                {"mode": "acknowledgeable", "allowed_now": true, "reason": "ack ok", "source_artifacts": []}
+              ],
+              "not_safe_to_promote_to": [
+                {"mode": "baseline-check", "allowed_now": false, "reason": "baseline-check is blocked", "blockers": ["Review stale baseline entries."]}
+              ],
+              "promotion_blockers": [
+                {
+                  "kind": "baseline_stale_entries",
+                  "severity": "warning",
+                  "message": "Baseline contains stale entries.",
+                  "target_modes": ["baseline-check"],
+                  "source_artifact": "baseline-debt-delta.json",
+                  "repair_action": "Run shrink-only baseline review."
+                }
+              ],
+              "baseline_actions": ["Run shrink-only baseline review."],
+              "waiver_actions": [],
+              "suppression_actions": [],
+              "calibration_actions": [],
+              "preview_boundary_actions": ["Keep preview evidence advisory."],
+              "warnings": [],
+              "unknowns": [],
+              "input_artifacts": []
+            }"#,
+        )
+        .map_err(|err| format!("write operations: {err}"))?;
+        std::fs::write(
+            &history,
+            r#"{"schema_version":"0.1","kind":"policy_history","history_summary":{"entries":1}}"#,
+        )
+        .map_err(|err| format!("write history: {err}"))?;
+
+        policy(&args(&[
+            "promote",
+            "--to",
+            "baseline-check",
+            "--operations",
+            &operations.display().to_string(),
+            "--history",
+            &history.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text =
+            std::fs::read_to_string(&out).map_err(|err| format!("read promotion json: {err}"))?;
+        let md_text =
+            std::fs::read_to_string(&out_md).map_err(|err| format!("read promotion md: {err}"))?;
+        assert!(json_text.contains("\"kind\": \"policy_promotion_packet\""));
+        assert!(json_text.contains("\"target_mode\": \"baseline-check\""));
+        assert!(json_text.contains("\"allowed_now\": false"));
+        assert!(json_text.contains("Run shrink-only baseline review."));
+        assert!(md_text.contains("# RIPR Policy Promotion Packet"));
+        assert!(md_text.contains("Allowed now: no"));
+        assert_eq!(
+            std::fs::read_to_string(&history).map_err(|err| format!("read history: {err}"))?,
+            r#"{"schema_version":"0.1","kind":"policy_history","history_summary":{"entries":1}}"#
+        );
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove promotion dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn policy_preview_promotion_command_writes_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("policy-preview-promotion");
+        std::fs::create_dir_all(&dir)
+            .map_err(|err| format!("create preview promotion dir: {err}"))?;
+        let evidence = dir.join("preview-promotion-evidence.json");
+        let out = dir.join("preview-promotion-typescript-boundary-gap.json");
+        let out_md = dir.join("preview-promotion-typescript-boundary-gap.md");
+        let evidence_text = r#"{
+          "language": "typescript",
+          "language_status": "preview",
+          "candidate_class": "boundary_gap",
+          "supplied_evidence": ["fixture_corpus_coverage"],
+          "static_limit_exclusions": true
+        }"#;
+        std::fs::write(&evidence, evidence_text)
+            .map_err(|err| format!("write preview evidence: {err}"))?;
+
+        policy(&args(&[
+            "preview-promote",
+            "--language",
+            "typescript",
+            "--class",
+            "boundary_gap",
+            "--evidence",
+            &evidence.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text = std::fs::read_to_string(&out)
+            .map_err(|err| format!("read preview promotion json: {err}"))?;
+        let md_text = std::fs::read_to_string(&out_md)
+            .map_err(|err| format!("read preview promotion md: {err}"))?;
+        assert!(json_text.contains("\"kind\": \"preview_evidence_promotion_packet\""));
+        assert!(json_text.contains("\"language_status\": \"preview\""));
+        assert!(json_text.contains("\"allowed_now\": false"));
+        assert!(json_text.contains("\"fixture_corpus_coverage\""));
+        assert!(json_text.contains("\"recommendation_calibration\""));
+        assert!(json_text.contains("\"may_fail_check\": false"));
+        assert!(md_text.contains("# RIPR Preview Evidence Promotion Packet"));
+        assert!(md_text.contains("Allowed now: no"));
+        assert!(md_text.contains("may fail check: no"));
+        assert_eq!(
+            std::fs::read_to_string(&evidence)
+                .map_err(|err| format!("read preview evidence: {err}"))?,
+            evidence_text
+        );
+        std::fs::remove_dir_all(&dir)
+            .map_err(|err| format!("remove preview promotion dir: {err}"))?;
         Ok(())
     }
 
@@ -9005,6 +9856,7 @@ language = "rust"
         assert!(workflow.contains("name: Add RIPR advisory summary"));
         assert!(workflow.contains("## RIPR advisory summary"));
         assert!(workflow.contains("### Start here"));
+        assert!(workflow.contains("### Language preview grouping"));
         assert!(workflow.contains("### PR review summary"));
         assert!(workflow.contains("#### PR review at a glance"));
         assert!(workflow.contains("### Recommended next test"));
@@ -9227,6 +10079,42 @@ language = "rust"
         assert!(summary.contains(
             "Regenerate command: `ripr reports index --root . --reports-dir target/ripr/reports --review-dir target/ripr/review --receipts-dir target/ripr/receipts --workflow-dir target/ripr/workflow --agent-dir target/ripr/agent --pilot-dir target/ripr/pilot --ci-dir target/ci --out target/ripr/reports/index.json --out-md target/ripr/reports/index.md`."
         ));
+    }
+
+    #[test]
+    fn init_generated_github_workflow_groups_preview_languages_only_when_configured() {
+        let workflow = generated_github_actions_workflow();
+        let summary = workflow_step(&workflow, "Add RIPR advisory summary");
+
+        assert!(summary.contains("ripr doctor --root ."));
+        assert!(summary.contains("sed -n '/^typescript$/p; /^python$/p'"));
+        assert!(summary.contains("| tail -n 1 \\"));
+        assert!(summary.contains("|| true"));
+        assert!(summary.contains("target/ripr/reports/repo-exposure.json"));
+        assert!(summary.contains("target/ripr/pilot/repo-exposure.json"));
+        assert!(summary.contains(".language_status? != \"preview\""));
+        assert!(summary.contains("configured preview/advisory"));
+        assert!(summary.contains("artifact_entries=\\`$artifact_entries\\`"));
+        assert!(summary.contains(
+            "preview-language groups are advisory presentation only; \\`ripr gate evaluate\\` remains pass/fail authority"
+        ));
+
+        let guard = summary
+            .find("if [ -n \"$preview_languages\" ]; then")
+            .unwrap_or(usize::MAX);
+        let grouping = summary
+            .find("echo '### Language preview grouping'")
+            .unwrap_or(usize::MAX);
+        let pr_review = summary
+            .find("echo '### PR review summary'")
+            .unwrap_or(usize::MAX);
+        assert_ne!(guard, usize::MAX, "missing language grouping guard");
+        assert_ne!(grouping, usize::MAX, "missing language grouping heading");
+        assert_ne!(pr_review, usize::MAX, "missing PR review heading");
+        assert!(
+            guard < grouping && grouping < pr_review,
+            "language grouping must stay opt-in and before the PR review summary"
+        );
     }
 
     #[test]

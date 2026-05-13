@@ -146,6 +146,40 @@ Planned scope:
   pins matched joins, ambiguous joins, runtime-only signal, and no-runtime-data
   guards without changing analyzer behavior, gates, CI behavior, mutation
   execution, generated tests, provider calls, or score definitions.
+- Added `cargo xtask evidence-quality-trend`, a repo-local Lane 1 trend report
+  over the current evidence-quality scorecard and optional previous scorecard
+  or audit snapshot. It writes `evidence-quality-trend.{json,md}`, distinguishes
+  improvement, regression, unchanged, mixed, and unknown trend states, and
+  reports missing history explicitly without redefining RIPR scores or changing
+  analyzer behavior, gates, CI behavior, mutation execution, generated tests,
+  provider calls, or editor surfaces.
+- Closed the Lane 1 Evidence Quality Leadership tracker in documented scope.
+  The closeout records the scorecard, benchmark corpus, static limitation
+  taxonomy, oracle-semantics audit fix, runtime-fixtures-v3, evidence-quality
+  trend reporting, class-scoped capability metadata, traceability links, and
+  future evidence-class boundary without changing `.ripr/goals/active.toml`.
+- Opened the Lane 1 User-Visible Output Evidence tracker and proposal for
+  presentation/help/report/table text evidence. The new lane keeps PR/CI
+  rendering, LSP/editor polish, gates, generated tests, provider calls,
+  mutation execution, and score definitions out of scope while defining the
+  path toward visibility, observer, actionability, canonical grouping, and
+  static-limitation evidence for changed presentation text.
+- Added RIPR-SPEC-0043 for presentation text evidence. The spec defines planned
+  Lane 1 behavior for visibility, observer shape, actionability, declaration
+  plus literal grouping, static limitation categories, and must-not-claim guards
+  before analyzer behavior changes begin.
+- Added a Lane 1 evidence-quality benchmark case for presentation text
+  constants, pinning the claim boundary for changed help/label text: visibility
+  and actionability must be explicit, declaration and literal lines should
+  become one canonical evidence item, text alone must not become user test debt,
+  and mutation testing must not be the first recommended action. The benchmark
+  validator now also requires static limitation categories at the case level.
+- Extended the Python preview fixture matrix with edge goldens for async owners,
+  classmethod owners, no-projectable-owner changes, disabled Python config, and
+  mixed-language no-cross-route related-test safety. This adds projection
+  readiness evidence without adding editor selectors, LSP routing, source edits,
+  generated tests, provider calls, mutation execution, policy gates, or default
+  CI behavior.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 
@@ -290,6 +324,10 @@ tests, edit source, or make default CI blocking decisions.
   missing-input, and no-actionable-seam transitions.
 - Added the `fixtures/editor_lsp_workflow` canonical Lane 3 fixture and
   extended VS Code e2e + framed LSP smoke coverage.
+- Pinned preview editor projection artifacts for TypeScript and Python
+  preview diagnostics, bounded finding actions, hover/static-limit/status
+  evidence, and disabled-preview no-diagnostic behavior without analyzer,
+  schema, selector, or policy changes.
 - Added `docs/EDITOR_EVIDENCE_WORKFLOW.md`, the saved-workspace editor
   guide from install and status through diagnostic, hover, related test,
   context packet, focused test, after snapshot, verify, receipt, and

@@ -21,9 +21,9 @@ use super::{
 };
 use crate::app::Mode;
 use crate::domain::{
-    Confidence, DeltaKind, ExposureClass, Finding, LanguageId, OracleKind, OracleStrength, Probe,
-    ProbeFamily, ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence,
-    StageState,
+    Confidence, DeltaKind, ExposureClass, Finding, LanguageId, LanguageStatus, OracleKind,
+    OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
+    RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -1144,10 +1144,35 @@ fn refresh_completion_log_message_includes_duration_and_counts() -> Result<(), S
     assert!(message.contains("diagnostics=1"));
     assert!(message.contains("files=1"));
     assert!(message.contains("findings=0"));
+    assert!(message.contains("preview_findings=0"));
+    assert!(message.contains("static_limits=0"));
     assert!(message.contains("seam_diagnostics=1"));
     assert!(message.contains("enabled_languages=1"));
     assert!(message.contains("published_files=1"));
     assert!(message.contains("cleared_files=2"));
+    Ok(())
+}
+
+#[test]
+fn refresh_completion_log_message_counts_preview_findings_and_limits() -> Result<(), String> {
+    let mut finding = sample_finding();
+    finding.language = Some(LanguageId::Python);
+    finding.language_status = Some(LanguageStatus::Preview);
+    finding.static_limit_kind = Some(StaticLimitKind::MissingImportGraph);
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let uri = test_uri("file:///workspace/src/pricing.py")?;
+    let snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![diagnostic],
+        vec![finding],
+    );
+
+    let summary = RefreshLogSummary::from_snapshot(8, &snapshot);
+    let message = refresh_completed_log_message(&summary, 1, 0);
+
+    assert!(message.contains("preview_findings=1"));
+    assert!(message.contains("static_limits=1"));
     Ok(())
 }
 
@@ -3179,6 +3204,7 @@ fn sample_finding() -> Finding {
         recommended_next_step: Some("Add an exact boundary assertion.".to_string()),
         language: None,
         language_status: None,
+        owner_kind: None,
         static_limit_kind: None,
     }
 }
@@ -3381,6 +3407,86 @@ fn finding_hover_response_includes_evidence_details() -> Result<(), String> {
                     .contains("strong exact_value oracle: assert_eq!(total, expected)")
             );
             assert!(markup.value.contains("Add an exact boundary assertion."));
+            Ok(())
+        }
+        _ => Err("expected markup hover".to_string()),
+    }
+}
+
+#[test]
+fn preview_finding_diagnostic_preserves_language_metadata() -> Result<(), String> {
+    let mut finding = sample_finding();
+    finding.language = Some(LanguageId::Python);
+    finding.language_status = Some(LanguageStatus::Preview);
+    finding.owner_kind = Some(OwnerKind::Function);
+    finding.static_limit_kind = Some(StaticLimitKind::MissingImportGraph);
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+
+    assert!(
+        diagnostic
+            .message
+            .contains("python preview evidence (syntax-first, advisory)")
+    );
+    assert!(
+        diagnostic
+            .message
+            .contains("Static limit: missing_import_graph")
+    );
+    let data = diagnostic
+        .data
+        .and_then(|value| value.as_object().cloned())
+        .ok_or_else(|| "expected diagnostic data".to_string())?;
+    assert_eq!(
+        data.get("language").and_then(|value| value.as_str()),
+        Some("python")
+    );
+    assert_eq!(
+        data.get("language_status").and_then(|value| value.as_str()),
+        Some("preview")
+    );
+    assert_eq!(
+        data.get("owner_kind").and_then(|value| value.as_str()),
+        Some("function")
+    );
+    assert_eq!(
+        data.get("static_limit_kind")
+            .and_then(|value| value.as_str()),
+        Some("missing_import_graph")
+    );
+    Ok(())
+}
+
+#[test]
+fn preview_finding_hover_shows_boundary_before_evidence() -> Result<(), String> {
+    use super::hover::finding_hover_response;
+
+    let mut finding = sample_finding();
+    finding.language = Some(LanguageId::Python);
+    finding.language_status = Some(LanguageStatus::Preview);
+    finding.static_limit_kind = Some(StaticLimitKind::MissingImportGraph);
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+
+    let hover = finding_hover_response(&finding, &diagnostic);
+
+    match hover.contents {
+        HoverContents::Markup(markup) => {
+            let preview_index = markup
+                .value
+                .find("## Preview Boundary")
+                .ok_or_else(|| "expected preview boundary".to_string())?;
+            let evidence_index = markup
+                .value
+                .find("## RIPR Evidence")
+                .ok_or_else(|| "expected evidence section".to_string())?;
+            assert!(
+                preview_index < evidence_index,
+                "preview boundary must appear before evidence details"
+            );
+            assert!(markup.value.contains("Language: python"));
+            assert!(markup.value.contains("Status: preview"));
+            assert!(markup.value.contains("Evidence: syntax-first"));
+            assert!(markup.value.contains("Action: advisory only"));
+            assert!(markup.value.contains("Static limit: missing_import_graph"));
             Ok(())
         }
         _ => Err("expected markup hover".to_string()),

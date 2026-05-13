@@ -36,10 +36,10 @@ adequacy, coverage adequacy, or general correctness.
 | Agent repair packets | `usable alpha` | CLI, editor handoff, reports | [Quickstart agent path](../QUICKSTART.md#agent-or-reviewer-first-hour), [agent workflows](../AGENT_WORKFLOWS.md), [capability matrix](../CAPABILITY_MATRIX.md) | Source-edit-free packet generation only; agents or developers write the test outside RIPR and then attach a receipt. |
 | Repo-scoped public badges | `usable alpha` | README, crate page, extension store, checked badge endpoints | [Badge policy](../BADGE_POLICY.md), [verification](../VERIFICATION.md), checked `badges/ripr*.json` endpoints | Repo baseline signal only; public badges must not imply PR-local test adequacy. |
 | PR-local evidence and gates | `usable alpha` | PR summaries, artifacts, optional gate decision | [Blocking readiness](../BLOCKING_READINESS.md), [calibrated gate policy](../CALIBRATED_GATE_POLICY.md), [verification](../VERIFICATION.md) | Advisory by default; only explicit gate-decision artifacts own configured pass/fail authority. |
-| TypeScript and JavaScript preview | `preview` | Opt-in CLI/report evidence today; editor and grouped CI later | [RIPR-SPEC-0027](../specs/RIPR-SPEC-0027-typescript-preview-static-facts.md), [Campaign 27 tracker](../IMPLEMENTATION_CAMPAIGNS.md#campaign-27-language-adapter-preview), TypeScript fixture families | Syntax-first; preview-labeled; no default blocking; static limits such as mocked modules are visible instead of hidden. |
-| Python preview | `scaffold` | Opt-in parser scaffold and routing foundation | [RIPR-SPEC-0028](../specs/RIPR-SPEC-0028-python-preview-static-facts.md), [ADR 0009](../adr/0009-python-parser-substrate.md), [Campaign 27 tracker](../IMPLEMENTATION_CAMPAIGNS.md#campaign-27-language-adapter-preview) | Owner, test, assertion, probe, related-test, and static-limit extraction still need follow-up slices before the loop is useful. |
-| Editor preview language routing | `blocked` | VS Code/LSP | [Lane 3 tracker](../lanes/LANE_3_EDITOR_LSP.md), [RIPR-SPEC-0036](../specs/RIPR-SPEC-0036-editor-preview-routing.md) | Waits on Python preview facts or an explicit narrower routing slice; Rust editor behavior remains the default. |
-| Language-aware generated CI grouping | `blocked` | Generated GitHub workflow | [Lane 4 tracker](../lanes/LANE_4_PR_CI_REVIEW.md), [Lane 4 closeout](../handoffs/2026-05-13-lane4-pr-ci-review-cockpit-closeout.md), [Campaign 27 tracker](../IMPLEMENTATION_CAMPAIGNS.md#campaign-27-language-adapter-preview) | Waits on preview-language evidence readiness; Rust-default generated CI output must remain unchanged. |
+| TypeScript and JavaScript preview | `preview` | Opt-in CLI/report evidence, editor routing, and grouped generated CI | [Language adapter preview workflow](../LANGUAGE_ADAPTER_PREVIEW.md), [RIPR-SPEC-0027](../specs/RIPR-SPEC-0027-typescript-preview-static-facts.md), [Campaign 27 tracker](../IMPLEMENTATION_CAMPAIGNS.md#campaign-27-language-adapter-preview), TypeScript fixture families | Syntax-first; preview-labeled; no default blocking; static limits such as mocked modules are visible instead of hidden. |
+| Python preview | `preview` | Opt-in CLI/report owner, test, assertion/oracle, probe, related-test, static-limit, editor, and generated-CI grouping evidence | [Language adapter preview workflow](../LANGUAGE_ADAPTER_PREVIEW.md), [RIPR-SPEC-0028](../specs/RIPR-SPEC-0028-python-preview-static-facts.md), [ADR 0009](../adr/0009-python-parser-substrate.md), [Campaign 27 tracker](../IMPLEMENTATION_CAMPAIGNS.md#campaign-27-language-adapter-preview), Python owner/test, assertion/oracle, probe, related-test, and static-limit fixture families | Owner, test, assertion/oracle, core probe, conservative related-test, and static-limit facts are fixture-backed; generated CI grouping remains advisory and opt-in. |
+| Editor preview language routing | `preview` | VS Code/LSP | [Language adapter preview workflow](../LANGUAGE_ADAPTER_PREVIEW.md), [Lane 3 tracker](../lanes/LANE_3_EDITOR_LSP.md), [RIPR-SPEC-0036](../specs/RIPR-SPEC-0036-editor-preview-routing.md), [RIPR-SPEC-0037](../specs/RIPR-SPEC-0037-editor-preview-static-limit-projection.md) | VS Code registers TypeScript/JavaScript/Python selectors and LSP diagnostics preserve preview metadata and static limits; `[languages]` remains the analysis gate and Rust editor behavior remains the default. |
+| Language-aware generated CI grouping | `preview` | Generated GitHub workflow | [Language adapter preview workflow](../LANGUAGE_ADAPTER_PREVIEW.md), [RIPR-SPEC-0038](../specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md), [Lane 4 tracker](../lanes/LANE_4_PR_CI_REVIEW.md), [Campaign 27 tracker](../IMPLEMENTATION_CAMPAIGNS.md#campaign-27-language-adapter-preview) | The generated summary groups TypeScript/Python advisory evidence only when `[languages]` enables preview adapters; Rust-default output and gate authority remain unchanged. |
 | Preview evidence policy promotion | `deferred` | Policy reports and future promotion packets | [Preview evidence policy boundary](../specs/RIPR-SPEC-0030-preview-evidence-policy-boundary.md), [policy readiness closeout](../handoffs/2026-05-12-policy-readiness-closeout.md) | Preview evidence is visible and advisory by default; it is not gate, RIPR Zero, or baseline-check eligible without later explicit promotion. |
 
 ## How To Read A Claim
@@ -53,11 +53,13 @@ usable alpha + generated CI:
 preview + TypeScript:
   safe to evaluate when explicitly enabled, but not a parity claim with Rust.
 
-scaffold + Python:
-  useful implementation foundation, not yet a useful user loop.
+preview + Python:
+  useful for opt-in syntax-first evidence, including owner, test, assertion,
+  probe, related-test, and static-limit facts.
 
-blocked + editor routing:
-  do not project the feature until the blocker is removed or narrowed.
+preview + editor routing:
+  useful for opt-in editor projection, but not a Rust maturity or runtime
+  adequacy claim.
 ```
 
 ## Trust Boundaries
@@ -90,3 +92,7 @@ For PR review, start with the generated CI job summary and uploaded report
 packet. For coding agents, start with
 [`ripr agent status --root .`](../QUICKSTART.md#agent-or-reviewer-first-hour)
 and then generate a bounded packet for one selected seam.
+
+For TypeScript, JavaScript, or Python evaluation, start with
+[Language adapter preview workflow](../LANGUAGE_ADAPTER_PREVIEW.md) so the
+preview/advisory boundary is explicit before rollout.

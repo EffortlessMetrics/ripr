@@ -50,6 +50,21 @@ The scorecard must summarize:
 The Markdown output is a bounded operator report. The JSON output is the
 complete machine-readable record for future trend and closeout work.
 
+`cargo xtask evidence-quality-trend` is the follow-on repo-local trend report
+for this scorecard contract. It reads the current scorecard, compares it with
+an optional previous scorecard or audit snapshot, and writes:
+
+```text
+target/ripr/reports/evidence-quality-trend.json
+target/ripr/reports/evidence-quality-trend.md
+```
+
+Missing previous history must produce an explicit `unknown`/no-history state
+instead of claiming improvement. When comparable history exists, the trend
+report must distinguish improvement, regression, unchanged, and unknown
+metrics. It must not redefine RIPR scores or change analyzer, gate, CI, PR,
+editor, source-edit, generated-test, provider, or runtime-execution behavior.
+
 ## Required Evidence
 
 Each scorecard must include:
@@ -68,6 +83,11 @@ Each scorecard must include:
 - before and after deltas when a comparable prior artifact is available;
 - explicit unknowns for missing input artifacts, missing calibration, ambiguous
   runtime joins, opaque helpers, and unsupported oracle shapes.
+- trend rows over current and previous scorecard or audit summary metrics when
+  a previous artifact exists, including duplicate-looking groups, static
+  limitations, low or opaque related-test choices, oracle unknown counts,
+  uncalibrated records, calibrated records, and missing evidence records;
+- an explicit no-history unknown when no previous trend input exists.
 
 The scorecard must not report a class as stable or calibrated unless the row
 names the fixture or runtime evidence that supports that scope.
@@ -80,6 +100,10 @@ names the fixture or runtime evidence that supports that scope.
 - `docs/CAPABILITY_MATRIX.md` and `metrics/capabilities.toml` for current
   class-scoped maturity vocabulary
 - `.ripr/traceability.toml` for proof links when available
+
+`evidence-quality-trend` additionally accepts optional `--current <path>` and
+`--previous <path>` arguments so maintainers can compare checked scorecard or
+audit snapshots without inventing a new source of truth.
 
 Missing optional inputs must be reported as unknown or unavailable. Missing
 required audit input may be repaired by regenerating the audit; if regeneration
@@ -125,6 +149,22 @@ The Markdown output includes bounded sections for the same areas:
 
 High-cardinality details remain complete in JSON and capped in Markdown.
 
+The evidence-quality trend JSON includes:
+
+- `schema_version`;
+- `tool`;
+- `report`;
+- `generated_at`;
+- `scope`;
+- `inputs`;
+- `summary`;
+- `metric_trends`;
+- `static_limitation_category_trends`;
+- `unknowns`.
+
+The trend Markdown output includes bounded sections for summary, metric trends,
+static limitation category trends, and unknowns.
+
 ## Non-Goals
 
 - No analyzer behavior changes.
@@ -161,6 +201,17 @@ the limitation into a user test gap.
 Given no previous audit snapshot, the scorecard marks recent deltas
 unavailable and still emits current maturity, risk, and repair sections.
 
+Given no previous scorecard or audit snapshot, the trend report marks history
+unavailable and emits `unknown` rather than claiming improvement.
+
+Given a previous scorecard with fewer calibrated records and more
+duplicate-looking groups, the trend report marks calibrated records and
+duplicate-looking groups as improvement.
+
+Given a previous scorecard with fewer static limitations than the current
+scorecard, the trend report marks that metric as regression without changing
+any gate behavior.
+
 ## Test Mapping
 
 - `xtask::tests::evidence_quality_scorecard_renders_required_json_sections`
@@ -173,6 +224,12 @@ unavailable and still emits current maturity, risk, and repair sections.
   pins recommended repair ordering when count-only ordering would be wrong.
 - `xtask::tests::evidence_quality_scorecard_reports_recent_deltas_when_present`
   pins before and after audit deltas.
+- `xtask::tests::evidence_quality_trend_reports_no_history_explicitly` pins the
+  no-history state.
+- `xtask::tests::evidence_quality_trend_distinguishes_improvement_regression_and_unchanged`
+  pins metric direction semantics.
+- `xtask::tests::evidence_quality_trend_reports_static_limitation_category_deltas`
+  pins normalized static-limitation category deltas.
 
 ## Implementation Mapping
 
@@ -183,9 +240,10 @@ unavailable and still emits current maturity, risk, and repair sections.
   evidence-health and prior scorecard inputs, builds the scorecard, and writes
   JSON and Markdown artifacts.
 - `docs/OUTPUT_SCHEMA.md` documents the scorecard JSON shape when the report
-  implementation lands.
+  implementation lands, plus the follow-on evidence-quality trend report.
 - `docs/lanes/LANE_1_EVIDENCE_QUALITY_LEADERSHIP.md` records the scorecard as
-  the first implementation slice when that tracker lands.
+  the first implementation slice and the trend report as the audit-delta slice
+  when those tracker updates land.
 
 ## Metrics
 
@@ -199,12 +257,23 @@ The scorecard feeds these Lane 1 metrics:
 - `lane1_evidence_scorecard_uncalibrated_classes`;
 - `lane1_evidence_scorecard_recent_delta_available`.
 
+The trend report feeds these Lane 1 metrics:
+
+- `lane1_evidence_trend_compared_metrics`;
+- `lane1_evidence_trend_improved_metrics`;
+- `lane1_evidence_trend_regressed_metrics`;
+- `lane1_evidence_trend_unchanged_metrics`;
+- `lane1_evidence_trend_unknown_metrics`;
+- `lane1_evidence_trend_no_history`;
+- `lane1_evidence_trend_static_limitation_category_rows`.
+
 ## Validation
 
 The implementation must be pinned by:
 
 - focused xtask unit tests;
 - `cargo xtask evidence-quality-scorecard`;
+- `cargo xtask evidence-quality-trend`;
 - `cargo xtask check-output-contracts`;
 - `cargo xtask check-static-language`;
 - `cargo xtask check-spec-format`;
