@@ -342,7 +342,7 @@ default blocking or comment posting. The closeout audit is
 [Policy Readiness closeout](handoffs/2026-05-12-policy-readiness-closeout.md).
 
 [Policy Operations and Promotion Readiness](policy/POLICY_OPERATIONS.md) is
-closed as the next focused Lane 2 tracker. It turns readiness into advisory
+open as the next focused Lane 2 tracker. It turns readiness into advisory
 operator packets: current safe policy ceiling, next safe action, blockers to
 stricter modes, read-only promotion packets, preview-promotion packets, and
 history/trend surfaces. RIPR-SPEC-0039 defines the first policy operations
@@ -358,12 +358,10 @@ for TypeScript and Python classes. [Policy operations workflow](POLICY_OPERATION
 documents how maintainers review the packets before manual config changes.
 Generated CI now renders, uploads, indexes, and summarizes operations, history,
 promotion, and configured preview-promotion packets as advisory-only artifacts
-with no new gate authority. The closeout audit is
-[Policy Operations closeout](handoffs/2026-05-13-policy-operations-closeout.md).
-This tracker preserves the same boundaries: no analyzer truth changes, no
-editor changes, no generated tests, no mutation execution, no default CI
-blocking, no automatic config or baseline mutation, and no preview evidence
-promotion.
+with no new gate authority. This
+tracker preserves the same boundaries: no analyzer truth changes, no editor
+changes, no generated tests, no mutation execution, no default CI blocking, no
+automatic config or baseline mutation, and no preview evidence promotion.
 
 ## Strategic Sequence
 
