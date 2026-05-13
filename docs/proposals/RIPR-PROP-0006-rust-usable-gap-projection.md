@@ -10,7 +10,8 @@ Target campaign: Rust usable gap projection
 
 Linked specs:
 
-- `RIPR-SPEC-0045`: Gap decision ledger, planned
+- `RIPR-SPEC-0045`: Finding-to-gap alignment
+- `RIPR-SPEC-0046`: Gap decision ledger, planned
 - `RIPR-SPEC-0017`: RIPR Zero reporting
 - `RIPR-SPEC-0018`: PR evidence ledger
 - `RIPR-SPEC-0020`: First useful action report
@@ -152,7 +153,8 @@ limitation, not a mutation-testing instruction.
 
 ## Behavior specs to create or update
 
-- Add `RIPR-SPEC-0045`: Gap decision ledger.
+- Use `RIPR-SPEC-0045` as the evidence-alignment input contract.
+- Add `RIPR-SPEC-0046`: Gap decision ledger.
 - Update `RIPR-SPEC-0017` so RIPR Zero and badge targets consume policy-backed
   gap decisions instead of raw report counts.
 - Update `RIPR-SPEC-0018` and `RIPR-SPEC-0020` so the PR evidence ledger and

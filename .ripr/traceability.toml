@@ -2802,3 +2802,38 @@ metrics = [
   "finding_alignment_visibility_unknown_total",
   "finding_alignment_presentation_text_actionable_total",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0046"
+name = "Gap decision ledger"
+spec = "docs/specs/RIPR-SPEC-0046-gap-decision-ledger.md"
+tests = [
+]
+fixtures = [
+]
+code = [
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0046-gap-decision-ledger.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0006-rust-usable-gap-projection.md",
+  "docs/OUTPUT_SCHEMA.md",
+  ".ripr/traceability.toml",
+  "metrics/capabilities.toml",
+]
+metrics = [
+  "gap_decision_records_total",
+  "gap_decision_repairable_total",
+  "gap_decision_static_limitation_total",
+  "gap_decision_no_action_total",
+  "gap_decision_missing_artifact_total",
+  "gap_decision_projection_pr_comment_eligible",
+  "gap_decision_projection_gate_candidate",
+  "gap_decision_projection_agent_packet_eligible",
+  "gap_decision_ripr_zero_target_count",
+  "gap_decision_ripr_plus_target_count",
+  "gap_decision_preview_ineligible_total",
+  "gap_decision_receipt_improved_total",
+  "gap_decision_receipt_unchanged_after_attempt_total",
+  "gap_decision_missing_output_contract_total",
+]
