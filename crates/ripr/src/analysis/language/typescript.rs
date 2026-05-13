@@ -27,7 +27,7 @@ use crate::config::OraclePolicy;
 use crate::domain::{
     Confidence, DeltaKind, ExposureClass, Finding, LanguageId as DomainLanguageId, LanguageStatus,
     OracleKind, OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
-    RiprEvidence, SourceLocation, StageEvidence, StageState,
+    RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind,
 };
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Expression, Statement};
@@ -755,6 +755,7 @@ fn classify_change(
         recommended_next_step: Some(recommended),
         language: Some(DomainLanguageId::TypeScript),
         language_status: Some(LanguageStatus::Preview),
+        static_limit_kind: (!mock_paths.is_empty()).then_some(StaticLimitKind::MockedModule),
     })
 }
 
@@ -1562,6 +1563,10 @@ test("alpha", () => {
                 .evidence
                 .iter()
                 .any(|line| line.starts_with("static_limit mocked_module:"))
+        );
+        assert_eq!(
+            finding.static_limit_kind,
+            Some(StaticLimitKind::MockedModule)
         );
         Ok(())
     }

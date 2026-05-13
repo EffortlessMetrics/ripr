@@ -15,9 +15,10 @@ mod tests {
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FlowSinkFact,
-        FlowSinkKind, MissingDiscriminatorFact, OracleKind, OracleStrength, Probe, ProbeFamily,
-        ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence,
-        StageState, Summary, ValueContext, ValueFact,
+        FlowSinkKind, LanguageId, LanguageStatus, MissingDiscriminatorFact, OracleKind,
+        OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence, RiprEvidence,
+        SourceLocation, StageEvidence, StageState, StaticLimitKind, Summary, ValueContext,
+        ValueFact,
     };
     use std::path::PathBuf;
 
@@ -205,6 +206,40 @@ mod tests {
         assert!(out.contains("\"suggested_next_action\": \"\""));
     }
 
+    #[test]
+    fn finding_json_emits_static_limit_kind_only_when_present() {
+        let mut finding = unknown_finding();
+        let mut out = String::new();
+
+        finding_json(&mut out, &finding, 0);
+
+        assert!(!out.contains("\"static_limit_kind\""));
+
+        finding.static_limit_kind = Some(StaticLimitKind::MockedModule);
+        out.clear();
+        finding_json(&mut out, &finding, 0);
+
+        assert!(out.contains("\"static_limit_kind\": \"mocked_module\""));
+    }
+
+    #[test]
+    fn finding_json_preserves_language_metadata_order_with_static_limit_kind() {
+        let mut finding = unknown_finding();
+        finding.language = Some(LanguageId::TypeScript);
+        finding.language_status = Some(LanguageStatus::Preview);
+        finding.static_limit_kind = Some(StaticLimitKind::MockedModule);
+        let mut out = String::new();
+
+        finding_json(&mut out, &finding, 0);
+
+        assert!(out.contains(
+            "\"suggested_next_action\": \"Escalate to real mutation testing.\",\n  \
+             \"language\": \"typescript\",\n  \
+             \"language_status\": \"preview\",\n  \
+             \"static_limit_kind\": \"mocked_module\""
+        ));
+    }
+
     fn unknown_finding() -> Finding {
         Finding {
             id: "probe:src_lib_rs:1:static_unknown".to_string(),
@@ -240,6 +275,7 @@ mod tests {
             recommended_next_step: Some("Escalate to real mutation testing.".to_string()),
             language: None,
             language_status: None,
+            static_limit_kind: None,
         }
     }
 

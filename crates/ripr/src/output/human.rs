@@ -447,6 +447,7 @@ mod tests {
             recommended_next_step: Some("Add assertion for disabled path result.".to_string()),
             language: None,
             language_status: None,
+            static_limit_kind: None,
         }
     }
 
@@ -485,6 +486,7 @@ mod tests {
             recommended_next_step: Some("Escalate to real mutation testing.".to_string()),
             language: None,
             language_status: None,
+            static_limit_kind: None,
         }
     }
 

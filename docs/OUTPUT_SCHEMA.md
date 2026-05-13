@@ -190,6 +190,10 @@ The evidence-first fields are additive in schema `0.1`:
 - `language_status` is the per-finding adapter status. Values are `stable`
   or `preview`. **Omitted for Rust** per RIPR-SPEC-0026; preview adapters
   (TypeScript, Python) will set `preview` when they land.
+- `static_limit_kind` is an additive optional per-finding static limitation
+  discriminator. It is omitted when no structured static limit is known. Values
+  are `dynamic_dispatch`, `metaprogramming`, `missing_import_graph`,
+  `decorator_indirection`, `mocked_module`, or `unsupported_syntax`.
 
 ## Enums
 
@@ -226,6 +230,15 @@ The evidence-first fields are additive in schema `0.1`:
 - `control`
 - `effect`
 - `unknown`
+
+`static_limit_kind` values:
+
+- `dynamic_dispatch`
+- `metaprogramming`
+- `missing_import_graph`
+- `decorator_indirection`
+- `mocked_module`
+- `unsupported_syntax`
 
 Reserved `flow_sink` values:
 
