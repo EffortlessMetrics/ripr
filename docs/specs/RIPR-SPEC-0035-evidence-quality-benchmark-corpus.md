@@ -167,7 +167,7 @@ distinguishes field-specific observation from broad snapshot output.
   evidence classes, and must-not-claim rules.
 - `xtask/src/main.rs` validates the corpus through
   `check-fixture-contracts`.
-- `docs/lanes/LANE_1_EVIDENCE_QUALITY_LEADERSHIP.md` records the benchmark
+- The future Lane 1 Evidence Quality Leadership tracker records the benchmark
   corpus as the fixture foundation for later analyzer and calibration work when
   that tracker lands.
 
