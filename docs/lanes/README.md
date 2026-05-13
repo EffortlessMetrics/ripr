@@ -91,6 +91,9 @@ the source evidence class first and keep projection changes narrow.
   shared evidence spine and consumer closeout.
 - [Lane 1 Evidence Accuracy Evaluation](LANE_1_EVIDENCE_ACCURACY.md) records
   the closed audit-first evidence accuracy campaign.
+- [Lane 1 Evidence Quality Leadership](LANE_1_EVIDENCE_QUALITY_LEADERSHIP.md)
+  records the scorecard, benchmark, calibration, and audit-delta leadership
+  loop.
 
 ## Lane 4 Source Of Truth
 
