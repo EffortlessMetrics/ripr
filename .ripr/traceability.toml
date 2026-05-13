@@ -227,6 +227,10 @@ tests = [
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::oracle_semantics_explains_smoke_only_boundary_gap",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::oracle_semantics_keeps_exact_value_without_extra_upgrade",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::oracle_semantics_covers_supported_oracle_families",
+  "crates/ripr/src/analysis/rust_index.rs::tests::classifies_only_clear_custom_helpers_as_exact_value_oracles",
+  "crates/ripr/src/analysis/rust_index.rs::tests::classifies_duplicative_equality_as_weak_oracle",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::opaque_custom_assertion_helper_stays_unknown_oracle",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::duplicative_equality_assertion_stays_weak_oracle",
   "crates/ripr/src/analysis/value_resolution.rs::tests::extract_let_bindings_picks_up_literal_rhs_and_skips_expressions",
   "crates/ripr/src/analysis/value_resolution.rs::tests::builder_method_match_accepts_fixture_override_prefixes_and_rejects_unrelated_methods",
   "crates/ripr/src/analysis/value_resolution.rs::tests::resolve_option_result_constructor_keeps_unresolved_inner_opaque",
@@ -2178,6 +2182,10 @@ name = "Evidence quality benchmark corpus"
 spec = "docs/specs/RIPR-SPEC-0035-evidence-quality-benchmark-corpus.md"
 tests = [
   "xtask/src/main.rs",
+  "crates/ripr/src/analysis/rust_index.rs::tests::classifies_only_clear_custom_helpers_as_exact_value_oracles",
+  "crates/ripr/src/analysis/rust_index.rs::tests::classifies_duplicative_equality_as_weak_oracle",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::opaque_custom_assertion_helper_stays_unknown_oracle",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::duplicative_equality_assertion_stays_weak_oracle",
 ]
 fixtures = [
   "fixtures/evidence-quality-benchmark/corpus.json",
