@@ -690,7 +690,7 @@ https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Effortless
 Refreshing the committed files is one xtask command:
 
 ```bash
-cargo xtask update-badge-endpoints
+cargo xtask badges
 ```
 
 That regenerates `target/ripr/reports/repo-ripr-{badge,plus-badge}-shields.json`
@@ -708,7 +708,7 @@ into `badges/`. Commit the resulting diff.
 - Diff-scoped artifacts (`ripr-badge-shields.json`,
   `ripr-plus-badge-shields.json`) stay in per-PR step summaries and
   CI artifact uploads — never linked from public docs.
-- `cargo xtask check-badge-endpoints` verifies the committed files
+- `cargo xtask badges --check` verifies the committed files
   against a fresh `repo-badge-artifacts` run. It is **not** wired into
   the default CI gate set in v1: the headline drifts whenever
   production code or tests change, and requiring every PR to also
@@ -774,7 +774,7 @@ Tracked alongside Campaign 4A and Campaign 5B in
 | `.ripr/suppressions.toml` loader | done | `suppressions/v1` |
 | CI badge artifacts (diff-scoped, PR) | done | `ci/badge-artifacts` |
 | Repo-scoped badge artifacts | done | `badge/repo-scope-artifacts` (`cargo xtask repo-badge-artifacts`) |
-| Published Shields endpoint from `main` | done | `badge/publish-main-endpoint` (committed `badges/*.json` served via `raw.githubusercontent.com`; refresh with `cargo xtask update-badge-endpoints`) |
+| Published Shields endpoint from `main` | done | `badge/publish-main-endpoint` (committed `badges/*.json` served via `raw.githubusercontent.com`; refresh with `cargo xtask badges`) |
 | Diff-scope `ripr+` related-tests filter | done | `badge/diff-ripr-plus-related-tests` |
 | Seam-native repo badge mapping | done | `badge/seam-native-count-mapping` |
 

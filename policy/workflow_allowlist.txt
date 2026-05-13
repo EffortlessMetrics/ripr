@@ -18,3 +18,5 @@
 .github/workflows/release-server-binaries.yml|1|Release workflow delegates server archive packaging, manifest generation, and release upload branching to Rust xtask commands.
 .github/workflows/security.yml|0|Security workflow uses standard cargo-deny and dependency-review actions without shell run blocks.
 .github/workflows/test-analytics.yml|1|Test analytics workflow keeps each run block to one cargo or echo command.
+
+.github/workflows/badge-endpoints.yml|1|Badge endpoint refresh delegates generation and PR creation to cargo xtask and create-pull-request.

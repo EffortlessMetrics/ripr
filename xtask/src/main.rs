@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
@@ -14304,11 +14305,12 @@ fn normalize_report_path(path: &str) -> String {
 }
 
 pub(crate) fn repo_badge_artifacts_impl() -> Result<(), String> {
-    let badge_dir = Path::new("target").join("ripr");
-    fs::create_dir_all(&badge_dir).map_err(|err| {
+    let workspace_root = repo_root()?;
+    let reports = workspace_root.join("target").join("ripr").join("reports");
+    fs::create_dir_all(&reports).map_err(|err| {
         format!(
-            "failed to create badge directory {}: {err}",
-            normalize_path(&badge_dir)
+            "failed to create badge reports directory {}: {err}",
+            normalize_path(&reports)
         )
     })?;
 
@@ -14320,9 +14322,8 @@ pub(crate) fn repo_badge_artifacts_impl() -> Result<(), String> {
     let mut ripr_plus_native_json = String::new();
 
     for job in repo_badge_artifact_jobs() {
-        let args = repo_badge_artifact_command_args(job.format);
-        let output = run_output_owned("cargo", &args)?;
-        write_report(job.output_file, &output)?;
+        let output = run_repo_badge_artifact_command(job.format, &workspace_root)?;
+        write_text_file(&reports.join(job.output_file), &output)?;
         match badge_artifact_native_slot(job.format) {
             Some(BadgeNativeSlot::Ripr) => ripr_native_json = output,
             Some(BadgeNativeSlot::RiprPlus) => ripr_plus_native_json = output,
@@ -14331,7 +14332,7 @@ pub(crate) fn repo_badge_artifacts_impl() -> Result<(), String> {
     }
 
     let summary = repo_badge_artifacts_summary_markdown(&ripr_native_json, &ripr_plus_native_json);
-    write_report("repo-ripr-badges.md", &summary)
+    write_text_file(&reports.join("repo-ripr-badges.md"), &summary)
 }
 
 fn repo_badge_artifact_jobs() -> Vec<BadgeArtifactJob> {
@@ -14355,23 +14356,69 @@ fn repo_badge_artifact_jobs() -> Vec<BadgeArtifactJob> {
     ]
 }
 
-fn repo_badge_artifact_command_args(format: &str) -> Vec<String> {
+fn repo_badge_artifact_command_args(format: &str, workspace_root: &Path) -> (String, Vec<String>) {
     // Intentionally omits any `--diff` / `--base` argument: repo scope must
     // not consult `git diff origin/main...HEAD`. The regression test
     // `repo_badge_artifact_command_args_does_not_use_git_diff` pins this
     // contract.
-    vec![
-        "run".to_string(),
-        "-p".to_string(),
-        "ripr".to_string(),
-        "--quiet".to_string(),
-        "--".to_string(),
-        "check".to_string(),
-        "--root".to_string(),
-        ".".to_string(),
-        "--format".to_string(),
-        format.to_string(),
-    ]
+    if let Ok(ripr_bin) = std::env::var("RIPR_BIN") {
+        return (
+            ripr_bin,
+            vec![
+                "check".to_string(),
+                "--root".to_string(),
+                workspace_root.display().to_string(),
+                "--format".to_string(),
+                format.to_string(),
+            ],
+        );
+    }
+
+    (
+        "cargo".to_string(),
+        vec![
+            "run".to_string(),
+            "-p".to_string(),
+            "ripr".to_string(),
+            "--quiet".to_string(),
+            "--".to_string(),
+            "check".to_string(),
+            "--root".to_string(),
+            workspace_root.display().to_string(),
+            "--format".to_string(),
+            format.to_string(),
+        ],
+    )
+}
+
+fn run_repo_badge_artifact_command(format: &str, workspace_root: &Path) -> Result<String, String> {
+    let (program, args) = repo_badge_artifact_command_args(format, workspace_root);
+    let output = Command::new(&program)
+        .args(&args)
+        .current_dir(workspace_root)
+        .output()
+        .map_err(|err| {
+            format!(
+                "failed to run {} {} in {}: {err}",
+                program,
+                args.join(" "),
+                workspace_root.display()
+            )
+        })?;
+    if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "{} {} failed with {} in {}\nstdout:\n{}\nstderr:\n{}",
+            program,
+            args.join(" "),
+            output.status,
+            workspace_root.display(),
+            stdout.trim(),
+            stderr.trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 fn repo_badge_artifacts_summary_markdown(
@@ -14415,8 +14462,9 @@ const BADGE_ENDPOINT_FILES: &[(&str, &str)] = &[
 /// into the committed `badges/` directory so the README endpoint URLs
 /// reflect the latest repo-scoped state.
 pub(crate) fn update_badge_endpoints_impl() -> Result<(), String> {
+    let workspace_root = repo_root()?;
     repo_badge_artifacts()?;
-    copy_badge_endpoints_from_reports(Path::new("target/ripr/reports"), Path::new("."))
+    copy_badge_endpoints_from_reports(&workspace_root.join("target/ripr/reports"), &workspace_root)
 }
 
 /// Pure file-copy half of `update_badge_endpoints` — separated so the
@@ -14483,10 +14531,10 @@ fn badge_endpoint_violation(
 ) -> Option<String> {
     match actual_bytes {
         None => Some(format!(
-            "missing badge endpoint file {committed_path}; run `cargo xtask update-badge-endpoints`"
+            "missing badge endpoint file {committed_path}; run `cargo xtask badges`"
         )),
         Some(actual) if actual != expected_bytes => Some(format!(
-            "badge endpoint file {committed_path} is stale relative to {source_display}; run `cargo xtask update-badge-endpoints` and commit the diff"
+            "badge endpoint file {committed_path} is stale relative to {source_display}; run `cargo xtask badges` and commit the diff"
         )),
         _ => None,
     }
@@ -14494,16 +14542,19 @@ fn badge_endpoint_violation(
 
 /// Verifies that the committed `badges/*.json` files match the latest
 /// `cargo xtask repo-badge-artifacts` output. Fails with an actionable
-/// message pointing at `cargo xtask update-badge-endpoints` when stale.
+/// message pointing at `cargo xtask badges` when stale.
 /// Intentionally not added to the default CI gate set in v1 — the
 /// endpoint count drifts whenever production code or tests change, and
 /// requiring every PR to also update `badges/` is too much friction
 /// before the headline stabilizes. Use locally before campaign
 /// closeouts and after material analyzer changes.
 pub(crate) fn check_badge_endpoints_impl() -> Result<(), String> {
+    let workspace_root = repo_root()?;
     repo_badge_artifacts()?;
-    let violations =
-        compute_badge_endpoint_violations(Path::new("target/ripr/reports"), Path::new("."))?;
+    let violations = compute_badge_endpoint_violations(
+        &workspace_root.join("target/ripr/reports"),
+        &workspace_root,
+    )?;
     finish_policy_report(
         PolicyReportSpec {
             report_file: "badge-endpoints.md",
@@ -14511,11 +14562,11 @@ pub(crate) fn check_badge_endpoints_impl() -> Result<(), String> {
             why_it_matters: "The committed badges/*.json files are the public Shields endpoint surfaces; stale files cause the README badge to lie about repo state.",
             fix_kind: FixKind::AuthorDecisionRequired,
             recommended_fixes: &[
-                "Run `cargo xtask update-badge-endpoints` and commit the resulting badges/*.json diff.",
-                "If the drift is from an unrelated PR, run `cargo xtask update-badge-endpoints` on `main` and commit on its own scoped PR.",
+                "Run `cargo xtask badges` and commit the resulting badges/*.json diff.",
+                "If the drift is from an unrelated PR, run `cargo xtask badges` on `main` and commit on its own scoped PR.",
                 "Skip running this check on PRs that do not change the repo headline (it is not yet a hard CI gate).",
             ],
-            rerun_command: "cargo xtask check-badge-endpoints",
+            rerun_command: "cargo xtask badges --check",
             exception_template: None,
         },
         &violations,
@@ -20404,6 +20455,14 @@ fn ensure_receipts_dir() -> Result<(), String> {
             receipts_dir().display()
         )
     })
+}
+
+fn write_text_file(path: &Path, body: &str) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|err| format!("failed to create {}: {err}", parent.display()))?;
+    }
+    fs::write(path, body).map_err(|err| format!("failed to write {}: {err}", path.display()))
 }
 
 fn write_report(file_name: &str, body: &str) -> Result<(), String> {
@@ -33199,7 +33258,7 @@ stackable = true
             "repo-badge-plus-json",
             "repo-badge-plus-shields",
         ] {
-            let args = repo_badge_artifact_command_args(format);
+            let (_program, args) = repo_badge_artifact_command_args(format, Path::new("/repo"));
             for arg in &args {
                 if arg == "--diff" || arg == "--base" {
                     return Err(format!(
@@ -33322,7 +33381,7 @@ stackable = true
             "violation should name the missing file: {message}"
         );
         assert!(
-            message.contains("cargo xtask update-badge-endpoints"),
+            message.contains("cargo xtask badges"),
             "violation should point at the refresh command: {message}"
         );
         Ok(())
@@ -33347,7 +33406,7 @@ stackable = true
             "violation should name the source-of-truth file: {message}"
         );
         assert!(
-            message.contains("cargo xtask update-badge-endpoints"),
+            message.contains("cargo xtask badges"),
             "violation should point at the refresh command: {message}"
         );
         assert!(
