@@ -87,9 +87,9 @@ explicitly makes this Lane 1 tracker active.
 | --- | --- | --- |
 | `docs/proposal-user-visible-output-evidence` | Open the proposal and lane tracker for presentation/help/report/table text evidence. | merged in #904 |
 | `docs/spec-presentation-text-evidence` | Define visibility, observer, actionability, canonical grouping, static limitation, and must-not-claim behavior. | merged in #909 |
-| `docs/spec-finding-to-gap-alignment` | Define how raw findings roll up into canonical evidence items with state, actionability, repair, confidence, and supporting raw evidence. | current |
-| `fixtures/finding-alignment-benchmark` | Add raw-to-canonical benchmark cases for grouping, no-action, already-observed, static limitation, and actionable states. | planned |
-| `fixtures/presentation-text-evidence-benchmark` | Add benchmark cases for user-visible observed/unobserved text, internal-only labels, visibility unknowns, declaration/literal grouping, and unrelated strings. | open candidate in #900; wait for spec foundation |
+| `docs/spec-finding-to-gap-alignment` | Define how raw findings roll up into canonical evidence items with state, actionability, repair, confidence, and supporting raw evidence. | merged in #927 |
+| `fixtures/finding-alignment-benchmark` | Add raw-to-canonical benchmark cases for grouping, no-action, already-observed, static limitation, and actionable states. | current |
+| `fixtures/presentation-text-evidence-benchmark` | Add benchmark cases for user-visible observed/unobserved text, internal-only labels, visibility unknowns, declaration/literal grouping, and unrelated strings. | merged in #900 |
 | `analysis/presentation-text-evidence-fields` | Add additive evidence-record fields for presentation text visibility, observer, actionability, source kind, and grouping. | planned |
 | `analysis/presentation-text-visibility` | Conservatively classify obvious output sinks and keep opaque or indirect routes as limitations. | planned |
 | `analysis/presentation-text-canonical-grouping` | Group a constant declaration and its string literal into one canonical evidence item without colliding different constants. | planned |
@@ -179,8 +179,9 @@ git diff --check
 | --- | --- | --- | --- |
 | `docs/proposal-user-visible-output-evidence` | #904 | merged | Added RIPR-PROP-0005 and this tracker; no behavior changes. |
 | `docs/spec-presentation-text-evidence` | #909 | merged | Added RIPR-SPEC-0043; no analyzer, projection, gate, generated-test, provider, mutation-execution, or score-definition changes. |
-| `docs/spec-finding-to-gap-alignment` | pending | current | Defines raw finding to canonical evidence item alignment before behavior changes. |
-| `fixtures/presentation-text-evidence-benchmark` | #900 | current | Contains the screenshot-derived constant benchmark after the proposal/spec foundation. |
+| `docs/spec-finding-to-gap-alignment` | #927 | merged | Defines raw finding to canonical evidence item alignment before behavior changes. |
+| `fixtures/finding-alignment-benchmark` | pending | current | Adds manifest-only raw-to-canonical presentation-text alignment cases; no analyzer behavior changes. |
+| `fixtures/presentation-text-evidence-benchmark` | #900 | merged | Added the screenshot-derived constant benchmark after the proposal/spec foundation. |
 
 ## Closeout Conditions
 
