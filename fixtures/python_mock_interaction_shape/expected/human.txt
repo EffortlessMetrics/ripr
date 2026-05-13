@@ -1,13 +1,13 @@
 ripr static RIPR exposure analysis
 mode: fast
-root: fixtures/python_mock_assert_called/input
+root: fixtures/python_mock_interaction_shape/input
 
 Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
 
-WARNING src/notify.py:2
+WARNING src/callbacks.py:4
 
 Changed
-  after:      callback("receipt.sent", order_id)
+  after:      callback = MagicMock(name="receipt.sent")
 
 Probe
   family: side_effect
@@ -22,15 +22,15 @@ Static exposure
   weakly_exposed (warning, confidence 0.40)
 
 Evidence
-  - reach yes: 1 related Python test(s) found for owner `send_receipt`
+  - reach yes: 1 related Python test(s) found for owner `recording_callback`
   - infection unknown: Python preview adapter does not yet model infection.
   - propagation unknown: Python preview adapter does not yet model propagation.
   - observation weak: Strongest extracted Python oracle kind: `mock_expectation` (rank 4)
   - discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.
-  - related test tests/test_notify.py:6 test_send_receipt_notifies_callback uses medium mock expectation oracle: callback.assert_called_once_with("receipt.sent", "ord-123")
+  - related test tests/test_callbacks.py:4 test_recording_callback_starts_idle uses medium mock expectation oracle: callback.assert_not_called()
 
 Weakness
-  - Related Python test reaches `send_receipt` but the strongest extracted oracle is `mock_expectation`; add or verify an exact-value assertion to make the preview finding stronger.
+  - Related Python test reaches `recording_callback` but the strongest extracted oracle is `mock_expectation`; add or verify an exact-value assertion to make the preview finding stronger.
 
 Next step
   Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.
