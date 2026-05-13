@@ -190,8 +190,9 @@ git diff --check
 
 ## Cross-Lane Rules
 
-- `.ripr/goals/active.toml` is the active Codex Goals manifest, not the whole
-  product board.
+- `.ripr/goals/active.toml` is the current Codex Goals manifest, not the whole
+  product board. Its top-level status may be `closed` after campaign closeout
+  until a successor campaign is selected.
 - Lane 1 may add or change evidence consumed by PR/CI, editor, agent, baseline,
   or gate surfaces.
 - Lane 1 should not implement PR/CI summary projection, editor UX polish,
