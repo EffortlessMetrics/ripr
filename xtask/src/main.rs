@@ -10419,7 +10419,12 @@ fn evidence_quality_scorecard_from_values(
         static_limitation_categories: scorecard_value_or_default(
             audit,
             &["static_limitations"],
-            serde_json::json!({"by_reason": {}, "by_stage": {}}),
+            serde_json::json!({
+                "by_reason": {},
+                "by_stage": {},
+                "by_category": {},
+                "repair_routes": {}
+            }),
         ),
         missing_discriminator_classes: scorecard_value_or_default(
             audit,
@@ -34793,6 +34798,16 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(value.get("canonical_gap_groups").is_some());
         assert!(value.get("duplicate_looking_groups").is_some());
         assert!(value.get("static_limitation_categories").is_some());
+        assert!(
+            value["static_limitation_categories"]
+                .get("by_category")
+                .is_some()
+        );
+        assert!(
+            value["static_limitation_categories"]
+                .get("repair_routes")
+                .is_some()
+        );
         assert!(value.get("missing_discriminator_classes").is_some());
         assert!(value.get("related_test_confidence").is_some());
         assert!(value.get("oracle_semantics_distribution").is_some());
@@ -34805,6 +34820,33 @@ covered_by = ["cargo xtask check-file-policy"]
             value["inputs"]["evidence_health"]["status"],
             serde_json::Value::from("missing")
         );
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_scorecard_defaults_static_limitation_taxonomy_sections()
+    -> Result<(), String> {
+        let mut audit = scorecard_minimal_audit_value(0, 0, 0, 0, 0);
+        audit
+            .as_object_mut()
+            .ok_or_else(|| "sample audit must be an object".to_string())?
+            .remove("static_limitations");
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(false),
+            &audit,
+            None,
+            None,
+        )?;
+        let json = evidence_quality_scorecard_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+
+        let static_limitations = &value["static_limitation_categories"];
+        assert!(static_limitations["by_reason"].is_object());
+        assert!(static_limitations["by_stage"].is_object());
+        assert!(static_limitations["by_category"].is_object());
+        assert!(static_limitations["repair_routes"].is_object());
         Ok(())
     }
 
@@ -34966,7 +35008,12 @@ covered_by = ["cargo xtask check-file-policy"]
             "canonical_gap_groups": {"total": 5, "largest": []},
             "duplicate_looking_groups": [],
             "missing_discriminator_classes": {"by_reason": {}, "by_flow_sink": {}, "by_value": {}},
-            "static_limitations": {"by_reason": {}, "by_stage": {}},
+            "static_limitations": {
+                "by_reason": {},
+                "by_stage": {},
+                "by_category": {},
+                "repair_routes": {}
+            },
             "oracle_semantics_distribution": {
                 "by_semantics": {},
                 "oracle_kind_counts": {"unknown": 0},
