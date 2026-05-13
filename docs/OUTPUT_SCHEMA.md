@@ -3973,6 +3973,178 @@ repairs, required receipts, rollback path, manual-only config example, input
 artifact status, warnings, unknowns, non-goals, and limits. It must not mutate
 policy configuration or promote preview-language evidence.
 
+## Preview Evidence Promotion Packet
+
+RIPR-SPEC-0044 defines the preview evidence promotion packet. The planned
+`ripr policy preview-promote` command writes a read-only advisory packet for a
+preview language and evidence class. The default result is blocked:
+`allowed_now = false` with reason `preview promotion evidence not supplied`.
+
+Planned command:
+
+```text
+ripr policy preview-promote \
+  --language typescript \
+  --class boundary_gap \
+  --out target/ripr/reports/preview-promotion-typescript-boundary-gap.json \
+  --out-md target/ripr/reports/preview-promotion-typescript-boundary-gap.md
+```
+
+The report writes:
+
+```text
+target/ripr/reports/preview-promotion-<language>-<class>.json
+target/ripr/reports/preview-promotion-<language>-<class>.md
+```
+
+This report is advisory policy review evidence. It does not mutate `ripr.toml`,
+baselines, suppressions, workflows, branch protection, generated CI defaults,
+source files, history ledgers, gate configuration, RIPR Zero membership,
+calibrated confidence, or preview-language eligibility. It does not execute
+gates, post comments, run analysis, generate tests, call providers, run
+mutation testing, or make CI blocking by default.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "preview_evidence_promotion_packet",
+  "root": ".",
+  "generated_at": "unix_ms:1778277000000",
+  "language": "typescript",
+  "language_status": "preview",
+  "candidate_class": "boundary_gap",
+  "target_status": "policy_eligible",
+  "allowed_now": false,
+  "reason": "preview promotion evidence not supplied",
+  "required_evidence": [
+    {
+      "kind": "fixture_corpus_coverage",
+      "required": true,
+      "description": "Representative fixtures cover the candidate class and known static limits."
+    },
+    {
+      "kind": "static_limit_exclusions",
+      "required": true,
+      "description": "Known static parser and language-adapter limits are excluded or labeled."
+    },
+    {
+      "kind": "false_positive_review",
+      "required": true,
+      "description": "Maintainer-reviewed false-positive sample is documented for this language and class."
+    },
+    {
+      "kind": "recommendation_calibration",
+      "required": true,
+      "description": "Same-class recommendation calibration supports policy eligibility."
+    },
+    {
+      "kind": "mutation_calibration",
+      "required": false,
+      "description": "Optional runtime calibration exists for this language and class without being inferred from Rust."
+    },
+    {
+      "kind": "baseline_behavior",
+      "required": true,
+      "description": "Baseline handling keeps preview debt visible and does not auto-adopt new preview findings."
+    },
+    {
+      "kind": "waiver_suppression_behavior",
+      "required": true,
+      "description": "Waivers and suppressions preserve owner, reason, scope, and preview status."
+    },
+    {
+      "kind": "rollback_path",
+      "required": true,
+      "description": "Manual rollback to advisory preview status is documented."
+    },
+    {
+      "kind": "generated_ci_posture",
+      "required": true,
+      "description": "Generated CI remains advisory and non-blocking unless a later explicit gate mode is configured."
+    }
+  ],
+  "supplied_evidence": [],
+  "missing_evidence": [
+    "fixture_corpus_coverage",
+    "static_limit_exclusions",
+    "false_positive_review",
+    "recommendation_calibration",
+    "baseline_behavior",
+    "waiver_suppression_behavior",
+    "rollback_path",
+    "generated_ci_posture"
+  ],
+  "required_repairs": [
+    "Supply explicit preview promotion evidence before policy eligibility review."
+  ],
+  "required_receipts": [
+    "preview-boundary report showing advisory language status",
+    "fixture corpus coverage receipt for TypeScript boundary_gap",
+    "false-positive review receipt for TypeScript boundary_gap",
+    "recommendation-calibration receipt for TypeScript boundary_gap"
+  ],
+  "rollback_path": [
+    "Keep TypeScript boundary_gap evidence advisory.",
+    "Remove any manual preview promotion config if one was reviewed later.",
+    "Regenerate policy operations and preview promotion packets after rollback."
+  ],
+  "generated_ci_posture": {
+    "may_upload_artifact": true,
+    "may_summarize_artifact": true,
+    "may_fail_check": false,
+    "may_post_comment": false,
+    "may_mutate_config": false
+  },
+  "input_artifacts": [],
+  "warnings": [],
+  "unknowns": [],
+  "non_goals": [
+    "No actual promotion.",
+    "No gate eligibility change.",
+    "No RIPR Zero inclusion.",
+    "No calibrated confidence.",
+    "No CI blocking."
+  ],
+  "limits_note": "Read-only advisory preview promotion packet. Preview evidence remains visible and non-gating until a later explicit promotion policy is reviewed."
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `tool` - always `"ripr"`.
+- `kind` - always `"preview_evidence_promotion_packet"`.
+- `language` - requested preview language.
+- `language_status` - current status, initially `"preview"`.
+- `candidate_class` - requested evidence class.
+- `target_status` - requested future policy status. The packet may describe it
+  but must not apply it.
+- `allowed_now` - false unless every required evidence item is supplied and a
+  later implementation explicitly recognizes those receipts.
+- `reason` - concise explanation for the decision.
+- `required_evidence[]` - full evidence checklist for preview promotion.
+- `supplied_evidence[]` - evidence receipts accepted by the packet.
+- `missing_evidence[]` - required evidence still absent.
+- `required_repairs[]` - concrete work before a maintainer can review
+  promotion.
+- `required_receipts[]` - artifacts reviewers should inspect before promotion.
+- `rollback_path[]` - explicit return path to advisory preview status.
+- `generated_ci_posture` - advisory CI permissions and hard denials.
+- `input_artifacts[]` - future explicit evidence input status.
+- `warnings[]` - malformed supplied inputs or target-language limitations.
+- `unknowns[]` - unavailable context that must stay visible.
+- `non_goals[]` - hard boundaries repeated in the packet.
+- `limits_note` - read-only/manual-review/no-promotion boundary.
+
+Markdown should fit in generated CI summaries and report packets. It should
+show language, class, current status, target status, allowed status, reason,
+supplied and missing evidence, required repairs, required receipts, rollback
+path, generated CI posture, input artifact status, warnings, unknowns,
+non-goals, and limits. It must not promote preview evidence or mutate policy.
+
 ## Suppression Health Report
 
 `ripr policy suppression-health` summarizes the durable suppression manifest

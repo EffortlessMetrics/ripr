@@ -2607,3 +2607,37 @@ metrics = [
   "presentation_text_no_action",
   "presentation_text_static_limitations",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0044"
+name = "Preview evidence promotion packet"
+spec = "docs/specs/RIPR-SPEC-0044-preview-evidence-promotion-packet.md"
+tests = [
+]
+fixtures = [
+]
+code = [
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0044-preview-evidence-promotion-packet.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/policy/POLICY_OPERATIONS.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  "docs/CAPABILITY_MATRIX.md",
+  ".ripr/goals/lane2-policy-operations.toml",
+  ".ripr/traceability.toml",
+  "metrics/capabilities.toml",
+]
+metrics = [
+  "preview_promotion_packets",
+  "preview_promotion_allowed",
+  "preview_promotion_blocked",
+  "preview_promotion_required_evidence",
+  "preview_promotion_supplied_evidence",
+  "preview_promotion_missing_evidence",
+  "preview_promotion_warning_count",
+  "preview_promotion_unknown_count",
+]
