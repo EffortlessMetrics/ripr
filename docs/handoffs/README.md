@@ -55,6 +55,7 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [Policy Operations closeout](2026-05-13-policy-operations-closeout.md)
 - [Lane 1 Evidence Quality Leadership closeout](2026-05-13-lane-1-evidence-quality-leadership-closeout.md)
 - [Lane 4 PR / CI Review Cockpit closeout](2026-05-13-lane4-pr-ci-review-cockpit-closeout.md)
 - [Generated CI cockpit dogfood receipts](2026-05-13-generated-ci-cockpit-receipts.md)

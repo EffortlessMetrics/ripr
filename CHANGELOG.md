@@ -47,6 +47,11 @@ Planned scope:
   uploaded, indexed, and summarized without changing pass/fail authority,
   default blocking, comments, config, baselines, suppressions, history ledgers,
   workflows, branch protection, or preview eligibility.
+- Closed the Lane 2 Policy Operations and Promotion Readiness tracker. The
+  closeout records policy operations, policy history, promotion packets,
+  preview-promotion packets, operator workflow docs, advisory generated-CI
+  projection, capability metadata, traceability, and the boundary that stricter
+  policy or preview-language promotion still requires explicit later review.
 - `ripr --help` and every `ripr <subcommand> --help` now lead with an
   action-oriented one-liner before the `Usage:` block (e.g.,
   `ripr pilot --help` opens with "Find the top test gap in this repo and

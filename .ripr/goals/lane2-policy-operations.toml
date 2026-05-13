@@ -1,7 +1,7 @@
 id = "policy-operations-promotion-readiness"
 title = "Policy Operations and Promotion Readiness"
-status = "tracker"
-issue = "pending"
+status = "closed"
+issue = "closed by focused Lane 2 closeout"
 
 # Focused Lane 2 tracker. This is not the active Codex Goals manifest.
 # `.ripr/goals/active.toml` remains the active execution manifest for
@@ -236,8 +236,8 @@ commands = [
 
 [[work_item]]
 id = "campaign/policy-operations-closeout"
-status = "planned"
-branch = "campaign-policy-operations-closeout"
+status = "done"
+branch = "lane2-policy-operations-closeout"
 acceptance = "Close only after policy operations, policy history, promotion packets, preview promotion packets, operator workflow, advisory CI projection, capability/metrics/traceability updates, and handoff artifacts exist."
 commands = [
   "cargo xtask check-campaign",
