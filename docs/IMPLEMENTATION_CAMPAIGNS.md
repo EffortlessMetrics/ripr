@@ -3040,6 +3040,46 @@ Next:
   branch-protection, default-CI, or editor routing changes into the Python
   adapter slice.
 
+## Focused Lane 1 Tracker: Evidence Quality Leadership
+
+Status: closed in documented scope. Campaign 27 remains the active
+machine-readable campaign.
+
+Sources of truth:
+
+- [Lane 1 Evidence Quality Leadership tracker](lanes/LANE_1_EVIDENCE_QUALITY_LEADERSHIP.md)
+- [RIPR-PROP-0002](proposals/RIPR-PROP-0002-lane-1-evidence-quality-leadership.md)
+- [RIPR-SPEC-0034](specs/RIPR-SPEC-0034-evidence-quality-scorecard.md)
+- [RIPR-SPEC-0035](specs/RIPR-SPEC-0035-evidence-quality-benchmark-corpus.md)
+- [RIPR-SPEC-0040](specs/RIPR-SPEC-0040-static-runtime-confidence-expansion.md)
+- [ADR 0010](adr/0010-fixture-first-evidence-confidence.md)
+- [closeout handoff](handoffs/2026-05-13-lane-1-evidence-quality-leadership-closeout.md)
+
+Objective:
+
+```text
+Make RIPR self-aware about evidence quality: what it believes, why it believes
+it, which fixture or calibration class supports that belief, what remains
+unknown, and which evidence-class repair should happen next.
+```
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `report/evidence-quality-scorecard` | done | #850 added the repo-local scorecard over the Lane 1 audit. |
+| `fixtures/evidence-quality-benchmark-corpus` | done | #851 added the manifest-only benchmark corpus with positive cases and must-not-claim guards. |
+| `analysis/static-limitation-taxonomy` | done | #861 normalized static limitation categories and repair routes without turning limitations into user test gaps. |
+| `analysis/oracle-semantics-audit-fixes` | done | #871 tightened clear custom helper, opaque helper, and duplicative equality semantics from audit-backed cases. |
+| `calibration/runtime-fixtures-v3` | done | #881 added checked imported-runtime calibration classes while keeping runtime-only signal from creating static gaps. |
+| `report/evidence-quality-trend` | done | #885 added scorecard/audit snapshot trend reporting with explicit no-history states. |
+| `campaign/evidence-quality-leadership-closeout` | done | Closed after scorecard, benchmark corpus, two audit-driven improvements, runtime-fixtures-v3, trend reporting, class-scoped capabilities, traceability, and handoff proof. |
+
+Future Lane 1 work should open only when the scorecard, audit, or a documented
+consumer requirement identifies a new measured evidence class. Do not reopen
+Lane 1 for PR/CI front-panel work, LSP/editor polish, gate policy, generated
+tests, provider calls, mutation execution, or score redefinition.
+
 ## Focused Lane 2 Tracker: Policy Readiness and Preview Evidence Governance
 
 Tracker ID: `policy-readiness-preview-evidence-governance`
