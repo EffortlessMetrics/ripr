@@ -190,6 +190,10 @@ The evidence-first fields are additive in schema `0.1`:
 - `language_status` is the per-finding adapter status. Values are `stable`
   or `preview`. **Omitted for Rust** per RIPR-SPEC-0026; preview adapters
   (TypeScript, Python) will set `preview` when they land.
+- `owner_kind` is an additive optional per-finding syntactic owner
+  discriminator. It is omitted when no preview adapter populated a bounded
+  owner. Values are `function`, `method`, `class_method`, `arrow_function`,
+  `component`, or `module_function`.
 - `static_limit_kind` is an additive optional per-finding static limitation
   discriminator. It is omitted when no structured static limit is known. Values
   are `dynamic_dispatch`, `metaprogramming`, `missing_import_graph`,

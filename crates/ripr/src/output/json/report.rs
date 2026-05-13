@@ -197,13 +197,14 @@ pub(super) fn finding_json_with_config(
     );
     let has_language = finding.language.is_some();
     let has_status = finding.language_status.is_some();
+    let has_owner_kind = finding.owner_kind.is_some();
     let has_static_limit_kind = finding.static_limit_kind.is_some();
     field(
         out,
         indent + 1,
         "suggested_next_action",
         finding.recommended_next_step.as_deref().unwrap_or(""),
-        has_language || has_status || has_static_limit_kind,
+        has_language || has_status || has_owner_kind || has_static_limit_kind,
     );
     if let Some(language) = finding.language {
         field(
@@ -211,7 +212,7 @@ pub(super) fn finding_json_with_config(
             indent + 1,
             "language",
             language.as_str(),
-            has_status || has_static_limit_kind,
+            has_status || has_owner_kind || has_static_limit_kind,
         );
     }
     if let Some(status) = finding.language_status {
@@ -220,6 +221,15 @@ pub(super) fn finding_json_with_config(
             indent + 1,
             "language_status",
             status.as_str(),
+            has_owner_kind || has_static_limit_kind,
+        );
+    }
+    if let Some(kind) = finding.owner_kind {
+        field(
+            out,
+            indent + 1,
+            "owner_kind",
+            kind.as_str(),
             has_static_limit_kind,
         );
     }
