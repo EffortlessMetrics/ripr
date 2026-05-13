@@ -19974,9 +19974,12 @@ fn validate_campaign_manifest(
             "docs/IMPLEMENTATION_CAMPAIGNS.md does not mention active campaign id `{id}`"
         ));
     }
-    match manifest.status.as_deref() {
-        Some("active") => {}
-        Some(status) => violations.push(format!("campaign has unsupported status `{status}`")),
+    let campaign_status = manifest.status.as_deref();
+    match campaign_status {
+        Some("active" | "closed") => {}
+        Some(status) => violations.push(format!(
+            "campaign has unsupported status `{status}`; use active or closed"
+        )),
         None => violations.push("campaign is missing `status`".to_string()),
     }
     if manifest
@@ -20066,6 +20069,23 @@ fn validate_campaign_manifest(
         {
             violations.push(format!(
                 "{item_id} is blocked but has no blocked_by or blocked_reason"
+            ));
+        }
+    }
+
+    if campaign_status == Some("closed") {
+        let unfinished = manifest
+            .work_items
+            .iter()
+            .filter_map(|item| {
+                let id = item.id.as_deref()?;
+                (item.status.as_deref() != Some("done")).then_some(id)
+            })
+            .collect::<Vec<_>>();
+        if !unfinished.is_empty() {
+            violations.push(format!(
+                "closed campaign has unfinished work items: {}",
+                unfinished.join(", ")
             ));
         }
     }
@@ -34608,6 +34628,92 @@ stackable = true
             assert!(
                 !violations.is_empty(),
                 "invalid TOML should produce violations"
+            );
+        });
+    }
+
+    #[test]
+    fn campaign_manifest_accepts_closed_when_all_work_items_are_done() {
+        with_temp_cwd("campaign-closed", |root| {
+            write(
+                &root.join("docs/IMPLEMENTATION_CAMPAIGNS.md"),
+                "closed-campaign\n\n| `docs/test` | done |\n",
+            );
+            let manifest_path = root.join("campaign.toml");
+            write(
+                &manifest_path,
+                r#"
+id = "closed-campaign"
+title = "Closed Campaign"
+status = "closed"
+end_state = ["Closed proof exists."]
+
+[[work_item]]
+id = "docs/test"
+status = "done"
+branch = "docs-test"
+stackable = false
+acceptance = "Closed proof exists."
+commands = ["cargo xtask check-pr"]
+"#,
+            );
+            let result = parse_campaign_manifest(&manifest_path);
+            assert!(result.is_ok(), "{result:?}");
+            let (manifest, parse_violations) = match result {
+                Ok(value) => value,
+                Err(_) => return,
+            };
+            assert!(parse_violations.is_empty(), "{parse_violations:?}");
+            let mut violations = Vec::new();
+
+            let validation = super::validate_campaign_manifest(&manifest, &mut violations);
+            assert!(validation.is_ok(), "{validation:?}");
+
+            assert!(violations.is_empty(), "{violations:?}");
+        });
+    }
+
+    #[test]
+    fn campaign_manifest_rejects_closed_with_unfinished_work_items() {
+        with_temp_cwd("campaign-closed-unfinished", |root| {
+            write(
+                &root.join("docs/IMPLEMENTATION_CAMPAIGNS.md"),
+                "closed-campaign\n\n| `docs/test` | ready |\n",
+            );
+            let manifest_path = root.join("campaign.toml");
+            write(
+                &manifest_path,
+                r#"
+id = "closed-campaign"
+title = "Closed Campaign"
+status = "closed"
+end_state = ["Closed proof exists."]
+
+[[work_item]]
+id = "docs/test"
+status = "ready"
+branch = "docs-test"
+stackable = false
+acceptance = "Closed proof exists."
+commands = ["cargo xtask check-pr"]
+"#,
+            );
+            let result = parse_campaign_manifest(&manifest_path);
+            assert!(result.is_ok(), "{result:?}");
+            let (manifest, parse_violations) = match result {
+                Ok(value) => value,
+                Err(_) => return,
+            };
+            assert!(parse_violations.is_empty(), "{parse_violations:?}");
+            let mut violations = Vec::new();
+
+            let validation = super::validate_campaign_manifest(&manifest, &mut violations);
+            assert!(validation.is_ok(), "{validation:?}");
+
+            assert!(
+                violations.iter().any(|violation| violation
+                    .contains("closed campaign has unfinished work items: docs/test")),
+                "{violations:?}"
             );
         });
     }

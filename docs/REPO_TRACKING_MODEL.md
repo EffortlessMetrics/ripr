@@ -27,7 +27,7 @@ Each doc has exactly one role. Avoid mixing roles in one file.
 | Campaign ledger | [`docs/IMPLEMENTATION_CAMPAIGNS.md`](IMPLEMENTATION_CAMPAIGNS.md) | Multi-PR campaign history, open campaigns, and closed-campaign audits. |
 | Work queue | [`docs/IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) | Current and upcoming implementation slices. |
 | Campaign-specific plan | [`plans/`](../plans/) | Extra sequencing, acceptance, proof commands, and rollback notes for a narrow campaign slice when the ledger would become too dense. |
-| Active execution manifest | `.ripr/goals/active.toml` | The single campaign an agent or operator is executing now. |
+| Active execution manifest | `.ripr/goals/active.toml` | The current execution campaign; `status = "closed"` is allowed after closeout until the next campaign is selected. |
 | Campaign archive | [`.ripr/goals/archive/`](../.ripr/goals/archive/) | Frozen manifests of closed campaigns. |
 | Scoped PR | The PR itself | Mergeable review units, governed by the [scoped PR contract](SCOPED_PR_CONTRACT.md). |
 | Closeout | [`docs/handoffs/`](handoffs/) | What happened, what passed, what remains. |
@@ -55,7 +55,9 @@ Each doc has exactly one role. Avoid mixing roles in one file.
      campaign-planning input, not production behavior.
 
 6. Active manifest (.ripr/goals/active.toml)
-     The agent/operator executes work items one PR at a time.
+     The agent/operator executes work items one PR at a time while the
+     campaign is active. After closeout, the top-level status may be `closed`
+     until the next campaign manifest replaces it.
 
 7. Scoped PRs (governed by SCOPED_PR_CONTRACT.md)
      One production delta + the evidence package needed to review it.
@@ -86,8 +88,9 @@ To prevent overloading individual docs:
   duplicate proposal reasoning.
 - A campaign-specific plan adds operational detail for one campaign slice. It
   must not redefine specs, ADRs, or active manifest state.
-- The active manifest names the currently executing campaign. It must not
-  carry historical closed campaigns; closed manifests move to the archive.
+- The active manifest names the current execution campaign. It may stay on the
+  most recently closed campaign with top-level `status = "closed"` until a
+  successor campaign is selected. Closed manifests also move to the archive.
 - A scoped PR is the smallest reviewable unit. It must not bundle unrelated
   contracts.
 - A closeout records what happened. It must not invent new contracts; new

@@ -215,8 +215,9 @@ To keep individual docs from being overloaded:
   conditions that would justify revisiting it.
 - A **campaign ledger entry** sequences PRs. It must not redefine specs
   or duplicate proposal reasoning.
-- The **active manifest** names the currently executing campaign. It
-  must not carry closed campaigns; closed manifests move to the archive.
+- The **active manifest** names the current execution campaign. It may stay on
+  the most recently closed campaign with top-level `status = "closed"` until a
+  successor campaign is selected; closed manifests also move to the archive.
 - A **scoped PR** is the smallest reviewable unit. It must not bundle
   unrelated contracts. See [`SCOPED_PR_CONTRACT.md`](../SCOPED_PR_CONTRACT.md).
 - A **closeout handoff** records what happened. It must not invent new
@@ -225,7 +226,8 @@ To keep individual docs from being overloaded:
 When in doubt, ask which question the reader is asking when they reach
 for the doc. A reader asking "why does this exist?" wants the proposal.
 "What must ripr do?" wants the spec. "What constrains this change?" wants
-the ADR. "What is the agent doing right now?" wants the active manifest.
+the ADR. "What is the agent doing right now, or what campaign just closed
+without a selected successor?" wants the active manifest.
 "What shipped last week?" wants the handoff.
 
 ## Agent neutrality
