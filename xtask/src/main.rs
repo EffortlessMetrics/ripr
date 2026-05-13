@@ -860,6 +860,7 @@ fn precommit() -> Result<(), String> {
     check_campaign()?;
     check_pr_shape()?;
     check_generated()?;
+    check_generated_clean()?;
     check_lint_policy()?;
     let body = precommit_report_body();
     write_report("precommit.md", &body)
@@ -911,6 +912,7 @@ fn run_policy_checks() -> Result<(), String> {
     check_campaign()?;
     check_pr_shape()?;
     check_generated()?;
+    check_generated_clean()?;
     check_dependencies()?;
     check_process_policy()?;
     check_network_policy()?;
@@ -20562,6 +20564,114 @@ fn check_generated() -> Result<(), String> {
     )
 }
 
+fn check_generated_clean() -> Result<(), String> {
+    let changes = collect_pr_changes()?;
+    let badge_refresh_context = generated_clean_badge_refresh_context();
+    let violations = generated_clean_violations(&changes, badge_refresh_context);
+
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "generated-clean.md",
+            check: "check-generated-clean",
+            why_it_matters: "Generated evidence and build residue should not leak into ordinary PR diffs. Public badge endpoint counts are generated trust markers, and target artifacts are local/CI outputs.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Remove generated target artifacts from the PR diff.",
+                "Remove badges/*.json diffs unless this is the generated badge endpoint refresh PR.",
+                "For public badge count refreshes, use `cargo xtask badges` or the Badge Endpoints workflow on an explicit badge refresh branch.",
+            ],
+            rerun_command: "cargo xtask check-generated-clean",
+            exception_template: None,
+        },
+        &violations,
+    )
+}
+
+fn generated_clean_badge_refresh_context() -> bool {
+    let mut candidates = vec![git_value(&["rev-parse", "--abbrev-ref", "HEAD"])];
+    for key in [
+        "GITHUB_HEAD_REF",
+        "GITHUB_REF_NAME",
+        "GITHUB_REF",
+        "BRANCH_NAME",
+        "RIPR_WORK_ITEM",
+    ] {
+        if let Ok(value) = std::env::var(key) {
+            candidates.push(value);
+        }
+    }
+    candidates
+        .iter()
+        .any(|candidate| is_badge_refresh_context(candidate))
+}
+
+fn is_badge_refresh_context(value: &str) -> bool {
+    let normalized = value
+        .trim()
+        .trim_start_matches("refs/heads/")
+        .to_ascii_lowercase();
+    normalized == "automation/badge-endpoints"
+        || normalized == "badge: refresh public endpoints"
+        || normalized.contains("badge-refresh")
+        || normalized.contains("badge/endpoints")
+        || normalized.contains("badge-endpoints")
+}
+
+fn generated_clean_violations(changes: &[ChangedPath], badge_refresh_context: bool) -> Vec<String> {
+    let mut violations = Vec::new();
+    for change in changes {
+        let path = change.path.trim_end_matches('/');
+        if is_badge_endpoint_json(path) {
+            if !badge_refresh_context {
+                violations.push(format!(
+                    "generated badge endpoint changed in an ordinary PR: {}\n  rule: do not manually edit RIPR badge numbers; remove this diff or move it to the generated `badge: refresh public endpoints` PR",
+                    format_changed_path(change)
+                ));
+            }
+            continue;
+        }
+
+        if is_ripr_target_artifact(path) && !is_deletion_only(change) {
+            violations.push(format!(
+                "generated RIPR target artifact is present in the PR diff: {}\n  rule: keep PR-scoped RIPR evidence under ignored target/ripr artifacts, not committed source control",
+                format_changed_path(change)
+            ));
+            continue;
+        }
+
+        if is_sample_target_artifact(path) && !is_deletion_only(change) {
+            violations.push(format!(
+                "sample workspace build output is present in the PR diff: {}\n  rule: remove crates/ripr/examples/sample/target residue before review",
+                format_changed_path(change)
+            ));
+        }
+    }
+    violations
+}
+
+fn is_badge_endpoint_json(path: &str) -> bool {
+    path.starts_with("badges/")
+        && path.ends_with(".json")
+        && path["badges/".len()..].find('/').is_none()
+}
+
+fn is_ripr_target_artifact(path: &str) -> bool {
+    path == "target/ripr" || path.starts_with("target/ripr/")
+}
+
+fn is_sample_target_artifact(path: &str) -> bool {
+    path == "crates/ripr/examples/sample/target"
+        || path.starts_with("crates/ripr/examples/sample/target/")
+}
+
+fn is_deletion_only(change: &ChangedPath) -> bool {
+    !change.statuses.is_empty()
+        && change
+            .statuses
+            .iter()
+            .all(|status| status.chars().all(|character| character == 'D'))
+}
+
 /// Parse a `[workspace.lints.<section>]` block from `Cargo.toml`-shaped TOML.
 ///
 /// Returns a map of bare lint name (e.g. `unwrap_used`, `unsafe_code`) to its
@@ -26987,9 +27097,10 @@ mod tests {
         evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
         evidence_quality_trend_json, evidence_quality_trend_markdown,
         extract_json_object_usize_map, extract_json_string, extract_json_warnings,
-        extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns, glob_matches,
-        golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
-        guarded_allow_attributes_in_text, install_hooks_in, is_bdd_test_name, is_campaign_path,
+        extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns,
+        generated_clean_violations, glob_matches, golden_changes_without_blessing,
+        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
+        install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
         is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
         is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
         is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
@@ -35937,6 +36048,73 @@ jobs:
         assert!(message.contains("cargo xtask help"));
     }
 
+    fn changed_path(path: &str, statuses: &[&str]) -> ChangedPath {
+        ChangedPath {
+            path: path.to_string(),
+            statuses: statuses
+                .iter()
+                .map(|status| (*status).to_string())
+                .collect::<BTreeSet<_>>(),
+        }
+    }
+
+    #[test]
+    fn generated_clean_rejects_badge_endpoint_diff_outside_refresh_context() {
+        let changes = vec![changed_path("badges/ripr.json", &["M"])];
+        let violations = generated_clean_violations(&changes, false);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("generated badge endpoint changed"));
+        assert!(violations[0].contains("do not manually edit RIPR badge numbers"));
+    }
+
+    #[test]
+    fn generated_clean_allows_badge_endpoint_diff_in_refresh_context() {
+        let changes = vec![
+            changed_path("badges/ripr.json", &["M"]),
+            changed_path("badges/ripr-plus.json", &["M"]),
+        ];
+        let violations = generated_clean_violations(&changes, true);
+        assert!(
+            violations.is_empty(),
+            "unexpected violations: {violations:?}"
+        );
+        assert!(is_badge_refresh_context("automation/badge-endpoints"));
+        assert!(is_badge_refresh_context("badge: refresh public endpoints"));
+    }
+
+    #[test]
+    fn generated_clean_rejects_target_residue() {
+        let changes = vec![
+            changed_path("target/ripr/reports/check-pr.md", &["A"]),
+            changed_path(
+                "crates/ripr/examples/sample/target/debug/.fingerprint",
+                &["??"],
+            ),
+        ];
+        let violations = generated_clean_violations(&changes, false);
+        assert_eq!(violations.len(), 2);
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("generated RIPR target artifact"))
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("sample workspace build output"))
+        );
+    }
+
+    #[test]
+    fn generated_clean_allows_deleting_committed_target_residue() {
+        let changes = vec![changed_path("target/ripr/reports/old.md", &["D"])];
+        let violations = generated_clean_violations(&changes, false);
+        assert!(
+            violations.is_empty(),
+            "unexpected violations: {violations:?}"
+        );
+    }
+
     #[test]
     fn xtask_command_parse_preserves_subcommand_arguments() {
         assert_eq!(
@@ -36046,7 +36224,6 @@ jobs:
                 XtaskCommand::TargetedTestOutcome(Vec::new()),
                 XtaskCommand::MutationCalibration(Vec::new()),
                 XtaskCommand::SarifPolicy(Vec::new()),
-                XtaskCommand::UpdateBadgeEndpoints,
                 XtaskCommand::CheckBadgeEndpoints,
                 XtaskCommand::Dogfood,
                 XtaskCommand::Critic,
