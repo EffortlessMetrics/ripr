@@ -7,7 +7,7 @@
 # than embed complex shell programs. This file allows known workflow blocks
 # while keeping the budget visible.
 
-.github/workflows/ci.yml|3|CI run blocks call direct Cargo or npm commands.
+.github/workflows/ci.yml|12|CI run blocks call direct Cargo or npm commands and append bounded RIPR summaries.
 .github/workflows/coverage.yml|1|Coverage workflow keeps each run block to one coverage command.
 .github/workflows/droid-review.yml|20|Droid auto-review workflow writes local Factory BYOK settings, then uses reusable actions.
 .github/workflows/droid-security-scan.yml|20|Droid scheduled security scan writes local Factory BYOK settings, then uses reusable actions.
@@ -18,3 +18,5 @@
 .github/workflows/release-server-binaries.yml|1|Release workflow delegates server archive packaging, manifest generation, and release upload branching to Rust xtask commands.
 .github/workflows/security.yml|0|Security workflow uses standard cargo-deny and dependency-review actions without shell run blocks.
 .github/workflows/test-analytics.yml|1|Test analytics workflow keeps each run block to one cargo or echo command.
+
+.github/workflows/badge-endpoints.yml|1|Badge endpoint refresh delegates generation to Cargo and opens a PR.

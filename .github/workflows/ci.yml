@@ -22,6 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -70,6 +72,18 @@ jobs:
       - name: Generate ripr receipts
         if: always()
         run: cargo xtask receipts || true
+      - name: Fetch PR base for RIPR
+        if: always() && github.event_name == 'pull_request'
+        run: git fetch origin ${{ github.base_ref }} --depth=1 || true
+      - name: RIPR PR evidence
+        if: always()
+        run: timeout 120 cargo xtask ripr-pr || true
+      - name: RIPR review guidance
+        if: always()
+        run: timeout 120 cargo xtask ripr-review-comments || true
+      - name: RIPR PR contract
+        if: always()
+        run: cargo xtask ripr-pr --check || true
       - name: Refresh ripr report index
         if: always()
         run: cargo xtask reports index || true
@@ -85,6 +99,18 @@ jobs:
           if [ -f target/ripr/reports/ripr-badges.md ]; then
             cat target/ripr/reports/ripr-badges.md >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: RIPR review summary
+        if: always()
+        run: |
+          {
+            echo "## RIPR Review Guidance"
+            echo
+            if [ -f target/ripr/review/comments.md ]; then
+              cat target/ripr/review/comments.md
+            else
+              echo "No RIPR review guidance was produced."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload ripr reports
         if: always()
         uses: actions/upload-artifact@v7
@@ -94,6 +120,20 @@ jobs:
             target/ripr/reports/
             target/ripr/receipts/
           if-no-files-found: ignore
+      - name: Upload RIPR PR evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-pr
+          path: target/ripr/pr
+          if-no-files-found: warn
+      - name: Upload RIPR review guidance
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-review
+          path: target/ripr/review
+          if-no-files-found: warn
 
   msrv:
     runs-on: ubuntu-latest

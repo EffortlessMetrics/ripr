@@ -8900,6 +8900,114 @@ pub(crate) fn repo_exposure_report_impl() -> Result<(), String> {
     write_report("repo-exposure.md", &md_output)
 }
 
+/// Produce the PR-scoped RIPR exposure artifact layout expected by CI:
+/// `target/ripr/pr/repo-exposure.{json,md}`. This intentionally reuses the
+/// existing repo-exposure formats while placing the files under the PR artifact
+/// contract directory.
+pub(crate) fn ripr_pr(check: bool) -> Result<(), String> {
+    if check {
+        return check_ripr_pr_artifacts();
+    }
+
+    let root = repo_root()?;
+    let out_dir = root.join("target/ripr/pr");
+    fs::create_dir_all(&out_dir)
+        .map_err(|err| format!("failed to create {}: {err}", normalize_path(&out_dir)))?;
+
+    for (format, file_name) in [
+        ("repo-exposure-json", "repo-exposure.json"),
+        ("repo-exposure-md", "repo-exposure.md"),
+    ] {
+        let output = run_output_owned(
+            "cargo",
+            &repo_seam_inventory_command_args_for_root(format, "."),
+        )?;
+        let path = out_dir.join(file_name);
+        fs::write(&path, output)
+            .map_err(|err| format!("failed to write {}: {err}", normalize_path(&path)))?;
+    }
+
+    check_ripr_pr_artifacts()
+}
+
+fn check_ripr_pr_artifacts() -> Result<(), String> {
+    let root = repo_root()?;
+    let json_path = root.join("target/ripr/pr/repo-exposure.json");
+    let md_path = root.join("target/ripr/pr/repo-exposure.md");
+    let value = read_json_value(&json_path)?;
+    if value
+        .get("schema_version")
+        .and_then(Value::as_str)
+        .is_none()
+    {
+        return Err(format!(
+            "{} is missing string `schema_version`",
+            normalize_path(&json_path)
+        ));
+    }
+    if value.get("seams").and_then(Value::as_array).is_none() {
+        return Err(format!(
+            "{} is missing array `seams`",
+            normalize_path(&json_path)
+        ));
+    }
+    let markdown = read_text_lossy(&md_path)?;
+    if markdown.trim().is_empty() {
+        return Err(format!("{} is empty", normalize_path(&md_path)));
+    }
+    Ok(())
+}
+
+/// Produce `target/ripr/review/comments.{json,md}` via the product CLI. The
+/// command is a pure report producer; posting or inline comments remain outside
+/// this xtask surface.
+pub(crate) fn ripr_review_comments(check: bool) -> Result<(), String> {
+    if check {
+        return check_ripr_review_comments_artifacts();
+    }
+
+    let root = repo_root()?;
+    let out_dir = root.join("target/ripr/review");
+    fs::create_dir_all(&out_dir)
+        .map_err(|err| format!("failed to create {}: {err}", normalize_path(&out_dir)))?;
+
+    let args = vec![
+        "run".to_string(),
+        "-p".to_string(),
+        "ripr".to_string(),
+        "--quiet".to_string(),
+        "--".to_string(),
+        "review-comments".to_string(),
+        "--root".to_string(),
+        ".".to_string(),
+        "--base".to_string(),
+        std::env::var("RIPR_BASE").unwrap_or_else(|_| "origin/main".to_string()),
+        "--head".to_string(),
+        std::env::var("RIPR_HEAD").unwrap_or_else(|_| "HEAD".to_string()),
+        "--out".to_string(),
+        "target/ripr/review/comments.json".to_string(),
+    ];
+    run_owned("cargo", &args)?;
+    check_ripr_review_comments_artifacts()
+}
+
+fn check_ripr_review_comments_artifacts() -> Result<(), String> {
+    let root = repo_root()?;
+    let json_path = root.join("target/ripr/review/comments.json");
+    let md_path = root.join("target/ripr/review/comments.md");
+    let value = read_json_value(&json_path)?;
+    for key in ["schema_version", "comments", "summary_only"] {
+        if value.get(key).is_none() {
+            return Err(format!("{} is missing `{key}`", normalize_path(&json_path)));
+        }
+    }
+    let markdown = read_text_lossy(&md_path)?;
+    if markdown.trim().is_empty() {
+        return Err(format!("{} is empty", normalize_path(&md_path)));
+    }
+    Ok(())
+}
+
 /// Run the Lane 1 evidence health report and write
 /// `target/ripr/reports/evidence-health.{json,md}`. If an imported mutation
 /// calibration report already exists, include it only as calibration
@@ -14416,7 +14524,8 @@ const BADGE_ENDPOINT_FILES: &[(&str, &str)] = &[
 /// reflect the latest repo-scoped state.
 pub(crate) fn update_badge_endpoints_impl() -> Result<(), String> {
     repo_badge_artifacts()?;
-    copy_badge_endpoints_from_reports(Path::new("target/ripr/reports"), Path::new("."))
+    let root = repo_root()?;
+    copy_badge_endpoints_from_reports(&root.join("target/ripr/reports"), &root)
 }
 
 /// Pure file-copy half of `update_badge_endpoints` — separated so the
@@ -14438,6 +14547,7 @@ fn copy_badge_endpoints_from_reports(reports_dir: &Path, repo_root: &Path) -> Re
                 normalize_path(&source)
             )
         })?;
+        validate_shields_endpoint_bytes(&bytes, committed)?;
         let dest = repo_root.join(committed);
         fs::write(&dest, &bytes)
             .map_err(|err| format!("failed to write {}: {err}", normalize_path(&dest)))?;
@@ -14460,6 +14570,7 @@ fn compute_badge_endpoint_violations(
         let source_display = normalize_path(&source);
         let want =
             fs::read(&source).map_err(|err| format!("failed to read {source_display}: {err}"))?;
+        validate_shields_endpoint_bytes(&want, committed)?;
         let committed_path = repo_root.join(committed);
         let actual = fs::read(&committed_path).ok();
         if let Some(violation) =
@@ -14469,6 +14580,44 @@ fn compute_badge_endpoint_violations(
         }
     }
     Ok(violations)
+}
+
+fn validate_shields_endpoint_bytes(bytes: &[u8], path: &str) -> Result<(), String> {
+    let value: Value = serde_json::from_slice(bytes)
+        .map_err(|err| format!("{path} is not valid Shields endpoint JSON: {err}"))?;
+    let object = value
+        .as_object()
+        .ok_or_else(|| format!("{path} must be a JSON object"))?;
+    let keys: BTreeSet<&str> = object.keys().map(String::as_str).collect();
+    let expected: BTreeSet<&str> = ["schemaVersion", "label", "message", "color"]
+        .into_iter()
+        .collect();
+    if keys != expected {
+        return Err(format!(
+            "{path} must contain only schemaVersion, label, message, and color"
+        ));
+    }
+    if object.get("schemaVersion").and_then(Value::as_u64) != Some(1) {
+        return Err(format!("{path} must use schemaVersion 1"));
+    }
+    let expected_label = if path.ends_with("ripr-plus.json") {
+        "ripr+"
+    } else {
+        "ripr"
+    };
+    if object.get("label").and_then(Value::as_str) != Some(expected_label) {
+        return Err(format!("{path} must use label `{expected_label}`"));
+    }
+    for key in ["message", "color"] {
+        if object
+            .get(key)
+            .and_then(Value::as_str)
+            .is_none_or(|value| value.trim().is_empty())
+        {
+            return Err(format!("{path} must contain a non-empty `{key}` string"));
+        }
+    }
+    Ok(())
 }
 
 /// Pure comparison helper for `check_badge_endpoints` — separated so
@@ -14502,8 +14651,8 @@ fn badge_endpoint_violation(
 /// closeouts and after material analyzer changes.
 pub(crate) fn check_badge_endpoints_impl() -> Result<(), String> {
     repo_badge_artifacts()?;
-    let violations =
-        compute_badge_endpoint_violations(Path::new("target/ripr/reports"), Path::new("."))?;
+    let root = repo_root()?;
+    let violations = compute_badge_endpoint_violations(&root.join("target/ripr/reports"), &root)?;
     finish_policy_report(
         PolicyReportSpec {
             report_file: "badge-endpoints.md",
@@ -18181,8 +18330,13 @@ fn check_readme_state() -> Result<(), String> {
     let readme = read_text_lossy(readme_path)?;
     let mut violations = Vec::new();
 
+    if !has_markdown_heading(&readme, "# ripr")
+        && !readme.contains("<h1 align=\"center\">ripr</h1>")
+    {
+        violations.push("README.md is missing `# ripr` or centered ripr masthead".to_string());
+    }
+
     for heading in [
-        "# ripr",
         "## Current Scope",
         "## Current Capability Snapshot",
         "## Supporting Docs",
@@ -33459,7 +33613,7 @@ stackable = true
         write_fixture_shields(
             &reports,
             "repo-ripr-badge-shields.json",
-            b"{\"schemaVersion\":1}",
+            b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"0\",\"color\":\"brightgreen\"}",
         )?;
 
         let result = super::copy_badge_endpoints_from_reports(&reports, &repo_root);
@@ -33479,6 +33633,27 @@ stackable = true
         let _ = std::fs::remove_dir_all(&reports);
         let _ = std::fs::remove_dir_all(&repo_root);
         Ok(())
+    }
+
+    #[test]
+    fn validate_shields_endpoint_bytes_accepts_minimal_shape() -> Result<(), String> {
+        super::validate_shields_endpoint_bytes(
+            b"{\"schemaVersion\":1,\"label\":\"ripr+\",\"message\":\"0\",\"color\":\"brightgreen\"}",
+            "badges/ripr-plus.json",
+        )
+    }
+
+    #[test]
+    fn validate_shields_endpoint_bytes_rejects_extra_fields() {
+        let result = super::validate_shields_endpoint_bytes(
+            b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"0\",\"color\":\"brightgreen\",\"extra\":true}",
+            "badges/ripr.json",
+        );
+        assert!(
+            result
+                .err()
+                .is_some_and(|err| err.contains("must contain only"))
+        );
     }
 
     #[test]

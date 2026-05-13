@@ -38,8 +38,17 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
             super::reports::recommendation_calibration(&args)
         }
         XtaskCommand::SarifPolicy(args) => super::reports::sarif_policy(&args),
+        XtaskCommand::Badges { check } => {
+            if check {
+                super::reports::check_badge_endpoints()
+            } else {
+                super::reports::update_badge_endpoints()
+            }
+        }
         XtaskCommand::UpdateBadgeEndpoints => super::reports::update_badge_endpoints(),
         XtaskCommand::CheckBadgeEndpoints => super::reports::check_badge_endpoints(),
+        XtaskCommand::RiprPr { check } => super::ripr_pr(check),
+        XtaskCommand::RiprReviewComments { check } => super::ripr_review_comments(check),
         XtaskCommand::Dogfood => super::reports::dogfood(),
         XtaskCommand::Critic => super::reports::critic(),
         XtaskCommand::Goals(args) => super::goals(&args),
