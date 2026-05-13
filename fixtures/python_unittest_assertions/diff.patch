@@ -1,0 +1,13 @@
+diff --git a/src/service.py b/src/service.py
+index 0000000..1111111 100644
+--- a/src/service.py
++++ b/src/service.py
+@@ -1,6 +1,6 @@
+ def normalize(value):
+-    return value.strip()
++    return value.strip().lower()
+
+ def reject_negative(amount):
+-    if amount < -1:
++    if amount < 0:
+         raise ValueError("negative")

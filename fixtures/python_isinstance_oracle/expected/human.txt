@@ -1,0 +1,36 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_isinstance_oracle/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING src/pricing.py:2
+
+Changed
+  after:      return amount - 10
+
+Probe
+  family: return_value
+  delta:  value
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `apply_discount`
+  - infection unknown: Python preview adapter does not yet model infection.
+  - propagation unknown: Python preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted Python oracle kind: `relational_check` (rank 3)
+  - discriminator weak: Python preview found no strong discriminator; use exact-value or exact-error assertions to escalate.
+  - related test tests/test_pricing.py:4 test_apply_discount_type_shape uses weak relational check oracle: assert isinstance(apply_discount(100), int) at line 5 (relational_check/weak)
+
+Weakness
+  - Related Python test reaches `apply_discount` but the strongest extracted oracle is `relational_check`; upgrade by adding an exact-value or exact-error assertion for the changed behavior.
+
+Next step
+  Python preview: related test found; add or verify a focused exact-value or exact-error assertion for the changed behavior.

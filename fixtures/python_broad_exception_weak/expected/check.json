@@ -1,0 +1,64 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_broad_exception_weak/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_validation.py:2:python_preview",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_validation.py:2:python_preview",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/validation.py",
+        "line": 2,
+        "expression": "    if amount < 0:"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `reject_negative`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `broad_error` (rank 3)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview found no strong discriminator; use exact-value or exact-error assertions to escalate."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `reject_negative`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Strongest extracted Python oracle kind: `broad_error` (rank 3)", "discriminator weak: Python preview found no strong discriminator; use exact-value or exact-error assertions to escalate.", "related test tests/test_validation.py:6 test_reject_negative_broad_error uses weak broad error oracle: pytest.raises(Exception) at line 7 (broad_error/weak)"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: reject_negative", "owner_kind: function", "test_framework: pytest (test_reject_negative_broad_error)"],
+      "missing": ["Related Python test reaches `reject_negative` but the strongest extracted oracle is `broad_error`; upgrade by adding an exact-value or exact-error assertion for the changed behavior."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "test_reject_negative_broad_error",
+          "file": "tests/test_validation.py",
+          "line": 6,
+          "oracle_strength": "weak",
+          "oracle_kind": "broad_error",
+          "oracle": "pytest.raises(Exception) at line 7 (broad_error/weak)"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "broad_error",
+      "oracle_strength": "weak",
+      "recommended_next_step": "Python preview: related test found; add or verify a focused exact-value or exact-error assertion for the changed behavior.",
+      "suggested_next_action": "Python preview: related test found; add or verify a focused exact-value or exact-error assertion for the changed behavior.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function"
+    }
+  ]
+}

@@ -1912,6 +1912,14 @@ fixtures = [
   "fixtures/python_unittest_basic",
   "fixtures/python_method_owner",
   "fixtures/python_parametrize_basic",
+  "fixtures/python_strong_oracle",
+  "fixtures/python_truthiness_weak_oracle",
+  "fixtures/python_isinstance_oracle",
+  "fixtures/python_pytest_raises",
+  "fixtures/python_broad_exception_weak",
+  "fixtures/python_unittest_assertions",
+  "fixtures/python_mock_call_assertions",
+  "fixtures/python_mock_not_called",
 ]
 code = [
   "crates/ripr/src/analysis/language/python.rs",

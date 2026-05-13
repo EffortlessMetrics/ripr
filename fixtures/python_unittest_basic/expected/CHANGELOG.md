@@ -11,3 +11,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+python preview assertion oracle facts
+
+Command:
+`cargo xtask goldens bless python_unittest_basic --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

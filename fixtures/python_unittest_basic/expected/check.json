@@ -23,14 +23,14 @@
         "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `risk_score`"},
         "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
         "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
-        "observe": {"state":"weak","confidence":"low","summary":"Python owner/test slice records related tests but does not yet extract assertion strength."},
-        "discriminate": {"state":"weak","confidence":"low","summary":"Python owner/test slice cannot confirm a discriminator until assertion extraction lands."}
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `smoke_only` (rank 2)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview found no strong discriminator; use exact-value or exact-error assertions to escalate."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `risk_score`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Python owner/test slice records related tests but does not yet extract assertion strength.", "discriminator weak: Python owner/test slice cannot confirm a discriminator until assertion extraction lands.", "related test tests/test_risk.py:7 test_risk_score_high uses unknown unknown oracle"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `risk_score`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Strongest extracted Python oracle kind: `smoke_only` (rank 2)", "discriminator weak: Python preview found no strong discriminator; use exact-value or exact-error assertions to escalate.", "related test tests/test_risk.py:7 test_risk_score_high uses smoke smoke only oracle: self.assertTrue(value) at line 9 (smoke_only/smoke)"],
       "flow_sinks": [
       ],
       "evidence": ["owner: risk_score", "owner_kind: function", "test_framework: unittest (test_risk_score_high)"],
-      "missing": ["Related Python test reaches `risk_score` but assertion strength is not inspected in this slice; add or verify an exact-value assertion after Python assertion extraction lands."],
+      "missing": ["Related Python test reaches `risk_score` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value or exact-error assertion for the changed behavior."],
       "activation": {
         "observed_values": [
         ],
@@ -46,16 +46,16 @@
           "name": "test_risk_score_high",
           "file": "tests/test_risk.py",
           "line": 7,
-          "oracle_strength": "unknown",
-          "oracle_kind": "unknown",
-          "oracle": ""
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "self.assertTrue(value) at line 9 (smoke_only/smoke)"
         }
       ],
       "stop_reasons": [],
-      "oracle_kind": "unknown",
-      "oracle_strength": "unknown",
-      "recommended_next_step": "Python preview: related test found; add or verify a focused assertion once Python assertion extraction lands.",
-      "suggested_next_action": "Python preview: related test found; add or verify a focused assertion once Python assertion extraction lands.",
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
+      "recommended_next_step": "Python preview: related test found; add or verify a focused exact-value or exact-error assertion for the changed behavior.",
+      "suggested_next_action": "Python preview: related test found; add or verify a focused exact-value or exact-error assertion for the changed behavior.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function"

@@ -16,8 +16,8 @@ to:
 amount >= threshold
 ```
 
-A pytest-style test file calls the changed owner, but this slice does not
-inspect assertion strength yet.
+A pytest-style test file calls the changed owner but has no extracted assertion
+oracle.
 
 The fixture workspace enables the Python preview adapter explicitly:
 
@@ -50,8 +50,8 @@ The Python preview adapter:
   `apply_discount(`,
 - emits `language = "python"`, `language_status = "preview"`, and
   `owner_kind = "function"`,
-- classifies the changed predicate line as `weakly_exposed` because a
-  related test reaches the owner but assertion extraction is deferred.
+- classifies the changed predicate line as `weakly_exposed` because a related
+  test reaches the owner but no strong assertion oracle is visible.
 
 ## Must Not
 

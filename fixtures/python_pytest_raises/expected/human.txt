@@ -1,0 +1,36 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_pytest_raises/input
+
+Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+
+INFO src/validation.py:2
+
+Changed
+  after:      if amount < 0:
+
+Probe
+  family: predicate
+  delta:  control
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  exposed (info, confidence 0.55)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `reject_negative`
+  - infection unknown: Python preview adapter does not yet model infection.
+  - propagation unknown: Python preview adapter does not yet model propagation.
+  - observation yes: Strongest extracted Python oracle kind: `exact_error_variant` (rank 5)
+  - discriminator yes: Related Python test uses a `exact_error_variant` oracle; preview static evidence treats it as a discriminator.
+  - related test tests/test_validation.py:6 test_reject_negative_error_kind uses strong exact error variant oracle: pytest.raises(ValueError) at line 7 (exact_error_variant/strong)
+
+Weakness
+  - Related Python test reaches `reject_negative` with a `exact_error_variant` oracle. Preview static evidence suggests the changed behavior is observed by a strong assertion.
+
+Next step
+  Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.

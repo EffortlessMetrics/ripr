@@ -93,6 +93,14 @@ Planned scope:
   limits. The TypeScript mocked-module limit now emits
   `static_limit_kind = "mocked_module"` in JSON while keeping existing human
   evidence text advisory and leaving Rust/default behavior unchanged.
+- Added Python preview assertion/oracle facts for opt-in Python analysis.
+  Related Python tests now carry syntax-first oracle kind/strength for exact
+  equality, truthiness, broad type checks, pytest/unittest error assertions,
+  unittest equality assertions, and mock interaction assertions. Strong exact
+  value/error oracles can classify preview findings as `exposed`; broad,
+  smoke, mock, or unknown evidence remains advisory/weak. Rust defaults,
+  editor routing, gates, providers, mutation execution, generated tests, and
+  source-edit behavior are unchanged.
 - Added `cargo xtask lane1-evidence-audit` with
   `cargo xtask evidence-quality-audit` as an alias. The repo-local report writes
   `target/ripr/reports/lane1-evidence-audit.{json,md}` from generated

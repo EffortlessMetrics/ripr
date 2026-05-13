@@ -36,7 +36,8 @@ The Python preview adapter:
 - recognises `@pytest.mark.parametrize` syntactically,
 - records the parametrized test as related to the changed owner,
 - emits preview language metadata and `owner_kind = "function"`,
-- keeps the finding `weakly_exposed` until assertion extraction lands.
+- keeps the finding `weakly_exposed` because parametrization alone is not an
+  assertion oracle.
 
 ## Must Not
 

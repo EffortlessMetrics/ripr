@@ -1,0 +1,36 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_mock_call_assertions/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING src/notify.py:2
+
+Changed
+  after:      gateway.send("paid")
+
+Probe
+  family: predicate
+  delta:  control
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `notify_customer`
+  - infection unknown: Python preview adapter does not yet model infection.
+  - propagation unknown: Python preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted Python oracle kind: `mock_expectation` (rank 4)
+  - discriminator weak: Python preview found no strong discriminator; use exact-value or exact-error assertions to escalate.
+  - related test tests/test_notify.py:4 test_notify_customer_interaction uses medium mock expectation oracle: gateway.send.assert_called_once_with("paid") at line 6 (mock_expectation/medium)
+
+Weakness
+  - Related Python test reaches `notify_customer` but the strongest extracted oracle is `mock_expectation`; upgrade by adding an exact-value or exact-error assertion for the changed behavior.
+
+Next step
+  Python preview: related test found; add or verify a focused exact-value or exact-error assertion for the changed behavior.

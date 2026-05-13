@@ -11,10 +11,11 @@
 //!   `unittest.TestCase.test_*` methods;
 //! - related-test references by simple syntactic call/name matching.
 //!
-//! Assertion-strength, richer probe families, import-graph matching, static
-//! limits, editor routing, generated tests, runtime execution, and provider
-//! calls remain out of scope. Until assertion extraction lands, related tests
-//! produce `weakly_exposed`; missing related tests produce `no_static_path`.
+//! Richer probe families, import-graph matching, static limits, editor
+//! routing, generated tests, runtime execution, and provider calls remain
+//! out of scope. Related tests with strong extracted assertion oracles
+//! produce `exposed`; broad or unknown assertion evidence remains
+//! `weakly_exposed`; missing related tests produce `no_static_path`.
 
 use super::super::{AnalysisOptions, diff::ChangedFile};
 use super::{LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route};
@@ -26,7 +27,7 @@ use crate::domain::{
 };
 use rustpython_parser::{
     Mode,
-    ast::{self, Expr, Mod, Stmt},
+    ast::{self, CmpOp, Expr, Mod, Stmt},
     parse,
     text_size::TextRange,
 };
@@ -55,8 +56,17 @@ struct PythonTest {
     file: PathBuf,
     line: usize,
     body_text: String,
+    assertions: Vec<PythonAssertion>,
     parametrized: bool,
     framework: &'static str,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PythonAssertion {
+    text: String,
+    line: usize,
+    oracle_kind: OracleKind,
+    oracle_strength: OracleStrength,
 }
 
 fn parse_module(path: &Path, source: &str) -> Option<Mod> {
@@ -234,6 +244,7 @@ fn collect_tests_from_statements(
                     file: file.to_path_buf(),
                     line: line_for_range_start(source, function.range),
                     body_text: text_for_range(source, function.range),
+                    assertions: collect_assertions_from_statements(source, &function.body),
                     parametrized: is_parametrized(&function.decorator_list),
                     framework: if in_unittest_class {
                         "unittest"
@@ -248,6 +259,7 @@ fn collect_tests_from_statements(
                     file: file.to_path_buf(),
                     line: line_for_range_start(source, function.range),
                     body_text: text_for_range(source, function.range),
+                    assertions: collect_assertions_from_statements(source, &function.body),
                     parametrized: is_parametrized(&function.decorator_list),
                     framework: if in_unittest_class {
                         "unittest"
@@ -268,6 +280,144 @@ fn collect_tests_from_statements(
             _ => {}
         }
     }
+}
+
+fn collect_assertions_from_statements(source: &str, statements: &[Stmt]) -> Vec<PythonAssertion> {
+    let mut out = Vec::new();
+    for stmt in statements {
+        match stmt {
+            Stmt::Assert(assertion) => {
+                out.push(assertion_from_assert_stmt(source, assertion));
+            }
+            Stmt::Expr(expr_stmt) => {
+                if let Some(assertion) = assertion_from_call_expr(source, &expr_stmt.value) {
+                    out.push(assertion);
+                }
+            }
+            Stmt::With(with_stmt) => {
+                for item in &with_stmt.items {
+                    if let Some(assertion) = assertion_from_context_expr(source, &item.context_expr)
+                    {
+                        out.push(assertion);
+                    }
+                }
+                out.extend(collect_assertions_from_statements(source, &with_stmt.body));
+            }
+            Stmt::AsyncWith(with_stmt) => {
+                for item in &with_stmt.items {
+                    if let Some(assertion) = assertion_from_context_expr(source, &item.context_expr)
+                    {
+                        out.push(assertion);
+                    }
+                }
+                out.extend(collect_assertions_from_statements(source, &with_stmt.body));
+            }
+            Stmt::If(if_stmt) => {
+                out.extend(collect_assertions_from_statements(source, &if_stmt.body));
+                out.extend(collect_assertions_from_statements(source, &if_stmt.orelse));
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+fn assertion_from_assert_stmt(source: &str, assertion: &ast::StmtAssert) -> PythonAssertion {
+    let line = line_for_range_start(source, assertion.range);
+    let text = text_for_range(source, assertion.range).trim().to_string();
+    let (oracle_kind, oracle_strength) = match assertion.test.as_ref() {
+        Expr::Compare(compare) => oracle_for_compare(&compare.ops),
+        Expr::Call(call) if call_name_is(&call.func, "isinstance") => {
+            (OracleKind::RelationalCheck, OracleStrength::Weak)
+        }
+        _ => (OracleKind::SmokeOnly, OracleStrength::Smoke),
+    };
+    PythonAssertion {
+        text,
+        line,
+        oracle_kind,
+        oracle_strength,
+    }
+}
+
+fn oracle_for_compare(ops: &[CmpOp]) -> (OracleKind, OracleStrength) {
+    match ops.first() {
+        Some(CmpOp::Eq) if ops.len() == 1 => (OracleKind::ExactValue, OracleStrength::Strong),
+        Some(CmpOp::NotEq) if ops.len() == 1 => (OracleKind::RelationalCheck, OracleStrength::Weak),
+        Some(_) => (OracleKind::RelationalCheck, OracleStrength::Weak),
+        None => (OracleKind::SmokeOnly, OracleStrength::Smoke),
+    }
+}
+
+fn assertion_from_context_expr(source: &str, expr: &Expr) -> Option<PythonAssertion> {
+    let Expr::Call(call) = expr else {
+        return None;
+    };
+    let name = expr_full_name(&call.func)?;
+    if name == "raises" || name.ends_with(".raises") {
+        return Some(error_assertion_from_call(source, call, "pytest.raises"));
+    }
+    None
+}
+
+fn assertion_from_call_expr(source: &str, expr: &Expr) -> Option<PythonAssertion> {
+    let Expr::Call(call) = expr else {
+        return None;
+    };
+    let name = expr_full_name(&call.func)?;
+    let line = line_for_range_start(source, call.range);
+    let text = text_for_range(source, call.range).trim().to_string();
+    let tail = name.rsplit('.').next().unwrap_or(name.as_str());
+    let (oracle_kind, oracle_strength) = match tail {
+        "assertEqual" => (OracleKind::ExactValue, OracleStrength::Strong),
+        "assertNotEqual" => (OracleKind::RelationalCheck, OracleStrength::Weak),
+        "assertTrue" | "assertFalse" => (OracleKind::SmokeOnly, OracleStrength::Smoke),
+        "assertRaises" => {
+            return Some(error_assertion_from_call(source, call, "assertRaises"));
+        }
+        "assert_called_once_with" | "assert_called_with" | "assert_called_once" => {
+            (OracleKind::MockExpectation, OracleStrength::Medium)
+        }
+        "assert_called" | "assert_not_called" => {
+            (OracleKind::MockExpectation, OracleStrength::Weak)
+        }
+        _ => return None,
+    };
+    Some(PythonAssertion {
+        text,
+        line,
+        oracle_kind,
+        oracle_strength,
+    })
+}
+
+fn error_assertion_from_call(source: &str, call: &ast::ExprCall, label: &str) -> PythonAssertion {
+    let line = line_for_range_start(source, call.range);
+    let exception = call.args.first().and_then(expr_full_name);
+    let is_broad = exception
+        .as_deref()
+        .is_none_or(|name| matches!(name, "Exception" | "BaseException"));
+    let (oracle_kind, oracle_strength) = if is_broad {
+        (OracleKind::BroadError, OracleStrength::Weak)
+    } else {
+        (OracleKind::ExactErrorVariant, OracleStrength::Strong)
+    };
+    let text = if let Some(exception) = exception {
+        format!("{label}({exception})")
+    } else {
+        format!("{label}(...)")
+    };
+    PythonAssertion {
+        text,
+        line,
+        oracle_kind,
+        oracle_strength,
+    }
+}
+
+fn call_name_is(func: &Expr, expected: &str) -> bool {
+    expr_full_name(func)
+        .is_some_and(|name| name == expected || name.ends_with(&format!(".{expected}")))
 }
 
 fn is_parametrized(decorators: &[Expr]) -> bool {
@@ -303,21 +453,46 @@ fn find_related_tests(owner: &PythonOwner, all_tests: &[PythonTest]) -> Vec<Rela
         .iter()
         .filter(|test| test_references_owner(test, owner))
         .map(|test| {
-            let oracle = if test.parametrized {
-                Some("pytest.mark.parametrize".to_string())
-            } else {
-                None
+            let strongest = strongest_assertion(&test.assertions);
+            let (oracle_kind, oracle_strength, oracle) = match strongest {
+                Some(assertion) => (
+                    assertion.oracle_kind.clone(),
+                    assertion.oracle_strength.clone(),
+                    Some(assertion_oracle_text(assertion)),
+                ),
+                None => (
+                    OracleKind::Unknown,
+                    OracleStrength::Unknown,
+                    test.parametrized
+                        .then_some("pytest.mark.parametrize".to_string()),
+                ),
             };
             RelatedTest {
                 name: test.name.clone(),
                 file: test.file.clone(),
                 line: test.line,
                 oracle,
-                oracle_kind: OracleKind::Unknown,
-                oracle_strength: OracleStrength::Unknown,
+                oracle_kind,
+                oracle_strength,
             }
         })
         .collect()
+}
+
+fn strongest_assertion(assertions: &[PythonAssertion]) -> Option<&PythonAssertion> {
+    assertions
+        .iter()
+        .max_by_key(|assertion| assertion.oracle_strength.rank())
+}
+
+fn assertion_oracle_text(assertion: &PythonAssertion) -> String {
+    format!(
+        "{} at line {} ({}/{})",
+        assertion.text,
+        assertion.line,
+        assertion.oracle_kind.as_str(),
+        assertion.oracle_strength.as_str()
+    )
 }
 
 fn test_references_owner(test: &PythonTest, owner: &PythonOwner) -> bool {
@@ -356,6 +531,16 @@ fn classify_change(
         .filter(|owner| normalized_path(&owner.file) == changed_file)
         .find(|owner| line >= owner.start_line && line <= owner.end_line)?;
     let related = find_related_tests(owner, all_tests);
+    let strongest_strength = related
+        .iter()
+        .map(|test| test.oracle_strength.rank())
+        .max()
+        .unwrap_or(0);
+    let strongest_kind = related
+        .iter()
+        .max_by_key(|test| test.oracle_strength.rank())
+        .map(|test| test.oracle_kind.clone())
+        .unwrap_or(OracleKind::Unknown);
 
     let (class, reach_state, observe_state, discriminate_state, missing) = if related.is_empty() {
         (
@@ -368,6 +553,18 @@ fn classify_change(
                 owner.name
             )],
         )
+    } else if strongest_strength >= OracleStrength::Strong.rank() {
+        (
+            ExposureClass::Exposed,
+            StageState::Yes,
+            StageState::Yes,
+            StageState::Yes,
+            vec![format!(
+                "Related Python test reaches `{}` with a `{}` oracle. Preview static evidence suggests the changed behavior is observed by a strong assertion.",
+                owner.name,
+                strongest_kind.as_str()
+            )],
+        )
     } else {
         (
             ExposureClass::WeaklyExposed,
@@ -375,8 +572,9 @@ fn classify_change(
             StageState::Weak,
             StageState::Weak,
             vec![format!(
-                "Related Python test reaches `{}` but assertion strength is not inspected in this slice; add or verify an exact-value assertion after Python assertion extraction lands.",
-                owner.name
+                "Related Python test reaches `{}` but the strongest extracted oracle is `{}`; upgrade by adding an exact-value or exact-error assertion for the changed behavior.",
+                owner.name,
+                strongest_kind.as_str()
             )],
         )
     };
@@ -420,21 +618,38 @@ fn classify_change(
     let observe = StageEvidence::new(
         observe_state,
         Confidence::Low,
-        "Python owner/test slice records related tests but does not yet extract assertion strength.",
+        format!(
+            "Strongest extracted Python oracle kind: `{}` (rank {})",
+            strongest_kind.as_str(),
+            strongest_strength
+        ),
     );
-    let discriminate = StageEvidence::new(
-        discriminate_state,
-        Confidence::Low,
-        "Python owner/test slice cannot confirm a discriminator until assertion extraction lands.",
-    );
+    let discriminate_summary = if strongest_strength >= OracleStrength::Strong.rank() {
+        format!(
+            "Related Python test uses a `{}` oracle; preview static evidence treats it as a discriminator.",
+            strongest_kind.as_str()
+        )
+    } else {
+        "Python preview found no strong discriminator; use exact-value or exact-error assertions to escalate.".to_string()
+    };
+    let discriminate =
+        StageEvidence::new(discriminate_state, Confidence::Low, &discriminate_summary);
 
     let recommended = match class {
+        ExposureClass::Exposed => {
+            "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.".to_string()
+        }
         ExposureClass::NoStaticPath => {
             "Python preview: no related test calls the changed owner; add a pytest or unittest test that exercises this behavior.".to_string()
         }
         _ => {
-            "Python preview: related test found; add or verify a focused assertion once Python assertion extraction lands.".to_string()
+            "Python preview: related test found; add or verify a focused exact-value or exact-error assertion for the changed behavior.".to_string()
         }
+    };
+    let confidence = if matches!(class, ExposureClass::Exposed) {
+        0.55
+    } else {
+        0.4
     };
 
     let mut evidence = vec![
@@ -467,7 +682,7 @@ fn classify_change(
                 discriminate,
             },
         },
-        confidence: 0.4,
+        confidence,
         evidence,
         missing,
         flow_sinks: Vec::new(),
@@ -609,6 +824,13 @@ mod tests {
         }
     }
 
+    fn test_named<'a>(tests: &'a [PythonTest], name: &str) -> Result<&'a PythonTest, String> {
+        tests
+            .iter()
+            .find(|test| test.name == name)
+            .ok_or_else(|| format!("expected Python test named {name}"))
+    }
+
     #[test]
     fn accepts_py_paths() {
         let adapter = PythonAdapter;
@@ -737,6 +959,126 @@ class PriceTests(unittest.TestCase):
     }
 
     #[test]
+    fn extract_tests_recognizes_python_assertion_oracles() -> Result<(), String> {
+        let tests = extract_tests(
+            Path::new("tests/test_pricing.py"),
+            r#"
+import unittest
+import pytest
+
+def test_exact_value():
+    assert apply_discount(100, 50) == 90
+
+def test_truthiness():
+    assert apply_discount(100, 50)
+
+def test_type_shape():
+    assert isinstance(apply_discount(100, 50), int)
+
+def test_specific_error():
+    with pytest.raises(ValueError):
+        apply_discount(-1, 50)
+
+def test_broad_error():
+    with pytest.raises(Exception):
+        apply_discount(-1, 50)
+
+def test_mock_interaction(mock):
+    notify_customer(mock)
+    mock.assert_called_once_with("paid")
+
+def test_mock_weak(mock):
+    notify_customer(mock)
+    mock.assert_not_called()
+
+class PriceTests(unittest.TestCase):
+    def test_unittest_equal(self):
+        self.assertEqual(apply_discount(100, 50), 90)
+
+    def test_unittest_raises(self):
+        self.assertRaises(ValueError, apply_discount, -1, 50)
+"#,
+        );
+
+        let exact = test_named(&tests, "test_exact_value")?;
+        assert_eq!(exact.assertions[0].oracle_kind, OracleKind::ExactValue);
+        assert_eq!(exact.assertions[0].oracle_strength, OracleStrength::Strong);
+
+        let truthiness = test_named(&tests, "test_truthiness")?;
+        assert_eq!(truthiness.assertions[0].oracle_kind, OracleKind::SmokeOnly);
+        assert_eq!(
+            truthiness.assertions[0].oracle_strength,
+            OracleStrength::Smoke
+        );
+
+        let broad_type = test_named(&tests, "test_type_shape")?;
+        assert_eq!(
+            broad_type.assertions[0].oracle_kind,
+            OracleKind::RelationalCheck
+        );
+        assert_eq!(
+            broad_type.assertions[0].oracle_strength,
+            OracleStrength::Weak
+        );
+
+        let specific_error = test_named(&tests, "test_specific_error")?;
+        assert_eq!(
+            specific_error.assertions[0].oracle_kind,
+            OracleKind::ExactErrorVariant
+        );
+        assert_eq!(
+            specific_error.assertions[0].oracle_strength,
+            OracleStrength::Strong
+        );
+
+        let broad_error = test_named(&tests, "test_broad_error")?;
+        assert_eq!(
+            broad_error.assertions[0].oracle_kind,
+            OracleKind::BroadError
+        );
+        assert_eq!(
+            broad_error.assertions[0].oracle_strength,
+            OracleStrength::Weak
+        );
+
+        let mock = test_named(&tests, "test_mock_interaction")?;
+        assert_eq!(mock.assertions[0].oracle_kind, OracleKind::MockExpectation);
+        assert_eq!(mock.assertions[0].oracle_strength, OracleStrength::Medium);
+
+        let mock_weak = test_named(&tests, "test_mock_weak")?;
+        assert_eq!(
+            mock_weak.assertions[0].oracle_kind,
+            OracleKind::MockExpectation
+        );
+        assert_eq!(
+            mock_weak.assertions[0].oracle_strength,
+            OracleStrength::Weak
+        );
+
+        let unittest_equal = test_named(&tests, "test_unittest_equal")?;
+        assert_eq!(
+            unittest_equal.assertions[0].oracle_kind,
+            OracleKind::ExactValue
+        );
+        assert_eq!(
+            unittest_equal.assertions[0].oracle_strength,
+            OracleStrength::Strong
+        );
+
+        let unittest_raises = test_named(&tests, "test_unittest_raises")?;
+        assert_eq!(
+            unittest_raises.assertions[0].oracle_kind,
+            OracleKind::ExactErrorVariant
+        );
+        assert_eq!(
+            unittest_raises.assertions[0].oracle_strength,
+            OracleStrength::Strong
+        );
+
+        Ok(())
+    }
+
+    #[test]
     fn classify_change_returns_weakly_exposed_when_related_test_exists() -> Result<(), String> {
         let owners = extract_owners(
             Path::new("src/pricing.py"),
@@ -762,6 +1104,66 @@ class PriceTests(unittest.TestCase):
         assert_eq!(finding.language_status, Some(LanguageStatus::Preview));
         assert_eq!(finding.owner_kind, Some(OwnerKind::Function));
         assert_eq!(finding.related_tests.len(), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_returns_exposed_with_strong_python_oracle() -> Result<(), String> {
+        let owners = extract_owners(
+            Path::new("src/pricing.py"),
+            "def apply_discount(amount):\n    if amount >= 100:\n        return amount - 10\n    return amount\n",
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_pricing.py"),
+            "def test_apply_discount():\n    assert apply_discount(100) == 90\n",
+        );
+
+        let Some(finding) = classify_change(
+            Path::new("src/pricing.py"),
+            2,
+            "    if amount >= 100:",
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed line inside owner should classify".to_string());
+        };
+
+        assert_eq!(finding.class, ExposureClass::Exposed);
+        assert_eq!(finding.related_tests[0].oracle_kind, OracleKind::ExactValue);
+        assert_eq!(
+            finding.related_tests[0].oracle_strength,
+            OracleStrength::Strong
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_keeps_broad_python_oracle_weak() -> Result<(), String> {
+        let owners = extract_owners(
+            Path::new("src/pricing.py"),
+            "def apply_discount(amount):\n    return amount - 10\n",
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_pricing.py"),
+            "def test_apply_discount():\n    assert apply_discount(100)\n",
+        );
+
+        let Some(finding) = classify_change(
+            Path::new("src/pricing.py"),
+            2,
+            "    return amount - 10",
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed line inside owner should classify".to_string());
+        };
+
+        assert_eq!(finding.class, ExposureClass::WeaklyExposed);
+        assert_eq!(finding.related_tests[0].oracle_kind, OracleKind::SmokeOnly);
+        assert_eq!(
+            finding.related_tests[0].oracle_strength,
+            OracleStrength::Smoke
+        );
         Ok(())
     }
 

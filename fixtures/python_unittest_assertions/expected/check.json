@@ -1,0 +1,110 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_unittest_assertions/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_service.py:2:python_preview",
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 0.55,
+      "probe": {
+        "id": "probe:src_service.py:2:python_preview",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/service.py",
+        "line": 2,
+        "expression": "    return value.strip().lower()"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `normalize`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"yes","confidence":"low","summary":"Related Python test uses a `exact_value` oracle; preview static evidence treats it as a discriminator."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `normalize`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; preview static evidence treats it as a discriminator.", "related test tests/test_service.py:7 test_normalize_exact_value uses strong exact value oracle: self.assertEqual(normalize(\" PAID \"), \"paid\") at line 8 (exact_value/strong)"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: normalize", "owner_kind: function", "test_framework: unittest (test_normalize_exact_value)"],
+      "missing": ["Related Python test reaches `normalize` with a `exact_value` oracle. Preview static evidence suggests the changed behavior is observed by a strong assertion."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "test_normalize_exact_value",
+          "file": "tests/test_service.py",
+          "line": 7,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "self.assertEqual(normalize(\" PAID \"), \"paid\") at line 8 (exact_value/strong)"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
+      "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function"
+    },
+    {
+      "id": "probe:src_service.py:5:python_preview",
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_service.py:5:python_preview",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/service.py",
+        "line": 5,
+        "expression": "    if amount < 0:"
+       },
+      "ripr": {
+        "reach": {"state":"no","confidence":"low","summary":"0 related Python test(s) found for owner `reject_negative`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "observe": {"state":"no","confidence":"low","summary":"Strongest extracted Python oracle kind: `unknown` (rank 0)"},
+        "discriminate": {"state":"no","confidence":"low","summary":"Python preview found no strong discriminator; use exact-value or exact-error assertions to escalate."}
+       },
+      "evidence_path": ["reach no: 0 related Python test(s) found for owner `reject_negative`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation no: Strongest extracted Python oracle kind: `unknown` (rank 0)", "discriminator no: Python preview found no strong discriminator; use exact-value or exact-error assertions to escalate."],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: reject_negative", "owner_kind: function"],
+      "missing": ["No Python test references `reject_negative(`; add a pytest or unittest test that calls the changed owner."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "Python preview: no related test calls the changed owner; add a pytest or unittest test that exercises this behavior.",
+      "suggested_next_action": "Python preview: no related test calls the changed owner; add a pytest or unittest test that exercises this behavior.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function"
+    }
+  ]
+}

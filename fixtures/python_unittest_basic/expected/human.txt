@@ -25,12 +25,12 @@ Evidence
   - reach yes: 1 related Python test(s) found for owner `risk_score`
   - infection unknown: Python preview adapter does not yet model infection.
   - propagation unknown: Python preview adapter does not yet model propagation.
-  - observation weak: Python owner/test slice records related tests but does not yet extract assertion strength.
-  - discriminator weak: Python owner/test slice cannot confirm a discriminator until assertion extraction lands.
-  - related test tests/test_risk.py:7 test_risk_score_high uses unknown unknown oracle
+  - observation weak: Strongest extracted Python oracle kind: `smoke_only` (rank 2)
+  - discriminator weak: Python preview found no strong discriminator; use exact-value or exact-error assertions to escalate.
+  - related test tests/test_risk.py:7 test_risk_score_high uses smoke smoke only oracle: self.assertTrue(value) at line 9 (smoke_only/smoke)
 
 Weakness
-  - Related Python test reaches `risk_score` but assertion strength is not inspected in this slice; add or verify an exact-value assertion after Python assertion extraction lands.
+  - Related Python test reaches `risk_score` but the strongest extracted oracle is `smoke_only`; upgrade by adding an exact-value or exact-error assertion for the changed behavior.
 
 Next step
-  Python preview: related test found; add or verify a focused assertion once Python assertion extraction lands.
+  Python preview: related test found; add or verify a focused exact-value or exact-error assertion for the changed behavior.

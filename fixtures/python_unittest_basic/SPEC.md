@@ -36,11 +36,11 @@ The Python preview adapter:
 - recognises `risk_score` as a Python function owner,
 - recognises `RiskScoreTests.test_risk_score_high` as a unittest test,
 - emits preview language metadata and `owner_kind = "function"`,
-- classifies the changed line as `weakly_exposed` because assertion
-  extraction is not part of this slice.
+- classifies the changed line as `weakly_exposed` because `self.assertTrue`
+  is smoke evidence, not an exact-value discriminator.
 
 ## Must Not
 
 - Execute unittest.
-- Infer assertion strength from `self.assert*` calls yet.
+- Upgrade smoke-style `self.assertTrue` evidence to exact-value evidence.
 - Require runtime imports or environment setup.
