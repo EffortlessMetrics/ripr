@@ -6539,7 +6539,10 @@ It checks repo-local PR review front-panel receipts for the documented Campaign
 24 reviewer routes. It checks repo-local report-packet index receipts for the
 documented Campaign 25 packet-index routes. It records
 `default_ci_blocking: false`; generated CI still leaves `RIPR_GATE_MODE` unset
-unless the repository configures it. The generated adoption receipts are compared with
+unless the repository configures it. It also validates the generated GitHub
+workflow cockpit receipt for `Start here` guidance, known regeneration
+commands, artifact upload, advisory default posture, and gate-authority
+boundaries. The generated adoption receipts are compared with
 `fixtures/boundary_gap/expected/gate-adoption/`. The checked first-action
 receipts are read from `fixtures/boundary_gap/expected/first-useful-action/`.
 The checked front-panel receipts are read from
@@ -6682,6 +6685,26 @@ JSON shape:
       }
     ]
   },
+  "generated_ci_cockpit": {
+    "default_ci_blocking": false,
+    "default_inline_comments": "off",
+    "language_grouping": "deferred",
+    "cases": [
+      {
+        "name": "generated-pr-ci-review-workflow",
+        "command": "cargo run --quiet -p ripr -- init --ci github --dry-run",
+        "duration_ms": 123,
+        "start_here": true,
+        "repair_commands": 3,
+        "expected_repair_commands": 3,
+        "gate_authority_boundary": true,
+        "default_advisory": true,
+        "artifact_upload": true,
+        "language_grouping_status": "deferred",
+        "errors": []
+      }
+    ]
+  },
   "gate_adoption": {
     "default_ci_blocking": false,
     "receipt_dir": "target/ripr/dogfood/gate-adoption",
@@ -6745,6 +6768,12 @@ The checked report-packet index receipt cases are:
 | `missing_assistant_proof` | `warn` | Routes users to regenerate missing assistant proof instead of hiding the gap. |
 | `missing_receipts` | `warn` | Shows missing validation receipts and their regeneration commands. |
 | `coverage_grip_present` | `pass` | Keeps coverage/grip context findable as calibration context, not runtime confirmation. |
+
+The checked generated-CI cockpit receipt cases are:
+
+| Case | Expected result | Purpose |
+| --- | --- | --- |
+| `generated-pr-ci-review-workflow` | `pass` | Validates the generated workflow summary starts with `Start here`, includes known regeneration commands for missing cockpit surfaces, uploads report artifacts, stays advisory by default, and keeps gate-decision authority separate. |
 
 The checked adoption cases are:
 

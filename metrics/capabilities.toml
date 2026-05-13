@@ -1257,6 +1257,7 @@ evidence = [
   "ripr init --ci github generates an advisory GitHub workflow that runs ripr pilot, uploads pilot/report/agent/review artifacts, writes a RIPR advisory summary, writes repo badge JSON and Shields artifacts, optionally renders an operator cockpit when the repo-local xtask exists, and makes SARIF rendering/upload optional through RIPR_UPLOAD_SARIF",
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture pins the generated workflow artifact packet, optional SARIF gates, non-blocking posture, and badge outputs",
   "crates/ripr/src/cli/commands.rs init CI generation tests cover advisory workflow content, report upload, optional SARIF, and overwrite guards",
+  "cargo xtask dogfood validates generated-CI cockpit receipts for Start here guidance, known cockpit regeneration commands, report artifact upload, advisory default posture, and gate-decision authority boundaries",
   "crates/ripr/tests/cli_smoke.rs init --ci github smoke tests cover dry-run, generated workflow, and existing workflow protection",
   "SARIF renderer tests cover stable rule IDs, configured severity, off severity omission, suppression metadata, valid JSON, and static language",
   "cargo xtask sarif-policy compares current SARIF against a baseline and only fails on new warning-level results when explicitly requested",
