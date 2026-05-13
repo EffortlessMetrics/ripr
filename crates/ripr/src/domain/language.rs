@@ -3,8 +3,7 @@
 //! See `docs/specs/RIPR-SPEC-0026-language-adapter-contract.md`.
 //!
 //! These are pure-data enums shared between the analysis adapter layer and
-//! the output renderers that emit the additive optional `language` and
-//! `language_status` fields.
+//! the output renderers that emit additive optional language metadata fields.
 
 /// The set of source languages an adapter can identify itself as.
 ///
@@ -54,6 +53,36 @@ impl LanguageStatus {
     }
 }
 
+/// Stable static limitation categories for syntax-first preview evidence.
+///
+/// These labels are additive optional finding metadata per RIPR-SPEC-0026.
+/// They give downstream consumers a typed discriminator for display and
+/// reporting without parsing human evidence text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StaticLimitKind {
+    DynamicDispatch,
+    Metaprogramming,
+    MissingImportGraph,
+    DecoratorIndirection,
+    MockedModule,
+    UnsupportedSyntax,
+}
+
+impl StaticLimitKind {
+    /// Stable wire string used when this kind is serialized into the
+    /// additive optional `static_limit_kind` output field.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            StaticLimitKind::DynamicDispatch => "dynamic_dispatch",
+            StaticLimitKind::Metaprogramming => "metaprogramming",
+            StaticLimitKind::MissingImportGraph => "missing_import_graph",
+            StaticLimitKind::DecoratorIndirection => "decorator_indirection",
+            StaticLimitKind::MockedModule => "mocked_module",
+            StaticLimitKind::UnsupportedSyntax => "unsupported_syntax",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -69,5 +98,27 @@ mod tests {
     fn language_status_wire_strings_are_stable() {
         assert_eq!(LanguageStatus::Stable.as_str(), "stable");
         assert_eq!(LanguageStatus::Preview.as_str(), "preview");
+    }
+
+    #[test]
+    fn static_limit_kind_wire_strings_are_stable() {
+        assert_eq!(
+            StaticLimitKind::DynamicDispatch.as_str(),
+            "dynamic_dispatch"
+        );
+        assert_eq!(StaticLimitKind::Metaprogramming.as_str(), "metaprogramming");
+        assert_eq!(
+            StaticLimitKind::MissingImportGraph.as_str(),
+            "missing_import_graph"
+        );
+        assert_eq!(
+            StaticLimitKind::DecoratorIndirection.as_str(),
+            "decorator_indirection"
+        );
+        assert_eq!(StaticLimitKind::MockedModule.as_str(), "mocked_module");
+        assert_eq!(
+            StaticLimitKind::UnsupportedSyntax.as_str(),
+            "unsupported_syntax"
+        );
     }
 }

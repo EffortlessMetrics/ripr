@@ -94,6 +94,7 @@ pub fn classify_probe(probe: &Probe, index: &RustIndex) -> Finding {
         // classification. The classifier itself stays language-neutral.
         language: None,
         language_status: None,
+        static_limit_kind: None,
     }
 }
 

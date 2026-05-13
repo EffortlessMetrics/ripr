@@ -3179,6 +3179,7 @@ fn sample_finding() -> Finding {
         recommended_next_step: Some("Add an exact boundary assertion.".to_string()),
         language: None,
         language_status: None,
+        static_limit_kind: None,
     }
 }
 
