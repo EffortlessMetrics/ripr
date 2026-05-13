@@ -146,6 +146,13 @@ Planned scope:
   pins matched joins, ambiguous joins, runtime-only signal, and no-runtime-data
   guards without changing analyzer behavior, gates, CI behavior, mutation
   execution, generated tests, provider calls, or score definitions.
+- Added `cargo xtask evidence-quality-trend`, a repo-local Lane 1 trend report
+  over the current evidence-quality scorecard and optional previous scorecard
+  or audit snapshot. It writes `evidence-quality-trend.{json,md}`, distinguishes
+  improvement, regression, unchanged, mixed, and unknown trend states, and
+  reports missing history explicitly without redefining RIPR scores or changing
+  analyzer behavior, gates, CI behavior, mutation execution, generated tests,
+  provider calls, or editor surfaces.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 

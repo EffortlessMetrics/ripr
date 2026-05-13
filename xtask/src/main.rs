@@ -11276,6 +11276,726 @@ fn evidence_quality_scorecard_markdown(report: &EvidenceQualityScorecardReport) 
     out
 }
 
+const EVIDENCE_QUALITY_TREND_SCHEMA_VERSION: &str = "0.1";
+const EVIDENCE_QUALITY_TREND_CATEGORY_LIMIT: usize = 8;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct EvidenceQualityTrendArgs {
+    current: Option<PathBuf>,
+    previous: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct EvidenceQualityTrendInputs {
+    current_scorecard: EvidenceQualityScorecardInput,
+    previous_artifact: EvidenceQualityScorecardInput,
+    capability_matrix: EvidenceQualityScorecardInput,
+    traceability: EvidenceQualityScorecardInput,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct EvidenceQualityTrendSummary {
+    status: String,
+    compared_metrics: usize,
+    improved_metrics: usize,
+    regressed_metrics: usize,
+    unchanged_metrics: usize,
+    unknown_metrics: usize,
+    no_history: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct EvidenceQualityTrendMetric {
+    metric: String,
+    label: String,
+    before: Option<usize>,
+    after: Option<usize>,
+    delta: Option<isize>,
+    direction: String,
+    interpretation: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct EvidenceQualityTrendUnknown {
+    kind: String,
+    summary: String,
+    next_repair: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct EvidenceQualityTrendReport {
+    generated_at: String,
+    root: String,
+    inputs: EvidenceQualityTrendInputs,
+    summary: EvidenceQualityTrendSummary,
+    metric_trends: Vec<EvidenceQualityTrendMetric>,
+    static_limitation_category_trends: Vec<EvidenceQualityTrendMetric>,
+    unknowns: Vec<EvidenceQualityTrendUnknown>,
+}
+
+struct EvidenceQualityTrendMetricSpec<'a> {
+    metric: &'a str,
+    label: &'a str,
+    lower_is_better: bool,
+    current_path: &'a [&'a str],
+    previous_path: &'a [&'a str],
+}
+
+/// Build a repo-local Lane 1 evidence-quality trend report.
+/// The trend is advisory and compares existing scorecard or audit snapshots;
+/// it does not change analyzer behavior, gate policy, CI projection, editor
+/// output, source files, generated tests, provider calls, or runtime execution.
+pub(crate) fn evidence_quality_trend_report_impl(args: &[String]) -> Result<(), String> {
+    ensure_reports_dir()?;
+    let args = parse_evidence_quality_trend_args(args)?;
+    let explicit_current = args.current.is_some();
+    let current_path = args
+        .current
+        .unwrap_or_else(|| reports_dir().join("evidence-quality-scorecard.json"));
+    if !current_path.exists() {
+        if explicit_current {
+            return Err(format!(
+                "current evidence-quality scorecard not found: {}",
+                current_path.display()
+            ));
+        }
+        evidence_quality_scorecard_report_impl()?;
+    }
+    let current = read_json_value(&current_path).map_err(|err| {
+        format!(
+            "evidence-quality-trend requires a current scorecard at {}; {err}",
+            current_path.display()
+        )
+    })?;
+
+    let explicit_previous = args.previous.is_some();
+    let previous_path = args
+        .previous
+        .or_else(evidence_quality_trend_default_previous_path)
+        .unwrap_or_else(|| reports_dir().join("evidence-quality-scorecard.previous.json"));
+    let previous = if previous_path.exists() {
+        Some(read_json_value(&previous_path).map_err(|err| {
+            format!(
+                "failed to read previous evidence-quality artifact at {}; {err}",
+                previous_path.display()
+            )
+        })?)
+    } else if explicit_previous {
+        return Err(format!(
+            "previous evidence-quality artifact not found: {}",
+            previous_path.display()
+        ));
+    } else {
+        None
+    };
+
+    let inputs =
+        evidence_quality_trend_inputs(&current_path, &current, &previous_path, previous.as_ref())?;
+    let report = evidence_quality_trend_from_values(
+        evidence_quality_scorecard_generated_at()?,
+        inputs,
+        &current,
+        previous.as_ref(),
+    )?;
+
+    write_report(
+        "evidence-quality-trend.json",
+        &evidence_quality_trend_json(&report)?,
+    )?;
+    write_report(
+        "evidence-quality-trend.md",
+        &evidence_quality_trend_markdown(&report),
+    )
+}
+
+fn parse_evidence_quality_trend_args(args: &[String]) -> Result<EvidenceQualityTrendArgs, String> {
+    let mut parsed = EvidenceQualityTrendArgs::default();
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--current" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err("evidence-quality-trend --current requires a path".to_string());
+                };
+                parsed.current = Some(PathBuf::from(value));
+                index += 2;
+            }
+            "--previous" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err("evidence-quality-trend --previous requires a path".to_string());
+                };
+                parsed.previous = Some(PathBuf::from(value));
+                index += 2;
+            }
+            "--help" | "-h" => {
+                return Err(
+                    "usage: cargo xtask evidence-quality-trend [--current <path>] [--previous <path>]"
+                        .to_string(),
+                );
+            }
+            other => {
+                return Err(format!(
+                    "unknown evidence-quality-trend argument `{other}`; expected --current or --previous"
+                ));
+            }
+        }
+    }
+    Ok(parsed)
+}
+
+fn evidence_quality_trend_default_previous_path() -> Option<PathBuf> {
+    [
+        reports_dir().join("evidence-quality-scorecard.previous.json"),
+        reports_dir().join("lane1-evidence-audit.previous.json"),
+    ]
+    .into_iter()
+    .find(|path| path.exists())
+}
+
+fn evidence_quality_trend_inputs(
+    current_path: &Path,
+    current: &Value,
+    previous_path: &Path,
+    previous: Option<&Value>,
+) -> Result<EvidenceQualityTrendInputs, String> {
+    Ok(EvidenceQualityTrendInputs {
+        current_scorecard: scorecard_input_artifact(
+            current_path,
+            "loaded",
+            Some(current),
+            "current evidence-quality scorecard",
+        )?,
+        previous_artifact: scorecard_input_artifact(
+            previous_path,
+            if previous.is_some() {
+                "loaded"
+            } else {
+                "missing"
+            },
+            previous,
+            "optional previous scorecard or audit snapshot for trend comparison",
+        )?,
+        capability_matrix: scorecard_input_artifact(
+            Path::new("docs/CAPABILITY_MATRIX.md"),
+            "loaded",
+            None,
+            "class-scoped capability maturity vocabulary",
+        )?,
+        traceability: scorecard_input_artifact(
+            Path::new(".ripr/traceability.toml"),
+            "loaded",
+            None,
+            "spec/test/code/output/metric linkage",
+        )?,
+    })
+}
+
+fn evidence_quality_trend_from_values(
+    generated_at: String,
+    inputs: EvidenceQualityTrendInputs,
+    current: &Value,
+    previous: Option<&Value>,
+) -> Result<EvidenceQualityTrendReport, String> {
+    let root = audit_string(current, &["scope", "root"])
+        .or_else(|| audit_string(current, &["inputs", "root"]))
+        .unwrap_or_else(|| ".".to_string());
+    let metric_trends = evidence_quality_metric_trends(current, previous);
+    let static_limitation_category_trends =
+        evidence_quality_static_limitation_category_trends(current, previous);
+    let summary = evidence_quality_trend_summary(previous, &metric_trends);
+    let unknowns = evidence_quality_trend_unknowns(previous, &metric_trends);
+
+    Ok(EvidenceQualityTrendReport {
+        generated_at,
+        root,
+        inputs,
+        summary,
+        metric_trends,
+        static_limitation_category_trends,
+        unknowns,
+    })
+}
+
+fn evidence_quality_metric_trends(
+    current: &Value,
+    previous: Option<&Value>,
+) -> Vec<EvidenceQualityTrendMetric> {
+    let mut trends = [
+        EvidenceQualityTrendMetricSpec {
+            metric: "raw_headline_gaps",
+            label: "Raw headline gaps",
+            lower_is_better: true,
+            current_path: &["summary", "raw_headline_gaps"],
+            previous_path: &["summary", "raw_headline_gaps"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "duplicate_looking_groups_total",
+            label: "Duplicate-looking groups",
+            lower_is_better: true,
+            current_path: &["summary", "duplicate_looking_groups_total"],
+            previous_path: &["summary", "duplicate_looking_groups_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "missing_discriminators_total",
+            label: "Missing discriminators",
+            lower_is_better: true,
+            current_path: &["summary", "missing_discriminators_total"],
+            previous_path: &["summary", "missing_discriminators_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "static_limitations_total",
+            label: "Static limitations",
+            lower_is_better: true,
+            current_path: &["summary", "static_limitations_total"],
+            previous_path: &["summary", "static_limitations_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "low_or_opaque_top_related_tests",
+            label: "Low or opaque top related tests",
+            lower_is_better: true,
+            current_path: &["summary", "low_or_opaque_top_related_tests"],
+            previous_path: &["summary", "low_or_opaque_top_related_tests"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "oracle_unknown_count",
+            label: "Unknown oracle classifications",
+            lower_is_better: true,
+            current_path: &[],
+            previous_path: &[],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "uncalibrated_records",
+            label: "Uncalibrated records",
+            lower_is_better: true,
+            current_path: &["summary", "uncalibrated_records"],
+            previous_path: &["summary", "uncalibrated_records"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "calibrated_records",
+            label: "Calibrated records",
+            lower_is_better: false,
+            current_path: &["summary", "calibrated_records"],
+            previous_path: &["summary", "calibrated_records"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "evidence_records_missing",
+            label: "Evidence records missing",
+            lower_is_better: true,
+            current_path: &["summary", "evidence_records_missing"],
+            previous_path: &["summary", "evidence_records_missing"],
+        },
+    ]
+    .into_iter()
+    .map(|spec| evidence_quality_metric_trend(current, previous, spec))
+    .collect::<Vec<_>>();
+    trends.sort_by(|left, right| left.metric.cmp(&right.metric));
+    trends
+}
+
+fn evidence_quality_metric_trend(
+    current: &Value,
+    previous: Option<&Value>,
+    spec: EvidenceQualityTrendMetricSpec<'_>,
+) -> EvidenceQualityTrendMetric {
+    let after = if spec.metric == "oracle_unknown_count" {
+        Some(evidence_quality_oracle_unknown_count(current))
+    } else {
+        audit_usize(current, spec.current_path)
+    };
+    let before = previous.and_then(|previous| {
+        if spec.metric == "oracle_unknown_count" {
+            Some(evidence_quality_oracle_unknown_count(previous))
+        } else {
+            audit_usize(previous, spec.previous_path)
+        }
+    });
+    let (delta, direction) = evidence_quality_trend_direction(before, after, spec.lower_is_better);
+    let interpretation = evidence_quality_metric_interpretation(spec.metric, &direction);
+    EvidenceQualityTrendMetric {
+        metric: spec.metric.to_string(),
+        label: spec.label.to_string(),
+        before,
+        after,
+        delta,
+        direction,
+        interpretation,
+    }
+}
+
+fn evidence_quality_trend_direction(
+    before: Option<usize>,
+    after: Option<usize>,
+    lower_is_better: bool,
+) -> (Option<isize>, String) {
+    let (Some(before), Some(after)) = (before, after) else {
+        return (None, "unknown".to_string());
+    };
+    let delta = after as isize - before as isize;
+    if delta == 0 {
+        return (Some(delta), "unchanged".to_string());
+    }
+    let improved = if lower_is_better {
+        after < before
+    } else {
+        after > before
+    };
+    if improved {
+        (Some(delta), "improvement".to_string())
+    } else {
+        (Some(delta), "regression".to_string())
+    }
+}
+
+fn evidence_quality_metric_interpretation(metric: &str, direction: &str) -> String {
+    if direction == "unknown" {
+        return "No comparable previous value was available.".to_string();
+    }
+    match metric {
+        "calibrated_records" => {
+            "Higher calibrated record counts show broader checked imported-runtime coverage."
+        }
+        "oracle_unknown_count" => {
+            "Lower unknown oracle counts show sharper fixture-backed oracle semantics."
+        }
+        "low_or_opaque_top_related_tests" => {
+            "Lower low or opaque top related-test counts improve first-useful-action reliability."
+        }
+        "duplicate_looking_groups_total" => {
+            "Lower duplicate-looking group counts reduce canonical-gap overcount risk."
+        }
+        "uncalibrated_records" => {
+            "Lower uncalibrated record counts indicate more evidence classes have runtime context."
+        }
+        "static_limitations_total" => {
+            "Lower static limitation counts indicate fewer analyzer limits in the current evidence."
+        }
+        "evidence_records_missing" => {
+            "Lower missing evidence_record counts protect the shared evidence spine."
+        }
+        "raw_headline_gaps" | "missing_discriminators_total" => {
+            "Lower counts may be useful but require class-scoped fixture context before promotion."
+        }
+        _ => "Trend is advisory and does not redefine RIPR scores.",
+    }
+    .to_string()
+}
+
+fn evidence_quality_oracle_unknown_count(value: &Value) -> usize {
+    scorecard_count_at(
+        value,
+        &[
+            "oracle_semantics_distribution",
+            "oracle_kind_counts",
+            "unknown",
+        ],
+    ) + scorecard_count_at(
+        value,
+        &[
+            "oracle_semantics_distribution",
+            "oracle_strength_counts",
+            "unknown",
+        ],
+    )
+}
+
+fn evidence_quality_static_limitation_category_trends(
+    current: &Value,
+    previous: Option<&Value>,
+) -> Vec<EvidenceQualityTrendMetric> {
+    let current_counts = evidence_quality_static_category_counts(current);
+    let previous_counts = previous
+        .map(evidence_quality_static_category_counts)
+        .unwrap_or_default();
+    let categories = current_counts
+        .keys()
+        .chain(previous_counts.keys())
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let mut rows = categories
+        .iter()
+        .map(|category| {
+            let after = current_counts.get(category).copied();
+            let before = previous_counts.get(category).copied();
+            let (delta, direction) = evidence_quality_trend_direction(before, after, true);
+            EvidenceQualityTrendMetric {
+                metric: format!("static_limitation_category:{category}"),
+                label: category.clone(),
+                before,
+                after,
+                delta,
+                direction,
+                interpretation:
+                    "Lower category counts indicate fewer analyzer limitations of this class."
+                        .to_string(),
+            }
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        right
+            .after
+            .unwrap_or(0)
+            .cmp(&left.after.unwrap_or(0))
+            .then_with(|| left.label.cmp(&right.label))
+    });
+    rows.truncate(EVIDENCE_QUALITY_TREND_CATEGORY_LIMIT);
+    rows
+}
+
+fn evidence_quality_static_category_counts(value: &Value) -> BTreeMap<String, usize> {
+    [
+        &["static_limitation_categories", "by_category"][..],
+        &["static_limitations", "by_category"][..],
+    ]
+    .into_iter()
+    .find_map(|path| audit_get(value, path).and_then(Value::as_object))
+    .map(|object| {
+        object
+            .iter()
+            .filter_map(|(key, value)| value.as_u64().map(|count| (key.clone(), count as usize)))
+            .collect::<BTreeMap<_, _>>()
+    })
+    .unwrap_or_default()
+}
+
+fn evidence_quality_trend_summary(
+    previous: Option<&Value>,
+    metric_trends: &[EvidenceQualityTrendMetric],
+) -> EvidenceQualityTrendSummary {
+    if previous.is_none() {
+        return EvidenceQualityTrendSummary {
+            status: "unknown".to_string(),
+            unknown_metrics: metric_trends.len(),
+            no_history: true,
+            ..EvidenceQualityTrendSummary::default()
+        };
+    }
+    let improved_metrics = metric_trends
+        .iter()
+        .filter(|trend| trend.direction == "improvement")
+        .count();
+    let regressed_metrics = metric_trends
+        .iter()
+        .filter(|trend| trend.direction == "regression")
+        .count();
+    let unchanged_metrics = metric_trends
+        .iter()
+        .filter(|trend| trend.direction == "unchanged")
+        .count();
+    let unknown_metrics = metric_trends
+        .iter()
+        .filter(|trend| trend.direction == "unknown")
+        .count();
+    let compared_metrics = metric_trends.len().saturating_sub(unknown_metrics);
+    let status = if compared_metrics == 0 {
+        "unknown"
+    } else if regressed_metrics > 0 && improved_metrics > 0 {
+        "mixed"
+    } else if regressed_metrics > 0 {
+        "regression"
+    } else if improved_metrics > 0 {
+        "improvement"
+    } else {
+        "unchanged"
+    };
+    EvidenceQualityTrendSummary {
+        status: status.to_string(),
+        compared_metrics,
+        improved_metrics,
+        regressed_metrics,
+        unchanged_metrics,
+        unknown_metrics,
+        no_history: false,
+    }
+}
+
+fn evidence_quality_trend_unknowns(
+    previous: Option<&Value>,
+    metric_trends: &[EvidenceQualityTrendMetric],
+) -> Vec<EvidenceQualityTrendUnknown> {
+    let mut unknowns = Vec::new();
+    if previous.is_none() {
+        trend_push_unknown(
+            &mut unknowns,
+            "trend_history_unavailable",
+            "No previous scorecard or audit snapshot was available, so the report cannot claim improvement or regression.",
+            Some("report/evidence-quality-trend"),
+        );
+    }
+    for trend in metric_trends
+        .iter()
+        .filter(|trend| trend.direction == "unknown" && trend.after.is_none())
+    {
+        trend_push_unknown(
+            &mut unknowns,
+            "current_metric_missing",
+            &format!("Current scorecard is missing metric `{}`.", trend.metric),
+            Some("report/evidence-quality-scorecard"),
+        );
+    }
+    unknowns
+}
+
+fn trend_push_unknown(
+    unknowns: &mut Vec<EvidenceQualityTrendUnknown>,
+    kind: &str,
+    summary: &str,
+    next_repair: Option<&str>,
+) {
+    unknowns.push(EvidenceQualityTrendUnknown {
+        kind: kind.to_string(),
+        summary: summary.to_string(),
+        next_repair: next_repair.map(str::to_string),
+    });
+}
+
+fn evidence_quality_trend_json(report: &EvidenceQualityTrendReport) -> Result<String, String> {
+    let value = serde_json::json!({
+        "schema_version": EVIDENCE_QUALITY_TREND_SCHEMA_VERSION,
+        "tool": "ripr",
+        "report": "evidence-quality-trend",
+        "generated_at": report.generated_at,
+        "scope": {
+            "kind": "repo",
+            "root": report.root,
+        },
+        "inputs": {
+            "current_scorecard": scorecard_input_json(&report.inputs.current_scorecard),
+            "previous_artifact": scorecard_input_json(&report.inputs.previous_artifact),
+            "capability_matrix": scorecard_input_json(&report.inputs.capability_matrix),
+            "traceability": scorecard_input_json(&report.inputs.traceability),
+        },
+        "summary": {
+            "status": report.summary.status,
+            "compared_metrics": report.summary.compared_metrics,
+            "improved_metrics": report.summary.improved_metrics,
+            "regressed_metrics": report.summary.regressed_metrics,
+            "unchanged_metrics": report.summary.unchanged_metrics,
+            "unknown_metrics": report.summary.unknown_metrics,
+            "no_history": report.summary.no_history,
+        },
+        "metric_trends": evidence_quality_trend_metrics_json(&report.metric_trends),
+        "static_limitation_category_trends": evidence_quality_trend_metrics_json(&report.static_limitation_category_trends),
+        "unknowns": report.unknowns.iter().map(|unknown| {
+            serde_json::json!({
+                "kind": unknown.kind,
+                "summary": unknown.summary,
+                "next_repair": unknown.next_repair,
+            })
+        }).collect::<Vec<_>>(),
+    });
+    serde_json::to_string_pretty(&value)
+        .map(|json| format!("{json}\n"))
+        .map_err(|err| format!("failed to render evidence quality trend JSON: {err}"))
+}
+
+fn evidence_quality_trend_metrics_json(metrics: &[EvidenceQualityTrendMetric]) -> Vec<Value> {
+    metrics
+        .iter()
+        .map(|trend| {
+            serde_json::json!({
+                "metric": trend.metric,
+                "label": trend.label,
+                "before": trend.before,
+                "after": trend.after,
+                "delta": trend.delta,
+                "direction": trend.direction,
+                "interpretation": trend.interpretation,
+            })
+        })
+        .collect()
+}
+
+fn evidence_quality_trend_markdown(report: &EvidenceQualityTrendReport) -> String {
+    let mut out = String::new();
+    out.push_str("# Lane 1 evidence quality trend\n\n");
+    out.push_str("Status: advisory\n\n");
+    out.push_str("This repo-local trend compares existing Lane 1 scorecard or audit snapshots. It does not change analyzer behavior, gate policy, PR or CI projection, editor output, source files, generated tests, provider calls, score definitions, or runtime execution.\n\n");
+
+    out.push_str("## Summary\n\n");
+    out.push_str("| Metric | Value |\n");
+    out.push_str("| --- | ---: |\n");
+    out.push_str(&format!("| Status | {} |\n", report.summary.status));
+    audit_push_count(
+        &mut out,
+        "Compared metrics",
+        report.summary.compared_metrics,
+    );
+    audit_push_count(
+        &mut out,
+        "Improved metrics",
+        report.summary.improved_metrics,
+    );
+    audit_push_count(
+        &mut out,
+        "Regressed metrics",
+        report.summary.regressed_metrics,
+    );
+    audit_push_count(
+        &mut out,
+        "Unchanged metrics",
+        report.summary.unchanged_metrics,
+    );
+    audit_push_count(&mut out, "Unknown metrics", report.summary.unknown_metrics);
+    out.push('\n');
+
+    out.push_str("## Metric Trends\n\n");
+    trend_push_metric_table(&mut out, &report.metric_trends);
+
+    out.push_str("## Static Limitation Category Trends\n\n");
+    if report.static_limitation_category_trends.is_empty() {
+        out.push_str("No static limitation category trend rows were reported.\n\n");
+    } else {
+        trend_push_metric_table(&mut out, &report.static_limitation_category_trends);
+    }
+
+    out.push_str("## Unknowns\n\n");
+    if report.unknowns.is_empty() {
+        out.push_str("No trend unknowns were reported.\n");
+    } else {
+        out.push_str("| Kind | Summary | Next repair |\n");
+        out.push_str("| --- | --- | --- |\n");
+        for unknown in &report.unknowns {
+            out.push_str(&format!(
+                "| {} | {} | {} |\n",
+                audit_markdown_cell(&unknown.kind),
+                audit_markdown_cell(&unknown.summary),
+                audit_markdown_cell(unknown.next_repair.as_deref().unwrap_or("n/a")),
+            ));
+        }
+    }
+    out
+}
+
+fn trend_push_metric_table(out: &mut String, metrics: &[EvidenceQualityTrendMetric]) {
+    if metrics.is_empty() {
+        out.push_str("No metric trends were reported.\n\n");
+        return;
+    }
+    out.push_str("| Metric | Before | After | Delta | Direction | Interpretation |\n");
+    out.push_str("| --- | ---: | ---: | ---: | --- | --- |\n");
+    for trend in metrics {
+        out.push_str(&format!(
+            "| {} | {} | {} | {} | {} | {} |\n",
+            audit_markdown_cell(&trend.label),
+            trend
+                .before
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "n/a".to_string()),
+            trend
+                .after
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "n/a".to_string()),
+            trend
+                .delta
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "n/a".to_string()),
+            audit_markdown_cell(&trend.direction),
+            audit_markdown_cell(&trend.interpretation),
+        ));
+    }
+    out.push('\n');
+}
+
 const REPO_EXPOSURE_LATENCY_TRACE_ENV: &str = "RIPR_REPO_EXPOSURE_LATENCY_TRACE";
 const REPO_EXPOSURE_LATENCY_TIMEOUT_ENV: &str = "RIPR_REPO_EXPOSURE_LATENCY_TIMEOUT_MS";
 const REPO_EXPOSURE_LATENCY_DEFAULT_TIMEOUT_MS: u64 = 30_000;
@@ -25602,13 +26322,14 @@ mod tests {
         DogfoodFrontPanelRun, DogfoodGateRun, DogfoodGeneratedCiCockpitRun,
         DogfoodPrInlineCommentRun, DogfoodReportPacketIndexRun, DogfoodRun,
         EvidenceQualityScorecardInput, EvidenceQualityScorecardInputs,
-        EvidenceQualityScorecardReport, FixKind, GENERATED_CI_FIRST_ACTION_REPAIR,
-        GENERATED_CI_FRONT_PANEL_REPAIR, GENERATED_CI_PACKET_INDEX_REPAIR, LocalContextAllow,
-        MarkdownLink, ReceiptRecord, RepoExposureLatencyReport, RepoExposureLatencyRun,
-        RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode,
-        SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
-        TestOracleClass, badge_artifact_command_args, badge_artifact_jobs,
-        badge_artifact_native_slot, badge_artifacts_summary_markdown, build_lsp_cockpit_report,
+        EvidenceQualityScorecardReport, EvidenceQualityTrendInputs, EvidenceQualityTrendReport,
+        FixKind, GENERATED_CI_FIRST_ACTION_REPAIR, GENERATED_CI_FRONT_PANEL_REPAIR,
+        GENERATED_CI_PACKET_INDEX_REPAIR, LocalContextAllow, MarkdownLink, ReceiptRecord,
+        RepoExposureLatencyReport, RepoExposureLatencyRun, RepoExposureLatencyTrace,
+        ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode, SarifPolicyResult,
+        SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass,
+        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
+        badge_artifacts_summary_markdown, build_lsp_cockpit_report,
         build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
         build_targeted_test_outcome_report, check_allow_attributes, check_droid_review_config,
         check_executable_files, check_file_policy, check_local_context, check_network_policy,
@@ -25621,19 +26342,21 @@ mod tests {
         dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
         dogfood_report_packet_index_scenarios, evaluate_semantic_no_panic_policy,
         evidence_quality_scorecard_from_values, evidence_quality_scorecard_json,
-        evidence_quality_scorecard_markdown, extract_json_object_usize_map, extract_json_string,
-        extract_json_warnings, extract_workflow_run_blocks, first_line_difference,
-        forbidden_panic_patterns, glob_matches, golden_changes_without_blessing,
-        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
-        install_hooks_in, is_bdd_test_name, is_campaign_path, is_dependency_surface_candidate,
-        is_docs_path, is_evidence_path, is_generated_candidate, is_known_campaign_command,
-        is_non_rust_programming_candidate, is_policy_path, is_production_path, is_receipt_status,
-        is_ripr_managed_hook, is_snake_case_id, is_spec_id, is_stale_agent_boundary_scan_target,
-        json_escape, json_number_after, json_string_values_for_key, json_summary_count,
-        known_commands, known_xtask_command, lane1_evidence_audit_from_repo_exposure,
-        lane1_evidence_audit_json, lane1_evidence_audit_markdown, local_context_line_findings,
-        local_markdown_target, lsp_cockpit_report, lsp_cockpit_report_json,
-        lsp_cockpit_report_markdown, markdown_links_in_text, mutation_calibration_report_json,
+        evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
+        evidence_quality_trend_json, evidence_quality_trend_markdown,
+        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
+        extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns, glob_matches,
+        golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
+        guarded_allow_attributes_in_text, install_hooks_in, is_bdd_test_name, is_campaign_path,
+        is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
+        is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
+        is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
+        is_stale_agent_boundary_scan_target, json_escape, json_number_after,
+        json_string_values_for_key, json_summary_count, known_commands, known_xtask_command,
+        lane1_evidence_audit_from_repo_exposure, lane1_evidence_audit_json,
+        lane1_evidence_audit_markdown, local_context_line_findings, local_markdown_target,
+        lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
+        markdown_links_in_text, mutation_calibration_report_json,
         mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
         no_panic_toml_string, non_rust_programming_retention_reason,
         normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
@@ -34393,6 +35116,17 @@ jobs:
             XtaskCommand::EvidenceQualityScorecard
         );
         assert_eq!(
+            XtaskCommand::parse([
+                "evidence-quality-trend".to_string(),
+                "--previous".to_string(),
+                "previous.json".to_string(),
+            ]),
+            XtaskCommand::EvidenceQualityTrend(vec![
+                "--previous".to_string(),
+                "previous.json".to_string(),
+            ])
+        );
+        assert_eq!(
             XtaskCommand::parse(["vscode-compile".to_string()]),
             XtaskCommand::VscodeCompile
         );
@@ -34432,6 +35166,7 @@ jobs:
                 XtaskCommand::EvidenceHealth,
                 XtaskCommand::Lane1EvidenceAudit,
                 XtaskCommand::EvidenceQualityScorecard,
+                XtaskCommand::EvidenceQualityTrend(Vec::new()),
                 XtaskCommand::AgentSeamPackets(Some(".".to_string())),
                 XtaskCommand::LspCockpitReport,
                 XtaskCommand::OperatorCockpitReport,
@@ -34629,6 +35364,9 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(commands.contains(&"lane1-evidence-audit"));
         assert!(commands.contains(&"evidence-quality-audit"));
         assert!(commands.contains(&"evidence-quality-scorecard"));
+        assert!(
+            commands.contains(&"evidence-quality-trend [--current <path>] [--previous <path>]")
+        );
         assert!(commands.contains(&"agent-seam-packets [root]"));
         assert!(commands.contains(&"lsp-cockpit-report"));
         assert!(commands.contains(&"operator-cockpit"));
@@ -35099,6 +35837,102 @@ covered_by = ["cargo xtask check-file-policy"]
         Ok(())
     }
 
+    #[test]
+    fn evidence_quality_trend_reports_no_history_explicitly() -> Result<(), String> {
+        let current = scorecard_minimal_audit_value(0, 0, 0, 2, 3);
+        let report = evidence_quality_trend_from_values(
+            "unix_ms:1".to_string(),
+            trend_inputs_for_test(false),
+            &current,
+            None,
+        )?;
+        let json = evidence_quality_trend_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+
+        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["report"], "evidence-quality-trend");
+        assert_eq!(value["summary"]["status"], "unknown");
+        assert_eq!(
+            value["summary"]["no_history"],
+            serde_json::Value::from(true)
+        );
+        assert!(value["unknowns"].as_array().is_some_and(|unknowns| {
+            unknowns
+                .iter()
+                .any(|unknown| unknown["kind"] == "trend_history_unavailable")
+        }));
+        let markdown = evidence_quality_trend_markdown(&report);
+        assert!(markdown.contains("Lane 1 evidence quality trend"));
+        assert!(markdown.contains("Metric Trends"));
+        assert!(markdown.contains("Unknowns"));
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_trend_distinguishes_improvement_regression_and_unchanged()
+    -> Result<(), String> {
+        let current = scorecard_minimal_audit_value(0, 3, 1, 5, 4);
+        let previous = scorecard_minimal_audit_value(2, 3, 3, 3, 6);
+        let report = evidence_quality_trend_from_values(
+            "unix_ms:1".to_string(),
+            trend_inputs_for_test(true),
+            &current,
+            Some(&previous),
+        )?;
+
+        assert_eq!(report.summary.status, "improvement");
+        assert_eq!(
+            trend_direction_for(&report, "duplicate_looking_groups_total")?,
+            "improvement"
+        );
+        assert_eq!(
+            trend_direction_for(&report, "calibrated_records")?,
+            "improvement"
+        );
+        assert_eq!(
+            trend_direction_for(&report, "static_limitations_total")?,
+            "unchanged"
+        );
+
+        let regressing_current = scorecard_minimal_audit_value(0, 5, 7, 3, 8);
+        let regressing_report = evidence_quality_trend_from_values(
+            "unix_ms:2".to_string(),
+            trend_inputs_for_test(true),
+            &regressing_current,
+            Some(&previous),
+        )?;
+        assert_eq!(
+            trend_direction_for(&regressing_report, "duplicate_looking_groups_total")?,
+            "regression"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_trend_reports_static_limitation_category_deltas() -> Result<(), String> {
+        let mut current = scorecard_minimal_audit_value(0, 2, 0, 1, 1);
+        let mut previous = scorecard_minimal_audit_value(0, 5, 0, 1, 1);
+        set_static_category_count(&mut current, "opaque_helper_call", 2)?;
+        set_static_category_count(&mut previous, "opaque_helper_call", 5)?;
+
+        let report = evidence_quality_trend_from_values(
+            "unix_ms:1".to_string(),
+            trend_inputs_for_test(true),
+            &current,
+            Some(&previous),
+        )?;
+        let row = report
+            .static_limitation_category_trends
+            .iter()
+            .find(|row| row.label == "opaque_helper_call")
+            .ok_or_else(|| "missing opaque_helper_call category trend".to_string())?;
+        assert_eq!(row.before, Some(5));
+        assert_eq!(row.after, Some(2));
+        assert_eq!(row.direction, "improvement");
+        Ok(())
+    }
+
     fn lane1_scorecard_sample_audit_value() -> Result<serde_json::Value, String> {
         let report = lane1_evidence_audit_from_repo_exposure(".", lane1_audit_sample_json())?;
         let json = lane1_evidence_audit_json(&report)?;
@@ -35186,6 +36020,50 @@ covered_by = ["cargo xtask check-file-policy"]
             sha256: None,
             note: None,
         }
+    }
+
+    fn trend_inputs_for_test(previous_loaded: bool) -> EvidenceQualityTrendInputs {
+        EvidenceQualityTrendInputs {
+            current_scorecard: scorecard_input_for_test(
+                "target/ripr/reports/evidence-quality-scorecard.json",
+                "loaded",
+            ),
+            previous_artifact: scorecard_input_for_test(
+                "target/ripr/reports/evidence-quality-scorecard.previous.json",
+                if previous_loaded { "loaded" } else { "missing" },
+            ),
+            capability_matrix: scorecard_input_for_test("docs/CAPABILITY_MATRIX.md", "loaded"),
+            traceability: scorecard_input_for_test(".ripr/traceability.toml", "loaded"),
+        }
+    }
+
+    fn trend_direction_for(
+        report: &EvidenceQualityTrendReport,
+        metric: &str,
+    ) -> Result<String, String> {
+        report
+            .metric_trends
+            .iter()
+            .find(|trend| trend.metric == metric)
+            .map(|trend| trend.direction.clone())
+            .ok_or_else(|| format!("missing trend metric {metric}"))
+    }
+
+    fn set_static_category_count(
+        value: &mut serde_json::Value,
+        category: &str,
+        count: usize,
+    ) -> Result<(), String> {
+        let static_limitations = value
+            .get_mut("static_limitations")
+            .and_then(serde_json::Value::as_object_mut)
+            .ok_or_else(|| "missing static_limitations object".to_string())?;
+        let by_category = static_limitations
+            .get_mut("by_category")
+            .and_then(serde_json::Value::as_object_mut)
+            .ok_or_else(|| "missing static_limitations.by_category object".to_string())?;
+        by_category.insert(category.to_string(), serde_json::json!(count));
+        Ok(())
     }
 
     fn scorecard_status_for(
