@@ -105,8 +105,7 @@ Existing Lane 4 behavior contracts:
 - [RIPR-SPEC-0024: Report Packet Index](../specs/RIPR-SPEC-0024-report-packet-index.md)
   defines the reviewer-first map over the uploaded report packet.
 
-Later Lane 4 spec work should add generated-CI gap maps and implementation
-receipts against the generated PR CI review workflow contract in
+Lane 4 generated-CI composition is governed by
 [RIPR-SPEC-0038](../specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md).
 This checkout already uses `RIPR-SPEC-0032` through `RIPR-SPEC-0038`, so
 future work must not reuse those IDs.
@@ -120,14 +119,19 @@ That plan owns PR order. The specs own behavior truth.
 The generated-CI cockpit gap map is in
 [plans/lane4-pr-ci-review-cockpit/generated-ci-gap-map.md](../../plans/lane4-pr-ci-review-cockpit/generated-ci-gap-map.md).
 
-The first slice is docs-only scaffolding:
+Lane 4 closeout is recorded in
+[2026-05-13-lane4-pr-ci-review-cockpit-closeout.md](../handoffs/2026-05-13-lane4-pr-ci-review-cockpit-closeout.md).
+
+The final slice is docs-only closeout:
 
 ```text
-docs(lane4): define PR/CI review cockpit source-of-truth model
+docs(lane4): close PR/CI review cockpit lane
 ```
 
-This slice adds the lane tracker and plan rails without changing generated CI,
-report producers, output contracts, policy, fixtures, code, or schemas.
+This slice records shipped surfaces, validation, deferred language-aware
+grouping, explicit non-changes, known limits, and next-lane handoff without
+changing generated CI, report producers, output contracts, policy, fixtures,
+code, or schemas.
 
 ## Validation Gates
 
