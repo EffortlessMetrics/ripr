@@ -905,22 +905,162 @@ mod tests {
 
     #[test]
     fn evidence_record_normalizes_static_limitation_categories() {
-        assert_eq!(
-            static_limitation_category(
+        for (stage, state, reason, expected) in [
+            (
                 "activate",
                 "unknown",
-                "No concrete activation values observed for seam `threshold`"
+                "No concrete activation values observed for seam `threshold`",
+                "activation_value_unresolved",
             ),
-            "activation_value_unresolved"
-        );
-        assert_eq!(
-            static_limitation_category("activate", "unknown", "opaque helper hides field"),
-            "opaque_helper_call"
-        );
-        assert_eq!(
-            static_limitation_repair_route("opaque_helper_call"),
-            "analysis/oracle-semantics-audit-fixes"
-        );
+            (
+                "activate",
+                "unknown",
+                "cross-file constant boundary is unresolved",
+                "cross_file_constant_unresolved",
+            ),
+            (
+                "activate",
+                "unknown",
+                "macro generated value hides literal",
+                "macro_generated_value",
+            ),
+            (
+                "observe",
+                "unknown",
+                "opaque helper hides field",
+                "opaque_helper_call",
+            ),
+            (
+                "propagate",
+                "unknown",
+                "dynamic dispatch target is opaque",
+                "dynamic_dispatch",
+            ),
+            (
+                "observe",
+                "unknown",
+                "mock expectation shape is unsupported",
+                "unsupported_mock_shape",
+            ),
+            (
+                "observe",
+                "unknown",
+                "snapshot field is unknown",
+                "snapshot_field_unknown",
+            ),
+            (
+                "propagate",
+                "unknown",
+                "side-effect sink is unknown",
+                "side_effect_sink_unknown",
+            ),
+            (
+                "classification",
+                "opaque",
+                "seam is classified opaque",
+                "opaque_static_evidence",
+            ),
+            (
+                "reach",
+                "unknown",
+                "no related tests",
+                "reachability_static_unknown",
+            ),
+            (
+                "activate",
+                "unknown",
+                "missing fact",
+                "activation_static_unknown",
+            ),
+            (
+                "propagate",
+                "unknown",
+                "missing sink",
+                "propagation_static_unknown",
+            ),
+            (
+                "observe",
+                "unknown",
+                "missing oracle",
+                "observation_static_unknown",
+            ),
+            (
+                "discriminate",
+                "unknown",
+                "missing exact assertion",
+                "discrimination_static_unknown",
+            ),
+            ("unknown", "unknown", "missing stage", "static_unknown"),
+        ] {
+            assert_eq!(
+                static_limitation_category(stage, state, reason),
+                expected,
+                "unexpected category for {stage}/{state}: {reason}"
+            );
+        }
+
+        for (category, expected) in [
+            (
+                "activation_value_unresolved",
+                "analysis/value-resolution-audit-fixes",
+            ),
+            (
+                "cross_file_constant_unresolved",
+                "analysis/cross-file-constant-resolution",
+            ),
+            (
+                "macro_generated_value",
+                "analysis/macro-generated-value-fixtures",
+            ),
+            (
+                "opaque_helper_call",
+                "analysis/oracle-semantics-audit-fixes",
+            ),
+            ("dynamic_dispatch", "calibration/runtime-fixtures-v3"),
+            (
+                "unsupported_mock_shape",
+                "analysis/oracle-semantics-audit-fixes",
+            ),
+            (
+                "snapshot_field_unknown",
+                "analysis/oracle-semantics-audit-fixes",
+            ),
+            (
+                "side_effect_sink_unknown",
+                "analysis/oracle-semantics-audit-fixes",
+            ),
+            (
+                "opaque_static_evidence",
+                "analysis/static-limitation-taxonomy",
+            ),
+            (
+                "reachability_static_unknown",
+                "analysis/related-test-ranking-audit-fixes",
+            ),
+            (
+                "activation_static_unknown",
+                "analysis/static-limitation-taxonomy",
+            ),
+            (
+                "propagation_static_unknown",
+                "analysis/static-limitation-taxonomy",
+            ),
+            (
+                "observation_static_unknown",
+                "analysis/oracle-semantics-audit-fixes",
+            ),
+            (
+                "discrimination_static_unknown",
+                "analysis/oracle-semantics-audit-fixes",
+            ),
+            ("unknown", "analysis/static-limitation-taxonomy"),
+        ] {
+            assert_eq!(
+                static_limitation_repair_route(category),
+                expected,
+                "unexpected repair route for {category}"
+            );
+        }
     }
 
     #[test]

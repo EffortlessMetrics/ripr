@@ -25361,6 +25361,10 @@ mod tests {
         check_droid_security_scan_config, forbids_active_line, has_active_line, strip_yaml_comment,
     };
     use super::{
+        audit_push_value_counts_table_limited, static_limitation_category,
+        static_limitation_repair_route,
+    };
+    use super::{
         stale_agent_boundary_language_violations_for_entries,
         stale_agent_boundary_language_violations_for_root, stale_agent_boundary_patterns,
     };
@@ -34297,6 +34301,176 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("Top Files By Unresolved Evidence Debt"));
         assert!(markdown.contains("gap:shared"));
         Ok(())
+    }
+
+    #[test]
+    fn lane1_evidence_audit_normalizes_static_limitation_taxonomy() {
+        for (stage, state, reason, expected) in [
+            (
+                "activate",
+                "unknown",
+                "No concrete activation values observed for seam `threshold`",
+                "activation_value_unresolved",
+            ),
+            (
+                "activate",
+                "unknown",
+                "cross-file constant boundary is unresolved",
+                "cross_file_constant_unresolved",
+            ),
+            (
+                "activate",
+                "unknown",
+                "macro generated value hides literal",
+                "macro_generated_value",
+            ),
+            (
+                "observe",
+                "unknown",
+                "opaque helper hides field",
+                "opaque_helper_call",
+            ),
+            (
+                "propagate",
+                "unknown",
+                "dynamic dispatch target is opaque",
+                "dynamic_dispatch",
+            ),
+            (
+                "observe",
+                "unknown",
+                "mock expectation shape is unsupported",
+                "unsupported_mock_shape",
+            ),
+            (
+                "observe",
+                "unknown",
+                "snapshot field is unknown",
+                "snapshot_field_unknown",
+            ),
+            (
+                "propagate",
+                "unknown",
+                "side-effect sink is unknown",
+                "side_effect_sink_unknown",
+            ),
+            (
+                "classification",
+                "opaque",
+                "seam is classified opaque",
+                "opaque_static_evidence",
+            ),
+            (
+                "reach",
+                "unknown",
+                "no related tests",
+                "reachability_static_unknown",
+            ),
+            (
+                "activate",
+                "unknown",
+                "missing fact",
+                "activation_static_unknown",
+            ),
+            (
+                "propagate",
+                "unknown",
+                "missing sink",
+                "propagation_static_unknown",
+            ),
+            (
+                "observe",
+                "unknown",
+                "missing oracle",
+                "observation_static_unknown",
+            ),
+            (
+                "discriminate",
+                "unknown",
+                "missing exact assertion",
+                "discrimination_static_unknown",
+            ),
+            ("unknown", "unknown", "missing stage", "static_unknown"),
+        ] {
+            assert_eq!(
+                static_limitation_category(stage, state, reason),
+                expected,
+                "unexpected category for {stage}/{state}: {reason}"
+            );
+        }
+
+        for (category, expected) in [
+            (
+                "activation_value_unresolved",
+                "analysis/value-resolution-audit-fixes",
+            ),
+            (
+                "cross_file_constant_unresolved",
+                "analysis/cross-file-constant-resolution",
+            ),
+            (
+                "macro_generated_value",
+                "analysis/macro-generated-value-fixtures",
+            ),
+            (
+                "opaque_helper_call",
+                "analysis/oracle-semantics-audit-fixes",
+            ),
+            ("dynamic_dispatch", "calibration/runtime-fixtures-v3"),
+            (
+                "unsupported_mock_shape",
+                "analysis/oracle-semantics-audit-fixes",
+            ),
+            (
+                "snapshot_field_unknown",
+                "analysis/oracle-semantics-audit-fixes",
+            ),
+            (
+                "side_effect_sink_unknown",
+                "analysis/oracle-semantics-audit-fixes",
+            ),
+            (
+                "opaque_static_evidence",
+                "analysis/static-limitation-taxonomy",
+            ),
+            (
+                "reachability_static_unknown",
+                "analysis/related-test-ranking-audit-fixes",
+            ),
+            (
+                "activation_static_unknown",
+                "analysis/static-limitation-taxonomy",
+            ),
+            (
+                "propagation_static_unknown",
+                "analysis/static-limitation-taxonomy",
+            ),
+            (
+                "observation_static_unknown",
+                "analysis/oracle-semantics-audit-fixes",
+            ),
+            (
+                "discrimination_static_unknown",
+                "analysis/oracle-semantics-audit-fixes",
+            ),
+            ("unknown", "analysis/static-limitation-taxonomy"),
+        ] {
+            assert_eq!(
+                static_limitation_repair_route(category),
+                expected,
+                "unexpected repair route for {category}"
+            );
+        }
+
+        let mut markdown = String::new();
+        audit_push_value_counts_table_limited(
+            &mut markdown,
+            "Static limitation category",
+            &serde_json::json!({}),
+            &["missing"],
+            5,
+        );
+        assert!(markdown.contains("No static limitation category counts were reported."));
     }
 
     #[test]
