@@ -119,6 +119,7 @@ Current reference docs:
 - [Changelog policy](CHANGELOG_POLICY.md)
 - [Capability matrix](CAPABILITY_MATRIX.md)
 - [Presentation text evidence](specs/RIPR-SPEC-0043-presentation-text-evidence.md)
+- [Finding-to-gap alignment](specs/RIPR-SPEC-0045-finding-to-gap-alignment.md)
 - [No-panic semantic allowlist](NO_PANIC_SEMANTIC_ALLOWLIST.md)
 - [Droid rollout checklist](agent-context/droid-rollout.md)
 - [CI verification ladder](ci/verification-ladder.md)
