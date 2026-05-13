@@ -13,7 +13,7 @@ and
 [RIPR-SPEC-0024](../../docs/specs/RIPR-SPEC-0024-report-packet-index.md).
 
 Planned proposal path:
-`docs/proposals/RIPR-PROP-0002-pr-ci-review-cockpit.md`.
+`docs/proposals/RIPR-PROP-0004-pr-ci-review-cockpit.md`.
 
 Planned generated-CI workflow spec path:
 use the next available `RIPR-SPEC-00NN-generated-pr-ci-review-workflow.md`.
