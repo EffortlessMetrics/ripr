@@ -21,7 +21,7 @@ Use one document for one job:
 | Spec | behavior contract, inputs and outputs, required evidence, acceptance examples | `docs/specs/` |
 | ADR | durable architecture decisions | `docs/adr/` |
 | Lane tracker | lane-local state, active slices, non-goals, sequencing | `docs/lanes/` |
-| Implementation plan | repo-wide sequence and campaign summaries | `docs/IMPLEMENTATION_PLAN.md`, `docs/IMPLEMENTATION_CAMPAIGNS.md` |
+| Implementation plan | repo-wide sequence, campaign summaries, and lane-local PR sequencing | `docs/IMPLEMENTATION_PLAN.md`, `docs/IMPLEMENTATION_CAMPAIGNS.md`, `plans/` |
 | Active goals manifest | current Codex/Droid operator sequence | `.ripr/goals/active.toml` |
 | Capability matrix | maturity, scope, and proof evidence | `docs/CAPABILITY_MATRIX.md`, `metrics/capabilities.toml` |
 | Traceability | spec, fixture, test, code, and metric linkage | `.ripr/traceability.toml` |
@@ -94,3 +94,35 @@ the source evidence class first and keep projection changes narrow.
 - [Lane 1 Evidence Quality Leadership](LANE_1_EVIDENCE_QUALITY_LEADERSHIP.md)
   records the scorecard, benchmark, calibration, and audit-delta leadership
   loop.
+
+## Lane 4 Source Of Truth
+
+Lane 4 owns PR and CI review composition:
+
+- generated PR workflow summaries and artifact upload shape;
+- PR review front panel;
+- report packet index;
+- repair, agent handoff, and receipt links in PR-time artifacts;
+- language-aware advisory grouping when preview languages are configured;
+- clear separation between advisory summaries and configured gate authority.
+
+Lane 4 should use these layers:
+
+- Proposal: why the PR/CI review cockpit matters to reviewers, maintainers,
+  and coding agents.
+- Spec: what generated CI, front-panel, packet-index, repair-command, receipt,
+  grouping, and authority-boundary behavior must do.
+- ADR: durable workflow or architecture decisions only.
+- Lane tracker: current Lane 4 surfaces, non-goals, validation gates, and
+  operating rule.
+- Plan: PR-sized sequence under `plans/lane4-pr-ci-review-cockpit/`.
+- Policy ledgers: gate, workflow, exception, and allowlist authority.
+- Closeout: what shipped, what proof ran, and what remains unknown.
+
+Lane 4 should not use generated summaries or indexes as policy authority. Gate
+decisions remain the configured pass/fail authority.
+
+## Current Lane 4 Tracker
+
+- [Lane 4 PR / CI Review Cockpit](LANE_4_PR_CI_REVIEW.md) records the PR/CI
+  review cockpit source-of-truth model and links to the lane-local plan.
