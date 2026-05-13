@@ -1495,10 +1495,13 @@ spec = "RIPR-SPEC-0045"
 evidence = [
   "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md defines the planned Lane 1 contract for preserving raw findings as supporting evidence while rolling them up into canonical evidence items",
   "canonical items carry gap_state, actionability, why, recommended repair, verification, static limitations, confidence, and raw_findings",
+  "fixtures/evidence-quality-benchmark/corpus.json pins manifest-only raw-to-canonical presentation-text cases for actionable, already-observed, internal-only, static-limitation, line-movement, and non-collision states",
   "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md records this as the contract step before raw line-local presentation-text findings become one action, no-action state, or named limitation"
 ]
-fixtures = []
-next = "fixtures/finding-alignment-benchmark"
+fixtures = [
+  "fixtures/evidence-quality-benchmark/corpus.json"
+]
+next = "analysis/finding-alignment-evidence-fields"
 metric = "finding_alignment_raw_findings_total, finding_alignment_raw_signals_total, finding_alignment_canonical_items_total, finding_alignment_raw_to_canonical_ratio, finding_alignment_duplicate_groups_total, finding_alignment_actionable_items_total, finding_alignment_actionable_unresolved_canonical_gaps, finding_alignment_already_observed_total, finding_alignment_internal_only_total, finding_alignment_internal_no_action_total, finding_alignment_static_limitation_total, finding_alignment_unknown_total, finding_alignment_calibrated_supported_total, finding_alignment_uncalibrated_total, finding_alignment_visibility_unknown_total, finding_alignment_presentation_text_actionable_total"
 
 [[capability]]
