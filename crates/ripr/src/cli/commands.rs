@@ -154,6 +154,16 @@ struct PolicyHistoryOptions {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+struct PolicyPromotionOptions {
+    root: String,
+    target_mode: String,
+    operations: PathBuf,
+    history: Option<PathBuf>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 struct PolicyWaiverAgingOptions {
     root: String,
     ledger: Option<PathBuf>,
@@ -2945,7 +2955,7 @@ pub(super) fn policy(args: &[String]) -> Result<(), String> {
     }
     let Some((subcommand, rest)) = args.split_first() else {
         return Err(
-            "policy requires subcommand `readiness`, `operations`, `history`, `waiver-aging`, or `suppression-health`"
+            "policy requires subcommand `readiness`, `operations`, `history`, `promote`, `waiver-aging`, or `suppression-health`"
                 .to_string(),
         );
     };
@@ -2953,10 +2963,11 @@ pub(super) fn policy(args: &[String]) -> Result<(), String> {
         "readiness" => policy_readiness(rest),
         "operations" => policy_operations(rest),
         "history" => policy_history(rest),
+        "promote" => policy_promotion(rest),
         "waiver-aging" => policy_waiver_aging(rest),
         "suppression-health" => policy_suppression_health(rest),
         _ => Err(format!(
-            "unknown policy subcommand {subcommand:?}; expected `readiness`, `operations`, `history`, `waiver-aging`, or `suppression-health`"
+            "unknown policy subcommand {subcommand:?}; expected `readiness`, `operations`, `history`, `promote`, `waiver-aging`, or `suppression-health`"
         )),
     }
 }
@@ -3436,6 +3447,41 @@ fn policy_history(args: &[String]) -> Result<(), String> {
     println!(
         "Readiness trend: {}",
         output::policy_history::policy_history_trend_direction(&report)
+    );
+    Ok(())
+}
+
+fn policy_promotion(args: &[String]) -> Result<(), String> {
+    let options = parse_policy_promotion_options(args)?;
+    let input = output::policy_promotion::PolicyPromotionInput {
+        root: options.root,
+        generated_at: policy_readiness_generated_at()?,
+        target_mode: options.target_mode,
+        operations_path: output::policy_promotion::display_path(&options.operations),
+        history_path: options
+            .history
+            .as_ref()
+            .map(|path| output::policy_promotion::display_path(path)),
+        operations_json: read_optional_text_for_report("policy operations", &options.operations),
+        history_json: options
+            .history
+            .as_ref()
+            .map(|path| read_optional_text_for_report("policy history", path)),
+    };
+    let report = output::policy_promotion::build_policy_promotion_report(input);
+    let rendered_json = output::policy_promotion::render_policy_promotion_json(&report)?;
+    let rendered_md = output::policy_promotion::render_policy_promotion_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    println!(
+        "Allowed now: {}",
+        if output::policy_promotion::policy_promotion_allowed_now(&report) {
+            "yes"
+        } else {
+            "no"
+        }
     );
     Ok(())
 }
@@ -5009,6 +5055,81 @@ fn parse_policy_history_options(args: &[String]) -> Result<PolicyHistoryOptions,
         history,
         commit,
         pr_number,
+        out,
+        out_md,
+    })
+}
+
+fn parse_policy_promotion_options(args: &[String]) -> Result<PolicyPromotionOptions, String> {
+    let mut root = ".".to_string();
+    let mut target_mode = None;
+    let mut operations = None;
+    let mut history = None;
+    let mut out = None;
+    let mut out_md = None;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "policy promote")?;
+            }
+            "--to" => {
+                i += 1;
+                target_mode = Some(non_empty_string_arg(args, i, "--to", "policy promote")?);
+            }
+            "--operations" => {
+                i += 1;
+                operations = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--operations",
+                    "policy promote",
+                )?);
+            }
+            "--history" => {
+                i += 1;
+                history = Some(non_empty_path_arg(args, i, "--history", "policy promote")?);
+            }
+            "--out" => {
+                i += 1;
+                out = Some(non_empty_path_arg(args, i, "--out", "policy promote")?);
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = Some(non_empty_path_arg(args, i, "--out-md", "policy promote")?);
+            }
+            other => return Err(format!("unknown policy promote argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    let target_mode =
+        target_mode.ok_or_else(|| "policy promote requires --to <mode>".to_string())?;
+    if !output::policy_promotion::is_supported_target_mode(&target_mode) {
+        return Err(format!(
+            "unknown policy promotion target {target_mode:?}; expected `visible-only`, `acknowledgeable`, `baseline-check`, or `calibrated-gate`"
+        ));
+    }
+    let operations =
+        operations.ok_or_else(|| "policy promote requires --operations <path>".to_string())?;
+    let out = out.unwrap_or_else(|| {
+        PathBuf::from(output::policy_promotion::default_policy_promotion_out(
+            &target_mode,
+        ))
+    });
+    let out_md = out_md.unwrap_or_else(|| {
+        PathBuf::from(output::policy_promotion::default_policy_promotion_md_out(
+            &target_mode,
+        ))
+    });
+
+    Ok(PolicyPromotionOptions {
+        root,
+        target_mode,
+        operations,
+        history,
         out,
         out_md,
     })
@@ -7468,14 +7589,14 @@ mod tests {
         assert_eq!(
             policy(&args(&[])),
             Err(
-                "policy requires subcommand `readiness`, `operations`, `history`, `waiver-aging`, or `suppression-health`"
+                "policy requires subcommand `readiness`, `operations`, `history`, `promote`, `waiver-aging`, or `suppression-health`"
                     .to_string()
             )
         );
         assert_eq!(
             policy(&args(&["unknown"])),
             Err(
-                "unknown policy subcommand \"unknown\"; expected `readiness`, `operations`, `history`, `waiver-aging`, or `suppression-health`"
+                "unknown policy subcommand \"unknown\"; expected `readiness`, `operations`, `history`, `promote`, `waiver-aging`, or `suppression-health`"
                     .to_string()
             )
         );
@@ -7498,6 +7619,29 @@ mod tests {
         assert_eq!(
             parse_policy_operations_options(&args(&["--bad"])),
             Err("unknown policy operations argument \"--bad\"".to_string())
+        );
+        assert_eq!(
+            parse_policy_promotion_options(&args(&[])),
+            Err("policy promote requires --to <mode>".to_string())
+        );
+        assert_eq!(
+            parse_policy_promotion_options(&args(&["--to", "strict"])),
+            Err(
+                "unknown policy promotion target \"strict\"; expected `visible-only`, `acknowledgeable`, `baseline-check`, or `calibrated-gate`"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_policy_promotion_options(&args(&["--to", "visible-only"])),
+            Err("policy promote requires --operations <path>".to_string())
+        );
+        assert_eq!(
+            parse_policy_promotion_options(&args(&["--to", "visible-only", "--operations", ""])),
+            Err("policy promote --operations requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_policy_promotion_options(&args(&["--bad"])),
+            Err("unknown policy promote argument \"--bad\"".to_string())
         );
     }
 
@@ -7541,6 +7685,50 @@ mod tests {
         assert_eq!(
             parse_policy_history_options(&args(&["--current", "ops.json", "--bad"])),
             Err("unknown policy history argument \"--bad\"".to_string())
+        );
+    }
+
+    #[test]
+    fn policy_promotion_parses_option_surface() {
+        assert_eq!(
+            parse_policy_promotion_options(&args(&[
+                "--root",
+                ".",
+                "--to",
+                "baseline-check",
+                "--operations",
+                "target/ripr/reports/policy-operations.json",
+                "--history",
+                "target/ripr/reports/policy-history.json",
+                "--out",
+                "target/ripr/reports/policy-promotion-baseline-check.json",
+                "--out-md",
+                "target/ripr/reports/policy-promotion-baseline-check.md",
+            ])),
+            Ok(PolicyPromotionOptions {
+                root: ".".to_string(),
+                target_mode: "baseline-check".to_string(),
+                operations: PathBuf::from("target/ripr/reports/policy-operations.json"),
+                history: Some(PathBuf::from("target/ripr/reports/policy-history.json")),
+                out: PathBuf::from("target/ripr/reports/policy-promotion-baseline-check.json"),
+                out_md: PathBuf::from("target/ripr/reports/policy-promotion-baseline-check.md"),
+            })
+        );
+        assert_eq!(
+            parse_policy_promotion_options(&args(&[
+                "--to",
+                "visible-only",
+                "--operations",
+                "target/ripr/reports/policy-operations.json",
+            ])),
+            Ok(PolicyPromotionOptions {
+                root: ".".to_string(),
+                target_mode: "visible-only".to_string(),
+                operations: PathBuf::from("target/ripr/reports/policy-operations.json"),
+                history: None,
+                out: PathBuf::from("target/ripr/reports/policy-promotion-visible-only.json"),
+                out_md: PathBuf::from("target/ripr/reports/policy-promotion-visible-only.md"),
+            })
         );
     }
 
@@ -7835,6 +8023,86 @@ mod tests {
             history_text
         );
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove history dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn policy_promotion_command_writes_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("policy-promotion");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create promotion dir: {err}"))?;
+        let operations = dir.join("policy-operations.json");
+        let history = dir.join("policy-history.json");
+        let out = dir.join("policy-promotion-baseline-check.json");
+        let out_md = dir.join("policy-promotion-baseline-check.md");
+        std::fs::write(
+            &operations,
+            r#"{
+              "schema_version": "0.1",
+              "kind": "policy_operations",
+              "current_policy_ceiling": "ready_for_acknowledgeable",
+              "safe_to_promote_to": [
+                {"mode": "visible-only", "allowed_now": true, "reason": "visible ok", "source_artifacts": []},
+                {"mode": "acknowledgeable", "allowed_now": true, "reason": "ack ok", "source_artifacts": []}
+              ],
+              "not_safe_to_promote_to": [
+                {"mode": "baseline-check", "allowed_now": false, "reason": "baseline-check is blocked", "blockers": ["Review stale baseline entries."]}
+              ],
+              "promotion_blockers": [
+                {
+                  "kind": "baseline_stale_entries",
+                  "severity": "warning",
+                  "message": "Baseline contains stale entries.",
+                  "target_modes": ["baseline-check"],
+                  "source_artifact": "baseline-debt-delta.json",
+                  "repair_action": "Run shrink-only baseline review."
+                }
+              ],
+              "baseline_actions": ["Run shrink-only baseline review."],
+              "waiver_actions": [],
+              "suppression_actions": [],
+              "calibration_actions": [],
+              "preview_boundary_actions": ["Keep preview evidence advisory."],
+              "warnings": [],
+              "unknowns": [],
+              "input_artifacts": []
+            }"#,
+        )
+        .map_err(|err| format!("write operations: {err}"))?;
+        std::fs::write(
+            &history,
+            r#"{"schema_version":"0.1","kind":"policy_history","history_summary":{"entries":1}}"#,
+        )
+        .map_err(|err| format!("write history: {err}"))?;
+
+        policy(&args(&[
+            "promote",
+            "--to",
+            "baseline-check",
+            "--operations",
+            &operations.display().to_string(),
+            "--history",
+            &history.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text =
+            std::fs::read_to_string(&out).map_err(|err| format!("read promotion json: {err}"))?;
+        let md_text =
+            std::fs::read_to_string(&out_md).map_err(|err| format!("read promotion md: {err}"))?;
+        assert!(json_text.contains("\"kind\": \"policy_promotion_packet\""));
+        assert!(json_text.contains("\"target_mode\": \"baseline-check\""));
+        assert!(json_text.contains("\"allowed_now\": false"));
+        assert!(json_text.contains("Run shrink-only baseline review."));
+        assert!(md_text.contains("# RIPR Policy Promotion Packet"));
+        assert!(md_text.contains("Allowed now: no"));
+        assert_eq!(
+            std::fs::read_to_string(&history).map_err(|err| format!("read history: {err}"))?,
+            r#"{"schema_version":"0.1","kind":"policy_history","history_summary":{"entries":1}}"#
+        );
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove promotion dir: {err}"))?;
         Ok(())
     }
 

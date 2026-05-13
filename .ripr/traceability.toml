@@ -2516,10 +2516,24 @@ id = "RIPR-SPEC-0042"
 name = "Policy promotion packets"
 spec = "docs/specs/RIPR-SPEC-0042-policy-promotion-packets.md"
 tests = [
+  "crates/ripr/src/output/policy_promotion.rs::tests::promotion_visible_only_allowed_has_empty_repairs",
+  "crates/ripr/src/output/policy_promotion.rs::tests::promotion_acknowledgeable_blocked_uses_blocker_repairs",
+  "crates/ripr/src/output/policy_promotion.rs::tests::promotion_baseline_check_blocked_uses_baseline_repairs",
+  "crates/ripr/src/output/policy_promotion.rs::tests::promotion_calibrated_gate_allowed_keeps_stable_rust_limit",
+  "crates/ripr/src/output/policy_promotion.rs::tests::promotion_missing_history_records_unknown",
+  "crates/ripr/src/output/policy_promotion.rs::tests::promotion_malformed_operations_blocks_all_modes",
+  "crates/ripr/src/output/policy_promotion.rs::tests::promotion_json_and_markdown_are_structured",
+  "crates/ripr/src/cli/commands.rs::tests::policy_promotion_parses_option_surface",
+  "crates/ripr/src/cli/commands.rs::tests::policy_promotion_command_writes_reports",
 ]
 fixtures = [
 ]
 code = [
+  "crates/ripr/src/output/policy_promotion.rs",
+  "crates/ripr/src/output/mod.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/help.rs",
+  "crates/ripr/src/cli/execute.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0042-policy-promotion-packets.md",
