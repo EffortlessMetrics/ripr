@@ -23,3 +23,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+Refresh Python static-limit metadata
+
+Command:
+`cargo xtask goldens bless python_mock_assert_called --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

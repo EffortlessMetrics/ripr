@@ -31,6 +31,7 @@ Evidence
 
 Weakness
   - Related Python test reaches `send_receipt` but the strongest extracted oracle is `mock_expectation`; add or verify an exact-value assertion to make the preview finding stronger.
+  - Static limit `mocked_module`: Related test uses mock or patch syntax; Python preview does not model runtime substitution semantics.
 
 Next step
   Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.

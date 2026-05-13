@@ -13,8 +13,9 @@
 //! - related-test references by direct calls, import-alias calls, and
 //!   conservative same-stem proximity.
 //!
-//! Import-graph matching, static limits, editor routing, generated tests,
-//! runtime execution, and provider calls remain out of scope.
+//! Static limits are explicit when the preview adapter can name them. Editor
+//! routing, generated tests, runtime execution, and provider calls remain out
+//! of scope.
 //! Strong exact-value assertions can produce `exposed`; weaker or unknown
 //! related-test oracles produce `weakly_exposed`; missing related tests produce
 //! `no_static_path`.
@@ -25,11 +26,11 @@ use crate::config::OraclePolicy;
 use crate::domain::{
     Confidence, DeltaKind, ExposureClass, Finding, LanguageId as DomainLanguageId, LanguageStatus,
     OracleKind, OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest,
-    RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
+    RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind,
 };
 use rustpython_parser::{
     Mode,
-    ast::{self, Expr, Mod, Stmt},
+    ast::{self, Expr, Mod, Ranged, Stmt},
     parse,
     text_size::TextRange,
 };
@@ -159,22 +160,28 @@ fn collect_owners_from_statements(
                 out.push(owner_from_function(
                     file,
                     source,
-                    function.name.as_str(),
-                    function.range,
-                    &function.decorator_list,
-                    class_context,
-                    false,
+                    PythonFunctionOwnerInput {
+                        name: function.name.as_str(),
+                        range: function.range,
+                        body: &function.body,
+                        decorators: &function.decorator_list,
+                        class_context,
+                        is_async: false,
+                    },
                 ));
             }
             Stmt::AsyncFunctionDef(function) => {
                 out.push(owner_from_function(
                     file,
                     source,
-                    function.name.as_str(),
-                    function.range,
-                    &function.decorator_list,
-                    class_context,
-                    true,
+                    PythonFunctionOwnerInput {
+                        name: function.name.as_str(),
+                        range: function.range,
+                        body: &function.body,
+                        decorators: &function.decorator_list,
+                        class_context,
+                        is_async: true,
+                    },
                 ));
             }
             Stmt::ClassDef(class) => {
@@ -191,42 +198,56 @@ fn collect_owners_from_statements(
     }
 }
 
+struct PythonFunctionOwnerInput<'a> {
+    name: &'a str,
+    range: TextRange,
+    body: &'a [Stmt],
+    decorators: &'a [Expr],
+    class_context: Option<&'a str>,
+    is_async: bool,
+}
+
 fn owner_from_function(
     file: &Path,
     source: &str,
-    name: &str,
-    range: TextRange,
-    decorators: &[Expr],
-    class_context: Option<&str>,
-    is_async: bool,
+    input: PythonFunctionOwnerInput<'_>,
 ) -> PythonOwner {
-    let decorator_names = decorator_names(decorators);
-    let owner_kind = if class_context.is_some()
+    let decorator_names = decorator_names(input.decorators);
+    let owner_kind = if input.class_context.is_some()
         && decorator_names.iter().any(|decorator| {
             decorator.ends_with("classmethod") || decorator.ends_with("staticmethod")
         }) {
         OwnerKind::ClassMethod
-    } else if class_context.is_some() {
+    } else if input.class_context.is_some() {
         OwnerKind::Method
     } else {
         OwnerKind::Function
     };
-    let qualified_name = class_context
-        .map(|class| format!("{class}.{name}"))
-        .unwrap_or_else(|| name.to_string());
+    let qualified_name = input
+        .class_context
+        .map(|class| format!("{class}.{}", input.name))
+        .unwrap_or_else(|| input.name.to_string());
     let mut decorators = decorator_names;
-    if is_async {
+    if input.is_async {
         decorators.push("async_def".to_string());
     }
     PythonOwner {
-        name: name.to_string(),
+        name: input.name.to_string(),
         qualified_name,
         file: file.to_path_buf(),
-        start_line: line_for_range_start(source, range),
-        end_line: line_for_range_end(source, range),
+        start_line: line_for_range_start(source, input.range),
+        end_line: owner_end_line(source, input.range, input.body),
         owner_kind,
         decorators,
     }
+}
+
+fn owner_end_line(source: &str, range: TextRange, body: &[Stmt]) -> usize {
+    body.iter()
+        .map(|stmt| line_for_range_end(source, stmt.range()))
+        .max()
+        .unwrap_or_else(|| line_for_range_end(source, range))
+        .max(line_for_range_end(source, range))
 }
 
 fn extract_tests(file: &Path, source: &str) -> Vec<PythonTest> {
@@ -548,6 +569,12 @@ struct PythonRelatedCandidate<'a> {
     relation: PythonRelationKind,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PythonStaticLimit {
+    kind: StaticLimitKind,
+    detail: String,
+}
+
 fn related_test_candidates<'a>(
     owner: &PythonOwner,
     all_tests: &'a [PythonTest],
@@ -579,9 +606,15 @@ fn related_test_candidates<'a>(
     candidates
 }
 
+#[cfg(test)]
 fn find_related_tests(owner: &PythonOwner, all_tests: &[PythonTest]) -> Vec<RelatedTest> {
-    related_test_candidates(owner, all_tests)
-        .into_iter()
+    let candidates = related_test_candidates(owner, all_tests);
+    related_tests_from_candidates(&candidates)
+}
+
+fn related_tests_from_candidates(candidates: &[PythonRelatedCandidate<'_>]) -> Vec<RelatedTest> {
+    candidates
+        .iter()
         .map(|candidate| {
             let strongest = candidate
                 .relation
@@ -611,6 +644,121 @@ fn find_related_tests(owner: &PythonOwner, all_tests: &[PythonTest]) -> Vec<Rela
             }
         })
         .collect()
+}
+
+fn static_limits_for_change(
+    owner: &PythonOwner,
+    line_text: &str,
+    candidates: &[PythonRelatedCandidate<'_>],
+) -> Vec<PythonStaticLimit> {
+    let mut limits = Vec::new();
+    let trimmed = line_text.trim();
+    if contains_dynamic_dispatch(trimmed) {
+        push_static_limit(
+            &mut limits,
+            StaticLimitKind::DynamicDispatch,
+            "Dynamic attribute or namespace lookup is visible; Python preview does not resolve runtime dispatch targets.",
+        );
+    }
+    if contains_metaprogramming(trimmed) {
+        push_static_limit(
+            &mut limits,
+            StaticLimitKind::Metaprogramming,
+            "Metaprogramming syntax is visible; Python preview does not execute or model generated behavior.",
+        );
+    }
+    if contains_unsupported_syntax(trimmed) {
+        push_static_limit(
+            &mut limits,
+            StaticLimitKind::UnsupportedSyntax,
+            "This Python syntax shape is parsed but not modeled by the preview evidence extractor.",
+        );
+    }
+    let decorators = owner
+        .decorators
+        .iter()
+        .filter(|decorator| decorator.as_str() != "async_def")
+        .cloned()
+        .collect::<Vec<_>>();
+    if !decorators.is_empty() {
+        push_static_limit(
+            &mut limits,
+            StaticLimitKind::DecoratorIndirection,
+            format!(
+                "Owner decorator(s) `{}` may rewrite call behavior; Python preview records them as context only.",
+                decorators.join(", ")
+            ),
+        );
+    }
+    if candidates
+        .iter()
+        .any(|candidate| candidate.relation == PythonRelationKind::ImportAliasCall)
+    {
+        push_static_limit(
+            &mut limits,
+            StaticLimitKind::MissingImportGraph,
+            "Related test reaches the owner through an import alias; Python preview does not resolve the import graph.",
+        );
+    }
+    if candidates
+        .iter()
+        .any(|candidate| test_uses_mocking(candidate.test))
+    {
+        push_static_limit(
+            &mut limits,
+            StaticLimitKind::MockedModule,
+            "Related test uses mock or patch syntax; Python preview does not model runtime substitution semantics.",
+        );
+    }
+    limits
+}
+
+fn push_static_limit(
+    limits: &mut Vec<PythonStaticLimit>,
+    kind: StaticLimitKind,
+    detail: impl Into<String>,
+) {
+    if limits.iter().any(|limit| limit.kind == kind) {
+        return;
+    }
+    limits.push(PythonStaticLimit {
+        kind,
+        detail: detail.into(),
+    });
+}
+
+fn contains_dynamic_dispatch(text: &str) -> bool {
+    text.contains("getattr(")
+        || text.contains("setattr(")
+        || text.contains("delattr(")
+        || text.contains("hasattr(")
+        || text.contains("globals()[")
+        || text.contains("locals()[")
+        || text.contains("vars()[")
+        || text.contains(".__dict__")
+}
+
+fn contains_metaprogramming(text: &str) -> bool {
+    text.contains("eval(")
+        || text.contains("exec(")
+        || text.contains("compile(")
+        || text.contains("__import__(")
+        || text.contains("metaclass=")
+}
+
+fn contains_unsupported_syntax(text: &str) -> bool {
+    text.starts_with("yield")
+        || text.contains(" yield ")
+        || text.starts_with("lambda ")
+        || text.contains(" lambda ")
+}
+
+fn test_uses_mocking(test: &PythonTest) -> bool {
+    test.body_text.contains("patch(")
+        || test.body_text.contains(".patch(")
+        || test.body_text.contains("Mock(")
+        || test.body_text.contains("MagicMock(")
+        || test.body_text.contains("monkeypatch.")
 }
 
 fn strongest_assertion(assertions: &[PythonAssertion]) -> Option<&PythonAssertion> {
@@ -745,7 +893,9 @@ fn classify_change(
         .iter()
         .filter(|owner| normalized_path(&owner.file) == changed_file)
         .find(|owner| line >= owner.start_line && line <= owner.end_line)?;
-    let related = find_related_tests(owner, all_tests);
+    let related_candidates = related_test_candidates(owner, all_tests);
+    let related = related_tests_from_candidates(&related_candidates);
+    let static_limits = static_limits_for_change(owner, line_text, &related_candidates);
     let strongest_strength = related
         .iter()
         .map(|test| test.oracle_strength.rank())
@@ -793,6 +943,14 @@ fn classify_change(
             )],
         )
     };
+    let mut missing = missing;
+    for limit in &static_limits {
+        missing.push(format!(
+            "Static limit `{}`: {}",
+            limit.kind.as_str(),
+            limit.detail
+        ));
+    }
 
     let id_path: String = file
         .display()
@@ -874,7 +1032,14 @@ fn classify_change(
     if !owner.decorators.is_empty() {
         evidence.push(format!("owner_decorators: {}", owner.decorators.join(", ")));
     }
-    for candidate in related_test_candidates(owner, all_tests) {
+    for limit in &static_limits {
+        evidence.push(format!(
+            "static_limit {}: {}",
+            limit.kind.as_str(),
+            limit.detail
+        ));
+    }
+    for candidate in &related_candidates {
         let test = candidate.test;
         evidence.push(format!(
             "test_framework: {} ({})",
@@ -921,7 +1086,7 @@ fn classify_change(
         language: Some(DomainLanguageId::Python),
         language_status: Some(LanguageStatus::Preview),
         owner_kind: Some(owner.owner_kind),
-        static_limit_kind: None,
+        static_limit_kind: static_limits.first().map(|limit| limit.kind),
     })
 }
 
@@ -1474,6 +1639,163 @@ def test_notifies_callback():
         assert_eq!(finding.class, ExposureClass::Exposed);
         assert!(finding.evidence.iter().any(|entry| entry
             == "related_test_relation: import_alias_call (test_checkout_tax_alias_import)"));
+        assert_eq!(
+            finding.static_limit_kind,
+            Some(StaticLimitKind::MissingImportGraph)
+        );
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .any(|entry| entry.starts_with("static_limit missing_import_graph:"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_surfaces_decorator_static_limit() -> Result<(), String> {
+        let owners = extract_owners(
+            Path::new("src/pricing.py"),
+            r#"@cached
+def apply_discount(amount):
+    return amount - 10
+"#,
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_pricing.py"),
+            "def test_apply_discount():\n    assert apply_discount(100) == 90\n",
+        );
+
+        let Some(finding) = classify_change(
+            Path::new("src/pricing.py"),
+            2,
+            "def apply_discount(amount):",
+            &owners,
+            &tests,
+        ) else {
+            return Err("decorated changed owner should classify".to_string());
+        };
+
+        assert_eq!(
+            finding.static_limit_kind,
+            Some(StaticLimitKind::DecoratorIndirection)
+        );
+        assert!(
+            finding
+                .missing
+                .iter()
+                .any(|entry| entry.starts_with("Static limit `decorator_indirection`:"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_surfaces_changed_line_static_limits() -> Result<(), String> {
+        let owners = extract_owners(
+            Path::new("src/dispatch.py"),
+            "def apply_dynamic(strategy, amount):\n    return getattr(strategy, \"apply\")(amount)\n",
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_dispatch.py"),
+            "def test_apply_dynamic():\n    assert apply_dynamic(strategy, 100) == 90\n",
+        );
+
+        let Some(dynamic) = classify_change(
+            Path::new("src/dispatch.py"),
+            2,
+            "    return getattr(strategy, \"apply\")(amount)",
+            &owners,
+            &tests,
+        ) else {
+            return Err("dynamic dispatch changed line should classify".to_string());
+        };
+        assert_eq!(
+            dynamic.static_limit_kind,
+            Some(StaticLimitKind::DynamicDispatch)
+        );
+
+        let owners = extract_owners(
+            Path::new("src/rules.py"),
+            "def apply_rule(rule):\n    return eval(rule)\n",
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_rules.py"),
+            "def test_apply_rule():\n    assert apply_rule(\"10\") == 10\n",
+        );
+        let Some(meta) = classify_change(
+            Path::new("src/rules.py"),
+            2,
+            "    return eval(rule)",
+            &owners,
+            &tests,
+        ) else {
+            return Err("metaprogramming changed line should classify".to_string());
+        };
+        assert_eq!(
+            meta.static_limit_kind,
+            Some(StaticLimitKind::Metaprogramming)
+        );
+
+        let owners = extract_owners(
+            Path::new("src/stream.py"),
+            "def emit_amount(amount):\n    yield amount\n",
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_stream.py"),
+            "def test_emit_amount():\n    assert list(emit_amount(10)) == [10]\n",
+        );
+        let Some(unsupported) = classify_change(
+            Path::new("src/stream.py"),
+            2,
+            "    yield amount",
+            &owners,
+            &tests,
+        ) else {
+            return Err("unsupported changed line should classify".to_string());
+        };
+        assert_eq!(
+            unsupported.static_limit_kind,
+            Some(StaticLimitKind::UnsupportedSyntax)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_surfaces_mocked_module_static_limit() -> Result<(), String> {
+        let owners = extract_owners(
+            Path::new("src/pricing.py"),
+            "def apply_discount(amount):\n    return amount - 10\n",
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_pricing.py"),
+            r#"from unittest.mock import Mock
+
+def test_apply_discount_with_patch():
+    service = Mock()
+    assert apply_discount(100) == 90
+"#,
+        );
+
+        let Some(finding) = classify_change(
+            Path::new("src/pricing.py"),
+            2,
+            "    return amount - 10",
+            &owners,
+            &tests,
+        ) else {
+            return Err("mocked related test should classify".to_string());
+        };
+
+        assert_eq!(
+            finding.static_limit_kind,
+            Some(StaticLimitKind::MockedModule)
+        );
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .any(|entry| entry.starts_with("static_limit mocked_module:"))
+        );
         Ok(())
     }
 

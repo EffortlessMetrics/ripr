@@ -202,14 +202,14 @@ commands = [
 
 [[work_item]]
 id = "analysis/python-preview-adapter"
-status = "active"
-branch = "analysis-python-preview-adapter"
+status = "done"
+branch = "analysis-python-static-limits"
 stackable = false
 blocked_by = [
   "config/languages-opt-in",
   "adr/python-parser-substrate",
 ]
-acceptance = "Add the Python syntax-first adapter, the Python fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Scaffold sub-slice mirrors the TypeScript scaffold (PR #759): adds the `rustpython-parser` Cargo dependency approved by the corrected ADR 0009, the `PythonAdapter` type, language-aware pipeline dispatch through `[languages] enabled`, and a real production parse-validation use of `rustpython-parser`. To avoid an LGPL-3.0-only transitive (`malachite-bigint`), the dependency disables default features and selects `num-bigint` (MIT/Apache-2.0) for Python int-literal representation. Owner/test sub-slice adds syntax-first `def` / `async def` / method owner facts, pytest and unittest test discovery, preview `owner_kind` output, and Python owner/test fixture families. Assertion/oracle sub-slice adds syntax-first pytest, unittest, boolean, broad-error, and mock-call oracle facts plus fixture families. Probe-shape sub-slice adds syntax-first predicate, return-value, error-path, field-assignment, call, and mock-initializer probe families plus fixture coverage. Related-test sub-slice adds direct-call, import-alias, same-stem, and unrelated-mention fixtures with conservative weak proximity behavior. Static-limit fact extraction remains an active follow-up slice against RIPR-SPEC-0028's fixture corpus."
+acceptance = "Add the Python syntax-first adapter, the Python fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Scaffold sub-slice mirrors the TypeScript scaffold (PR #759): adds the `rustpython-parser` Cargo dependency approved by the corrected ADR 0009, the `PythonAdapter` type, language-aware pipeline dispatch through `[languages] enabled`, and a real production parse-validation use of `rustpython-parser`. To avoid an LGPL-3.0-only transitive (`malachite-bigint`), the dependency disables default features and selects `num-bigint` (MIT/Apache-2.0) for Python int-literal representation. Owner/test sub-slice adds syntax-first `def` / `async def` / method owner facts, pytest and unittest test discovery, preview `owner_kind` output, and Python owner/test fixture families. Assertion/oracle sub-slice adds syntax-first pytest, unittest, boolean, broad-error, and mock-call oracle facts plus fixture families. Probe-shape sub-slice adds syntax-first predicate, return-value, error-path, field-assignment, call, and mock-initializer probe families plus fixture coverage. Related-test sub-slice adds direct-call, import-alias, same-stem, and unrelated-mention fixtures with conservative weak proximity behavior. Static-limit sub-slice emits registered `static_limit_kind` values for dynamic dispatch, metaprogramming, missing import graph, decorator indirection, mocked module, and unsupported syntax, with fixture coverage and advisory preview wording."
 commands = [
   "cargo check -p ripr",
   "cargo test -p ripr --lib analysis::language",

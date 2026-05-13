@@ -29,8 +29,8 @@
       "evidence_path": ["reach yes: 1 related Python test(s) found for owner `send_receipt`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Strongest extracted Python oracle kind: `mock_expectation` (rank 4)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "related test tests/test_notify.py:6 test_send_receipt_notifies_callback uses medium mock expectation oracle: callback.assert_called_once_with(\"receipt.sent\", \"ord-123\")"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: send_receipt", "owner_kind: function", "test_framework: pytest (test_send_receipt_notifies_callback)", "related_test_relation: syntactic_call (test_send_receipt_notifies_callback)", "test_oracle: mock_expectation medium (test_send_receipt_notifies_callback)"],
-      "missing": ["Related Python test reaches `send_receipt` but the strongest extracted oracle is `mock_expectation`; add or verify an exact-value assertion to make the preview finding stronger."],
+      "evidence": ["owner: send_receipt", "owner_kind: function", "static_limit mocked_module: Related test uses mock or patch syntax; Python preview does not model runtime substitution semantics.", "test_framework: pytest (test_send_receipt_notifies_callback)", "related_test_relation: syntactic_call (test_send_receipt_notifies_callback)", "test_oracle: mock_expectation medium (test_send_receipt_notifies_callback)"],
+      "missing": ["Related Python test reaches `send_receipt` but the strongest extracted oracle is `mock_expectation`; add or verify an exact-value assertion to make the preview finding stronger.", "Static limit `mocked_module`: Related test uses mock or patch syntax; Python preview does not model runtime substitution semantics."],
       "activation": {
         "observed_values": [
         ],
@@ -58,7 +58,8 @@
       "suggested_next_action": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
       "language": "python",
       "language_status": "preview",
-      "owner_kind": "function"
+      "owner_kind": "function",
+      "static_limit_kind": "mocked_module"
     }
   ]
 }

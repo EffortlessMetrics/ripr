@@ -1926,6 +1926,12 @@ fixtures = [
   "fixtures/python_cross_file_import_reference",
   "fixtures/python_same_stem_test",
   "fixtures/python_unrelated_test_mention",
+  "fixtures/python_dynamic_dispatch_limit",
+  "fixtures/python_metaprogramming_limit",
+  "fixtures/python_missing_import_graph_limit",
+  "fixtures/python_decorator_indirection_limit",
+  "fixtures/python_mocked_module_limit",
+  "fixtures/python_unsupported_syntax_limit",
 ]
 code = [
   "crates/ripr/src/analysis/language/python.rs",
@@ -1941,6 +1947,7 @@ outputs = [
   "docs/proposals/RIPR-PROP-0001-multi-language-adapter-preview.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
+  "docs/status/SUPPORT_TIERS.md",
   "docs/ROADMAP.md",
   "policy/dependency_allowlist.txt",
   ".ripr/traceability.toml",
@@ -1956,8 +1963,12 @@ metrics = [
   "language_adapter_python_oracle_side_effect",
   "language_adapter_python_oracle_smoke",
   "language_adapter_python_oracle_broad_type",
+  "language_adapter_python_static_limit_dynamic_dispatch",
+  "language_adapter_python_static_limit_metaprogramming",
+  "language_adapter_python_static_limit_missing_import_graph",
   "language_adapter_python_static_limit_decorator_indirection",
   "language_adapter_python_static_limit_mocked_module",
+  "language_adapter_python_static_limit_unsupported_syntax",
 ]
 
 [[behavior]]

@@ -1,0 +1,65 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_mocked_module_limit/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_pricing.py:2:python_preview",
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 0.60,
+      "probe": {
+        "id": "probe:src_pricing.py:2:python_preview",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/pricing.py",
+        "line": 2,
+        "expression": "    return amount - 10"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `apply_discount`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"yes","confidence":"low","summary":"Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `apply_discount`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/test_pricing.py:4 test_apply_discount_with_mock uses strong exact value oracle: assert apply_discount(100) == 90"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: apply_discount", "owner_kind: function", "static_limit mocked_module: Related test uses mock or patch syntax; Python preview does not model runtime substitution semantics.", "test_framework: pytest (test_apply_discount_with_mock)", "related_test_relation: syntactic_call (test_apply_discount_with_mock)", "test_oracle: exact_value strong (test_apply_discount_with_mock)"],
+      "missing": ["Related Python test reaches `apply_discount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.", "Static limit `mocked_module`: Related test uses mock or patch syntax; Python preview does not model runtime substitution semantics."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "test_apply_discount_with_mock",
+          "file": "tests/test_pricing.py",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert apply_discount(100) == 90"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
+      "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "static_limit_kind": "mocked_module"
+    }
+  ]
+}

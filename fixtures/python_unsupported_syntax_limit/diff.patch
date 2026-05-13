@@ -1,0 +1,8 @@
+diff --git a/src/stream.py b/src/stream.py
+index 0000000..1111111 100644
+--- a/src/stream.py
++++ b/src/stream.py
+@@ -1,2 +1,2 @@
+ def emit_amount(amount):
+-    yield amount - 5
++    yield amount - 10

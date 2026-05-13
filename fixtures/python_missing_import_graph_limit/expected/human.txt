@@ -1,0 +1,37 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_missing_import_graph_limit/input
+
+Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+
+INFO src/tax.py:2
+
+Changed
+  after:      return amount + 2
+
+Probe
+  family: return_value
+  delta:  value
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  exposed (info, confidence 0.60)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `apply_tax`
+  - infection unknown: Python preview adapter does not yet model infection.
+  - propagation unknown: Python preview adapter does not yet model propagation.
+  - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
+  - discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - related test tests/test_checkout_tax.py:4 test_checkout_tax_alias_import uses strong exact value oracle: assert taxed(10) == 12
+
+Weakness
+  - Related Python test reaches `apply_tax` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
+  - Static limit `missing_import_graph`: Related test reaches the owner through an import alias; Python preview does not resolve the import graph.
+
+Next step
+  Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.

@@ -1,0 +1,9 @@
+diff --git a/src/pricing.py b/src/pricing.py
+index 0000000..1111111 100644
+--- a/src/pricing.py
++++ b/src/pricing.py
+@@ -1,3 +1,3 @@
+ @cached
+ def apply_discount(amount):
+-    return amount - 5
++    return amount - 10

@@ -1,0 +1,8 @@
+diff --git a/src/dispatch.py b/src/dispatch.py
+index 0000000..1111111 100644
+--- a/src/dispatch.py
++++ b/src/dispatch.py
+@@ -1,2 +1,2 @@
+ def apply_dynamic(strategy, amount):
+-    return strategy.apply(amount)
++    return getattr(strategy, "apply")(amount)

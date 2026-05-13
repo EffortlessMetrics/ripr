@@ -31,6 +31,7 @@ Evidence
 
 Weakness
   - Related Python test reaches `apply_tax` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
+  - Static limit `missing_import_graph`: Related test reaches the owner through an import alias; Python preview does not resolve the import graph.
 
 Next step
   Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.

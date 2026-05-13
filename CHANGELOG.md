@@ -93,6 +93,12 @@ Planned scope:
   limits. The TypeScript mocked-module limit now emits
   `static_limit_kind = "mocked_module"` in JSON while keeping existing human
   evidence text advisory and leaving Rust/default behavior unchanged.
+- Added Python preview static-limit extraction for registered
+  `static_limit_kind` values: `dynamic_dispatch`, `metaprogramming`,
+  `missing_import_graph`, `decorator_indirection`, `mocked_module`, and
+  `unsupported_syntax`. The limits appear in JSON plus human evidence/missing
+  text, with fixture coverage and no runtime execution, source edits,
+  generated tests, provider calls, gate changes, or editor routing.
 - Added `cargo xtask lane1-evidence-audit` with
   `cargo xtask evidence-quality-audit` as an alias. The repo-local report writes
   `target/ripr/reports/lane1-evidence-audit.{json,md}` from generated

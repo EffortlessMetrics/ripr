@@ -1,0 +1,8 @@
+diff --git a/src/rules.py b/src/rules.py
+index 0000000..1111111 100644
+--- a/src/rules.py
++++ b/src/rules.py
+@@ -1,2 +1,2 @@
+ def apply_rule(rule):
+-    return 10
++    return eval(rule)
