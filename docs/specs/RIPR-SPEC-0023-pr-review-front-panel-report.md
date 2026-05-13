@@ -2,6 +2,30 @@
 
 Status: proposed
 
+Owner: ripr maintainers
+
+Lane: 4
+
+Linked proposal:
+[RIPR-PROP-0004: PR / CI Review Cockpit](../proposals/RIPR-PROP-0004-pr-ci-review-cockpit.md)
+
+Linked plan:
+[Lane 4 implementation plan](../../plans/lane4-pr-ci-review-cockpit/implementation-plan.md)
+
+Authority: behavior contract for the PR review front panel report
+
+Non-authority: PR order, analyzer truth, gate policy, source edits, generated
+tests, editor routing, mutation execution, provider calls, and default CI
+blocking
+
+## Role
+
+This spec defines observable behavior and acceptance examples for the Lane 4
+PR review front panel surface. It does not define PR order, active execution
+state, or policy authority. Implementation sequencing lives in
+`plans/lane4-pr-ci-review-cockpit/`; configured pass/fail authority remains
+with explicit gate-decision artifacts.
+
 ## Problem
 
 RIPR now has many PR-time evidence surfaces:

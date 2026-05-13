@@ -43,7 +43,7 @@ Use one document for one job:
 | Layer | Owns | RIPR storage |
 | --- | --- | --- |
 | Roadmap / campaign | release and lane direction | [Roadmap](../ROADMAP.md), [Implementation campaigns](../IMPLEMENTATION_CAMPAIGNS.md) |
-| Proposal / PRD | why the lane exists, user value, alternatives, success criteria | `docs/proposals/RIPR-PROP-0002-pr-ci-review-cockpit.md` |
+| Proposal / PRD | why the lane exists, user value, alternatives, success criteria | [RIPR-PROP-0004](../proposals/RIPR-PROP-0004-pr-ci-review-cockpit.md) |
 | Specs | behavior contracts and acceptance examples | [RIPR-SPEC-0023](../specs/RIPR-SPEC-0023-pr-review-front-panel-report.md), [RIPR-SPEC-0024](../specs/RIPR-SPEC-0024-report-packet-index.md), later generated-CI specs |
 | ADRs | durable architecture decisions | [ADRs](../adr/) |
 | Lane tracker | lane-local scope, boundaries, current plan, validation gates | this document |
