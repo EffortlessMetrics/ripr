@@ -1922,6 +1922,10 @@ fixtures = [
   "fixtures/python_field_assignment_shape",
   "fixtures/python_call_argument_shape",
   "fixtures/python_mock_interaction_shape",
+  "fixtures/python_owner_file_match",
+  "fixtures/python_cross_file_import_reference",
+  "fixtures/python_same_stem_test",
+  "fixtures/python_unrelated_test_mention",
 ]
 code = [
   "crates/ripr/src/analysis/language/python.rs",
