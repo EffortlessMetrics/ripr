@@ -68,7 +68,7 @@ mod tests {
         assert_eq!(
             execute(CliCommand::Policy(args(&["unknown"]))),
             Err(
-                "unknown policy subcommand \"unknown\"; expected `readiness`, `operations`, `history`, `waiver-aging`, or `suppression-health`"
+                "unknown policy subcommand \"unknown\"; expected `readiness`, `operations`, `history`, `promote`, `waiver-aging`, or `suppression-health`"
                     .to_string()
             )
         );

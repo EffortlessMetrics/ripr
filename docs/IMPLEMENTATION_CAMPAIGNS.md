@@ -3282,7 +3282,7 @@ Work items:
 | `spec/policy-history-ledger` | done | RIPR-SPEC-0041 defines a read-only policy history report and optional append-only input without gates, telemetry, dashboards, required history files, or automatic appends. |
 | `policy/history-report` | done | `ripr policy history` writes read-only JSON and Markdown trend packets over explicit policy operations and optional history JSONL inputs without automatic appends. |
 | `spec/policy-promotion-packets` | done | RIPR-SPEC-0042 defines read-only promotion packets for `visible-only`, `acknowledgeable`, `baseline-check`, and `calibrated-gate` without config, baseline, suppression, workflow, CI, history, or preview-eligibility mutation. |
-| `policy/promotion-packet-report` | planned | Add `ripr policy promote --to ...` manual-review packets from policy operations and optional policy history. |
+| `policy/promotion-packet-report` | done | `ripr policy promote --to ...` writes manual-review packets from policy operations and optional policy history without mutating config, baselines, suppressions, workflows, CI defaults, history, or preview eligibility. |
 | `spec/preview-evidence-promotion-packet` | planned | Define preview-language promotion packets with default `allowed_now = false`, explicit evidence accounting, advisory generated-CI posture, and no actual promotion. |
 | `policy/preview-promotion-packet-report` | planned | Add `ripr policy preview-promote --language ... --class ...` while preserving advisory preview defaults. |
 | `docs/policy-operator-workflow` | planned | Document readiness, operations, history, promotion packets, preview packets, manual config review, post-change monitoring, and hard boundaries for maintainers. |
