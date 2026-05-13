@@ -1399,6 +1399,7 @@ tests = [
   "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_carries_supplied_canonical_gap_identity",
   "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_names_static_limitations_from_unknown_stages",
   "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_marks_opaque_seams_as_static_limitation_work",
+  "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_normalizes_static_limitation_categories",
   "crates/ripr/src/output/repo_exposure.rs::tests::json_carries_schema_version_scope_and_metrics",
   "crates/ripr/src/output/repo_exposure.rs::tests::json_carries_full_classified_record",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::packet_carries_shared_evidence_record_projection",
@@ -1460,6 +1461,7 @@ metrics = [
   "evidence_record_projected_seams",
   "evidence_record_actionable_guidance",
   "evidence_record_static_limitations",
+  "evidence_record_static_limitation_categories",
 ]
 
 [[behavior]]
@@ -2045,6 +2047,7 @@ metrics = [
   "lane1_evidence_audit_duplicate_looking_groups",
   "lane1_evidence_audit_missing_discriminators",
   "lane1_evidence_audit_static_limitations",
+  "lane1_evidence_audit_static_limitation_categories",
   "lane1_evidence_audit_uncalibrated_records",
 ]
 

@@ -8928,6 +8928,8 @@ struct Lane1EvidenceAuditReport {
     missing_discriminator_value_counts: BTreeMap<String, usize>,
     static_limitation_reason_counts: BTreeMap<String, usize>,
     static_limitation_stage_counts: BTreeMap<String, usize>,
+    static_limitation_category_counts: BTreeMap<String, usize>,
+    static_limitation_repair_route_counts: BTreeMap<String, usize>,
     oracle_semantics_counts: BTreeMap<String, usize>,
     oracle_kind_counts: BTreeMap<String, usize>,
     oracle_strength_counts: BTreeMap<String, usize>,
@@ -9128,6 +9130,8 @@ struct Lane1EvidenceAuditBuilder {
     missing_value_counts: BTreeMap<String, usize>,
     static_reason_counts: BTreeMap<String, usize>,
     static_stage_counts: BTreeMap<String, usize>,
+    static_category_counts: BTreeMap<String, usize>,
+    static_repair_route_counts: BTreeMap<String, usize>,
     oracle_semantics_counts: BTreeMap<String, usize>,
     oracle_kind_counts: BTreeMap<String, usize>,
     oracle_strength_counts: BTreeMap<String, usize>,
@@ -9231,8 +9235,16 @@ impl Lane1EvidenceAuditBuilder {
                 .unwrap_or_else(|| "missing_reason".to_string());
             let stage =
                 audit_string(limitation, &["stage"]).unwrap_or_else(|| "missing_stage".to_string());
+            let state =
+                audit_string(limitation, &["state"]).unwrap_or_else(|| "missing_state".to_string());
+            let category = audit_string(limitation, &["category"])
+                .unwrap_or_else(|| static_limitation_category(&stage, &state, &reason).to_string());
+            let repair_route = audit_string(limitation, &["repair_route"])
+                .unwrap_or_else(|| static_limitation_repair_route(&category).to_string());
             audit_increment(&mut self.static_reason_counts, &reason);
             audit_increment(&mut self.static_stage_counts, &stage);
+            audit_increment(&mut self.static_category_counts, &category);
+            audit_increment(&mut self.static_repair_route_counts, &repair_route);
         }
 
         let unknown_stage_count = audit_unknown_stage_count(record);
@@ -9390,6 +9402,8 @@ impl Lane1EvidenceAuditBuilder {
             missing_discriminator_value_counts: self.missing_value_counts,
             static_limitation_reason_counts: self.static_reason_counts,
             static_limitation_stage_counts: self.static_stage_counts,
+            static_limitation_category_counts: self.static_category_counts,
+            static_limitation_repair_route_counts: self.static_repair_route_counts,
             oracle_semantics_counts: self.oracle_semantics_counts,
             oracle_kind_counts: self.oracle_kind_counts,
             oracle_strength_counts: self.oracle_strength_counts,
@@ -9469,6 +9483,8 @@ fn lane1_evidence_audit_json(report: &Lane1EvidenceAuditReport) -> Result<String
         "static_limitations": {
             "by_reason": report.static_limitation_reason_counts,
             "by_stage": report.static_limitation_stage_counts,
+            "by_category": report.static_limitation_category_counts,
+            "repair_routes": report.static_limitation_repair_route_counts,
         },
         "oracle_semantics_distribution": {
             "by_semantics": report.oracle_semantics_counts,
@@ -9585,6 +9601,18 @@ fn lane1_evidence_audit_markdown(report: &Lane1EvidenceAuditReport) -> String {
     );
 
     out.push_str("## Static Limitations\n\n");
+    audit_push_counts_table_limited(
+        &mut out,
+        "Category",
+        &report.static_limitation_category_counts,
+        LANE1_EVIDENCE_AUDIT_TOP_LIMIT,
+    );
+    audit_push_counts_table_limited(
+        &mut out,
+        "Repair route",
+        &report.static_limitation_repair_route_counts,
+        LANE1_EVIDENCE_AUDIT_TOP_LIMIT,
+    );
     audit_push_counts_table_limited(
         &mut out,
         "Reason",
@@ -9911,6 +9939,67 @@ fn audit_oracle_semantics_key(related: &Value) -> String {
     format!("observes={observes}; missing={missing}; upgrade={upgrade}")
 }
 
+fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'static str {
+    let reason = reason.to_ascii_lowercase();
+    if reason.contains("cross-file")
+        || reason.contains("cross file")
+        || reason.contains("unresolved constant")
+        || reason.contains("constant boundary")
+    {
+        "cross_file_constant_unresolved"
+    } else if reason.contains("macro") || reason.contains("generated") {
+        "macro_generated_value"
+    } else if reason.contains("opaque helper") || reason.contains("opaque fixture") {
+        "opaque_helper_call"
+    } else if reason.contains("dynamic dispatch") || reason.contains("opaque dispatch") {
+        "dynamic_dispatch"
+    } else if reason.contains("mock") {
+        "unsupported_mock_shape"
+    } else if reason.contains("snapshot") {
+        "snapshot_field_unknown"
+    } else if reason.contains("side effect")
+        || reason.contains("side-effect")
+        || reason.contains("effect sink")
+    {
+        "side_effect_sink_unknown"
+    } else if reason.contains("no concrete activation values observed")
+        || reason.contains("no literal activation values")
+    {
+        "activation_value_unresolved"
+    } else if stage == "classification" || state == "opaque" {
+        "opaque_static_evidence"
+    } else {
+        match stage {
+            "reach" => "reachability_static_unknown",
+            "activate" => "activation_static_unknown",
+            "propagate" => "propagation_static_unknown",
+            "observe" => "observation_static_unknown",
+            "discriminate" => "discrimination_static_unknown",
+            _ => "static_unknown",
+        }
+    }
+}
+
+fn static_limitation_repair_route(category: &str) -> &'static str {
+    match category {
+        "activation_value_unresolved" => "analysis/value-resolution-audit-fixes",
+        "cross_file_constant_unresolved" => "analysis/cross-file-constant-resolution",
+        "macro_generated_value" => "analysis/macro-generated-value-fixtures",
+        "opaque_helper_call" => "analysis/oracle-semantics-audit-fixes",
+        "dynamic_dispatch" => "calibration/runtime-fixtures-v3",
+        "unsupported_mock_shape" => "analysis/oracle-semantics-audit-fixes",
+        "snapshot_field_unknown" => "analysis/oracle-semantics-audit-fixes",
+        "side_effect_sink_unknown" => "analysis/oracle-semantics-audit-fixes",
+        "opaque_static_evidence" => "analysis/static-limitation-taxonomy",
+        "reachability_static_unknown" => "analysis/related-test-ranking-audit-fixes",
+        "activation_static_unknown" => "analysis/static-limitation-taxonomy",
+        "propagation_static_unknown" => "analysis/static-limitation-taxonomy",
+        "observation_static_unknown" => "analysis/oracle-semantics-audit-fixes",
+        "discrimination_static_unknown" => "analysis/oracle-semantics-audit-fixes",
+        _ => "analysis/static-limitation-taxonomy",
+    }
+}
+
 fn audit_upsert_group(
     groups: &mut BTreeMap<String, Lane1EvidenceAuditGroup>,
     group: Lane1EvidenceAuditGroup,
@@ -9983,6 +10072,27 @@ fn audit_push_counts_table_limited(
         out.push_str(&format!("| {} | {} |\n", audit_markdown_cell(key), count));
     }
     out.push('\n');
+}
+
+fn audit_push_value_counts_table_limited(
+    out: &mut String,
+    heading: &str,
+    value: &Value,
+    path: &[&str],
+    limit: usize,
+) {
+    let Some(object) = audit_get(value, path).and_then(Value::as_object) else {
+        out.push_str(&format!(
+            "No {} counts were reported.\n\n",
+            heading.to_lowercase()
+        ));
+        return;
+    };
+    let counts = object
+        .iter()
+        .filter_map(|(key, value)| value.as_u64().map(|count| (key.clone(), count as usize)))
+        .collect::<BTreeMap<_, _>>();
+    audit_push_counts_table_limited(out, heading, &counts, limit);
 }
 
 fn audit_push_group_table(out: &mut String, groups: &[Lane1EvidenceAuditGroup]) {
@@ -11058,6 +11168,20 @@ fn evidence_quality_scorecard_markdown(report: &EvidenceQualityScorecardReport) 
         report.summary.missing_discriminators_total,
     );
     out.push('\n');
+    audit_push_value_counts_table_limited(
+        &mut out,
+        "Static limitation category",
+        &report.static_limitation_categories,
+        &["by_category"],
+        LANE1_EVIDENCE_AUDIT_TOP_LIMIT,
+    );
+    audit_push_value_counts_table_limited(
+        &mut out,
+        "Static limitation repair route",
+        &report.static_limitation_categories,
+        &["repair_routes"],
+        LANE1_EVIDENCE_AUDIT_TOP_LIMIT,
+    );
 
     out.push_str("## Related-Test And Oracle Distributions\n\n");
     audit_push_count(
@@ -34134,6 +34258,14 @@ covered_by = ["cargo xtask check-file-policy"]
             serde_json::Value::from(1)
         );
         assert_eq!(
+            value["static_limitations"]["by_category"]["opaque_helper_call"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["static_limitations"]["repair_routes"]["analysis/oracle-semantics-audit-fixes"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
             value["related_test_ranking"]["top_confidence_counts"]["low"],
             serde_json::Value::from(1)
         );
@@ -34159,6 +34291,8 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("Largest Canonical Gap Groups"));
         assert!(markdown.contains("Duplicate-Looking Groups"));
         assert!(markdown.contains("Missing Discriminator Classes"));
+        assert!(markdown.contains("opaque_helper_call"));
+        assert!(markdown.contains("analysis/oracle-semantics-audit-fixes"));
         assert!(markdown.contains("Evidence Record Field Health"));
         assert!(markdown.contains("Top Files By Unresolved Evidence Debt"));
         assert!(markdown.contains("gap:shared"));
@@ -34228,6 +34362,7 @@ covered_by = ["cargo xtask check-file-policy"]
             "Recommended Lane 1 Repairs",
             "Duplicate-Looking And Canonical Group Signals",
             "Static Limitations And Missing Discriminators",
+            "Static limitation category",
             "Related-Test And Oracle Distributions",
             "Movement And Calibration Coverage",
             "Recent Deltas",

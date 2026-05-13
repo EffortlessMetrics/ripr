@@ -123,6 +123,12 @@ Planned scope:
   The closeout records the audit, fixture corpus, first analyzer improvement,
   evidence-health dashboard fields, runtime-fixtures-v2 calibration expansion,
   and future evidence-class boundary without changing `.ripr/goals/active.toml`.
+- Added the first Lane 1 Evidence Quality Leadership repair: static
+  limitations now carry normalized analyzer categories and suggested repair
+  routes through `evidence_record`, evidence-health, the Lane 1 audit, and the
+  evidence-quality scorecard. This keeps unknowns repairable for maintainers
+  without changing grip classes, gates, CI behavior, mutation execution, or
+  score definitions.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 

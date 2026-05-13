@@ -931,7 +931,9 @@ Field contract:
   calibration was supplied; it does not imply runtime confirmation.
 - `seams[].evidence_record.static_limitations` - unknown or opaque static
   evidence stages that should be treated as analyzer limitations rather than
-  focused-test instructions.
+  focused-test instructions. Each entry carries the original `stage`, `state`,
+  and `reason` plus a normalized `category` and `repair_route` so Lane 1 can
+  group analyzer limits without treating them as user test gaps.
 
 The fixture contract corpus at
 `fixtures/boundary_gap/expected/evidence-record-contract/corpus.json` pins
@@ -1086,6 +1088,9 @@ without changing analyzer behavior. The same report lands at
     "static_limitation_reason_counts": {
       "No concrete activation values observed for seam `Vec::new()`": 255
     },
+    "static_limitation_category_counts": {
+      "activation_value_unresolved": 255
+    },
     "calibration_availability_counts": {
       "not_imported": 9355
     },
@@ -1165,6 +1170,11 @@ Field contract:
 - `evidence_quality.static_limitation_stage_counts` and
   `static_limitation_reason_counts` - distributions from
   `evidence_record.static_limitations`.
+- `evidence_quality.static_limitation_category_counts` - normalized limitation
+  categories such as `activation_value_unresolved`,
+  `opaque_helper_call`, `cross_file_constant_unresolved`,
+  `dynamic_dispatch`, `unsupported_mock_shape`, `snapshot_field_unknown`, and
+  `side_effect_sink_unknown`.
 - `evidence_quality.calibration_availability_counts` - counts keyed by
   `evidence_record.calibration.availability`. These are placeholder coverage
   labels from the static record and do not imply runtime execution.
@@ -1269,6 +1279,12 @@ runtime execution.
     },
     "by_stage": {
       "activate": 800
+    },
+    "by_category": {
+      "activation_static_unknown": 800
+    },
+    "repair_routes": {
+      "analysis/static-limitation-taxonomy": 800
     }
   },
   "oracle_semantics_distribution": {
@@ -1369,7 +1385,8 @@ Field contract:
 - `duplicate_looking_groups` - canonical or fallback groups with observed count
   greater than one, or a reported group size greater than one.
 - `missing_discriminator_classes` - count maps by reason, flow sink, and value.
-- `static_limitations` - count maps by limitation reason and evidence stage.
+- `static_limitations` - count maps by limitation reason, evidence stage,
+  normalized category, and suggested repair route.
 - `oracle_semantics_distribution` - rendered related-test oracle semantics plus
   oracle kind and strength counts.
 - `related_test_ranking` - confidence and relation-reason counts for all
@@ -1463,7 +1480,9 @@ generated tests, provider calls, or runtime execution.
   "duplicate_looking_groups": [],
   "static_limitation_categories": {
     "by_reason": {},
-    "by_stage": {}
+    "by_stage": {},
+    "by_category": {},
+    "repair_routes": {}
   },
   "missing_discriminator_classes": {
     "by_reason": {},
@@ -1543,7 +1562,9 @@ Field contract:
   `static_limitation_categories`, `missing_discriminator_classes`,
   `related_test_confidence`, `oracle_semantics_distribution`, and
   `movement_availability` - current audit sections carried forward so the
-  scorecard remains traceable to `lane1-evidence-audit.json`.
+  scorecard remains traceable to `lane1-evidence-audit.json`. Static
+  limitation categories and repair routes are advisory Lane 1 analyzer-work
+  buckets; they are not user-actionable test-gap labels.
 - `calibration_coverage` - class-scoped calibration availability from
   `evidence_record.calibration`; it does not run mutation testing.
 - `recommended_repairs` - bounded Lane 1 repair slices ordered by product risk
