@@ -122,16 +122,20 @@ The generated-CI cockpit gap map is in
 Lane 4 closeout is recorded in
 [2026-05-13-lane4-pr-ci-review-cockpit-closeout.md](../handoffs/2026-05-13-lane4-pr-ci-review-cockpit-closeout.md).
 
-The final slice is docs-only closeout:
+The Lane 4 closeout predates Campaign 27's preview-language projection. The
+Campaign 27 CI grouping slice now extends the generated workflow summary with
+advisory TypeScript/Python groups only when `[languages]` enables preview
+adapters, while preserving Rust-default output and gate authority.
+
+The final Lane 4 slice remains docs-only closeout:
 
 ```text
 docs(lane4): close PR/CI review cockpit lane
 ```
 
-This slice records shipped surfaces, validation, deferred language-aware
-grouping, explicit non-changes, known limits, and next-lane handoff without
-changing generated CI, report producers, output contracts, policy, fixtures,
-code, or schemas.
+This slice records shipped surfaces, validation, explicit non-changes, known
+limits, and next-lane handoff without changing generated CI, report producers,
+output contracts, policy, fixtures, code, or schemas.
 
 ## Validation Gates
 

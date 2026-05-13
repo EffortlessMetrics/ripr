@@ -1789,6 +1789,75 @@ jobs:
             echo '- Repair route: use the verify or agent command shown in the front panel or first useful action.'
             echo '- Gate authority: `ripr gate evaluate` remains the pass/fail source only when `RIPR_GATE_MODE` is configured.'
             echo
+            configured_languages="$(
+              ripr doctor --root . 2>/dev/null \
+                | sed -n 's/^- Enabled languages: //p' \
+                | tail -n 1 \
+                || true
+            )"
+            if [ -z "$configured_languages" ]; then
+              configured_languages="rust"
+            fi
+            preview_languages="$(
+              printf '%s\n' "$configured_languages" \
+                | tr ',' '\n' \
+                | sed 's/^ *//; s/ *$//' \
+                | sed -n '/^typescript$/p; /^python$/p' \
+                | sort -u \
+                | tr '\n' ' ' \
+                | sed 's/ $//' \
+                || true
+            )"
+            if [ -n "$preview_languages" ]; then
+              configured_inline="$(markdown_inline "$configured_languages")"
+              echo '### Language preview grouping'
+              echo "- Configured languages: \`$configured_inline\`"
+              echo "- Boundary: preview-language groups are advisory presentation only; \`ripr gate evaluate\` remains pass/fail authority when explicitly configured."
+              for language in $preview_languages; do
+                language_inputs=()
+                if [ -f target/ripr/reports/repo-exposure.json ]; then
+                  language_inputs+=(target/ripr/reports/repo-exposure.json)
+                elif [ -f target/ripr/pilot/repo-exposure.json ]; then
+                  language_inputs+=(target/ripr/pilot/repo-exposure.json)
+                fi
+                for language_json in \
+                  target/ripr/review/comments.json \
+                  target/ripr/reports/gate-decision.json \
+                  target/ripr/reports/pr-evidence-ledger.json; do
+                  if [ -f "$language_json" ]; then
+                    language_inputs+=("$language_json")
+                  fi
+                done
+
+                artifact_entries=0
+                preview_entries=0
+                missing_preview_status=0
+                static_limit_entries=0
+                class_counts="none"
+                static_limit_kinds="none"
+                if [ "${#language_inputs[@]}" -gt 0 ]; then
+                  artifact_entries="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language)] | length' "${language_inputs[@]}" 2>/dev/null || echo 0)"
+                  preview_entries="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language and .language_status? == "preview")] | length' "${language_inputs[@]}" 2>/dev/null || echo 0)"
+                  missing_preview_status="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language and .language_status? != "preview")] | length' "${language_inputs[@]}" 2>/dev/null || echo 0)"
+                  static_limit_entries="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language and .static_limit_kind? != null)] | length' "${language_inputs[@]}" 2>/dev/null || echo 0)"
+                  class_counts="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language and .classification? != null) | .classification] | sort | group_by(.) | map("\(.[0])=\(length)") | if length == 0 then "none" else join(", ") end' "${language_inputs[@]}" 2>/dev/null || echo none)"
+                  static_limit_kinds="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language) | .static_limit_kind? | select(. != null)] | unique | if length == 0 then "none" else join(", ") end' "${language_inputs[@]}" 2>/dev/null || echo none)"
+                fi
+                language_inline="$(markdown_inline "$language")"
+                artifact_entries="$(markdown_inline "$artifact_entries")"
+                preview_entries="$(markdown_inline "$preview_entries")"
+                missing_preview_status="$(markdown_inline "$missing_preview_status")"
+                static_limit_entries="$(markdown_inline "$static_limit_entries")"
+                class_counts="$(markdown_inline "$class_counts")"
+                static_limit_kinds="$(markdown_inline "$static_limit_kinds")"
+                if [ "$artifact_entries" = "0" ]; then
+                  echo "- \`$language_inline\`: configured preview/advisory; no language findings were emitted in this run."
+                else
+                  echo "- \`$language_inline\`: artifact_entries=\`$artifact_entries\`, preview_entries=\`$preview_entries\`, missing_preview_status=\`$missing_preview_status\`, static_limit_entries=\`$static_limit_entries\`, classifications=\`$class_counts\`, static_limit_kinds=\`$static_limit_kinds\`"
+                fi
+              done
+              echo
+            fi
             echo '### PR review summary'
             if [ -f target/ripr/reports/pr-review-front-panel.json ] || [ -f target/ripr/reports/pr-review-front-panel.md ]; then
               if [ -f target/ripr/reports/pr-review-front-panel.json ]; then
@@ -6723,6 +6792,7 @@ mod tests {
             summary_sections: &[
                 "## RIPR advisory summary",
                 "### Start here",
+                "### Language preview grouping",
                 "### PR review summary",
                 "#### PR review at a glance",
                 "### Recommended next test",
@@ -9499,6 +9569,7 @@ language = "rust"
         assert!(workflow.contains("name: Add RIPR advisory summary"));
         assert!(workflow.contains("## RIPR advisory summary"));
         assert!(workflow.contains("### Start here"));
+        assert!(workflow.contains("### Language preview grouping"));
         assert!(workflow.contains("### PR review summary"));
         assert!(workflow.contains("#### PR review at a glance"));
         assert!(workflow.contains("### Recommended next test"));
@@ -9721,6 +9792,42 @@ language = "rust"
         assert!(summary.contains(
             "Regenerate command: `ripr reports index --root . --reports-dir target/ripr/reports --review-dir target/ripr/review --receipts-dir target/ripr/receipts --workflow-dir target/ripr/workflow --agent-dir target/ripr/agent --pilot-dir target/ripr/pilot --ci-dir target/ci --out target/ripr/reports/index.json --out-md target/ripr/reports/index.md`."
         ));
+    }
+
+    #[test]
+    fn init_generated_github_workflow_groups_preview_languages_only_when_configured() {
+        let workflow = generated_github_actions_workflow();
+        let summary = workflow_step(&workflow, "Add RIPR advisory summary");
+
+        assert!(summary.contains("ripr doctor --root ."));
+        assert!(summary.contains("sed -n '/^typescript$/p; /^python$/p'"));
+        assert!(summary.contains("| tail -n 1 \\"));
+        assert!(summary.contains("|| true"));
+        assert!(summary.contains("target/ripr/reports/repo-exposure.json"));
+        assert!(summary.contains("target/ripr/pilot/repo-exposure.json"));
+        assert!(summary.contains(".language_status? != \"preview\""));
+        assert!(summary.contains("configured preview/advisory"));
+        assert!(summary.contains("artifact_entries=\\`$artifact_entries\\`"));
+        assert!(summary.contains(
+            "preview-language groups are advisory presentation only; \\`ripr gate evaluate\\` remains pass/fail authority"
+        ));
+
+        let guard = summary
+            .find("if [ -n \"$preview_languages\" ]; then")
+            .unwrap_or(usize::MAX);
+        let grouping = summary
+            .find("echo '### Language preview grouping'")
+            .unwrap_or(usize::MAX);
+        let pr_review = summary
+            .find("echo '### PR review summary'")
+            .unwrap_or(usize::MAX);
+        assert_ne!(guard, usize::MAX, "missing language grouping guard");
+        assert_ne!(grouping, usize::MAX, "missing language grouping heading");
+        assert_ne!(pr_review, usize::MAX, "missing PR review heading");
+        assert!(
+            guard < grouping && grouping < pr_review,
+            "language grouping must stay opt-in and before the PR review summary"
+        );
     }
 
     #[test]

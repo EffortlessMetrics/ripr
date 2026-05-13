@@ -534,7 +534,8 @@ For a CI-first user, the useful output is the artifact packet:
 The workflow also writes a `RIPR advisory summary` step summary. It includes
 the PR review front panel when existing inputs allow
 `ripr pr-review front-panel` to run, the first useful action when existing
-inputs allow `ripr first-action` to run, policy readiness, waiver aging, and
+inputs allow `ripr first-action` to run, a language preview grouping section
+when `[languages]` enables TypeScript or Python, policy readiness, waiver aging, and
 suppression health when their input artifacts exist, assistant-loop health when
 proof artifacts exist, the report packet index when any indexed artifact exists,
 the top recommendation, the agent review packet when present, artifact links,
