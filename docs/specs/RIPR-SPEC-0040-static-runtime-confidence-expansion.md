@@ -1,4 +1,4 @@
-# RIPR-SPEC-0039: Static/Runtime Confidence Expansion
+# RIPR-SPEC-0040: Static/Runtime Confidence Expansion
 
 Status: proposed
 

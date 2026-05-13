@@ -345,7 +345,9 @@ default blocking or comment posting. The closeout audit is
 open as the next focused Lane 2 tracker. It turns readiness into planned
 advisory operator packets: current safe policy ceiling, next safe action,
 blockers to stricter modes, read-only promotion packets, preview-promotion
-packets, and history/trend surfaces. This tracker preserves the same
+packets, and history/trend surfaces. RIPR-SPEC-0039 defines the first policy
+operations report contract for that packet layer. This tracker preserves the
+same
 boundaries: no analyzer truth changes, no editor changes, no generated tests,
 no mutation execution, no default CI blocking, no automatic config or baseline
 mutation, and no preview evidence promotion.
