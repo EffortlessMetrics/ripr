@@ -161,6 +161,8 @@ distinguishes field-specific observation from broad snapshot output.
   required fixture-class list.
 - `xtask::tests::evidence_quality_benchmark_reports_missing_must_not_claims`
   pins negative-guard enforcement.
+- `xtask::tests::evidence_quality_benchmark_requires_static_limitation_category_at_case_level`
+  pins static-limitation category placement.
 - `xtask::tests::evidence_quality_benchmark_keeps_runtime_only_signal_nonstatic`
   pins the runtime-only signal rule.
 - `xtask::tests::evidence_quality_benchmark_pins_line_movement_identity`

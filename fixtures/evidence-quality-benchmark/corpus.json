@@ -391,7 +391,6 @@
             "recommended_observer": "unknown"
           },
           "static_limitation": {
-            "category": "presentation_text_visibility_unknown",
             "repair_route": "trace_string_constant_to_output_or_snapshot_test",
             "user_actionability": "unknown_until_visibility_known"
           }
@@ -402,6 +401,7 @@
         "metric": "presentation_text_visibility_unknown",
         "value": 1
       },
+      "static_limitation_category": "presentation_text_visibility_unknown",
       "expected_claim": "Changed presentation text is only actionable when RIPR can identify a plausible observable output path or observer.",
       "must_not_claim": [
         "Do not create user test debt from text alone.",

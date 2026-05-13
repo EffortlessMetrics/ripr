@@ -4482,6 +4482,29 @@ fn validate_evidence_quality_benchmark_case(
         ));
     }
 
+    if case_kind.as_deref() == Some("static_limitation") {
+        if json_string_field(case, "static_limitation_category").is_none() {
+            violations.push(format!(
+                "Lane 1 evidence-quality benchmark static-limitation case {case_id} is missing static_limitation_category"
+            ));
+        }
+        if audit_string(
+            case,
+            &[
+                "expected_repo_exposure",
+                "evidence_record",
+                "static_limitation",
+                "category",
+            ],
+        )
+        .is_some()
+        {
+            violations.push(format!(
+                "Lane 1 evidence-quality benchmark static-limitation case {case_id} must keep static_limitation_category at the case level"
+            ));
+        }
+    }
+
     if evidence_class.as_deref() == Some("runtime_only_signal") {
         match case.get("calibration") {
             Some(calibration @ Value::Object(_)) => {
@@ -27583,6 +27606,29 @@ mod tests {
 
         assert!(report.contains(
             "Lane 1 evidence-quality case broad_vs_exact_error_oracle must_not_claim must be a non-empty string array"
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_benchmark_requires_static_limitation_category_at_case_level()
+    -> Result<(), String> {
+        let mut corpus = evidence_quality_benchmark_corpus_value()?;
+        let case = evidence_quality_benchmark_case_mut(
+            &mut corpus,
+            "presentation_text_constant_visibility_unknown",
+        )?;
+        case["static_limitation_category"] = serde_json::Value::Null;
+        case["expected_repo_exposure"]["evidence_record"]["static_limitation"]["category"] =
+            serde_json::json!("presentation_text_visibility_unknown");
+
+        let report = evidence_quality_benchmark_violations(&corpus).join("\n");
+
+        assert!(report.contains(
+            "static-limitation case presentation_text_constant_visibility_unknown is missing static_limitation_category"
+        ));
+        assert!(report.contains(
+            "static-limitation case presentation_text_constant_visibility_unknown must keep static_limitation_category at the case level"
         ));
         Ok(())
     }
