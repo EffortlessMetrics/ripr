@@ -2265,10 +2265,16 @@ id = "RIPR-SPEC-0036"
 name = "Editor preview routing"
 spec = "docs/specs/RIPR-SPEC-0036-editor-preview-routing.md"
 tests = [
+  "crates/ripr/src/lsp/tests.rs",
+  "editors/vscode/test/suite/extension.test.ts",
 ]
 fixtures = [
 ]
 code = [
+  "crates/ripr/src/lsp/backend.rs",
+  "crates/ripr/src/lsp/diagnostics.rs",
+  "editors/vscode/package.json",
+  "editors/vscode/src/client.ts",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0036-editor-preview-routing.md",
@@ -2277,6 +2283,8 @@ outputs = [
   "docs/proposals/README.md",
   "docs/lanes/LANE_3_EDITOR_LSP.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "docs/status/SUPPORT_TIERS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "plans/campaign-27/README.md",
   "plans/campaign-27/lane3-editor-preview-routing.md",
@@ -2299,10 +2307,16 @@ id = "RIPR-SPEC-0037"
 name = "Editor preview static-limit projection"
 spec = "docs/specs/RIPR-SPEC-0037-editor-preview-static-limit-projection.md"
 tests = [
+  "crates/ripr/src/lsp/tests.rs",
+  "editors/vscode/test/suite/extension.test.ts",
 ]
 fixtures = [
 ]
 code = [
+  "crates/ripr/src/lsp/backend.rs",
+  "crates/ripr/src/lsp/diagnostics.rs",
+  "crates/ripr/src/lsp/hover.rs",
+  "editors/vscode/src/client.ts",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0037-editor-preview-static-limit-projection.md",
@@ -2311,6 +2325,8 @@ outputs = [
   "docs/proposals/RIPR-PROP-0003-editor-preview-routing.md",
   "docs/lanes/LANE_3_EDITOR_LSP.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "docs/status/SUPPORT_TIERS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "plans/campaign-27/lane3-editor-preview-routing.md",
   ".ripr/traceability.toml",

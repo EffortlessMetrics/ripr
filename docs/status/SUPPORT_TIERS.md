@@ -37,9 +37,9 @@ adequacy, coverage adequacy, or general correctness.
 | Repo-scoped public badges | `usable alpha` | README, crate page, extension store, checked badge endpoints | [Badge policy](../BADGE_POLICY.md), [verification](../VERIFICATION.md), checked `badges/ripr*.json` endpoints | Repo baseline signal only; public badges must not imply PR-local test adequacy. |
 | PR-local evidence and gates | `usable alpha` | PR summaries, artifacts, optional gate decision | [Blocking readiness](../BLOCKING_READINESS.md), [calibrated gate policy](../CALIBRATED_GATE_POLICY.md), [verification](../VERIFICATION.md) | Advisory by default; only explicit gate-decision artifacts own configured pass/fail authority. |
 | TypeScript and JavaScript preview | `preview` | Opt-in CLI/report evidence today; editor and grouped CI later | [RIPR-SPEC-0027](../specs/RIPR-SPEC-0027-typescript-preview-static-facts.md), [Campaign 27 tracker](../IMPLEMENTATION_CAMPAIGNS.md#campaign-27-language-adapter-preview), TypeScript fixture families | Syntax-first; preview-labeled; no default blocking; static limits such as mocked modules are visible instead of hidden. |
-| Python preview | `preview` | Opt-in CLI/report owner, test, assertion/oracle, probe, related-test, and static-limit evidence | [RIPR-SPEC-0028](../specs/RIPR-SPEC-0028-python-preview-static-facts.md), [ADR 0009](../adr/0009-python-parser-substrate.md), [Campaign 27 tracker](../IMPLEMENTATION_CAMPAIGNS.md#campaign-27-language-adapter-preview), Python owner/test, assertion/oracle, probe, related-test, and static-limit fixture families | Owner, test, assertion/oracle, core probe, conservative related-test, and static-limit facts are fixture-backed; editor/CI projection remains blocked until later workflow slices land. |
-| Editor preview language routing | `planned` | VS Code/LSP | [Lane 3 tracker](../lanes/LANE_3_EDITOR_LSP.md), [RIPR-SPEC-0036](../specs/RIPR-SPEC-0036-editor-preview-routing.md) | TypeScript and Python preview evidence are projectable; the next Lane 3 slice must keep Rust editor behavior as the default. |
-| Language-aware generated CI grouping | `planned` | Generated GitHub workflow | [Lane 4 tracker](../lanes/LANE_4_PR_CI_REVIEW.md), [Lane 4 closeout](../handoffs/2026-05-13-lane4-pr-ci-review-cockpit-closeout.md), [Campaign 27 tracker](../IMPLEMENTATION_CAMPAIGNS.md#campaign-27-language-adapter-preview) | Sequenced after editor preview routing; Rust-default generated CI output and gate authority must remain unchanged. |
+| Python preview | `preview` | Opt-in CLI/report owner, test, assertion/oracle, probe, related-test, and static-limit evidence | [RIPR-SPEC-0028](../specs/RIPR-SPEC-0028-python-preview-static-facts.md), [ADR 0009](../adr/0009-python-parser-substrate.md), [Campaign 27 tracker](../IMPLEMENTATION_CAMPAIGNS.md#campaign-27-language-adapter-preview), Python owner/test, assertion/oracle, probe, related-test, and static-limit fixture families | Owner, test, assertion/oracle, core probe, conservative related-test, and static-limit facts are fixture-backed; CI grouping remains a later advisory projection slice. |
+| Editor preview language routing | `preview` | VS Code/LSP | [Lane 3 tracker](../lanes/LANE_3_EDITOR_LSP.md), [RIPR-SPEC-0036](../specs/RIPR-SPEC-0036-editor-preview-routing.md), [RIPR-SPEC-0037](../specs/RIPR-SPEC-0037-editor-preview-static-limit-projection.md) | VS Code registers TypeScript/JavaScript/Python selectors and LSP diagnostics preserve preview metadata and static limits; `[languages]` remains the analysis gate and Rust editor behavior remains the default. |
+| Language-aware generated CI grouping | `planned` | Generated GitHub workflow | [Lane 4 tracker](../lanes/LANE_4_PR_CI_REVIEW.md), [Lane 4 closeout](../handoffs/2026-05-13-lane4-pr-ci-review-cockpit-closeout.md), [Campaign 27 tracker](../IMPLEMENTATION_CAMPAIGNS.md#campaign-27-language-adapter-preview) | Ready after editor preview routing; Rust-default generated CI output and gate authority must remain unchanged. |
 | Preview evidence policy promotion | `deferred` | Policy reports and future promotion packets | [Preview evidence policy boundary](../specs/RIPR-SPEC-0030-preview-evidence-policy-boundary.md), [policy readiness closeout](../handoffs/2026-05-12-policy-readiness-closeout.md) | Preview evidence is visible and advisory by default; it is not gate, RIPR Zero, or baseline-check eligible without later explicit promotion. |
 
 ## How To Read A Claim
@@ -54,10 +54,12 @@ preview + TypeScript:
   safe to evaluate when explicitly enabled, but not a parity claim with Rust.
 
 preview + Python:
-  useful for opt-in owner/test evidence, but not yet assertion-strength parity.
+  useful for opt-in syntax-first evidence, including owner, test, assertion,
+  probe, related-test, and static-limit facts.
 
-blocked + editor routing:
-  do not project the feature until the blocker is removed or narrowed.
+preview + editor routing:
+  useful for opt-in editor projection, but not a Rust maturity or runtime
+  adequacy claim.
 ```
 
 ## Trust Boundaries

@@ -36,6 +36,11 @@
   ],
   "activationEvents": [
     "onLanguage:rust",
+    "onLanguage:typescript",
+    "onLanguage:typescriptreact",
+    "onLanguage:javascript",
+    "onLanguage:javascriptreact",
+    "onLanguage:python",
     "workspaceContains:Cargo.toml",
     "onCommand:ripr.restartServer",
     "onCommand:ripr.showStatus"

@@ -300,6 +300,14 @@ suite('Extension Smoke', () => {
       assert.ok(context.status.text.includes('ripr: diagnostics'));
 
       context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=4, diagnostics=2, files=1, findings=1, preview_findings=1, static_limits=1, seam_diagnostics=0, published_files=1, cleared_files=0'
+      });
+      assert.ok(context.status.text.includes('ripr: diagnostics'));
+      assert.ok(String(context.status.tooltip).includes('1 preview'));
+      assert.ok(String(context.status.tooltip).includes('syntax-first and advisory'));
+      assert.ok(String(context.status.tooltip).includes('static limit'));
+
+      context.client.emitNotification('window/logMessage', {
         message: 'ripr analysis refresh failed after 3 ms: workspace analysis failed'
       });
       assert.ok(context.status.text.includes('ripr: failed'));
@@ -597,7 +605,26 @@ suite('Extension Smoke', () => {
     }
   });
 
-  test('status bar reports stale saved-workspace analysis after Rust edits', async () => {
+  test('language client registers Rust default and preview document selectors', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      const clientOptions = context.clientOptions() as { documentSelector?: unknown };
+      assert.deepStrictEqual(clientOptions.documentSelector, [
+        { language: 'rust', scheme: 'file' },
+        { language: 'typescript', scheme: 'file' },
+        { language: 'typescriptreact', scheme: 'file' },
+        { language: 'javascript', scheme: 'file' },
+        { language: 'javascriptreact', scheme: 'file' },
+        { language: 'python', scheme: 'file' }
+      ]);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('status bar reports stale saved-workspace analysis after routed file edits', async () => {
     const context = createControllerTestContext({});
     try {
       await context.controller.start();
@@ -625,6 +652,33 @@ suite('Extension Smoke', () => {
       assert.ok(context.status.text.includes('ripr: queued'));
       await context.controller.showStatus();
       assert.ok(context.infoMessages.at(-1)?.includes('analysis is queued'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('preview-language edits mark stale status while unsupported files are ignored', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+      const pythonDocument = textDocument('python', workspaceFileUri('src/preview.py'));
+
+      context.controller.markWorkspaceStale(pythonDocument);
+
+      assert.ok(context.status.text.includes('ripr: stale'));
+      assert.ok(String(context.status.tooltip).includes('src'));
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=6, diagnostics=2, files=1, findings=1, seam_diagnostics=1, published_files=1, cleared_files=0'
+      });
+      assert.ok(context.status.text.includes('ripr: stale'));
+      assert.ok(String(context.status.tooltip).includes('Unsaved routed files'));
+
+      context.controller.markWorkspaceSaved(pythonDocument);
+      assert.ok(context.status.text.includes('ripr: queued'));
+
+      const markdownDocument = textDocument('markdown', workspaceFileUri('README.md'));
+      context.controller.markWorkspaceStale(markdownDocument);
+      assert.ok(context.status.text.includes('ripr: queued'));
     } finally {
       await context.dispose();
     }
@@ -985,6 +1039,7 @@ function createControllerTestContext(options: ControllerTestOptions) {
   const infoMessages: string[] = [];
   const warningMessages: string[] = [];
   const errorMessages: string[] = [];
+  let clientOptions: unknown;
   const configuredWorkspaceRoot = options.workspaceRoot === null
     ? undefined
     : options.workspaceRoot ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -1006,7 +1061,10 @@ function createControllerTestContext(options: ControllerTestOptions) {
       source: 'path',
       detail: 'test ripr on PATH'
     }),
-    createLanguageClient: () => client,
+    createLanguageClient: (_serverOptions, options) => {
+      clientOptions = options;
+      return client;
+    },
     readFile: async () => options.firstActionJson ?? undefined,
     runRipr: async (command, args, cwd) => {
       runRiprCalls.push({ command, args, cwd });
@@ -1039,6 +1097,7 @@ function createControllerTestContext(options: ControllerTestOptions) {
     warningMessages,
     errorMessages,
     outputLines,
+    clientOptions: () => clientOptions,
     dispose: async () => {
       await controller.stop();
       output.dispose();
@@ -1092,6 +1151,13 @@ function workspaceFileUri(relativePath: string): vscode.Uri {
   const folder = vscode.workspace.workspaceFolders?.[0];
   assert.ok(folder, 'test workspace should be open');
   return vscode.Uri.joinPath(folder.uri, ...relativePath.split('/'));
+}
+
+function textDocument(languageId: string, uri: vscode.Uri): vscode.TextDocument {
+  return {
+    languageId,
+    uri
+  } as vscode.TextDocument;
 }
 
 async function waitForDiagnostic(

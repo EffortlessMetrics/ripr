@@ -86,7 +86,7 @@ When opening future Lane 3 PRs, list them here until they merge or close:
 Campaign 27 Language Adapter Preview has one expected Lane 3 slice:
 `lsp/editor-language-routing` (#772).
 
-That slice is ready to start now that the Python preview adapter has
+That slice has started after the Python preview adapter produced
 fixture-backed owner, test, assertion/oracle, probe, related-test, and
 structured static-limit facts. TypeScript adapter readiness is already
 complete, so Lane 3 should not reopen TypeScript editor readiness unless a
@@ -118,10 +118,10 @@ Current dependency state:
   probe facts, related-test facts, and structured static-limit facts with
   fixture/golden coverage, so #771 is satisfied for editor-projectable preview
   evidence;
-- issue #772 now records the current VS Code routing files:
+- issue #772 records the VS Code routing files:
   `editors/vscode/package.json` for activation and
-  `editors/vscode/src/client.ts` for `documentSelector` plus
-  `isRustFileDocument`;
+  `editors/vscode/src/client.ts` for `documentSelector` plus the routed-file
+  stale-buffer guard;
 - issue #771 records the Python-to-editor handoff contract: Python preview
   artifacts carry `language = "python"`, `language_status = "preview"`, bounded
   owner facts, related-test facts, and projectable `static_limit_kind` values
@@ -150,9 +150,9 @@ inferring readiness from campaign momentum:
   render text-only limits as evidence only, and keep action semantics
   independent of parsed prose;
 - the TypeScript gaps tracked by #779, #780, #782, #785, and #786 are closed;
-- `editors/vscode/package.json` and `editors/vscode/src/client.ts` should remain
-  Rust-only until the routing slice deliberately adds preview selectors behind
-  opt-in configuration.
+- `editors/vscode/package.json` and `editors/vscode/src/client.ts` now
+  deliberately add preview selectors while analysis remains gated by
+  `[languages]` through the adapter layer.
 
 Readiness boundary:
 
@@ -428,6 +428,15 @@ Maintenance audit evidence from 2026-05-12:
   open for `analysis/python-preview-adapter`, and #772 remained open and
   blocked for `lsp/editor-language-routing`, so preview selectors and routing
   still must not start.
+- after the Python preview corpus completion landed, `lsp/editor-language-routing`
+  became the ready Campaign 27 work item. The routing slice adds VS Code
+  activation and document selectors for TypeScript, TypeScript React,
+  JavaScript, JavaScript React, and Python; preserves Rust saved-workspace
+  defaults; routes stale-buffer guards through the same file-language set; and
+  carries preview language/status/owner/static-limit metadata through LSP
+  diagnostics, hover, and status without adding source edits, generated tests,
+  provider calls, mutation execution, gate semantics, default blocking,
+  CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays.
 
 Objective audit status from 2026-05-13: not complete, blocked upstream.
 
@@ -436,12 +445,12 @@ Objective audit status from 2026-05-13: not complete, blocked upstream.
 | Rust saved-workspace diagnostics, hover, actions, context packets, status, related-test opening, and copy commands remain stable | `cargo test -p ripr lsp --lib`, `cargo test -p ripr lsp::tests --lib`, `npm --prefix editors/vscode run test:e2e`, `fixtures/editor_lsp_workflow` | Current Rust cockpit checks pass |
 | Editor behavior stays saved-workspace only and projection-only | `docs/EDITOR_EVIDENCE_UX.md`, `docs/EDITOR_EVIDENCE_WORKFLOW.md`, `editors/vscode/src/client.ts`, `fixtures/editor_lsp_workflow` | Current tracker evidence covers the saved-workspace path |
 | Wrong-root, missing, malformed, and stale reports fail closed | `fixtures/editor_lsp_workflow`, `cargo xtask lsp-cockpit-report`, VS Code e2e status tests | Current cockpit report and e2e smoke cover these states |
-| VS Code remains Rust-default until preview routing is selected | `editors/vscode/package.json`, `editors/vscode/src/client.ts` | Current extension activation and selector remain Rust-only |
+| VS Code remains Rust-default until preview routing is selected | `editors/vscode/package.json`, `editors/vscode/src/client.ts` | Routing selected; Rust behavior remains the default while preview file selectors are registered |
 | TypeScript preview adapter readiness includes editor-projectable preview metadata, static limits, owner matching, oracle precision, and fixture evidence | `.ripr/goals/active.toml`, #779, #780, #782, #785, #786 | Complete for current Campaign 27 routing readiness; #779, #780, #782, #785, and #786 are closed |
 | Python preview adapter exists with editor-projectable preview metadata and static limits | `.ripr/goals/active.toml`, #804, Python owner/test/assertion/probe/related-test/static-limit fixtures | Complete for current Campaign 27 routing readiness; preview output is opt-in, labeled, fixture-backed, and uses structured `static_limit_kind` values |
 | `lsp/editor-language-routing` is ready or selected | `cargo xtask goals next`, `.ripr/goals/active.toml` | Ready; `analysis/python-preview-adapter` is done and the next work item preserves Rust defaults before adding preview selectors |
-| Preview selectors for TypeScript, TSX, JavaScript, JSX, and Python are opt-in and preserve Rust defaults | `editors/vscode/package.json`, `editors/vscode/src/client.ts` | Not started; must wait for Python preview adapter completion and explicit routing selection |
-| Preview diagnostics, hover, status, and actions visibly label preview evidence and static limits | Future `lsp/editor-language-routing` artifacts and editor workflow fixtures | Not started; blocked by adapter outputs |
+| Preview selectors for TypeScript, TSX, JavaScript, JSX, and Python are opt-in and preserve Rust defaults | `editors/vscode/package.json`, `editors/vscode/src/client.ts` | Implemented in the routing slice; LSP analysis remains gated by `[languages]` |
+| Preview diagnostics, hover, status, and actions visibly label preview evidence and static limits | LSP diagnostic data, hover markdown, status refresh logs, existing cockpit actions | Implemented for diagnostic metadata, hover boundary text, and status preview/static-limit counts; actions keep the existing cockpit model |
 | No editor hidden analysis reruns, source edits, generated tests, provider calls, mutation execution, gate semantics, default blocking, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays | Lane 3 Scope, Non-Goals, and Cross-Lane Rules in this tracker | Current tracker preserves the boundary; future routing must re-audit it |
 
 ## Lane 3 Document Model
