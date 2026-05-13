@@ -244,5 +244,9 @@ adapter contributes:
 - `language_adapter_python_oracle_side_effect`
 - `language_adapter_python_oracle_smoke`
 - `language_adapter_python_oracle_broad_type`
+- `language_adapter_python_static_limit_dynamic_dispatch`
 - `language_adapter_python_static_limit_decorator_indirection`
+- `language_adapter_python_static_limit_missing_import_graph`
+- `language_adapter_python_static_limit_metaprogramming`
 - `language_adapter_python_static_limit_mocked_module`
+- `language_adapter_python_static_limit_unsupported_syntax`
