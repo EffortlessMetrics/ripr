@@ -420,6 +420,9 @@ fn find_related_tests(owner: &TypeScriptOwner, all_tests: &[TypeScriptTest]) -> 
                 oracle: oracle_text,
                 oracle_kind,
                 oracle_strength,
+                relation_reason: None,
+                relation_confidence: None,
+                language: None,
             }
         })
         .collect()

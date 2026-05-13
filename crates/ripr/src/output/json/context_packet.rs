@@ -209,6 +209,9 @@ mod tests {
             oracle: Some("assert_eq!(value, 1)".to_string()),
             oracle_kind: OracleKind::ExactValue,
             oracle_strength: OracleStrength::Strong,
+            relation_reason: None,
+            relation_confidence: None,
+            language: None,
         }
     }
 

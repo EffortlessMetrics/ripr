@@ -1,0 +1,36 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_related_test_file_path_proximity/input
+
+Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+
+INFO src/discount.py:2
+
+Changed
+  after:      return amount - 10
+
+Probe
+  family: return_value
+  delta:  value
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  exposed (info, confidence 0.60)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `calculate_discount`
+  - infection unknown: Python preview adapter does not yet model infection.
+  - propagation unknown: Python preview adapter does not yet model propagation.
+  - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
+  - discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - related test tests/test_discount.py:1 test_boundary_case uses strong exact value oracle: assert result == 90
+
+Weakness
+  - Related Python test reaches `calculate_discount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
+
+Next step
+  Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.

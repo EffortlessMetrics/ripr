@@ -62,6 +62,9 @@ mod tests {
             oracle: Some("assert_eq!(discounted_total(50, 100), 50);".to_string()),
             oracle_kind: OracleKind::ExactValue,
             oracle_strength: OracleStrength::Strong,
+            relation_reason: None,
+            relation_confidence: None,
+            language: None,
         });
 
         let mut out = String::new();
@@ -111,6 +114,9 @@ mod tests {
                 oracle: Some("assert!(ok())".to_string()),
                 oracle_kind: OracleKind::RelationalCheck,
                 oracle_strength: OracleStrength::Weak,
+                relation_reason: None,
+                relation_confidence: None,
+                language: None,
             },
             RelatedTest {
                 name: "strict_check".to_string(),
@@ -119,6 +125,9 @@ mod tests {
                 oracle: Some("assert_eq!(value, 42)".to_string()),
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
+                relation_reason: None,
+                relation_confidence: None,
+                language: None,
             },
         ];
 
@@ -157,6 +166,29 @@ mod tests {
     }
 
     #[test]
+    fn finding_json_emits_optional_related_test_relation_metadata() {
+        let mut finding = unknown_finding();
+        finding.related_tests.push(RelatedTest {
+            name: "test_discount_boundary".to_string(),
+            file: PathBuf::from("tests/test_discount.py"),
+            line: 7,
+            oracle: Some("assert calculate_discount(100) == 90".to_string()),
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            relation_reason: Some("syntactic_call_proximity".to_string()),
+            relation_confidence: Some("high".to_string()),
+            language: Some(crate::domain::LanguageId::Python),
+        });
+        let mut out = String::new();
+
+        finding_json(&mut out, &finding, 0);
+
+        assert!(out.contains("\"relation_reason\": \"syntactic_call_proximity\""));
+        assert!(out.contains("\"relation_confidence\": \"high\""));
+        assert!(out.contains("\"language\": \"python\""));
+    }
+
+    #[test]
     fn finding_json_limits_evidence_path_related_tests_to_five_entries() {
         let mut finding = unknown_finding();
         finding.related_tests = (0..6)
@@ -167,6 +199,9 @@ mod tests {
                 oracle: Some(format!("assert_eq!(actual, {index});")),
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
+                relation_reason: None,
+                relation_confidence: None,
+                language: None,
             })
             .collect();
         let mut out = String::new();

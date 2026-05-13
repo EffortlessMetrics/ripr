@@ -93,6 +93,13 @@ Planned scope:
   limits. The TypeScript mocked-module limit now emits
   `static_limit_kind = "mocked_module"` in JSON while keeping existing human
   evidence text advisory and leaving Rust/default behavior unchanged.
+- Added Python preview related-test relation metadata. Python finding-level
+  `related_tests[]` entries now carry optional `relation_reason`,
+  `relation_confidence`, and `language = "python"` when syntax-first matching
+  finds a conservative test relationship, with fixture coverage for import
+  overlap, file-path proximity, no-static-path, and mixed-language
+  no-cross-route cases. Rust/default behavior, editor routing, gates, mutation
+  execution, and generated tests are unchanged.
 - Added `cargo xtask lane1-evidence-audit` with
   `cargo xtask evidence-quality-audit` as an alias. The repo-local report writes
   `target/ripr/reports/lane1-evidence-audit.{json,md}` from generated

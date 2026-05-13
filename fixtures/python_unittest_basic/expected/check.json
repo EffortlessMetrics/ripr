@@ -29,7 +29,7 @@
       "evidence_path": ["reach yes: 1 related Python test(s) found for owner `risk_score`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Strongest extracted Python oracle kind: `smoke_only` (rank 2)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "related test tests/test_risk.py:7 test_risk_score_high uses smoke smoke only oracle: self.assertTrue(value)"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: risk_score", "owner_kind: function", "test_framework: unittest (test_risk_score_high)", "test_oracle: smoke_only smoke (test_risk_score_high)"],
+      "evidence": ["owner: risk_score", "owner_kind: function", "test_framework: unittest (test_risk_score_high)", "related_test_strategy: syntactic_call_proximity high (test_risk_score_high)", "test_oracle: smoke_only smoke (test_risk_score_high)"],
       "missing": ["Related Python test reaches `risk_score` but the strongest extracted oracle is `smoke_only`; add or verify an exact-value assertion to make the preview finding stronger."],
       "activation": {
         "observed_values": [
@@ -48,7 +48,10 @@
           "line": 7,
           "oracle_strength": "smoke",
           "oracle_kind": "smoke_only",
-          "oracle": "self.assertTrue(value)"
+          "oracle": "self.assertTrue(value)",
+          "relation_reason": "syntactic_call_proximity",
+          "relation_confidence": "high",
+          "language": "python"
         }
       ],
       "stop_reasons": [],

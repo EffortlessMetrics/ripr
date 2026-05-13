@@ -218,6 +218,9 @@ pub struct RelatedTest {
     pub oracle: Option<String>,
     pub oracle_kind: OracleKind,
     pub oracle_strength: OracleStrength,
+    pub relation_reason: Option<String>,
+    pub relation_confidence: Option<String>,
+    pub language: Option<crate::domain::LanguageId>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

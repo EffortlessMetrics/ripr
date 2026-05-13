@@ -1,0 +1,37 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_related_test_mixed_language_no_cross_route/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 1 no path, 0 unknown
+
+WARNING src/discount.py:2
+
+Changed
+  after:      return amount - 10
+
+Probe
+  family: return_value
+  delta:  value
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  no_static_path (warning, confidence 0.40)
+
+Evidence
+  - reach no: 0 related Python test(s) found for owner `calculate_discount`
+  - infection unknown: Python preview adapter does not yet model infection.
+  - propagation unknown: Python preview adapter does not yet model propagation.
+  - observation no: Strongest extracted Python oracle kind: `unknown` (rank 0)
+  - discriminator no: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.
+  - owner: calculate_discount
+  - owner_kind: function
+
+Weakness
+  - No Python test references `calculate_discount(`; add a pytest or unittest test that calls the changed owner.
+
+Next step
+  Python preview: no related test calls the changed owner; add a pytest or unittest test that exercises this behavior.

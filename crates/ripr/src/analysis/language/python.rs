@@ -57,6 +57,7 @@ struct PythonTest {
     file: PathBuf,
     line: usize,
     body_text: String,
+    file_text: String,
     parametrized: bool,
     framework: &'static str,
     assertions: Vec<PythonAssertion>,
@@ -68,6 +69,12 @@ struct PythonAssertion {
     line: usize,
     oracle_kind: OracleKind,
     oracle_strength: OracleStrength,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct PythonRelatedMatch {
+    reason: &'static str,
+    confidence: &'static str,
 }
 
 fn parse_module(path: &Path, source: &str) -> Option<Mod> {
@@ -245,6 +252,7 @@ fn collect_tests_from_statements(
                     file: file.to_path_buf(),
                     line: line_for_range_start(source, function.range),
                     body_text: text_for_range(source, function.range),
+                    file_text: source.to_string(),
                     parametrized: is_parametrized(&function.decorator_list),
                     framework: if in_unittest_class {
                         "unittest"
@@ -260,6 +268,7 @@ fn collect_tests_from_statements(
                     file: file.to_path_buf(),
                     line: line_for_range_start(source, function.range),
                     body_text: text_for_range(source, function.range),
+                    file_text: source.to_string(),
                     parametrized: is_parametrized(&function.decorator_list),
                     framework: if in_unittest_class {
                         "unittest"
@@ -467,8 +476,8 @@ fn oracle_for_call(call: &ast::ExprCall) -> Option<(OracleKind, OracleStrength)>
 fn find_related_tests(owner: &PythonOwner, all_tests: &[PythonTest]) -> Vec<RelatedTest> {
     all_tests
         .iter()
-        .filter(|test| test_references_owner(test, owner))
-        .map(|test| {
+        .filter_map(|test| {
+            let related_match = related_test_match(owner, test)?;
             let strongest = strongest_assertion(&test.assertions);
             let (oracle_kind, oracle_strength, oracle) = match strongest {
                 Some(assertion) => (
@@ -483,14 +492,17 @@ fn find_related_tests(owner: &PythonOwner, all_tests: &[PythonTest]) -> Vec<Rela
                 ),
                 None => (OracleKind::Unknown, OracleStrength::Unknown, None),
             };
-            RelatedTest {
+            Some(RelatedTest {
                 name: test.name.clone(),
                 file: test.file.clone(),
                 line: test.line,
                 oracle,
                 oracle_kind,
                 oracle_strength,
-            }
+                relation_reason: Some(related_match.reason.to_string()),
+                relation_confidence: Some(related_match.confidence.to_string()),
+                language: Some(DomainLanguageId::Python),
+            })
         })
         .collect()
 }
@@ -501,13 +513,131 @@ fn strongest_assertion(assertions: &[PythonAssertion]) -> Option<&PythonAssertio
         .max_by_key(|assertion| assertion.oracle_strength.rank())
 }
 
-fn test_references_owner(test: &PythonTest, owner: &PythonOwner) -> bool {
+fn related_test_match(owner: &PythonOwner, test: &PythonTest) -> Option<PythonRelatedMatch> {
+    if syntactic_call_references_owner(test, owner) {
+        return Some(PythonRelatedMatch {
+            reason: "syntactic_call_proximity",
+            confidence: "high",
+        });
+    }
+    let owner_tokens = owner_tokens(owner);
+    if owner_tokens.is_empty() {
+        return None;
+    }
+    if import_reference_overlap(test, owner)
+        && (test_name_token_overlap(test, &owner_tokens)
+            || file_path_token_overlap(owner, test, &owner_tokens))
+    {
+        return Some(PythonRelatedMatch {
+            reason: "import_reference_overlap",
+            confidence: "medium",
+        });
+    }
+    if test_name_token_overlap(test, &owner_tokens)
+        && file_path_token_overlap(owner, test, &owner_tokens)
+    {
+        return Some(PythonRelatedMatch {
+            reason: "test_name_token_overlap",
+            confidence: "low",
+        });
+    }
+    if assertion_subject_overlap(test, &owner_tokens)
+        && file_path_token_overlap(owner, test, &owner_tokens)
+    {
+        return Some(PythonRelatedMatch {
+            reason: "assertion_subject_overlap",
+            confidence: "low",
+        });
+    }
+    if file_path_token_overlap(owner, test, &owner_tokens) {
+        return Some(PythonRelatedMatch {
+            reason: "file_path_proximity",
+            confidence: "medium",
+        });
+    }
+    None
+}
+
+fn syntactic_call_references_owner(test: &PythonTest, owner: &PythonOwner) -> bool {
     let direct_call = format!("{}(", owner.name);
     let method_call = format!(".{}(", owner.name);
     let qualified_call = format!("{}(", owner.qualified_name);
     test.body_text.contains(&direct_call)
         || test.body_text.contains(&method_call)
         || test.body_text.contains(&qualified_call)
+}
+
+fn import_reference_overlap(test: &PythonTest, owner: &PythonOwner) -> bool {
+    test.file_text.lines().map(str::trim).any(|line| {
+        import_line_mentions_symbol(line, &owner.name)
+            || import_line_mentions_symbol(line, &owner.qualified_name)
+    })
+}
+
+fn import_line_mentions_symbol(line: &str, symbol: &str) -> bool {
+    if !(line.starts_with("import ") || line.starts_with("from ")) {
+        return false;
+    }
+    line.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '.'))
+        .any(|token| token == symbol)
+}
+
+fn owner_tokens(owner: &PythonOwner) -> Vec<String> {
+    split_identifier_tokens(&owner.name)
+        .into_iter()
+        .filter(|token| !is_low_signal_owner_token(token))
+        .collect()
+}
+
+fn split_identifier_tokens(text: &str) -> Vec<String> {
+    text.split(|ch: char| !ch.is_ascii_alphanumeric())
+        .flat_map(|chunk| chunk.split('_'))
+        .map(str::trim)
+        .filter(|token| token.len() >= 3)
+        .map(|token| token.to_ascii_lowercase())
+        .collect()
+}
+
+fn is_low_signal_owner_token(token: &str) -> bool {
+    matches!(
+        token,
+        "get"
+            | "set"
+            | "make"
+            | "build"
+            | "load"
+            | "save"
+            | "send"
+            | "apply"
+            | "create"
+            | "update"
+            | "handle"
+            | "process"
+    )
+}
+
+fn file_path_token_overlap(
+    owner: &PythonOwner,
+    test: &PythonTest,
+    owner_tokens: &[String],
+) -> bool {
+    let owner_path = normalized_path(&owner.file).to_ascii_lowercase();
+    let test_path = normalized_path(&test.file).to_ascii_lowercase();
+    owner_tokens
+        .iter()
+        .any(|token| owner_path.contains(token) && test_path.contains(token))
+}
+
+fn test_name_token_overlap(test: &PythonTest, owner_tokens: &[String]) -> bool {
+    let test_name = test.name.to_ascii_lowercase();
+    owner_tokens.iter().any(|token| test_name.contains(token))
+}
+
+fn assertion_subject_overlap(test: &PythonTest, owner_tokens: &[String]) -> bool {
+    test.assertions.iter().any(|assertion| {
+        let text = assertion.text.to_ascii_lowercase();
+        owner_tokens.iter().any(|token| text.contains(token))
+    })
 }
 
 fn classify_probe_shape(line_text: &str) -> (ProbeFamily, DeltaKind) {
@@ -719,13 +849,16 @@ fn classify_change(
     if !owner.decorators.is_empty() {
         evidence.push(format!("owner_decorators: {}", owner.decorators.join(", ")));
     }
-    for test in all_tests
-        .iter()
-        .filter(|test| test_references_owner(test, owner))
-    {
+    for (test, related_match) in all_tests.iter().filter_map(|test| {
+        related_test_match(owner, test).map(|related_match| (test, related_match))
+    }) {
         evidence.push(format!(
             "test_framework: {} ({})",
             test.framework, test.name
+        ));
+        evidence.push(format!(
+            "related_test_strategy: {} {} ({})",
+            related_match.reason, related_match.confidence, test.name
         ));
         if let Some(assertion) = strongest_assertion(&test.assertions) {
             evidence.push(format!(
@@ -1177,6 +1310,55 @@ def test_notifies_callback():
         let (family, delta) = classify_probe_shape("    callback = MagicMock(name=\"receipt\")");
         assert_eq!(family, ProbeFamily::SideEffect);
         assert_eq!(delta, DeltaKind::Effect);
+    }
+
+    #[test]
+    fn find_related_tests_records_python_relation_metadata() {
+        let owners = extract_owners(
+            Path::new("src/discount.py"),
+            "def calculate_discount(amount):\n    return amount - 10\n",
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_discount.py"),
+            "def test_calculate_discount_exact():\n    assert calculate_discount(100) == 90\n",
+        );
+
+        let related = find_related_tests(&owners[0], &tests);
+
+        assert_eq!(related.len(), 1);
+        assert_eq!(
+            related[0].relation_reason.as_deref(),
+            Some("syntactic_call_proximity")
+        );
+        assert_eq!(related[0].relation_confidence.as_deref(), Some("high"));
+        assert_eq!(related[0].language, Some(DomainLanguageId::Python));
+    }
+
+    #[test]
+    fn find_related_tests_uses_file_and_name_overlap_without_cross_route() {
+        let owners = extract_owners(
+            Path::new("src/discount.py"),
+            "def calculate_discount(amount):\n    return amount - 10\n",
+        );
+        let related_tests = extract_tests(
+            Path::new("tests/test_discount.py"),
+            "def test_discount_boundary():\n    assert result == 90\n",
+        );
+        let unrelated_tests = extract_tests(
+            Path::new("tests/test_invoice.py"),
+            "def test_discount_boundary():\n    assert result == 90\n",
+        );
+
+        let related = find_related_tests(&owners[0], &related_tests);
+        let unrelated = find_related_tests(&owners[0], &unrelated_tests);
+
+        assert_eq!(related.len(), 1);
+        assert_eq!(
+            related[0].relation_reason.as_deref(),
+            Some("test_name_token_overlap")
+        );
+        assert_eq!(related[0].relation_confidence.as_deref(), Some("low"));
+        assert!(unrelated.is_empty());
     }
 
     #[test]

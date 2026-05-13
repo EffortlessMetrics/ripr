@@ -29,7 +29,7 @@
       "evidence_path": ["reach yes: 1 related Python test(s) found for owner `risk_score`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/test_risk.py:7 test_high_risk_score uses strong exact value oracle: self.assertEqual(risk_score(100), \"high\")"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: risk_score", "owner_kind: function", "test_framework: unittest (test_high_risk_score)", "test_oracle: exact_value strong (test_high_risk_score)"],
+      "evidence": ["owner: risk_score", "owner_kind: function", "test_framework: unittest (test_high_risk_score)", "related_test_strategy: syntactic_call_proximity high (test_high_risk_score)", "test_oracle: exact_value strong (test_high_risk_score)"],
       "missing": ["Related Python test reaches `risk_score` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
       "activation": {
         "observed_values": [
@@ -48,7 +48,10 @@
           "line": 7,
           "oracle_strength": "strong",
           "oracle_kind": "exact_value",
-          "oracle": "self.assertEqual(risk_score(100), \"high\")"
+          "oracle": "self.assertEqual(risk_score(100), \"high\")",
+          "relation_reason": "syntactic_call_proximity",
+          "relation_confidence": "high",
+          "language": "python"
         }
       ],
       "stop_reasons": [],

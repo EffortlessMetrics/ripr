@@ -1014,6 +1014,9 @@ mod tests {
             oracle: None,
             oracle_kind: OracleKind::Unknown,
             oracle_strength: OracleStrength::Weak,
+            relation_reason: None,
+            relation_confidence: None,
+            language: None,
         }
     }
 

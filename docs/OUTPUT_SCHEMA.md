@@ -198,6 +198,11 @@ The evidence-first fields are additive in schema `0.1`:
   discriminator. It is omitted when no structured static limit is known. Values
   are `dynamic_dispatch`, `metaprogramming`, `missing_import_graph`,
   `decorator_indirection`, `mocked_module`, or `unsupported_syntax`.
+- `related_tests[].relation_reason`, `related_tests[].relation_confidence`,
+  and `related_tests[].language` are additive optional relation metadata for
+  finding-level related tests. Preview adapters populate them only when the
+  relation is known without runtime discovery. Rust findings that have not
+  populated finding-level relation metadata continue to omit these fields.
 
 ## Enums
 

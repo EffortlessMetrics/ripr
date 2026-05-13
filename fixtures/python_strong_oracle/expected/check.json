@@ -29,7 +29,7 @@
       "evidence_path": ["reach yes: 1 related Python test(s) found for owner `apply_discount`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/test_discount.py:4 test_apply_discount_boundary uses strong exact value oracle: assert apply_discount(100, 100) == 90"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: apply_discount", "owner_kind: function", "test_framework: pytest (test_apply_discount_boundary)", "test_oracle: exact_value strong (test_apply_discount_boundary)"],
+      "evidence": ["owner: apply_discount", "owner_kind: function", "test_framework: pytest (test_apply_discount_boundary)", "related_test_strategy: syntactic_call_proximity high (test_apply_discount_boundary)", "test_oracle: exact_value strong (test_apply_discount_boundary)"],
       "missing": ["Related Python test reaches `apply_discount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
       "activation": {
         "observed_values": [
@@ -48,7 +48,10 @@
           "line": 4,
           "oracle_strength": "strong",
           "oracle_kind": "exact_value",
-          "oracle": "assert apply_discount(100, 100) == 90"
+          "oracle": "assert apply_discount(100, 100) == 90",
+          "relation_reason": "syntactic_call_proximity",
+          "relation_confidence": "high",
+          "language": "python"
         }
       ],
       "stop_reasons": [],

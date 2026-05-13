@@ -29,7 +29,7 @@
       "evidence_path": ["reach yes: 1 related Python test(s) found for owner `apply_discount`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "related test tests/test_discount.py:4 test_apply_discount_smoke uses unknown unknown oracle"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: apply_discount", "owner_kind: function", "test_framework: pytest (test_apply_discount_smoke)"],
+      "evidence": ["owner: apply_discount", "owner_kind: function", "test_framework: pytest (test_apply_discount_smoke)", "related_test_strategy: syntactic_call_proximity high (test_apply_discount_smoke)"],
       "missing": ["Related Python test reaches `apply_discount` but the strongest extracted oracle is `unknown`; add or verify an exact-value assertion to make the preview finding stronger."],
       "activation": {
         "observed_values": [
@@ -48,7 +48,10 @@
           "line": 4,
           "oracle_strength": "unknown",
           "oracle_kind": "unknown",
-          "oracle": ""
+          "oracle": "",
+          "relation_reason": "syntactic_call_proximity",
+          "relation_confidence": "high",
+          "language": "python"
         }
       ],
       "stop_reasons": [],

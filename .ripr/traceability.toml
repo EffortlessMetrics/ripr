@@ -1922,6 +1922,10 @@ fixtures = [
   "fixtures/python_field_assignment_shape",
   "fixtures/python_call_argument_shape",
   "fixtures/python_mock_interaction_shape",
+  "fixtures/python_related_test_import_overlap",
+  "fixtures/python_related_test_file_path_proximity",
+  "fixtures/python_related_test_mixed_language_no_cross_route",
+  "fixtures/python_related_test_no_static_path",
 ]
 code = [
   "crates/ripr/src/analysis/language/python.rs",
@@ -1937,6 +1941,7 @@ outputs = [
   "docs/proposals/RIPR-PROP-0001-multi-language-adapter-preview.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
+  "docs/OUTPUT_SCHEMA.md",
   "docs/ROADMAP.md",
   "policy/dependency_allowlist.txt",
   ".ripr/traceability.toml",

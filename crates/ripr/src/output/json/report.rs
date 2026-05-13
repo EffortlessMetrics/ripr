@@ -471,12 +471,36 @@ pub(super) fn related_test_json(out: &mut String, test: &RelatedTest, indent: us
         test.oracle_kind.as_str(),
         true,
     );
+    let has_relation_reason = test.relation_reason.is_some();
+    let has_relation_confidence = test.relation_confidence.is_some();
+    let has_language = test.language.is_some();
     field(
         out,
         indent + 1,
         "oracle",
         test.oracle.as_deref().unwrap_or(""),
-        false,
+        has_relation_reason || has_relation_confidence || has_language,
     );
+    if let Some(reason) = &test.relation_reason {
+        field(
+            out,
+            indent + 1,
+            "relation_reason",
+            reason,
+            has_relation_confidence || has_language,
+        );
+    }
+    if let Some(confidence) = &test.relation_confidence {
+        field(
+            out,
+            indent + 1,
+            "relation_confidence",
+            confidence,
+            has_language,
+        );
+    }
+    if let Some(language) = test.language {
+        field(out, indent + 1, "language", language.as_str(), false);
+    }
     out.push_str(&format!("{sp}}}"));
 }

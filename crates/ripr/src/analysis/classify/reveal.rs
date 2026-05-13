@@ -56,6 +56,9 @@ fn analyze_related_assertions(
                 oracle: None,
                 oracle_kind: OracleKind::Unknown,
                 oracle_strength: OracleStrength::None,
+                relation_reason: None,
+                relation_confidence: None,
+                language: None,
             });
             continue;
         }
@@ -79,6 +82,9 @@ fn analyze_related_assertions(
                     oracle: Some(assertion.text.clone()),
                     oracle_kind: assertion.kind.clone(),
                     oracle_strength: relative_strength,
+                    relation_reason: None,
+                    relation_confidence: None,
+                    language: None,
                 });
             }
         }
