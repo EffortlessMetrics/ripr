@@ -1,0 +1,37 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_decorator_indirection_limit/input
+
+Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+
+INFO src/retry_total.py:3
+
+Changed
+  after:      return client.total_with_retry()
+
+Probe
+  family: return_value
+  delta:  value
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  exposed (info, confidence 0.60)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `fetch_total`
+  - infection unknown: Python preview adapter does not yet model infection.
+  - propagation unknown: Python preview adapter does not yet model propagation.
+  - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
+  - discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - related test tests/test_retry_total.py:4 test_fetch_total_uses_retry_path uses strong exact value oracle: assert fetch_total(client) == 10
+
+Weakness
+  - Related Python test reaches `fetch_total` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
+  - Static limit `decorator_indirection`: owner `fetch_total` is decorated with `retry`; syntax-first preview evidence does not resolve decorator-modified call behavior.
+
+Next step
+  Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.

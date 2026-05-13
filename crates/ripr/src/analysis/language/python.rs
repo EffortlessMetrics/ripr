@@ -25,7 +25,7 @@ use crate::config::OraclePolicy;
 use crate::domain::{
     Confidence, DeltaKind, ExposureClass, Finding, LanguageId as DomainLanguageId, LanguageStatus,
     OracleKind, OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest,
-    RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
+    RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind,
 };
 use rustpython_parser::{
     Mode,
@@ -50,6 +50,7 @@ struct PythonOwner {
     end_line: usize,
     owner_kind: OwnerKind,
     decorators: Vec<String>,
+    imports: Vec<PythonImport>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -59,6 +60,7 @@ struct PythonTest {
     line: usize,
     body_text: String,
     imports: Vec<PythonImport>,
+    decorators: Vec<String>,
     parametrized: bool,
     framework: &'static str,
     assertions: Vec<PythonAssertion>,
@@ -142,7 +144,8 @@ fn extract_owners(file: &Path, source: &str) -> Vec<PythonOwner> {
         return Vec::new();
     };
     let mut owners = Vec::new();
-    collect_owners_from_statements(file, source, &module.body, None, &mut owners);
+    let imports = collect_imports_from_statements(&module.body);
+    collect_owners_from_statements(file, source, &module.body, None, &imports, &mut owners);
     owners
 }
 
@@ -151,29 +154,36 @@ fn collect_owners_from_statements(
     source: &str,
     statements: &[Stmt],
     class_context: Option<&str>,
+    imports: &[PythonImport],
     out: &mut Vec<PythonOwner>,
 ) {
     for stmt in statements {
         match stmt {
             Stmt::FunctionDef(function) => {
                 out.push(owner_from_function(
-                    file,
-                    source,
+                    PythonOwnerContext {
+                        file,
+                        source,
+                        class_context,
+                        imports,
+                    },
                     function.name.as_str(),
                     function.range,
                     &function.decorator_list,
-                    class_context,
                     false,
                 ));
             }
             Stmt::AsyncFunctionDef(function) => {
                 out.push(owner_from_function(
-                    file,
-                    source,
+                    PythonOwnerContext {
+                        file,
+                        source,
+                        class_context,
+                        imports,
+                    },
                     function.name.as_str(),
                     function.range,
                     &function.decorator_list,
-                    class_context,
                     true,
                 ));
             }
@@ -183,6 +193,7 @@ fn collect_owners_from_statements(
                     source,
                     &class.body,
                     Some(class.name.as_str()),
+                    imports,
                     out,
                 );
             }
@@ -191,27 +202,34 @@ fn collect_owners_from_statements(
     }
 }
 
+#[derive(Clone, Copy)]
+struct PythonOwnerContext<'a> {
+    file: &'a Path,
+    source: &'a str,
+    class_context: Option<&'a str>,
+    imports: &'a [PythonImport],
+}
+
 fn owner_from_function(
-    file: &Path,
-    source: &str,
+    context: PythonOwnerContext<'_>,
     name: &str,
     range: TextRange,
     decorators: &[Expr],
-    class_context: Option<&str>,
     is_async: bool,
 ) -> PythonOwner {
     let decorator_names = decorator_names(decorators);
-    let owner_kind = if class_context.is_some()
+    let owner_kind = if context.class_context.is_some()
         && decorator_names.iter().any(|decorator| {
             decorator.ends_with("classmethod") || decorator.ends_with("staticmethod")
         }) {
         OwnerKind::ClassMethod
-    } else if class_context.is_some() {
+    } else if context.class_context.is_some() {
         OwnerKind::Method
     } else {
         OwnerKind::Function
     };
-    let qualified_name = class_context
+    let qualified_name = context
+        .class_context
         .map(|class| format!("{class}.{name}"))
         .unwrap_or_else(|| name.to_string());
     let mut decorators = decorator_names;
@@ -221,11 +239,12 @@ fn owner_from_function(
     PythonOwner {
         name: name.to_string(),
         qualified_name,
-        file: file.to_path_buf(),
-        start_line: line_for_range_start(source, range),
-        end_line: line_for_range_end(source, range),
+        file: context.file.to_path_buf(),
+        start_line: line_for_range_start(context.source, range),
+        end_line: line_for_range_end(context.source, range),
         owner_kind,
         decorators,
+        imports: context.imports.to_vec(),
     }
 }
 
@@ -256,6 +275,7 @@ fn collect_tests_from_statements(
                     line: line_for_range_start(source, function.range),
                     body_text: text_for_range(source, function.range),
                     imports: imports.to_vec(),
+                    decorators: decorator_names(&function.decorator_list),
                     parametrized: is_parametrized(&function.decorator_list),
                     framework: if in_unittest_class {
                         "unittest"
@@ -272,6 +292,7 @@ fn collect_tests_from_statements(
                     line: line_for_range_start(source, function.range),
                     body_text: text_for_range(source, function.range),
                     imports: imports.to_vec(),
+                    decorators: decorator_names(&function.decorator_list),
                     parametrized: is_parametrized(&function.decorator_list),
                     framework: if in_unittest_class {
                         "unittest"
@@ -665,6 +686,112 @@ fn normalize_test_stem(stem: &str) -> &str {
         .unwrap_or(stem)
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PythonStaticLimit {
+    kind: StaticLimitKind,
+    evidence: String,
+    missing: String,
+}
+
+fn static_limit_for_change(
+    line_text: &str,
+    owner: &PythonOwner,
+    related_candidates: &[PythonRelatedCandidate<'_>],
+) -> Option<PythonStaticLimit> {
+    let trimmed = line_text.trim();
+    if contains_dynamic_dispatch(trimmed) {
+        return Some(PythonStaticLimit {
+            kind: StaticLimitKind::DynamicDispatch,
+            evidence: "static_limit dynamic_dispatch: changed line uses dynamic call dispatch"
+                .to_string(),
+            missing: "Static limit `dynamic_dispatch`: the Python preview adapter saw a dynamic call shape such as `getattr(...)` or `registry[key](...)`; syntax alone cannot resolve the called behavior.".to_string(),
+        });
+    }
+    if contains_metaprogramming(trimmed) {
+        return Some(PythonStaticLimit {
+            kind: StaticLimitKind::Metaprogramming,
+            evidence: "static_limit metaprogramming: changed line uses metaprogramming syntax"
+                .to_string(),
+            missing: "Static limit `metaprogramming`: the Python preview adapter saw metaprogramming syntax and does not infer runtime-created behavior.".to_string(),
+        });
+    }
+    if let Some(decorator) = owner
+        .decorators
+        .iter()
+        .find(|decorator| !is_transparent_owner_decorator(decorator))
+    {
+        return Some(PythonStaticLimit {
+            kind: StaticLimitKind::DecoratorIndirection,
+            evidence: format!("static_limit decorator_indirection: `{decorator}`"),
+            missing: format!(
+                "Static limit `decorator_indirection`: owner `{}` is decorated with `{decorator}`; syntax-first preview evidence does not resolve decorator-modified call behavior.",
+                owner.qualified_name
+            ),
+        });
+    }
+    if related_candidates
+        .iter()
+        .any(|candidate| test_has_mocked_module(candidate.test))
+    {
+        return Some(PythonStaticLimit {
+            kind: StaticLimitKind::MockedModule,
+            evidence: "static_limit mocked_module: related test uses patch/mock module syntax"
+                .to_string(),
+            missing: "Static limit `mocked_module`: a related Python test uses patch/mock-module syntax; the preview adapter does not resolve runtime substitution semantics.".to_string(),
+        });
+    }
+    if line_uses_imported_symbol(trimmed, &owner.imports) {
+        return Some(PythonStaticLimit {
+            kind: StaticLimitKind::MissingImportGraph,
+            evidence: "static_limit missing_import_graph: changed line calls an imported symbol"
+                .to_string(),
+            missing: "Static limit `missing_import_graph`: the changed line calls an imported symbol; the Python preview adapter does not build an import graph or resolve imported implementation semantics.".to_string(),
+        });
+    }
+    if trimmed.contains("lambda ") {
+        return Some(PythonStaticLimit {
+            kind: StaticLimitKind::UnsupportedSyntax,
+            evidence: "static_limit unsupported_syntax: changed line uses lambda syntax"
+                .to_string(),
+            missing: "Static limit `unsupported_syntax`: the changed line uses a Python syntax shape this preview adapter does not model precisely yet.".to_string(),
+        });
+    }
+    None
+}
+
+fn contains_dynamic_dispatch(text: &str) -> bool {
+    text.contains("getattr(") || (text.contains('[') && text.contains("]("))
+}
+
+fn contains_metaprogramming(text: &str) -> bool {
+    text.contains("__getattr__") || text.contains("type(") || text.contains("setattr(")
+}
+
+fn is_transparent_owner_decorator(decorator: &str) -> bool {
+    decorator == "staticmethod" || decorator == "classmethod" || decorator == "async_def"
+}
+
+fn test_has_mocked_module(test: &PythonTest) -> bool {
+    test.decorators
+        .iter()
+        .any(|decorator| decorator == "patch" || decorator.ends_with(".patch"))
+        || test.body_text.contains("patch(")
+        || test.body_text.contains(".patch(")
+}
+
+fn line_uses_imported_symbol(text: &str, imports: &[PythonImport]) -> bool {
+    imports.iter().any(|import| {
+        !is_known_mock_constructor_import(import)
+            && (text.contains(&format!("{}(", import.alias))
+                || text.contains(&format!("{}.", import.alias)))
+    })
+}
+
+fn is_known_mock_constructor_import(import: &PythonImport) -> bool {
+    matches!(import.imported.as_str(), "Mock" | "MagicMock")
+        || matches!(import.alias.as_str(), "Mock" | "MagicMock")
+}
+
 fn classify_probe_shape(line_text: &str) -> (ProbeFamily, DeltaKind) {
     let trimmed = line_text.trim_start();
     if (trimmed.contains(" if ") && trimmed.contains(" else "))
@@ -745,7 +872,9 @@ fn classify_change(
         .iter()
         .filter(|owner| normalized_path(&owner.file) == changed_file)
         .find(|owner| line >= owner.start_line && line <= owner.end_line)?;
+    let related_candidates = related_test_candidates(owner, all_tests);
     let related = find_related_tests(owner, all_tests);
+    let static_limit = static_limit_for_change(line_text, owner, &related_candidates);
     let strongest_strength = related
         .iter()
         .map(|test| test.oracle_strength.rank())
@@ -757,7 +886,8 @@ fn classify_change(
         .map(|test| test.oracle_kind.clone())
         .unwrap_or(OracleKind::Unknown);
 
-    let (class, reach_state, observe_state, discriminate_state, missing) = if related.is_empty() {
+    let (class, reach_state, observe_state, discriminate_state, mut missing) = if related.is_empty()
+    {
         (
             ExposureClass::NoStaticPath,
             StageState::No,
@@ -793,6 +923,9 @@ fn classify_change(
             )],
         )
     };
+    if let Some(limit) = &static_limit {
+        missing.push(limit.missing.clone());
+    }
 
     let id_path: String = file
         .display()
@@ -874,7 +1007,10 @@ fn classify_change(
     if !owner.decorators.is_empty() {
         evidence.push(format!("owner_decorators: {}", owner.decorators.join(", ")));
     }
-    for candidate in related_test_candidates(owner, all_tests) {
+    if let Some(limit) = &static_limit {
+        evidence.push(limit.evidence.clone());
+    }
+    for candidate in related_candidates {
         let test = candidate.test;
         evidence.push(format!(
             "test_framework: {} ({})",
@@ -921,7 +1057,7 @@ fn classify_change(
         language: Some(DomainLanguageId::Python),
         language_status: Some(LanguageStatus::Preview),
         owner_kind: Some(owner.owner_kind),
-        static_limit_kind: None,
+        static_limit_kind: static_limit.map(|limit| limit.kind),
     })
 }
 
@@ -1527,6 +1663,113 @@ def test_notifies_callback():
         assert_eq!(related.len(), 2);
         assert_eq!(related[0].relation, PythonRelationKind::SyntacticCall);
         assert_eq!(related[1].relation, PythonRelationKind::SameStem);
+    }
+
+    #[test]
+    fn static_limit_detection_covers_python_preview_limit_kinds() {
+        let imported_owner = extract_owners(
+            Path::new("src/service.py"),
+            "from external.client import remote_total\n\ndef total():\n    return remote_total()\n",
+        )
+        .remove(0);
+        let decorated_owner = extract_owners(
+            Path::new("src/service.py"),
+            "@retry(times=3)\ndef total():\n    return 1\n",
+        )
+        .remove(0);
+        let plain_owner =
+            extract_owners(Path::new("src/service.py"), "def total():\n    return 1\n").remove(0);
+        let tests = extract_tests(
+            Path::new("tests/test_service.py"),
+            "from unittest.mock import patch\nfrom src.service import total\n\n@patch(\"src.service.remote_total\")\ndef test_total(mock_remote):\n    assert total() == 1\n",
+        );
+        let candidates = related_test_candidates(&plain_owner, &tests);
+
+        assert_eq!(
+            static_limit_for_change("    return getattr(client, name)()", &plain_owner, &[])
+                .map(|limit| limit.kind),
+            Some(StaticLimitKind::DynamicDispatch)
+        );
+        assert_eq!(
+            static_limit_for_change("    return type(\"Dynamic\", (), {})", &plain_owner, &[])
+                .map(|limit| limit.kind),
+            Some(StaticLimitKind::Metaprogramming)
+        );
+        assert_eq!(
+            static_limit_for_change("    return 1", &decorated_owner, &[]).map(|limit| limit.kind),
+            Some(StaticLimitKind::DecoratorIndirection)
+        );
+        assert_eq!(
+            static_limit_for_change("    return total()", &plain_owner, &candidates)
+                .map(|limit| limit.kind),
+            Some(StaticLimitKind::MockedModule)
+        );
+        assert_eq!(
+            static_limit_for_change("    return remote_total()", &imported_owner, &[])
+                .map(|limit| limit.kind),
+            Some(StaticLimitKind::MissingImportGraph)
+        );
+        assert_eq!(
+            static_limit_for_change("    return lambda value: value + 1", &plain_owner, &[])
+                .map(|limit| limit.kind),
+            Some(StaticLimitKind::UnsupportedSyntax)
+        );
+        let mock_owner = extract_owners(
+            Path::new("src/callbacks.py"),
+            "from unittest.mock import MagicMock\n\ndef recording_callback():\n    callback = MagicMock(name=\"receipt\")\n    return callback\n",
+        )
+        .remove(0);
+        assert_eq!(
+            static_limit_for_change(
+                "    callback = MagicMock(name=\"receipt.sent\")",
+                &mock_owner,
+                &[]
+            )
+            .map(|limit| limit.kind),
+            None
+        );
+    }
+
+    #[test]
+    fn classify_change_surfaces_static_limit_without_downgrading_strong_evidence()
+    -> Result<(), String> {
+        let owners = extract_owners(
+            Path::new("src/service.py"),
+            "def call_named(client, name):\n    return getattr(client, name)()\n",
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_service.py"),
+            "from src.service import call_named\n\ndef test_call_named_dispatches():\n    assert call_named(client, \"total\") == 10\n",
+        );
+
+        let Some(finding) = classify_change(
+            Path::new("src/service.py"),
+            2,
+            "    return getattr(client, name)()",
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed line inside owner should classify".to_string());
+        };
+
+        assert_eq!(finding.class, ExposureClass::Exposed);
+        assert_eq!(
+            finding.static_limit_kind,
+            Some(StaticLimitKind::DynamicDispatch)
+        );
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .any(|entry| entry.starts_with("static_limit dynamic_dispatch:"))
+        );
+        assert!(
+            finding
+                .missing
+                .iter()
+                .any(|entry| entry.contains("Static limit `dynamic_dispatch`"))
+        );
+        Ok(())
     }
 
     #[test]
