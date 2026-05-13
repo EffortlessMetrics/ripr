@@ -2047,12 +2047,18 @@ fn fixture_dirs() -> Result<Vec<PathBuf>, String> {
     {
         let entry = entry.map_err(|err| format!("failed to read fixtures: {err}"))?;
         let path = entry.path();
-        if path.is_dir() {
+        if path.is_dir() && !is_manifest_only_fixture_dir(&path) {
             fixtures.push(path);
         }
     }
     fixtures.sort();
     Ok(fixtures)
+}
+
+fn is_manifest_only_fixture_dir(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name == "evidence-quality-benchmark")
 }
 
 fn fixture_dir_for_name(name: &str) -> Result<PathBuf, String> {
@@ -2064,6 +2070,9 @@ fn fixture_dir_for_name(name: &str) -> Result<PathBuf, String> {
 
 fn fixture_contract_violations(path: &Path) -> Result<Vec<String>, String> {
     let mut violations = Vec::new();
+    if is_manifest_only_fixture_dir(path) {
+        return Ok(violations);
+    }
     let normalized = normalize_path(path);
     let spec = path.join("SPEC.md");
     let diff = path.join("diff.patch");
@@ -3725,7 +3734,8 @@ fn check_fixture_contracts() -> Result<(), String> {
                 why_it_matters: "Fixtures are the BDD control bench for analyzer behavior and output contracts.",
                 fix_kind: FixKind::AuthorDecisionRequired,
                 recommended_fixes: &[
-                    "Add fixture directories only with SPEC.md, diff.patch, and expected/check.json.",
+                    "Add BDD fixture directories only with SPEC.md, diff.patch, and expected/check.json.",
+                    "Use manifest-only fixture directories only when a dedicated validator owns their corpus contract.",
                     "Use Given/When/Then/Must Not sections for agent-readable fixture intent.",
                 ],
                 rerun_command: "cargo xtask check-fixture-contracts",
@@ -3738,6 +3748,7 @@ fn check_fixture_contracts() -> Result<(), String> {
     let mut violations = Vec::new();
     validate_evidence_record_contract_fixture_corpus(&mut violations)?;
     validate_lane1_evidence_quality_failure_fixture_corpus(&mut violations)?;
+    validate_evidence_quality_benchmark_fixture_corpus(&mut violations)?;
     validate_pr_review_front_panel_fixture_corpus(&mut violations)?;
     validate_report_packet_index_fixture_corpus(&mut violations)?;
     validate_pr_inline_comment_publisher_fixture_corpus(&mut violations)?;
@@ -3747,6 +3758,9 @@ fn check_fixture_contracts() -> Result<(), String> {
         let entry = entry.map_err(|err| format!("failed to read fixtures: {err}"))?;
         let path = entry.path();
         if !path.is_dir() {
+            continue;
+        }
+        if is_manifest_only_fixture_dir(&path) {
             continue;
         }
         let normalized = normalize_path(&path);
@@ -3791,6 +3805,7 @@ fn check_fixture_contracts() -> Result<(), String> {
             recommended_fixes: &[
                 "Add missing fixture contract files.",
                 "Use Given/When/Then/Must Not sections in fixture SPEC.md.",
+                "Keep manifest-only fixture corpora covered by their dedicated validators.",
                 "Keep expected output files aligned with the fixture behavior.",
             ],
             rerun_command: "cargo xtask check-fixture-contracts",
@@ -3826,6 +3841,32 @@ const LANE1_EVIDENCE_QUALITY_REQUIRED_CASES: &[&str] = &[
     "static_activation_limitation_without_candidate_values",
     "side_effect_observer_not_static_limitation",
     "calibration_no_runtime_data_gap",
+];
+
+const EVIDENCE_QUALITY_BENCHMARK_CORPUS: &str = "fixtures/evidence-quality-benchmark/corpus.json";
+
+const EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CLASSES: &[&str] = &[
+    "duplicate_canonical_gap",
+    "match_arm_discriminator_split",
+    "wrong_related_test_top_choice",
+    "broad_vs_exact_error_oracle",
+    "self_computed_expected_value",
+    "opaque_helper_static_limitation",
+    "cross_file_constant_limitation",
+    "side_effect_observer",
+    "snapshot_discriminator",
+    "mock_expectation",
+    "runtime_only_signal",
+    "ambiguous_runtime_join",
+];
+
+const EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CASE_KINDS: &[&str] = &[
+    "positive",
+    "negative_guard",
+    "metamorphic_line_movement",
+    "equivalent_code",
+    "static_limitation",
+    "calibration",
 ];
 
 fn validate_evidence_record_contract_fixture_corpus(
@@ -4208,6 +4249,287 @@ fn validate_lane1_evidence_quality_failure_case(
     }
 }
 
+fn validate_evidence_quality_benchmark_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    validate_evidence_quality_benchmark_fixture_corpus_at(
+        Path::new(EVIDENCE_QUALITY_BENCHMARK_CORPUS),
+        violations,
+    )
+}
+
+fn validate_evidence_quality_benchmark_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !path.exists() {
+        violations.push(format!(
+            "Lane 1 evidence-quality benchmark corpus is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+
+    let corpus = match read_json_value(path) {
+        Ok(value) => value,
+        Err(err) => {
+            violations.push(err);
+            return Ok(());
+        }
+    };
+    validate_evidence_quality_benchmark_corpus_value(path, &corpus, violations);
+    Ok(())
+}
+
+fn validate_evidence_quality_benchmark_corpus_value(
+    path: &Path,
+    corpus: &Value,
+    violations: &mut Vec<String>,
+) {
+    let normalized = normalize_path(path);
+    if json_string_field(corpus, "kind").as_deref()
+        != Some("lane1_evidence_quality_benchmark_corpus")
+    {
+        violations.push(format!(
+            "{normalized} kind must be lane1_evidence_quality_benchmark_corpus"
+        ));
+    }
+    if json_string_field(corpus, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!("{normalized} schema_version must be 0.1"));
+    }
+    if json_string_field(corpus, "spec").as_deref() != Some("RIPR-SPEC-0035") {
+        violations.push(format!("{normalized} spec must be RIPR-SPEC-0035"));
+    }
+
+    require_string_array_contains_all(
+        corpus,
+        "evidence_classes",
+        EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CLASSES,
+        "Lane 1 evidence-quality benchmark",
+        violations,
+    );
+    require_string_array_contains_all(
+        corpus,
+        "required_case_kinds",
+        EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CASE_KINDS,
+        "Lane 1 evidence-quality benchmark",
+        violations,
+    );
+    if !matches!(corpus.get("capability_scope"), Some(Value::Object(_))) {
+        violations.push(
+            "Lane 1 evidence-quality benchmark is missing capability_scope object".to_string(),
+        );
+    }
+    if !matches!(corpus.get("calibration_scope"), Some(Value::Object(_))) {
+        violations.push(
+            "Lane 1 evidence-quality benchmark is missing calibration_scope object".to_string(),
+        );
+    }
+    if !matches!(corpus.get("audit_expectations"), Some(Value::Object(_))) {
+        violations.push(
+            "Lane 1 evidence-quality benchmark is missing audit_expectations object".to_string(),
+        );
+    }
+
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        violations.push(format!("{normalized} is missing cases array"));
+        return;
+    };
+
+    let mut seen_ids = BTreeSet::new();
+    let mut seen_classes = BTreeSet::new();
+    let mut seen_kinds = BTreeSet::new();
+    let mut has_runtime_only_guard = false;
+    let mut has_line_movement_guard = false;
+    for case in cases {
+        let case_id = json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string());
+        if !seen_ids.insert(case_id.clone()) {
+            violations.push(format!(
+                "Lane 1 evidence-quality benchmark case {case_id} is duplicated"
+            ));
+        }
+        validate_evidence_quality_benchmark_case(
+            &case_id,
+            case,
+            &mut seen_classes,
+            &mut seen_kinds,
+            &mut has_runtime_only_guard,
+            &mut has_line_movement_guard,
+            violations,
+        );
+    }
+
+    for required in EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CLASSES {
+        if !seen_classes.contains(*required) {
+            violations.push(format!(
+                "Lane 1 evidence-quality benchmark is missing evidence_class {required}"
+            ));
+        }
+    }
+    for required in EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CASE_KINDS {
+        if !seen_kinds.contains(*required) {
+            violations.push(format!(
+                "Lane 1 evidence-quality benchmark is missing case_kind {required}"
+            ));
+        }
+    }
+    if !has_runtime_only_guard {
+        violations.push(
+            "Lane 1 evidence-quality benchmark must include a runtime-only nonstatic guard"
+                .to_string(),
+        );
+    }
+    if !has_line_movement_guard {
+        violations.push(
+            "Lane 1 evidence-quality benchmark must include a line-movement identity guard"
+                .to_string(),
+        );
+    }
+}
+
+fn validate_evidence_quality_benchmark_case(
+    case_id: &str,
+    case: &Value,
+    seen_classes: &mut BTreeSet<String>,
+    seen_kinds: &mut BTreeSet<String>,
+    has_runtime_only_guard: &mut bool,
+    has_line_movement_guard: &mut bool,
+    violations: &mut Vec<String>,
+) {
+    for field in ["description", "fixture_reference", "expected_claim"] {
+        require_lane1_json_string_at(case, field, case_id, violations);
+    }
+    require_non_empty_string_array_at(case, "must_not_claim", case_id, violations);
+    require_lane1_json_string_at(case, "repair_route", case_id, violations);
+
+    let evidence_class = json_string_field(case, "evidence_class");
+    match evidence_class.as_deref() {
+        Some(class) if EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CLASSES.contains(&class) => {
+            seen_classes.insert(class.to_string());
+        }
+        Some(class) => violations.push(format!(
+            "Lane 1 evidence-quality benchmark case {case_id} has unsupported evidence_class {class}"
+        )),
+        None => violations.push(format!(
+            "Lane 1 evidence-quality benchmark case {case_id} is missing evidence_class"
+        )),
+    }
+
+    let case_kind = json_string_field(case, "case_kind");
+    match case_kind.as_deref() {
+        Some(kind) if EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CASE_KINDS.contains(&kind) => {
+            seen_kinds.insert(kind.to_string());
+        }
+        Some(kind) => violations.push(format!(
+            "Lane 1 evidence-quality benchmark case {case_id} has unsupported case_kind {kind}"
+        )),
+        None => violations.push(format!(
+            "Lane 1 evidence-quality benchmark case {case_id} is missing case_kind"
+        )),
+    }
+
+    match json_string_field(case, "maturity_scope").as_deref() {
+        Some("static_only" | "fixture_backed" | "calibrated" | "ambiguous" | "unsupported") => {}
+        Some(scope) => violations.push(format!(
+            "Lane 1 evidence-quality benchmark case {case_id} has unsupported maturity_scope {scope}"
+        )),
+        None => violations.push(format!(
+            "Lane 1 evidence-quality benchmark case {case_id} is missing maturity_scope"
+        )),
+    }
+
+    match case.get("expected_repo_exposure") {
+        Some(expected @ Value::Object(_)) => {
+            let creates_static_gap = json_bool_field(expected, "static_gap_created");
+            let record = expected.get("evidence_record");
+            if evidence_class.as_deref() == Some("runtime_only_signal") {
+                if creates_static_gap != Some(false) || !matches!(record, Some(Value::Null)) {
+                    violations.push(format!(
+                        "Lane 1 evidence-quality benchmark runtime-only case {case_id} must keep static_gap_created=false and evidence_record=null"
+                    ));
+                }
+            } else if !matches!(record, Some(Value::Object(_))) {
+                violations.push(format!(
+                    "Lane 1 evidence-quality benchmark case {case_id} expected_repo_exposure.evidence_record must be an object"
+                ));
+            }
+        }
+        _ => violations.push(format!(
+            "Lane 1 evidence-quality benchmark case {case_id} is missing expected_repo_exposure object"
+        )),
+    }
+
+    if !matches!(case.get("expected_audit_signal"), Some(Value::Object(_))) {
+        violations.push(format!(
+            "Lane 1 evidence-quality benchmark case {case_id} is missing expected_audit_signal object"
+        ));
+    }
+
+    if evidence_class.as_deref() == Some("runtime_only_signal") {
+        match case.get("calibration") {
+            Some(calibration @ Value::Object(_)) => {
+                if json_bool_field(calibration, "runtime_signal") != Some(true) {
+                    violations.push(format!(
+                        "Lane 1 evidence-quality benchmark runtime-only case {case_id} must set calibration.runtime_signal=true"
+                    ));
+                }
+            }
+            _ => violations.push(format!(
+                "Lane 1 evidence-quality benchmark runtime-only case {case_id} is missing calibration object"
+            )),
+        }
+        *has_runtime_only_guard = true;
+    }
+
+    if evidence_class.as_deref() == Some("ambiguous_runtime_join") {
+        match case.get("calibration") {
+            Some(calibration @ Value::Object(_)) => {
+                if json_string_field(calibration, "join_status").as_deref() != Some("ambiguous") {
+                    violations.push(format!(
+                        "Lane 1 evidence-quality benchmark ambiguous join case {case_id} must set calibration.join_status=ambiguous"
+                    ));
+                }
+            }
+            _ => violations.push(format!(
+                "Lane 1 evidence-quality benchmark ambiguous join case {case_id} is missing calibration object"
+            )),
+        }
+    }
+
+    if case_kind.as_deref() == Some("metamorphic_line_movement") {
+        validate_benchmark_line_movement(case_id, case, has_line_movement_guard, violations);
+    }
+}
+
+fn validate_benchmark_line_movement(
+    case_id: &str,
+    case: &Value,
+    has_line_movement_guard: &mut bool,
+    violations: &mut Vec<String>,
+) {
+    let Some(metamorphic @ Value::Object(_)) = case.get("metamorphic") else {
+        violations.push(format!(
+            "Lane 1 evidence-quality benchmark line-movement case {case_id} is missing metamorphic object"
+        ));
+        return;
+    };
+    let before_id = audit_string(metamorphic, &["before", "canonical_gap_id"]);
+    let after_id = audit_string(metamorphic, &["after", "canonical_gap_id"]);
+    let before_line = audit_usize(metamorphic, &["before", "line"]);
+    let after_line = audit_usize(metamorphic, &["after", "line"]);
+    if before_id.is_none() || before_id != after_id {
+        violations.push(format!(
+            "Lane 1 evidence-quality benchmark line-movement case {case_id} must preserve canonical_gap_id"
+        ));
+    }
+    if before_line.is_none() || after_line.is_none() || before_line == after_line {
+        violations.push(format!(
+            "Lane 1 evidence-quality benchmark line-movement case {case_id} must move line numbers"
+        ));
+    }
+    *has_line_movement_guard = true;
+}
+
 fn validate_lane1_evidence_quality_record(
     case_id: &str,
     record: &Value,
@@ -4417,6 +4739,33 @@ fn require_non_empty_string_array_at(
         _ => violations.push(format!(
             "Lane 1 evidence-quality case {case_id} {field} must be a non-empty string array"
         )),
+    }
+}
+
+fn require_string_array_contains_all(
+    value: &Value,
+    field: &str,
+    required: &[&str],
+    label: &str,
+    violations: &mut Vec<String>,
+) {
+    let Some(items) = value.get(field).and_then(Value::as_array) else {
+        violations.push(format!("{label} {field} must be a string array"));
+        return;
+    };
+    let mut actual = BTreeSet::new();
+    for item in items {
+        match item.as_str() {
+            Some(item) => {
+                actual.insert(item.to_string());
+            }
+            None => violations.push(format!("{label} {field} contains a non-string item")),
+        }
+    }
+    for expected in required {
+        if !actual.contains(*expected) {
+            violations.push(format!("{label} {field} is missing {expected}"));
+        }
     }
 }
 
@@ -25909,6 +26258,110 @@ mod tests {
         );
         assert!(report.contains("is missing case missing_equality_boundary_discriminator"));
         assert!(report.contains("must include at least one negative_guard case"));
+        Ok(())
+    }
+
+    fn evidence_quality_benchmark_corpus_path() -> Result<PathBuf, String> {
+        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask manifest must have workspace parent".to_string())?;
+        Ok(repo_root.join("fixtures/evidence-quality-benchmark/corpus.json"))
+    }
+
+    fn evidence_quality_benchmark_corpus_value() -> Result<Value, String> {
+        let corpus = evidence_quality_benchmark_corpus_path()?;
+        super::read_json_value(&corpus)
+    }
+
+    fn evidence_quality_benchmark_violations(corpus: &Value) -> Vec<String> {
+        let mut violations = Vec::new();
+        super::validate_evidence_quality_benchmark_corpus_value(
+            Path::new("fixtures/evidence-quality-benchmark/corpus.json"),
+            corpus,
+            &mut violations,
+        );
+        violations
+    }
+
+    fn evidence_quality_benchmark_case_mut<'a>(
+        corpus: &'a mut Value,
+        case_id: &str,
+    ) -> Result<&'a mut Value, String> {
+        let cases = corpus
+            .get_mut("cases")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| "benchmark corpus must have cases array".to_string())?;
+        cases
+            .iter_mut()
+            .find(|case| case.get("id").and_then(Value::as_str) == Some(case_id))
+            .ok_or_else(|| format!("benchmark corpus is missing case {case_id}"))
+    }
+
+    #[test]
+    fn evidence_quality_benchmark_corpus_is_valid() -> Result<(), String> {
+        let corpus = evidence_quality_benchmark_corpus_path()?;
+        let mut violations = Vec::new();
+        super::validate_evidence_quality_benchmark_fixture_corpus_at(&corpus, &mut violations)?;
+
+        assert_eq!(violations, Vec::<String>::new());
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_benchmark_requires_all_case_kinds() -> Result<(), String> {
+        let mut corpus = evidence_quality_benchmark_corpus_value()?;
+        corpus["required_case_kinds"] = serde_json::json!(["positive"]);
+
+        let report = evidence_quality_benchmark_violations(&corpus).join("\n");
+
+        assert!(report.contains("required_case_kinds is missing negative_guard"));
+        assert!(report.contains("required_case_kinds is missing calibration"));
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_benchmark_reports_missing_must_not_claims() -> Result<(), String> {
+        let mut corpus = evidence_quality_benchmark_corpus_value()?;
+        let case = evidence_quality_benchmark_case_mut(&mut corpus, "broad_vs_exact_error_oracle")?;
+        case["must_not_claim"] = serde_json::json!([]);
+
+        let report = evidence_quality_benchmark_violations(&corpus).join("\n");
+
+        assert!(report.contains(
+            "Lane 1 evidence-quality case broad_vs_exact_error_oracle must_not_claim must be a non-empty string array"
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_benchmark_keeps_runtime_only_signal_nonstatic() -> Result<(), String> {
+        let mut corpus = evidence_quality_benchmark_corpus_value()?;
+        let case =
+            evidence_quality_benchmark_case_mut(&mut corpus, "runtime_only_signal_nonstatic")?;
+        case["expected_repo_exposure"]["static_gap_created"] = serde_json::json!(true);
+
+        let report = evidence_quality_benchmark_violations(&corpus).join("\n");
+
+        assert!(report.contains(
+            "runtime-only case runtime_only_signal_nonstatic must keep static_gap_created=false and evidence_record=null"
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_benchmark_pins_line_movement_identity() -> Result<(), String> {
+        let mut corpus = evidence_quality_benchmark_corpus_value()?;
+        let case = evidence_quality_benchmark_case_mut(
+            &mut corpus,
+            "match_arm_discriminator_line_movement",
+        )?;
+        case["metamorphic"]["after"]["canonical_gap_id"] = serde_json::json!("gap:changed");
+
+        let report = evidence_quality_benchmark_violations(&corpus).join("\n");
+
+        assert!(report.contains(
+            "line-movement case match_arm_discriminator_line_movement must preserve canonical_gap_id"
+        ));
         Ok(())
     }
 
