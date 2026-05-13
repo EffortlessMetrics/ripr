@@ -1906,7 +1906,12 @@ spec = "docs/specs/RIPR-SPEC-0028-python-preview-static-facts.md"
 tests = [
   "crates/ripr/src/analysis/language/python.rs",
 ]
-fixtures = []
+fixtures = [
+  "fixtures/python_boundary_gap",
+  "fixtures/python_unittest_basic",
+  "fixtures/python_method_owner",
+  "fixtures/python_parametrize_basic",
+]
 code = [
   "crates/ripr/src/analysis/language/python.rs",
   "crates/ripr/src/analysis/language/mod.rs",

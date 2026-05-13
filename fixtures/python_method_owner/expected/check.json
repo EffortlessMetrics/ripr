@@ -1,0 +1,64 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_method_owner/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_policy.py:3:python_preview",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_policy.py:3:python_preview",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/policy.py",
+        "line": 3,
+        "expression": "        if amount >= threshold:"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `apply`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "observe": {"state":"weak","confidence":"low","summary":"Python owner/test slice records related tests but does not yet extract assertion strength."},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python owner/test slice cannot confirm a discriminator until assertion extraction lands."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `apply`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Python owner/test slice records related tests but does not yet extract assertion strength.", "discriminator weak: Python owner/test slice cannot confirm a discriminator until assertion extraction lands.", "related test tests/test_policy.py:4 test_discount_policy_apply uses unknown unknown oracle"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: DiscountPolicy.apply", "owner_kind: method", "test_framework: pytest (test_discount_policy_apply)"],
+      "missing": ["Related Python test reaches `apply` but assertion strength is not inspected in this slice; add or verify an exact-value assertion after Python assertion extraction lands."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "test_discount_policy_apply",
+          "file": "tests/test_policy.py",
+          "line": 4,
+          "oracle_strength": "unknown",
+          "oracle_kind": "unknown",
+          "oracle": ""
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "Python preview: related test found; add or verify a focused assertion once Python assertion extraction lands.",
+      "suggested_next_action": "Python preview: related test found; add or verify a focused assertion once Python assertion extraction lands.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "method"
+    }
+  ]
+}

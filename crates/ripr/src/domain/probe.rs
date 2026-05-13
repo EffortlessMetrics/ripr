@@ -242,6 +242,10 @@ pub struct Finding {
     /// spec; preview adapters (TypeScript, Python) will set
     /// `Some(LanguageStatus::Preview)` when they land.
     pub language_status: Option<crate::domain::LanguageStatus>,
+    /// Syntactic owner kind identified by preview language adapters.
+    /// Additive optional per RIPR-SPEC-0026; omitted when the adapter does
+    /// not yet have a bounded owner kind for the changed line.
+    pub owner_kind: Option<crate::domain::OwnerKind>,
     /// Structured static limitation kind for preview evidence when the
     /// adapter can name one. Omitted when no static limit is known.
     pub static_limit_kind: Option<crate::domain::StaticLimitKind>,
