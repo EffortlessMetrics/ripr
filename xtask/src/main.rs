@@ -32030,9 +32030,18 @@ fn exact_owner_call_has_external_expected_value() {
             &[front_panel_run],
             &[report_packet_index_run],
             &preview_projection_runs,
-            &[pr_inline_comment_run],
+            std::slice::from_ref(&pr_inline_comment_run),
         );
         let json = dogfood_report_json(&[], &[], &[], &[], &[], &empty_projection_runs, &[]);
+        let preview_json = dogfood_report_json(
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &preview_projection_runs,
+            std::slice::from_ref(&pr_inline_comment_run),
+        );
 
         assert!(markdown.contains("Mode: advisory"));
         assert!(markdown.contains("boundary_gap"));
@@ -32054,6 +32063,21 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(json.contains("\"generated_ci_cockpit\""));
         assert!(json.contains("\"language_preview\""));
         assert!(json.contains("\"pr_inline_comment_publisher\""));
+        assert!(preview_json.contains("\"generated_ci_cockpit\""));
+        assert!(preview_json.contains("\"language_grouping\": \"checked\""));
+        assert!(preview_json.contains("\"language_preview\""));
+        assert!(preview_json.contains("\"name\": \"python_mixed_language_no_cross_route\""));
+        assert!(preview_json.contains("\"language\": \"python\""));
+        assert!(preview_json.contains("\"preview_enabled\": true"));
+        assert!(preview_json.contains("\"findings\": 1"));
+        assert!(preview_json.contains("\"preview_findings\": 1"));
+        assert!(preview_json.contains("\"missing_preview_status\": 0"));
+        assert!(preview_json.contains("\"related_tests\": 0"));
+        assert!(preview_json.contains("\"classifications\": [\"no_static_path\"]"));
+        assert!(preview_json.contains("\"expected_classifications\": [\"no_static_path\"]"));
+        assert!(preview_json.contains("\"static_limit_kinds\": []"));
+        assert!(preview_json.contains("\"pr_inline_comment_publisher\""));
+        assert!(preview_json.contains("\"publishable_changed_line\""));
     }
 
     #[test]
