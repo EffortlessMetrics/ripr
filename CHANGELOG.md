@@ -185,6 +185,11 @@ Planned scope:
   Lane 1 behavior for visibility, observer shape, actionability, declaration
   plus literal grouping, static limitation categories, and must-not-claim guards
   before analyzer behavior changes begin.
+- Added RIPR-SPEC-0045 for finding-to-gap alignment. The spec defines how raw
+  line-local findings remain supporting evidence while rolling up into
+  canonical evidence items with explicit state, actionability, reason, repair,
+  verification, static limitations, confidence, counting rules, and downstream
+  consumption boundaries.
 - Added a Lane 1 evidence-quality benchmark case for presentation text
   constants, pinning the claim boundary for changed help/label text: visibility
   and actionability must be explicit, declaration and literal lines should

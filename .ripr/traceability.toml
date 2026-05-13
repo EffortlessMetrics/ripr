@@ -2761,3 +2761,44 @@ metrics = [
   "preview_promotion_warning_count",
   "preview_promotion_unknown_count",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0045"
+name = "Finding-to-gap alignment"
+spec = "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md"
+tests = [
+]
+fixtures = [
+]
+code = [
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
+  "docs/specs/README.md",
+  "docs/DOCUMENTATION.md",
+  "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+  ".ripr/traceability.toml",
+  "CHANGELOG.md",
+]
+metrics = [
+  "finding_alignment_raw_findings_total",
+  "finding_alignment_raw_signals_total",
+  "finding_alignment_canonical_items_total",
+  "finding_alignment_raw_to_canonical_ratio",
+  "finding_alignment_duplicate_groups_total",
+  "finding_alignment_actionable_items_total",
+  "finding_alignment_actionable_unresolved_canonical_gaps",
+  "finding_alignment_already_observed_total",
+  "finding_alignment_internal_only_total",
+  "finding_alignment_internal_no_action_total",
+  "finding_alignment_static_limitation_total",
+  "finding_alignment_unknown_total",
+  "finding_alignment_calibrated_supported_total",
+  "finding_alignment_uncalibrated_total",
+  "finding_alignment_visibility_unknown_total",
+  "finding_alignment_presentation_text_actionable_total",
+]

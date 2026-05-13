@@ -52,6 +52,8 @@ explicitly makes this Lane 1 tracker active.
   explains why this evidence class exists;
 - spec: [RIPR-SPEC-0043: Presentation Text Evidence](../specs/RIPR-SPEC-0043-presentation-text-evidence.md)
   defines behavior;
+- alignment spec: [RIPR-SPEC-0045: Finding-To-Gap Alignment](../specs/RIPR-SPEC-0045-finding-to-gap-alignment.md)
+  defines how raw findings become canonical evidence items;
 - ADR: [ADR 0010: Fixture-First Evidence Confidence](../adr/0010-fixture-first-evidence-confidence.md)
   remains the maturity rule;
 - lane tracker: this file records sequencing, state, validation, and non-goals;
@@ -75,13 +77,18 @@ explicitly makes this Lane 1 tracker active.
 - PR #900 started a screenshot-derived benchmark case for the changed
   `APPLE_M3_AIR_DEVICE_LABELS_TEXT` constant. Treat it as the benchmark slice
   after the proposal and spec foundation land.
+- The next contract step is finding-to-gap alignment so raw line-local findings
+  roll up into one canonical item with state, actionability, reason, repair,
+  proof, and supporting raw evidence.
 
 ## Planned Slices
 
 | Slice | Intent | Status |
 | --- | --- | --- |
 | `docs/proposal-user-visible-output-evidence` | Open the proposal and lane tracker for presentation/help/report/table text evidence. | merged in #904 |
-| `docs/spec-presentation-text-evidence` | Define visibility, observer, actionability, canonical grouping, static limitation, and must-not-claim behavior. | current |
+| `docs/spec-presentation-text-evidence` | Define visibility, observer, actionability, canonical grouping, static limitation, and must-not-claim behavior. | merged in #909 |
+| `docs/spec-finding-to-gap-alignment` | Define how raw findings roll up into canonical evidence items with state, actionability, repair, confidence, and supporting raw evidence. | current |
+| `fixtures/finding-alignment-benchmark` | Add raw-to-canonical benchmark cases for grouping, no-action, already-observed, static limitation, and actionable states. | planned |
 | `fixtures/presentation-text-evidence-benchmark` | Add benchmark cases for user-visible observed/unobserved text, internal-only labels, visibility unknowns, declaration/literal grouping, and unrelated strings. | open candidate in #900; wait for spec foundation |
 | `analysis/presentation-text-evidence-fields` | Add additive evidence-record fields for presentation text visibility, observer, actionability, source kind, and grouping. | planned |
 | `analysis/presentation-text-visibility` | Conservatively classify obvious output sinks and keep opaque or indirect routes as limitations. | planned |
@@ -172,6 +179,7 @@ git diff --check
 | --- | --- | --- | --- |
 | `docs/proposal-user-visible-output-evidence` | #904 | merged | Added RIPR-PROP-0005 and this tracker; no behavior changes. |
 | `docs/spec-presentation-text-evidence` | #909 | merged | Added RIPR-SPEC-0043; no analyzer, projection, gate, generated-test, provider, mutation-execution, or score-definition changes. |
+| `docs/spec-finding-to-gap-alignment` | pending | current | Defines raw finding to canonical evidence item alignment before behavior changes. |
 | `fixtures/presentation-text-evidence-benchmark` | #900 | current | Contains the screenshot-derived constant benchmark after the proposal/spec foundation. |
 
 ## Closeout Conditions
@@ -179,6 +187,9 @@ git diff --check
 This lane can close after:
 
 - `RIPR-SPEC-0043` is merged;
+- `RIPR-SPEC-0045` is merged;
+- raw findings can align to canonical evidence items with explicit state,
+  actionability, reason, repair, confidence, and supporting raw evidence;
 - benchmark cases exist for observed, unobserved, internal-only,
   visibility-unknown, observer-unknown, declaration/literal grouping, and
   unrelated-string guard cases;
