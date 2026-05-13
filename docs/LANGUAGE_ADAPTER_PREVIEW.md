@@ -105,6 +105,8 @@ Useful references:
 - [Output schema](OUTPUT_SCHEMA.md) for field contracts.
 - [Support tiers](status/SUPPORT_TIERS.md) for maturity and trust boundaries.
 - [Capability matrix](CAPABILITY_MATRIX.md) for proof artifacts.
+- [Language adapter preview dogfood receipts](handoffs/2026-05-13-language-adapter-preview-receipts.md)
+  for the checked TypeScript/Python preview receipt cases.
 - [TypeScript preview static facts](specs/RIPR-SPEC-0027-typescript-preview-static-facts.md).
 - [Python preview static facts](specs/RIPR-SPEC-0028-python-preview-static-facts.md).
 
@@ -190,4 +192,3 @@ The useful claim is narrower: for explicitly enabled preview languages, RIPR can
 surface syntax-first static evidence, related tests, missing discriminators,
 static limits, and repair-oriented next actions in the same review surfaces used
 by Rust.
-

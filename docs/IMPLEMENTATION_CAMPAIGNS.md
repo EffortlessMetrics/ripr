@@ -2972,8 +2972,8 @@ Work items:
 | `lsp/editor-language-routing` | done | Extended the VS Code extension activation events and document selector to TypeScript, TypeScript React, JavaScript, JavaScript React, and Python while preserving Rust saved-workspace defaults. Routed stale-buffer guards through the same supported-language selector set; preview findings now carry language, status, owner, and static-limit metadata through LSP diagnostic data, hover shows the preview syntax-first/advisory boundary before RIPR evidence, and status text surfaces preview/static-limit counts from refresh logs. LSP analysis remains config-gated by `[languages]` through the existing adapter layer. Landed without analyzer behavior changes, source edits, generated tests, provider calls, mutation execution, policy/gate/default-blocking behavior, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays. |
 | `ci/language-aware-grouping` | done | Generated GitHub CI summaries now read enabled languages through the public `ripr doctor` surface, keep the language grouping section hidden for Rust-only config, and group TypeScript/Python advisory artifact entries, preview-status counts, classifications, and static-limit kinds only when preview adapters are configured. Preview groups remain advisory presentation only; `ripr gate evaluate` remains configured pass/fail authority. |
 | `docs/language-adapter-preview-workflow` | done | `docs/LANGUAGE_ADAPTER_PREVIEW.md` documents enabling preview adapters, reading mixed-language reports, interpreting preview labels, the static-limit boundary, editor projection, generated-CI language grouping, gate authority, and rollback; Quickstart, Configuration, Support Tiers, capability, traceability, and documentation-index surfaces link to it. |
-| `dogfood/language-adapter-preview-receipts` | ready | Extend `cargo xtask dogfood` with checked TypeScript and Python preview receipts without changing analyzer behavior, default CI, or inline-comment defaults. |
-| `campaign/language-adapter-preview-closeout` | blocked | Close Campaign 27 after the spec, adapter boundary, Rust adapter, output metadata, preview adapters, editor routing, CI grouping, workflow docs, dogfood receipts, and validation show preview adapters are syntax-first, opt-in, advisory, and label-correct, while Rust behavior is preserved. |
+| `dogfood/language-adapter-preview-receipts` | done | `cargo xtask dogfood` now checks TypeScript and Python preview receipts for preview labels, structured static limits, disabled-language behavior, and no cross-language related-test routing. The dogfood report records generated-CI preview grouping as checked while preserving advisory defaults, Rust-default behavior, gate authority, and inline-comment defaults. |
+| `campaign/language-adapter-preview-closeout` | ready | Close Campaign 27 after the spec, adapter boundary, Rust adapter, output metadata, preview adapters, editor routing, CI grouping, workflow docs, dogfood receipts, and validation show preview adapters are syntax-first, opt-in, advisory, and label-correct, while Rust behavior is preserved. |
 
 References:
 
@@ -3033,10 +3033,11 @@ cargo xtask check-pr
 
 Next:
 
-- Continue with `dogfood/language-adapter-preview-receipts`. Add checked
-  TypeScript and Python preview receipts for the now-documented CLI, report,
-  editor, and generated-CI path without promoting preview evidence to gate
-  eligibility, changing Rust defaults, or implying runtime mutation proof.
+- Continue with `campaign/language-adapter-preview-closeout`. Record the
+  landed spec, adapter, output metadata, preview adapter, editor routing,
+  generated-CI grouping, workflow docs, and dogfood receipt chain without
+  promoting preview evidence to gate eligibility, changing Rust defaults, or
+  implying runtime mutation proof.
 
 ## Focused Lane 1 Tracker: Evidence Quality Leadership
 
