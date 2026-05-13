@@ -9920,6 +9920,41 @@ fn audit_evidence_record_field_health(
         ("canonical_gap_id", &["canonical_gap_id"]),
         ("canonical_gap_group_size", &["canonical_gap_group_size"]),
         ("canonical_gap_reason", &["canonical_gap_reason"]),
+        ("raw_findings", &["raw_findings"]),
+        (
+            "canonical_item.canonical_gap_id",
+            &["canonical_item", "canonical_gap_id"],
+        ),
+        (
+            "canonical_item.raw_group_size",
+            &["canonical_item", "raw_group_size"],
+        ),
+        (
+            "canonical_item.canonical_item_kind",
+            &["canonical_item", "canonical_item_kind"],
+        ),
+        (
+            "canonical_item.evidence_class",
+            &["canonical_item", "evidence_class"],
+        ),
+        ("canonical_item.gap_state", &["canonical_item", "gap_state"]),
+        (
+            "canonical_item.actionability",
+            &["canonical_item", "actionability"],
+        ),
+        ("canonical_item.why", &["canonical_item", "why"]),
+        (
+            "canonical_item.recommended_repair",
+            &["canonical_item", "recommended_repair"],
+        ),
+        (
+            "canonical_item.verify_command",
+            &["canonical_item", "verify_command"],
+        ),
+        (
+            "canonical_item.confidence.basis",
+            &["canonical_item", "confidence", "basis"],
+        ),
         ("owner", &["owner"]),
         ("location.file", &["location", "file"]),
         ("location.line", &["location", "line"]),
@@ -9948,6 +9983,7 @@ fn audit_evidence_record_field_health(
         ("calibration.confidence", &["calibration", "confidence"]),
         ("calibration.agreement", &["calibration", "agreement"]),
         ("static_limitations", &["static_limitations"]),
+        ("presentation_text", &["presentation_text"]),
     ] {
         let entry =
             health
