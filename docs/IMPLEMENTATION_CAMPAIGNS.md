@@ -3039,8 +3039,9 @@ Next:
 
 ## Focused Lane 1 Tracker: Evidence Quality Leadership
 
-Status: closed in documented scope. Campaign 27 remains the active
-machine-readable campaign.
+Status: closed in documented scope. Campaign 27 is closed; the closed Campaign
+27 manifest remains in `.ripr/goals/active.toml` until the next campaign is
+selected.
 
 Sources of truth:
 
@@ -3079,8 +3080,8 @@ tests, provider calls, mutation execution, or score redefinition.
 
 ## Focused Lane 1 Tracker: User-Visible Output Evidence
 
-Status: open as a focused Lane 1 tracker. Campaign 27 remains the active
-machine-readable campaign.
+Status: open as a focused Lane 1 tracker. Campaign 27 is closed; this focused
+tracker is not the active execution campaign.
 
 Sources of truth:
 
@@ -3157,7 +3158,7 @@ Status: tracker
 
 GitHub issue: [#755](https://github.com/EffortlessMetrics/ripr/issues/755)
 
-Campaign 27 is the active machine-readable campaign. This focused Lane 2
+Campaign 27 is closed in the machine-readable manifest. This focused Lane 2
 tracker is not a replacement for `.ripr/goals/active.toml`; it records the
 policy boundary that Campaign 27 and later policy work must not cross.
 
@@ -3195,7 +3196,7 @@ Work items:
 | `policy/exception-ledger-convergence` | done | `docs/POLICY_ALLOWLISTS.md` now aligns no-panic, Clippy, non-Rust, workflow, RIPR suppression, baseline, and waiver ledgers around one reviewed reason per exception, semantic identity where available, and stale-entry behavior by class. |
 | `docs/blocking-readiness-guide` | done | `docs/BLOCKING_READINESS.md` now uses policy readiness as the ceiling for advisory, visible-only, acknowledgeable, baseline-check, and calibrated-gate promotion, including calibration, baseline, waiver, suppression, and preview-evidence health. |
 | `ci/policy-readiness-advisory-projection` | done | Generated CI writes, uploads, and summarizes waiver-aging, suppression-health, and policy-readiness artifacts as advisory-only projections: no pass/fail authority, no new required checks, no default blocking, and no comment posting. |
-| `campaign/policy-readiness-closeout` | done | Closed the focused Lane 2 tracker after policy readiness, preview boundary, waiver aging, suppression health, baseline refresh guardrails, exception ledger semantics, blocking readiness guidance, and advisory CI projection landed. The closeout audit is recorded in `docs/handoffs/2026-05-12-policy-readiness-closeout.md`; the active machine-readable campaign remains Campaign 27. |
+| `campaign/policy-readiness-closeout` | done | Closed the focused Lane 2 tracker after policy readiness, preview boundary, waiver aging, suppression health, baseline refresh guardrails, exception ledger semantics, blocking readiness guidance, and advisory CI projection landed. The closeout audit is recorded in `docs/handoffs/2026-05-12-policy-readiness-closeout.md`; Campaign 27 is now closed in the machine-readable manifest. |
 
 References:
 
@@ -3237,8 +3238,8 @@ cargo xtask check-pr
 
 ## Focused Lane 2 Tracker: Policy Operations and Promotion Readiness
 
-Status: closed as a focused Lane 2 tracker. Campaign 27 remains the active
-machine-readable campaign.
+Status: closed as a focused Lane 2 tracker. Campaign 27 is closed in the
+machine-readable manifest.
 
 Sources of truth:
 

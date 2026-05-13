@@ -56,8 +56,10 @@ than one behavior contract or touches repo shape.
 | User-Visible Output Evidence (Lane 1 tracker) | Make changed presentation/help/report/table text one evidence-quality-aware action, no-action state, or static limitation. | Open: [RIPR-PROP-0005](proposals/RIPR-PROP-0005-user-visible-output-evidence.md) and [the lane tracker](lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md) define the source-of-truth stack. Planned slices cover presentation-text spec, benchmark, additive evidence fields, visibility, grouping, actionability, scorecard/trend fields, and downstream handoff. |
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Complete as an explicit parallel Lane 3 closeout: contract audit, hover hardening, evidence-aware actions, context packet, protocol smoke, VS Code smoke, status/staleness, workflow docs, and closeout audit. |
 
-The active machine-readable campaign is `.ripr/goals/active.toml`. The focused
-Lane 2 policy readiness tracker lives in
+The current machine-readable execution manifest is `.ripr/goals/active.toml`;
+its top-level status may be `closed` after a campaign closeout until a
+successor campaign is selected. The focused Lane 2 policy readiness tracker
+lives in
 `.ripr/goals/lane2-policy-readiness.toml` and
 [Policy readiness](policy/POLICY_READINESS.md); it is a GitHub issue/PR board,
 not the active execution manifest. The next focused Lane 2 tracker lives in
