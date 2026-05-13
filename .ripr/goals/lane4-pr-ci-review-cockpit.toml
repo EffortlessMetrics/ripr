@@ -112,27 +112,26 @@ commands = [
 
 [[work_item]]
 id = "audit/generated-ci-cockpit-baseline"
-status = "ready"
+status = "done"
 branch = "audit-generated-ci-cockpit-baseline"
 spec = "docs/specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md"
-plan = "plans/lane4-pr-ci-review-cockpit/generated-ci-gap-map.md"
-acceptance = "Record exact generated workflow commands, uploaded paths, job-summary sections, front-panel and packet-index placement, missing-artifact behavior, gate authority wording, and language grouping gaps without changing generated CI unless the audit finds a tiny docs mismatch."
+plan = "plans/lane4-pr-ci-review-cockpit/generated-ci-baseline-audit.md"
+acceptance = "The generated-CI baseline audit records generated workflow commands, uploaded paths, job-summary sections, front-panel and packet-index placement, missing-artifact behavior, gate authority wording, inline-comment boundaries, and language grouping gaps without changing generated CI."
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
   "cargo xtask check-static-language",
+  "cargo xtask check-campaign",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
 id = "ci/generated-summary-cockpit-contract"
-status = "blocked"
+status = "ready"
 branch = "ci-generated-summary-cockpit-contract"
-blocked_by = [
-  "audit/generated-ci-cockpit-baseline",
-]
 spec = "docs/specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md"
-acceptance = "If the generated-CI audit finds summary-ordering or wording gaps, align generated summary output with the cockpit contract while keeping Rust-default behavior, gate authority, branch protection, inline comments, and default blocking unchanged."
+plan = "plans/lane4-pr-ci-review-cockpit/generated-ci-baseline-audit.md"
+acceptance = "Align generated summary output with the cockpit contract by adding exact repair or regeneration commands where known and deciding whether the summary should literally say Start here, while keeping Rust-default behavior, gate authority, branch protection, inline comments, and default blocking unchanged."
 
 [[work_item]]
 id = "ci/language-aware-grouping"
@@ -147,11 +146,8 @@ acceptance = "Group advisory PR output by language only when preview adapters ar
 
 [[work_item]]
 id = "dogfood/lane4-cockpit-gap-receipts"
-status = "blocked"
+status = "ready"
 branch = "dogfood-lane4-cockpit-gap-receipts"
-blocked_by = [
-  "audit/generated-ci-cockpit-baseline",
-]
 acceptance = "Add only remaining cockpit gap receipts, such as missing proof, blocked gate, improved receipt, unchanged-after-attempt receipt, and preview-language packet cases, without duplicating Campaign 24 or 25 receipts."
 
 [[work_item]]
