@@ -1,6 +1,6 @@
 # Generated CI Cockpit Gap Map
 
-Status: planning
+Status: complete
 
 Lane: 4
 
@@ -78,7 +78,7 @@ Important current behavior:
 | Language-aware grouping | `ci/language-aware-grouping` | Wait until preview adapters provide enough TypeScript and Python evidence, or explicitly defer. |
 | Generated-CI cockpit receipts | `dogfood/lane4-cockpit-gap-receipts` | Done by [generated-CI cockpit dogfood receipts](../../docs/handoffs/2026-05-13-generated-ci-cockpit-receipts.md); Campaign 24 and 25 receipts remain the fixture-backed source for front-panel and packet-index states. |
 | Preview-language packet receipts | `ci/language-aware-grouping` | Deferred with language-aware grouping until preview adapters provide enough TypeScript and Python evidence, or the lane explicitly defers Python. |
-| Lane closeout | `docs/lane4-closeout` | Record what shipped, what did not change, validation, known limits, and next-lane handoff. |
+| Lane closeout | `docs/lane4-closeout` | Done by [Lane 4 closeout](../../docs/handoffs/2026-05-13-lane4-pr-ci-review-cockpit-closeout.md). |
 
 ## Non-Gaps
 
@@ -97,14 +97,11 @@ The following are not Lane 4 implementation gaps:
 
 ## Next Work Packet
 
-The next Lane 4 work item is:
+No implementation-facing Lane 4 work remains ready after closeout.
 
-```text
-docs(lane4): close PR/CI review cockpit lane
-```
-
-That PR should record the shipped cockpit surfaces, validation, explicit
-non-changes, deferred language-aware grouping, and next-lane handoff.
+Language-aware grouping remains blocked or deferred until preview adapters
+provide enough TypeScript and Python evidence, or until the lane explicitly
+accepts a narrower grouping slice.
 
 ## Validation
 
