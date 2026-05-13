@@ -171,7 +171,7 @@ commands = [
 
 [[work_item]]
 id = "spec/preview-evidence-promotion-packet"
-status = "planned"
+status = "done"
 branch = "spec-preview-evidence-promotion-packet"
 acceptance = "Define default-blocked preview-language promotion packets with evidence accounting, advisory generated-CI posture, and no actual promotion."
 commands = [

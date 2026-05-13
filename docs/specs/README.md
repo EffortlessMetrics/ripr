@@ -53,3 +53,4 @@ observable behavior.
 | [RIPR-SPEC-0040](RIPR-SPEC-0040-static-runtime-confidence-expansion.md) | proposed | Static/runtime confidence expansion |
 | [RIPR-SPEC-0041](RIPR-SPEC-0041-policy-history-ledger.md) | proposed | Policy history ledger |
 | [RIPR-SPEC-0042](RIPR-SPEC-0042-policy-promotion-packets.md) | proposed | Policy promotion packets |
+| [RIPR-SPEC-0043](RIPR-SPEC-0043-preview-evidence-promotion-packet.md) | proposed | Preview evidence promotion packet |

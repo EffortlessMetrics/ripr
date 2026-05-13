@@ -347,14 +347,15 @@ operator packets: current safe policy ceiling, next safe action, blockers to
 stricter modes, read-only promotion packets, preview-promotion packets, and
 history/trend surfaces. RIPR-SPEC-0039 defines the first policy operations
 report contract, `ripr policy operations` now writes that packet, and
-RIPR-SPEC-0041 defines the policy history trend contract, and RIPR-SPEC-0042
-defines manual-review promotion packets. `ripr policy history` now writes the
-read-only trend packet over policy operations plus optional history JSONL, and
-`ripr policy promote --to ...` now writes read-only promotion packets from
-policy operations plus optional policy history. This tracker preserves the same
-boundaries: no analyzer truth changes, no editor changes, no generated tests,
-no mutation execution, no default CI blocking, no automatic config or baseline
-mutation, and no preview evidence promotion.
+RIPR-SPEC-0041 defines the policy history trend contract, RIPR-SPEC-0042
+defines manual-review promotion packets, and RIPR-SPEC-0043 defines
+default-blocked preview evidence promotion packets. `ripr policy history` now
+writes the read-only trend packet over policy operations plus optional history
+JSONL, and `ripr policy promote --to ...` now writes read-only promotion
+packets from policy operations plus optional policy history. This tracker
+preserves the same boundaries: no analyzer truth changes, no editor changes,
+no generated tests, no mutation execution, no default CI blocking, no automatic
+config or baseline mutation, and no preview evidence promotion.
 
 ## Strategic Sequence
 
