@@ -2003,6 +2003,74 @@ fn calibration_runtime_fixture_v2_matches_checked_reports() -> Result<(), String
     Ok(())
 }
 
+#[test]
+fn calibration_runtime_fixture_v3_matches_checked_reports() -> Result<(), String> {
+    let root = workspace_root();
+    let fixture = root.join("fixtures/boundary_gap/calibration/runtime-fixtures-v3");
+    let value = assert_calibration_fixture_matches_checked_reports(&fixture)?;
+
+    assert_eq!(value["agreement"]["static_gap_and_runtime_signal"], 2);
+    assert_eq!(value["agreement"]["static_gap_without_runtime_signal"], 2);
+    assert_eq!(value["agreement"]["runtime_signal_without_static_gap"], 2);
+    assert_eq!(value["agreement"]["static_clean_and_runtime_clean"], 1);
+    assert_eq!(value["agreement"]["runtime_inconclusive"], 1);
+    assert_eq!(value["metrics"]["ambiguous_file_line_total"], 1);
+    assert_eq!(value["metrics"]["unmatched_mutants_total"], 1);
+    assert_eq!(value["metrics"]["static_without_runtime_total"], 1);
+    assert_eq!(value["metrics"]["join_method_counts"]["seam_id"], 5);
+
+    assert_eq!(
+        calibration_match_confidence(&value, "cal-v3-custom-helper-outcome")?,
+        "supports_static_gap"
+    );
+    assert_eq!(
+        calibration_match_confidence(&value, "cal-v3-table-boundary-outcome")?,
+        "supports_static_clean"
+    );
+    assert_eq!(
+        calibration_match_confidence(&value, "cal-v3-builder-override-outcome")?,
+        "contradicts_static_gap"
+    );
+    assert_eq!(
+        calibration_match_confidence(&value, "cal-v3-snapshot-field-discriminator")?,
+        "contradicts_static_clean"
+    );
+    assert_eq!(
+        calibration_match_confidence(&value, "cal-v3-mock-expectation-mismatch")?,
+        "supports_static_gap"
+    );
+
+    assert!(
+        value["static_only_findings"]
+            .as_array()
+            .is_some_and(|findings| findings.iter().any(|finding| {
+                finding["confidence_label"] == "no_runtime_data"
+                    && finding["static"]["seam_id"] == "cal-v3-cross-file-constant-boundary"
+            })),
+        "cross-file constant sample must remain no_runtime_data until a joined runtime sample exists"
+    );
+    assert_eq!(
+        value["ambiguous_file_line_matches"][0]["confidence_label"],
+        "ambiguous_runtime_join"
+    );
+    assert_eq!(
+        value["ambiguous_file_line_matches"][0]["candidates"]
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+    assert!(
+        value["missed_runtime_signals"]
+            .as_array()
+            .is_some_and(|signals| signals.iter().any(|signal| {
+                signal["confidence_label"] == "runtime_only_signal" && signal["static"].is_null()
+            })),
+        "runtime-only signal must stay calibration context without creating a static gap"
+    );
+
+    Ok(())
+}
+
 fn assert_calibration_fixture_matches_checked_reports(
     fixture: &Path,
 ) -> Result<serde_json::Value, String> {

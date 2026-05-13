@@ -176,6 +176,8 @@ Current tests:
 - `crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_prints_markdown_by_default`
 - `crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_writes_json_when_requested`
 - `crates/ripr/tests/cli_smoke.rs::calibration_runtime_fixture_matches_checked_reports`
+- `crates/ripr/tests/cli_smoke.rs::calibration_runtime_fixture_v2_matches_checked_reports`
+- `crates/ripr/tests/cli_smoke.rs::calibration_runtime_fixture_v3_matches_checked_reports`
 - `xtask/src/main.rs::mutation_calibration_args_parse_root_and_input_paths`
 - `xtask/src/main.rs::mutation_calibration_imports_static_seams_and_runtime_outcomes`
 - `xtask/src/main.rs::mutation_calibration_merges_mutants_and_outcomes_by_mutant_id`
@@ -199,6 +201,14 @@ Checked fixture-backed samples:
   existing static seams where possible, keeps ambiguous file/line opaque
   dispatch joins ambiguous, and keeps a runtime-only signal out of static gap
   creation.
+- `fixtures/boundary_gap/calibration/runtime-fixtures-v3/` covers checked
+  static/runtime confidence expansion imports for custom assertion helpers,
+  table-driven boundaries, builder overrides, cross-file constants, snapshot
+  field discriminators, and mock expectation mismatches. The sample maps
+  runtime outcomes to existing static seams where possible, keeps ambiguous
+  file/line joins ambiguous, keeps runtime-only signals out of static gap
+  creation, and preserves `no_runtime_data` for a checked static gap without
+  runtime data.
 
 Planned tests:
 
