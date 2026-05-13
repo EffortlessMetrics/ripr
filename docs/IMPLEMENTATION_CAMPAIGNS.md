@@ -3209,8 +3209,8 @@ Work items:
 | `spec/policy-operations-report` | done | RIPR-SPEC-0039 defines a read-only report composing policy-readiness, waiver-aging, suppression-health, baseline-delta, gate-decision, calibration, and preview-boundary inputs. |
 | `policy/operations-report` | done | `ripr policy operations` writes JSON and Markdown over explicit existing artifacts only, with current ceiling, next safe action, promotion blockers, grouped actions, warnings, unknowns, and input artifact status. |
 | `spec/policy-history-ledger` | done | RIPR-SPEC-0041 defines a read-only policy history report and optional append-only input without gates, telemetry, dashboards, required history files, or automatic appends. |
-| `policy/history-report` | planned | Add `ripr policy history` over explicit policy operations and optional history JSONL inputs. |
-| `spec/policy-promotion-packets` | planned | Define read-only promotion packets for `visible-only`, `acknowledgeable`, `baseline-check`, and `calibrated-gate` without config, baseline, suppression, workflow, CI, history, or preview-eligibility mutation. |
+| `policy/history-report` | done | `ripr policy history` writes read-only JSON and Markdown trend packets over explicit policy operations and optional history JSONL inputs without automatic appends. |
+| `spec/policy-promotion-packets` | done | RIPR-SPEC-0042 defines read-only promotion packets for `visible-only`, `acknowledgeable`, `baseline-check`, and `calibrated-gate` without config, baseline, suppression, workflow, CI, history, or preview-eligibility mutation. |
 | `policy/promotion-packet-report` | planned | Add `ripr policy promote --to ...` manual-review packets from policy operations and optional policy history. |
 | `spec/preview-evidence-promotion-packet` | planned | Define preview-language promotion packets with default `allowed_now = false`, explicit evidence accounting, advisory generated-CI posture, and no actual promotion. |
 | `policy/preview-promotion-packet-report` | planned | Add `ripr policy preview-promote --language ... --class ...` while preserving advisory preview defaults. |
