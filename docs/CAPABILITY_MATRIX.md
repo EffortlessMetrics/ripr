@@ -8,6 +8,11 @@ The machine-readable source is `metrics/capabilities.toml`. Run
 `cargo xtask metrics` for generated Markdown and JSON reports under
 `target/ripr/reports/`.
 
+For an adopter-facing summary of what is usable alpha, preview, scaffold,
+blocked, or deferred, see [Support tiers](status/SUPPORT_TIERS.md). This matrix
+is the deeper proof map; the support-tier page is the first read for rollout
+boundaries.
+
 Status values:
 
 - `planned`: designed but not implemented
