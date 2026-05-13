@@ -103,7 +103,7 @@ The audit must summarize:
 - largest canonical groups;
 - duplicate-looking groups;
 - missing discriminator classes;
-- static limitations by reason and stage;
+- static limitations by reason, stage, normalized category, and repair route;
 - oracle semantics distribution;
 - related-test ranking confidence;
 - movement availability fields;
@@ -122,7 +122,9 @@ Given a headline seam with no canonical gap ID, the audit counts it under
 
 Given missing discriminators, static limitations, low-confidence top related
 tests, or no related tests, the audit increments the matching distributions and
-file-debt rows.
+file-debt rows. Static limitations are grouped by normalized analyzer category
+and repair route without treating those categories as user-actionable test
+gaps.
 
 Given records with `calibration.availability = "not_imported"`, the audit counts
 them as uncalibrated. Imported availability counts as calibrated scope for this
@@ -132,8 +134,8 @@ audit report only; it does not change static classifications.
 
 - `xtask::tests::lane1_evidence_audit_counts_quality_gaps_from_evidence_record`
   pins JSON counts for canonical groups, duplicate groups, missing
-  discriminators, static limitations, ranking confidence, calibration, and
-  field health.
+  discriminators, static limitation categories, ranking confidence,
+  calibration, and field health.
 - `xtask::tests::lane1_evidence_audit_markdown_names_required_sections` pins
   Markdown section coverage.
 - `xtask::tests::lane1_evidence_audit_rejects_repo_exposure_without_seams` pins
