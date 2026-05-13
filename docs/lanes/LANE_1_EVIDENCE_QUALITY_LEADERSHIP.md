@@ -86,8 +86,8 @@ Use one document for one job:
 
 | Slice | Intent | Status |
 | --- | --- | --- |
-| `report/evidence-quality-scorecard` | Generate `target/ripr/reports/evidence-quality-scorecard.{json,md}` or an equivalent extension of the Lane 1 audit with maturity, risk, recommended repairs, and recent deltas. | planned |
-| `fixtures/evidence-quality-benchmark-corpus` | Add the benchmark corpus defined by RIPR-SPEC-0035 with positive cases, negative guards, movement cases, equivalent-code cases, known limitations, and calibration cases. | planned |
+| `report/evidence-quality-scorecard` | Generate `target/ripr/reports/evidence-quality-scorecard.{json,md}` or an equivalent extension of the Lane 1 audit with maturity, risk, recommended repairs, and recent deltas. | merged in #850 |
+| `fixtures/evidence-quality-benchmark-corpus` | Add the benchmark corpus defined by RIPR-SPEC-0035 with positive cases, negative guards, movement cases, equivalent-code cases, known limitations, and calibration cases. | current |
 | `analysis/related-test-ranking-audit-fixes` | Fix audit-derived related-test ranking misses only after benchmark cases prove the class. | planned |
 | `analysis/oracle-semantics-audit-fixes` | Fix audit-derived oracle-shape misses while keeping unsupported helpers as static limitations. | planned |
 | `analysis/static-limitation-taxonomy` | Normalize limitations into repairable categories and make them visible in scorecard/evidence-health without treating them as user test gaps. | planned |
@@ -165,7 +165,8 @@ evidence class, not by projection surface.
 | `docs/spec-evidence-quality-benchmark-corpus` | #846 | merged | Added RIPR-SPEC-0035. |
 | `docs/adr-fixture-first-evidence-confidence` | #847 | merged | Added ADR 0010. |
 | `docs/lane-1-evidence-quality-leadership-tracker` | #848 | merged | Opened this tracker; no behavior changes. |
-| `report/evidence-quality-scorecard` | current | in progress | Adds the repo-local scorecard from RIPR-SPEC-0034; no analyzer, gate, PR/CI, LSP, provider, generated-test, or mutation-execution behavior. |
+| `report/evidence-quality-scorecard` | #850 | merged | Added the repo-local scorecard from RIPR-SPEC-0034; no analyzer, gate, PR/CI, LSP, provider, generated-test, or mutation-execution behavior. |
+| `fixtures/evidence-quality-benchmark-corpus` | current | in progress | Adds the RIPR-SPEC-0035 manifest-only corpus and validator coverage; no analyzer, gate, PR/CI, LSP, provider, generated-test, or mutation-execution behavior. |
 
 ## Closeout Conditions
 
