@@ -103,7 +103,9 @@
             {
               "stage": "activate",
               "state": "unknown",
-              "reason": "No concrete activation values observed for seam `\"kind\" =>`"
+              "reason": "No concrete activation values observed for seam `\"kind\" =>`",
+              "category": "activation_value_unresolved",
+              "repair_route": "analysis/value-resolution-audit-fixes"
             }
           ]
         }
@@ -301,7 +303,9 @@
             {
               "stage": "activate",
               "state": "unknown",
-              "reason": "No concrete activation values observed for seam `Vec::new()`"
+              "reason": "No concrete activation values observed for seam `Vec::new()`",
+              "category": "activation_value_unresolved",
+              "repair_route": "analysis/value-resolution-audit-fixes"
             }
           ]
         }
@@ -403,7 +407,9 @@
             {
               "stage": "activate",
               "state": "unknown",
-              "reason": "No concrete activation values observed for seam `diff::load_diff(`"
+              "reason": "No concrete activation values observed for seam `diff::load_diff(`",
+              "category": "activation_value_unresolved",
+              "repair_route": "analysis/value-resolution-audit-fixes"
             }
           ]
         }

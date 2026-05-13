@@ -326,8 +326,8 @@
         "actionability": {"class": "static_limitation", "reason": "static evidence is opaque or unknown for this seam", "has_concrete_guidance": false, "signals": {"missing_discriminator": true, "candidate_value": false, "assertion_shape": false, "related_test": true, "recommended_test_target": false, "verification_command": false}},
         "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
         "static_limitations": [
-          {"stage": "activate", "state": "opaque", "reason": "builder hides the boundary value"},
-          {"stage": "classification", "state": "opaque", "reason": "opaque seam classification requires analyzer work or documented limitation"}
+          {"stage": "activate", "state": "opaque", "reason": "builder hides the boundary value", "category": "opaque_static_evidence", "repair_route": "analysis/static-limitation-taxonomy"},
+          {"stage": "classification", "state": "opaque", "reason": "opaque seam classification requires analyzer work or documented limitation", "category": "opaque_static_evidence", "repair_route": "analysis/static-limitation-taxonomy"}
         ]
       }
     },
@@ -392,7 +392,7 @@
         "recommendation": {"action": "write_targeted_test", "reason": "add a focused test that reaches and observes this branch", "recommended_test": {"name": "regional_discount_west_branch", "file": "tests/pricing.rs", "reason": "create the first focused test for the ungripped branch"}, "nearest_test_to_imitate": null, "candidate_values": [{"value": "Region::West", "reason": "no related test activates this branch"}], "assertion_shape": {"kind": "exact_return_value", "example": "assert_eq!(regional_discount(Region::West), /* expected */)"}, "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"},
         "actionability": {"class": "actionable_focused_test", "reason": "ungripped seam has a concrete missing discriminator and target value", "has_concrete_guidance": true, "signals": {"missing_discriminator": true, "candidate_value": true, "assertion_shape": true, "related_test": false, "recommended_test_target": true, "verification_command": true}},
         "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
-        "static_limitations": [{"stage": "propagate", "state": "unknown", "reason": "propagation is unknown until a related test reaches the owner"}]
+        "static_limitations": [{"stage": "propagate", "state": "unknown", "reason": "propagation is unknown until a related test reaches the owner", "category": "propagation_static_unknown", "repair_route": "analysis/static-limitation-taxonomy"}]
       }
     }
   ]
