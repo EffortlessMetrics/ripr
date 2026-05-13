@@ -1384,7 +1384,7 @@ evidence = [
 ]
 fixtures = []
 next = "fixtures/presentation-text-evidence-benchmark"
-metric = "presentation_text_total, presentation_text_user_visible, presentation_text_observed, presentation_text_unobserved, presentation_text_internal_only, presentation_text_visibility_unknown, presentation_text_observer_unknown, presentation_text_duplicate_groups, presentation_text_actionable_snapshot"
+metric = "presentation_text_total, presentation_text_user_visible, presentation_text_observed, presentation_text_unobserved, presentation_text_internal_only, presentation_text_visibility_unknown, presentation_text_observer_unknown, presentation_text_duplicate_groups, presentation_text_actionable_snapshot, presentation_text_no_action, presentation_text_static_limitations"
 
 [[capability]]
 id = "cargo_mutants_calibration"
