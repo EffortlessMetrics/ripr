@@ -2152,13 +2152,23 @@ metrics = [
 id = "RIPR-SPEC-0035"
 name = "Evidence quality benchmark corpus"
 spec = "docs/specs/RIPR-SPEC-0035-evidence-quality-benchmark-corpus.md"
-tests = []
-fixtures = []
-code = []
+tests = [
+  "xtask/src/main.rs",
+]
+fixtures = [
+  "fixtures/evidence-quality-benchmark/corpus.json",
+]
+code = [
+  "xtask/src/main.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0035-evidence-quality-benchmark-corpus.md",
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0002-lane-1-evidence-quality-leadership.md",
+  "fixtures/evidence-quality-benchmark/README.md",
+  "fixtures/evidence-quality-benchmark/corpus.json",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
   ".ripr/traceability.toml",
 ]
 metrics = [

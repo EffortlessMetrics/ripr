@@ -1,0 +1,500 @@
+{
+  "kind": "lane1_evidence_quality_benchmark_corpus",
+  "schema_version": "0.1",
+  "spec": "RIPR-SPEC-0035",
+  "evidence_classes": [
+    "duplicate_canonical_gap",
+    "match_arm_discriminator_split",
+    "wrong_related_test_top_choice",
+    "broad_vs_exact_error_oracle",
+    "self_computed_expected_value",
+    "opaque_helper_static_limitation",
+    "cross_file_constant_limitation",
+    "side_effect_observer",
+    "snapshot_discriminator",
+    "mock_expectation",
+    "runtime_only_signal",
+    "ambiguous_runtime_join"
+  ],
+  "required_case_kinds": [
+    "positive",
+    "negative_guard",
+    "metamorphic_line_movement",
+    "equivalent_code",
+    "static_limitation",
+    "calibration"
+  ],
+  "capability_scope": {
+    "rule": "class_scoped",
+    "stable_requires": "fixture_backed documented scope",
+    "calibrated_requires": "checked imported runtime outcomes"
+  },
+  "calibration_scope": {
+    "runtime_only_static_gap_created": false,
+    "ambiguous_joins_remain": "ambiguous",
+    "mutation_execution": "not_run_by_fixture_contract"
+  },
+  "audit_expectations": {
+    "source_report": "target/ripr/reports/evidence-quality-scorecard.json",
+    "signals": [
+      "maturity_by_class",
+      "recommended_repairs",
+      "unknowns",
+      "recent_audit_deltas"
+    ]
+  },
+  "cases": [
+    {
+      "id": "duplicate_canonical_gap_fixture_backed_group",
+      "case_kind": "positive",
+      "evidence_class": "duplicate_canonical_gap",
+      "maturity_scope": "fixture_backed",
+      "description": "Equivalent raw seams with the same owner, seam kind, flow sink, discriminator, and assertion shape remain one canonical group.",
+      "fixture_reference": "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json#duplicate_canonical_gap_overcount_suppressions_match_arm",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-duplicate-1",
+          "canonical_gap_id": "gap:bench-duplicate",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pricing::discount",
+          "location": {
+            "file": "src/pricing.rs",
+            "line": 40
+          },
+          "seam_kind": "predicate_boundary",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "duplicate_looking_groups",
+        "metric": "canonical_gap_group_size",
+        "value": 2
+      },
+      "expected_claim": "Equivalent raw seams can share one canonical gap identity.",
+      "must_not_claim": [
+        "Do not collapse different missing discriminators into this group.",
+        "Do not use raw line number as the canonical identity."
+      ],
+      "repair_route": "fixtures/evidence-quality-benchmark-corpus"
+    },
+    {
+      "id": "match_arm_discriminator_line_movement",
+      "case_kind": "metamorphic_line_movement",
+      "evidence_class": "match_arm_discriminator_split",
+      "maturity_scope": "fixture_backed",
+      "description": "The same match arm keeps canonical identity across line movement while distinct arms stay separated.",
+      "fixture_reference": "docs/specs/RIPR-SPEC-0033-match-arm-canonical-gap-discriminators.md",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-match-arm-after",
+          "canonical_gap_id": "gap:bench-match-arm-json",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "parser::kind",
+          "location": {
+            "file": "src/parser.rs",
+            "line": 124
+          },
+          "seam_kind": "match_arm",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "canonical_gap_groups",
+        "metric": "line_movement_identity",
+        "value": 1
+      },
+      "metamorphic": {
+        "before": {
+          "canonical_gap_id": "gap:bench-match-arm-json",
+          "line": 104
+        },
+        "after": {
+          "canonical_gap_id": "gap:bench-match-arm-json",
+          "line": 124
+        }
+      },
+      "expected_claim": "Same match-arm discriminator keeps canonical identity across line movement.",
+      "must_not_claim": [
+        "Do not group a different match arm with this identity.",
+        "Do not use a generic match or => discriminator."
+      ],
+      "repair_route": "analysis/canonical-gap-overcount-regression"
+    },
+    {
+      "id": "wrong_related_test_top_choice_negative_guard",
+      "case_kind": "negative_guard",
+      "evidence_class": "wrong_related_test_top_choice",
+      "maturity_scope": "static_only",
+      "description": "A same-file lexical match must not outrank a direct owner call with activation overlap.",
+      "fixture_reference": "RIPR-SPEC-0029 related-test ranking v2 cases",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-related-1",
+          "canonical_gap_id": "gap:bench-related",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pricing::discount",
+          "location": {
+            "file": "src/pricing.rs",
+            "line": 55
+          },
+          "seam_kind": "predicate_boundary",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "related_test_confidence",
+        "metric": "top_confidence_counts.low",
+        "value": 1
+      },
+      "expected_claim": "Direct owner calls with activation overlap should be preferred over weak lexical affinity.",
+      "must_not_claim": [
+        "Do not call a same-file lexical hit high-confidence without direct evidence.",
+        "Do not let changed-test recency outrank owner-call evidence."
+      ],
+      "repair_route": "analysis/related-test-ranking-audit-fixes"
+    },
+    {
+      "id": "broad_vs_exact_error_oracle",
+      "case_kind": "positive",
+      "evidence_class": "broad_vs_exact_error_oracle",
+      "maturity_scope": "fixture_backed",
+      "description": "Exact error variant assertions are stronger than broad is_err style oracles.",
+      "fixture_reference": "crates/ripr/src/analysis/classifier.rs exact error variant tests",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-error-1",
+          "canonical_gap_id": "gap:bench-error",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "parser::load",
+          "location": {
+            "file": "src/parser.rs",
+            "line": 72
+          },
+          "seam_kind": "error_path",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "oracle_semantics_distribution",
+        "metric": "oracle_kind_counts.exact_error_variant",
+        "value": 1
+      },
+      "expected_claim": "Exact error variant evidence observes the changed variant more specifically than broad error checks.",
+      "must_not_claim": [
+        "Do not treat is_err as exact variant discrimination.",
+        "Do not upgrade broad error oracles without variant evidence."
+      ],
+      "repair_route": "analysis/oracle-semantics-audit-fixes"
+    },
+    {
+      "id": "self_computed_expected_value_guard",
+      "case_kind": "equivalent_code",
+      "evidence_class": "self_computed_expected_value",
+      "maturity_scope": "unsupported",
+      "description": "A test that computes expected output through the owner under test is not independent exact-value evidence.",
+      "fixture_reference": "future benchmark fixture: self-computed expected value",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-self-computed-1",
+          "canonical_gap_id": "gap:bench-self-computed",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pricing::total",
+          "location": {
+            "file": "src/pricing.rs",
+            "line": 88
+          },
+          "seam_kind": "return_value",
+          "grip_class": "reachable_unrevealed",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "oracle_semantics_distribution",
+        "metric": "self_computed_expected_value",
+        "value": 1
+      },
+      "expected_claim": "Self-computed expected values remain weak until expected data is independent.",
+      "must_not_claim": [
+        "Do not mark self-computed expected values as strong exact-value evidence.",
+        "Do not claim equivalent code proves discriminator coverage."
+      ],
+      "repair_route": "analysis/oracle-semantics-audit-fixes"
+    },
+    {
+      "id": "opaque_helper_static_limitation",
+      "case_kind": "static_limitation",
+      "evidence_class": "opaque_helper_static_limitation",
+      "maturity_scope": "static_only",
+      "description": "Opaque assertion helpers remain static limitations until a supported helper pattern is added.",
+      "fixture_reference": "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json#static_activation_limitation_without_candidate_values",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-opaque-helper-1",
+          "canonical_gap_id": null,
+          "canonical_gap_group_size": null,
+          "canonical_gap_reason": null,
+          "owner": "helpers::assert_discount",
+          "location": {
+            "file": "tests/helpers.rs",
+            "line": 12
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "opaque_helper_call",
+        "value": 1
+      },
+      "static_limitation_category": "opaque_helper_call",
+      "expected_claim": "Opaque helpers are analyzer limitations, not focused user test gaps.",
+      "must_not_claim": [
+        "Do not infer exact-value semantics from an unsupported helper name.",
+        "Do not promote this class without positive and negative helper fixtures."
+      ],
+      "repair_route": "analysis/static-limitation-taxonomy"
+    },
+    {
+      "id": "cross_file_constant_limitation",
+      "case_kind": "static_limitation",
+      "evidence_class": "cross_file_constant_limitation",
+      "maturity_scope": "static_only",
+      "description": "Cross-file constants that cannot be resolved remain static limitations.",
+      "fixture_reference": "future benchmark fixture: cross-file constant boundary",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-cross-file-constant-1",
+          "canonical_gap_id": "gap:bench-cross-file-constant",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pricing::threshold",
+          "location": {
+            "file": "src/pricing.rs",
+            "line": 101
+          },
+          "seam_kind": "predicate_boundary",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "cross_file_constant_unresolved",
+        "value": 1
+      },
+      "static_limitation_category": "cross_file_constant_unresolved",
+      "expected_claim": "Unresolved cross-file constants stay visible as analyzer limits.",
+      "must_not_claim": [
+        "Do not invent candidate values from unresolved constants.",
+        "Do not treat unresolved constants as missing user assertions."
+      ],
+      "repair_route": "analysis/static-limitation-taxonomy"
+    },
+    {
+      "id": "side_effect_observer_positive",
+      "case_kind": "positive",
+      "evidence_class": "side_effect_observer",
+      "maturity_scope": "fixture_backed",
+      "description": "A state, event, persistence, or metric observer can support side-effect evidence in checked fixture scope.",
+      "fixture_reference": "fixtures/boundary_gap/expected/evidence-record-contract/corpus.json#side_effect_observer",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-side-effect-1",
+          "canonical_gap_id": "gap:bench-side-effect",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "publisher::emit",
+          "location": {
+            "file": "src/publisher.rs",
+            "line": 33
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "oracle_semantics_distribution",
+        "metric": "side_effect_observer",
+        "value": 1
+      },
+      "expected_claim": "Supported side-effect observers can make the observed side effect explicit.",
+      "must_not_claim": [
+        "Do not treat any side-effect call as observed without an observer.",
+        "Do not use mutation outcome words in static vocabulary."
+      ],
+      "repair_route": "analysis/oracle-semantics-audit-fixes"
+    },
+    {
+      "id": "snapshot_discriminator_field_specific",
+      "case_kind": "positive",
+      "evidence_class": "snapshot_discriminator",
+      "maturity_scope": "fixture_backed",
+      "description": "A snapshot oracle with a known discriminating field is stronger than broad snapshot output.",
+      "fixture_reference": "future benchmark fixture: snapshot field discriminator",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-snapshot-1",
+          "canonical_gap_id": "gap:bench-snapshot",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "render::summary",
+          "location": {
+            "file": "src/render.rs",
+            "line": 47
+          },
+          "seam_kind": "field_construction",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "oracle_semantics_distribution",
+        "metric": "snapshot_field_known",
+        "value": 1
+      },
+      "expected_claim": "Known snapshot fields can name what the oracle observes.",
+      "must_not_claim": [
+        "Do not treat broad snapshots as field-specific evidence.",
+        "Do not infer fields from opaque snapshot serializers."
+      ],
+      "repair_route": "analysis/oracle-semantics-audit-fixes"
+    },
+    {
+      "id": "mock_expectation_side_effect",
+      "case_kind": "positive",
+      "evidence_class": "mock_expectation",
+      "maturity_scope": "fixture_backed",
+      "description": "A mock expectation can observe a side-effect call when the expected target and argument are explicit.",
+      "fixture_reference": "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json#side_effect_observer_not_static_limitation",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-mock-1",
+          "canonical_gap_id": "gap:bench-mock",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "notifier::send",
+          "location": {
+            "file": "src/notifier.rs",
+            "line": 64
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "oracle_semantics_distribution",
+        "metric": "oracle_kind_counts.mock_expectation",
+        "value": 1
+      },
+      "expected_claim": "Explicit mock expectations can observe supported side-effect calls.",
+      "must_not_claim": [
+        "Do not treat unsupported mock shapes as observed side effects.",
+        "Do not upgrade mocks without target or argument evidence."
+      ],
+      "repair_route": "analysis/oracle-semantics-audit-fixes"
+    },
+    {
+      "id": "runtime_only_signal_nonstatic",
+      "case_kind": "calibration",
+      "evidence_class": "runtime_only_signal",
+      "maturity_scope": "calibrated",
+      "description": "Runtime-only evidence appears in calibration and must not create a static gap.",
+      "fixture_reference": "runtime-fixtures-v3 planned runtime-only signal",
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": null
+      },
+      "expected_audit_signal": {
+        "section": "calibration_coverage",
+        "metric": "runtime_only_signal",
+        "value": 1
+      },
+      "calibration": {
+        "runtime_signal": true,
+        "join_status": "runtime_only",
+        "creates_static_gap": false
+      },
+      "expected_claim": "Runtime-only signal is calibration evidence, not a static gap.",
+      "must_not_claim": [
+        "Do not create seams from runtime-only calibration rows.",
+        "Do not change static vocabulary based on runtime-only data."
+      ],
+      "repair_route": "calibration/runtime-fixtures-v3"
+    },
+    {
+      "id": "ambiguous_runtime_join_stays_ambiguous",
+      "case_kind": "calibration",
+      "evidence_class": "ambiguous_runtime_join",
+      "maturity_scope": "ambiguous",
+      "description": "Runtime outcomes that join to more than one static seam remain ambiguous.",
+      "fixture_reference": "runtime-fixtures-v3 planned ambiguous join",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-ambiguous-1",
+          "canonical_gap_id": "gap:bench-ambiguous",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "builder::finish",
+          "location": {
+            "file": "src/builder.rs",
+            "line": 77
+          },
+          "seam_kind": "return_value",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "calibration_coverage",
+        "metric": "ambiguous_runtime_join",
+        "value": 1
+      },
+      "calibration": {
+        "runtime_signal": true,
+        "join_status": "ambiguous",
+        "candidate_static_seams": 2
+      },
+      "expected_claim": "Ambiguous runtime joins remain ambiguous until a precise static join exists.",
+      "must_not_claim": [
+        "Do not assign an ambiguous runtime outcome to one static seam.",
+        "Do not mark ambiguous joins as calibrated."
+      ],
+      "repair_route": "calibration/runtime-fixtures-v3"
+    }
+  ]
+}
