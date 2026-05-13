@@ -40,16 +40,16 @@ when planning front-panel or packet-index work.
 
 ## Current Slice
 
-The first PR is docs-only scaffolding:
+The current implementation-facing slice is complete:
 
 ```text
-docs(lane4): define PR/CI review cockpit source-of-truth model
+dogfood(lane4): add PR/CI cockpit gap receipts
 ```
 
-It adds the lane tracker and this plan directory. It does not change generated
-CI, report producers, fixtures, schemas, gate policy, default blocking,
-language routing, analyzer behavior, editor behavior, source edits, or
-generated tests.
+It adds generated-CI cockpit dogfood receipts without duplicating the shipped
+front-panel or packet-index fixture receipts. The next Lane 4 slice is closeout
+with language-aware grouping explicitly deferred unless preview-language
+evidence is ready.
 
 ## Operating Constraints
 

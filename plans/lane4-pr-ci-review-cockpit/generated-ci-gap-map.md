@@ -76,7 +76,8 @@ Important current behavior:
 | Reviewer-first summary polish | `ci/generated-summary-cockpit-contract` | Done: the generated job summary includes a `Start here` section. |
 | Missing-artifact repair commands | `ci/generated-summary-cockpit-contract` | Done for known first-useful-action, front-panel, and packet-index regeneration commands. |
 | Language-aware grouping | `ci/language-aware-grouping` | Wait until preview adapters provide enough TypeScript and Python evidence, or explicitly defer. |
-| Preview-language packet receipts | `dogfood/lane4-cockpit-gap-receipts` | Add only remaining mixed-language or missing-proof cases; do not duplicate Campaign 24/25 receipts. |
+| Generated-CI cockpit receipts | `dogfood/lane4-cockpit-gap-receipts` | Done by [generated-CI cockpit dogfood receipts](../../docs/handoffs/2026-05-13-generated-ci-cockpit-receipts.md); Campaign 24 and 25 receipts remain the fixture-backed source for front-panel and packet-index states. |
+| Preview-language packet receipts | `ci/language-aware-grouping` | Deferred with language-aware grouping until preview adapters provide enough TypeScript and Python evidence, or the lane explicitly defers Python. |
 | Lane closeout | `docs/lane4-closeout` | Record what shipped, what did not change, validation, known limits, and next-lane handoff. |
 
 ## Non-Gaps
@@ -96,15 +97,14 @@ The following are not Lane 4 implementation gaps:
 
 ## Next Work Packet
 
-The next implementation-facing work item is:
+The next Lane 4 work item is:
 
 ```text
-dogfood(lane4): add PR/CI cockpit gap receipts
+docs(lane4): close PR/CI review cockpit lane
 ```
 
-That PR should add only remaining cockpit gap receipts, such as missing-proof,
-blocked-gate, improved, unchanged-after-attempt, and preview-language packet
-cases that are not already covered by Campaign 24 or Campaign 25.
+That PR should record the shipped cockpit surfaces, validation, explicit
+non-changes, deferred language-aware grouping, and next-lane handoff.
 
 ## Validation
 

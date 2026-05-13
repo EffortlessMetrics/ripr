@@ -152,16 +152,20 @@ acceptance = "Group advisory PR output by language only when preview adapters ar
 
 [[work_item]]
 id = "dogfood/lane4-cockpit-gap-receipts"
-status = "ready"
+status = "done"
 branch = "dogfood-lane4-cockpit-gap-receipts"
-acceptance = "Add only remaining cockpit gap receipts, such as missing proof, blocked gate, improved receipt, unchanged-after-attempt receipt, and preview-language packet cases, without duplicating Campaign 24 or 25 receipts."
+receipt = "docs/handoffs/2026-05-13-generated-ci-cockpit-receipts.md"
+acceptance = "cargo xtask dogfood validates the generated-CI cockpit receipt for Start here guidance, known cockpit regeneration commands, report artifact upload, advisory default posture, and gate-decision authority boundaries without duplicating Campaign 24 or 25 front-panel and packet-index receipts."
+commands = [
+  "cargo test -p xtask dogfood_",
+  "cargo xtask dogfood",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-pr",
+]
 
 [[work_item]]
 id = "docs/lane4-closeout"
-status = "blocked"
+status = "ready"
 branch = "docs-lane4-closeout"
-blocked_by = [
-  "audit/generated-ci-cockpit-baseline",
-  "dogfood/lane4-cockpit-gap-receipts",
-]
-acceptance = "Close Lane 4 with shipped surfaces, validation, remaining work, known limits, explicit non-changes, and next-lane handoff."
+acceptance = "Close Lane 4 with shipped surfaces, validation, deferred language-aware grouping, remaining work, known limits, explicit non-changes, and next-lane handoff."
