@@ -19,6 +19,7 @@ pub mod json;
 pub(crate) mod mutation_calibration;
 pub(crate) mod outcome;
 pub(crate) mod pilot;
+pub(crate) mod policy_operations;
 pub(crate) mod policy_readiness;
 pub(crate) mod pr_evidence_ledger;
 pub(crate) mod pr_inline_comment_publish_plan;
