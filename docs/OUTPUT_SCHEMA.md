@@ -1593,6 +1593,106 @@ top evidence-quality risks, recommended repairs, duplicate/canonical group
 signals, static limitations, missing discriminators, related-test and oracle
 distributions, movement and calibration coverage, recent deltas, and unknowns.
 
+## Evidence Quality Trend
+
+`cargo xtask evidence-quality-trend` writes a repo-local Lane 1 trend report
+over existing scorecard or audit snapshots:
+
+```text
+target/ripr/reports/evidence-quality-trend.json
+target/ripr/reports/evidence-quality-trend.md
+```
+
+By default the command reads the current
+`target/ripr/reports/evidence-quality-scorecard.json`, regenerating the
+scorecard first only when that required input is absent. It compares against
+`target/ripr/reports/evidence-quality-scorecard.previous.json` or
+`target/ripr/reports/lane1-evidence-audit.previous.json` when one exists.
+Operators may also pass `--current <path>` and `--previous <path>`. Missing
+history is reported explicitly as `unknown`; the command does not change
+analyzer behavior, gate policy, PR/CI projection, editor output, source files,
+generated tests, provider calls, score definitions, or runtime execution.
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "report": "evidence-quality-trend",
+  "generated_at": "unix_ms:1778620000000",
+  "scope": {
+    "kind": "repo",
+    "root": "."
+  },
+  "inputs": {
+    "current_scorecard": {
+      "path": "target/ripr/reports/evidence-quality-scorecard.json",
+      "status": "loaded",
+      "schema_version": "0.1",
+      "sha256": "0123456789abcdef",
+      "note": "current evidence-quality scorecard"
+    },
+    "previous_artifact": {
+      "path": "target/ripr/reports/evidence-quality-scorecard.previous.json",
+      "status": "missing",
+      "schema_version": null,
+      "sha256": null,
+      "note": "optional previous scorecard or audit snapshot for trend comparison"
+    }
+  },
+  "summary": {
+    "status": "unknown",
+    "compared_metrics": 0,
+    "improved_metrics": 0,
+    "regressed_metrics": 0,
+    "unchanged_metrics": 0,
+    "unknown_metrics": 9,
+    "no_history": true
+  },
+  "metric_trends": [
+    {
+      "metric": "duplicate_looking_groups_total",
+      "label": "Duplicate-looking groups",
+      "before": null,
+      "after": 926,
+      "delta": null,
+      "direction": "unknown",
+      "interpretation": "No comparable previous value was available."
+    }
+  ],
+  "static_limitation_category_trends": [],
+  "unknowns": [
+    {
+      "kind": "trend_history_unavailable",
+      "summary": "No previous scorecard or audit snapshot was available, so the report cannot claim improvement or regression.",
+      "next_repair": "report/evidence-quality-trend"
+    }
+  ]
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `tool` - always `"ripr"`.
+- `report` - always `"evidence-quality-trend"`.
+- `inputs.current_scorecard` - current scorecard artifact identity. The
+  command creates the default scorecard first if it is missing.
+- `inputs.previous_artifact` - optional previous scorecard or audit snapshot.
+  Missing history is an explicit unknown, not a failure.
+- `summary.status` - `improvement`, `regression`, `mixed`, `unchanged`, or
+  `unknown`.
+- `metric_trends[]` - comparable Lane 1 evidence-quality metrics with
+  nullable `before`, `after`, and `delta` values plus a direction. Lower counts
+  are better for debt and uncertainty metrics; higher counts are better for
+  calibrated records.
+- `static_limitation_category_trends[]` - bounded category-level deltas for
+  normalized static limitation classes.
+- `unknowns[]` - missing history or missing current metric fields that must
+  stay visible until later audit or scorecard inputs exist.
+
+The Markdown sibling prints bounded sections for summary, metric trends,
+static limitation category trends, and unknowns.
+
 ## Repo Exposure Latency Report
 
 `cargo xtask repo-exposure-latency-report` writes a maintainer diagnostic
