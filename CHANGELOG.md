@@ -93,6 +93,14 @@ Planned scope:
   limits. The TypeScript mocked-module limit now emits
   `static_limit_kind = "mocked_module"` in JSON while keeping existing human
   evidence text advisory and leaving Rust/default behavior unchanged.
+- Added the first Python preview owner/test fact slice. When `[languages]`
+  explicitly enables `python`, the adapter now emits preview-labeled diff
+  findings for changed Python owners, recognizes pytest `test_*` functions,
+  unittest `TestCase` methods, async functions, class methods,
+  `pytest.mark.parametrize` metadata, and no-projectable-owner cases, with
+  fixture/golden coverage. Assertion, richer probe, related-test precision,
+  static-limit, editor routing, gate, provider, mutation, source-edit, and
+  generated-test behavior remain unchanged.
 - Added `cargo xtask lane1-evidence-audit` with
   `cargo xtask evidence-quality-audit` as an alias. The repo-local report writes
   `target/ripr/reports/lane1-evidence-audit.{json,md}` from generated

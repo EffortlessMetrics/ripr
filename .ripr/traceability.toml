@@ -445,7 +445,15 @@ tests = [
   "crates/ripr/tests/cli_smoke.rs::doctor_reports_loaded_config_path",
   "crates/ripr/tests/cli_smoke.rs::doctor_reports_malformed_config_error"
 ]
-fixtures = []
+fixtures = [
+  "fixtures/python_pytest_basic",
+  "fixtures/python_owner_file_match",
+  "fixtures/python_unittest_basic",
+  "fixtures/python_async_owner",
+  "fixtures/python_class_method_owner",
+  "fixtures/python_parametrize_preview",
+  "fixtures/python_no_projectable_owner",
+]
 code = [
   "crates/ripr/src/config.rs",
   "crates/ripr/src/app.rs",

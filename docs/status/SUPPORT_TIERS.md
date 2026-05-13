@@ -37,7 +37,7 @@ adequacy, coverage adequacy, or general correctness.
 | Repo-scoped public badges | `usable alpha` | README, crate page, extension store, checked badge endpoints | [Badge policy](../BADGE_POLICY.md), [verification](../VERIFICATION.md), checked `badges/ripr*.json` endpoints | Repo baseline signal only; public badges must not imply PR-local test adequacy. |
 | PR-local evidence and gates | `usable alpha` | PR summaries, artifacts, optional gate decision | [Blocking readiness](../BLOCKING_READINESS.md), [calibrated gate policy](../CALIBRATED_GATE_POLICY.md), [verification](../VERIFICATION.md) | Advisory by default; only explicit gate-decision artifacts own configured pass/fail authority. |
 | TypeScript and JavaScript preview | `preview` | Opt-in CLI/report evidence today; editor and grouped CI later | [RIPR-SPEC-0027](../specs/RIPR-SPEC-0027-typescript-preview-static-facts.md), [Campaign 27 tracker](../IMPLEMENTATION_CAMPAIGNS.md#campaign-27-language-adapter-preview), TypeScript fixture families | Syntax-first; preview-labeled; no default blocking; static limits such as mocked modules are visible instead of hidden. |
-| Python preview | `scaffold` | Opt-in parser scaffold and routing foundation | [RIPR-SPEC-0028](../specs/RIPR-SPEC-0028-python-preview-static-facts.md), [ADR 0009](../adr/0009-python-parser-substrate.md), [Campaign 27 tracker](../IMPLEMENTATION_CAMPAIGNS.md#campaign-27-language-adapter-preview) | Owner, test, assertion, probe, related-test, and static-limit extraction still need follow-up slices before the loop is useful. |
+| Python preview | `preview` | Opt-in CLI/report evidence for owner and test facts today; editor and grouped CI later | [RIPR-SPEC-0028](../specs/RIPR-SPEC-0028-python-preview-static-facts.md), [ADR 0009](../adr/0009-python-parser-substrate.md), [Campaign 27 tracker](../IMPLEMENTATION_CAMPAIGNS.md#campaign-27-language-adapter-preview) | Syntax-first and preview-labeled; assertion/oracle extraction, richer probe facts, related-test precision, and static limits still need follow-up slices before editor routing can unblock. |
 | Editor preview language routing | `blocked` | VS Code/LSP | [Lane 3 tracker](../lanes/LANE_3_EDITOR_LSP.md), [RIPR-SPEC-0036](../specs/RIPR-SPEC-0036-editor-preview-routing.md) | Waits on Python preview facts or an explicit narrower routing slice; Rust editor behavior remains the default. |
 | Language-aware generated CI grouping | `blocked` | Generated GitHub workflow | [Lane 4 tracker](../lanes/LANE_4_PR_CI_REVIEW.md), [Lane 4 closeout](../handoffs/2026-05-13-lane4-pr-ci-review-cockpit-closeout.md), [Campaign 27 tracker](../IMPLEMENTATION_CAMPAIGNS.md#campaign-27-language-adapter-preview) | Waits on preview-language evidence readiness; Rust-default generated CI output must remain unchanged. |
 | Preview evidence policy promotion | `deferred` | Policy reports and future promotion packets | [Preview evidence policy boundary](../specs/RIPR-SPEC-0030-preview-evidence-policy-boundary.md), [policy readiness closeout](../handoffs/2026-05-12-policy-readiness-closeout.md) | Preview evidence is visible and advisory by default; it is not gate, RIPR Zero, or baseline-check eligible without later explicit promotion. |
@@ -53,8 +53,9 @@ usable alpha + generated CI:
 preview + TypeScript:
   safe to evaluate when explicitly enabled, but not a parity claim with Rust.
 
-scaffold + Python:
-  useful implementation foundation, not yet a useful user loop.
+preview + Python:
+  useful only when explicitly enabled, currently limited to owner/test facts
+  until assertion, probe, related-test, and static-limit slices land.
 
 blocked + editor routing:
   do not project the feature until the blocker is removed or narrowed.

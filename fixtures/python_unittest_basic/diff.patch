@@ -1,0 +1,8 @@
+diff --git a/src/service.py b/src/service.py
+index 0000000..1111111 100644
+--- a/src/service.py
++++ b/src/service.py
+@@ -1,2 +1,2 @@
+ def normalize(value):
+-    return value.strip()
++    return value.strip().lower()

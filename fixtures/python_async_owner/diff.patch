@@ -1,0 +1,8 @@
+diff --git a/src/http.py b/src/http.py
+index 0000000..1111111 100644
+--- a/src/http.py
++++ b/src/http.py
+@@ -1,2 +1,2 @@
+ async def load_price(client):
+-    return await client.price()
++    return await client.price_with_tax()

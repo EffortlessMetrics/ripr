@@ -1,0 +1,11 @@
+diff --git a/src/pricing.py b/src/pricing.py
+index 0000000..1111111 100644
+--- a/src/pricing.py
++++ b/src/pricing.py
+@@ -2,5 +2,5 @@ class Pricing:
+     @classmethod
+     def from_amount(cls, amount):
+-        if amount > 0:
++        if amount >= 0:
+             return cls()
+         return cls()

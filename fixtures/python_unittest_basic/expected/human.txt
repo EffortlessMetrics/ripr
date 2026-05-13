@@ -1,0 +1,35 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_unittest_basic/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING src/service.py:2
+
+Changed
+  after:      return value.strip().lower()
+
+Probe
+  family: return_value
+  delta:  value
+
+Language
+  language: python
+  status: preview
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `normalize`
+  - infection unknown: Python preview adapter does not yet model infection.
+  - propagation unknown: Python preview adapter does not yet model propagation.
+  - observation weak: Python owner/test preview found related tests; assertion extraction lands in a follow-up.
+  - discriminator weak: Python preview adapter found reach evidence but no extracted assertion discriminator yet.
+  - related test tests/test_service.py:5 ServiceTest.test_normalize uses unknown unknown oracle
+
+Weakness
+  - Related Python test reaches `normalize` but assertion extraction is not implemented yet; add or verify an exact assertion for the changed behavior.
+
+Next step
+  Python preview: verify `normalize` with a focused exact assertion for the changed behavior.

@@ -1,0 +1,63 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_async_owner/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_http.py:2:python_preview",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_http.py:2:python_preview",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/http.py",
+        "line": 2,
+        "expression": "    return await client.price_with_tax()"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `load_price`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "observe": {"state":"weak","confidence":"low","summary":"Python owner/test preview found related tests; assertion extraction lands in a follow-up."},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found reach evidence but no extracted assertion discriminator yet."}
+       },
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `load_price`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Python owner/test preview found related tests; assertion extraction lands in a follow-up.", "discriminator weak: Python preview adapter found reach evidence but no extracted assertion discriminator yet.", "related test tests/test_http.py:1 test_load_price uses unknown unknown oracle"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: load_price", "owner_kind: function"],
+      "missing": ["Related Python test reaches `load_price` but assertion extraction is not implemented yet; add or verify an exact assertion for the changed behavior."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "test_load_price",
+          "file": "tests/test_http.py",
+          "line": 1,
+          "oracle_strength": "unknown",
+          "oracle_kind": "unknown",
+          "oracle": ""
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "Python preview: verify `load_price` with a focused exact assertion for the changed behavior.",
+      "suggested_next_action": "Python preview: verify `load_price` with a focused exact assertion for the changed behavior.",
+      "language": "python",
+      "language_status": "preview"
+    }
+  ]
+}

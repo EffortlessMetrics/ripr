@@ -1,0 +1,63 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_class_method_owner/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_pricing.py:4:python_preview",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_pricing.py:4:python_preview",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/pricing.py",
+        "line": 4,
+        "expression": "        if amount >= 0:"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `Pricing.from_amount`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "observe": {"state":"weak","confidence":"low","summary":"Python owner/test preview found related tests; assertion extraction lands in a follow-up."},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found reach evidence but no extracted assertion discriminator yet."}
+       },
+      "evidence_path": ["reach yes: 1 related test(s) found for owner `Pricing.from_amount`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Python owner/test preview found related tests; assertion extraction lands in a follow-up.", "discriminator weak: Python preview adapter found reach evidence but no extracted assertion discriminator yet.", "related test tests/test_pricing.py:1 test_from_amount_accepts_positive uses unknown unknown oracle"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: Pricing.from_amount", "owner_kind: class_method", "decorators: classmethod"],
+      "missing": ["Related Python test reaches `Pricing.from_amount` but assertion extraction is not implemented yet; add or verify an exact assertion for the changed behavior."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "test_from_amount_accepts_positive",
+          "file": "tests/test_pricing.py",
+          "line": 1,
+          "oracle_strength": "unknown",
+          "oracle_kind": "unknown",
+          "oracle": ""
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "Python preview: verify `Pricing.from_amount` with a focused exact assertion for the changed behavior.",
+      "suggested_next_action": "Python preview: verify `Pricing.from_amount` with a focused exact assertion for the changed behavior.",
+      "language": "python",
+      "language_status": "preview"
+    }
+  ]
+}
