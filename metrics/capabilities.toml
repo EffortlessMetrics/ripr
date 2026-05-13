@@ -1310,6 +1310,20 @@ next = "maintenance"
 metric = "suppression_health_missing_owner, suppression_health_missing_reason, suppression_health_stale, suppression_health_overbroad_scope, suppression_health_unknown_selector, suppression_health_preview_without_preview_label"
 
 [[capability]]
+id = "policy_operations_readiness"
+name = "Policy operations readiness"
+status = "planned"
+spec = "RIPR-SPEC-0039"
+evidence = [
+  "docs/specs/RIPR-SPEC-0039-policy-operations-report.md defines the read-only policy operations report contract",
+  "docs/OUTPUT_SCHEMA.md documents the planned policy_operations JSON and Markdown shape",
+  "docs/policy/POLICY_OPERATIONS.md and .ripr/goals/lane2-policy-operations.toml keep the Lane 2 tracker scoped to policy operations"
+]
+fixtures = []
+next = "policy/operations-report"
+metric = "policy_operations_reports, policy_operations_current_ceiling, policy_operations_recommended_next_action, policy_operations_safe_target_count, policy_operations_blocked_target_count, policy_operations_promotion_blocker_count, policy_operations_baseline_action_count, policy_operations_waiver_action_count, policy_operations_suppression_action_count, policy_operations_calibration_action_count, policy_operations_preview_boundary_action_count, policy_operations_warning_count, policy_operations_unknown_count, policy_operations_input_read_count, policy_operations_input_missing_count, policy_operations_input_malformed_count"
+
+[[capability]]
 id = "cargo_mutants_calibration"
 name = "cargo-mutants calibration"
 status = "calibrated"

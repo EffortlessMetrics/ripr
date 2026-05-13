@@ -2316,3 +2316,45 @@ metrics = [
   "generated_pr_ci_rust_default_unchanged",
   "generated_pr_ci_advisory_summaries",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0039"
+name = "Policy operations report"
+spec = "docs/specs/RIPR-SPEC-0039-policy-operations-report.md"
+tests = [
+]
+fixtures = [
+]
+code = [
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0039-policy-operations-report.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/policy/POLICY_OPERATIONS.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  "docs/CAPABILITY_MATRIX.md",
+  ".ripr/goals/lane2-policy-operations.toml",
+  ".ripr/traceability.toml",
+  "metrics/capabilities.toml",
+]
+metrics = [
+  "policy_operations_reports",
+  "policy_operations_current_ceiling",
+  "policy_operations_recommended_next_action",
+  "policy_operations_safe_target_count",
+  "policy_operations_blocked_target_count",
+  "policy_operations_promotion_blocker_count",
+  "policy_operations_baseline_action_count",
+  "policy_operations_waiver_action_count",
+  "policy_operations_suppression_action_count",
+  "policy_operations_calibration_action_count",
+  "policy_operations_preview_boundary_action_count",
+  "policy_operations_warning_count",
+  "policy_operations_unknown_count",
+  "policy_operations_input_read_count",
+  "policy_operations_input_missing_count",
+  "policy_operations_input_malformed_count",
+]
