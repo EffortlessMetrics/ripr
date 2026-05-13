@@ -355,7 +355,10 @@ JSONL, and `ripr policy promote --to ...` now writes read-only promotion
 packets from policy operations plus optional policy history. `ripr policy
 preview-promote` now writes default-blocked preview evidence promotion packets
 for TypeScript and Python classes. [Policy operations workflow](POLICY_OPERATIONS_WORKFLOW.md)
-documents how maintainers review the packets before manual config changes. This
+documents how maintainers review the packets before manual config changes.
+Generated CI now renders, uploads, indexes, and summarizes operations, history,
+promotion, and configured preview-promotion packets as advisory-only artifacts
+with no new gate authority. This
 tracker preserves the same boundaries: no analyzer truth changes, no editor
 changes, no generated tests, no mutation execution, no default CI blocking, no
 automatic config or baseline mutation, and no preview evidence promotion.
