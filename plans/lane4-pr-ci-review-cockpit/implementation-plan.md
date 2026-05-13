@@ -43,6 +43,23 @@ semantics, branch protection, or default CI blocking.
 - Dogfood receipts cover complete, sparse, blocked, missing-proof,
   unchanged-after-attempt, improved, and preview-language packets.
 
+## Current Baseline
+
+This plan starts from current `main`. It is not a replay of the original
+Campaign 24 and Campaign 25 implementation ladders.
+
+Already shipped Lane 4 surfaces:
+
+| Surface | Current evidence |
+| --- | --- |
+| PR review front panel | [RIPR-SPEC-0023](../../docs/specs/RIPR-SPEC-0023-pr-review-front-panel-report.md), [PR review front panel workflow](../../docs/PR_REVIEW_FRONT_PANEL_WORKFLOW.md), `ripr pr-review front-panel`, generated CI projection, fixture corpus, capability entry, and [Campaign 24 closeout](../../docs/handoffs/2026-05-10-campaign-24-closeout.md) |
+| Report packet index | [RIPR-SPEC-0024](../../docs/specs/RIPR-SPEC-0024-report-packet-index.md), [Report packet index workflow](../../docs/REPORT_PACKET_INDEX_WORKFLOW.md), `ripr reports index`, generated CI projection, fixture corpus, dogfood receipts, capability entry, and [Campaign 25 closeout](../../docs/handoffs/2026-05-10-campaign-25-closeout.md) |
+| Generated CI wiring for those surfaces | `crates/ripr/src/cli/commands.rs` emits the generated workflow steps, uploads the artifacts, and appends advisory summaries while preserving gate-decision authority |
+
+Future Lane 4 work must audit, compose, document, extend, or close gaps in
+those shipped surfaces. It must not create duplicate front-panel or packet-index
+producers unless a later spec intentionally changes their public contracts.
+
 ## Work Items
 
 ### 1. `docs/lane4-source-of-truth`
@@ -296,167 +313,108 @@ rtk git diff --check
 Rollback:
 Revert the checker extension and keep current proposal/ADR-only validation.
 
-### 9. `fixtures/pr-review-front-panel-corpus`
+### 9. `audit/pr-review-front-panel-current-state`
 
 Goal:
-Pin the front-panel input and expected-output corpus before producer changes.
+Record the current PR review front-panel state as a shipped dependency for
+future Lane 4 cockpit work.
 
 Production delta:
-Add fixture cases for actionable, summary-only, baseline-only, waived,
-suppressed, blocked-gate, missing-required-input, unchanged-after-attempt,
-improved-receipt, and coverage-flat-grip-improved packets.
+Update planning, tracker, or closeout docs only if the current shipped
+front-panel evidence is stale or hard for agents to discover.
 
 Non-goals:
-No production renderer yet. No generated CI change.
+No duplicate fixture corpus, producer, command, renderer, generated CI step,
+schema, or output-contract change. No analyzer, editor, gate, source-edit,
+generated-test, provider, or mutation-execution change.
 
 Acceptance:
-Each fixture has explicit inputs, expected JSON/Markdown outputs, and a local
-`SPEC.md` explaining the state being pinned.
-
-Proof commands:
-
-```bash
-rtk cargo xtask check-fixture-contracts
-rtk cargo xtask check-static-language
-rtk cargo xtask check-pr
-rtk git diff --check
-```
-
-Rollback:
-Remove the front-panel fixture corpus.
-
-### 10. `report/pr-review-front-panel`
-
-Goal:
-Add the public PR review front-panel producer.
-
-Production delta:
-Implement `ripr pr-review front-panel` as a read-only JSON/Markdown producer
-over explicit input paths.
-
-Non-goals:
-No hidden analysis reruns, source edits, generated tests, provider calls,
-mutation execution, inline comment publishing, recommendation reranking, gate
-semantic changes, or default CI blocking.
-
-Acceptance:
-The command renders the fixture corpus, preserves explicit missing/stale/error
-states, and marks gate decisions as authority without making the front panel a
-gate.
+The Lane 4 plan names the front-panel producer, fixture corpus, generated CI
+projection, capability entry, and closeout as current baseline evidence rather
+than future TODO work.
 
 Proof commands:
 
 ```bash
 rtk cargo test -p ripr pr_review_front_panel
-rtk cargo xtask fixtures pr_review_front_panel
-rtk cargo xtask goldens check
-rtk cargo xtask check-output-contracts
-rtk cargo xtask check-pr
-rtk git diff --check
-```
-
-Rollback:
-Remove the command, renderer, fixture bindings, output-contract entries, and
-generated outputs added by this slice.
-
-### 11. `fixtures/report-packet-index-corpus`
-
-Goal:
-Pin the report packet index corpus before producer changes.
-
-Production delta:
-Add fixture cases for complete packet, sparse packet, missing front panel,
-blocked gate, missing assistant proof, missing receipt, coverage/grip present,
-malformed artifact, and stale artifact states.
-
-Non-goals:
-No production renderer yet. No generated CI change.
-
-Acceptance:
-Each fixture has explicit packet directories, expected JSON/Markdown outputs,
-and a local `SPEC.md` explaining the grouped reviewer-use expectation.
-
-Proof commands:
-
-```bash
 rtk cargo xtask check-fixture-contracts
+rtk cargo xtask check-output-contracts
 rtk cargo xtask check-static-language
 rtk cargo xtask check-pr
 rtk git diff --check
 ```
 
 Rollback:
-Remove the packet-index fixture corpus.
+Revert only the audit or planning-doc updates.
 
-### 12. `report/report-packet-index`
+### 10. `audit/report-packet-index-current-state`
 
 Goal:
-Add the public report packet index producer.
+Record the current report packet index state as a shipped dependency for future
+Lane 4 cockpit work.
 
 Production delta:
-Implement `ripr reports index` as a read-only JSON/Markdown producer over
-explicit report, review, receipt, workflow, agent, pilot, and CI directories.
+Update planning, tracker, or closeout docs only if the current shipped
+packet-index evidence is stale or hard for agents to discover.
 
 Non-goals:
-No hidden analysis reruns, source edits, generated tests, provider calls,
-mutation execution, inline comment publishing, gate semantic changes, or
-default CI blocking.
+No duplicate fixture corpus, producer, command, renderer, generated CI step,
+schema, or output-contract change. No analyzer, editor, gate, source-edit,
+generated-test, provider, or mutation-execution change.
 
 Acceptance:
-The command groups artifacts by reviewer use, exposes missing expected
-surfaces with known regeneration commands, and preserves gate-decision
-authority without making the index a gate.
+The Lane 4 plan names the packet-index producer, fixture corpus, generated CI
+projection, dogfood receipts, capability entry, and closeout as current
+baseline evidence rather than future TODO work.
 
 Proof commands:
 
 ```bash
 rtk cargo test -p ripr report_packet_index
-rtk cargo xtask fixtures report_packet_index
-rtk cargo xtask goldens check
+rtk cargo xtask check-fixture-contracts
 rtk cargo xtask check-output-contracts
 rtk cargo xtask check-pr
 rtk git diff --check
 ```
 
 Rollback:
-Remove the command, renderer, fixture bindings, output-contract entries, and
-generated outputs added by this slice.
+Revert only the audit or planning-doc updates.
 
-### 13. `ci/front-panel-packet-index`
+### 11. `docs/generated-ci-cockpit-gap-map`
 
 Goal:
-Wire the front panel and packet index into generated GitHub CI.
+Map the remaining generated-CI cockpit gaps after the shipped front panel and
+packet index.
 
 Production delta:
-Generated workflow runs public `ripr pr-review front-panel` and
-`ripr reports index`, appends compact reviewer-first sections to the job
-summary, and uploads the front-panel and index artifacts.
+Add or update docs that show how the current generated workflow composes front
+panel, packet index, policy artifacts, receipts, and language grouping, and
+which remaining behavior belongs in a generated-CI workflow spec.
 
 Non-goals:
-No branch-protection change, default CI blocking change, inline comment
-publishing, hidden analysis rerun, source edit, generated test, provider call,
-or gate semantic change.
+No generated workflow implementation change, default blocking change, branch
+protection change, inline comment publishing, hidden analysis rerun, source
+edit, generated test, provider call, or mutation execution.
 
 Acceptance:
-Missing optional inputs produce warnings instead of failures, uploaded packets
-include the new artifacts, and gate decision remains the configured pass/fail
-authority.
+The gap map makes current shipped workflow behavior clear enough that a later
+generated-CI spec can define only missing or changed behavior, not duplicate
+front-panel or packet-index implementation.
 
 Proof commands:
 
 ```bash
-rtk cargo test -p ripr init_generated_github_workflow_matches_smoke_fixture
-rtk cargo xtask check-workflows
-rtk cargo xtask check-generated
-rtk cargo xtask check-output-contracts
+rtk cargo xtask check-doc-index
+rtk cargo xtask markdown-links
+rtk cargo xtask check-static-language
 rtk cargo xtask check-pr
 rtk git diff --check
 ```
 
 Rollback:
-Remove the generated workflow steps and summary/upload additions.
+Remove the generated-CI gap-map doc or revert the related doc updates.
 
-### 14. `ci/language-aware-grouping`
+### 12. `ci/language-aware-grouping`
 
 Goal:
 Group PR advisory output by language when preview adapters are configured.
@@ -489,23 +447,26 @@ Rollback:
 Remove language grouping from generated summaries and retain Rust-default
 summary behavior.
 
-### 15. `dogfood/lane4-receipts`
+### 13. `dogfood/lane4-cockpit-gap-receipts`
 
 Goal:
-Record PR/CI review cockpit dogfood receipts.
+Refresh or add PR/CI review cockpit dogfood receipts for gaps not already
+covered by Campaign 24 and Campaign 25.
 
 Production delta:
-Add repo-local receipts for complete, sparse, blocked-gate, missing-proof,
-improved, unchanged-after-attempt, TypeScript preview, and Python preview
-packets once those inputs are available.
+Add repo-local receipts only for newly identified cockpit gaps, such as
+language-preview grouping or cross-surface missing-proof handoff states not
+already covered by front-panel or packet-index receipts.
 
 Non-goals:
-No new report semantics. No analyzer, gate, editor, source-edit, generated
-test, provider, mutation, or default-blocking changes.
+Do not duplicate existing front-panel or packet-index dogfood cases. No new
+report semantics. No analyzer, gate, editor, source-edit, generated-test,
+provider, mutation, or default-blocking changes.
 
 Acceptance:
 `cargo xtask dogfood` or a lane-specific dogfood command writes checked
-receipts that show the cockpit's before/after and missing-artifact behavior.
+receipts for the remaining gap states and links back to the existing Campaign
+24 and Campaign 25 receipts for covered states.
 
 Proof commands:
 
@@ -518,9 +479,9 @@ rtk git diff --check
 ```
 
 Rollback:
-Remove the Lane 4 dogfood receipts and dogfood wiring.
+Remove only the newly added gap receipts and dogfood wiring.
 
-### 16. `docs/lane4-closeout`
+### 14. `docs/lane4-closeout`
 
 Goal:
 Close the PR/CI review cockpit lane with durable proof and restart context.
