@@ -1,0 +1,8 @@
+diff --git a/src/tax.py b/src/tax.py
+index 0000000..1111111 100644
+--- a/src/tax.py
++++ b/src/tax.py
+@@ -1,2 +1,2 @@
+ def apply_tax(amount):
+-    return amount + 1
++    return amount + 2
