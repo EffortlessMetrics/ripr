@@ -57,6 +57,7 @@ Current how-to docs:
 - [Lane 1 evidence accuracy tracker](lanes/LANE_1_EVIDENCE_ACCURACY.md)
 - [Lane 2 policy readiness tracker](policy/POLICY_READINESS.md)
 - [Lane 3 editor/LSP tracker](lanes/LANE_3_EDITOR_LSP.md)
+- [Lane 4 PR / CI review cockpit tracker](lanes/LANE_4_PR_CI_REVIEW.md)
 - [Release](RELEASE.md)
 - [Installation verification](INSTALLATION_VERIFICATION.md)
 - [Publishing](PUBLISHING.md)
@@ -187,6 +188,7 @@ Current explanation docs:
 - [Lane 1 evidence accuracy tracker](lanes/LANE_1_EVIDENCE_ACCURACY.md)
 - [Lane 2 policy readiness tracker](policy/POLICY_READINESS.md)
 - [Lane 3 editor/LSP tracker](lanes/LANE_3_EDITOR_LSP.md)
+- [Lane 4 PR / CI review cockpit tracker](lanes/LANE_4_PR_CI_REVIEW.md)
 
 ## README Rule
 
