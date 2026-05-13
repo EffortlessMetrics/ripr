@@ -2767,10 +2767,13 @@ id = "RIPR-SPEC-0045"
 name = "Finding-to-gap alignment"
 spec = "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md"
 tests = [
+  "xtask/src/main.rs::tests::evidence_quality_benchmark_corpus_is_valid",
 ]
 fixtures = [
+  "fixtures/evidence-quality-benchmark/corpus.json",
 ]
 code = [
+  "xtask/src/main.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
@@ -2779,6 +2782,8 @@ outputs = [
   "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
+  "fixtures/evidence-quality-benchmark/README.md",
+  "fixtures/evidence-quality-benchmark/corpus.json",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
   ".ripr/traceability.toml",

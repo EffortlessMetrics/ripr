@@ -413,6 +413,339 @@
       "repair_route": "analysis/presentation-text-visibility"
     },
     {
+      "id": "presentation_text_user_visible_unobserved_alignment",
+      "case_kind": "positive",
+      "evidence_class": "presentation_text",
+      "maturity_scope": "fixture_backed",
+      "description": "User-visible output text with no supported observer becomes one actionable canonical item, not a raw finding count.",
+      "fixture_reference": "RIPR-SPEC-0045 user-visible unobserved presentation text",
+      "sample": {
+        "file": "src/help.rs",
+        "declaration_line": 18,
+        "literal_line": 19,
+        "sink": "cli_help_output"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-presentation-text-visible-unobserved",
+          "canonical_gap_id": "presentation_text::HELP_DEVICE_LABEL",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "HELP_DEVICE_LABEL",
+          "location": {
+            "file": "src/help.rs",
+            "line": 18
+          },
+          "seam_kind": "presentation_text_constant",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_class": "presentation_text",
+          "gap_state": "actionable",
+          "actionability": "add_output_observer",
+          "why": "Changed text flows to CLI help output and no supported output observer is found.",
+          "recommended_repair": "Add or update a help-output snapshot assertion for HELP_DEVICE_LABEL.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/help.rs",
+              "line": 18,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/help.rs",
+              "line": 19,
+              "kind": "weakly_exposed"
+            }
+          ],
+          "presentation_text": {
+            "constant_name": "HELP_DEVICE_LABEL",
+            "visibility": "user_visible",
+            "observer": "none",
+            "actionability": "add_output_observer",
+            "recommended_observer": "cli_help_output"
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "actionable_gaps",
+        "value": 1
+      },
+      "expected_claim": "A visible unobserved text change can become one actionable output-observer repair.",
+      "must_not_claim": [
+        "Do not count the declaration and literal as two user actions.",
+        "Do not recommend mutation testing before output-observer work.",
+        "Do not call lexical-only tests observers."
+      ],
+      "repair_route": "analysis/presentation-text-actionability"
+    },
+    {
+      "id": "presentation_text_user_visible_observed_alignment",
+      "case_kind": "positive",
+      "evidence_class": "presentation_text",
+      "maturity_scope": "fixture_backed",
+      "description": "User-visible output text with a supported snapshot or golden observer becomes an already-observed no-action item.",
+      "fixture_reference": "RIPR-SPEC-0045 user-visible observed presentation text",
+      "sample": {
+        "file": "src/report.rs",
+        "declaration_line": 27,
+        "literal_line": 28,
+        "sink": "report_render",
+        "observer": "golden"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-presentation-text-visible-observed",
+          "canonical_gap_id": "presentation_text::REPORT_DEVICE_LABEL",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "REPORT_DEVICE_LABEL",
+          "location": {
+            "file": "src/report.rs",
+            "line": 27
+          },
+          "seam_kind": "presentation_text_constant",
+          "grip_class": "strongly_gripped",
+          "headline_eligible": false,
+          "evidence_class": "presentation_text",
+          "gap_state": "already_observed",
+          "actionability": "already_observed",
+          "why": "Changed report text flows to rendered output and a golden observer covers it.",
+          "recommended_repair": "No new RIPR action.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/report.rs",
+              "line": 27,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/report.rs",
+              "line": 28,
+              "kind": "exposed"
+            }
+          ],
+          "presentation_text": {
+            "constant_name": "REPORT_DEVICE_LABEL",
+            "visibility": "user_visible",
+            "observer": "golden",
+            "actionability": "already_observed",
+            "recommended_observer": "golden"
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "already_observed",
+        "value": 1
+      },
+      "expected_claim": "A visible observed text change remains visible as evidence but does not become a user repair.",
+      "must_not_claim": [
+        "Do not emit an actionable gap when a supported output observer exists.",
+        "Do not hide the raw findings.",
+        "Do not treat golden-observed text as unobserved snapshot debt."
+      ],
+      "repair_route": "analysis/presentation-text-actionability"
+    },
+    {
+      "id": "presentation_text_internal_only_alignment",
+      "case_kind": "negative_guard",
+      "evidence_class": "presentation_text",
+      "maturity_scope": "fixture_backed",
+      "description": "Internal-only labels become canonical no-action evidence items instead of user-visible test debt.",
+      "fixture_reference": "RIPR-SPEC-0045 internal-only presentation text",
+      "sample": {
+        "file": "src/proof_lanes.rs",
+        "declaration_line": 12,
+        "literal_line": 13,
+        "sink": "internal_policy_map"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-presentation-text-internal-only",
+          "canonical_gap_id": "presentation_text::INTERNAL_PROOF_LANE_LABEL",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "INTERNAL_PROOF_LANE_LABEL",
+          "location": {
+            "file": "src/proof_lanes.rs",
+            "line": 12
+          },
+          "seam_kind": "presentation_text_constant",
+          "grip_class": "static_unknown",
+          "headline_eligible": false,
+          "evidence_class": "presentation_text",
+          "gap_state": "internal_only",
+          "actionability": "no_action",
+          "why": "Changed label is confined to an internal proof-lane map in fixture-backed scope.",
+          "recommended_repair": "No user test action.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/proof_lanes.rs",
+              "line": 12,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/proof_lanes.rs",
+              "line": 13,
+              "kind": "static_unknown"
+            }
+          ],
+          "presentation_text": {
+            "constant_name": "INTERNAL_PROOF_LANE_LABEL",
+            "visibility": "internal_only",
+            "observer": "none",
+            "actionability": "no_action_internal",
+            "recommended_observer": "none"
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "internal_no_action",
+        "value": 1
+      },
+      "expected_claim": "Internal-only text changes are explicit no-action items, not suppressed raw evidence.",
+      "must_not_claim": [
+        "Do not treat internal labels as user-visible behavior.",
+        "Do not recommend snapshot tests for internal-only labels.",
+        "Do not suppress raw findings without preserving supporting evidence."
+      ],
+      "repair_route": "analysis/presentation-text-visibility"
+    },
+    {
+      "id": "presentation_text_declaration_literal_line_movement_alignment",
+      "case_kind": "metamorphic_line_movement",
+      "evidence_class": "presentation_text",
+      "maturity_scope": "fixture_backed",
+      "description": "The same presentation-text constant keeps canonical identity when declaration and literal lines move together.",
+      "fixture_reference": "RIPR-SPEC-0045 presentation-text line movement",
+      "sample": {
+        "file": "src/help.rs",
+        "before_declaration_line": 42,
+        "before_literal_line": 43,
+        "after_declaration_line": 57,
+        "after_literal_line": 58
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-presentation-text-line-movement",
+          "canonical_gap_id": "presentation_text::HELP_MOVED_LABEL",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "HELP_MOVED_LABEL",
+          "location": {
+            "file": "src/help.rs",
+            "line": 57
+          },
+          "seam_kind": "presentation_text_constant",
+          "grip_class": "static_unknown",
+          "headline_eligible": false,
+          "evidence_class": "presentation_text",
+          "gap_state": "static_limitation",
+          "actionability": "inspect_visibility",
+          "raw_findings": [
+            {
+              "file": "src/help.rs",
+              "line": 57,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/help.rs",
+              "line": 58,
+              "kind": "static_unknown"
+            }
+          ]
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "duplicate_groups_total",
+        "value": 1
+      },
+      "metamorphic": {
+        "before": {
+          "canonical_gap_id": "presentation_text::HELP_MOVED_LABEL",
+          "line": 42
+        },
+        "after": {
+          "canonical_gap_id": "presentation_text::HELP_MOVED_LABEL",
+          "line": 57
+        }
+      },
+      "expected_claim": "Presentation-text canonical identity is stable across declaration/literal line movement.",
+      "must_not_claim": [
+        "Do not use raw line number as the presentation-text identity.",
+        "Do not split declaration and literal movement into separate user actions.",
+        "Do not collide with a different constant that has the same literal text."
+      ],
+      "repair_route": "analysis/presentation-text-canonical-grouping"
+    },
+    {
+      "id": "presentation_text_two_constants_do_not_group",
+      "case_kind": "negative_guard",
+      "evidence_class": "presentation_text",
+      "maturity_scope": "fixture_backed",
+      "description": "Two different presentation-text constants with similar text must remain separate canonical items.",
+      "fixture_reference": "RIPR-SPEC-0045 unrelated constants do not group",
+      "sample": {
+        "file": "src/help.rs",
+        "first_constant": "APPLE_DEVICE_LABEL",
+        "second_constant": "APPLE_REPORT_LABEL",
+        "shared_text_fragment": "Apple CPU/NEON lane"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-presentation-text-two-constants",
+          "canonical_gap_id": "presentation_text::APPLE_DEVICE_LABEL",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "constant_owner_identity",
+          "owner": "APPLE_DEVICE_LABEL",
+          "location": {
+            "file": "src/help.rs",
+            "line": 31
+          },
+          "seam_kind": "presentation_text_constant",
+          "grip_class": "static_unknown",
+          "headline_eligible": false,
+          "evidence_class": "presentation_text",
+          "gap_state": "static_limitation",
+          "actionability": "inspect_visibility",
+          "non_colliding_canonical_gap_id": "presentation_text::APPLE_REPORT_LABEL",
+          "raw_findings": [
+            {
+              "file": "src/help.rs",
+              "line": 31,
+              "kind": "exposed"
+            }
+          ]
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "canonical_items",
+        "value": 2
+      },
+      "expected_claim": "Grouping uses owner identity and evidence class, not similar literal text alone.",
+      "must_not_claim": [
+        "Do not merge different constants because their text is similar.",
+        "Do not let one constant's observer satisfy a different constant.",
+        "Do not treat a shared token as canonical identity."
+      ],
+      "repair_route": "analysis/presentation-text-canonical-grouping"
+    },
+    {
       "id": "side_effect_observer_positive",
       "case_kind": "positive",
       "evidence_class": "side_effect_observer",
