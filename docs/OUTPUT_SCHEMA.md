@@ -3492,12 +3492,12 @@ the report a gate.
 
 ## Policy Operations Report
 
-RIPR-SPEC-0039 defines the planned policy operations report. `ripr policy
-operations` will compose explicit policy artifacts into one read-only operator
+RIPR-SPEC-0039 defines the policy operations report. `ripr policy operations`
+composes explicit policy artifacts into one read-only operator
 packet that names the current safe ceiling, next safe action, safe and blocked
 promotion modes, blockers, action lists, warnings, unknowns, and input health.
 
-Planned command:
+Command:
 
 ```text
 ripr policy operations \
@@ -3512,7 +3512,7 @@ ripr policy operations \
   --out-md target/ripr/reports/policy-operations.md
 ```
 
-The planned report writes:
+The report writes:
 
 ```text
 target/ripr/reports/policy-operations.json

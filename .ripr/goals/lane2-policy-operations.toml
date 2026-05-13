@@ -81,7 +81,7 @@ commands = [
 
 [[work_item]]
 id = "policy/operations-report"
-status = "planned"
+status = "done"
 branch = "policy-operations-report"
 acceptance = "`ripr policy operations` writes policy-operations JSON and Markdown from explicit existing artifacts only, with current ceiling, safe and blocked target modes, blockers, grouped actions, warnings, unknowns, and input artifact status."
 commands = [
