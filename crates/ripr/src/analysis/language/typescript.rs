@@ -755,6 +755,7 @@ fn classify_change(
         recommended_next_step: Some(recommended),
         language: Some(DomainLanguageId::TypeScript),
         language_status: Some(LanguageStatus::Preview),
+        owner_kind: None,
         static_limit_kind: (!mock_paths.is_empty()).then_some(StaticLimitKind::MockedModule),
     })
 }
