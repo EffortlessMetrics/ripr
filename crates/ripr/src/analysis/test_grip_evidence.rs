@@ -1929,6 +1929,89 @@ mod tests {
     }
 
     #[test]
+    fn opaque_custom_assertion_helper_stays_unknown_oracle() -> Result<(), String> {
+        let files: Vec<(PathBuf, &str)> = vec![
+            (
+                PathBuf::from("src/pricing.rs"),
+                "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                 { if amount >= threshold { amount - 10 } else { amount } }\n",
+            ),
+            (
+                PathBuf::from("tests/pricing_tests.rs"),
+                "#[test]\n\
+                 fn opaque_helper() {\n\
+                     let total = discounted_total(100, 100);\n\
+                     assert_discount_is_valid(&total);\n\
+                 }\n",
+            ),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|seam| seam.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+        let first = evidence
+            .related_tests
+            .first()
+            .ok_or_else(|| "related test present".to_string())?;
+
+        assert_eq!(first.oracle_kind, OracleKind::Unknown);
+        assert_eq!(first.oracle_strength, OracleStrength::Unknown);
+        assert_eq!(evidence.discriminate.state, StageState::Unknown);
+        let semantics =
+            oracle_semantics_for(&first.oracle_kind, &first.oracle_strength, predicate.kind());
+        assert_eq!(semantics.observes, "no recognized concrete oracle shape");
+        assert_eq!(
+            semantics.upgrade_suggestion.as_deref(),
+            Some("add an exact returned-value assertion at the missing boundary value")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn duplicative_equality_assertion_stays_weak_oracle() -> Result<(), String> {
+        let files: Vec<(PathBuf, &str)> = vec![
+            (
+                PathBuf::from("src/pricing.rs"),
+                "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                 { if amount >= threshold { amount - 10 } else { amount } }\n",
+            ),
+            (
+                PathBuf::from("tests/pricing_tests.rs"),
+                "#[test]\n\
+                 fn duplicated_equality() {\n\
+                     let total = discounted_total(100, 100);\n\
+                     assert_eq!(total, total);\n\
+                 }\n",
+            ),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|seam| seam.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+        let first = evidence
+            .related_tests
+            .first()
+            .ok_or_else(|| "related test present".to_string())?;
+
+        assert_eq!(first.oracle_kind, OracleKind::RelationalCheck);
+        assert_eq!(first.oracle_strength, OracleStrength::Weak);
+        assert_eq!(evidence.discriminate.state, StageState::Weak);
+        let semantics =
+            oracle_semantics_for(&first.oracle_kind, &first.oracle_strength, predicate.kind());
+        assert_eq!(
+            semantics.missing,
+            "the exact changed value or boundary discriminator"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn given_boundary_seam_when_tests_skip_equal_value_then_evidence_reports_missing_boundary_discriminator()
     -> Result<(), String> {
         // Production predicate compares amount >= threshold.

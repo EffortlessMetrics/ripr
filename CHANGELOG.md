@@ -133,6 +133,12 @@ Planned scope:
   evidence-quality scorecard. This keeps unknowns repairable for maintainers
   without changing grip classes, gates, CI behavior, mutation execution, or
   score definitions.
+- Tightened the first Lane 1 oracle-semantics audit fix: clear custom
+  assertion helpers such as `assert_total_matches(actual, expected)` remain
+  strong exact-value evidence, while opaque custom helpers and duplicative
+  equality assertions no longer overclaim exact-value grip. Benchmark guards
+  now pin those must-not-claim cases without changing gates, CI behavior,
+  mutation execution, generated tests, provider calls, or score definitions.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 
