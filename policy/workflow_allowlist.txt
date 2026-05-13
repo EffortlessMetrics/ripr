@@ -7,6 +7,7 @@
 # than embed complex shell programs. This file allows known workflow blocks
 # while keeping the budget visible.
 
+.github/workflows/badge-endpoints.yml|1|Badge endpoint refresh delegates generation to cargo xtask and opens a PR.
 .github/workflows/ci.yml|3|CI run blocks call direct Cargo or npm commands.
 .github/workflows/coverage.yml|1|Coverage workflow keeps each run block to one coverage command.
 .github/workflows/droid-review.yml|20|Droid auto-review workflow writes local Factory BYOK settings, then uses reusable actions.

@@ -50,6 +50,7 @@ struct FilePolicyAllowEntry {
     surface: Option<String>,
     classification: Option<String>,
     reason: Option<String>,
+    generated_by: Option<String>,
     covered_by: Option<Vec<String>>,
 }
 
@@ -14304,34 +14305,67 @@ fn normalize_report_path(path: &str) -> String {
 }
 
 pub(crate) fn repo_badge_artifacts_impl() -> Result<(), String> {
-    let badge_dir = Path::new("target").join("ripr");
-    fs::create_dir_all(&badge_dir).map_err(|err| {
-        format!(
-            "failed to create badge directory {}: {err}",
-            normalize_path(&badge_dir)
-        )
-    })?;
+    run_with_repo_root_cwd(|| {
+        test_efficiency_report_impl()?;
 
-    // Repo scope is intentionally diff-free: the badge formats render from
-    // classified repo seams rather than `git diff origin/main...HEAD`.
-    // Capturing a diff would silently make the artifact dependent on branch
-    // state.
-    let mut ripr_native_json = String::new();
-    let mut ripr_plus_native_json = String::new();
+        let badge_dir = Path::new("target").join("ripr");
+        fs::create_dir_all(&badge_dir).map_err(|err| {
+            format!(
+                "failed to create badge directory {}: {err}",
+                normalize_path(&badge_dir)
+            )
+        })?;
 
-    for job in repo_badge_artifact_jobs() {
-        let args = repo_badge_artifact_command_args(job.format);
-        let output = run_output_owned("cargo", &args)?;
-        write_report(job.output_file, &output)?;
-        match badge_artifact_native_slot(job.format) {
-            Some(BadgeNativeSlot::Ripr) => ripr_native_json = output,
-            Some(BadgeNativeSlot::RiprPlus) => ripr_plus_native_json = output,
-            None => {}
+        // Repo scope is intentionally diff-free: the badge formats render from
+        // classified repo seams rather than `git diff origin/main...HEAD`.
+        // Capturing a diff would silently make the artifact dependent on branch
+        // state.
+        let mut ripr_native_json = String::new();
+        let mut ripr_plus_native_json = String::new();
+
+        for job in repo_badge_artifact_jobs() {
+            let output = run_repo_badge_artifact_job(job.format)?;
+            write_report(job.output_file, &output)?;
+            match badge_artifact_native_slot(job.format) {
+                Some(BadgeNativeSlot::Ripr) => ripr_native_json = output,
+                Some(BadgeNativeSlot::RiprPlus) => ripr_plus_native_json = output,
+                None => {}
+            }
         }
+
+        let summary =
+            repo_badge_artifacts_summary_markdown(&ripr_native_json, &ripr_plus_native_json);
+        write_report("repo-ripr-badges.md", &summary)
+    })
+}
+
+fn run_repo_badge_artifact_job(format: &str) -> Result<String, String> {
+    if let Ok(ripr_bin) = std::env::var("RIPR_BIN") {
+        let repo_root = repo_root()?;
+        let args = vec![
+            "check".to_string(),
+            "--root".to_string(),
+            normalize_path(&repo_root),
+            "--format".to_string(),
+            format.to_string(),
+        ];
+        return run_output_owned(&ripr_bin, &args);
     }
 
-    let summary = repo_badge_artifacts_summary_markdown(&ripr_native_json, &ripr_plus_native_json);
-    write_report("repo-ripr-badges.md", &summary)
+    let args = repo_badge_artifact_command_args(format);
+    run_output_owned("cargo", &args)
+}
+
+fn run_with_repo_root_cwd<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    let old = std::env::current_dir().map_err(|err| format!("failed to capture cwd: {err}"))?;
+    let root = repo_root()?;
+    std::env::set_current_dir(&root)
+        .map_err(|err| format!("failed to set cwd to {}: {err}", root.display()))?;
+    let result = f();
+    let restore = std::env::set_current_dir(&old)
+        .map_err(|err| format!("failed to restore cwd to {}: {err}", old.display()));
+    restore?;
+    result
 }
 
 fn repo_badge_artifact_jobs() -> Vec<BadgeArtifactJob> {
@@ -14415,8 +14449,10 @@ const BADGE_ENDPOINT_FILES: &[(&str, &str)] = &[
 /// into the committed `badges/` directory so the README endpoint URLs
 /// reflect the latest repo-scoped state.
 pub(crate) fn update_badge_endpoints_impl() -> Result<(), String> {
-    repo_badge_artifacts()?;
-    copy_badge_endpoints_from_reports(Path::new("target/ripr/reports"), Path::new("."))
+    run_with_repo_root_cwd(|| {
+        repo_badge_artifacts()?;
+        copy_badge_endpoints_from_reports(Path::new("target/ripr/reports"), Path::new("."))
+    })
 }
 
 /// Pure file-copy half of `update_badge_endpoints` — separated so the
@@ -14438,6 +14474,7 @@ fn copy_badge_endpoints_from_reports(reports_dir: &Path, repo_root: &Path) -> Re
                 normalize_path(&source)
             )
         })?;
+        validate_shields_endpoint_bytes(&bytes, expected_badge_label(committed)?)?;
         let dest = repo_root.join(committed);
         fs::write(&dest, &bytes)
             .map_err(|err| format!("failed to write {}: {err}", normalize_path(&dest)))?;
@@ -14460,6 +14497,7 @@ fn compute_badge_endpoint_violations(
         let source_display = normalize_path(&source);
         let want =
             fs::read(&source).map_err(|err| format!("failed to read {source_display}: {err}"))?;
+        validate_shields_endpoint_bytes(&want, expected_badge_label(committed)?)?;
         let committed_path = repo_root.join(committed);
         let actual = fs::read(&committed_path).ok();
         if let Some(violation) =
@@ -14501,25 +14539,77 @@ fn badge_endpoint_violation(
 /// before the headline stabilizes. Use locally before campaign
 /// closeouts and after material analyzer changes.
 pub(crate) fn check_badge_endpoints_impl() -> Result<(), String> {
-    repo_badge_artifacts()?;
-    let violations =
-        compute_badge_endpoint_violations(Path::new("target/ripr/reports"), Path::new("."))?;
-    finish_policy_report(
-        PolicyReportSpec {
-            report_file: "badge-endpoints.md",
-            check: "check-badge-endpoints",
-            why_it_matters: "The committed badges/*.json files are the public Shields endpoint surfaces; stale files cause the README badge to lie about repo state.",
-            fix_kind: FixKind::AuthorDecisionRequired,
-            recommended_fixes: &[
-                "Run `cargo xtask update-badge-endpoints` and commit the resulting badges/*.json diff.",
-                "If the drift is from an unrelated PR, run `cargo xtask update-badge-endpoints` on `main` and commit on its own scoped PR.",
-                "Skip running this check on PRs that do not change the repo headline (it is not yet a hard CI gate).",
-            ],
-            rerun_command: "cargo xtask check-badge-endpoints",
-            exception_template: None,
-        },
-        &violations,
-    )
+    run_with_repo_root_cwd(|| {
+        repo_badge_artifacts()?;
+        let violations =
+            compute_badge_endpoint_violations(Path::new("target/ripr/reports"), Path::new("."))?;
+        finish_policy_report(
+            PolicyReportSpec {
+                report_file: "badge-endpoints.md",
+                check: "check-badge-endpoints",
+                why_it_matters: "The committed badges/*.json files are the public Shields endpoint surfaces; stale files cause the README badge to lie about repo state.",
+                fix_kind: FixKind::AuthorDecisionRequired,
+                recommended_fixes: &[
+                    "Run `cargo xtask update-badge-endpoints` and commit the resulting badges/*.json diff.",
+                    "If the drift is from an unrelated PR, run `cargo xtask update-badge-endpoints` on `main` and commit on its own scoped PR.",
+                    "Skip running this check on PRs that do not change the repo headline (it is not yet a hard CI gate).",
+                ],
+                rerun_command: "cargo xtask check-badge-endpoints",
+                exception_template: None,
+            },
+            &violations,
+        )
+    })
+}
+
+fn expected_badge_label(committed_path: &str) -> Result<&'static str, String> {
+    match committed_path {
+        "badges/ripr.json" => Ok("ripr"),
+        "badges/ripr-plus.json" => Ok("ripr+"),
+        other => Err(format!("unknown badge endpoint mapping for {other}")),
+    }
+}
+
+fn validate_shields_endpoint_bytes(bytes: &[u8], expected_label: &str) -> Result<(), String> {
+    let value: serde_json::Value = serde_json::from_slice(bytes)
+        .map_err(|err| format!("badge endpoint for `{expected_label}` is not valid JSON: {err}"))?;
+    let object = value
+        .as_object()
+        .ok_or_else(|| format!("badge endpoint for `{expected_label}` must be a JSON object"))?;
+    let keys: BTreeSet<&str> = object.keys().map(String::as_str).collect();
+    let expected_keys = BTreeSet::from(["schemaVersion", "label", "message", "color"]);
+    if keys != expected_keys {
+        return Err(format!(
+            "badge endpoint for `{expected_label}` must contain only schemaVersion, label, message, and color"
+        ));
+    }
+    if object
+        .get("schemaVersion")
+        .and_then(serde_json::Value::as_u64)
+        != Some(1)
+    {
+        return Err(format!(
+            "badge endpoint for `{expected_label}` has unsupported schemaVersion"
+        ));
+    }
+    if object.get("label").and_then(serde_json::Value::as_str) != Some(expected_label) {
+        return Err(format!(
+            "badge endpoint label drifted: expected `{expected_label}`"
+        ));
+    }
+    for field in ["message", "color"] {
+        let Some(text) = object.get(field).and_then(serde_json::Value::as_str) else {
+            return Err(format!(
+                "badge endpoint for `{expected_label}` field `{field}` must be a string"
+            ));
+        };
+        if text.trim().is_empty() {
+            return Err(format!(
+                "badge endpoint for `{expected_label}` field `{field}` must not be empty"
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn append_badge_section(markdown: &mut String, heading: &str, native_json: &str) {
@@ -18181,8 +18271,12 @@ fn check_readme_state() -> Result<(), String> {
     let readme = read_text_lossy(readme_path)?;
     let mut violations = Vec::new();
 
+    if !has_markdown_heading(&readme, "# ripr")
+        && !readme.contains(r#"<h1 align="center">ripr</h1>"#)
+    {
+        violations.push("README.md is missing `# ripr` or centered HTML h1".to_string());
+    }
     for heading in [
-        "# ripr",
         "## Current Scope",
         "## Current Capability Snapshot",
         "## Supporting Docs",
@@ -21981,6 +22075,9 @@ fn parse_file_policy_allowlist(path: &str) -> Result<Vec<FilePolicyAllowEntry>, 
                 current.classification = Some(parse_string_value(value, path, line_number)?)
             }
             "reason" => current.reason = Some(parse_string_value(value, path, line_number)?),
+            "generated_by" => {
+                current.generated_by = Some(parse_string_value(value, path, line_number)?)
+            }
             "covered_by" => {
                 let value = collect_toml_array_value(path, line_number, value, &lines, &mut idx)?;
                 current.covered_by = Some(parse_inline_array(&value)?);
@@ -33358,6 +33455,24 @@ stackable = true
     }
 
     #[test]
+    fn validate_shields_endpoint_bytes_accepts_minimal_shape() -> Result<(), String> {
+        super::validate_shields_endpoint_bytes(
+            b"{\"schemaVersion\":1,\"label\":\"ripr+\",\"message\":\"0\",\"color\":\"brightgreen\"}",
+            "ripr+",
+        )
+    }
+
+    #[test]
+    fn validate_shields_endpoint_bytes_rejects_extra_fields() {
+        let err = super::validate_shields_endpoint_bytes(
+            b"{\"schemaVersion\":1,\"label\":\"ripr+\",\"message\":\"0\",\"color\":\"brightgreen\",\"extra\":true}",
+            "ripr+",
+        )
+        .expect_err("extra fields must be rejected");
+        assert!(err.contains("must contain only"));
+    }
+
+    #[test]
     fn badge_endpoint_violation_returns_none_when_committed_file_matches() {
         let bytes =
             b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"0\",\"color\":\"brightgreen\"}";
@@ -33459,7 +33574,7 @@ stackable = true
         write_fixture_shields(
             &reports,
             "repo-ripr-badge-shields.json",
-            b"{\"schemaVersion\":1}",
+            b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"0\",\"color\":\"brightgreen\"}",
         )?;
 
         let result = super::copy_badge_endpoints_from_reports(&reports, &repo_root);
@@ -34286,6 +34401,14 @@ jobs:
             XtaskCommand::VscodePackage
         );
         assert_eq!(
+            XtaskCommand::parse(["badges".to_string()]),
+            XtaskCommand::UpdateBadgeEndpoints
+        );
+        assert_eq!(
+            XtaskCommand::parse(["badges".to_string(), "--check".to_string()]),
+            XtaskCommand::CheckBadgeEndpoints
+        );
+        assert_eq!(
             XtaskCommand::parse(std::iter::empty::<String>()),
             XtaskCommand::Help
         );
@@ -34514,6 +34637,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(commands.contains(&"targeted-test-outcome --before <path> --after <path>"));
         assert!(commands.contains(&"mutation-calibration [root] --mutants-json <path>"));
         assert!(commands.contains(&"sarif-policy --current <path> [--baseline <path>]"));
+        assert!(commands.contains(&"badges [--check]"));
         assert!(commands.contains(&"check-droid-review-config"));
         assert!(commands.contains(&"check-ci-lane-whitelist"));
         assert!(commands.contains(&"vscode-compile"));
