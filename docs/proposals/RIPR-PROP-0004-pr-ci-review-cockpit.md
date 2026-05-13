@@ -1,4 +1,4 @@
-# RIPR-PROP-0003: PR / CI Review Cockpit
+# RIPR-PROP-0004: PR / CI Review Cockpit
 
 Status: proposed
 
@@ -149,7 +149,7 @@ preview-language evidence is ready.
   with explicit role metadata and a short role section.
 - Add a generated PR CI review workflow spec using the next available
   `RIPR-SPEC-00NN` identifier. Current `main` already uses
-  `RIPR-SPEC-0032` through `RIPR-SPEC-0035`, so this lane must not reuse
+  `RIPR-SPEC-0032` through `RIPR-SPEC-0037`, so this lane must not reuse
   those IDs.
 
 ## Architecture decisions needed

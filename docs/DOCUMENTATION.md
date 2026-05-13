@@ -149,6 +149,7 @@ Current explanation docs:
 - [Repo context system](agent-context/CONTEXT_SYSTEM.md)
 - [Implementation plan](IMPLEMENTATION_PLAN.md)
 - [Implementation campaigns](IMPLEMENTATION_CAMPAIGNS.md)
+- [Campaign 27 plans](../plans/campaign-27/README.md)
 - [Proposals](proposals/README.md)
 - [Codex Goals](CODEX_GOALS.md)
 - [Scoped PR contract](SCOPED_PR_CONTRACT.md)

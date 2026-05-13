@@ -78,4 +78,5 @@ Start new proposals from
 | --- | --- | --- |
 | [RIPR-PROP-0001](RIPR-PROP-0001-multi-language-adapter-preview.md) | proposed | Multi-language adapter preview |
 | [RIPR-PROP-0002](RIPR-PROP-0002-lane-1-evidence-quality-leadership.md) | proposed | Lane 1 evidence quality leadership |
-| [RIPR-PROP-0003](RIPR-PROP-0003-pr-ci-review-cockpit.md) | proposed | PR / CI review cockpit |
+| [RIPR-PROP-0003](RIPR-PROP-0003-editor-preview-routing.md) | proposed | Editor preview routing |
+| [RIPR-PROP-0004](RIPR-PROP-0004-pr-ci-review-cockpit.md) | proposed | PR / CI review cockpit |

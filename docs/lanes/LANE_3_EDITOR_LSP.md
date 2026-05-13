@@ -299,8 +299,105 @@ Maintenance audit evidence from 2026-05-12:
   `cargo xtask check-traceability`, and `cargo xtask check-pr` also passed;
   `check-pr` left only generated `crates/ripr/examples/sample/target/` build
   output, which was removed, and the worktree returned clean.
+- during the next maintenance pass on current `main` (`22f5aa0`), Lane 3 kept
+  routing closed and corrected stale current-state wording in
+  `docs/CONFIGURATION.md`, `docs/OUTPUT_SCHEMA.md`, `ripr.toml.example`, and
+  the generated config source. The corrected docs now distinguish TypeScript
+  preview analysis/report output from Python's scaffold-only state until
+  `analysis/python-preview-adapter` emits findings. Live GitHub still showed
+  #771 open for the Python preview adapter and #772 open for blocked editor
+  routing, and the open PR queue had no Lane 3 routing PR. A current code audit
+  also confirmed `editors/vscode/package.json` still activates on
+  `onLanguage:rust`, `editors/vscode/src/client.ts` still uses a Rust-only
+  `documentSelector` and `isRustFileDocument` stale-buffer guards, the text
+  change handler only marks saved-workspace state stale, LSP capabilities remain
+  text sync, hover, code actions, and execute-command, and no CodeLens, inlay,
+  semantic-token, or preview-language selector registration exists.
+  Maintenance evidence from this pass: `cargo xtask lsp-cockpit-report` passed,
+  `cargo test -p ripr lsp --lib` passed 123 tests,
+  `cargo test -p ripr lsp::tests --lib` passed 84 tests,
+  `npm --prefix editors/vscode run compile` passed, `npm --prefix
+  editors/vscode run test:e2e` passed 30 live VS Code smoke tests with the
+  known post-success `path` warning exiting 0, `cargo xtask check-doc-index`
+  passed, `cargo xtask markdown-links` passed, `cargo xtask
+  check-output-contracts` passed, `cargo xtask check-capabilities` passed,
+  `cargo xtask check-traceability` passed, `cargo xtask check-static-language`
+  passed, `cargo xtask check-fixture-contracts` passed, `cargo xtask fixtures`
+  passed, `cargo xtask goldens check` passed, `cargo xtask check-generated`
+  passed, `cargo xtask check-pr-shape` passed, `cargo xtask
+  check-workspace-shape` passed, `cargo xtask
+  check-file-policy` passed, `cargo xtask check-architecture` passed,
+  `cargo xtask check-public-api` passed, `cargo xtask check-dependencies`
+  passed, `cargo xtask check-process-policy` passed, `cargo xtask
+  check-network-policy` passed, `cargo xtask check-workflows` passed,
+  `cargo xtask check-executable-files` passed, `cargo xtask
+  check-spec-format` passed, `cargo xtask check-no-panic-family` passed, the
+  generated init-config unit test passed, `cargo xtask precommit` passed,
+  `cargo xtask check-pr` passed, `cargo xtask dogfood` passed,
+  `cargo xtask test-oracle-report` passed, `cargo xtask metrics` passed,
+  `cargo package -p ripr --list --allow-dirty`
+  passed after the plain package list correctly refused the uncommitted
+  `crates/ripr/src/config.rs` diff, the `cargo publish -p ripr --dry-run`
+  check passed with `--allow-dirty` and aborted before upload as expected,
+  `git diff --check` passed, and `cargo xtask goals next` still reported no
+  ready work items.
+- after fetching current `origin/main` (`c712350`), Lane 3 rechecked the
+  preview-routing source-of-truth stack against newly merged Lane 1 planning
+  files. `origin/main` now owns `ADR-0010` and `RIPR-SPEC-0035`, so the Lane 3
+  editor-preview docs were renumbered to `ADR-0011`, `RIPR-SPEC-0036`, and
+  `RIPR-SPEC-0037` while keeping `RIPR-PROP-0003`. A temporary current-base
+  worktree applied the local Lane 3 patch to `origin/main`, resolved only the
+  expected index and traceability conflicts by keeping the Lane 1 entries plus
+  the Lane 3 entries, and passed `cargo xtask check-doc-index`,
+  `cargo xtask markdown-links`, `cargo xtask check-traceability`,
+  `cargo xtask check-spec-format`, `cargo xtask check-static-language`,
+  `git diff --check`, and `cargo xtask goals next`. Issue #771 remains open,
+  issue #772 remains open and blocked, and no VS Code selector, LSP routing,
+  preview workflow fixture, CodeLens, inlay, semantic-token, source-edit,
+  provider, mutation, policy, or gate behavior was added.
+- after fetching current `origin/main` (`23df422`), #849 has merged as a Lane
+  4 PR/CI review cockpit docs-only source-of-truth PR. It does not touch
+  editor/LSP projection or unblock #772. A disposable current-base worktree
+  applied the local Lane 3 docs stack to `23df422`, kept the newly merged Lane
+  1 and Lane 4 index entries alongside the Lane 3 entries, and passed
+  `cargo xtask check-doc-index`, `cargo xtask markdown-links`,
+  `cargo xtask check-traceability`, `cargo xtask check-spec-format`,
+  `cargo xtask check-static-language`, `cargo xtask check-doc-roles`,
+  `cargo xtask goals next`, and `git diff --check`. Treat #849 as an index
+  compatibility concern, not a Lane 3 behavior dependency.
+- after fetching current `origin/main` (`ad9c04e`), the Lane 1 evidence
+  quality scorecard landed and touched `.ripr/traceability.toml` plus
+  `docs/OUTPUT_SCHEMA.md`. The raw dirty diff no longer applies cleanly to
+  current base. A docs-stack-only disposable port to `ad9c04e` resolved the
+  expected `.ripr/traceability.toml`, ADR/proposal/spec README, and
+  documentation-index conflicts by keeping the new Lane 1 scorecard entries
+  plus the Lane 3 entries. Since `ad9c04e` adds traceability to generated
+  scorecard reports, the port proof first ran `cargo xtask lane1-evidence-audit`
+  and `cargo xtask evidence-quality-scorecard`, then passed
+  `cargo xtask check-doc-index`, `cargo xtask markdown-links`,
+  `cargo xtask check-traceability`, `cargo xtask check-spec-format`,
+  `cargo xtask check-static-language`, `cargo xtask check-doc-roles`,
+  `cargo xtask goals next`, `cargo xtask check-pr`,
+  `cargo xtask lsp-cockpit-report`, and `git diff HEAD --check`. The actual
+  main worktree is still behind `origin/main`, so package this stack from a
+  current-base port or rebase before opening a PR.
+- focused editor proof on that same current-base port also passed:
+  `cargo test -p ripr lsp --lib`,
+  `cargo test -p ripr lsp::tests --lib`,
+  `npm --prefix editors/vscode run compile`, and
+  `npm --prefix editors/vscode run test:e2e` with 30 passing tests. The VS Code
+  e2e run still printed the known post-success `path` warning while exiting 0.
+- after fetching current `origin/main` (`81765dd`), the Lane 1 evidence-quality
+  benchmark corpus landed and touched `.ripr/traceability.toml` plus
+  `xtask/src/main.rs`. A fresh current-base port kept those Lane 1 fixture
+  validators and the Lane 3 `plans/` PR-summary classification together. Live
+  GitHub still showed #771 open for `analysis/python-preview-adapter`, #772
+  open for blocked `lsp/editor-language-routing`, #807 open for structured
+  `static_limit_kind`, and #814 open for the existing policy-readiness consumer
+  mismatch. `cargo xtask goals next` still reported no ready work items, so
+  preview selector and routing work remains blocked.
 
-Objective audit status from 2026-05-12: not complete, blocked upstream.
+Objective audit status from 2026-05-13: not complete, blocked upstream.
 
 | Requirement | Current artifact or command | Audit status |
 | --- | --- | --- |
@@ -314,6 +411,44 @@ Objective audit status from 2026-05-12: not complete, blocked upstream.
 | Preview selectors for TypeScript, TSX, JavaScript, JSX, and Python are opt-in and preserve Rust defaults | `editors/vscode/package.json`, `editors/vscode/src/client.ts` | Not started; must wait for Python preview adapter completion and explicit routing selection |
 | Preview diagnostics, hover, status, and actions visibly label preview evidence and static limits | Future `lsp/editor-language-routing` artifacts and editor workflow fixtures | Not started; blocked by adapter outputs |
 | No editor hidden analysis reruns, source edits, generated tests, provider calls, mutation execution, gate semantics, default blocking, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays | Lane 3 Scope, Non-Goals, and Cross-Lane Rules in this tracker | Current tracker preserves the boundary; future routing must re-audit it |
+
+## Lane 3 Document Model
+
+Lane 3 uses the repo tracking model in layers so future editor-preview work
+does not mix why, behavior contracts, architecture decisions, execution state,
+and proof in one file:
+
+- proposals in [`docs/proposals/`](../proposals/) explain why editor preview
+  routing exists, who benefits, alternatives, risks, and success criteria;
+- specs in [`docs/specs/`](../specs/) define what editor routing and
+  preview static-limit projection must do for users, tests, fixtures, and
+  future agents;
+- ADRs in [`docs/adr/`](../adr/) record durable editor architecture decisions,
+  including the projection-only boundary;
+- campaign-specific plans in
+  [`plans/campaign-27/`](../../plans/campaign-27/) define the PR sequence,
+  acceptance, proof commands, and rollback notes for the Lane 3 slice;
+- `.ripr/goals/active.toml` records current machine-readable execution state
+  only;
+- this lane tracker records Lane 3 scope, readiness, blocker state, and
+  maintenance evidence;
+- closeout handoffs in [`docs/handoffs/`](../handoffs/) record what landed,
+  what passed, what remains, and which future editor campaigns are still
+  out of scope.
+
+Use the next available proposal, spec, and ADR numbers from the indexes. Do not
+reuse occupied IDs when turning the planned editor-preview routing documents
+into concrete files.
+
+The editor-preview routing proposal and specs currently use `RIPR-PROP-0003`,
+`RIPR-SPEC-0036`, and `RIPR-SPEC-0037` because current `origin/main` already
+owns `RIPR-PROP-0002`, `RIPR-SPEC-0034`, `RIPR-SPEC-0035`, and `ADR-0010`
+for the Lane 1 evidence quality stack.
+
+Traceability for proposed, blocked editor-preview specs should list the docs
+outputs that define the contract, but leave tests, fixtures, and code empty
+until the behavior PRs land. Do not point proposed preview-routing specs at the
+existing Rust cockpit tests as if those tests prove preview-language routing.
 
 ## Preview Routing Path
 
@@ -333,47 +468,67 @@ Rust stable cockpit remains boringly reliable
 
 Planned PR path:
 
-1. `analysis: close TypeScript editor readiness`
+1. `docs(lane3): define editor preview routing source-of-truth stack`
+   - Records where Lane 3 stores why, behavior contracts, architecture
+     decisions, PR sequencing, current execution state, lane readiness, and
+     final proof.
+   - Does not change behavior, selectors, or `.ripr/goals/active.toml`.
+2. `docs(proposal): add Lane 3 editor preview routing proposal`
+   - Explains why preview evidence should appear in the existing cockpit
+     without looking as mature as Rust evidence.
+3. `docs(spec): add editor preview routing contract`
+   - Defines selector, opt-in routing, Rust-default preservation, and
+     fail-closed behavior.
+4. `docs(spec): add preview static-limit projection contract`
+   - Defines preview labels and the rule that static limits appear before
+     suggested action language.
+5. `docs(adr): editor preview routing is projection-only`
+   - Records that the editor consumes existing artifacts and is not an
+     analyzer, policy engine, generator, provider surface, source editor, or
+     mutation runner.
+6. `plans(c27): add Lane 3 editor preview routing implementation plan`
+   - Defines PR sequence, acceptance, proof commands, and rollback per slice.
+7. `analysis: close TypeScript editor readiness`
    - Done for current Campaign 27 routing readiness.
    - Closed #779, #780, #782, #785, and #786 without VS Code selector or LSP
      routing changes.
    - No VS Code selector or LSP routing changes belong in this work.
-2. `analysis: complete Python preview adapter`
+8. `analysis: complete Python preview adapter`
    - Not owned by Lane 3, but Lane 3 should review editor-projectability.
    - Python output must carry `language = "python"`,
      `language_status = "preview"`, owner facts, test facts, assertion facts,
      probe facts, related-test facts, static limits, and fixture/golden
      coverage.
    - No editor selector work belongs in this work.
-3. `test(lsp): preserve Rust routing contract`
+9. `test(lsp): preserve Rust routing contract`
    - Pin `[languages]` absent, `["rust"]`, `[]`, and invalid-config behavior
      before adding preview selectors.
    - Rust diagnostics, hover, actions, and status must remain unchanged by
      default.
-4. `lsp(language): add editor language routing`
+10. `lsp(language): add editor language routing`
    - Extend VS Code activation and selectors for `typescript`,
      `typescriptreact`, `javascript`, `javascriptreact`, and `python`.
    - Route saved-workspace diagnostics only when repo config enables that
      language.
    - Preserve wrong-root, stale, and malformed fail-closed behavior.
-5. `lsp(language): surface preview labels and static limits`
+11. `lsp(language): surface preview labels and static limits`
    - Show language, preview status, static-limit kind/explanation, and the
      advisory boundary in hover/status before suggested action language.
    - Keep the same cockpit action model; do not invent preview-only action
      semantics.
-6. `fixtures: add preview editor workflow fixtures`
+12. `fixtures: add preview editor workflow fixtures`
    - Add explicit `rust_default`, `typescript_preview`, `python_preview`,
      `mixed_language_opt_in`, and `preview_disabled` editor fixtures.
    - Pin diagnostics, hover, code actions, status, and static-limit artifacts.
-7. `test(vscode): smoke preview saved-workspace routing`
+13. `test(vscode): smoke preview saved-workspace routing`
    - Prove the packaged extension path for Rust default behavior, opt-in
      TypeScript/Python preview diagnostics, hover preview/static-limit text,
      bounded actions, status, and disabled-preview no-diagnostic behavior.
-8. `docs(editor): document preview language workflow`
+14. `docs(editor): document preview language workflow`
    - Document Rust as stable/default and TypeScript/Python as opt-in preview.
    - Explain syntax-first evidence, static limits, advisory-only diagnostics,
      and the source-edit-free command loop.
-9. `campaign(lane3): close editor preview routing`
+15. `campaign(lane3): close editor preview routing`
    - Close only after Rust defaults are unchanged, preview routing is opt-in and
      fixture-pinned, preview labels/static limits are visible, VS Code e2e and
      `lsp-cockpit-report` prove the path, and docs cover the preview limits.

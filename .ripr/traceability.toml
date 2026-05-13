@@ -2181,3 +2181,69 @@ metrics = [
   "lane1_evidence_benchmark_calibration_cases",
   "lane1_evidence_benchmark_must_not_claim_guards",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0036"
+name = "Editor preview routing"
+spec = "docs/specs/RIPR-SPEC-0036-editor-preview-routing.md"
+tests = [
+]
+fixtures = [
+]
+code = [
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0036-editor-preview-routing.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0003-editor-preview-routing.md",
+  "docs/proposals/README.md",
+  "docs/lanes/LANE_3_EDITOR_LSP.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "plans/campaign-27/README.md",
+  "plans/campaign-27/lane3-editor-preview-routing.md",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "editor_language_routing_rust_default_sessions",
+  "editor_language_routing_preview_documents_seen",
+  "editor_language_routing_preview_documents_enabled",
+  "editor_language_routing_preview_documents_disabled",
+  "editor_language_routing_wrong_root_reports",
+  "editor_language_routing_stale_reports",
+  "editor_language_routing_malformed_reports",
+  "editor_language_routing_preview_diagnostics_projected",
+  "editor_language_routing_preview_diagnostics_suppressed",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0037"
+name = "Editor preview static-limit projection"
+spec = "docs/specs/RIPR-SPEC-0037-editor-preview-static-limit-projection.md"
+tests = [
+]
+fixtures = [
+]
+code = [
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0037-editor-preview-static-limit-projection.md",
+  "docs/specs/RIPR-SPEC-0036-editor-preview-routing.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0003-editor-preview-routing.md",
+  "docs/lanes/LANE_3_EDITOR_LSP.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "plans/campaign-27/lane3-editor-preview-routing.md",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "editor_preview_static_limit_hovers",
+  "editor_preview_static_limit_status_entries",
+  "editor_preview_static_limit_structured_kind",
+  "editor_preview_static_limit_text_only",
+  "editor_preview_actions_with_static_limit",
+  "editor_preview_actions_omitted_missing_payload",
+  "editor_preview_stale_suppressed_actions",
+  "editor_preview_wrong_root_suppressed_actions",
+]
