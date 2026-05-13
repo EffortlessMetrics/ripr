@@ -106,7 +106,7 @@ available spec IDs.
 | 8 | `spec/preview-evidence-promotion-packet` | Define the future preview-language promotion packet contract. | done |
 | 9 | `policy/preview-promotion-packet-report` | Implement `ripr policy preview-promote` with default `allowed_now = false`. | done |
 | 10 | `docs/policy-operator-workflow` | Document the maintainer workflow from readiness through promotion review. | done |
-| 11 | `ci/policy-operations-advisory-projection` | Surface policy operations artifacts in generated CI without pass/fail authority. | planned |
+| 11 | `ci/policy-operations-advisory-projection` | Surface policy operations artifacts in generated CI without pass/fail authority. | done |
 | 12 | `campaign/policy-operations-closeout` | Close after operations, history, promotion, preview-promotion, workflow, CI projection, capability, metrics, traceability, and handoff surfaces exist. | planned |
 
 ## Planned Report Surface
@@ -207,6 +207,21 @@ The maintainer workflow is documented in
 to run readiness, operations, history, promotion packets, and preview promotion
 packets before any manual config review, and how to monitor policy health after
 a reviewed change.
+
+## Generated CI Advisory Projection
+
+Generated CI may render, upload, index, and summarize:
+
+- `policy-operations.{json,md}`;
+- `policy-history.{json,md}`;
+- `policy-promotion-*.{json,md}`;
+- `preview-promotion-*.{json,md}` when TypeScript or Python preview adapters are
+  configured.
+
+These artifacts are advisory operator packets only. They must not decide
+pass/fail, create required checks, post comments, mutate config, mutate
+baselines, create suppressions, append history, change workflows or branch
+protection, enable default blocking, or promote preview-language evidence.
 
 ## Boundaries
 

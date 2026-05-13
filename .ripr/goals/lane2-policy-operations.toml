@@ -220,7 +220,7 @@ commands = [
 
 [[work_item]]
 id = "ci/policy-operations-advisory-projection"
-status = "planned"
+status = "done"
 branch = "ci-policy-operations-advisory-projection"
 acceptance = "Generated CI may upload and summarize policy operations, history, promotion, and preview-promotion artifacts, but gains no pass/fail authority, required checks, comment posting, baseline mutation, config mutation, or default blocking."
 commands = [
