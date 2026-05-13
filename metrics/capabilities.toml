@@ -1252,10 +1252,11 @@ evidence = [
   "LSP analysis remains gated by [languages] through the existing adapter layer",
   "Rust default saved-workspace cockpit behavior remains covered by LSP and VS Code extension tests",
   "docs/LANGUAGE_ADAPTER_PREVIEW.md documents the opt-in editor workflow and rollback",
-  "cargo xtask dogfood records TypeScript/Python preview receipt coverage for static-limit and disabled-language projection boundaries"
+  "cargo xtask dogfood records TypeScript/Python preview receipt coverage for static-limit and disabled-language projection boundaries",
+  "docs/handoffs/2026-05-13-campaign-27-closeout.md records the preview/advisory boundary"
 ]
 fixtures = []
-next = "campaign/language-adapter-preview-closeout"
+next = "maintenance"
 metric = "editor_preview_language_routing, editor_preview_static_limit_projection"
 
 [[capability]]
@@ -1272,10 +1273,11 @@ evidence = [
   "generated workflow tests pin the opt-in grouping guard and Rust-default boundary",
   "CLI smoke tests pin the generated workflow section",
   "docs/LANGUAGE_ADAPTER_PREVIEW.md documents generated-CI grouping and the gate-authority boundary",
-  "cargo xtask dogfood checks generated-CI cockpit receipts with preview language grouping marked checked while preserving advisory defaults"
+  "cargo xtask dogfood checks generated-CI cockpit receipts with preview language grouping marked checked while preserving advisory defaults",
+  "docs/handoffs/2026-05-13-campaign-27-closeout.md records the Rust-default and gate-authority boundary"
 ]
 fixtures = []
-next = "campaign/language-adapter-preview-closeout"
+next = "maintenance"
 metric = "generated_pr_ci_language_groups, generated_pr_ci_preview_language_groups, generated_pr_ci_rust_default_unchanged, generated_pr_ci_advisory_summaries"
 
 [[capability]]
@@ -1315,7 +1317,8 @@ evidence = [
   "related-test fixtures cover direct owner calls, import-alias calls, same-stem proximity, and unrelated mention negatives",
   "static-limit fixtures cover dynamic_dispatch, decorator_indirection, mocked_module, missing_import_graph, metaprogramming, and unsupported_syntax",
   "cargo xtask dogfood checks Python preview receipts for missing_import_graph, disabled-language behavior, and no cross-language related-test routing",
-  "docs/LANGUAGE_ADAPTER_PREVIEW.md documents how to enable, read, and roll back Python preview evidence"
+  "docs/LANGUAGE_ADAPTER_PREVIEW.md documents how to enable, read, and roll back Python preview evidence",
+  "docs/handoffs/2026-05-13-campaign-27-closeout.md records Python as opt-in preview rather than Rust parity"
 ]
 fixtures = [
   "fixtures/python_boundary_gap",
@@ -1343,7 +1346,7 @@ fixtures = [
   "fixtures/python_metaprogramming_limit",
   "fixtures/python_unsupported_syntax_limit"
 ]
-next = "campaign/language-adapter-preview-closeout"
+next = "maintenance"
 metric = "language_adapter_python_findings_preview, language_adapter_python_static_limit_*"
 
 [[capability]]

@@ -306,18 +306,17 @@ without posting real comments. Campaign 26 is closed by
 `docs/handoffs/2026-05-10-campaign-26-closeout.md`.
 
 [Multi-Language Adapter Preview](proposals/RIPR-PROP-0001-multi-language-adapter-preview.md)
-is now open as Campaign 27 after PR Inline Comment Publisher. The campaign
-should introduce a language-neutral analysis adapter boundary inside the
-existing `crates/ripr` package, keep Rust as the reference adapter, and
-add syntax-first TypeScript and Python preview adapters that feed the same
-RIPR domain, output, LSP, agent, and Lane 4 review surfaces. The boundary
-stays explicit: one published package, one binary, one library, one LSP
-server, one editor extension; preview adapters are syntax-first, opt-in,
-and labeled `preview` in every public surface; Rust analyzer behavior,
-recommendation ranking, gate semantics, LSP/editor behavior for Rust seams,
-mutation execution, provider behavior, source files, generated tests,
-branch protection, `pull_request_target` defaults, and default CI blocking
-do not change.
+is closed as Campaign 27 after PR Inline Comment Publisher. The campaign
+introduced a language-neutral analysis adapter boundary inside the existing
+`crates/ripr` package, kept Rust as the reference adapter, and added
+syntax-first TypeScript and Python preview adapters that feed the same RIPR
+domain, output, LSP, agent, and Lane 4 review surfaces. The boundary stays
+explicit: one published package, one binary, one library, one LSP server, one
+editor extension; preview adapters are syntax-first, opt-in, and labeled
+`preview` in every public surface; Rust analyzer behavior, recommendation
+ranking, gate semantics, LSP/editor behavior for Rust seams, mutation
+execution, provider behavior, source files, generated tests, branch protection,
+`pull_request_target` defaults, and default CI blocking did not change.
 [RIPR-SPEC-0026](specs/RIPR-SPEC-0026-language-adapter-contract.md) pins
 the language-neutral adapter contract, additive optional `language` and
 `language_status` output fields, the `[languages]` repo-config opt-in, and
@@ -325,9 +324,8 @@ explicit preview static-limit vocabulary.
 [RIPR-SPEC-0027](specs/RIPR-SPEC-0027-typescript-preview-static-facts.md)
 pins the TypeScript preview static-fact contract, and
 [RIPR-SPEC-0028](specs/RIPR-SPEC-0028-python-preview-static-facts.md) pins
-the Python preview static-fact contract. This is also the first user of
-the repo's centralized
-[proposal -> spec -> campaign tracking model](REPO_TRACKING_MODEL.md).
+the Python preview static-fact contract. The closeout audit lives at
+[Campaign 27 Language Adapter Preview closeout](handoffs/2026-05-13-campaign-27-closeout.md).
 
 [Policy Readiness and Preview Evidence Governance](policy/POLICY_READINESS.md)
 is closed as a focused Lane 2 tracker alongside Campaign 27. It does not
