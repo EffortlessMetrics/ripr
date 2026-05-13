@@ -1253,8 +1253,26 @@ evidence = [
   "Rust default saved-workspace cockpit behavior remains covered by LSP and VS Code extension tests"
 ]
 fixtures = []
-next = "ci/language-aware-grouping"
+next = "docs/language-adapter-preview-workflow"
 metric = "editor_preview_language_routing, editor_preview_static_limit_projection"
+
+[[capability]]
+id = "language_aware_generated_ci_grouping"
+name = "Language-aware generated CI grouping"
+status = "alpha"
+spec = "RIPR-SPEC-0038"
+evidence = [
+  "generated GitHub workflow summary reads enabled languages through public ripr doctor",
+  "language grouping section is hidden for Rust-only configuration",
+  "TypeScript and Python groups are emitted only when preview adapters are configured",
+  "language groups summarize advisory artifact entries, preview-status counts, classifications, and static-limit kinds",
+  "summary text keeps preview-language groups advisory and preserves ripr gate evaluate as configured pass/fail authority",
+  "generated workflow tests pin the opt-in grouping guard and Rust-default boundary",
+  "CLI smoke tests pin the generated workflow section"
+]
+fixtures = []
+next = "docs/language-adapter-preview-workflow"
+metric = "generated_pr_ci_language_groups, generated_pr_ci_preview_language_groups, generated_pr_ci_rust_default_unchanged, generated_pr_ci_advisory_summaries"
 
 [[capability]]
 id = "repository_config"
@@ -1397,10 +1415,11 @@ evidence = [
   "crates/ripr/src/output/policy_operations.rs builds and renders policy_operations JSON and Markdown from explicit policy artifacts",
   "crates/ripr/src/cli/commands.rs wires `ripr policy operations` with parser and write-path tests",
   "docs/OUTPUT_SCHEMA.md documents the policy_operations JSON and Markdown shape",
+  "docs/POLICY_OPERATIONS_WORKFLOW.md documents maintainer use from readiness through operations, history, promotion packet review, manual config review, and post-change monitoring",
   "docs/policy/POLICY_OPERATIONS.md and .ripr/goals/lane2-policy-operations.toml keep the Lane 2 tracker scoped to policy operations"
 ]
 fixtures = []
-next = "docs/policy-operator-workflow"
+next = "ci/policy-operations-advisory-projection"
 metric = "policy_operations_reports, policy_operations_current_ceiling, policy_operations_recommended_next_action, policy_operations_safe_target_count, policy_operations_blocked_target_count, policy_operations_promotion_blocker_count, policy_operations_baseline_action_count, policy_operations_waiver_action_count, policy_operations_suppression_action_count, policy_operations_calibration_action_count, policy_operations_preview_boundary_action_count, policy_operations_warning_count, policy_operations_unknown_count, policy_operations_input_read_count, policy_operations_input_missing_count, policy_operations_input_malformed_count"
 
 [[capability]]
@@ -1412,10 +1431,11 @@ evidence = [
   "docs/specs/RIPR-SPEC-0041-policy-history-ledger.md defines the read-only policy history report contract over current policy operations and optional history JSONL input",
   "crates/ripr/src/output/policy_history.rs builds and renders the policy_history JSON and Markdown shape",
   "crates/ripr/src/cli/commands.rs wires ripr policy history with parser and write-path tests",
-  "docs/OUTPUT_SCHEMA.md documents the policy_history output contract"
+  "docs/OUTPUT_SCHEMA.md documents the policy_history output contract",
+  "docs/POLICY_OPERATIONS_WORKFLOW.md documents how maintainers use history before promotion and after manual policy changes"
 ]
 fixtures = []
-next = "docs/policy-operator-workflow"
+next = "ci/policy-operations-advisory-projection"
 metric = "policy_history_reports, policy_history_entries, policy_history_readiness_improved, policy_history_waiver_pressure_increased, policy_history_suppression_health_regressed, policy_history_baseline_shrank, policy_history_preview_remained_advisory, policy_history_calibration_changed_ceiling, policy_history_warning_count, policy_history_unknown_count"
 
 [[capability]]
@@ -1428,10 +1448,11 @@ evidence = [
   "crates/ripr/src/output/policy_promotion.rs builds and renders policy_promotion_packet JSON and Markdown from explicit policy operations and optional policy history inputs",
   "crates/ripr/src/cli/commands.rs wires `ripr policy promote --to ...` with target-mode parser and write-path tests",
   "docs/OUTPUT_SCHEMA.md documents the implemented policy_promotion_packet JSON and Markdown shape",
+  "docs/POLICY_OPERATIONS_WORKFLOW.md documents promotion packet review before manual config changes",
   "docs/policy/POLICY_OPERATIONS.md and .ripr/goals/lane2-policy-operations.toml keep promotion packets split from implementation without config, baseline, suppression, workflow, history, or preview-eligibility mutation"
 ]
 fixtures = []
-next = "docs/policy-operator-workflow"
+next = "ci/policy-operations-advisory-projection"
 metric = "policy_promotion_packets, policy_promotion_allowed, policy_promotion_blocked, policy_promotion_required_repairs, policy_promotion_required_receipts, policy_promotion_missing_history, policy_promotion_warning_count, policy_promotion_unknown_count"
 
 [[capability]]
@@ -1461,10 +1482,11 @@ evidence = [
   "crates/ripr/src/output/policy_preview_promotion.rs builds and renders preview_evidence_promotion_packet JSON and Markdown with required, supplied, and missing evidence accounting",
   "crates/ripr/src/cli/commands.rs wires ripr policy preview-promote with parser and write-path tests",
   "docs/OUTPUT_SCHEMA.md documents the implemented preview_evidence_promotion_packet JSON and Markdown shape",
+  "docs/POLICY_OPERATIONS_WORKFLOW.md documents preview promotion review while keeping TypeScript and Python evidence advisory by default",
   "docs/policy/POLICY_OPERATIONS.md and .ripr/goals/lane2-policy-operations.toml keep preview promotion split from later operator workflow and CI projection without actual promotion, gate eligibility, RIPR Zero inclusion, calibrated confidence, CI blocking, or preview-eligibility mutation"
 ]
 fixtures = []
-next = "docs/policy-operator-workflow"
+next = "ci/policy-operations-advisory-projection"
 metric = "preview_promotion_packets, preview_promotion_allowed, preview_promotion_blocked, preview_promotion_required_evidence, preview_promotion_supplied_evidence, preview_promotion_missing_evidence, preview_promotion_warning_count, preview_promotion_unknown_count"
 
 [[capability]]

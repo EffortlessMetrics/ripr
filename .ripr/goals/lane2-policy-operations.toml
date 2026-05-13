@@ -207,7 +207,7 @@ commands = [
 
 [[work_item]]
 id = "docs/policy-operator-workflow"
-status = "planned"
+status = "done"
 branch = "docs-policy-operator-workflow"
 acceptance = "docs/POLICY_OPERATIONS_WORKFLOW.md documents readiness, operations, history, promotion packets, preview packets, manual config review, post-change monitoring, and hard boundaries for maintainers."
 commands = [
