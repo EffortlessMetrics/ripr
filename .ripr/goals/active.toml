@@ -1,6 +1,6 @@
 id = "language-adapter-preview"
 title = "Language Adapter Preview"
-status = "active"
+status = "closed"
 
 # This is Campaign 27 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
 # Campaign 26 closed PR Inline Comment Publisher (archived under

@@ -58,6 +58,10 @@ Planned scope:
   dogfood receipts, capability metadata, traceability, and a closeout boundary
   that keeps Rust defaults, gate authority, generated tests, provider calls,
   source edits, and mutation execution unchanged.
+- Campaign manifests now accept top-level `status = "closed"` only when every
+  work item is `done`, letting `.ripr/goals/active.toml` honestly record a
+  closed campaign until the next campaign is selected. Campaign 26 and Campaign
+  27 archived manifests were normalized to that closed state.
 - `ripr --help` and every `ripr <subcommand> --help` now lead with an
   action-oriented one-liner before the `Usage:` block (e.g.,
   `ripr pilot --help` opens with "Find the top test gap in this repo and
