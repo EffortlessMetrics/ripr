@@ -1558,6 +1558,7 @@ jobs:
             ripr "${first_action_args[@]}"
           else
             echo 'No RIPR first-useful-action inputs were available.'
+            echo 'Regenerate command: `ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md` (add other available inputs as needed).'
           fi
 
       - name: Render RIPR PR review front panel
@@ -1624,6 +1625,7 @@ jobs:
             ripr "${front_panel_args[@]}"
           else
             echo 'No RIPR PR review front-panel inputs were available.'
+            echo 'Regenerate command: `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md` (add other available inputs as needed).'
           fi
 
       - name: Render RIPR report packet index
@@ -1674,6 +1676,7 @@ jobs:
               --out-md target/ripr/reports/index.md
           else
             echo 'No RIPR report-packet index inputs were available.'
+            echo 'Regenerate command: `ripr reports index --root . --reports-dir target/ripr/reports --review-dir target/ripr/review --receipts-dir target/ripr/receipts --workflow-dir target/ripr/workflow --agent-dir target/ripr/agent --pilot-dir target/ripr/pilot --ci-dir target/ci --out target/ripr/reports/index.json --out-md target/ripr/reports/index.md`.'
           fi
 
       - name: Render RIPR LLM work-loop summaries
@@ -1743,6 +1746,12 @@ jobs:
             echo '## RIPR advisory summary'
             echo
             echo "RIPR is advisory static evidence. It does not edit source, generate tests, or run mutation testing."
+            echo
+            echo '### Start here'
+            echo '- Open `target/ripr/reports/pr-review-front-panel.md` first when it exists.'
+            echo '- Then open `target/ripr/reports/index.md` to navigate the uploaded artifact packet.'
+            echo '- Repair route: use the verify or agent command shown in the front panel or first useful action.'
+            echo '- Gate authority: `ripr gate evaluate` remains the pass/fail source only when `RIPR_GATE_MODE` is configured.'
             echo
             echo '### PR review summary'
             if [ -f target/ripr/reports/pr-review-front-panel.json ] || [ -f target/ripr/reports/pr-review-front-panel.md ]; then
@@ -1823,6 +1832,7 @@ jobs:
               fi
             else
               echo 'PR review summary was not generated. It runs when existing PR guidance, first-useful-action, assistant proof, health, ledger, baseline, gate, calibration, coverage/grip, or receipt artifacts are available.'
+              echo 'Regenerate command: `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md` (add other available inputs as needed).'
             fi
             echo
             echo '### Recommended next test'
@@ -1869,6 +1879,7 @@ jobs:
               fi
             else
               echo 'Recommended next test was not generated. It runs when existing PR guidance, assistant proof, ledger, baseline, receipt, gate, coverage/grip, or editor context artifacts are available.'
+              echo 'Regenerate command: `ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md` (add other available inputs as needed).'
             fi
             echo
             echo '### Top recommendation'
@@ -1937,6 +1948,7 @@ jobs:
               fi
             else
               echo 'Uploaded review artifacts summary was not generated. It runs when existing RIPR report, review, receipt, workflow, agent, pilot, or CI artifacts are available.'
+              echo 'Regenerate command: `ripr reports index --root . --reports-dir target/ripr/reports --review-dir target/ripr/review --receipts-dir target/ripr/receipts --workflow-dir target/ripr/workflow --agent-dir target/ripr/agent --pilot-dir target/ripr/pilot --ci-dir target/ci --out target/ripr/reports/index.json --out-md target/ripr/reports/index.md`.'
             fi
             echo
             echo '### PR evidence ledger'
@@ -6253,6 +6265,7 @@ mod tests {
             ],
             summary_sections: &[
                 "## RIPR advisory summary",
+                "### Start here",
                 "### PR review summary",
                 "#### PR review at a glance",
                 "### Recommended next test",
@@ -8612,6 +8625,7 @@ language = "rust"
         assert!(workflow.contains("title=$annotation_title"));
         assert!(workflow.contains("name: Add RIPR advisory summary"));
         assert!(workflow.contains("## RIPR advisory summary"));
+        assert!(workflow.contains("### Start here"));
         assert!(workflow.contains("### PR review summary"));
         assert!(workflow.contains("#### PR review at a glance"));
         assert!(workflow.contains("### Recommended next test"));
@@ -8790,6 +8804,49 @@ language = "rust"
         assert!(workflow.contains("if: env.RIPR_UPLOAD_SARIF == 'true'"));
         assert!(workflow.contains(
             "if: env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request'"
+        ));
+    }
+
+    #[test]
+    fn init_generated_github_workflow_names_cockpit_repair_commands() {
+        let workflow = generated_github_actions_workflow();
+
+        let first_action = workflow_step(&workflow, "Render RIPR first useful action");
+        assert!(first_action.contains(
+            "Regenerate command: `ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md`"
+        ));
+
+        let front_panel = workflow_step(&workflow, "Render RIPR PR review front panel");
+        assert!(front_panel.contains(
+            "Regenerate command: `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md`"
+        ));
+
+        let packet_index = workflow_step(&workflow, "Render RIPR report packet index");
+        assert!(packet_index.contains(
+            "Regenerate command: `ripr reports index --root . --reports-dir target/ripr/reports --review-dir target/ripr/review --receipts-dir target/ripr/receipts --workflow-dir target/ripr/workflow --agent-dir target/ripr/agent --pilot-dir target/ripr/pilot --ci-dir target/ci --out target/ripr/reports/index.json --out-md target/ripr/reports/index.md`."
+        ));
+
+        let summary = workflow_step(&workflow, "Add RIPR advisory summary");
+        assert!(summary.contains("### Start here"));
+        assert!(
+            summary.contains(
+                "Open `target/ripr/reports/pr-review-front-panel.md` first when it exists."
+            )
+        );
+        assert!(summary.contains(
+            "Then open `target/ripr/reports/index.md` to navigate the uploaded artifact packet."
+        ));
+        assert!(summary.contains(
+            "Gate authority: `ripr gate evaluate` remains the pass/fail source only when `RIPR_GATE_MODE` is configured."
+        ));
+        assert!(summary.contains(
+            "Regenerate command: `ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md`"
+        ));
+        assert!(summary.contains(
+            "Regenerate command: `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md`"
+        ));
+        assert!(summary.contains(
+            "Regenerate command: `ripr reports index --root . --reports-dir target/ripr/reports --review-dir target/ripr/review --receipts-dir target/ripr/receipts --workflow-dir target/ripr/workflow --agent-dir target/ripr/agent --pilot-dir target/ripr/pilot --ci-dir target/ci --out target/ripr/reports/index.json --out-md target/ripr/reports/index.md`."
         ));
     }
 

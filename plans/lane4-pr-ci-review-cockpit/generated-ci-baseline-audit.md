@@ -134,6 +134,7 @@ run mutation testing.
 
 It then appends reviewer-facing sections including:
 
+- `Start here`;
 - `PR review summary`;
 - `Recommended next test`;
 - `Top recommendation`;
@@ -172,11 +173,10 @@ The generator guards optional cockpit producers with explicit input checks:
 The summary also states when the PR review summary was not generated and names
 the classes of upstream artifacts that can enable it.
 
-Current gap:
-the missing-input messages identify the missing input class, but they do not
-yet consistently print the exact regeneration command for each missing
-artifact. RIPR-SPEC-0038 keeps that as a generated-summary improvement target
-when the command is known.
+Follow-up status:
+`ci/generated-summary-cockpit-contract` adds known regeneration commands for
+the first-useful-action, PR review front-panel, and report packet-index
+surfaces, and adds a `Start here` section to the generated job summary.
 
 ## Artifact Upload Baseline
 
@@ -227,7 +227,7 @@ TypeScript and Python evidence, or until the lane explicitly defers Python.
 
 | Gap | Next owner | Notes |
 | --- | --- | --- |
-| Summary wording and repair commands | `ci/generated-summary-cockpit-contract` | Add exact regeneration commands where known and decide whether the summary should literally say `Start here`. |
+| Summary wording and repair commands | `ci/generated-summary-cockpit-contract` | Done: generated summary starts with `Start here` and known missing-cockpit surfaces name regeneration commands. |
 | Preview language grouping | `ci/language-aware-grouping` | Still blocked on preview-language evidence readiness or explicit deferral. |
 | Dogfood receipts | `dogfood/lane4-cockpit-gap-receipts` | Add only remaining cockpit gap receipts; do not duplicate Campaign 24 or 25 receipts. |
 | Closeout | `docs/lane4-closeout` | Close after the remaining implemented or deferred gaps are documented. |
