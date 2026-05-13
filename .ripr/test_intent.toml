@@ -26,11 +26,11 @@ schema_version = 1
 # integration-contract pattern for the surface under test.
 
 [[test_intent]]
-test = "given_changed_side_effect_call_when_effect_method_is_called_then_flow_sink_is_call_effect"
+test = "given_changed_side_effect_call_when_event_is_published_then_flow_sink_is_event_call"
 path = "crates/ripr/src/analysis/classifier.rs"
 intent = "integration_contract"
 owner = "ripr"
-reason = "BDD-style integration test of classify_probe; setup builds a function fact via the function() helper and asserts the resulting flow-sink kind. The helper is not the system under test, so the analyzer's possibly_circular flag is conservative noise — this is the canonical shape for classifier integration tests."
+reason = "BDD-style integration test of classify_probe; setup builds a function fact via the function() helper and asserts the resulting event-call flow-sink kind. The helper is not the system under test, so the analyzer's possibly_circular flag is conservative noise — this is the canonical shape for classifier integration tests."
 
 [[test_intent]]
 test = "classifies_snapshot_mock_relational_smoke_and_unknown_oracles"
@@ -73,24 +73,3 @@ path = "xtask/src/main.rs"
 intent = "integration_contract"
 owner = "ripr"
 reason = "Meta-test of the test-efficiency classifier itself: it constructs sample test bodies that *should* be classified as likely_vacuous and possibly_circular, then asserts the classifier produces those classes. The setup intentionally mirrors the patterns the analyzer is detecting — circularity is the contract, not a bug."
-
-# --- 2 smoke: CLI smoke tests that pin the advisory-by-default exit-code
-# contract for the badge formats. The lack of stdout assertions is
-# intentional — the only thing being asserted is "exit code is 0 even when
-# the count is nonzero." Adding a stronger oracle would test something
-# different (the count rendering), which is already covered by the badge
-# renderer unit tests.
-
-[[test_intent]]
-test = "check_badge_plus_command_exits_zero_by_default_even_with_nonzero_count"
-path = "crates/ripr/tests/cli_smoke.rs"
-intent = "smoke"
-owner = "ripr"
-reason = "Pins the advisory-by-default exit-code contract for ripr check --format badge-plus-*: a nonzero badge count must NOT fail CI unless --fail-on-nonzero is passed. Smoke-only oracle is intentional — the count rendering is covered by the badge unit tests; this test only asserts the exit-code policy."
-
-[[test_intent]]
-test = "check_badge_command_exits_zero_even_with_nonzero_count"
-path = "crates/ripr/tests/cli_smoke.rs"
-intent = "smoke"
-owner = "ripr"
-reason = "Pins the advisory-by-default exit-code contract for ripr check --format badge-*. Same shape and rationale as check_badge_plus_command_exits_zero_by_default_even_with_nonzero_count — smoke-only oracle is intentional."
