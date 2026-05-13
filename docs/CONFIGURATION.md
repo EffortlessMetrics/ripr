@@ -611,7 +611,19 @@ Seam severities affect LSP seam diagnostics. Valid values are `off`, `info`,
 
 | Key | Type | Default | Effect |
 | --- | --- | --- | --- |
-| `enabled` | array of strings | `["rust"]` | Language adapters the analysis pipeline will dispatch to. Valid values: `rust`, `typescript`, `python`. Unknown values and duplicate entries are rejected. TypeScript and Python are preview adapters added in later Campaign 27 work items; including them now has no effect until those adapters ship. Per [RIPR-SPEC-0026](specs/RIPR-SPEC-0026-language-adapter-contract.md), Rust remains the reference adapter and the only adapter that may be `stable`. |
+| `enabled` | array of strings | `["rust"]` | Language adapters the analysis pipeline will dispatch to. Valid values: `rust`, `typescript`, `python`. Unknown values and duplicate entries are rejected. TypeScript covers `.ts`, `.tsx`, `.js`, and `.jsx`; Python covers `.py`. TypeScript and Python are opt-in preview adapters; Rust remains the reference adapter and the only adapter that may be `stable` per [RIPR-SPEC-0026](specs/RIPR-SPEC-0026-language-adapter-contract.md). |
+
+To evaluate preview languages, keep Rust enabled and add only the preview
+adapters the repo wants to inspect:
+
+```toml
+[languages]
+enabled = ["rust", "typescript", "python"]
+```
+
+See [Language adapter preview workflow](LANGUAGE_ADAPTER_PREVIEW.md) for how to
+read preview labels, static limits, generated-CI grouping, editor projection,
+and rollback.
 
 ### Worked example
 
@@ -669,6 +681,8 @@ LSP initializationOptions  >  ripr.toml  >  CheckInput::default()
 - [Editor extension](EDITOR_EXTENSION.md) and
   [Server provisioning](SERVER_PROVISIONING.md) — how VS Code launches and
   resolves the server.
+- [Language adapter preview workflow](LANGUAGE_ADAPTER_PREVIEW.md) — how to
+  enable and interpret opt-in TypeScript, JavaScript, and Python evidence.
 - [Roadmap](ROADMAP.md) and
   [Implementation plan](IMPLEMENTATION_PLAN.md) — when the `ripr.toml`
   loader and the bounded-graph keys are expected to land.

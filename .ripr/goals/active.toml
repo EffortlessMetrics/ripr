@@ -263,11 +263,11 @@ commands = [
 
 [[work_item]]
 id = "docs/language-adapter-preview-workflow"
-status = "ready"
+status = "done"
 branch = "docs-language-adapter-preview-workflow"
 stackable = false
 blocked_by = []
-acceptance = "Document enabling preview adapters, reading mixed-language reports, interpreting preview labels, the static-limit boundary, and rollback"
+acceptance = "Documented enabling preview adapters, reading mixed-language reports, interpreting preview labels, the static-limit boundary, generated-CI grouping, editor projection, and rollback in docs/LANGUAGE_ADAPTER_PREVIEW.md, with links from Quickstart, Configuration, Support Tiers, and the documentation index."
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
@@ -281,13 +281,19 @@ commands = [
 
 [[work_item]]
 id = "dogfood/language-adapter-preview-receipts"
-status = "blocked"
+status = "ready"
 branch = "dogfood-language-adapter-preview-receipts"
 stackable = false
-blocked_by = [
-  "docs/language-adapter-preview-workflow",
-]
+blocked_by = []
 acceptance = "Extend cargo xtask dogfood with checked TypeScript and Python preview receipts without changing analyzer behavior, default CI, or inline-comment defaults"
+commands = [
+  "cargo xtask dogfood",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-traceability",
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo xtask check-pr",
+]
 
 [[work_item]]
 id = "campaign/language-adapter-preview-closeout"

@@ -1250,10 +1250,11 @@ evidence = [
   "LSP hover renders preview language/status, syntax-first advisory boundary, and static-limit kind before RIPR evidence",
   "refresh logs and VS Code status surface preview finding and static-limit counts",
   "LSP analysis remains gated by [languages] through the existing adapter layer",
-  "Rust default saved-workspace cockpit behavior remains covered by LSP and VS Code extension tests"
+  "Rust default saved-workspace cockpit behavior remains covered by LSP and VS Code extension tests",
+  "docs/LANGUAGE_ADAPTER_PREVIEW.md documents the opt-in editor workflow and rollback"
 ]
 fixtures = []
-next = "docs/language-adapter-preview-workflow"
+next = "dogfood/language-adapter-preview-receipts"
 metric = "editor_preview_language_routing, editor_preview_static_limit_projection"
 
 [[capability]]
@@ -1268,10 +1269,11 @@ evidence = [
   "language groups summarize advisory artifact entries, preview-status counts, classifications, and static-limit kinds",
   "summary text keeps preview-language groups advisory and preserves ripr gate evaluate as configured pass/fail authority",
   "generated workflow tests pin the opt-in grouping guard and Rust-default boundary",
-  "CLI smoke tests pin the generated workflow section"
+  "CLI smoke tests pin the generated workflow section",
+  "docs/LANGUAGE_ADAPTER_PREVIEW.md documents generated-CI grouping and the gate-authority boundary"
 ]
 fixtures = []
-next = "docs/language-adapter-preview-workflow"
+next = "dogfood/language-adapter-preview-receipts"
 metric = "generated_pr_ci_language_groups, generated_pr_ci_preview_language_groups, generated_pr_ci_rust_default_unchanged, generated_pr_ci_advisory_summaries"
 
 [[capability]]
@@ -1309,7 +1311,8 @@ evidence = [
   "assertion/oracle fixtures cover exact value, broad error, broad boolean/type checks, unittest assertions, and mock call assertions",
   "probe fixtures cover predicate, return value, error path, field assignment, call arguments, and mock interaction shapes",
   "related-test fixtures cover direct owner calls, import-alias calls, same-stem proximity, and unrelated mention negatives",
-  "static-limit fixtures cover dynamic_dispatch, decorator_indirection, mocked_module, missing_import_graph, metaprogramming, and unsupported_syntax"
+  "static-limit fixtures cover dynamic_dispatch, decorator_indirection, mocked_module, missing_import_graph, metaprogramming, and unsupported_syntax",
+  "docs/LANGUAGE_ADAPTER_PREVIEW.md documents how to enable, read, and roll back Python preview evidence"
 ]
 fixtures = [
   "fixtures/python_boundary_gap",
@@ -1337,7 +1340,7 @@ fixtures = [
   "fixtures/python_metaprogramming_limit",
   "fixtures/python_unsupported_syntax_limit"
 ]
-next = "lsp/editor-language-routing"
+next = "dogfood/language-adapter-preview-receipts"
 metric = "language_adapter_python_findings_preview, language_adapter_python_static_limit_*"
 
 [[capability]]
