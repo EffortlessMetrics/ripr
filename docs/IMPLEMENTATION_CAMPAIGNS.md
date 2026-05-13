@@ -3284,7 +3284,7 @@ Work items:
 | `policy/promotion-packet-report` | done | `ripr policy promote --to ...` writes manual-review packets from policy operations and optional policy history without mutating config, baselines, suppressions, workflows, CI defaults, history, or preview eligibility. |
 | `spec/preview-evidence-promotion-packet` | done | RIPR-SPEC-0044 defines preview-language promotion packets with default `allowed_now = false`, explicit required/supplied/missing evidence accounting, advisory generated-CI posture, rollback guidance, and no actual promotion. |
 | `policy/preview-promotion-packet-report` | done | Added `ripr policy preview-promote --language ... --class ...` while preserving advisory preview defaults. |
-| `docs/policy-operator-workflow` | planned | Document readiness, operations, history, promotion packets, preview packets, manual config review, post-change monitoring, and hard boundaries for maintainers. |
+| `docs/policy-operator-workflow` | done | `docs/POLICY_OPERATIONS_WORKFLOW.md` documents readiness, operations, history, promotion packets, preview packets, manual config review, post-change monitoring, and hard boundaries for maintainers. |
 | `ci/policy-operations-advisory-projection` | planned | Generated CI may render, upload, index, and summarize policy operations artifacts as advisory-only packets without pass/fail authority, required checks, comment posting, baseline mutation, config mutation, or default blocking. |
 | `campaign/policy-operations-closeout` | planned | Close after operations, history, promotion packets, preview promotion packets, workflow, advisory CI projection, capability, metrics, traceability, and handoff surfaces exist. |
 

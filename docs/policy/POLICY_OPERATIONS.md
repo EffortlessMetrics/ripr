@@ -105,7 +105,7 @@ available spec IDs.
 | 7 | `policy/promotion-packet-report` | Implement `ripr policy promote --to ...` without mutating config. | done |
 | 8 | `spec/preview-evidence-promotion-packet` | Define the future preview-language promotion packet contract. | done |
 | 9 | `policy/preview-promotion-packet-report` | Implement `ripr policy preview-promote` with default `allowed_now = false`. | done |
-| 10 | `docs/policy-operator-workflow` | Document the maintainer workflow from readiness through promotion review. | planned |
+| 10 | `docs/policy-operator-workflow` | Document the maintainer workflow from readiness through promotion review. | done |
 | 11 | `ci/policy-operations-advisory-projection` | Surface policy operations artifacts in generated CI without pass/fail authority. | planned |
 | 12 | `campaign/policy-operations-closeout` | Close after operations, history, promotion, preview-promotion, workflow, CI projection, capability, metrics, traceability, and handoff surfaces exist. | planned |
 
@@ -201,6 +201,12 @@ default `allowed_now = false`, explicit required/supplied/missing evidence
 accounting, advisory generated-CI posture, rollback guidance, and no actual
 promotion, gate eligibility, RIPR Zero inclusion, calibrated confidence, CI
 blocking, or preview eligibility mutation.
+
+The maintainer workflow is documented in
+[Policy operations workflow](../POLICY_OPERATIONS_WORKFLOW.md). It explains how
+to run readiness, operations, history, promotion packets, and preview promotion
+packets before any manual config review, and how to monitor policy health after
+a reviewed change.
 
 ## Boundaries
 
