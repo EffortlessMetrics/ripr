@@ -197,7 +197,7 @@ evidence class, not by projection surface.
 | `docs/spec-static-runtime-confidence-expansion` | #878 | merged | Added RIPR-SPEC-0040 for runtime-fixtures-v3 confidence labels, imported-runtime sample expectations, ambiguous joins, runtime-only signals, static vocabulary boundaries, and no gate or mutation-execution changes. |
 | `calibration/runtime-fixtures-v3` | #881 | merged | Added checked runtime-fixtures-v3 corpus coverage for custom assertion helper outcomes, table-driven boundaries, builder overrides, cross-file constants, snapshot field discriminators, mock expectation mismatches, ambiguous joins, runtime-only signal, and no-runtime-data guards without analyzer, gate, PR/CI, LSP, provider, generated-test, mutation-execution, or score-definition changes. |
 | `report/evidence-quality-trend` | #885 | merged | Added repo-local trend reporting over current and previous scorecard or audit snapshots, including no-history unknowns, metric directions, and static-limitation category deltas without analyzer, gate, PR/CI, LSP, provider, generated-test, mutation-execution, or score-definition changes. |
-| `campaign/evidence-quality-leadership-closeout` | #893 | open | Closes the tracker after scorecard, benchmark corpus, static limitation taxonomy, oracle semantics, runtime-fixtures-v3, trend reporting, capability metadata, traceability, and the closeout handoff are in place. |
+| `campaign/evidence-quality-leadership-closeout` | #893 | merged | Closed the tracker after scorecard, benchmark corpus, static limitation taxonomy, oracle semantics, runtime-fixtures-v3, trend reporting, capability metadata, traceability, and the closeout handoff were in place. |
 
 ## Closeout Conditions
 
