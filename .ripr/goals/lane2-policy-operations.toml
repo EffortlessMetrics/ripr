@@ -153,7 +153,7 @@ commands = [
 
 [[work_item]]
 id = "policy/promotion-packet-report"
-status = "planned"
+status = "done"
 branch = "policy-promotion-packet-report"
 acceptance = "`ripr policy promote --to ...` writes policy-promotion packets from policy operations and optional policy history without mutating config, baselines, suppressions, workflows, branch protection, CI defaults, history, or preview eligibility."
 commands = [

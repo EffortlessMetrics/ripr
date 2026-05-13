@@ -102,7 +102,7 @@ available spec IDs.
 | 4 | `spec/policy-history-ledger` | Define the read-only policy history report and optional append-only input. | done |
 | 5 | `policy/history-report` | Implement `ripr policy history` as advisory trend reporting. | done |
 | 6 | `spec/policy-promotion-packets` | Define read-only promotion packets for stricter configured modes. | done |
-| 7 | `policy/promotion-packet-report` | Implement `ripr policy promote --to ...` without mutating config. | planned |
+| 7 | `policy/promotion-packet-report` | Implement `ripr policy promote --to ...` without mutating config. | done |
 | 8 | `spec/preview-evidence-promotion-packet` | Define the future preview-language promotion packet contract. | planned |
 | 9 | `policy/preview-promotion-packet-report` | Implement `ripr policy preview-promote` with default `allowed_now = false`. | planned |
 | 10 | `docs/policy-operator-workflow` | Document the maintainer workflow from readiness through promotion review. | planned |
@@ -176,6 +176,8 @@ The packet defines `allowed_now`, `why_or_why_not`, required repairs, required
 receipts, rollback path, and a manual-only example config change. It must not
 mutate `ripr.toml`, baselines, suppressions, workflows, branch protection,
 history ledgers, generated CI defaults, or preview-language eligibility.
+`ripr policy promote` now writes those JSON and Markdown packets from explicit
+policy operations and optional policy history inputs.
 
 ## Promotion Ceiling
 
