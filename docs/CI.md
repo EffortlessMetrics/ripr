@@ -1508,6 +1508,15 @@ safest current policy mode. It does not run a gate, change baseline state, post
 comments, create required checks, or add pass/fail authority beyond an
 explicitly configured `ripr gate evaluate`.
 
+When policy readiness exists, generated CI also writes and uploads
+`policy-operations.{json,md}`, `policy-history.{json,md}`,
+`policy-promotion-*.{json,md}`, and configured preview-language
+`preview-promotion-*.{json,md}` packets. These reports are advisory operator
+packets: they summarize the current policy ceiling, history trend, manual
+promotion readiness, and preview-promotion evidence gaps. They do not mutate
+`ripr.toml`, baselines, suppressions, workflows, branch protection, CI defaults,
+history ledgers, or preview-language eligibility.
+
 See [Test-oracle assistant proof report](TEST_ORACLE_ASSISTANT_PROOF_REPORT.md)
 for how to read the proof report, warnings, static movement, optional CI
 projection, and advisory limits.

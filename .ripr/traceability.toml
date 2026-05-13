@@ -2374,7 +2374,13 @@ outputs = [
   "docs/status/SUPPORT_TIERS.md",
   "docs/CAPABILITY_MATRIX.md",
   "docs/CI.md",
+  "docs/policy/POLICY_OPERATIONS.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  "CHANGELOG.md",
   "metrics/capabilities.toml",
+  ".ripr/goals/lane2-policy-operations.toml",
   ".ripr/goals/active.toml",
   "plans/lane4-pr-ci-review-cockpit/implementation-plan.md",
   ".ripr/traceability.toml",
@@ -2390,6 +2396,10 @@ metrics = [
   "generated_pr_ci_preview_language_groups",
   "generated_pr_ci_rust_default_unchanged",
   "generated_pr_ci_advisory_summaries",
+  "generated_pr_ci_policy_operations_artifacts",
+  "generated_pr_ci_policy_history_artifacts",
+  "generated_pr_ci_policy_promotion_artifacts",
+  "generated_pr_ci_preview_promotion_artifacts",
 ]
 
 [[behavior]]
@@ -2406,6 +2416,7 @@ tests = [
   "crates/ripr/src/output/policy_operations.rs::tests::policy_operations_json_and_markdown_are_structured",
   "crates/ripr/src/cli/commands.rs::tests::policy_operations_parses_option_surface",
   "crates/ripr/src/cli/commands.rs::tests::policy_operations_command_writes_reports",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_matches_smoke_fixture",
 ]
 fixtures = [
 ]
@@ -2420,6 +2431,7 @@ outputs = [
   "docs/specs/RIPR-SPEC-0039-policy-operations-report.md",
   "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/CI.md",
   "docs/policy/POLICY_OPERATIONS.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
@@ -2511,6 +2523,7 @@ tests = [
   "crates/ripr/src/output/policy_history.rs::tests::policy_history_json_and_markdown_are_structured",
   "crates/ripr/src/cli/commands.rs::tests::policy_history_parses_option_surface",
   "crates/ripr/src/cli/commands.rs::tests::policy_history_command_writes_reports",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_matches_smoke_fixture",
 ]
 fixtures = [
 ]
@@ -2525,6 +2538,7 @@ outputs = [
   "docs/specs/RIPR-SPEC-0041-policy-history-ledger.md",
   "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/CI.md",
   "docs/policy/POLICY_OPERATIONS.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
@@ -2561,6 +2575,7 @@ tests = [
   "crates/ripr/src/output/policy_promotion.rs::tests::promotion_json_and_markdown_are_structured",
   "crates/ripr/src/cli/commands.rs::tests::policy_promotion_parses_option_surface",
   "crates/ripr/src/cli/commands.rs::tests::policy_promotion_command_writes_reports",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_matches_smoke_fixture",
 ]
 fixtures = [
 ]
@@ -2575,6 +2590,7 @@ outputs = [
   "docs/specs/RIPR-SPEC-0042-policy-promotion-packets.md",
   "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/CI.md",
   "docs/policy/POLICY_OPERATIONS.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
@@ -2651,6 +2667,7 @@ tests = [
   "crates/ripr/src/output/policy_preview_promotion.rs::tests::preview_promotion_default_paths_use_dash_class_label",
   "crates/ripr/src/cli/commands.rs::tests::policy_preview_promotion_parses_option_surface",
   "crates/ripr/src/cli/commands.rs::tests::policy_preview_promotion_command_writes_reports",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_matches_smoke_fixture",
 ]
 fixtures = [
 ]
@@ -2663,6 +2680,7 @@ outputs = [
   "docs/specs/RIPR-SPEC-0044-preview-evidence-promotion-packet.md",
   "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/CI.md",
   "docs/policy/POLICY_OPERATIONS.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
