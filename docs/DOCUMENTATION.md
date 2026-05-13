@@ -80,6 +80,7 @@ Current reference docs:
 - [Static exposure model](STATIC_EXPOSURE_MODEL.md)
 - [Configuration](CONFIGURATION.md)
 - [Badge policy](BADGE_POLICY.md)
+- [Verification](VERIFICATION.md)
 - [Defaults-first adoption](specs/RIPR-SPEC-0009-defaults-first-adoption.md)
 - [Spec-test-code traceability](SPEC_TEST_CODE.md)
 - [Spec format](SPEC_FORMAT.md)

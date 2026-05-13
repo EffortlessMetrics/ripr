@@ -419,9 +419,10 @@ covered_by = []
 
 [[allow]]
 glob = "badges/*.json"
-kind = "badge_endpoint"
-owner = "repo-policy"
-surface = "brand"
+kind = "generated_badge_endpoint"
+owner = "release/ci"
+surface = "docs"
 classification = "generated"
-reason = "Repo-scoped Shields endpoint JSON committed under main; refreshed by `cargo xtask update-badge-endpoints`. v1 dogfood self-hosted endpoint per docs/BADGE_POLICY.md and deferred/hosted-badge-service."
-covered_by = ["cargo xtask check-badge-endpoints", "cargo xtask update-badge-endpoints"]
+reason = "Generated Shields endpoint JSON for public README badges."
+generated_by = "cargo xtask badges"
+covered_by = ["cargo xtask badges --check", "cargo xtask check-badge-endpoints"]

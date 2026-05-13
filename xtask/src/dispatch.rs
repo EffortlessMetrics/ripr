@@ -40,6 +40,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::SarifPolicy(args) => super::reports::sarif_policy(&args),
         XtaskCommand::UpdateBadgeEndpoints => super::reports::update_badge_endpoints(),
         XtaskCommand::CheckBadgeEndpoints => super::reports::check_badge_endpoints(),
+        XtaskCommand::Badges(args) => super::badges_impl(&args),
         XtaskCommand::Dogfood => super::reports::dogfood(),
         XtaskCommand::Critic => super::reports::critic(),
         XtaskCommand::Goals(args) => super::goals(&args),

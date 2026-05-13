@@ -690,12 +690,13 @@ https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Effortless
 Refreshing the committed files is one xtask command:
 
 ```bash
-cargo xtask update-badge-endpoints
+cargo xtask badges
 ```
 
 That regenerates `target/ripr/reports/repo-ripr-{badge,plus-badge}-shields.json`
 via `repo_badge_artifacts()` and copies the two Shields projections
-into `badges/`. Commit the resulting diff.
+into `badges/`. Commit the resulting diff. `cargo xtask update-badge-endpoints`
+remains a compatibility alias.
 
 #### Pinned contract for the endpoint
 
@@ -708,8 +709,9 @@ into `badges/`. Commit the resulting diff.
 - Diff-scoped artifacts (`ripr-badge-shields.json`,
   `ripr-plus-badge-shields.json`) stay in per-PR step summaries and
   CI artifact uploads — never linked from public docs.
-- `cargo xtask check-badge-endpoints` verifies the committed files
-  against a fresh `repo-badge-artifacts` run. It is **not** wired into
+- `cargo xtask badges --check` verifies the committed files
+  against a fresh `repo-badge-artifacts` run. `cargo xtask check-badge-endpoints`
+  remains a compatibility alias. It is **not** wired into
   the default CI gate set in v1: the headline drifts whenever
   production code or tests change, and requiring every PR to also
   refresh `badges/` would be too much friction before the count

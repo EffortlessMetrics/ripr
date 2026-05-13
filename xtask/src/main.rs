@@ -50,6 +50,7 @@ struct FilePolicyAllowEntry {
     surface: Option<String>,
     classification: Option<String>,
     reason: Option<String>,
+    generated_by: Option<String>,
     covered_by: Option<Vec<String>>,
 }
 
@@ -14304,6 +14305,10 @@ fn normalize_report_path(path: &str) -> String {
 }
 
 pub(crate) fn repo_badge_artifacts_impl() -> Result<(), String> {
+    with_repo_root_cwd(repo_badge_artifacts_impl_at_repo_root)
+}
+
+fn repo_badge_artifacts_impl_at_repo_root() -> Result<(), String> {
     let badge_dir = Path::new("target").join("ripr");
     fs::create_dir_all(&badge_dir).map_err(|err| {
         format!(
@@ -14320,8 +14325,7 @@ pub(crate) fn repo_badge_artifacts_impl() -> Result<(), String> {
     let mut ripr_plus_native_json = String::new();
 
     for job in repo_badge_artifact_jobs() {
-        let args = repo_badge_artifact_command_args(job.format);
-        let output = run_output_owned("cargo", &args)?;
+        let output = run_repo_badge_artifact_command(job.format)?;
         write_report(job.output_file, &output)?;
         match badge_artifact_native_slot(job.format) {
             Some(BadgeNativeSlot::Ripr) => ripr_native_json = output,
@@ -14356,6 +14360,10 @@ fn repo_badge_artifact_jobs() -> Vec<BadgeArtifactJob> {
 }
 
 fn repo_badge_artifact_command_args(format: &str) -> Vec<String> {
+    repo_badge_artifact_command_args_for_root(format, ".")
+}
+
+fn repo_badge_artifact_command_args_for_root(format: &str, root: &str) -> Vec<String> {
     // Intentionally omits any `--diff` / `--base` argument: repo scope must
     // not consult `git diff origin/main...HEAD`. The regression test
     // `repo_badge_artifact_command_args_does_not_use_git_diff` pins this
@@ -14368,10 +14376,53 @@ fn repo_badge_artifact_command_args(format: &str) -> Vec<String> {
         "--".to_string(),
         "check".to_string(),
         "--root".to_string(),
-        ".".to_string(),
+        root.to_string(),
         "--format".to_string(),
         format.to_string(),
     ]
+}
+
+fn run_repo_badge_artifact_command(format: &str) -> Result<String, String> {
+    if let Some(ripr_bin) = std::env::var_os("RIPR_BIN") {
+        let program = ripr_bin.to_string_lossy().into_owned();
+        let args = vec![
+            "check".to_string(),
+            "--root".to_string(),
+            repo_root()?.to_string_lossy().into_owned(),
+            "--format".to_string(),
+            format.to_string(),
+        ];
+        return run_output_owned(&program, &args);
+    }
+
+    let args = repo_badge_artifact_command_args(format);
+    run_output_owned("cargo", &args)
+}
+
+fn with_repo_root_cwd<T>(run: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    let original = std::env::current_dir().map_err(|err| {
+        format!("failed to read current directory before repo-root command: {err}")
+    })?;
+    let root = repo_root()?;
+    std::env::set_current_dir(&root).map_err(|err| {
+        format!(
+            "failed to enter repo root {} before repo-root command: {err}",
+            root.display()
+        )
+    })?;
+    let result = run();
+    let restore = std::env::set_current_dir(&original).map_err(|err| {
+        format!(
+            "failed to restore original directory {} after repo-root command: {err}",
+            original.display()
+        )
+    });
+    match (result, restore) {
+        (Ok(value), Ok(())) => Ok(value),
+        (Err(err), Ok(())) => Err(err),
+        (Ok(_), Err(err)) => Err(err),
+        (Err(run_err), Err(restore_err)) => Err(format!("{run_err}; additionally, {restore_err}")),
+    }
 }
 
 fn repo_badge_artifacts_summary_markdown(
@@ -14416,7 +14467,16 @@ const BADGE_ENDPOINT_FILES: &[(&str, &str)] = &[
 /// reflect the latest repo-scoped state.
 pub(crate) fn update_badge_endpoints_impl() -> Result<(), String> {
     repo_badge_artifacts()?;
-    copy_badge_endpoints_from_reports(Path::new("target/ripr/reports"), Path::new("."))
+    let root = repo_root()?;
+    copy_badge_endpoints_from_reports(&root.join("target/ripr/reports"), &root)
+}
+
+pub(crate) fn badges_impl(args: &[String]) -> Result<(), String> {
+    match args {
+        [] => update_badge_endpoints_impl(),
+        [flag] if flag == "--check" => check_badge_endpoints_impl(),
+        _ => Err("usage: cargo xtask badges [--check]".to_string()),
+    }
 }
 
 /// Pure file-copy half of `update_badge_endpoints` — separated so the
@@ -14502,8 +14562,8 @@ fn badge_endpoint_violation(
 /// closeouts and after material analyzer changes.
 pub(crate) fn check_badge_endpoints_impl() -> Result<(), String> {
     repo_badge_artifacts()?;
-    let violations =
-        compute_badge_endpoint_violations(Path::new("target/ripr/reports"), Path::new("."))?;
+    let root = repo_root()?;
+    let violations = compute_badge_endpoint_violations(&root.join("target/ripr/reports"), &root)?;
     finish_policy_report(
         PolicyReportSpec {
             report_file: "badge-endpoints.md",
@@ -21981,6 +22041,9 @@ fn parse_file_policy_allowlist(path: &str) -> Result<Vec<FilePolicyAllowEntry>, 
                 current.classification = Some(parse_string_value(value, path, line_number)?)
             }
             "reason" => current.reason = Some(parse_string_value(value, path, line_number)?),
+            "generated_by" => {
+                current.generated_by = Some(parse_string_value(value, path, line_number)?)
+            }
             "covered_by" => {
                 let value = collect_toml_array_value(path, line_number, value, &lines, &mut idx)?;
                 current.covered_by = Some(parse_inline_array(&value)?);
@@ -25549,8 +25612,9 @@ mod tests {
         read_lsp_cockpit_json_value, read_mutation_input_json, receipt_json, receipt_specs,
         receipt_status_from_reports, render_no_panic_allowlist_proposals_markdown,
         render_no_panic_allowlist_proposals_toml, repo_badge_artifact_command_args,
-        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
-        repo_exposure_latency_json, repo_exposure_latency_markdown, repo_exposure_latency_run,
+        repo_badge_artifact_command_args_for_root, repo_badge_artifact_jobs,
+        repo_badge_artifacts_summary_markdown, repo_exposure_latency_json,
+        repo_exposure_latency_markdown, repo_exposure_latency_run,
         repo_exposure_latency_run_from_output, repo_exposure_latency_status,
         repo_exposure_latency_trace, repo_root, repo_seam_inventory_command_args_for_root,
         report_index_markdown, report_index_missing_expected, report_status_from_text,
@@ -33187,6 +33251,24 @@ stackable = true
     }
 
     #[test]
+    fn repo_badge_artifact_command_args_for_root_uses_explicit_root() {
+        let args =
+            repo_badge_artifact_command_args_for_root("repo-badge-plus-shields", "/tmp/work");
+        let root_flag = args
+            .iter()
+            .position(|arg| arg == "--root")
+            .expect("repo badge args must include --root");
+        assert_eq!(
+            args.get(root_flag + 1).map(String::as_str),
+            Some("/tmp/work")
+        );
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some("repo-badge-plus-shields")
+        );
+    }
+
+    #[test]
     fn repo_badge_artifact_command_args_does_not_use_git_diff() -> Result<(), String> {
         // Load-bearing regression: repo-scope artifacts MUST NOT depend on
         // `git diff origin/main...HEAD`. On `main`, that diff is empty, so a
@@ -34286,6 +34368,14 @@ jobs:
             XtaskCommand::VscodePackage
         );
         assert_eq!(
+            XtaskCommand::parse(["badges".to_string()]),
+            XtaskCommand::Badges(Vec::new())
+        );
+        assert_eq!(
+            XtaskCommand::parse(["badges".to_string(), "--check".to_string()]),
+            XtaskCommand::Badges(vec!["--check".to_string()])
+        );
+        assert_eq!(
             XtaskCommand::parse(std::iter::empty::<String>()),
             XtaskCommand::Help
         );
@@ -34514,6 +34604,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(commands.contains(&"targeted-test-outcome --before <path> --after <path>"));
         assert!(commands.contains(&"mutation-calibration [root] --mutants-json <path>"));
         assert!(commands.contains(&"sarif-policy --current <path> [--baseline <path>]"));
+        assert!(commands.contains(&"badges [--check]"));
         assert!(commands.contains(&"check-droid-review-config"));
         assert!(commands.contains(&"check-ci-lane-whitelist"));
         assert!(commands.contains(&"vscode-compile"));
