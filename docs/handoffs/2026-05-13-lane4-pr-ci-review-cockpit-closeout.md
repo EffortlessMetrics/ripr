@@ -54,12 +54,15 @@ make summaries into gates.
 
 ## Deferred Work
 
-Language-aware grouping did not ship in this lane closeout. It remains
-deferred until preview adapters provide enough TypeScript and Python evidence,
-or until the lane explicitly defers Python and accepts a narrower grouping
-slice. Rust-default generated CI behavior remains unchanged.
+Language-aware grouping did not ship in the original Lane 4 closeout. At that
+time, it remained deferred until preview adapters provided enough TypeScript and
+Python evidence, or until the lane explicitly deferred Python and accepted a
+narrower grouping slice.
 
-The deferred work item remains recorded as:
+That follow-up landed in Campaign 27. The generated CI summary now groups
+TypeScript and Python preview evidence only when `[languages]` enables those
+preview adapters; Rust-default generated CI behavior and gate authority remain
+unchanged. The historical deferred work item was:
 
 ```text
 ci/language-aware-grouping
@@ -96,6 +99,8 @@ cargo xtask check-output-contracts
 - `docs/handoffs/2026-05-13-generated-ci-cockpit-receipts.md`
 - `plans/lane4-pr-ci-review-cockpit/generated-ci-gap-map.md`
 - `plans/lane4-pr-ci-review-cockpit/generated-ci-baseline-audit.md`
+- `docs/handoffs/2026-05-13-campaign-27-closeout.md`
+- `docs/handoffs/2026-05-13-language-adapter-preview-receipts.md`
 - `.ripr/goals/lane4-pr-ci-review-cockpit.toml`
 
 ## Next Lane Handoff
@@ -105,8 +110,10 @@ depending on unfinished Lane 4 doctrine. Use the merged Lane 4 artifacts as
 proof that proposal/spec/plan/manifest/receipt/closeout roles are now encoded
 for PR/CI review surfaces.
 
-If a future operator resumes Lane 4 instead, the only remaining implementation
-slice is language-aware grouping after preview-language readiness is explicit.
+The previously remaining language-aware grouping slice was resolved by Campaign
+27 after preview-language readiness became explicit. Future Lane 4 work should
+open a new scoped proposal or spec instead of treating this closeout as an open
+implementation queue.
 
 ## What Not To Do
 
