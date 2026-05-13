@@ -202,14 +202,14 @@ commands = [
 
 [[work_item]]
 id = "analysis/python-preview-adapter"
-status = "active"
+status = "done"
 branch = "analysis-python-preview-adapter"
 stackable = false
 blocked_by = [
   "config/languages-opt-in",
   "adr/python-parser-substrate",
 ]
-acceptance = "Add the Python syntax-first adapter, the Python fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Scaffold sub-slice mirrors the TypeScript scaffold (PR #759): adds the `rustpython-parser` Cargo dependency approved by the corrected ADR 0009, the `PythonAdapter` type, language-aware pipeline dispatch through `[languages] enabled`, and a real production parse-validation use of `rustpython-parser`. To avoid an LGPL-3.0-only transitive (`malachite-bigint`), the dependency disables default features and selects `num-bigint` (MIT/Apache-2.0) for Python int-literal representation. Owner/test sub-slice adds syntax-first `def` / `async def` / method owner facts, pytest and unittest test discovery, preview `owner_kind` output, and Python owner/test fixture families. Assertion/oracle sub-slice adds syntax-first pytest, unittest, boolean, broad-error, and mock-call oracle facts plus fixture families. Probe-shape sub-slice adds syntax-first predicate, return-value, error-path, field-assignment, call, and mock-initializer probe families plus fixture coverage. Related-test sub-slice adds direct-call, import-alias, same-stem, and unrelated-mention fixtures with conservative weak proximity behavior. Static-limit sub-slice adds structured `dynamic_dispatch`, `decorator_indirection`, `mocked_module`, `missing_import_graph`, `metaprogramming`, and `unsupported_syntax` facts plus fixture coverage while preserving strong related-test classifications. Remaining follow-up is the Python preview fixture/corpus completion pass and projection readiness audit before editor or CI consumes the evidence."
+acceptance = "Add the Python syntax-first adapter, the Python fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Scaffold sub-slice mirrors the TypeScript scaffold (PR #759): adds the `rustpython-parser` Cargo dependency approved by the corrected ADR 0009, the `PythonAdapter` type, language-aware pipeline dispatch through `[languages] enabled`, and a real production parse-validation use of `rustpython-parser`. To avoid an LGPL-3.0-only transitive (`malachite-bigint`), the dependency disables default features and selects `num-bigint` (MIT/Apache-2.0) for Python int-literal representation. Owner/test sub-slice adds syntax-first `def` / `async def` / method owner facts, pytest and unittest test discovery, preview `owner_kind` output, and Python owner/test fixture families. Assertion/oracle sub-slice adds syntax-first pytest, unittest, boolean, broad-error, and mock-call oracle facts plus fixture families. Probe-shape sub-slice adds syntax-first predicate, return-value, error-path, field-assignment, call, and mock-initializer probe families plus fixture coverage. Related-test sub-slice adds direct-call, import-alias, same-stem, and unrelated-mention fixtures with conservative weak proximity behavior. Static-limit sub-slice adds structured `dynamic_dispatch`, `decorator_indirection`, `mocked_module`, `missing_import_graph`, `metaprogramming`, and `unsupported_syntax` facts plus fixture coverage while preserving strong related-test classifications. Final corpus-completion audit records that owner/test/assertion/probe/related-test/static-limit Python preview facts are fixture-backed and editor-projectable; downstream editor and CI projection remain separate work items."
 commands = [
   "cargo check -p ripr",
   "cargo test -p ripr --lib analysis::language",
@@ -225,13 +225,10 @@ commands = [
 
 [[work_item]]
 id = "lsp/editor-language-routing"
-status = "blocked"
+status = "ready"
 branch = "lsp-editor-language-routing"
 stackable = false
-blocked_by = [
-  "analysis/typescript-editor-readiness",
-  "analysis/python-preview-adapter",
-]
+blocked_by = []
 acceptance = "Extend the VS Code extension to register the TypeScript, TypeScript React, JavaScript, JavaScript React, and Python selectors, and route saved-workspace diagnostics through the adapter layer only when repo config enables that language. Preserve Rust saved-workspace defaults for diagnostics, hover, actions, and status. Preview findings must be visibly labeled preview, hover/status must surface explicit static limits before suggested action language, and wrong-root/stale/malformed artifacts must still fail closed. No analyzer behavior, source edits, generated tests, provider calls, mutation execution, policy/gate/default-blocking behavior, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays."
 commands = [
   "cargo test -p ripr lsp --lib",
@@ -254,8 +251,7 @@ status = "blocked"
 branch = "ci-language-aware-grouping"
 stackable = false
 blocked_by = [
-  "analysis/typescript-preview-adapter",
-  "analysis/python-preview-adapter",
+  "lsp/editor-language-routing",
 ]
 acceptance = "Update generated GitHub CI summaries to group advisory output by language only when [languages] declares more than Rust, keeping Rust-default behavior identical and gate authority unchanged"
 
