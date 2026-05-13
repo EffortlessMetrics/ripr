@@ -36,10 +36,15 @@ between plain wording and the internal model.
 | CI user | Run `ripr init --ci github` once or copy the workflow from [CI strategy](CI.md). | A non-blocking RIPR advisory summary plus uploaded pilot, workflow, agent, report, and review artifacts. |
 | CLI user | Run `ripr pilot --root .`. | The top actionable test gap, why it matters, and before/after commands under `target/ripr/pilot`. |
 | Agent or reviewer | Run `ripr agent status --root .`. | Existing artifact state, the selected change when recoverable, and the next command to run. |
+| Preview language evaluator | Enable TypeScript, JavaScript, or Python in `[languages]`, then run the normal CLI, editor, or CI path. | Preview-labeled, syntax-first advisory evidence with static limits kept visible. |
 
 `ripr.toml` is optional. `ripr init` materializes repo-local policy when a team
 wants to review, version, and tune it. It is not activation, and it is not
 required for first value.
+
+For opt-in TypeScript, JavaScript, and Python evidence, see
+[Language adapter preview workflow](LANGUAGE_ADAPTER_PREVIEW.md). Rust remains
+the default and preview languages stay advisory.
 
 ## VS Code First Hour
 
@@ -282,4 +287,6 @@ RIPR findings.
   loop.
 - [Configuration](CONFIGURATION.md) for `ripr.toml`, modes, severities, and
   editor settings.
+- [Language adapter preview workflow](LANGUAGE_ADAPTER_PREVIEW.md) for opt-in
+  TypeScript, JavaScript, and Python evidence.
 - [Output schema](OUTPUT_SCHEMA.md) for JSON contracts.

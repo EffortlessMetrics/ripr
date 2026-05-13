@@ -1,0 +1,22 @@
+{
+  "actions": [
+    {
+      "arguments": [
+        {
+          "finding_id": "probe:src_totals.py:4:python_preview",
+          "line": 4,
+          "probe_id": "probe:src_totals.py:4:python_preview",
+          "uri": "src/totals.py"
+        }
+      ],
+      "command": "ripr.copyContext",
+      "title": "Inspect finding: copy context packet"
+    },
+    {
+      "arguments": [],
+      "command": "ripr.refresh",
+      "title": "Refresh Analysis - Saved Workspace Check"
+    }
+  ],
+  "fixture": "python_missing_import_graph_limit"
+}

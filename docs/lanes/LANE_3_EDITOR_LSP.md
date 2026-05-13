@@ -438,7 +438,9 @@ Maintenance audit evidence from 2026-05-12:
   provider calls, mutation execution, gate semantics, default blocking,
   CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays.
 
-Objective audit status from 2026-05-13: not complete, blocked upstream.
+Objective audit status from 2026-05-13: routing is implemented and preview
+projection proof is being pinned before closeout. Do not mark the lane complete
+until the preview editor workflow docs and closeout evidence land.
 
 | Requirement | Current artifact or command | Audit status |
 | --- | --- | --- |
@@ -450,7 +452,7 @@ Objective audit status from 2026-05-13: not complete, blocked upstream.
 | Python preview adapter exists with editor-projectable preview metadata and static limits | `.ripr/goals/active.toml`, #804, Python owner/test/assertion/probe/related-test/static-limit fixtures | Complete for current Campaign 27 routing readiness; preview output is opt-in, labeled, fixture-backed, and uses structured `static_limit_kind` values |
 | `lsp/editor-language-routing` is ready or selected | `cargo xtask goals next`, `.ripr/goals/active.toml` | Ready; `analysis/python-preview-adapter` is done and the next work item preserves Rust defaults before adding preview selectors |
 | Preview selectors for TypeScript, TSX, JavaScript, JSX, and Python are opt-in and preserve Rust defaults | `editors/vscode/package.json`, `editors/vscode/src/client.ts` | Implemented in the routing slice; LSP analysis remains gated by `[languages]` |
-| Preview diagnostics, hover, status, and actions visibly label preview evidence and static limits | LSP diagnostic data, hover markdown, status refresh logs, existing cockpit actions | Implemented for diagnostic metadata, hover boundary text, and status preview/static-limit counts; actions keep the existing cockpit model |
+| Preview diagnostics, hover, status, and actions visibly label preview evidence and static limits | LSP diagnostic data, hover markdown, status refresh logs, existing cockpit actions, `fixtures/python_missing_import_graph_limit`, `fixtures/typescript_mocked_module_limit`, `fixtures/python_disabled`, `cargo xtask lsp-cockpit-report` | Implemented for diagnostic metadata, hover boundary text, status preview/static-limit counts, bounded finding actions, and disabled-preview no-diagnostic behavior; actions keep the existing cockpit model |
 | No editor hidden analysis reruns, source edits, generated tests, provider calls, mutation execution, gate semantics, default blocking, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays | Lane 3 Scope, Non-Goals, and Cross-Lane Rules in this tracker | Current tracker preserves the boundary; future routing must re-audit it |
 
 ## Lane 3 Document Model
@@ -561,6 +563,12 @@ Planned PR path:
    - Add explicit `rust_default`, `typescript_preview`, `python_preview`,
      `mixed_language_opt_in`, and `preview_disabled` editor fixtures.
    - Pin diagnostics, hover, code actions, status, and static-limit artifacts.
+   - Current fixture proof pins the same editor projection contract through the
+     existing preview fixtures `python_missing_import_graph_limit`,
+     `typescript_mocked_module_limit`, and `python_disabled` so
+     `lsp-cockpit-report` covers preview diagnostics, hover ordering, bounded
+     actions, status, static limits, and disabled-preview no-diagnostic
+     behavior before final closeout.
 13. `test(vscode): smoke preview saved-workspace routing`
    - Prove the packaged extension path for Rust default behavior, opt-in
      TypeScript/Python preview diagnostics, hover preview/static-limit text,
