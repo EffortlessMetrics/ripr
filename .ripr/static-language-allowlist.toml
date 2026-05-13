@@ -89,6 +89,16 @@ owner = "product"
 reason = "Checked calibration fixture report contains runtime vocabulary imported from supplied cargo-mutants data."
 
 [[allow]]
+path = "fixtures/boundary_gap/calibration/runtime-fixtures-v3/mutation-calibration.json"
+owner = "product"
+reason = "Checked calibration fixture report contains runtime vocabulary imported from supplied cargo-mutants data."
+
+[[allow]]
+path = "fixtures/boundary_gap/calibration/runtime-fixtures-v3/mutation-calibration.md"
+owner = "product"
+reason = "Checked calibration fixture report contains runtime vocabulary imported from supplied cargo-mutants data."
+
+[[allow]]
 glob = "docs/*.md"
 owner = "docs"
 reason = "Top-level reference documentation may describe static-language policy, badge vocabulary, specs, and calibration caveats."

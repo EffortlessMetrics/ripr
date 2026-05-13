@@ -139,6 +139,13 @@ Planned scope:
   equality assertions no longer overclaim exact-value grip. Benchmark guards
   now pin those must-not-claim cases without changing gates, CI behavior,
   mutation execution, generated tests, provider calls, or score definitions.
+- Added checked `runtime-fixtures-v3` calibration reports for Lane 1
+  static/runtime confidence expansion classes: custom assertion helper
+  outcomes, table-driven boundaries, builder overrides, cross-file constants,
+  snapshot field discriminators, and mock expectation mismatches. The fixture
+  pins matched joins, ambiguous joins, runtime-only signal, and no-runtime-data
+  guards without changing analyzer behavior, gates, CI behavior, mutation
+  execution, generated tests, provider calls, or score definitions.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 

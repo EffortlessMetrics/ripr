@@ -370,6 +370,7 @@ tests = [
   "crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_writes_json_when_requested",
   "crates/ripr/tests/cli_smoke.rs::calibration_runtime_fixture_matches_checked_reports",
   "crates/ripr/tests/cli_smoke.rs::calibration_runtime_fixture_v2_matches_checked_reports",
+  "crates/ripr/tests/cli_smoke.rs::calibration_runtime_fixture_v3_matches_checked_reports",
   "xtask/src/main.rs::mutation_calibration_args_parse_root_and_input_paths",
   "xtask/src/main.rs::mutation_calibration_imports_static_seams_and_runtime_outcomes",
   "xtask/src/main.rs::mutation_calibration_merges_mutants_and_outcomes_by_mutant_id",
@@ -384,7 +385,8 @@ tests = [
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/boundary_gap/calibration/runtime-fixtures-v1",
-  "fixtures/boundary_gap/calibration/runtime-fixtures-v2"
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v2",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v3"
 ]
 code = [
   "crates/ripr/src/cli/command.rs",
@@ -402,7 +404,9 @@ outputs = [
   "fixtures/boundary_gap/calibration/runtime-fixtures-v1/mutation-calibration.json",
   "fixtures/boundary_gap/calibration/runtime-fixtures-v1/mutation-calibration.md",
   "fixtures/boundary_gap/calibration/runtime-fixtures-v2/mutation-calibration.json",
-  "fixtures/boundary_gap/calibration/runtime-fixtures-v2/mutation-calibration.md"
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v2/mutation-calibration.md",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v3/mutation-calibration.json",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v3/mutation-calibration.md"
 ]
 metrics = [
   "static_seams_total",
@@ -2364,16 +2368,30 @@ id = "RIPR-SPEC-0040"
 name = "Static/runtime confidence expansion"
 spec = "docs/specs/RIPR-SPEC-0040-static-runtime-confidence-expansion.md"
 tests = [
+  "crates/ripr/tests/cli_smoke.rs::calibration_runtime_fixture_v3_matches_checked_reports",
 ]
 fixtures = [
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v3",
 ]
 code = [
+  "crates/ripr/src/output/mutation_calibration.rs",
+  "crates/ripr/tests/cli_smoke.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0040-static-runtime-confidence-expansion.md",
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0002-lane-1-evidence-quality-leadership.md",
   "docs/lanes/LANE_1_EVIDENCE_QUALITY_LEADERSHIP.md",
+  "fixtures/CALIBRATION_CORPUS.md",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v3/README.md",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v3/repo-exposure.json",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v3/runtime-mutants.json",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v3/mutation-calibration.json",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v3/mutation-calibration.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+  ".ripr/static-language-allowlist.toml",
+  "CHANGELOG.md",
   ".ripr/traceability.toml",
 ]
 metrics = [

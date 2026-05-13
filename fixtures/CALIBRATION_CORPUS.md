@@ -61,6 +61,7 @@ mutation testing.
 | Boundary gap after targeted test | `fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json` | `fixtures/boundary_gap/calibration/runtime-mutants.json` | `cargo xtask mutation-calibration . --mutants-json fixtures/boundary_gap/calibration/runtime-mutants.json --repo-exposure-json fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json` |
 | Runtime agreement buckets v1 | `fixtures/boundary_gap/calibration/runtime-fixtures-v1/repo-exposure.json` | `fixtures/boundary_gap/calibration/runtime-fixtures-v1/runtime-mutants.json` | `cargo xtask mutation-calibration . --mutants-json fixtures/boundary_gap/calibration/runtime-fixtures-v1/runtime-mutants.json --repo-exposure-json fixtures/boundary_gap/calibration/runtime-fixtures-v1/repo-exposure.json` |
 | Runtime observer classes v2 | `fixtures/boundary_gap/calibration/runtime-fixtures-v2/repo-exposure.json` | `fixtures/boundary_gap/calibration/runtime-fixtures-v2/runtime-mutants.json` | `cargo xtask mutation-calibration . --mutants-json fixtures/boundary_gap/calibration/runtime-fixtures-v2/runtime-mutants.json --repo-exposure-json fixtures/boundary_gap/calibration/runtime-fixtures-v2/repo-exposure.json` |
+| Runtime confidence expansion v3 | `fixtures/boundary_gap/calibration/runtime-fixtures-v3/repo-exposure.json` | `fixtures/boundary_gap/calibration/runtime-fixtures-v3/runtime-mutants.json` | `cargo xtask mutation-calibration . --mutants-json fixtures/boundary_gap/calibration/runtime-fixtures-v3/runtime-mutants.json --repo-exposure-json fixtures/boundary_gap/calibration/runtime-fixtures-v3/repo-exposure.json` |
 
 The boundary-gap runtime sample imports one `caught` outcome for seam
 `67fc764ba37d77bd`. It exists to exercise the calibration report path and to
@@ -101,11 +102,27 @@ creating a static gap. The checked
 `runtime-fixtures-v2/mutation-calibration.{json,md}` reports are verified by
 `crates/ripr/tests/cli_smoke.rs::calibration_runtime_fixture_v2_matches_checked_reports`.
 
+The `runtime-fixtures-v3` sample adds checked imported-runtime coverage for the
+Lane 1 static/runtime confidence expansion classes defined by RIPR-SPEC-0040:
+
+- `custom_assertion_helper`
+- table-driven boundary outcomes
+- builder override outcomes
+- cross-file constant boundary outcomes
+- snapshot field-discriminator outcomes
+- mock expectation mismatch outcomes
+
+It pins matched `seam_id` joins, `ambiguous_runtime_join`, `runtime_only_signal`,
+and `no_runtime_data` cases. The checked
+`runtime-fixtures-v3/mutation-calibration.{json,md}` reports are verified by
+`crates/ripr/tests/cli_smoke.rs::calibration_runtime_fixture_v3_matches_checked_reports`.
+
 ## Missing Runtime Calibration Artifacts
 
 Runtime mutation calibration can still add narrower scenario-specific samples
-when a future evidence class needs them. The first observer-class expansion is
-now checked by `runtime-fixtures-v2`.
+when a future evidence class needs them. The observer-class expansion is
+checked by `runtime-fixtures-v2`, and the first static/runtime confidence
+expansion is checked by `runtime-fixtures-v3`.
 
 | Planned case | Purpose | Status |
 | --- | --- | --- |
@@ -113,6 +130,12 @@ now checked by `runtime-fixtures-v2`.
 | `side_effect_observer` | Compare static side-effect evidence with a runtime signal. | Covered by `runtime-fixtures-v2`. |
 | `opaque_dynamic_dispatch` | Keep static limitations explicit when runtime data sees behavior behind dynamic dispatch. | Covered by `runtime-fixtures-v2`. |
 | `weak_snapshot_oracle` | Compare broad snapshot evidence with runtime mutation data without changing static language. | Covered by `runtime-fixtures-v2`. |
+| `custom_assertion_helper_outcomes` | Compare checked custom assertion helper samples with imported runtime outcomes. | Covered by `runtime-fixtures-v3`. |
+| `table_driven_boundary_outcomes` | Compare table-driven equality-boundary evidence with imported runtime outcomes. | Covered by `runtime-fixtures-v3`. |
+| `builder_override_outcomes` | Compare builder override evidence with imported runtime outcomes. | Covered by `runtime-fixtures-v3`. |
+| `cross_file_constant_boundary_outcomes` | Keep cross-file constant gaps visible when no runtime data joins. | Covered by `runtime-fixtures-v3`. |
+| `snapshot_field_discriminator_outcomes` | Compare snapshot field-discriminator evidence with imported runtime outcomes. | Covered by `runtime-fixtures-v3`. |
+| `mock_expectation_mismatch_outcomes` | Compare mock expectation mismatch evidence with imported runtime outcomes. | Covered by `runtime-fixtures-v3`. |
 
 Runtime artifacts should be tiny, deterministic samples checked in only after
 their source and update command are documented. They should feed

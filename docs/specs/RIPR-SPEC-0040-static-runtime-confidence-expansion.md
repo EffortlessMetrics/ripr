@@ -174,7 +174,14 @@ promote custom assertion helpers globally.
 
 ## Test Mapping
 
-Planned tests:
+Current tests:
+
+- `crates/ripr/tests/cli_smoke.rs::calibration_runtime_fixture_v3_matches_checked_reports`
+  pins the checked runtime-fixtures-v3 corpus against the public calibration
+  renderer, including matched joins, ambiguous joins, runtime-only signal, and
+  no-runtime-data cases.
+
+Planned focused tests:
 
 - `mutation_calibration_runtime_fixtures_v3_custom_helper_outcomes`
   pins joined custom assertion helper outcome labels.
@@ -197,6 +204,12 @@ Existing mutation calibration tests from RIPR-SPEC-0006 continue to pin the
 base report contract, advisory posture, join methods, and confidence labels.
 
 ## Implementation Mapping
+
+Current fixture corpus:
+
+- `fixtures/boundary_gap/calibration/runtime-fixtures-v3/` contains checked
+  imported runtime inputs, expected calibration JSON and Markdown, and
+  case-level claims and must-not-claim guards.
 
 Planned implementation:
 
