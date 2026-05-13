@@ -13,8 +13,8 @@
       "confidence": 0.40,
       "probe": {
         "id": "probe:src_notify.py:2:python_preview",
-        "family": "predicate",
-        "delta": "control",
+        "family": "side_effect",
+        "delta": "effect",
         "file": "src/notify.py",
         "line": 2,
         "expression": "    callback(\"receipt.sent\", order_id)"
@@ -29,7 +29,7 @@
       "evidence_path": ["reach yes: 1 related Python test(s) found for owner `send_receipt`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Strongest extracted Python oracle kind: `mock_expectation` (rank 4)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "related test tests/test_notify.py:6 test_send_receipt_notifies_callback uses medium mock expectation oracle: callback.assert_called_once_with(\"receipt.sent\", \"ord-123\")"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: send_receipt", "owner_kind: function", "test_framework: pytest (test_send_receipt_notifies_callback)", "test_oracle: mock_expectation medium (test_send_receipt_notifies_callback)"],
+      "evidence": ["owner: send_receipt", "owner_kind: function", "test_framework: pytest (test_send_receipt_notifies_callback)", "related_test_relation: syntactic_call (test_send_receipt_notifies_callback)", "test_oracle: mock_expectation medium (test_send_receipt_notifies_callback)"],
       "missing": ["Related Python test reaches `send_receipt` but the strongest extracted oracle is `mock_expectation`; add or verify an exact-value assertion to make the preview finding stronger."],
       "activation": {
         "observed_values": [

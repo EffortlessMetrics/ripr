@@ -10,8 +10,8 @@ Changed
   after:      callback("receipt.sent", order_id)
 
 Probe
-  family: predicate
-  delta:  control
+  family: side_effect
+  delta:  effect
 
 Language
   language: python

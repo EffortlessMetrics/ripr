@@ -158,6 +158,16 @@ Planned scope:
   taxonomy, oracle-semantics audit fix, runtime-fixtures-v3, evidence-quality
   trend reporting, class-scoped capability metadata, traceability links, and
   future evidence-class boundary without changing `.ripr/goals/active.toml`.
+- Opened the Lane 1 User-Visible Output Evidence tracker and proposal for
+  presentation/help/report/table text evidence. The new lane keeps PR/CI
+  rendering, LSP/editor polish, gates, generated tests, provider calls,
+  mutation execution, and score definitions out of scope while defining the
+  path toward visibility, observer, actionability, canonical grouping, and
+  static-limitation evidence for changed presentation text.
+- Added RIPR-SPEC-0043 for presentation text evidence. The spec defines planned
+  Lane 1 behavior for visibility, observer shape, actionability, declaration
+  plus literal grouping, static limitation categories, and must-not-claim guards
+  before analyzer behavior changes begin.
 - Added a Lane 1 evidence-quality benchmark case for presentation text
   constants, pinning the claim boundary for changed help/label text: visibility
   and actionability must be explicit, declaration and literal lines should

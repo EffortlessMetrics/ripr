@@ -1,0 +1,36 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_field_assignment_shape/input
+
+Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+
+INFO src/invoice.py:6
+
+Changed
+  after:          self.status = "paid"
+
+Probe
+  family: field_construction
+  delta:  value
+
+Language
+  language: python
+  status: preview
+  owner kind: method
+
+Static exposure
+  exposed (info, confidence 0.60)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `mark_paid`
+  - infection unknown: Python preview adapter does not yet model infection.
+  - propagation unknown: Python preview adapter does not yet model propagation.
+  - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
+  - discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - related test tests/test_invoice.py:4 test_mark_paid_sets_status uses strong exact value oracle: assert invoice.status == "paid"
+
+Weakness
+  - Related Python test reaches `mark_paid` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
+
+Next step
+  Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.

@@ -10,10 +10,11 @@
 //! - pytest `test_*` functions, parametrized pytest tests, and
 //!   `unittest.TestCase.test_*` methods;
 //! - pytest, unittest, and mock assertion/oracle facts;
-//! - related-test references by simple syntactic call/name matching.
+//! - related-test references by direct calls, import-alias calls, and
+//!   conservative same-stem proximity.
 //!
-//! Richer probe families, import-graph matching, static limits, editor routing,
-//! generated tests, runtime execution, and provider calls remain out of scope.
+//! Import-graph matching, static limits, editor routing, generated tests,
+//! runtime execution, and provider calls remain out of scope.
 //! Strong exact-value assertions can produce `exposed`; weaker or unknown
 //! related-test oracles produce `weakly_exposed`; missing related tests produce
 //! `no_static_path`.
@@ -57,9 +58,16 @@ struct PythonTest {
     file: PathBuf,
     line: usize,
     body_text: String,
+    imports: Vec<PythonImport>,
     parametrized: bool,
     framework: &'static str,
     assertions: Vec<PythonAssertion>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PythonImport {
+    imported: String,
+    alias: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -226,7 +234,8 @@ fn extract_tests(file: &Path, source: &str) -> Vec<PythonTest> {
         return Vec::new();
     };
     let mut tests = Vec::new();
-    collect_tests_from_statements(file, source, &module.body, false, &mut tests);
+    let imports = collect_imports_from_statements(&module.body);
+    collect_tests_from_statements(file, source, &module.body, false, &imports, &mut tests);
     tests
 }
 
@@ -235,6 +244,7 @@ fn collect_tests_from_statements(
     source: &str,
     statements: &[Stmt],
     in_unittest_class: bool,
+    imports: &[PythonImport],
     out: &mut Vec<PythonTest>,
 ) {
     for stmt in statements {
@@ -245,6 +255,7 @@ fn collect_tests_from_statements(
                     file: file.to_path_buf(),
                     line: line_for_range_start(source, function.range),
                     body_text: text_for_range(source, function.range),
+                    imports: imports.to_vec(),
                     parametrized: is_parametrized(&function.decorator_list),
                     framework: if in_unittest_class {
                         "unittest"
@@ -260,6 +271,7 @@ fn collect_tests_from_statements(
                     file: file.to_path_buf(),
                     line: line_for_range_start(source, function.range),
                     body_text: text_for_range(source, function.range),
+                    imports: imports.to_vec(),
                     parametrized: is_parametrized(&function.decorator_list),
                     framework: if in_unittest_class {
                         "unittest"
@@ -275,12 +287,49 @@ fn collect_tests_from_statements(
                     source,
                     &class.body,
                     is_unittest_class(class) || in_unittest_class,
+                    imports,
                     out,
                 );
             }
             _ => {}
         }
     }
+}
+
+fn collect_imports_from_statements(statements: &[Stmt]) -> Vec<PythonImport> {
+    let mut imports = Vec::new();
+    for stmt in statements {
+        match stmt {
+            Stmt::Import(import) => {
+                for alias in &import.names {
+                    let imported = alias.name.to_string();
+                    imports.push(PythonImport {
+                        alias: alias
+                            .asname
+                            .as_ref()
+                            .map(|name| name.to_string())
+                            .unwrap_or_else(|| imported.clone()),
+                        imported,
+                    });
+                }
+            }
+            Stmt::ImportFrom(import) => {
+                for alias in &import.names {
+                    let imported = alias.name.to_string();
+                    imports.push(PythonImport {
+                        alias: alias
+                            .asname
+                            .as_ref()
+                            .map(|name| name.to_string())
+                            .unwrap_or_else(|| imported.clone()),
+                        imported,
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+    imports
 }
 
 fn is_parametrized(decorators: &[Expr]) -> bool {
@@ -464,19 +513,88 @@ fn oracle_for_call(call: &ast::ExprCall) -> Option<(OracleKind, OracleStrength)>
     }
 }
 
-fn find_related_tests(owner: &PythonOwner, all_tests: &[PythonTest]) -> Vec<RelatedTest> {
-    all_tests
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PythonRelationKind {
+    SyntacticCall,
+    ImportAliasCall,
+    SameStem,
+}
+
+impl PythonRelationKind {
+    fn rank(self) -> u8 {
+        match self {
+            Self::SyntacticCall => 3,
+            Self::ImportAliasCall => 2,
+            Self::SameStem => 1,
+        }
+    }
+
+    fn uses_oracle(self) -> bool {
+        matches!(self, Self::SyntacticCall | Self::ImportAliasCall)
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::SyntacticCall => "syntactic_call",
+            Self::ImportAliasCall => "import_alias_call",
+            Self::SameStem => "same_stem",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PythonRelatedCandidate<'a> {
+    test: &'a PythonTest,
+    relation: PythonRelationKind,
+}
+
+fn related_test_candidates<'a>(
+    owner: &PythonOwner,
+    all_tests: &'a [PythonTest],
+) -> Vec<PythonRelatedCandidate<'a>> {
+    let mut candidates: Vec<PythonRelatedCandidate<'a>> = all_tests
         .iter()
-        .filter(|test| test_references_owner(test, owner))
-        .map(|test| {
-            let strongest = strongest_assertion(&test.assertions);
+        .filter_map(|test| {
+            related_test_relation(test, owner)
+                .map(|relation| PythonRelatedCandidate { test, relation })
+        })
+        .collect();
+    candidates.sort_by(|left, right| {
+        right
+            .relation
+            .rank()
+            .cmp(&left.relation.rank())
+            .then_with(|| {
+                let left_rank = strongest_assertion(&left.test.assertions)
+                    .map(|assertion| assertion.oracle_strength.rank())
+                    .unwrap_or(0);
+                let right_rank = strongest_assertion(&right.test.assertions)
+                    .map(|assertion| assertion.oracle_strength.rank())
+                    .unwrap_or(0);
+                right_rank.cmp(&left_rank)
+            })
+            .then_with(|| left.test.file.cmp(&right.test.file))
+            .then_with(|| left.test.name.cmp(&right.test.name))
+    });
+    candidates
+}
+
+fn find_related_tests(owner: &PythonOwner, all_tests: &[PythonTest]) -> Vec<RelatedTest> {
+    related_test_candidates(owner, all_tests)
+        .into_iter()
+        .map(|candidate| {
+            let strongest = candidate
+                .relation
+                .uses_oracle()
+                .then(|| strongest_assertion(&candidate.test.assertions))
+                .flatten();
             let (oracle_kind, oracle_strength, oracle) = match strongest {
                 Some(assertion) => (
                     assertion.oracle_kind.clone(),
                     assertion.oracle_strength.clone(),
                     Some(assertion.text.clone()),
                 ),
-                None if test.parametrized => (
+                None if candidate.relation.uses_oracle() && candidate.test.parametrized => (
                     OracleKind::Unknown,
                     OracleStrength::Unknown,
                     Some("pytest.mark.parametrize".to_string()),
@@ -484,9 +602,9 @@ fn find_related_tests(owner: &PythonOwner, all_tests: &[PythonTest]) -> Vec<Rela
                 None => (OracleKind::Unknown, OracleStrength::Unknown, None),
             };
             RelatedTest {
-                name: test.name.clone(),
-                file: test.file.clone(),
-                line: test.line,
+                name: candidate.test.name.clone(),
+                file: candidate.test.file.clone(),
+                line: candidate.test.line,
                 oracle,
                 oracle_kind,
                 oracle_strength,
@@ -501,27 +619,118 @@ fn strongest_assertion(assertions: &[PythonAssertion]) -> Option<&PythonAssertio
         .max_by_key(|assertion| assertion.oracle_strength.rank())
 }
 
-fn test_references_owner(test: &PythonTest, owner: &PythonOwner) -> bool {
+fn related_test_relation(test: &PythonTest, owner: &PythonOwner) -> Option<PythonRelationKind> {
+    if body_calls_owner(&test.body_text, owner) {
+        return Some(PythonRelationKind::SyntacticCall);
+    }
+    if import_alias_calls_owner(test, owner) {
+        return Some(PythonRelationKind::ImportAliasCall);
+    }
+    if same_stem_related(test, owner) {
+        return Some(PythonRelationKind::SameStem);
+    }
+    None
+}
+
+fn body_calls_owner(body_text: &str, owner: &PythonOwner) -> bool {
     let direct_call = format!("{}(", owner.name);
     let method_call = format!(".{}(", owner.name);
     let qualified_call = format!("{}(", owner.qualified_name);
-    test.body_text.contains(&direct_call)
-        || test.body_text.contains(&method_call)
-        || test.body_text.contains(&qualified_call)
+    body_text.contains(&direct_call)
+        || body_text.contains(&method_call)
+        || body_text.contains(&qualified_call)
+}
+
+fn import_alias_calls_owner(test: &PythonTest, owner: &PythonOwner) -> bool {
+    test.imports.iter().any(|import| {
+        import.imported == owner.name
+            && import.alias != owner.name
+            && test.body_text.contains(&format!("{}(", import.alias))
+    })
+}
+
+fn same_stem_related(test: &PythonTest, owner: &PythonOwner) -> bool {
+    let Some(owner_stem) = owner.file.file_stem().and_then(|stem| stem.to_str()) else {
+        return false;
+    };
+    let Some(test_stem) = test.file.file_stem().and_then(|stem| stem.to_str()) else {
+        return false;
+    };
+    normalize_test_stem(test_stem) == owner_stem
+}
+
+fn normalize_test_stem(stem: &str) -> &str {
+    stem.strip_prefix("test_")
+        .or_else(|| stem.strip_suffix("_test"))
+        .unwrap_or(stem)
 }
 
 fn classify_probe_shape(line_text: &str) -> (ProbeFamily, DeltaKind) {
     let trimmed = line_text.trim_start();
-    if trimmed.starts_with("if ") || trimmed.starts_with("elif ") {
+    if (trimmed.contains(" if ") && trimmed.contains(" else "))
+        || trimmed.starts_with("if ")
+        || trimmed.starts_with("elif ")
+        || trimmed.starts_with("while ")
+        || trimmed.starts_with("for ")
+        || trimmed.starts_with("match ")
+        || trimmed.starts_with("case ")
+    {
         return (ProbeFamily::Predicate, DeltaKind::Control);
+    }
+    if trimmed.starts_with("raise ")
+        || trimmed == "raise"
+        || trimmed.starts_with("try:")
+        || trimmed.starts_with("except ")
+        || trimmed.starts_with("except* ")
+        || trimmed.starts_with("finally:")
+        || (trimmed.starts_with("with ") && trimmed.contains("raises("))
+    {
+        return (ProbeFamily::ErrorPath, DeltaKind::Control);
     }
     if trimmed.starts_with("return ") || trimmed == "return" {
         return (ProbeFamily::ReturnValue, DeltaKind::Value);
     }
-    if trimmed.starts_with("raise ") || trimmed == "raise" {
-        return (ProbeFamily::ErrorPath, DeltaKind::Control);
+    if contains_mock_initializer(trimmed) {
+        return (ProbeFamily::SideEffect, DeltaKind::Effect);
+    }
+    if let Some(eq_idx) = trimmed.find('=')
+        && !trimmed.contains("==")
+        && !trimmed.contains("!=")
+        && !trimmed.contains(">=")
+        && !trimmed.contains("<=")
+    {
+        let lhs = trimmed[..eq_idx].trim();
+        if lhs.contains('.')
+            && lhs.chars().all(|ch| {
+                ch.is_ascii_alphanumeric() || ch == '_' || ch == '.' || ch == '[' || ch == ']'
+            })
+        {
+            return (ProbeFamily::FieldConstruction, DeltaKind::Value);
+        }
+        let rhs = trimmed[eq_idx + 1..].trim();
+        if looks_like_call_expression(rhs) {
+            return (ProbeFamily::SideEffect, DeltaKind::Effect);
+        }
+    }
+    let call_candidate = trimmed.strip_prefix("await ").unwrap_or(trimmed).trim_end();
+    if looks_like_call_expression(call_candidate)
+        && !call_candidate.starts_with("assert ")
+        && !call_candidate.starts_with("def ")
+        && !call_candidate.starts_with("class ")
+        && !call_candidate.starts_with("with ")
+    {
+        return (ProbeFamily::SideEffect, DeltaKind::Effect);
     }
     (ProbeFamily::Predicate, DeltaKind::Control)
+}
+
+fn contains_mock_initializer(text: &str) -> bool {
+    text.contains("Mock(") || text.contains("MagicMock(")
+}
+
+fn looks_like_call_expression(text: &str) -> bool {
+    let text = text.trim_end_matches(';').trim_end();
+    text.contains('(') && text.ends_with(')')
 }
 
 fn classify_change(
@@ -665,15 +874,20 @@ fn classify_change(
     if !owner.decorators.is_empty() {
         evidence.push(format!("owner_decorators: {}", owner.decorators.join(", ")));
     }
-    for test in all_tests
-        .iter()
-        .filter(|test| test_references_owner(test, owner))
-    {
+    for candidate in related_test_candidates(owner, all_tests) {
+        let test = candidate.test;
         evidence.push(format!(
             "test_framework: {} ({})",
             test.framework, test.name
         ));
-        if let Some(assertion) = strongest_assertion(&test.assertions) {
+        evidence.push(format!(
+            "related_test_relation: {} ({})",
+            candidate.relation.as_str(),
+            test.name
+        ));
+        if candidate.relation.uses_oracle()
+            && let Some(assertion) = strongest_assertion(&test.assertions)
+        {
             evidence.push(format!(
                 "test_oracle: {} {} ({})",
                 assertion.oracle_kind.as_str(),
@@ -966,6 +1180,34 @@ class PriceTests(unittest.TestCase):
     }
 
     #[test]
+    fn extract_tests_records_module_import_aliases() {
+        let tests = extract_tests(
+            Path::new("tests/test_imports.py"),
+            r#"
+import src.catalog as catalog
+from src.tax import apply_fee, apply_tax as taxed
+
+def test_imports():
+    assert catalog.calculate_total(10) == 17
+    assert taxed(10) == 12
+"#,
+        );
+
+        assert_eq!(
+            tests[0]
+                .imports
+                .iter()
+                .map(|import| (import.imported.as_str(), import.alias.as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("src.catalog", "catalog"),
+                ("apply_fee", "apply_fee"),
+                ("apply_tax", "taxed")
+            ]
+        );
+    }
+
+    #[test]
     fn extract_tests_collects_pytest_assertion_oracles() {
         let tests = extract_tests(
             Path::new("tests/test_pricing.py"),
@@ -1084,6 +1326,48 @@ def test_notifies_callback():
     }
 
     #[test]
+    fn classify_probe_shape_recognizes_python_predicate_shapes() {
+        let (family, delta) = classify_probe_shape("    if amount >= threshold:");
+        assert_eq!(family, ProbeFamily::Predicate);
+        assert_eq!(delta, DeltaKind::Control);
+
+        let (family, delta) =
+            classify_probe_shape("    label = \"high\" if amount >= threshold else \"normal\"");
+        assert_eq!(family, ProbeFamily::Predicate);
+        assert_eq!(delta, DeltaKind::Control);
+    }
+
+    #[test]
+    fn classify_probe_shape_recognizes_python_return_and_error_shapes() {
+        let (family, delta) = classify_probe_shape("    return amount - 10");
+        assert_eq!(family, ProbeFamily::ReturnValue);
+        assert_eq!(delta, DeltaKind::Value);
+
+        let (family, delta) = classify_probe_shape("    raise ValueError(\"bad\")");
+        assert_eq!(family, ProbeFamily::ErrorPath);
+        assert_eq!(delta, DeltaKind::Control);
+
+        let (family, delta) = classify_probe_shape("    except ValueError:");
+        assert_eq!(family, ProbeFamily::ErrorPath);
+        assert_eq!(delta, DeltaKind::Control);
+    }
+
+    #[test]
+    fn classify_probe_shape_recognizes_python_field_and_call_shapes() {
+        let (family, delta) = classify_probe_shape("    self.status = \"paid\"");
+        assert_eq!(family, ProbeFamily::FieldConstruction);
+        assert_eq!(delta, DeltaKind::Value);
+
+        let (family, delta) = classify_probe_shape("    notifier(\"receipt.sent\", order_id)");
+        assert_eq!(family, ProbeFamily::SideEffect);
+        assert_eq!(delta, DeltaKind::Effect);
+
+        let (family, delta) = classify_probe_shape("    callback = MagicMock(name=\"receipt\")");
+        assert_eq!(family, ProbeFamily::SideEffect);
+        assert_eq!(delta, DeltaKind::Effect);
+    }
+
+    #[test]
     fn classify_change_returns_exposed_when_related_test_has_strong_oracle() -> Result<(), String> {
         let owners = extract_owners(
             Path::new("src/pricing.py"),
@@ -1148,6 +1432,104 @@ def test_notifies_callback():
     }
 
     #[test]
+    fn find_related_tests_matches_import_alias_call() {
+        let owners = extract_owners(
+            Path::new("src/pricing.py"),
+            "def apply_discount(amount):\n    return amount - 10\n",
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_alias_pricing.py"),
+            "from src.pricing import apply_discount as discount\n\ndef test_discount_alias():\n    assert discount(100) == 90\n",
+        );
+
+        let related = find_related_tests(&owners[0], &tests);
+
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].name, "test_discount_alias");
+        assert_eq!(related[0].oracle_kind, OracleKind::ExactValue);
+        assert_eq!(related[0].oracle_strength, OracleStrength::Strong);
+    }
+
+    #[test]
+    fn classify_change_uses_import_alias_call_as_strong_relation() -> Result<(), String> {
+        let owners = extract_owners(
+            Path::new("src/tax.py"),
+            "def apply_tax(amount):\n    return amount + 2\n",
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_checkout_tax.py"),
+            "from src.tax import apply_tax as taxed\n\ndef test_checkout_tax_alias_import():\n    assert taxed(10) == 12\n",
+        );
+
+        let Some(finding) = classify_change(
+            Path::new("src/tax.py"),
+            2,
+            "    return amount + 2",
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed line inside owner should classify".to_string());
+        };
+
+        assert_eq!(finding.class, ExposureClass::Exposed);
+        assert!(finding.evidence.iter().any(|entry| entry
+            == "related_test_relation: import_alias_call (test_checkout_tax_alias_import)"));
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_uses_same_stem_test_as_weak_proximity() -> Result<(), String> {
+        let owners = extract_owners(
+            Path::new("src/pricing.py"),
+            "def apply_discount(amount):\n    return amount - 10\n",
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_pricing.py"),
+            "def test_boundary_documented_elsewhere():\n    assert 90 == 90\n",
+        );
+
+        let Some(finding) = classify_change(
+            Path::new("src/pricing.py"),
+            2,
+            "    return amount - 10",
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed line inside owner should classify".to_string());
+        };
+
+        assert_eq!(finding.class, ExposureClass::WeaklyExposed);
+        assert_eq!(finding.related_tests.len(), 1);
+        assert_eq!(finding.related_tests[0].oracle_kind, OracleKind::Unknown);
+        assert!(finding.evidence.iter().any(|entry| entry
+            == "related_test_relation: same_stem (test_boundary_documented_elsewhere)"));
+        Ok(())
+    }
+
+    #[test]
+    fn same_stem_relation_accepts_suffix_and_orders_after_direct_calls() {
+        let owners = extract_owners(
+            Path::new("src/pricing.py"),
+            "def apply_discount(amount):\n    return amount - 10\n",
+        );
+        let mut tests = extract_tests(
+            Path::new("tests/pricing_test.py"),
+            "def test_same_stem_only():\n    assert 90 == 90\n",
+        );
+        tests.extend(extract_tests(
+            Path::new("tests/test_checkout.py"),
+            "def test_direct_call():\n    assert apply_discount(100) == 90\n",
+        ));
+
+        let related = related_test_candidates(&owners[0], &tests);
+
+        assert_eq!(normalize_test_stem("pricing_test"), "pricing");
+        assert_eq!(related.len(), 2);
+        assert_eq!(related[0].relation, PythonRelationKind::SyntacticCall);
+        assert_eq!(related[1].relation, PythonRelationKind::SameStem);
+    }
+
+    #[test]
     fn classify_change_returns_no_static_path_without_related_test() -> Result<(), String> {
         let owners = extract_owners(
             Path::new("src/pricing.py"),
@@ -1170,6 +1552,32 @@ def test_notifies_callback():
 
         assert_eq!(finding.class, ExposureClass::NoStaticPath);
         assert_eq!(finding.owner_kind, Some(OwnerKind::Function));
+        assert!(finding.related_tests.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_ignores_unrelated_text_mentions() -> Result<(), String> {
+        let owners = extract_owners(
+            Path::new("src/pricing.py"),
+            "def apply_discount(amount):\n    return amount - 10\n",
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_docs.py"),
+            "def test_docs_mentions_owner():\n    assert \"apply_discount\" in \"apply_discount\"\n",
+        );
+
+        let Some(finding) = classify_change(
+            Path::new("src/pricing.py"),
+            2,
+            "    return amount - 10",
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed line inside owner should classify".to_string());
+        };
+
+        assert_eq!(finding.class, ExposureClass::NoStaticPath);
         assert!(finding.related_tests.is_empty());
         Ok(())
     }

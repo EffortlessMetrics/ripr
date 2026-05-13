@@ -2968,7 +2968,7 @@ Work items:
 | `analysis/typescript-preview-adapter` | done | Add the TypeScript/JavaScript syntax-first adapter, the TypeScript fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Scaffold sub-slice landed `oxc_parser`, the `TypeScriptAdapter` struct, and language-aware dispatch through `[languages] enabled`. Owner+test sub-slice (#777) added top-level function-declaration + `test()`/`it()` extraction, related-test matching by name reference, a minimal `WeaklyExposed`/`NoStaticPath` classifier, and `fixtures/typescript_boundary_gap/`. Assertion-shape extraction (#781 closes #767) refined the gradient to `Exposed`/`WeaklyExposed`/`NoStaticPath` via `toBe`/`toEqual`/`toThrow` plus async `.resolves`/`.rejects`. Probe-shape classification (#784 closes #768) replaced the placeholder `Predicate`/`Control` default with syntax-first `ProbeFamily`/`DeltaKind` per changed line, with `fixtures/typescript_return_value_shape/`. Mocked-module static-limit reporting (#791 closes #769) surfaces `vi.mock(...)`/`jest.mock(...)` via `evidence`/`missing` text without downgrading classification, with `fixtures/typescript_mocked_module_limit/`. Together these slices establish the first useful TypeScript preview loop end-to-end. Remaining preview polish — structured `static_limit_kind` field, additional limit kinds, arrow-function const owners, class methods — is intentionally deferred to follow-up issues and is not on the Campaign 27 critical path. Targets 0.6.0. |
 | `analysis/typescript-editor-readiness` | done | Resolved the TypeScript preview gaps that made editor projection unsafe before `lsp/editor-language-routing` can consume TypeScript evidence: #779 human output visibly labels preview TypeScript evidence, #780 owner matching is file-scoped before line-range matching, #782 broad `toThrow()` remains weak broad-error evidence, #785 awaited `Promise.reject(...)` classifies as error-path preview evidence, and #786 fixture/golden evidence covers every TypeScript probe family currently emitted by the preview adapter. Landed without VS Code selector, LSP routing, source edit, generated test, provider, mutation execution, gate, or default-blocking behavior changes. |
 | `adr/python-parser-substrate` | done | Pin the Python parser-substrate decision before any Cargo dependency or adapter code lands, mirroring how ADR 0008 (`oxc_parser`) was sequenced ahead of the TypeScript scaffold. Landed via #794 (closes #770) — adds `docs/adr/0009-python-parser-substrate.md`, registers it in `docs/adr/README.md`, and adds the approved-decision comment to `policy/dependency_allowlist.txt`. ADR 0009 was superseded in-place by a follow-up correction PR after discovering the originally-picked `ruff_python_parser` is `publish = false` in the astral-sh/ruff workspace and unavailable on crates.io; the corrected pick is `rustpython-parser`, the documented natural fallback already named under the ADR's Revisit Criteria. No Cargo dependency, no adapter code, no behavior change. |
-| `analysis/python-preview-adapter` | active | Add the Python syntax-first adapter, the Python fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Scaffold sub-slice mirrors the TypeScript scaffold (PR #759): adds the `rustpython-parser` Cargo dependency approved by the corrected ADR 0009, the `PythonAdapter` type, language-aware pipeline dispatch through `[languages] enabled`, and a real production parse-validation use of `rustpython-parser`. To avoid an LGPL-3.0-only transitive (`malachite-bigint`), the dependency disables default features and selects `num-bigint` (MIT/Apache-2.0) for Python int-literal representation. Owner/test sub-slice adds syntax-first `def` / `async def` / method owner facts, pytest and unittest test discovery, preview `owner_kind` output, and Python owner/test fixture families. Assertion/oracle sub-slice adds syntax-first pytest, unittest, boolean, broad-error, and mock-call oracle facts plus fixture families. Richer probe, related-test ranking, and static-limit fact extraction remain active follow-up slices against RIPR-SPEC-0028's fixture corpus. |
+| `analysis/python-preview-adapter` | active | Add the Python syntax-first adapter, the Python fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Scaffold sub-slice mirrors the TypeScript scaffold (PR #759): adds the `rustpython-parser` Cargo dependency approved by the corrected ADR 0009, the `PythonAdapter` type, language-aware pipeline dispatch through `[languages] enabled`, and a real production parse-validation use of `rustpython-parser`. To avoid an LGPL-3.0-only transitive (`malachite-bigint`), the dependency disables default features and selects `num-bigint` (MIT/Apache-2.0) for Python int-literal representation. Owner/test sub-slice adds syntax-first `def` / `async def` / method owner facts, pytest and unittest test discovery, preview `owner_kind` output, and Python owner/test fixture families. Assertion/oracle sub-slice adds syntax-first pytest, unittest, boolean, broad-error, and mock-call oracle facts plus fixture families. Probe-shape sub-slice adds syntax-first predicate, return-value, error-path, field-assignment, call, and mock-initializer probe families plus fixture coverage. Related-test sub-slice adds direct-call, import-alias, same-stem, and unrelated-mention fixtures with conservative weak proximity behavior. Static-limit fact extraction remains an active follow-up slice against RIPR-SPEC-0028's fixture corpus. |
 | `lsp/editor-language-routing` | blocked | Extend the VS Code extension to register the TypeScript, TypeScript React, JavaScript, JavaScript React, and Python selectors, and route saved-workspace diagnostics through the adapter layer only when repo config enables that language. Preserve Rust saved-workspace diagnostics, hover, actions, and status by default. Preview findings must be visibly labeled preview, hover/status must surface explicit static limits before suggested action language, and wrong-root/stale/malformed artifacts must still fail closed. No analyzer behavior, source edits, generated tests, provider calls, mutation execution, policy/gate/default-blocking behavior, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays. TypeScript readiness is complete; still blocked by `analysis/python-preview-adapter`. Lane 3 routing source-of-truth is ready in RIPR-PROP-0003, RIPR-SPEC-0036, RIPR-SPEC-0037, ADR-0011, and `plans/campaign-27/lane3-editor-preview-routing.md`. |
 | `ci/language-aware-grouping` | blocked | Update generated GitHub CI summaries to group advisory output by language only when `[languages]` declares more than Rust, keeping Rust-default behavior identical and gate authority unchanged. |
 | `docs/language-adapter-preview-workflow` | blocked | Document enabling preview adapters, reading mixed-language reports, interpreting preview labels, the static-limit boundary, and rollback. |
@@ -3079,6 +3079,78 @@ Future Lane 1 work should open only when the scorecard, audit, or a documented
 consumer requirement identifies a new measured evidence class. Do not reopen
 Lane 1 for PR/CI front-panel work, LSP/editor polish, gate policy, generated
 tests, provider calls, mutation execution, or score redefinition.
+
+## Focused Lane 1 Tracker: User-Visible Output Evidence
+
+Status: open as a focused Lane 1 tracker. Campaign 27 remains the active
+machine-readable campaign.
+
+Sources of truth:
+
+- [Lane 1 User-Visible Output Evidence tracker](lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md)
+- [RIPR-PROP-0005](proposals/RIPR-PROP-0005-user-visible-output-evidence.md)
+- [RIPR-SPEC-0043](specs/RIPR-SPEC-0043-presentation-text-evidence.md)
+  presentation text evidence
+- [ADR 0010](adr/0010-fixture-first-evidence-confidence.md)
+
+Objective:
+
+```text
+Make changed presentation/help/report/table text one evidence-quality-aware
+action, no-action state, or static limitation instead of raw duplicate
+line-local notices.
+```
+
+End state:
+
+- changed presentation text is a distinct evidence class;
+- visibility is `user_visible`, `internal_only`, or `unknown`;
+- observer shape is snapshot, CLI help output, report render, table render,
+  golden output, none, or unknown;
+- declaration and literal raw seams group into one canonical evidence item;
+- actionability distinguishes snapshot/help-output/report test, already
+  observed, internal no-action, and static limitation states;
+- scorecard or trend fields track presentation-text evidence quality;
+- downstream lanes receive a consumer contract but no rendering change lands in
+  this Lane 1 tracker.
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `docs/proposal-user-visible-output-evidence` | done | #904 opened RIPR-PROP-0005 and the Lane 1 tracker. |
+| `docs/spec-presentation-text-evidence` | done | #909 added RIPR-SPEC-0043 for visibility, observer, actionability, canonical grouping, static limitation, and must-not-claim behavior. |
+| `fixtures/presentation-text-evidence-benchmark` | current | PR #900 adds the screenshot-derived benchmark after the proposal/spec foundation. |
+| `analysis/presentation-text-evidence-fields` | planned | Adds additive evidence-record fields for the class. |
+| `analysis/presentation-text-visibility` | planned | Classifies obvious output sinks and keeps unsupported routes as limitations. |
+| `analysis/presentation-text-canonical-grouping` | planned | Groups declaration and literal lines into one item. |
+| `analysis/presentation-text-actionability` | planned | Classifies action, no-action, observed, and limitation states. |
+| `report/presentation-text-scorecard-trend-fields` | planned | Reports presentation-text quality counts and deltas. |
+| `docs/presentation-text-consumer-handoff` | planned | Documents downstream rendering contract without changing PR/CI or editor surfaces. |
+
+Blocking conditions:
+
+- PR/CI rendering changes
+- LSP/editor polish
+- gate-policy changes or default blocking
+- generated tests or source edits
+- provider/model calls
+- mutation execution
+- score redefinition
+- user-visible claims inferred through opaque helpers or unsupported output
+  paths
+
+Commands:
+
+```bash
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-pr
+git diff --check
+```
 
 ## Focused Lane 2 Tracker: Policy Readiness and Preview Evidence Governance
 
@@ -3211,7 +3283,7 @@ Work items:
 | `spec/policy-history-ledger` | done | RIPR-SPEC-0041 defines a read-only policy history report and optional append-only input without gates, telemetry, dashboards, required history files, or automatic appends. |
 | `policy/history-report` | done | `ripr policy history` writes read-only JSON and Markdown trend packets over explicit policy operations and optional history JSONL inputs without automatic appends. |
 | `spec/policy-promotion-packets` | done | RIPR-SPEC-0042 defines read-only promotion packets for `visible-only`, `acknowledgeable`, `baseline-check`, and `calibrated-gate` without config, baseline, suppression, workflow, CI, history, or preview-eligibility mutation. |
-| `policy/promotion-packet-report` | planned | Add `ripr policy promote --to ...` manual-review packets from policy operations and optional policy history. |
+| `policy/promotion-packet-report` | done | `ripr policy promote --to ...` writes manual-review packets from policy operations and optional policy history without mutating config, baselines, suppressions, workflows, CI defaults, history, or preview eligibility. |
 | `spec/preview-evidence-promotion-packet` | planned | Define preview-language promotion packets with default `allowed_now = false`, explicit evidence accounting, advisory generated-CI posture, and no actual promotion. |
 | `policy/preview-promotion-packet-report` | planned | Add `ripr policy preview-promote --language ... --class ...` while preserving advisory preview defaults. |
 | `docs/policy-operator-workflow` | planned | Document readiness, operations, history, promotion packets, preview packets, manual config review, post-change monitoring, and hard boundaries for maintainers. |
