@@ -1,0 +1,7 @@
+diff --git a/src/constants.py b/src/constants.py
+index 0000000..1111111 100644
+--- a/src/constants.py
++++ b/src/constants.py
+@@ -1 +1 @@
+-BASE_DISCOUNT = 10
++BASE_DISCOUNT = 12
