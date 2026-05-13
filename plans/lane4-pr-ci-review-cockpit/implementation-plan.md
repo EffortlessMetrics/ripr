@@ -22,6 +22,9 @@ This checkout already uses `RIPR-SPEC-0032` through `RIPR-SPEC-0038`.
 Generated-CI gap map:
 [generated-ci-gap-map.md](generated-ci-gap-map.md).
 
+Generated-CI baseline audit:
+[generated-ci-baseline-audit.md](generated-ci-baseline-audit.md).
+
 ## Objective
 
 Turn explicit RIPR PR-time artifacts into a reviewer-first, agent-usable,
@@ -104,7 +107,7 @@ Goal:
 Add the Lane 4 PR/CI review cockpit proposal.
 
 Production delta:
-Add `docs/proposals/RIPR-PROP-0002-pr-ci-review-cockpit.md`.
+Add `docs/proposals/RIPR-PROP-0004-pr-ci-review-cockpit.md`.
 
 Non-goals:
 No behavior contract edits beyond links to existing and planned specs. No
@@ -417,7 +420,44 @@ rtk git diff --check
 Rollback:
 Remove the generated-CI gap-map doc or revert the related doc updates.
 
-### 12. `ci/language-aware-grouping`
+### 12. `audit/generated-ci-cockpit-baseline`
+
+Goal:
+Record the current generated CI cockpit baseline.
+
+Production delta:
+Add [generated-ci-baseline-audit.md](generated-ci-baseline-audit.md) with the
+current public command surface, generated workflow envelope, report commands,
+front-panel and packet-index placement, job-summary sections, artifact upload
+paths, missing-artifact behavior, gate authority boundary, inline-comment
+boundary, and language-grouping status.
+
+Non-goals:
+No generated workflow implementation change, default blocking change, branch
+protection change, inline comment publishing, hidden analysis rerun, source
+edit, generated test, provider call, mutation execution, analyzer change,
+editor change, or gate semantic change.
+
+Acceptance:
+The audit gives the next generated-summary or dogfood PR a durable baseline and
+records remaining gaps without duplicating the front-panel or packet-index
+producers.
+
+Proof commands:
+
+```bash
+rtk cargo xtask check-doc-index
+rtk cargo xtask markdown-links
+rtk cargo xtask check-static-language
+rtk cargo xtask check-campaign
+rtk cargo xtask check-pr
+rtk git diff --check
+```
+
+Rollback:
+Remove the baseline audit and any related planning links.
+
+### 13. `ci/language-aware-grouping`
 
 Goal:
 Group PR advisory output by language when preview adapters are configured.
@@ -450,7 +490,7 @@ Rollback:
 Remove language grouping from generated summaries and retain Rust-default
 summary behavior.
 
-### 13. `dogfood/lane4-cockpit-gap-receipts`
+### 14. `dogfood/lane4-cockpit-gap-receipts`
 
 Goal:
 Refresh or add PR/CI review cockpit dogfood receipts for gaps not already
@@ -484,7 +524,7 @@ rtk git diff --check
 Rollback:
 Remove only the newly added gap receipts and dogfood wiring.
 
-### 14. `docs/lane4-closeout`
+### 15. `docs/lane4-closeout`
 
 Goal:
 Close the PR/CI review cockpit lane with durable proof and restart context.

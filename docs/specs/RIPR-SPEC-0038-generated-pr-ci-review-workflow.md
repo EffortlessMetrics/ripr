@@ -224,7 +224,7 @@ Follow-up implementation should add focused tests for:
 Existing implementation surfaces:
 
 - `crates/ripr/src/cli/commands.rs` generates GitHub workflow YAML;
-- `crates/ripr/tests/cli_smoke.rs` exercises public `ripr init ci github`
+- `crates/ripr/tests/cli_smoke.rs` exercises public `ripr init --ci github`
   behavior;
 - `docs/PR_AUTOMATION.md` documents shape/check/report packet automation.
 
