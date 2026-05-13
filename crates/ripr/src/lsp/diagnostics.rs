@@ -301,6 +301,45 @@ pub(super) fn diagnostic_for_finding_with_config(
     finding: &Finding,
     config: &SeverityConfig,
 ) -> Diagnostic {
+    let mut data = serde_json::json!({
+        "schema_version": "0.1",
+        "finding_id": finding.id.as_str(),
+        "probe_id": finding.probe.id.to_string(),
+        "classification": finding.class.as_str(),
+        "probe_family": finding.probe.family.as_str(),
+        "confidence": finding.confidence,
+        "source_range": {
+            "file": finding.probe.location.file.display().to_string(),
+            "line": finding.probe.location.line,
+            "column": finding.probe.location.column,
+        },
+    });
+    if let Some(obj) = data.as_object_mut() {
+        if let Some(language) = &finding.language {
+            obj.insert(
+                "language".to_string(),
+                serde_json::Value::String(language.as_str().to_string()),
+            );
+        }
+        if let Some(status) = &finding.language_status {
+            obj.insert(
+                "language_status".to_string(),
+                serde_json::Value::String(status.as_str().to_string()),
+            );
+        }
+        if let Some(owner_kind) = &finding.owner_kind {
+            obj.insert(
+                "owner_kind".to_string(),
+                serde_json::Value::String(owner_kind.as_str().to_string()),
+            );
+        }
+        if let Some(static_limit_kind) = &finding.static_limit_kind {
+            obj.insert(
+                "static_limit_kind".to_string(),
+                serde_json::Value::String(static_limit_kind.as_str().to_string()),
+            );
+        }
+    }
     Diagnostic {
         range: diagnostic_range_for_finding(finding),
         severity: lsp_severity(config.for_exposure(&finding.class)),
@@ -310,19 +349,7 @@ pub(super) fn diagnostic_for_finding_with_config(
         message: lsp_message(finding),
         related_information: related_information_for_finding(root, finding),
         tags: None,
-        data: Some(serde_json::json!({
-            "schema_version": "0.1",
-            "finding_id": finding.id.as_str(),
-            "probe_id": finding.probe.id.to_string(),
-            "classification": finding.class.as_str(),
-            "probe_family": finding.probe.family.as_str(),
-            "confidence": finding.confidence,
-            "source_range": {
-                "file": finding.probe.location.file.display().to_string(),
-                "line": finding.probe.location.line,
-                "column": finding.probe.location.column,
-            },
-        })),
+        data: Some(data),
     }
 }
 
@@ -416,10 +443,27 @@ fn lsp_severity(severity: ConfigSeverity) -> Option<DiagnosticSeverity> {
 }
 
 fn lsp_message(finding: &Finding) -> String {
-    finding
+    let base = finding
         .recommended_next_step
         .clone()
-        .unwrap_or_else(|| format!("{} static RIPR exposure", finding.class.as_str()))
+        .unwrap_or_else(|| format!("{} static RIPR exposure", finding.class.as_str()));
+    if finding
+        .language_status
+        .as_ref()
+        .is_some_and(|status| status.as_str() == "preview")
+    {
+        let language = finding
+            .language
+            .as_ref()
+            .map(|language| language.as_str())
+            .unwrap_or("preview-language");
+        let mut message = format!("{language} preview evidence (syntax-first, advisory): {base}");
+        if let Some(static_limit_kind) = &finding.static_limit_kind {
+            message.push_str(&format!(" Static limit: {}.", static_limit_kind.as_str()));
+        }
+        return message;
+    }
+    base
 }
 
 fn absolute_finding_path(root: &Path, finding: &Finding) -> PathBuf {

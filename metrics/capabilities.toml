@@ -1238,6 +1238,25 @@ next = "maintenance"
 metric = "seam diagnostics expose only supported packet/assertion/test actions without automatic edits"
 
 [[capability]]
+id = "editor_preview_language_routing"
+name = "Editor preview language routing"
+status = "alpha"
+spec = "RIPR-SPEC-0036"
+evidence = [
+  "editors/vscode/package.json registers Rust plus TypeScript, TypeScript React, JavaScript, JavaScript React, and Python activation events",
+  "editors/vscode/src/client.ts registers the same LSP document selectors",
+  "saved-workspace stale guards use the routed file-language set instead of Rust-only document checks",
+  "LSP diagnostics preserve preview language, language_status, owner_kind, and static_limit_kind metadata in diagnostic.data",
+  "LSP hover renders preview language/status, syntax-first advisory boundary, and static-limit kind before RIPR evidence",
+  "refresh logs and VS Code status surface preview finding and static-limit counts",
+  "LSP analysis remains gated by [languages] through the existing adapter layer",
+  "Rust default saved-workspace cockpit behavior remains covered by LSP and VS Code extension tests"
+]
+fixtures = []
+next = "ci/language-aware-grouping"
+metric = "editor_preview_language_routing, editor_preview_static_limit_projection"
+
+[[capability]]
 id = "repository_config"
 name = "Repository config"
 status = "alpha"

@@ -16,9 +16,10 @@ For Lane 3 editor preview routing, use the layers this way:
 - closeout: final proof, landed scope, gaps, and future editor campaigns.
 
 The Lane 3 implementation plan is
-[lane3-editor-preview-routing.md](lane3-editor-preview-routing.md). It remains
-blocked until `analysis/python-preview-adapter` emits editor-projectable
-preview artifacts or the manifest explicitly supersedes that blocker.
+[lane3-editor-preview-routing.md](lane3-editor-preview-routing.md). The
+Campaign 27 routing slice has landed after `analysis/python-preview-adapter`
+emitted editor-projectable preview artifacts; generated CI language grouping
+is the next unblocked projection item.
 
 Related durable sources:
 
