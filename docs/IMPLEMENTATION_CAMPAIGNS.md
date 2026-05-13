@@ -3088,6 +3088,8 @@ Sources of truth:
 - [RIPR-PROP-0005](proposals/RIPR-PROP-0005-user-visible-output-evidence.md)
 - [RIPR-SPEC-0043](specs/RIPR-SPEC-0043-presentation-text-evidence.md)
   presentation text evidence
+- [RIPR-SPEC-0045](specs/RIPR-SPEC-0045-finding-to-gap-alignment.md)
+  finding-to-gap alignment
 - [ADR 0010](adr/0010-fixture-first-evidence-confidence.md)
 
 Objective:
@@ -3105,6 +3107,9 @@ End state:
 - observer shape is snapshot, CLI help output, report render, table render,
   golden output, none, or unknown;
 - declaration and literal raw seams group into one canonical evidence item;
+- raw line-local findings remain supporting evidence and roll up into canonical
+  evidence items with explicit state, actionability, repair, confidence, and
+  proof;
 - actionability distinguishes snapshot/help-output/report test, already
   observed, internal no-action, and static limitation states;
 - scorecard or trend fields track presentation-text evidence quality;
@@ -3117,6 +3122,8 @@ Work items:
 | --- | --- | --- |
 | `docs/proposal-user-visible-output-evidence` | done | #904 opened RIPR-PROP-0005 and the Lane 1 tracker. |
 | `docs/spec-presentation-text-evidence` | done | #909 added RIPR-SPEC-0043 for visibility, observer, actionability, canonical grouping, static limitation, and must-not-claim behavior. |
+| `docs/spec-finding-to-gap-alignment` | current | Defines raw finding to canonical evidence item alignment before behavior changes. |
+| `fixtures/finding-alignment-benchmark` | planned | Pins grouping, no-action, already-observed, static limitation, and actionable raw-to-canonical cases. |
 | `fixtures/presentation-text-evidence-benchmark` | current | PR #900 adds the screenshot-derived benchmark after the proposal/spec foundation. |
 | `analysis/presentation-text-evidence-fields` | planned | Adds additive evidence-record fields for the class. |
 | `analysis/presentation-text-visibility` | planned | Classifies obvious output sinks and keeps unsupported routes as limitations. |
