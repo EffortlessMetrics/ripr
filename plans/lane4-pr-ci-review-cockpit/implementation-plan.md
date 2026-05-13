@@ -1,6 +1,6 @@
 # Lane 4 PR / CI Review Cockpit Implementation Plan
 
-Status: planning
+Status: complete
 
 Lane: 4
 
@@ -577,7 +577,7 @@ policy, generated workflow, or preview-language work.
 
 Acceptance:
 The closeout states what shipped, what did not change, validation commands,
-remaining work, known limits, and next-lane handoff.
+deferred language-aware grouping, known limits, and next-lane handoff.
 
 Proof commands:
 
@@ -585,6 +585,7 @@ Proof commands:
 rtk cargo xtask check-doc-index
 rtk cargo xtask markdown-links
 rtk cargo xtask check-static-language
+rtk cargo xtask check-campaign
 rtk cargo xtask check-capabilities
 rtk cargo xtask check-traceability
 rtk cargo xtask check-pr

@@ -18,9 +18,10 @@ end_state = [
   "Generated PR CI workflow behavior is spec-backed.",
   "Missing expected artifacts include regeneration commands.",
   "Gate decision remains the only configured pass/fail authority.",
-  "Language-aware grouping appears only when configured.",
+  "Language-aware grouping is explicitly deferred until preview-language evidence is ready or the lane accepts a narrower grouping slice.",
   "Rust-default generated CI output remains unchanged.",
   "Dogfood receipts cover remaining cockpit gaps.",
+  "Lane closeout records shipped surfaces, validation, known limits, and next-lane handoff.",
 ]
 
 non_goals = [
@@ -166,6 +167,16 @@ commands = [
 
 [[work_item]]
 id = "docs/lane4-closeout"
-status = "ready"
+status = "done"
 branch = "docs-lane4-closeout"
+closeout = "docs/handoffs/2026-05-13-lane4-pr-ci-review-cockpit-closeout.md"
 acceptance = "Close Lane 4 with shipped surfaces, validation, deferred language-aware grouping, remaining work, known limits, explicit non-changes, and next-lane handoff."
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-campaign",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-traceability",
+  "cargo xtask check-pr",
+]
