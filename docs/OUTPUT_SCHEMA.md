@@ -4024,6 +4024,46 @@ JSON shape:
       "kind": "fixture_corpus_coverage",
       "required": true,
       "description": "Representative fixtures cover the candidate class and known static limits."
+    },
+    {
+      "kind": "static_limit_exclusions",
+      "required": true,
+      "description": "Known static parser and language-adapter limits are excluded or labeled."
+    },
+    {
+      "kind": "false_positive_review",
+      "required": true,
+      "description": "Maintainer-reviewed false-positive sample is documented for this language and class."
+    },
+    {
+      "kind": "recommendation_calibration",
+      "required": true,
+      "description": "Same-class recommendation calibration supports policy eligibility."
+    },
+    {
+      "kind": "mutation_calibration",
+      "required": false,
+      "description": "Optional runtime calibration exists for this language and class without being inferred from Rust."
+    },
+    {
+      "kind": "baseline_behavior",
+      "required": true,
+      "description": "Baseline handling keeps preview debt visible and does not auto-adopt new preview findings."
+    },
+    {
+      "kind": "waiver_suppression_behavior",
+      "required": true,
+      "description": "Waivers and suppressions preserve owner, reason, scope, and preview status."
+    },
+    {
+      "kind": "rollback_path",
+      "required": true,
+      "description": "Manual rollback to advisory preview status is documented."
+    },
+    {
+      "kind": "generated_ci_posture",
+      "required": true,
+      "description": "Generated CI remains advisory and non-blocking unless a later explicit gate mode is configured."
     }
   ],
   "supplied_evidence": [],
