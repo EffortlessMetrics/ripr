@@ -3559,6 +3559,191 @@ action, can-promote and cannot-promote sections, top blockers, grouped actions,
 warnings, unknowns, input artifact status, and limits. It must not make a gate
 decision or promote preview-language evidence.
 
+## Policy History Report
+
+RIPR-SPEC-0041 defines the policy history report. `ripr policy history` reads a
+current `policy-operations.json` report plus an optional append-only history
+JSONL input and writes a read-only advisory trend packet. The report shows
+whether readiness, waiver pressure, suppression health, baseline movement,
+preview-boundary state, and calibration health improved, regressed, stayed
+unchanged, or are unknown.
+
+Command:
+
+```text
+ripr policy history \
+  --current target/ripr/reports/policy-operations.json \
+  --history .ripr/policy-history.jsonl \
+  --commit HEAD \
+  --pr-number 123 \
+  --out target/ripr/reports/policy-history.json \
+  --out-md target/ripr/reports/policy-history.md
+```
+
+The report writes:
+
+```text
+target/ripr/reports/policy-history.json
+target/ripr/reports/policy-history.md
+```
+
+This report is advisory policy trend evidence. It does not append to
+`.ripr/policy-history.jsonl`, execute gates, collect telemetry, mutate config,
+baselines, suppressions, workflows, branch protection, generated CI defaults,
+or source files, promote preview-language evidence, run analysis, generate
+tests, call providers, post comments, or run mutation testing.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "policy_history",
+  "root": ".",
+  "generated_at": "unix_ms:1778277000000",
+  "current": {
+    "commit": "HEAD",
+    "pr_number": "123",
+    "generated_at": "unix_ms:1778277000000",
+    "recommended_mode": "acknowledgeable",
+    "current_policy_ceiling": "ready_for_acknowledgeable",
+    "baseline_health": "warning",
+    "waiver_health": "advisory",
+    "suppression_health": "healthy",
+    "calibration_health": "not_ready",
+    "preview_boundary_state": "healthy",
+    "new_policy_eligible_count": 1,
+    "waiver_count": 2,
+    "stale_suppression_count": 0,
+    "baseline_still_present": 4,
+    "baseline_resolved": 1
+  },
+  "history_summary": {
+    "entries": 3,
+    "oldest_generated_at": "unix_ms:1778190600000",
+    "newest_generated_at": "unix_ms:1778277000000",
+    "readiness_improved": true,
+    "waiver_pressure_increased": false,
+    "suppression_health_regressed": false,
+    "baseline_shrank": true,
+    "preview_remained_advisory": true,
+    "calibration_changed_ceiling": false
+  },
+  "trend": {
+    "ceiling": {
+      "previous": "ready_for_visible_only",
+      "current": "ready_for_acknowledgeable",
+      "direction": "improved"
+    },
+    "waiver_count": {
+      "previous": 3,
+      "current": 2,
+      "direction": "improved"
+    },
+    "stale_suppression_count": {
+      "previous": 0,
+      "current": 0,
+      "direction": "unchanged"
+    },
+    "baseline_still_present": {
+      "previous": 5,
+      "current": 4,
+      "direction": "improved"
+    },
+    "baseline_resolved": {
+      "previous": 0,
+      "current": 1,
+      "direction": "improved"
+    },
+    "preview_boundary_state": {
+      "previous": "healthy",
+      "current": "healthy",
+      "direction": "unchanged"
+    },
+    "calibration_health": {
+      "previous": "not_ready",
+      "current": "not_ready",
+      "direction": "unchanged"
+    }
+  },
+  "example_append_record": {
+    "commit": "HEAD",
+    "pr_number": "123",
+    "generated_at": "unix_ms:1778277000000",
+    "current_policy_ceiling": "ready_for_acknowledgeable",
+    "recommended_mode": "acknowledgeable"
+  },
+  "warnings": [],
+  "unknowns": [
+    {
+      "kind": "history_not_supplied",
+      "message": "No policy history JSONL was supplied; trend is limited to the current snapshot.",
+      "source_artifact": null
+    }
+  ],
+  "input_artifacts": [
+    {
+      "kind": "policy_operations",
+      "path": "target/ripr/reports/policy-operations.json",
+      "status": "read"
+    },
+    {
+      "kind": "policy_history_jsonl",
+      "path": ".ripr/policy-history.jsonl",
+      "status": "missing"
+    }
+  ],
+  "limits_note": "Read-only advisory policy history report. It reads explicit history inputs and never appends, mutates policy, or changes gate authority."
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `tool` - always `"ripr"`.
+- `kind` - always `"policy_history"`.
+- `current` - normalized snapshot derived from `policy-operations.json` plus
+  optional commit and PR metadata.
+- `current.recommended_mode` - derived from the highest safe promotion mode or
+  current policy operations ceiling.
+- `current.current_policy_ceiling` - copied from policy operations.
+- `current.*_health` fields - normalized policy surface states derived from
+  operations actions, blockers, and input artifacts.
+- `current.new_policy_eligible_count`, `waiver_count`,
+  `stale_suppression_count`, `baseline_still_present`, and
+  `baseline_resolved` - current movement counters when available, otherwise
+  zero with an unknown.
+- `history_summary.entries` - count of prior plus current snapshots included in
+  the trend.
+- `history_summary.readiness_improved` - true only when the current ceiling
+  ranks higher than the previous comparable snapshot.
+- `history_summary.waiver_pressure_increased` - true when waiver count rises.
+- `history_summary.suppression_health_regressed` - true when stale or malformed
+  suppression signals rise.
+- `history_summary.baseline_shrank` - true when still-present baseline debt
+  falls or resolved baseline debt rises without adopt-new behavior.
+- `history_summary.preview_remained_advisory` - true only when preview evidence
+  stayed non-gating across comparable snapshots.
+- `history_summary.calibration_changed_ceiling` - true when calibration health
+  improvement is the reason the ceiling changed.
+- `trend.*.direction` - `improved`, `regressed`, `unchanged`, or `unknown`.
+- `example_append_record` - the current snapshot in appendable JSONL shape. It
+  is advisory output only and must not be written automatically.
+- `warnings[]` - malformed supplied history lines, malformed current input, or
+  unsupported historical shapes.
+- `unknowns[]` - missing optional history, commit, PR number, or unavailable
+  metric fields.
+- `input_artifacts[]` - per-input status. Status values are `read`, `omitted`,
+  `missing`, `malformed`, and `not_applicable`.
+- `limits_note` - read-only/no-telemetry/no-mutation/no-gate boundary.
+
+Markdown should fit in generated CI summaries and report packets. It should
+show the current ceiling, recommended mode, history entry count, trend summary,
+current snapshot counters, input artifact status, an optional manual append
+record, warnings, unknowns, and limits. It must not append history
+automatically, make a gate decision, or promote preview-language evidence.
+
 ## Suppression Health Report
 
 `ripr policy suppression-health` summarizes the durable suppression manifest
