@@ -2506,3 +2506,37 @@ metrics = [
   "policy_history_warning_count",
   "policy_history_unknown_count",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0042"
+name = "Policy promotion packets"
+spec = "docs/specs/RIPR-SPEC-0042-policy-promotion-packets.md"
+tests = [
+]
+fixtures = [
+]
+code = [
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0042-policy-promotion-packets.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/policy/POLICY_OPERATIONS.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  "docs/CAPABILITY_MATRIX.md",
+  ".ripr/goals/lane2-policy-operations.toml",
+  ".ripr/traceability.toml",
+  "metrics/capabilities.toml",
+]
+metrics = [
+  "policy_promotion_packets",
+  "policy_promotion_allowed",
+  "policy_promotion_blocked",
+  "policy_promotion_required_repairs",
+  "policy_promotion_required_receipts",
+  "policy_promotion_missing_history",
+  "policy_promotion_warning_count",
+  "policy_promotion_unknown_count",
+]
