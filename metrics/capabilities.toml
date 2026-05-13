@@ -1371,6 +1371,20 @@ next = "policy/promotion-packet-report"
 metric = "policy_promotion_packets, policy_promotion_allowed, policy_promotion_blocked, policy_promotion_required_repairs, policy_promotion_required_receipts, policy_promotion_missing_history, policy_promotion_warning_count, policy_promotion_unknown_count"
 
 [[capability]]
+id = "presentation_text_evidence"
+name = "Presentation text evidence"
+status = "planned"
+spec = "RIPR-SPEC-0043"
+evidence = [
+  "docs/specs/RIPR-SPEC-0043-presentation-text-evidence.md defines the planned Lane 1 evidence class for changed presentation/help/report/table text",
+  "docs/proposals/RIPR-PROP-0005-user-visible-output-evidence.md records the user-visible output evidence motivation and non-goals",
+  "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md records the PR-sized sequence and Lane 1 boundary"
+]
+fixtures = []
+next = "fixtures/presentation-text-evidence-benchmark"
+metric = "presentation_text_total, presentation_text_user_visible, presentation_text_observed, presentation_text_unobserved, presentation_text_internal_only, presentation_text_visibility_unknown, presentation_text_observer_unknown, presentation_text_duplicate_groups, presentation_text_actionable_snapshot"
+
+[[capability]]
 id = "cargo_mutants_calibration"
 name = "cargo-mutants calibration"
 status = "calibrated"

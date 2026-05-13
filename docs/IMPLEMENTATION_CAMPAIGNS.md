@@ -3089,7 +3089,8 @@ Sources of truth:
 
 - [Lane 1 User-Visible Output Evidence tracker](lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md)
 - [RIPR-PROP-0005](proposals/RIPR-PROP-0005-user-visible-output-evidence.md)
-- `RIPR-SPEC-0043` presentation text evidence, planned
+- [RIPR-SPEC-0043](specs/RIPR-SPEC-0043-presentation-text-evidence.md)
+  presentation text evidence
 - [ADR 0010](adr/0010-fixture-first-evidence-confidence.md)
 
 Objective:
@@ -3117,8 +3118,8 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `docs/proposal-user-visible-output-evidence` | in progress | Opens RIPR-PROP-0005 and the Lane 1 tracker. |
-| `docs/spec-presentation-text-evidence` | planned | Defines visibility, observer, actionability, canonical grouping, static limitation, and must-not-claim behavior. |
+| `docs/proposal-user-visible-output-evidence` | done | #904 opened RIPR-PROP-0005 and the Lane 1 tracker. |
+| `docs/spec-presentation-text-evidence` | in progress | Defines visibility, observer, actionability, canonical grouping, static limitation, and must-not-claim behavior. |
 | `fixtures/presentation-text-evidence-benchmark` | open candidate | PR #900 started the screenshot-derived benchmark; it should land after the proposal/spec foundation. |
 | `analysis/presentation-text-evidence-fields` | planned | Adds additive evidence-record fields for the class. |
 | `analysis/presentation-text-visibility` | planned | Classifies obvious output sinks and keeps unsupported routes as limitations. |
