@@ -68,6 +68,10 @@ Current `shape` responsibilities:
 status. It classifies changed paths into production, evidence, docs, policy,
 workflow, extension, and public-contract surfaces.
 
+Top-level `plans/` files are documentation evidence and campaign-planning
+inputs. They appear in the docs, evidence/support, and campaign-planning
+sections of the reviewer packet without being treated as production behavior.
+
 `precommit` is the cheap non-mutating guardrail. It checks formatting and the
 policy surfaces that should fail quickly before review.
 
