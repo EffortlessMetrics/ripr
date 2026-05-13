@@ -54,9 +54,29 @@ owner = "maintainers"
 reason = "Published crate README needs the same product-language boundary as the root README."
 
 [[allow]]
-path = "crates/ripr/src/output/mutation_calibration.rs"
+path = "crates/ripr/src/output/mutation_calibration/mod.rs"
 owner = "product"
 reason = "Public calibration import isolates runtime mutation vocabulary to reports built from supplied runtime data."
+
+[[allow]]
+path = "crates/ripr/src/output/mutation_calibration/parse.rs"
+owner = "product"
+reason = "Calibration importer must parse supplied runtime mutation data using its source vocabulary."
+
+[[allow]]
+path = "crates/ripr/src/output/mutation_calibration/render.rs"
+owner = "product"
+reason = "Calibration renderer emits advisory reports that isolate supplied runtime mutation vocabulary."
+
+[[allow]]
+path = "crates/ripr/src/output/mutation_calibration/report.rs"
+owner = "product"
+reason = "Calibration join logic assigns confidence labels from supplied runtime mutation outcomes."
+
+[[allow]]
+path = "crates/ripr/src/output/mutation_calibration/types.rs"
+owner = "product"
+reason = "Calibration DTO names isolate supplied runtime mutation vocabulary from static RIPR outputs."
 
 [[allow]]
 path = "fixtures/boundary_gap/calibration/mutation-calibration.json"

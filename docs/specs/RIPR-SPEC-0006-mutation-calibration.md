@@ -166,11 +166,11 @@ labels do not change static seam classes or gate behavior.
 
 Current tests:
 
-- `crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_summarizes_static_runtime_agreement`
-- `crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_joins_by_seam_id_then_file_line_and_keeps_ambiguous`
-- `crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_parses_repo_exposure_and_cargo_mutants_json`
-- `crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_merges_mutants_and_outcomes_by_id`
-- `crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_reports_are_advisory_and_structured`
+- `crates/ripr/src/output/mutation_calibration/mod.rs::tests::mutation_calibration_summarizes_static_runtime_agreement`
+- `crates/ripr/src/output/mutation_calibration/mod.rs::tests::mutation_calibration_joins_by_seam_id_then_file_line_and_keeps_ambiguous`
+- `crates/ripr/src/output/mutation_calibration/mod.rs::tests::mutation_calibration_parses_repo_exposure_and_cargo_mutants_json`
+- `crates/ripr/src/output/mutation_calibration/mod.rs::tests::mutation_calibration_merges_mutants_and_outcomes_by_id`
+- `crates/ripr/src/output/mutation_calibration/mod.rs::tests::mutation_calibration_reports_are_advisory_and_structured`
 - `crates/ripr/src/cli/commands.rs::tests::calibrate_parses_required_inputs_format_and_out`
 - `crates/ripr/src/cli/commands.rs::tests::calibrate_command_writes_json_file`
 - `crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_prints_markdown_by_default`
@@ -221,7 +221,7 @@ Current implementation:
 
 - `crates/ripr/src/cli/commands.rs` implements
   `ripr calibrate cargo-mutants`.
-- `crates/ripr/src/output/mutation_calibration.rs` parses repo exposure JSON
+- `crates/ripr/src/output/mutation_calibration/` parses repo exposure JSON
   and imported cargo-mutants JSON.
 - `ripr calibrate cargo-mutants` accepts either a JSON file path or a
   cargo-mutants output directory containing `outcomes.json` or `mutants.json`.

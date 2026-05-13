@@ -1331,7 +1331,7 @@ spec = "RIPR-SPEC-0006"
 evidence = [
   "docs/specs/RIPR-SPEC-0006-mutation-calibration.md",
   "ripr calibrate cargo-mutants",
-  "crates/ripr/src/output/mutation_calibration.rs",
+  "crates/ripr/src/output/mutation_calibration/",
   "crates/ripr/tests/cli_smoke.rs calibrate cargo-mutants smoke tests",
   "crates/ripr/tests/cli_smoke.rs calibration_runtime_fixture_matches_checked_reports",
   "crates/ripr/tests/cli_smoke.rs calibration_runtime_fixture_v2_matches_checked_reports",

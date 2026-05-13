@@ -359,11 +359,11 @@ id = "RIPR-SPEC-0006"
 name = "mutation calibration reports"
 spec = "docs/specs/RIPR-SPEC-0006-mutation-calibration.md"
 tests = [
-  "crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_summarizes_static_runtime_agreement",
-  "crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_joins_by_seam_id_then_file_line_and_keeps_ambiguous",
-  "crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_parses_repo_exposure_and_cargo_mutants_json",
-  "crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_merges_mutants_and_outcomes_by_id",
-  "crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_reports_are_advisory_and_structured",
+  "crates/ripr/src/output/mutation_calibration/mod.rs::tests::mutation_calibration_summarizes_static_runtime_agreement",
+  "crates/ripr/src/output/mutation_calibration/mod.rs::tests::mutation_calibration_joins_by_seam_id_then_file_line_and_keeps_ambiguous",
+  "crates/ripr/src/output/mutation_calibration/mod.rs::tests::mutation_calibration_parses_repo_exposure_and_cargo_mutants_json",
+  "crates/ripr/src/output/mutation_calibration/mod.rs::tests::mutation_calibration_merges_mutants_and_outcomes_by_id",
+  "crates/ripr/src/output/mutation_calibration/mod.rs::tests::mutation_calibration_reports_are_advisory_and_structured",
   "crates/ripr/src/cli/commands.rs::tests::calibrate_parses_required_inputs_format_and_out",
   "crates/ripr/src/cli/commands.rs::tests::calibrate_command_writes_json_file",
   "crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_prints_markdown_by_default",
@@ -393,7 +393,7 @@ code = [
   "crates/ripr/src/cli/commands.rs",
   "crates/ripr/src/cli/execute.rs",
   "crates/ripr/src/cli/help.rs",
-  "crates/ripr/src/output/mutation_calibration.rs",
+  "crates/ripr/src/output/mutation_calibration/",
   "xtask/src/main.rs"
 ]
 outputs = [
@@ -562,9 +562,9 @@ tests = [
   "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_records_no_movement_reason",
   "crates/ripr/tests/cli_smoke.rs::outcome_prints_markdown_receipt_by_default",
   "crates/ripr/tests/cli_smoke.rs::outcome_writes_json_receipt_when_requested",
-  "crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_summarizes_static_runtime_agreement",
-  "crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_joins_by_seam_id_then_file_line_and_keeps_ambiguous",
-  "crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_reports_are_advisory_and_structured",
+  "crates/ripr/src/output/mutation_calibration/mod.rs::tests::mutation_calibration_summarizes_static_runtime_agreement",
+  "crates/ripr/src/output/mutation_calibration/mod.rs::tests::mutation_calibration_joins_by_seam_id_then_file_line_and_keeps_ambiguous",
+  "crates/ripr/src/output/mutation_calibration/mod.rs::tests::mutation_calibration_reports_are_advisory_and_structured",
   "crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_prints_markdown_by_default",
   "crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_writes_json_when_requested",
   "crates/ripr/tests/cli_smoke.rs::editor_agent_loop_fixture_outputs_match_expected",
@@ -605,7 +605,7 @@ code = [
   "crates/ripr/src/output/badge.rs",
   "crates/ripr/src/output/pilot.rs",
   "crates/ripr/src/output/outcome.rs",
-  "crates/ripr/src/output/mutation_calibration.rs",
+  "crates/ripr/src/output/mutation_calibration/",
   "crates/ripr/src/lsp",
   ".github/workflows/publish-extension.yml",
   "editors/vscode/package.json",
@@ -2374,7 +2374,7 @@ fixtures = [
   "fixtures/boundary_gap/calibration/runtime-fixtures-v3",
 ]
 code = [
-  "crates/ripr/src/output/mutation_calibration.rs",
+  "crates/ripr/src/output/mutation_calibration/",
   "crates/ripr/tests/cli_smoke.rs",
 ]
 outputs = [

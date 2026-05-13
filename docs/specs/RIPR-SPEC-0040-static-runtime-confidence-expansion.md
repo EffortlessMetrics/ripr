@@ -215,7 +215,7 @@ Planned implementation:
 
 - runtime-fixtures-v3 fixture inputs under the existing calibration fixture
   hierarchy;
-- `crates/ripr/src/output/mutation_calibration.rs` for label assignment and
+- `crates/ripr/src/output/mutation_calibration/` for label assignment and
   report rendering;
 - `xtask/src/main.rs` for repo-local `cargo xtask mutation-calibration`
   fixture generation and validation;

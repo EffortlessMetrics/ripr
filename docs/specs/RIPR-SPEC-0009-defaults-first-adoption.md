@@ -429,9 +429,9 @@ Current tests and reports that support the contract:
 - `crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_records_no_movement_reason`
 - `crates/ripr/tests/cli_smoke.rs::outcome_prints_markdown_receipt_by_default`
 - `crates/ripr/tests/cli_smoke.rs::outcome_writes_json_receipt_when_requested`
-- `crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_summarizes_static_runtime_agreement`
-- `crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_joins_by_seam_id_then_file_line_and_keeps_ambiguous`
-- `crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_reports_are_advisory_and_structured`
+- `crates/ripr/src/output/mutation_calibration/mod.rs::tests::mutation_calibration_summarizes_static_runtime_agreement`
+- `crates/ripr/src/output/mutation_calibration/mod.rs::tests::mutation_calibration_joins_by_seam_id_then_file_line_and_keeps_ambiguous`
+- `crates/ripr/src/output/mutation_calibration/mod.rs::tests::mutation_calibration_reports_are_advisory_and_structured`
 - `crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_prints_markdown_by_default`
 - `crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_writes_json_when_requested`
 - `xtask/src/main.rs::tests::targeted_test_outcome_report_buckets_seam_movement`
@@ -465,7 +465,7 @@ Current implementation pieces:
   pilot summary files.
 - `crates/ripr/src/output/outcome.rs` compares before/after repo-exposure
   snapshots and renders the public targeted-test outcome receipt.
-- `crates/ripr/src/output/mutation_calibration.rs` imports supplied
+- `crates/ripr/src/output/mutation_calibration/` imports supplied
   cargo-mutants JSON, joins it to repo-exposure snapshots, and renders the
   public advisory calibration report.
 - `editors/vscode/package.json` exposes `ripr.check.mode` with the same

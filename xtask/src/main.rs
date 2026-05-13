@@ -18007,8 +18007,17 @@ fn check_output_contracts() -> Result<(), String> {
     }
     let app = read_text_lossy(Path::new("crates/ripr/src/app.rs"))?;
     let evidence_record = read_text_lossy(Path::new("crates/ripr/src/output/evidence_record.rs"))?;
-    let mutation_calibration =
-        read_text_lossy(Path::new("crates/ripr/src/output/mutation_calibration.rs"))?;
+    let mut mutation_calibration = String::new();
+    for path in [
+        "crates/ripr/src/output/mutation_calibration/mod.rs",
+        "crates/ripr/src/output/mutation_calibration/parse.rs",
+        "crates/ripr/src/output/mutation_calibration/render.rs",
+        "crates/ripr/src/output/mutation_calibration/report.rs",
+        "crates/ripr/src/output/mutation_calibration/types.rs",
+    ] {
+        mutation_calibration.push_str(&read_text_lossy(Path::new(path))?);
+        mutation_calibration.push('\n');
+    }
     let mut json_output = String::new();
     for path in [
         "crates/ripr/src/output/json/mod.rs",
@@ -18081,7 +18090,7 @@ fn check_output_contracts() -> Result<(), String> {
             }
             "confidence_label" => {
                 require_contract_value(
-                    "crates/ripr/src/output/mutation_calibration.rs",
+                    "crates/ripr/src/output/mutation_calibration/",
                     &mutation_calibration,
                     value,
                     kind,
