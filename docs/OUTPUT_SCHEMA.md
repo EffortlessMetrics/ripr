@@ -3975,17 +3975,18 @@ policy configuration or promote preview-language evidence.
 
 ## Preview Evidence Promotion Packet
 
-RIPR-SPEC-0044 defines the preview evidence promotion packet. The planned
+RIPR-SPEC-0044 defines the preview evidence promotion packet. The
 `ripr policy preview-promote` command writes a read-only advisory packet for a
 preview language and evidence class. The default result is blocked:
 `allowed_now = false` with reason `preview promotion evidence not supplied`.
 
-Planned command:
+Command:
 
 ```text
 ripr policy preview-promote \
   --language typescript \
   --class boundary_gap \
+  --evidence target/ripr/reports/preview-promotion-evidence.json \
   --out target/ripr/reports/preview-promotion-typescript-boundary-gap.json \
   --out-md target/ripr/reports/preview-promotion-typescript-boundary-gap.md
 ```
@@ -4081,10 +4082,16 @@ JSON shape:
     "Supply explicit preview promotion evidence before policy eligibility review."
   ],
   "required_receipts": [
+    "preview-promotion-typescript-boundary-gap.json",
     "preview-boundary report showing advisory language status",
     "fixture corpus coverage receipt for TypeScript boundary_gap",
+    "static-limit exclusions receipt for TypeScript boundary_gap",
     "false-positive review receipt for TypeScript boundary_gap",
-    "recommendation-calibration receipt for TypeScript boundary_gap"
+    "recommendation-calibration receipt for TypeScript boundary_gap",
+    "baseline behavior receipt for TypeScript boundary_gap",
+    "waiver/suppression behavior receipt for TypeScript boundary_gap",
+    "rollback path receipt for TypeScript boundary_gap",
+    "generated CI posture receipt for TypeScript boundary_gap"
   ],
   "rollback_path": [
     "Keep TypeScript boundary_gap evidence advisory.",
@@ -4133,7 +4140,7 @@ Field contract:
 - `required_receipts[]` - artifacts reviewers should inspect before promotion.
 - `rollback_path[]` - explicit return path to advisory preview status.
 - `generated_ci_posture` - advisory CI permissions and hard denials.
-- `input_artifacts[]` - future explicit evidence input status.
+- `input_artifacts[]` - optional explicit evidence input status.
 - `warnings[]` - malformed supplied inputs or target-language limitations.
 - `unknowns[]` - unavailable context that must stay visible.
 - `non_goals[]` - hard boundaries repeated in the packet.
