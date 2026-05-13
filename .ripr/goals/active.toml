@@ -225,11 +225,11 @@ commands = [
 
 [[work_item]]
 id = "lsp/editor-language-routing"
-status = "ready"
+status = "done"
 branch = "lsp-editor-language-routing"
 stackable = false
 blocked_by = []
-acceptance = "Extend the VS Code extension to register the TypeScript, TypeScript React, JavaScript, JavaScript React, and Python selectors, and route saved-workspace diagnostics through the adapter layer only when repo config enables that language. Preserve Rust saved-workspace defaults for diagnostics, hover, actions, and status. Preview findings must be visibly labeled preview, hover/status must surface explicit static limits before suggested action language, and wrong-root/stale/malformed artifacts must still fail closed. No analyzer behavior, source edits, generated tests, provider calls, mutation execution, policy/gate/default-blocking behavior, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays."
+acceptance = "Extended the VS Code extension activation events and document selector to TypeScript, TypeScript React, JavaScript, JavaScript React, and Python while preserving Rust saved-workspace defaults. Routed stale-buffer guards through the same supported-language selector set; preview findings now carry language/language_status/owner_kind/static_limit_kind through LSP diagnostic data, hover shows the preview syntax-first/advisory boundary before RIPR evidence, and status text surfaces preview/static-limit counts from refresh logs. LSP analysis remains config-gated by [languages] through the existing adapter layer. Landed without analyzer behavior changes, source edits, generated tests, provider calls, mutation execution, policy/gate/default-blocking behavior, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays."
 commands = [
   "cargo test -p ripr lsp --lib",
   "cargo test -p ripr lsp::tests --lib",
@@ -247,13 +247,19 @@ commands = [
 
 [[work_item]]
 id = "ci/language-aware-grouping"
-status = "blocked"
+status = "ready"
 branch = "ci-language-aware-grouping"
 stackable = false
-blocked_by = [
-  "lsp/editor-language-routing",
-]
+blocked_by = []
 acceptance = "Update generated GitHub CI summaries to group advisory output by language only when [languages] declares more than Rust, keeping Rust-default behavior identical and gate authority unchanged"
+commands = [
+  "cargo xtask check-workflows",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-traceability",
+  "cargo xtask check-pr",
+]
 
 [[work_item]]
 id = "docs/language-adapter-preview-workflow"

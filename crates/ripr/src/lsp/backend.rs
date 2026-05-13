@@ -309,6 +309,8 @@ pub(super) struct RefreshLogSummary {
     diagnostics: usize,
     files: usize,
     findings: usize,
+    preview_findings: usize,
+    static_limits: usize,
     seam_diagnostics: usize,
     enabled_languages: usize,
 }
@@ -325,6 +327,21 @@ impl RefreshLogSummary {
             diagnostics: snapshot.diagnostic_count(),
             files: snapshot.diagnostic_uri_count(),
             findings: snapshot.finding_count(),
+            preview_findings: snapshot
+                .findings
+                .iter()
+                .filter(|finding| {
+                    finding
+                        .language_status
+                        .as_ref()
+                        .is_some_and(|status| status.as_str() == "preview")
+                })
+                .count(),
+            static_limits: snapshot
+                .findings
+                .iter()
+                .filter(|finding| finding.static_limit_kind.is_some())
+                .count(),
             seam_diagnostics: snapshot.seam_diagnostic_count(),
             enabled_languages: 1,
         }
@@ -377,11 +394,13 @@ pub(super) fn refresh_completed_log_message(
 ) -> String {
     let duration = format_duration(summary.duration);
     format!(
-        "ripr analysis refresh completed in {duration}: generation={}, diagnostics={}, files={}, findings={}, seam_diagnostics={}, enabled_languages={}, published_files={}, cleared_files={}",
+        "ripr analysis refresh completed in {duration}: generation={}, diagnostics={}, files={}, findings={}, preview_findings={}, static_limits={}, seam_diagnostics={}, enabled_languages={}, published_files={}, cleared_files={}",
         summary.generation,
         summary.diagnostics,
         summary.files,
         summary.findings,
+        summary.preview_findings,
+        summary.static_limits,
         summary.seam_diagnostics,
         summary.enabled_languages,
         published_uri_count,

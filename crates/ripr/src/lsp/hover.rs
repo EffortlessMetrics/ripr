@@ -135,13 +135,16 @@ fn finding_hover_markdown(diagnostic: &Diagnostic, finding: &Finding) -> String 
         String::new(),
         diagnostic.message.clone(),
         String::new(),
+    ];
+    push_preview_boundary(&mut lines, finding);
+    lines.extend([
         "## RIPR Evidence".to_string(),
         stage_line("reach", &finding.ripr.reach),
         stage_line("infection", &finding.ripr.infect),
         stage_line("propagation", &finding.ripr.propagate),
         stage_line("observation", &finding.ripr.reveal.observe),
         stage_line("discriminator", &finding.ripr.reveal.discriminate),
-    ];
+    ]);
 
     if !finding.related_tests.is_empty() {
         lines.push(String::new());
@@ -175,6 +178,27 @@ fn finding_hover_markdown(diagnostic: &Diagnostic, finding: &Finding) -> String 
     }
 
     lines.join("\n")
+}
+
+fn push_preview_boundary(lines: &mut Vec<String>, finding: &Finding) {
+    if finding.language_status.is_none() && finding.static_limit_kind.is_none() {
+        return;
+    }
+    lines.push("## Preview Boundary".to_string());
+    if let Some(language) = &finding.language {
+        lines.push(format!("Language: {}", language.as_str()));
+    }
+    if let Some(status) = &finding.language_status {
+        lines.push(format!("Status: {}", status.as_str()));
+    }
+    if finding.language_status.is_some() {
+        lines.push("Evidence: syntax-first".to_string());
+        lines.push("Action: advisory only".to_string());
+    }
+    if let Some(static_limit_kind) = &finding.static_limit_kind {
+        lines.push(format!("Static limit: {}", static_limit_kind.as_str()));
+    }
+    lines.push(String::new());
 }
 
 fn stage_line(name: &str, stage: &StageEvidence) -> String {
