@@ -29,7 +29,7 @@
       "evidence_path": ["reach yes: 1 related Python test(s) found for owner `mark_paid`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/test_invoice.py:4 test_mark_paid_sets_status uses strong exact value oracle: assert invoice.status == \"paid\""],
       "flow_sinks": [
       ],
-      "evidence": ["owner: Invoice.mark_paid", "owner_kind: method", "test_framework: pytest (test_mark_paid_sets_status)", "test_oracle: exact_value strong (test_mark_paid_sets_status)"],
+      "evidence": ["owner: Invoice.mark_paid", "owner_kind: method", "test_framework: pytest (test_mark_paid_sets_status)", "related_test_relation: syntactic_call (test_mark_paid_sets_status)", "test_oracle: exact_value strong (test_mark_paid_sets_status)"],
       "missing": ["Related Python test reaches `mark_paid` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
       "activation": {
         "observed_values": [
