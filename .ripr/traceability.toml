@@ -2613,10 +2613,24 @@ id = "RIPR-SPEC-0044"
 name = "Preview evidence promotion packet"
 spec = "docs/specs/RIPR-SPEC-0044-preview-evidence-promotion-packet.md"
 tests = [
+  "crates/ripr/src/output/policy_preview_promotion.rs::tests::preview_promotion_default_typescript_is_blocked",
+  "crates/ripr/src/output/policy_preview_promotion.rs::tests::preview_promotion_default_python_is_blocked",
+  "crates/ripr/src/output/policy_preview_promotion.rs::tests::preview_promotion_partial_evidence_remains_blocked",
+  "crates/ripr/src/output/policy_preview_promotion.rs::tests::preview_promotion_complete_evidence_stays_advisory_until_later_policy",
+  "crates/ripr/src/output/policy_preview_promotion.rs::tests::preview_promotion_optional_mutation_calibration_does_not_block",
+  "crates/ripr/src/output/policy_preview_promotion.rs::tests::preview_promotion_malformed_evidence_warns",
+  "crates/ripr/src/output/policy_preview_promotion.rs::tests::preview_promotion_ignores_supplied_status_promotion",
+  "crates/ripr/src/output/policy_preview_promotion.rs::tests::preview_promotion_json_and_markdown_are_structured",
+  "crates/ripr/src/output/policy_preview_promotion.rs::tests::preview_promotion_default_paths_use_dash_class_label",
+  "crates/ripr/src/cli/commands.rs::tests::policy_preview_promotion_parses_option_surface",
+  "crates/ripr/src/cli/commands.rs::tests::policy_preview_promotion_command_writes_reports",
 ]
 fixtures = [
 ]
 code = [
+  "crates/ripr/src/output/policy_preview_promotion.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/help.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0044-preview-evidence-promotion-packet.md",

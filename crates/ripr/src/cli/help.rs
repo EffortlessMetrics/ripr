@@ -15,6 +15,7 @@ Usage:
   ripr policy operations --policy-readiness target/ripr/reports/policy-readiness.json [--waiver-aging target/ripr/reports/waiver-aging.json] [--suppression-health target/ripr/reports/suppression-health.json] [--out target/ripr/reports/policy-operations.json] [--out-md target/ripr/reports/policy-operations.md]
   ripr policy history --current target/ripr/reports/policy-operations.json [--history .ripr/policy-history.jsonl] [--commit HEAD] [--pr-number 123] [--out target/ripr/reports/policy-history.json] [--out-md target/ripr/reports/policy-history.md]
   ripr policy promote --to baseline-check --operations target/ripr/reports/policy-operations.json [--history target/ripr/reports/policy-history.json] [--out target/ripr/reports/policy-promotion-baseline-check.json] [--out-md target/ripr/reports/policy-promotion-baseline-check.md]
+  ripr policy preview-promote --language typescript --class boundary_gap [--evidence target/ripr/reports/preview-promotion-evidence.json] [--out target/ripr/reports/preview-promotion-typescript-boundary-gap.json] [--out-md target/ripr/reports/preview-promotion-typescript-boundary-gap.md]
   ripr policy waiver-aging [--ledger target/ripr/reports/pr-evidence-ledger.json] [--history .ripr/pr-evidence-ledger.jsonl] [--out target/ripr/reports/waiver-aging.json] [--out-md target/ripr/reports/waiver-aging.md]
   ripr policy suppression-health [--root .] [--manifest .ripr/suppressions.toml] [--out target/ripr/reports/suppression-health.json] [--out-md target/ripr/reports/suppression-health.md]
   ripr pr-ledger record --pr-number 123 --base SHA --head SHA [--gate target/ripr/reports/gate-decision.json] [--baseline-delta target/ripr/reports/baseline-debt-delta.json] [--zero-status target/ripr/reports/ripr-zero-status.json] [--out target/ripr/reports/pr-evidence-ledger.json]
@@ -59,6 +60,7 @@ Quick start:
   ripr policy operations --policy-readiness target/ripr/reports/policy-readiness.json --waiver-aging target/ripr/reports/waiver-aging.json --suppression-health target/ripr/reports/suppression-health.json
   ripr policy history --current target/ripr/reports/policy-operations.json --history .ripr/policy-history.jsonl
   ripr policy promote --to baseline-check --operations target/ripr/reports/policy-operations.json --history target/ripr/reports/policy-history.json
+  ripr policy preview-promote --language typescript --class boundary_gap
   ripr policy waiver-aging --ledger target/ripr/reports/pr-evidence-ledger.json --history .ripr/pr-evidence-ledger.jsonl
   ripr policy suppression-health
   ripr pr-ledger record --pr-number 123 --base origin/main --head HEAD --baseline-delta target/ripr/reports/baseline-debt-delta.json --zero-status target/ripr/reports/ripr-zero-status.json
@@ -286,6 +288,7 @@ Usage: ripr policy readiness [--root PATH] [--gate-decision PATH] [--baseline-de
        ripr policy operations [--root PATH] --policy-readiness PATH [--waiver-aging PATH] [--suppression-health PATH] [--baseline-delta PATH] [--gate-decision PATH] [--recommendation-calibration PATH] [--mutation-calibration PATH] [--preview-boundary PATH] [--out PATH] [--out-md PATH]
        ripr policy history [--root PATH] --current PATH [--history PATH] [--commit REV] [--pr-number NUMBER] [--out PATH] [--out-md PATH]
        ripr policy promote [--root PATH] --to MODE --operations PATH [--history PATH] [--out PATH] [--out-md PATH]
+       ripr policy preview-promote [--root PATH] --language LANGUAGE --class CLASS [--evidence PATH] [--out PATH] [--out-md PATH]
        ripr policy waiver-aging [--root PATH] [--ledger PATH] [--history PATH] [--out PATH] [--out-md PATH]
        ripr policy suppression-health [--root PATH] [--manifest PATH] [--out PATH] [--out-md PATH]
 
@@ -332,6 +335,14 @@ Promotion options:
   --out PATH                            JSON output path. Defaults to target/ripr/reports/policy-promotion-<mode>.json.
   --out-md PATH                         Markdown output path. Defaults to target/ripr/reports/policy-promotion-<mode>.md.
 
+Preview promotion options:
+  --root PATH                           Display root for the report. Defaults to current directory.
+  --language LANGUAGE                   Preview language under review: typescript or python.
+  --class CLASS                         Preview evidence class under review, for example boundary_gap.
+  --evidence PATH                       Optional explicit preview promotion evidence receipts JSON.
+  --out PATH                            JSON output path. Defaults to target/ripr/reports/preview-promotion-<language>-<class>.json.
+  --out-md PATH                         Markdown output path. Defaults to target/ripr/reports/preview-promotion-<language>-<class>.md.
+
 Waiver aging options:
   --root PATH                           Display root for the report. Defaults to current directory.
   --ledger PATH                         Optional current PR evidence ledger JSON.
@@ -355,12 +366,16 @@ promoting anything. The policy history report shows whether readiness, waivers,
 suppressions, baseline debt, calibration, and preview boundaries are improving
 or decaying without appending history. The policy promotion packet reads policy
 operations plus optional policy history and writes manual-review promotion
-evidence without changing config. The waiver-aging report keeps repeated
-waivers visible as repair or policy-review signals. The suppression-health
-report flags durable exception metadata gaps while keeping suppressed findings
-visible. These commands do not run analysis, mutate baselines or suppressions,
-post comments, edit source, generate tests, run mutation testing, change gate
-policy, promote preview evidence, or make CI blocking.
+evidence without changing config. The preview promotion packet writes default
+blocked evidence accounting for TypeScript and Python preview classes while
+keeping preview evidence visible, advisory, non-gating, outside RIPR Zero, and
+outside calibrated confidence until a later explicit policy is reviewed. The
+waiver-aging report keeps repeated waivers visible as repair or policy-review
+signals. The suppression-health report flags durable exception metadata gaps
+while keeping suppressed findings visible. These commands do not run analysis,
+mutate baselines or suppressions, post comments, edit source, generate tests,
+run mutation testing, change gate policy, promote preview evidence, or make CI
+blocking.
 "#;
 
 const PR_LEDGER_HELP: &str = r#"Record a read-only PR evidence ledger entry over existing reports.
@@ -921,6 +936,7 @@ mod tests {
         assert!(HELP.contains("ripr policy operations"));
         assert!(HELP.contains("ripr policy history"));
         assert!(HELP.contains("ripr policy promote"));
+        assert!(HELP.contains("ripr policy preview-promote"));
         assert!(HELP.contains("ripr policy waiver-aging"));
         assert!(HELP.contains("ripr pr-ledger record"));
         assert!(HELP.contains("ripr pr-comments plan"));
@@ -1000,12 +1016,14 @@ mod tests {
         assert!(POLICY_HELP.contains("ripr policy operations"));
         assert!(POLICY_HELP.contains("ripr policy history"));
         assert!(POLICY_HELP.contains("ripr policy promote"));
+        assert!(POLICY_HELP.contains("ripr policy preview-promote"));
         assert!(POLICY_HELP.contains("ripr policy waiver-aging"));
         assert!(POLICY_HELP.contains("ripr policy suppression-health"));
         assert!(POLICY_HELP.contains("policy-readiness.json"));
         assert!(POLICY_HELP.contains("policy-operations.json"));
         assert!(POLICY_HELP.contains("policy-history.json"));
         assert!(POLICY_HELP.contains("policy-promotion-<mode>.json"));
+        assert!(POLICY_HELP.contains("preview-promotion-<language>-<class>.json"));
         assert!(POLICY_HELP.contains("waiver-aging.json"));
         assert!(POLICY_HELP.contains("suppression-health.json"));
         assert!(POLICY_HELP.contains("read-only advisory governance"));

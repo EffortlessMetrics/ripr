@@ -80,11 +80,12 @@ The planned command is:
 ripr policy preview-promote \
   --language typescript \
   --class boundary_gap \
+  --evidence target/ripr/reports/preview-promotion-evidence.json \
   --out target/ripr/reports/preview-promotion-typescript-boundary-gap.json \
   --out-md target/ripr/reports/preview-promotion-typescript-boundary-gap.md
 ```
 
-Future implementations may add explicit evidence inputs, but missing evidence
+The implementation accepts optional explicit evidence input. Missing evidence
 must be represented as missing evidence, not silently inferred.
 
 Input parameters:
@@ -93,7 +94,7 @@ Input parameters:
 | --- | --- | --- |
 | Language | required | Preview language under review, initially `typescript` or `python`. |
 | Candidate class | required | Evidence class under review, for example `boundary_gap`. |
-| Evidence receipts | optional | Explicit future artifacts for fixture coverage, static limits, false-positive review, calibration, baseline behavior, waiver/suppression behavior, rollback, and generated CI posture. Missing receipts block promotion. |
+| Evidence receipts | optional | Explicit artifact for fixture coverage, static limits, false-positive review, calibration, baseline behavior, waiver/suppression behavior, rollback, and generated CI posture. Missing receipts block promotion. |
 
 ## Outputs
 
@@ -332,7 +333,7 @@ Preview boundary protection:
 
 ## Test Mapping
 
-Follow-up implementation should include:
+Implementation includes:
 
 - Output builder tests for default blocked TypeScript and Python packets.
 - Output builder tests for partial evidence receipts where missing required
@@ -353,11 +354,13 @@ Follow-up implementation should include:
 This spec belongs to the focused Lane 2 tracker in
 [Policy operations](../policy/POLICY_OPERATIONS.md).
 
-Implementation should be split into later work items:
+Implementation is split by work item:
 
 - `spec/preview-evidence-promotion-packet` defines this report contract.
 - `policy/preview-promotion-packet-report` implements the read-only
-  JSON/Markdown producer.
+  JSON/Markdown producer in
+  `crates/ripr/src/output/policy_preview_promotion.rs` and
+  `crates/ripr/src/cli/commands.rs`.
 - `docs/policy-operator-workflow` explains how maintainers review preview
   promotion packets without changing preview defaults.
 - `ci/policy-operations-advisory-projection` may surface preview promotion

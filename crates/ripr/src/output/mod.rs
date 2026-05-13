@@ -21,6 +21,7 @@ pub(crate) mod outcome;
 pub(crate) mod pilot;
 pub(crate) mod policy_history;
 pub(crate) mod policy_operations;
+pub(crate) mod policy_preview_promotion;
 pub(crate) mod policy_promotion;
 pub(crate) mod policy_readiness;
 pub(crate) mod pr_evidence_ledger;

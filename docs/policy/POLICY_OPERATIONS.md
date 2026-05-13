@@ -104,7 +104,7 @@ available spec IDs.
 | 6 | `spec/policy-promotion-packets` | Define read-only promotion packets for stricter configured modes. | done |
 | 7 | `policy/promotion-packet-report` | Implement `ripr policy promote --to ...` without mutating config. | done |
 | 8 | `spec/preview-evidence-promotion-packet` | Define the future preview-language promotion packet contract. | done |
-| 9 | `policy/preview-promotion-packet-report` | Implement `ripr policy preview-promote` with default `allowed_now = false`. | planned |
+| 9 | `policy/preview-promotion-packet-report` | Implement `ripr policy preview-promote` with default `allowed_now = false`. | done |
 | 10 | `docs/policy-operator-workflow` | Document the maintainer workflow from readiness through promotion review. | planned |
 | 11 | `ci/policy-operations-advisory-projection` | Surface policy operations artifacts in generated CI without pass/fail authority. | planned |
 | 12 | `campaign/policy-operations-closeout` | Close after operations, history, promotion, preview-promotion, workflow, CI projection, capability, metrics, traceability, and handoff surfaces exist. | planned |
@@ -196,11 +196,11 @@ packet justifies a narrow explicit promotion.
 
 The preview evidence promotion packet is defined by
 [RIPR-SPEC-0044](../specs/RIPR-SPEC-0044-preview-evidence-promotion-packet.md).
-It defines the future `ripr policy preview-promote --language ... --class ...`
-packet with default `allowed_now = false`, explicit required/supplied/missing
-evidence accounting, advisory generated-CI posture, rollback guidance, and no
-actual promotion, gate eligibility, RIPR Zero inclusion, calibrated confidence,
-CI blocking, or preview eligibility mutation.
+`ripr policy preview-promote --language ... --class ...` writes the packet with
+default `allowed_now = false`, explicit required/supplied/missing evidence
+accounting, advisory generated-CI posture, rollback guidance, and no actual
+promotion, gate eligibility, RIPR Zero inclusion, calibrated confidence, CI
+blocking, or preview eligibility mutation.
 
 ## Boundaries
 
