@@ -143,6 +143,17 @@ struct PolicyOperationsOptions {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+struct PolicyHistoryOptions {
+    root: String,
+    current: PathBuf,
+    history: Option<PathBuf>,
+    commit: Option<String>,
+    pr_number: Option<String>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 struct PolicyWaiverAgingOptions {
     root: String,
     ledger: Option<PathBuf>,
@@ -2934,17 +2945,18 @@ pub(super) fn policy(args: &[String]) -> Result<(), String> {
     }
     let Some((subcommand, rest)) = args.split_first() else {
         return Err(
-            "policy requires subcommand `readiness`, `operations`, `waiver-aging`, or `suppression-health`"
+            "policy requires subcommand `readiness`, `operations`, `history`, `waiver-aging`, or `suppression-health`"
                 .to_string(),
         );
     };
     match subcommand.as_str() {
         "readiness" => policy_readiness(rest),
         "operations" => policy_operations(rest),
+        "history" => policy_history(rest),
         "waiver-aging" => policy_waiver_aging(rest),
         "suppression-health" => policy_suppression_health(rest),
         _ => Err(format!(
-            "unknown policy subcommand {subcommand:?}; expected `readiness`, `operations`, `waiver-aging`, or `suppression-health`"
+            "unknown policy subcommand {subcommand:?}; expected `readiness`, `operations`, `history`, `waiver-aging`, or `suppression-health`"
         )),
     }
 }
@@ -3388,6 +3400,42 @@ fn policy_operations(args: &[String]) -> Result<(), String> {
     println!(
         "Next safe action: {}",
         output::policy_operations::policy_operations_next_action(&report)
+    );
+    Ok(())
+}
+
+fn policy_history(args: &[String]) -> Result<(), String> {
+    let options = parse_policy_history_options(args)?;
+    let input = output::policy_history::PolicyHistoryInput {
+        root: options.root,
+        generated_at: policy_readiness_generated_at()?,
+        current_path: output::policy_history::display_path(&options.current),
+        history_path: options
+            .history
+            .as_ref()
+            .map(|path| output::policy_history::display_path(path)),
+        commit: options.commit,
+        pr_number: options.pr_number,
+        current_json: read_optional_text_for_report("policy operations", &options.current),
+        history_jsonl: options
+            .history
+            .as_ref()
+            .map(|path| read_optional_text_for_report("policy history", path)),
+    };
+    let report = output::policy_history::build_policy_history_report(input);
+    let rendered_json = output::policy_history::render_policy_history_json(&report)?;
+    let rendered_md = output::policy_history::render_policy_history_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    println!(
+        "Current ceiling: {}",
+        output::policy_history::policy_history_current_ceiling(&report)
+    );
+    println!(
+        "Readiness trend: {}",
+        output::policy_history::policy_history_trend_direction(&report)
     );
     Ok(())
 }
@@ -4900,6 +4948,67 @@ fn parse_policy_operations_options(args: &[String]) -> Result<PolicyOperationsOp
         recommendation_calibration,
         mutation_calibration,
         preview_boundary,
+        out,
+        out_md,
+    })
+}
+
+fn parse_policy_history_options(args: &[String]) -> Result<PolicyHistoryOptions, String> {
+    let mut root = ".".to_string();
+    let mut current = None;
+    let mut history = None;
+    let mut commit = None;
+    let mut pr_number = None;
+    let mut out = PathBuf::from(output::policy_history::DEFAULT_POLICY_HISTORY_OUT);
+    let mut out_md = PathBuf::from(output::policy_history::DEFAULT_POLICY_HISTORY_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "policy history")?;
+            }
+            "--current" => {
+                i += 1;
+                current = Some(non_empty_path_arg(args, i, "--current", "policy history")?);
+            }
+            "--history" => {
+                i += 1;
+                history = Some(non_empty_path_arg(args, i, "--history", "policy history")?);
+            }
+            "--commit" => {
+                i += 1;
+                commit = Some(non_empty_string_arg(args, i, "--commit", "policy history")?);
+            }
+            "--pr-number" => {
+                i += 1;
+                pr_number = Some(non_empty_string_arg(
+                    args,
+                    i,
+                    "--pr-number",
+                    "policy history",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "policy history")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "policy history")?;
+            }
+            other => return Err(format!("unknown policy history argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    Ok(PolicyHistoryOptions {
+        root,
+        current: current.ok_or_else(|| "policy history requires --current <path>".to_string())?,
+        history,
+        commit,
+        pr_number,
         out,
         out_md,
     })
@@ -7359,14 +7468,14 @@ mod tests {
         assert_eq!(
             policy(&args(&[])),
             Err(
-                "policy requires subcommand `readiness`, `operations`, `waiver-aging`, or `suppression-health`"
+                "policy requires subcommand `readiness`, `operations`, `history`, `waiver-aging`, or `suppression-health`"
                     .to_string()
             )
         );
         assert_eq!(
             policy(&args(&["unknown"])),
             Err(
-                "unknown policy subcommand \"unknown\"; expected `readiness`, `operations`, `waiver-aging`, or `suppression-health`"
+                "unknown policy subcommand \"unknown\"; expected `readiness`, `operations`, `history`, `waiver-aging`, or `suppression-health`"
                     .to_string()
             )
         );
@@ -7389,6 +7498,49 @@ mod tests {
         assert_eq!(
             parse_policy_operations_options(&args(&["--bad"])),
             Err("unknown policy operations argument \"--bad\"".to_string())
+        );
+    }
+
+    #[test]
+    fn policy_history_parses_option_surface() {
+        assert_eq!(
+            parse_policy_history_options(&args(&[
+                "--root",
+                ".",
+                "--current",
+                "target/ripr/reports/policy-operations.json",
+                "--history",
+                ".ripr/policy-history.jsonl",
+                "--commit",
+                "HEAD",
+                "--pr-number",
+                "123",
+                "--out",
+                "target/ripr/reports/policy-history.json",
+                "--out-md",
+                "target/ripr/reports/policy-history.md",
+            ])),
+            Ok(PolicyHistoryOptions {
+                root: ".".to_string(),
+                current: PathBuf::from("target/ripr/reports/policy-operations.json"),
+                history: Some(PathBuf::from(".ripr/policy-history.jsonl")),
+                commit: Some("HEAD".to_string()),
+                pr_number: Some("123".to_string()),
+                out: PathBuf::from("target/ripr/reports/policy-history.json"),
+                out_md: PathBuf::from("target/ripr/reports/policy-history.md"),
+            })
+        );
+        assert_eq!(
+            parse_policy_history_options(&args(&[])),
+            Err("policy history requires --current <path>".to_string())
+        );
+        assert_eq!(
+            parse_policy_history_options(&args(&["--current", ""])),
+            Err("policy history --current requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_policy_history_options(&args(&["--current", "ops.json", "--bad"])),
+            Err("unknown policy history argument \"--bad\"".to_string())
         );
     }
 
@@ -7609,6 +7761,80 @@ mod tests {
         assert!(md_text.contains("# RIPR Policy Operations"));
         assert!(md_text.contains("Current ceiling: ready_for_acknowledgeable"));
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove operations dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn policy_history_command_writes_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("policy-history");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create history dir: {err}"))?;
+        let current = dir.join("policy-operations.json");
+        let history = dir.join("policy-history.jsonl");
+        let out = dir.join("policy-history.json");
+        let out_md = dir.join("policy-history.md");
+        std::fs::write(
+            &current,
+            r#"{
+              "schema_version": "0.1",
+              "kind": "policy_operations",
+              "generated_at": "unix_ms:10",
+              "current_policy_ceiling": "ready_for_acknowledgeable",
+              "safe_to_promote_to": [
+                {"mode": "visible-only", "allowed_now": true, "reason": "ok", "source_artifacts": []},
+                {"mode": "acknowledgeable", "allowed_now": true, "reason": "ok", "source_artifacts": []}
+              ],
+              "not_safe_to_promote_to": [],
+              "promotion_blockers": [],
+              "input_artifacts": [
+                {"kind":"baseline_delta","path":"baseline.json","status":"read"},
+                {"kind":"waiver_aging","path":"waiver.json","status":"read"},
+                {"kind":"suppression_health","path":"suppression.json","status":"read"},
+                {"kind":"recommendation_calibration","path":"recommendation.json","status":"omitted"}
+              ],
+              "current": {
+                "new_policy_eligible_count": 1,
+                "waiver_count": 2,
+                "stale_suppression_count": 0,
+                "baseline_still_present": 4,
+                "baseline_resolved": 1
+              }
+            }"#,
+        )
+        .map_err(|err| format!("write current: {err}"))?;
+        let history_text = r#"{"generated_at":"unix_ms:1","current_policy_ceiling":"ready_for_visible_only","recommended_mode":"visible-only","baseline_health":"healthy","waiver_health":"healthy","suppression_health":"healthy","calibration_health":"not_ready","preview_boundary_state":"healthy","new_policy_eligible_count":1,"waiver_count":2,"stale_suppression_count":0,"baseline_still_present":5,"baseline_resolved":0}
+"#;
+        std::fs::write(&history, history_text).map_err(|err| format!("write history: {err}"))?;
+
+        policy(&args(&[
+            "history",
+            "--current",
+            &current.display().to_string(),
+            "--history",
+            &history.display().to_string(),
+            "--commit",
+            "HEAD",
+            "--pr-number",
+            "123",
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text =
+            std::fs::read_to_string(&out).map_err(|err| format!("read history json: {err}"))?;
+        let md_text =
+            std::fs::read_to_string(&out_md).map_err(|err| format!("read history md: {err}"))?;
+        assert!(json_text.contains("\"kind\": \"policy_history\""));
+        assert!(json_text.contains("\"readiness_improved\": true"));
+        assert!(json_text.contains("\"example_append_record\""));
+        assert!(md_text.contains("# RIPR Policy History"));
+        assert!(md_text.contains("Readiness: improved"));
+        assert_eq!(
+            std::fs::read_to_string(&history).map_err(|err| format!("read history: {err}"))?,
+            history_text
+        );
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove history dir: {err}"))?;
         Ok(())
     }
 

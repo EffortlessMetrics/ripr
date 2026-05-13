@@ -100,7 +100,7 @@ available spec IDs.
 | 2 | `spec/policy-operations-report` | Define the read-only policy operations report contract. | done |
 | 3 | `policy/operations-report` | Implement `ripr policy operations` over explicit existing artifacts. | done |
 | 4 | `spec/policy-history-ledger` | Define the read-only policy history report and optional append-only input. | done |
-| 5 | `policy/history-report` | Implement `ripr policy history` as advisory trend reporting. | planned |
+| 5 | `policy/history-report` | Implement `ripr policy history` as advisory trend reporting. | done |
 | 6 | `spec/policy-promotion-packets` | Define read-only promotion packets for stricter configured modes. | planned |
 | 7 | `policy/promotion-packet-report` | Implement `ripr policy promote --to ...` without mutating config. | planned |
 | 8 | `spec/preview-evidence-promotion-packet` | Define the future preview-language promotion packet contract. | planned |
@@ -154,9 +154,9 @@ ripr policy history \
   --out-md target/ripr/reports/policy-history.md
 ```
 
-The command must not append to `.ripr/policy-history.jsonl`, collect telemetry,
-create dashboards, execute gates, mutate policy files, or promote preview
-evidence.
+The implemented command does not append to `.ripr/policy-history.jsonl`, collect
+telemetry, create dashboards, execute gates, mutate policy files, or promote
+preview evidence.
 
 ## Promotion Ceiling
 
