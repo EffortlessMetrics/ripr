@@ -30,8 +30,9 @@ pub(crate) use receipts::{receipts, receipts_write};
 pub(crate) use recommendation::recommendation_calibration;
 pub(crate) use release::release_readiness;
 pub(crate) use repo::{
-    agent_seam_packets_report, evidence_health_report, lane1_evidence_audit_report,
-    repo_exposure_latency_report, repo_exposure_report, repo_seam_inventory,
+    agent_seam_packets_report, evidence_health_report, evidence_quality_scorecard_report,
+    lane1_evidence_audit_report, repo_exposure_latency_report, repo_exposure_report,
+    repo_seam_inventory,
 };
 pub(crate) use sarif::sarif_policy;
 pub(crate) use targeted_test::targeted_test_outcome;

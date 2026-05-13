@@ -164,7 +164,8 @@ evidence class, not by projection surface.
 | `docs/spec-evidence-quality-scorecard` | #845 | merged | Added RIPR-SPEC-0034. |
 | `docs/spec-evidence-quality-benchmark-corpus` | #846 | merged | Added RIPR-SPEC-0035. |
 | `docs/adr-fixture-first-evidence-confidence` | #847 | merged | Added ADR 0010. |
-| `docs/lane-1-evidence-quality-leadership-tracker` | current | in review | Opens this tracker; no behavior changes. |
+| `docs/lane-1-evidence-quality-leadership-tracker` | #848 | merged | Opened this tracker; no behavior changes. |
+| `report/evidence-quality-scorecard` | current | in progress | Adds the repo-local scorecard from RIPR-SPEC-0034; no analyzer, gate, PR/CI, LSP, provider, generated-test, or mutation-execution behavior. |
 
 ## Closeout Conditions
 

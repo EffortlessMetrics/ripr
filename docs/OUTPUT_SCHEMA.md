@@ -1389,6 +1389,176 @@ Field contract:
 The Markdown sibling prints the same audit areas in bounded tables. JSON keeps
 the complete count maps.
 
+## Evidence Quality Scorecard
+
+`cargo xtask evidence-quality-scorecard` writes a repo-local Lane 1 scorecard
+over existing evidence-quality artifacts:
+
+```text
+target/ripr/reports/evidence-quality-scorecard.json
+target/ripr/reports/evidence-quality-scorecard.md
+```
+
+The command reads `target/ripr/reports/lane1-evidence-audit.json`, regenerating
+the audit first only when that required input is absent. It also reads
+`target/ripr/reports/evidence-health.json` and the previous scorecard artifact
+when they are already available. The report is advisory and does not change
+analyzer behavior, gate policy, PR/CI projection, editor output, source files,
+generated tests, provider calls, or runtime execution.
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "report": "evidence-quality-scorecard",
+  "generated_at": "unix_ms:1778620000000",
+  "scope": {
+    "kind": "repo",
+    "root": "."
+  },
+  "inputs": {
+    "lane1_evidence_audit": {
+      "path": "target/ripr/reports/lane1-evidence-audit.json",
+      "status": "loaded",
+      "schema_version": "0.1",
+      "sha256": "0123456789abcdef",
+      "note": "required Lane 1 evidence-quality audit input"
+    },
+    "evidence_health": {
+      "path": "target/ripr/reports/evidence-health.json",
+      "status": "missing",
+      "schema_version": null,
+      "sha256": null,
+      "note": "optional durable evidence-health audit fields"
+    }
+  },
+  "summary": {
+    "raw_headline_gaps": 6114,
+    "canonical_gap_groups_total": 4800,
+    "duplicate_looking_groups_total": 240,
+    "missing_discriminators_total": 1756,
+    "static_limitations_total": 4356,
+    "related_tests_total": 2200,
+    "low_or_opaque_top_related_tests": 48,
+    "calibrated_records": 0,
+    "uncalibrated_records": 9355,
+    "evidence_records_total": 9355,
+    "evidence_records_missing": 0,
+    "top_repair_count": 5,
+    "recent_delta_available": false
+  },
+  "maturity_by_class": [
+    {
+      "class": "related_test_ranking",
+      "status": "static_only",
+      "proof_source": "RIPR-SPEC-0029, Lane 1 audit related-test confidence distribution",
+      "known_limits": "Top related-test choices include low-confidence or opaque rankings.",
+      "recommended_next_repair": "analysis/related-test-ranking-audit-fixes"
+    }
+  ],
+  "canonical_gap_groups": {
+    "total": 4800,
+    "largest": []
+  },
+  "duplicate_looking_groups": [],
+  "static_limitation_categories": {
+    "by_reason": {},
+    "by_stage": {}
+  },
+  "missing_discriminator_classes": {
+    "by_reason": {},
+    "by_flow_sink": {},
+    "by_value": {}
+  },
+  "related_test_confidence": {
+    "all_confidence_counts": {},
+    "top_confidence_counts": {}
+  },
+  "oracle_semantics_distribution": {
+    "by_semantics": {},
+    "oracle_kind_counts": {},
+    "oracle_strength_counts": {}
+  },
+  "movement_availability": {
+    "records_with_canonical_gap_id": 4800
+  },
+  "calibration_coverage": {
+    "availability_counts": {
+      "not_imported": 9355
+    },
+    "confidence_counts": {
+      "unknown": 9355
+    },
+    "agreement_counts": {
+      "no_runtime_data": 9355
+    },
+    "calibrated_records": 0,
+    "uncalibrated_records": 9355,
+    "runtime_scope": "uncalibrated"
+  },
+  "recommended_repairs": [
+    {
+      "slice": "analysis/related-test-ranking-audit-fixes",
+      "priority": 100,
+      "evidence_class": "related_test_ranking",
+      "risk_kind": "low_or_opaque_top_related_tests",
+      "signal_count": 48,
+      "why": "Top related-test choices include low-confidence or opaque evidence.",
+      "expected_impact": "Improve first-useful-action task quality and agent packet reliability without changing gate behavior."
+    }
+  ],
+  "recent_audit_deltas": {
+    "available": false,
+    "source": null,
+    "reason": "no previous scorecard artifact was available",
+    "deltas": []
+  },
+  "unknowns": [
+    {
+      "kind": "recent_delta_unavailable",
+      "summary": "No previous scorecard artifact was available for before/after delta reporting.",
+      "next_repair": "report/evidence-quality-trend"
+    }
+  ]
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `tool` - always `"ripr"`.
+- `report` - always `"evidence-quality-scorecard"`.
+- `generated_at` - generation timestamp in `unix_ms:<millis>` form.
+- `scope.kind` - always `"repo"`.
+- `inputs.*` - input artifact identity with path, load status, optional schema
+  version, optional SHA-256, and a short note. Missing optional artifacts are
+  reported instead of treated as failures.
+- `summary` - headline scorecard counts copied from the current Lane 1 audit
+  plus scorecard-local repair and delta availability counts.
+- `maturity_by_class` - class-scoped maturity rows. Status values are
+  `fixture_backed`, `static_only`, `imported_runtime_calibrated`, or
+  `uncalibrated`; these are scorecard maturity labels, not RIPR exposure
+  classifications.
+- `canonical_gap_groups`, `duplicate_looking_groups`,
+  `static_limitation_categories`, `missing_discriminator_classes`,
+  `related_test_confidence`, `oracle_semantics_distribution`, and
+  `movement_availability` - current audit sections carried forward so the
+  scorecard remains traceable to `lane1-evidence-audit.json`.
+- `calibration_coverage` - class-scoped calibration availability from
+  `evidence_record.calibration`; it does not run mutation testing.
+- `recommended_repairs` - bounded Lane 1 repair slices ordered by product risk
+  priority first, then signal count. These are advisory next steps, not policy
+  decisions.
+- `recent_audit_deltas` - before/after summary deltas when a previous
+  scorecard artifact is available; otherwise an explicit unavailable reason.
+- `unknowns` - unavailable inputs and evidence-quality unknowns that should
+  stay visible until a fixture, analyzer, or calibration slice addresses them.
+
+The Markdown sibling prints bounded sections for summary, maturity by class,
+top evidence-quality risks, recommended repairs, duplicate/canonical group
+signals, static limitations, missing discriminators, related-test and oracle
+distributions, movement and calibration coverage, recent deltas, and unknowns.
+
 ## Repo Exposure Latency Report
 
 `cargo xtask repo-exposure-latency-report` writes a maintainer diagnostic

@@ -1,5 +1,6 @@
 pub(crate) use crate::agent_seam_packets_report_impl as agent_seam_packets_report;
 pub(crate) use crate::evidence_health_report_impl as evidence_health_report;
+pub(crate) use crate::evidence_quality_scorecard_report_impl as evidence_quality_scorecard_report;
 pub(crate) use crate::lane1_evidence_audit_report_impl as lane1_evidence_audit_report;
 pub(crate) use crate::repo_exposure_latency_report_impl as repo_exposure_latency_report;
 pub(crate) use crate::repo_exposure_report_impl as repo_exposure_report;

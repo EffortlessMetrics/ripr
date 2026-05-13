@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -9670,6 +9670,1116 @@ fn audit_push_group_table(out: &mut String, groups: &[Lane1EvidenceAuditGroup]) 
 
 fn audit_markdown_cell(value: &str) -> String {
     value.replace('\n', " ").replace('|', "\\|")
+}
+
+const EVIDENCE_QUALITY_SCORECARD_SCHEMA_VERSION: &str = "0.1";
+const EVIDENCE_QUALITY_SCORECARD_REPAIR_LIMIT: usize = 5;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct EvidenceQualityScorecardInput {
+    path: String,
+    status: String,
+    schema_version: Option<String>,
+    sha256: Option<String>,
+    note: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct EvidenceQualityScorecardInputs {
+    lane1_evidence_audit: EvidenceQualityScorecardInput,
+    evidence_health: EvidenceQualityScorecardInput,
+    previous_scorecard: EvidenceQualityScorecardInput,
+    capability_matrix: EvidenceQualityScorecardInput,
+    capabilities: EvidenceQualityScorecardInput,
+    traceability: EvidenceQualityScorecardInput,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct EvidenceQualityScorecardSummary {
+    raw_headline_gaps: usize,
+    canonical_gap_groups_total: usize,
+    duplicate_looking_groups_total: usize,
+    missing_discriminators_total: usize,
+    static_limitations_total: usize,
+    related_tests_total: usize,
+    low_or_opaque_top_related_tests: usize,
+    calibrated_records: usize,
+    uncalibrated_records: usize,
+    evidence_records_total: usize,
+    evidence_records_missing: usize,
+    top_repair_count: usize,
+    recent_delta_available: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct EvidenceQualityMaturityRow {
+    class: String,
+    status: String,
+    proof_source: String,
+    known_limits: String,
+    recommended_next_repair: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct EvidenceQualityRepair {
+    slice: String,
+    priority: usize,
+    evidence_class: String,
+    risk_kind: String,
+    signal_count: usize,
+    why: String,
+    expected_impact: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct EvidenceQualityDelta {
+    metric: String,
+    before: usize,
+    after: usize,
+    delta: isize,
+    direction: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct EvidenceQualityDeltas {
+    available: bool,
+    source: Option<String>,
+    reason: Option<String>,
+    deltas: Vec<EvidenceQualityDelta>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct EvidenceQualityUnknown {
+    kind: String,
+    summary: String,
+    next_repair: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct EvidenceQualityScorecardReport {
+    generated_at: String,
+    root: String,
+    inputs: EvidenceQualityScorecardInputs,
+    summary: EvidenceQualityScorecardSummary,
+    maturity_by_class: Vec<EvidenceQualityMaturityRow>,
+    canonical_gap_groups: Value,
+    duplicate_looking_groups: Value,
+    static_limitation_categories: Value,
+    missing_discriminator_classes: Value,
+    related_test_confidence: Value,
+    oracle_semantics_distribution: Value,
+    movement_availability: Value,
+    calibration_coverage: Value,
+    recommended_repairs: Vec<EvidenceQualityRepair>,
+    recent_audit_deltas: EvidenceQualityDeltas,
+    unknowns: Vec<EvidenceQualityUnknown>,
+}
+
+/// Build the Lane 1 evidence quality scorecard from current audit artifacts.
+/// This report is advisory and does not change analyzer behavior, gate policy,
+/// PR projection, editor output, or runtime execution.
+pub(crate) fn evidence_quality_scorecard_report_impl() -> Result<(), String> {
+    ensure_reports_dir()?;
+    let scorecard_path = reports_dir().join("evidence-quality-scorecard.json");
+    let previous_scorecard = scorecard_optional_json(&scorecard_path)?;
+
+    let audit_path = reports_dir().join("lane1-evidence-audit.json");
+    if !audit_path.exists() {
+        lane1_evidence_audit_report_impl()?;
+    }
+    let audit = read_json_value(&audit_path).map_err(|err| {
+        format!("evidence-quality-scorecard requires lane1-evidence-audit.json; {err}")
+    })?;
+
+    let evidence_health_path = reports_dir().join("evidence-health.json");
+    let evidence_health = scorecard_optional_json(&evidence_health_path)?;
+    let inputs = evidence_quality_scorecard_inputs(
+        &audit_path,
+        &evidence_health_path,
+        &scorecard_path,
+        previous_scorecard.as_ref(),
+    )?;
+    let report = evidence_quality_scorecard_from_values(
+        evidence_quality_scorecard_generated_at()?,
+        inputs,
+        &audit,
+        evidence_health.as_ref(),
+        previous_scorecard.as_ref(),
+    )?;
+
+    write_report(
+        "evidence-quality-scorecard.json",
+        &evidence_quality_scorecard_json(&report)?,
+    )?;
+    write_report(
+        "evidence-quality-scorecard.md",
+        &evidence_quality_scorecard_markdown(&report),
+    )
+}
+
+fn evidence_quality_scorecard_inputs(
+    audit_path: &Path,
+    evidence_health_path: &Path,
+    previous_scorecard_path: &Path,
+    previous_scorecard: Option<&Value>,
+) -> Result<EvidenceQualityScorecardInputs, String> {
+    Ok(EvidenceQualityScorecardInputs {
+        lane1_evidence_audit: scorecard_input_artifact(
+            audit_path,
+            "loaded",
+            None,
+            "required Lane 1 evidence-quality audit input",
+        )?,
+        evidence_health: scorecard_input_artifact(
+            evidence_health_path,
+            "optional",
+            None,
+            "optional durable evidence-health audit fields",
+        )?,
+        previous_scorecard: scorecard_input_artifact(
+            previous_scorecard_path,
+            if previous_scorecard.is_some() {
+                "loaded"
+            } else {
+                "missing"
+            },
+            previous_scorecard,
+            "optional previous scorecard for recent deltas",
+        )?,
+        capability_matrix: scorecard_input_artifact(
+            Path::new("docs/CAPABILITY_MATRIX.md"),
+            "loaded",
+            None,
+            "class-scoped capability maturity vocabulary",
+        )?,
+        capabilities: scorecard_input_artifact(
+            Path::new("metrics/capabilities.toml"),
+            "loaded",
+            None,
+            "machine-readable capability maturity metadata",
+        )?,
+        traceability: scorecard_input_artifact(
+            Path::new(".ripr/traceability.toml"),
+            "loaded",
+            None,
+            "spec/test/code/output/metric linkage",
+        )?,
+    })
+}
+
+fn scorecard_input_artifact(
+    path: &Path,
+    present_status: &str,
+    value: Option<&Value>,
+    note: &str,
+) -> Result<EvidenceQualityScorecardInput, String> {
+    if !path.exists() {
+        return Ok(EvidenceQualityScorecardInput {
+            path: normalize_path(path),
+            status: "missing".to_string(),
+            schema_version: None,
+            sha256: None,
+            note: Some(note.to_string()),
+        });
+    }
+    Ok(EvidenceQualityScorecardInput {
+        path: normalize_path(path),
+        status: present_status.to_string(),
+        schema_version: value.and_then(|value| audit_string(value, &["schema_version"])),
+        sha256: Some(sha256_file(path)?),
+        note: Some(note.to_string()),
+    })
+}
+
+fn scorecard_optional_json(path: &Path) -> Result<Option<Value>, String> {
+    if path.exists() {
+        read_json_value(path).map(Some)
+    } else {
+        Ok(None)
+    }
+}
+
+fn evidence_quality_scorecard_generated_at() -> Result<String, String> {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| format!("system clock before unix epoch: {err}"))?
+        .as_millis();
+    Ok(format!("unix_ms:{millis}"))
+}
+
+fn evidence_quality_scorecard_from_values(
+    generated_at: String,
+    inputs: EvidenceQualityScorecardInputs,
+    audit: &Value,
+    evidence_health: Option<&Value>,
+    previous_scorecard: Option<&Value>,
+) -> Result<EvidenceQualityScorecardReport, String> {
+    let root = audit_string(audit, &["inputs", "root"]).unwrap_or_else(|| ".".to_string());
+    let mut summary = evidence_quality_scorecard_summary(audit);
+    let maturity_by_class = evidence_quality_maturity_rows(&summary, audit);
+    let mut recommended_repairs = evidence_quality_recommended_repairs(&summary, audit);
+    recommended_repairs.truncate(EVIDENCE_QUALITY_SCORECARD_REPAIR_LIMIT);
+    summary.top_repair_count = recommended_repairs.len();
+    let recent_audit_deltas =
+        evidence_quality_recent_deltas(&summary, previous_scorecard, &inputs.previous_scorecard);
+    summary.recent_delta_available = recent_audit_deltas.available;
+    let unknowns = evidence_quality_unknowns(&summary, audit, evidence_health, &inputs);
+    let calibration_coverage = evidence_quality_calibration_coverage(&summary, audit);
+
+    Ok(EvidenceQualityScorecardReport {
+        generated_at,
+        root,
+        inputs,
+        summary,
+        maturity_by_class,
+        canonical_gap_groups: scorecard_value_or_default(
+            audit,
+            &["canonical_gap_groups"],
+            serde_json::json!({"total": 0, "largest": []}),
+        ),
+        duplicate_looking_groups: scorecard_value_or_default(
+            audit,
+            &["duplicate_looking_groups"],
+            serde_json::json!([]),
+        ),
+        static_limitation_categories: scorecard_value_or_default(
+            audit,
+            &["static_limitations"],
+            serde_json::json!({"by_reason": {}, "by_stage": {}}),
+        ),
+        missing_discriminator_classes: scorecard_value_or_default(
+            audit,
+            &["missing_discriminator_classes"],
+            serde_json::json!({"by_reason": {}, "by_flow_sink": {}, "by_value": {}}),
+        ),
+        related_test_confidence: scorecard_value_or_default(
+            audit,
+            &["related_test_ranking"],
+            serde_json::json!({}),
+        ),
+        oracle_semantics_distribution: scorecard_value_or_default(
+            audit,
+            &["oracle_semantics_distribution"],
+            serde_json::json!({}),
+        ),
+        movement_availability: scorecard_value_or_default(
+            audit,
+            &["movement_availability"],
+            serde_json::json!({}),
+        ),
+        calibration_coverage,
+        recommended_repairs,
+        recent_audit_deltas,
+        unknowns,
+    })
+}
+
+fn evidence_quality_scorecard_summary(audit: &Value) -> EvidenceQualityScorecardSummary {
+    EvidenceQualityScorecardSummary {
+        raw_headline_gaps: audit_usize(audit, &["summary", "raw_headline_gaps"]).unwrap_or(0),
+        canonical_gap_groups_total: audit_usize(audit, &["summary", "canonical_gap_groups_total"])
+            .or_else(|| audit_usize(audit, &["canonical_gap_groups", "total"]))
+            .unwrap_or(0),
+        duplicate_looking_groups_total: audit_usize(
+            audit,
+            &["summary", "duplicate_looking_groups_total"],
+        )
+        .unwrap_or(0),
+        missing_discriminators_total: audit_usize(
+            audit,
+            &["summary", "missing_discriminators_total"],
+        )
+        .unwrap_or(0),
+        static_limitations_total: audit_usize(audit, &["summary", "static_limitations_total"])
+            .unwrap_or(0),
+        related_tests_total: audit_usize(audit, &["summary", "related_tests_total"]).unwrap_or(0),
+        low_or_opaque_top_related_tests: audit_usize(
+            audit,
+            &["summary", "low_or_opaque_top_related_tests"],
+        )
+        .unwrap_or(0),
+        calibrated_records: audit_usize(audit, &["summary", "calibrated_records"]).unwrap_or(0),
+        uncalibrated_records: audit_usize(audit, &["summary", "uncalibrated_records"]).unwrap_or(0),
+        evidence_records_total: audit_usize(audit, &["summary", "evidence_records_total"])
+            .unwrap_or(0),
+        evidence_records_missing: audit_usize(audit, &["summary", "evidence_records_missing"])
+            .unwrap_or(0),
+        top_repair_count: 0,
+        recent_delta_available: false,
+    }
+}
+
+fn evidence_quality_maturity_rows(
+    summary: &EvidenceQualityScorecardSummary,
+    audit: &Value,
+) -> Vec<EvidenceQualityMaturityRow> {
+    let unknown_oracle_count = scorecard_count_at(
+        audit,
+        &[
+            "oracle_semantics_distribution",
+            "oracle_kind_counts",
+            "unknown",
+        ],
+    ) + scorecard_count_at(
+        audit,
+        &[
+            "oracle_semantics_distribution",
+            "oracle_strength_counts",
+            "unknown",
+        ],
+    );
+    vec![
+        scorecard_maturity_row(
+            "evidence_record_contract",
+            if summary.evidence_records_missing == 0 && summary.evidence_records_total > 0 {
+                "fixture_backed"
+            } else {
+                "static_only"
+            },
+            "RIPR-SPEC-0021, evidence-record fixture corpus, Lane 1 audit",
+            if summary.evidence_records_missing == 0 {
+                "All audited seams carried evidence_record in the current artifact."
+            } else {
+                "Some audited seams are missing evidence_record."
+            },
+            "report/evidence-quality-scorecard",
+        ),
+        scorecard_maturity_row(
+            "canonical_gap_identity",
+            if summary.canonical_gap_groups_total > 0 {
+                "fixture_backed"
+            } else {
+                "static_only"
+            },
+            "RIPR-SPEC-0033, canonical gap unit tests, Lane 1 audit groups",
+            if summary.duplicate_looking_groups_total > 0 {
+                "Duplicate-looking groups still need audit-driven review before another grouping change."
+            } else {
+                "Current audit reports no duplicate-looking canonical groups."
+            },
+            "fixtures/evidence-quality-benchmark-corpus",
+        ),
+        scorecard_maturity_row(
+            "related_test_ranking",
+            if summary.low_or_opaque_top_related_tests > 0 {
+                "static_only"
+            } else if summary.related_tests_total > 0 {
+                "fixture_backed"
+            } else {
+                "uncalibrated"
+            },
+            "RIPR-SPEC-0029, Lane 1 audit related-test confidence distribution",
+            if summary.low_or_opaque_top_related_tests > 0 {
+                "Top related-test choices include low-confidence or opaque rankings."
+            } else {
+                "Current audit has no low-confidence top related-test signal."
+            },
+            "analysis/related-test-ranking-audit-fixes",
+        ),
+        scorecard_maturity_row(
+            "oracle_semantics",
+            if unknown_oracle_count > 0 {
+                "static_only"
+            } else {
+                "fixture_backed"
+            },
+            "RIPR-SPEC-0030, oracle-semantics fixture scope, Lane 1 audit distribution",
+            if unknown_oracle_count > 0 {
+                "Unknown oracle kinds or strengths remain in the current audit."
+            } else {
+                "Current audit has no unknown oracle kind or strength buckets."
+            },
+            "analysis/oracle-semantics-audit-fixes",
+        ),
+        scorecard_maturity_row(
+            "movement_identity",
+            if scorecard_count_at(
+                audit,
+                &["movement_availability", "records_with_canonical_gap_id"],
+            ) > 0
+            {
+                "fixture_backed"
+            } else {
+                "static_only"
+            },
+            "targeted-test outcome, assistant proof, baseline/ledger/gate identity consumers",
+            "Movement identity is static evidence; it does not imply runtime calibration.",
+            "report/evidence-quality-trend",
+        ),
+        scorecard_maturity_row(
+            "runtime_calibration",
+            if summary.calibrated_records > 0 {
+                "imported_runtime_calibrated"
+            } else {
+                "uncalibrated"
+            },
+            "runtime-fixtures-v2 imported calibration labels when present",
+            if summary.calibrated_records > 0 {
+                "Calibration remains class-scoped to imported checked fixture outcomes."
+            } else {
+                "Current audit has no imported runtime calibration records."
+            },
+            "calibration/runtime-fixtures-v3",
+        ),
+        scorecard_maturity_row(
+            "static_limitation_taxonomy",
+            if summary.static_limitations_total > 0 {
+                "static_only"
+            } else {
+                "fixture_backed"
+            },
+            "Lane 1 audit static limitation reason and stage distributions",
+            if summary.static_limitations_total > 0 {
+                "Static limitations remain analyzer limits, not user test gaps."
+            } else {
+                "Current audit reports no static limitations."
+            },
+            "analysis/static-limitation-taxonomy",
+        ),
+    ]
+}
+
+fn scorecard_maturity_row(
+    class: &str,
+    status: &str,
+    proof_source: &str,
+    known_limits: &str,
+    recommended_next_repair: &str,
+) -> EvidenceQualityMaturityRow {
+    EvidenceQualityMaturityRow {
+        class: class.to_string(),
+        status: status.to_string(),
+        proof_source: proof_source.to_string(),
+        known_limits: known_limits.to_string(),
+        recommended_next_repair: recommended_next_repair.to_string(),
+    }
+}
+
+fn evidence_quality_recommended_repairs(
+    summary: &EvidenceQualityScorecardSummary,
+    audit: &Value,
+) -> Vec<EvidenceQualityRepair> {
+    let mut repairs = Vec::new();
+    scorecard_push_repair(
+        &mut repairs,
+        ScorecardRepairSpec {
+            slice: "analysis/related-test-ranking-audit-fixes",
+            priority: 100,
+            evidence_class: "related_test_ranking",
+            risk_kind: "low_or_opaque_top_related_tests",
+            signal_count: summary.low_or_opaque_top_related_tests,
+            why: "Top related-test choices include low-confidence or opaque evidence.",
+            expected_impact: "Improve first-useful-action task quality and agent packet reliability without changing gate behavior.",
+        },
+    );
+    scorecard_push_repair(
+        &mut repairs,
+        ScorecardRepairSpec {
+            slice: "analysis/static-limitation-taxonomy",
+            priority: 90,
+            evidence_class: "static_limitations",
+            risk_kind: "static_limitations_total",
+            signal_count: summary.static_limitations_total,
+            why: "Static limitations need repairable categories before analyzer confidence can move.",
+            expected_impact: "Separate analyzer limits from user test gaps and expose next repair routes.",
+        },
+    );
+    scorecard_push_repair(
+        &mut repairs,
+        ScorecardRepairSpec {
+            slice: "analysis/oracle-semantics-audit-fixes",
+            priority: 85,
+            evidence_class: "oracle_semantics",
+            risk_kind: "unknown_oracle_semantics",
+            signal_count: scorecard_count_at(
+                audit,
+                &[
+                    "oracle_semantics_distribution",
+                    "oracle_kind_counts",
+                    "unknown",
+                ],
+            ) + scorecard_count_at(
+                audit,
+                &[
+                    "oracle_semantics_distribution",
+                    "oracle_strength_counts",
+                    "unknown",
+                ],
+            ),
+            why: "Opaque oracle semantics block stronger evidence claims.",
+            expected_impact: "Make what the oracle observes and misses explicit for supported shapes.",
+        },
+    );
+    scorecard_push_repair(
+        &mut repairs,
+        ScorecardRepairSpec {
+            slice: "calibration/runtime-fixtures-v3",
+            priority: 80,
+            evidence_class: "runtime_calibration",
+            risk_kind: "uncalibrated_records",
+            signal_count: summary.uncalibrated_records,
+            why: "Records without imported runtime outcomes cannot make calibrated claims.",
+            expected_impact: "Expand class-scoped calibration only where checked runtime fixtures support it.",
+        },
+    );
+    scorecard_push_repair(
+        &mut repairs,
+        ScorecardRepairSpec {
+            slice: "fixtures/evidence-quality-benchmark-corpus",
+            priority: 70,
+            evidence_class: "canonical_gap_identity",
+            risk_kind: "duplicate_looking_groups_total",
+            signal_count: summary.duplicate_looking_groups_total,
+            why: "Duplicate-looking canonical groups should be fixture-pinned before another identity refinement.",
+            expected_impact: "Prevent raw count chasing and preserve must-not-claim guards for grouping changes.",
+        },
+    );
+    scorecard_push_repair(
+        &mut repairs,
+        ScorecardRepairSpec {
+            slice: "fixtures/evidence-quality-benchmark-corpus",
+            priority: 65,
+            evidence_class: "missing_discriminators",
+            risk_kind: "missing_discriminators_total",
+            signal_count: summary.missing_discriminators_total,
+            why: "Missing discriminator classes need positive and negative fixtures before heuristic expansion.",
+            expected_impact: "Keep analyzer changes audit-driven and fixture-first.",
+        },
+    );
+    repairs.sort_by(|left, right| {
+        right
+            .priority
+            .cmp(&left.priority)
+            .then_with(|| right.signal_count.cmp(&left.signal_count))
+            .then_with(|| left.slice.cmp(&right.slice))
+    });
+    repairs
+}
+
+struct ScorecardRepairSpec<'a> {
+    slice: &'a str,
+    priority: usize,
+    evidence_class: &'a str,
+    risk_kind: &'a str,
+    signal_count: usize,
+    why: &'a str,
+    expected_impact: &'a str,
+}
+
+fn scorecard_push_repair(repairs: &mut Vec<EvidenceQualityRepair>, spec: ScorecardRepairSpec<'_>) {
+    if spec.signal_count == 0 {
+        return;
+    }
+    repairs.push(EvidenceQualityRepair {
+        slice: spec.slice.to_string(),
+        priority: spec.priority,
+        evidence_class: spec.evidence_class.to_string(),
+        risk_kind: spec.risk_kind.to_string(),
+        signal_count: spec.signal_count,
+        why: spec.why.to_string(),
+        expected_impact: spec.expected_impact.to_string(),
+    });
+}
+
+fn evidence_quality_recent_deltas(
+    current: &EvidenceQualityScorecardSummary,
+    previous_scorecard: Option<&Value>,
+    previous_input: &EvidenceQualityScorecardInput,
+) -> EvidenceQualityDeltas {
+    let Some(previous) = previous_scorecard else {
+        return EvidenceQualityDeltas {
+            available: false,
+            source: None,
+            reason: Some("no previous scorecard artifact was available".to_string()),
+            deltas: Vec::new(),
+        };
+    };
+    let mut deltas = Vec::new();
+    for (metric, after) in [
+        (
+            "duplicate_looking_groups_total",
+            current.duplicate_looking_groups_total,
+        ),
+        (
+            "missing_discriminators_total",
+            current.missing_discriminators_total,
+        ),
+        ("static_limitations_total", current.static_limitations_total),
+        (
+            "low_or_opaque_top_related_tests",
+            current.low_or_opaque_top_related_tests,
+        ),
+        ("uncalibrated_records", current.uncalibrated_records),
+        ("calibrated_records", current.calibrated_records),
+    ] {
+        let Some(before) = audit_usize(previous, &["summary", metric]) else {
+            continue;
+        };
+        deltas.push(EvidenceQualityDelta {
+            metric: metric.to_string(),
+            before,
+            after,
+            delta: after as isize - before as isize,
+            direction: scorecard_delta_direction(metric, before, after),
+        });
+    }
+    if deltas.is_empty() {
+        EvidenceQualityDeltas {
+            available: false,
+            source: Some(previous_input.path.clone()),
+            reason: Some(
+                "previous scorecard did not contain comparable summary metrics".to_string(),
+            ),
+            deltas,
+        }
+    } else {
+        EvidenceQualityDeltas {
+            available: true,
+            source: Some(previous_input.path.clone()),
+            reason: None,
+            deltas,
+        }
+    }
+}
+
+fn scorecard_delta_direction(metric: &str, before: usize, after: usize) -> String {
+    if before == after {
+        return "unchanged".to_string();
+    }
+    let improved = if metric == "calibrated_records" {
+        after > before
+    } else {
+        after < before
+    };
+    if improved {
+        "improved".to_string()
+    } else {
+        "worse".to_string()
+    }
+}
+
+fn evidence_quality_unknowns(
+    summary: &EvidenceQualityScorecardSummary,
+    audit: &Value,
+    evidence_health: Option<&Value>,
+    inputs: &EvidenceQualityScorecardInputs,
+) -> Vec<EvidenceQualityUnknown> {
+    let mut unknowns = Vec::new();
+    if evidence_health.is_none() {
+        scorecard_push_unknown(
+            &mut unknowns,
+            "evidence_health_unavailable",
+            "Evidence-health JSON was not available, so durable health-only audit fields are not joined.",
+            Some("report/evidence-health-audit-fields"),
+        );
+    }
+    if inputs.previous_scorecard.status == "missing" {
+        scorecard_push_unknown(
+            &mut unknowns,
+            "recent_delta_unavailable",
+            "No previous scorecard artifact was available for before/after delta reporting.",
+            Some("report/evidence-quality-trend"),
+        );
+    }
+    if summary.uncalibrated_records > 0 {
+        scorecard_push_unknown(
+            &mut unknowns,
+            "runtime_calibration_missing",
+            "Some evidence records do not have imported runtime calibration data.",
+            Some("calibration/runtime-fixtures-v3"),
+        );
+    }
+    if summary.static_limitations_total > 0 {
+        scorecard_push_unknown(
+            &mut unknowns,
+            "static_limitations_present",
+            "Static limitations remain analyzer limits and should not be treated as user test gaps.",
+            Some("analysis/static-limitation-taxonomy"),
+        );
+    }
+    if summary.low_or_opaque_top_related_tests > 0 {
+        scorecard_push_unknown(
+            &mut unknowns,
+            "related_test_low_confidence",
+            "Some canonical groups have low-confidence or opaque top related-test choices.",
+            Some("analysis/related-test-ranking-audit-fixes"),
+        );
+    }
+    let unknown_oracle = scorecard_count_at(
+        audit,
+        &[
+            "oracle_semantics_distribution",
+            "oracle_kind_counts",
+            "unknown",
+        ],
+    ) + scorecard_count_at(
+        audit,
+        &[
+            "oracle_semantics_distribution",
+            "oracle_strength_counts",
+            "unknown",
+        ],
+    );
+    if unknown_oracle > 0 {
+        scorecard_push_unknown(
+            &mut unknowns,
+            "oracle_semantics_opaque",
+            "Unknown oracle kind or strength buckets remain in the current audit.",
+            Some("analysis/oracle-semantics-audit-fixes"),
+        );
+    }
+    if summary.raw_headline_gaps > 0 && summary.canonical_gap_groups_total == 0 {
+        scorecard_push_unknown(
+            &mut unknowns,
+            "canonical_gap_identity_missing",
+            "Headline gaps exist without canonical group identity in the scorecard input.",
+            Some("fixtures/evidence-quality-benchmark-corpus"),
+        );
+    }
+    unknowns
+}
+
+fn scorecard_push_unknown(
+    unknowns: &mut Vec<EvidenceQualityUnknown>,
+    kind: &str,
+    summary: &str,
+    next_repair: Option<&str>,
+) {
+    unknowns.push(EvidenceQualityUnknown {
+        kind: kind.to_string(),
+        summary: summary.to_string(),
+        next_repair: next_repair.map(str::to_string),
+    });
+}
+
+fn evidence_quality_calibration_coverage(
+    summary: &EvidenceQualityScorecardSummary,
+    audit: &Value,
+) -> Value {
+    let runtime_scope = if summary.calibrated_records > 0 {
+        "imported_runtime_calibrated"
+    } else {
+        "uncalibrated"
+    };
+    serde_json::json!({
+        "availability_counts": scorecard_value_or_default(
+            audit,
+            &["calibration_availability", "availability_counts"],
+            serde_json::json!({}),
+        ),
+        "confidence_counts": scorecard_value_or_default(
+            audit,
+            &["calibration_availability", "confidence_counts"],
+            serde_json::json!({}),
+        ),
+        "agreement_counts": scorecard_value_or_default(
+            audit,
+            &["calibration_availability", "agreement_counts"],
+            serde_json::json!({}),
+        ),
+        "calibrated_records": summary.calibrated_records,
+        "uncalibrated_records": summary.uncalibrated_records,
+        "runtime_scope": runtime_scope,
+    })
+}
+
+fn scorecard_value_or_default(value: &Value, path: &[&str], default: Value) -> Value {
+    audit_get(value, path).cloned().unwrap_or(default)
+}
+
+fn scorecard_count_at(value: &Value, path: &[&str]) -> usize {
+    audit_usize(value, path).unwrap_or(0)
+}
+
+fn evidence_quality_scorecard_json(
+    report: &EvidenceQualityScorecardReport,
+) -> Result<String, String> {
+    let value = serde_json::json!({
+        "schema_version": EVIDENCE_QUALITY_SCORECARD_SCHEMA_VERSION,
+        "tool": "ripr",
+        "report": "evidence-quality-scorecard",
+        "generated_at": report.generated_at,
+        "scope": {
+            "kind": "repo",
+            "root": report.root,
+        },
+        "inputs": {
+            "lane1_evidence_audit": scorecard_input_json(&report.inputs.lane1_evidence_audit),
+            "evidence_health": scorecard_input_json(&report.inputs.evidence_health),
+            "previous_scorecard": scorecard_input_json(&report.inputs.previous_scorecard),
+            "capability_matrix": scorecard_input_json(&report.inputs.capability_matrix),
+            "capabilities": scorecard_input_json(&report.inputs.capabilities),
+            "traceability": scorecard_input_json(&report.inputs.traceability),
+        },
+        "summary": {
+            "raw_headline_gaps": report.summary.raw_headline_gaps,
+            "canonical_gap_groups_total": report.summary.canonical_gap_groups_total,
+            "duplicate_looking_groups_total": report.summary.duplicate_looking_groups_total,
+            "missing_discriminators_total": report.summary.missing_discriminators_total,
+            "static_limitations_total": report.summary.static_limitations_total,
+            "related_tests_total": report.summary.related_tests_total,
+            "low_or_opaque_top_related_tests": report.summary.low_or_opaque_top_related_tests,
+            "calibrated_records": report.summary.calibrated_records,
+            "uncalibrated_records": report.summary.uncalibrated_records,
+            "evidence_records_total": report.summary.evidence_records_total,
+            "evidence_records_missing": report.summary.evidence_records_missing,
+            "top_repair_count": report.summary.top_repair_count,
+            "recent_delta_available": report.summary.recent_delta_available,
+        },
+        "maturity_by_class": report.maturity_by_class.iter().map(|row| {
+            serde_json::json!({
+                "class": row.class,
+                "status": row.status,
+                "proof_source": row.proof_source,
+                "known_limits": row.known_limits,
+                "recommended_next_repair": row.recommended_next_repair,
+            })
+        }).collect::<Vec<_>>(),
+        "canonical_gap_groups": report.canonical_gap_groups,
+        "duplicate_looking_groups": report.duplicate_looking_groups,
+        "static_limitation_categories": report.static_limitation_categories,
+        "missing_discriminator_classes": report.missing_discriminator_classes,
+        "related_test_confidence": report.related_test_confidence,
+        "oracle_semantics_distribution": report.oracle_semantics_distribution,
+        "movement_availability": report.movement_availability,
+        "calibration_coverage": report.calibration_coverage,
+        "recommended_repairs": report.recommended_repairs.iter().map(|repair| {
+            serde_json::json!({
+                "slice": repair.slice,
+                "priority": repair.priority,
+                "evidence_class": repair.evidence_class,
+                "risk_kind": repair.risk_kind,
+                "signal_count": repair.signal_count,
+                "why": repair.why,
+                "expected_impact": repair.expected_impact,
+            })
+        }).collect::<Vec<_>>(),
+        "recent_audit_deltas": {
+            "available": report.recent_audit_deltas.available,
+            "source": report.recent_audit_deltas.source,
+            "reason": report.recent_audit_deltas.reason,
+            "deltas": report.recent_audit_deltas.deltas.iter().map(|delta| {
+                serde_json::json!({
+                    "metric": delta.metric,
+                    "before": delta.before,
+                    "after": delta.after,
+                    "delta": delta.delta,
+                    "direction": delta.direction,
+                })
+            }).collect::<Vec<_>>(),
+        },
+        "unknowns": report.unknowns.iter().map(|unknown| {
+            serde_json::json!({
+                "kind": unknown.kind,
+                "summary": unknown.summary,
+                "next_repair": unknown.next_repair,
+            })
+        }).collect::<Vec<_>>(),
+    });
+    serde_json::to_string_pretty(&value)
+        .map(|json| format!("{json}\n"))
+        .map_err(|err| format!("failed to render evidence quality scorecard JSON: {err}"))
+}
+
+fn scorecard_input_json(input: &EvidenceQualityScorecardInput) -> Value {
+    serde_json::json!({
+        "path": input.path,
+        "status": input.status,
+        "schema_version": input.schema_version,
+        "sha256": input.sha256,
+        "note": input.note,
+    })
+}
+
+fn evidence_quality_scorecard_markdown(report: &EvidenceQualityScorecardReport) -> String {
+    let mut out = String::new();
+    out.push_str("# Lane 1 evidence quality scorecard\n\n");
+    out.push_str("Status: advisory\n\n");
+    out.push_str("This repo-local scorecard summarizes Lane 1 evidence quality from existing evidence artifacts. It does not change analyzer behavior, gate policy, PR or CI projection, editor output, source files, generated tests, provider calls, or runtime execution.\n\n");
+
+    out.push_str("## Summary\n\n");
+    out.push_str("| Metric | Count |\n");
+    out.push_str("| --- | ---: |\n");
+    audit_push_count(
+        &mut out,
+        "Raw headline gaps",
+        report.summary.raw_headline_gaps,
+    );
+    audit_push_count(
+        &mut out,
+        "Canonical gap groups",
+        report.summary.canonical_gap_groups_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Duplicate-looking groups",
+        report.summary.duplicate_looking_groups_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Missing discriminators",
+        report.summary.missing_discriminators_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Static limitations",
+        report.summary.static_limitations_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Low or opaque top related tests",
+        report.summary.low_or_opaque_top_related_tests,
+    );
+    audit_push_count(
+        &mut out,
+        "Uncalibrated records",
+        report.summary.uncalibrated_records,
+    );
+    out.push('\n');
+
+    out.push_str("## Maturity By Class\n\n");
+    out.push_str("| Class | Status | Proof source | Known limits | Next repair |\n");
+    out.push_str("| --- | --- | --- | --- | --- |\n");
+    for row in &report.maturity_by_class {
+        out.push_str(&format!(
+            "| {} | {} | {} | {} | {} |\n",
+            audit_markdown_cell(&row.class),
+            audit_markdown_cell(&row.status),
+            audit_markdown_cell(&row.proof_source),
+            audit_markdown_cell(&row.known_limits),
+            audit_markdown_cell(&row.recommended_next_repair),
+        ));
+    }
+    out.push('\n');
+
+    out.push_str("## Top Evidence-Quality Risks\n\n");
+    if report.recommended_repairs.is_empty() {
+        out.push_str("No scored evidence-quality repair risks were reported.\n\n");
+    } else {
+        out.push_str("| Repair slice | Evidence class | Risk | Signals | Expected impact |\n");
+        out.push_str("| --- | --- | --- | ---: | --- |\n");
+        for repair in &report.recommended_repairs {
+            out.push_str(&format!(
+                "| {} | {} | {} | {} | {} |\n",
+                audit_markdown_cell(&repair.slice),
+                audit_markdown_cell(&repair.evidence_class),
+                audit_markdown_cell(&repair.risk_kind),
+                repair.signal_count,
+                audit_markdown_cell(&repair.expected_impact),
+            ));
+        }
+        out.push('\n');
+    }
+
+    out.push_str("## Recommended Lane 1 Repairs\n\n");
+    if report.recommended_repairs.is_empty() {
+        out.push_str("No recommended repairs were emitted.\n\n");
+    } else {
+        for repair in &report.recommended_repairs {
+            out.push_str(&format!(
+                "- `{}`: {} ({} signals).\n",
+                repair.slice, repair.why, repair.signal_count
+            ));
+        }
+        out.push('\n');
+    }
+
+    out.push_str("## Duplicate-Looking And Canonical Group Signals\n\n");
+    audit_push_count(
+        &mut out,
+        "Canonical gap groups",
+        report.summary.canonical_gap_groups_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Duplicate-looking groups",
+        report.summary.duplicate_looking_groups_total,
+    );
+    out.push('\n');
+
+    out.push_str("## Static Limitations And Missing Discriminators\n\n");
+    audit_push_count(
+        &mut out,
+        "Static limitations",
+        report.summary.static_limitations_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Missing discriminators",
+        report.summary.missing_discriminators_total,
+    );
+    out.push('\n');
+
+    out.push_str("## Related-Test And Oracle Distributions\n\n");
+    audit_push_count(
+        &mut out,
+        "Related tests",
+        report.summary.related_tests_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Low or opaque top related tests",
+        report.summary.low_or_opaque_top_related_tests,
+    );
+    out.push('\n');
+
+    out.push_str("## Movement And Calibration Coverage\n\n");
+    audit_push_count(
+        &mut out,
+        "Calibrated records",
+        report.summary.calibrated_records,
+    );
+    audit_push_count(
+        &mut out,
+        "Uncalibrated records",
+        report.summary.uncalibrated_records,
+    );
+    out.push('\n');
+
+    out.push_str("## Recent Deltas\n\n");
+    if report.recent_audit_deltas.available {
+        out.push_str("| Metric | Before | After | Delta | Direction |\n");
+        out.push_str("| --- | ---: | ---: | ---: | --- |\n");
+        for delta in &report.recent_audit_deltas.deltas {
+            out.push_str(&format!(
+                "| {} | {} | {} | {} | {} |\n",
+                audit_markdown_cell(&delta.metric),
+                delta.before,
+                delta.after,
+                delta.delta,
+                audit_markdown_cell(&delta.direction),
+            ));
+        }
+        out.push('\n');
+    } else {
+        out.push_str(&format!(
+            "{}\n\n",
+            audit_markdown_cell(
+                report
+                    .recent_audit_deltas
+                    .reason
+                    .as_deref()
+                    .unwrap_or("recent deltas unavailable")
+            )
+        ));
+    }
+
+    out.push_str("## Unknowns And Unavailable Inputs\n\n");
+    if report.unknowns.is_empty() {
+        out.push_str("No scorecard unknowns were reported.\n");
+    } else {
+        out.push_str("| Kind | Summary | Next repair |\n");
+        out.push_str("| --- | --- | --- |\n");
+        for unknown in &report.unknowns {
+            out.push_str(&format!(
+                "| {} | {} | {} |\n",
+                audit_markdown_cell(&unknown.kind),
+                audit_markdown_cell(&unknown.summary),
+                audit_markdown_cell(unknown.next_repair.as_deref().unwrap_or("n/a")),
+            ));
+        }
+    }
+    out
 }
 
 const REPO_EXPOSURE_LATENCY_TRACE_ENV: &str = "RIPR_REPO_EXPOSURE_LATENCY_TRACE";
@@ -23689,12 +24799,13 @@ mod tests {
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
         CheckStatus, CheckViolation, CiFullEvidenceGate, CwdCommand, DogfoodFirstActionRun,
         DogfoodFrontPanelRun, DogfoodGateRun, DogfoodPrInlineCommentRun,
-        DogfoodReportPacketIndexRun, DogfoodRun, FixKind, LocalContextAllow, MarkdownLink,
-        ReceiptRecord, RepoExposureLatencyReport, RepoExposureLatencyRun, RepoExposureLatencyTrace,
-        ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode, SarifPolicyResult,
-        SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass,
-        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
-        badge_artifacts_summary_markdown, build_lsp_cockpit_report,
+        DogfoodReportPacketIndexRun, DogfoodRun, EvidenceQualityScorecardInput,
+        EvidenceQualityScorecardInputs, EvidenceQualityScorecardReport, FixKind, LocalContextAllow,
+        MarkdownLink, ReceiptRecord, RepoExposureLatencyReport, RepoExposureLatencyRun,
+        RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode,
+        SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
+        TestOracleClass, badge_artifact_command_args, badge_artifact_jobs,
+        badge_artifact_native_slot, badge_artifacts_summary_markdown, build_lsp_cockpit_report,
         build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
         build_targeted_test_outcome_report, check_allow_attributes, check_droid_review_config,
         check_executable_files, check_file_policy, check_local_context, check_network_policy,
@@ -23705,16 +24816,18 @@ mod tests {
         dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
         dogfood_pr_review_front_panel_scenarios, dogfood_report_json, dogfood_report_markdown,
         dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
-        evaluate_semantic_no_panic_policy, extract_json_object_usize_map, extract_json_string,
-        extract_json_warnings, extract_workflow_run_blocks, first_line_difference,
-        forbidden_panic_patterns, glob_matches, golden_changes_without_blessing,
-        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
-        install_hooks_in, is_bdd_test_name, is_dependency_surface_candidate, is_evidence_path,
-        is_generated_candidate, is_known_campaign_command, is_non_rust_programming_candidate,
-        is_policy_path, is_production_path, is_receipt_status, is_ripr_managed_hook,
-        is_snake_case_id, is_spec_id, is_stale_agent_boundary_scan_target, json_escape,
-        json_number_after, json_string_values_for_key, json_summary_count, known_commands,
-        known_xtask_command, lane1_evidence_audit_from_repo_exposure, lane1_evidence_audit_json,
+        evaluate_semantic_no_panic_policy, evidence_quality_scorecard_from_values,
+        evidence_quality_scorecard_json, evidence_quality_scorecard_markdown,
+        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
+        extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns, glob_matches,
+        golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
+        guarded_allow_attributes_in_text, install_hooks_in, is_bdd_test_name,
+        is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
+        is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
+        is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
+        is_stale_agent_boundary_scan_target, json_escape, json_number_after,
+        json_string_values_for_key, json_summary_count, known_commands, known_xtask_command,
+        lane1_evidence_audit_from_repo_exposure, lane1_evidence_audit_json,
         lane1_evidence_audit_markdown, local_context_line_findings, local_markdown_target,
         lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
         markdown_links_in_text, mutation_calibration_report_json,
@@ -32146,6 +33259,10 @@ jobs:
             XtaskCommand::Lane1EvidenceAudit
         );
         assert_eq!(
+            XtaskCommand::parse(["evidence-quality-scorecard".to_string()]),
+            XtaskCommand::EvidenceQualityScorecard
+        );
+        assert_eq!(
             XtaskCommand::parse(["vscode-compile".to_string()]),
             XtaskCommand::VscodeCompile
         );
@@ -32176,6 +33293,7 @@ jobs:
                 XtaskCommand::RepoExposureLatencyReport,
                 XtaskCommand::EvidenceHealth,
                 XtaskCommand::Lane1EvidenceAudit,
+                XtaskCommand::EvidenceQualityScorecard,
                 XtaskCommand::AgentSeamPackets(Some(".".to_string())),
                 XtaskCommand::LspCockpitReport,
                 XtaskCommand::OperatorCockpitReport,
@@ -32372,6 +33490,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(commands.contains(&"repo-exposure-latency-report"));
         assert!(commands.contains(&"lane1-evidence-audit"));
         assert!(commands.contains(&"evidence-quality-audit"));
+        assert!(commands.contains(&"evidence-quality-scorecard"));
         assert!(commands.contains(&"agent-seam-packets [root]"));
         assert!(commands.contains(&"lsp-cockpit-report"));
         assert!(commands.contains(&"operator-cockpit"));
@@ -32460,6 +33579,263 @@ covered_by = ["cargo xtask check-file-policy"]
         let err = lane1_evidence_audit_from_repo_exposure(".", r#"{"schema_version":"0.3"}"#)
             .expect_err("missing seams should fail");
         assert!(err.contains("missing `seams` array"));
+    }
+
+    #[test]
+    fn evidence_quality_scorecard_renders_required_json_sections() -> Result<(), String> {
+        let audit = lane1_scorecard_sample_audit_value()?;
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(false),
+            &audit,
+            None,
+            None,
+        )?;
+        let json = evidence_quality_scorecard_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+
+        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["report"], "evidence-quality-scorecard");
+        assert!(value.get("inputs").is_some());
+        assert!(value.get("summary").is_some());
+        assert!(value.get("maturity_by_class").is_some());
+        assert!(value.get("canonical_gap_groups").is_some());
+        assert!(value.get("duplicate_looking_groups").is_some());
+        assert!(value.get("static_limitation_categories").is_some());
+        assert!(value.get("missing_discriminator_classes").is_some());
+        assert!(value.get("related_test_confidence").is_some());
+        assert!(value.get("oracle_semantics_distribution").is_some());
+        assert!(value.get("movement_availability").is_some());
+        assert!(value.get("calibration_coverage").is_some());
+        assert!(value.get("recommended_repairs").is_some());
+        assert!(value.get("recent_audit_deltas").is_some());
+        assert!(value.get("unknowns").is_some());
+        assert_eq!(
+            value["inputs"]["evidence_health"]["status"],
+            serde_json::Value::from("missing")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_scorecard_markdown_names_required_sections() -> Result<(), String> {
+        let audit = lane1_scorecard_sample_audit_value()?;
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(false),
+            &audit,
+            None,
+            None,
+        )?;
+        let markdown = evidence_quality_scorecard_markdown(&report);
+
+        for needle in [
+            "Lane 1 evidence quality scorecard",
+            "Maturity By Class",
+            "Top Evidence-Quality Risks",
+            "Recommended Lane 1 Repairs",
+            "Duplicate-Looking And Canonical Group Signals",
+            "Static Limitations And Missing Discriminators",
+            "Related-Test And Oracle Distributions",
+            "Movement And Calibration Coverage",
+            "Recent Deltas",
+            "Unknowns And Unavailable Inputs",
+        ] {
+            assert!(
+                markdown.contains(needle),
+                "scorecard Markdown missing {needle}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_scorecard_classifies_maturity_by_proof_scope() -> Result<(), String> {
+        let audit = lane1_scorecard_sample_audit_value()?;
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(false),
+            &audit,
+            None,
+            None,
+        )?;
+
+        assert_eq!(
+            scorecard_status_for(&report, "canonical_gap_identity")?,
+            "fixture_backed"
+        );
+        assert_eq!(
+            scorecard_status_for(&report, "related_test_ranking")?,
+            "static_only"
+        );
+        assert_eq!(
+            scorecard_status_for(&report, "runtime_calibration")?,
+            "imported_runtime_calibrated"
+        );
+
+        let uncalibrated = scorecard_minimal_audit_value(0, 0, 0, 0, 0);
+        let uncalibrated_report = evidence_quality_scorecard_from_values(
+            "unix_ms:2".to_string(),
+            scorecard_inputs_for_test(false),
+            &uncalibrated,
+            None,
+            None,
+        )?;
+        assert_eq!(
+            scorecard_status_for(&uncalibrated_report, "runtime_calibration")?,
+            "uncalibrated"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_scorecard_orders_repairs_by_risk_not_count() -> Result<(), String> {
+        let audit = scorecard_minimal_audit_value(1, 99, 0, 0, 0);
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(false),
+            &audit,
+            None,
+            None,
+        )?;
+        let first = report
+            .recommended_repairs
+            .first()
+            .ok_or_else(|| "expected at least one recommended repair".to_string())?;
+        assert_eq!(first.slice, "analysis/related-test-ranking-audit-fixes");
+        assert_eq!(first.signal_count, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_scorecard_reports_recent_deltas_when_present() -> Result<(), String> {
+        let audit = scorecard_minimal_audit_value(1, 3, 2, 0, 5);
+        let previous = serde_json::json!({
+            "summary": {
+                "duplicate_looking_groups_total": 8,
+                "missing_discriminators_total": 7,
+                "static_limitations_total": 5,
+                "low_or_opaque_top_related_tests": 4,
+                "uncalibrated_records": 9,
+                "calibrated_records": 1
+            }
+        });
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(true),
+            &audit,
+            None,
+            Some(&previous),
+        )?;
+
+        assert!(report.recent_audit_deltas.available);
+        let duplicate_delta = report
+            .recent_audit_deltas
+            .deltas
+            .iter()
+            .find(|delta| delta.metric == "duplicate_looking_groups_total")
+            .ok_or_else(|| "duplicate delta missing".to_string())?;
+        assert_eq!(duplicate_delta.before, 8);
+        assert_eq!(duplicate_delta.after, 2);
+        assert_eq!(duplicate_delta.direction, "improved");
+        Ok(())
+    }
+
+    fn lane1_scorecard_sample_audit_value() -> Result<serde_json::Value, String> {
+        let report = lane1_evidence_audit_from_repo_exposure(".", lane1_audit_sample_json())?;
+        let json = lane1_evidence_audit_json(&report)?;
+        serde_json::from_str(&json).map_err(|err| err.to_string())
+    }
+
+    fn scorecard_minimal_audit_value(
+        low_top_related: usize,
+        static_limitations: usize,
+        duplicate_groups: usize,
+        calibrated_records: usize,
+        uncalibrated_records: usize,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "schema_version": "0.1",
+            "report": "lane1-evidence-audit",
+            "inputs": {"root": "."},
+            "summary": {
+                "raw_headline_gaps": 12,
+                "canonical_gap_groups_total": 5,
+                "duplicate_looking_groups_total": duplicate_groups,
+                "missing_discriminators_total": 4,
+                "static_limitations_total": static_limitations,
+                "related_tests_total": 20,
+                "low_or_opaque_top_related_tests": low_top_related,
+                "calibrated_records": calibrated_records,
+                "uncalibrated_records": uncalibrated_records,
+                "evidence_records_total": 12,
+                "evidence_records_missing": 0
+            },
+            "canonical_gap_groups": {"total": 5, "largest": []},
+            "duplicate_looking_groups": [],
+            "missing_discriminator_classes": {"by_reason": {}, "by_flow_sink": {}, "by_value": {}},
+            "static_limitations": {"by_reason": {}, "by_stage": {}},
+            "oracle_semantics_distribution": {
+                "by_semantics": {},
+                "oracle_kind_counts": {"unknown": 0},
+                "oracle_strength_counts": {"unknown": 0}
+            },
+            "related_test_ranking": {
+                "all_confidence_counts": {"high": 19, "low": low_top_related},
+                "top_confidence_counts": {"low": low_top_related}
+            },
+            "movement_availability": {"records_with_canonical_gap_id": 5},
+            "calibration_availability": {
+                "availability_counts": {},
+                "confidence_counts": {},
+                "agreement_counts": {},
+                "calibrated_records": calibrated_records,
+                "uncalibrated_records": uncalibrated_records
+            }
+        })
+    }
+
+    fn scorecard_inputs_for_test(previous_loaded: bool) -> EvidenceQualityScorecardInputs {
+        EvidenceQualityScorecardInputs {
+            lane1_evidence_audit: scorecard_input_for_test(
+                "target/ripr/reports/lane1-evidence-audit.json",
+                "loaded",
+            ),
+            evidence_health: scorecard_input_for_test(
+                "target/ripr/reports/evidence-health.json",
+                "missing",
+            ),
+            previous_scorecard: scorecard_input_for_test(
+                "target/ripr/reports/evidence-quality-scorecard.json",
+                if previous_loaded { "loaded" } else { "missing" },
+            ),
+            capability_matrix: scorecard_input_for_test("docs/CAPABILITY_MATRIX.md", "loaded"),
+            capabilities: scorecard_input_for_test("metrics/capabilities.toml", "loaded"),
+            traceability: scorecard_input_for_test(".ripr/traceability.toml", "loaded"),
+        }
+    }
+
+    fn scorecard_input_for_test(path: &str, status: &str) -> EvidenceQualityScorecardInput {
+        EvidenceQualityScorecardInput {
+            path: path.to_string(),
+            status: status.to_string(),
+            schema_version: None,
+            sha256: None,
+            note: None,
+        }
+    }
+
+    fn scorecard_status_for(
+        report: &EvidenceQualityScorecardReport,
+        class: &str,
+    ) -> Result<String, String> {
+        report
+            .maturity_by_class
+            .iter()
+            .find(|row| row.class == class)
+            .map(|row| row.status.clone())
+            .ok_or_else(|| format!("missing maturity row {class}"))
     }
 
     fn lane1_audit_sample_json() -> &'static str {
