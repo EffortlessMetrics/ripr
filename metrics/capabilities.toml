@@ -1261,6 +1261,49 @@ next = "reports/operator-cockpit"
 metric = "configured analysis mode, oracle policy, severity, suppressions, and seam diagnostics apply across CLI, reports, and LSP"
 
 [[capability]]
+id = "python_preview_static_facts"
+name = "Python preview static facts"
+status = "alpha"
+spec = "RIPR-SPEC-0028"
+evidence = [
+  "Python preview adapter runs only when [languages] enables python",
+  "language = python and language_status = preview in JSON and human goldens",
+  "owner/test fixtures cover def, async def, methods, class/static methods, decorated functions, pytest, unittest, and parametrized pytest",
+  "assertion/oracle fixtures cover exact value, broad error, broad boolean/type checks, unittest assertions, and mock call assertions",
+  "probe fixtures cover predicate, return value, error path, field assignment, call arguments, and mock interaction shapes",
+  "related-test fixtures cover direct owner calls, import-alias calls, same-stem proximity, and unrelated mention negatives",
+  "static-limit fixtures cover dynamic_dispatch, decorator_indirection, mocked_module, missing_import_graph, metaprogramming, and unsupported_syntax"
+]
+fixtures = [
+  "fixtures/python_boundary_gap",
+  "fixtures/python_unittest_basic",
+  "fixtures/python_method_owner",
+  "fixtures/python_parametrize_basic",
+  "fixtures/python_strong_oracle",
+  "fixtures/python_pytest_raises",
+  "fixtures/python_unittest_assertions",
+  "fixtures/python_mock_assert_called",
+  "fixtures/python_broad_boolean_assertion",
+  "fixtures/python_return_value_shape",
+  "fixtures/python_error_path_shape",
+  "fixtures/python_field_assignment_shape",
+  "fixtures/python_call_argument_shape",
+  "fixtures/python_mock_interaction_shape",
+  "fixtures/python_owner_file_match",
+  "fixtures/python_cross_file_import_reference",
+  "fixtures/python_same_stem_test",
+  "fixtures/python_unrelated_test_mention",
+  "fixtures/python_dynamic_dispatch_limit",
+  "fixtures/python_decorator_indirection_limit",
+  "fixtures/python_mocked_module_limit",
+  "fixtures/python_missing_import_graph_limit",
+  "fixtures/python_metaprogramming_limit",
+  "fixtures/python_unsupported_syntax_limit"
+]
+next = "lsp/editor-language-routing"
+metric = "language_adapter_python_findings_preview, language_adapter_python_static_limit_*"
+
+[[capability]]
 id = "sarif_ci_policy"
 name = "SARIF and CI policy"
 status = "alpha"
