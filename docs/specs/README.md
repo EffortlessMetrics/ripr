@@ -45,3 +45,4 @@ observable behavior.
 | [RIPR-SPEC-0032](RIPR-SPEC-0032-lane1-evidence-quality-fixtures.md) | proposed | Lane 1 evidence quality failure fixtures |
 | [RIPR-SPEC-0033](RIPR-SPEC-0033-match-arm-canonical-gap-discriminators.md) | proposed | Match-arm canonical gap discriminators |
 | [RIPR-SPEC-0034](RIPR-SPEC-0034-evidence-quality-scorecard.md) | proposed | Evidence quality scorecard |
+| [RIPR-SPEC-0035](RIPR-SPEC-0035-evidence-quality-benchmark-corpus.md) | proposed | Evidence quality benchmark corpus |
