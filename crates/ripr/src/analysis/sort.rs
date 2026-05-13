@@ -58,6 +58,7 @@ mod tests {
             recommended_next_step: None,
             language: None,
             language_status: None,
+            static_limit_kind: None,
         }
     }
 

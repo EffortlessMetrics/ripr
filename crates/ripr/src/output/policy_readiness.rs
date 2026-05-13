@@ -1123,6 +1123,7 @@ mod tests {
         assert_eq!(report.status, "ready_for_baseline_check");
         assert_eq!(report.recommended_mode, "baseline-check");
         assert_eq!(report.preview_evidence_boundary.preview_findings_visible, 1);
+        assert_eq!(report.preview_evidence_boundary.static_limits_seen, 1);
         assert_eq!(
             report
                 .preview_evidence_boundary

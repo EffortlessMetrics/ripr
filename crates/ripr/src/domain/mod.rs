@@ -11,7 +11,7 @@ pub use classification::ExposureClass;
 pub use evidence::{
     Confidence, OracleKind, OracleStrength, RevealEvidence, RiprEvidence, StageEvidence, StageState,
 };
-pub use language::{LanguageId, LanguageStatus};
+pub use language::{LanguageId, LanguageStatus, StaticLimitKind};
 pub use probe::{
     ActivationEvidence, DeltaKind, Finding, FlowSinkFact, FlowSinkKind, MissingDiscriminatorFact,
     Probe, ProbeFamily, RelatedTest, StopReason, ValueContext, ValueFact,

@@ -1798,18 +1798,31 @@ metrics = [
 id = "RIPR-SPEC-0026"
 name = "Language adapter contract"
 spec = "docs/specs/RIPR-SPEC-0026-language-adapter-contract.md"
-tests = []
-fixtures = []
-code = []
+tests = [
+  "crates/ripr/src/domain/language.rs",
+  "crates/ripr/src/output/json/mod.rs",
+]
+fixtures = [
+  "fixtures/typescript_mocked_module_limit",
+]
+code = [
+  "crates/ripr/src/domain/language.rs",
+  "crates/ripr/src/domain/probe.rs",
+  "crates/ripr/src/output/json/report.rs",
+  "crates/ripr/src/analysis/language/typescript.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0026-language-adapter-contract.md",
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0001-multi-language-adapter-preview.md",
   "docs/proposals/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "fixtures/typescript_mocked_module_limit/expected/check.json",
   "docs/REPO_TRACKING_MODEL.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
+  "CHANGELOG.md",
   ".ripr/traceability.toml",
 ]
 metrics = [
@@ -1847,11 +1860,15 @@ code = [
   "crates/ripr/src/analysis/language/mod.rs",
   "crates/ripr/src/analysis/language/router.rs",
   "crates/ripr/src/analysis/pipeline.rs",
+  "crates/ripr/src/domain/language.rs",
+  "crates/ripr/src/domain/probe.rs",
+  "crates/ripr/src/output/json/report.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0027-typescript-preview-static-facts.md",
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0001-multi-language-adapter-preview.md",
+  "fixtures/typescript_mocked_module_limit/expected/check.json",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
@@ -1984,9 +2001,13 @@ metrics = [
 id = "RIPR-SPEC-0030"
 name = "preview evidence policy boundary"
 spec = "docs/specs/RIPR-SPEC-0030-preview-evidence-policy-boundary.md"
-tests = []
+tests = [
+  "crates/ripr/src/output/policy_readiness.rs",
+]
 fixtures = []
-code = []
+code = [
+  "crates/ripr/src/output/policy_readiness.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0030-preview-evidence-policy-boundary.md",
   "docs/specs/README.md",
