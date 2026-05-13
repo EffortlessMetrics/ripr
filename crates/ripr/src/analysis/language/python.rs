@@ -1180,6 +1180,34 @@ class PriceTests(unittest.TestCase):
     }
 
     #[test]
+    fn extract_tests_records_module_import_aliases() {
+        let tests = extract_tests(
+            Path::new("tests/test_imports.py"),
+            r#"
+import src.catalog as catalog
+from src.tax import apply_fee, apply_tax as taxed
+
+def test_imports():
+    assert catalog.calculate_total(10) == 17
+    assert taxed(10) == 12
+"#,
+        );
+
+        assert_eq!(
+            tests[0]
+                .imports
+                .iter()
+                .map(|import| (import.imported.as_str(), import.alias.as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("src.catalog", "catalog"),
+                ("apply_fee", "apply_fee"),
+                ("apply_tax", "taxed")
+            ]
+        );
+    }
+
+    #[test]
     fn extract_tests_collects_pytest_assertion_oracles() {
         let tests = extract_tests(
             Path::new("tests/test_pricing.py"),
@@ -1423,6 +1451,33 @@ def test_notifies_callback():
     }
 
     #[test]
+    fn classify_change_uses_import_alias_call_as_strong_relation() -> Result<(), String> {
+        let owners = extract_owners(
+            Path::new("src/tax.py"),
+            "def apply_tax(amount):\n    return amount + 2\n",
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_checkout_tax.py"),
+            "from src.tax import apply_tax as taxed\n\ndef test_checkout_tax_alias_import():\n    assert taxed(10) == 12\n",
+        );
+
+        let Some(finding) = classify_change(
+            Path::new("src/tax.py"),
+            2,
+            "    return amount + 2",
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed line inside owner should classify".to_string());
+        };
+
+        assert_eq!(finding.class, ExposureClass::Exposed);
+        assert!(finding.evidence.iter().any(|entry| entry
+            == "related_test_relation: import_alias_call (test_checkout_tax_alias_import)"));
+        Ok(())
+    }
+
+    #[test]
     fn classify_change_uses_same_stem_test_as_weak_proximity() -> Result<(), String> {
         let owners = extract_owners(
             Path::new("src/pricing.py"),
@@ -1449,6 +1504,29 @@ def test_notifies_callback():
         assert!(finding.evidence.iter().any(|entry| entry
             == "related_test_relation: same_stem (test_boundary_documented_elsewhere)"));
         Ok(())
+    }
+
+    #[test]
+    fn same_stem_relation_accepts_suffix_and_orders_after_direct_calls() {
+        let owners = extract_owners(
+            Path::new("src/pricing.py"),
+            "def apply_discount(amount):\n    return amount - 10\n",
+        );
+        let mut tests = extract_tests(
+            Path::new("tests/pricing_test.py"),
+            "def test_same_stem_only():\n    assert 90 == 90\n",
+        );
+        tests.extend(extract_tests(
+            Path::new("tests/test_checkout.py"),
+            "def test_direct_call():\n    assert apply_discount(100) == 90\n",
+        ));
+
+        let related = related_test_candidates(&owners[0], &tests);
+
+        assert_eq!(normalize_test_stem("pricing_test"), "pricing");
+        assert_eq!(related.len(), 2);
+        assert_eq!(related[0].relation, PythonRelationKind::SyntacticCall);
+        assert_eq!(related[1].relation, PythonRelationKind::SameStem);
     }
 
     #[test]
