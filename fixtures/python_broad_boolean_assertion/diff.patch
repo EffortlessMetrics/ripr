@@ -1,0 +1,8 @@
+diff --git a/src/priority.py b/src/priority.py
+index 0000000..1111111 100644
+--- a/src/priority.py
++++ b/src/priority.py
+@@ -1,2 +1,2 @@
+ def is_priority(amount):
+-    return amount > 100
++    return amount >= 100

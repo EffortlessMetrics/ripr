@@ -44,4 +44,4 @@ The Python preview adapter:
 
 - Treat decorators as runtime semantics.
 - Cross into editor or CI projection.
-- Claim assertion strength before the assertion-facts slice lands.
+- Claim a strong discriminator when the related test has no recognized oracle.
