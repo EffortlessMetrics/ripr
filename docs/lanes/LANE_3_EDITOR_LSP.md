@@ -439,8 +439,11 @@ Maintenance audit evidence from 2026-05-12:
   CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays.
 
 Objective audit status from 2026-05-13: routing is implemented and preview
-projection proof is being pinned before closeout. Do not mark the lane complete
-until the preview editor workflow docs and closeout evidence land.
+projection proof is pinned for Campaign 27 closeout. Preview editor workflow
+docs and closeout evidence landed without changing Rust saved-workspace
+defaults, source edits, generated tests, provider calls, mutation execution,
+policy/gate behavior, default blocking, CodeLens, inlay hints, semantic tokens,
+or unsaved-buffer overlays.
 
 | Requirement | Current artifact or command | Audit status |
 | --- | --- | --- |
@@ -578,9 +581,10 @@ Planned PR path:
    - Explain syntax-first evidence, static limits, advisory-only diagnostics,
      and the source-edit-free command loop.
 15. `campaign(lane3): close editor preview routing`
-   - Close only after Rust defaults are unchanged, preview routing is opt-in and
-     fixture-pinned, preview labels/static limits are visible, VS Code e2e and
-     `lsp-cockpit-report` prove the path, and docs cover the preview limits.
+    - Done as part of Campaign 27 closeout after Rust defaults stayed unchanged,
+      preview routing remained opt-in and fixture-pinned, preview labels/static
+      limits were visible, VS Code e2e and `lsp-cockpit-report` checked the
+      path, and docs covered the preview limits.
 
 Hard boundaries for every slice:
 

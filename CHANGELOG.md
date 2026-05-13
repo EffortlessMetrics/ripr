@@ -52,6 +52,12 @@ Planned scope:
   preview-promotion packets, operator workflow docs, advisory generated-CI
   projection, capability metadata, traceability, and the boundary that stricter
   policy or preview-language promotion still requires explicit later review.
+- Closed Campaign 27 Language Adapter Preview. TypeScript/JavaScript and Python
+  preview adapters now have fixture-backed syntax-first facts, visible
+  preview/advisory labels, editor projection, generated-CI language grouping,
+  dogfood receipts, capability metadata, traceability, and a closeout boundary
+  that keeps Rust defaults, gate authority, generated tests, provider calls,
+  source edits, and mutation execution unchanged.
 - `ripr --help` and every `ripr <subcommand> --help` now lead with an
   action-oriented one-liner before the `Usage:` block (e.g.,
   `ripr pilot --help` opens with "Find the top test gap in this repo and

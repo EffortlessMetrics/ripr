@@ -2814,7 +2814,7 @@ Closeout:
 
 Campaign ID: `pr-inline-comment-publisher`
 
-Status: active
+Status: closed
 
 Campaigns 13 through 25 made PR guidance, generated-CI summaries, changed-line
 check annotations, optional gates, baselines, ledgers, assistant proof, first
@@ -2900,7 +2900,7 @@ Next:
 
 Campaign ID: `language-adapter-preview`
 
-Status: active
+Status: closed
 
 Campaigns 1 through 26 built a credible Rust static oracle-gap analyzer with
 an editor evidence loop, an advisory PR review front panel, baselines, RIPR
@@ -2973,7 +2973,7 @@ Work items:
 | `ci/language-aware-grouping` | done | Generated GitHub CI summaries now read enabled languages through the public `ripr doctor` surface, keep the language grouping section hidden for Rust-only config, and group TypeScript/Python advisory artifact entries, preview-status counts, classifications, and static-limit kinds only when preview adapters are configured. Preview groups remain advisory presentation only; `ripr gate evaluate` remains configured pass/fail authority. |
 | `docs/language-adapter-preview-workflow` | done | `docs/LANGUAGE_ADAPTER_PREVIEW.md` documents enabling preview adapters, reading mixed-language reports, interpreting preview labels, the static-limit boundary, editor projection, generated-CI language grouping, gate authority, and rollback; Quickstart, Configuration, Support Tiers, capability, traceability, and documentation-index surfaces link to it. |
 | `dogfood/language-adapter-preview-receipts` | done | `cargo xtask dogfood` now checks TypeScript and Python preview receipts for preview labels, structured static limits, disabled-language behavior, and no cross-language related-test routing. The dogfood report records generated-CI preview grouping as checked while preserving advisory defaults, Rust-default behavior, gate authority, and inline-comment defaults. |
-| `campaign/language-adapter-preview-closeout` | ready | Close Campaign 27 after the spec, adapter boundary, Rust adapter, output metadata, preview adapters, editor routing, CI grouping, workflow docs, dogfood receipts, and validation show preview adapters are syntax-first, opt-in, advisory, and label-correct, while Rust behavior is preserved. |
+| `campaign/language-adapter-preview-closeout` | done | Closed after the spec, adapter boundary, Rust adapter, output metadata, preview adapters, editor routing, CI grouping, workflow docs, dogfood receipts, closeout handoff, and validation showed preview adapters are syntax-first, opt-in, advisory, and label-correct, while Rust behavior is preserved. |
 
 References:
 
@@ -3033,11 +3033,9 @@ cargo xtask check-pr
 
 Next:
 
-- Continue with `campaign/language-adapter-preview-closeout`. Record the
-  landed spec, adapter, output metadata, preview adapter, editor routing,
-  generated-CI grouping, workflow docs, and dogfood receipt chain without
-  promoting preview evidence to gate eligibility, changing Rust defaults, or
-  implying runtime mutation proof.
+- Campaign 27 is closed. Keep TypeScript and Python preview evidence opt-in,
+  visibly preview/advisory, and outside default gate authority until a later
+  promotion policy explicitly changes that boundary.
 
 ## Focused Lane 1 Tracker: Evidence Quality Leadership
 
