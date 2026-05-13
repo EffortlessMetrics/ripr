@@ -399,6 +399,19 @@ Maintenance audit evidence from 2026-05-12:
   open for `analysis/python-preview-adapter` and #772 open for blocked
   `lsp/editor-language-routing`; `cargo xtask goals next` still reports no
   ready work items, so preview selector and routing work remains blocked.
+- after #868 refreshed the Campaign 27 Lane 3 routing plan for the post-#857
+  `static_limit_kind` state, current `origin/main` (`61ea9c9`) was rechecked
+  as a Rust cockpit maintenance smoke. `cargo xtask goals next` still reported
+  no ready work items; `cargo xtask lsp-cockpit-report` passed;
+  `cargo test -p ripr lsp --lib` passed 123 tests;
+  `cargo test -p ripr lsp::tests --lib` passed 84 tests;
+  `npm --prefix editors/vscode run compile` passed after restoring local
+  `node_modules` with `npm --prefix editors/vscode ci`; and
+  `npm --prefix editors/vscode run test:e2e` passed 30 live VS Code smoke
+  tests with the known post-success VS Code runner `path` warning exiting 0.
+  The open PR queue still had no `editors/vscode`,
+  `crates/ripr/src/lsp`, or `fixtures/editor_lsp_workflow` changes, so Lane 3
+  remains maintenance-only until Python unblocks `lsp/editor-language-routing`.
 
 Objective audit status from 2026-05-13: not complete, blocked upstream.
 
