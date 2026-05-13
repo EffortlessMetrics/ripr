@@ -23,6 +23,9 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::EvidenceQualityScorecard => {
             super::reports::evidence_quality_scorecard_report()
         }
+        XtaskCommand::EvidenceQualityTrend(args) => {
+            super::reports::evidence_quality_trend_report(&args)
+        }
         XtaskCommand::AgentSeamPackets(root) => {
             super::reports::agent_seam_packets_report(root.as_ref())
         }
