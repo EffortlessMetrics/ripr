@@ -1,0 +1,8 @@
+diff --git a/src/notify.py b/src/notify.py
+index 0000000..1111111 100644
+--- a/src/notify.py
++++ b/src/notify.py
+@@ -1,2 +1,2 @@
+ def send_alert(notifier, message):
+-    notifier.queue(message)
++    notifier.send(message)

@@ -2,35 +2,35 @@
   "schema_version": "0.1",
   "tool": "ripr",
   "mode": "fast",
-  "root": "fixtures/python_mock_assert_called/input",
+  "root": "fixtures/python_mock_interaction/input",
   "base": "origin/main",
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
-      "id": "probe:src_notify.py:2:python_preview",
+      "id": "probe:src_mock_contract.py:2:python_preview",
       "classification": "weakly_exposed",
       "severity": "warning",
       "confidence": 0.40,
       "probe": {
-        "id": "probe:src_notify.py:2:python_preview",
+        "id": "probe:src_mock_contract.py:2:python_preview",
         "family": "side_effect",
         "delta": "effect",
-        "file": "src/notify.py",
+        "file": "src/mock_contract.py",
         "line": 2,
-        "expression": "    callback(\"receipt.sent\", order_id)"
+        "expression": "    callback.assert_called_once_with(\"sent\")"
        },
       "ripr": {
-        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `send_receipt`"},
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `verify_callback`"},
         "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
         "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `mock_expectation` (rank 4)"},
         "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `send_receipt`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Strongest extracted Python oracle kind: `mock_expectation` (rank 4)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "related test tests/test_notify.py:6 test_send_receipt_notifies_callback uses medium mock expectation oracle: callback.assert_called_once_with(\"receipt.sent\", \"ord-123\")"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `verify_callback`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Strongest extracted Python oracle kind: `mock_expectation` (rank 4)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "related test tests/test_mock_contract.py:1 test_verify_callback uses medium mock expectation oracle: callback.assert_called_once_with(\"sent\")"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: send_receipt", "owner_kind: function", "test_framework: pytest (test_send_receipt_notifies_callback)", "test_oracle: mock_expectation medium (test_send_receipt_notifies_callback)"],
-      "missing": ["Related Python test reaches `send_receipt` but the strongest extracted oracle is `mock_expectation`; add or verify an exact-value assertion to make the preview finding stronger."],
+      "evidence": ["owner: verify_callback", "owner_kind: function", "test_framework: pytest (test_verify_callback)", "test_oracle: mock_expectation medium (test_verify_callback)"],
+      "missing": ["Related Python test reaches `verify_callback` but the strongest extracted oracle is `mock_expectation`; add or verify an exact-value assertion to make the preview finding stronger."],
       "activation": {
         "observed_values": [
         ],
@@ -43,12 +43,12 @@
       ],
       "related_tests": [
         {
-          "name": "test_send_receipt_notifies_callback",
-          "file": "tests/test_notify.py",
-          "line": 6,
+          "name": "test_verify_callback",
+          "file": "tests/test_mock_contract.py",
+          "line": 1,
           "oracle_strength": "medium",
           "oracle_kind": "mock_expectation",
-          "oracle": "callback.assert_called_once_with(\"receipt.sent\", \"ord-123\")"
+          "oracle": "callback.assert_called_once_with(\"sent\")"
         }
       ],
       "stop_reasons": [],

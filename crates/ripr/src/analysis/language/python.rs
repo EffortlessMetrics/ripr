@@ -10,13 +10,17 @@
 //! - pytest `test_*` functions, parametrized pytest tests, and
 //!   `unittest.TestCase.test_*` methods;
 //! - pytest, unittest, and mock assertion/oracle facts;
-//! - related-test references by simple syntactic call/name matching.
+//! - related-test references by simple syntactic call/name matching;
+//! - syntax-first probe family classification for predicates, return
+//!   values, error paths, field writes, and call effects.
 //!
-//! Richer probe families, import-graph matching, static limits, editor routing,
+//! Import-graph matching, the full static-limit matrix, editor routing,
 //! generated tests, runtime execution, and provider calls remain out of scope.
 //! Strong exact-value assertions can produce `exposed`; weaker or unknown
 //! related-test oracles produce `weakly_exposed`; missing related tests produce
-//! `no_static_path`.
+//! `no_static_path`. Unsupported changed syntax produces `static_unknown`
+//! with a structured `static_limit_kind` instead of being coerced to a
+//! predicate.
 
 use super::super::{AnalysisOptions, diff::ChangedFile};
 use super::{LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route};
@@ -24,7 +28,7 @@ use crate::config::OraclePolicy;
 use crate::domain::{
     Confidence, DeltaKind, ExposureClass, Finding, LanguageId as DomainLanguageId, LanguageStatus,
     OracleKind, OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest,
-    RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
+    RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind,
 };
 use rustpython_parser::{
     Mode,
@@ -68,6 +72,34 @@ struct PythonAssertion {
     line: usize,
     oracle_kind: OracleKind,
     oracle_strength: OracleStrength,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PythonProbeShape {
+    family: ProbeFamily,
+    delta: DeltaKind,
+    static_limit_kind: Option<StaticLimitKind>,
+    static_limit_detail: Option<&'static str>,
+}
+
+impl PythonProbeShape {
+    fn supported(family: ProbeFamily, delta: DeltaKind) -> Self {
+        Self {
+            family,
+            delta,
+            static_limit_kind: None,
+            static_limit_detail: None,
+        }
+    }
+
+    fn unsupported(kind: StaticLimitKind, detail: &'static str) -> Self {
+        Self {
+            family: ProbeFamily::StaticUnknown,
+            delta: DeltaKind::Unknown,
+            static_limit_kind: Some(kind),
+            static_limit_detail: Some(detail),
+        }
+    }
 }
 
 fn parse_module(path: &Path, source: &str) -> Option<Mod> {
@@ -510,18 +542,79 @@ fn test_references_owner(test: &PythonTest, owner: &PythonOwner) -> bool {
         || test.body_text.contains(&qualified_call)
 }
 
-fn classify_probe_shape(line_text: &str) -> (ProbeFamily, DeltaKind) {
+fn classify_probe_shape(line_text: &str) -> PythonProbeShape {
     let trimmed = line_text.trim_start();
-    if trimmed.starts_with("if ") || trimmed.starts_with("elif ") {
-        return (ProbeFamily::Predicate, DeltaKind::Control);
+
+    if trimmed.starts_with("yield ") || trimmed == "yield" || trimmed.starts_with("yield from ") {
+        return PythonProbeShape::unsupported(
+            StaticLimitKind::UnsupportedSyntax,
+            "Python preview does not classify generator yield shapes as probe evidence.",
+        );
+    }
+
+    if trimmed.starts_with("if ")
+        || trimmed.starts_with("elif ")
+        || trimmed.starts_with("while ")
+        || trimmed.starts_with("for ")
+        || trimmed.starts_with("match ")
+        || trimmed.starts_with("case ")
+    {
+        return PythonProbeShape::supported(ProbeFamily::Predicate, DeltaKind::Control);
     }
     if trimmed.starts_with("return ") || trimmed == "return" {
-        return (ProbeFamily::ReturnValue, DeltaKind::Value);
+        return PythonProbeShape::supported(ProbeFamily::ReturnValue, DeltaKind::Value);
     }
-    if trimmed.starts_with("raise ") || trimmed == "raise" {
-        return (ProbeFamily::ErrorPath, DeltaKind::Control);
+    if trimmed.starts_with("raise ")
+        || trimmed == "raise"
+        || trimmed.starts_with("except ")
+        || trimmed.starts_with("except:")
+    {
+        return PythonProbeShape::supported(ProbeFamily::ErrorPath, DeltaKind::Control);
     }
-    (ProbeFamily::Predicate, DeltaKind::Control)
+
+    if is_attribute_assignment(trimmed) {
+        return PythonProbeShape::supported(ProbeFamily::FieldConstruction, DeltaKind::Value);
+    }
+
+    if is_bare_call_statement(trimmed) {
+        return PythonProbeShape::supported(ProbeFamily::SideEffect, DeltaKind::Effect);
+    }
+
+    PythonProbeShape::unsupported(
+        StaticLimitKind::UnsupportedSyntax,
+        "Python preview could not map the changed line to a supported probe family.",
+    )
+}
+
+fn is_attribute_assignment(trimmed: &str) -> bool {
+    for op in [" = ", " += ", " -= ", " *= ", " /= ", " //= ", " %= "] {
+        if let Some(idx) = trimmed.find(op) {
+            let lhs = trimmed[..idx].trim();
+            return lhs.contains('.')
+                && lhs.chars().all(|c| {
+                    c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '[' || c == ']'
+                });
+        }
+    }
+    false
+}
+
+fn is_bare_call_statement(trimmed: &str) -> bool {
+    let without_await = trimmed.strip_prefix("await ").unwrap_or(trimmed);
+    let call_candidate = without_await
+        .trim_end()
+        .strip_suffix(';')
+        .unwrap_or(without_await);
+    call_candidate.ends_with(')')
+        && call_candidate.contains('(')
+        && !call_candidate.starts_with("if ")
+        && !call_candidate.starts_with("elif ")
+        && !call_candidate.starts_with("while ")
+        && !call_candidate.starts_with("for ")
+        && !call_candidate.starts_with("return")
+        && !call_candidate.starts_with("raise")
+        && !call_candidate.starts_with("with ")
+        && !call_candidate.contains(" = ")
 }
 
 fn classify_change(
@@ -548,42 +641,67 @@ fn classify_change(
         .map(|test| test.oracle_kind.clone())
         .unwrap_or(OracleKind::Unknown);
 
-    let (class, reach_state, observe_state, discriminate_state, missing) = if related.is_empty() {
-        (
-            ExposureClass::NoStaticPath,
-            StageState::No,
-            StageState::No,
-            StageState::No,
-            vec![format!(
-                "No Python test references `{}(`; add a pytest or unittest test that calls the changed owner.",
-                owner.name
-            )],
-        )
-    } else if strongest_strength >= OracleStrength::Strong.rank() {
-        (
-            ExposureClass::Exposed,
-            StageState::Yes,
-            StageState::Yes,
-            StageState::Yes,
-            vec![format!(
-                "Related Python test reaches `{}` with a `{}` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.",
-                owner.name,
-                strongest_kind.as_str()
-            )],
-        )
-    } else {
-        (
-            ExposureClass::WeaklyExposed,
-            StageState::Yes,
-            StageState::Weak,
-            StageState::Weak,
-            vec![format!(
-                "Related Python test reaches `{}` but the strongest extracted oracle is `{}`; add or verify an exact-value assertion to make the preview finding stronger.",
-                owner.name,
-                strongest_kind.as_str()
-            )],
-        )
-    };
+    let probe_shape = classify_probe_shape(line_text);
+    let is_static_unknown_probe = matches!(probe_shape.family, ProbeFamily::StaticUnknown);
+
+    let (class, reach_state, observe_state, discriminate_state, missing) =
+        if is_static_unknown_probe {
+            (
+                ExposureClass::StaticUnknown,
+                if related.is_empty() {
+                    StageState::No
+                } else {
+                    StageState::Yes
+                },
+                StageState::Unknown,
+                StageState::Unknown,
+                vec![format!(
+                    "Static limit `{}`: {}",
+                    probe_shape
+                        .static_limit_kind
+                        .map(|kind| kind.as_str())
+                        .unwrap_or("unsupported_syntax"),
+                    probe_shape.static_limit_detail.unwrap_or(
+                        "Python preview could not map the changed syntax to a supported probe family."
+                    )
+                )],
+            )
+        } else if related.is_empty() {
+            (
+                ExposureClass::NoStaticPath,
+                StageState::No,
+                StageState::No,
+                StageState::No,
+                vec![format!(
+                    "No Python test references `{}(`; add a pytest or unittest test that calls the changed owner.",
+                    owner.name
+                )],
+            )
+        } else if strongest_strength >= OracleStrength::Strong.rank() {
+            (
+                ExposureClass::Exposed,
+                StageState::Yes,
+                StageState::Yes,
+                StageState::Yes,
+                vec![format!(
+                    "Related Python test reaches `{}` with a `{}` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.",
+                    owner.name,
+                    strongest_kind.as_str()
+                )],
+            )
+        } else {
+            (
+                ExposureClass::WeaklyExposed,
+                StageState::Yes,
+                StageState::Weak,
+                StageState::Weak,
+                vec![format!(
+                    "Related Python test reaches `{}` but the strongest extracted oracle is `{}`; add or verify an exact-value assertion to make the preview finding stronger.",
+                    owner.name,
+                    strongest_kind.as_str()
+                )],
+            )
+        };
 
     let id_path: String = file
         .display()
@@ -591,13 +709,12 @@ fn classify_change(
         .chars()
         .map(|c| if c == '/' || c == '\\' { '_' } else { c })
         .collect();
-    let (family, delta) = classify_probe_shape(line_text);
     let probe = Probe {
         id: ProbeId(format!("probe:{id_path}:{line}:python_preview")),
         location: SourceLocation::new(file.to_string_lossy().as_ref(), line, 1),
         owner: None,
-        family,
-        delta,
+        family: probe_shape.family.clone(),
+        delta: probe_shape.delta.clone(),
         before: None,
         after: Some(line_text.to_string()),
         expression: line_text.to_string(),
@@ -621,16 +738,20 @@ fn classify_change(
         Confidence::Low,
         "Python preview adapter does not yet model propagation.",
     );
-    let observe = StageEvidence::new(
-        observe_state,
-        Confidence::Low,
+    let observe_summary = if is_static_unknown_probe {
+        "Python preview did not classify this changed syntax into a supported probe family."
+            .to_string()
+    } else {
         format!(
             "Strongest extracted Python oracle kind: `{}` (rank {})",
             strongest_kind.as_str(),
             strongest_strength
-        ),
-    );
-    let discriminate_summary = if strongest_strength >= OracleStrength::Strong.rank() {
+        )
+    };
+    let observe = StageEvidence::new(observe_state, Confidence::Low, observe_summary);
+    let discriminate_summary = if is_static_unknown_probe {
+        "Python preview keeps unsupported probe syntax advisory; review manually or use runtime mutation evidence.".to_string()
+    } else if strongest_strength >= OracleStrength::Strong.rank() {
         format!(
             "Related Python test uses a `{}` oracle; static evidence suggests the changed behavior is discriminated.",
             strongest_kind.as_str()
@@ -648,12 +769,17 @@ fn classify_change(
         ExposureClass::NoStaticPath => {
             "Python preview: no related test calls the changed owner; add a pytest or unittest test that exercises this behavior.".to_string()
         }
+        ExposureClass::StaticUnknown => {
+            "Python preview: changed syntax is not mapped to a supported probe family; review manually or use runtime mutation evidence before relying on this finding.".to_string()
+        }
         _ => {
             "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.".to_string()
         }
     };
     let confidence_value = if matches!(class, ExposureClass::Exposed) {
         0.6
+    } else if matches!(class, ExposureClass::StaticUnknown) {
+        0.2
     } else {
         0.4
     };
@@ -664,6 +790,15 @@ fn classify_change(
     ];
     if !owner.decorators.is_empty() {
         evidence.push(format!("owner_decorators: {}", owner.decorators.join(", ")));
+    }
+    if let Some(kind) = probe_shape.static_limit_kind {
+        evidence.push(format!(
+            "static_limit {}: {}",
+            kind.as_str(),
+            probe_shape.static_limit_detail.unwrap_or(
+                "Python preview could not map the changed syntax to a supported probe family."
+            )
+        ));
     }
     for test in all_tests
         .iter()
@@ -707,7 +842,7 @@ fn classify_change(
         language: Some(DomainLanguageId::Python),
         language_status: Some(LanguageStatus::Preview),
         owner_kind: Some(owner.owner_kind),
-        static_limit_kind: None,
+        static_limit_kind: probe_shape.static_limit_kind,
     })
 }
 
@@ -1084,6 +1219,46 @@ def test_notifies_callback():
     }
 
     #[test]
+    fn classify_probe_shape_recognizes_python_probe_families() {
+        let predicate = classify_probe_shape("    if amount >= threshold:");
+        assert_eq!(predicate.family, ProbeFamily::Predicate);
+        assert_eq!(predicate.delta, DeltaKind::Control);
+
+        let return_value = classify_probe_shape("    return amount * discount");
+        assert_eq!(return_value.family, ProbeFamily::ReturnValue);
+        assert_eq!(return_value.delta, DeltaKind::Value);
+
+        let error_path = classify_probe_shape("    raise ValueError(\"bad amount\")");
+        assert_eq!(error_path.family, ProbeFamily::ErrorPath);
+        assert_eq!(error_path.delta, DeltaKind::Control);
+
+        let field_write = classify_probe_shape("    self.total = total");
+        assert_eq!(field_write.family, ProbeFamily::FieldConstruction);
+        assert_eq!(field_write.delta, DeltaKind::Value);
+
+        let call_effect = classify_probe_shape("    notifier.send(message)");
+        assert_eq!(call_effect.family, ProbeFamily::SideEffect);
+        assert_eq!(call_effect.delta, DeltaKind::Effect);
+
+        let mock_interaction =
+            classify_probe_shape("    callback.assert_called_once_with(\"sent\")");
+        assert_eq!(mock_interaction.family, ProbeFamily::SideEffect);
+        assert_eq!(mock_interaction.delta, DeltaKind::Effect);
+    }
+
+    #[test]
+    fn classify_probe_shape_marks_unsupported_python_syntax_static_unknown() {
+        let shape = classify_probe_shape("    yield from chunks");
+
+        assert_eq!(shape.family, ProbeFamily::StaticUnknown);
+        assert_eq!(shape.delta, DeltaKind::Unknown);
+        assert_eq!(
+            shape.static_limit_kind,
+            Some(StaticLimitKind::UnsupportedSyntax)
+        );
+    }
+
+    #[test]
     fn classify_change_returns_exposed_when_related_test_has_strong_oracle() -> Result<(), String> {
         let owners = extract_owners(
             Path::new("src/pricing.py"),
@@ -1171,6 +1346,74 @@ def test_notifies_callback():
         assert_eq!(finding.class, ExposureClass::NoStaticPath);
         assert_eq!(finding.owner_kind, Some(OwnerKind::Function));
         assert!(finding.related_tests.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_returns_static_unknown_for_unsupported_probe_shape() -> Result<(), String> {
+        let owners = extract_owners(
+            Path::new("src/streaming.py"),
+            "def stream_chunks(chunks):\n    yield from chunks\n",
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_streaming.py"),
+            "def test_stream_chunks():\n    assert list(stream_chunks([1])) == [1]\n",
+        );
+
+        let Some(finding) = classify_change(
+            Path::new("src/streaming.py"),
+            2,
+            "    yield from chunks",
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed line inside owner should classify".to_string());
+        };
+
+        assert_eq!(finding.class, ExposureClass::StaticUnknown);
+        assert_eq!(finding.probe.family, ProbeFamily::StaticUnknown);
+        assert_eq!(
+            finding.static_limit_kind,
+            Some(StaticLimitKind::UnsupportedSyntax)
+        );
+        assert!(
+            finding
+                .missing
+                .iter()
+                .any(|line| line.contains("unsupported_syntax")),
+            "unsupported probe should explain the static limit"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn classify_change_surfaces_python_call_effect_probe_shape() -> Result<(), String> {
+        let owners = extract_owners(
+            Path::new("src/notify.py"),
+            "def send_alert(callback):\n    callback.notify(\"sent\")\n",
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_notify.py"),
+            "def test_send_alert():\n    callback = Mock()\n    send_alert(callback)\n    callback.assert_called_once_with(\"sent\")\n",
+        );
+
+        let Some(finding) = classify_change(
+            Path::new("src/notify.py"),
+            2,
+            "    callback.notify(\"sent\")",
+            &owners,
+            &tests,
+        ) else {
+            return Err("changed line inside owner should classify".to_string());
+        };
+
+        assert_eq!(finding.probe.family, ProbeFamily::SideEffect);
+        assert_eq!(finding.probe.delta, DeltaKind::Effect);
+        assert_eq!(finding.class, ExposureClass::WeaklyExposed);
+        assert_eq!(
+            finding.related_tests[0].oracle_kind,
+            OracleKind::MockExpectation
+        );
         Ok(())
     }
 

@@ -1,0 +1,39 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_unsupported_probe_limit/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+
+NOTE src/streaming.py:2
+
+Changed
+  after:      yield from chunks
+
+Probe
+  family: static_unknown
+  delta:  unknown
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  static_unknown (note, confidence 0.20)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `stream_chunks`
+  - infection unknown: Python preview adapter does not yet model infection.
+  - propagation unknown: Python preview adapter does not yet model propagation.
+  - observation unknown: Python preview did not classify this changed syntax into a supported probe family.
+  - discriminator unknown: Python preview keeps unsupported probe syntax advisory; review manually or use runtime mutation evidence.
+  - related test tests/test_streaming.py:1 test_stream_chunks uses strong exact value oracle: assert list(stream_chunks([1])) == [1]
+
+Weakness
+  - Static limit `unsupported_syntax`: Python preview does not classify generator yield shapes as probe evidence.
+
+Stop reasons:
+  - static_probe_unknown
+
+Next step
+  Python preview: changed syntax is not mapped to a supported probe family; review manually or use runtime mutation evidence before relying on this finding.

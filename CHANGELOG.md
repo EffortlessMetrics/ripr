@@ -93,6 +93,12 @@ Planned scope:
   limits. The TypeScript mocked-module limit now emits
   `static_limit_kind = "mocked_module"` in JSON while keeping existing human
   evidence text advisory and leaving Rust/default behavior unchanged.
+- Added Python preview probe-family classification for syntax-first predicate,
+  return-value, error-path, field-write, call-effect, mock-interaction, and
+  unsupported-generator shapes. Unsupported probe syntax now emits
+  `static_limit_kind = "unsupported_syntax"` and `static_unknown` instead of
+  being guessed as a predicate. Rust defaults, editor routing, generated tests,
+  providers, mutation execution, and gate policy are unchanged.
 - Added `cargo xtask lane1-evidence-audit` with
   `cargo xtask evidence-quality-audit` as an alias. The repo-local report writes
   `target/ripr/reports/lane1-evidence-audit.{json,md}` from generated

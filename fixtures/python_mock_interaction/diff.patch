@@ -1,0 +1,8 @@
+diff --git a/src/mock_contract.py b/src/mock_contract.py
+index 0000000..1111111 100644
+--- a/src/mock_contract.py
++++ b/src/mock_contract.py
+@@ -1,2 +1,2 @@
+ def verify_callback(callback):
+-    callback.assert_called_with("queued")
++    callback.assert_called_once_with("sent")

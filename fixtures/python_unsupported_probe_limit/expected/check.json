@@ -1,0 +1,65 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_unsupported_probe_limit/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1},
+  "findings": [
+    {
+      "id": "probe:src_streaming.py:2:python_preview",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.20,
+      "probe": {
+        "id": "probe:src_streaming.py:2:python_preview",
+        "family": "static_unknown",
+        "delta": "unknown",
+        "file": "src/streaming.py",
+        "line": 2,
+        "expression": "    yield from chunks"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `stream_chunks`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "observe": {"state":"unknown","confidence":"low","summary":"Python preview did not classify this changed syntax into a supported probe family."},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Python preview keeps unsupported probe syntax advisory; review manually or use runtime mutation evidence."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `stream_chunks`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation unknown: Python preview did not classify this changed syntax into a supported probe family.", "discriminator unknown: Python preview keeps unsupported probe syntax advisory; review manually or use runtime mutation evidence.", "related test tests/test_streaming.py:1 test_stream_chunks uses strong exact value oracle: assert list(stream_chunks([1])) == [1]"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: stream_chunks", "owner_kind: function", "static_limit unsupported_syntax: Python preview does not classify generator yield shapes as probe evidence.", "test_framework: pytest (test_stream_chunks)", "test_oracle: exact_value strong (test_stream_chunks)"],
+      "missing": ["Static limit `unsupported_syntax`: Python preview does not classify generator yield shapes as probe evidence."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "test_stream_chunks",
+          "file": "tests/test_streaming.py",
+          "line": 1,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert list(stream_chunks([1])) == [1]"
+        }
+      ],
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Python preview: changed syntax is not mapped to a supported probe family; review manually or use runtime mutation evidence before relying on this finding.",
+      "suggested_next_action": "Python preview: changed syntax is not mapped to a supported probe family; review manually or use runtime mutation evidence before relying on this finding.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "static_limit_kind": "unsupported_syntax"
+    }
+  ]
+}

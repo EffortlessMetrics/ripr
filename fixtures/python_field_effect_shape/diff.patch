@@ -1,0 +1,10 @@
+diff --git a/src/counter.py b/src/counter.py
+index 0000000..1111111 100644
+--- a/src/counter.py
++++ b/src/counter.py
+@@ -1,4 +1,4 @@
+ class Counter:
+     def apply(self, amount):
+-        self.total = amount - 1
++        self.total = amount
+         return self.total

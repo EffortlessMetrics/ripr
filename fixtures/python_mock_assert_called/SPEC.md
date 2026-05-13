@@ -36,6 +36,8 @@ The Python preview adapter:
 - finds the `send_receipt` function owner,
 - finds the pytest `test_send_receipt_notifies_callback` related test,
 - records `assert_called_once_with(...)` as `mock_expectation` / `medium`,
+- classifies the changed call statement as `probe.family = "side_effect"`
+  with `probe.delta = "effect"`,
 - emits Python preview metadata,
 - keeps the finding `weakly_exposed` because mock-call evidence is not an
   exact-value discriminator.

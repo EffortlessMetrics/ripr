@@ -1,0 +1,8 @@
+diff --git a/src/streaming.py b/src/streaming.py
+index 0000000..1111111 100644
+--- a/src/streaming.py
++++ b/src/streaming.py
+@@ -1,2 +1,2 @@
+ def stream_chunks(chunks):
+-    yield chunks[0]
++    yield from chunks
