@@ -1,13 +1,13 @@
 ripr static RIPR exposure analysis
 mode: fast
-root: fixtures/python_mock_assert_called/input
+root: fixtures/python_call_argument_shape/input
 
 Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
 
 WARNING src/notify.py:2
 
 Changed
-  after:      callback("receipt.sent", order_id)
+  after:      notifier("receipt.sent", order_id)
 
 Probe
   family: side_effect
@@ -27,7 +27,7 @@ Evidence
   - propagation unknown: Python preview adapter does not yet model propagation.
   - observation weak: Strongest extracted Python oracle kind: `mock_expectation` (rank 4)
   - discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.
-  - related test tests/test_notify.py:6 test_send_receipt_notifies_callback uses medium mock expectation oracle: callback.assert_called_once_with("receipt.sent", "ord-123")
+  - related test tests/test_notify.py:6 test_send_receipt_notifies_callback uses medium mock expectation oracle: notifier.assert_called_once_with("receipt.sent", "ord-123")
 
 Weakness
   - Related Python test reaches `send_receipt` but the strongest extracted oracle is `mock_expectation`; add or verify an exact-value assertion to make the preview finding stronger.
