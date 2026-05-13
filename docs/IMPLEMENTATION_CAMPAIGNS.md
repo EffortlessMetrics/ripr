@@ -3118,8 +3118,8 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `docs/proposal-user-visible-output-evidence` | done | #904 opened RIPR-PROP-0005 and the Lane 1 tracker. |
-| `docs/spec-presentation-text-evidence` | in progress | Defines visibility, observer, actionability, canonical grouping, static limitation, and must-not-claim behavior. |
-| `fixtures/presentation-text-evidence-benchmark` | open candidate | PR #900 started the screenshot-derived benchmark; it should land after the proposal/spec foundation. |
+| `docs/spec-presentation-text-evidence` | done | #909 added RIPR-SPEC-0043 for visibility, observer, actionability, canonical grouping, static limitation, and must-not-claim behavior. |
+| `fixtures/presentation-text-evidence-benchmark` | current | PR #900 adds the screenshot-derived benchmark after the proposal/spec foundation. |
 | `analysis/presentation-text-evidence-fields` | planned | Adds additive evidence-record fields for the class. |
 | `analysis/presentation-text-visibility` | planned | Classifies obvious output sinks and keeps unsupported routes as limitations. |
 | `analysis/presentation-text-canonical-grouping` | planned | Groups declaration and literal lines into one item. |
@@ -3283,7 +3283,7 @@ Work items:
 | `policy/history-report` | done | `ripr policy history` writes read-only JSON and Markdown trend packets over explicit policy operations and optional history JSONL inputs without automatic appends. |
 | `spec/policy-promotion-packets` | done | RIPR-SPEC-0042 defines read-only promotion packets for `visible-only`, `acknowledgeable`, `baseline-check`, and `calibrated-gate` without config, baseline, suppression, workflow, CI, history, or preview-eligibility mutation. |
 | `policy/promotion-packet-report` | done | `ripr policy promote --to ...` writes manual-review packets from policy operations and optional policy history without mutating config, baselines, suppressions, workflows, CI defaults, history, or preview eligibility. |
-| `spec/preview-evidence-promotion-packet` | planned | Define preview-language promotion packets with default `allowed_now = false`, explicit evidence accounting, advisory generated-CI posture, and no actual promotion. |
+| `spec/preview-evidence-promotion-packet` | done | RIPR-SPEC-0044 defines preview-language promotion packets with default `allowed_now = false`, explicit required/supplied/missing evidence accounting, advisory generated-CI posture, rollback guidance, and no actual promotion. |
 | `policy/preview-promotion-packet-report` | planned | Add `ripr policy preview-promote --language ... --class ...` while preserving advisory preview defaults. |
 | `docs/policy-operator-workflow` | planned | Document readiness, operations, history, promotion packets, preview packets, manual config review, post-change monitoring, and hard boundaries for maintainers. |
 | `ci/policy-operations-advisory-projection` | planned | Generated CI may render, upload, index, and summarize policy operations artifacts as advisory-only packets without pass/fail authority, required checks, comment posting, baseline mutation, config mutation, or default blocking. |

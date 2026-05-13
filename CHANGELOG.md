@@ -168,6 +168,12 @@ Planned scope:
   Lane 1 behavior for visibility, observer shape, actionability, declaration
   plus literal grouping, static limitation categories, and must-not-claim guards
   before analyzer behavior changes begin.
+- Added a Lane 1 evidence-quality benchmark case for presentation text
+  constants, pinning the claim boundary for changed help/label text: visibility
+  and actionability must be explicit, declaration and literal lines should
+  become one canonical evidence item, text alone must not become user test debt,
+  and mutation testing must not be the first recommended action. The benchmark
+  validator now also requires static limitation categories at the case level.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 
