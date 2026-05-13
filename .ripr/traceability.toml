@@ -2316,3 +2316,36 @@ metrics = [
   "generated_pr_ci_rust_default_unchanged",
   "generated_pr_ci_advisory_summaries",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0039"
+name = "Static/runtime confidence expansion"
+spec = "docs/specs/RIPR-SPEC-0039-static-runtime-confidence-expansion.md"
+tests = [
+]
+fixtures = [
+]
+code = [
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0039-static-runtime-confidence-expansion.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0002-lane-1-evidence-quality-leadership.md",
+  "docs/lanes/LANE_1_EVIDENCE_QUALITY_LEADERSHIP.md",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "runtime_fixtures_v3_cases",
+  "runtime_fixtures_v3_supported_classes",
+  "runtime_fixtures_v3_matched_static_seams",
+  "runtime_fixtures_v3_ambiguous_joins",
+  "runtime_fixtures_v3_runtime_only_signals",
+  "runtime_fixtures_v3_no_runtime_data",
+  "static_runtime_confidence_supports_static_gap",
+  "static_runtime_confidence_contradicts_static_gap",
+  "static_runtime_confidence_supports_static_clean",
+  "static_runtime_confidence_contradicts_static_clean",
+  "static_runtime_confidence_ambiguous_runtime_join",
+  "static_runtime_confidence_runtime_only_signal",
+  "static_runtime_confidence_no_runtime_data",
+]

@@ -49,3 +49,4 @@ observable behavior.
 | [RIPR-SPEC-0036](RIPR-SPEC-0036-editor-preview-routing.md) | proposed | Editor preview routing |
 | [RIPR-SPEC-0037](RIPR-SPEC-0037-editor-preview-static-limit-projection.md) | proposed | Editor preview static-limit projection |
 | [RIPR-SPEC-0038](RIPR-SPEC-0038-generated-pr-ci-review-workflow.md) | proposed | Generated PR CI review workflow |
+| [RIPR-SPEC-0039](RIPR-SPEC-0039-static-runtime-confidence-expansion.md) | proposed | Static/runtime confidence expansion |

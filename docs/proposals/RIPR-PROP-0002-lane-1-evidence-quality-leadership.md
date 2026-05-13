@@ -12,7 +12,7 @@ Linked specs:
 
 - `RIPR-SPEC-0034`: Evidence quality scorecard (planned)
 - `RIPR-SPEC-0035`: Evidence quality benchmark corpus (planned)
-- `RIPR-SPEC-0036`: Static/runtime confidence expansion (planned)
+- `RIPR-SPEC-0039`: Static/runtime confidence expansion (planned)
 
 Linked ADRs:
 
@@ -115,7 +115,7 @@ what changed, what proof ran, and what remains unknown.
 
 - `RIPR-SPEC-0034`: Evidence quality scorecard.
 - `RIPR-SPEC-0035`: Evidence quality benchmark corpus.
-- `RIPR-SPEC-0036`: Static/runtime confidence expansion.
+- `RIPR-SPEC-0039`: Static/runtime confidence expansion.
 - Existing Lane 1 audit, fixture, match-arm, capability, and traceability docs
   may be referenced by those specs but should not absorb the proposal's
   motivation.
