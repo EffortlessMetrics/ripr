@@ -2245,3 +2245,42 @@ metrics = [
   "editor_preview_stale_suppressed_actions",
   "editor_preview_wrong_root_suppressed_actions",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0038"
+name = "Generated PR CI review workflow"
+spec = "docs/specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md"
+tests = [
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_is_advisory",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_never_auto_refreshes_baseline",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_uploads_reports_and_makes_sarif_optional",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_matches_smoke_fixture",
+  "crates/ripr/tests/cli_smoke.rs::init_ci_github_dry_run_prints_config_and_workflow_without_writing",
+  "crates/ripr/tests/cli_smoke.rs::init_ci_github_writes_non_blocking_report_workflow",
+]
+fixtures = [
+]
+code = [
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/tests/cli_smoke.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0004-pr-ci-review-cockpit.md",
+  "docs/lanes/LANE_4_PR_CI_REVIEW.md",
+  "plans/lane4-pr-ci-review-cockpit/implementation-plan.md",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "generated_pr_ci_workflows",
+  "generated_pr_ci_front_panel_present",
+  "generated_pr_ci_packet_index_present",
+  "generated_pr_ci_missing_expected_artifacts",
+  "generated_pr_ci_regeneration_commands",
+  "generated_pr_ci_gate_authority_links",
+  "generated_pr_ci_language_groups",
+  "generated_pr_ci_preview_language_groups",
+  "generated_pr_ci_rust_default_unchanged",
+  "generated_pr_ci_advisory_summaries",
+]

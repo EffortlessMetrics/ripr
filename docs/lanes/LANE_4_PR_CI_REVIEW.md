@@ -43,7 +43,7 @@ Use one document for one job:
 | Layer | Owns | RIPR storage |
 | --- | --- | --- |
 | Roadmap / campaign | release and lane direction | [Roadmap](../ROADMAP.md), [Implementation campaigns](../IMPLEMENTATION_CAMPAIGNS.md) |
-| Proposal / PRD | why the lane exists, user value, alternatives, success criteria | `docs/proposals/RIPR-PROP-0002-pr-ci-review-cockpit.md` |
+| Proposal / PRD | why the lane exists, user value, alternatives, success criteria | [RIPR-PROP-0004](../proposals/RIPR-PROP-0004-pr-ci-review-cockpit.md) |
 | Specs | behavior contracts and acceptance examples | [RIPR-SPEC-0023](../specs/RIPR-SPEC-0023-pr-review-front-panel-report.md), [RIPR-SPEC-0024](../specs/RIPR-SPEC-0024-report-packet-index.md), later generated-CI specs |
 | ADRs | durable architecture decisions | [ADRs](../adr/) |
 | Lane tracker | lane-local scope, boundaries, current plan, validation gates | this document |
@@ -105,16 +105,20 @@ Existing Lane 4 behavior contracts:
 - [RIPR-SPEC-0024: Report Packet Index](../specs/RIPR-SPEC-0024-report-packet-index.md)
   defines the reviewer-first map over the uploaded report packet.
 
-Later Lane 4 spec work should normalize these specs with explicit role
-front-matter and add a generated PR CI review workflow contract using the next
-available spec number. This checkout already uses `RIPR-SPEC-0032` through
-`RIPR-SPEC-0035`, so future work must not reuse those IDs.
+Later Lane 4 spec work should add generated-CI gap maps and implementation
+receipts against the generated PR CI review workflow contract in
+[RIPR-SPEC-0038](../specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md).
+This checkout already uses `RIPR-SPEC-0032` through `RIPR-SPEC-0038`, so
+future work must not reuse those IDs.
 
 ## Plan
 
 The current Lane 4 plan is in
 [plans/lane4-pr-ci-review-cockpit](../../plans/lane4-pr-ci-review-cockpit/README.md).
 That plan owns PR order. The specs own behavior truth.
+
+The generated-CI cockpit gap map is in
+[plans/lane4-pr-ci-review-cockpit/generated-ci-gap-map.md](../../plans/lane4-pr-ci-review-cockpit/generated-ci-gap-map.md).
 
 The first slice is docs-only scaffolding:
 

@@ -13,11 +13,14 @@ and
 [RIPR-SPEC-0024](../../docs/specs/RIPR-SPEC-0024-report-packet-index.md).
 
 Planned proposal path:
-`docs/proposals/RIPR-PROP-0002-pr-ci-review-cockpit.md`.
+`docs/proposals/RIPR-PROP-0004-pr-ci-review-cockpit.md`.
 
 Planned generated-CI workflow spec path:
-use the next available `RIPR-SPEC-00NN-generated-pr-ci-review-workflow.md`.
-This checkout already uses `RIPR-SPEC-0032` through `RIPR-SPEC-0035`.
+`docs/specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md`.
+This checkout already uses `RIPR-SPEC-0032` through `RIPR-SPEC-0038`.
+
+Generated-CI gap map:
+[generated-ci-gap-map.md](generated-ci-gap-map.md).
 
 ## Objective
 
@@ -164,8 +167,7 @@ Goal:
 Define the generated PR CI review workflow contract.
 
 Production delta:
-Add a new `docs/specs/RIPR-SPEC-00NN-generated-pr-ci-review-workflow.md` using
-the next available spec number.
+Add `docs/specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md`.
 
 Non-goals:
 No workflow implementation, branch-protection change, default blocking change,
@@ -387,9 +389,10 @@ Map the remaining generated-CI cockpit gaps after the shipped front panel and
 packet index.
 
 Production delta:
-Add or update docs that show how the current generated workflow composes front
-panel, packet index, policy artifacts, receipts, and language grouping, and
-which remaining behavior belongs in a generated-CI workflow spec.
+Add [generated-ci-gap-map.md](generated-ci-gap-map.md) to show how the current
+generated workflow composes front panel, packet index, policy artifacts,
+receipts, and language grouping, and which remaining behavior belongs in later
+generated-CI work.
 
 Non-goals:
 No generated workflow implementation change, default blocking change, branch
