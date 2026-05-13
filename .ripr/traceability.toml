@@ -2450,10 +2450,25 @@ id = "RIPR-SPEC-0041"
 name = "Policy history ledger"
 spec = "docs/specs/RIPR-SPEC-0041-policy-history-ledger.md"
 tests = [
+  "crates/ripr/src/output/policy_history.rs::tests::policy_history_single_snapshot_marks_trends_unknown",
+  "crates/ripr/src/output/policy_history.rs::tests::policy_history_detects_readiness_improvement",
+  "crates/ripr/src/output/policy_history.rs::tests::policy_history_detects_waiver_pressure_regression",
+  "crates/ripr/src/output/policy_history.rs::tests::policy_history_detects_baseline_shrink",
+  "crates/ripr/src/output/policy_history.rs::tests::policy_history_marks_preview_boundary_still_advisory",
+  "crates/ripr/src/output/policy_history.rs::tests::policy_history_keeps_usable_history_with_malformed_line_warning",
+  "crates/ripr/src/output/policy_history.rs::tests::policy_history_malformed_current_is_config_error_snapshot",
+  "crates/ripr/src/output/policy_history.rs::tests::policy_history_json_and_markdown_are_structured",
+  "crates/ripr/src/cli/commands.rs::tests::policy_history_parses_option_surface",
+  "crates/ripr/src/cli/commands.rs::tests::policy_history_command_writes_reports",
 ]
 fixtures = [
 ]
 code = [
+  "crates/ripr/src/output/policy_history.rs",
+  "crates/ripr/src/output/mod.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/help.rs",
+  "crates/ripr/src/cli/execute.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0041-policy-history-ledger.md",
