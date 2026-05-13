@@ -3390,6 +3390,175 @@ mode, each health axis, preview zero-count boundary, unknowns, warnings, next
 policy action, and limits. It must not claim runtime mutation outcomes or make
 the report a gate.
 
+## Policy Operations Report
+
+RIPR-SPEC-0039 defines the planned policy operations report. `ripr policy
+operations` will compose explicit policy artifacts into one read-only operator
+packet that names the current safe ceiling, next safe action, safe and blocked
+promotion modes, blockers, action lists, warnings, unknowns, and input health.
+
+Planned command:
+
+```text
+ripr policy operations \
+  --policy-readiness target/ripr/reports/policy-readiness.json \
+  --waiver-aging target/ripr/reports/waiver-aging.json \
+  --suppression-health target/ripr/reports/suppression-health.json \
+  --baseline-delta target/ripr/reports/baseline-debt-delta.json \
+  --gate-decision target/ripr/reports/gate-decision.json \
+  --recommendation-calibration target/ripr/reports/recommendation-calibration.json \
+  --mutation-calibration target/ripr/reports/mutation-calibration.json \
+  --out target/ripr/reports/policy-operations.json \
+  --out-md target/ripr/reports/policy-operations.md
+```
+
+The planned report writes:
+
+```text
+target/ripr/reports/policy-operations.json
+target/ripr/reports/policy-operations.md
+```
+
+This report is advisory policy operations evidence. It does not execute a gate,
+mutate config, baselines, suppressions, workflows, branch protection, generated
+CI defaults, or source files, promote preview-language evidence, run analysis,
+generate tests, call providers, post comments, or run mutation testing.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "policy_operations",
+  "root": ".",
+  "generated_at": "unix_ms:1778277000000",
+  "current_policy_ceiling": "ready_for_acknowledgeable",
+  "recommended_next_action": "Run shrink-only baseline review and remove resolved entries.",
+  "safe_to_promote_to": [
+    {
+      "mode": "visible-only",
+      "allowed_now": true,
+      "reason": "Policy readiness and supplied inputs allow visible-only advisory display.",
+      "source_artifacts": [
+        "target/ripr/reports/policy-readiness.json",
+        "target/ripr/reports/gate-decision.json"
+      ]
+    },
+    {
+      "mode": "acknowledgeable",
+      "allowed_now": true,
+      "reason": "Waivers are visible PR-time acknowledgements and suppression health is readable.",
+      "source_artifacts": [
+        "target/ripr/reports/policy-readiness.json",
+        "target/ripr/reports/waiver-aging.json",
+        "target/ripr/reports/suppression-health.json"
+      ]
+    }
+  ],
+  "not_safe_to_promote_to": [
+    {
+      "mode": "baseline-check",
+      "allowed_now": false,
+      "reason": "Current policy ceiling ready_for_acknowledgeable does not allow baseline-check. Baseline contains 1 stale entries.",
+      "blockers": [
+        "current_ceiling_below_baseline_check",
+        "baseline_stale_entries"
+      ],
+      "source_artifacts": [
+        "target/ripr/reports/baseline-debt-delta.json"
+      ]
+    }
+  ],
+  "promotion_blockers": [
+    {
+      "kind": "baseline_stale_entries",
+      "severity": "warning",
+      "message": "Baseline contains 1 stale entries.",
+      "target_modes": ["baseline-check", "calibrated-gate"],
+      "source_artifact": "target/ripr/reports/baseline-debt-delta.json",
+      "repair_action": "Run shrink-only baseline review and remove resolved entries."
+    }
+  ],
+  "baseline_actions": [
+    "Review stale baseline entries.",
+    "Use shrink-only refresh for resolved debt."
+  ],
+  "waiver_actions": [
+    "Review repeated PR-time acknowledgements before requiring acknowledgement.",
+    "Keep waivers visible and do not convert them to suppressions automatically."
+  ],
+  "suppression_actions": [
+    "Keep durable suppressions visible with owner, reason, scope, and review metadata."
+  ],
+  "calibration_actions": [
+    "Collect same-class recommendation calibration before calibrated-gate.",
+    "Optional mutation calibration was not supplied; keep runtime confirmation separate from static evidence."
+  ],
+  "preview_boundary_actions": [
+    "Keep typescript preview evidence visible/advisory and excluded from gate eligibility, RIPR Zero blocking debt, and calibrated confidence."
+  ],
+  "warnings": [
+    {
+      "kind": "missing_optional_input",
+      "message": "No mutation calibration input was supplied.",
+      "source_artifact": null
+    }
+  ],
+  "unknowns": [
+    {
+      "kind": "preview_boundary_not_supplied",
+      "message": "Preview boundary details came only from policy readiness when available.",
+      "source_artifact": "target/ripr/reports/policy-readiness.json"
+    }
+  ],
+  "input_artifacts": [
+    {
+      "kind": "policy_readiness",
+      "path": "target/ripr/reports/policy-readiness.json",
+      "status": "read"
+    },
+    {
+      "kind": "preview_boundary",
+      "path": null,
+      "status": "omitted"
+    }
+  ],
+  "limits_note": "Read-only advisory policy operations report over explicit existing artifacts. Promotion requires separate manual review and configuration changes; this report never mutates config, baselines, suppressions, workflows, CI defaults, or preview-language eligibility."
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `tool` - always `"ripr"`.
+- `kind` - always `"policy_operations"`.
+- `current_policy_ceiling` - copied or derived from policy readiness.
+  Supported values are `advisory_only`, `ready_for_visible_only`,
+  `ready_for_acknowledgeable`, `ready_for_baseline_check`,
+  `ready_for_calibrated_gate`, `not_ready`, and `config_error`.
+- `recommended_next_action` - the first repair or operator action needed before
+  stricter policy review.
+- `safe_to_promote_to[]` - target modes currently allowed by the ceiling and
+  readable dependent inputs.
+- `not_safe_to_promote_to[]` - target modes blocked by ceiling, baseline,
+  waiver, suppression, calibration, preview-boundary, or input health.
+- `promotion_blockers[]` - normalized blocker records with severity, target
+  modes, source artifact, and repair action.
+- `baseline_actions[]`, `waiver_actions[]`, `suppression_actions[]`,
+  `calibration_actions[]`, and `preview_boundary_actions[]` - operator actions
+  grouped by policy surface.
+- `warnings[]` - malformed supplied inputs or optional evidence gaps.
+- `unknowns[]` - missing or unknowable context that limits confidence.
+- `input_artifacts[]` - one record for every operations input. Status values
+  are `read`, `omitted`, `missing`, `malformed`, and `not_applicable`.
+- `limits_note` - static advisory boundary and no-mutation policy text.
+
+Markdown should fit in a job summary. It should show current ceiling, next safe
+action, can-promote and cannot-promote sections, top blockers, grouped actions,
+warnings, unknowns, input artifact status, and limits. It must not make a gate
+decision or promote preview-language evidence.
+
 ## Suppression Health Report
 
 `ripr policy suppression-health` summarizes the durable suppression manifest

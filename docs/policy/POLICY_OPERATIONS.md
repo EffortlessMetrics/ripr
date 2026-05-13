@@ -97,7 +97,7 @@ available spec IDs.
 | Order | Work item | Purpose | Default status |
 | ---: | --- | --- | --- |
 | 1 | `campaign/policy-operations-tracker` | Open this focused tracker, manifest, roadmap, and plan references without behavior changes. | done |
-| 2 | `spec/policy-operations-report` | Define the read-only policy operations report contract. | planned |
+| 2 | `spec/policy-operations-report` | Define the read-only policy operations report contract. | done |
 | 3 | `policy/operations-report` | Implement `ripr policy operations` over explicit existing artifacts. | planned |
 | 4 | `spec/policy-history-ledger` | Define the read-only policy history report and optional append-only input. | planned |
 | 5 | `policy/history-report` | Implement `ripr policy history` as advisory trend reporting. | planned |
@@ -111,7 +111,9 @@ available spec IDs.
 
 ## Planned Report Surface
 
-The future operations report is read-only and explicit about input artifacts:
+The policy operations report is defined by
+[RIPR-SPEC-0039](../specs/RIPR-SPEC-0039-policy-operations-report.md). The
+future implementation is read-only and explicit about input artifacts:
 
 ```bash
 ripr policy operations \
@@ -183,9 +185,10 @@ This tracker does not authorize:
 - Handoffs record what shipped and what not to do.
 
 Do not collapse these roles into one document. In this tracker-opening PR,
-traceability and capability entries are intentionally deferred until the first
-policy operations spec exists, because the repo verifiers require those entries
-to point at real spec files.
+traceability and capability entries were intentionally deferred until the first
+policy operations spec existed, because the repo verifiers require those entries
+to point at real spec files. RIPR-SPEC-0039 now supplies that first behavior
+contract.
 
 ## Validation
 

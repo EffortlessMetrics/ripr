@@ -63,9 +63,9 @@ commands = [
 
 [[work_item]]
 id = "spec/policy-operations-report"
-status = "planned"
+status = "done"
 branch = "spec-policy-operations-report"
-acceptance = "Define the read-only policy operations report contract over explicit policy readiness, waiver aging, suppression health, baseline delta, gate decision, calibration, and preview-boundary inputs."
+acceptance = "RIPR-SPEC-0039 defines the read-only policy operations report contract over explicit policy readiness, waiver aging, suppression health, baseline delta, gate decision, calibration, and preview-boundary inputs."
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-output-contracts",
