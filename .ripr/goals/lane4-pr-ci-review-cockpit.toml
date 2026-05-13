@@ -127,11 +127,17 @@ commands = [
 
 [[work_item]]
 id = "ci/generated-summary-cockpit-contract"
-status = "ready"
+status = "done"
 branch = "ci-generated-summary-cockpit-contract"
 spec = "docs/specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md"
 plan = "plans/lane4-pr-ci-review-cockpit/generated-ci-baseline-audit.md"
-acceptance = "Align generated summary output with the cockpit contract by adding exact repair or regeneration commands where known and deciding whether the summary should literally say Start here, while keeping Rust-default behavior, gate authority, branch protection, inline comments, and default blocking unchanged."
+acceptance = "Generated summary output starts with a Start here section and names known regeneration commands for first-useful-action, PR review front-panel, and report packet-index surfaces while keeping Rust-default behavior, gate authority, branch protection, inline comments, and default blocking unchanged."
+commands = [
+  "cargo test -p ripr init_generated_github_workflow",
+  "cargo xtask check-workflows",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
 
 [[work_item]]
 id = "ci/language-aware-grouping"
