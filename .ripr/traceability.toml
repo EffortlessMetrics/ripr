@@ -2449,3 +2449,39 @@ metrics = [
   "static_runtime_confidence_runtime_only_signal",
   "static_runtime_confidence_no_runtime_data",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0041"
+name = "Policy history ledger"
+spec = "docs/specs/RIPR-SPEC-0041-policy-history-ledger.md"
+tests = [
+]
+fixtures = [
+]
+code = [
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0041-policy-history-ledger.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/policy/POLICY_OPERATIONS.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  "docs/CAPABILITY_MATRIX.md",
+  ".ripr/goals/lane2-policy-operations.toml",
+  ".ripr/traceability.toml",
+  "metrics/capabilities.toml",
+]
+metrics = [
+  "policy_history_reports",
+  "policy_history_entries",
+  "policy_history_readiness_improved",
+  "policy_history_waiver_pressure_increased",
+  "policy_history_suppression_health_regressed",
+  "policy_history_baseline_shrank",
+  "policy_history_preview_remained_advisory",
+  "policy_history_calibration_changed_ceiling",
+  "policy_history_warning_count",
+  "policy_history_unknown_count",
+]
