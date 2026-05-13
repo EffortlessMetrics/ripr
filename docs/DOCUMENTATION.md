@@ -57,6 +57,7 @@ Current how-to docs:
 - [Lane 1 evidence accuracy tracker](lanes/LANE_1_EVIDENCE_ACCURACY.md)
 - [Lane 1 evidence quality leadership tracker](lanes/LANE_1_EVIDENCE_QUALITY_LEADERSHIP.md)
 - [Lane 2 policy readiness tracker](policy/POLICY_READINESS.md)
+- [Lane 2 policy operations tracker](policy/POLICY_OPERATIONS.md)
 - [Lane 3 editor/LSP tracker](lanes/LANE_3_EDITOR_LSP.md)
 - [Lane 4 PR / CI review cockpit tracker](lanes/LANE_4_PR_CI_REVIEW.md)
 - [Release](RELEASE.md)

@@ -54,8 +54,8 @@ Use one document for one job:
   defines scorecard behavior;
 - spec: [RIPR-SPEC-0035: Evidence Quality Benchmark Corpus](../specs/RIPR-SPEC-0035-evidence-quality-benchmark-corpus.md)
   defines benchmark fixture behavior;
-- spec: `RIPR-SPEC-0036` will define static/runtime confidence expansion when
-  that slice starts;
+- spec: [RIPR-SPEC-0040: Static/Runtime Confidence Expansion](../specs/RIPR-SPEC-0040-static-runtime-confidence-expansion.md)
+  defines runtime-fixtures-v3 confidence labels and runtime/static boundaries;
 - ADR: [ADR 0010: Fixture-First Evidence Confidence](../adr/0010-fixture-first-evidence-confidence.md)
   records the maturity rule;
 - lane tracker: this document records the PR-sized sequence, current state, and
@@ -81,6 +81,9 @@ Use one document for one job:
 - RIPR-SPEC-0034 defines the scorecard behavior contract.
 - RIPR-SPEC-0035 defines the benchmark corpus behavior contract.
 - ADR 0010 requires fixture-first, class-scoped evidence confidence.
+- The first oracle-semantics audit fix landed in #871, keeping clear custom
+  assertion helpers strong while leaving opaque helpers unknown and duplicative
+  equality assertions weak.
 
 ## Planned Slices
 
@@ -88,10 +91,10 @@ Use one document for one job:
 | --- | --- | --- |
 | `report/evidence-quality-scorecard` | Generate `target/ripr/reports/evidence-quality-scorecard.{json,md}` or an equivalent extension of the Lane 1 audit with maturity, risk, recommended repairs, and recent deltas. | merged in #850 |
 | `fixtures/evidence-quality-benchmark-corpus` | Add the benchmark corpus defined by RIPR-SPEC-0035 with positive cases, negative guards, movement cases, equivalent-code cases, known limitations, and calibration cases. | merged in #851 |
-| `analysis/related-test-ranking-audit-fixes` | Fix audit-derived related-test ranking misses only after benchmark cases prove the class. | planned |
-| `analysis/oracle-semantics-audit-fixes` | Fix audit-derived oracle-shape misses while keeping unsupported helpers as static limitations. | planned |
-| `analysis/static-limitation-taxonomy` | Normalize limitations into repairable categories and make them visible in scorecard/evidence-health without treating them as user test gaps. | current |
-| `calibration/runtime-fixtures-v3` | Expand checked runtime fixture classes without creating static gaps from runtime-only signal or running mutation execution in CI. | planned |
+| `analysis/related-test-ranking-audit-fixes` | Fix audit-derived related-test ranking misses only after benchmark cases prove the class. | deferred until the audit shows a ranking miss; current scorecard reports `0` low or opaque top related tests |
+| `analysis/oracle-semantics-audit-fixes` | Fix audit-derived oracle-shape misses while keeping unsupported helpers as static limitations. | merged in #871 |
+| `analysis/static-limitation-taxonomy` | Normalize limitations into repairable categories and make them visible in scorecard/evidence-health without treating them as user test gaps. | merged in #861 |
+| `calibration/runtime-fixtures-v3` | Expand checked runtime fixture classes without creating static gaps from runtime-only signal or running mutation execution in CI. | next substantive planned slice |
 | `report/evidence-quality-trend` | Compare current and previous audit or scorecard snapshots to show whether evidence quality is improving. | planned |
 | `campaign/evidence-quality-leadership-closeout` | Close after scorecard, benchmark corpus, at least two audit-driven improvements, one calibration expansion, conservative capabilities, and a closeout handoff. | planned |
 
@@ -167,7 +170,8 @@ evidence class, not by projection surface.
 | `docs/lane-1-evidence-quality-leadership-tracker` | #848 | merged | Opened this tracker; no behavior changes. |
 | `report/evidence-quality-scorecard` | #850 | merged | Added the repo-local scorecard from RIPR-SPEC-0034; no analyzer, gate, PR/CI, LSP, provider, generated-test, or mutation-execution behavior. |
 | `fixtures/evidence-quality-benchmark-corpus` | #851 | merged | Added the RIPR-SPEC-0035 manifest-only corpus and validator coverage; no analyzer, gate, PR/CI, LSP, provider, generated-test, or mutation-execution behavior. |
-| `analysis/static-limitation-taxonomy` | current | in progress | Adds normalized static-limitation categories and repair routes to evidence records, evidence-health, audit, and scorecard surfaces without changing grip classes, gates, mutation execution, or downstream projection policy. |
+| `analysis/static-limitation-taxonomy` | #861 | merged | Added normalized static-limitation categories and repair routes to evidence records, evidence-health, audit, and scorecard surfaces without changing grip classes, gates, mutation execution, or downstream projection policy. |
+| `analysis/oracle-semantics-audit-fixes` | #871 | merged | Tightened custom assertion helper and duplicative equality oracle semantics from audit/benchmark cases without changing gates, PR/CI projection, LSP/editor behavior, generated tests, provider calls, mutation execution, or score definitions. |
 
 ## Closeout Conditions
 

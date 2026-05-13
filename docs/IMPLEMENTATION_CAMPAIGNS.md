@@ -3126,6 +3126,81 @@ cargo xtask check-output-contracts
 cargo xtask check-pr
 ```
 
+## Focused Lane 2 Tracker: Policy Operations and Promotion Readiness
+
+Status: open as a focused Lane 2 tracker. Campaign 27 remains the active
+machine-readable campaign.
+
+Sources of truth:
+
+- [Policy operations tracker](policy/POLICY_OPERATIONS.md)
+- [Focused Lane 2 policy operations manifest](../.ripr/goals/lane2-policy-operations.toml)
+- [Policy readiness tracker](policy/POLICY_READINESS.md)
+
+Objective:
+
+```text
+Make RIPR policy adoption operational. The policy layer should tell maintainers
+what policy posture is safe now, what blocks stricter modes, what changed over
+time, and what explicit promotion packet would be required before
+baseline-check, calibrated-gate, or preview-language evidence promotion. All
+outputs are read-only and advisory unless an existing explicit gate mode is
+configured.
+```
+
+End state:
+
+- maintainers can see the current safe policy ceiling
+- maintainers can see the next safe policy action
+- baseline, waiver, suppression, calibration, and preview-boundary blockers are
+  named before stricter modes are recommended
+- promotion packets make manual policy changes reviewable without mutating
+  config
+- preview promotion packets keep TypeScript and Python evidence visible but
+  non-gating until explicit promotion evidence exists
+- policy history shows whether readiness improved or regressed over time
+- generated CI may surface advisory artifacts without pass/fail authority
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `campaign/policy-operations-tracker` | done | Opened `docs/policy/POLICY_OPERATIONS.md`, `.ripr/goals/lane2-policy-operations.toml`, roadmap, plan, and campaign references without behavior changes. Current `main` already uses `RIPR-SPEC-0034` through `RIPR-SPEC-0037`, so policy operations specs must use the next available IDs. |
+| `spec/policy-operations-report` | done | RIPR-SPEC-0039 defines a read-only report composing policy-readiness, waiver-aging, suppression-health, baseline-delta, gate-decision, calibration, and preview-boundary inputs. |
+| `policy/operations-report` | planned | Add `ripr policy operations` over explicit existing artifacts only, with current ceiling, next safe action, promotion blockers, grouped actions, warnings, unknowns, and input artifact status. |
+| `spec/policy-history-ledger` | planned | Define a read-only policy history report and optional append-only input without gates, telemetry, dashboards, required history files, or automatic appends. |
+| `policy/history-report` | planned | Add `ripr policy history` over explicit policy operations and optional history JSONL inputs. |
+| `spec/policy-promotion-packets` | planned | Define read-only promotion packets for `visible-only`, `acknowledgeable`, `baseline-check`, and `calibrated-gate` without config, baseline, suppression, workflow, CI, history, or preview-eligibility mutation. |
+| `policy/promotion-packet-report` | planned | Add `ripr policy promote --to ...` manual-review packets from policy operations and optional policy history. |
+| `spec/preview-evidence-promotion-packet` | planned | Define preview-language promotion packets with default `allowed_now = false`, explicit evidence accounting, advisory generated-CI posture, and no actual promotion. |
+| `policy/preview-promotion-packet-report` | planned | Add `ripr policy preview-promote --language ... --class ...` while preserving advisory preview defaults. |
+| `docs/policy-operator-workflow` | planned | Document readiness, operations, history, promotion packets, preview packets, manual config review, post-change monitoring, and hard boundaries for maintainers. |
+| `ci/policy-operations-advisory-projection` | planned | Generated CI may render, upload, index, and summarize policy operations artifacts as advisory-only packets without pass/fail authority, required checks, comment posting, baseline mutation, config mutation, or default blocking. |
+| `campaign/policy-operations-closeout` | planned | Close after operations, history, promotion packets, preview promotion packets, workflow, advisory CI projection, capability, metrics, traceability, and handoff surfaces exist. |
+
+Blocking conditions:
+
+- analyzer truth changes or evidence identity rewrites
+- recommendation ranking changes
+- LSP/editor behavior changes
+- PR/CI front-panel redesign
+- generated tests, provider calls, or mutation execution
+- default CI blocking, required checks, or comment posting
+- automatic config mutation, baseline adoption, or suppression creation
+- preview-language gate promotion without explicit later policy
+- runtime-proof claims from static evidence
+
+Commands:
+
+```bash
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-campaign
+cargo xtask check-pr
+git diff --check
+```
+
 ## Future Campaign: Editor Evidence UX
 
 Campaign ID: `editor-evidence-ux`

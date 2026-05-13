@@ -227,6 +227,10 @@ tests = [
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::oracle_semantics_explains_smoke_only_boundary_gap",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::oracle_semantics_keeps_exact_value_without_extra_upgrade",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::oracle_semantics_covers_supported_oracle_families",
+  "crates/ripr/src/analysis/rust_index.rs::tests::classifies_only_clear_custom_helpers_as_exact_value_oracles",
+  "crates/ripr/src/analysis/rust_index.rs::tests::classifies_duplicative_equality_as_weak_oracle",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::opaque_custom_assertion_helper_stays_unknown_oracle",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::duplicative_equality_assertion_stays_weak_oracle",
   "crates/ripr/src/analysis/value_resolution.rs::tests::extract_let_bindings_picks_up_literal_rhs_and_skips_expressions",
   "crates/ripr/src/analysis/value_resolution.rs::tests::builder_method_match_accepts_fixture_override_prefixes_and_rejects_unrelated_methods",
   "crates/ripr/src/analysis/value_resolution.rs::tests::resolve_option_result_constructor_keeps_unresolved_inner_opaque",
@@ -2159,8 +2163,6 @@ outputs = [
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
   ".ripr/traceability.toml",
-  "target/ripr/reports/evidence-quality-scorecard.json",
-  "target/ripr/reports/evidence-quality-scorecard.md",
 ]
 metrics = [
   "lane1_evidence_scorecard_maturity_classes",
@@ -2178,6 +2180,10 @@ name = "Evidence quality benchmark corpus"
 spec = "docs/specs/RIPR-SPEC-0035-evidence-quality-benchmark-corpus.md"
 tests = [
   "xtask/src/main.rs",
+  "crates/ripr/src/analysis/rust_index.rs::tests::classifies_only_clear_custom_helpers_as_exact_value_oracles",
+  "crates/ripr/src/analysis/rust_index.rs::tests::classifies_duplicative_equality_as_weak_oracle",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::opaque_custom_assertion_helper_stays_unknown_oracle",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::duplicative_equality_assertion_stays_weak_oracle",
 ]
 fixtures = [
   "fixtures/evidence-quality-benchmark/corpus.json",
@@ -2309,4 +2315,79 @@ metrics = [
   "generated_pr_ci_preview_language_groups",
   "generated_pr_ci_rust_default_unchanged",
   "generated_pr_ci_advisory_summaries",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0039"
+name = "Policy operations report"
+spec = "docs/specs/RIPR-SPEC-0039-policy-operations-report.md"
+tests = [
+]
+fixtures = [
+]
+code = [
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0039-policy-operations-report.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/policy/POLICY_OPERATIONS.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  "docs/CAPABILITY_MATRIX.md",
+  ".ripr/goals/lane2-policy-operations.toml",
+  ".ripr/traceability.toml",
+  "metrics/capabilities.toml",
+]
+metrics = [
+  "policy_operations_reports",
+  "policy_operations_current_ceiling",
+  "policy_operations_recommended_next_action",
+  "policy_operations_safe_target_count",
+  "policy_operations_blocked_target_count",
+  "policy_operations_promotion_blocker_count",
+  "policy_operations_baseline_action_count",
+  "policy_operations_waiver_action_count",
+  "policy_operations_suppression_action_count",
+  "policy_operations_calibration_action_count",
+  "policy_operations_preview_boundary_action_count",
+  "policy_operations_warning_count",
+  "policy_operations_unknown_count",
+  "policy_operations_input_read_count",
+  "policy_operations_input_missing_count",
+  "policy_operations_input_malformed_count",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0040"
+name = "Static/runtime confidence expansion"
+spec = "docs/specs/RIPR-SPEC-0040-static-runtime-confidence-expansion.md"
+tests = [
+]
+fixtures = [
+]
+code = [
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0040-static-runtime-confidence-expansion.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0002-lane-1-evidence-quality-leadership.md",
+  "docs/lanes/LANE_1_EVIDENCE_QUALITY_LEADERSHIP.md",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "runtime_fixtures_v3_cases",
+  "runtime_fixtures_v3_supported_classes",
+  "runtime_fixtures_v3_matched_static_seams",
+  "runtime_fixtures_v3_ambiguous_joins",
+  "runtime_fixtures_v3_runtime_only_signals",
+  "runtime_fixtures_v3_no_runtime_data",
+  "static_runtime_confidence_supports_static_gap",
+  "static_runtime_confidence_contradicts_static_gap",
+  "static_runtime_confidence_supports_static_clean",
+  "static_runtime_confidence_contradicts_static_clean",
+  "static_runtime_confidence_ambiguous_runtime_join",
+  "static_runtime_confidence_runtime_only_signal",
+  "static_runtime_confidence_no_runtime_data",
 ]
