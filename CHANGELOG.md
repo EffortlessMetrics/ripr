@@ -164,6 +164,10 @@ Planned scope:
   mutation execution, and score definitions out of scope while defining the
   path toward visibility, observer, actionability, canonical grouping, and
   static-limitation evidence for changed presentation text.
+- Added RIPR-SPEC-0043 for presentation text evidence. The spec defines planned
+  Lane 1 behavior for visibility, observer shape, actionability, declaration
+  plus literal grouping, static limitation categories, and must-not-claim guards
+  before analyzer behavior changes begin.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 

@@ -114,6 +114,7 @@ Current reference docs:
 - [Policy allowlists](POLICY_ALLOWLISTS.md)
 - [Changelog policy](CHANGELOG_POLICY.md)
 - [Capability matrix](CAPABILITY_MATRIX.md)
+- [Presentation text evidence](specs/RIPR-SPEC-0043-presentation-text-evidence.md)
 - [No-panic semantic allowlist](NO_PANIC_SEMANTIC_ALLOWLIST.md)
 - [Droid rollout checklist](agent-context/droid-rollout.md)
 - [CI verification ladder](ci/verification-ladder.md)
