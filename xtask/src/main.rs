@@ -26922,26 +26922,27 @@ mod tests {
         ci_full_evidence_gates, collect_panic_findings, collect_semantic_panic_findings,
         critic_findings, dogfood_class_counts, dogfood_first_action_scenarios,
         dogfood_gate_adoption_scenarios, dogfood_generated_ci_cockpit_run_from_workflow,
-        dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
-        dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
-        dogfood_pr_review_front_panel_scenarios, dogfood_report_json, dogfood_report_markdown,
-        dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
-        evaluate_semantic_no_panic_policy, evidence_quality_scorecard_from_values,
-        evidence_quality_scorecard_json, evidence_quality_scorecard_markdown,
-        evidence_quality_trend_from_values, evidence_quality_trend_json,
-        evidence_quality_trend_markdown, extract_json_object_usize_map, extract_json_string,
-        extract_json_warnings, extract_workflow_run_blocks, first_line_difference,
-        forbidden_panic_patterns, glob_matches, golden_changes_without_blessing,
-        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
-        install_hooks_in, is_bdd_test_name, is_campaign_path, is_dependency_surface_candidate,
-        is_docs_path, is_evidence_path, is_generated_candidate, is_known_campaign_command,
-        is_non_rust_programming_candidate, is_policy_path, is_production_path, is_receipt_status,
-        is_ripr_managed_hook, is_snake_case_id, is_spec_id, is_stale_agent_boundary_scan_target,
-        json_escape, json_number_after, json_string_values_for_key, json_summary_count,
-        known_commands, known_xtask_command, lane1_evidence_audit_from_repo_exposure,
-        lane1_evidence_audit_json, lane1_evidence_audit_markdown, local_context_line_findings,
-        local_markdown_target, lsp_cockpit_report, lsp_cockpit_report_json,
-        lsp_cockpit_report_markdown, markdown_links_in_text, mutation_calibration_report_json,
+        dogfood_language_preview_run, dogfood_language_preview_scenarios,
+        dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
+        dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
+        dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
+        dogfood_report_packet_index_scenarios, evaluate_semantic_no_panic_policy,
+        evidence_quality_scorecard_from_values, evidence_quality_scorecard_json,
+        evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
+        evidence_quality_trend_json, evidence_quality_trend_markdown,
+        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
+        extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns, glob_matches,
+        golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
+        guarded_allow_attributes_in_text, install_hooks_in, is_bdd_test_name, is_campaign_path,
+        is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
+        is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
+        is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
+        is_stale_agent_boundary_scan_target, json_escape, json_number_after,
+        json_string_values_for_key, json_summary_count, known_commands, known_xtask_command,
+        lane1_evidence_audit_from_repo_exposure, lane1_evidence_audit_json,
+        lane1_evidence_audit_markdown, local_context_line_findings, local_markdown_target,
+        lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
+        markdown_links_in_text, mutation_calibration_report_json,
         mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
         no_panic_toml_string, non_rust_programming_retention_reason,
         normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
@@ -32154,6 +32155,34 @@ jobs:
             }),
             "mixed-language receipt must pin no cross-language related-test routing"
         );
+    }
+
+    #[test]
+    fn dogfood_language_preview_run_checks_static_limit_receipt() -> Result<(), String> {
+        with_repo_cwd(|| {
+            let scenario = dogfood_language_preview_scenarios()
+                .into_iter()
+                .find(|scenario| scenario.name == "typescript_mocked_module_limit")
+                .ok_or_else(|| {
+                    "typescript_mocked_module_limit dogfood scenario is missing".to_string()
+                })?;
+
+            let run = dogfood_language_preview_run(&scenario);
+
+            assert!(run.errors.is_empty(), "{:?}", run.errors);
+            assert_eq!(run.language, "typescript");
+            assert!(run.preview_enabled);
+            assert_eq!(run.findings, 1);
+            assert_eq!(run.language_findings, 1);
+            assert_eq!(run.preview_findings, 1);
+            assert_eq!(run.missing_preview_status, 0);
+            assert_eq!(run.related_tests, 1);
+            assert_eq!(run.classifications, vec!["exposed".to_string()]);
+            assert_eq!(run.static_limit_kinds, vec!["mocked_module".to_string()]);
+            assert!(run.json_path.exists());
+            assert!(run.human_path.exists());
+            Ok(())
+        })
     }
 
     #[test]
