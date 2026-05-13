@@ -101,7 +101,7 @@ available spec IDs.
 | 3 | `policy/operations-report` | Implement `ripr policy operations` over explicit existing artifacts. | done |
 | 4 | `spec/policy-history-ledger` | Define the read-only policy history report and optional append-only input. | done |
 | 5 | `policy/history-report` | Implement `ripr policy history` as advisory trend reporting. | done |
-| 6 | `spec/policy-promotion-packets` | Define read-only promotion packets for stricter configured modes. | planned |
+| 6 | `spec/policy-promotion-packets` | Define read-only promotion packets for stricter configured modes. | done |
 | 7 | `policy/promotion-packet-report` | Implement `ripr policy promote --to ...` without mutating config. | planned |
 | 8 | `spec/preview-evidence-promotion-packet` | Define the future preview-language promotion packet contract. | planned |
 | 9 | `policy/preview-promotion-packet-report` | Implement `ripr policy preview-promote` with default `allowed_now = false`. | planned |
@@ -157,6 +157,25 @@ ripr policy history \
 The implemented command does not append to `.ripr/policy-history.jsonl`, collect
 telemetry, create dashboards, execute gates, mutate policy files, or promote
 preview evidence.
+
+The policy promotion packet is defined by
+[RIPR-SPEC-0042](../specs/RIPR-SPEC-0042-policy-promotion-packets.md). It
+remains read-only and turns policy operations plus optional policy history into
+manual-review promotion evidence:
+
+```bash
+ripr policy promote \
+  --to baseline-check \
+  --operations target/ripr/reports/policy-operations.json \
+  --history target/ripr/reports/policy-history.json \
+  --out target/ripr/reports/policy-promotion-baseline-check.json \
+  --out-md target/ripr/reports/policy-promotion-baseline-check.md
+```
+
+The packet defines `allowed_now`, `why_or_why_not`, required repairs, required
+receipts, rollback path, and a manual-only example config change. It must not
+mutate `ripr.toml`, baselines, suppressions, workflows, branch protection,
+history ledgers, generated CI defaults, or preview-language eligibility.
 
 ## Promotion Ceiling
 
