@@ -105,11 +105,14 @@ evidence-quality benchmark corpus and touched `.ripr/traceability.toml` plus
 `xtask/src/main.rs`. A fresh current-base port preserved those Lane 1 fixture
 validators while keeping the Lane 3 plan-path classifier in PR summary
 automation. The live readiness audit still found #771, #772, #807, and #814
-open, and `cargo xtask goals next` still reported no ready work items.
+open at that time, and `cargo xtask goals next` still reported no ready work
+items. After #857, the structured `static_limit_kind` field is available and
+#807/#814 are closed; #771 and #772 remain open, so editor routing is still
+blocked.
 
-## PR Packaging Boundary
+## Completed Source-Of-Truth Stack
 
-The first PR in this plan should remain the docs-only source-of-truth stack:
+#853 landed the docs-only source-of-truth stack:
 
 ```text
 docs(lane3): define editor preview routing source-of-truth stack
@@ -120,7 +123,7 @@ traceability entries, campaign summaries, Lane 3 tracker updates, and the
 small `xtask` reviewer-packet fix needed to make the new `plans/` layer visible
 in PR automation.
 
-Expected file group for that PR:
+Landed file group for that PR:
 
 ```text
 .ripr/traceability.toml
@@ -160,7 +163,8 @@ report index to classify top-level `plans/` files as documentation evidence and
 campaign-planning inputs, so the reviewer packet should include the campaign
 plan files in this section.
 
-Candidate file group for the separate maintenance PR:
+The separate current-state language-configuration clarification remains a
+possible future maintenance PR if the config wording needs another refresh:
 
 ```text
 .ripr/positioning-language-allowlist.txt
@@ -169,14 +173,6 @@ docs/CONFIGURATION.md
 docs/OUTPUT_SCHEMA.md
 policy/output_contracts.txt
 ripr.toml.example
-```
-
-Suggested local staging checklist:
-
-```bash
-rtk git add -- .ripr/traceability.toml docs/DOCUMENTATION.md docs/IMPLEMENTATION_CAMPAIGNS.md docs/IMPLEMENTATION_PLAN.md docs/PR_AUTOMATION.md docs/REPO_TRACKING_MODEL.md docs/adr/0011-editor-preview-routing-is-projection-only.md docs/adr/README.md docs/lanes/LANE_3_EDITOR_LSP.md docs/proposals/RIPR-PROP-0003-editor-preview-routing.md docs/proposals/README.md docs/specs/RIPR-SPEC-0036-editor-preview-routing.md docs/specs/RIPR-SPEC-0037-editor-preview-static-limit-projection.md docs/specs/README.md plans/campaign-27/README.md plans/campaign-27/lane3-editor-preview-routing.md xtask/src/main.rs
-rtk git diff --cached --name-only
-rtk git diff --cached --check
 ```
 
 If taking the config-current-state clarification separately:
