@@ -89,6 +89,10 @@ Planned scope:
   gate eligibility, RIPR Zero blocking debt, calibrated-confidence authority,
   automatic baseline adoption, generated tests, mutation execution, or default
   CI blocking without later explicit promotion policy.
+- Added additive `static_limit_kind` finding metadata for known preview static
+  limits. The TypeScript mocked-module limit now emits
+  `static_limit_kind = "mocked_module"` in JSON while keeping existing human
+  evidence text advisory and leaving Rust/default behavior unchanged.
 - Added `cargo xtask lane1-evidence-audit` with
   `cargo xtask evidence-quality-audit` as an alias. The repo-local report writes
   `target/ripr/reports/lane1-evidence-audit.{json,md}` from generated

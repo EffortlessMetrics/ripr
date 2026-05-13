@@ -1800,18 +1800,31 @@ metrics = [
 id = "RIPR-SPEC-0026"
 name = "Language adapter contract"
 spec = "docs/specs/RIPR-SPEC-0026-language-adapter-contract.md"
-tests = []
-fixtures = []
-code = []
+tests = [
+  "crates/ripr/src/domain/language.rs",
+  "crates/ripr/src/output/json/mod.rs",
+]
+fixtures = [
+  "fixtures/typescript_mocked_module_limit",
+]
+code = [
+  "crates/ripr/src/domain/language.rs",
+  "crates/ripr/src/domain/probe.rs",
+  "crates/ripr/src/output/json/report.rs",
+  "crates/ripr/src/analysis/language/typescript.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0026-language-adapter-contract.md",
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0001-multi-language-adapter-preview.md",
   "docs/proposals/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "fixtures/typescript_mocked_module_limit/expected/check.json",
   "docs/REPO_TRACKING_MODEL.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
+  "CHANGELOG.md",
   ".ripr/traceability.toml",
 ]
 metrics = [
@@ -1849,11 +1862,15 @@ code = [
   "crates/ripr/src/analysis/language/mod.rs",
   "crates/ripr/src/analysis/language/router.rs",
   "crates/ripr/src/analysis/pipeline.rs",
+  "crates/ripr/src/domain/language.rs",
+  "crates/ripr/src/domain/probe.rs",
+  "crates/ripr/src/output/json/report.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0027-typescript-preview-static-facts.md",
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0001-multi-language-adapter-preview.md",
+  "fixtures/typescript_mocked_module_limit/expected/check.json",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
@@ -1986,9 +2003,13 @@ metrics = [
 id = "RIPR-SPEC-0030"
 name = "preview evidence policy boundary"
 spec = "docs/specs/RIPR-SPEC-0030-preview-evidence-policy-boundary.md"
-tests = []
+tests = [
+  "crates/ripr/src/output/policy_readiness.rs",
+]
 fixtures = []
-code = []
+code = [
+  "crates/ripr/src/output/policy_readiness.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0030-preview-evidence-policy-boundary.md",
   "docs/specs/README.md",
@@ -2249,4 +2270,43 @@ metrics = [
   "editor_preview_actions_omitted_missing_payload",
   "editor_preview_stale_suppressed_actions",
   "editor_preview_wrong_root_suppressed_actions",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0038"
+name = "Generated PR CI review workflow"
+spec = "docs/specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md"
+tests = [
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_is_advisory",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_never_auto_refreshes_baseline",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_uploads_reports_and_makes_sarif_optional",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_matches_smoke_fixture",
+  "crates/ripr/tests/cli_smoke.rs::init_ci_github_dry_run_prints_config_and_workflow_without_writing",
+  "crates/ripr/tests/cli_smoke.rs::init_ci_github_writes_non_blocking_report_workflow",
+]
+fixtures = [
+]
+code = [
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/tests/cli_smoke.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0004-pr-ci-review-cockpit.md",
+  "docs/lanes/LANE_4_PR_CI_REVIEW.md",
+  "plans/lane4-pr-ci-review-cockpit/implementation-plan.md",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "generated_pr_ci_workflows",
+  "generated_pr_ci_front_panel_present",
+  "generated_pr_ci_packet_index_present",
+  "generated_pr_ci_missing_expected_artifacts",
+  "generated_pr_ci_regeneration_commands",
+  "generated_pr_ci_gate_authority_links",
+  "generated_pr_ci_language_groups",
+  "generated_pr_ci_preview_language_groups",
+  "generated_pr_ci_rust_default_unchanged",
+  "generated_pr_ci_advisory_summaries",
 ]

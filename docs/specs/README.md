@@ -48,3 +48,4 @@ observable behavior.
 | [RIPR-SPEC-0035](RIPR-SPEC-0035-evidence-quality-benchmark-corpus.md) | proposed | Evidence quality benchmark corpus |
 | [RIPR-SPEC-0036](RIPR-SPEC-0036-editor-preview-routing.md) | proposed | Editor preview routing |
 | [RIPR-SPEC-0037](RIPR-SPEC-0037-editor-preview-static-limit-projection.md) | proposed | Editor preview static-limit projection |
+| [RIPR-SPEC-0038](RIPR-SPEC-0038-generated-pr-ci-review-workflow.md) | proposed | Generated PR CI review workflow |

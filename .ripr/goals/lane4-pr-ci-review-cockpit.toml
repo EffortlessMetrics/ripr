@@ -1,0 +1,161 @@
+id = "lane4-pr-ci-review-cockpit"
+title = "Lane 4 PR / CI Review Cockpit"
+status = "tracker"
+lane = 4
+
+# Focused Lane 4 tracker. This is not the active Codex Goals manifest.
+# `.ripr/goals/active.toml` remains the active execution manifest for
+# Campaign 27: Language Adapter Preview.
+
+objective = """
+Turn explicit RIPR PR-time artifacts into a reviewer-first advisory cockpit:
+front panel, packet index, generated summary, repair commands, receipts,
+language grouping when configured, and clear gate authority boundaries.
+"""
+
+end_state = [
+  "Existing front panel and packet index remain the shipped baseline.",
+  "Generated PR CI workflow behavior is spec-backed.",
+  "Missing expected artifacts include regeneration commands.",
+  "Gate decision remains the only configured pass/fail authority.",
+  "Language-aware grouping appears only when configured.",
+  "Rust-default generated CI output remains unchanged.",
+  "Dogfood receipts cover remaining cockpit gaps.",
+]
+
+non_goals = [
+  "No analyzer behavior changes.",
+  "No recommendation ranking changes.",
+  "No report producer duplication.",
+  "No editor or LSP behavior changes.",
+  "No gate policy semantic changes.",
+  "No branch-protection changes.",
+  "No default CI blocking changes.",
+  "No inline comment publishing changes.",
+  "No source edits.",
+  "No generated tests.",
+  "No provider calls.",
+  "No mutation execution.",
+]
+
+[[work_item]]
+id = "docs/lane4-source-of-truth"
+status = "done"
+branch = "lane4-pr-ci-review-cockpit-scaffold"
+acceptance = "Lane 4 tracker and plan rails define PR/CI review cockpit ownership, source-of-truth roles, non-goals, and docs-only validation without changing generated CI, analyzer, editor, gate, schema, fixture, provider, source-edit, generated-test, or mutation behavior."
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-doc-roles",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "docs/lane4-proposal"
+status = "done"
+branch = "lane4-pr-ci-review-cockpit-proposal"
+proposal = "docs/proposals/RIPR-PROP-0004-pr-ci-review-cockpit.md"
+acceptance = "RIPR-PROP-0004 explains why the Lane 4 PR/CI review cockpit exists, records user/reviewer/agent value, alternatives, success criteria, non-goals, and current-main shipped-surface reality without defining analyzer truth or duplicating existing producers."
+commands = [
+  "cargo xtask check-doc-roles",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "docs/lane4-spec-role-alignment"
+status = "done"
+branch = "lane4-spec-role-alignment"
+specs = [
+  "docs/specs/RIPR-SPEC-0023-pr-review-front-panel-report.md",
+  "docs/specs/RIPR-SPEC-0024-report-packet-index.md",
+]
+acceptance = "RIPR-SPEC-0023 and RIPR-SPEC-0024 carry Lane 4 role metadata and clarify that they define behavior contracts, not PR sequencing, analyzer truth, or gate authority."
+commands = [
+  "cargo xtask check-spec-format",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "docs/generated-pr-ci-review-workflow-spec"
+status = "done"
+branch = "lane4-generated-pr-ci-workflow-spec"
+spec = "docs/specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md"
+acceptance = "RIPR-SPEC-0038 defines generated workflow sections, public command surfaces, artifact upload, job summary, advisory/default behavior, gate authority boundaries, missing-artifact behavior, regeneration commands, language grouping rules, preview labels, Rust-default unchanged behavior, and branch-protection non-goals."
+commands = [
+  "cargo xtask check-spec-format",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "docs/generated-ci-cockpit-gap-map"
+status = "done"
+branch = "lane4-generated-ci-gap-map"
+plan = "plans/lane4-pr-ci-review-cockpit/generated-ci-gap-map.md"
+acceptance = "The generated-CI gap map records shipped front-panel and packet-index evidence, current generated workflow shape, remaining gaps, non-gaps, and the next audit work packet."
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "audit/generated-ci-cockpit-baseline"
+status = "done"
+branch = "audit-generated-ci-cockpit-baseline"
+spec = "docs/specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md"
+plan = "plans/lane4-pr-ci-review-cockpit/generated-ci-baseline-audit.md"
+acceptance = "The generated-CI baseline audit records generated workflow commands, uploaded paths, job-summary sections, front-panel and packet-index placement, missing-artifact behavior, gate authority wording, inline-comment boundaries, and language grouping gaps without changing generated CI."
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-campaign",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "ci/generated-summary-cockpit-contract"
+status = "ready"
+branch = "ci-generated-summary-cockpit-contract"
+spec = "docs/specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md"
+plan = "plans/lane4-pr-ci-review-cockpit/generated-ci-baseline-audit.md"
+acceptance = "Align generated summary output with the cockpit contract by adding exact repair or regeneration commands where known and deciding whether the summary should literally say Start here, while keeping Rust-default behavior, gate authority, branch protection, inline comments, and default blocking unchanged."
+
+[[work_item]]
+id = "ci/language-aware-grouping"
+status = "blocked"
+branch = "ci-language-aware-grouping"
+blocked_by = [
+  "analysis/typescript-preview-adapter",
+  "analysis/python-preview-adapter",
+]
+spec = "docs/specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md"
+acceptance = "Group advisory PR output by language only when preview adapters are configured and enough TypeScript and Python evidence is available; Rust-default output and gate authority remain unchanged."
+
+[[work_item]]
+id = "dogfood/lane4-cockpit-gap-receipts"
+status = "ready"
+branch = "dogfood-lane4-cockpit-gap-receipts"
+acceptance = "Add only remaining cockpit gap receipts, such as missing proof, blocked gate, improved receipt, unchanged-after-attempt receipt, and preview-language packet cases, without duplicating Campaign 24 or 25 receipts."
+
+[[work_item]]
+id = "docs/lane4-closeout"
+status = "blocked"
+branch = "docs-lane4-closeout"
+blocked_by = [
+  "audit/generated-ci-cockpit-baseline",
+  "dogfood/lane4-cockpit-gap-receipts",
+]
+acceptance = "Close Lane 4 with shipped surfaces, validation, remaining work, known limits, explicit non-changes, and next-lane handoff."
