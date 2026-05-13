@@ -3080,6 +3080,77 @@ consumer requirement identifies a new measured evidence class. Do not reopen
 Lane 1 for PR/CI front-panel work, LSP/editor polish, gate policy, generated
 tests, provider calls, mutation execution, or score redefinition.
 
+## Focused Lane 1 Tracker: User-Visible Output Evidence
+
+Status: open as a focused Lane 1 tracker. Campaign 27 remains the active
+machine-readable campaign.
+
+Sources of truth:
+
+- [Lane 1 User-Visible Output Evidence tracker](lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md)
+- [RIPR-PROP-0005](proposals/RIPR-PROP-0005-user-visible-output-evidence.md)
+- `RIPR-SPEC-0043` presentation text evidence, planned
+- [ADR 0010](adr/0010-fixture-first-evidence-confidence.md)
+
+Objective:
+
+```text
+Make changed presentation/help/report/table text one evidence-quality-aware
+action, no-action state, or static limitation instead of raw duplicate
+line-local notices.
+```
+
+End state:
+
+- changed presentation text is a distinct evidence class;
+- visibility is `user_visible`, `internal_only`, or `unknown`;
+- observer shape is snapshot, CLI help output, report render, table render,
+  golden output, none, or unknown;
+- declaration and literal raw seams group into one canonical evidence item;
+- actionability distinguishes snapshot/help-output/report test, already
+  observed, internal no-action, and static limitation states;
+- scorecard or trend fields track presentation-text evidence quality;
+- downstream lanes receive a consumer contract but no rendering change lands in
+  this Lane 1 tracker.
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `docs/proposal-user-visible-output-evidence` | in progress | Opens RIPR-PROP-0005 and the Lane 1 tracker. |
+| `docs/spec-presentation-text-evidence` | planned | Defines visibility, observer, actionability, canonical grouping, static limitation, and must-not-claim behavior. |
+| `fixtures/presentation-text-evidence-benchmark` | open candidate | PR #900 started the screenshot-derived benchmark; it should land after the proposal/spec foundation. |
+| `analysis/presentation-text-evidence-fields` | planned | Adds additive evidence-record fields for the class. |
+| `analysis/presentation-text-visibility` | planned | Classifies obvious output sinks and keeps unsupported routes as limitations. |
+| `analysis/presentation-text-canonical-grouping` | planned | Groups declaration and literal lines into one item. |
+| `analysis/presentation-text-actionability` | planned | Classifies action, no-action, observed, and limitation states. |
+| `report/presentation-text-scorecard-trend-fields` | planned | Reports presentation-text quality counts and deltas. |
+| `docs/presentation-text-consumer-handoff` | planned | Documents downstream rendering contract without changing PR/CI or editor surfaces. |
+
+Blocking conditions:
+
+- PR/CI rendering changes
+- LSP/editor polish
+- gate-policy changes or default blocking
+- generated tests or source edits
+- provider/model calls
+- mutation execution
+- score redefinition
+- user-visible claims inferred through opaque helpers or unsupported output
+  paths
+
+Commands:
+
+```bash
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-pr
+git diff --check
+```
+
 ## Focused Lane 2 Tracker: Policy Readiness and Preview Evidence Governance
 
 Tracker ID: `policy-readiness-preview-evidence-governance`
