@@ -54,8 +54,8 @@ Use one document for one job:
   defines scorecard behavior;
 - spec: [RIPR-SPEC-0035: Evidence Quality Benchmark Corpus](../specs/RIPR-SPEC-0035-evidence-quality-benchmark-corpus.md)
   defines benchmark fixture behavior;
-- spec: `RIPR-SPEC-0036` will define static/runtime confidence expansion when
-  that slice starts;
+- spec: [RIPR-SPEC-0040: Static/Runtime Confidence Expansion](../specs/RIPR-SPEC-0040-static-runtime-confidence-expansion.md)
+  defines runtime-fixtures-v3 confidence labels and runtime/static boundaries;
 - ADR: [ADR 0010: Fixture-First Evidence Confidence](../adr/0010-fixture-first-evidence-confidence.md)
   records the maturity rule;
 - lane tracker: this document records the PR-sized sequence, current state, and
