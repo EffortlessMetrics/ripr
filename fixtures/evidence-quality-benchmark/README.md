@@ -27,6 +27,10 @@ promote any capability globally.
 - Oracle cases must distinguish clear exact-value helpers from opaque helpers
   and must keep tautological equality assertions from claiming strong
   exact-value grip.
+- Presentation text constants must not become user test debt from text alone.
+  The benchmark requires visibility, actionability, recommended observer, and
+  declaration-plus-literal grouping evidence before downstream surfaces can
+  render one useful action.
 
 Run:
 

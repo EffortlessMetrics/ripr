@@ -2573,16 +2573,22 @@ id = "RIPR-SPEC-0043"
 name = "Presentation text evidence"
 spec = "docs/specs/RIPR-SPEC-0043-presentation-text-evidence.md"
 tests = [
+  "xtask/src/main.rs::tests::evidence_quality_benchmark_corpus_is_valid",
+  "xtask/src/main.rs::tests::evidence_quality_benchmark_requires_static_limitation_category_at_case_level",
 ]
 fixtures = [
+  "fixtures/evidence-quality-benchmark/corpus.json",
 ]
 code = [
+  "xtask/src/main.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0043-presentation-text-evidence.md",
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0005-user-visible-output-evidence.md",
   "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md",
+  "fixtures/evidence-quality-benchmark/README.md",
+  "fixtures/evidence-quality-benchmark/corpus.json",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
   ".ripr/traceability.toml",

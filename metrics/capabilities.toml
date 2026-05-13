@@ -670,7 +670,7 @@ status = "alpha"
 spec = "RIPR-SPEC-0035"
 evidence = [
   "fixtures/evidence-quality-benchmark/corpus.json defines a manifest-only Lane 1 benchmark corpus",
-  "the corpus covers duplicate canonical gap, match-arm discriminator split, wrong related-test top choice, broad versus exact error oracle, self-computed expected value and duplicative equality guards, opaque helper limitation, cross-file constant limitation, side-effect observer, snapshot discriminator, mock expectation, runtime-only signal, and ambiguous runtime join classes",
+  "the corpus covers duplicate canonical gap, match-arm discriminator split, wrong related-test top choice, broad versus exact error oracle, self-computed expected value and duplicative equality guards, opaque helper limitation, cross-file constant limitation, presentation text constants, side-effect observer, snapshot discriminator, mock expectation, runtime-only signal, and ambiguous runtime join classes",
   "each case records expected claims, must-not-claim guards, expected repo-exposure evidence_record subsets or runtime-only nonstatic calibration, audit signals, maturity scope, and repair route",
   "cargo xtask check-fixture-contracts validates the corpus shape through xtask/src/main.rs",
   "xtask unit tests pin required case kinds, missing guard detection, runtime-only nonstatic behavior, and line-movement canonical identity"
@@ -1261,6 +1261,49 @@ next = "reports/operator-cockpit"
 metric = "configured analysis mode, oracle policy, severity, suppressions, and seam diagnostics apply across CLI, reports, and LSP"
 
 [[capability]]
+id = "python_preview_static_facts"
+name = "Python preview static facts"
+status = "alpha"
+spec = "RIPR-SPEC-0028"
+evidence = [
+  "Python preview adapter runs only when [languages] enables python",
+  "language = python and language_status = preview in JSON and human goldens",
+  "owner/test fixtures cover def, async def, methods, class/static methods, decorated functions, pytest, unittest, and parametrized pytest",
+  "assertion/oracle fixtures cover exact value, broad error, broad boolean/type checks, unittest assertions, and mock call assertions",
+  "probe fixtures cover predicate, return value, error path, field assignment, call arguments, and mock interaction shapes",
+  "related-test fixtures cover direct owner calls, import-alias calls, same-stem proximity, and unrelated mention negatives",
+  "static-limit fixtures cover dynamic_dispatch, decorator_indirection, mocked_module, missing_import_graph, metaprogramming, and unsupported_syntax"
+]
+fixtures = [
+  "fixtures/python_boundary_gap",
+  "fixtures/python_unittest_basic",
+  "fixtures/python_method_owner",
+  "fixtures/python_parametrize_basic",
+  "fixtures/python_strong_oracle",
+  "fixtures/python_pytest_raises",
+  "fixtures/python_unittest_assertions",
+  "fixtures/python_mock_assert_called",
+  "fixtures/python_broad_boolean_assertion",
+  "fixtures/python_return_value_shape",
+  "fixtures/python_error_path_shape",
+  "fixtures/python_field_assignment_shape",
+  "fixtures/python_call_argument_shape",
+  "fixtures/python_mock_interaction_shape",
+  "fixtures/python_owner_file_match",
+  "fixtures/python_cross_file_import_reference",
+  "fixtures/python_same_stem_test",
+  "fixtures/python_unrelated_test_mention",
+  "fixtures/python_dynamic_dispatch_limit",
+  "fixtures/python_decorator_indirection_limit",
+  "fixtures/python_mocked_module_limit",
+  "fixtures/python_missing_import_graph_limit",
+  "fixtures/python_metaprogramming_limit",
+  "fixtures/python_unsupported_syntax_limit"
+]
+next = "lsp/editor-language-routing"
+metric = "language_adapter_python_findings_preview, language_adapter_python_static_limit_*"
+
+[[capability]]
 id = "sarif_ci_policy"
 name = "SARIF and CI policy"
 status = "alpha"
@@ -1380,10 +1423,13 @@ spec = "RIPR-SPEC-0043"
 evidence = [
   "docs/specs/RIPR-SPEC-0043-presentation-text-evidence.md defines the planned Lane 1 evidence class for changed presentation/help/report/table text",
   "docs/proposals/RIPR-PROP-0005-user-visible-output-evidence.md records the user-visible output evidence motivation and non-goals",
-  "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md records the PR-sized sequence and Lane 1 boundary"
+  "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md records the PR-sized sequence and Lane 1 boundary",
+  "fixtures/evidence-quality-benchmark/corpus.json#presentation_text_constant_visibility_unknown pins the screenshot-derived declaration/literal grouping and visibility-unknown static limitation guard"
 ]
-fixtures = []
-next = "fixtures/presentation-text-evidence-benchmark"
+fixtures = [
+  "fixtures/evidence-quality-benchmark/corpus.json"
+]
+next = "analysis/presentation-text-evidence-fields"
 metric = "presentation_text_total, presentation_text_user_visible, presentation_text_observed, presentation_text_unobserved, presentation_text_internal_only, presentation_text_visibility_unknown, presentation_text_observer_unknown, presentation_text_duplicate_groups, presentation_text_actionable_snapshot, presentation_text_no_action, presentation_text_static_limitations"
 
 [[capability]]

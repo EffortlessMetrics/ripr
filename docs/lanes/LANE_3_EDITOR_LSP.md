@@ -86,9 +86,11 @@ When opening future Lane 3 PRs, list them here until they merge or close:
 Campaign 27 Language Adapter Preview has one expected Lane 3 slice:
 `lsp/editor-language-routing` (#772).
 
-That slice remains blocked by the Python preview adapter. TypeScript adapter
-readiness is already complete, so Lane 3 should not reopen TypeScript editor
-readiness unless a new editor-facing regression appears.
+That slice is ready to start now that the Python preview adapter has
+fixture-backed owner, test, assertion/oracle, probe, related-test, and
+structured static-limit facts. TypeScript adapter readiness is already
+complete, so Lane 3 should not reopen TypeScript editor readiness unless a
+new editor-facing regression appears.
 Lane 3 should review upstream analyzer, config, and output work only as a
 consumer of future editor projection inputs. Rust saved-workspace editor
 behavior must stay unchanged while this dependency is prepared.
@@ -112,16 +114,18 @@ Current dependency state:
   #836 closed #786 without changing VS Code selectors or LSP routing;
 - the Python parser substrate ADR (#770) landed in #794, was corrected to
   `rustpython-parser` in #801, and the Python scaffold landed in #804; the
-  Python preview adapter (#771) remains the next Python-side dependency before
-  `lsp/editor-language-routing` because owner, test, assertion, probe, and
-  static-limit extraction are still incomplete;
+  Python preview adapter then added owner/test facts, assertion/oracle facts,
+  probe facts, related-test facts, and structured static-limit facts with
+  fixture/golden coverage, so #771 is satisfied for editor-projectable preview
+  evidence;
 - issue #772 now records the current VS Code routing files:
   `editors/vscode/package.json` for activation and
   `editors/vscode/src/client.ts` for `documentSelector` plus
   `isRustFileDocument`;
-- issue #771 now records the Python-to-editor handoff contract: Python preview
-  artifacts need `language = "python"`, `language_status = "preview"`, and
-  projectable static limits before Lane 3 can safely add Python selectors;
+- issue #771 records the Python-to-editor handoff contract: Python preview
+  artifacts carry `language = "python"`, `language_status = "preview"`, bounded
+  owner facts, related-test facts, and projectable `static_limit_kind` values
+  before Lane 3 adds Python selectors;
 - #857 closed #807 by adding the optional structured `static_limit_kind` field
   on `Finding` and JSON output. It also closed #814 by proving the
   policy-readiness scanner sees the structured field. Future hover/status
@@ -434,8 +438,8 @@ Objective audit status from 2026-05-13: not complete, blocked upstream.
 | Wrong-root, missing, malformed, and stale reports fail closed | `fixtures/editor_lsp_workflow`, `cargo xtask lsp-cockpit-report`, VS Code e2e status tests | Current cockpit report and e2e smoke cover these states |
 | VS Code remains Rust-default until preview routing is selected | `editors/vscode/package.json`, `editors/vscode/src/client.ts` | Current extension activation and selector remain Rust-only |
 | TypeScript preview adapter readiness includes editor-projectable preview metadata, static limits, owner matching, oracle precision, and fixture evidence | `.ripr/goals/active.toml`, #779, #780, #782, #785, #786 | Complete for current Campaign 27 routing readiness; #779, #780, #782, #785, and #786 are closed |
-| Python preview adapter exists with editor-projectable preview metadata and static limits | `.ripr/goals/active.toml`, #804 | Partial; scaffold is merged and `analysis/python-preview-adapter` is active, but owner, test, assertion, probe, and static-limit extraction remain incomplete |
-| `lsp/editor-language-routing` is ready or selected | `cargo xtask goals next`, `.ripr/goals/active.toml` | Blocked; no ready work items, with `analysis/python-preview-adapter` active/incomplete |
+| Python preview adapter exists with editor-projectable preview metadata and static limits | `.ripr/goals/active.toml`, #804, Python owner/test/assertion/probe/related-test/static-limit fixtures | Complete for current Campaign 27 routing readiness; preview output is opt-in, labeled, fixture-backed, and uses structured `static_limit_kind` values |
+| `lsp/editor-language-routing` is ready or selected | `cargo xtask goals next`, `.ripr/goals/active.toml` | Ready; `analysis/python-preview-adapter` is done and the next work item preserves Rust defaults before adding preview selectors |
 | Preview selectors for TypeScript, TSX, JavaScript, JSX, and Python are opt-in and preserve Rust defaults | `editors/vscode/package.json`, `editors/vscode/src/client.ts` | Not started; must wait for Python preview adapter completion and explicit routing selection |
 | Preview diagnostics, hover, status, and actions visibly label preview evidence and static limits | Future `lsp/editor-language-routing` artifacts and editor workflow fixtures | Not started; blocked by adapter outputs |
 | No editor hidden analysis reruns, source edits, generated tests, provider calls, mutation execution, gate semantics, default blocking, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays | Lane 3 Scope, Non-Goals, and Cross-Lane Rules in this tracker | Current tracker preserves the boundary; future routing must re-audit it |
@@ -522,12 +526,12 @@ Planned PR path:
      routing changes.
    - No VS Code selector or LSP routing changes belong in this work.
 8. `analysis: complete Python preview adapter`
-   - Not owned by Lane 3, but Lane 3 should review editor-projectability.
-   - Python output must carry `language = "python"`,
+   - Done for current Campaign 27 routing readiness.
+   - Python output carries `language = "python"`,
      `language_status = "preview"`, owner facts, test facts, assertion facts,
-     probe facts, related-test facts, static limits, and fixture/golden
-     coverage.
-   - No editor selector work belongs in this work.
+     probe facts, related-test facts, structured static limits, and
+     fixture/golden coverage.
+   - No editor selector work landed in this work.
 9. `test(lsp): preserve Rust routing contract`
    - Pin `[languages]` absent, `["rust"]`, `[]`, and invalid-config behavior
      before adding preview selectors.

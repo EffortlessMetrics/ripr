@@ -171,8 +171,8 @@ git diff --check
 | Slice | PR | Status | Notes |
 | --- | --- | --- | --- |
 | `docs/proposal-user-visible-output-evidence` | #904 | merged | Added RIPR-PROP-0005 and this tracker; no behavior changes. |
-| `docs/spec-presentation-text-evidence` | TBD | current | Adds RIPR-SPEC-0043; no analyzer, projection, gate, generated-test, provider, mutation-execution, or score-definition changes. |
-| `fixtures/presentation-text-evidence-benchmark` | #900 | open candidate | Contains the screenshot-derived constant benchmark; should land after the proposal/spec foundation. |
+| `docs/spec-presentation-text-evidence` | #909 | merged | Added RIPR-SPEC-0043; no analyzer, projection, gate, generated-test, provider, mutation-execution, or score-definition changes. |
+| `fixtures/presentation-text-evidence-benchmark` | #900 | current | Contains the screenshot-derived constant benchmark after the proposal/spec foundation. |
 
 ## Closeout Conditions
 
