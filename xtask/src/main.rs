@@ -3869,6 +3869,7 @@ const EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CLASSES: &[&str] = &[
     "self_computed_expected_value",
     "opaque_helper_static_limitation",
     "cross_file_constant_limitation",
+    "presentation_text",
     "side_effect_observer",
     "snapshot_discriminator",
     "mock_expectation",

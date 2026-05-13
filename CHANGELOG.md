@@ -158,6 +158,11 @@ Planned scope:
   taxonomy, oracle-semantics audit fix, runtime-fixtures-v3, evidence-quality
   trend reporting, class-scoped capability metadata, traceability links, and
   future evidence-class boundary without changing `.ripr/goals/active.toml`.
+- Added a Lane 1 evidence-quality benchmark case for presentation text
+  constants, pinning the claim boundary for changed help/label text: visibility
+  and actionability must be explicit, declaration and literal lines should
+  become one canonical evidence item, text alone must not become user test debt,
+  and mutation testing must not be the first recommended action.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 

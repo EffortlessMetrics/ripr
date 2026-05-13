@@ -670,7 +670,7 @@ status = "alpha"
 spec = "RIPR-SPEC-0035"
 evidence = [
   "fixtures/evidence-quality-benchmark/corpus.json defines a manifest-only Lane 1 benchmark corpus",
-  "the corpus covers duplicate canonical gap, match-arm discriminator split, wrong related-test top choice, broad versus exact error oracle, self-computed expected value and duplicative equality guards, opaque helper limitation, cross-file constant limitation, side-effect observer, snapshot discriminator, mock expectation, runtime-only signal, and ambiguous runtime join classes",
+  "the corpus covers duplicate canonical gap, match-arm discriminator split, wrong related-test top choice, broad versus exact error oracle, self-computed expected value and duplicative equality guards, opaque helper limitation, cross-file constant limitation, presentation text constants, side-effect observer, snapshot discriminator, mock expectation, runtime-only signal, and ambiguous runtime join classes",
   "each case records expected claims, must-not-claim guards, expected repo-exposure evidence_record subsets or runtime-only nonstatic calibration, audit signals, maturity scope, and repair route",
   "cargo xtask check-fixture-contracts validates the corpus shape through xtask/src/main.rs",
   "xtask unit tests pin required case kinds, missing guard detection, runtime-only nonstatic behavior, and line-movement canonical identity"

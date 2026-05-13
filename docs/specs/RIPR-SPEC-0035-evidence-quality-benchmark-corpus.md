@@ -53,6 +53,7 @@ The benchmark corpus must include fixture classes for:
 - self-computed expected value;
 - opaque helper static limitation;
 - cross-file constant limitation;
+- presentation text constant;
 - side-effect observer;
 - snapshot discriminator;
 - mock expectation;
@@ -143,6 +144,11 @@ negative fixtures.
 Given a self-computed expected value, the benchmark prevents RIPR from treating
 that assertion as strong exact-value evidence unless the expected value is
 independent of the behavior under test.
+
+Given a changed presentation text constant, the benchmark expects one
+evidence-quality item for the declaration and literal, records visibility and
+actionability, and prevents RIPR from treating text alone as user test debt or
+mutation-testing work.
 
 Given a snapshot oracle with a known discriminating field, the benchmark
 distinguishes field-specific observation from broad snapshot output.
