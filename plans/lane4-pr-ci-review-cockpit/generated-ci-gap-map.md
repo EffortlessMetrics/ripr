@@ -73,8 +73,8 @@ Important current behavior:
 | --- | --- | --- |
 | Generated CI contract | `docs/generated-pr-ci-review-workflow-spec` | Done by [RIPR-SPEC-0038](../../docs/specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md). |
 | Current workflow audit | `audit/generated-ci-cockpit-baseline` | Done by [generated-ci-baseline-audit.md](generated-ci-baseline-audit.md). |
-| Reviewer-first summary polish | `ci/generated-summary-cockpit-contract` | Only if the audit finds wording or ordering gaps against `RIPR-SPEC-0038`. |
-| Missing-artifact repair command audit | `audit/generated-ci-cockpit-baseline` | Audit found no-input messages and identified exact regeneration commands as the remaining generated-summary gap. |
+| Reviewer-first summary polish | `ci/generated-summary-cockpit-contract` | Done: the generated job summary includes a `Start here` section. |
+| Missing-artifact repair commands | `ci/generated-summary-cockpit-contract` | Done for known first-useful-action, front-panel, and packet-index regeneration commands. |
 | Language-aware grouping | `ci/language-aware-grouping` | Wait until preview adapters provide enough TypeScript and Python evidence, or explicitly defer. |
 | Preview-language packet receipts | `dogfood/lane4-cockpit-gap-receipts` | Add only remaining mixed-language or missing-proof cases; do not duplicate Campaign 24/25 receipts. |
 | Lane closeout | `docs/lane4-closeout` | Record what shipped, what did not change, validation, known limits, and next-lane handoff. |
@@ -99,13 +99,12 @@ The following are not Lane 4 implementation gaps:
 The next implementation-facing work item is:
 
 ```text
-ci(lane4): align generated summary with cockpit contract
+dogfood(lane4): add PR/CI cockpit gap receipts
 ```
 
-That PR should use the baseline audit to add exact repair or regeneration
-commands where they are known, and decide whether the generated job summary
-should literally start with `Start here` while preserving advisory defaults and
-gate authority boundaries.
+That PR should add only remaining cockpit gap receipts, such as missing-proof,
+blocked-gate, improved, unchanged-after-attempt, and preview-language packet
+cases that are not already covered by Campaign 24 or Campaign 25.
 
 ## Validation
 

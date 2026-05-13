@@ -457,7 +457,43 @@ rtk git diff --check
 Rollback:
 Remove the baseline audit and any related planning links.
 
-### 13. `ci/language-aware-grouping`
+### 13. `ci/generated-summary-cockpit-contract`
+
+Goal:
+Align generated summary output with the cockpit contract.
+
+Production delta:
+Update the generated GitHub workflow summary so the reviewer sees a
+`Start here` section before the detailed cockpit sections, and so known
+missing-cockpit surfaces include regeneration commands for first useful action,
+the PR review front panel, and the report packet index.
+
+Non-goals:
+No language-aware grouping, default blocking change, branch-protection change,
+inline comment publishing change, analyzer change, editor change, gate
+semantic change, generated-workflow source edit behavior, generated test,
+provider call, or mutation execution.
+
+Acceptance:
+Generated CI remains advisory by default, Rust-default behavior stays
+compatible, gate authority remains with `ripr gate evaluate`, and focused tests
+pin the `Start here` and regeneration-command strings in the generated
+workflow.
+
+Proof commands:
+
+```bash
+rtk cargo test -p ripr init_generated_github_workflow
+rtk cargo xtask check-workflows
+rtk cargo xtask check-static-language
+rtk cargo xtask check-pr
+rtk git diff --check
+```
+
+Rollback:
+Revert the generated workflow summary strings and the focused workflow tests.
+
+### 14. `ci/language-aware-grouping`
 
 Goal:
 Group PR advisory output by language when preview adapters are configured.
@@ -490,7 +526,7 @@ Rollback:
 Remove language grouping from generated summaries and retain Rust-default
 summary behavior.
 
-### 14. `dogfood/lane4-cockpit-gap-receipts`
+### 15. `dogfood/lane4-cockpit-gap-receipts`
 
 Goal:
 Refresh or add PR/CI review cockpit dogfood receipts for gaps not already
@@ -524,7 +560,7 @@ rtk git diff --check
 Rollback:
 Remove only the newly added gap receipts and dogfood wiring.
 
-### 15. `docs/lane4-closeout`
+### 16. `docs/lane4-closeout`
 
 Goal:
 Close the PR/CI review cockpit lane with durable proof and restart context.
