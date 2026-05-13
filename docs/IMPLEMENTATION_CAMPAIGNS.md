@@ -3239,7 +3239,7 @@ cargo xtask check-pr
 
 ## Focused Lane 2 Tracker: Policy Operations and Promotion Readiness
 
-Status: open as a focused Lane 2 tracker. Campaign 27 remains the active
+Status: closed as a focused Lane 2 tracker. Campaign 27 remains the active
 machine-readable campaign.
 
 Sources of truth:
@@ -3287,7 +3287,7 @@ Work items:
 | `policy/preview-promotion-packet-report` | done | Added `ripr policy preview-promote --language ... --class ...` while preserving advisory preview defaults. |
 | `docs/policy-operator-workflow` | done | `docs/POLICY_OPERATIONS_WORKFLOW.md` documents readiness, operations, history, promotion packets, preview packets, manual config review, post-change monitoring, and hard boundaries for maintainers. |
 | `ci/policy-operations-advisory-projection` | done | Generated CI renders, uploads, indexes, and summarizes policy operations, history, promotion, and configured preview-promotion artifacts as advisory-only packets without pass/fail authority, required checks, comment posting, baseline mutation, config mutation, or default blocking. |
-| `campaign/policy-operations-closeout` | planned | Close after operations, history, promotion packets, preview promotion packets, workflow, advisory CI projection, capability, metrics, traceability, and handoff surfaces exist. |
+| `campaign/policy-operations-closeout` | done | Closed after operations, history, promotion packets, preview promotion packets, workflow, advisory CI projection, capability, metrics, traceability, and handoff surfaces landed; see `docs/handoffs/2026-05-13-policy-operations-closeout.md`. |
 
 Blocking conditions:
 
@@ -3311,6 +3311,13 @@ cargo xtask check-campaign
 cargo xtask check-pr
 git diff --check
 ```
+
+Closeout:
+
+- [Policy Operations closeout](handoffs/2026-05-13-policy-operations-closeout.md)
+  records the PR chain, prompt-to-artifact audit, validation plan, and the
+  boundary that future policy promotion or preview promotion work should open
+  explicitly.
 
 ## Future Campaign: Editor Evidence UX
 

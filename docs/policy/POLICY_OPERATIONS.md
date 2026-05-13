@@ -1,12 +1,14 @@
 # Policy Operations and Promotion Readiness
 
-GitHub tracker: pending
+Status: closed focused Lane 2 tracker
 
-This is the focused Lane 2 tracker for policy operations after
+GitHub tracker: PR stack #859 through #922, closed by the campaign closeout.
+
+This was the focused Lane 2 tracker for policy operations after
 [Policy readiness](POLICY_READINESS.md). It is not the global active campaign
 manifest. `.ripr/goals/active.toml` remains on Campaign 27: Language Adapter
-Preview. This tracker records the policy-operations work that should follow
-without changing analyzer behavior, editor behavior, generated tests, mutation
+Preview. This tracker records the policy-operations work that landed without
+changing analyzer behavior, editor behavior, generated tests, mutation
 execution, default CI blocking, config files, baselines, suppressions, or
 preview-language gate eligibility.
 
@@ -107,7 +109,7 @@ available spec IDs.
 | 9 | `policy/preview-promotion-packet-report` | Implement `ripr policy preview-promote` with default `allowed_now = false`. | done |
 | 10 | `docs/policy-operator-workflow` | Document the maintainer workflow from readiness through promotion review. | done |
 | 11 | `ci/policy-operations-advisory-projection` | Surface policy operations artifacts in generated CI without pass/fail authority. | done |
-| 12 | `campaign/policy-operations-closeout` | Close after operations, history, promotion, preview-promotion, workflow, CI projection, capability, metrics, traceability, and handoff surfaces exist. | planned |
+| 12 | `campaign/policy-operations-closeout` | Close after operations, history, promotion, preview-promotion, workflow, CI projection, capability, metrics, traceability, and handoff surfaces exist. | done |
 
 ## Planned Report Surface
 
@@ -223,6 +225,25 @@ pass/fail, create required checks, post comments, mutate config, mutate
 baselines, create suppressions, append history, change workflows or branch
 protection, enable default blocking, or promote preview-language evidence.
 
+## Closeout
+
+Lane 2 now supports policy operations in the planned scope:
+
+- current safe policy ceiling;
+- next safe action;
+- blockers to stricter modes;
+- policy history and trend;
+- read-only promotion packets;
+- read-only preview-promotion packets;
+- advisory generated-CI projection;
+- no automatic policy mutation.
+
+The closeout audit is recorded in
+[Policy Operations closeout](../handoffs/2026-05-13-policy-operations-closeout.md).
+No ready work item remains in this focused tracker. Future policy tightening or
+preview-language promotion work should open a new focused policy tracker or spec
+instead of extending this closed campaign.
+
 ## Boundaries
 
 This tracker does not authorize:
@@ -268,6 +289,21 @@ cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
 cargo xtask check-campaign
+cargo xtask check-pr
+git diff --check
+```
+
+Closeout validation:
+
+```bash
+cargo xtask check-campaign
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-output-contracts
 cargo xtask check-pr
 git diff --check
 ```
