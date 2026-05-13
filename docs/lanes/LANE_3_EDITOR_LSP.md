@@ -70,6 +70,11 @@ Completed slices:
   diagnostics and surfaces an explicit `languages off` editor status instead
   of inventing editor behavior, and invalid language config stays config-owned
   while the LSP session falls back to Rust defaults.
+- first-run and no-output status projection names the workspace root, resolved
+  server source and command, editor selectors, enabled languages from the latest
+  server refresh, and the next safe action for disabled, no-workspace,
+  unavailable-server, stale, language-off, no-actionable-seam, preview, and
+  diagnostic states.
 
 ## Current Open PRs
 
