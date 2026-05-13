@@ -117,6 +117,9 @@ The current Lane 4 plan is in
 [plans/lane4-pr-ci-review-cockpit](../../plans/lane4-pr-ci-review-cockpit/README.md).
 That plan owns PR order. The specs own behavior truth.
 
+The generated-CI cockpit gap map is in
+[plans/lane4-pr-ci-review-cockpit/generated-ci-gap-map.md](../../plans/lane4-pr-ci-review-cockpit/generated-ci-gap-map.md).
+
 The first slice is docs-only scaffolding:
 
 ```text

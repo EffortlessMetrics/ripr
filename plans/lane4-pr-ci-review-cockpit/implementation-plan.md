@@ -19,6 +19,9 @@ Planned generated-CI workflow spec path:
 `docs/specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md`.
 This checkout already uses `RIPR-SPEC-0032` through `RIPR-SPEC-0038`.
 
+Generated-CI gap map:
+[generated-ci-gap-map.md](generated-ci-gap-map.md).
+
 ## Objective
 
 Turn explicit RIPR PR-time artifacts into a reviewer-first, agent-usable,
@@ -386,9 +389,10 @@ Map the remaining generated-CI cockpit gaps after the shipped front panel and
 packet index.
 
 Production delta:
-Add or update docs that show how the current generated workflow composes front
-panel, packet index, policy artifacts, receipts, and language grouping, and
-which remaining behavior belongs in a generated-CI workflow spec.
+Add [generated-ci-gap-map.md](generated-ci-gap-map.md) to show how the current
+generated workflow composes front panel, packet index, policy artifacts,
+receipts, and language grouping, and which remaining behavior belongs in later
+generated-CI work.
 
 Non-goals:
 No generated workflow implementation change, default blocking change, branch
