@@ -8,6 +8,9 @@
 
 Badges are the front panel. Generated evidence, CI receipts, and release artifacts remain the source of truth.
 
+For the current maturity boundary across Rust, preview languages, PR cockpit,
+agent packets, badges, and gates, see [Support tiers](status/SUPPORT_TIERS.md).
+
 ## README badges
 
 ### `ripr+`

@@ -163,6 +163,11 @@ or CI users.
 For the full first-hour path, including troubleshooting and known limits, read
 [Quickstart](docs/QUICKSTART.md).
 
+Before rollout, check [Support tiers](docs/status/SUPPORT_TIERS.md) for the
+plain-language map of what is usable alpha, preview, scaffold, blocked, or
+deferred. It also keeps the public-badge boundary separate from PR-local
+evidence and gate authority.
+
 ### VS Code
 
 Install `EffortlessMetrics.ripr` from VS Code Marketplace or Open VSX, then
