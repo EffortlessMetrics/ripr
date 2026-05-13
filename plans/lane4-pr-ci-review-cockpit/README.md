@@ -40,16 +40,16 @@ when planning front-panel or packet-index work.
 
 ## Current Slice
 
-The current implementation-facing slice is complete:
+The lane closeout slice is complete:
 
 ```text
-dogfood(lane4): add PR/CI cockpit gap receipts
+docs(lane4): close PR/CI review cockpit lane
 ```
 
-It adds generated-CI cockpit dogfood receipts without duplicating the shipped
-front-panel or packet-index fixture receipts. The next Lane 4 slice is closeout
-with language-aware grouping explicitly deferred unless preview-language
-evidence is ready.
+The closeout records shipped cockpit surfaces, validation, explicit
+non-changes, known limits, and next-lane handoff. Language-aware grouping
+remains deferred until preview-language evidence is ready or the lane accepts a
+narrower grouping slice.
 
 ## Operating Constraints
 
