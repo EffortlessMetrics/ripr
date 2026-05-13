@@ -2969,7 +2969,7 @@ Work items:
 | `analysis/typescript-editor-readiness` | done | Resolved the TypeScript preview gaps that made editor projection unsafe before `lsp/editor-language-routing` can consume TypeScript evidence: #779 human output visibly labels preview TypeScript evidence, #780 owner matching is file-scoped before line-range matching, #782 broad `toThrow()` remains weak broad-error evidence, #785 awaited `Promise.reject(...)` classifies as error-path preview evidence, and #786 fixture/golden evidence covers every TypeScript probe family currently emitted by the preview adapter. Landed without VS Code selector, LSP routing, source edit, generated test, provider, mutation execution, gate, or default-blocking behavior changes. |
 | `adr/python-parser-substrate` | done | Pin the Python parser-substrate decision before any Cargo dependency or adapter code lands, mirroring how ADR 0008 (`oxc_parser`) was sequenced ahead of the TypeScript scaffold. Landed via #794 (closes #770) — adds `docs/adr/0009-python-parser-substrate.md`, registers it in `docs/adr/README.md`, and adds the approved-decision comment to `policy/dependency_allowlist.txt`. ADR 0009 was superseded in-place by a follow-up correction PR after discovering the originally-picked `ruff_python_parser` is `publish = false` in the astral-sh/ruff workspace and unavailable on crates.io; the corrected pick is `rustpython-parser`, the documented natural fallback already named under the ADR's Revisit Criteria. No Cargo dependency, no adapter code, no behavior change. |
 | `analysis/python-preview-adapter` | active | Add the Python syntax-first adapter, the Python fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Scaffold sub-slice mirrors the TypeScript scaffold (PR #759): adds the `rustpython-parser` Cargo dependency approved by the corrected ADR 0009, the `PythonAdapter` type, language-aware pipeline dispatch through `[languages] enabled`, and a real production parse-validation use of `rustpython-parser`. To avoid an LGPL-3.0-only transitive (`malachite-bigint`), the dependency disables default features and selects `num-bigint` (MIT/Apache-2.0) for Python int-literal representation. Owner / test / assertion / probe / related-test fact extraction lands in subsequent sub-slices against RIPR-SPEC-0028's fixture corpus. |
-| `lsp/editor-language-routing` | blocked | Extend the VS Code extension to register the TypeScript, TypeScript React, JavaScript, JavaScript React, and Python selectors, and route saved-workspace diagnostics through the adapter layer only when repo config enables that language. Preserve Rust saved-workspace diagnostics, hover, actions, and status by default. Preview findings must be visibly labeled preview, hover/status must surface explicit static limits before suggested action language, and wrong-root/stale/malformed artifacts must still fail closed. No analyzer behavior, source edits, generated tests, provider calls, mutation execution, policy/gate/default-blocking behavior, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays. TypeScript readiness is complete; still blocked by `analysis/python-preview-adapter`. |
+| `lsp/editor-language-routing` | blocked | Extend the VS Code extension to register the TypeScript, TypeScript React, JavaScript, JavaScript React, and Python selectors, and route saved-workspace diagnostics through the adapter layer only when repo config enables that language. Preserve Rust saved-workspace diagnostics, hover, actions, and status by default. Preview findings must be visibly labeled preview, hover/status must surface explicit static limits before suggested action language, and wrong-root/stale/malformed artifacts must still fail closed. No analyzer behavior, source edits, generated tests, provider calls, mutation execution, policy/gate/default-blocking behavior, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays. TypeScript readiness is complete; still blocked by `analysis/python-preview-adapter`. Lane 3 routing source-of-truth is ready in RIPR-PROP-0003, RIPR-SPEC-0036, RIPR-SPEC-0037, ADR-0011, and `plans/campaign-27/lane3-editor-preview-routing.md`. |
 | `ci/language-aware-grouping` | blocked | Update generated GitHub CI summaries to group advisory output by language only when `[languages]` declares more than Rust, keeping Rust-default behavior identical and gate authority unchanged. |
 | `docs/language-adapter-preview-workflow` | blocked | Document enabling preview adapters, reading mixed-language reports, interpreting preview labels, the static-limit boundary, and rollback. |
 | `dogfood/language-adapter-preview-receipts` | blocked | Extend `cargo xtask dogfood` with checked TypeScript and Python preview receipts without changing analyzer behavior, default CI, or inline-comment defaults. |
@@ -2981,6 +2981,11 @@ References:
 - [RIPR-SPEC-0026: Language adapter contract](specs/RIPR-SPEC-0026-language-adapter-contract.md)
 - [RIPR-SPEC-0027: TypeScript preview static facts](specs/RIPR-SPEC-0027-typescript-preview-static-facts.md)
 - [RIPR-SPEC-0028: Python preview static facts](specs/RIPR-SPEC-0028-python-preview-static-facts.md)
+- [RIPR-PROP-0003: Editor Preview Routing](proposals/RIPR-PROP-0003-editor-preview-routing.md)
+- [RIPR-SPEC-0036: Editor Preview Routing](specs/RIPR-SPEC-0036-editor-preview-routing.md)
+- [RIPR-SPEC-0037: Editor Preview Static-Limit Projection](specs/RIPR-SPEC-0037-editor-preview-static-limit-projection.md)
+- [ADR 0011: Editor Preview Routing Is Projection-Only](adr/0011-editor-preview-routing-is-projection-only.md)
+- [Lane 3 editor preview routing plan](../plans/campaign-27/lane3-editor-preview-routing.md)
 - [Repo tracking model](REPO_TRACKING_MODEL.md)
 - [Architecture](ARCHITECTURE.md)
 - [Static exposure model](STATIC_EXPOSURE_MODEL.md)
@@ -3028,11 +3033,12 @@ cargo xtask check-pr
 
 Next:
 
-- Land the spec slice first, then open the adapter boundary work item with
-  no observable Rust behavior change. Do not fold analyzer rewrites,
-  policy, gate, mutation, provider, generated-test, source-edit,
-  inline-comment, branch-protection, or default-CI changes into this
-  campaign.
+- Continue `analysis/python-preview-adapter`. Keep `lsp/editor-language-routing`
+  blocked until Python emits editor-projectable preview artifacts or the active
+  manifest explicitly supersedes that blocker. Do not fold policy, gate,
+  mutation, provider, generated-test, source-edit, inline-comment,
+  branch-protection, default-CI, or editor routing changes into the Python
+  adapter slice.
 
 ## Focused Lane 2 Tracker: Policy Readiness and Preview Evidence Governance
 

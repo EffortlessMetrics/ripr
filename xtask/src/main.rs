@@ -20276,12 +20276,18 @@ fn is_docs_path(path: &str) -> bool {
         || path == "CONTRIBUTING.md"
         || path == "CHANGELOG.md"
         || path.starts_with("docs/")
+        || is_plan_path(path)
 }
 
 fn is_campaign_path(path: &str) -> bool {
     path == ".ripr/goals/active.toml"
         || path == "docs/IMPLEMENTATION_CAMPAIGNS.md"
         || path == "docs/IMPLEMENTATION_PLAN.md"
+        || is_plan_path(path)
+}
+
+fn is_plan_path(path: &str) -> bool {
+    path.starts_with("plans/")
 }
 
 fn is_analysis_path(path: &str) -> bool {
@@ -21190,6 +21196,7 @@ fn detected_surface_rows(changes: &[ChangedPath]) -> Vec<(&'static str, Vec<Stri
             "Docs",
             paths_matching(changes, |path| {
                 path.starts_with("docs/")
+                    || is_plan_path(path)
                     || matches!(
                         path,
                         "README.md" | "AGENTS.md" | "CONTRIBUTING.md" | "CHANGELOG.md"
@@ -21258,6 +21265,7 @@ fn public_contract_rows(changes: &[ChangedPath]) -> Vec<(&'static str, Vec<Strin
             "Docs",
             paths_matching(changes, |path| {
                 path.starts_with("docs/")
+                    || is_plan_path(path)
                     || matches!(
                         path,
                         "README.md" | "AGENTS.md" | "CONTRIBUTING.md" | "CHANGELOG.md"
@@ -21338,6 +21346,7 @@ fn is_evidence_path(path: &str) -> bool {
         || is_golden_path(path)
         || is_automation_path(path)
         || is_policy_path(path)
+        || is_plan_path(path)
         || path.starts_with("docs/")
         || path.starts_with("metrics/")
         || matches!(
@@ -25170,8 +25179,8 @@ mod tests {
         extract_json_object_usize_map, extract_json_string, extract_json_warnings,
         extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns, glob_matches,
         golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
-        guarded_allow_attributes_in_text, install_hooks_in, is_bdd_test_name,
-        is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
+        guarded_allow_attributes_in_text, install_hooks_in, is_bdd_test_name, is_campaign_path,
+        is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
         is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
         is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
         is_stale_agent_boundary_scan_target, json_escape, json_number_after,
@@ -25188,7 +25197,7 @@ mod tests {
         parse_no_panic_allowlist_toml, parse_no_panic_allowlist_toml_v2, parse_reason,
         parse_repo_exposure_static_seams, parse_sarif_policy_args, parse_sarif_policy_results,
         parse_static_language_allowlist, parse_string_value, parse_targeted_test_outcome_args,
-        pr_shape_warnings, precommit_report_body, public_contract_rows,
+        pr_shape_warnings, pr_summary_body, precommit_report_body, public_contract_rows,
         read_lsp_cockpit_json_value, read_mutation_input_json, receipt_json, receipt_specs,
         receipt_status_from_reports, render_no_panic_allowlist_proposals_markdown,
         render_no_panic_allowlist_proposals_toml, repo_badge_artifact_command_args,
@@ -29199,6 +29208,15 @@ jobs:
         assert!(is_evidence_path(
             "docs/specs/RIPR-SPEC-0001-static-exposure-loop.md"
         ));
+        assert!(is_docs_path(
+            "plans/campaign-27/lane3-editor-preview-routing.md"
+        ));
+        assert!(is_campaign_path(
+            "plans/campaign-27/lane3-editor-preview-routing.md"
+        ));
+        assert!(is_evidence_path(
+            "plans/campaign-27/lane3-editor-preview-routing.md"
+        ));
         assert!(is_evidence_path("fixtures/boundary_gap/SPEC.md"));
         assert!(is_evidence_path("metrics/capabilities.toml"));
         assert!(is_evidence_path("xtask/src/main.rs"));
@@ -29234,6 +29252,20 @@ jobs:
 
         assert_eq!(json, vec!["crates/ripr/src/output/json/report.rs (M)"]);
         assert_eq!(lsp, vec!["editors/vscode/src/client.ts (M)"]);
+    }
+
+    #[test]
+    fn pr_summary_lists_top_level_plans_as_docs_evidence() {
+        let changes = vec![ChangedPath {
+            path: "plans/campaign-27/lane3-editor-preview-routing.md".to_string(),
+            statuses: BTreeSet::from(["??".to_string()]),
+        }];
+
+        let body = pr_summary_body(&changes);
+
+        assert!(body.contains("- `plans/campaign-27/lane3-editor-preview-routing.md (??)`"));
+        assert!(body.contains("Evidence/support delta:"));
+        assert!(body.contains("Docs:"));
     }
 
     #[test]

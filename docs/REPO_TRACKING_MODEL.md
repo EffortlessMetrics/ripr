@@ -26,6 +26,7 @@ Each doc has exactly one role. Avoid mixing roles in one file.
 | Durable decision | [`docs/adr/`](adr/) | Why a load-bearing architectural or product decision was made. |
 | Campaign ledger | [`docs/IMPLEMENTATION_CAMPAIGNS.md`](IMPLEMENTATION_CAMPAIGNS.md) | Multi-PR campaign history, open campaigns, and closed-campaign audits. |
 | Work queue | [`docs/IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) | Current and upcoming implementation slices. |
+| Campaign-specific plan | [`plans/`](../plans/) | Extra sequencing, acceptance, proof commands, and rollback notes for a narrow campaign slice when the ledger would become too dense. |
 | Active execution manifest | `.ripr/goals/active.toml` | The single campaign an agent or operator is executing now. |
 | Campaign archive | [`.ripr/goals/archive/`](../.ripr/goals/archive/) | Frozen manifests of closed campaigns. |
 | Scoped PR | The PR itself | Mergeable review units, governed by the [scoped PR contract](SCOPED_PR_CONTRACT.md). |
@@ -47,16 +48,22 @@ Each doc has exactly one role. Avoid mixing roles in one file.
 4. Campaign entry (docs/IMPLEMENTATION_CAMPAIGNS.md)
      Objective, end state, work items, dependencies, references.
 
-5. Active manifest (.ripr/goals/active.toml)
+5. Optional campaign-specific plan (plans/<campaign>/<slice>.md)
+     Detailed PR sequence, acceptance, proof commands, and rollback for one
+     slice when the campaign ledger should stay concise.
+     Reviewer automation treats `plans/` files as documentation evidence and
+     campaign-planning input, not production behavior.
+
+6. Active manifest (.ripr/goals/active.toml)
      The agent/operator executes work items one PR at a time.
 
-6. Scoped PRs (governed by SCOPED_PR_CONTRACT.md)
+7. Scoped PRs (governed by SCOPED_PR_CONTRACT.md)
      One production delta + the evidence package needed to review it.
 
-7. Closeout (docs/handoffs/YYYY-MM-DD-<campaign>-closeout.md)
+8. Closeout (docs/handoffs/YYYY-MM-DD-<campaign>-closeout.md)
      What shipped, what was deferred, what the next campaign should be.
 
-8. Archive (.ripr/goals/archive/YYYY-MM-DD-<campaign>.toml)
+9. Archive (.ripr/goals/archive/YYYY-MM-DD-<campaign>.toml)
      Frozen manifest. Read-only history.
 ```
 
@@ -77,6 +84,8 @@ To prevent overloading individual docs:
   or work plan.
 - A campaign ledger entry sequences PRs. It must not redefine specs or
   duplicate proposal reasoning.
+- A campaign-specific plan adds operational detail for one campaign slice. It
+  must not redefine specs, ADRs, or active manifest state.
 - The active manifest names the currently executing campaign. It must not
   carry historical closed campaigns; closed manifests move to the archive.
 - A scoped PR is the smallest reviewable unit. It must not bundle unrelated
