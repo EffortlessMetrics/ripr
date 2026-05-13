@@ -1,0 +1,10 @@
+diff --git a/src/quantity.py b/src/quantity.py
+index 0000000..1111111 100644
+--- a/src/quantity.py
++++ b/src/quantity.py
+@@ -1,5 +1,5 @@
+ def normalize_quantity(value):
+-    if value < 0:
++    if value <= 0:
+         raise ValueError("quantity must be positive")
+     return value
