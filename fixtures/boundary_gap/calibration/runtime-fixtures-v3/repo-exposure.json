@@ -1,0 +1,227 @@
+{
+  "schema_version": "0.2",
+  "scope": "repo",
+  "metrics": {
+    "seams_total": 8,
+    "headline_eligible": 8,
+    "strongly_gripped": 4,
+    "weakly_gripped": 4,
+    "ungripped": 0,
+    "reachable_unrevealed": 0,
+    "activation_unknown": 0,
+    "propagation_unknown": 0,
+    "observation_unknown": 0,
+    "discrimination_unknown": 0,
+    "opaque": 0,
+    "intentional": 0,
+    "suppressed": 0
+  },
+  "seams": [
+    {
+      "seam_id": "cal-v3-custom-helper-outcome",
+      "kind": "predicate_boundary",
+      "file": "src/assertions.rs",
+      "line": 14,
+      "owner": "src/assertions.rs::discount_threshold",
+      "expression": "amount >= threshold",
+      "grip_class": "weakly_gripped",
+      "headline_eligible": true,
+      "related_tests": [
+        {
+          "name": "discount_threshold_uses_helper",
+          "file": "tests/assertions.rs",
+          "line": 10,
+          "oracle_kind": "custom_assertion_helper",
+          "oracle_strength": "medium"
+        }
+      ],
+      "observed_values": [
+        "threshold - 1"
+      ],
+      "missing_discriminators": [
+        {
+          "value": "threshold equality",
+          "reason": "custom helper outcome does not yet show the equality boundary"
+        }
+      ]
+    },
+    {
+      "seam_id": "cal-v3-table-boundary-outcome",
+      "kind": "predicate_boundary",
+      "file": "src/table_discount.rs",
+      "line": 22,
+      "owner": "src/table_discount.rs::discount_threshold",
+      "expression": "amount >= threshold",
+      "grip_class": "strongly_gripped",
+      "headline_eligible": true,
+      "related_tests": [
+        {
+          "name": "table_cases_include_threshold_equality",
+          "file": "tests/table_discount.rs",
+          "line": 18,
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong"
+        }
+      ],
+      "observed_values": [
+        "threshold - 1",
+        "threshold",
+        "threshold + 1"
+      ],
+      "missing_discriminators": []
+    },
+    {
+      "seam_id": "cal-v3-builder-override-outcome",
+      "kind": "field_construction",
+      "file": "src/builder.rs",
+      "line": 33,
+      "owner": "src/builder.rs::price_from_builder",
+      "expression": "fixture.with_discount_threshold(threshold)",
+      "grip_class": "weakly_gripped",
+      "headline_eligible": true,
+      "related_tests": [
+        {
+          "name": "builder_override_sets_discount_threshold",
+          "file": "tests/builder.rs",
+          "line": 25,
+          "oracle_kind": "exact_value",
+          "oracle_strength": "weak"
+        }
+      ],
+      "observed_values": [
+        "threshold"
+      ],
+      "missing_discriminators": [
+        {
+          "value": "builder override output",
+          "reason": "builder setup value is visible but the returned field is not asserted exactly"
+        }
+      ]
+    },
+    {
+      "seam_id": "cal-v3-cross-file-constant-boundary",
+      "kind": "predicate_boundary",
+      "file": "src/cross_file.rs",
+      "line": 41,
+      "owner": "src/cross_file.rs::discount_with_shared_constant",
+      "expression": "amount >= DEFAULT_THRESHOLD",
+      "grip_class": "weakly_gripped",
+      "headline_eligible": true,
+      "related_tests": [
+        {
+          "name": "uses_shared_default_threshold",
+          "file": "tests/cross_file.rs",
+          "line": 31,
+          "oracle_kind": "exact_value",
+          "oracle_strength": "weak"
+        }
+      ],
+      "observed_values": [
+        "DEFAULT_THRESHOLD"
+      ],
+      "missing_discriminators": [
+        {
+          "value": "resolved constant equality",
+          "reason": "cross-file constant remains unresolved in this checked sample"
+        }
+      ]
+    },
+    {
+      "seam_id": "cal-v3-snapshot-field-discriminator",
+      "kind": "serialized_output",
+      "file": "src/snapshot.rs",
+      "line": 52,
+      "owner": "src/snapshot.rs::render_discount_snapshot",
+      "expression": "snapshot.discount_code",
+      "grip_class": "strongly_gripped",
+      "headline_eligible": true,
+      "related_tests": [
+        {
+          "name": "snapshot_pins_discount_code_field",
+          "file": "tests/snapshot.rs",
+          "line": 43,
+          "oracle_kind": "snapshot_field",
+          "oracle_strength": "strong"
+        }
+      ],
+      "observed_values": [
+        "discount_code"
+      ],
+      "missing_discriminators": []
+    },
+    {
+      "seam_id": "cal-v3-mock-expectation-mismatch",
+      "kind": "call_presence",
+      "file": "src/mock_gateway.rs",
+      "line": 63,
+      "owner": "src/mock_gateway.rs::send_discount_event",
+      "expression": "gateway.expect_discount_event(order.id, amount)",
+      "grip_class": "weakly_gripped",
+      "headline_eligible": true,
+      "related_tests": [
+        {
+          "name": "expects_discount_event",
+          "file": "tests/mock_gateway.rs",
+          "line": 54,
+          "oracle_kind": "mock_expectation",
+          "oracle_strength": "medium"
+        }
+      ],
+      "observed_values": [
+        "order.id"
+      ],
+      "missing_discriminators": [
+        {
+          "value": "amount argument",
+          "reason": "mock expectation observes the call but not the changed amount argument"
+        }
+      ]
+    },
+    {
+      "seam_id": "cal-v3-ambiguous-builder-a",
+      "kind": "field_construction",
+      "file": "src/ambiguous_builder.rs",
+      "line": 72,
+      "owner": "src/ambiguous_builder.rs::build_discount_rule",
+      "expression": "builder.with_lower_bound(min)",
+      "grip_class": "strongly_gripped",
+      "headline_eligible": true,
+      "related_tests": [
+        {
+          "name": "builds_discount_rule_lower_bound",
+          "file": "tests/ambiguous_builder.rs",
+          "line": 62,
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong"
+        }
+      ],
+      "observed_values": [
+        "min"
+      ],
+      "missing_discriminators": []
+    },
+    {
+      "seam_id": "cal-v3-ambiguous-builder-b",
+      "kind": "field_construction",
+      "file": "src/ambiguous_builder.rs",
+      "line": 72,
+      "owner": "src/ambiguous_builder.rs::build_discount_rule",
+      "expression": "builder.with_upper_bound(max)",
+      "grip_class": "strongly_gripped",
+      "headline_eligible": true,
+      "related_tests": [
+        {
+          "name": "builds_discount_rule_upper_bound",
+          "file": "tests/ambiguous_builder.rs",
+          "line": 71,
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong"
+        }
+      ],
+      "observed_values": [
+        "max"
+      ],
+      "missing_discriminators": []
+    }
+  ]
+}
