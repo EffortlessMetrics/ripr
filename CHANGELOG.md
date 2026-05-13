@@ -174,6 +174,12 @@ Planned scope:
   become one canonical evidence item, text alone must not become user test debt,
   and mutation testing must not be the first recommended action. The benchmark
   validator now also requires static limitation categories at the case level.
+- Extended the Python preview fixture matrix with edge goldens for async owners,
+  classmethod owners, no-projectable-owner changes, disabled Python config, and
+  mixed-language no-cross-route related-test safety. This adds projection
+  readiness evidence without adding editor selectors, LSP routing, source edits,
+  generated tests, provider calls, mutation execution, policy gates, or default
+  CI behavior.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 
