@@ -122,16 +122,12 @@ Current dependency state:
 - issue #771 now records the Python-to-editor handoff contract: Python preview
   artifacts need `language = "python"`, `language_status = "preview"`, and
   projectable static limits before Lane 3 can safely add Python selectors;
-- issue #807 tracks the optional structured `static_limit_kind` field. Lane 3
-  should prefer that field for future hover/status projection when it exists,
-  but must still show explicit static-limit text before suggested action
-  language if a preview adapter has not promoted its limit evidence to the
-  structured field yet.
-- issue #814 records that the policy-readiness scanner already looks for
-  `static_limit_kind` even though findings do not emit it yet. Lane 3 should
-  treat that as a concrete consumer signal for promoting #807 before any editor
-  behavior branches on static-limit kind; until then, hover/status projection
-  may only display inspected stable static-limit text.
+- #857 closed #807 by adding the optional structured `static_limit_kind` field
+  on `Finding` and JSON output. It also closed #814 by proving the
+  policy-readiness scanner sees the structured field. Future hover/status
+  projection should consume `static_limit_kind` when preview artifacts populate
+  it, while still rendering inspected text-only limits as evidence for adapters
+  that have not promoted a particular limit kind.
 
 Before starting `lsp/editor-language-routing`, refresh this audit instead of
 inferring readiness from campaign momentum:
@@ -142,12 +138,13 @@ inferring readiness from campaign momentum:
   `lsp/editor-language-routing` as ready;
 - TypeScript and Python preview outputs must visibly carry preview language
   metadata and explicit static limits in artifacts the editor can project;
-- if `static_limit_kind` (#807) has landed by then, hover/status should consume
-  it; otherwise the routing slice must inspect the preview artifacts and prove
-  the text static-limit evidence is stable enough to project;
-- if #814 remains open, do not add editor behavior that depends on
-  text-parsing static-limit kinds; render the limit text as evidence only, and
-  keep action semantics independent of the parsed kind;
+- `static_limit_kind` is available for structured limits after #857; hover and
+  status should consume it when present, and the routing slice must still prove
+  any text-only static-limit evidence is stable enough to project before it is
+  displayed;
+- do not add editor behavior that depends on text-parsing static-limit kinds;
+  render text-only limits as evidence only, and keep action semantics
+  independent of parsed prose;
 - the TypeScript gaps tracked by #779, #780, #782, #785, and #786 are closed;
 - `editors/vscode/package.json` and `editors/vscode/src/client.ts` should remain
   Rust-only until the routing slice deliberately adds preview selectors behind
@@ -396,6 +393,12 @@ Maintenance audit evidence from 2026-05-12:
   `static_limit_kind`, and #814 open for the existing policy-readiness consumer
   mismatch. `cargo xtask goals next` still reported no ready work items, so
   preview selector and routing work remains blocked.
+- after #857 merged, `Finding.static_limit_kind` and JSON emission are on
+  `main`, the TypeScript mocked-module preview limit emits the structured
+  `mocked_module` value, and #807/#814 are closed. Live GitHub still shows #771
+  open for `analysis/python-preview-adapter` and #772 open for blocked
+  `lsp/editor-language-routing`; `cargo xtask goals next` still reports no
+  ready work items, so preview selector and routing work remains blocked.
 
 Objective audit status from 2026-05-13: not complete, blocked upstream.
 
