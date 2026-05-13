@@ -1148,6 +1148,7 @@ fn refresh_completion_log_message_includes_duration_and_counts() -> Result<(), S
     assert!(message.contains("static_limits=0"));
     assert!(message.contains("seam_diagnostics=1"));
     assert!(message.contains("enabled_languages=1"));
+    assert!(message.contains("enabled_language_names=rust"));
     assert!(message.contains("published_files=1"));
     assert!(message.contains("cleared_files=2"));
     Ok(())
@@ -2483,11 +2484,15 @@ enabled = []
         "empty [languages] must not retain seam diagnostics in the LSP snapshot"
     );
     let summary = RefreshLogSummary::from_snapshot(1, &diagnostics.snapshot)
-        .with_enabled_language_count(config.repo_config().languages().enabled().len());
+        .with_enabled_languages(config.repo_config().languages().enabled());
     let message = refresh_completed_log_message(&summary, 0, 1);
     assert!(
         message.contains("enabled_languages=0"),
         "empty [languages] refresh message must explain the language-disabled projection state"
+    );
+    assert!(
+        message.contains("enabled_language_names="),
+        "empty [languages] refresh message must include an empty language-name field"
     );
     Ok(())
 }

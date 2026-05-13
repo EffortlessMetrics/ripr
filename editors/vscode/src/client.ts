@@ -110,7 +110,8 @@ export class RiprClientController {
   private status: RiprStatusState = {
     kind: 'stopped',
     summary: 'ripr server has not started.',
-    detail: 'Open a Rust/Cargo workspace or run ripr: Restart Server.'
+    detail: 'Open a workspace or run ripr: Restart Server.',
+    nextStep: 'Open a workspace folder, then run ripr: Restart Server.'
   };
   private workspaceRoot: string | undefined;
 
@@ -133,7 +134,8 @@ export class RiprClientController {
       this.updateStatus({
         kind: 'disabled',
         summary: 'ripr editor analysis is disabled by configuration.',
-        detail: 'Set ripr.enabled to true to start saved-workspace diagnostics.'
+        detail: 'Set ripr.enabled to true to start saved-workspace diagnostics.',
+        nextStep: 'Set ripr.enabled to true, then run ripr: Restart Server.'
       });
       this.output.appendLine('ripr editor analysis is disabled by configuration.');
       return;
@@ -143,24 +145,27 @@ export class RiprClientController {
     if (!this.workspaceRoot) {
       this.updateStatus({
         kind: 'noWorkspace',
-        summary: 'Open a Rust/Cargo workspace for ripr diagnostics.',
-        detail: 'The extension needs a workspace folder before it can start the language server.'
+        summary: 'Open a workspace for ripr diagnostics.',
+        detail: 'The extension needs a workspace folder before it can start the language server.',
+        nextStep: 'Open a workspace folder, then run ripr: Restart Server.'
       });
-      this.output.appendLine('ripr workspace was not detected; open a Rust/Cargo workspace.');
+      this.output.appendLine('ripr workspace was not detected; open a workspace folder.');
       return;
     }
 
     this.updateStatus({
       kind: 'resolvingServer',
       summary: 'Resolving ripr server.',
-      detail: `Workspace: ${this.workspaceRoot}`
+      detail: `Workspace: ${this.workspaceRoot}`,
+      nextStep: 'Wait for server resolution, or use ripr: Show Output if it stalls.'
     });
     const server = await this.runtime.resolveServer(this.context, config, this.output);
     if (!('command' in server)) {
       this.updateStatus({
         kind: 'serverUnavailable',
         summary: 'ripr server is not available.',
-        detail: server.detail
+        detail: server.detail,
+        nextStep: 'Set ripr.server.path, enable ripr.server.autoDownload, install with cargo install ripr, then retry.'
       });
       await this.showMissingServerMessage(server.message, server.detail);
       return;
@@ -169,7 +174,8 @@ export class RiprClientController {
     this.updateStatus({
       kind: 'starting',
       summary: 'Starting ripr language server.',
-      detail: `Server: ${server.source} (${server.detail})\nWorkspace: ${this.workspaceRoot}`
+      detail: `Server: ${server.source} (${server.detail})\nWorkspace: ${this.workspaceRoot}`,
+      nextStep: 'Wait for server startup, or use ripr: Show Output if it stalls.'
     });
 
     const serverOptions: ServerOptions = {
@@ -206,7 +212,8 @@ export class RiprClientController {
     this.updateStatus({
       kind: 'analysisQueued',
       summary: 'ripr saved-workspace analysis is queued.',
-      detail: `Server: ${server.source} (${server.detail})\nWorkspace: ${this.workspaceRoot}\nOpen or save a Rust or enabled preview-language file to refresh diagnostics.`
+      detail: `Server: ${server.source} (${server.detail})\nWorkspace: ${this.workspaceRoot}\nOpen or save a Rust or enabled preview-language file to refresh diagnostics.`,
+      nextStep: 'Open or save a Rust or enabled preview-language file, then wait for diagnostics.'
     });
     await this.refreshFirstUsefulActionStatus();
   }
@@ -231,7 +238,8 @@ export class RiprClientController {
     this.updateStatus({
       kind: 'stopped',
       summary: 'ripr server has stopped.',
-      detail: 'Run ripr: Restart Server to start analysis again.'
+      detail: 'Run ripr: Restart Server to start analysis again.',
+      nextStep: 'Run ripr: Restart Server.'
     });
   }
 
@@ -243,7 +251,8 @@ export class RiprClientController {
     this.updateStatus({
       kind: 'stale',
       summary: 'ripr analysis is stale until the file is saved.',
-      detail: `Unsaved changes: ${document.uri.fsPath}`
+      detail: `Unsaved changes: ${document.uri.fsPath}`,
+      nextStep: 'Save the file, then wait for ripr to refresh saved-workspace diagnostics.'
     });
   }
 
@@ -256,7 +265,8 @@ export class RiprClientController {
       this.updateStatus({
         kind: 'analysisQueued',
         summary: 'ripr saved-workspace analysis is queued after save.',
-        detail: `Saved changes: ${document.uri.fsPath}`
+        detail: `Saved changes: ${document.uri.fsPath}`,
+        nextStep: 'Wait for ripr to refresh diagnostics.'
       });
     }
   }
@@ -270,7 +280,8 @@ export class RiprClientController {
       this.updateStatus({
         kind: 'analysisQueued',
         summary: 'ripr saved-workspace analysis is queued after close.',
-        detail: `Closed unsaved ${document.languageId} buffer: ${document.uri.fsPath}`
+        detail: `Closed unsaved ${document.languageId} buffer: ${document.uri.fsPath}`,
+        nextStep: 'Wait for ripr to refresh diagnostics.'
       });
     }
   }
@@ -431,7 +442,8 @@ export class RiprClientController {
       this.updateStatus({
         kind: 'analysisQueued',
         summary: 'ripr saved-workspace analysis is queued.',
-        detail: message
+        detail: message,
+        nextStep: 'Wait for the current saved-workspace analysis refresh to finish.'
       });
       return;
     }
@@ -439,7 +451,8 @@ export class RiprClientController {
       this.updateStatus({
         kind: 'analysisRunning',
         summary: 'ripr saved-workspace analysis is running.',
-        detail: message
+        detail: message,
+        nextStep: 'Wait for the current saved-workspace analysis refresh to finish.'
       });
       return;
     }
@@ -452,7 +465,8 @@ export class RiprClientController {
       this.updateStatus({
         kind: 'analysisFailed',
         summary: 'ripr analysis refresh failed.',
-        detail: message
+        detail: message,
+        nextStep: 'Open ripr: Show Output, fix the reported issue, then run ripr: Restart Server.'
       });
     }
   }
@@ -482,7 +496,7 @@ export class RiprClientController {
       return;
     }
     this.statusBar.text = statusText(this.status.kind, this.firstUsefulAction);
-    this.statusBar.tooltip = statusTooltip(this.status, this.firstUsefulAction);
+    this.statusBar.tooltip = statusTooltip(this.status, this.firstUsefulAction, this.statusContext());
     this.statusBar.command = 'ripr.showStatus';
     this.statusBar.show();
   }
@@ -490,7 +504,7 @@ export class RiprClientController {
   private async showStatusAsync(): Promise<void> {
     await this.refreshFirstUsefulActionStatus();
     this.output.appendLine(`ripr status: ${statusSummary(this.status, this.firstUsefulAction)}`);
-    const detail = statusTooltip(this.status, this.firstUsefulAction);
+    const detail = statusTooltip(this.status, this.firstUsefulAction, this.statusContext());
     if (detail) {
       this.output.appendLine(detail);
     }
@@ -546,6 +560,14 @@ export class RiprClientController {
       await this.restart();
     }
   }
+
+  private statusContext(): RiprStatusContext {
+    return {
+      workspaceRoot: this.workspaceRoot,
+      server: this.server,
+      documentLanguages: RIPR_DOCUMENT_SELECTORS.map((selector) => selector.language)
+    };
+  }
 }
 
 type RiprStatusKind =
@@ -568,6 +590,14 @@ interface RiprStatusState {
   kind: RiprStatusKind;
   summary: string;
   detail?: string;
+  enabledLanguages?: string[];
+  nextStep?: string;
+}
+
+interface RiprStatusContext {
+  workspaceRoot?: string;
+  server?: ResolvedServer;
+  documentLanguages: string[];
 }
 
 interface FirstUsefulActionStatus {
@@ -646,10 +676,20 @@ function statusSummary(status: RiprStatusState, firstAction?: FirstUsefulActionS
   return `${status.summary} First useful action: ${firstAction.title}`;
 }
 
-function statusTooltip(status: RiprStatusState, firstAction?: FirstUsefulActionStatus): string {
+function statusTooltip(
+  status: RiprStatusState,
+  firstAction?: FirstUsefulActionStatus,
+  context?: RiprStatusContext
+): string {
   const lines = [status.summary];
   if (status.detail) {
     lines.push(status.detail);
+  }
+  if (context) {
+    lines.push('', ...statusContextLines(status, context));
+  }
+  if (status.nextStep) {
+    lines.push(`Next safe action: ${status.nextStep}`);
   }
   if (firstAction && canProjectFirstUsefulAction(status.kind)) {
     lines.push('', ...firstUsefulActionLines(firstAction));
@@ -657,11 +697,28 @@ function statusTooltip(status: RiprStatusState, firstAction?: FirstUsefulActionS
     lines.push(
       '',
       'First useful action report: available, but editor evidence is stale.',
-      'Save or refresh the Rust workspace before acting on this report.',
+      'Save or refresh the workspace before acting on this report.',
       `Report: ${firstAction.reportPath}`
     );
   }
   return lines.join('\n');
+}
+
+function statusContextLines(status: RiprStatusState, context: RiprStatusContext): string[] {
+  const lines = [`Workspace: ${context.workspaceRoot ?? 'not open'}`];
+  if (context.server) {
+    lines.push(`Server: ${context.server.source} (${context.server.detail})`);
+    lines.push(`Server command: ${context.server.command}`);
+  } else {
+    lines.push('Server: not resolved');
+  }
+  if (status.enabledLanguages) {
+    lines.push(`Enabled languages: ${status.enabledLanguages.length > 0 ? status.enabledLanguages.join(', ') : 'none'}`);
+  } else {
+    lines.push('Enabled languages: not reported yet; read from ripr.toml by the server refresh.');
+  }
+  lines.push(`Editor selectors: ${context.documentLanguages.join(', ')}`);
+  return lines;
 }
 
 function firstUsefulActionLines(firstAction: FirstUsefulActionStatus): string[] {
@@ -724,15 +781,18 @@ function statusFromRefreshCompletedMessage(message: string): RiprStatusState {
     return {
       kind: 'noEnabledLanguages',
       summary: 'ripr analysis completed with no enabled languages.',
+      enabledLanguages: [],
+      nextStep: 'Edit ripr.toml [languages] enabled to include rust or an available preview language, then run ripr: Restart Server.',
       detail: [
         message,
         'No saved-workspace diagnostics are published because ripr.toml has [languages] enabled = [].',
-        'Enable rust, or an available preview language when that routing exists, to restore editor diagnostics.'
+        'Enable rust or an available preview language to restore editor diagnostics.'
       ].join('\n')
     };
   }
   const seamDiagnostics = numberField(message, 'seam_diagnostics');
   if (previewFindings > 0) {
+    const enabledLanguageNames = stringListField(message, 'enabled_language_names');
     const details = [
       message,
       `${previewFindings} preview finding${previewFindings === 1 ? '' : 's'} are syntax-first and advisory.`
@@ -745,19 +805,26 @@ function statusFromRefreshCompletedMessage(message: string): RiprStatusState {
     return {
       kind: 'analysisReady',
       summary: `ripr analysis completed with ${diagnostics ?? 0} diagnostics (${previewFindings} preview).`,
+      enabledLanguages: enabledLanguageNames,
+      nextStep: 'Read preview static limits before acting, then use only bounded ripr code actions.',
       detail: details.join('\n')
     };
   }
+  const enabledLanguageNames = stringListField(message, 'enabled_language_names');
   if (seamDiagnostics !== undefined && seamDiagnostics === 0) {
     return {
       kind: 'noActionableSeams',
       summary: 'ripr analysis completed with no actionable seam diagnostics.',
+      enabledLanguages: enabledLanguageNames,
+      nextStep: 'If this is unexpected, confirm saved changes and enabled languages, then run ripr: Show Output.',
       detail: message
     };
   }
   return {
     kind: 'analysisReady',
     summary: `ripr analysis completed with ${diagnostics ?? 0} diagnostics.`,
+    enabledLanguages: enabledLanguageNames,
+    nextStep: 'Inspect diagnostics, then use bounded ripr hover and code actions for one focused test.',
     detail: message
   };
 }
@@ -765,6 +832,17 @@ function statusFromRefreshCompletedMessage(message: string): RiprStatusState {
 function numberField(message: string, field: string): number | undefined {
   const match = message.match(new RegExp(`${field}=(\\d+)`));
   return match ? Number.parseInt(match[1], 10) : undefined;
+}
+
+function stringListField(message: string, field: string): string[] | undefined {
+  const match = message.match(new RegExp(`${field}=([^,\\s]*)`));
+  if (!match) {
+    return undefined;
+  }
+  if (match[1].trim().length === 0) {
+    return [];
+  }
+  return match[1].split('|').filter((entry) => entry.length > 0);
 }
 
 function uriFromTarget(target: RiprContextTarget | undefined): vscode.Uri | undefined {
