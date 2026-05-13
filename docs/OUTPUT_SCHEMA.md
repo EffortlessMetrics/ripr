@@ -3848,6 +3848,131 @@ current snapshot counters, input artifact status, an optional manual append
 record, warnings, unknowns, and limits. It must not append history
 automatically, make a gate decision, or promote preview-language evidence.
 
+## Policy Promotion Packet
+
+RIPR-SPEC-0042 defines the policy promotion packet. `ripr policy promote`
+reads a current `policy-operations.json` report plus optional
+`policy-history.json` and writes a read-only manual-review packet for one target
+mode.
+
+Command:
+
+```text
+ripr policy promote \
+  --to baseline-check \
+  --operations target/ripr/reports/policy-operations.json \
+  --history target/ripr/reports/policy-history.json \
+  --out target/ripr/reports/policy-promotion-baseline-check.json \
+  --out-md target/ripr/reports/policy-promotion-baseline-check.md
+```
+
+The report writes:
+
+```text
+target/ripr/reports/policy-promotion-visible-only.json
+target/ripr/reports/policy-promotion-visible-only.md
+target/ripr/reports/policy-promotion-acknowledgeable.json
+target/ripr/reports/policy-promotion-acknowledgeable.md
+target/ripr/reports/policy-promotion-baseline-check.json
+target/ripr/reports/policy-promotion-baseline-check.md
+target/ripr/reports/policy-promotion-calibrated-gate.json
+target/ripr/reports/policy-promotion-calibrated-gate.md
+```
+
+This report is advisory policy review evidence. It does not mutate `ripr.toml`,
+baselines, suppressions, workflows, branch protection, generated CI defaults,
+source files, history ledgers, or preview-language eligibility. It does not
+execute gates, post comments, run analysis, generate tests, call providers, run
+mutation testing, or make CI blocking by default.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "policy_promotion_packet",
+  "root": ".",
+  "generated_at": "unix_ms:1778277000000",
+  "target_mode": "baseline-check",
+  "allowed_now": false,
+  "why_or_why_not": "Baseline contains stale entries and suppression health has warnings.",
+  "required_repairs": [
+    "Run shrink-only baseline review and remove resolved entries.",
+    "Repair suppression-health warnings before tightening policy."
+  ],
+  "required_receipts": [
+    "policy-operations.json showing baseline-check in safe_to_promote_to",
+    "policy-history.json showing baseline debt is not being normalized",
+    "baseline-debt-delta.json showing reviewed shrink-only movement",
+    "suppression-health.json showing durable exception metadata is healthy"
+  ],
+  "rollback_path": [
+    "Revert the manual gate-mode config change.",
+    "Return to visible-only or acknowledgeable policy mode.",
+    "Keep policy operations and history artifacts for audit."
+  ],
+  "example_config_change": {
+    "file": "ripr.toml",
+    "change": "Set the reviewed policy gate mode to baseline-check.",
+    "manual_only": true
+  },
+  "input_artifacts": [
+    {
+      "kind": "policy_operations",
+      "path": "target/ripr/reports/policy-operations.json",
+      "status": "read"
+    },
+    {
+      "kind": "policy_history",
+      "path": "target/ripr/reports/policy-history.json",
+      "status": "read"
+    }
+  ],
+  "warnings": [],
+  "unknowns": [],
+  "non_goals": [
+    "No automatic config mutation.",
+    "No automatic baseline adoption.",
+    "No suppression creation.",
+    "No default CI blocking.",
+    "No preview-language promotion."
+  ],
+  "limits_note": "Read-only advisory promotion packet. It supports manual review only and never mutates policy configuration or gate authority."
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `tool` - always `"ripr"`.
+- `kind` - always `"policy_promotion_packet"`.
+- `target_mode` - one of `visible-only`, `acknowledgeable`,
+  `baseline-check`, or `calibrated-gate`.
+- `allowed_now` - true only when policy operations lists the target in
+  `safe_to_promote_to`.
+- `why_or_why_not` - explanation from the operations safe/not-safe entry and
+  blockers.
+- `required_repairs[]` - blocker repair actions required before manual
+  promotion review.
+- `required_receipts[]` - artifacts reviewers should inspect before accepting
+  a manual config change.
+- `rollback_path[]` - explicit steps to return to a less strict posture.
+- `example_config_change` - manual review guidance only. The command must not
+  write this change.
+- `input_artifacts[]` - per-input status.
+- `warnings[]` - malformed supplied inputs, unsupported history shape, or
+  target-mode limitations.
+- `unknowns[]` - missing optional history or unavailable supporting context.
+- `non_goals[]` - hard boundaries repeated in the packet.
+- `limits_note` - read-only/manual-review/no-mutation boundary.
+
+Markdown should fit in generated CI summaries and report packets. It should
+show the target mode, allowed status, why/why not explanation, required
+repairs, required receipts, rollback path, manual-only config example, input
+artifact status, warnings, unknowns, non-goals, and limits. It must not mutate
+policy configuration or promote preview-language evidence.
+
 ## Suppression Health Report
 
 `ripr policy suppression-health` summarizes the durable suppression manifest

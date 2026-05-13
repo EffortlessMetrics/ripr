@@ -135,9 +135,9 @@ commands = [
 
 [[work_item]]
 id = "spec/policy-promotion-packets"
-status = "planned"
+status = "done"
 branch = "spec-policy-promotion-packets"
-acceptance = "Define read-only promotion packets for visible-only, acknowledgeable, baseline-check, and calibrated-gate manual-review targets without config, baseline, suppression, workflow, branch-protection, CI-default, history, or preview-eligibility mutation."
+acceptance = "RIPR-SPEC-0042 defines read-only promotion packets for visible-only, acknowledgeable, baseline-check, and calibrated-gate manual-review targets without config, baseline, suppression, workflow, branch-protection, CI-default, history, or preview-eligibility mutation."
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-output-contracts",
