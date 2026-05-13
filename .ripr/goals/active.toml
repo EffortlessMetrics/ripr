@@ -247,11 +247,11 @@ commands = [
 
 [[work_item]]
 id = "ci/language-aware-grouping"
-status = "ready"
+status = "done"
 branch = "ci-language-aware-grouping"
 stackable = false
 blocked_by = []
-acceptance = "Update generated GitHub CI summaries to group advisory output by language only when [languages] declares more than Rust, keeping Rust-default behavior identical and gate authority unchanged"
+acceptance = "Updated generated GitHub CI summaries to group TypeScript/Python advisory output by language only when [languages] declares preview adapters through the public ripr doctor surface. Rust-only generated summary output remains unchanged at runtime, preview groups are visibly advisory, static-limit kinds remain visible, and gate authority remains with ripr gate evaluate when explicitly configured."
 commands = [
   "cargo xtask check-workflows",
   "cargo xtask check-output-contracts",
@@ -263,13 +263,21 @@ commands = [
 
 [[work_item]]
 id = "docs/language-adapter-preview-workflow"
-status = "blocked"
+status = "ready"
 branch = "docs-language-adapter-preview-workflow"
 stackable = false
-blocked_by = [
-  "ci/language-aware-grouping",
-]
+blocked_by = []
 acceptance = "Document enabling preview adapters, reading mixed-language reports, interpreting preview labels, the static-limit boundary, and rollback"
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-traceability",
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo xtask check-pr",
+]
 
 [[work_item]]
 id = "dogfood/language-adapter-preview-receipts"
