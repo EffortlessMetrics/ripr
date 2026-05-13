@@ -74,6 +74,9 @@ The `comments.json` file is validated by
 `schemas/ripr/review-comments.schema.json`. It separates recommendations by
 placement and policy state:
 
+The review-comments schema names producer caps `rendering_limits` so they are
+not confused with PR evidence `advisory_limits`.
+
 | Collection | Contract |
 | --- | --- |
 | `comments[]` | Changed-line guidance that may become non-blocking annotations. |

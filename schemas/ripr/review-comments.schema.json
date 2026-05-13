@@ -13,7 +13,7 @@
     "base",
     "head",
     "mode",
-    "limits",
+    "rendering_limits",
     "summary",
     "comments",
     "summary_only",
@@ -61,7 +61,7 @@
         "ready"
       ]
     },
-    "limits": {
+    "rendering_limits": {
       "type": "object",
       "additionalProperties": false,
       "required": [
