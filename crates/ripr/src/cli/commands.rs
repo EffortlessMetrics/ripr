@@ -1520,6 +1520,121 @@ jobs:
           fi
           ripr "${policy_args[@]}"
 
+      - name: Render RIPR policy operations
+        if: always() && hashFiles('target/ripr/reports/policy-readiness.json') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          operations_args=(
+            policy operations
+            --root .
+            --policy-readiness target/ripr/reports/policy-readiness.json
+            --out target/ripr/reports/policy-operations.json
+            --out-md target/ripr/reports/policy-operations.md
+          )
+          if [ -f target/ripr/reports/waiver-aging.json ]; then
+            operations_args+=(--waiver-aging target/ripr/reports/waiver-aging.json)
+          fi
+          if [ -f target/ripr/reports/suppression-health.json ]; then
+            operations_args+=(--suppression-health target/ripr/reports/suppression-health.json)
+          fi
+          if [ -f target/ripr/reports/baseline-debt-delta.json ]; then
+            operations_args+=(--baseline-delta target/ripr/reports/baseline-debt-delta.json)
+          fi
+          if [ -f target/ripr/reports/gate-decision.json ]; then
+            operations_args+=(--gate-decision target/ripr/reports/gate-decision.json)
+          fi
+          if [ -f target/ripr/reports/recommendation-calibration.json ]; then
+            operations_args+=(--recommendation-calibration target/ripr/reports/recommendation-calibration.json)
+          fi
+          if [ -f target/ripr/reports/mutation-calibration.json ]; then
+            operations_args+=(--mutation-calibration target/ripr/reports/mutation-calibration.json)
+          fi
+          if [ -f target/ripr/reports/repo-exposure.json ]; then
+            operations_args+=(--preview-boundary target/ripr/reports/repo-exposure.json)
+          fi
+          ripr "${operations_args[@]}"
+
+      - name: Render RIPR policy history
+        if: always() && hashFiles('target/ripr/reports/policy-operations.json') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          history_args=(
+            policy history
+            --root .
+            --current target/ripr/reports/policy-operations.json
+            --commit "$GITHUB_SHA"
+            --out target/ripr/reports/policy-history.json
+            --out-md target/ripr/reports/policy-history.md
+          )
+          if [ -f .ripr/policy-history.jsonl ]; then
+            history_args+=(--history .ripr/policy-history.jsonl)
+          fi
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            history_args+=(--pr-number "${{ github.event.number }}")
+          fi
+          ripr "${history_args[@]}"
+
+      - name: Render RIPR policy promotion packets
+        if: always() && hashFiles('target/ripr/reports/policy-operations.json') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          for target_mode in visible-only acknowledgeable baseline-check calibrated-gate; do
+            promotion_args=(
+              policy promote
+              --to "$target_mode"
+              --operations target/ripr/reports/policy-operations.json
+              --out "target/ripr/reports/policy-promotion-${target_mode}.json"
+              --out-md "target/ripr/reports/policy-promotion-${target_mode}.md"
+            )
+            if [ -f target/ripr/reports/policy-history.json ]; then
+              promotion_args+=(--history target/ripr/reports/policy-history.json)
+            fi
+            ripr "${promotion_args[@]}"
+          done
+
+      - name: Render RIPR preview promotion packets
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          configured_languages="$(
+            ripr doctor --root . 2>/dev/null \
+              | sed -n 's/^- Enabled languages: //p' \
+              | tail -n 1 \
+              || true
+          )"
+          preview_languages="$(
+            printf '%s\n' "$configured_languages" \
+              | tr ',' '\n' \
+              | sed 's/^ *//; s/ *$//' \
+              | sed -n '/^typescript$/p; /^python$/p' \
+              | sort -u \
+              | tr '\n' ' ' \
+              | sed 's/ $//' \
+              || true
+          )"
+          if [ -z "$preview_languages" ]; then
+            echo 'No TypeScript or Python preview languages are configured; preview promotion packets were not generated.'
+            exit 0
+          fi
+          for language in $preview_languages; do
+            class_label=boundary_gap
+            preview_args=(
+              policy preview-promote
+              --language "$language"
+              --class "$class_label"
+              --out "target/ripr/reports/preview-promotion-${language}-${class_label//_/-}.json"
+              --out-md "target/ripr/reports/preview-promotion-${language}-${class_label//_/-}.md"
+            )
+            if [ -f target/ripr/reports/preview-promotion-evidence.json ]; then
+              preview_args+=(--evidence target/ripr/reports/preview-promotion-evidence.json)
+            fi
+            ripr "${preview_args[@]}"
+          done
+
       - name: Render RIPR test-oracle assistant proof
         if: always() && hashFiles('target/ripr/review/comments.json') != '' && hashFiles('target/ripr/workflow/agent-brief.json') != '' && hashFiles('target/ripr/workflow/before.repo-exposure.json') != '' && hashFiles('target/ripr/workflow/after.repo-exposure.json') != '' && hashFiles('target/ripr/reports/agent-receipt.json') != '' && hashFiles('target/ripr/reports/pr-evidence-ledger.json') != ''
         continue-on-error: true
@@ -1692,6 +1807,14 @@ jobs:
             target/ripr/reports/waiver-aging.md \
             target/ripr/reports/suppression-health.md \
             target/ripr/reports/policy-readiness.md \
+            target/ripr/reports/policy-operations.md \
+            target/ripr/reports/policy-history.md \
+            target/ripr/reports/policy-promotion-visible-only.md \
+            target/ripr/reports/policy-promotion-acknowledgeable.md \
+            target/ripr/reports/policy-promotion-baseline-check.md \
+            target/ripr/reports/policy-promotion-calibrated-gate.md \
+            target/ripr/reports/preview-promotion-typescript-boundary-gap.md \
+            target/ripr/reports/preview-promotion-python-boundary-gap.md \
             target/ripr/reports/baseline-debt-delta.md \
             target/ripr/reports/ripr-zero-status.md \
             target/ripr/reports/gate-decision.md \
@@ -2248,6 +2371,156 @@ jobs:
             else
               echo 'Policy readiness was not generated. It is advisory and requires existing policy artifacts to be useful.'
             fi
+            echo
+            echo '### Policy operations'
+            if [ -f target/ripr/reports/policy-operations.json ]; then
+              operations_json=target/ripr/reports/policy-operations.json
+              operations_ceiling="$(jq -r '.current_policy_ceiling // "unknown"' "$operations_json" 2>/dev/null || echo unknown)"
+              operations_next="$(jq -r '.recommended_next_action // "not_available"' "$operations_json" 2>/dev/null || echo unknown)"
+              operations_safe="$(jq -r '(.safe_to_promote_to // [] | length)' "$operations_json" 2>/dev/null || echo 0)"
+              operations_blocked="$(jq -r '(.not_safe_to_promote_to // [] | length)' "$operations_json" 2>/dev/null || echo 0)"
+              operations_blockers="$(jq -r '(.promotion_blockers // [] | length)' "$operations_json" 2>/dev/null || echo 0)"
+              operations_top_blocker="$(jq -r '([.promotion_blockers[]?.repair_action] | first) // "none"' "$operations_json" 2>/dev/null || echo unknown)"
+              operations_warnings="$(jq -r '(.warnings // [] | length)' "$operations_json" 2>/dev/null || echo 0)"
+              operations_unknowns="$(jq -r '(.unknowns // [] | length)' "$operations_json" 2>/dev/null || echo 0)"
+              operations_ceiling="$(markdown_inline "$operations_ceiling")"
+              operations_next="$(markdown_inline "$operations_next")"
+              operations_safe="$(markdown_inline "$operations_safe")"
+              operations_blocked="$(markdown_inline "$operations_blocked")"
+              operations_blockers="$(markdown_inline "$operations_blockers")"
+              operations_top_blocker="$(markdown_inline "$operations_top_blocker")"
+              operations_warnings="$(markdown_inline "$operations_warnings")"
+              operations_unknowns="$(markdown_inline "$operations_unknowns")"
+              echo '#### Policy operations at a glance'
+              echo "- Current ceiling: \`$operations_ceiling\`"
+              echo "- Next safe action: \`$operations_next\`"
+              echo "- Promotion modes: allowed=\`$operations_safe\`, blocked=\`$operations_blocked\`"
+              echo "- Blockers: total=\`$operations_blockers\`, first=\`$operations_top_blocker\`"
+              echo "- Warnings: \`$operations_warnings\`; unknowns: \`$operations_unknowns\`"
+              echo "- Policy operations artifacts: \`target/ripr/reports/policy-operations.json\`, \`target/ripr/reports/policy-operations.md\`"
+              echo "- Boundary: advisory operations packet only; promotion requires manual review and separate configuration changes."
+              echo
+            fi
+            if [ -f target/ripr/reports/policy-operations.md ]; then
+              cat target/ripr/reports/policy-operations.md
+            else
+              echo 'Policy operations was not generated. It requires policy-readiness and keeps promotion advisory until packet review.'
+            fi
+            echo
+            echo '### Policy history'
+            if [ -f target/ripr/reports/policy-history.json ]; then
+              history_json=target/ripr/reports/policy-history.json
+              history_ceiling="$(jq -r '.current.current_policy_ceiling // "unknown"' "$history_json" 2>/dev/null || echo unknown)"
+              history_entries="$(jq -r '.history_summary.entries // 0' "$history_json" 2>/dev/null || echo 0)"
+              history_readiness="$(jq -r '.trend.ceiling.direction // "unknown"' "$history_json" 2>/dev/null || echo unknown)"
+              history_waiver="$(jq -r '.trend.waiver_count.direction // "unknown"' "$history_json" 2>/dev/null || echo unknown)"
+              history_suppression="$(jq -r '.trend.stale_suppression_count.direction // "unknown"' "$history_json" 2>/dev/null || echo unknown)"
+              history_baseline_present="$(jq -r '.trend.baseline_still_present.direction // "unknown"' "$history_json" 2>/dev/null || echo unknown)"
+              history_baseline_resolved="$(jq -r '.trend.baseline_resolved.direction // "unknown"' "$history_json" 2>/dev/null || echo unknown)"
+              history_preview="$(jq -r '.trend.preview_boundary_state.direction // "unknown"' "$history_json" 2>/dev/null || echo unknown)"
+              history_warnings="$(jq -r '(.warnings // [] | length)' "$history_json" 2>/dev/null || echo 0)"
+              history_unknowns="$(jq -r '(.unknowns // [] | length)' "$history_json" 2>/dev/null || echo 0)"
+              history_ceiling="$(markdown_inline "$history_ceiling")"
+              history_entries="$(markdown_inline "$history_entries")"
+              history_readiness="$(markdown_inline "$history_readiness")"
+              history_waiver="$(markdown_inline "$history_waiver")"
+              history_suppression="$(markdown_inline "$history_suppression")"
+              history_baseline_present="$(markdown_inline "$history_baseline_present")"
+              history_baseline_resolved="$(markdown_inline "$history_baseline_resolved")"
+              history_preview="$(markdown_inline "$history_preview")"
+              history_warnings="$(markdown_inline "$history_warnings")"
+              history_unknowns="$(markdown_inline "$history_unknowns")"
+              echo '#### Policy history at a glance'
+              echo "- Current ceiling: \`$history_ceiling\`; history entries: \`$history_entries\`"
+              echo "- Trends: readiness=\`$history_readiness\`, waiver_pressure=\`$history_waiver\`, suppression_health=\`$history_suppression\`, baseline_still_present=\`$history_baseline_present\`, baseline_resolved=\`$history_baseline_resolved\`, preview_boundary=\`$history_preview\`"
+              echo "- Warnings: \`$history_warnings\`; unknowns: \`$history_unknowns\`"
+              echo "- Policy history artifacts: \`target/ripr/reports/policy-history.json\`, \`target/ripr/reports/policy-history.md\`"
+              echo "- Boundary: history is read-only and never appends to \`.ripr/policy-history.jsonl\` automatically."
+              echo
+            fi
+            if [ -f target/ripr/reports/policy-history.md ]; then
+              cat target/ripr/reports/policy-history.md
+            else
+              echo 'Policy history was not generated. It requires policy-operations and never writes history automatically.'
+            fi
+            echo
+            echo '### Policy promotion packets'
+            promotion_found=false
+            for promotion_json in \
+              target/ripr/reports/policy-promotion-visible-only.json \
+              target/ripr/reports/policy-promotion-acknowledgeable.json \
+              target/ripr/reports/policy-promotion-baseline-check.json \
+              target/ripr/reports/policy-promotion-calibrated-gate.json; do
+              if [ -f "$promotion_json" ]; then
+                promotion_found=true
+                promotion_target="$(jq -r '.target_mode // "unknown"' "$promotion_json" 2>/dev/null || echo unknown)"
+                promotion_allowed="$(jq -r '.allowed_now // false' "$promotion_json" 2>/dev/null || echo false)"
+                promotion_repairs="$(jq -r '(.required_repairs // [] | length)' "$promotion_json" 2>/dev/null || echo 0)"
+                promotion_receipts="$(jq -r '(.required_receipts // [] | length)' "$promotion_json" 2>/dev/null || echo 0)"
+                promotion_warnings="$(jq -r '(.warnings // [] | length)' "$promotion_json" 2>/dev/null || echo 0)"
+                promotion_unknowns="$(jq -r '(.unknowns // [] | length)' "$promotion_json" 2>/dev/null || echo 0)"
+                promotion_reason="$(jq -r '.why_or_why_not // "not_available"' "$promotion_json" 2>/dev/null || echo unknown)"
+                promotion_target="$(markdown_inline "$promotion_target")"
+                promotion_allowed="$(markdown_inline "$promotion_allowed")"
+                promotion_repairs="$(markdown_inline "$promotion_repairs")"
+                promotion_receipts="$(markdown_inline "$promotion_receipts")"
+                promotion_warnings="$(markdown_inline "$promotion_warnings")"
+                promotion_unknowns="$(markdown_inline "$promotion_unknowns")"
+                promotion_reason="$(markdown_inline "$promotion_reason")"
+                echo "- \`$promotion_target\`: allowed_now=\`$promotion_allowed\`, repairs=\`$promotion_repairs\`, receipts=\`$promotion_receipts\`, warnings=\`$promotion_warnings\`, unknowns=\`$promotion_unknowns\`, why=\`$promotion_reason\`"
+              fi
+            done
+            if [ "$promotion_found" = false ]; then
+              echo 'Policy promotion packets were not generated. They require policy-operations and remain read-only manual review packets.'
+            else
+              echo "- Promotion packet artifacts: \`target/ripr/reports/policy-promotion-*.json\`, \`target/ripr/reports/policy-promotion-*.md\`"
+              echo "- Boundary: packets do not edit \`ripr.toml\`, baselines, suppressions, workflows, branch protection, CI defaults, or preview eligibility."
+            fi
+            for promotion_md in \
+              target/ripr/reports/policy-promotion-visible-only.md \
+              target/ripr/reports/policy-promotion-acknowledgeable.md \
+              target/ripr/reports/policy-promotion-baseline-check.md \
+              target/ripr/reports/policy-promotion-calibrated-gate.md; do
+              if [ -f "$promotion_md" ]; then
+                echo
+                cat "$promotion_md"
+              fi
+            done
+            echo
+            echo '### Preview promotion packets'
+            preview_found=false
+            for preview_json in target/ripr/reports/preview-promotion-*-*.json; do
+              if [ -f "$preview_json" ]; then
+                preview_found=true
+                preview_language="$(jq -r '.language // "unknown"' "$preview_json" 2>/dev/null || echo unknown)"
+                preview_class="$(jq -r '.candidate_class // "unknown"' "$preview_json" 2>/dev/null || echo unknown)"
+                preview_allowed="$(jq -r '.allowed_now // false' "$preview_json" 2>/dev/null || echo false)"
+                preview_missing="$(jq -r '(.missing_evidence // [] | length)' "$preview_json" 2>/dev/null || echo 0)"
+                preview_supplied="$(jq -r '(.supplied_evidence // [] | length)' "$preview_json" 2>/dev/null || echo 0)"
+                preview_warnings="$(jq -r '(.warnings // [] | length)' "$preview_json" 2>/dev/null || echo 0)"
+                preview_unknowns="$(jq -r '(.unknowns // [] | length)' "$preview_json" 2>/dev/null || echo 0)"
+                preview_language="$(markdown_inline "$preview_language")"
+                preview_class="$(markdown_inline "$preview_class")"
+                preview_allowed="$(markdown_inline "$preview_allowed")"
+                preview_missing="$(markdown_inline "$preview_missing")"
+                preview_supplied="$(markdown_inline "$preview_supplied")"
+                preview_warnings="$(markdown_inline "$preview_warnings")"
+                preview_unknowns="$(markdown_inline "$preview_unknowns")"
+                echo "- \`$preview_language\`/\`$preview_class\`: allowed_now=\`$preview_allowed\`, supplied_evidence=\`$preview_supplied\`, missing_evidence=\`$preview_missing\`, warnings=\`$preview_warnings\`, unknowns=\`$preview_unknowns\`"
+              fi
+            done
+            if [ "$preview_found" = false ]; then
+              echo 'Preview promotion packets were not generated. They are only surfaced when TypeScript or Python preview adapters are configured.'
+            else
+              echo "- Preview promotion artifacts: \`target/ripr/reports/preview-promotion-*.json\`, \`target/ripr/reports/preview-promotion-*.md\`"
+              echo "- Boundary: preview evidence remains visible and non-gating unless a later explicit promotion policy is reviewed."
+            fi
+            for preview_md in target/ripr/reports/preview-promotion-*-*.md; do
+              if [ -f "$preview_md" ]; then
+                echo
+                cat "$preview_md"
+              fi
+            done
             echo
             echo '### Waiver aging'
             if [ -f target/ripr/reports/waiver-aging.json ]; then
@@ -6878,6 +7151,10 @@ mod tests {
                 "policy waiver-aging",
                 "policy suppression-health",
                 "policy readiness",
+                "policy operations",
+                "policy history",
+                "policy promote",
+                "policy preview-promote",
                 "assistant-loop proof",
                 "assistant-loop health",
                 "first-action",
@@ -6923,6 +7200,22 @@ mod tests {
                 "target/ripr/reports/suppression-health.md",
                 "target/ripr/reports/policy-readiness.json",
                 "target/ripr/reports/policy-readiness.md",
+                "target/ripr/reports/policy-operations.json",
+                "target/ripr/reports/policy-operations.md",
+                "target/ripr/reports/policy-history.json",
+                "target/ripr/reports/policy-history.md",
+                "target/ripr/reports/policy-promotion-visible-only.json",
+                "target/ripr/reports/policy-promotion-visible-only.md",
+                "target/ripr/reports/policy-promotion-acknowledgeable.json",
+                "target/ripr/reports/policy-promotion-acknowledgeable.md",
+                "target/ripr/reports/policy-promotion-baseline-check.json",
+                "target/ripr/reports/policy-promotion-baseline-check.md",
+                "target/ripr/reports/policy-promotion-calibrated-gate.json",
+                "target/ripr/reports/policy-promotion-calibrated-gate.md",
+                "target/ripr/reports/preview-promotion-${language}-${class_label//_/-}.json",
+                "target/ripr/reports/preview-promotion-${language}-${class_label//_/-}.md",
+                "target/ripr/reports/preview-promotion-typescript-boundary-gap.md",
+                "target/ripr/reports/preview-promotion-python-boundary-gap.md",
                 "target/ripr/reports/test-oracle-assistant-proof.json",
                 "target/ripr/reports/test-oracle-assistant-proof.md",
                 "target/ripr/reports/assistant-loop-health.json",
@@ -6962,6 +7255,12 @@ mod tests {
                 "#### PR movement at a glance",
                 "### Policy readiness",
                 "#### Policy readiness at a glance",
+                "### Policy operations",
+                "#### Policy operations at a glance",
+                "### Policy history",
+                "#### Policy history at a glance",
+                "### Policy promotion packets",
+                "### Preview promotion packets",
                 "### Waiver aging",
                 "#### Waiver aging at a glance",
                 "### Suppression health",
@@ -6989,6 +7288,10 @@ mod tests {
                 "Render RIPR waiver aging",
                 "Render RIPR suppression health",
                 "Render RIPR policy readiness",
+                "Render RIPR policy operations",
+                "Render RIPR policy history",
+                "Render RIPR policy promotion packets",
+                "Render RIPR preview promotion packets",
                 "Render RIPR test-oracle assistant proof",
                 "Render RIPR assistant loop health",
                 "Render RIPR first useful action",
@@ -9817,6 +10120,30 @@ language = "rust"
         assert!(workflow.contains("target/ripr/reports/suppression-health.md"));
         assert!(workflow.contains("target/ripr/reports/policy-readiness.json"));
         assert!(workflow.contains("target/ripr/reports/policy-readiness.md"));
+        assert!(workflow.contains("target/ripr/reports/policy-operations.json"));
+        assert!(workflow.contains("target/ripr/reports/policy-operations.md"));
+        assert!(workflow.contains("target/ripr/reports/policy-history.json"));
+        assert!(workflow.contains("target/ripr/reports/policy-history.md"));
+        assert!(workflow.contains("target/ripr/reports/policy-promotion-visible-only.json"));
+        assert!(workflow.contains("target/ripr/reports/policy-promotion-visible-only.md"));
+        assert!(workflow.contains("target/ripr/reports/policy-promotion-acknowledgeable.json"));
+        assert!(workflow.contains("target/ripr/reports/policy-promotion-acknowledgeable.md"));
+        assert!(workflow.contains("target/ripr/reports/policy-promotion-baseline-check.json"));
+        assert!(workflow.contains("target/ripr/reports/policy-promotion-baseline-check.md"));
+        assert!(workflow.contains("target/ripr/reports/policy-promotion-calibrated-gate.json"));
+        assert!(workflow.contains("target/ripr/reports/policy-promotion-calibrated-gate.md"));
+        assert!(workflow.contains(
+            "target/ripr/reports/preview-promotion-${language}-${class_label//_/-}.json"
+        ));
+        assert!(
+            workflow.contains(
+                "target/ripr/reports/preview-promotion-${language}-${class_label//_/-}.md"
+            )
+        );
+        assert!(
+            workflow.contains("target/ripr/reports/preview-promotion-typescript-boundary-gap.md")
+        );
+        assert!(workflow.contains("target/ripr/reports/preview-promotion-python-boundary-gap.md"));
         assert!(workflow.contains("target/ripr/reports/test-oracle-assistant-proof.json"));
         assert!(workflow.contains("target/ripr/reports/test-oracle-assistant-proof.md"));
         assert!(workflow.contains("target/ripr/reports/assistant-loop-health.json"));
@@ -9844,6 +10171,10 @@ language = "rust"
         assert!(workflow.contains("name: Render RIPR waiver aging"));
         assert!(workflow.contains("name: Render RIPR suppression health"));
         assert!(workflow.contains("name: Render RIPR policy readiness"));
+        assert!(workflow.contains("name: Render RIPR policy operations"));
+        assert!(workflow.contains("name: Render RIPR policy history"));
+        assert!(workflow.contains("name: Render RIPR policy promotion packets"));
+        assert!(workflow.contains("name: Render RIPR preview promotion packets"));
         assert!(workflow.contains("name: Render RIPR test-oracle assistant proof"));
         assert!(workflow.contains("name: Render RIPR assistant loop health"));
         assert!(workflow.contains("name: Render RIPR first useful action"));
@@ -9875,6 +10206,12 @@ language = "rust"
         assert!(workflow.contains("#### PR movement at a glance"));
         assert!(workflow.contains("### Policy readiness"));
         assert!(workflow.contains("#### Policy readiness at a glance"));
+        assert!(workflow.contains("### Policy operations"));
+        assert!(workflow.contains("#### Policy operations at a glance"));
+        assert!(workflow.contains("### Policy history"));
+        assert!(workflow.contains("#### Policy history at a glance"));
+        assert!(workflow.contains("### Policy promotion packets"));
+        assert!(workflow.contains("### Preview promotion packets"));
         assert!(workflow.contains("### Waiver aging"));
         assert!(workflow.contains("#### Waiver aging at a glance"));
         assert!(workflow.contains("### Suppression health"));
@@ -9893,6 +10230,10 @@ language = "rust"
         assert!(workflow.contains("Gate artifacts"));
         assert!(workflow.contains("Baseline delta artifacts"));
         assert!(workflow.contains("Policy readiness artifacts"));
+        assert!(workflow.contains("Policy operations artifacts"));
+        assert!(workflow.contains("Policy history artifacts"));
+        assert!(workflow.contains("Promotion packet artifacts"));
+        assert!(workflow.contains("Preview promotion artifacts"));
         assert!(workflow.contains("Waiver-aging artifacts"));
         assert!(workflow.contains("Suppression-health artifacts"));
         assert!(workflow.contains("Proof artifacts"));
@@ -10256,6 +10597,26 @@ language = "rust"
         assert_step_before(
             &workflow,
             "Render RIPR policy readiness",
+            "Render RIPR policy operations",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR policy operations",
+            "Render RIPR policy history",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR policy history",
+            "Render RIPR policy promotion packets",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR policy promotion packets",
+            "Render RIPR preview promotion packets",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR preview promotion packets",
             "Render RIPR test-oracle assistant proof",
         );
         assert_step_before(
@@ -10424,6 +10785,91 @@ language = "rust"
         );
         assert!(policy_readiness.contains("ripr \"${policy_args[@]}\""));
 
+        let policy_operations = workflow_step(&workflow, "Render RIPR policy operations");
+        assert!(
+            policy_operations.contains("hashFiles('target/ripr/reports/policy-readiness.json')")
+        );
+        assert!(policy_operations.contains("continue-on-error: true"));
+        assert!(policy_operations.contains("policy operations"));
+        assert!(policy_operations.contains("--root ."));
+        assert!(
+            policy_operations
+                .contains("--policy-readiness target/ripr/reports/policy-readiness.json")
+        );
+        assert!(policy_operations.contains("--out target/ripr/reports/policy-operations.json"));
+        assert!(policy_operations.contains("--out-md target/ripr/reports/policy-operations.md"));
+        assert!(policy_operations.contains("--waiver-aging target/ripr/reports/waiver-aging.json"));
+        assert!(
+            policy_operations
+                .contains("--suppression-health target/ripr/reports/suppression-health.json")
+        );
+        assert!(
+            policy_operations
+                .contains("--baseline-delta target/ripr/reports/baseline-debt-delta.json")
+        );
+        assert!(
+            policy_operations.contains("--gate-decision target/ripr/reports/gate-decision.json")
+        );
+        assert!(policy_operations.contains(
+            "--recommendation-calibration target/ripr/reports/recommendation-calibration.json"
+        ));
+        assert!(
+            policy_operations
+                .contains("--mutation-calibration target/ripr/reports/mutation-calibration.json")
+        );
+        assert!(
+            policy_operations.contains("--preview-boundary target/ripr/reports/repo-exposure.json")
+        );
+        assert!(policy_operations.contains("ripr \"${operations_args[@]}\""));
+
+        let policy_history = workflow_step(&workflow, "Render RIPR policy history");
+        assert!(policy_history.contains("hashFiles('target/ripr/reports/policy-operations.json')"));
+        assert!(policy_history.contains("continue-on-error: true"));
+        assert!(policy_history.contains("policy history"));
+        assert!(policy_history.contains("--current target/ripr/reports/policy-operations.json"));
+        assert!(policy_history.contains("--commit \"$GITHUB_SHA\""));
+        assert!(policy_history.contains("--history .ripr/policy-history.jsonl"));
+        assert!(policy_history.contains("--pr-number \"${{ github.event.number }}\""));
+        assert!(policy_history.contains("--out target/ripr/reports/policy-history.json"));
+        assert!(policy_history.contains("--out-md target/ripr/reports/policy-history.md"));
+        assert!(policy_history.contains("ripr \"${history_args[@]}\""));
+
+        let promotion_packets = workflow_step(&workflow, "Render RIPR policy promotion packets");
+        assert!(
+            promotion_packets.contains("hashFiles('target/ripr/reports/policy-operations.json')")
+        );
+        assert!(promotion_packets.contains("continue-on-error: true"));
+        assert!(promotion_packets.contains(
+            "for target_mode in visible-only acknowledgeable baseline-check calibrated-gate"
+        ));
+        assert!(promotion_packets.contains("policy promote"));
+        assert!(promotion_packets.contains("--to \"$target_mode\""));
+        assert!(
+            promotion_packets.contains("--operations target/ripr/reports/policy-operations.json")
+        );
+        assert!(promotion_packets.contains("--history target/ripr/reports/policy-history.json"));
+        assert!(
+            promotion_packets.contains("target/ripr/reports/policy-promotion-${target_mode}.json")
+        );
+        assert!(promotion_packets.contains("ripr \"${promotion_args[@]}\""));
+
+        let preview_packets = workflow_step(&workflow, "Render RIPR preview promotion packets");
+        assert!(preview_packets.contains("if: always()"));
+        assert!(preview_packets.contains("continue-on-error: true"));
+        assert!(preview_packets.contains("ripr doctor --root ."));
+        assert!(preview_packets.contains("policy preview-promote"));
+        assert!(preview_packets.contains("--language \"$language\""));
+        assert!(preview_packets.contains("--class \"$class_label\""));
+        assert!(preview_packets.contains(
+            "target/ripr/reports/preview-promotion-${language}-${class_label//_/-}.json"
+        ));
+        assert!(
+            preview_packets
+                .contains("--evidence target/ripr/reports/preview-promotion-evidence.json")
+        );
+        assert!(preview_packets.contains("TypeScript or Python preview languages are configured"));
+        assert!(preview_packets.contains("ripr \"${preview_args[@]}\""));
+
         let assistant_proof = workflow_step(&workflow, "Render RIPR test-oracle assistant proof");
         assert!(assistant_proof.contains("hashFiles('target/ripr/review/comments.json')"));
         assert!(assistant_proof.contains("hashFiles('target/ripr/workflow/agent-brief.json')"));
@@ -10557,6 +11003,13 @@ language = "rust"
         assert!(packet_index.contains("--out-md target/ripr/reports/index.md"));
         assert!(packet_index.contains("target/ripr/reports/pr-review-front-panel.md"));
         assert!(packet_index.contains("target/ripr/review/comments.json"));
+        assert!(packet_index.contains("target/ripr/reports/policy-operations.md"));
+        assert!(packet_index.contains("target/ripr/reports/policy-history.md"));
+        assert!(packet_index.contains("target/ripr/reports/policy-promotion-baseline-check.md"));
+        assert!(
+            packet_index
+                .contains("target/ripr/reports/preview-promotion-typescript-boundary-gap.md")
+        );
         assert!(packet_index.contains("target/ripr/reports/gate-decision.md"));
         assert!(packet_index.contains("target/ripr/reports/agent-receipt.json"));
         assert!(packet_index.contains("index_has_input=true"));
@@ -10703,6 +11156,48 @@ language = "rust"
         assert!(summary.contains("advisory readiness projection only"));
         assert!(summary.contains("cat target/ripr/reports/policy-readiness.md"));
         assert!(summary.contains("Policy readiness was not generated"));
+        assert!(summary.contains("### Policy operations"));
+        assert!(summary.contains("#### Policy operations at a glance"));
+        assert!(summary.contains("target/ripr/reports/policy-operations.json"));
+        assert!(summary.contains("target/ripr/reports/policy-operations.md"));
+        assert!(summary.contains(".current_policy_ceiling // \"unknown\""));
+        assert!(summary.contains(".recommended_next_action // \"not_available\""));
+        assert!(summary.contains(".safe_to_promote_to // [] | length"));
+        assert!(summary.contains(".not_safe_to_promote_to // [] | length"));
+        assert!(summary.contains(".promotion_blockers // [] | length"));
+        assert!(summary.contains("promotion requires manual review"));
+        assert!(summary.contains("cat target/ripr/reports/policy-operations.md"));
+        assert!(summary.contains("Policy operations was not generated"));
+        assert!(summary.contains("### Policy history"));
+        assert!(summary.contains("#### Policy history at a glance"));
+        assert!(summary.contains("target/ripr/reports/policy-history.json"));
+        assert!(summary.contains("target/ripr/reports/policy-history.md"));
+        assert!(summary.contains(".current.current_policy_ceiling // \"unknown\""));
+        assert!(summary.contains(".history_summary.entries // 0"));
+        assert!(summary.contains(".trend.ceiling.direction // \"unknown\""));
+        assert!(summary.contains(".trend.waiver_count.direction // \"unknown\""));
+        assert!(summary.contains(".trend.preview_boundary_state.direction // \"unknown\""));
+        assert!(
+            summary.contains("never appends to \\`.ripr/policy-history.jsonl\\` automatically")
+        );
+        assert!(summary.contains("cat target/ripr/reports/policy-history.md"));
+        assert!(summary.contains("Policy history was not generated"));
+        assert!(summary.contains("### Policy promotion packets"));
+        assert!(summary.contains("policy-promotion-visible-only.json"));
+        assert!(summary.contains("policy-promotion-acknowledgeable.json"));
+        assert!(summary.contains("policy-promotion-baseline-check.json"));
+        assert!(summary.contains("policy-promotion-calibrated-gate.json"));
+        assert!(summary.contains(".why_or_why_not // \"not_available\""));
+        assert!(summary.contains("packets do not edit \\`ripr.toml\\`"));
+        assert!(summary.contains("Policy promotion packets were not generated"));
+        assert!(summary.contains("cat \"$promotion_md\""));
+        assert!(summary.contains("### Preview promotion packets"));
+        assert!(summary.contains("preview-promotion-*-*.json"));
+        assert!(summary.contains(".candidate_class // \"unknown\""));
+        assert!(summary.contains(".missing_evidence // [] | length"));
+        assert!(summary.contains("preview evidence remains visible and non-gating"));
+        assert!(summary.contains("Preview promotion packets were not generated"));
+        assert!(summary.contains("cat \"$preview_md\""));
         assert!(summary.contains("### Waiver aging"));
         assert!(summary.contains("#### Waiver aging at a glance"));
         assert!(summary.contains("target/ripr/reports/waiver-aging.json"));
