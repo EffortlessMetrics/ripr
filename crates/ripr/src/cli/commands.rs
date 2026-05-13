@@ -7124,6 +7124,20 @@ mod tests {
             .unwrap_or_else(|| PathBuf::from("."))
     }
 
+    fn copy_sample_workspace_to_temp(label: &str) -> Result<PathBuf, String> {
+        let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/sample");
+        let dest = unique_command_test_dir(label);
+        std::fs::create_dir_all(dest.join("src"))
+            .map_err(|err| format!("failed to create temp sample src: {err}"))?;
+        std::fs::create_dir_all(dest.join("tests"))
+            .map_err(|err| format!("failed to create temp sample tests: {err}"))?;
+        for relative in ["example.diff", "src/lib.rs", "tests/pricing.rs"] {
+            std::fs::copy(source.join(relative), dest.join(relative))
+                .map_err(|err| format!("failed to copy sample file {relative}: {err}"))?;
+        }
+        Ok(dest)
+    }
+
     struct GeneratedWorkflowSmokeFixture<'a> {
         commands: &'a [&'a str],
         artifact_paths: &'a [&'a str],
@@ -7376,8 +7390,8 @@ mod tests {
     }
 
     #[test]
-    fn check_repo_exposure_json_streams_output() {
-        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/sample");
+    fn check_repo_exposure_json_streams_output() -> Result<(), String> {
+        let root = copy_sample_workspace_to_temp("repo-exposure-json")?;
         let root_arg = root.to_string_lossy().into_owned();
         assert_eq!(
             check(&[
@@ -7388,6 +7402,9 @@ mod tests {
             ]),
             Ok(())
         );
+        std::fs::remove_dir_all(root)
+            .map_err(|err| format!("failed to remove temp sample workspace: {err}"))?;
+        Ok(())
     }
 
     #[test]

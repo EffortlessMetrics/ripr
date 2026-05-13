@@ -87,6 +87,11 @@ extension store badge.
   and `--format repo-badge-plus-shields`; the xtask wrapper is
   `cargo xtask repo-badge-artifacts`.
 
+Committed `badges/*.json` files are generated endpoint snapshots, not
+hand-authored copy. Ordinary PRs should not carry badge endpoint diffs; use
+`cargo xtask badges` or the Badge Endpoints workflow and let the generated
+`badge: refresh public endpoints` PR carry the endpoint update.
+
 ### `ripr+` fact source vs aggregation scope
 
 `cargo xtask test-efficiency-report` is repo-wide as a **fact source**:
