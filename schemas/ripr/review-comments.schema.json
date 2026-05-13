@@ -47,9 +47,19 @@
       "type": "string",
       "minLength": 1
     },
-    "mode": {
+    "generated_at": {
       "type": "string",
-      "minLength": 1
+      "format": "date-time"
+    },
+    "mode": {
+      "description": "Public RIPR analysis mode label.",
+      "enum": [
+        "instant",
+        "draft",
+        "fast",
+        "deep",
+        "ready"
+      ]
     },
     "limits": {
       "type": "object",

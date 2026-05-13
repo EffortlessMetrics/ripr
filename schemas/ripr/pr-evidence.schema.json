@@ -17,7 +17,7 @@
     "summary",
     "artifacts",
     "warnings",
-    "limits"
+    "advisory_limits"
   ],
   "properties": {
     "schema_version": {
@@ -70,7 +70,7 @@
         "$ref": "#/$defs/warning"
       }
     },
-    "limits": {
+    "advisory_limits": {
       "type": "array",
       "items": {
         "type": "string",

@@ -48,15 +48,16 @@ It must include:
 | `summary` | Stable counts and routing booleans. |
 | `artifacts[]` | Machine-readable and Markdown artifact paths. |
 | `warnings[]` | Bounded warnings; never hidden in prose only. |
-| `limits[]` | Advisory and non-proof boundaries. |
+| `advisory_limits[]` | Advisory and non-proof boundaries. |
 
 Missing data should be explicit. Use `0`, `false`, `null`, `not_available`,
 `incomplete`, or a warning instead of omitting a field that agents need for
 routing.
 
-## Review Guidance
+## Separate Review Guidance Packet
 
-Line-placeable guidance is produced separately:
+Line-placeable guidance is produced by the separate `ripr review-comments`
+packet, not embedded in `pr-evidence.schema.json`:
 
 ```text
 target/ripr/review/comments.json
@@ -69,14 +70,16 @@ target/ripr/review/comments.md
 schemas/ripr/review-comments.schema.json
 ```
 
-The JSON separates recommendations by placement and policy state:
+The `comments.json` file is validated by
+`schemas/ripr/review-comments.schema.json`. It separates recommendations by
+placement and policy state:
 
 | Collection | Contract |
 | --- | --- |
 | `comments[]` | Changed-line guidance that may become non-blocking annotations. |
 | `summary_only[]` | Useful guidance that is not safe to attach to a changed line. |
 | `suppressed[]` | Candidates suppressed by cap, policy, configured-off severity, nearby changed tests, or missing safe guidance. |
-| `warnings[]` | Bounded producer warnings. |
+| `warnings[]` | Bounded producer warnings. Producer-side signal only; see [Annotation policy](annotation-policy.md). |
 
 Only `comments[]` can feed annotations. `summary_only[]` remains visible in
 Markdown and job summaries, but never becomes an annotation or inline comment.
@@ -96,6 +99,8 @@ The PR evidence summary should keep these field names stable:
 | `no_static_path` | Count of static path failures. |
 | `severe_gaps` | Count of severe routing gaps under repo policy. |
 | `requires_targeted_mutation` | Whether targeted mutation is routed for this PR. |
+| `ripr_severe_gap` | Whether RIPR identified a severe gap that participates in routing. |
+| `routing_reason` | Nullable string explaining why targeted mutation was or was not routed. |
 
 Targeted mutation routing should be justified by explicit evidence:
 
