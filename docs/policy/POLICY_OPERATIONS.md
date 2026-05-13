@@ -98,7 +98,7 @@ available spec IDs.
 | ---: | --- | --- | --- |
 | 1 | `campaign/policy-operations-tracker` | Open this focused tracker, manifest, roadmap, and plan references without behavior changes. | done |
 | 2 | `spec/policy-operations-report` | Define the read-only policy operations report contract. | done |
-| 3 | `policy/operations-report` | Implement `ripr policy operations` over explicit existing artifacts. | planned |
+| 3 | `policy/operations-report` | Implement `ripr policy operations` over explicit existing artifacts. | done |
 | 4 | `spec/policy-history-ledger` | Define the read-only policy history report and optional append-only input. | planned |
 | 5 | `policy/history-report` | Implement `ripr policy history` as advisory trend reporting. | planned |
 | 6 | `spec/policy-promotion-packets` | Define read-only promotion packets for stricter configured modes. | planned |
@@ -113,7 +113,7 @@ available spec IDs.
 
 The policy operations report is defined by
 [RIPR-SPEC-0039](../specs/RIPR-SPEC-0039-policy-operations-report.md). The
-future implementation is read-only and explicit about input artifacts:
+implementation is read-only and explicit about input artifacts:
 
 ```bash
 ripr policy operations \

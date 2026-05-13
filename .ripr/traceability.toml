@@ -2326,10 +2326,24 @@ id = "RIPR-SPEC-0039"
 name = "Policy operations report"
 spec = "docs/specs/RIPR-SPEC-0039-policy-operations-report.md"
 tests = [
+  "crates/ripr/src/output/policy_operations.rs::tests::policy_operations_acknowledgeable_ceiling_blocks_baseline",
+  "crates/ripr/src/output/policy_operations.rs::tests::policy_operations_baseline_check_ready_allows_baseline",
+  "crates/ripr/src/output/policy_operations.rs::tests::policy_operations_calibrated_gate_accepts_missing_optional_mutation",
+  "crates/ripr/src/output/policy_operations.rs::tests::policy_operations_missing_readiness_is_config_error",
+  "crates/ripr/src/output/policy_operations.rs::tests::policy_operations_malformed_readiness_blocks_all_modes",
+  "crates/ripr/src/output/policy_operations.rs::tests::policy_operations_preview_boundary_violation_blocks_stricter_modes",
+  "crates/ripr/src/output/policy_operations.rs::tests::policy_operations_json_and_markdown_are_structured",
+  "crates/ripr/src/cli/commands.rs::tests::policy_operations_parses_option_surface",
+  "crates/ripr/src/cli/commands.rs::tests::policy_operations_command_writes_reports",
 ]
 fixtures = [
 ]
 code = [
+  "crates/ripr/src/output/policy_operations.rs",
+  "crates/ripr/src/output/mod.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/help.rs",
+  "crates/ripr/src/cli/execute.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0039-policy-operations-report.md",

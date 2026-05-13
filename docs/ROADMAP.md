@@ -342,12 +342,12 @@ default blocking or comment posting. The closeout audit is
 [Policy Readiness closeout](handoffs/2026-05-12-policy-readiness-closeout.md).
 
 [Policy Operations and Promotion Readiness](policy/POLICY_OPERATIONS.md) is
-open as the next focused Lane 2 tracker. It turns readiness into planned
-advisory operator packets: current safe policy ceiling, next safe action,
-blockers to stricter modes, read-only promotion packets, preview-promotion
-packets, and history/trend surfaces. RIPR-SPEC-0039 defines the first policy
-operations report contract for that packet layer. This tracker preserves the
-same
+open as the next focused Lane 2 tracker. It turns readiness into advisory
+operator packets: current safe policy ceiling, next safe action, blockers to
+stricter modes, read-only promotion packets, preview-promotion packets, and
+history/trend surfaces. RIPR-SPEC-0039 defines the first policy operations
+report contract, and `ripr policy operations` now writes that packet. This
+tracker preserves the same
 boundaries: no analyzer truth changes, no editor changes, no generated tests,
 no mutation execution, no default CI blocking, no automatic config or baseline
 mutation, and no preview evidence promotion.
