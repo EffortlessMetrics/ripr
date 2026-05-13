@@ -117,7 +117,7 @@ commands = [
 
 [[work_item]]
 id = "policy/history-report"
-status = "planned"
+status = "done"
 branch = "policy-history-report"
 acceptance = "`ripr policy history` writes advisory policy-history JSON and Markdown, summarizes readiness movement, waiver pressure, suppression health, baseline movement, preview boundary state, and calibration movement, and never appends history automatically."
 commands = [

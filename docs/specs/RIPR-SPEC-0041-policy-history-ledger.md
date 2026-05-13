@@ -393,7 +393,7 @@ Malformed history:
 
 ## Test Mapping
 
-Follow-up implementation should include:
+Current implementation coverage includes:
 
 - CLI option parsing tests for `ripr policy history`.
 - JSON/Markdown tests for single-snapshot, readiness-improved,
@@ -411,10 +411,12 @@ Follow-up implementation should include:
 This spec belongs to the focused Lane 2 tracker in
 [Policy operations](../policy/POLICY_OPERATIONS.md).
 
-Implementation should be split into later work items:
+The current implementation is split across:
 
 - `spec/policy-history-ledger` defines this report contract.
-- `policy/history-report` implements the read-only JSON/Markdown producer.
+- `policy/history-report` implements the read-only JSON/Markdown producer in
+  `crates/ripr/src/output/policy_history.rs` and wires
+  `ripr policy history` through `crates/ripr/src/cli/commands.rs`.
 - `spec/policy-promotion-packets` defines target-mode promotion packets after
   history trend exists.
 - `policy/promotion-packet-report` implements promotion packets without config,
