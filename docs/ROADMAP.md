@@ -354,10 +354,11 @@ writes the read-only trend packet over policy operations plus optional history
 JSONL, and `ripr policy promote --to ...` now writes read-only promotion
 packets from policy operations plus optional policy history. `ripr policy
 preview-promote` now writes default-blocked preview evidence promotion packets
-for TypeScript and Python classes. This tracker
-preserves the same boundaries: no analyzer truth changes, no editor changes,
-no generated tests, no mutation execution, no default CI blocking, no automatic
-config or baseline mutation, and no preview evidence promotion.
+for TypeScript and Python classes. [Policy operations workflow](POLICY_OPERATIONS_WORKFLOW.md)
+documents how maintainers review the packets before manual config changes. This
+tracker preserves the same boundaries: no analyzer truth changes, no editor
+changes, no generated tests, no mutation execution, no default CI blocking, no
+automatic config or baseline mutation, and no preview evidence promotion.
 
 ## Strategic Sequence
 
