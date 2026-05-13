@@ -342,6 +342,8 @@ Additional examples:
 | Smoke-only oracle semantics explain the missing boundary discriminator | `oracle_semantics_explains_smoke_only_boundary_gap` |
 | Exact-value oracle semantics do not invent an upgrade suggestion | `oracle_semantics_keeps_exact_value_without_extra_upgrade` |
 | Oracle semantics cover the supported oracle families | `oracle_semantics_covers_supported_oracle_families` |
+| Opaque custom assertion helpers stay unknown instead of overclaiming exact-value grip | `opaque_custom_assertion_helper_stays_unknown_oracle` |
+| Duplicative equality assertions stay weak instead of overclaiming exact-value grip | `duplicative_equality_assertion_stays_weak_oracle` |
 | Evidence records carry oracle semantics on related tests | `evidence_record_carries_identity_path_guidance_and_calibration_placeholder` |
 
 ## Implementation Mapping

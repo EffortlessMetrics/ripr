@@ -515,7 +515,8 @@ evidence = [
   "value-extraction-v2 BDD coverage for bindings, constants, rstest cases, table rows, builder and fixture override methods, Option/Result constructors, and negative false-positive guards",
   "oracle-shape-v2 side-effect observer seam evidence",
   "related-test ranking v2 stabilizes relation confidence, relation reason, oracle strength, activation overlap, and file/name/line tie-breakers while preserving related_tests_total",
-  "oracle-semantics-v3 explains what related-test oracle shapes observe, what discriminator remains missing, and which assertion upgrade applies for broad, smoke-only, unknown, snapshot, and exact shapes"
+  "oracle-semantics-v3 explains what related-test oracle shapes observe, what discriminator remains missing, and which assertion upgrade applies for broad, smoke-only, unknown, snapshot, and exact shapes",
+  "oracle-semantics audit guards keep opaque custom helpers unknown and duplicative equality weak instead of overclaiming exact-value grip"
 ]
 fixtures = []
 next = "analysis/local-delta-flow-v2"
@@ -578,7 +579,7 @@ evidence = [
   "crates/ripr/src/output/pr_evidence_ledger.rs carries canonical_gap_id through waiver, suppression, repair receipt, and top repair route records when supplied by source artifacts",
   "crates/ripr/src/output/gate.rs carries canonical_gap_id from PR guidance/evidence_record into gate decisions and baseline comparison before legacy identities",
   "docs/OUTPUT_SCHEMA.md documents evidence_record schema 0.1 under repo-exposure schema 0.3",
-  "unit tests pin identity, generated canonical gap identity, grip class, evidence path, recommendation/actionability, calibration placeholder, static limitation category and repair-route normalization, oracle semantics, packet projection, RIPR Zero repair-route consumption, evidence-record movement consumption, assistant-proof evidence-record consumption, and canonical gap identity routing",
+  "unit tests pin identity, generated canonical gap identity, grip class, evidence path, recommendation/actionability, calibration placeholder, static limitation category and repair-route normalization, oracle semantics including opaque custom-helper and duplicative-equality guards, packet projection, RIPR Zero repair-route consumption, evidence-record movement consumption, assistant-proof evidence-record consumption, and canonical gap identity routing",
   "fixtures/boundary_gap/expected/evidence-record-contract/corpus.json pins the v0.1 record contract matrix for predicate, error, strong value, broad error, field, whole-object, snapshot, side-effect, opaque limitation, canonical-gap, and calibration-placeholder cases with related-test oracle_semantics",
   "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json pins audit-derived expected evidence_record subsets for duplicate canonical groups, match-arm overgrouping reduction, equality-boundary misses, activation static limitations, mock-expectation observer semantics, and no-runtime-data calibration gaps",
   "cargo xtask check-fixture-contracts validates the evidence-record contract corpus case matrix and field shape; cargo xtask check-output-contracts validates the evidence_record schema version"
@@ -587,7 +588,7 @@ fixtures = [
   "fixtures/boundary_gap/expected/evidence-record-contract/corpus.json",
   "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json"
 ]
-next = "analysis/related-test-ranking-audit-fixes"
+next = "analysis/oracle-semantics-audit-fixes"
 metric = "evidence_record_projected_seams, evidence_record_actionable_guidance, evidence_record_static_limitations, evidence_record_static_limitation_categories"
 
 [[capability]]
@@ -627,7 +628,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json"
 ]
-next = "analysis/related-test-ranking-audit-fixes"
+next = "analysis/oracle-semantics-audit-fixes"
 metric = "lane1_evidence_audit_raw_headline_gaps, lane1_evidence_audit_canonical_gap_groups, lane1_evidence_audit_duplicate_looking_groups, lane1_evidence_audit_missing_discriminators, lane1_evidence_audit_static_limitations, lane1_evidence_audit_static_limitation_categories, lane1_evidence_audit_uncalibrated_records"
 
 [[capability]]
@@ -653,7 +654,7 @@ status = "alpha"
 spec = "RIPR-SPEC-0035"
 evidence = [
   "fixtures/evidence-quality-benchmark/corpus.json defines a manifest-only Lane 1 benchmark corpus",
-  "the corpus covers duplicate canonical gap, match-arm discriminator split, wrong related-test top choice, broad versus exact error oracle, self-computed expected value, opaque helper limitation, cross-file constant limitation, side-effect observer, snapshot discriminator, mock expectation, runtime-only signal, and ambiguous runtime join classes",
+  "the corpus covers duplicate canonical gap, match-arm discriminator split, wrong related-test top choice, broad versus exact error oracle, self-computed expected value and duplicative equality guards, opaque helper limitation, cross-file constant limitation, side-effect observer, snapshot discriminator, mock expectation, runtime-only signal, and ambiguous runtime join classes",
   "each case records expected claims, must-not-claim guards, expected repo-exposure evidence_record subsets or runtime-only nonstatic calibration, audit signals, maturity scope, and repair route",
   "cargo xtask check-fixture-contracts validates the corpus shape through xtask/src/main.rs",
   "xtask unit tests pin required case kinds, missing guard detection, runtime-only nonstatic behavior, and line-movement canonical identity"
@@ -661,7 +662,7 @@ evidence = [
 fixtures = [
   "fixtures/evidence-quality-benchmark/corpus.json"
 ]
-next = "analysis/related-test-ranking-audit-fixes"
+next = "analysis/oracle-semantics-audit-fixes"
 metric = "lane1_evidence_benchmark_cases, lane1_evidence_benchmark_positive_cases, lane1_evidence_benchmark_negative_guards, lane1_evidence_benchmark_line_movement_cases, lane1_evidence_benchmark_equivalent_code_cases, lane1_evidence_benchmark_static_limitation_cases, lane1_evidence_benchmark_calibration_cases, lane1_evidence_benchmark_must_not_claim_guards"
 
 [[capability]]
@@ -1257,6 +1258,7 @@ evidence = [
   "ripr init --ci github generates an advisory GitHub workflow that runs ripr pilot, uploads pilot/report/agent/review artifacts, writes a RIPR advisory summary, writes repo badge JSON and Shields artifacts, optionally renders an operator cockpit when the repo-local xtask exists, and makes SARIF rendering/upload optional through RIPR_UPLOAD_SARIF",
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture pins the generated workflow artifact packet, optional SARIF gates, non-blocking posture, and badge outputs",
   "crates/ripr/src/cli/commands.rs init CI generation tests cover advisory workflow content, report upload, optional SARIF, and overwrite guards",
+  "cargo xtask dogfood validates generated-CI cockpit receipts for Start here guidance, known cockpit regeneration commands, report artifact upload, advisory default posture, and gate-decision authority boundaries",
   "crates/ripr/tests/cli_smoke.rs init --ci github smoke tests cover dry-run, generated workflow, and existing workflow protection",
   "SARIF renderer tests cover stable rule IDs, configured severity, off severity omission, suppression metadata, valid JSON, and static language",
   "cargo xtask sarif-policy compares current SARIF against a baseline and only fails on new warning-level results when explicitly requested",

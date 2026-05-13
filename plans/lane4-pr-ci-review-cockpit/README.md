@@ -40,16 +40,16 @@ when planning front-panel or packet-index work.
 
 ## Current Slice
 
-The first PR is docs-only scaffolding:
+The lane closeout slice is complete:
 
 ```text
-docs(lane4): define PR/CI review cockpit source-of-truth model
+docs(lane4): close PR/CI review cockpit lane
 ```
 
-It adds the lane tracker and this plan directory. It does not change generated
-CI, report producers, fixtures, schemas, gate policy, default blocking,
-language routing, analyzer behavior, editor behavior, source edits, or
-generated tests.
+The closeout records shipped cockpit surfaces, validation, explicit
+non-changes, known limits, and next-lane handoff. Language-aware grouping
+remains deferred until preview-language evidence is ready or the lane accepts a
+narrower grouping slice.
 
 ## Operating Constraints
 

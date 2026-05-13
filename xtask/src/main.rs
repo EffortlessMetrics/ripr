@@ -478,6 +478,21 @@ struct DogfoodReportPacketIndexRun {
 }
 
 #[derive(Debug)]
+struct DogfoodGeneratedCiCockpitRun {
+    name: String,
+    command: String,
+    duration_ms: u128,
+    start_here: bool,
+    repair_commands: usize,
+    expected_repair_commands: usize,
+    gate_authority_boundary: bool,
+    default_advisory: bool,
+    artifact_upload: bool,
+    language_grouping_status: String,
+    errors: Vec<String>,
+}
+
+#[derive(Debug)]
 struct DogfoodPrInlineCommentScenario {
     name: String,
     scenario: String,
@@ -14648,6 +14663,7 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         .into_iter()
         .map(|scenario| dogfood_report_packet_index_run(&scenario))
         .collect::<Result<Vec<_>, _>>()?;
+    let generated_ci_cockpit_runs = vec![dogfood_generated_ci_cockpit_run()?];
     let pr_inline_comment_runs = dogfood_pr_inline_comment_scenarios()
         .into_iter()
         .map(|scenario| dogfood_pr_inline_comment_run(&scenario))
@@ -14660,6 +14676,7 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
             &first_action_runs,
             &front_panel_runs,
             &report_packet_index_runs,
+            &generated_ci_cockpit_runs,
             &pr_inline_comment_runs,
         ),
     )?;
@@ -14671,6 +14688,7 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
             &first_action_runs,
             &front_panel_runs,
             &report_packet_index_runs,
+            &generated_ci_cockpit_runs,
             &pr_inline_comment_runs,
         ),
     )
@@ -15744,6 +15762,96 @@ fn dogfood_report_packet_index_run(
     })
 }
 
+const GENERATED_CI_FIRST_ACTION_REPAIR: &str = "Regenerate command: `ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md`";
+const GENERATED_CI_FRONT_PANEL_REPAIR: &str = "Regenerate command: `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md`";
+const GENERATED_CI_PACKET_INDEX_REPAIR: &str = "Regenerate command: `ripr reports index --root . --reports-dir target/ripr/reports --review-dir target/ripr/review --receipts-dir target/ripr/receipts --workflow-dir target/ripr/workflow --agent-dir target/ripr/agent --pilot-dir target/ripr/pilot --ci-dir target/ci --out target/ripr/reports/index.json --out-md target/ripr/reports/index.md`.";
+
+fn dogfood_generated_ci_cockpit_run() -> Result<DogfoodGeneratedCiCockpitRun, String> {
+    let args = [
+        "run",
+        "--quiet",
+        "-p",
+        "ripr",
+        "--",
+        "init",
+        "--ci",
+        "github",
+        "--dry-run",
+    ]
+    .iter()
+    .map(|value| (*value).to_string())
+    .collect::<Vec<_>>();
+    let command = format!("cargo {}", args.join(" "));
+    let started = Instant::now();
+    let workflow = run_output_owned("cargo", &args)?;
+    Ok(dogfood_generated_ci_cockpit_run_from_workflow(
+        "generated-pr-ci-review-workflow",
+        &command,
+        started.elapsed().as_millis(),
+        &workflow,
+    ))
+}
+
+fn dogfood_generated_ci_cockpit_run_from_workflow(
+    name: &str,
+    command: &str,
+    duration_ms: u128,
+    workflow: &str,
+) -> DogfoodGeneratedCiCockpitRun {
+    let start_here = workflow.contains("### Start here")
+        && workflow.contains("Open `target/ripr/reports/pr-review-front-panel.md` first");
+    let repair_commands = [
+        GENERATED_CI_FIRST_ACTION_REPAIR,
+        GENERATED_CI_FRONT_PANEL_REPAIR,
+        GENERATED_CI_PACKET_INDEX_REPAIR,
+    ]
+    .iter()
+    .filter(|command| workflow.contains(**command))
+    .count();
+    let expected_repair_commands = 3usize;
+    let gate_authority_boundary =
+        workflow.contains("ripr gate evaluate") && workflow.contains("Gate authority:");
+    let default_advisory = workflow.contains(
+        "continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}",
+    ) && workflow.contains("RIPR is advisory static evidence");
+    let artifact_upload =
+        workflow.contains("actions/upload-artifact@v7") && workflow.contains("target/ripr/reports");
+    let language_grouping_status = "deferred".to_string();
+    let mut errors = Vec::new();
+
+    if !start_here {
+        errors.push("generated CI summary must include Start here guidance".to_string());
+    }
+    if repair_commands != expected_repair_commands {
+        errors.push(format!(
+            "expected {expected_repair_commands} cockpit regeneration commands, got {repair_commands}"
+        ));
+    }
+    if !gate_authority_boundary {
+        errors.push("generated CI must keep gate-decision authority visible".to_string());
+    }
+    if !default_advisory {
+        errors.push("generated CI must remain advisory by default".to_string());
+    }
+    if !artifact_upload {
+        errors.push("generated CI must upload the report artifact packet".to_string());
+    }
+
+    DogfoodGeneratedCiCockpitRun {
+        name: name.to_string(),
+        command: command.to_string(),
+        duration_ms,
+        start_here,
+        repair_commands,
+        expected_repair_commands,
+        gate_authority_boundary,
+        default_advisory,
+        artifact_upload,
+        language_grouping_status,
+        errors,
+    }
+}
+
 fn dogfood_pr_inline_comment_scenarios() -> Vec<DogfoodPrInlineCommentScenario> {
     let corpus_path =
         Path::new("fixtures/boundary_gap/expected/pr-inline-comment-publisher/corpus.json");
@@ -16109,6 +16217,7 @@ fn dogfood_report_status(
     first_action_runs: &[DogfoodFirstActionRun],
     front_panel_runs: &[DogfoodFrontPanelRun],
     report_packet_index_runs: &[DogfoodReportPacketIndexRun],
+    generated_ci_cockpit_runs: &[DogfoodGeneratedCiCockpitRun],
     pr_inline_comment_runs: &[DogfoodPrInlineCommentRun],
 ) -> &'static str {
     if runs.iter().any(|run| !run.errors.is_empty())
@@ -16116,6 +16225,9 @@ fn dogfood_report_status(
         || first_action_runs.iter().any(|run| !run.errors.is_empty())
         || front_panel_runs.iter().any(|run| !run.errors.is_empty())
         || report_packet_index_runs
+            .iter()
+            .any(|run| !run.errors.is_empty())
+        || generated_ci_cockpit_runs
             .iter()
             .any(|run| !run.errors.is_empty())
         || pr_inline_comment_runs
@@ -16134,6 +16246,7 @@ fn dogfood_report_markdown(
     first_action_runs: &[DogfoodFirstActionRun],
     front_panel_runs: &[DogfoodFrontPanelRun],
     report_packet_index_runs: &[DogfoodReportPacketIndexRun],
+    generated_ci_cockpit_runs: &[DogfoodGeneratedCiCockpitRun],
     pr_inline_comment_runs: &[DogfoodPrInlineCommentRun],
 ) -> String {
     let mut body = format!(
@@ -16144,6 +16257,7 @@ fn dogfood_report_markdown(
             first_action_runs,
             front_panel_runs,
             report_packet_index_runs,
+            generated_ci_cockpit_runs,
             pr_inline_comment_runs
         )
     );
@@ -16447,6 +16561,60 @@ fn dogfood_report_markdown(
             body.push('\n');
         }
     }
+    body.push_str("## Generated CI Cockpit Receipts\n\n");
+    body.push_str("These receipts validate the generated GitHub workflow cockpit surface. They check that the job summary starts with reviewer-first guidance, missing cockpit surfaces name regeneration commands, uploaded artifacts include the review packet, gate authority stays separate, and generated CI remains advisory by default.\n\n");
+    body.push_str("- Default CI blocking: no\n");
+    body.push_str("- Default inline comments: off\n");
+    body.push_str("- Language grouping: deferred until preview-language evidence is ready or explicitly deferred\n\n");
+    body.push_str("| Case | Start here | Repair commands | Gate boundary | Advisory default | Artifact upload | Language grouping |\n");
+    body.push_str("| --- | --- | ---: | --- | --- | --- | --- |\n");
+    for run in generated_ci_cockpit_runs {
+        body.push_str(&format!(
+            "| `{}` | {} | {}/{} | {} | {} | {} | `{}` |\n",
+            markdown_cell(&run.name),
+            if run.start_here { "yes" } else { "no" },
+            run.repair_commands,
+            run.expected_repair_commands,
+            if run.gate_authority_boundary {
+                "yes"
+            } else {
+                "no"
+            },
+            if run.default_advisory { "yes" } else { "no" },
+            if run.artifact_upload { "yes" } else { "no" },
+            markdown_cell(&run.language_grouping_status)
+        ));
+    }
+    body.push('\n');
+    for run in generated_ci_cockpit_runs {
+        body.push_str(&format!("### Generated CI `{}`\n\n", run.name));
+        body.push_str(&format!("- Command: `{}`\n", markdown_cell(&run.command)));
+        body.push_str(&format!("- Duration: {} ms\n", run.duration_ms));
+        body.push_str(&format!("- Start here: {}\n", run.start_here));
+        body.push_str(&format!(
+            "- Regeneration commands: {} of {}\n",
+            run.repair_commands, run.expected_repair_commands
+        ));
+        body.push_str(&format!(
+            "- Gate authority boundary: {}\n",
+            run.gate_authority_boundary
+        ));
+        body.push_str(&format!("- Advisory default: {}\n", run.default_advisory));
+        body.push_str(&format!("- Artifact upload: {}\n", run.artifact_upload));
+        body.push_str(&format!(
+            "- Language grouping: `{}`\n",
+            markdown_cell(&run.language_grouping_status)
+        ));
+        if run.errors.is_empty() {
+            body.push_str("- Errors: none\n\n");
+        } else {
+            body.push_str("- Errors:\n");
+            for error in &run.errors {
+                body.push_str(&format!("  - `{}`\n", markdown_cell(error)));
+            }
+            body.push('\n');
+        }
+    }
     body.push_str("## PR Inline Comment Publisher Receipts\n\n");
     body.push_str("These receipts validate checked `comment-publish-plan.{json,md}` fixture outputs for the documented Campaign 26 inline-comment publisher routes. They verify opt-in modes, safe publish flags, summary-only exclusion, cap behavior, dedupe/upsert, stale-existing cleanup planning, fork or token blockers, missing-input blockers, and advisory limits without posting real PR comments.\n\n");
     body.push_str("- Default CI blocking: no\n");
@@ -16627,6 +16795,7 @@ fn dogfood_report_json(
     first_action_runs: &[DogfoodFirstActionRun],
     front_panel_runs: &[DogfoodFrontPanelRun],
     report_packet_index_runs: &[DogfoodReportPacketIndexRun],
+    generated_ci_cockpit_runs: &[DogfoodGeneratedCiCockpitRun],
     pr_inline_comment_runs: &[DogfoodPrInlineCommentRun],
 ) -> String {
     let mut body = format!(
@@ -16637,6 +16806,7 @@ fn dogfood_report_json(
             first_action_runs,
             front_panel_runs,
             report_packet_index_runs,
+            generated_ci_cockpit_runs,
             pr_inline_comment_runs
         )
     );
@@ -16938,6 +17108,53 @@ fn dogfood_report_json(
         body.push_str(&format!(
             "        \"reason\": \"{}\",\n",
             json_escape(&run.reason)
+        ));
+        body.push_str("        \"errors\": [");
+        write_json_string_array(&mut body, &run.errors);
+        body.push_str("]\n      }");
+    }
+    body.push_str("\n    ]\n  },\n  \"generated_ci_cockpit\": {\n");
+    body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str("    \"default_inline_comments\": \"off\",\n");
+    body.push_str("    \"language_grouping\": \"deferred\",\n    \"cases\": [\n");
+    for (index, run) in generated_ci_cockpit_runs.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("      {\n");
+        body.push_str(&format!(
+            "        \"name\": \"{}\",\n",
+            json_escape(&run.name)
+        ));
+        body.push_str(&format!(
+            "        \"command\": \"{}\",\n",
+            json_escape(&run.command)
+        ));
+        body.push_str(&format!("        \"duration_ms\": {},\n", run.duration_ms));
+        body.push_str(&format!("        \"start_here\": {},\n", run.start_here));
+        body.push_str(&format!(
+            "        \"repair_commands\": {},\n",
+            run.repair_commands
+        ));
+        body.push_str(&format!(
+            "        \"expected_repair_commands\": {},\n",
+            run.expected_repair_commands
+        ));
+        body.push_str(&format!(
+            "        \"gate_authority_boundary\": {},\n",
+            run.gate_authority_boundary
+        ));
+        body.push_str(&format!(
+            "        \"default_advisory\": {},\n",
+            run.default_advisory
+        ));
+        body.push_str(&format!(
+            "        \"artifact_upload\": {},\n",
+            run.artifact_upload
+        ));
+        body.push_str(&format!(
+            "        \"language_grouping_status\": \"{}\",\n",
+            json_escape(&run.language_grouping_status)
         ));
         body.push_str("        \"errors\": [");
         write_json_string_array(&mut body, &run.errors);
@@ -25285,9 +25502,11 @@ mod tests {
     use super::{
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
         CheckStatus, CheckViolation, CiFullEvidenceGate, CwdCommand, DogfoodFirstActionRun,
-        DogfoodFrontPanelRun, DogfoodGateRun, DogfoodPrInlineCommentRun,
-        DogfoodReportPacketIndexRun, DogfoodRun, EvidenceQualityScorecardInput,
-        EvidenceQualityScorecardInputs, EvidenceQualityScorecardReport, FixKind, LocalContextAllow,
+        DogfoodFrontPanelRun, DogfoodGateRun, DogfoodGeneratedCiCockpitRun,
+        DogfoodPrInlineCommentRun, DogfoodReportPacketIndexRun, DogfoodRun,
+        EvidenceQualityScorecardInput, EvidenceQualityScorecardInputs,
+        EvidenceQualityScorecardReport, FixKind, GENERATED_CI_FIRST_ACTION_REPAIR,
+        GENERATED_CI_FRONT_PANEL_REPAIR, GENERATED_CI_PACKET_INDEX_REPAIR, LocalContextAllow,
         MarkdownLink, ReceiptRecord, RepoExposureLatencyReport, RepoExposureLatencyRun,
         RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode,
         SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
@@ -25299,25 +25518,25 @@ mod tests {
         check_no_panic_family, check_process_policy, check_static_language, check_workflows,
         ci_full_evidence_gates, collect_panic_findings, collect_semantic_panic_findings,
         critic_findings, dogfood_class_counts, dogfood_first_action_scenarios,
-        dogfood_gate_adoption_scenarios, dogfood_pr_inline_comment_run,
-        dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
-        dogfood_pr_review_front_panel_scenarios, dogfood_report_json, dogfood_report_markdown,
-        dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
-        evaluate_semantic_no_panic_policy, evidence_quality_scorecard_from_values,
-        evidence_quality_scorecard_json, evidence_quality_scorecard_markdown,
-        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
-        extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns, glob_matches,
-        golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
-        guarded_allow_attributes_in_text, install_hooks_in, is_bdd_test_name, is_campaign_path,
-        is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
-        is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
-        is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
-        is_stale_agent_boundary_scan_target, json_escape, json_number_after,
-        json_string_values_for_key, json_summary_count, known_commands, known_xtask_command,
-        lane1_evidence_audit_from_repo_exposure, lane1_evidence_audit_json,
-        lane1_evidence_audit_markdown, local_context_line_findings, local_markdown_target,
-        lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
-        markdown_links_in_text, mutation_calibration_report_json,
+        dogfood_gate_adoption_scenarios, dogfood_generated_ci_cockpit_run_from_workflow,
+        dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
+        dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
+        dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
+        dogfood_report_packet_index_scenarios, evaluate_semantic_no_panic_policy,
+        evidence_quality_scorecard_from_values, evidence_quality_scorecard_json,
+        evidence_quality_scorecard_markdown, extract_json_object_usize_map, extract_json_string,
+        extract_json_warnings, extract_workflow_run_blocks, first_line_difference,
+        forbidden_panic_patterns, glob_matches, golden_changes_without_blessing,
+        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
+        install_hooks_in, is_bdd_test_name, is_campaign_path, is_dependency_surface_candidate,
+        is_docs_path, is_evidence_path, is_generated_candidate, is_known_campaign_command,
+        is_non_rust_programming_candidate, is_policy_path, is_production_path, is_receipt_status,
+        is_ripr_managed_hook, is_snake_case_id, is_spec_id, is_stale_agent_boundary_scan_target,
+        json_escape, json_number_after, json_string_values_for_key, json_summary_count,
+        known_commands, known_xtask_command, lane1_evidence_audit_from_repo_exposure,
+        lane1_evidence_audit_json, lane1_evidence_audit_markdown, local_context_line_findings,
+        local_markdown_target, lsp_cockpit_report, lsp_cockpit_report_json,
+        lsp_cockpit_report_markdown, markdown_links_in_text, mutation_calibration_report_json,
         mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
         no_panic_toml_string, non_rust_programming_retention_reason,
         normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
@@ -30272,6 +30491,19 @@ fn exact_owner_call_has_external_expected_value() {
             .to_path_buf(),
             errors: Vec::new(),
         };
+        let generated_ci_run = DogfoodGeneratedCiCockpitRun {
+            name: "generated-pr-ci-review-workflow".to_string(),
+            command: "cargo run --quiet -p ripr -- init --ci github --dry-run".to_string(),
+            duration_ms: 10,
+            start_here: true,
+            repair_commands: 3,
+            expected_repair_commands: 3,
+            gate_authority_boundary: true,
+            default_advisory: true,
+            artifact_upload: true,
+            language_grouping_status: "deferred".to_string(),
+            errors: Vec::new(),
+        };
         let pr_inline_comment_run = DogfoodPrInlineCommentRun {
             name: "publishable_changed_line".to_string(),
             actual_dir: Path::new(
@@ -30322,15 +30554,17 @@ fn exact_owner_call_has_external_expected_value() {
             &[first_action_run],
             &[front_panel_run],
             &[report_packet_index_run],
+            &[generated_ci_run],
             &[pr_inline_comment_run],
         );
-        let json = dogfood_report_json(&[], &[], &[], &[], &[], &[]);
+        let json = dogfood_report_json(&[], &[], &[], &[], &[], &[], &[]);
 
         assert!(markdown.contains("Mode: advisory"));
         assert!(markdown.contains("boundary_gap"));
         assert!(markdown.contains("First Useful Action Receipts"));
         assert!(markdown.contains("PR Review Front Panel Receipts"));
         assert!(markdown.contains("Report Packet Index Receipts"));
+        assert!(markdown.contains("Generated CI Cockpit Receipts"));
         assert!(markdown.contains("PR Inline Comment Publisher Receipts"));
         assert!(markdown.contains("Gate Adoption Receipts"));
         assert!(markdown.contains("Default CI blocking: no"));
@@ -30341,7 +30575,64 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(json.contains("\"advisory\": true"));
         assert!(json.contains("\"default_ci_blocking\": false"));
         assert!(json.contains("\"report_packet_index\""));
+        assert!(json.contains("\"generated_ci_cockpit\""));
         assert!(json.contains("\"pr_inline_comment_publisher\""));
+    }
+
+    #[test]
+    fn dogfood_generated_ci_cockpit_receipts_are_checked() {
+        let workflow = format!(
+            "\
+name: RIPR
+jobs:
+  ripr:
+    continue-on-error: ${{{{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}}}
+    steps:
+      - uses: actions/upload-artifact@v7
+      - run: |
+          echo '### Start here'
+          echo '- Open `target/ripr/reports/pr-review-front-panel.md` first when it exists.'
+          echo 'RIPR is advisory static evidence.'
+          echo 'Gate authority: `ripr gate evaluate` remains the pass/fail source.'
+          echo '{GENERATED_CI_FIRST_ACTION_REPAIR}'
+          echo '{GENERATED_CI_FRONT_PANEL_REPAIR}'
+          echo '{GENERATED_CI_PACKET_INDEX_REPAIR}'
+          echo 'target/ripr/reports'
+"
+        );
+
+        let run = dogfood_generated_ci_cockpit_run_from_workflow(
+            "generated-pr-ci-review-workflow",
+            "cargo run --quiet -p ripr -- init --ci github --dry-run",
+            10,
+            &workflow,
+        );
+        assert!(run.errors.is_empty(), "{:?}", run.errors);
+        assert!(run.start_here);
+        assert_eq!(run.repair_commands, 3);
+        assert!(run.gate_authority_boundary);
+        assert!(run.default_advisory);
+        assert!(run.artifact_upload);
+        assert_eq!(run.language_grouping_status, "deferred");
+
+        let missing = dogfood_generated_ci_cockpit_run_from_workflow(
+            "missing",
+            "cargo run --quiet -p ripr -- init --ci github --dry-run",
+            10,
+            "name: RIPR",
+        );
+        assert!(
+            missing
+                .errors
+                .iter()
+                .any(|error| error.contains("Start here"))
+        );
+        assert!(
+            missing
+                .errors
+                .iter()
+                .any(|error| error.contains("regeneration commands"))
+        );
     }
 
     #[test]

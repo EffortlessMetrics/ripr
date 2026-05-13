@@ -1,6 +1,6 @@
 # Lane 4 PR / CI Review Cockpit Implementation Plan
 
-Status: planning
+Status: complete
 
 Lane: 4
 
@@ -529,13 +529,14 @@ summary behavior.
 ### 15. `dogfood/lane4-cockpit-gap-receipts`
 
 Goal:
-Refresh or add PR/CI review cockpit dogfood receipts for gaps not already
-covered by Campaign 24 and Campaign 25.
+Add PR/CI review cockpit dogfood receipts for generated-CI summary behavior not
+already covered by Campaign 24 and Campaign 25.
 
 Production delta:
-Add repo-local receipts only for newly identified cockpit gaps, such as
-language-preview grouping or cross-surface missing-proof handoff states not
-already covered by front-panel or packet-index receipts.
+Extend `cargo xtask dogfood` with a generated-CI cockpit receipt that renders
+`ripr init --ci github --dry-run` and checks the `Start here` summary,
+regeneration commands, artifact upload, advisory default, and gate-authority
+boundary.
 
 Non-goals:
 Do not duplicate existing front-panel or packet-index dogfood cases. No new
@@ -543,13 +544,14 @@ report semantics. No analyzer, gate, editor, source-edit, generated-test,
 provider, mutation, or default-blocking changes.
 
 Acceptance:
-`cargo xtask dogfood` or a lane-specific dogfood command writes checked
-receipts for the remaining gap states and links back to the existing Campaign
-24 and Campaign 25 receipts for covered states.
+`cargo xtask dogfood` writes checked receipts for the generated workflow
+cockpit case and links back to existing Campaign 24 and Campaign 25 receipts
+for covered front-panel and packet-index states.
 
 Proof commands:
 
 ```bash
+rtk cargo test -p xtask dogfood_
 rtk cargo xtask dogfood
 rtk cargo xtask check-output-contracts
 rtk cargo xtask check-capabilities
@@ -575,7 +577,7 @@ policy, generated workflow, or preview-language work.
 
 Acceptance:
 The closeout states what shipped, what did not change, validation commands,
-remaining work, known limits, and next-lane handoff.
+deferred language-aware grouping, known limits, and next-lane handoff.
 
 Proof commands:
 
@@ -583,6 +585,7 @@ Proof commands:
 rtk cargo xtask check-doc-index
 rtk cargo xtask markdown-links
 rtk cargo xtask check-static-language
+rtk cargo xtask check-campaign
 rtk cargo xtask check-capabilities
 rtk cargo xtask check-traceability
 rtk cargo xtask check-pr

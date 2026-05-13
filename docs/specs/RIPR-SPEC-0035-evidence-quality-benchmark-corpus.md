@@ -159,6 +159,13 @@ distinguishes field-specific observation from broad snapshot output.
   pins the runtime-only signal rule.
 - `xtask::tests::evidence_quality_benchmark_pins_line_movement_identity`
   validates metamorphic identity cases.
+- `rust_index::tests::classifies_only_clear_custom_helpers_as_exact_value_oracles`
+  pins the positive and negative custom helper oracle guards.
+- `rust_index::tests::classifies_duplicative_equality_as_weak_oracle` and
+  `test_grip_evidence::tests::duplicative_equality_assertion_stays_weak_oracle`
+  pin the duplicative equality must-not-claim guard.
+- `test_grip_evidence::tests::opaque_custom_assertion_helper_stays_unknown_oracle`
+  pins the opaque helper static-limitation guard.
 
 ## Implementation Mapping
 

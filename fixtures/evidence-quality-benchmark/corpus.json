@@ -240,12 +240,49 @@
       "repair_route": "analysis/oracle-semantics-audit-fixes"
     },
     {
+      "id": "duplicative_equality_oracle_guard",
+      "case_kind": "negative_guard",
+      "evidence_class": "self_computed_expected_value",
+      "maturity_scope": "fixture_backed",
+      "description": "A duplicated equality assertion is not independent exact-value evidence.",
+      "fixture_reference": "crates/ripr/src/analysis/rust_index.rs::tests::classifies_duplicative_equality_as_weak_oracle",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-duplicative-equality-1",
+          "canonical_gap_id": "gap:bench-duplicative-equality",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pricing::total",
+          "location": {
+            "file": "src/pricing.rs",
+            "line": 89
+          },
+          "seam_kind": "return_value",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "oracle_semantics_distribution",
+        "metric": "oracle_kind_counts.relational_check",
+        "value": 1
+      },
+      "expected_claim": "Duplicated equality stays weak because it observes only a tautological relationship.",
+      "must_not_claim": [
+        "Do not mark assert_eq!(actual, actual) as strong exact-value evidence.",
+        "Do not remove the upgrade suggestion for an independent expected value."
+      ],
+      "repair_route": "analysis/oracle-semantics-audit-fixes"
+    },
+    {
       "id": "opaque_helper_static_limitation",
       "case_kind": "static_limitation",
       "evidence_class": "opaque_helper_static_limitation",
       "maturity_scope": "static_only",
       "description": "Opaque assertion helpers remain static limitations until a supported helper pattern is added.",
-      "fixture_reference": "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json#static_activation_limitation_without_candidate_values",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::opaque_custom_assertion_helper_stays_unknown_oracle",
       "expected_repo_exposure": {
         "static_gap_created": true,
         "evidence_record": {
