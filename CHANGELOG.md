@@ -41,6 +41,12 @@ Planned scope:
   "X was not generated" messages stay aligned. Artifact filenames, JSON
   fields, command names, status IDs, workflow step `name:` values, and
   schemas are unchanged.
+- Generated CI now surfaces the Lane 2 policy operations stack as advisory
+  packets: `policy-operations`, `policy-history`, `policy-promotion-*`, and
+  configured preview-language `preview-promotion-*` artifacts are rendered,
+  uploaded, indexed, and summarized without changing pass/fail authority,
+  default blocking, comments, config, baselines, suppressions, history ledgers,
+  workflows, branch protection, or preview eligibility.
 - `ripr --help` and every `ripr <subcommand> --help` now lead with an
   action-oriented one-liner before the `Usage:` block (e.g.,
   `ripr pilot --help` opens with "Find the top test gap in this repo and
