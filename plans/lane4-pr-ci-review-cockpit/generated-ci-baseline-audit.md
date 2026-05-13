@@ -229,7 +229,7 @@ TypeScript and Python evidence, or until the lane explicitly defers Python.
 | --- | --- | --- |
 | Summary wording and repair commands | `ci/generated-summary-cockpit-contract` | Done: generated summary starts with `Start here` and known missing-cockpit surfaces name regeneration commands. |
 | Preview language grouping | `ci/language-aware-grouping` | Still blocked on preview-language evidence readiness or explicit deferral. |
-| Dogfood receipts | `dogfood/lane4-cockpit-gap-receipts` | Add only remaining cockpit gap receipts; do not duplicate Campaign 24 or 25 receipts. |
+| Dogfood receipts | `dogfood/lane4-cockpit-gap-receipts` | Done by [generated-CI cockpit dogfood receipts](../../docs/handoffs/2026-05-13-generated-ci-cockpit-receipts.md); Campaign 24 and 25 receipts remain the fixture-backed source for front-panel and packet-index states. |
 | Closeout | `docs/lane4-closeout` | Close after the remaining implemented or deferred gaps are documented. |
 
 ## Non-Changes
