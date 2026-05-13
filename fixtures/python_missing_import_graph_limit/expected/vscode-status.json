@@ -1,0 +1,15 @@
+{
+  "schema_version": "0.1",
+  "fixture": "python_missing_import_graph_limit",
+  "states": [
+    {
+      "name": "preview_analysis_ready",
+      "text": "ripr: diagnostics",
+      "summary": "ripr analysis completed with 1 diagnostics (1 preview).",
+      "tooltip_contains": [
+        "1 preview finding is syntax-first and advisory.",
+        "1 preview static limit must be read before action language."
+      ]
+    }
+  ]
+}

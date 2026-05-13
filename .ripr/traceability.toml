@@ -2275,16 +2275,35 @@ spec = "docs/specs/RIPR-SPEC-0036-editor-preview-routing.md"
 tests = [
   "crates/ripr/src/lsp/tests.rs",
   "editors/vscode/test/suite/extension.test.ts",
+  "xtask/src/main.rs",
 ]
 fixtures = [
+  "fixtures/python_disabled",
+  "fixtures/python_missing_import_graph_limit",
+  "fixtures/typescript_mocked_module_limit",
 ]
 code = [
   "crates/ripr/src/lsp/backend.rs",
   "crates/ripr/src/lsp/diagnostics.rs",
   "editors/vscode/package.json",
   "editors/vscode/src/client.ts",
+  "xtask/src/main.rs",
 ]
 outputs = [
+  "fixtures/python_disabled/expected/lsp-code-actions.json",
+  "fixtures/python_disabled/expected/lsp-diagnostics.json",
+  "fixtures/python_disabled/expected/static-limits.md",
+  "fixtures/python_disabled/expected/vscode-status.json",
+  "fixtures/python_missing_import_graph_limit/expected/lsp-code-actions.json",
+  "fixtures/python_missing_import_graph_limit/expected/lsp-diagnostics.json",
+  "fixtures/python_missing_import_graph_limit/expected/lsp-hover.md",
+  "fixtures/python_missing_import_graph_limit/expected/static-limits.md",
+  "fixtures/python_missing_import_graph_limit/expected/vscode-status.json",
+  "fixtures/typescript_mocked_module_limit/expected/lsp-code-actions.json",
+  "fixtures/typescript_mocked_module_limit/expected/lsp-diagnostics.json",
+  "fixtures/typescript_mocked_module_limit/expected/lsp-hover.md",
+  "fixtures/typescript_mocked_module_limit/expected/static-limits.md",
+  "fixtures/typescript_mocked_module_limit/expected/vscode-status.json",
   "docs/specs/RIPR-SPEC-0036-editor-preview-routing.md",
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0003-editor-preview-routing.md",
@@ -2317,16 +2336,35 @@ spec = "docs/specs/RIPR-SPEC-0037-editor-preview-static-limit-projection.md"
 tests = [
   "crates/ripr/src/lsp/tests.rs",
   "editors/vscode/test/suite/extension.test.ts",
+  "xtask/src/main.rs",
 ]
 fixtures = [
+  "fixtures/python_disabled",
+  "fixtures/python_missing_import_graph_limit",
+  "fixtures/typescript_mocked_module_limit",
 ]
 code = [
   "crates/ripr/src/lsp/backend.rs",
   "crates/ripr/src/lsp/diagnostics.rs",
   "crates/ripr/src/lsp/hover.rs",
   "editors/vscode/src/client.ts",
+  "xtask/src/main.rs",
 ]
 outputs = [
+  "fixtures/python_disabled/expected/lsp-code-actions.json",
+  "fixtures/python_disabled/expected/lsp-diagnostics.json",
+  "fixtures/python_disabled/expected/static-limits.md",
+  "fixtures/python_disabled/expected/vscode-status.json",
+  "fixtures/python_missing_import_graph_limit/expected/lsp-code-actions.json",
+  "fixtures/python_missing_import_graph_limit/expected/lsp-diagnostics.json",
+  "fixtures/python_missing_import_graph_limit/expected/lsp-hover.md",
+  "fixtures/python_missing_import_graph_limit/expected/static-limits.md",
+  "fixtures/python_missing_import_graph_limit/expected/vscode-status.json",
+  "fixtures/typescript_mocked_module_limit/expected/lsp-code-actions.json",
+  "fixtures/typescript_mocked_module_limit/expected/lsp-diagnostics.json",
+  "fixtures/typescript_mocked_module_limit/expected/lsp-hover.md",
+  "fixtures/typescript_mocked_module_limit/expected/static-limits.md",
+  "fixtures/typescript_mocked_module_limit/expected/vscode-status.json",
   "docs/specs/RIPR-SPEC-0037-editor-preview-static-limit-projection.md",
   "docs/specs/RIPR-SPEC-0036-editor-preview-routing.md",
   "docs/specs/README.md",

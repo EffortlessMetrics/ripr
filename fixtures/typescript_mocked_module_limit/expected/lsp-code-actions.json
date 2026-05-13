@@ -1,0 +1,22 @@
+{
+  "actions": [
+    {
+      "arguments": [
+        {
+          "finding_id": "probe:src_discount.ts:2:typescript_preview",
+          "line": 2,
+          "probe_id": "probe:src_discount.ts:2:typescript_preview",
+          "uri": "src/discount.ts"
+        }
+      ],
+      "command": "ripr.copyContext",
+      "title": "Inspect finding: copy context packet"
+    },
+    {
+      "arguments": [],
+      "command": "ripr.refresh",
+      "title": "Refresh Analysis - Saved Workspace Check"
+    }
+  ],
+  "fixture": "typescript_mocked_module_limit"
+}

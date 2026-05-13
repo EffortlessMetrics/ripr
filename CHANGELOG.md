@@ -324,6 +324,10 @@ tests, edit source, or make default CI blocking decisions.
   missing-input, and no-actionable-seam transitions.
 - Added the `fixtures/editor_lsp_workflow` canonical Lane 3 fixture and
   extended VS Code e2e + framed LSP smoke coverage.
+- Pinned preview editor projection artifacts for TypeScript and Python
+  preview diagnostics, bounded finding actions, hover/static-limit/status
+  evidence, and disabled-preview no-diagnostic behavior without analyzer,
+  schema, selector, or policy changes.
 - Added `docs/EDITOR_EVIDENCE_WORKFLOW.md`, the saved-workspace editor
   guide from install and status through diagnostic, hover, related test,
   context packet, focused test, after snapshot, verify, receipt, and
