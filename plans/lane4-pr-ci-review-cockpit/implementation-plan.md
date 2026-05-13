@@ -16,8 +16,8 @@ Planned proposal path:
 `docs/proposals/RIPR-PROP-0004-pr-ci-review-cockpit.md`.
 
 Planned generated-CI workflow spec path:
-use the next available `RIPR-SPEC-00NN-generated-pr-ci-review-workflow.md`.
-This checkout already uses `RIPR-SPEC-0032` through `RIPR-SPEC-0035`.
+`docs/specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md`.
+This checkout already uses `RIPR-SPEC-0032` through `RIPR-SPEC-0038`.
 
 ## Objective
 
@@ -164,8 +164,7 @@ Goal:
 Define the generated PR CI review workflow contract.
 
 Production delta:
-Add a new `docs/specs/RIPR-SPEC-00NN-generated-pr-ci-review-workflow.md` using
-the next available spec number.
+Add `docs/specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md`.
 
 Non-goals:
 No workflow implementation, branch-protection change, default blocking change,
