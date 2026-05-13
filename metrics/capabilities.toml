@@ -1251,10 +1251,11 @@ evidence = [
   "refresh logs and VS Code status surface preview finding and static-limit counts",
   "LSP analysis remains gated by [languages] through the existing adapter layer",
   "Rust default saved-workspace cockpit behavior remains covered by LSP and VS Code extension tests",
-  "docs/LANGUAGE_ADAPTER_PREVIEW.md documents the opt-in editor workflow and rollback"
+  "docs/LANGUAGE_ADAPTER_PREVIEW.md documents the opt-in editor workflow and rollback",
+  "cargo xtask dogfood records TypeScript/Python preview receipt coverage for static-limit and disabled-language projection boundaries"
 ]
 fixtures = []
-next = "dogfood/language-adapter-preview-receipts"
+next = "campaign/language-adapter-preview-closeout"
 metric = "editor_preview_language_routing, editor_preview_static_limit_projection"
 
 [[capability]]
@@ -1270,10 +1271,11 @@ evidence = [
   "summary text keeps preview-language groups advisory and preserves ripr gate evaluate as configured pass/fail authority",
   "generated workflow tests pin the opt-in grouping guard and Rust-default boundary",
   "CLI smoke tests pin the generated workflow section",
-  "docs/LANGUAGE_ADAPTER_PREVIEW.md documents generated-CI grouping and the gate-authority boundary"
+  "docs/LANGUAGE_ADAPTER_PREVIEW.md documents generated-CI grouping and the gate-authority boundary",
+  "cargo xtask dogfood checks generated-CI cockpit receipts with preview language grouping marked checked while preserving advisory defaults"
 ]
 fixtures = []
-next = "dogfood/language-adapter-preview-receipts"
+next = "campaign/language-adapter-preview-closeout"
 metric = "generated_pr_ci_language_groups, generated_pr_ci_preview_language_groups, generated_pr_ci_rust_default_unchanged, generated_pr_ci_advisory_summaries"
 
 [[capability]]
@@ -1312,6 +1314,7 @@ evidence = [
   "probe fixtures cover predicate, return value, error path, field assignment, call arguments, and mock interaction shapes",
   "related-test fixtures cover direct owner calls, import-alias calls, same-stem proximity, and unrelated mention negatives",
   "static-limit fixtures cover dynamic_dispatch, decorator_indirection, mocked_module, missing_import_graph, metaprogramming, and unsupported_syntax",
+  "cargo xtask dogfood checks Python preview receipts for missing_import_graph, disabled-language behavior, and no cross-language related-test routing",
   "docs/LANGUAGE_ADAPTER_PREVIEW.md documents how to enable, read, and roll back Python preview evidence"
 ]
 fixtures = [
@@ -1340,7 +1343,7 @@ fixtures = [
   "fixtures/python_metaprogramming_limit",
   "fixtures/python_unsupported_syntax_limit"
 ]
-next = "dogfood/language-adapter-preview-receipts"
+next = "campaign/language-adapter-preview-closeout"
 metric = "language_adapter_python_findings_preview, language_adapter_python_static_limit_*"
 
 [[capability]]
@@ -1357,7 +1360,7 @@ evidence = [
   "ripr init --ci github generates an advisory GitHub workflow that runs ripr pilot, uploads pilot/report/agent/review artifacts, writes a RIPR advisory summary, writes repo badge JSON and Shields artifacts, optionally renders an operator cockpit when the repo-local xtask exists, and makes SARIF rendering/upload optional through RIPR_UPLOAD_SARIF",
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture pins the generated workflow artifact packet, optional SARIF gates, non-blocking posture, and badge outputs",
   "crates/ripr/src/cli/commands.rs init CI generation tests cover advisory workflow content, report upload, optional SARIF, and overwrite guards",
-  "cargo xtask dogfood validates generated-CI cockpit receipts for Start here guidance, known cockpit regeneration commands, report artifact upload, advisory default posture, and gate-decision authority boundaries",
+  "cargo xtask dogfood validates generated-CI cockpit receipts for Start here guidance, known cockpit regeneration commands, report artifact upload, preview language grouping, advisory default posture, and gate-decision authority boundaries",
   "crates/ripr/tests/cli_smoke.rs init --ci github smoke tests cover dry-run, generated workflow, and existing workflow protection",
   "SARIF renderer tests cover stable rule IDs, configured severity, off severity omission, suppression metadata, valid JSON, and static language",
   "cargo xtask sarif-policy compares current SARIF against a baseline and only fails on new warning-level results when explicitly requested",

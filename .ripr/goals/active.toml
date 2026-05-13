@@ -281,12 +281,14 @@ commands = [
 
 [[work_item]]
 id = "dogfood/language-adapter-preview-receipts"
-status = "ready"
+status = "done"
 branch = "dogfood-language-adapter-preview-receipts"
 stackable = false
 blocked_by = []
-acceptance = "Extend cargo xtask dogfood with checked TypeScript and Python preview receipts without changing analyzer behavior, default CI, or inline-comment defaults"
+acceptance = "Extended cargo xtask dogfood with checked TypeScript and Python preview receipts covering preview labels, structured static limits, disabled-language behavior, and no cross-language related-test routing without changing analyzer behavior, Rust defaults, generated CI defaults, or inline-comment defaults."
 commands = [
+  "cargo test -p xtask dogfood_generated_ci_cockpit_receipts_are_checked",
+  "cargo test -p xtask dogfood_language_preview_scenarios_cover_projection_boundaries",
   "cargo xtask dogfood",
   "cargo xtask check-capabilities",
   "cargo xtask check-traceability",
@@ -297,10 +299,18 @@ commands = [
 
 [[work_item]]
 id = "campaign/language-adapter-preview-closeout"
-status = "blocked"
+status = "ready"
 branch = "campaign-language-adapter-preview-closeout"
 stackable = false
-blocked_by = [
-  "dogfood/language-adapter-preview-receipts",
-]
+blocked_by = []
 acceptance = "Close Campaign 27 after the spec, adapter boundary, Rust adapter, output metadata, preview adapters, editor routing, CI grouping, workflow docs, dogfood receipts, and validation show preview adapters are syntax-first, opt-in, advisory, and label-correct, while Rust behavior is preserved"
+commands = [
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-traceability",
+  "cargo xtask check-pr",
+]

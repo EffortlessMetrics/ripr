@@ -494,6 +494,55 @@ struct DogfoodGeneratedCiCockpitRun {
 }
 
 #[derive(Debug)]
+struct DogfoodLanguagePreviewScenario {
+    name: String,
+    language: String,
+    root: PathBuf,
+    diff: PathBuf,
+    expected_findings: usize,
+    expected_preview_findings: usize,
+    expected_missing_preview_status: usize,
+    expected_related_tests: usize,
+    expected_classifications: Vec<String>,
+    expected_static_limit_kinds: Vec<String>,
+    preview_enabled: bool,
+    reason: String,
+}
+
+#[derive(Debug)]
+struct DogfoodLanguagePreviewRun {
+    name: String,
+    language: String,
+    root: PathBuf,
+    diff: PathBuf,
+    actual_dir: PathBuf,
+    json_path: PathBuf,
+    human_path: PathBuf,
+    duration_ms: u128,
+    findings: usize,
+    language_findings: usize,
+    preview_findings: usize,
+    missing_preview_status: usize,
+    related_tests: usize,
+    classifications: Vec<String>,
+    static_limit_kinds: Vec<String>,
+    expected_findings: usize,
+    expected_preview_findings: usize,
+    expected_missing_preview_status: usize,
+    expected_related_tests: usize,
+    expected_classifications: Vec<String>,
+    expected_static_limit_kinds: Vec<String>,
+    preview_enabled: bool,
+    reason: String,
+    errors: Vec<String>,
+}
+
+struct DogfoodPreviewProjectionRuns<'a> {
+    generated_ci_cockpit: &'a [DogfoodGeneratedCiCockpitRun],
+    language_preview: &'a [DogfoodLanguagePreviewRun],
+}
+
+#[derive(Debug)]
 struct DogfoodPrInlineCommentScenario {
     name: String,
     scenario: String,
@@ -15498,6 +15547,14 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         .map(|scenario| dogfood_report_packet_index_run(&scenario))
         .collect::<Result<Vec<_>, _>>()?;
     let generated_ci_cockpit_runs = vec![dogfood_generated_ci_cockpit_run()?];
+    let language_preview_runs = dogfood_language_preview_scenarios()
+        .into_iter()
+        .map(|scenario| dogfood_language_preview_run(&scenario))
+        .collect::<Vec<_>>();
+    let preview_projection_runs = DogfoodPreviewProjectionRuns {
+        generated_ci_cockpit: &generated_ci_cockpit_runs,
+        language_preview: &language_preview_runs,
+    };
     let pr_inline_comment_runs = dogfood_pr_inline_comment_scenarios()
         .into_iter()
         .map(|scenario| dogfood_pr_inline_comment_run(&scenario))
@@ -15510,7 +15567,7 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
             &first_action_runs,
             &front_panel_runs,
             &report_packet_index_runs,
-            &generated_ci_cockpit_runs,
+            &preview_projection_runs,
             &pr_inline_comment_runs,
         ),
     )?;
@@ -15522,7 +15579,7 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
             &first_action_runs,
             &front_panel_runs,
             &report_packet_index_runs,
-            &generated_ci_cockpit_runs,
+            &preview_projection_runs,
             &pr_inline_comment_runs,
         ),
     )
@@ -16650,7 +16707,18 @@ fn dogfood_generated_ci_cockpit_run_from_workflow(
     ) && workflow.contains("RIPR is advisory static evidence");
     let artifact_upload =
         workflow.contains("actions/upload-artifact@v7") && workflow.contains("target/ripr/reports");
-    let language_grouping_status = "deferred".to_string();
+    let language_grouping_checked = workflow.contains("if [ -n \"$preview_languages\" ]; then")
+        && workflow.contains("### Language preview grouping")
+        && workflow.contains("preview-language groups are advisory presentation only")
+        && workflow.contains("ripr gate evaluate")
+        && workflow.contains("missing_preview_status")
+        && workflow.contains("static_limit_kinds");
+    let language_grouping_status = if language_grouping_checked {
+        "checked"
+    } else {
+        "missing"
+    }
+    .to_string();
     let mut errors = Vec::new();
 
     if !start_here {
@@ -16670,6 +16738,12 @@ fn dogfood_generated_ci_cockpit_run_from_workflow(
     if !artifact_upload {
         errors.push("generated CI must upload the report artifact packet".to_string());
     }
+    if !language_grouping_checked {
+        errors.push(
+            "generated CI must keep configured preview-language grouping advisory and opt-in"
+                .to_string(),
+        );
+    }
 
     DogfoodGeneratedCiCockpitRun {
         name: name.to_string(),
@@ -16682,6 +16756,308 @@ fn dogfood_generated_ci_cockpit_run_from_workflow(
         default_advisory,
         artifact_upload,
         language_grouping_status,
+        errors,
+    }
+}
+
+fn dogfood_language_preview_scenarios() -> Vec<DogfoodLanguagePreviewScenario> {
+    [
+        (
+            "typescript_mocked_module_limit",
+            "typescript",
+            1usize,
+            1usize,
+            0usize,
+            1usize,
+            vec!["exposed"],
+            vec!["mocked_module"],
+            true,
+            "TypeScript preview finding keeps preview metadata and mocked-module static limit.",
+        ),
+        (
+            "python_missing_import_graph_limit",
+            "python",
+            1usize,
+            1usize,
+            0usize,
+            1usize,
+            vec!["exposed"],
+            vec!["missing_import_graph"],
+            true,
+            "Python preview finding keeps preview metadata and missing-import-graph static limit.",
+        ),
+        (
+            "python_mixed_language_no_cross_route",
+            "python",
+            1usize,
+            1usize,
+            0usize,
+            0usize,
+            vec!["no_static_path"],
+            Vec::new(),
+            true,
+            "Mixed-language fixture must not use a TypeScript test as Python related-test evidence.",
+        ),
+        (
+            "python_disabled",
+            "python",
+            0usize,
+            0usize,
+            0usize,
+            0usize,
+            Vec::new(),
+            Vec::new(),
+            false,
+            "Rust-default language config must not emit disabled Python preview findings.",
+        ),
+    ]
+    .into_iter()
+    .map(
+        |(
+            name,
+            language,
+            expected_findings,
+            expected_preview_findings,
+            expected_missing_preview_status,
+            expected_related_tests,
+            expected_classifications,
+            expected_static_limit_kinds,
+            preview_enabled,
+            reason,
+        )| {
+            let base = Path::new("fixtures").join(name);
+            DogfoodLanguagePreviewScenario {
+                name: name.to_string(),
+                language: language.to_string(),
+                root: base.join("input"),
+                diff: base.join("diff.patch"),
+                expected_findings,
+                expected_preview_findings,
+                expected_missing_preview_status,
+                expected_related_tests,
+                expected_classifications: expected_classifications
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+                expected_static_limit_kinds: expected_static_limit_kinds
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+                preview_enabled,
+                reason: reason.to_string(),
+            }
+        },
+    )
+    .collect()
+}
+
+fn dogfood_language_preview_run(
+    scenario: &DogfoodLanguagePreviewScenario,
+) -> DogfoodLanguagePreviewRun {
+    let started = Instant::now();
+    let actual_dir = Path::new("target")
+        .join("ripr")
+        .join("dogfood")
+        .join("language-preview")
+        .join(&scenario.name);
+    let json_path = actual_dir.join("check.json");
+    let human_path = actual_dir.join("human.txt");
+    let mut errors = Vec::new();
+    let mut findings = 0usize;
+    let mut language_findings = 0usize;
+    let mut preview_findings = 0usize;
+    let mut missing_preview_status = 0usize;
+    let mut related_tests = 0usize;
+    let mut classifications = Vec::<String>::new();
+    let mut static_limit_kinds = Vec::<String>::new();
+
+    if !scenario.root.exists() {
+        errors.push(format!(
+            "fixture root does not exist: {}",
+            normalize_path(&scenario.root)
+        ));
+    }
+    if !scenario.diff.exists() {
+        errors.push(format!(
+            "fixture diff does not exist: {}",
+            normalize_path(&scenario.diff)
+        ));
+    }
+    if let Err(err) = fs::create_dir_all(&actual_dir) {
+        errors.push(format!(
+            "failed to create language preview dogfood output directory {}: {err}",
+            normalize_path(&actual_dir)
+        ));
+    }
+
+    let mut human_output = String::new();
+    if errors.is_empty() {
+        let root = normalize_path(&scenario.root);
+        let diff = normalize_path(&scenario.diff);
+        match run_fixture_check(&root, &diff, true) {
+            Ok(json) => {
+                let normalized = normalize_fixture_json_output(&json);
+                if let Err(err) = fs::write(&json_path, &normalized) {
+                    errors.push(format!(
+                        "failed to write language preview dogfood JSON {}: {err}",
+                        normalize_path(&json_path)
+                    ));
+                }
+                match serde_json::from_str::<Value>(&normalized) {
+                    Ok(report) => {
+                        findings = json_summary_count(&report, "findings");
+                        if let Some(finding_values) =
+                            report.get("findings").and_then(Value::as_array)
+                        {
+                            for finding in finding_values {
+                                if json_string_field(finding, "language").as_deref()
+                                    != Some(scenario.language.as_str())
+                                {
+                                    continue;
+                                }
+                                language_findings += 1;
+                                if json_string_field(finding, "language_status").as_deref()
+                                    == Some("preview")
+                                {
+                                    preview_findings += 1;
+                                } else {
+                                    missing_preview_status += 1;
+                                }
+                                if let Some(classification) =
+                                    json_string_field(finding, "classification")
+                                {
+                                    classifications.push(classification);
+                                }
+                                if let Some(static_limit_kind) =
+                                    json_string_field(finding, "static_limit_kind")
+                                {
+                                    static_limit_kinds.push(static_limit_kind);
+                                }
+                                related_tests += finding
+                                    .get("related_tests")
+                                    .and_then(Value::as_array)
+                                    .map(Vec::len)
+                                    .unwrap_or(0);
+                            }
+                        } else {
+                            errors.push(
+                                "language preview JSON is missing findings array".to_string(),
+                            );
+                        }
+                    }
+                    Err(err) => errors.push(format!(
+                        "failed to parse language preview JSON for {}: {err}",
+                        scenario.name
+                    )),
+                }
+            }
+            Err(err) => errors.push(err),
+        }
+
+        match run_fixture_check(&root, &diff, false) {
+            Ok(human) => {
+                human_output = normalize_fixture_human_output(&human);
+                if let Err(err) = fs::write(&human_path, &human_output) {
+                    errors.push(format!(
+                        "failed to write language preview dogfood human output {}: {err}",
+                        normalize_path(&human_path)
+                    ));
+                }
+            }
+            Err(err) => errors.push(err),
+        }
+    }
+
+    classifications = sorted_unique_strings(classifications);
+    static_limit_kinds = sorted_unique_strings(static_limit_kinds);
+
+    if findings != scenario.expected_findings {
+        errors.push(format!(
+            "expected {} total finding(s), got {}",
+            scenario.expected_findings, findings
+        ));
+    }
+    if preview_findings != scenario.expected_preview_findings {
+        errors.push(format!(
+            "expected {} preview finding(s), got {}",
+            scenario.expected_preview_findings, preview_findings
+        ));
+    }
+    if missing_preview_status != scenario.expected_missing_preview_status {
+        errors.push(format!(
+            "expected {} finding(s) missing preview status, got {}",
+            scenario.expected_missing_preview_status, missing_preview_status
+        ));
+    }
+    if related_tests != scenario.expected_related_tests {
+        errors.push(format!(
+            "expected {} related test(s), got {}",
+            scenario.expected_related_tests, related_tests
+        ));
+    }
+    if classifications != scenario.expected_classifications {
+        errors.push(format!(
+            "expected classifications [{}], got [{}]",
+            scenario.expected_classifications.join(", "),
+            classifications.join(", ")
+        ));
+    }
+    if static_limit_kinds != scenario.expected_static_limit_kinds {
+        errors.push(format!(
+            "expected static limit kinds [{}], got [{}]",
+            scenario.expected_static_limit_kinds.join(", "),
+            static_limit_kinds.join(", ")
+        ));
+    }
+    if !scenario.preview_enabled && (language_findings > 0 || preview_findings > 0) {
+        errors.push(format!(
+            "{} preview should be disabled but emitted {} language finding(s)",
+            scenario.language, language_findings
+        ));
+    }
+    if scenario.preview_enabled
+        && scenario.expected_preview_findings > 0
+        && !human_output
+            .to_ascii_lowercase()
+            .contains(&format!("{} preview", scenario.language))
+    {
+        errors.push(format!(
+            "human output should label {} preview evidence",
+            scenario.language
+        ));
+    }
+    for static_limit_kind in &scenario.expected_static_limit_kinds {
+        if !human_output.contains(static_limit_kind) {
+            errors.push(format!(
+                "human output should include static limit kind `{static_limit_kind}`"
+            ));
+        }
+    }
+
+    DogfoodLanguagePreviewRun {
+        name: scenario.name.clone(),
+        language: scenario.language.clone(),
+        root: scenario.root.clone(),
+        diff: scenario.diff.clone(),
+        actual_dir,
+        json_path,
+        human_path,
+        duration_ms: started.elapsed().as_millis(),
+        findings,
+        language_findings,
+        preview_findings,
+        missing_preview_status,
+        related_tests,
+        classifications,
+        static_limit_kinds,
+        expected_findings: scenario.expected_findings,
+        expected_preview_findings: scenario.expected_preview_findings,
+        expected_missing_preview_status: scenario.expected_missing_preview_status,
+        expected_related_tests: scenario.expected_related_tests,
+        expected_classifications: scenario.expected_classifications.clone(),
+        expected_static_limit_kinds: scenario.expected_static_limit_kinds.clone(),
+        preview_enabled: scenario.preview_enabled,
+        reason: scenario.reason.clone(),
         errors,
     }
 }
@@ -17051,7 +17427,7 @@ fn dogfood_report_status(
     first_action_runs: &[DogfoodFirstActionRun],
     front_panel_runs: &[DogfoodFrontPanelRun],
     report_packet_index_runs: &[DogfoodReportPacketIndexRun],
-    generated_ci_cockpit_runs: &[DogfoodGeneratedCiCockpitRun],
+    preview_projection_runs: &DogfoodPreviewProjectionRuns<'_>,
     pr_inline_comment_runs: &[DogfoodPrInlineCommentRun],
 ) -> &'static str {
     if runs.iter().any(|run| !run.errors.is_empty())
@@ -17061,7 +17437,12 @@ fn dogfood_report_status(
         || report_packet_index_runs
             .iter()
             .any(|run| !run.errors.is_empty())
-        || generated_ci_cockpit_runs
+        || preview_projection_runs
+            .generated_ci_cockpit
+            .iter()
+            .any(|run| !run.errors.is_empty())
+        || preview_projection_runs
+            .language_preview
             .iter()
             .any(|run| !run.errors.is_empty())
         || pr_inline_comment_runs
@@ -17080,7 +17461,7 @@ fn dogfood_report_markdown(
     first_action_runs: &[DogfoodFirstActionRun],
     front_panel_runs: &[DogfoodFrontPanelRun],
     report_packet_index_runs: &[DogfoodReportPacketIndexRun],
-    generated_ci_cockpit_runs: &[DogfoodGeneratedCiCockpitRun],
+    preview_projection_runs: &DogfoodPreviewProjectionRuns<'_>,
     pr_inline_comment_runs: &[DogfoodPrInlineCommentRun],
 ) -> String {
     let mut body = format!(
@@ -17091,7 +17472,7 @@ fn dogfood_report_markdown(
             first_action_runs,
             front_panel_runs,
             report_packet_index_runs,
-            generated_ci_cockpit_runs,
+            preview_projection_runs,
             pr_inline_comment_runs
         )
     );
@@ -17399,10 +17780,10 @@ fn dogfood_report_markdown(
     body.push_str("These receipts validate the generated GitHub workflow cockpit surface. They check that the job summary starts with reviewer-first guidance, missing cockpit surfaces name regeneration commands, uploaded artifacts include the review packet, gate authority stays separate, and generated CI remains advisory by default.\n\n");
     body.push_str("- Default CI blocking: no\n");
     body.push_str("- Default inline comments: off\n");
-    body.push_str("- Language grouping: deferred until preview-language evidence is ready or explicitly deferred\n\n");
+    body.push_str("- Language grouping: checked for configured preview-language adapters; Rust-only config stays unchanged\n\n");
     body.push_str("| Case | Start here | Repair commands | Gate boundary | Advisory default | Artifact upload | Language grouping |\n");
     body.push_str("| --- | --- | ---: | --- | --- | --- | --- |\n");
-    for run in generated_ci_cockpit_runs {
+    for run in preview_projection_runs.generated_ci_cockpit {
         body.push_str(&format!(
             "| `{}` | {} | {}/{} | {} | {} | {} | `{}` |\n",
             markdown_cell(&run.name),
@@ -17420,7 +17801,7 @@ fn dogfood_report_markdown(
         ));
     }
     body.push('\n');
-    for run in generated_ci_cockpit_runs {
+    for run in preview_projection_runs.generated_ci_cockpit {
         body.push_str(&format!("### Generated CI `{}`\n\n", run.name));
         body.push_str(&format!("- Command: `{}`\n", markdown_cell(&run.command)));
         body.push_str(&format!("- Duration: {} ms\n", run.duration_ms));
@@ -17439,6 +17820,84 @@ fn dogfood_report_markdown(
             "- Language grouping: `{}`\n",
             markdown_cell(&run.language_grouping_status)
         ));
+        if run.errors.is_empty() {
+            body.push_str("- Errors: none\n\n");
+        } else {
+            body.push_str("- Errors:\n");
+            for error in &run.errors {
+                body.push_str(&format!("  - `{}`\n", markdown_cell(error)));
+            }
+            body.push('\n');
+        }
+    }
+    body.push_str("## Language Preview Receipts\n\n");
+    body.push_str("These receipts run checked TypeScript and Python preview fixtures through `ripr check --mode fast`. They prove preview labels, structured static limits, disabled-language behavior, and no cross-language related-test routing without changing analyzer truth, editor routing, CI blocking, provider calls, source edits, generated tests, or mutation execution.\n\n");
+    body.push_str("- Default CI blocking: no\n");
+    body.push_str("- Preview adapters: opt-in through `[languages]`\n");
+    body.push_str("- Receipt outputs: `target/ripr/dogfood/language-preview/<case>/check.json` and `human.txt`\n\n");
+    body.push_str("| Case | Language | Enabled | Findings | Preview | Missing preview status | Related tests | Classes | Static limits |\n");
+    body.push_str("| --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |\n");
+    for run in preview_projection_runs.language_preview {
+        body.push_str(&format!(
+            "| `{}` | `{}` | {} | {} | {} | {} | {} | `{}` | `{}` |\n",
+            markdown_cell(&run.name),
+            markdown_cell(&run.language),
+            if run.preview_enabled { "yes" } else { "no" },
+            run.findings,
+            run.preview_findings,
+            run.missing_preview_status,
+            run.related_tests,
+            markdown_cell(&run.classifications.join(", ")),
+            markdown_cell(&run.static_limit_kinds.join(", "))
+        ));
+    }
+    body.push('\n');
+    for run in preview_projection_runs.language_preview {
+        body.push_str(&format!("### Language Preview `{}`\n\n", run.name));
+        body.push_str(&format!("- Language: `{}`\n", markdown_cell(&run.language)));
+        body.push_str(&format!("- Preview enabled: {}\n", run.preview_enabled));
+        body.push_str(&format!("- Root: `{}`\n", normalize_path(&run.root)));
+        body.push_str(&format!("- Diff: `{}`\n", normalize_path(&run.diff)));
+        body.push_str(&format!(
+            "- Actual outputs: `{}`\n",
+            normalize_path(&run.actual_dir)
+        ));
+        body.push_str(&format!(
+            "- JSON receipt: `{}`\n",
+            normalize_path(&run.json_path)
+        ));
+        body.push_str(&format!(
+            "- Human receipt: `{}`\n",
+            normalize_path(&run.human_path)
+        ));
+        body.push_str(&format!("- Duration: {} ms\n", run.duration_ms));
+        body.push_str(&format!(
+            "- Findings: {} (expected {})\n",
+            run.findings, run.expected_findings
+        ));
+        body.push_str(&format!(
+            "- Preview findings: {} (expected {})\n",
+            run.preview_findings, run.expected_preview_findings
+        ));
+        body.push_str(&format!(
+            "- Missing preview status: {} (expected {})\n",
+            run.missing_preview_status, run.expected_missing_preview_status
+        ));
+        body.push_str(&format!(
+            "- Related tests: {} (expected {})\n",
+            run.related_tests, run.expected_related_tests
+        ));
+        body.push_str(&format!(
+            "- Classifications: `{}` (expected `{}`)\n",
+            markdown_cell(&run.classifications.join(", ")),
+            markdown_cell(&run.expected_classifications.join(", "))
+        ));
+        body.push_str(&format!(
+            "- Static limits: `{}` (expected `{}`)\n",
+            markdown_cell(&run.static_limit_kinds.join(", ")),
+            markdown_cell(&run.expected_static_limit_kinds.join(", "))
+        ));
+        body.push_str(&format!("- Reason: {}\n", markdown_cell(&run.reason)));
         if run.errors.is_empty() {
             body.push_str("- Errors: none\n\n");
         } else {
@@ -17629,7 +18088,7 @@ fn dogfood_report_json(
     first_action_runs: &[DogfoodFirstActionRun],
     front_panel_runs: &[DogfoodFrontPanelRun],
     report_packet_index_runs: &[DogfoodReportPacketIndexRun],
-    generated_ci_cockpit_runs: &[DogfoodGeneratedCiCockpitRun],
+    preview_projection_runs: &DogfoodPreviewProjectionRuns<'_>,
     pr_inline_comment_runs: &[DogfoodPrInlineCommentRun],
 ) -> String {
     let mut body = format!(
@@ -17640,7 +18099,7 @@ fn dogfood_report_json(
             first_action_runs,
             front_panel_runs,
             report_packet_index_runs,
-            generated_ci_cockpit_runs,
+            preview_projection_runs,
             pr_inline_comment_runs
         )
     );
@@ -17950,8 +18409,12 @@ fn dogfood_report_json(
     body.push_str("\n    ]\n  },\n  \"generated_ci_cockpit\": {\n");
     body.push_str("    \"default_ci_blocking\": false,\n");
     body.push_str("    \"default_inline_comments\": \"off\",\n");
-    body.push_str("    \"language_grouping\": \"deferred\",\n    \"cases\": [\n");
-    for (index, run) in generated_ci_cockpit_runs.iter().enumerate() {
+    body.push_str("    \"language_grouping\": \"checked\",\n    \"cases\": [\n");
+    for (index, run) in preview_projection_runs
+        .generated_ci_cockpit
+        .iter()
+        .enumerate()
+    {
         if index > 0 {
             body.push_str(",\n");
         }
@@ -17989,6 +18452,103 @@ fn dogfood_report_json(
         body.push_str(&format!(
             "        \"language_grouping_status\": \"{}\",\n",
             json_escape(&run.language_grouping_status)
+        ));
+        body.push_str("        \"errors\": [");
+        write_json_string_array(&mut body, &run.errors);
+        body.push_str("]\n      }");
+    }
+    body.push_str("\n    ]\n  },\n  \"language_preview\": {\n");
+    body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str("    \"preview_adapters\": \"opt-in\",\n");
+    body.push_str(
+        "    \"receipt_dir\": \"target/ripr/dogfood/language-preview\",\n    \"cases\": [\n",
+    );
+    for (index, run) in preview_projection_runs.language_preview.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("      {\n");
+        body.push_str(&format!(
+            "        \"name\": \"{}\",\n",
+            json_escape(&run.name)
+        ));
+        body.push_str(&format!(
+            "        \"language\": \"{}\",\n",
+            json_escape(&run.language)
+        ));
+        body.push_str(&format!(
+            "        \"root\": \"{}\",\n",
+            json_escape(&normalize_path(&run.root))
+        ));
+        body.push_str(&format!(
+            "        \"diff\": \"{}\",\n",
+            json_escape(&normalize_path(&run.diff))
+        ));
+        body.push_str(&format!(
+            "        \"actual_dir\": \"{}\",\n",
+            json_escape(&normalize_path(&run.actual_dir))
+        ));
+        body.push_str(&format!(
+            "        \"json_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.json_path))
+        ));
+        body.push_str(&format!(
+            "        \"human_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.human_path))
+        ));
+        body.push_str(&format!("        \"duration_ms\": {},\n", run.duration_ms));
+        body.push_str(&format!(
+            "        \"preview_enabled\": {},\n",
+            run.preview_enabled
+        ));
+        body.push_str(&format!("        \"findings\": {},\n", run.findings));
+        body.push_str(&format!(
+            "        \"language_findings\": {},\n",
+            run.language_findings
+        ));
+        body.push_str(&format!(
+            "        \"preview_findings\": {},\n",
+            run.preview_findings
+        ));
+        body.push_str(&format!(
+            "        \"missing_preview_status\": {},\n",
+            run.missing_preview_status
+        ));
+        body.push_str(&format!(
+            "        \"related_tests\": {},\n",
+            run.related_tests
+        ));
+        body.push_str("        \"classifications\": [");
+        write_json_string_array(&mut body, &run.classifications);
+        body.push_str("],\n");
+        body.push_str("        \"static_limit_kinds\": [");
+        write_json_string_array(&mut body, &run.static_limit_kinds);
+        body.push_str("],\n");
+        body.push_str(&format!(
+            "        \"expected_findings\": {},\n",
+            run.expected_findings
+        ));
+        body.push_str(&format!(
+            "        \"expected_preview_findings\": {},\n",
+            run.expected_preview_findings
+        ));
+        body.push_str(&format!(
+            "        \"expected_missing_preview_status\": {},\n",
+            run.expected_missing_preview_status
+        ));
+        body.push_str(&format!(
+            "        \"expected_related_tests\": {},\n",
+            run.expected_related_tests
+        ));
+        body.push_str("        \"expected_classifications\": [");
+        write_json_string_array(&mut body, &run.expected_classifications);
+        body.push_str("],\n");
+        body.push_str("        \"expected_static_limit_kinds\": [");
+        write_json_string_array(&mut body, &run.expected_static_limit_kinds);
+        body.push_str("],\n");
+        body.push_str(&format!(
+            "        \"reason\": \"{}\",\n",
+            json_escape(&run.reason)
         ));
         body.push_str("        \"errors\": [");
         write_json_string_array(&mut body, &run.errors);
@@ -26344,16 +26904,17 @@ mod tests {
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
         CheckStatus, CheckViolation, CiFullEvidenceGate, CwdCommand, DogfoodFirstActionRun,
         DogfoodFrontPanelRun, DogfoodGateRun, DogfoodGeneratedCiCockpitRun,
-        DogfoodPrInlineCommentRun, DogfoodReportPacketIndexRun, DogfoodRun,
-        EvidenceQualityScorecardInput, EvidenceQualityScorecardInputs,
-        EvidenceQualityScorecardReport, EvidenceQualityTrendInputs, EvidenceQualityTrendReport,
-        FixKind, GENERATED_CI_FIRST_ACTION_REPAIR, GENERATED_CI_FRONT_PANEL_REPAIR,
-        GENERATED_CI_PACKET_INDEX_REPAIR, LocalContextAllow, LspCockpitFixture, LspCockpitReport,
-        MarkdownLink, ReceiptRecord, RepoExposureLatencyReport, RepoExposureLatencyRun,
-        RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode,
-        SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
-        TestOracleClass, badge_artifact_command_args, badge_artifact_jobs,
-        badge_artifact_native_slot, badge_artifacts_summary_markdown, build_lsp_cockpit_report,
+        DogfoodLanguagePreviewRun, DogfoodPrInlineCommentRun, DogfoodPreviewProjectionRuns,
+        DogfoodReportPacketIndexRun, DogfoodRun, EvidenceQualityScorecardInput,
+        EvidenceQualityScorecardInputs, EvidenceQualityScorecardReport, EvidenceQualityTrendInputs,
+        EvidenceQualityTrendReport, FixKind, GENERATED_CI_FIRST_ACTION_REPAIR,
+        GENERATED_CI_FRONT_PANEL_REPAIR, GENERATED_CI_PACKET_INDEX_REPAIR, LocalContextAllow,
+        LspCockpitFixture, LspCockpitReport, MarkdownLink, ReceiptRecord,
+        RepoExposureLatencyReport, RepoExposureLatencyRun, RepoExposureLatencyTrace,
+        ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode, SarifPolicyResult,
+        SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass,
+        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
+        badge_artifacts_summary_markdown, build_lsp_cockpit_report,
         build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
         build_targeted_test_outcome_report, check_allow_attributes, check_droid_review_config,
         check_executable_files, check_file_policy, check_local_context, check_network_policy,
@@ -26361,6 +26922,7 @@ mod tests {
         ci_full_evidence_gates, collect_panic_findings, collect_semantic_panic_findings,
         critic_findings, dogfood_class_counts, dogfood_first_action_scenarios,
         dogfood_gate_adoption_scenarios, dogfood_generated_ci_cockpit_run_from_workflow,
+        dogfood_language_preview_run, dogfood_language_preview_scenarios,
         dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
         dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
         dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
@@ -31368,7 +31930,43 @@ fn exact_owner_call_has_external_expected_value() {
             gate_authority_boundary: true,
             default_advisory: true,
             artifact_upload: true,
-            language_grouping_status: "deferred".to_string(),
+            language_grouping_status: "checked".to_string(),
+            errors: Vec::new(),
+        };
+        let language_preview_run = DogfoodLanguagePreviewRun {
+            name: "python_mixed_language_no_cross_route".to_string(),
+            language: "python".to_string(),
+            root: Path::new("fixtures/python_mixed_language_no_cross_route/input").to_path_buf(),
+            diff: Path::new("fixtures/python_mixed_language_no_cross_route/diff.patch")
+                .to_path_buf(),
+            actual_dir: Path::new(
+                "target/ripr/dogfood/language-preview/python_mixed_language_no_cross_route",
+            )
+            .to_path_buf(),
+            json_path: Path::new(
+                "target/ripr/dogfood/language-preview/python_mixed_language_no_cross_route/check.json",
+            )
+            .to_path_buf(),
+            human_path: Path::new(
+                "target/ripr/dogfood/language-preview/python_mixed_language_no_cross_route/human.txt",
+            )
+            .to_path_buf(),
+            duration_ms: 10,
+            findings: 1,
+            language_findings: 1,
+            preview_findings: 1,
+            missing_preview_status: 0,
+            related_tests: 0,
+            classifications: vec!["no_static_path".to_string()],
+            static_limit_kinds: Vec::new(),
+            expected_findings: 1,
+            expected_preview_findings: 1,
+            expected_missing_preview_status: 0,
+            expected_related_tests: 0,
+            expected_classifications: vec!["no_static_path".to_string()],
+            expected_static_limit_kinds: Vec::new(),
+            preview_enabled: true,
+            reason: "mixed-language fixture must not cross-route related tests".to_string(),
             errors: Vec::new(),
         };
         let pr_inline_comment_run = DogfoodPrInlineCommentRun {
@@ -31414,6 +32012,16 @@ fn exact_owner_call_has_external_expected_value() {
             .to_path_buf(),
             errors: Vec::new(),
         };
+        let generated_ci_runs = [generated_ci_run];
+        let language_preview_runs = [language_preview_run];
+        let preview_projection_runs = DogfoodPreviewProjectionRuns {
+            generated_ci_cockpit: &generated_ci_runs,
+            language_preview: &language_preview_runs,
+        };
+        let empty_projection_runs = DogfoodPreviewProjectionRuns {
+            generated_ci_cockpit: &[],
+            language_preview: &[],
+        };
 
         let markdown = dogfood_report_markdown(
             &[run],
@@ -31421,10 +32029,10 @@ fn exact_owner_call_has_external_expected_value() {
             &[first_action_run],
             &[front_panel_run],
             &[report_packet_index_run],
-            &[generated_ci_run],
+            &preview_projection_runs,
             &[pr_inline_comment_run],
         );
-        let json = dogfood_report_json(&[], &[], &[], &[], &[], &[], &[]);
+        let json = dogfood_report_json(&[], &[], &[], &[], &[], &empty_projection_runs, &[]);
 
         assert!(markdown.contains("Mode: advisory"));
         assert!(markdown.contains("boundary_gap"));
@@ -31432,6 +32040,7 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(markdown.contains("PR Review Front Panel Receipts"));
         assert!(markdown.contains("Report Packet Index Receipts"));
         assert!(markdown.contains("Generated CI Cockpit Receipts"));
+        assert!(markdown.contains("Language Preview Receipts"));
         assert!(markdown.contains("PR Inline Comment Publisher Receipts"));
         assert!(markdown.contains("Gate Adoption Receipts"));
         assert!(markdown.contains("Default CI blocking: no"));
@@ -31443,6 +32052,7 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(json.contains("\"default_ci_blocking\": false"));
         assert!(json.contains("\"report_packet_index\""));
         assert!(json.contains("\"generated_ci_cockpit\""));
+        assert!(json.contains("\"language_preview\""));
         assert!(json.contains("\"pr_inline_comment_publisher\""));
     }
 
@@ -31464,6 +32074,11 @@ jobs:
           echo '{GENERATED_CI_FIRST_ACTION_REPAIR}'
           echo '{GENERATED_CI_FRONT_PANEL_REPAIR}'
           echo '{GENERATED_CI_PACKET_INDEX_REPAIR}'
+          echo '### Language preview grouping'
+          echo 'if [ -n \"$preview_languages\" ]; then'
+          echo 'preview-language groups are advisory presentation only; `ripr gate evaluate` remains pass/fail authority when explicitly configured.'
+          echo 'missing_preview_status'
+          echo 'static_limit_kinds'
           echo 'target/ripr/reports'
 "
         );
@@ -31480,7 +32095,7 @@ jobs:
         assert!(run.gate_authority_boundary);
         assert!(run.default_advisory);
         assert!(run.artifact_upload);
-        assert_eq!(run.language_grouping_status, "deferred");
+        assert_eq!(run.language_grouping_status, "checked");
 
         let missing = dogfood_generated_ci_cockpit_run_from_workflow(
             "missing",
@@ -31500,6 +32115,74 @@ jobs:
                 .iter()
                 .any(|error| error.contains("regeneration commands"))
         );
+    }
+
+    #[test]
+    fn dogfood_language_preview_scenarios_cover_projection_boundaries() {
+        let scenarios = dogfood_language_preview_scenarios();
+        let names = scenarios
+            .iter()
+            .map(|scenario| scenario.name.as_str())
+            .collect::<BTreeSet<_>>();
+
+        assert!(names.contains("typescript_mocked_module_limit"));
+        assert!(names.contains("python_missing_import_graph_limit"));
+        assert!(names.contains("python_mixed_language_no_cross_route"));
+        assert!(names.contains("python_disabled"));
+
+        let disabled = scenarios
+            .iter()
+            .find(|scenario| scenario.name == "python_disabled");
+        assert!(
+            disabled.is_some_and(|scenario| {
+                !scenario.preview_enabled
+                    && scenario.expected_findings == 0
+                    && scenario.expected_preview_findings == 0
+            }),
+            "python_disabled must pin the Rust-default/no-preview boundary"
+        );
+
+        let mixed = scenarios
+            .iter()
+            .find(|scenario| scenario.name == "python_mixed_language_no_cross_route");
+        assert!(
+            mixed.is_some_and(|scenario| {
+                scenario.preview_enabled
+                    && scenario.expected_related_tests == 0
+                    && scenario
+                        .expected_classifications
+                        .contains(&"no_static_path".to_string())
+            }),
+            "mixed-language receipt must pin no cross-language related-test routing"
+        );
+    }
+
+    #[test]
+    fn dogfood_language_preview_run_checks_static_limit_receipt() -> Result<(), String> {
+        with_repo_cwd(|| {
+            let scenario = dogfood_language_preview_scenarios()
+                .into_iter()
+                .find(|scenario| scenario.name == "typescript_mocked_module_limit")
+                .ok_or_else(|| {
+                    "typescript_mocked_module_limit dogfood scenario is missing".to_string()
+                })?;
+
+            let run = dogfood_language_preview_run(&scenario);
+
+            assert!(run.errors.is_empty(), "{:?}", run.errors);
+            assert_eq!(run.language, "typescript");
+            assert!(run.preview_enabled);
+            assert_eq!(run.findings, 1);
+            assert_eq!(run.language_findings, 1);
+            assert_eq!(run.preview_findings, 1);
+            assert_eq!(run.missing_preview_status, 0);
+            assert_eq!(run.related_tests, 1);
+            assert_eq!(run.classifications, vec!["exposed".to_string()]);
+            assert_eq!(run.static_limit_kinds, vec!["mocked_module".to_string()]);
+            assert!(run.json_path.exists());
+            assert!(run.human_path.exists());
+            Ok(())
+        })
     }
 
     #[test]

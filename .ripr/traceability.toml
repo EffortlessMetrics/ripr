@@ -1858,6 +1858,7 @@ name = "TypeScript preview static facts"
 spec = "docs/specs/RIPR-SPEC-0027-typescript-preview-static-facts.md"
 tests = [
   "crates/ripr/src/analysis/language/typescript.rs",
+  "xtask/src/main.rs::tests::dogfood_language_preview_scenarios_cover_projection_boundaries",
 ]
 fixtures = [
   "fixtures/typescript_boundary_gap",
@@ -1882,6 +1883,7 @@ outputs = [
   "docs/proposals/RIPR-PROP-0001-multi-language-adapter-preview.md",
   "docs/LANGUAGE_ADAPTER_PREVIEW.md",
   "fixtures/typescript_mocked_module_limit/expected/check.json",
+  "docs/handoffs/2026-05-13-language-adapter-preview-receipts.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
@@ -1908,6 +1910,7 @@ name = "Python preview static facts"
 spec = "docs/specs/RIPR-SPEC-0028-python-preview-static-facts.md"
 tests = [
   "crates/ripr/src/analysis/language/python.rs",
+  "xtask/src/main.rs::tests::dogfood_language_preview_scenarios_cover_projection_boundaries",
 ]
 fixtures = [
   "fixtures/python_boundary_gap",
@@ -1953,6 +1956,7 @@ outputs = [
   "docs/adr/README.md",
   "docs/proposals/RIPR-PROP-0001-multi-language-adapter-preview.md",
   "docs/LANGUAGE_ADAPTER_PREVIEW.md",
+  "docs/handoffs/2026-05-13-language-adapter-preview-receipts.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
@@ -2400,6 +2404,7 @@ tests = [
   "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_matches_smoke_fixture",
   "crates/ripr/tests/cli_smoke.rs::init_ci_github_dry_run_prints_config_and_workflow_without_writing",
   "crates/ripr/tests/cli_smoke.rs::init_ci_github_writes_non_blocking_report_workflow",
+  "xtask/src/main.rs::tests::dogfood_generated_ci_cockpit_receipts_are_checked",
 ]
 fixtures = [
 ]
@@ -2414,6 +2419,7 @@ outputs = [
   "docs/lanes/LANE_4_PR_CI_REVIEW.md",
   "docs/status/SUPPORT_TIERS.md",
   "docs/LANGUAGE_ADAPTER_PREVIEW.md",
+  "docs/handoffs/2026-05-13-language-adapter-preview-receipts.md",
   "docs/CAPABILITY_MATRIX.md",
   "docs/CI.md",
   "docs/policy/POLICY_OPERATIONS.md",
