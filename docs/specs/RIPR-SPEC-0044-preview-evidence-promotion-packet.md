@@ -1,4 +1,4 @@
-# RIPR-SPEC-0043: Preview Evidence Promotion Packet
+# RIPR-SPEC-0044: Preview Evidence Promotion Packet
 
 Status: proposed
 

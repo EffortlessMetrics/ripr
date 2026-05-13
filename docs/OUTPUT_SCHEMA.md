@@ -3975,7 +3975,7 @@ policy configuration or promote preview-language evidence.
 
 ## Preview Evidence Promotion Packet
 
-RIPR-SPEC-0043 defines the preview evidence promotion packet. The planned
+RIPR-SPEC-0044 defines the preview evidence promotion packet. The planned
 `ripr policy preview-promote` command writes a read-only advisory packet for a
 preview language and evidence class. The default result is blocked:
 `allowed_now = false` with reason `preview promotion evidence not supplied`.

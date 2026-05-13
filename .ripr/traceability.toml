@@ -2559,9 +2559,9 @@ metrics = [
 ]
 
 [[behavior]]
-id = "RIPR-SPEC-0043"
+id = "RIPR-SPEC-0044"
 name = "Preview evidence promotion packet"
-spec = "docs/specs/RIPR-SPEC-0043-preview-evidence-promotion-packet.md"
+spec = "docs/specs/RIPR-SPEC-0044-preview-evidence-promotion-packet.md"
 tests = [
 ]
 fixtures = [
@@ -2569,7 +2569,7 @@ fixtures = [
 code = [
 ]
 outputs = [
-  "docs/specs/RIPR-SPEC-0043-preview-evidence-promotion-packet.md",
+  "docs/specs/RIPR-SPEC-0044-preview-evidence-promotion-packet.md",
   "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
   "docs/policy/POLICY_OPERATIONS.md",

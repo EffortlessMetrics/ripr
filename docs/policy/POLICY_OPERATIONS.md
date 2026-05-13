@@ -195,7 +195,7 @@ Preview-language evidence remains advisory unless a later preview promotion
 packet justifies a narrow explicit promotion.
 
 The preview evidence promotion packet is defined by
-[RIPR-SPEC-0043](../specs/RIPR-SPEC-0043-preview-evidence-promotion-packet.md).
+[RIPR-SPEC-0044](../specs/RIPR-SPEC-0044-preview-evidence-promotion-packet.md).
 It defines the future `ripr policy preview-promote --language ... --class ...`
 packet with default `allowed_now = false`, explicit required/supplied/missing
 evidence accounting, advisory generated-CI posture, rollback guidance, and no

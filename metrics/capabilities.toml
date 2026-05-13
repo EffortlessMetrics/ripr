@@ -1376,9 +1376,9 @@ metric = "policy_promotion_packets, policy_promotion_allowed, policy_promotion_b
 id = "preview_evidence_promotion_packets"
 name = "Preview evidence promotion packets"
 status = "planned"
-spec = "RIPR-SPEC-0043"
+spec = "RIPR-SPEC-0044"
 evidence = [
-  "docs/specs/RIPR-SPEC-0043-preview-evidence-promotion-packet.md defines read-only preview-language promotion packets with default allowed_now = false",
+  "docs/specs/RIPR-SPEC-0044-preview-evidence-promotion-packet.md defines read-only preview-language promotion packets with default allowed_now = false",
   "docs/OUTPUT_SCHEMA.md documents the planned preview_evidence_promotion_packet JSON and Markdown shape",
   "docs/policy/POLICY_OPERATIONS.md and .ripr/goals/lane2-policy-operations.toml keep preview promotion split from implementation without actual promotion, gate eligibility, RIPR Zero inclusion, calibrated confidence, CI blocking, or preview-eligibility mutation"
 ]
