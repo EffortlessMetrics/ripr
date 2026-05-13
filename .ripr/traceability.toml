@@ -2116,14 +2116,27 @@ metrics = [
 id = "RIPR-SPEC-0034"
 name = "Evidence quality scorecard"
 spec = "docs/specs/RIPR-SPEC-0034-evidence-quality-scorecard.md"
-tests = []
+tests = [
+  "xtask/src/main.rs",
+]
 fixtures = []
-code = []
+code = [
+  "xtask/src/command.rs",
+  "xtask/src/dispatch.rs",
+  "xtask/src/reports/mod.rs",
+  "xtask/src/reports/repo.rs",
+  "xtask/src/main.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0034-evidence-quality-scorecard.md",
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0002-lane-1-evidence-quality-leadership.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
   ".ripr/traceability.toml",
+  "target/ripr/reports/evidence-quality-scorecard.json",
+  "target/ripr/reports/evidence-quality-scorecard.md",
 ]
 metrics = [
   "lane1_evidence_scorecard_maturity_classes",

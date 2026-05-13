@@ -20,6 +20,9 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::RepoExposureLatencyReport => super::reports::repo_exposure_latency_report(),
         XtaskCommand::EvidenceHealth => super::reports::evidence_health_report(),
         XtaskCommand::Lane1EvidenceAudit => super::reports::lane1_evidence_audit_report(),
+        XtaskCommand::EvidenceQualityScorecard => {
+            super::reports::evidence_quality_scorecard_report()
+        }
         XtaskCommand::AgentSeamPackets(root) => {
             super::reports::agent_seam_packets_report(root.as_ref())
         }
