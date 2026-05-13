@@ -10,7 +10,7 @@ Target campaign: Lane 1 User-Visible Output Evidence
 
 Linked specs:
 
-- `RIPR-SPEC-0043`: Presentation text evidence (planned)
+- `RIPR-SPEC-0043`: Presentation text evidence
 
 Linked ADRs:
 

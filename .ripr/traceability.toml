@@ -2568,3 +2568,37 @@ metrics = [
   "policy_promotion_warning_count",
   "policy_promotion_unknown_count",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0043"
+name = "Presentation text evidence"
+spec = "docs/specs/RIPR-SPEC-0043-presentation-text-evidence.md"
+tests = [
+]
+fixtures = [
+]
+code = [
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0043-presentation-text-evidence.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0005-user-visible-output-evidence.md",
+  "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+  ".ripr/traceability.toml",
+  "CHANGELOG.md",
+]
+metrics = [
+  "presentation_text_total",
+  "presentation_text_user_visible",
+  "presentation_text_observed",
+  "presentation_text_unobserved",
+  "presentation_text_internal_only",
+  "presentation_text_visibility_unknown",
+  "presentation_text_observer_unknown",
+  "presentation_text_duplicate_groups",
+  "presentation_text_actionable_snapshot",
+  "presentation_text_no_action",
+  "presentation_text_static_limitations",
+]
