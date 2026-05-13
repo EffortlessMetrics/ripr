@@ -25,12 +25,12 @@ Evidence
   - reach yes: 1 related Python test(s) found for owner `apply`
   - infection unknown: Python preview adapter does not yet model infection.
   - propagation unknown: Python preview adapter does not yet model propagation.
-  - observation weak: Python owner/test slice records related tests but does not yet extract assertion strength.
-  - discriminator weak: Python owner/test slice cannot confirm a discriminator until assertion extraction lands.
+  - observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)
+  - discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.
   - related test tests/test_policy.py:4 test_discount_policy_apply uses unknown unknown oracle
 
 Weakness
-  - Related Python test reaches `apply` but assertion strength is not inspected in this slice; add or verify an exact-value assertion after Python assertion extraction lands.
+  - Related Python test reaches `apply` but the strongest extracted oracle is `unknown`; add or verify an exact-value assertion to make the preview finding stronger.
 
 Next step
-  Python preview: related test found; add or verify a focused assertion once Python assertion extraction lands.
+  Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.
