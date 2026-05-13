@@ -26348,12 +26348,12 @@ mod tests {
         EvidenceQualityScorecardInput, EvidenceQualityScorecardInputs,
         EvidenceQualityScorecardReport, EvidenceQualityTrendInputs, EvidenceQualityTrendReport,
         FixKind, GENERATED_CI_FIRST_ACTION_REPAIR, GENERATED_CI_FRONT_PANEL_REPAIR,
-        GENERATED_CI_PACKET_INDEX_REPAIR, LocalContextAllow, MarkdownLink, ReceiptRecord,
-        RepoExposureLatencyReport, RepoExposureLatencyRun, RepoExposureLatencyTrace,
-        ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode, SarifPolicyResult,
-        SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass,
-        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
-        badge_artifacts_summary_markdown, build_lsp_cockpit_report,
+        GENERATED_CI_PACKET_INDEX_REPAIR, LocalContextAllow, LspCockpitFixture, LspCockpitReport,
+        MarkdownLink, ReceiptRecord, RepoExposureLatencyReport, RepoExposureLatencyRun,
+        RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode,
+        SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
+        TestOracleClass, badge_artifact_command_args, badge_artifact_jobs,
+        badge_artifact_native_slot, badge_artifacts_summary_markdown, build_lsp_cockpit_report,
         build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
         build_targeted_test_outcome_report, check_allow_attributes, check_droid_review_config,
         check_executable_files, check_file_policy, check_local_context, check_network_policy,
@@ -36443,6 +36443,52 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn preview_editor_workflow_fixtures_pin_preview_boundaries() -> Result<(), String> {
+        let report = with_repo_cwd(build_lsp_cockpit_report)?;
+        let python = lsp_fixture(&report, "python_missing_import_graph_limit")?;
+        assert_eq!(python.diagnostic_count, 1);
+        assert_eq!(python.finding_diagnostic_count, 1);
+        assert_eq!(python.seam_diagnostic_count, 0);
+        assert!(
+            python
+                .action_titles
+                .contains(&"Inspect finding: copy context packet".to_string())
+        );
+        assert!(python.context.refresh_available);
+        assert!(!python.context.agent_packet_command_available);
+        assert_preview_lsp_fixture(
+            "python_missing_import_graph_limit",
+            "python",
+            "missing_import_graph",
+        )?;
+
+        let typescript = lsp_fixture(&report, "typescript_mocked_module_limit")?;
+        assert_eq!(typescript.diagnostic_count, 1);
+        assert_eq!(typescript.finding_diagnostic_count, 1);
+        assert_eq!(typescript.seam_diagnostic_count, 0);
+        assert!(
+            typescript
+                .action_titles
+                .contains(&"Inspect finding: copy context packet".to_string())
+        );
+        assert!(typescript.context.refresh_available);
+        assert!(!typescript.context.agent_packet_command_available);
+        assert_preview_lsp_fixture(
+            "typescript_mocked_module_limit",
+            "typescript",
+            "mocked_module",
+        )?;
+
+        let disabled = lsp_fixture(&report, "python_disabled")?;
+        assert_eq!(disabled.diagnostic_count, 0);
+        assert_eq!(disabled.finding_diagnostic_count, 0);
+        assert_eq!(disabled.seam_diagnostic_count, 0);
+        assert!(disabled.context.refresh_available);
+        assert_preview_disabled_fixture()?;
+        Ok(())
+    }
+
+    #[test]
     fn lsp_cockpit_report_json_and_markdown_are_structured() -> Result<(), String> {
         let report = with_repo_cwd(build_lsp_cockpit_report)?;
         let json = lsp_cockpit_report_json(&report)?;
@@ -36456,10 +36502,89 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("# ripr LSP cockpit report"));
         assert!(markdown.contains("## Fixture: boundary_gap"));
         assert!(markdown.contains("## Fixture: editor_lsp_workflow"));
+        assert!(markdown.contains("## Fixture: python_missing_import_graph_limit"));
+        assert!(markdown.contains("## Fixture: typescript_mocked_module_limit"));
         assert!(markdown.contains("seam packet available: yes"));
+        assert!(markdown.contains("finding diagnostics: 1"));
         assert!(markdown.contains("agent verify command available: yes"));
         assert!(markdown.contains("agent receipt command available: yes"));
         assert!(markdown.contains("ripr.collectContext"));
+        Ok(())
+    }
+
+    fn lsp_fixture<'a>(
+        report: &'a LspCockpitReport,
+        name: &str,
+    ) -> Result<&'a LspCockpitFixture, String> {
+        report
+            .fixtures
+            .iter()
+            .find(|fixture| fixture.fixture == name)
+            .ok_or_else(|| format!("expected `{name}` LSP cockpit fixture"))
+    }
+
+    fn assert_preview_lsp_fixture(
+        fixture: &str,
+        language: &str,
+        static_limit_kind: &str,
+    ) -> Result<(), String> {
+        let expected = repo_root()?.join("fixtures").join(fixture).join("expected");
+        let diagnostics = read_lsp_cockpit_json_value(&expected.join("lsp-diagnostics.json"))?;
+        let data = &diagnostics["diagnostics"][0]["data"];
+        assert_eq!(data["language"], language);
+        assert_eq!(data["language_status"], "preview");
+        assert_eq!(data["static_limit_kind"], static_limit_kind);
+
+        let actions = read_lsp_cockpit_json_value(&expected.join("lsp-code-actions.json"))?;
+        assert_eq!(actions["actions"][0]["command"], "ripr.copyContext");
+        assert_eq!(actions["actions"][1]["command"], "ripr.refresh");
+
+        let hover = fs::read_to_string(expected.join("lsp-hover.md"))
+            .map_err(|err| format!("failed to read preview hover fixture: {err}"))?;
+        let boundary = hover
+            .find("## Preview Boundary")
+            .ok_or_else(|| format!("{fixture} hover missing preview boundary"))?;
+        let static_limit = hover
+            .find(&format!("Static limit: {static_limit_kind}"))
+            .ok_or_else(|| format!("{fixture} hover missing static limit"))?;
+        let evidence = hover
+            .find("## RIPR Evidence")
+            .ok_or_else(|| format!("{fixture} hover missing evidence section"))?;
+        let action = hover
+            .find("## Suggested Action")
+            .ok_or_else(|| format!("{fixture} hover missing suggested action section"))?;
+        if !(boundary < static_limit && static_limit < evidence && evidence < action) {
+            return Err(format!(
+                "{fixture} hover must show preview/static-limit text before evidence and action"
+            ));
+        }
+        let static_limits = fs::read_to_string(expected.join("static-limits.md"))
+            .map_err(|err| format!("failed to read preview static-limits fixture: {err}"))?;
+        if !static_limits.contains(static_limit_kind) {
+            return Err(format!(
+                "{fixture} static-limits fixture missing `{static_limit_kind}`"
+            ));
+        }
+        Ok(())
+    }
+
+    fn assert_preview_disabled_fixture() -> Result<(), String> {
+        let expected = repo_root()?.join("fixtures/python_disabled/expected");
+        let diagnostics = read_lsp_cockpit_json_value(&expected.join("lsp-diagnostics.json"))?;
+        let diagnostics_array = diagnostics["diagnostics"]
+            .as_array()
+            .ok_or_else(|| "python_disabled diagnostics should be an array".to_string())?;
+        assert!(
+            diagnostics_array.is_empty(),
+            "disabled Python fixture must not project preview diagnostics"
+        );
+        let status = read_lsp_cockpit_json_value(&expected.join("vscode-status.json"))?;
+        assert_eq!(status["states"][0]["name"], "preview_disabled");
+        let static_limits = fs::read_to_string(expected.join("static-limits.md"))
+            .map_err(|err| format!("failed to read disabled static-limits fixture: {err}"))?;
+        if !static_limits.contains("no Python preview diagnostics") {
+            return Err("disabled fixture must explain no preview diagnostics".to_string());
+        }
         Ok(())
     }
 
