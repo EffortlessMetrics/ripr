@@ -29,7 +29,7 @@
       "evidence_path": ["reach yes: 1 related Python test(s) found for owner `final_price`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/test_price.py:4 test_final_price_discount uses strong exact value oracle: assert final_price(100) == 88"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: final_price", "owner_kind: function", "test_framework: pytest (test_final_price_discount)", "test_oracle: exact_value strong (test_final_price_discount)"],
+      "evidence": ["owner: final_price", "owner_kind: function", "test_framework: pytest (test_final_price_discount)", "related_test_relation: syntactic_call (test_final_price_discount)", "test_oracle: exact_value strong (test_final_price_discount)"],
       "missing": ["Related Python test reaches `final_price` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
       "activation": {
         "observed_values": [
