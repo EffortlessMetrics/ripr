@@ -31,6 +31,10 @@ promote any capability globally.
   The benchmark requires visibility, actionability, recommended observer, and
   declaration-plus-literal grouping evidence before downstream surfaces can
   render one useful action.
+- Finding-alignment cases must preserve raw findings as supporting evidence
+  while pinning one canonical evidence item, explicit `gap_state`,
+  `actionability`, repair route, and count bucket for user-visible,
+  already-observed, internal-only, static-limitation, and non-collision states.
 
 Run:
 
