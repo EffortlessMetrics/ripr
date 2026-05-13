@@ -99,7 +99,7 @@ available spec IDs.
 | 1 | `campaign/policy-operations-tracker` | Open this focused tracker, manifest, roadmap, and plan references without behavior changes. | done |
 | 2 | `spec/policy-operations-report` | Define the read-only policy operations report contract. | done |
 | 3 | `policy/operations-report` | Implement `ripr policy operations` over explicit existing artifacts. | done |
-| 4 | `spec/policy-history-ledger` | Define the read-only policy history report and optional append-only input. | planned |
+| 4 | `spec/policy-history-ledger` | Define the read-only policy history report and optional append-only input. | done |
 | 5 | `policy/history-report` | Implement `ripr policy history` as advisory trend reporting. | planned |
 | 6 | `spec/policy-promotion-packets` | Define read-only promotion packets for stricter configured modes. | planned |
 | 7 | `policy/promotion-packet-report` | Implement `ripr policy promote --to ...` without mutating config. | planned |
@@ -138,6 +138,25 @@ Expected output paths:
 - `target/ripr/reports/policy-promotion-*.md`;
 - `target/ripr/reports/preview-promotion-*.json`;
 - `target/ripr/reports/preview-promotion-*.md`.
+
+The policy history report is defined by
+[RIPR-SPEC-0041](../specs/RIPR-SPEC-0041-policy-history-ledger.md). It remains
+read-only and turns the current operations packet plus optional history JSONL
+into trend context:
+
+```bash
+ripr policy history \
+  --current target/ripr/reports/policy-operations.json \
+  --history .ripr/policy-history.jsonl \
+  --commit HEAD \
+  --pr-number 123 \
+  --out target/ripr/reports/policy-history.json \
+  --out-md target/ripr/reports/policy-history.md
+```
+
+The command must not append to `.ripr/policy-history.jsonl`, collect telemetry,
+create dashboards, execute gates, mutate policy files, or promote preview
+evidence.
 
 ## Promotion Ceiling
 

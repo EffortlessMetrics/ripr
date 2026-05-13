@@ -99,9 +99,9 @@ commands = [
 
 [[work_item]]
 id = "spec/policy-history-ledger"
-status = "planned"
+status = "done"
 branch = "spec-policy-history-ledger"
-acceptance = "Define the read-only policy history report over current policy operations and optional history JSONL input, with no automatic append, telemetry, dashboard, gate, mutation, or config change."
+acceptance = "RIPR-SPEC-0041 defines the read-only policy history report over current policy operations and optional history JSONL input, with no automatic append, telemetry, dashboard, gate, mutation, or config change."
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-output-contracts",
