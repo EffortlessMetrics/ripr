@@ -588,7 +588,7 @@ fixtures = [
   "fixtures/boundary_gap/expected/evidence-record-contract/corpus.json",
   "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json"
 ]
-next = "analysis/oracle-semantics-audit-fixes"
+next = "maintenance"
 metric = "evidence_record_projected_seams, evidence_record_actionable_guidance, evidence_record_static_limitations, evidence_record_static_limitation_categories"
 
 [[capability]]
@@ -628,7 +628,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json"
 ]
-next = "analysis/oracle-semantics-audit-fixes"
+next = "maintenance"
 metric = "lane1_evidence_audit_raw_headline_gaps, lane1_evidence_audit_canonical_gap_groups, lane1_evidence_audit_duplicate_looking_groups, lane1_evidence_audit_missing_discriminators, lane1_evidence_audit_static_limitations, lane1_evidence_audit_static_limitation_categories, lane1_evidence_audit_uncalibrated_records"
 
 [[capability]]
@@ -644,7 +644,7 @@ evidence = [
   "xtask unit tests pin required JSON sections, Markdown section coverage, class-scoped maturity labels, risk-prioritized repair ordering, and recent delta reporting"
 ]
 fixtures = []
-next = "fixtures/evidence-quality-benchmark-corpus"
+next = "maintenance"
 metric = "lane1_evidence_scorecard_maturity_classes, lane1_evidence_scorecard_top_risks, lane1_evidence_scorecard_recommended_repairs, lane1_evidence_scorecard_static_only_classes, lane1_evidence_scorecard_calibrated_classes, lane1_evidence_scorecard_uncalibrated_classes, lane1_evidence_scorecard_recent_delta_available"
 
 [[capability]]
@@ -660,7 +660,7 @@ evidence = [
   "xtask unit tests pin no-history output, metric direction semantics, and static limitation category deltas"
 ]
 fixtures = []
-next = "campaign/evidence-quality-leadership-closeout"
+next = "maintenance"
 metric = "lane1_evidence_trend_compared_metrics, lane1_evidence_trend_improved_metrics, lane1_evidence_trend_regressed_metrics, lane1_evidence_trend_unchanged_metrics, lane1_evidence_trend_unknown_metrics, lane1_evidence_trend_no_history, lane1_evidence_trend_static_limitation_category_rows"
 
 [[capability]]
@@ -678,7 +678,7 @@ evidence = [
 fixtures = [
   "fixtures/evidence-quality-benchmark/corpus.json"
 ]
-next = "analysis/oracle-semantics-audit-fixes"
+next = "maintenance"
 metric = "lane1_evidence_benchmark_cases, lane1_evidence_benchmark_positive_cases, lane1_evidence_benchmark_negative_guards, lane1_evidence_benchmark_line_movement_cases, lane1_evidence_benchmark_equivalent_code_cases, lane1_evidence_benchmark_static_limitation_cases, lane1_evidence_benchmark_calibration_cases, lane1_evidence_benchmark_must_not_claim_guards"
 
 [[capability]]

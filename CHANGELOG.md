@@ -161,6 +161,11 @@ Planned scope:
   reports missing history explicitly without redefining RIPR scores or changing
   analyzer behavior, gates, CI behavior, mutation execution, generated tests,
   provider calls, or editor surfaces.
+- Closed the Lane 1 Evidence Quality Leadership tracker in documented scope.
+  The closeout records the scorecard, benchmark corpus, static limitation
+  taxonomy, oracle-semantics audit fix, runtime-fixtures-v3, evidence-quality
+  trend reporting, class-scoped capability metadata, traceability links, and
+  future evidence-class boundary without changing `.ripr/goals/active.toml`.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 
