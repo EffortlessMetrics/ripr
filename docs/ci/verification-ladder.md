@@ -18,7 +18,8 @@ Runs: `cargo fmt --check`, `check-static-language`, `check-no-panic-family`,
 `check-fixture-contracts`, `check-traceability`, `check-capabilities`,
 `check-workspace-shape`, `check-architecture`, `check-public-api`,
 `check-output-contracts`, `check-doc-index`, `check-readme-state`,
-`markdown-links`, `check-campaign`, `check-pr-shape`, `check-generated`.
+`markdown-links`, `check-campaign`, `check-pr-shape`, `check-generated`,
+`check-generated-clean`.
 
 Cost: ~0 LEM (local only, no CI runners).
 
