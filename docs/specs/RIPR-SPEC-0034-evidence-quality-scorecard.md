@@ -59,8 +59,9 @@ Each scorecard must include:
 - evidence maturity rows with class name, status, proof source, known limits,
   and recommended next repair;
 - counts for raw headline gaps, canonical groups, duplicate-looking groups,
-  missing discriminators, static limitations, related-test confidence, oracle
-  semantics, movement availability, and calibration availability;
+  missing discriminators, static limitations, normalized static-limitation
+  categories and repair routes, related-test confidence, oracle semantics,
+  movement availability, and calibration availability;
 - top risks ordered by expected Lane 1 product impact, not raw count alone;
 - class-scoped calibration coverage that distinguishes static-only,
   fixture-backed, imported-runtime-calibrated, and uncalibrated classes;
@@ -116,6 +117,7 @@ The Markdown output includes bounded sections for the same areas:
 - recommended Lane 1 repairs;
 - duplicate-looking and canonical group signals;
 - static limitations and missing discriminators;
+- static limitation categories and repair routes;
 - related-test and oracle distributions;
 - movement and calibration coverage;
 - recent deltas;

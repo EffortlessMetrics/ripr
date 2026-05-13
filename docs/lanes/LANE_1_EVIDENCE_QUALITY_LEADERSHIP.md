@@ -90,7 +90,7 @@ Use one document for one job:
 | `fixtures/evidence-quality-benchmark-corpus` | Add the benchmark corpus defined by RIPR-SPEC-0035 with positive cases, negative guards, movement cases, equivalent-code cases, known limitations, and calibration cases. | merged in #851 |
 | `analysis/related-test-ranking-audit-fixes` | Fix audit-derived related-test ranking misses only after benchmark cases prove the class. | planned |
 | `analysis/oracle-semantics-audit-fixes` | Fix audit-derived oracle-shape misses while keeping unsupported helpers as static limitations. | planned |
-| `analysis/static-limitation-taxonomy` | Normalize limitations into repairable categories and make them visible in scorecard/evidence-health without treating them as user test gaps. | planned |
+| `analysis/static-limitation-taxonomy` | Normalize limitations into repairable categories and make them visible in scorecard/evidence-health without treating them as user test gaps. | current |
 | `calibration/runtime-fixtures-v3` | Expand checked runtime fixture classes without creating static gaps from runtime-only signal or running mutation execution in CI. | planned |
 | `report/evidence-quality-trend` | Compare current and previous audit or scorecard snapshots to show whether evidence quality is improving. | planned |
 | `campaign/evidence-quality-leadership-closeout` | Close after scorecard, benchmark corpus, at least two audit-driven improvements, one calibration expansion, conservative capabilities, and a closeout handoff. | planned |
@@ -167,6 +167,7 @@ evidence class, not by projection surface.
 | `docs/lane-1-evidence-quality-leadership-tracker` | #848 | merged | Opened this tracker; no behavior changes. |
 | `report/evidence-quality-scorecard` | #850 | merged | Added the repo-local scorecard from RIPR-SPEC-0034; no analyzer, gate, PR/CI, LSP, provider, generated-test, or mutation-execution behavior. |
 | `fixtures/evidence-quality-benchmark-corpus` | #851 | merged | Added the RIPR-SPEC-0035 manifest-only corpus and validator coverage; no analyzer, gate, PR/CI, LSP, provider, generated-test, or mutation-execution behavior. |
+| `analysis/static-limitation-taxonomy` | current | in progress | Adds normalized static-limitation categories and repair routes to evidence records, evidence-health, audit, and scorecard surfaces without changing grip classes, gates, mutation execution, or downstream projection policy. |
 
 ## Closeout Conditions
 

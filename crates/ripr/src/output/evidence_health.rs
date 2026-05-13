@@ -77,6 +77,7 @@ struct EvidenceHealthQuality {
     actionability_class_counts: BTreeMap<String, usize>,
     static_limitation_stage_counts: BTreeMap<String, usize>,
     static_limitation_reason_counts: BTreeMap<String, usize>,
+    static_limitation_category_counts: BTreeMap<String, usize>,
     calibration_availability_counts: BTreeMap<String, usize>,
     movement_availability: EvidenceHealthMovementAvailability,
     top_evidence_quality_risks: Vec<EvidenceHealthRisk>,
@@ -131,6 +132,7 @@ struct EvidenceHealthQualityCounters {
     actionability_class_counts: BTreeMap<String, usize>,
     static_limitation_stage_counts: BTreeMap<String, usize>,
     static_limitation_reason_counts: BTreeMap<String, usize>,
+    static_limitation_category_counts: BTreeMap<String, usize>,
     calibration_availability_counts: BTreeMap<String, usize>,
     movement_availability: EvidenceHealthMovementAvailability,
 }
@@ -420,6 +422,7 @@ pub(crate) fn render_evidence_health_json(report: &EvidenceHealthReport) -> Resu
             "actionability_class_counts": report.evidence_quality.actionability_class_counts,
             "static_limitation_stage_counts": report.evidence_quality.static_limitation_stage_counts,
             "static_limitation_reason_counts": report.evidence_quality.static_limitation_reason_counts,
+            "static_limitation_category_counts": report.evidence_quality.static_limitation_category_counts,
             "calibration_availability_counts": report.evidence_quality.calibration_availability_counts,
             "movement_availability": {
                 "records_with_seam_id": report.evidence_quality.movement_availability.records_with_seam_id,
@@ -690,6 +693,15 @@ pub(crate) fn render_evidence_health_markdown(report: &EvidenceHealthReport) -> 
         out.push_str("No static limitations were reported.\n");
         return out;
     }
+    out.push_str("### Categories\n\n");
+    push_counts_table(
+        &mut out,
+        "Category",
+        &report.evidence_quality.static_limitation_category_counts,
+    );
+    out.push('\n');
+
+    out.push_str("### Largest Limitation Signals\n\n");
     out.push_str("| Limitation | Count | Example seam | Summary |\n");
     out.push_str("| --- | ---: | --- | --- |\n");
     for limitation in &report.top_static_limitations {
@@ -888,6 +900,10 @@ fn count_evidence_record_quality(
             &mut counters.static_limitation_reason_counts,
             &limitation.reason,
         );
+        increment(
+            &mut counters.static_limitation_category_counts,
+            &limitation.category,
+        );
     }
 }
 
@@ -983,6 +999,7 @@ fn evidence_quality_from_counts(
         actionability_class_counts: counters.actionability_class_counts,
         static_limitation_stage_counts: counters.static_limitation_stage_counts,
         static_limitation_reason_counts: counters.static_limitation_reason_counts,
+        static_limitation_category_counts: counters.static_limitation_category_counts,
         calibration_availability_counts: counters.calibration_availability_counts,
         movement_availability: counters.movement_availability,
         top_evidence_quality_risks: risks,
@@ -1127,13 +1144,17 @@ mod tests {
             value["evidence_quality"]["calibration_availability_counts"]["not_imported"],
             Value::from(3)
         );
+        assert_eq!(
+            value["evidence_quality"]["static_limitation_category_counts"]["activation_static_unknown"],
+            Value::from(1)
+        );
         Ok(())
     }
 
     #[test]
     fn evidence_health_markdown_names_calibration_and_limitations() -> Result<(), String> {
         let report = build_evidence_health_report(
-            &[weak_boundary_seam()],
+            &[weak_boundary_seam(), opaque_call_seam()],
             ".".to_string(),
             EvidenceHealthCalibration::from_json(
                 "target/ripr/reports/mutation-calibration.json".to_string(),
@@ -1157,6 +1178,8 @@ mod tests {
         assert!(markdown.contains("Top Evidence Quality Risks"));
         assert!(markdown.contains("Matched calibration rows"));
         assert!(markdown.contains("missing_discriminator"));
+        assert!(markdown.contains("Categories"));
+        assert!(markdown.contains("activation_static_unknown"));
         assert!(markdown.contains("Runtime rows without static seam"));
         Ok(())
     }

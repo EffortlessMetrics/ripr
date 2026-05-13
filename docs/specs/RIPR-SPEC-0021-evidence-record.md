@@ -112,7 +112,10 @@ Each `seams[].evidence_record` must include:
   evidence.
 - `actionability`: advisory actionability class and available guidance signals.
 - `calibration`: static/runtime confidence placeholder.
-- `static_limitations`: unknown or opaque static evidence stages.
+- `static_limitations`: unknown or opaque static evidence stages. Each entry
+  keeps the original reason and adds a normalized analyzer limitation
+  `category` plus `repair_route` so Lane 1 can group repair work without
+  converting analyzer limits into user test gaps.
 
 ## Actionability Vocabulary
 
