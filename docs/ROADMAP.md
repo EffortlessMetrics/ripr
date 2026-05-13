@@ -341,6 +341,15 @@ policy-readiness artifacts, but those remain advisory projections with no
 default blocking or comment posting. The closeout audit is
 [Policy Readiness closeout](handoffs/2026-05-12-policy-readiness-closeout.md).
 
+[Policy Operations and Promotion Readiness](policy/POLICY_OPERATIONS.md) is
+open as the next focused Lane 2 tracker. It turns readiness into planned
+advisory operator packets: current safe policy ceiling, next safe action,
+blockers to stricter modes, read-only promotion packets, preview-promotion
+packets, and history/trend surfaces. This tracker preserves the same
+boundaries: no analyzer truth changes, no editor changes, no generated tests,
+no mutation execution, no default CI blocking, no automatic config or baseline
+mutation, and no preview evidence promotion.
+
 ## Strategic Sequence
 
 The load-bearing path is:
@@ -399,6 +408,7 @@ quality rails
 -> PR inline comment publisher
 -> language adapter preview
 -> policy readiness and preview evidence governance
+-> policy operations and promotion readiness
 ```
 
 The analyzer path is:

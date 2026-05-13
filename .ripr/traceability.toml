@@ -2163,8 +2163,6 @@ outputs = [
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
   ".ripr/traceability.toml",
-  "target/ripr/reports/evidence-quality-scorecard.json",
-  "target/ripr/reports/evidence-quality-scorecard.md",
 ]
 metrics = [
   "lane1_evidence_scorecard_maturity_classes",
