@@ -55,6 +55,7 @@ Current how-to docs:
 - [Lane tracker source-of-truth model](lanes/README.md)
 - [Lane 1 evidence spine tracker](lanes/LANE_1_EVIDENCE_SPINE.md)
 - [Lane 1 evidence accuracy tracker](lanes/LANE_1_EVIDENCE_ACCURACY.md)
+- [Lane 1 evidence quality leadership tracker](lanes/LANE_1_EVIDENCE_QUALITY_LEADERSHIP.md)
 - [Lane 2 policy readiness tracker](policy/POLICY_READINESS.md)
 - [Lane 3 editor/LSP tracker](lanes/LANE_3_EDITOR_LSP.md)
 - [Release](RELEASE.md)
@@ -185,6 +186,7 @@ Current explanation docs:
 - [Lane tracker source-of-truth model](lanes/README.md)
 - [Lane 1 evidence spine tracker](lanes/LANE_1_EVIDENCE_SPINE.md)
 - [Lane 1 evidence accuracy tracker](lanes/LANE_1_EVIDENCE_ACCURACY.md)
+- [Lane 1 evidence quality leadership tracker](lanes/LANE_1_EVIDENCE_QUALITY_LEADERSHIP.md)
 - [Lane 2 policy readiness tracker](policy/POLICY_READINESS.md)
 - [Lane 3 editor/LSP tracker](lanes/LANE_3_EDITOR_LSP.md)
 
