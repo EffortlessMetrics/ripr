@@ -190,6 +190,10 @@ Planned scope:
   canonical evidence items with explicit state, actionability, reason, repair,
   verification, static limitations, confidence, counting rules, and downstream
   consumption boundaries.
+- Expanded the Lane 1 evidence-quality benchmark with finding-alignment cases
+  for presentation text: actionable visible-unobserved output, already-observed
+  output, internal no-action labels, declaration/literal line movement, and
+  different constants that must not collapse into one item.
 - Added a Lane 1 evidence-quality benchmark case for presentation text
   constants, pinning the claim boundary for changed help/label text: visibility
   and actionability must be explicit, declaration and literal lines should
