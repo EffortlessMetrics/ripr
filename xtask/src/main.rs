@@ -14306,6 +14306,8 @@ fn normalize_report_path(path: &str) -> String {
 
 pub(crate) fn repo_badge_artifacts_impl() -> Result<(), String> {
     run_with_repo_root_cwd(|| {
+        test_efficiency_report_impl()?;
+
         let badge_dir = Path::new("target").join("ripr");
         fs::create_dir_all(&badge_dir).map_err(|err| {
             format!(
