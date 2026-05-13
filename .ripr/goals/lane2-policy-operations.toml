@@ -189,7 +189,7 @@ commands = [
 
 [[work_item]]
 id = "policy/preview-promotion-packet-report"
-status = "planned"
+status = "done"
 branch = "policy-preview-promotion-packet-report"
 acceptance = "`ripr policy preview-promote --language ... --class ...` writes preview-promotion packets with required, supplied, and missing evidence while preserving advisory preview defaults and no gate eligibility, RIPR Zero inclusion, calibrated confidence, CI blocking, or preview eligibility."
 commands = [
