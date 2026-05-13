@@ -34,6 +34,7 @@ ripr check \
 The Python preview adapter:
 
 - finds the `send_receipt` function owner,
+- classifies the changed callback line as a `side_effect` / `effect` probe,
 - finds the pytest `test_send_receipt_notifies_callback` related test,
 - records `assert_called_once_with(...)` as `mock_expectation` / `medium`,
 - emits Python preview metadata,

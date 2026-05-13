@@ -1917,6 +1917,11 @@ fixtures = [
   "fixtures/python_unittest_assertions",
   "fixtures/python_mock_assert_called",
   "fixtures/python_broad_boolean_assertion",
+  "fixtures/python_return_value_shape",
+  "fixtures/python_error_path_shape",
+  "fixtures/python_field_assignment_shape",
+  "fixtures/python_call_argument_shape",
+  "fixtures/python_mock_interaction_shape",
 ]
 code = [
   "crates/ripr/src/analysis/language/python.rs",

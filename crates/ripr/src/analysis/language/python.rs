@@ -512,16 +512,70 @@ fn test_references_owner(test: &PythonTest, owner: &PythonOwner) -> bool {
 
 fn classify_probe_shape(line_text: &str) -> (ProbeFamily, DeltaKind) {
     let trimmed = line_text.trim_start();
-    if trimmed.starts_with("if ") || trimmed.starts_with("elif ") {
+    if (trimmed.contains(" if ") && trimmed.contains(" else "))
+        || trimmed.starts_with("if ")
+        || trimmed.starts_with("elif ")
+        || trimmed.starts_with("while ")
+        || trimmed.starts_with("for ")
+        || trimmed.starts_with("match ")
+        || trimmed.starts_with("case ")
+    {
         return (ProbeFamily::Predicate, DeltaKind::Control);
+    }
+    if trimmed.starts_with("raise ")
+        || trimmed == "raise"
+        || trimmed.starts_with("try:")
+        || trimmed.starts_with("except ")
+        || trimmed.starts_with("except* ")
+        || trimmed.starts_with("finally:")
+        || (trimmed.starts_with("with ") && trimmed.contains("raises("))
+    {
+        return (ProbeFamily::ErrorPath, DeltaKind::Control);
     }
     if trimmed.starts_with("return ") || trimmed == "return" {
         return (ProbeFamily::ReturnValue, DeltaKind::Value);
     }
-    if trimmed.starts_with("raise ") || trimmed == "raise" {
-        return (ProbeFamily::ErrorPath, DeltaKind::Control);
+    if contains_mock_initializer(trimmed) {
+        return (ProbeFamily::SideEffect, DeltaKind::Effect);
+    }
+    if let Some(eq_idx) = trimmed.find('=')
+        && !trimmed.contains("==")
+        && !trimmed.contains("!=")
+        && !trimmed.contains(">=")
+        && !trimmed.contains("<=")
+    {
+        let lhs = trimmed[..eq_idx].trim();
+        if lhs.contains('.')
+            && lhs.chars().all(|ch| {
+                ch.is_ascii_alphanumeric() || ch == '_' || ch == '.' || ch == '[' || ch == ']'
+            })
+        {
+            return (ProbeFamily::FieldConstruction, DeltaKind::Value);
+        }
+        let rhs = trimmed[eq_idx + 1..].trim();
+        if looks_like_call_expression(rhs) {
+            return (ProbeFamily::SideEffect, DeltaKind::Effect);
+        }
+    }
+    let call_candidate = trimmed.strip_prefix("await ").unwrap_or(trimmed).trim_end();
+    if looks_like_call_expression(call_candidate)
+        && !call_candidate.starts_with("assert ")
+        && !call_candidate.starts_with("def ")
+        && !call_candidate.starts_with("class ")
+        && !call_candidate.starts_with("with ")
+    {
+        return (ProbeFamily::SideEffect, DeltaKind::Effect);
     }
     (ProbeFamily::Predicate, DeltaKind::Control)
+}
+
+fn contains_mock_initializer(text: &str) -> bool {
+    text.contains("Mock(") || text.contains("MagicMock(")
+}
+
+fn looks_like_call_expression(text: &str) -> bool {
+    let text = text.trim_end_matches(';').trim_end();
+    text.contains('(') && text.ends_with(')')
 }
 
 fn classify_change(
@@ -1081,6 +1135,48 @@ def test_notifies_callback():
             tests[0].assertions[0].oracle_strength,
             OracleStrength::Medium
         );
+    }
+
+    #[test]
+    fn classify_probe_shape_recognizes_python_predicate_shapes() {
+        let (family, delta) = classify_probe_shape("    if amount >= threshold:");
+        assert_eq!(family, ProbeFamily::Predicate);
+        assert_eq!(delta, DeltaKind::Control);
+
+        let (family, delta) =
+            classify_probe_shape("    label = \"high\" if amount >= threshold else \"normal\"");
+        assert_eq!(family, ProbeFamily::Predicate);
+        assert_eq!(delta, DeltaKind::Control);
+    }
+
+    #[test]
+    fn classify_probe_shape_recognizes_python_return_and_error_shapes() {
+        let (family, delta) = classify_probe_shape("    return amount - 10");
+        assert_eq!(family, ProbeFamily::ReturnValue);
+        assert_eq!(delta, DeltaKind::Value);
+
+        let (family, delta) = classify_probe_shape("    raise ValueError(\"bad\")");
+        assert_eq!(family, ProbeFamily::ErrorPath);
+        assert_eq!(delta, DeltaKind::Control);
+
+        let (family, delta) = classify_probe_shape("    except ValueError:");
+        assert_eq!(family, ProbeFamily::ErrorPath);
+        assert_eq!(delta, DeltaKind::Control);
+    }
+
+    #[test]
+    fn classify_probe_shape_recognizes_python_field_and_call_shapes() {
+        let (family, delta) = classify_probe_shape("    self.status = \"paid\"");
+        assert_eq!(family, ProbeFamily::FieldConstruction);
+        assert_eq!(delta, DeltaKind::Value);
+
+        let (family, delta) = classify_probe_shape("    notifier(\"receipt.sent\", order_id)");
+        assert_eq!(family, ProbeFamily::SideEffect);
+        assert_eq!(delta, DeltaKind::Effect);
+
+        let (family, delta) = classify_probe_shape("    callback = MagicMock(name=\"receipt\")");
+        assert_eq!(family, ProbeFamily::SideEffect);
+        assert_eq!(delta, DeltaKind::Effect);
     }
 
     #[test]
