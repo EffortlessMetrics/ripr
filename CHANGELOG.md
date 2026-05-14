@@ -81,6 +81,10 @@ Planned scope:
   visibility-unknown routes in `ripr check --json` canonical items while
   preserving raw findings and avoiding PR/CI rendering, gates, scores,
   generated tests, provider calls, or mutation execution.
+- Python preview related-test matching now treats free-function calls more
+  conservatively: module import aliases such as `pricing.apply_discount(...)`
+  still relate to the owner, but unrelated object method calls no longer make a
+  top-level function look related.
 - `ripr --help` and every `ripr <subcommand> --help` now lead with an
   action-oriented one-liner before the `Usage:` block (e.g.,
   `ripr pilot --help` opens with "Find the top test gap in this repo and
