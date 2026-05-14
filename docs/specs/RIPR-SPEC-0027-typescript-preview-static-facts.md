@@ -92,7 +92,10 @@ Assertions / oracles the adapter must recognise:
 
 Related-test heuristics mirror the Rust adapter: changed-owner name match,
 import-reference match, file-path proximity, and call-graph proximity at
-the syntax level.
+the syntax level. Direct owner-call matches must be token-aware: a top-level
+function owner can match `applyDiscount(...)`, but string/comment mentions and
+arbitrary object-method calls such as `order.applyDiscount(...)` must not make
+the test related.
 
 ## Probe Facts
 
