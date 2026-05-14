@@ -9,6 +9,7 @@ Core rule:
 ```text
 Anything deterministic should be automated.
 Anything judgment-based should produce a repair brief.
+Generated evidence is not authored copy.
 ```
 
 Humans and coding agents should spend attention on behavior, evidence,
@@ -105,6 +106,8 @@ updates the branch, comments, approves, or merges.
 suggestions. The v1 patch only covers allowlist ordering under `.ripr/*.txt`
 and `policy/*.txt`. It never generates badge endpoint values, golden blessings,
 baselines, suppressions, dependency exceptions, or schema-version changes.
+The generated-vs-authored boundary is documented in
+[Generated evidence discipline](GENERATED_EVIDENCE.md).
 
 `check-pr` is the review-ready local gate. It runs the current fast CI lane,
 then clippy, docs, and PR summary generation. It intentionally leaves
