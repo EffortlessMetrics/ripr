@@ -55,6 +55,7 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [Lane 1 User-Visible Output Evidence closeout](2026-05-14-user-visible-output-evidence-closeout.md)
 - [Presentation text consumer contract](2026-05-14-presentation-text-consumer-handoff.md)
 - [Policy Operations closeout](2026-05-13-policy-operations-closeout.md)
 - [Lane 1 Evidence Quality Leadership closeout](2026-05-13-lane-1-evidence-quality-leadership-closeout.md)
