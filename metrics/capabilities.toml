@@ -1509,6 +1509,24 @@ next = "analysis/presentation-text-canonical-grouping"
 metric = "finding_alignment_raw_findings_total, finding_alignment_raw_signals_total, finding_alignment_canonical_items_total, finding_alignment_raw_to_canonical_ratio, finding_alignment_duplicate_groups_total, finding_alignment_actionable_items_total, finding_alignment_actionable_unresolved_canonical_gaps, finding_alignment_already_observed_total, finding_alignment_internal_only_total, finding_alignment_internal_no_action_total, finding_alignment_static_limitation_total, finding_alignment_unknown_total, finding_alignment_calibrated_supported_total, finding_alignment_uncalibrated_total, finding_alignment_visibility_unknown_total, finding_alignment_presentation_text_actionable_total"
 
 [[capability]]
+id = "gap_decision_ledger"
+name = "Gap decision ledger"
+status = "alpha"
+spec = "RIPR-SPEC-0046"
+evidence = [
+  "docs/specs/RIPR-SPEC-0046-gap-decision-ledger.md defines the typed decision layer between evidence classes and projection surfaces",
+  "fixtures/gap-decision-ledger/corpus.json pins the planned GapRecord vocabulary, projection eligibility, safe gate predicate, output-contract repair route, missing-artifact regeneration, preview ineligibility, and receipt movement cases",
+  "crates/ripr/src/output/gap_decision_ledger.rs builds and renders the advisory gap_decision_ledger JSON and Markdown report from explicit GapRecord input",
+  "crates/ripr/src/cli/commands.rs wires `ripr reports gap-ledger --records ...` without rerunning analysis or changing downstream projection behavior",
+  "docs/OUTPUT_SCHEMA.md documents the implemented gap_decision_ledger JSON shape"
+]
+fixtures = [
+  "fixtures/gap-decision-ledger/corpus.json"
+]
+next = "report/first-useful-action-gap-record"
+metric = "gap_decision_records_total, gap_decision_repairable_total, gap_decision_static_limitation_total, gap_decision_no_action_total, gap_decision_missing_artifact_total, gap_decision_projection_pr_comment_eligible, gap_decision_projection_gate_candidate, gap_decision_projection_agent_packet_eligible, gap_decision_ripr_zero_target_count, gap_decision_ripr_plus_target_count, gap_decision_preview_ineligible_total, gap_decision_receipt_improved_total, gap_decision_receipt_unchanged_after_attempt_total, gap_decision_missing_output_contract_total"
+
+[[capability]]
 id = "preview_evidence_promotion_packets"
 name = "Preview evidence promotion packets"
 status = "alpha"

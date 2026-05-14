@@ -26,6 +26,7 @@ Usage:
   ripr assistant-loop health --proof target/ripr/reports/test-oracle-assistant-proof.json [--out target/ripr/reports/assistant-loop-health.json]
   ripr first-action [--root .] [--pr-guidance target/ripr/review/comments.json] [--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json] [--ledger target/ripr/reports/pr-evidence-ledger.json] [--out target/ripr/reports/first-useful-action.json]
   ripr reports index [--reports-dir target/ripr/reports] [--review-dir target/ripr/review] [--out target/ripr/reports/index.json]
+  ripr reports gap-ledger --records fixtures/gap-decision-ledger/corpus.json [--out target/ripr/reports/gap-decision-ledger.json]
   ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
   ripr agent start --root . --seam-id ID [--out target/ripr/workflow]
   ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json
@@ -71,6 +72,7 @@ Quick start:
   ripr assistant-loop health --proof target/ripr/reports/test-oracle-assistant-proof.json
   ripr first-action --pr-guidance target/ripr/review/comments.json --assistant-proof target/ripr/reports/test-oracle-assistant-proof.json --ledger target/ripr/reports/pr-evidence-ledger.json
   ripr reports index
+  ripr reports gap-ledger --records fixtures/gap-decision-ledger/corpus.json
   ripr calibrate cargo-mutants --mutants-json target/mutants/outcomes.json --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
   ripr agent start --root . --seam-id f3c9e4d21a0b7c88
   ripr agent brief --root . --diff change.diff --json
@@ -463,9 +465,11 @@ provider, run mutation testing, publish inline comments, or make CI blocking by
 default.
 "#;
 
-const REPORTS_HELP: &str = r#"Write a reviewer-first index of the uploaded review artifacts.
+const REPORTS_HELP: &str = r#"Write reviewer-first report projections from explicit artifacts.
 
-Usage: ripr reports index [--root PATH] [--reports-dir PATH] [--review-dir PATH] [--receipts-dir PATH] [--workflow-dir PATH] [--agent-dir PATH] [--pilot-dir PATH] [--ci-dir PATH] [--out PATH] [--out-md PATH]
+Usage:
+  ripr reports index [--root PATH] [--reports-dir PATH] [--review-dir PATH] [--receipts-dir PATH] [--workflow-dir PATH] [--agent-dir PATH] [--pilot-dir PATH] [--ci-dir PATH] [--out PATH] [--out-md PATH]
+  ripr reports gap-ledger --records PATH [--root PATH] [--out PATH] [--out-md PATH]
 
 Index options:
   --root PATH           Workspace root label. Defaults to current directory.
@@ -479,12 +483,25 @@ Index options:
   --out PATH            JSON output path. Defaults to target/ripr/reports/index.json.
   --out-md PATH         Markdown output path. Defaults to target/ripr/reports/index.md.
 
+Gap ledger options:
+  --records PATH        Explicit GapRecord JSON, gap_records JSON, or fixture corpus JSON.
+  --root PATH           Workspace root label. Defaults to current directory.
+  --out PATH            JSON output path. Defaults to target/ripr/reports/gap-decision-ledger.json.
+  --out-md PATH         Markdown output path. Defaults to target/ripr/reports/gap-decision-ledger.md.
+
 The report-packet index is a read-only advisory map over explicit existing
 RIPR artifacts. It groups reports by reviewer use, names the start-here
 artifact, preserves gate-decision as the configured pass/fail authority,
 lists missing expected surfaces with regeneration commands when known, and
 does not rerun analysis, edit source, generate tests, call providers, run
 mutation testing, publish inline comments, or make CI blocking by default.
+
+The gap decision ledger command is a read-only advisory renderer for explicit
+GapRecord input. It normalizes supplied gap records into JSON and Markdown,
+summarizes projection eligibility, preserves gate-decision as the configured
+pass/fail authority, and does not infer analyzer truth, publish comments, edit
+source, generate tests, call providers, run mutation testing, or change default
+CI blocking.
 "#;
 
 const COVERAGE_GRIP_HELP: &str = r#"Report whether line coverage and behavior evidence moved together.
@@ -946,6 +963,7 @@ mod tests {
         assert!(HELP.contains("ripr assistant-loop health"));
         assert!(HELP.contains("ripr first-action"));
         assert!(HELP.contains("ripr reports index"));
+        assert!(HELP.contains("ripr reports gap-ledger"));
         assert!(HELP.contains("ripr calibrate"));
         assert!(HELP.contains("ripr agent start"));
         assert!(HELP.contains("ripr agent brief"));
@@ -1056,9 +1074,12 @@ mod tests {
         assert!(FIRST_ACTION_HELP.contains("Usage: ripr first-action"));
         assert!(FIRST_ACTION_HELP.contains("first-useful-action.json"));
         assert!(FIRST_ACTION_HELP.contains("read-only advisory router"));
-        assert!(REPORTS_HELP.starts_with("Write a reviewer-first index"));
-        assert!(REPORTS_HELP.contains("Usage: ripr reports index"));
+        assert!(REPORTS_HELP.starts_with("Write reviewer-first report projections"));
+        assert!(REPORTS_HELP.contains("Usage:"));
+        assert!(REPORTS_HELP.contains("ripr reports index"));
+        assert!(REPORTS_HELP.contains("ripr reports gap-ledger"));
         assert!(REPORTS_HELP.contains("target/ripr/reports/index.json"));
+        assert!(REPORTS_HELP.contains("gap-decision-ledger.json"));
         assert!(REPORTS_HELP.contains("read-only advisory map"));
         assert!(CALIBRATE_HELP.starts_with("Import cargo-mutants outcomes"));
         assert!(CALIBRATE_HELP.contains("Usage: ripr calibrate cargo-mutants"));
