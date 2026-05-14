@@ -24,7 +24,7 @@ Usage:
   ripr coverage-grip frontier (--ledger target/ripr/reports/pr-evidence-ledger.json|--baseline-delta target/ripr/reports/baseline-debt-delta.json|--zero-status target/ripr/reports/ripr-zero-status.json) [--coverage target/ripr/reports/coverage-summary.json] [--out target/ripr/reports/coverage-grip-frontier.json]
   ripr assistant-loop proof --pr-guidance target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-brief.json --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --receipt target/ripr/reports/agent-receipt.json [--out target/ripr/reports/test-oracle-assistant-proof.json]
   ripr assistant-loop health --proof target/ripr/reports/test-oracle-assistant-proof.json [--out target/ripr/reports/assistant-loop-health.json]
-  ripr first-action [--root .] [--pr-guidance target/ripr/review/comments.json] [--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json] [--ledger target/ripr/reports/pr-evidence-ledger.json] [--out target/ripr/reports/first-useful-action.json]
+  ripr first-action [--root .] [--pr-guidance target/ripr/review/comments.json] [--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json] [--gap-ledger target/ripr/reports/gap-decision-ledger.json] [--ledger target/ripr/reports/pr-evidence-ledger.json] [--out target/ripr/reports/first-useful-action.json]
   ripr reports index [--reports-dir target/ripr/reports] [--review-dir target/ripr/review] [--out target/ripr/reports/index.json]
   ripr reports gap-ledger --records fixtures/gap-decision-ledger/corpus.json [--out target/ripr/reports/gap-decision-ledger.json]
   ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
@@ -565,12 +565,13 @@ make CI blocking by default.
 
 const FIRST_ACTION_HELP: &str = r#"Recommend the next focused test to add from existing review artifacts.
 
-Usage: ripr first-action [--root PATH] [--pr-guidance PATH] [--assistant-proof PATH] [--ledger PATH] [--baseline-delta PATH] [--receipt PATH] [--gate-decision PATH] [--coverage-frontier PATH] [--editor-context PATH] [--out PATH] [--out-md PATH]
+Usage: ripr first-action [--root PATH] [--pr-guidance PATH] [--assistant-proof PATH] [--gap-ledger PATH] [--ledger PATH] [--baseline-delta PATH] [--receipt PATH] [--gate-decision PATH] [--coverage-frontier PATH] [--editor-context PATH] [--out PATH] [--out-md PATH]
 
 Options:
   --root PATH                Workspace root label. Defaults to current directory.
   --pr-guidance PATH         Optional PR guidance JSON from `ripr review-comments`.
   --assistant-proof PATH     Optional proof JSON from `ripr assistant-loop proof`.
+  --gap-ledger PATH          Optional gap decision ledger JSON from `ripr reports gap-ledger`.
   --ledger PATH              Optional PR evidence ledger JSON from `ripr pr-ledger record`.
   --baseline-delta PATH      Optional baseline-debt-delta JSON from `ripr baseline diff`.
   --receipt PATH             Optional agent receipt JSON from `ripr agent receipt`.
@@ -1072,6 +1073,7 @@ mod tests {
         assert!(ASSISTANT_LOOP_HELP.contains("Campaign 20 artifacts"));
         assert!(FIRST_ACTION_HELP.starts_with("Recommend the next focused test"));
         assert!(FIRST_ACTION_HELP.contains("Usage: ripr first-action"));
+        assert!(FIRST_ACTION_HELP.contains("--gap-ledger PATH"));
         assert!(FIRST_ACTION_HELP.contains("first-useful-action.json"));
         assert!(FIRST_ACTION_HELP.contains("read-only advisory router"));
         assert!(REPORTS_HELP.starts_with("Write reviewer-first report projections"));

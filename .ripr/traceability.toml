@@ -1321,7 +1321,9 @@ tests = [
   "crates/ripr/src/output/first_useful_action.rs::first_useful_action_matches_unchanged_after_attempt_fixture",
   "crates/ripr/src/output/first_useful_action.rs::first_useful_action_reports_stale_editor_context_first",
   "crates/ripr/src/output/first_useful_action.rs::first_useful_action_routes_missing_assistant_proof",
+  "crates/ripr/src/output/first_useful_action.rs::first_useful_action_routes_gap_record_without_assistant_proof",
   "crates/ripr/tests/cli_smoke.rs::first_action_cli_writes_actionable_report",
+  "crates/ripr/src/cli/commands.rs::first_action_cli_writes_gap_record_report",
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_is_advisory",
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_uploads_reports_and_makes_sarif_optional",
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture",
@@ -1382,6 +1384,7 @@ outputs = [
 metrics = [
   "first_useful_action_reports",
   "first_useful_action_actionable",
+  "first_useful_action_gap_record_routes",
   "first_useful_action_stale",
   "first_useful_action_missing_required_artifact",
   "first_useful_action_baseline_only",
@@ -2866,6 +2869,8 @@ tests = [
   "crates/ripr/src/output/gap_decision_ledger.rs::tests::gap_decision_ledger_reports_bad_or_missing_records_as_blocked",
   "crates/ripr/src/output/gap_decision_ledger.rs::tests::gap_decision_ledger_warns_on_unsafe_projection",
   "crates/ripr/src/cli/commands.rs::tests::reports_gap_ledger_requires_records_input",
+  "crates/ripr/src/output/first_useful_action.rs::tests::first_useful_action_routes_gap_record_without_assistant_proof",
+  "crates/ripr/src/cli/commands.rs::tests::first_action_cli_writes_gap_record_report",
 ]
 fixtures = [
   "fixtures/gap-decision-ledger/corpus.json",
@@ -2875,6 +2880,7 @@ code = [
   "crates/ripr/src/output/mod.rs",
   "crates/ripr/src/cli/commands.rs",
   "crates/ripr/src/cli/help.rs",
+  "crates/ripr/src/output/first_useful_action.rs",
   "xtask/src/main.rs",
 ]
 outputs = [
