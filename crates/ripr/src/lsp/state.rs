@@ -1,3 +1,4 @@
+use super::gap_artifacts::ValidatedGapArtifact;
 use super::uri::{file_uris_match, path_from_file_uri};
 use crate::analysis::ClassifiedSeam;
 use crate::app::Mode;
@@ -50,6 +51,7 @@ pub(super) struct AnalysisSnapshot {
     /// (the default). Populated lazily on workspace refresh when the
     /// flag is enabled.
     pub(super) classified_seams: Vec<ClassifiedSeam>,
+    pub(super) gap_artifacts: Vec<ValidatedGapArtifact>,
     pub(super) diagnostics_by_uri: BTreeMap<Uri, Vec<Diagnostic>>,
 }
 
@@ -74,6 +76,10 @@ impl AnalysisSnapshot {
                 .is_none_or(|base| !base.trim().is_empty())
             && !self.mode.as_str().is_empty()
             && self.findings.len() + surfacable_seams == diagnostic_count
+            && self
+                .gap_artifacts
+                .iter()
+                .all(ValidatedGapArtifact::is_safe_projection_input)
     }
 
     pub(super) fn diagnostics_for_uri(&self, uri: &Uri) -> Option<&[Diagnostic]> {

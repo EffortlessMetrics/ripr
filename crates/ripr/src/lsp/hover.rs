@@ -777,6 +777,7 @@ mod seam_hover_tests {
             refresh: super::super::state::RefreshMetadata::default(),
             findings: Vec::new(),
             classified_seams: Vec::new(),
+            gap_artifacts: Vec::new(),
             diagnostics_by_uri: BTreeMap::new(),
         }
     }
