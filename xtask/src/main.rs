@@ -80,6 +80,18 @@ struct ChangedPath {
     statuses: BTreeSet<String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WorktreeDoctorSeverity {
+    Error,
+    Warning,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct WorktreeDoctorFinding {
+    severity: WorktreeDoctorSeverity,
+    message: String,
+}
+
 #[derive(Debug, Default)]
 struct TraceBehavior {
     line: usize,
@@ -20453,6 +20465,239 @@ fn resolve_markdown_link(source: &Path, target: &str) -> PathBuf {
     }
 }
 
+fn worktree(args: &[String]) -> Result<(), String> {
+    match args.first().map(String::as_str) {
+        Some("doctor") => worktree_doctor(),
+        Some(other) => Err(format!(
+            "unknown worktree command `{other}`\nusage: cargo xtask worktree doctor"
+        )),
+        None => Err("missing worktree command\nusage: cargo xtask worktree doctor".to_string()),
+    }
+}
+
+fn worktree_doctor() -> Result<(), String> {
+    let branch = git_value(&["rev-parse", "--abbrev-ref", "HEAD"]);
+    let status_changes = collect_worktree_status_changes()?;
+    let behind_origin_main = branch_behind_origin_main()?;
+    let target_ripr_exists = Path::new("target/ripr").exists();
+    let sample_target_exists = Path::new("crates/ripr/examples/sample/target").exists();
+    let badge_refresh_context = badge_refresh_context();
+    let findings = worktree_doctor_findings(
+        &branch,
+        behind_origin_main,
+        &status_changes,
+        target_ripr_exists,
+        sample_target_exists,
+        badge_refresh_context,
+    );
+    finish_worktree_doctor_report(&findings)
+}
+
+fn branch_behind_origin_main() -> Result<usize, String> {
+    let output = run_output_optional(
+        "git",
+        &["rev-list", "--left-right", "--count", "HEAD...origin/main"],
+    )?;
+    let trimmed = output.trim();
+    if trimmed.is_empty() {
+        return Ok(0);
+    }
+    let mut parts = trimmed.split_whitespace();
+    let _ahead = parts.next();
+    let Some(behind) = parts.next() else {
+        return Ok(0);
+    };
+    behind
+        .parse::<usize>()
+        .map_err(|err| format!("failed to parse origin/main behind count `{behind}`: {err}"))
+}
+
+fn worktree_doctor_findings(
+    branch: &str,
+    behind_origin_main: usize,
+    status_changes: &[ChangedPath],
+    target_ripr_exists: bool,
+    sample_target_exists: bool,
+    badge_refresh_context: bool,
+) -> Vec<WorktreeDoctorFinding> {
+    let mut findings = Vec::new();
+    let dirty = !status_changes.is_empty();
+
+    if branch == "main" && dirty {
+        findings.push(worktree_error(
+            "main branch has uncommitted changes; start PR work in a fresh worktree from origin/main",
+        ));
+    }
+
+    if behind_origin_main > 0 {
+        findings.push(worktree_error(&format!(
+            "branch is behind origin/main by {behind_origin_main} commit(s); refresh before opening or updating a PR",
+        )));
+    }
+
+    for change in status_changes {
+        let path = change.path.trim_end_matches('/');
+        if is_badge_endpoint_json(path) && !badge_refresh_context {
+            findings.push(worktree_error(&format!(
+                "generated badge endpoint is dirty outside a badge refresh context: {}",
+                format_changed_path(change)
+            )));
+            continue;
+        }
+        if is_ripr_target_artifact(path) && !is_deletion_only(change) {
+            findings.push(worktree_error(&format!(
+                "generated RIPR target artifact is dirty: {}",
+                format_changed_path(change)
+            )));
+            continue;
+        }
+        if is_sample_target_artifact(path) && !is_deletion_only(change) {
+            findings.push(worktree_error(&format!(
+                "sample workspace target artifact is dirty: {}",
+                format_changed_path(change)
+            )));
+        }
+    }
+
+    if target_ripr_exists {
+        findings.push(worktree_warning(
+            "target/ripr exists; remove local report artifacts before final worktree cleanup if this workspace is done",
+        ));
+    }
+    if sample_target_exists {
+        findings.push(worktree_warning(
+            "crates/ripr/examples/sample/target exists; run `cargo clean` in that sample workspace or remove the residue before handoff",
+        ));
+    }
+
+    let layers = changed_source_layers(status_changes);
+    if layers.len() > 3 && !has_work_item_marker(status_changes) {
+        findings.push(worktree_warning(&format!(
+            "changes span multiple source-of-truth layers without an obvious work item marker: {}",
+            layers.into_iter().collect::<Vec<_>>().join(", ")
+        )));
+    }
+
+    findings
+}
+
+fn worktree_error(message: &str) -> WorktreeDoctorFinding {
+    WorktreeDoctorFinding {
+        severity: WorktreeDoctorSeverity::Error,
+        message: message.to_string(),
+    }
+}
+
+fn worktree_warning(message: &str) -> WorktreeDoctorFinding {
+    WorktreeDoctorFinding {
+        severity: WorktreeDoctorSeverity::Warning,
+        message: message.to_string(),
+    }
+}
+
+fn changed_source_layers(changes: &[ChangedPath]) -> BTreeSet<&'static str> {
+    changes
+        .iter()
+        .filter_map(|change| source_layer_for_path(change.path.trim_end_matches('/')))
+        .collect()
+}
+
+fn source_layer_for_path(path: &str) -> Option<&'static str> {
+    if path.starts_with(".github/workflows/") {
+        Some("workflows")
+    } else if path == ".ripr/traceability.toml" {
+        Some("traceability")
+    } else if path.starts_with(".ripr/goals/") {
+        Some("goal-manifest")
+    } else if path.starts_with("metrics/") {
+        Some("metrics")
+    } else if path.starts_with("docs/specs/") {
+        Some("specs")
+    } else if path.starts_with("docs/policy/") {
+        Some("policy-docs")
+    } else if path.starts_with("docs/IMPLEMENTATION_") || path == "docs/ROADMAP.md" {
+        Some("planning-docs")
+    } else if path.starts_with("docs/") {
+        Some("docs")
+    } else if path.starts_with("crates/") || path.starts_with("xtask/") {
+        Some("code")
+    } else if path.starts_with("fixtures/") {
+        Some("fixtures")
+    } else if path.starts_with("badges/") {
+        Some("badge-endpoints")
+    } else if path.starts_with("schemas/") {
+        Some("schemas")
+    } else if path.starts_with("policy/") {
+        Some("policy")
+    } else {
+        None
+    }
+}
+
+fn has_work_item_marker(changes: &[ChangedPath]) -> bool {
+    changes.iter().any(|change| {
+        let path = change.path.trim_end_matches('/');
+        path.starts_with(".ripr/goals/")
+            || path == "docs/IMPLEMENTATION_PLAN.md"
+            || path == "docs/IMPLEMENTATION_CAMPAIGNS.md"
+            || path == "docs/ROADMAP.md"
+    })
+}
+
+fn finish_worktree_doctor_report(findings: &[WorktreeDoctorFinding]) -> Result<(), String> {
+    let errors = findings
+        .iter()
+        .filter(|finding| finding.severity == WorktreeDoctorSeverity::Error)
+        .collect::<Vec<_>>();
+    let warnings = findings
+        .iter()
+        .filter(|finding| finding.severity == WorktreeDoctorSeverity::Warning)
+        .collect::<Vec<_>>();
+    let status = if !errors.is_empty() {
+        "fail"
+    } else if !warnings.is_empty() {
+        "warn"
+    } else {
+        "pass"
+    };
+    let mut body = format!("# ripr worktree doctor\n\nStatus: {status}\n\n");
+    body.push_str("Checks:\n\n");
+    body.push_str("- branch is not dirty main\n");
+    body.push_str("- branch is current with origin/main\n");
+    body.push_str("- generated badge endpoints are not dirty in ordinary work\n");
+    body.push_str("- generated target/sample artifacts are not dirty\n");
+    body.push_str("- broad source-of-truth diffs have an obvious work item marker\n");
+    if !errors.is_empty() {
+        body.push_str("\nErrors:\n\n");
+        for finding in &errors {
+            body.push_str(&format!("- {}\n", finding.message));
+        }
+    }
+    if !warnings.is_empty() {
+        body.push_str("\nWarnings:\n\n");
+        for finding in &warnings {
+            body.push_str(&format!("- {}\n", finding.message));
+        }
+    }
+    if findings.is_empty() {
+        body.push_str("\nNo findings.\n");
+    }
+    write_report("worktree-doctor.md", &body)?;
+    println!("{body}");
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "worktree doctor found blocking issues; see target/ripr/reports/worktree-doctor.md\n{}",
+            errors
+                .iter()
+                .map(|finding| finding.message.as_str())
+                .collect::<Vec<_>>()
+                .join("\n")
+        ))
+    }
+}
+
 fn goals(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("status") | Some("report") | None => goals_status(),
@@ -22969,6 +23214,15 @@ fn collect_pr_changes() -> Result<Vec<ChangedPath>, String> {
     );
     add_short_status_output(&mut changes, &run_output("git", &["status", "--short"])?);
 
+    Ok(changes
+        .into_iter()
+        .map(|(path, statuses)| ChangedPath { path, statuses })
+        .collect())
+}
+
+fn collect_worktree_status_changes() -> Result<Vec<ChangedPath>, String> {
+    let mut changes = BTreeMap::<String, BTreeSet<String>>::new();
+    add_short_status_output(&mut changes, &run_output("git", &["status", "--short"])?);
     Ok(changes
         .into_iter()
         .map(|(path, statuses)| ChangedPath { path, statuses })
@@ -27742,38 +27996,38 @@ mod tests {
         RepoExposureLatencyReport, RepoExposureLatencyRun, RepoExposureLatencyTrace,
         ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode, SarifPolicyResult,
         SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass,
-        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
-        badge_artifacts_summary_markdown, badge_diff_policy_violations, build_lsp_cockpit_report,
-        build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
-        build_targeted_test_outcome_report, check_allow_attributes,
-        check_badge_diff_policy_with_context, check_droid_review_config, check_executable_files,
-        check_file_policy, check_local_context, check_network_policy, check_no_panic_family,
-        check_process_policy, check_static_language, check_workflows, ci_full_evidence_gates,
-        collect_panic_findings, collect_semantic_panic_findings, critic_findings,
-        dogfood_class_counts, dogfood_first_action_scenarios, dogfood_gate_adoption_scenarios,
-        dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
-        dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
-        dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
-        dogfood_pr_review_front_panel_scenarios, dogfood_report_json, dogfood_report_markdown,
-        dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
-        evaluate_semantic_no_panic_policy, evidence_quality_scorecard_from_values,
-        evidence_quality_scorecard_json, evidence_quality_scorecard_markdown,
-        evidence_quality_trend_from_values, evidence_quality_trend_json,
-        evidence_quality_trend_markdown, extract_json_object_usize_map, extract_json_string,
-        extract_json_warnings, extract_workflow_run_blocks, first_line_difference,
-        forbidden_panic_patterns, generated_clean_violations,
-        github_event_pull_request_title_from_text, glob_matches, golden_changes_without_blessing,
-        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
-        install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
-        is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
-        is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
-        is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
-        is_stale_agent_boundary_scan_target, json_escape, json_number_after,
-        json_string_values_for_key, json_summary_count, known_commands, known_xtask_command,
-        lane1_evidence_audit_from_repo_exposure, lane1_evidence_audit_json,
-        lane1_evidence_audit_markdown, local_context_line_findings, local_markdown_target,
-        lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
-        markdown_links_in_text, mutation_calibration_report_json,
+        WorktreeDoctorFinding, WorktreeDoctorSeverity, badge_artifact_command_args,
+        badge_artifact_jobs, badge_artifact_native_slot, badge_artifacts_summary_markdown,
+        badge_diff_policy_violations, build_lsp_cockpit_report, build_no_panic_allowlist_proposals,
+        build_repo_exposure_latency_report, build_targeted_test_outcome_report,
+        check_allow_attributes, check_badge_diff_policy_with_context, check_droid_review_config,
+        check_executable_files, check_file_policy, check_local_context, check_network_policy,
+        check_no_panic_family, check_process_policy, check_static_language, check_workflows,
+        ci_full_evidence_gates, collect_panic_findings, collect_semantic_panic_findings,
+        critic_findings, dogfood_class_counts, dogfood_first_action_scenarios,
+        dogfood_gate_adoption_scenarios, dogfood_generated_ci_cockpit_run_from_workflow,
+        dogfood_language_preview_run, dogfood_language_preview_scenarios,
+        dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
+        dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
+        dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
+        dogfood_report_packet_index_scenarios, evaluate_semantic_no_panic_policy,
+        evidence_quality_scorecard_from_values, evidence_quality_scorecard_json,
+        evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
+        evidence_quality_trend_json, evidence_quality_trend_markdown,
+        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
+        extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns,
+        generated_clean_violations, github_event_pull_request_title_from_text, glob_matches,
+        golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
+        guarded_allow_attributes_in_text, install_hooks_in, is_badge_refresh_context,
+        is_bdd_test_name, is_campaign_path, is_dependency_surface_candidate, is_docs_path,
+        is_evidence_path, is_generated_candidate, is_known_campaign_command,
+        is_non_rust_programming_candidate, is_policy_path, is_production_path, is_receipt_status,
+        is_ripr_managed_hook, is_snake_case_id, is_spec_id, is_stale_agent_boundary_scan_target,
+        json_escape, json_number_after, json_string_values_for_key, json_summary_count,
+        known_commands, known_xtask_command, lane1_evidence_audit_from_repo_exposure,
+        lane1_evidence_audit_json, lane1_evidence_audit_markdown, local_context_line_findings,
+        local_markdown_target, lsp_cockpit_report, lsp_cockpit_report_json,
+        lsp_cockpit_report_markdown, markdown_links_in_text, mutation_calibration_report_json,
         mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
         no_panic_toml_string, non_rust_programming_retention_reason,
         normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
@@ -27802,7 +28056,7 @@ mod tests {
         unknown_command_message, validate_local_context_allowlist, vscode_compile_command,
         vscode_extension_dir, vscode_package_command, vscode_package_version,
         vscode_test_e2e_command, windows_absolute_path_tokens, workflow_runtime_violations,
-        write_repo_exposure_latency_report,
+        worktree_doctor_findings, write_repo_exposure_latency_report,
     };
     use super::{
         DeclaredIntent, LocalContextFinding,
@@ -36961,6 +37215,18 @@ jobs:
         }
     }
 
+    fn doctor_has_error(findings: &[WorktreeDoctorFinding], text: &str) -> bool {
+        findings.iter().any(|finding| {
+            finding.severity == WorktreeDoctorSeverity::Error && finding.message.contains(text)
+        })
+    }
+
+    fn doctor_has_warning(findings: &[WorktreeDoctorFinding], text: &str) -> bool {
+        findings.iter().any(|finding| {
+            finding.severity == WorktreeDoctorSeverity::Warning && finding.message.contains(text)
+        })
+    }
+
     #[test]
     fn generated_clean_rejects_badge_endpoint_diff_outside_refresh_context() {
         let changes = vec![changed_path("badges/ripr.json", &["M"])];
@@ -36968,6 +37234,83 @@ jobs:
         assert_eq!(violations.len(), 1);
         assert!(violations[0].contains("generated badge endpoint changed"));
         assert!(violations[0].contains("do not manually edit RIPR badge numbers"));
+    }
+
+    #[test]
+    fn worktree_doctor_flags_dirty_main_and_behind_branch() {
+        let changes = vec![changed_path("docs/README.md", &["M"])];
+        let findings = worktree_doctor_findings("main", 2, &changes, false, false, false);
+
+        assert!(doctor_has_error(
+            &findings,
+            "main branch has uncommitted changes"
+        ));
+        assert!(doctor_has_error(
+            &findings,
+            "behind origin/main by 2 commit"
+        ));
+    }
+
+    #[test]
+    fn worktree_doctor_rejects_badge_endpoint_outside_refresh_context() {
+        let changes = vec![changed_path("badges/ripr.json", &["M"])];
+        let findings =
+            worktree_doctor_findings("badge/diff-policy", 0, &changes, false, false, false);
+
+        assert!(doctor_has_error(
+            &findings,
+            "generated badge endpoint is dirty"
+        ));
+
+        let refresh_findings =
+            worktree_doctor_findings("badge-refresh", 0, &changes, false, false, true);
+        assert!(
+            !doctor_has_error(&refresh_findings, "generated badge endpoint is dirty"),
+            "unexpected findings: {refresh_findings:?}"
+        );
+    }
+
+    #[test]
+    fn worktree_doctor_warns_about_ignored_target_residue() {
+        let findings = worktree_doctor_findings("feature/x", 0, &[], true, true, false);
+
+        assert!(doctor_has_warning(&findings, "target/ripr exists"));
+        assert!(doctor_has_warning(
+            &findings,
+            "crates/ripr/examples/sample/target exists"
+        ));
+    }
+
+    #[test]
+    fn worktree_doctor_warns_about_broad_diff_without_work_item_marker() {
+        let changes = vec![
+            changed_path("docs/specs/RIPR-SPEC-9999-example.md", &["A"]),
+            changed_path(".ripr/traceability.toml", &["M"]),
+            changed_path("metrics/capabilities.toml", &["M"]),
+            changed_path("xtask/src/main.rs", &["M"]),
+        ];
+        let findings = worktree_doctor_findings("feature/broad", 0, &changes, false, false, false);
+        assert!(doctor_has_warning(
+            &findings,
+            "changes span multiple source-of-truth layers"
+        ));
+
+        let with_marker = vec![
+            changed_path("docs/specs/RIPR-SPEC-9999-example.md", &["A"]),
+            changed_path(".ripr/traceability.toml", &["M"]),
+            changed_path("metrics/capabilities.toml", &["M"]),
+            changed_path("xtask/src/main.rs", &["M"]),
+            changed_path(".ripr/goals/active.toml", &["M"]),
+        ];
+        let marker_findings =
+            worktree_doctor_findings("feature/broad", 0, &with_marker, false, false, false);
+        assert!(
+            !doctor_has_warning(
+                &marker_findings,
+                "changes span multiple source-of-truth layers"
+            ),
+            "unexpected findings: {marker_findings:?}"
+        );
     }
 
     #[test]
@@ -37175,6 +37518,10 @@ jobs:
         assert_eq!(
             XtaskCommand::parse(["badges".to_string(), "--check".to_string()]),
             XtaskCommand::CheckBadgeEndpoints
+        );
+        assert_eq!(
+            XtaskCommand::parse(["worktree".to_string(), "doctor".to_string()]),
+            XtaskCommand::Worktree(vec!["doctor".to_string()])
         );
         assert_eq!(
             XtaskCommand::parse(std::iter::empty::<String>()),
@@ -37410,6 +37757,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(commands.contains(&"sarif-policy --current <path> [--baseline <path>]"));
         assert!(commands.contains(&"badges [--check]"));
         assert!(commands.contains(&"check-badge-diff-policy"));
+        assert!(commands.contains(&"worktree doctor"));
         assert!(commands.contains(&"check-droid-review-config"));
         assert!(commands.contains(&"check-ci-lane-whitelist"));
         assert!(commands.contains(&"vscode-compile"));
