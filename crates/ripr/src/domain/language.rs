@@ -27,6 +27,22 @@ impl LanguageId {
             LanguageId::Python => "python",
         }
     }
+
+    pub(crate) fn is_available(self) -> bool {
+        match self {
+            LanguageId::Rust => cfg!(feature = "lang-rust"),
+            LanguageId::TypeScript => cfg!(feature = "lang-typescript"),
+            LanguageId::Python => cfg!(feature = "lang-python"),
+        }
+    }
+
+    pub(crate) fn required_feature(self) -> &'static str {
+        match self {
+            LanguageId::Rust => "lang-rust",
+            LanguageId::TypeScript => "lang-typescript",
+            LanguageId::Python => "lang-python",
+        }
+    }
 }
 
 /// Whether an adapter is the reference (`Stable`) implementation for a
@@ -122,6 +138,20 @@ mod tests {
         assert_eq!(LanguageId::Rust.as_str(), "rust");
         assert_eq!(LanguageId::TypeScript.as_str(), "typescript");
         assert_eq!(LanguageId::Python.as_str(), "python");
+    }
+
+    #[test]
+    fn language_feature_availability_matches_build() {
+        assert!(LanguageId::Rust.is_available());
+        assert_eq!(
+            LanguageId::TypeScript.is_available(),
+            cfg!(feature = "lang-typescript")
+        );
+        assert_eq!(
+            LanguageId::Python.is_available(),
+            cfg!(feature = "lang-python")
+        );
+        assert_eq!(LanguageId::Python.required_feature(), "lang-python");
     }
 
     #[test]
