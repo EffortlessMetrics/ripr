@@ -33,10 +33,17 @@ Regenerate public badge endpoints:
 cargo xtask badges
 ```
 
+Regenerate them from an explicit policy-backed gap decision ledger:
+
+```bash
+cargo xtask badges --gap-ledger target/ripr/reports/gap-decision-ledger.json
+```
+
 Check committed endpoint drift:
 
 ```bash
 cargo xtask badges --check
+cargo xtask badges --check --gap-ledger target/ripr/reports/gap-decision-ledger.json
 ```
 
 Committed endpoint files live under `badges/`. Detailed reports stay under `target/` locally or in CI artifacts.
