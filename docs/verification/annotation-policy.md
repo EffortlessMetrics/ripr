@@ -35,7 +35,8 @@ warnings[]
 ```
 
 Those collections remain visible in summaries and artifacts. They are not safe
-changed-line annotation sources.
+changed-line annotation sources. This applies to warnings from both
+`target/ripr/pr/repo-exposure.json` and `target/ripr/review/comments.json`.
 
 ## Changed-Line Rule
 
