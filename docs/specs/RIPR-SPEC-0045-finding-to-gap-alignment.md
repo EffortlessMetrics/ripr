@@ -402,7 +402,10 @@ Planned Lane 1 slices:
 - `analysis/finding-alignment-evidence-fields` adds additive `raw_findings[]`,
   `canonical_item`, and nullable `presentation_text` evidence-record fields.
 - `analysis/presentation-text-canonical-grouping` applies the contract to
-  declaration plus literal grouping.
+  declaration plus literal grouping. The first implemented projection groups
+  supported changed `&str` presentation constants and adjacent literal raw
+  findings into one `finding_alignment.items[]` canonical limitation item in
+  `ripr check --json`, preserving the original `findings[]` array.
 - `analysis/presentation-text-visibility-observers` supplies class-specific
   state and actionability.
 - `analysis/finding-alignment-repair-routes` adds concrete repairs and verify
