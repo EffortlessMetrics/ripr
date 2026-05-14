@@ -283,6 +283,7 @@ the worktree:
 ```bash
 cargo xtask shape
 cargo xtask fix-pr
+cargo xtask commands
 cargo xtask pr-summary
 cargo xtask pr-triage-report
 cargo xtask gh-pr-status --pr <number>
@@ -303,6 +304,10 @@ cargo xtask receipts check
 They are safe to run before checks. `shape` runs `cargo fmt`, sorts allowlists,
 ensures `target/ripr/reports`, and writes a local report. `fix-pr` currently
 runs `shape`, refreshes `pr-summary`, and writes a local fix-pr report.
+`commands` writes the xtask mutability catalog under `target/ripr/reports/` so
+agents can distinguish mutating commands, non-mutating checks, report-only
+commands, external-state reads, external-state mutations, and
+argument-dependent commands.
 `pr-summary` writes `target/ripr/reports/pr-summary.md` from git diff/status.
 `pr-triage-report` writes the advisory open-board hygiene report.
 `gh-pr-status --pr <number>` writes a read-only merge-readiness packet for one

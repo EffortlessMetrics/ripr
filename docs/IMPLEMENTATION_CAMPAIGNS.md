@@ -3382,6 +3382,7 @@ Work items:
 | `automation/critic-report` | done | #84 already supplied the advisory critic report; this lane keeps it target-local and reviewer-focused. |
 | `automation/suggested-fixes-patch` | done | #971 added deterministic `suggested-fixes.{patch,md}` output under `target/ripr/reports/`. |
 | `docs/generated-evidence-discipline` | done | #975 added `docs/GENERATED_EVIDENCE.md` and linked contributor/automation docs. |
+| `devex/command-mutability-catalog` | done | Adds `cargo xtask commands` to classify xtask commands by mutability, generated-output paths, external-state access, and judgment-required boundaries. |
 | `campaign/generated-evidence-discipline-closeout` | done | Closed after the generated-clean, badge ownership, worktree, triage, PR status, spec numbering, campaign hardening, receipt, critic, suggested-fixes, and docs surfaces aligned; see `docs/handoffs/2026-05-14-generated-evidence-discipline-closeout.md`. |
 
 Blocking conditions:

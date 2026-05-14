@@ -82,6 +82,7 @@ Common generated reports:
 
 ```bash
 cargo xtask pr-summary
+cargo xtask commands
 cargo xtask reports index
 cargo xtask receipts
 cargo xtask receipts check
@@ -93,6 +94,21 @@ cargo xtask suggested-fixes
 but it must not leave tracked source diffs. If it reports generated residue,
 follow the repair instruction from the report instead of editing counts or
 reports by hand.
+
+## Command Mutability Catalog
+
+Run this when you need to know whether an xtask command may edit files, only
+writes generated reports, reads external state, or requires judgment before use:
+
+```bash
+cargo xtask commands
+```
+
+The command writes `target/ripr/reports/commands.md` and
+`target/ripr/reports/commands.json`. The catalog is generated evidence and
+should not be committed. It is the review-facing map for mutating commands,
+non-mutating checks, report-only commands, external-state reads, external-state
+mutations, and argument-dependent commands.
 
 ## Deterministic Repair
 
@@ -148,6 +164,7 @@ For ordinary work:
 ```bash
 cargo xtask shape
 cargo xtask fix-pr
+cargo xtask commands
 cargo xtask check-pr
 ```
 
