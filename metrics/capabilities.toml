@@ -944,15 +944,15 @@ name = "First useful action report"
 status = "alpha"
 spec = "RIPR-SPEC-0020"
 evidence = [
-  "docs/specs/RIPR-SPEC-0020-first-useful-action-report.md defines the first-useful-action report contract over existing editor, PR guidance, ledger, baseline, assistant proof, receipt, optional gate, optional coverage/grip, and staleness evidence",
-  "crates/ripr/src/output/first_useful_action.rs implements the read-only first-action router and renders first-useful-action JSON/Markdown without rerunning analysis",
-  "crates/ripr/src/cli/commands.rs exposes ripr first-action over explicit artifact paths and writes target/ripr/reports/first-useful-action.{json,md}",
+  "docs/specs/RIPR-SPEC-0020-first-useful-action-report.md defines the first-useful-action report contract over existing editor, PR guidance, gap decision ledger, PR evidence ledger, baseline, assistant proof, receipt, optional gate, optional coverage/grip, and staleness evidence",
+  "crates/ripr/src/output/first_useful_action.rs implements the read-only first-action router, can route from explicit repairable stable Rust GapRecord inputs, and renders first-useful-action JSON/Markdown without rerunning analysis",
+  "crates/ripr/src/cli/commands.rs exposes ripr first-action over explicit artifact paths, including --gap-ledger, and writes target/ripr/reports/first-useful-action.{json,md}",
   "generated GitHub CI runs ripr first-action when explicit inputs are present, uploads target/ripr/reports/first-useful-action.{json,md} with the normal report packet, and appends the First Useful Action summary without changing pass/fail authority",
-  "docs/OUTPUT_SCHEMA.md documents the implemented first-useful-action JSON and Markdown shape, status vocabulary, action vocabulary, routing priorities, command fields, warnings, fallback states, and advisory limits",
+  "docs/OUTPUT_SCHEMA.md documents the implemented first-useful-action JSON and Markdown shape, gap decision fields, status vocabulary, action vocabulary, routing priorities, command fields, warnings, fallback states, and advisory limits",
   "docs/FIRST_USEFUL_ACTION_WORKFLOW.md documents GitHub and editor entry points, status meanings, developer/reviewer/agent actions, verification, receipts, fallback interpretation, and the advisory gate boundary",
-  "fixtures/boundary_gap/expected/first-useful-action pins actionable, stale, missing-required-artifact, baseline-only, acknowledged, waived, suppressed, no-actionable-seam, already-improved, and unchanged-after-attempt routing cases",
-  "crates/ripr/src/output/first_useful_action.rs::first_useful_action_matches_actionable_fixture and ::first_useful_action_matches_unchanged_after_attempt_fixture validate producer output against the pinned corpus",
-  "crates/ripr/tests/cli_smoke.rs::first_action_cli_writes_actionable_report validates the public CLI writes actionable JSON/Markdown",
+  "fixtures/boundary_gap/expected/first-useful-action pins actionable, stale, missing-required-artifact, baseline-only, acknowledged, waived, suppressed, no-actionable-seam, already-improved, unchanged-after-attempt, and explicit gap-record routing cases",
+  "crates/ripr/src/output/first_useful_action.rs::first_useful_action_matches_actionable_fixture, ::first_useful_action_matches_unchanged_after_attempt_fixture, and ::first_useful_action_routes_gap_record_without_assistant_proof validate producer output against pinned and inline gap-record routes",
+  "crates/ripr/tests/cli_smoke.rs::first_action_cli_writes_actionable_report and crates/ripr/src/cli/commands.rs::first_action_cli_writes_gap_record_report validate public CLI output for assistant-proof and gap-record paths",
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_uploads_reports_and_makes_sarif_optional and crates/ripr/tests/cli_smoke.rs::init_ci_github_writes_non_blocking_report_workflow validate generated CI projection",
   "editors/vscode/src/client.ts projects an existing workspace-matched target/ripr/reports/first-useful-action.json report through status and Show Status without invoking ripr first-action or adding diagnostics",
   "editors/vscode/test/suite/extension.test.ts::status bar projects existing first useful action report validates the editor projection and asserts it does not shell out to ripr",
@@ -965,8 +965,8 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap/expected/first-useful-action"
 ]
-next = "maintenance"
-metric = "first_useful_action_reports, first_useful_action_actionable, first_useful_action_stale, first_useful_action_missing_required_artifact, first_useful_action_baseline_only, first_useful_action_acknowledged, first_useful_action_waived, first_useful_action_suppressed, first_useful_action_no_actionable_seam, first_useful_action_already_improved, first_useful_action_unchanged_after_attempt"
+next = "report/pr-evidence-ledger-gap-record"
+metric = "first_useful_action_reports, first_useful_action_actionable, first_useful_action_gap_record_routes, first_useful_action_stale, first_useful_action_missing_required_artifact, first_useful_action_baseline_only, first_useful_action_acknowledged, first_useful_action_waived, first_useful_action_suppressed, first_useful_action_no_actionable_seam, first_useful_action_already_improved, first_useful_action_unchanged_after_attempt"
 
 [[capability]]
 id = "assistant_loop_health_report"
@@ -1523,7 +1523,7 @@ evidence = [
 fixtures = [
   "fixtures/gap-decision-ledger/corpus.json"
 ]
-next = "report/first-useful-action-gap-record"
+next = "report/pr-evidence-ledger-gap-record"
 metric = "gap_decision_records_total, gap_decision_repairable_total, gap_decision_static_limitation_total, gap_decision_no_action_total, gap_decision_missing_artifact_total, gap_decision_projection_pr_comment_eligible, gap_decision_projection_gate_candidate, gap_decision_projection_agent_packet_eligible, gap_decision_ripr_zero_target_count, gap_decision_ripr_plus_target_count, gap_decision_preview_ineligible_total, gap_decision_receipt_improved_total, gap_decision_receipt_unchanged_after_attempt_total, gap_decision_missing_output_contract_total"
 
 [[capability]]

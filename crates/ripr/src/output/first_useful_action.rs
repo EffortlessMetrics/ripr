@@ -22,6 +22,7 @@ pub(crate) struct FirstUsefulActionInput {
     pub(crate) generated_at: String,
     pub(crate) pr_guidance_path: Option<String>,
     pub(crate) assistant_proof_path: Option<String>,
+    pub(crate) gap_ledger_path: Option<String>,
     pub(crate) ledger_path: Option<String>,
     pub(crate) baseline_delta_path: Option<String>,
     pub(crate) receipt_path: Option<String>,
@@ -30,6 +31,7 @@ pub(crate) struct FirstUsefulActionInput {
     pub(crate) editor_context_path: Option<String>,
     pub(crate) pr_guidance_json: Option<Result<String, String>>,
     pub(crate) assistant_proof_json: Option<Result<String, String>>,
+    pub(crate) gap_ledger_json: Option<Result<String, String>>,
     pub(crate) ledger_json: Option<Result<String, String>>,
     pub(crate) baseline_delta_json: Option<Result<String, String>>,
     pub(crate) receipt_json: Option<Result<String, String>>,
@@ -62,6 +64,8 @@ pub(crate) struct FirstUsefulActionReport {
 struct ActionInputs {
     pr_guidance: Option<String>,
     assistant_proof: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    gap_ledger: Option<String>,
     ledger: Option<String>,
     baseline_delta: Option<String>,
     receipt: Option<String>,
@@ -80,6 +84,12 @@ struct ActionSelected {
     line: Option<u64>,
     classification: Option<String>,
     missing_discriminator: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    gap_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    canonical_gap_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    repair_route: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -106,6 +116,8 @@ struct ActionCommands {
 struct ActionEvidence {
     pr_guidance: Option<String>,
     assistant_proof: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    gap_ledger: Option<String>,
     receipt: Option<String>,
     ledger: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -126,6 +138,7 @@ struct ActionFallback {
 struct ParsedSources {
     pr_guidance: Option<Value>,
     assistant_proof: Option<Value>,
+    gap_ledger: Option<Value>,
     ledger: Option<Value>,
     baseline_delta: Option<Value>,
     receipt: Option<Value>,
@@ -143,6 +156,7 @@ pub(crate) fn build_first_useful_action_report(
     let inputs = ActionInputs {
         pr_guidance: input.pr_guidance_path.clone(),
         assistant_proof: input.assistant_proof_path.clone(),
+        gap_ledger: input.gap_ledger_path.clone(),
         ledger: input.ledger_path.clone(),
         baseline_delta: input.baseline_delta_path.clone(),
         receipt: input.receipt_path.clone(),
@@ -167,6 +181,8 @@ pub(crate) fn build_first_useful_action_report(
     } else if let Some(report) = acknowledged_report(&input, &parsed, &inputs, &generated_at) {
         report
     } else if let Some(report) = waived_report(&input, &parsed, &inputs, &generated_at) {
+        report
+    } else if let Some(report) = gap_record_report(&input, &parsed, &inputs, &generated_at) {
         report
     } else if let Some(report) =
         missing_assistant_proof_report(&input, &parsed, &inputs, &generated_at)
@@ -321,6 +337,12 @@ fn parse_sources(input: &FirstUsefulActionInput) -> ParsedSources {
         "assistant proof",
         input.assistant_proof_path.as_deref(),
         &input.assistant_proof_json,
+        &mut parsed,
+    );
+    parsed.gap_ledger = parse_optional_json(
+        "gap decision ledger",
+        input.gap_ledger_path.as_deref(),
+        &input.gap_ledger_json,
         &mut parsed,
     );
     parsed.ledger = parse_optional_json(
@@ -668,6 +690,54 @@ fn waived_report(
     ))
 }
 
+fn gap_record_report(
+    input: &FirstUsefulActionInput,
+    parsed: &ParsedSources,
+    inputs: &ActionInputs,
+    generated_at: &str,
+) -> Option<FirstUsefulActionReport> {
+    let record = first_actionable_gap_record(parsed.gap_ledger.as_ref()?)?;
+    let repair_route = record.get("repair_route");
+    let route_kind = string_from_sources(&[(repair_route, &["route_kind"])])
+        .unwrap_or_else(|| "RepairGap".to_string());
+    let gap_kind = string_path(record, &["kind"]).unwrap_or_else(|| "Gap".to_string());
+    let gap_id = string_path(record, &["gap_id"]).unwrap_or_else(|| "unknown".to_string());
+    let verify_command = first_string_array_item(record, &["verification_commands"]);
+    Some(base_report(
+        input,
+        inputs,
+        generated_at,
+        "actionable",
+        "developer",
+        action_kind_for_gap_route(&route_kind),
+        Some(selected_from_gap_record(input, record)?),
+        &format!("Repair {gap_kind} via {route_kind}"),
+        &format!(
+            "Gap decision {gap_id} is a new PR-local Rust gap with repair route {route_kind}."
+        ),
+        vec![
+            "The gap decision is PR-local stable Rust evidence.",
+            "It is unresolved, repairable, and policy-targeted.",
+            "The repair route and verification command are supplied by the gap ledger.",
+        ],
+        target_from_gap_record(record),
+        ActionCommands {
+            verify: verify_command,
+            ..ActionCommands::default()
+        },
+        evidence(input, "unknown"),
+        None,
+        Vec::new(),
+        vec![
+            "Static evidence only.",
+            "Uses explicit gap decision input.",
+            "Does not run mutation testing.",
+            "Does not edit source or generate tests.",
+            "Does not make CI blocking by default.",
+        ],
+    ))
+}
+
 fn missing_assistant_proof_report(
     input: &FirstUsefulActionInput,
     parsed: &ParsedSources,
@@ -899,6 +969,7 @@ fn evidence(input: &FirstUsefulActionInput, static_movement: &str) -> ActionEvid
     ActionEvidence {
         pr_guidance: input.pr_guidance_path.clone(),
         assistant_proof: input.assistant_proof_path.clone(),
+        gap_ledger: input.gap_ledger_path.clone(),
         receipt: input.receipt_path.clone(),
         ledger: input.ledger_path.clone(),
         baseline_delta: input.baseline_delta_path.clone(),
@@ -924,6 +995,103 @@ fn stale_warnings(value: &Value) -> Vec<String> {
         (Some(value), &["freshness_reason"]),
     ])
     .map_or_else(Vec::new, |warning| vec![warning])
+}
+
+fn first_actionable_gap_record(gap_ledger: &Value) -> Option<&Value> {
+    gap_records(gap_ledger).into_iter().find(|record| {
+        string_path(record, &["language"]).is_some_and(|value| value == "rust")
+            && string_path(record, &["language_status"]).is_some_and(|value| value == "stable")
+            && string_path(record, &["scope"]).is_some_and(|value| value == "pr_local")
+            && string_path(record, &["gap_state"]).is_some_and(|value| value == "actionable")
+            && string_path(record, &["repairability"]).is_some_and(|value| value == "repairable")
+            && string_path(record, &["policy_state"])
+                .is_some_and(|value| value == "new" || value == "reintroduced")
+            && record.get("repair_route").is_some()
+            && record
+                .get("verification_commands")
+                .and_then(Value::as_array)
+                .is_some_and(|commands| {
+                    commands
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .any(|command| !command.trim().is_empty())
+                })
+    })
+}
+
+fn gap_records(value: &Value) -> Vec<&Value> {
+    if let Some(records) = value.as_array() {
+        return records.iter().collect();
+    }
+    if let Some(records) = value.get("records").and_then(Value::as_array) {
+        return records.iter().collect();
+    }
+    if let Some(records) = value.get("gap_records").and_then(Value::as_array) {
+        return records.iter().collect();
+    }
+    value
+        .get("cases")
+        .and_then(Value::as_array)
+        .map(|cases| {
+            cases
+                .iter()
+                .filter_map(|case| case.get("expected_gap_record"))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn selected_from_gap_record(
+    input: &FirstUsefulActionInput,
+    record: &Value,
+) -> Option<ActionSelected> {
+    let repair_route = record.get("repair_route");
+    let anchor = record.get("anchor");
+    Some(ActionSelected {
+        source: "gap_ledger".to_string(),
+        source_artifact: input.gap_ledger_path.clone()?,
+        seam_id: None,
+        seam_kind: string_path(record, &["evidence_class"]),
+        path: string_from_sources(&[(anchor, &["file"]), (repair_route, &["target_file"])]),
+        line: u64_from_sources(&[(anchor, &["line"]), (repair_route, &["target_line"])]),
+        classification: string_path(record, &["gap_state"]),
+        missing_discriminator: string_path(repair_route?, &["assertion_shape"]),
+        gap_id: string_path(record, &["gap_id"]),
+        canonical_gap_id: string_path(record, &["canonical_gap_id"]),
+        repair_route: string_path(repair_route?, &["route_kind"]),
+    })
+}
+
+fn target_from_gap_record(record: &Value) -> Option<ActionTarget> {
+    let repair_route = record.get("repair_route")?;
+    Some(ActionTarget {
+        file: string_path(repair_route, &["target_file"]),
+        related_test: string_path(repair_route, &["related_test"]),
+        suggested_test_name: None,
+        suggested_assertion: string_path(repair_route, &["assertion_shape"]),
+    })
+    .filter(|target| {
+        target.file.is_some()
+            || target.related_test.is_some()
+            || target.suggested_assertion.is_some()
+    })
+}
+
+fn action_kind_for_gap_route(route_kind: &str) -> &'static str {
+    if route_kind == "AddOutputGolden" || route_kind == "RegenerateArtifact" {
+        "generate_missing_artifact"
+    } else {
+        "write_focused_test"
+    }
+}
+
+fn first_string_array_item(value: &Value, path: &[&str]) -> Option<String> {
+    path_value(value, path)
+        .and_then(Value::as_array)?
+        .iter()
+        .filter_map(Value::as_str)
+        .find(|item| !item.trim().is_empty())
+        .map(ToOwned::to_owned)
 }
 
 fn selected_from_editor_context(
@@ -963,6 +1131,9 @@ fn selected_from_editor_context(
             (Some(editor_context), &["missing_observation"]),
             (Some(editor_context), &["selected", "missing_discriminator"]),
         ]),
+        gap_id: None,
+        canonical_gap_id: None,
+        repair_route: None,
     })
 }
 
@@ -981,6 +1152,9 @@ fn selected_from_assistant_proof(
         line: u64_from_sources(&[(seam, &["line"])]),
         classification: classification_from_sources(&[(seam, &["grip_class"])]),
         missing_discriminator: string_from_sources(&[(seam, &["missing_discriminator"])]),
+        gap_id: None,
+        canonical_gap_id: None,
+        repair_route: None,
     })
 }
 
@@ -1035,6 +1209,9 @@ fn selected_from_receipt_or_sources(
                     .and_then(|selected| selected.missing_discriminator.clone())
             },
         ),
+        gap_id: None,
+        canonical_gap_id: None,
+        repair_route: None,
     })
 }
 
@@ -1071,6 +1248,9 @@ fn selected_from_guidance(
             (item, &["classification"]),
         ]),
         missing_discriminator: string_from_sources(&[(item, &["missing_discriminator"])]),
+        gap_id: None,
+        canonical_gap_id: None,
+        repair_route: None,
     })
 }
 
@@ -1114,6 +1294,9 @@ fn selected_acknowledged(
         line: u64_path(ledger, &["top_repair_route", "line"]),
         classification: Some("weakly_exposed".to_string()),
         missing_discriminator: string_path(ledger, &["top_repair_route", "missing_discriminator"]),
+        gap_id: None,
+        canonical_gap_id: None,
+        repair_route: None,
     })
 }
 
@@ -1134,6 +1317,9 @@ fn selected_waived(
         line: first_gate_line(gate),
         classification: Some("weakly_exposed".to_string()),
         missing_discriminator: first_gate_missing_discriminator(gate),
+        gap_id: None,
+        canonical_gap_id: None,
+        repair_route: None,
     })
 }
 
@@ -1150,6 +1336,9 @@ fn selected_from_delta_item(source: &str, source_artifact: String, item: &Value)
             (Some(item), &["static_class"]),
         ]),
         missing_discriminator: string_path(item, &["missing_discriminator"]),
+        gap_id: None,
+        canonical_gap_id: None,
+        repair_route: None,
     }
 }
 
@@ -1484,6 +1673,7 @@ fn push_wrapped(
 fn has_any_input(input: &FirstUsefulActionInput) -> bool {
     input.pr_guidance_path.is_some()
         || input.assistant_proof_path.is_some()
+        || input.gap_ledger_path.is_some()
         || input.ledger_path.is_some()
         || input.baseline_delta_path.is_some()
         || input.receipt_path.is_some()
@@ -1495,6 +1685,7 @@ fn has_any_input(input: &FirstUsefulActionInput) -> bool {
 fn has_any_parsed(parsed: &ParsedSources) -> bool {
     parsed.pr_guidance.is_some()
         || parsed.assistant_proof.is_some()
+        || parsed.gap_ledger.is_some()
         || parsed.ledger.is_some()
         || parsed.baseline_delta.is_some()
         || parsed.receipt.is_some()
@@ -1524,6 +1715,7 @@ mod tests {
             generated_at: "2026-05-09T12:00:00Z".to_string(),
             pr_guidance_path: Some(fixture_path(&repo_root, &pr_guidance)),
             assistant_proof_path: Some(fixture_path(&repo_root, &proof)),
+            gap_ledger_path: None,
             ledger_path: Some(fixture_path(&repo_root, &ledger)),
             baseline_delta_path: None,
             receipt_path: None,
@@ -1532,6 +1724,7 @@ mod tests {
             editor_context_path: None,
             pr_guidance_json: Some(Ok(read_file(&pr_guidance)?)),
             assistant_proof_json: Some(Ok(read_file(&proof)?)),
+            gap_ledger_json: None,
             ledger_json: Some(Ok(read_file(&ledger)?)),
             baseline_delta_json: None,
             receipt_json: None,
@@ -1570,6 +1763,7 @@ mod tests {
             generated_at: "2026-05-09T12:00:00Z".to_string(),
             pr_guidance_path: Some(fixture_path(&repo_root, &pr_guidance)),
             assistant_proof_path: Some(fixture_path(&repo_root, &proof)),
+            gap_ledger_path: None,
             ledger_path: Some(fixture_path(&repo_root, &ledger)),
             baseline_delta_path: None,
             receipt_path: Some(fixture_path(&repo_root, &receipt)),
@@ -1578,6 +1772,7 @@ mod tests {
             editor_context_path: None,
             pr_guidance_json: Some(Ok(read_file(&pr_guidance)?)),
             assistant_proof_json: Some(Ok(read_file(&proof)?)),
+            gap_ledger_json: None,
             ledger_json: Some(Ok(read_file(&ledger)?)),
             baseline_delta_json: None,
             receipt_json: Some(Ok(read_file(&receipt)?)),
@@ -1604,6 +1799,7 @@ mod tests {
             generated_at: "2026-05-09T12:00:00Z".to_string(),
             pr_guidance_path: None,
             assistant_proof_path: None,
+            gap_ledger_path: None,
             ledger_path: None,
             baseline_delta_path: None,
             receipt_path: None,
@@ -1612,6 +1808,7 @@ mod tests {
             editor_context_path: Some("target/ripr/workflow/evidence-context.json".to_string()),
             pr_guidance_json: None,
             assistant_proof_json: None,
+            gap_ledger_json: None,
             ledger_json: None,
             baseline_delta_json: None,
             receipt_json: None,
@@ -1642,6 +1839,7 @@ mod tests {
             generated_at: "2026-05-09T12:00:00Z".to_string(),
             pr_guidance_path: Some("comments.json".to_string()),
             assistant_proof_path: None,
+            gap_ledger_path: None,
             ledger_path: Some("ledger.json".to_string()),
             baseline_delta_path: None,
             receipt_path: None,
@@ -1653,6 +1851,7 @@ mod tests {
                     .to_string(),
             )),
             assistant_proof_json: None,
+            gap_ledger_json: None,
             ledger_json: Some(Ok(r#"{"kind":"pr_evidence_ledger"}"#.to_string())),
             baseline_delta_json: None,
             receipt_json: None,
@@ -1664,6 +1863,77 @@ mod tests {
         assert!(rendered.contains(r#""status": "missing_required_artifact""#));
         assert!(rendered.contains(r#""action_kind": "generate_missing_artifact""#));
         assert!(rendered.contains(DEFAULT_TEST_ORACLE_ASSISTANT_PROOF_OUT));
+        Ok(())
+    }
+
+    #[test]
+    fn first_useful_action_routes_gap_record_without_assistant_proof() -> Result<(), String> {
+        let report = build_first_useful_action_report(FirstUsefulActionInput {
+            root: ".".to_string(),
+            generated_at: "2026-05-09T12:00:00Z".to_string(),
+            pr_guidance_path: Some("comments.json".to_string()),
+            assistant_proof_path: None,
+            gap_ledger_path: Some("gap-decision-ledger.json".to_string()),
+            ledger_path: None,
+            baseline_delta_path: None,
+            receipt_path: None,
+            gate_decision_path: None,
+            coverage_frontier_path: None,
+            editor_context_path: None,
+            pr_guidance_json: Some(Ok(
+                r#"{"comments":[{"seam_id":"raw-a","classification":"static_unknown"}]}"#
+                    .to_string(),
+            )),
+            assistant_proof_json: None,
+            gap_ledger_json: Some(Ok(r#"{
+  "kind": "gap_decision_ledger",
+  "records": [
+    {
+      "gap_id": "gap:pr:pricing:threshold-boundary",
+      "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+      "kind": "MissingBoundaryAssertion",
+      "language": "rust",
+      "language_status": "stable",
+      "scope": "pr_local",
+      "evidence_class": "predicate_boundary",
+      "gap_state": "actionable",
+      "policy_state": "new",
+      "repairability": "repairable",
+      "anchor": {
+        "file": "src/pricing.rs",
+        "line": 42,
+        "dedupe_fingerprint": "gap:rust:pricing:discount:threshold-boundary"
+      },
+      "repair_route": {
+        "route_kind": "AddBoundaryAssertion",
+        "target_file": "tests/pricing.rs",
+        "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
+        "assertion_shape": "assert_eq!(discount(100, 100), 90)"
+      },
+      "verification_commands": [
+        "cargo xtask fixtures boundary_gap"
+      ]
+    }
+  ]
+}"#
+            .to_string())),
+            ledger_json: None,
+            baseline_delta_json: None,
+            receipt_json: None,
+            gate_decision_json: None,
+            coverage_frontier_json: None,
+            editor_context_json: None,
+        });
+        let rendered = render_first_useful_action_json(&report)?;
+        assert!(rendered.contains(r#""source": "gap_ledger""#));
+        assert!(rendered.contains(r#""gap_id": "gap:pr:pricing:threshold-boundary""#));
+        assert!(rendered.contains(r#""repair_route": "AddBoundaryAssertion""#));
+        assert!(rendered.contains(r#""verify": "cargo xtask fixtures boundary_gap""#));
+        assert!(!rendered.contains(DEFAULT_TEST_ORACLE_ASSISTANT_PROOF_OUT));
+        assert!(!rendered.contains("Confidence"));
+        let markdown = render_first_useful_action_markdown(&report);
+        assert!(markdown.contains("Repair MissingBoundaryAssertion via AddBoundaryAssertion"));
+        assert!(markdown.contains("`cargo xtask fixtures boundary_gap`"));
         Ok(())
     }
 
