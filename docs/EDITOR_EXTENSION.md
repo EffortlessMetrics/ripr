@@ -117,6 +117,10 @@ configuration.
 The status bar item and `ripr: Show Status` command name the current
 saved-workspace state using user-readable copy. The underlying JSON keeps
 stable internal status IDs so editor automation and tests stay deterministic.
+`ripr: Show Status` also prints the workspace root, resolved server source and
+command, editor selector set, enabled languages reported by the last server
+refresh, and the next safe action for the current state. This is the first
+place to check when no diagnostics appear.
 
 - disabled by `ripr.enabled = false`
 - workspace unresolved
@@ -124,8 +128,9 @@ stable internal status IDs so editor automation and tests stay deterministic.
 - analysis queued
 - analysis running
 - analysis complete (ripr-flagged changes present)
+- no enabled languages (`[languages] enabled = []`)
 - no focused test gap found (internal status ID: `no-actionable-seam`)
-- stale because a Rust buffer has unsaved edits
+- stale because a Rust or preview-language buffer has unsaved edits
 - analysis failed
 
 When `target/ripr/reports/first-useful-action.json` already exists in the
