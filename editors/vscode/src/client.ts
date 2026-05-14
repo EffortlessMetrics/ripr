@@ -816,8 +816,13 @@ function statusFromRefreshCompletedMessage(message: string): RiprStatusState {
       kind: 'noActionableSeams',
       summary: 'ripr analysis completed with no actionable seam diagnostics.',
       enabledLanguages: enabledLanguageNames,
-      nextStep: 'If this is unexpected, confirm saved changes and enabled languages, then run ripr: Show Output.',
-      detail: message
+      nextStep: 'If this is unexpected, save files, confirm the workspace root and enabled languages, then run ripr: Show Output.',
+      detail: [
+        message,
+        'No ripr seam diagnostics were published for the last saved workspace state.',
+        'Enabled languages determine which saved files can produce diagnostics; disabled or unavailable preview languages stay silent.',
+        'If you expected diagnostics, confirm the file is saved, the workspace root is correct, and the language is enabled and available in this ripr build.'
+      ].join('\n')
     };
   }
   return {
