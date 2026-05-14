@@ -259,6 +259,14 @@ struct ReportPacketIndexOptions {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+struct GapDecisionLedgerOptions {
+    root: String,
+    records: PathBuf,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 struct CoverageGripFrontierOptions {
     coverage: Option<PathBuf>,
     ledger: Option<PathBuf>,
@@ -3505,14 +3513,15 @@ pub(super) fn reports(args: &[String]) -> Result<(), String> {
         return Ok(());
     }
     let Some((subcommand, rest)) = args.split_first() else {
-        return Err("reports requires subcommand `index`".to_string());
+        return Err("reports requires subcommand `index` or `gap-ledger`".to_string());
     };
-    if subcommand != "index" {
-        return Err(format!(
-            "unknown reports subcommand {subcommand:?}; expected `index`"
-        ));
+    match subcommand.as_str() {
+        "index" => report_packet_index(rest),
+        "gap-ledger" => gap_decision_ledger(rest),
+        _ => Err(format!(
+            "unknown reports subcommand {subcommand:?}; expected `index` or `gap-ledger`"
+        )),
     }
-    report_packet_index(rest)
 }
 
 fn report_packet_index(args: &[String]) -> Result<(), String> {
@@ -3531,6 +3540,25 @@ fn report_packet_index(args: &[String]) -> Result<(), String> {
     let report = output::report_packet_index::build_report_packet_index_report(input);
     let rendered_json = output::report_packet_index::render_report_packet_index_json(&report)?;
     let rendered_md = output::report_packet_index::render_report_packet_index_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    Ok(())
+}
+
+fn gap_decision_ledger(args: &[String]) -> Result<(), String> {
+    let options = parse_gap_decision_ledger_options(args)?;
+    let records_path = output::baseline_delta::display_path(&options.records);
+    let input = output::gap_decision_ledger::GapDecisionLedgerInput {
+        root: options.root,
+        generated_at: gap_decision_ledger_generated_at()?,
+        records_path,
+        records_json: read_optional_text_for_report("gap records", &options.records),
+    };
+    let report = output::gap_decision_ledger::build_gap_decision_ledger_report(input);
+    let rendered_json = output::gap_decision_ledger::render_gap_decision_ledger_json(&report)?;
+    let rendered_md = output::gap_decision_ledger::render_gap_decision_ledger_markdown(&report);
     write_text_file(&options.out, &rendered_json)?;
     write_text_file(&options.out_md, &rendered_md)?;
     println!("Wrote {}", options.out.display());
@@ -6265,6 +6293,52 @@ fn parse_report_packet_index_options(args: &[String]) -> Result<ReportPacketInde
     })
 }
 
+fn parse_gap_decision_ledger_options(args: &[String]) -> Result<GapDecisionLedgerOptions, String> {
+    let mut root = ".".to_string();
+    let mut records = None;
+    let mut out = PathBuf::from(output::gap_decision_ledger::DEFAULT_GAP_DECISION_LEDGER_OUT);
+    let mut out_md = PathBuf::from(output::gap_decision_ledger::DEFAULT_GAP_DECISION_LEDGER_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "reports gap-ledger")?;
+            }
+            "--records" => {
+                i += 1;
+                records = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--records",
+                    "reports gap-ledger",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "reports gap-ledger")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "reports gap-ledger")?;
+            }
+            other => return Err(format!("unknown reports gap-ledger argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    let records =
+        records.ok_or_else(|| "reports gap-ledger requires --records PATH".to_string())?;
+
+    Ok(GapDecisionLedgerOptions {
+        root,
+        records,
+        out,
+        out_md,
+    })
+}
+
 fn parse_coverage_grip_frontier_options(
     args: &[String],
 ) -> Result<CoverageGripFrontierOptions, String> {
@@ -6687,6 +6761,14 @@ fn comment_publish_plan_generated_at() -> Result<String, String> {
 }
 
 fn report_packet_index_generated_at() -> Result<String, String> {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| format!("system clock before unix epoch: {err}"))?
+        .as_millis();
+    Ok(format!("unix_ms:{millis}"))
+}
+
+fn gap_decision_ledger_generated_at() -> Result<String, String> {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|err| format!("system clock before unix epoch: {err}"))?
@@ -7421,8 +7503,28 @@ mod tests {
         assert_eq!(check(&args(&["--help"])), Ok(()));
         assert_eq!(explain(&args(&["--help"])), Ok(()));
         assert_eq!(context(&args(&["--help"])), Ok(()));
+        assert_eq!(reports(&args(&["--help"])), Ok(()));
         assert_eq!(doctor(&args(&["--help"])), Ok(()));
         assert_eq!(lsp(&args(&["--help"])), Ok(()));
+    }
+
+    #[test]
+    fn reports_gap_ledger_requires_records_input() {
+        assert_eq!(
+            reports(&args(&["gap-ledger"])),
+            Err("reports gap-ledger requires --records PATH".to_string())
+        );
+        assert_eq!(
+            reports(&args(&["gap-ledger", "--records"])),
+            Err("missing value for --records".to_string())
+        );
+        assert_eq!(
+            reports(&args(&["unknown"])),
+            Err(
+                "unknown reports subcommand \"unknown\"; expected `index` or `gap-ledger`"
+                    .to_string()
+            )
+        );
     }
 
     #[test]

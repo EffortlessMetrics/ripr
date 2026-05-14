@@ -2819,11 +2819,20 @@ tests = [
   "xtask/src/main.rs::tests::gap_decision_ledger_missing_output_contract_requires_output_route",
   "xtask/src/main.rs::tests::gap_decision_ledger_static_unknown_only_stays_report_only",
   "xtask/src/main.rs::tests::gap_decision_ledger_missing_artifact_requires_regeneration",
+  "crates/ripr/src/output/gap_decision_ledger.rs::tests::gap_decision_ledger_parses_corpus_records_and_summarizes_projection_boundaries",
+  "crates/ripr/src/output/gap_decision_ledger.rs::tests::gap_decision_ledger_renders_json_and_markdown",
+  "crates/ripr/src/output/gap_decision_ledger.rs::tests::gap_decision_ledger_reports_bad_or_missing_records_as_blocked",
+  "crates/ripr/src/output/gap_decision_ledger.rs::tests::gap_decision_ledger_warns_on_unsafe_projection",
+  "crates/ripr/src/cli/commands.rs::tests::reports_gap_ledger_requires_records_input",
 ]
 fixtures = [
   "fixtures/gap-decision-ledger/corpus.json",
 ]
 code = [
+  "crates/ripr/src/output/gap_decision_ledger.rs",
+  "crates/ripr/src/output/mod.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/help.rs",
   "xtask/src/main.rs",
 ]
 outputs = [
