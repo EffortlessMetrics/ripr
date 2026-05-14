@@ -29,6 +29,7 @@ The current repo automation surface is:
 cargo xtask shape
 cargo xtask fix-pr
 cargo xtask pr-summary
+cargo xtask pr-triage-report
 cargo xtask precommit
 cargo xtask check-pr
 cargo xtask fixtures
@@ -82,6 +83,12 @@ review.
 `worktree doctor` is the agent hygiene check. It reports dirty `main`
 worktrees, branches behind `origin/main`, generated badge/target residue, and
 broad source-of-truth diffs that lack an obvious work item marker.
+
+`pr-triage-report` is the open-board hygiene report. It reads open PR metadata
+through GitHub CLI and writes `target/ripr/reports/pr-triage.md`. It flags
+same-title families, identical changed-file sets, stale drafts, branches behind
+main, incomplete validation signals, and policy/gate/generated workflow
+surfaces. It is advisory and never updates, closes, merges, or comments on PRs.
 
 `check-pr` is the review-ready local gate. It runs the current fast CI lane,
 then clippy, docs, and PR summary generation. It intentionally leaves

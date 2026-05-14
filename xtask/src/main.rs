@@ -92,6 +92,40 @@ struct WorktreeDoctorFinding {
     message: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PrTriagePullRequest {
+    number: u64,
+    title: String,
+    body: String,
+    is_draft: bool,
+    created_at: String,
+    updated_at: String,
+    merge_state_status: String,
+    head_ref_name: String,
+    base_ref_name: String,
+    review_decision: String,
+    labels: Vec<String>,
+    files: Vec<String>,
+    checks: Vec<PrTriageCheck>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PrTriageCheck {
+    name: String,
+    status: String,
+    conclusion: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PrTriageFinding {
+    category: String,
+    severity: String,
+    message: String,
+    prs: Vec<u64>,
+    details: Vec<String>,
+    recommended_action: String,
+}
+
 #[derive(Debug, Default)]
 struct TraceBehavior {
     line: usize,
@@ -1552,6 +1586,552 @@ fn check_pr_shape() -> Result<(), String> {
     let changes = collect_pr_changes()?;
     let warnings = pr_shape_warnings(&changes);
     write_report("pr-shape.md", &pr_shape_report_body(&warnings))
+}
+
+pub(crate) fn pr_triage_report_impl() -> Result<(), String> {
+    let prs = collect_open_prs_for_triage()?;
+    let today = current_epoch_day()?;
+    let findings = pr_triage_findings(&prs, today);
+    write_report("pr-triage.md", &pr_triage_markdown(&prs, &findings, today))
+}
+
+fn collect_open_prs_for_triage() -> Result<Vec<PrTriagePullRequest>, String> {
+    let fields = [
+        "number",
+        "title",
+        "body",
+        "isDraft",
+        "createdAt",
+        "updatedAt",
+        "mergeStateStatus",
+        "headRefName",
+        "baseRefName",
+        "reviewDecision",
+        "labels",
+        "files",
+        "statusCheckRollup",
+    ]
+    .join(",");
+    let output = run_output(
+        "gh",
+        &[
+            "pr", "list", "--limit", "100", "--state", "open", "--json", &fields,
+        ],
+    )?;
+    parse_pr_triage_pull_requests(&output)
+}
+
+fn parse_pr_triage_pull_requests(text: &str) -> Result<Vec<PrTriagePullRequest>, String> {
+    let value: Value =
+        serde_json::from_str(text).map_err(|err| format!("failed to parse gh PR JSON: {err}"))?;
+    let Some(items) = value.as_array() else {
+        return Err("gh PR JSON must be an array".to_string());
+    };
+    let mut prs = Vec::new();
+    for item in items {
+        let number = item
+            .get("number")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| format!("gh PR JSON item is missing numeric `number`: {item}"))?;
+        let title = json_value_string(item, "title");
+        let body = json_value_string(item, "body");
+        let mut files = item
+            .get("files")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|file| file.get("path").and_then(Value::as_str).map(str::to_string))
+            .collect::<Vec<_>>();
+        files.sort();
+        files.dedup();
+        let mut labels = item
+            .get("labels")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|label| {
+                label
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .collect::<Vec<_>>();
+        labels.sort();
+        labels.dedup();
+        let checks = item
+            .get("statusCheckRollup")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .map(parse_pr_triage_check)
+            .collect::<Vec<_>>();
+        prs.push(PrTriagePullRequest {
+            number,
+            title,
+            body,
+            is_draft: item
+                .get("isDraft")
+                .and_then(Value::as_bool)
+                .is_some_and(|value| value),
+            created_at: json_value_string(item, "createdAt"),
+            updated_at: json_value_string(item, "updatedAt"),
+            merge_state_status: json_value_string(item, "mergeStateStatus"),
+            head_ref_name: json_value_string(item, "headRefName"),
+            base_ref_name: json_value_string(item, "baseRefName"),
+            review_decision: json_value_string(item, "reviewDecision"),
+            labels,
+            files,
+            checks,
+        });
+    }
+    prs.sort_by_key(|pr| pr.number);
+    Ok(prs)
+}
+
+fn parse_pr_triage_check(value: &Value) -> PrTriageCheck {
+    let name = match value
+        .get("name")
+        .or_else(|| value.get("context"))
+        .and_then(Value::as_str)
+    {
+        Some(name) => name.to_string(),
+        None => String::new(),
+    };
+    let status = match value
+        .get("status")
+        .and_then(Value::as_str)
+        .or_else(|| value.get("state").and_then(Value::as_str))
+    {
+        Some(status) => status.to_string(),
+        None => String::new(),
+    };
+    let conclusion = match value
+        .get("conclusion")
+        .and_then(Value::as_str)
+        .or_else(|| value.get("state").and_then(Value::as_str))
+    {
+        Some(conclusion) => conclusion.to_string(),
+        None => String::new(),
+    };
+    PrTriageCheck {
+        name,
+        status,
+        conclusion,
+    }
+}
+
+fn json_value_string(value: &Value, key: &str) -> String {
+    match value.get(key).and_then(Value::as_str) {
+        Some(item) => item.to_string(),
+        None => String::new(),
+    }
+}
+
+fn current_epoch_day() -> Result<i64, String> {
+    let duration = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| format!("system clock is before UNIX_EPOCH: {err}"))?;
+    Ok((duration.as_secs() / 86_400) as i64)
+}
+
+fn pr_triage_findings(prs: &[PrTriagePullRequest], today: i64) -> Vec<PrTriageFinding> {
+    let mut findings = Vec::new();
+    findings.extend(pr_triage_title_family_findings(prs));
+    findings.extend(pr_triage_file_set_findings(prs));
+    findings.extend(pr_triage_stale_draft_findings(prs, today));
+    findings.extend(pr_triage_behind_findings(prs));
+    findings.extend(pr_triage_validation_findings(prs));
+    findings.extend(pr_triage_sensitive_surface_findings(prs));
+    findings.sort_by(|left, right| {
+        left.category
+            .cmp(&right.category)
+            .then_with(|| left.prs.cmp(&right.prs))
+            .then_with(|| left.message.cmp(&right.message))
+    });
+    findings
+}
+
+fn pr_triage_title_family_findings(prs: &[PrTriagePullRequest]) -> Vec<PrTriageFinding> {
+    let mut families = BTreeMap::<String, Vec<&PrTriagePullRequest>>::new();
+    for pr in prs {
+        let family = pr_title_family(&pr.title);
+        if !family.is_empty() {
+            families.entry(family).or_default().push(pr);
+        }
+    }
+    families
+        .into_iter()
+        .filter_map(|(family, prs)| {
+            if prs.len() < 2 {
+                return None;
+            }
+            Some(PrTriageFinding {
+                category: "same title family".to_string(),
+                severity: "warn".to_string(),
+                message: format!("{} open PRs share title family `{family}`", prs.len()),
+                prs: prs.iter().map(|pr| pr.number).collect(),
+                details: prs.iter().map(|pr| format_pr_triage_ref(pr)).collect(),
+                recommended_action:
+                    "Choose the canonical PR and close, retitle, or restack the duplicate variants."
+                        .to_string(),
+            })
+        })
+        .collect()
+}
+
+fn pr_triage_file_set_findings(prs: &[PrTriagePullRequest]) -> Vec<PrTriageFinding> {
+    let mut file_sets = BTreeMap::<String, Vec<&PrTriagePullRequest>>::new();
+    for pr in prs {
+        if pr.files.is_empty() {
+            continue;
+        }
+        file_sets.entry(pr.files.join("\n")).or_default().push(pr);
+    }
+    file_sets
+        .into_iter()
+        .filter_map(|(file_set, prs)| {
+            if prs.len() < 2 {
+                return None;
+            }
+            let preview = file_set
+                .lines()
+                .take(8)
+                .map(|path| format!("`{path}`"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            Some(PrTriageFinding {
+                category: "same changed file set".to_string(),
+                severity: "warn".to_string(),
+                message: format!("{} open PRs touch the same changed file set", prs.len()),
+                prs: prs.iter().map(|pr| pr.number).collect(),
+                details: vec![
+                    format!(
+                        "PRs: {}",
+                        prs.iter()
+                            .map(|pr| format_pr_triage_ref(pr))
+                            .collect::<Vec<_>>()
+                            .join("; ")
+                    ),
+                    format!("Files: {preview}"),
+                ],
+                recommended_action:
+                    "Pick the canonical branch before review work drifts across equivalent diffs."
+                        .to_string(),
+            })
+        })
+        .collect()
+}
+
+fn pr_triage_stale_draft_findings(prs: &[PrTriagePullRequest], today: i64) -> Vec<PrTriageFinding> {
+    const STALE_DRAFT_DAYS: i64 = 7;
+    prs.iter()
+        .filter_map(|pr| {
+            if !pr.is_draft {
+                return None;
+            }
+            let created_day = pr_created_day(&pr.created_at)?;
+            let age_days = today - created_day;
+            if age_days < STALE_DRAFT_DAYS {
+                return None;
+            }
+            Some(PrTriageFinding {
+                category: "stale draft".to_string(),
+                severity: "warn".to_string(),
+                message: format!("#{} has been draft for {age_days} day(s)", pr.number),
+                prs: vec![pr.number],
+                details: vec![format_pr_triage_ref(pr)],
+                recommended_action:
+                    "Refresh the draft, mark it ready for review, or close it if superseded."
+                        .to_string(),
+            })
+        })
+        .collect()
+}
+
+fn pr_triage_behind_findings(prs: &[PrTriagePullRequest]) -> Vec<PrTriageFinding> {
+    prs.iter()
+        .filter(|pr| pr.merge_state_status.eq_ignore_ascii_case("BEHIND"))
+        .map(|pr| PrTriageFinding {
+            category: "behind main".to_string(),
+            severity: "warn".to_string(),
+            message: format!("#{} is behind {}", pr.number, pr.base_ref_name),
+            prs: vec![pr.number],
+            details: vec![format!(
+                "{} merge_state_status={}",
+                format_pr_triage_ref(pr),
+                pr.merge_state_status
+            )],
+            recommended_action: "Update the branch before relying on CI or merge-readiness state."
+                .to_string(),
+        })
+        .collect()
+}
+
+fn pr_triage_validation_findings(prs: &[PrTriagePullRequest]) -> Vec<PrTriageFinding> {
+    let mut findings = Vec::new();
+    for pr in prs {
+        let mut details = Vec::new();
+        let failed = pr
+            .checks
+            .iter()
+            .filter(|check| pr_check_failed(check))
+            .map(|check| format!("{}={}", check.name, check.conclusion))
+            .collect::<Vec<_>>();
+        if !failed.is_empty() {
+            details.push(format!("failed checks: {}", failed.join(", ")));
+        }
+        let pending = pr
+            .checks
+            .iter()
+            .filter(|check| pr_check_pending(check))
+            .map(|check| check.name.clone())
+            .collect::<Vec<_>>();
+        if !pending.is_empty() {
+            details.push(format!("pending checks: {}", pending.join(", ")));
+        }
+        if pr.checks.is_empty() {
+            details.push("no check rollup entries returned".to_string());
+        }
+        if let Some(body_warning) = pr_body_validation_warning(&pr.body) {
+            details.push(body_warning);
+        }
+        if details.is_empty() {
+            continue;
+        }
+        findings.push(PrTriageFinding {
+            category: "incomplete validation".to_string(),
+            severity: "warn".to_string(),
+            message: format!("#{} needs validation follow-up", pr.number),
+            prs: vec![pr.number],
+            details,
+            recommended_action: "Inspect the failing or missing validation before merge; update the PR body with the actual commands run.".to_string(),
+        });
+    }
+    findings
+}
+
+fn pr_triage_sensitive_surface_findings(prs: &[PrTriagePullRequest]) -> Vec<PrTriageFinding> {
+    let mut findings = Vec::new();
+    for pr in prs {
+        let mut details = Vec::new();
+        for file in &pr.files {
+            if let Some(reason) = pr_sensitive_file_reason(file) {
+                details.push(format!("`{file}`: {reason}"));
+            }
+        }
+        if details.is_empty() {
+            continue;
+        }
+        findings.push(PrTriageFinding {
+            category: "policy-sensitive surface".to_string(),
+            severity: "warn".to_string(),
+            message: format!(
+                "#{} touches policy, gate, or generated workflow surfaces",
+                pr.number
+            ),
+            prs: vec![pr.number],
+            details,
+            recommended_action:
+                "Route review through the owning lane and check for policy authority drift."
+                    .to_string(),
+        });
+    }
+    findings
+}
+
+fn pr_check_failed(check: &PrTriageCheck) -> bool {
+    matches!(
+        check.conclusion.to_ascii_uppercase().as_str(),
+        "FAILURE" | "ERROR" | "CANCELLED" | "TIMED_OUT" | "ACTION_REQUIRED" | "STARTUP_FAILURE"
+    )
+}
+
+fn pr_check_pending(check: &PrTriageCheck) -> bool {
+    matches!(
+        check.status.to_ascii_uppercase().as_str(),
+        "PENDING" | "EXPECTED" | "IN_PROGRESS" | "QUEUED" | "WAITING" | "REQUESTED"
+    )
+}
+
+fn pr_body_validation_warning(body: &str) -> Option<String> {
+    let lower = body.to_ascii_lowercase();
+    if !lower.contains("validation") {
+        return Some("PR body has no validation section".to_string());
+    }
+    if lower.contains("pre-existing failure") || lower.contains("preexisting failure") {
+        return Some("PR body mentions pre-existing validation failures".to_string());
+    }
+    if lower.contains("not run") || lower.contains("not_run") {
+        return Some("PR body lists validation that was not run".to_string());
+    }
+    if !lower.contains("cargo xtask check-pr") {
+        return Some("PR body validation does not list cargo xtask check-pr".to_string());
+    }
+    None
+}
+
+fn pr_sensitive_file_reason(path: &str) -> Option<&'static str> {
+    let lower = path.to_ascii_lowercase();
+    if path.starts_with(".github/workflows/") {
+        return Some("workflow behavior can alter generated CI or branch checks");
+    }
+    if path.starts_with("policy/") || path.starts_with(".ripr/") || path.starts_with("docs/policy/")
+    {
+        return Some("policy ledger or policy documentation");
+    }
+    if lower.starts_with("badges/") {
+        return Some("generated public badge endpoint surface");
+    }
+    if lower.contains("gate") || lower.contains("baseline") || lower.contains("suppression") {
+        return Some("policy authority, gate, baseline, or suppression semantics");
+    }
+    if lower.contains("generated") && (lower.contains("ci") || lower.contains("workflow")) {
+        return Some("generated CI workflow surface");
+    }
+    None
+}
+
+fn pr_title_family(title: &str) -> String {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    for ch in title.chars() {
+        if ch.is_ascii_alphanumeric() {
+            current.push(ch.to_ascii_lowercase());
+        } else if !current.is_empty() {
+            push_title_family_token(&mut tokens, &current);
+            current.clear();
+        }
+    }
+    if !current.is_empty() {
+        push_title_family_token(&mut tokens, &current);
+    }
+    tokens.join(" ")
+}
+
+fn push_title_family_token(tokens: &mut Vec<String>, token: &str) {
+    if matches!(token, "wip" | "draft" | "v2" | "v3" | "variant") {
+        return;
+    }
+    tokens.push(token.to_string());
+}
+
+fn pr_created_day(created_at: &str) -> Option<i64> {
+    let date = created_at.get(0..10)?;
+    let mut parts = date.split('-');
+    let year = parts.next()?.parse::<i32>().ok()?;
+    let month = parts.next()?.parse::<u32>().ok()?;
+    let day = parts.next()?.parse::<u32>().ok()?;
+    Some(days_from_civil(year, month, day))
+}
+
+fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
+    let mut y = i64::from(year);
+    let m = i64::from(month);
+    let d = i64::from(day);
+    if m <= 2 {
+        y -= 1;
+    }
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let month_for_formula = if m > 2 { m - 3 } else { m + 9 };
+    let doy = (153 * month_for_formula + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+fn pr_triage_markdown(
+    prs: &[PrTriagePullRequest],
+    findings: &[PrTriageFinding],
+    today: i64,
+) -> String {
+    let status = if findings.is_empty() { "pass" } else { "warn" };
+    let mut body = format!("# ripr PR triage report\n\nStatus: {status}\n\n");
+    body.push_str("Mode: advisory\n\n");
+    body.push_str("This report summarizes open PR queue risks for agents. It does not close, merge, update, or mutate PRs.\n\n");
+    body.push_str(&format!("Open PRs scanned: {}\n\n", prs.len()));
+
+    body.push_str("## Findings\n\n");
+    if findings.is_empty() {
+        body.push_str("None detected.\n\n");
+    } else {
+        for finding in findings {
+            body.push_str(&format!(
+                "### {} ({})\n\n{}\n\n",
+                finding.category, finding.severity, finding.message
+            ));
+            if !finding.prs.is_empty() {
+                body.push_str("PRs:\n\n");
+                for number in &finding.prs {
+                    body.push_str(&format!("- #{}\n", number));
+                }
+                body.push('\n');
+            }
+            body.push_str("Details:\n\n");
+            write_path_list(&mut body, &finding.details);
+            body.push_str("\nRecommended action:\n\n```text\n");
+            body.push_str(&finding.recommended_action);
+            body.push_str("\n```\n\n");
+        }
+    }
+
+    body.push_str("## Open PRs\n\n");
+    if prs.is_empty() {
+        body.push_str("- None detected.\n");
+    } else {
+        body.push_str("| PR | Draft | Age | Merge state | Checks | Files |\n");
+        body.push_str("| --- | --- | ---: | --- | --- | ---: |\n");
+        for pr in prs {
+            let age = pr_age_label(pr, today);
+            body.push_str(&format!(
+                "| #{} {} | {} | {} | {} | {} | {} |\n",
+                pr.number,
+                markdown_escape_table(&pr.title),
+                pr.is_draft,
+                age,
+                markdown_escape_table(&pr.merge_state_status),
+                markdown_escape_table(&pr_checks_summary(&pr.checks)),
+                pr.files.len()
+            ));
+        }
+    }
+    body.push_str("\n## Next Commands\n\n```bash\n");
+    body.push_str("cargo xtask pr-triage-report\n");
+    body.push_str("gh pr view <number> --json mergeStateStatus,statusCheckRollup,files\n");
+    body.push_str("```\n");
+    body
+}
+
+fn pr_age_label(pr: &PrTriagePullRequest, today: i64) -> String {
+    match pr_created_day(&pr.created_at) {
+        Some(created) => format!("{}d", today - created),
+        None => "unknown".to_string(),
+    }
+}
+
+fn pr_checks_summary(checks: &[PrTriageCheck]) -> String {
+    if checks.is_empty() {
+        return "none".to_string();
+    }
+    let failed = checks.iter().filter(|check| pr_check_failed(check)).count();
+    let pending = checks
+        .iter()
+        .filter(|check| pr_check_pending(check))
+        .count();
+    if failed > 0 {
+        format!("{failed} failed, {pending} pending")
+    } else if pending > 0 {
+        format!("{pending} pending")
+    } else {
+        format!("{} passed", checks.len())
+    }
+}
+
+fn format_pr_triage_ref(pr: &PrTriagePullRequest) -> String {
+    format!("#{} {}", pr.number, pr.title)
+}
+
+fn markdown_escape_table(value: &str) -> String {
+    value.replace('|', "\\|").replace('\n', " ")
 }
 
 pub(crate) fn critic_impl() -> Result<(), String> {
@@ -28242,31 +28822,31 @@ mod tests {
         EvidenceQualityScorecardInputs, EvidenceQualityScorecardReport, EvidenceQualityTrendInputs,
         EvidenceQualityTrendReport, FixKind, GENERATED_CI_FIRST_ACTION_REPAIR,
         GENERATED_CI_FRONT_PANEL_REPAIR, GENERATED_CI_PACKET_INDEX_REPAIR, LocalContextAllow,
-        LspCockpitFixture, LspCockpitReport, MarkdownLink, ReceiptRecord,
-        RepoExposureLatencyReport, RepoExposureLatencyRun, RepoExposureLatencyTrace,
-        ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode, SarifPolicyResult,
-        SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass,
-        WorktreeDoctorFinding, WorktreeDoctorSeverity, badge_artifact_command_args,
-        badge_artifact_jobs, badge_artifact_native_slot, badge_artifacts_summary_markdown,
-        badge_diff_policy_violations, build_lsp_cockpit_report, build_no_panic_allowlist_proposals,
-        build_repo_exposure_latency_report, build_targeted_test_outcome_report,
-        check_allow_attributes, check_badge_diff_policy_with_context, check_droid_review_config,
-        check_executable_files, check_file_policy, check_local_context, check_network_policy,
-        check_no_panic_family, check_process_policy, check_static_language, check_workflows,
-        ci_full_evidence_gates, collect_panic_findings, collect_semantic_panic_findings,
-        critic_findings, dogfood_class_counts, dogfood_first_action_scenarios,
-        dogfood_gate_adoption_scenarios, dogfood_generated_ci_cockpit_run_from_workflow,
-        dogfood_language_preview_run, dogfood_language_preview_scenarios,
-        dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
-        dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
-        dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
-        dogfood_report_packet_index_scenarios, evaluate_semantic_no_panic_policy,
-        evidence_quality_scorecard_from_values, evidence_quality_scorecard_json,
-        evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
-        evidence_quality_trend_json, evidence_quality_trend_markdown,
-        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
-        extract_workflow_run_blocks, finish_worktree_doctor_report, first_line_difference,
-        forbidden_panic_patterns, generated_clean_violations,
+        LspCockpitFixture, LspCockpitReport, MarkdownLink, PrTriageCheck, PrTriageFinding,
+        PrTriagePullRequest, ReceiptRecord, RepoExposureLatencyReport, RepoExposureLatencyRun,
+        RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode,
+        SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
+        TestOracleClass, WorktreeDoctorFinding, WorktreeDoctorSeverity,
+        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
+        badge_artifacts_summary_markdown, badge_diff_policy_violations, build_lsp_cockpit_report,
+        build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
+        build_targeted_test_outcome_report, check_allow_attributes,
+        check_badge_diff_policy_with_context, check_droid_review_config, check_executable_files,
+        check_file_policy, check_local_context, check_network_policy, check_no_panic_family,
+        check_process_policy, check_static_language, check_workflows, ci_full_evidence_gates,
+        collect_panic_findings, collect_semantic_panic_findings, critic_findings, days_from_civil,
+        dogfood_class_counts, dogfood_first_action_scenarios, dogfood_gate_adoption_scenarios,
+        dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
+        dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
+        dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
+        dogfood_pr_review_front_panel_scenarios, dogfood_report_json, dogfood_report_markdown,
+        dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
+        evaluate_semantic_no_panic_policy, evidence_quality_scorecard_from_values,
+        evidence_quality_scorecard_json, evidence_quality_scorecard_markdown,
+        evidence_quality_trend_from_values, evidence_quality_trend_json,
+        evidence_quality_trend_markdown, extract_json_object_usize_map, extract_json_string,
+        extract_json_warnings, extract_workflow_run_blocks, finish_worktree_doctor_report,
+        first_line_difference, forbidden_panic_patterns, generated_clean_violations,
         github_event_pull_request_title_from_text, glob_matches, golden_changes_without_blessing,
         golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
         install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
@@ -28284,12 +28864,14 @@ mod tests {
         normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
         panic_family_from_pattern, parse_campaign_manifest, parse_file_policy_allowlist,
         parse_inline_array, parse_mutation_calibration_args, parse_mutation_outcomes_json,
-        parse_no_panic_allowlist_toml, parse_no_panic_allowlist_toml_v2, parse_reason,
-        parse_repo_exposure_static_seams, parse_sarif_policy_args, parse_sarif_policy_results,
-        parse_static_language_allowlist, parse_string_value, parse_targeted_test_outcome_args,
-        pr_shape_warnings, pr_summary_body, precommit_report_body, public_contract_rows,
-        read_lsp_cockpit_json_value, read_mutation_input_json, receipt_json, receipt_specs,
-        receipt_status_from_reports, render_no_panic_allowlist_proposals_markdown,
+        parse_no_panic_allowlist_toml, parse_no_panic_allowlist_toml_v2,
+        parse_pr_triage_pull_requests, parse_reason, parse_repo_exposure_static_seams,
+        parse_sarif_policy_args, parse_sarif_policy_results, parse_static_language_allowlist,
+        parse_string_value, parse_targeted_test_outcome_args, pr_body_validation_warning,
+        pr_checks_summary, pr_sensitive_file_reason, pr_shape_warnings, pr_summary_body,
+        pr_title_family, pr_triage_findings, pr_triage_markdown, precommit_report_body,
+        public_contract_rows, read_lsp_cockpit_json_value, read_mutation_input_json, receipt_json,
+        receipt_specs, receipt_status_from_reports, render_no_panic_allowlist_proposals_markdown,
         render_no_panic_allowlist_proposals_toml, repo_badge_artifact_command_args,
         repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
         repo_exposure_latency_json, repo_exposure_latency_markdown, repo_exposure_latency_run,
@@ -37781,6 +38363,165 @@ jobs:
         );
     }
 
+    fn triage_pr(number: u64, title: &str, files: &[&str]) -> PrTriagePullRequest {
+        PrTriagePullRequest {
+            number,
+            title: title.to_string(),
+            body: "Validation\n- cargo xtask check-pr\n".to_string(),
+            is_draft: false,
+            created_at: "2026-05-14T00:00:00Z".to_string(),
+            updated_at: "2026-05-14T00:00:00Z".to_string(),
+            merge_state_status: "CLEAN".to_string(),
+            head_ref_name: format!("branch-{number}"),
+            base_ref_name: "main".to_string(),
+            review_decision: String::new(),
+            labels: Vec::new(),
+            files: files.iter().map(|file| file.to_string()).collect(),
+            checks: vec![PrTriageCheck {
+                name: "rust".to_string(),
+                status: "COMPLETED".to_string(),
+                conclusion: "SUCCESS".to_string(),
+            }],
+        }
+    }
+
+    #[test]
+    fn parse_pr_triage_pull_requests_reads_gh_json() -> Result<(), String> {
+        let prs = parse_pr_triage_pull_requests(
+            r#"[
+              {
+                "number": 10,
+                "title": "devex: report",
+                "body": "Validation\n- cargo xtask check-pr",
+                "isDraft": false,
+                "createdAt": "2026-05-14T00:00:00Z",
+                "updatedAt": "2026-05-14T01:00:00Z",
+                "mergeStateStatus": "CLEAN",
+                "headRefName": "devex-report",
+                "baseRefName": "main",
+                "reviewDecision": "",
+                "labels": [{"name": "devex"}],
+                "files": [{"path": "xtask/src/main.rs"}, {"path": "docs/PR_AUTOMATION.md"}],
+                "statusCheckRollup": [
+                  {"__typename": "CheckRun", "name": "rust", "status": "COMPLETED", "conclusion": "SUCCESS"},
+                  {"__typename": "StatusContext", "context": "CodeRabbit", "state": "SUCCESS"}
+                ]
+              }
+            ]"#,
+        )?;
+        assert_eq!(prs.len(), 1);
+        assert_eq!(prs[0].number, 10);
+        assert_eq!(prs[0].labels, vec!["devex".to_string()]);
+        assert_eq!(
+            prs[0].files,
+            vec![
+                "docs/PR_AUTOMATION.md".to_string(),
+                "xtask/src/main.rs".to_string()
+            ]
+        );
+        assert_eq!(prs[0].checks.len(), 2);
+        Ok(())
+    }
+
+    #[test]
+    fn pr_triage_findings_flag_queue_risks() {
+        let mut first = triage_pr(
+            1,
+            "devex: split workflow renderer",
+            &["xtask/src/main.rs", "docs/PR_AUTOMATION.md"],
+        );
+        first.merge_state_status = "BEHIND".to_string();
+
+        let second = triage_pr(
+            2,
+            "devex: split workflow renderer",
+            &["xtask/src/main.rs", "docs/PR_AUTOMATION.md"],
+        );
+
+        let mut stale = triage_pr(3, "docs: old draft", &["docs/ROADMAP.md"]);
+        stale.is_draft = true;
+        stale.created_at = "2026-05-01T00:00:00Z".to_string();
+
+        let mut policy = triage_pr(
+            4,
+            "ci(policy): generated workflow",
+            &[".github/workflows/ci.yml"],
+        );
+        policy.body = "Validation\n- not run: cargo xtask check-pr\n".to_string();
+        policy.checks = vec![PrTriageCheck {
+            name: "rust".to_string(),
+            status: "COMPLETED".to_string(),
+            conclusion: "FAILURE".to_string(),
+        }];
+
+        let today = days_from_civil(2026, 5, 14);
+        let findings = pr_triage_findings(&[first, second, stale, policy], today);
+        let categories = findings
+            .iter()
+            .map(|finding| finding.category.as_str())
+            .collect::<BTreeSet<_>>();
+        assert!(categories.contains("same title family"));
+        assert!(categories.contains("same changed file set"));
+        assert!(categories.contains("stale draft"));
+        assert!(categories.contains("behind main"));
+        assert!(categories.contains("incomplete validation"));
+        assert!(categories.contains("policy-sensitive surface"));
+    }
+
+    #[test]
+    fn pr_triage_helpers_classify_validation_and_sensitive_paths() {
+        assert_eq!(
+            pr_title_family("WIP devex: split workflow renderer v2"),
+            "devex split workflow renderer"
+        );
+        assert_eq!(
+            pr_body_validation_warning("Summary\n\nValidation\n- cargo xtask check-pr\n"),
+            None
+        );
+        assert!(
+            pr_body_validation_warning("Summary only")
+                .is_some_and(|warning| warning.contains("no validation"))
+        );
+        assert_eq!(
+            pr_sensitive_file_reason(".github/workflows/ci.yml"),
+            Some("workflow behavior can alter generated CI or branch checks")
+        );
+        assert_eq!(
+            pr_checks_summary(&[PrTriageCheck {
+                name: "rust".to_string(),
+                status: "IN_PROGRESS".to_string(),
+                conclusion: String::new(),
+            }]),
+            "1 pending"
+        );
+        assert_eq!(
+            pr_checks_summary(&[PrTriageCheck {
+                name: "CodeRabbit".to_string(),
+                status: "SUCCESS".to_string(),
+                conclusion: "SUCCESS".to_string(),
+            }]),
+            "1 passed"
+        );
+    }
+
+    #[test]
+    fn pr_triage_markdown_lists_findings_and_open_prs() {
+        let pr = triage_pr(9, "devex: report", &["xtask/src/main.rs"]);
+        let finding = PrTriageFinding {
+            category: "same title family".to_string(),
+            severity: "warn".to_string(),
+            message: "#9 shares a title family".to_string(),
+            prs: vec![9],
+            details: vec!["#9 devex: report".to_string()],
+            recommended_action: "Choose a canonical PR.".to_string(),
+        };
+        let markdown = pr_triage_markdown(&[pr], &[finding], days_from_civil(2026, 5, 14));
+        assert!(markdown.contains("# ripr PR triage report"));
+        assert!(markdown.contains("Status: warn"));
+        assert!(markdown.contains("## Open PRs"));
+        assert!(markdown.contains("cargo xtask pr-triage-report"));
+    }
+
     #[test]
     fn specs_next_id_is_mechanical() {
         assert_eq!(
@@ -37915,6 +38656,10 @@ jobs:
         assert_eq!(
             XtaskCommand::parse(["check-badge-diff-policy".to_string()]),
             XtaskCommand::CheckBadgeDiffPolicy
+        );
+        assert_eq!(
+            XtaskCommand::parse(["pr-triage-report".to_string()]),
+            XtaskCommand::PrTriageReport
         );
         assert_eq!(
             XtaskCommand::parse(["specs".to_string(), "next".to_string()]),
@@ -38222,6 +38967,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(commands.contains(&"mutation-calibration [root] --mutants-json <path>"));
         assert!(commands.contains(&"sarif-policy --current <path> [--baseline <path>]"));
         assert!(commands.contains(&"badges [--check]"));
+        assert!(commands.contains(&"pr-triage-report"));
         assert!(commands.contains(&"check-badge-diff-policy"));
         assert!(commands.contains(&"worktree doctor"));
         assert!(commands.contains(&"check-droid-review-config"));

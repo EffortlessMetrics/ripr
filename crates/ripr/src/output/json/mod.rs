@@ -167,6 +167,92 @@ mod tests {
     }
 
     #[test]
+    fn render_projects_presentation_text_visibility_and_observer_states() -> Result<(), String> {
+        let golden = RelatedTest {
+            name: "report_golden_observes_label".to_string(),
+            file: PathBuf::from("tests/golden/report_output.rs"),
+            line: 22,
+            oracle: None,
+            oracle_kind: OracleKind::Snapshot,
+            oracle_strength: OracleStrength::Strong,
+        };
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("."),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![
+                finding_with_expression_in_file(
+                    "src/help.rs",
+                    "help-decl",
+                    18,
+                    ExposureClass::Exposed,
+                    ProbeFamily::FieldConstruction,
+                    "pub const HELP_DEVICE_LABEL: &str =",
+                    vec![],
+                ),
+                finding_with_expression_in_file(
+                    "src/help.rs",
+                    "help-literal",
+                    19,
+                    ExposureClass::WeaklyExposed,
+                    ProbeFamily::StaticUnknown,
+                    "\"Device label\";",
+                    vec![],
+                ),
+                finding_with_expression_in_file(
+                    "src/report.rs",
+                    "report-decl",
+                    27,
+                    ExposureClass::Exposed,
+                    ProbeFamily::FieldConstruction,
+                    "pub const REPORT_DEVICE_LABEL: &str =",
+                    vec![golden],
+                ),
+                finding_with_expression_in_file(
+                    "src/report.rs",
+                    "report-literal",
+                    28,
+                    ExposureClass::Exposed,
+                    ProbeFamily::StaticUnknown,
+                    "\"Report label\";",
+                    vec![],
+                ),
+            ],
+        };
+
+        let rendered = render(&output);
+        let value: serde_json::Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("check JSON should parse: {err}"))?;
+        let alignment = &value["finding_alignment"];
+
+        assert_eq!(alignment["summary"]["canonical_items"], 2);
+        assert_eq!(alignment["summary"]["actionable_gaps"], 1);
+        assert_eq!(alignment["summary"]["already_observed"], 1);
+        assert_eq!(
+            alignment["summary"]["presentation_text_actionable_output_repairs"],
+            1
+        );
+        assert_eq!(alignment["items"][0]["gap_state"], "actionable");
+        assert_eq!(
+            alignment["items"][0]["presentation_text"]["recommended_observer"],
+            "cli_help_output"
+        );
+        assert_eq!(alignment["items"][1]["gap_state"], "already_observed");
+        assert_eq!(
+            alignment["items"][1]["presentation_text"]["observer"],
+            "golden"
+        );
+        assert_eq!(
+            alignment["items"][1]["related_test"]["name"],
+            "report_golden_observes_label"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn render_omits_finding_alignment_without_supported_items() -> Result<(), String> {
         let output = sample_output(None);
         let rendered = render(&output);
@@ -398,14 +484,35 @@ mod tests {
         family: ProbeFamily,
         expression: &str,
     ) -> Finding {
+        finding_with_expression_in_file(
+            "src/device_labels.rs",
+            id_suffix,
+            line,
+            class,
+            family,
+            expression,
+            vec![],
+        )
+    }
+
+    fn finding_with_expression_in_file(
+        file: &str,
+        id_suffix: &str,
+        line: usize,
+        class: ExposureClass,
+        family: ProbeFamily,
+        expression: &str,
+        related_tests: Vec<RelatedTest>,
+    ) -> Finding {
         let mut finding = unknown_finding();
         let id = format!("probe:src_device_labels_rs:{line}:{id_suffix}");
         finding.id = id.clone();
         finding.probe.id = ProbeId(id);
-        finding.probe.location = SourceLocation::new("src/device_labels.rs", line, 1);
+        finding.probe.location = SourceLocation::new(file, line, 1);
         finding.probe.family = family;
         finding.probe.expression = expression.to_string();
         finding.class = class;
+        finding.related_tests = related_tests;
         finding.recommended_next_step = None;
         finding
     }

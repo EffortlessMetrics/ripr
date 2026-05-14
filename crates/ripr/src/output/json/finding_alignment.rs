@@ -1,4 +1,4 @@
-use crate::domain::Finding;
+use crate::domain::{Finding, OracleKind, OracleStrength, RelatedTest};
 
 use super::{array_field, escape, field, number_field};
 
@@ -86,6 +86,27 @@ struct FindingAlignmentPresentationText {
     recommended_observer: String,
 }
 
+struct PresentationTextClassification {
+    canonical_item_kind: String,
+    gap_state: String,
+    actionability: String,
+    why: String,
+    recommended_repair: String,
+    related_test: Option<FindingAlignmentRelatedTest>,
+    static_limitations: Vec<FindingAlignmentStaticLimitation>,
+    confidence: FindingAlignmentConfidence,
+    visibility: String,
+    observer: String,
+    presentation_actionability: String,
+    recommended_observer: String,
+}
+
+struct PresentationTextSink {
+    recommended_observer: &'static str,
+    repair_target: &'static str,
+    description: &'static str,
+}
+
 #[derive(Clone)]
 struct PresentationTextDeclaration {
     constant_name: String,
@@ -119,14 +140,21 @@ pub(super) fn report_for_findings(findings: &[Finding]) -> Option<FindingAlignme
             used[*raw_index] = true;
         }
 
+        let source_findings = raw_indices
+            .iter()
+            .map(|raw_index| &findings[*raw_index])
+            .collect::<Vec<_>>();
+        let classification =
+            classify_presentation_text(&declaration.constant_name, &source_findings);
         let raw_findings = raw_indices
             .iter()
             .map(|raw_index| raw_finding_for(&findings[*raw_index]))
             .collect::<Vec<_>>();
-        items.push(presentation_text_visibility_unknown_item(
+        items.push(presentation_text_item(
             &declaration.constant_name,
             literal,
             raw_findings,
+            classification,
         ));
     }
 
@@ -227,10 +255,11 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
     }
 }
 
-fn presentation_text_visibility_unknown_item(
+fn presentation_text_item(
     constant_name: &str,
     text_literal: Option<String>,
     raw_findings: Vec<FindingAlignmentRawFinding>,
+    classification: PresentationTextClassification,
 ) -> FindingAlignmentItem {
     let group_reason = if raw_findings.len() > 1 {
         GROUP_REASON_DECL_LITERAL
@@ -240,18 +269,66 @@ fn presentation_text_visibility_unknown_item(
 
     FindingAlignmentItem {
         canonical_gap_id: format!("presentation_text::{constant_name}"),
-        canonical_item_kind: "limitation".to_string(),
+        canonical_item_kind: classification.canonical_item_kind,
         evidence_class: PRESENTATION_TEXT_CLASS.to_string(),
-        gap_state: "static_limitation".to_string(),
-        actionability: "inspect_visibility".to_string(),
+        gap_state: classification.gap_state,
+        actionability: classification.actionability,
         raw_group_size: raw_findings.len(),
         group_reason: group_reason.to_string(),
+        why: classification.why,
+        recommended_repair: classification.recommended_repair,
+        related_test: classification.related_test,
+        verify_command: "cargo xtask evidence-quality-scorecard".to_string(),
+        static_limitations: classification.static_limitations,
+        confidence: classification.confidence,
+        raw_findings,
+        presentation_text: FindingAlignmentPresentationText {
+            constant_name: constant_name.to_string(),
+            text_literal,
+            visibility: classification.visibility,
+            observer: classification.observer,
+            actionability: classification.presentation_actionability,
+            source_kind: "const_decl".to_string(),
+            canonical_group_reason: group_reason.to_string(),
+            recommended_observer: classification.recommended_observer,
+        },
+    }
+}
+
+fn classify_presentation_text(
+    constant_name: &str,
+    raw_findings: &[&Finding],
+) -> PresentationTextClassification {
+    let source_file = raw_findings
+        .first()
+        .map(|finding| finding.probe.location.file.display().to_string())
+        .unwrap_or_default();
+
+    if is_internal_only_text(constant_name, &source_file) {
+        return internal_only_classification();
+    }
+
+    if let Some(sink) = visible_sink_for(constant_name, &source_file) {
+        if let Some((observer, related_test)) = observer_for_findings(raw_findings) {
+            return observed_classification(sink, observer, related_test);
+        }
+
+        return actionable_output_classification(sink);
+    }
+
+    visibility_unknown_classification()
+}
+
+fn visibility_unknown_classification() -> PresentationTextClassification {
+    PresentationTextClassification {
+        canonical_item_kind: "limitation".to_string(),
+        gap_state: "static_limitation".to_string(),
+        actionability: "inspect_visibility".to_string(),
         why: "Changed presentation text could not be traced to or away from a user-visible output sink.".to_string(),
         recommended_repair:
             "Trace the string constant to a rendered output path or confirm it is internal-only."
                 .to_string(),
         related_test: None,
-        verify_command: "cargo xtask evidence-quality-scorecard".to_string(),
         static_limitations: vec![FindingAlignmentStaticLimitation {
             category: VISIBILITY_UNKNOWN_CATEGORY.to_string(),
             repair_route: VISIBILITY_UNKNOWN_REPAIR_ROUTE.to_string(),
@@ -263,18 +340,202 @@ fn presentation_text_visibility_unknown_item(
                 "Visibility-unknown presentation text is benchmark-pinned; no user test debt is claimed without an output sink.".to_string(),
             ],
         },
-        raw_findings,
-        presentation_text: FindingAlignmentPresentationText {
-            constant_name: constant_name.to_string(),
-            text_literal,
-            visibility: "unknown".to_string(),
-            observer: "unknown".to_string(),
-            actionability: "static_limitation_visibility_unknown".to_string(),
-            source_kind: "const_decl".to_string(),
-            canonical_group_reason: group_reason.to_string(),
-            recommended_observer: "unknown".to_string(),
-        },
+        visibility: "unknown".to_string(),
+        observer: "unknown".to_string(),
+        presentation_actionability: "static_limitation_visibility_unknown".to_string(),
+        recommended_observer: "unknown".to_string(),
     }
+}
+
+fn internal_only_classification() -> PresentationTextClassification {
+    PresentationTextClassification {
+        canonical_item_kind: "no_action".to_string(),
+        gap_state: "internal_only".to_string(),
+        actionability: "no_action".to_string(),
+        why: "Changed label is confined to an internal proof, policy, or config-only path in fixture-backed scope.".to_string(),
+        recommended_repair: "No user test action.".to_string(),
+        related_test: None,
+        static_limitations: vec![],
+        confidence: FindingAlignmentConfidence {
+            basis: "fixture_backed".to_string(),
+            notes: vec![
+                "Internal-only presentation labels are benchmark-pinned as no-action evidence, not user-visible output debt.".to_string(),
+            ],
+        },
+        visibility: "internal_only".to_string(),
+        observer: "none".to_string(),
+        presentation_actionability: "no_action_internal".to_string(),
+        recommended_observer: "none".to_string(),
+    }
+}
+
+fn actionable_output_classification(sink: PresentationTextSink) -> PresentationTextClassification {
+    PresentationTextClassification {
+        canonical_item_kind: "gap".to_string(),
+        gap_state: "actionable".to_string(),
+        actionability: "add_output_observer".to_string(),
+        why: format!(
+            "Changed text flows to {} and no supported output observer is found.",
+            sink.description
+        ),
+        recommended_repair: format!("Add or update a {} for this changed text.", sink.repair_target),
+        related_test: None,
+        static_limitations: vec![],
+        confidence: FindingAlignmentConfidence {
+            basis: "fixture_backed".to_string(),
+            notes: vec![
+                "Visible unobserved presentation text is actionable only for supported sink patterns.".to_string(),
+            ],
+        },
+        visibility: "user_visible".to_string(),
+        observer: "none".to_string(),
+        presentation_actionability: "add_output_observer".to_string(),
+        recommended_observer: sink.recommended_observer.to_string(),
+    }
+}
+
+fn observed_classification(
+    sink: PresentationTextSink,
+    observer: &'static str,
+    related_test: FindingAlignmentRelatedTest,
+) -> PresentationTextClassification {
+    PresentationTextClassification {
+        canonical_item_kind: "observed".to_string(),
+        gap_state: "already_observed".to_string(),
+        actionability: "already_observed".to_string(),
+        why: format!(
+            "Changed text flows to {} and a supported {observer} observer covers it.",
+            sink.description
+        ),
+        recommended_repair: "No new RIPR action.".to_string(),
+        related_test: Some(related_test),
+        static_limitations: vec![],
+        confidence: FindingAlignmentConfidence {
+            basis: "fixture_backed".to_string(),
+            notes: vec![
+                "Observed presentation text stays visible as evidence without becoming a user repair.".to_string(),
+            ],
+        },
+        visibility: "user_visible".to_string(),
+        observer: observer.to_string(),
+        presentation_actionability: "already_observed".to_string(),
+        recommended_observer: observer.to_string(),
+    }
+}
+
+fn visible_sink_for(constant_name: &str, file: &str) -> Option<PresentationTextSink> {
+    let file = normalize_token_text(file);
+
+    if name_has_token(constant_name, "HELP")
+        && (file.contains("help") || file.contains("cli") || file.contains("command"))
+    {
+        return Some(PresentationTextSink {
+            recommended_observer: "cli_help_output",
+            repair_target: "help-output snapshot assertion",
+            description: "CLI help output",
+        });
+    }
+
+    if name_has_token(constant_name, "REPORT") && file.contains("report") {
+        return Some(PresentationTextSink {
+            recommended_observer: "report_render",
+            repair_target: "report-render or golden-output test",
+            description: "rendered report output",
+        });
+    }
+
+    if (name_has_token(constant_name, "TABLE") || name_has_token(constant_name, "DISPLAY"))
+        && (file.contains("table") || file.contains("display") || file.contains("render"))
+    {
+        return Some(PresentationTextSink {
+            recommended_observer: "table_render",
+            repair_target: "table-render or golden-output test",
+            description: "rendered table output",
+        });
+    }
+
+    None
+}
+
+fn is_internal_only_text(constant_name: &str, file: &str) -> bool {
+    let file = normalize_token_text(file);
+    name_has_token(constant_name, "INTERNAL")
+        || name_has_token(constant_name, "PROOF")
+        || name_has_token(constant_name, "POLICY")
+        || name_has_token(constant_name, "CONFIG")
+        || file.contains("proof")
+        || file.contains("policy")
+        || file.contains("config")
+        || file.contains("internal")
+}
+
+fn observer_for_findings(
+    raw_findings: &[&Finding],
+) -> Option<(&'static str, FindingAlignmentRelatedTest)> {
+    raw_findings
+        .iter()
+        .flat_map(|finding| finding.related_tests.iter())
+        .filter_map(|test| {
+            observer_for_related_test(test).map(|(rank, observer)| (rank, observer, test))
+        })
+        .min_by_key(|(rank, _, _)| *rank)
+        .map(|(_, observer, test)| (observer, related_test_for(test)))
+}
+
+fn observer_for_related_test(test: &RelatedTest) -> Option<(u8, &'static str)> {
+    let text = normalize_token_text(&format!("{} {}", test.name, test.file.display()));
+    let strong_oracle = matches!(
+        test.oracle_strength,
+        OracleStrength::Strong | OracleStrength::Medium
+    );
+
+    if strong_oracle && text.contains("golden") {
+        return Some((0, "golden"));
+    }
+
+    if test.oracle_kind == OracleKind::Snapshot || (strong_oracle && text.contains("snapshot")) {
+        return Some((1, "snapshot"));
+    }
+
+    if strong_oracle && (text.contains("help_output") || text.contains("help")) {
+        return Some((2, "cli_help_output"));
+    }
+
+    if strong_oracle && (text.contains("report") || text.contains("markdown")) {
+        return Some((3, "report_render"));
+    }
+
+    if strong_oracle && (text.contains("table") || text.contains("display")) {
+        return Some((4, "table_render"));
+    }
+
+    None
+}
+
+fn related_test_for(test: &RelatedTest) -> FindingAlignmentRelatedTest {
+    FindingAlignmentRelatedTest {
+        name: test.name.clone(),
+        file: test.file.display().to_string(),
+        line: test.line,
+    }
+}
+
+fn name_has_token(name: &str, token: &str) -> bool {
+    name.to_ascii_uppercase()
+        .split('_')
+        .any(|part| part == token)
+}
+
+fn normalize_token_text(text: &str) -> String {
+    text.chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 fn raw_finding_for(finding: &Finding) -> FindingAlignmentRawFinding {
@@ -638,8 +899,9 @@ mod tests {
         parse_string_literal, report_for_findings,
     };
     use crate::domain::{
-        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, Probe, ProbeFamily,
-        ProbeId, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
+        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, OracleKind,
+        OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence, RiprEvidence,
+        SourceLocation, StageEvidence, StageState,
     };
 
     #[test]
@@ -828,6 +1090,170 @@ mod tests {
     }
 
     #[test]
+    fn visible_help_text_without_supported_observer_is_actionable() -> Result<(), String> {
+        let lexical_only = related_test(
+            "mentions_help_label_without_observer",
+            "tests/help_labels.rs",
+            17,
+            OracleKind::Unknown,
+            OracleStrength::None,
+        );
+        let findings = vec![
+            finding_in_file_with_related(
+                "src/help.rs",
+                "decl",
+                18,
+                ExposureClass::Exposed,
+                ProbeFamily::FieldConstruction,
+                "pub const HELP_DEVICE_LABEL: &str =",
+                vec![lexical_only],
+            ),
+            finding_in_file(
+                "src/help.rs",
+                "literal",
+                19,
+                ExposureClass::WeaklyExposed,
+                ProbeFamily::StaticUnknown,
+                "\"Device label\";",
+            ),
+        ];
+
+        let report = report_for_findings(&findings)
+            .ok_or_else(|| "visible help text should align".to_string())?;
+        let item = &report.items[0];
+
+        assert_eq!(report.summary.actionable_gaps, 1);
+        assert_eq!(report.summary.static_limitations, 0);
+        assert_eq!(item.canonical_item_kind, "gap");
+        assert_eq!(item.gap_state, "actionable");
+        assert_eq!(item.actionability, "add_output_observer");
+        assert_eq!(item.presentation_text.visibility, "user_visible");
+        assert_eq!(item.presentation_text.observer, "none");
+        assert_eq!(
+            item.presentation_text.recommended_observer,
+            "cli_help_output"
+        );
+        assert!(item.related_test.is_none());
+        assert!(!item.recommended_repair.contains("mutation"));
+        Ok(())
+    }
+
+    #[test]
+    fn visible_report_text_with_golden_observer_is_already_observed() -> Result<(), String> {
+        let golden = related_test(
+            "report_golden_observes_label",
+            "tests/golden/report_output.rs",
+            22,
+            OracleKind::Snapshot,
+            OracleStrength::Strong,
+        );
+        let findings = vec![
+            finding_in_file_with_related(
+                "src/report.rs",
+                "decl",
+                27,
+                ExposureClass::Exposed,
+                ProbeFamily::FieldConstruction,
+                "pub const REPORT_DEVICE_LABEL: &str =",
+                vec![golden],
+            ),
+            finding_in_file(
+                "src/report.rs",
+                "literal",
+                28,
+                ExposureClass::Exposed,
+                ProbeFamily::StaticUnknown,
+                "\"Report label\";",
+            ),
+        ];
+
+        let report = report_for_findings(&findings)
+            .ok_or_else(|| "visible report text should align".to_string())?;
+        let item = &report.items[0];
+
+        assert_eq!(report.summary.already_observed, 1);
+        assert_eq!(report.summary.actionable_gaps, 0);
+        assert_eq!(item.canonical_item_kind, "observed");
+        assert_eq!(item.gap_state, "already_observed");
+        assert_eq!(item.actionability, "already_observed");
+        assert_eq!(item.presentation_text.visibility, "user_visible");
+        assert_eq!(item.presentation_text.observer, "golden");
+        assert_eq!(item.presentation_text.actionability, "already_observed");
+        assert_eq!(
+            item.related_test.as_ref().map(|test| test.name.as_str()),
+            Some("report_golden_observes_label")
+        );
+        assert_eq!(item.recommended_repair, "No new RIPR action.");
+        Ok(())
+    }
+
+    #[test]
+    fn internal_only_label_is_no_action() -> Result<(), String> {
+        let findings = vec![
+            finding_in_file(
+                "src/proof_lanes.rs",
+                "decl",
+                12,
+                ExposureClass::Exposed,
+                ProbeFamily::FieldConstruction,
+                "pub const INTERNAL_PROOF_LANE_LABEL: &str =",
+            ),
+            finding_in_file(
+                "src/proof_lanes.rs",
+                "literal",
+                13,
+                ExposureClass::StaticUnknown,
+                ProbeFamily::StaticUnknown,
+                "\"internal proof lane\";",
+            ),
+        ];
+
+        let report = report_for_findings(&findings)
+            .ok_or_else(|| "internal label should align".to_string())?;
+        let item = &report.items[0];
+
+        assert_eq!(report.summary.internal_no_action, 1);
+        assert_eq!(report.summary.static_limitations, 0);
+        assert_eq!(item.canonical_item_kind, "no_action");
+        assert_eq!(item.gap_state, "internal_only");
+        assert_eq!(item.actionability, "no_action");
+        assert_eq!(item.presentation_text.visibility, "internal_only");
+        assert_eq!(item.presentation_text.observer, "none");
+        assert_eq!(item.presentation_text.actionability, "no_action_internal");
+        assert!(item.static_limitations.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn help_named_text_without_supported_sink_stays_visibility_unknown() -> Result<(), String> {
+        let findings = vec![finding_in_file(
+            "src/opaque.rs",
+            "decl",
+            33,
+            ExposureClass::Exposed,
+            ProbeFamily::FieldConstruction,
+            "pub const HELP_DEVICE_LABEL: &str = \"Device label\";",
+        )];
+
+        let report = report_for_findings(&findings)
+            .ok_or_else(|| "opaque help label should align".to_string())?;
+        let item = &report.items[0];
+
+        assert_eq!(report.summary.static_limitations, 1);
+        assert_eq!(item.gap_state, "static_limitation");
+        assert_eq!(item.actionability, "inspect_visibility");
+        assert_eq!(item.presentation_text.visibility, "unknown");
+        assert_eq!(item.presentation_text.observer, "unknown");
+        assert_eq!(
+            item.static_limitations
+                .first()
+                .map(|limitation| limitation.category.as_str()),
+            Some("presentation_text_visibility_unknown")
+        );
+        Ok(())
+    }
+
+    #[test]
     fn parses_presentation_text_const_declaration() -> Result<(), String> {
         let declaration = parse_presentation_text_declaration(
             "pub const APPLE_M3_AIR_DEVICE_LABELS_TEXT: &str = \"value\";",
@@ -854,12 +1280,42 @@ mod tests {
         family: ProbeFamily,
         expression: &str,
     ) -> Finding {
+        finding_in_file(
+            "src/device_labels.rs",
+            id_suffix,
+            line,
+            class,
+            family,
+            expression,
+        )
+    }
+
+    fn finding_in_file(
+        file: &str,
+        id_suffix: &str,
+        line: usize,
+        class: ExposureClass,
+        family: ProbeFamily,
+        expression: &str,
+    ) -> Finding {
+        finding_in_file_with_related(file, id_suffix, line, class, family, expression, vec![])
+    }
+
+    fn finding_in_file_with_related(
+        file: &str,
+        id_suffix: &str,
+        line: usize,
+        class: ExposureClass,
+        family: ProbeFamily,
+        expression: &str,
+        related_tests: Vec<RelatedTest>,
+    ) -> Finding {
         let probe_id = format!("probe:src_device_labels_rs:{line}:{id_suffix}");
         Finding {
             id: probe_id.clone(),
             probe: Probe {
                 id: ProbeId(probe_id),
-                location: SourceLocation::new("src/device_labels.rs", line, 1),
+                location: SourceLocation::new(file, line, 1),
                 owner: None,
                 family,
                 delta: DeltaKind::Value,
@@ -885,12 +1341,29 @@ mod tests {
             flow_sinks: vec![],
             activation: ActivationEvidence::default(),
             stop_reasons: vec![],
-            related_tests: vec![],
+            related_tests,
             recommended_next_step: None,
             language: None,
             language_status: None,
             owner_kind: None,
             static_limit_kind: None,
+        }
+    }
+
+    fn related_test(
+        name: &str,
+        file: &str,
+        line: usize,
+        oracle_kind: OracleKind,
+        oracle_strength: OracleStrength,
+    ) -> RelatedTest {
+        RelatedTest {
+            name: name.to_string(),
+            file: file.into(),
+            line,
+            oracle: None,
+            oracle_kind,
+            oracle_strength,
         }
     }
 
