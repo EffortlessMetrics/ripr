@@ -10,7 +10,7 @@ Usage:
   ripr baseline create --from target/ripr/reports/gate-decision.json [--out .ripr/gate-baseline.json] [--dry-run] [--force]
   ripr baseline diff --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json [--out target/ripr/reports/baseline-debt-delta.json] [--out-md target/ripr/reports/baseline-debt-delta.md]
   ripr baseline update --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json --remove-resolved [--out .ripr/gate-baseline.json]
-  ripr zero status --delta target/ripr/reports/baseline-debt-delta.json [--baseline .ripr/gate-baseline.json] [--gate target/ripr/reports/gate-decision.json] [--out target/ripr/reports/ripr-zero-status.json] [--out-md target/ripr/reports/ripr-zero-status.md]
+  ripr zero status --delta target/ripr/reports/baseline-debt-delta.json [--baseline .ripr/gate-baseline.json] [--gap-ledger target/ripr/reports/gap-decision-ledger.json] [--gate target/ripr/reports/gate-decision.json] [--out target/ripr/reports/ripr-zero-status.json] [--out-md target/ripr/reports/ripr-zero-status.md]
   ripr policy readiness [--gate-decision target/ripr/reports/gate-decision.json] [--baseline-delta target/ripr/reports/baseline-debt-delta.json] [--out target/ripr/reports/policy-readiness.json] [--out-md target/ripr/reports/policy-readiness.md]
   ripr policy operations --policy-readiness target/ripr/reports/policy-readiness.json [--waiver-aging target/ripr/reports/waiver-aging.json] [--suppression-health target/ripr/reports/suppression-health.json] [--out target/ripr/reports/policy-operations.json] [--out-md target/ripr/reports/policy-operations.md]
   ripr policy history --current target/ripr/reports/policy-operations.json [--history .ripr/policy-history.jsonl] [--commit HEAD] [--pr-number 123] [--out target/ripr/reports/policy-history.json] [--out-md target/ripr/reports/policy-history.md]
@@ -265,11 +265,12 @@ this command to rewrite checked-in baselines automatically.
 
 const ZERO_HELP: &str = r#"Summarize current RIPR Zero progress over existing baselines and gate decisions.
 
-Usage: ripr zero status --delta PATH [--baseline PATH] [--gate PATH] [--pr-guidance PATH] [--recommendation-calibration PATH] [--out PATH] [--out-md PATH]
+Usage: ripr zero status --delta PATH [--baseline PATH] [--gap-ledger PATH] [--gate PATH] [--pr-guidance PATH] [--recommendation-calibration PATH] [--out PATH] [--out-md PATH]
 
 Status options:
   --baseline PATH                       Optional reviewed gate baseline ledger.
   --delta PATH                          Required baseline-debt-delta JSON from `ripr baseline diff`.
+  --gap-ledger PATH                     Optional gap decision ledger JSON whose ripr_zero_count targets define the visible target count.
   --gate PATH                           Optional gate-decision JSON from `ripr gate evaluate`.
   --pr-guidance PATH                    Optional PR guidance JSON from `ripr review-comments`.
   --recommendation-calibration PATH     Optional recommendation calibration JSON.
@@ -277,7 +278,7 @@ Status options:
   --out-md PATH                         Markdown output path. Defaults to target/ripr/reports/ripr-zero-status.md.
 
 The RIPR Zero status report is read-only advisory progress evidence over
-existing baselines, baseline debt deltas, gate decisions, PR guidance, and
+existing baselines, baseline debt deltas, gap decision ledgers, gate decisions, PR guidance, and
 optional calibration artifacts. It reports visible unresolved debt, baseline
 movement, metadata health, top debt areas, and bounded repair routes. It does
 not run analysis, mutate baselines, edit source, generate tests, call an LLM,
@@ -766,6 +767,9 @@ Options:
                            repo-* and agent-seam-packets-json formats render
                            against the full repo baseline; the non-repo badge-*
                            formats remain diff-scoped.
+  --gap-ledger PATH        For repo-badge-* formats only, render badge counts
+                           from explicit gap-decision-ledger projection targets
+                           instead of seam-native/test-efficiency counts.
   --json                   Shortcut for --format json.
   --no-unchanged-tests     Limit the index to changed Rust files.
 

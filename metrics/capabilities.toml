@@ -862,8 +862,8 @@ name = "RIPR Zero status report"
 status = "alpha"
 spec = "RIPR-SPEC-0017"
 evidence = [
-  "ripr zero status --delta target/ripr/reports/baseline-debt-delta.json writes advisory ripr-zero-status JSON and Markdown over reviewed baselines, baseline debt deltas, optional gate decisions, PR guidance, and recommendation calibration without changing gate authority",
-  "crates/ripr/src/output/ripr_zero_status.rs renders RIPR 0 state, baseline metadata health, trend availability, top debt areas, and repair routes, preferring supplied evidence_record repair context with legacy fallback",
+  "ripr zero status --delta target/ripr/reports/baseline-debt-delta.json writes advisory ripr-zero-status JSON and Markdown over reviewed baselines, baseline debt deltas, optional gap decision ledgers, gate decisions, PR guidance, and recommendation calibration without changing gate authority",
+  "crates/ripr/src/output/ripr_zero_status.rs renders RIPR 0 state, baseline metadata health, trend availability, top debt areas, and repair routes, preferring supplied gap decision ledger targets or evidence_record repair context with legacy fallback",
   "crates/ripr/src/cli/commands.rs exposes the command, generated CI runs it when baseline-debt-delta.json exists, uploads ripr-zero-status JSON and Markdown, and appends an at-a-glance RIPR Zero summary while preserving advisory defaults and gate pass/fail authority",
   "docs/RIPR_ZERO_REPORTING_WORKFLOW.md explains how teams read RIPR Zero status, age and refresh baseline metadata, route repair packets, and interpret movement without treating RIPR 0 as perfect tests or 100 percent coverage",
   "docs/OUTPUT_SCHEMA.md documents the shape and advisory boundary",
@@ -965,7 +965,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap/expected/first-useful-action"
 ]
-next = "policy/ripr-zero-and-badges-gap-targets"
+next = "policy/gate-repairable-gap-predicate"
 metric = "first_useful_action_reports, first_useful_action_actionable, first_useful_action_gap_record_routes, first_useful_action_stale, first_useful_action_missing_required_artifact, first_useful_action_baseline_only, first_useful_action_acknowledged, first_useful_action_waived, first_useful_action_suppressed, first_useful_action_no_actionable_seam, first_useful_action_already_improved, first_useful_action_unchanged_after_attempt"
 
 [[capability]]
@@ -1379,17 +1379,17 @@ name = "Seam-native badge counts"
 status = "alpha"
 spec = "RIPR-SPEC-0005"
 evidence = [
-  "docs/BADGE_POLICY.md seam-native repo counting contract",
-  "docs/OUTPUT_SCHEMA.md Badge Output schema 0.3 with basis and analyzed_seams",
-  "crates/ripr/src/output/badge.rs ripr_seam_badge_summary",
-  "repo-badge native JSON uses basis seam_native and analyzed_seams",
+  "docs/BADGE_POLICY.md seam-native repo counting contract and optional gap-decision-ledger target path",
+  "docs/OUTPUT_SCHEMA.md Badge Output schema 0.4 with basis, analyzed_seams, and analyzed_gap_records",
+  "crates/ripr/src/output/badge.rs ripr_seam_badge_summary and gap-ledger badge target rendering",
+  "repo-badge native JSON uses basis seam_native by default and basis gap_decision_ledger when supplied",
   "diff badge native JSON remains basis finding_exposure for legacy finding counts",
-  "repo badge CLI smoke tests pin seam-native scope and no diff leakage",
+  "repo badge CLI smoke tests pin seam-native scope, gap-ledger target counts, and no diff leakage",
   "checked-in badges/ripr.json and badges/ripr-plus.json refreshed from repo-badge-artifacts"
 ]
 fixtures = []
 next = "campaign/modularization-stack-audit"
-metric = "repo badge headline counts configured-visible headline-eligible seam classes; native JSON distinguishes analyzed_seams from analyzed_findings"
+metric = "repo badge headline counts configured-visible headline-eligible seam classes or explicit gap targets; native JSON distinguishes analyzed_seams, analyzed_gap_records, and analyzed_findings"
 
 [[capability]]
 id = "suppression_policy_health"
@@ -1522,13 +1522,13 @@ evidence = [
   "fixtures/gap-decision-ledger/corpus.json pins the planned GapRecord vocabulary, projection eligibility, safe gate predicate, output-contract repair route, missing-artifact regeneration, preview ineligibility, and receipt movement cases",
   "crates/ripr/src/output/gap_decision_ledger.rs builds and renders the advisory gap_decision_ledger JSON and Markdown report from explicit GapRecord input",
   "crates/ripr/src/cli/commands.rs wires `ripr reports gap-ledger --records ...` without rerunning analysis or changing downstream projection behavior",
-  "ripr first-action --gap-ledger and ripr pr-ledger record --gap-ledger can consume explicit repairable stable Rust gap records while preserving advisory/default-off behavior",
+  "ripr first-action --gap-ledger, ripr pr-ledger record --gap-ledger, ripr zero status --gap-ledger, and repo-badge formats with --gap-ledger can consume explicit policy-backed gap records while preserving advisory/default-off behavior",
   "docs/OUTPUT_SCHEMA.md documents the implemented gap_decision_ledger JSON shape"
 ]
 fixtures = [
   "fixtures/gap-decision-ledger/corpus.json"
 ]
-next = "policy/ripr-zero-and-badges-gap-targets"
+next = "policy/gate-repairable-gap-predicate"
 metric = "gap_decision_records_total, gap_decision_repairable_total, gap_decision_static_limitation_total, gap_decision_no_action_total, gap_decision_missing_artifact_total, gap_decision_projection_pr_comment_eligible, gap_decision_projection_gate_candidate, gap_decision_projection_agent_packet_eligible, gap_decision_ripr_zero_target_count, gap_decision_ripr_plus_target_count, gap_decision_preview_ineligible_total, gap_decision_receipt_improved_total, gap_decision_receipt_unchanged_after_attempt_total, gap_decision_missing_output_contract_total"
 
 [[capability]]

@@ -18,6 +18,7 @@ use crate::analysis::seams::SeamGripClass;
 use crate::app::CheckOutput;
 use crate::config::{ConfigSeverity, RiprConfig};
 use crate::domain::ExposureClass;
+use crate::output::gap_decision_ledger;
 use crate::output::json::escape as json_escape;
 use crate::output::suppressions::{
     SuppressionEntry, apply_exposure_suppressions, apply_test_efficiency_suppressions,
@@ -73,6 +74,8 @@ pub enum BadgeBasis {
     FindingExposure,
     /// Counts classified repo seams using configured seam severity.
     SeamNative,
+    /// Counts explicit policy-targeted `GapRecord` projection targets.
+    GapDecisionLedger,
 }
 
 impl BadgeBasis {
@@ -80,6 +83,7 @@ impl BadgeBasis {
         match self {
             BadgeBasis::FindingExposure => "finding_exposure",
             BadgeBasis::SeamNative => "seam_native",
+            BadgeBasis::GapDecisionLedger => "gap_decision_ledger",
         }
     }
 }
@@ -95,6 +99,7 @@ pub struct BadgeCounts {
     pub unknowns_test_efficiency: usize,
     pub analyzed_findings: usize,
     pub analyzed_seams: usize,
+    pub analyzed_gap_records: usize,
     pub analyzed_tests: usize,
 }
 
@@ -156,10 +161,11 @@ pub struct BadgeSummary {
 }
 
 /// The schema_version of the native badge JSON. Bumping it is a public
-/// contract change — call it out in the PR. v0.3 added `basis` and
-/// `counts.analyzed_seams` so consumers can distinguish legacy
-/// finding-exposure badges from seam-native repo badges.
-pub const BADGE_SCHEMA_VERSION: &str = "0.3";
+/// contract change — call it out in the PR. v0.4 added
+/// `basis = "gap_decision_ledger"` and `counts.analyzed_gap_records`
+/// so public badge endpoints can be rendered from explicit GapRecord
+/// policy targets.
+pub const BADGE_SCHEMA_VERSION: &str = "0.4";
 
 /// All test-efficiency reason strings the badge JSON reports as zero
 /// defaults until later PRs read the test-efficiency report. The order
@@ -228,6 +234,7 @@ pub fn ripr_badge_summary_with_suppressions(
         unknowns_test_efficiency: 0,
         analyzed_findings: output.findings.len(),
         analyzed_seams: 0,
+        analyzed_gap_records: 0,
         analyzed_tests: unique_tests.len(),
     };
 
@@ -321,6 +328,7 @@ pub(crate) fn ripr_seam_badge_summary_from_counts(
         unknowns_test_efficiency: 0,
         analyzed_findings: 0,
         analyzed_seams: class_counts.analyzed_seams(),
+        analyzed_gap_records: 0,
         analyzed_tests: 0,
     };
 
@@ -349,6 +357,58 @@ pub(crate) fn ripr_seam_badge_summary_from_counts(
         policy,
         warnings: Vec::new(),
     }
+}
+
+/// Builds a repo-scoped badge summary from explicit GapRecord projection
+/// targets. This path is opt-in: normal repo badges keep using seam-native
+/// counts unless a caller supplies a gap decision ledger.
+pub(crate) fn repo_gap_ledger_badge_summary_from_json(
+    text: &str,
+    kind: BadgeKind,
+    policy: BadgePolicy,
+) -> Result<BadgeSummary, String> {
+    let records = gap_decision_ledger::parse_gap_records_json(text)?;
+    let projection = match kind {
+        BadgeKind::Ripr => "ripr_zero_count",
+        BadgeKind::RiprPlus => "ripr_plus_count",
+    };
+    let target_count = records
+        .iter()
+        .filter(|record| gap_decision_ledger::projection_eligible(record, projection))
+        .count();
+    let (status, color) = badge_status_color(target_count, policy.fail_on_nonzero);
+
+    let counts = BadgeCounts {
+        unsuppressed_exposure_gaps: target_count,
+        unsuppressed_test_efficiency_findings: 0,
+        intentional_test_efficiency_findings: 0,
+        suppressed_exposure_gaps: 0,
+        suppressed_test_efficiency_findings: 0,
+        unknowns: 0,
+        unknowns_test_efficiency: 0,
+        analyzed_findings: 0,
+        analyzed_seams: 0,
+        analyzed_gap_records: records.len(),
+        analyzed_tests: 0,
+    };
+
+    let mut reason_counts: BTreeMap<&'static str, usize> = BTreeMap::new();
+    for key in BADGE_REASON_KEYS {
+        reason_counts.insert(key, 0);
+    }
+
+    Ok(BadgeSummary {
+        kind,
+        scope: BadgeScope::Repo,
+        basis: BadgeBasis::GapDecisionLedger,
+        message: target_count.to_string(),
+        status,
+        color,
+        counts,
+        reason_counts,
+        policy,
+        warnings: Vec::new(),
+    })
 }
 
 fn badge_status_color(count: usize, fail_on_nonzero: bool) -> (BadgeStatus, &'static str) {
@@ -758,6 +818,7 @@ fn ripr_plus_badge_summary_from_exposure(
         unknowns_test_efficiency: unknowns_te,
         analyzed_findings: exposure.counts.analyzed_findings,
         analyzed_seams: exposure.counts.analyzed_seams,
+        analyzed_gap_records: exposure.counts.analyzed_gap_records,
         analyzed_tests: test_efficiency.analyzed_tests,
     };
 
@@ -866,6 +927,10 @@ pub fn render_native_json(summary: &BadgeSummary) -> String {
         counts.analyzed_seams
     ));
     out.push_str(&format!(
+        "    \"analyzed_gap_records\": {},\n",
+        counts.analyzed_gap_records
+    ));
+    out.push_str(&format!(
         "    \"analyzed_tests\": {}\n",
         counts.analyzed_tests
     ));
@@ -946,7 +1011,8 @@ mod tests {
     use super::{
         BADGE_REASON_KEYS, BadgePolicy, BadgeScope, BadgeStatus, TestEfficiencyBadgeSummary,
         badge_status_color, parse_test_efficiency_badge_summary, render_native_json,
-        render_shields_json, ripr_badge_summary, ripr_plus_badge_summary, ripr_seam_badge_summary,
+        render_shields_json, repo_gap_ledger_badge_summary_from_json, ripr_badge_summary,
+        ripr_plus_badge_summary, ripr_seam_badge_summary,
     };
     use crate::analysis::ClassifiedSeam;
     use crate::analysis::seams::{
@@ -1153,6 +1219,55 @@ weakly_gripped = "off"
     }
 
     #[test]
+    fn gap_ledger_badge_summary_counts_projection_targets() -> Result<(), String> {
+        let ledger = r#"{
+          "gap_records": [
+            {
+              "gap_id": "gap:repo:pricing:reintroduced-boundary",
+              "kind": "MissingBoundaryAssertion",
+              "language": "rust",
+              "language_status": "stable",
+              "scope": "repo_scoped",
+              "gap_state": "reintroduced",
+              "policy_state": "reintroduced",
+              "repairability": "repairable",
+              "projection_eligibility": {
+                "ripr_zero_count": {"eligible": true, "reason": "repo_policy_targeted_unresolved_gap"},
+                "ripr_plus_count": {"eligible": true, "reason": "broader_repo_advisory_gap"}
+              }
+            },
+            {
+              "gap_id": "gap:repo:waived",
+              "kind": "MissingValueAssertion",
+              "language": "rust",
+              "language_status": "stable",
+              "scope": "repo_scoped",
+              "gap_state": "waived",
+              "policy_state": "waived",
+              "repairability": "no_action",
+              "projection_eligibility": {
+                "ripr_zero_count": {"eligible": false, "reason": "waived"},
+                "ripr_plus_count": {"eligible": false, "reason": "waived"}
+              }
+            }
+          ]
+        }"#;
+
+        let summary = repo_gap_ledger_badge_summary_from_json(
+            ledger,
+            super::BadgeKind::Ripr,
+            BadgePolicy::default(),
+        )?;
+
+        assert_eq!(summary.scope, BadgeScope::Repo);
+        assert_eq!(summary.basis.as_str(), "gap_decision_ledger");
+        assert_eq!(summary.counts.unsuppressed_exposure_gaps, 1);
+        assert_eq!(summary.counts.analyzed_gap_records, 2);
+        assert_eq!(summary.message, "1");
+        Ok(())
+    }
+
+    #[test]
     fn badge_summary_message_never_contains_a_denominator() {
         let output = check_output(vec![
             finding(ExposureClass::WeaklyExposed, vec![]),
@@ -1224,7 +1339,7 @@ weakly_gripped = "off"
         let summary = ripr_badge_summary(&output, BadgePolicy::default());
         let json = render_native_json(&summary);
 
-        assert!(json.contains("\"schema_version\": \"0.3\""));
+        assert!(json.contains("\"schema_version\": \"0.4\""));
         assert!(!json.contains("\"schemaVersion\""));
         assert!(json.contains("\"kind\": \"ripr\""));
         assert!(json.contains("\"scope\": \"diff\""));
@@ -1243,6 +1358,7 @@ weakly_gripped = "off"
             "unknowns_test_efficiency",
             "analyzed_findings",
             "analyzed_seams",
+            "analyzed_gap_records",
             "analyzed_tests",
         ] {
             assert!(
@@ -1276,7 +1392,7 @@ weakly_gripped = "off"
 
     #[test]
     fn badge_shields_projection_omits_scope_field() {
-        // Shields stays exactly four fields after the v0.3 schema bump:
+        // Shields stays exactly four fields after native schema bumps:
         // schemaVersion, label, message, color. `scope` and `basis` are native-only.
         let output = check_output(vec![finding(ExposureClass::WeaklyExposed, vec![])]);
         let mut summary = ripr_badge_summary(&output, BadgePolicy::default());

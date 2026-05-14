@@ -13,8 +13,8 @@ use crate::cli::agent::{
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_format, parse_mode};
 use crate::config::{
-    CONFIG_FILE_NAME, CheckInputExplicit, DEFAULT_LSP_SEAM_DIAGNOSTICS, apply_to_check_input,
-    config_fingerprint, generated_init_config, load_for_root,
+    CONFIG_FILE_NAME, CheckInputExplicit, DEFAULT_LSP_SEAM_DIAGNOSTICS, RiprConfig,
+    apply_to_check_input, config_fingerprint, generated_init_config, load_for_root,
 };
 use crate::output;
 use std::path::{Path, PathBuf};
@@ -105,6 +105,7 @@ struct BaselineUpdateOptions {
 struct RiprZeroStatusOptions {
     baseline: Option<PathBuf>,
     delta: PathBuf,
+    gap_ledger: Option<PathBuf>,
     gate: Option<PathBuf>,
     pr_guidance: Option<PathBuf>,
     recommendation_calibration: Option<PathBuf>,
@@ -3587,6 +3588,10 @@ fn ripr_zero_status(args: &[String]) -> Result<(), String> {
         .gate
         .as_ref()
         .map(|path| output::ripr_zero_status::display_path(path));
+    let gap_ledger_path = options
+        .gap_ledger
+        .as_ref()
+        .map(|path| output::ripr_zero_status::display_path(path));
     let pr_guidance_path = options
         .pr_guidance
         .as_ref()
@@ -3600,6 +3605,7 @@ fn ripr_zero_status(args: &[String]) -> Result<(), String> {
         generated_at: baseline_created_at()?,
         baseline_path,
         delta_path: output::ripr_zero_status::display_path(&options.delta),
+        gap_ledger_path,
         gate_path,
         pr_guidance_path,
         recommendation_calibration_path,
@@ -3608,6 +3614,10 @@ fn ripr_zero_status(args: &[String]) -> Result<(), String> {
             .as_ref()
             .map(|path| read_optional_text_for_report("baseline", path)),
         delta_json: read_optional_text_for_report("baseline debt delta", &options.delta),
+        gap_ledger_json: options
+            .gap_ledger
+            .as_ref()
+            .map(|path| read_optional_text_for_report("gap decision ledger", path)),
         gate_json: options
             .gate
             .as_ref()
@@ -5133,6 +5143,7 @@ fn parse_baseline_update_options(args: &[String]) -> Result<BaselineUpdateOption
 fn parse_ripr_zero_status_options(args: &[String]) -> Result<RiprZeroStatusOptions, String> {
     let mut baseline = None;
     let mut delta = None;
+    let mut gap_ledger = None;
     let mut gate = None;
     let mut pr_guidance = None;
     let mut recommendation_calibration = None;
@@ -5149,6 +5160,10 @@ fn parse_ripr_zero_status_options(args: &[String]) -> Result<RiprZeroStatusOptio
             "--delta" => {
                 i += 1;
                 delta = Some(non_empty_path_arg(args, i, "--delta", "zero status")?);
+            }
+            "--gap-ledger" => {
+                i += 1;
+                gap_ledger = Some(non_empty_path_arg(args, i, "--gap-ledger", "zero status")?);
             }
             "--gate" => {
                 i += 1;
@@ -5183,6 +5198,7 @@ fn parse_ripr_zero_status_options(args: &[String]) -> Result<RiprZeroStatusOptio
     Ok(RiprZeroStatusOptions {
         baseline,
         delta: delta.ok_or_else(|| "zero status requires --delta <path>".to_string())?,
+        gap_ledger,
         gate,
         pr_guidance,
         recommendation_calibration,
@@ -6924,6 +6940,7 @@ fn review_comments_markdown_path(json_path: &Path) -> PathBuf {
 pub(super) fn check(args: &[String]) -> Result<(), String> {
     let mut input = CheckInput::default();
     let mut explicit = CheckInputExplicit::default();
+    let mut gap_ledger: Option<PathBuf> = None;
     let mut i = 0usize;
     while i < args.len() {
         match args[i].as_str() {
@@ -6949,6 +6966,10 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
                 i += 1;
                 input.format = parse_format(expect_value(args, i, "--format")?)?;
             }
+            "--gap-ledger" => {
+                i += 1;
+                gap_ledger = Some(PathBuf::from(expect_value(args, i, "--gap-ledger")?));
+            }
             "--no-unchanged-tests" => {
                 input.include_unchanged_tests = false;
                 explicit.include_unchanged_tests = true;
@@ -6964,6 +6985,13 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     let config = load_for_root(&input.root)?;
     apply_to_check_input(&mut input, &config, explicit);
     let format = input.format.clone();
+    if let Some(gap_ledger) = gap_ledger.as_ref() {
+        print!(
+            "{}",
+            render_check_gap_ledger_badge(gap_ledger, &format, &config)?
+        );
+        return Ok(());
+    }
     if matches!(format, OutputFormat::RepoExposureJson) {
         let classified = analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
         let stdout = std::io::stdout();
@@ -6988,6 +7016,36 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
         app::render_check_with_config(&output, &format, &config)?
     );
     Ok(())
+}
+
+fn render_check_gap_ledger_badge(
+    gap_ledger: &Path,
+    format: &OutputFormat,
+    config: &RiprConfig,
+) -> Result<String, String> {
+    let (kind, shields) = match format {
+        OutputFormat::RepoBadgeJson => (output::badge::BadgeKind::Ripr, false),
+        OutputFormat::RepoBadgeShields => (output::badge::BadgeKind::Ripr, true),
+        OutputFormat::RepoBadgePlusJson => (output::badge::BadgeKind::RiprPlus, false),
+        OutputFormat::RepoBadgePlusShields => (output::badge::BadgeKind::RiprPlus, true),
+        _ => {
+            return Err(
+                "check --gap-ledger is only supported with repo-badge-* formats".to_string(),
+            );
+        }
+    };
+    let text = std::fs::read_to_string(gap_ledger)
+        .map_err(|err| format!("failed to read gap ledger {}: {err}", gap_ledger.display()))?;
+    let policy = output::badge::BadgePolicy {
+        suppressions_path: config.suppressions().display_path(),
+        ..output::badge::BadgePolicy::default()
+    };
+    let summary = output::badge::repo_gap_ledger_badge_summary_from_json(&text, kind, policy)?;
+    if shields {
+        Ok(output::badge::render_shields_json(&summary))
+    } else {
+        Ok(output::badge::render_native_json(&summary))
+    }
 }
 
 pub(super) fn explain(args: &[String]) -> Result<(), String> {
@@ -8146,6 +8204,8 @@ mod tests {
                 ".ripr/gate-baseline.json",
                 "--delta",
                 "target/ripr/reports/baseline-debt-delta.json",
+                "--gap-ledger",
+                "target/ripr/reports/gap-decision-ledger.json",
                 "--gate",
                 "target/ripr/reports/gate-decision.json",
                 "--pr-guidance",
@@ -8160,6 +8220,9 @@ mod tests {
             Ok(RiprZeroStatusOptions {
                 baseline: Some(PathBuf::from(".ripr/gate-baseline.json")),
                 delta: PathBuf::from("target/ripr/reports/baseline-debt-delta.json"),
+                gap_ledger: Some(PathBuf::from(
+                    "target/ripr/reports/gap-decision-ledger.json"
+                )),
                 gate: Some(PathBuf::from("target/ripr/reports/gate-decision.json")),
                 pr_guidance: Some(PathBuf::from("target/ripr/review/comments.json")),
                 recommendation_calibration: Some(PathBuf::from(

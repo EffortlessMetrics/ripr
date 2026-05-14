@@ -476,13 +476,14 @@ ripr check --format badge-json
 ripr check --format badge-plus-json
 ripr check --format repo-badge-json
 ripr check --format repo-badge-plus-json
+ripr check --format repo-badge-json --gap-ledger target/ripr/reports/gap-decision-ledger.json
 ```
 
-Native schema `0.3`:
+Native schema `0.4`:
 
 ```json
 {
-  "schema_version": "0.3",
+  "schema_version": "0.4",
   "kind": "ripr",
   "scope": "repo",
   "basis": "seam_native",
@@ -500,6 +501,7 @@ Native schema `0.3`:
     "unknowns_test_efficiency": 0,
     "analyzed_findings": 0,
     "analyzed_seams": 120,
+    "analyzed_gap_records": 0,
     "analyzed_tests": 0
   },
   "reason_counts": {
@@ -525,15 +527,18 @@ Native schema `0.3`:
 
 Field contract:
 
-- `schema_version` — currently `"0.3"`. `0.2` added `scope`; `0.3` adds
-  `basis` and `counts.analyzed_seams`.
+- `schema_version` — currently `"0.4"`. `0.2` added `scope`; `0.3` adds
+  `basis` and `counts.analyzed_seams`; `0.4` adds
+  `basis = "gap_decision_ledger"` and `counts.analyzed_gap_records`.
 - `kind` — `"ripr"` or `"ripr_plus"`.
 - `scope` — `"diff"` for PR/diff artifacts, `"repo"` for public repo
   baseline artifacts.
 - `basis` — `"finding_exposure"` for legacy Finding/ExposureClass count
-  artifacts, `"seam_native"` for RepoSeam/SeamGripClass count artifacts.
-  Diff-scoped badge formats currently use `finding_exposure`; repo-scoped
-  badge formats use `seam_native`.
+  artifacts, `"seam_native"` for RepoSeam/SeamGripClass count artifacts, or
+  `"gap_decision_ledger"` when repo badge formats are explicitly rendered from
+  supplied GapRecord projection targets. Diff-scoped badge formats currently
+  use `finding_exposure`; repo-scoped badge formats use `seam_native` unless
+  `--gap-ledger` is supplied.
 - `message` — the headline count rendered as a string for Shields
   compatibility. It is a count, never a denominator or coverage fraction.
 - `counts.unsuppressed_exposure_gaps` — diff scope: unsuppressed
@@ -545,6 +550,9 @@ Field contract:
   finding-exposure basis; `0` for seam-native repo badges.
 - `counts.analyzed_seams` — number of classified seams considered by the
   seam-native basis; `0` for finding-exposure diff badges.
+- `counts.analyzed_gap_records` — number of GapRecord entries considered by
+  the gap-decision-ledger basis; `0` for finding-exposure and seam-native
+  badges.
 - `warnings` — advisory suppressions/config warnings that remain visible in
   native JSON. The Shields projection never includes warnings.
 
@@ -3322,9 +3330,9 @@ success.
 
 RIPR-SPEC-0017 defines the RIPR Zero status report. `ripr zero status` joins
 existing baseline ledgers, baseline debt deltas, gate decisions, PR guidance,
-and optional calibration or receipt artifacts so teams can see repo-level
-movement toward RIPR 0 without changing analyzer identity, gate policy, or
-advisory defaults.
+gap decision ledgers, and optional calibration or receipt artifacts so teams
+can see repo-level movement toward RIPR 0 without changing analyzer identity,
+gate policy, or advisory defaults.
 
 Command:
 
@@ -3332,6 +3340,7 @@ Command:
 ripr zero status \
   --baseline .ripr/gate-baseline.json \
   --delta target/ripr/reports/baseline-debt-delta.json \
+  --gap-ledger target/ripr/reports/gap-decision-ledger.json \
   --gate target/ripr/reports/gate-decision.json \
   --pr-guidance target/ripr/review/comments.json \
   --recommendation-calibration target/ripr/reports/recommendation-calibration.json \
@@ -3365,6 +3374,7 @@ JSON shape:
   "inputs": {
     "baseline": ".ripr/gate-baseline.json",
     "baseline_debt_delta": "target/ripr/reports/baseline-debt-delta.json",
+    "gap_decision_ledger": "target/ripr/reports/gap-decision-ledger.json",
     "gate_decision": "target/ripr/reports/gate-decision.json",
     "pr_guidance": "target/ripr/review/comments.json",
     "recommendation_calibration": null,
@@ -3372,6 +3382,7 @@ JSON shape:
   },
   "ripr_zero": {
     "state": "not_yet",
+    "target_source": "gap_decision_ledger",
     "visible_unresolved": 43,
     "new_policy_eligible": 1,
     "blocking_candidates": 0,
@@ -3424,6 +3435,8 @@ JSON shape:
     {
       "rank": 1,
       "source": "baseline_debt_delta",
+      "gap_id": null,
+      "canonical_gap_id": null,
       "seam_id": "67fc764ba37d77bd",
       "path": "src/pricing.rs",
       "line": 88,
@@ -3448,8 +3461,12 @@ Field contract:
 - `status` - `advisory` for complete reports and `incomplete` when required
   inputs are missing or unsupported.
 - `ripr_zero.state` - one of `achieved`, `not_yet`, or `unknown`.
+- `ripr_zero.target_source` - `gap_decision_ledger` when explicit GapRecord
+  RIPR Zero targets were supplied, otherwise `baseline_debt_delta`.
 - `ripr_zero.visible_unresolved` - visible unresolved behavioral test-grip gaps
-  under the supplied baseline and gate scope.
+  under the supplied baseline and gate scope, or explicit
+  `projection_eligibility.ripr_zero_count` GapRecord targets when a gap ledger
+  is supplied.
 - `ripr_zero.new_policy_eligible` - current policy-eligible gaps that are not
   covered by the reviewed baseline.
 - `ripr_zero.blocking_candidates` - current gate candidates that would block

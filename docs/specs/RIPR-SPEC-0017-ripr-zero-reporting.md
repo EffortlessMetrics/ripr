@@ -102,6 +102,7 @@ The command surface is:
 ripr zero status \
   --baseline .ripr/gate-baseline.json \
   --delta target/ripr/reports/baseline-debt-delta.json \
+  --gap-ledger target/ripr/reports/gap-decision-ledger.json \
   --gate target/ripr/reports/gate-decision.json \
   --pr-guidance target/ripr/review/comments.json \
   --recommendation-calibration target/ripr/reports/recommendation-calibration.json \
@@ -116,6 +117,7 @@ Required inputs:
 Recommended inputs:
 
 - reviewed gate baseline ledger;
+- gap decision ledger with explicit `ripr_zero_count` targets;
 - gate decision JSON.
 
 Optional inputs:
@@ -183,6 +185,7 @@ The JSON report uses schema version `0.1`:
   "inputs": {
     "baseline": ".ripr/gate-baseline.json",
     "baseline_debt_delta": "target/ripr/reports/baseline-debt-delta.json",
+    "gap_decision_ledger": "target/ripr/reports/gap-decision-ledger.json",
     "gate_decision": "target/ripr/reports/gate-decision.json",
     "pr_guidance": "target/ripr/review/comments.json",
     "recommendation_calibration": null,
@@ -190,6 +193,7 @@ The JSON report uses schema version `0.1`:
   },
   "ripr_zero": {
     "state": "not_yet",
+    "target_source": "gap_decision_ledger",
     "visible_unresolved": 43,
     "new_policy_eligible": 1,
     "blocking_candidates": 0,
@@ -264,8 +268,12 @@ Field contract:
 - `status` is `advisory` unless required inputs are missing or invalid, in
   which case the report may use `incomplete`.
 - `ripr_zero.state` is one of `achieved`, `not_yet`, or `unknown`.
+- `ripr_zero.target_source` is `gap_decision_ledger` when explicit GapRecord
+  RIPR Zero targets were supplied, otherwise `baseline_debt_delta`.
 - `ripr_zero.visible_unresolved` counts visible unresolved gaps under the
-  supplied baseline and gate scope.
+  supplied baseline and gate scope, or explicit
+  `projection_eligibility.ripr_zero_count` GapRecord targets when a gap ledger
+  is supplied.
 - `baseline.metadata.*` counts reviewed metadata health. Missing metadata does
   not suppress or hide the underlying baseline entry.
 - `debt_delta.*` mirrors baseline debt movement buckets so PR summaries can

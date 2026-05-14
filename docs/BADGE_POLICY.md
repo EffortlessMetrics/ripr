@@ -3,8 +3,9 @@
 `ripr` exposes two badges. Both count **unresolved** static exposure gaps —
 inbox-zero, not coverage. Diff-scoped badges preserve the legacy Finding
 exposure basis; repo-scoped public badges use seam-native classified repo
-seams. This doc fixes the vocabulary, the counting rule, the JSON shape, and
-what the badge does and does not claim.
+seams by default and can use explicit gap-decision-ledger targets when supplied.
+This doc fixes the vocabulary, the counting rule, the JSON shape, and what the
+badge does and does not claim.
 
 This is the contract that `ripr check --format badge-json` and
 `--format badge-shields` will render against. It pairs with
@@ -313,6 +314,13 @@ Repo-scoped badge artifacts use the `seam_native` basis. These counts come
 from `SeamGripClass` in RIPR-SPEC-0005 and consume the configured seam
 severity from `ripr.toml`.
 
+When `ripr check --format repo-badge-json --gap-ledger <path>` or another
+repo-badge format supplies a gap decision ledger, the native JSON uses
+`basis = "gap_decision_ledger"` and counts explicit
+`projection_eligibility.ripr_zero_count` or `ripr_plus_count` targets instead
+of recalculating from seam-native counts. That path is for policy-backed badge
+refreshes; the default repo badge behavior remains seam-native.
+
 | Seam grip class | Counts in repo `ripr` | Notes |
 | --- | :---: | --- |
 | `weakly_gripped` | yes, unless configured `off` | Headline-eligible seam gap. |
@@ -379,7 +387,7 @@ output boundary; it is never the source of truth.
 
 ```json
 {
-  "schema_version": "0.3",
+  "schema_version": "0.4",
   "kind": "ripr",
   "scope": "repo",
   "basis": "seam_native",
@@ -397,6 +405,7 @@ output boundary; it is never the source of truth.
     "unknowns_test_efficiency": 0,
     "analyzed_findings": 0,
     "analyzed_seams": 120,
+    "analyzed_gap_records": 0,
     "analyzed_tests": 0
   },
   "reason_counts": {
@@ -425,7 +434,8 @@ otherwise identical so consumers can parse one shape.
 
 `schema_version` is the badge-native schema. Bumping it is a public-contract
 change and must be called out in the PR. `0.3` adds `basis` and
-`counts.analyzed_seams`.
+`counts.analyzed_seams`; `0.4` adds `basis = "gap_decision_ledger"` and
+`counts.analyzed_gap_records`.
 
 ### Scope and basis metadata (native only)
 
@@ -434,7 +444,7 @@ field distinguishes legacy diff finding counts from seam-native repo counts:
 
 ```json
 {
-  "schema_version": "0.3",
+  "schema_version": "0.4",
   "kind": "ripr",
   "scope": "diff",
   "basis": "finding_exposure",
@@ -451,6 +461,8 @@ field distinguishes legacy diff finding counts from seam-native repo counts:
   aggregation, currently used by diff-scoped badge artifacts.
 - `"basis": "seam_native"` — `RepoSeam`/`SeamGripClass` aggregation,
   currently used by repo-scoped badge artifacts.
+- `"basis": "gap_decision_ledger"` — explicit GapRecord projection targets,
+  used only when repo badge formats are invoked with `--gap-ledger`.
 
 The Shields projection remains exactly four fields. Scope and basis metadata
 live only in native JSON, docs, and consumer tooling.
