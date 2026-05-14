@@ -4583,6 +4583,7 @@ ripr pr-ledger record \
   --baseline-delta target/ripr/reports/baseline-debt-delta.json \
   --zero-status target/ripr/reports/ripr-zero-status.json \
   --pr-guidance target/ripr/review/comments.json \
+  --gap-ledger target/ripr/reports/gap-decision-ledger.json \
   --recommendation-calibration target/ripr/reports/recommendation-calibration.json \
   --agent-receipt target/ripr/reports/agent-receipt.json \
   --coverage target/ripr/reports/coverage-summary.json \
@@ -4603,7 +4604,8 @@ authority for configured gate modes. Generated GitHub CI runs
 `ripr pr-ledger record` on pull requests when `target/ripr/review/comments.json`
 exists, adds optional gate, baseline delta, RIPR Zero, recommendation
 calibration, agent receipt, coverage, label, and history inputs when present,
-uploads `pr-evidence-ledger.{json,md}` with the normal report packet, and
+and may add a gap decision ledger input when an explicit ledger artifact exists.
+It uploads `pr-evidence-ledger.{json,md}` with the normal report packet and
 appends a PR movement card to the job summary. The report itself must not fail
 CI, rewrite baselines, post comments, edit source, generate tests, rerun
 analysis, call an LLM, or run mutation testing.
@@ -4629,6 +4631,7 @@ JSON shape:
     "baseline_debt_delta": "target/ripr/reports/baseline-debt-delta.json",
     "ripr_zero_status": "target/ripr/reports/ripr-zero-status.json",
     "pr_guidance": "target/ripr/review/comments.json",
+    "gap_decision_ledger": "target/ripr/reports/gap-decision-ledger.json",
     "recommendation_calibration": "target/ripr/reports/recommendation-calibration.json",
     "agent_receipt": "target/ripr/reports/agent-receipt.json",
     "coverage": "target/ripr/reports/coverage-summary.json",
@@ -4700,7 +4703,8 @@ JSON shape:
     }
   },
   "top_repair_route": {
-    "source": "ripr_zero_status",
+    "source": "gap_decision_ledger",
+    "gap_id": "gap:pr:pricing:threshold-boundary",
     "canonical_gap_id": "pricing::discount::threshold_equality",
     "seam_id": "67fc764ba37d77bd",
     "path": "src/pricing.rs",
@@ -4752,10 +4756,13 @@ Field contract:
 - `coverage_grip_frontier.*` - keeps coverage movement separate from RIPR
   evidence movement. Coverage movement is execution evidence, not test
   adequacy.
-- `top_repair_route` - copied from existing PR guidance, RIPR Zero status, gate
-  decision, agent packet, or receipt artifacts. Missing fields are `null` plus
-  warnings, not invented. `top_repair_route.canonical_gap_id` is copied from
-  the selected source artifact when available.
+- `top_repair_route` - copied from an explicit gap decision ledger when it
+  supplies a repairable, stable Rust, PR-local gap record with a verification
+  command. If no such gap record is present, the ledger falls back to existing
+  PR guidance, RIPR Zero status, gate decision, agent packet, or receipt
+  artifacts. Missing fields are `null` plus warnings, not invented.
+  `top_repair_route.gap_id` and `top_repair_route.canonical_gap_id` are copied
+  from the selected source artifact when available.
 - `history.*` - present only when prior ledger history or previous ledger
   summary is supplied.
 - `warnings[]` - missing inputs, unavailable coverage, unsupported schemas,
