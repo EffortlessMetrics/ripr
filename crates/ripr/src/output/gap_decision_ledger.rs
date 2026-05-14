@@ -14,8 +14,24 @@ pub(crate) const DEFAULT_GAP_DECISION_LEDGER_MD_OUT: &str =
 pub(crate) struct GapDecisionLedgerInput {
     pub(crate) root: String,
     pub(crate) generated_at: String,
+    pub(crate) source_kind: GapDecisionLedgerSourceKind,
     pub(crate) records_path: String,
     pub(crate) records_json: Result<String, String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum GapDecisionLedgerSourceKind {
+    Records,
+    RepoExposure,
+}
+
+impl GapDecisionLedgerSourceKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Records => "records",
+            Self::RepoExposure => "repo_exposure",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -32,6 +48,7 @@ pub(crate) struct GapDecisionLedgerReport {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 struct GapDecisionLedgerInputs {
+    source_kind: &'static str,
     records: String,
 }
 
@@ -174,7 +191,7 @@ pub(crate) fn build_gap_decision_ledger_report(
 ) -> GapDecisionLedgerReport {
     let mut warnings = Vec::new();
     let records = match input.records_json {
-        Ok(contents) => match parse_gap_records_json(&contents) {
+        Ok(contents) => match parse_gap_decision_source(input.source_kind, &contents) {
             Ok(records) => records,
             Err(err) => {
                 warnings.push(format!("parse {} failed: {err}", input.records_path));
@@ -206,6 +223,7 @@ pub(crate) fn build_gap_decision_ledger_report(
         root: input.root,
         generated_at: input.generated_at,
         inputs: GapDecisionLedgerInputs {
+            source_kind: input.source_kind.as_str(),
             records: input.records_path,
         },
         summary,
@@ -316,6 +334,339 @@ pub(crate) fn parse_gap_records_json(contents: &str) -> Result<Vec<GapRecord>, S
     let value: Value =
         serde_json::from_str(contents).map_err(|err| format!("invalid JSON: {err}"))?;
     gap_records_from_value(&value)
+}
+
+fn parse_gap_decision_source(
+    source_kind: GapDecisionLedgerSourceKind,
+    contents: &str,
+) -> Result<Vec<GapRecord>, String> {
+    match source_kind {
+        GapDecisionLedgerSourceKind::Records => parse_gap_records_json(contents),
+        GapDecisionLedgerSourceKind::RepoExposure => gap_records_from_repo_exposure_json(contents),
+    }
+}
+
+fn gap_records_from_repo_exposure_json(contents: &str) -> Result<Vec<GapRecord>, String> {
+    let value: Value =
+        serde_json::from_str(contents).map_err(|err| format!("invalid JSON: {err}"))?;
+    let seams = value
+        .get("seams")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "expected repo exposure object with seams array".to_string())?;
+    let mut records = Vec::new();
+    for (index, seam) in seams.iter().enumerate() {
+        let Some(record) = gap_record_from_repo_exposure_seam(seam) else {
+            continue;
+        };
+        if record.gap_id.is_empty() {
+            return Err(format!("seam {index} produced an empty gap_id"));
+        }
+        records.push(record);
+    }
+    Ok(records)
+}
+
+fn gap_record_from_repo_exposure_seam(seam: &Value) -> Option<GapRecord> {
+    let evidence = seam.get("evidence_record")?;
+    let canonical_item = evidence.get("canonical_item")?;
+    let gap_state = string_at(canonical_item, &["gap_state"]).unwrap_or("unknown");
+    let actionability = string_at(canonical_item, &["actionability"]).unwrap_or("unknown");
+    let seam_kind = string_at(evidence, &["seam_kind"])
+        .or_else(|| string_at(canonical_item, &["evidence_class"]))
+        .unwrap_or("unknown");
+    let repairability = repairability_from_evidence(gap_state, actionability);
+    let repair_route =
+        repair_route_from_evidence(evidence, canonical_item, seam_kind, repairability);
+    let verify_command = string_at(canonical_item, &["verify_command"])
+        .or_else(|| string_at(evidence, &["recommendation", "verify_command"]));
+    let verification_commands = verify_command
+        .map(|command| vec![command.to_string()])
+        .unwrap_or_default();
+    let static_limits = array_values_at(canonical_item, &["static_limits"])
+        .or_else(|| array_values_at(evidence, &["static_limits"]))
+        .unwrap_or_default();
+    let static_limit_kind = string_at(canonical_item, &["static_limit_kind"])
+        .or_else(|| string_at(evidence, &["static_limit_kind"]))
+        .or_else(|| {
+            static_limits.iter().find_map(|limit| {
+                string_at(limit, &["static_limit_kind"]).or_else(|| string_at(limit, &["kind"]))
+            })
+        })
+        .map(ToString::to_string);
+    let static_limit_detail = string_at(canonical_item, &["static_limit_detail"])
+        .or_else(|| string_at(evidence, &["static_limit_detail"]))
+        .or_else(|| {
+            static_limits.iter().find_map(|limit| {
+                string_at(limit, &["detail"])
+                    .or_else(|| string_at(limit, &["reason"]))
+                    .or_else(|| string_at(limit, &["message"]))
+            })
+        })
+        .map(ToString::to_string);
+    let receipt_command = string_at(canonical_item, &["receipt_command"])
+        .or_else(|| string_at(evidence, &["receipt_command"]))
+        .map(ToString::to_string);
+    let seam_id = string_at(evidence, &["seam_id"])
+        .or_else(|| string_at(seam, &["seam_id"]))
+        .unwrap_or("unknown-seam");
+    let canonical_gap_id = string_at(evidence, &["canonical_gap_id"])
+        .or_else(|| string_at(canonical_item, &["canonical_gap_id"]))
+        .map(ToString::to_string)
+        .unwrap_or_else(|| format!("gap:rust:{seam_id}"));
+    let gap_id = format!("gap:repo:{canonical_gap_id}");
+    let file = string_at(evidence, &["location", "file"])
+        .or_else(|| string_at(seam, &["file"]))
+        .map(ToString::to_string);
+    let line = u64_at(evidence, &["location", "line"]).or_else(|| u64_at(seam, &["line"]));
+    let owner = string_at(evidence, &["owner"]).map(ToString::to_string);
+    let anchor = GapAnchor {
+        file,
+        line,
+        owner,
+        dedupe_fingerprint: Some(canonical_gap_id.clone()),
+    };
+    let projection_eligibility = projection_eligibility_from_repo_evidence(
+        repairability,
+        repair_route.is_some(),
+        !verification_commands.is_empty(),
+        anchor.file.is_some() && anchor.line.is_some(),
+        gap_state,
+    );
+
+    Some(GapRecord {
+        gap_id,
+        canonical_gap_id,
+        kind: gap_kind_from_evidence(gap_state, seam_kind).to_string(),
+        language: "rust".to_string(),
+        language_status: "stable".to_string(),
+        scope: "repo_scoped".to_string(),
+        evidence_class: seam_kind.to_string(),
+        gap_state: gap_state.to_string(),
+        policy_state: if gap_state == "actionable" {
+            "new".to_string()
+        } else {
+            "not_policy_targeted".to_string()
+        },
+        repairability: repairability.to_string(),
+        repair_route,
+        static_limit_kind,
+        static_limit_detail,
+        static_limits,
+        anchor: Some(anchor),
+        evidence_ids: evidence_ids_from_repo_evidence(evidence, seam_id),
+        projection_eligibility,
+        verification_commands,
+        receipt_command,
+        regeneration_commands: Vec::new(),
+        receipt: None,
+        safe_gate_predicate: None,
+        authority_boundary: "gate_decision_artifact_only".to_string(),
+    })
+}
+
+fn array_values_at(value: &Value, path: &[&str]) -> Option<Vec<Value>> {
+    let mut cursor = value;
+    for segment in path {
+        cursor = cursor.get(*segment)?;
+    }
+    cursor.as_array().map(|values| values.to_vec())
+}
+
+fn string_at<'a>(value: &'a Value, path: &[&str]) -> Option<&'a str> {
+    let mut cursor = value;
+    for segment in path {
+        cursor = cursor.get(*segment)?;
+    }
+    cursor.as_str()
+}
+
+fn u64_at(value: &Value, path: &[&str]) -> Option<u64> {
+    let mut cursor = value;
+    for segment in path {
+        cursor = cursor.get(*segment)?;
+    }
+    cursor.as_u64()
+}
+
+fn repairability_from_evidence(gap_state: &str, actionability: &str) -> &'static str {
+    match gap_state {
+        "actionable"
+            if matches!(
+                actionability,
+                "add_focused_test" | "upgrade_assertion" | "extend_related_test"
+            ) =>
+        {
+            "repairable"
+        }
+        "already_observed" | "internal_only" => "no_action",
+        "static_limitation" => "analyzer_limitation",
+        _ => "unknown",
+    }
+}
+
+fn gap_kind_from_evidence(gap_state: &str, seam_kind: &str) -> &'static str {
+    match gap_state {
+        "already_observed" => "NoActionAlreadyObserved",
+        "internal_only" => "NoActionInternal",
+        "static_limitation" => "StaticLimitation",
+        "actionable" => match seam_kind {
+            "predicate_boundary" | "match_arm" => "MissingBoundaryAssertion",
+            "error_variant" => "MissingErrorDiscriminator",
+            "field_construction" | "return_value" => "MissingValueAssertion",
+            "call_presence" | "side_effect" => "MissingSideEffectObserver",
+            _ => "Unknown",
+        },
+        _ => "Unknown",
+    }
+}
+
+fn repair_route_from_evidence(
+    evidence: &Value,
+    canonical_item: &Value,
+    seam_kind: &str,
+    repairability: &str,
+) -> Option<GapRepairRoute> {
+    if repairability != "repairable" {
+        return None;
+    }
+    let route_kind = match seam_kind {
+        "predicate_boundary" | "match_arm" => "AddBoundaryAssertion",
+        "error_variant" => "AddErrorAssertion",
+        "field_construction" | "return_value" => "AddValueAssertion",
+        "call_presence" | "side_effect" => "AddSideEffectObserver",
+        _ => "AddValueAssertion",
+    };
+    Some(GapRepairRoute {
+        route_kind: route_kind.to_string(),
+        target_file: string_at(canonical_item, &["related_test", "file"])
+            .or_else(|| string_at(evidence, &["recommendation", "recommended_test", "file"]))
+            .map(ToString::to_string),
+        target_line: u64_at(canonical_item, &["related_test", "line"]),
+        related_test: string_at(canonical_item, &["related_test", "name"]).map(ToString::to_string),
+        assertion_shape: string_at(evidence, &["recommendation", "assertion_shape", "example"])
+            .or_else(|| string_at(canonical_item, &["recommended_repair"]))
+            .map(ToString::to_string),
+        changed_behavior: first_raw_finding_expression(evidence).map(ToString::to_string),
+        stop_conditions: vec![
+            "Stop if the related test is outside the current workspace.".to_string(),
+            "Stop if the suggested assertion would require changing production behavior first."
+                .to_string(),
+        ],
+    })
+}
+
+fn first_raw_finding_expression(evidence: &Value) -> Option<&str> {
+    evidence
+        .get("raw_findings")
+        .and_then(Value::as_array)?
+        .first()
+        .and_then(|finding| finding.get("expression"))
+        .and_then(Value::as_str)
+}
+
+fn projection_eligibility_from_repo_evidence(
+    repairability: &str,
+    has_repair_route: bool,
+    has_verify_command: bool,
+    has_local_anchor: bool,
+    gap_state: &str,
+) -> BTreeMap<String, ProjectionEligibility> {
+    let mut projections = BTreeMap::new();
+    insert_projection(
+        &mut projections,
+        "ci_summary",
+        true,
+        "repo_scoped_gap_record",
+    );
+    insert_projection(
+        &mut projections,
+        "report_packet",
+        true,
+        "all_gap_records_are_reportable",
+    );
+    insert_projection(
+        &mut projections,
+        "pr_comment",
+        false,
+        "repo_scoped_not_pr_local",
+    );
+    insert_projection(
+        &mut projections,
+        "gate_candidate",
+        false,
+        "repo_scoped_not_pr_local",
+    );
+    let repairable = repairability == "repairable" && has_repair_route && has_verify_command;
+    insert_projection(
+        &mut projections,
+        "agent_packet",
+        repairable,
+        if repairable {
+            "bounded_repair_route"
+        } else {
+            "not_repairable"
+        },
+    );
+    insert_projection(
+        &mut projections,
+        "lsp_diagnostic",
+        repairable && has_local_anchor,
+        if repairable && has_local_anchor {
+            "local_file_scope"
+        } else {
+            "not_repairable_or_missing_anchor"
+        },
+    );
+    insert_projection(
+        &mut projections,
+        "ripr_zero_count",
+        repairable && gap_state == "actionable",
+        if repairable && gap_state == "actionable" {
+            "repo_scoped_policy_targeted_rust_gap"
+        } else {
+            "not_unresolved_repairable_repo_gap"
+        },
+    );
+    insert_projection(
+        &mut projections,
+        "ripr_plus_count",
+        repairable && gap_state == "actionable",
+        if repairable && gap_state == "actionable" {
+            "repo_scoped_advisory_rust_gap"
+        } else {
+            "not_unresolved_repairable_repo_gap"
+        },
+    );
+    projections
+}
+
+fn insert_projection(
+    projections: &mut BTreeMap<String, ProjectionEligibility>,
+    name: &str,
+    eligible: bool,
+    reason: &str,
+) {
+    projections.insert(
+        name.to_string(),
+        ProjectionEligibility {
+            eligible,
+            reason: reason.to_string(),
+        },
+    );
+}
+
+fn evidence_ids_from_repo_evidence(evidence: &Value, seam_id: &str) -> Vec<String> {
+    let mut ids = vec![seam_id.to_string()];
+    if let Some(raw_findings) = evidence.get("raw_findings").and_then(Value::as_array) {
+        for finding in raw_findings {
+            if let Some(source_id) = finding.get("source_id").and_then(Value::as_str)
+                && !ids.iter().any(|id| id == source_id)
+            {
+                ids.push(source_id.to_string());
+            }
+        }
+    }
+    ids
 }
 
 fn gap_records_from_value(value: &Value) -> Result<Vec<GapRecord>, String> {
@@ -650,6 +1001,7 @@ mod tests {
         build_gap_decision_ledger_report(GapDecisionLedgerInput {
             root: ".".to_string(),
             generated_at: "test".to_string(),
+            source_kind: GapDecisionLedgerSourceKind::Records,
             records_path: "records.json".to_string(),
             records_json: Ok(value.to_string()),
         })
@@ -660,6 +1012,7 @@ mod tests {
         let report = build_gap_decision_ledger_report(GapDecisionLedgerInput {
             root: ".".to_string(),
             generated_at: "test".to_string(),
+            source_kind: GapDecisionLedgerSourceKind::Records,
             records_path: "fixtures/gap-decision-ledger/corpus.json".to_string(),
             records_json: Ok(corpus()),
         });
@@ -695,6 +1048,7 @@ mod tests {
         let report = build_gap_decision_ledger_report(GapDecisionLedgerInput {
             root: ".".to_string(),
             generated_at: "test".to_string(),
+            source_kind: GapDecisionLedgerSourceKind::Records,
             records_path: "fixtures/gap-decision-ledger/corpus.json".to_string(),
             records_json: Ok(corpus()),
         });
@@ -765,6 +1119,7 @@ mod tests {
         let report = build_gap_decision_ledger_report(GapDecisionLedgerInput {
             root: ".".to_string(),
             generated_at: "test".to_string(),
+            source_kind: GapDecisionLedgerSourceKind::Records,
             records_path: "missing.json".to_string(),
             records_json: Err("read missing.json failed: not found".to_string()),
         });
@@ -782,6 +1137,7 @@ mod tests {
         let invalid_json = build_gap_decision_ledger_report(GapDecisionLedgerInput {
             root: ".".to_string(),
             generated_at: "test".to_string(),
+            source_kind: GapDecisionLedgerSourceKind::Records,
             records_path: "bad.json".to_string(),
             records_json: Ok("{".to_string()),
         });
@@ -826,6 +1182,7 @@ mod tests {
         let report = build_gap_decision_ledger_report(GapDecisionLedgerInput {
             root: ".".to_string(),
             generated_at: "test".to_string(),
+            source_kind: GapDecisionLedgerSourceKind::Records,
             records_path: "bad.json".to_string(),
             records_json: Ok(record.to_string()),
         });
