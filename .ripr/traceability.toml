@@ -2719,6 +2719,7 @@ code = [
 outputs = [
   "docs/specs/RIPR-SPEC-0043-presentation-text-evidence.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/handoffs/2026-05-14-presentation-text-consumer-handoff.md",
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0005-user-visible-output-evidence.md",
   "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md",
@@ -2831,6 +2832,7 @@ outputs = [
   "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
   "docs/specs/RIPR-SPEC-0021-evidence-record.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/handoffs/2026-05-14-presentation-text-consumer-handoff.md",
   "docs/specs/README.md",
   "docs/DOCUMENTATION.md",
   "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md",

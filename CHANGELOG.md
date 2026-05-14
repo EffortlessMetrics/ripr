@@ -97,6 +97,12 @@ Planned scope:
   text, and output-observer repair counts. This keeps the Lane 1 quality loop
   repo-local and advisory without changing PR/CI rendering, gates, scores,
   generated tests, provider calls, or mutation execution.
+- Added the Lane 1 presentation-text consumer handoff. It tells downstream
+  PR/CI, editor, agent, and report lanes to render canonical evidence items
+  before raw findings, keep raw findings as supporting evidence, preserve the
+  Lane 1 evidence-state versus policy-overlay boundary, and avoid inferring
+  actionability, user test debt, or mutation-first repairs from raw
+  `exposed`/`static_unknown` labels.
 - Python preview related-test matching now treats free-function calls more
   conservatively: module import aliases such as `pricing.apply_discount(...)`
   still relate to the owner, but unrelated object method calls no longer make a
