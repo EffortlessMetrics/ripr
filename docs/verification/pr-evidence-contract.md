@@ -77,6 +77,19 @@ placement and policy state:
 The review-comments schema names producer caps `rendering_limits` so they are
 not confused with PR evidence `advisory_limits`.
 
+Required review-comments fields:
+
+| Field | Contract |
+| --- | --- |
+| `schema_version` | Review-comments schema version. |
+| `tool` | `ripr`. |
+| `status` | `advisory`, `incomplete`, or `error`. |
+| `root` | Workspace root used by the producer. |
+| `base` / `head` | Git revisions used for the diff. |
+| `mode` | Public RIPR analysis mode label. |
+| `rendering_limits` | Producer-side caps for comments and summary items. |
+| `limits_note` | Human-readable explanation of rendering limits. |
+
 | Collection | Contract |
 | --- | --- |
 | `comments[]` | Changed-line guidance that may become non-blocking annotations. |
