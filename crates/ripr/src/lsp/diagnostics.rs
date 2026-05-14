@@ -1002,6 +1002,41 @@ mod seam_diagnostic_tests {
             "stale gap artifact must not publish diagnostics"
         );
 
+        fs::write(&ledger_path, "{")
+            .map_err(|err| format!("write malformed ledger failed: {err}"))?;
+        append_gap_record_diagnostics(&root, &[LanguageId::Rust], &mut grouped);
+        assert!(
+            grouped.is_empty(),
+            "malformed gap artifact must not publish diagnostics"
+        );
+
+        let first_action = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "kind": "first_useful_action",
+            "root": ".",
+            "status": "actionable",
+            "selected": {
+                "seam_id": "seam:pricing",
+                "path": "src/pricing.rs"
+            },
+            "target": {
+                "file": "tests/pricing.rs",
+                "related_test": "tests/pricing.rs::handles_threshold"
+            },
+            "commands": {
+                "verify": "ripr agent verify --root . --json",
+                "receipt": "ripr agent receipt --root . --json"
+            }
+        });
+        fs::write(&ledger_path, first_action.to_string())
+            .map_err(|err| format!("write wrong-kind ledger failed: {err}"))?;
+        append_gap_record_diagnostics(&root, &[LanguageId::Rust], &mut grouped);
+        assert!(
+            grouped.is_empty(),
+            "non-ledger gap artifact must not publish diagnostics"
+        );
+
         let mut wrong_root = gap_ledger_json(vec![gap_record(true)]);
         wrong_root["root"] = serde_json::json!("/other/workspace");
         fs::write(&ledger_path, wrong_root.to_string())
