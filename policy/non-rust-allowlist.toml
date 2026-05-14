@@ -80,6 +80,15 @@ classification = "docs"
 reason = "Documentation, examples, snippets, and reference material."
 covered_by = ["cargo xtask check-doc-index", "cargo xtask check-spec-format"]
 
+[[allow]]
+glob = "schemas/**/*.json"
+kind = "json_schema"
+owner = "contracts"
+surface = "docs"
+classification = "config"
+reason = "Machine-readable verification contract schemas for badges and PR evidence."
+covered_by = ["cargo xtask check-file-policy", "cargo xtask check-output-contracts"]
+
 # ---------------------------------------------------------------------------
 # Rust workspace metadata
 # ---------------------------------------------------------------------------

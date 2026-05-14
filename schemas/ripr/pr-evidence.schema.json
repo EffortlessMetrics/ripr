@@ -1,0 +1,219 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.effortlessmetrics.dev/ripr/pr-evidence.schema.json",
+  "title": "RIPR PR Evidence",
+  "description": "Canonical diff-scoped PR evidence summary for review, agent routing, and mutation routing.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tool",
+    "kind",
+    "scope",
+    "status",
+    "root",
+    "base",
+    "head",
+    "summary",
+    "artifacts",
+    "warnings",
+    "advisory_limits"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.1"
+    },
+    "tool": {
+      "const": "ripr"
+    },
+    "kind": {
+      "const": "pr_evidence"
+    },
+    "scope": {
+      "const": "diff"
+    },
+    "status": {
+      "enum": [
+        "advisory",
+        "incomplete",
+        "error"
+      ]
+    },
+    "root": {
+      "type": "string",
+      "minLength": 1
+    },
+    "base": {
+      "type": "string",
+      "minLength": 1
+    },
+    "head": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/artifact"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/warning"
+      }
+    },
+    "advisory_limits": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "$defs": {
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "changed_files",
+        "comments",
+        "summary_only",
+        "suppressed",
+        "weakly_exposed",
+        "reachable_unrevealed",
+        "no_static_path",
+        "severe_gaps",
+        "requires_targeted_mutation",
+        "ripr_severe_gap"
+      ],
+      "properties": {
+        "changed_files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "comments": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "summary_only": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "suppressed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "weakly_exposed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reachable_unrevealed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "no_static_path": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "severe_gaps": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requires_targeted_mutation": {
+          "type": "boolean"
+        },
+        "ripr_severe_gap": {
+          "type": "boolean"
+        },
+        "routing_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "path",
+        "kind",
+        "scope",
+        "available"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "json",
+            "markdown",
+            "summary",
+            "receipt",
+            "other"
+          ]
+        },
+        "scope": {
+          "enum": [
+            "diff",
+            "repo",
+            "release"
+          ]
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "required": {
+          "type": "boolean"
+        }
+      }
+    },
+    "warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "message"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "missing_artifact",
+            "invalid_json",
+            "schema_drift",
+            "bad_base_head",
+            "empty_evidence",
+            "tool_error",
+            "other"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}
