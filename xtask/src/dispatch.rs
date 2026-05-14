@@ -48,6 +48,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::Goals(args) => super::goals(&args),
         XtaskCommand::Reports(args) => super::reports::reports(&args),
         XtaskCommand::Receipts(args) => super::reports::receipts(&args),
+        XtaskCommand::Worktree(args) => super::worktree(&args),
         XtaskCommand::GoldenDrift => super::reports::golden_drift(),
         XtaskCommand::CiFast => super::ci_fast(),
         XtaskCommand::CiFull => super::ci_full(),

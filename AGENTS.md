@@ -133,6 +133,8 @@ policy allowlists, ensure `target/ripr/reports`, and write a shape report.
 `cargo xtask pr-summary` writes a local reviewer packet from git diff/status.
 `cargo xtask fix-pr` runs safe shaping and then refreshes the PR summary.
 `cargo xtask precommit` is the cheap non-mutating guardrail.
+`cargo xtask worktree doctor` reports dirty main, branches behind main,
+generated residue, and broad untracked scope before PR work proceeds.
 `cargo xtask check-pr` is the review-ready non-release gate.
 
 See `docs/PR_AUTOMATION.md` for the shape/check/guide model and the planned

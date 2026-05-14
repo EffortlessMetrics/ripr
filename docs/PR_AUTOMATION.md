@@ -75,6 +75,10 @@ sections of the reviewer packet without being treated as production behavior.
 `precommit` is the cheap non-mutating guardrail. It checks formatting and the
 policy surfaces that should fail quickly before review.
 
+`worktree doctor` is the agent hygiene check. It reports dirty `main`
+worktrees, branches behind `origin/main`, generated badge/target residue, and
+broad source-of-truth diffs that lack an obvious work item marker.
+
 `check-pr` is the review-ready local gate. It runs the current fast CI lane,
 then clippy, docs, and PR summary generation. It intentionally leaves
 release/package verification to `ci-full` or release-specific workflows.
@@ -472,6 +476,7 @@ cargo xtask check-file-policy
 cargo xtask check-executable-files
 cargo xtask check-workflows
 cargo xtask check-droid-review-config
+cargo xtask worktree doctor
 cargo xtask check-spec-format
 cargo xtask check-fixture-contracts
 cargo xtask check-traceability
