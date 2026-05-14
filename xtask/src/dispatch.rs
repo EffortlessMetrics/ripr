@@ -73,6 +73,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckCampaign => super::check_campaign(),
         XtaskCommand::CheckPrShape => super::check_pr_shape(),
         XtaskCommand::CheckGenerated => super::check_generated(),
+        XtaskCommand::CheckBadgeDiffPolicy => super::check_badge_diff_policy(),
         XtaskCommand::CheckGeneratedClean => super::check_generated_clean(),
         XtaskCommand::CheckDependencies => super::check_dependencies(),
         XtaskCommand::CheckSupplyChain => super::check_supply_chain(),

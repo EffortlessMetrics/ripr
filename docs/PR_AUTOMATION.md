@@ -78,8 +78,9 @@ policy surfaces that should fail quickly before review.
 `check-pr` is the review-ready local gate. It runs the current fast CI lane,
 then clippy, docs, and PR summary generation. It intentionally leaves
 release/package verification to `ci-full` or release-specific workflows.
-Its fast policy lane includes `check-generated-clean`, which rejects generated
-badge endpoint diffs and target/sample build residue in ordinary PRs.
+Its fast policy lane includes `check-badge-diff-policy`, which rejects
+generated badge endpoint diffs in ordinary PRs, and `check-generated-clean`,
+which rejects generated target/sample build residue.
 
 `fixtures` validates fixture contract shape, runs `ripr check` for fixture
 directories when they exist, writes actual outputs under
@@ -485,6 +486,7 @@ cargo xtask markdown-links
 cargo xtask check-campaign
 cargo xtask check-pr-shape
 cargo xtask check-generated
+cargo xtask check-badge-diff-policy
 cargo xtask check-generated-clean
 ```
 

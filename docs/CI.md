@@ -252,6 +252,7 @@ cargo xtask markdown-links
 cargo xtask check-campaign
 cargo xtask check-pr-shape
 cargo xtask check-generated
+cargo xtask check-badge-diff-policy
 cargo xtask check-generated-clean
 cargo xtask check-dependencies
 cargo xtask check-process-policy
@@ -301,8 +302,10 @@ runs `shape`, refreshes `pr-summary`, and writes a local fix-pr report.
 `pr-summary` writes `target/ripr/reports/pr-summary.md` from git diff/status.
 `precommit` is the cheap non-mutating local guardrail. `check-pr` is the
 review-ready local gate and intentionally does not run package or publish
-dry-run checks. `check-generated-clean` fails ordinary PRs that carry generated
-badge endpoint diffs or target/sample build residue. `fixtures` and
+dry-run checks. `check-badge-diff-policy` fails ordinary PRs that carry
+generated badge endpoint diffs, while `check-generated-clean` fails generated
+target/sample build residue and shares the same badge endpoint boundary.
+`fixtures` and
 `goldens check` validate the current fixture and
 expected-output scaffolding without accepting output drift. `golden-drift`
 writes advisory Markdown and JSON summaries of semantic expected-output drift
@@ -351,6 +354,7 @@ cargo xtask markdown-links
 cargo xtask check-campaign
 cargo xtask check-pr-shape
 cargo xtask check-generated
+cargo xtask check-badge-diff-policy
 cargo xtask check-generated-clean
 cargo xtask check-dependencies
 cargo xtask check-supply-chain
