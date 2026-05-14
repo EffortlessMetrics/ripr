@@ -41105,6 +41105,10 @@ jobs:
             ])
         );
         assert_eq!(
+            XtaskCommand::parse(["ripr-pr-summary".to_string(), "--check".to_string(),]),
+            XtaskCommand::RiprPrSummary(vec!["--check".to_string()])
+        );
+        assert_eq!(
             XtaskCommand::parse([
                 "gh-pr-status".to_string(),
                 "--pr".to_string(),

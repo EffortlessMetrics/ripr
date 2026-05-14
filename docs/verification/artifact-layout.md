@@ -27,6 +27,7 @@ Rules:
 target/ripr/pr/
   repo-exposure.json
   repo-exposure.md
+  summary.md
 ```
 
 Rules:
@@ -36,6 +37,8 @@ Rules:
 - Uploaded as CI artifacts.
 - Used by job summaries and agents.
 - Never used as public badge state.
+- `summary.md` is generated from machine-readable PR evidence and review
+  guidance artifacts. It is the stable first screen for GitHub summaries.
 
 ## Review Guidance Artifacts
 
@@ -112,3 +115,10 @@ Generated CI summaries should use a stable first screen:
 
 Missing data should be shown explicitly. Do not hide missing artifacts behind a
 green check or a generic "no issues" message.
+
+Generate the first-screen summary with:
+
+```text
+cargo xtask ripr-pr-summary
+cargo xtask ripr-pr-summary --check
+```
