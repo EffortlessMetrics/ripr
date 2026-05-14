@@ -829,6 +829,94 @@ mod tests {
     }
 
     #[test]
+    fn gap_artifact_state_helpers_classify_status_preview_and_static_limits() -> Result<(), String>
+    {
+        let artifact = preview_gap_ledger();
+        let mut validated =
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust, LanguageId::Python]))
+                .map_err(|err| format!("{err:?}"))?;
+
+        assert!(validated.is_actionable_gap());
+        assert!(!validated.is_no_action_gap());
+        assert!(validated.is_preview());
+        assert!(validated.has_static_limit());
+
+        for status in [
+            "already_improved",
+            "baseline_only",
+            "no_actionable_seam",
+            "suppressed",
+            "acknowledged",
+            "waived",
+        ] {
+            validated.gap_state = Some(status.to_string());
+            assert!(validated.is_no_action_gap(), "{status}");
+            assert!(!validated.is_actionable_gap(), "{status}");
+        }
+
+        validated.gap_state = Some("unchanged_after_attempt".to_string());
+        assert!(!validated.is_no_action_gap());
+        assert!(!validated.is_actionable_gap());
+
+        validated.language_status = Some(LanguageStatus::Stable);
+        assert!(!validated.is_preview());
+        validated.static_limit_kinds.clear();
+        validated.has_text_static_limit = false;
+        assert!(!validated.has_static_limit());
+        validated.has_text_static_limit = true;
+        assert!(validated.has_static_limit());
+        Ok(())
+    }
+
+    #[test]
+    fn rejection_kind_strings_cover_fail_closed_reasons() {
+        let cases = [
+            (
+                GapArtifactRejection::DisabledLanguage("python".to_string()),
+                "disabled_language",
+            ),
+            (
+                GapArtifactRejection::MalformedArtifact("bad artifact"),
+                "malformed_artifact",
+            ),
+            (
+                GapArtifactRejection::MalformedCommandPayload("bad command".to_string()),
+                "malformed_command_payload",
+            ),
+            (GapArtifactRejection::MissingIdentity, "missing_identity"),
+            (
+                GapArtifactRejection::OutOfWorkspacePath("../outside.py".to_string()),
+                "out_of_workspace_path",
+            ),
+            (GapArtifactRejection::StaleArtifact, "stale_artifact"),
+            (
+                GapArtifactRejection::UnavailableLanguage("python".to_string()),
+                "unavailable_language",
+            ),
+            (
+                GapArtifactRejection::UnsupportedSchema("9.9".to_string()),
+                "unsupported_schema",
+            ),
+            (
+                GapArtifactRejection::UnsupportedStaticLimitKind("runtime_magic".to_string()),
+                "unsupported_static_limit_kind",
+            ),
+            (
+                GapArtifactRejection::UnsupportedKind("unknown".to_string()),
+                "unsupported_kind",
+            ),
+            (
+                GapArtifactRejection::WrongRoot("/other/workspace".to_string()),
+                "wrong_root",
+            ),
+        ];
+
+        for (rejection, expected) in cases {
+            assert_eq!(rejection.as_str(), expected);
+        }
+    }
+
+    #[test]
     fn first_useful_action_validates_read_only_projection_inputs() -> Result<(), String> {
         let artifact = first_action();
         let validated = validate_gap_artifact(&artifact, &context(&[LanguageId::Rust]))
