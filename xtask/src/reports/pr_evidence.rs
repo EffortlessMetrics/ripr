@@ -84,10 +84,15 @@ fn print_help() {
 }
 
 fn write_pr_evidence(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
+    verify_revision(repo, &options.base)?;
+    verify_revision(repo, &options.head)?;
+    let changed_files = changed_files(repo, options)?;
+    write_diff(repo, options)?;
     let check_json = run_ripr_check(repo, options)?;
-    write_pr_evidence_from_check_json(repo, options, &check_json)
+    write_pr_evidence_packet(repo, options, &changed_files, &check_json)
 }
 
+#[cfg(test)]
 fn write_pr_evidence_from_check_json(
     repo: &Path,
     options: &PrEvidenceOptions,
@@ -98,9 +103,18 @@ fn write_pr_evidence_from_check_json(
 
     let changed_files = changed_files(repo, options)?;
     write_diff(repo, options)?;
+    write_pr_evidence_packet(repo, options, &changed_files, check_json)
+}
+
+fn write_pr_evidence_packet(
+    repo: &Path,
+    options: &PrEvidenceOptions,
+    changed_files: &[String],
+    check_json: &str,
+) -> Result<(), String> {
     let check_value: Value = serde_json::from_str(check_json)
         .map_err(|err| format!("ripr check output was not valid JSON: {err}"))?;
-    let packet = pr_evidence_packet(options, &changed_files, &check_value);
+    let packet = pr_evidence_packet(options, changed_files, &check_value);
     let json_text = serde_json::to_string_pretty(&packet)
         .map_err(|err| format!("serialize PR evidence packet: {err}"))?;
     let markdown = render_pr_evidence_markdown(&packet);
@@ -200,25 +214,32 @@ fn write_diff(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
 }
 
 fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, String> {
-    let ripr_args = [
-        "check",
-        "--root",
-        options.root.as_str(),
-        "--diff",
-        PR_DIFF,
-        "--format",
-        "json",
+    let diff_path = repo.join(PR_DIFF);
+    let diff_arg = diff_path.display().to_string();
+    let ripr_args = vec![
+        "check".to_string(),
+        "--root".to_string(),
+        options.root.clone(),
+        "--diff".to_string(),
+        diff_arg,
+        "--format".to_string(),
+        "json".to_string(),
     ];
+    let ripr_arg_refs = ripr_args.iter().map(String::as_str).collect::<Vec<_>>();
     if let Ok(binary) = env::var("RIPR_BIN") {
         if binary.trim().is_empty() {
             return Err("RIPR_BIN is set but empty".to_string());
         }
-        return run_output_at_root(repo, binary.as_str(), &ripr_args);
+        return run_output_at_root(repo, binary.as_str(), &ripr_arg_refs);
     }
 
-    let mut cargo_args = vec!["run", "-p", "ripr", "--quiet", "--"];
+    let mut cargo_args = ["run", "-p", "ripr", "--quiet", "--"]
+        .iter()
+        .map(|arg| (*arg).to_string())
+        .collect::<Vec<_>>();
     cargo_args.extend(ripr_args);
-    run_output_at_root(repo, "cargo", &cargo_args)
+    let cargo_arg_refs = cargo_args.iter().map(String::as_str).collect::<Vec<_>>();
+    run_output_at_root(repo, "cargo", &cargo_arg_refs)
 }
 
 fn run_output_at_root(repo: &Path, program: &str, args: &[&str]) -> Result<String, String> {
