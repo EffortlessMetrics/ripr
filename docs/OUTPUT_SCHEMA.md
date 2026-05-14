@@ -1494,6 +1494,48 @@ runtime execution.
       "finding_alignment_canonical_items_total": 9355,
       "finding_alignment_actionable_items_total": 1756,
       "finding_alignment_static_limitation_total": 4356
+    },
+    "coverage": {
+      "alignment_coverage_by_class": [
+        {
+          "evidence_class": "predicate_boundary",
+          "raw_findings": 4200,
+          "canonical_items": 3900,
+          "aligned_raw_findings": 4100,
+          "unaligned_raw_findings": 100,
+          "actionable_items": 900,
+          "already_observed_items": 1700,
+          "internal_no_action_items": 20,
+          "static_limitation_items": 1200,
+          "unknown_items": 80
+        }
+      ],
+      "unaligned_raw_findings_by_class": {
+        "config_or_policy_constant": 12
+      },
+      "top_unaligned_examples": [
+        {
+          "evidence_class": "config_or_policy_constant",
+          "file": "src/policy.rs",
+          "line": 10,
+          "kind": "static_unknown",
+          "expression": "pub const POLICY_LABEL: &str = \"internal\";",
+          "reason": "missing canonical_item"
+        }
+      ],
+      "same_line_duplicate_groups": [
+        {
+          "file": "src/policy.rs",
+          "line": 10,
+          "raw_findings": 2,
+          "evidence_classes": ["config_or_policy_constant"],
+          "kinds": ["exposed", "static_unknown"],
+          "example_expression": "pub const POLICY_LABEL: &str ="
+        }
+      ],
+      "static_unknown_without_named_limitation": 0,
+      "canonical_items_without_repair_route": 0,
+      "canonical_items_without_verify_command": 120
     }
   },
   "canonical_gap_groups": {
@@ -1649,6 +1691,24 @@ Field contract:
   class-specific counts when those canonical items are present. These remain
   zero when the instant repo-exposure artifact has no presentation-text
   canonical items.
+- `finding_alignment.coverage.alignment_coverage_by_class` - per-class raw
+  finding, canonical item, state, and aligned/unaligned counts. The grain is
+  `evidence_class`, using `canonical_item.evidence_class` when available and a
+  conservative seam/raw-finding fallback otherwise.
+- `finding_alignment.coverage.unaligned_raw_findings_by_class` - raw finding
+  counts by class for evidence records that do not carry `canonical_item`.
+- `finding_alignment.coverage.top_unaligned_examples` - bounded examples of
+  raw findings that did not align to a canonical item, for fixture-first
+  follow-up selection.
+- `finding_alignment.coverage.same_line_duplicate_groups` - bounded raw
+  finding groups sharing one file and line so maintainers can spot remaining
+  duplicate user-action risks.
+- `finding_alignment.coverage.static_unknown_without_named_limitation` -
+  count of static-unknown or limitation-shaped canonical items without a named
+  static limitation category plus repair route.
+- `finding_alignment.coverage.canonical_items_without_repair_route` and
+  `canonical_items_without_verify_command` - coverage counts for canonical
+  items missing repair or verification guidance.
 - `canonical_gap_groups.total` - number of distinct canonical gap IDs among
   headline records.
 - `canonical_gap_groups.largest` - top canonical groups by observed count,
