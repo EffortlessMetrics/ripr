@@ -68,6 +68,10 @@ Planned scope:
   disabled, no-workspace, unavailable-server, stale, language-off, no-seam,
   preview, and diagnostic states. LSP refresh logs now include enabled language
   names alongside the existing count.
+- VS Code related-test opening now fails closed unless the target is a file in
+  the current workspace with a current Rust or preview-language route, so stale,
+  disabled, malformed, unsupported, or out-of-workspace command payloads cannot
+  open arbitrary files.
 - Added `docs/STATIC_LIMITS.md` so preview-language static-limit labels have a
   user-facing interpretation guide and downstream tools know not to parse
   prose into action semantics.

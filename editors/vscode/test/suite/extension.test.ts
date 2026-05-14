@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import { promises as fs } from 'fs';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import {
   RiprClientController,
@@ -934,15 +935,78 @@ suite('Extension Smoke', () => {
   });
 
   test('openRelatedTest opens the target uri and line', async () => {
-    const uri = workspaceFileUri('Cargo.toml');
-    await vscode.commands.executeCommand('ripr.openRelatedTest', {
-      uri: uri.toString(),
-      line: 1,
-      test_name: 'manifest'
-    });
+    const context = createControllerTestContext({});
+    const uri = workspaceFileUri('tests/pricing.rs');
+    try {
+      await context.controller.start();
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=7, diagnostics=1, files=1, findings=1, seam_diagnostics=1, enabled_languages=1, enabled_language_names=rust'
+      });
+      await context.controller.openRelatedTest({
+        uri: uri.toString(),
+        line: 4,
+        test_name: 'below_threshold_has_no_discount'
+      });
 
-    assert.strictEqual(vscode.window.activeTextEditor?.document.uri.toString(), uri.toString());
-    assert.strictEqual(vscode.window.activeTextEditor?.selection.active.line, 0);
+      assert.strictEqual(vscode.window.activeTextEditor?.document.uri.toString(), uri.toString());
+      assert.strictEqual(vscode.window.activeTextEditor?.selection.active.line, 3);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('openRelatedTest rejects stale, disabled, non-workspace, and unsupported targets', async () => {
+    const context = createControllerTestContext({});
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(folder, 'test workspace should be open');
+    try {
+      await context.controller.start();
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=8, diagnostics=0, files=1, findings=0, seam_diagnostics=0, enabled_languages=0, enabled_language_names='
+      });
+      await context.controller.openRelatedTest({
+        uri: workspaceFileUri('tests/pricing.rs').toString(),
+        line: 4,
+        test_name: 'below_threshold_has_no_discount'
+      });
+      assert.ok(context.infoMessages.at(-1)?.includes('language is disabled'));
+
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=9, diagnostics=1, files=1, findings=1, seam_diagnostics=1, enabled_languages=1, enabled_language_names=rust'
+      });
+      await context.controller.openRelatedTest({
+        uri: workspaceFileUri('Cargo.toml').toString(),
+        line: 1,
+        test_name: 'manifest'
+      });
+      assert.ok(context.infoMessages.at(-1)?.includes('Rust, TypeScript/JavaScript, or Python file'));
+
+      const outsideUri = vscode.Uri.file(path.join(folder.uri.fsPath, '..', 'outside.rs'));
+      await context.controller.openRelatedTest({
+        uri: outsideUri.toString(),
+        line: 1,
+        test_name: 'outside'
+      });
+      assert.ok(context.infoMessages.at(-1)?.includes('inside the current workspace'));
+
+      await context.controller.openRelatedTest({
+        uri: 'untitled:preview.py',
+        line: 1,
+        test_name: 'scratch'
+      });
+      assert.ok(context.infoMessages.at(-1)?.includes('requires a file URI'));
+
+      const routedDocument = textDocument('rust', workspaceFileUri('tests/pricing.rs'));
+      context.controller.markWorkspaceStale(routedDocument);
+      await context.controller.openRelatedTest({
+        uri: routedDocument.uri.toString(),
+        line: 4,
+        test_name: 'below_threshold_has_no_discount'
+      });
+      assert.ok(context.infoMessages.at(-1)?.includes('current saved-workspace analysis'));
+    } finally {
+      await context.dispose();
+    }
   });
 
   test('openRelatedTest ignores malformed args without throwing', async () => {
