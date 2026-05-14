@@ -106,7 +106,7 @@ fn impacted_evidence_packet(repo: &Path, options: &ImpactedEvidenceOptions) -> V
         .and_then(Value::as_bool)
         .unwrap_or(false);
     let decision = routing_decision(&options.labels, ripr_severe_gap || pr_requires_targeted);
-    let warnings = input.warning();
+    let warnings = input.warning(&options.pr_evidence);
 
     json!({
         "schema_version": "0.1",
@@ -215,18 +215,18 @@ enum InputState {
 }
 
 impl PrEvidenceInput {
-    fn warning(&self) -> Vec<Value> {
+    fn warning(&self, path: &str) -> Vec<Value> {
         match &self.state {
             InputState::Present => Vec::new(),
             InputState::Missing => vec![json!({
                 "kind": "missing_artifact",
                 "message": "PR evidence JSON is missing; mutation routing uses labels only.",
-                "path": DEFAULT_PR_EVIDENCE_JSON
+                "path": path
             })],
             InputState::Invalid(err) => vec![json!({
                 "kind": "invalid_json",
                 "message": format!("PR evidence JSON is invalid: {err}"),
-                "path": DEFAULT_PR_EVIDENCE_JSON
+                "path": path
             })],
         }
     }
@@ -517,6 +517,21 @@ mod tests {
         assert!(markdown.contains("# Impacted Evidence"));
         assert!(markdown.contains("- mutation_mode: `fast_only`"));
         assert!(markdown.contains("PR evidence JSON is missing"));
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))
+    }
+
+    #[test]
+    fn missing_custom_pr_evidence_reports_custom_path() -> Result<(), String> {
+        let repo = temp_repo("impacted-custom-missing")?;
+        let options = ImpactedEvidenceOptions {
+            pr_evidence: "target/ripr/pr/custom-evidence.json".to_string(),
+            ..ImpactedEvidenceOptions::default()
+        };
+        let packet = impacted_evidence_packet(&repo, &options);
+        assert_eq!(
+            packet["warnings"][0]["path"],
+            "target/ripr/pr/custom-evidence.json"
+        );
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))
     }
 
