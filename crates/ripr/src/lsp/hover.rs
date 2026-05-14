@@ -130,14 +130,11 @@ fn finding_hover_markdown(diagnostic: &Diagnostic, finding: &Finding) -> String 
         .as_ref()
         .map(number_or_string_label)
         .unwrap_or_else(|| "static exposure".to_string());
-    let mut lines = vec![
-        format!("**ripr** `{classification}`"),
-        String::new(),
-        diagnostic.message.clone(),
-        String::new(),
-    ];
+    let mut lines = vec![format!("**ripr** `{classification}`"), String::new()];
     push_preview_boundary(&mut lines, finding);
     lines.extend([
+        diagnostic.message.clone(),
+        String::new(),
         "## RIPR Evidence".to_string(),
         stage_line("reach", &finding.ripr.reach),
         stage_line("infection", &finding.ripr.infect),
@@ -193,10 +190,12 @@ fn push_preview_boundary(lines: &mut Vec<String>, finding: &Finding) {
     }
     if finding.language_status.is_some() {
         lines.push("Evidence: syntax-first".to_string());
-        lines.push("Action: advisory only".to_string());
     }
     if let Some(static_limit_kind) = &finding.static_limit_kind {
         lines.push(format!("Static limit: {}", static_limit_kind.as_str()));
+    }
+    if finding.language_status.is_some() {
+        lines.push("Action: advisory only".to_string());
     }
     lines.push(String::new());
 }
