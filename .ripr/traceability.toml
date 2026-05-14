@@ -2821,16 +2821,26 @@ id = "RIPR-SPEC-0046"
 name = "Gap decision ledger"
 spec = "docs/specs/RIPR-SPEC-0046-gap-decision-ledger.md"
 tests = [
+  "xtask/src/main.rs::tests::gap_decision_ledger_corpus_is_valid",
+  "xtask/src/main.rs::tests::gap_decision_ledger_reports_contract_drift",
+  "xtask/src/main.rs::tests::gap_decision_ledger_gate_candidate_requires_safe_predicate",
+  "xtask/src/main.rs::tests::gap_decision_ledger_missing_output_contract_requires_output_route",
+  "xtask/src/main.rs::tests::gap_decision_ledger_static_unknown_only_stays_report_only",
+  "xtask/src/main.rs::tests::gap_decision_ledger_missing_artifact_requires_regeneration",
 ]
 fixtures = [
+  "fixtures/gap-decision-ledger/corpus.json",
 ]
 code = [
+  "xtask/src/main.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0046-gap-decision-ledger.md",
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0006-rust-usable-gap-projection.md",
   "docs/OUTPUT_SCHEMA.md",
+  "fixtures/gap-decision-ledger/README.md",
+  "fixtures/gap-decision-ledger/corpus.json",
   ".ripr/traceability.toml",
   "metrics/capabilities.toml",
 ]
