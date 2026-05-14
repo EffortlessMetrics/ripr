@@ -85,7 +85,8 @@ environments.
 For the complete saved-workspace loop from diagnostic to receipt, see
 [Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md). For the plain-language
 ↔ internal vocabulary bridge (seam, discriminator, grip, canonical gap, etc.),
-see [Terminology](TERMINOLOGY.md).
+see [Terminology](TERMINOLOGY.md). For preview-language static-limit labels,
+see [Static limits](STATIC_LIMITS.md).
 
 ## Settings
 
@@ -147,6 +148,11 @@ extension keeps stale status visible, including when a first-useful-action
 report is present, so diagnostics are not presented as fresh evidence for
 unsaved text. Saving or closing the Rust buffer clears the stale marker and
 queues the next saved-workspace refresh.
+
+Preview-language static limits should be read before action language in hover
+and status text. A static limit names what RIPR could not safely infer from
+syntax-first evidence; it does not mean the editor ran mutation testing, edited
+source, generated a test, or made the finding policy-eligible.
 
 ## Defaults-First Stance
 
