@@ -148,6 +148,13 @@ Validate the manifest with:
 cargo xtask check-campaign
 ```
 
+`check-campaign` validates the active execution manifest and the focused tracker
+rails around it. Focused tracker manifests must stay outside
+`.ripr/goals/active.toml`, done work items must stay tied to proof commands,
+and declared source-of-truth paths must point at existing proposal, plan, spec,
+receipt, and closeout files. When campaign docs reference a tracker manifest,
+the referenced manifest path must exist.
+
 Blocking a work item through `xtask` is planned but not implemented yet:
 
 ```bash
