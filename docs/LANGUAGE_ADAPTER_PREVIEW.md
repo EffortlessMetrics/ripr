@@ -76,7 +76,8 @@ The exposure class still uses RIPR's normal conservative vocabulary:
 
 Static limits are part of the finding context, not a separate verdict. They
 explain where syntax-first analysis can see a useful shape but cannot infer the
-runtime behavior.
+runtime behavior. See [Static limits](STATIC_LIMITS.md) for the user-facing
+interpretation guide and integration rules.
 
 | Static limit | How to read it |
 | --- | --- |
