@@ -2740,6 +2740,7 @@ fn sample_analysis_snapshot(
         refresh: RefreshMetadata::generated_now(),
         findings,
         classified_seams: Vec::new(),
+        gap_artifacts: Vec::new(),
         diagnostics_by_uri,
     }
 }
