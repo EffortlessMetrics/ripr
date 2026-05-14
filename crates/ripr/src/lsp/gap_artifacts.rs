@@ -292,19 +292,28 @@ fn validate_gap_decision_ledger(
     let mut receipt_commands = Vec::new();
     let mut language = None;
     let mut language_status = None;
-    let mut gap_state = None;
+    let gap_state;
+    let mut has_actionable_record = false;
+    let mut no_action_records = 0usize;
     for record in records {
         identities.push(
             identity_from_sources(&[Some(record)]).ok_or(GapArtifactRejection::MissingIdentity)?,
         );
-        language = language.or(language_from_value(record)?);
-        language_status = language_status.or(language_status_from_value(record)?);
-        gap_state = gap_state.or_else(|| {
-            record
-                .get("gap_state")
-                .and_then(Value::as_str)
-                .map(ToOwned::to_owned)
-        });
+        let record_language = language_from_value(record)?;
+        let record_language_status = language_status_from_value(record)?;
+        if record_language_status == Some(LanguageStatus::Preview) {
+            language = record_language.or(language);
+            language_status = Some(LanguageStatus::Preview);
+        } else {
+            language = language.or(record_language);
+            language_status = language_status.or(record_language_status);
+        }
+        if record_is_actionable_for_editor(record) {
+            has_actionable_record = true;
+        }
+        if record_is_no_action(record) {
+            no_action_records += 1;
+        }
         let route = record.get("repair_route");
         let anchor = record.get("anchor");
         let receipt = record.get("receipt");
@@ -329,6 +338,18 @@ fn validate_gap_decision_ledger(
             receipt_commands.push(command.to_string());
         }
     }
+    if has_actionable_record {
+        gap_state = Some("actionable".to_string());
+    } else if !records.is_empty() && no_action_records == records.len() {
+        gap_state = Some("no_actionable_seam".to_string());
+    } else {
+        gap_state = records.iter().find_map(|record| {
+            record
+                .get("gap_state")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+        });
+    }
     Ok(ValidatedGapArtifact {
         kind: GapArtifactKind::GapDecisionLedger,
         root: report_root.map(ToOwned::to_owned),
@@ -342,6 +363,38 @@ fn validate_gap_decision_ledger(
         static_limit_kinds: Vec::new(),
         has_text_static_limit: false,
     })
+}
+
+fn record_is_actionable_for_editor(record: &Value) -> bool {
+    record.get("gap_state").and_then(Value::as_str) == Some("actionable")
+        && record.get("repairability").and_then(Value::as_str) == Some("repairable")
+        && path_value(
+            Some(record),
+            &["projection_eligibility", "lsp_diagnostic", "eligible"],
+        )
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+fn record_is_no_action(record: &Value) -> bool {
+    record.get("repairability").and_then(Value::as_str) == Some("no_action")
+        || matches!(
+            record.get("gap_state").and_then(Value::as_str),
+            Some(
+                "already_improved"
+                    | "already_observed"
+                    | "baseline_only"
+                    | "internal"
+                    | "internal_only"
+                    | "no_actionable_seam"
+                    | "not_policy_targeted"
+                    | "report_only"
+                    | "resolved"
+                    | "suppressed"
+                    | "acknowledged"
+                    | "waived"
+            )
+        )
 }
 
 fn validate_evidence_record(
@@ -822,9 +875,36 @@ mod tests {
                     "verification_commands": [
                         "ripr agent verify --root . --json"
                     ],
-                    "receipt_command": "ripr agent receipt --root . --json"
+                    "receipt_command": "ripr agent receipt --root . --json",
+                    "projection_eligibility": {
+                        "lsp_diagnostic": {
+                            "eligible": true,
+                            "reason": "local_file_scope"
+                        }
+                    }
                 }
             ]
+        })
+    }
+
+    fn no_action_gap_record() -> Value {
+        json!({
+            "gap_id": "gap:rust:observed",
+            "canonical_gap_id": "gap:rust:observed",
+            "kind": "NoActionAlreadyObserved",
+            "language": "rust",
+            "language_status": "stable",
+            "scope": "repo_scoped",
+            "evidence_class": "already_observed",
+            "gap_state": "already_observed",
+            "policy_state": "resolved",
+            "repairability": "no_action",
+            "projection_eligibility": {
+                "lsp_diagnostic": {
+                    "eligible": false,
+                    "reason": "no_user_repair_needed"
+                }
+            }
         })
     }
 
@@ -954,6 +1034,82 @@ mod tests {
         assert_eq!(
             enabled.identities[0].canonical_gap_id.as_deref(),
             Some("gap:py:pricing")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gap_ledger_summary_uses_all_records_for_actionability_and_preview_status()
+    -> Result<(), String> {
+        let mut artifact = preview_gap_ledger();
+        artifact["records"]
+            .as_array_mut()
+            .ok_or_else(|| "expected records array".to_string())?
+            .insert(0, no_action_gap_record());
+
+        let validated =
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust, LanguageId::Python]))
+                .map_err(|err| format!("{err:?}"))?;
+
+        assert_eq!(validated.identities.len(), 2);
+        assert_eq!(validated.gap_state.as_deref(), Some("actionable"));
+        assert!(validated.is_actionable_gap());
+        assert!(validated.is_preview());
+        Ok(())
+    }
+
+    #[test]
+    fn gap_ledger_summary_reports_no_action_only_when_all_records_are_no_action()
+    -> Result<(), String> {
+        let artifact = json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "kind": "gap_decision_ledger",
+            "root": ".",
+            "status": "advisory",
+            "records": [
+                no_action_gap_record(),
+                {
+                    "gap_id": "gap:rust:suppressed",
+                    "canonical_gap_id": "gap:rust:suppressed",
+                    "kind": "MissingBoundaryAssertion",
+                    "language": "rust",
+                    "language_status": "stable",
+                    "scope": "repo_scoped",
+                    "evidence_class": "predicate_boundary",
+                    "gap_state": "suppressed",
+                    "policy_state": "suppressed",
+                    "repairability": "repairable",
+                    "projection_eligibility": {
+                        "lsp_diagnostic": {
+                            "eligible": false,
+                            "reason": "suppressed"
+                        }
+                    }
+                }
+            ]
+        });
+
+        let validated = validate_gap_artifact(&artifact, &context(&[LanguageId::Rust]))
+            .map_err(|err| format!("{err:?}"))?;
+
+        assert_eq!(validated.gap_state.as_deref(), Some("no_actionable_seam"));
+        assert!(validated.is_no_action_gap());
+        assert!(!validated.is_actionable_gap());
+        Ok(())
+    }
+
+    #[test]
+    fn gap_ledger_validation_checks_languages_for_every_record() -> Result<(), String> {
+        let mut artifact = preview_gap_ledger();
+        artifact["records"]
+            .as_array_mut()
+            .ok_or_else(|| "expected records array".to_string())?
+            .insert(0, no_action_gap_record());
+
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::DisabledLanguage("python".to_string()))
         );
         Ok(())
     }
