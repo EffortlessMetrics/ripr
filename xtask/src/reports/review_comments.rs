@@ -91,9 +91,17 @@ fn print_help() {
 }
 
 fn write_review_comments(repo: &Path, options: &ReviewCommentsOptions) -> Result<(), String> {
+    write_review_comments_with_runner(repo, options, run_ripr_review_comments)
+}
+
+fn write_review_comments_with_runner(
+    repo: &Path,
+    options: &ReviewCommentsOptions,
+    run_producer: impl FnOnce(&Path, &ReviewCommentsOptions) -> Result<(), String>,
+) -> Result<(), String> {
     verify_revision(repo, &options.base)?;
     verify_revision(repo, &options.head)?;
-    if let Err(err) = run_ripr_review_comments(repo, options) {
+    if let Err(err) = run_producer(repo, options) {
         write_error_review_comments(repo, options, &err)?;
     }
     validate_review_comments(repo, options, true)?;
@@ -542,41 +550,8 @@ mod tests {
 
     #[test]
     fn write_and_check_packet_in_git_repo() -> Result<(), String> {
-        let repo = temp_repo("ripr-review-comments")?;
-        run_git(&repo, &["init"])?;
-        run_git(
-            &repo,
-            &["config", "user.email", "ripr-review@example.invalid"],
-        )?;
-        run_git(&repo, &["config", "user.name", "RIPR Review Test"])?;
-        write_repo_file(&repo, "README.md", "# sample\n")?;
-        run_git(&repo, &["add", "."])?;
-        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "initial"])?;
-        write_repo_file(&repo, "src/lib.rs", "pub fn value() -> u8 { 1 }\n")?;
-        run_git(&repo, &["add", "."])?;
-        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "add rust"])?;
-
-        let options = ReviewCommentsOptions {
-            root: ".".to_string(),
-            base: "HEAD~1".to_string(),
-            head: "HEAD".to_string(),
-            check: false,
-        };
+        let (repo, options) = prepared_review_repo("ripr-review-comments")?;
         let packet = valid_packet_for_repo(&repo, &options);
-        let out_dir = repo.join("target/ripr/review");
-        let schema_path = repo.join(REVIEW_COMMENTS_SCHEMA);
-        fs::create_dir_all(&out_dir).map_err(|err| format!("create out dir: {err}"))?;
-        fs::create_dir_all(
-            schema_path
-                .parent()
-                .ok_or_else(|| "review comments schema path has no parent".to_string())?,
-        )
-        .map_err(|err| format!("create schema dir: {err}"))?;
-        fs::copy(
-            repo_root_for_display().join(REVIEW_COMMENTS_SCHEMA),
-            &schema_path,
-        )
-        .map_err(|err| format!("copy review comments schema: {err}"))?;
         fs::write(
             repo.join(REVIEW_COMMENTS_JSON),
             serde_json::to_string_pretty(&packet).map_err(|err| format!("serialize: {err}"))?,
@@ -586,6 +561,47 @@ mod tests {
             .map_err(|err| format!("write comments Markdown: {err}"))?;
 
         check_review_comments(&repo, &options)?;
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn write_wrapper_accepts_successful_producer() -> Result<(), String> {
+        let (repo, options) = prepared_review_repo("ripr-review-comments-success")?;
+        write_review_comments_with_runner(&repo, &options, |repo, options| {
+            let packet = valid_packet_for_repo(repo, options);
+            fs::write(
+                repo.join(REVIEW_COMMENTS_JSON),
+                serde_json::to_string_pretty(&packet)
+                    .map_err(|err| format!("serialize success packet: {err}"))?,
+            )
+            .map_err(|err| format!("write success JSON: {err}"))?;
+            fs::write(repo.join(REVIEW_COMMENTS_MD), "# RIPR PR Guidance\n")
+                .map_err(|err| format!("write success Markdown: {err}"))
+        })?;
+
+        let packet = read_packet(&repo)?;
+        assert_eq!(packet["status"], "advisory");
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn write_wrapper_converts_producer_failure_to_error_packet() -> Result<(), String> {
+        let (repo, options) = prepared_review_repo("ripr-review-comments-error")?;
+        write_review_comments_with_runner(&repo, &options, |_repo, _options| {
+            Err("synthetic producer failure\nsecond line".to_string())
+        })?;
+
+        let packet = read_packet(&repo)?;
+        assert_eq!(packet["status"], "error");
+        assert_eq!(
+            packet["warnings"][0]["message"],
+            "synthetic producer failure"
+        );
+        let markdown = fs::read_to_string(repo.join(REVIEW_COMMENTS_MD))
+            .map_err(|err| format!("read error Markdown: {err}"))?;
+        assert!(markdown.contains("No review guidance was generated."));
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
     }
@@ -619,6 +635,56 @@ mod tests {
             "warnings": [],
             "limits_note": "Comments are capped and advisory; summary-only items never annotate."
         })
+    }
+
+    fn prepared_review_repo(name: &str) -> Result<(PathBuf, ReviewCommentsOptions), String> {
+        let repo = temp_repo(name)?;
+        run_git(&repo, &["init"])?;
+        run_git(
+            &repo,
+            &["config", "user.email", "ripr-review@example.invalid"],
+        )?;
+        run_git(&repo, &["config", "user.name", "RIPR Review Test"])?;
+        write_repo_file(&repo, "README.md", "# sample\n")?;
+        run_git(&repo, &["add", "."])?;
+        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "initial"])?;
+        write_repo_file(&repo, "src/lib.rs", "pub fn value() -> u8 { 1 }\n")?;
+        run_git(&repo, &["add", "."])?;
+        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "add rust"])?;
+        fs::create_dir_all(repo.join("target/ripr/review"))
+            .map_err(|err| format!("create out dir: {err}"))?;
+        copy_review_comments_schema(&repo)?;
+        Ok((
+            repo,
+            ReviewCommentsOptions {
+                root: ".".to_string(),
+                base: "HEAD~1".to_string(),
+                head: "HEAD".to_string(),
+                check: false,
+            },
+        ))
+    }
+
+    fn copy_review_comments_schema(repo: &Path) -> Result<(), String> {
+        let schema_path = repo.join(REVIEW_COMMENTS_SCHEMA);
+        fs::create_dir_all(
+            schema_path
+                .parent()
+                .ok_or_else(|| "review comments schema path has no parent".to_string())?,
+        )
+        .map_err(|err| format!("create schema dir: {err}"))?;
+        fs::copy(
+            repo_root_for_display().join(REVIEW_COMMENTS_SCHEMA),
+            &schema_path,
+        )
+        .map_err(|err| format!("copy review comments schema: {err}"))?;
+        Ok(())
+    }
+
+    fn read_packet(repo: &Path) -> Result<Value, String> {
+        let text = fs::read_to_string(repo.join(REVIEW_COMMENTS_JSON))
+            .map_err(|err| format!("read packet: {err}"))?;
+        serde_json::from_str(&text).map_err(|err| format!("parse packet: {err}"))
     }
 
     fn temp_repo(name: &str) -> Result<PathBuf, String> {
