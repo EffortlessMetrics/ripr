@@ -112,6 +112,10 @@ Planned scope:
   raw-to-canonical, actionable, observed, static-limitation, and calibration
   counts even when there is no separate top-level finding-alignment projection.
   The reports remain repo-local and advisory.
+- Clarified the finding-to-gap alignment contract with explicit
+  `primary_anchor` and `raw_spans[]` semantics plus class-scoped action,
+  observed, no-action, limitation, and must-not-infer rules. This is a
+  docs-only contract refinement for later projection/evidence-field work.
 - Added the Lane 1 presentation-text consumer handoff. It tells downstream
   PR/CI, editor, agent, and report lanes to render canonical evidence items
   before raw findings, keep raw findings as supporting evidence, preserve the
