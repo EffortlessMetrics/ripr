@@ -103,6 +103,12 @@ Planned scope:
   Lane 1 evidence-state versus policy-overlay boundary, and avoid inferring
   actionability, user test debt, or mutation-first repairs from raw
   `exposed`/`static_unknown` labels.
+- Closed the Lane 1 User-Visible Output Evidence tracker in documented
+  presentation-text scope. The closeout records the spec, benchmark,
+  evidence-record, grouping, visibility, actionability, scorecard/trend, and
+  consumer-handoff proof, adds the final observer-unknown benchmark guard, and
+  keeps PR/CI rendering, LSP/editor behavior, gates, scores, generated tests,
+  provider calls, source edits, and mutation execution out of scope.
 - Python preview related-test matching now treats free-function calls more
   conservatively: module import aliases such as `pricing.apply_discount(...)`
   still relate to the owner, but unrelated object method calls no longer make a
