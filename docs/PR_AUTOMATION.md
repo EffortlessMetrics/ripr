@@ -30,6 +30,7 @@ cargo xtask shape
 cargo xtask fix-pr
 cargo xtask pr-summary
 cargo xtask pr-triage-report
+cargo xtask gh-pr-status --pr <number>
 cargo xtask precommit
 cargo xtask check-pr
 cargo xtask fixtures
@@ -89,6 +90,14 @@ through GitHub CLI and writes `target/ripr/reports/pr-triage.md`. It flags
 same-title families, identical changed-file sets, stale drafts, branches behind
 main, incomplete validation signals, and policy/gate/generated workflow
 surfaces. It is advisory and never updates, closes, merges, or comments on PRs.
+
+`gh-pr-status --pr <number>` is the per-PR merge-readiness packet. It reads
+GitHub CLI PR status, branch-protection required contexts when available,
+latest reviews, and Droid-related checks, then writes
+`target/ripr/reports/gh-pr-status.md` with the merge state, outstanding checks,
+failed checks, behind-main state, review status, and a safe next action:
+`wait`, `rebase`, `inspect failure`, or `merge`. It is advisory and never
+updates the branch, comments, approves, or merges.
 
 `check-pr` is the review-ready local gate. It runs the current fast CI lane,
 then clippy, docs, and PR summary generation. It intentionally leaves

@@ -284,6 +284,8 @@ the worktree:
 cargo xtask shape
 cargo xtask fix-pr
 cargo xtask pr-summary
+cargo xtask pr-triage-report
+cargo xtask gh-pr-status --pr <number>
 cargo xtask precommit
 cargo xtask check-pr
 cargo xtask fixtures
@@ -301,6 +303,10 @@ They are safe to run before checks. `shape` runs `cargo fmt`, sorts allowlists,
 ensures `target/ripr/reports`, and writes a local report. `fix-pr` currently
 runs `shape`, refreshes `pr-summary`, and writes a local fix-pr report.
 `pr-summary` writes `target/ripr/reports/pr-summary.md` from git diff/status.
+`pr-triage-report` writes the advisory open-board hygiene report.
+`gh-pr-status --pr <number>` writes a read-only merge-readiness packet for one
+PR, including merge state, required check status when GitHub exposes it,
+reviews, Droid status, and the next safe action.
 `precommit` is the cheap non-mutating local guardrail. `check-pr` is the
 review-ready local gate and intentionally does not run package or publish
 dry-run checks. `check-badge-diff-policy` fails ordinary PRs that carry

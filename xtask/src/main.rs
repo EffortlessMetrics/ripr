@@ -126,6 +126,37 @@ struct PrTriageFinding {
     recommended_action: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct GhPrStatusPullRequest {
+    number: u64,
+    title: String,
+    is_draft: bool,
+    merge_state_status: String,
+    head_ref_name: String,
+    base_ref_name: String,
+    review_decision: String,
+    checks: Vec<PrTriageCheck>,
+    reviews: Vec<GhPrStatusReview>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct GhPrStatusReview {
+    author: String,
+    state: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct GhPrStatusReadiness {
+    behind_main: bool,
+    required_contexts_available: bool,
+    required_checks_outstanding: Vec<String>,
+    failed_checks: Vec<String>,
+    pending_checks: Vec<String>,
+    droid_checks: Vec<String>,
+    safe_next_action: String,
+    warnings: Vec<String>,
+}
+
 #[derive(Debug, Default)]
 struct TraceBehavior {
     line: usize,
@@ -1593,6 +1624,376 @@ pub(crate) fn pr_triage_report_impl() -> Result<(), String> {
     let today = current_epoch_day()?;
     let findings = pr_triage_findings(&prs, today);
     write_report("pr-triage.md", &pr_triage_markdown(&prs, &findings, today))
+}
+
+pub(crate) fn gh_pr_status_impl(args: &[String]) -> Result<(), String> {
+    let number = parse_gh_pr_status_args(args)?;
+    let pr = collect_gh_pr_status(number)?;
+    let mut warnings = Vec::new();
+    let (required_contexts, required_contexts_available) =
+        match collect_required_status_contexts(&pr.base_ref_name) {
+            Ok(contexts) => (contexts, true),
+            Err(err) => {
+                warnings.push(format!(
+                    "required status context lookup failed; using status rollup only: {err}"
+                ));
+                (Vec::new(), false)
+            }
+        };
+    let readiness = gh_pr_status_readiness(
+        &pr,
+        &required_contexts,
+        required_contexts_available,
+        warnings,
+    );
+    let body = gh_pr_status_markdown(&pr, &required_contexts, &readiness);
+    write_report("gh-pr-status.md", &body)?;
+    println!(
+        "PR #{} safe next action: {}",
+        pr.number, readiness.safe_next_action
+    );
+    Ok(())
+}
+
+fn parse_gh_pr_status_args(args: &[String]) -> Result<u64, String> {
+    if args.is_empty() {
+        return Err("cargo xtask gh-pr-status requires `--pr <number>`".to_string());
+    }
+    let mut pr_number = None;
+    let mut index = 0;
+    while index < args.len() {
+        let arg = &args[index];
+        if arg == "--pr" {
+            let Some(value) = args.get(index + 1) else {
+                return Err("cargo xtask gh-pr-status requires a number after `--pr`".to_string());
+            };
+            pr_number = Some(parse_positive_u64(value, "--pr")?);
+            index += 2;
+            continue;
+        }
+        if pr_number.is_none() && !arg.starts_with('-') {
+            pr_number = Some(parse_positive_u64(arg, "PR number")?);
+            index += 1;
+            continue;
+        }
+        return Err(format!(
+            "unknown gh-pr-status argument `{arg}`; use `cargo xtask gh-pr-status --pr <number>`"
+        ));
+    }
+    pr_number.ok_or_else(|| "cargo xtask gh-pr-status requires `--pr <number>`".to_string())
+}
+
+fn parse_positive_u64(value: &str, label: &str) -> Result<u64, String> {
+    let parsed = value
+        .parse::<u64>()
+        .map_err(|err| format!("{label} must be a positive integer: {err}"))?;
+    if parsed == 0 {
+        return Err(format!("{label} must be greater than zero"));
+    }
+    Ok(parsed)
+}
+
+fn collect_gh_pr_status(number: u64) -> Result<GhPrStatusPullRequest, String> {
+    let fields = [
+        "number",
+        "title",
+        "isDraft",
+        "mergeStateStatus",
+        "headRefName",
+        "baseRefName",
+        "reviewDecision",
+        "latestReviews",
+        "statusCheckRollup",
+    ]
+    .join(",");
+    let output = run_output_owned(
+        "gh",
+        &[
+            "pr".to_string(),
+            "view".to_string(),
+            number.to_string(),
+            "--json".to_string(),
+            fields,
+        ],
+    )?;
+    parse_gh_pr_status_pull_request(&output)
+}
+
+fn collect_required_status_contexts(base_ref_name: &str) -> Result<Vec<String>, String> {
+    let repo_output = run_output("gh", &["repo", "view", "--json", "owner,name"])?;
+    let repo_value: Value = serde_json::from_str(&repo_output)
+        .map_err(|err| format!("failed to parse gh repo JSON: {err}"))?;
+    let owner = repo_value
+        .get("owner")
+        .and_then(|owner| owner.get("login"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("gh repo JSON is missing owner.login: {repo_value}"))?;
+    let name = repo_value
+        .get("name")
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("gh repo JSON is missing name: {repo_value}"))?;
+    let branch = if base_ref_name.trim().is_empty() {
+        "main"
+    } else {
+        base_ref_name.trim()
+    };
+    let endpoint = format!(
+        "repos/{owner}/{name}/branches/{branch}/protection/required_status_checks/contexts"
+    );
+    let output = run_output_owned("gh", &["api".to_string(), endpoint])?;
+    parse_required_status_contexts(&output)
+}
+
+fn parse_gh_pr_status_pull_request(text: &str) -> Result<GhPrStatusPullRequest, String> {
+    let item: Value =
+        serde_json::from_str(text).map_err(|err| format!("failed to parse gh PR JSON: {err}"))?;
+    let number = item
+        .get("number")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| format!("gh PR JSON is missing numeric `number`: {item}"))?;
+    let checks = item
+        .get("statusCheckRollup")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(parse_pr_triage_check)
+        .collect::<Vec<_>>();
+    let reviews = item
+        .get("latestReviews")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(parse_gh_pr_status_review)
+        .collect::<Vec<_>>();
+    Ok(GhPrStatusPullRequest {
+        number,
+        title: json_value_string(&item, "title"),
+        is_draft: item
+            .get("isDraft")
+            .and_then(Value::as_bool)
+            .is_some_and(|value| value),
+        merge_state_status: json_value_string(&item, "mergeStateStatus"),
+        head_ref_name: json_value_string(&item, "headRefName"),
+        base_ref_name: json_value_string(&item, "baseRefName"),
+        review_decision: json_value_string(&item, "reviewDecision"),
+        checks,
+        reviews,
+    })
+}
+
+fn parse_gh_pr_status_review(value: &Value) -> GhPrStatusReview {
+    let author = match value
+        .get("author")
+        .and_then(|author| author.get("login"))
+        .and_then(Value::as_str)
+    {
+        Some(login) => login.to_string(),
+        None => String::new(),
+    };
+    GhPrStatusReview {
+        author,
+        state: json_value_string(value, "state"),
+    }
+}
+
+fn parse_required_status_contexts(text: &str) -> Result<Vec<String>, String> {
+    let value: Value = serde_json::from_str(text)
+        .map_err(|err| format!("failed to parse required status contexts JSON: {err}"))?;
+    let Some(items) = value.as_array() else {
+        return Err("required status contexts JSON must be an array".to_string());
+    };
+    let mut contexts = items
+        .iter()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    contexts.sort();
+    contexts.dedup();
+    Ok(contexts)
+}
+
+fn gh_pr_status_readiness(
+    pr: &GhPrStatusPullRequest,
+    required_contexts: &[String],
+    required_contexts_available: bool,
+    warnings: Vec<String>,
+) -> GhPrStatusReadiness {
+    let failed_checks = pr
+        .checks
+        .iter()
+        .filter(|check| pr_check_failed(check))
+        .map(format_gh_pr_check_status)
+        .collect::<Vec<_>>();
+    let pending_checks = pr
+        .checks
+        .iter()
+        .filter(|check| pr_check_pending(check))
+        .map(format_gh_pr_check_status)
+        .collect::<Vec<_>>();
+    let required_checks_outstanding = pr
+        .checks
+        .iter()
+        .filter(|check| pr_check_pending(check))
+        .filter(|check| {
+            !required_contexts_available
+                || required_contexts
+                    .iter()
+                    .any(|context| context.eq_ignore_ascii_case(&check.name))
+        })
+        .map(format_gh_pr_check_status)
+        .collect::<Vec<_>>();
+    let droid_checks = pr
+        .checks
+        .iter()
+        .filter(|check| check.name.to_ascii_lowercase().contains("droid"))
+        .map(format_gh_pr_check_status)
+        .collect::<Vec<_>>();
+    let behind_main = pr.merge_state_status.eq_ignore_ascii_case("BEHIND");
+    let mut readiness = GhPrStatusReadiness {
+        behind_main,
+        required_contexts_available,
+        required_checks_outstanding,
+        failed_checks,
+        pending_checks,
+        droid_checks,
+        safe_next_action: String::new(),
+        warnings,
+    };
+    readiness.safe_next_action = gh_pr_safe_next_action(pr, &readiness).to_string();
+    readiness
+}
+
+fn gh_pr_safe_next_action(
+    pr: &GhPrStatusPullRequest,
+    readiness: &GhPrStatusReadiness,
+) -> &'static str {
+    if !readiness.failed_checks.is_empty()
+        || pr.review_decision.eq_ignore_ascii_case("CHANGES_REQUESTED")
+    {
+        return "inspect failure";
+    }
+    if readiness.behind_main {
+        return "rebase";
+    }
+    if pr.is_draft
+        || pr.review_decision.eq_ignore_ascii_case("REVIEW_REQUIRED")
+        || !readiness.required_checks_outstanding.is_empty()
+        || !readiness.pending_checks.is_empty()
+    {
+        return "wait";
+    }
+    let merge_state = pr.merge_state_status.to_ascii_uppercase();
+    match merge_state.as_str() {
+        "CLEAN" => "merge",
+        "BLOCKED" | "DRAFT" | "HAS_HOOKS" | "UNKNOWN" | "UNSTABLE" => "wait",
+        "DIRTY" => "inspect failure",
+        _ => "inspect failure",
+    }
+}
+
+fn format_gh_pr_check_status(check: &PrTriageCheck) -> String {
+    let status = if check.status.trim().is_empty() {
+        "unknown"
+    } else {
+        check.status.trim()
+    };
+    let conclusion = if check.conclusion.trim().is_empty() {
+        "unknown"
+    } else {
+        check.conclusion.trim()
+    };
+    format!("{} (status={status}, conclusion={conclusion})", check.name)
+}
+
+fn gh_pr_status_markdown(
+    pr: &GhPrStatusPullRequest,
+    required_contexts: &[String],
+    readiness: &GhPrStatusReadiness,
+) -> String {
+    let mut body = String::new();
+    body.push_str("# GitHub PR Status\n\n");
+    body.push_str(&format!("- PR: #{} {}\n", pr.number, pr.title));
+    body.push_str(&format!(
+        "- Branch: `{}` -> `{}`\n",
+        pr.head_ref_name, pr.base_ref_name
+    ));
+    body.push_str(&format!(
+        "- mergeable_state: `{}`\n",
+        value_or_unknown(&pr.merge_state_status)
+    ));
+    body.push_str(&format!(
+        "- review_decision: `{}`\n",
+        value_or_unknown(&pr.review_decision)
+    ));
+    body.push_str(&format!("- draft: `{}`\n", pr.is_draft));
+    body.push_str(&format!("- behind main: `{}`\n", readiness.behind_main));
+    body.push_str(&format!(
+        "- safe next action: `{}`\n\n",
+        readiness.safe_next_action
+    ));
+
+    body.push_str("## Required Checks Outstanding\n\n");
+    if readiness.required_contexts_available {
+        body.push_str(&format!(
+            "- Required context lookup: available ({} context(s))\n",
+            required_contexts.len()
+        ));
+    } else {
+        body.push_str("- Required context lookup: unavailable; using status rollup only\n");
+    }
+    append_markdown_list(&mut body, &readiness.required_checks_outstanding, "None");
+
+    body.push_str("\n## Failed Checks\n\n");
+    append_markdown_list(&mut body, &readiness.failed_checks, "None");
+
+    body.push_str("\n## Pending Checks\n\n");
+    append_markdown_list(&mut body, &readiness.pending_checks, "None");
+
+    body.push_str("\n## Reviews\n\n");
+    body.push_str(&format!(
+        "- Review decision: `{}`\n",
+        value_or_unknown(&pr.review_decision)
+    ));
+    if pr.reviews.is_empty() {
+        body.push_str("- No latest reviews returned\n");
+    } else {
+        for review in &pr.reviews {
+            body.push_str(&format!(
+                "- {}: `{}`\n",
+                value_or_unknown(&review.author),
+                value_or_unknown(&review.state)
+            ));
+        }
+    }
+
+    body.push_str("\n## Droid Status\n\n");
+    append_markdown_list(
+        &mut body,
+        &readiness.droid_checks,
+        "No droid check entries returned",
+    );
+
+    body.push_str("\n## Warnings\n\n");
+    append_markdown_list(&mut body, &readiness.warnings, "None");
+    body
+}
+
+fn value_or_unknown(value: &str) -> &str {
+    if value.trim().is_empty() {
+        "unknown"
+    } else {
+        value.trim()
+    }
+}
+
+fn append_markdown_list(body: &mut String, items: &[String], empty: &str) {
+    if items.is_empty() {
+        body.push_str(&format!("- {empty}\n"));
+        return;
+    }
+    for item in items {
+        body.push_str(&format!("- {item}\n"));
+    }
 }
 
 fn collect_open_prs_for_triage() -> Result<Vec<PrTriagePullRequest>, String> {
@@ -29537,61 +29938,64 @@ mod tests {
         DogfoodReportPacketIndexRun, DogfoodRun, EvidenceQualityScorecardInput,
         EvidenceQualityScorecardInputs, EvidenceQualityScorecardReport, EvidenceQualityTrendInputs,
         EvidenceQualityTrendReport, FixKind, GENERATED_CI_FIRST_ACTION_REPAIR,
-        GENERATED_CI_FRONT_PANEL_REPAIR, GENERATED_CI_PACKET_INDEX_REPAIR, LocalContextAllow,
-        LspCockpitFixture, LspCockpitReport, MarkdownLink, PrTriageCheck, PrTriageFinding,
-        PrTriagePullRequest, ReceiptRecord, RepoExposureLatencyReport, RepoExposureLatencyRun,
-        RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode,
-        SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
-        TestOracleClass, WorktreeDoctorFinding, WorktreeDoctorSeverity,
-        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
-        badge_artifacts_summary_markdown, badge_diff_policy_violations, build_lsp_cockpit_report,
-        build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
-        build_targeted_test_outcome_report, check_allow_attributes,
-        check_badge_diff_policy_with_context, check_droid_review_config, check_executable_files,
-        check_file_policy, check_local_context, check_network_policy, check_no_panic_family,
-        check_process_policy, check_static_language, check_workflows, ci_full_evidence_gates,
-        collect_panic_findings, collect_semantic_panic_findings, critic_findings, days_from_civil,
-        dogfood_class_counts, dogfood_first_action_scenarios, dogfood_gate_adoption_scenarios,
-        dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
-        dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
-        dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
-        dogfood_pr_review_front_panel_scenarios, dogfood_report_json, dogfood_report_markdown,
-        dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
-        evaluate_semantic_no_panic_policy, evidence_quality_scorecard_from_values,
-        evidence_quality_scorecard_json, evidence_quality_scorecard_markdown,
-        evidence_quality_trend_from_values, evidence_quality_trend_json,
-        evidence_quality_trend_markdown, extract_json_object_usize_map, extract_json_string,
-        extract_json_warnings, extract_workflow_run_blocks,
-        finding_alignment_raw_to_canonical_ratio, finish_worktree_doctor_report,
-        first_line_difference, forbidden_panic_patterns, generated_clean_violations,
-        github_event_pull_request_title_from_text, glob_matches, golden_changes_without_blessing,
-        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
-        install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
-        is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
-        is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
-        is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
-        is_stale_agent_boundary_scan_target, json_escape, json_number_after,
-        json_string_values_for_key, json_summary_count, known_commands, known_xtask_command,
-        lane1_evidence_audit_from_repo_exposure, lane1_evidence_audit_json,
-        lane1_evidence_audit_markdown, local_context_line_findings, local_markdown_target,
-        lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
-        markdown_links_in_text, mutation_calibration_report_json,
+        GENERATED_CI_FRONT_PANEL_REPAIR, GENERATED_CI_PACKET_INDEX_REPAIR, GhPrStatusPullRequest,
+        GhPrStatusReview, LocalContextAllow, LspCockpitFixture, LspCockpitReport, MarkdownLink,
+        PrTriageCheck, PrTriageFinding, PrTriagePullRequest, ReceiptRecord,
+        RepoExposureLatencyReport, RepoExposureLatencyRun, RepoExposureLatencyTrace,
+        ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode, SarifPolicyResult,
+        SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass,
+        WorktreeDoctorFinding, WorktreeDoctorSeverity, badge_artifact_command_args,
+        badge_artifact_jobs, badge_artifact_native_slot, badge_artifacts_summary_markdown,
+        badge_diff_policy_violations, build_lsp_cockpit_report, build_no_panic_allowlist_proposals,
+        build_repo_exposure_latency_report, build_targeted_test_outcome_report,
+        check_allow_attributes, check_badge_diff_policy_with_context, check_droid_review_config,
+        check_executable_files, check_file_policy, check_local_context, check_network_policy,
+        check_no_panic_family, check_process_policy, check_static_language, check_workflows,
+        ci_full_evidence_gates, collect_panic_findings, collect_semantic_panic_findings,
+        critic_findings, days_from_civil, dogfood_class_counts, dogfood_first_action_scenarios,
+        dogfood_gate_adoption_scenarios, dogfood_generated_ci_cockpit_run_from_workflow,
+        dogfood_language_preview_run, dogfood_language_preview_scenarios,
+        dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
+        dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
+        dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
+        dogfood_report_packet_index_scenarios, evaluate_semantic_no_panic_policy,
+        evidence_quality_scorecard_from_values, evidence_quality_scorecard_json,
+        evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
+        evidence_quality_trend_json, evidence_quality_trend_markdown,
+        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
+        extract_workflow_run_blocks, finding_alignment_raw_to_canonical_ratio,
+        finish_worktree_doctor_report, first_line_difference, forbidden_panic_patterns,
+        generated_clean_violations, gh_pr_safe_next_action, gh_pr_status_markdown,
+        gh_pr_status_readiness, github_event_pull_request_title_from_text, glob_matches,
+        golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
+        guarded_allow_attributes_in_text, install_hooks_in, is_badge_refresh_context,
+        is_bdd_test_name, is_campaign_path, is_dependency_surface_candidate, is_docs_path,
+        is_evidence_path, is_generated_candidate, is_known_campaign_command,
+        is_non_rust_programming_candidate, is_policy_path, is_production_path, is_receipt_status,
+        is_ripr_managed_hook, is_snake_case_id, is_spec_id, is_stale_agent_boundary_scan_target,
+        json_escape, json_number_after, json_string_values_for_key, json_summary_count,
+        known_commands, known_xtask_command, lane1_evidence_audit_from_repo_exposure,
+        lane1_evidence_audit_json, lane1_evidence_audit_markdown, local_context_line_findings,
+        local_markdown_target, lsp_cockpit_report, lsp_cockpit_report_json,
+        lsp_cockpit_report_markdown, markdown_links_in_text, mutation_calibration_report_json,
         mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
         next_spec_id_from_ids, no_panic_toml_string, non_rust_programming_retention_reason,
         normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
         panic_family_from_pattern, parse_campaign_manifest, parse_file_policy_allowlist,
-        parse_inline_array, parse_mutation_calibration_args, parse_mutation_outcomes_json,
+        parse_gh_pr_status_args, parse_gh_pr_status_pull_request, parse_inline_array,
+        parse_mutation_calibration_args, parse_mutation_outcomes_json,
         parse_no_panic_allowlist_toml, parse_no_panic_allowlist_toml_v2,
         parse_pr_triage_pull_requests, parse_reason, parse_repo_exposure_static_seams,
-        parse_sarif_policy_args, parse_sarif_policy_results, parse_static_language_allowlist,
-        parse_string_value, parse_targeted_test_outcome_args, pr_body_validation_warning,
-        pr_checks_summary, pr_sensitive_file_reason, pr_shape_warnings, pr_summary_body,
-        pr_title_family, pr_triage_findings, pr_triage_markdown, precommit_report_body,
-        public_contract_rows, read_lsp_cockpit_json_value, read_mutation_input_json, receipt_json,
-        receipt_specs, receipt_status_from_reports, render_no_panic_allowlist_proposals_markdown,
-        render_no_panic_allowlist_proposals_toml, repo_badge_artifact_command_args,
-        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
-        repo_exposure_latency_json, repo_exposure_latency_markdown, repo_exposure_latency_run,
+        parse_required_status_contexts, parse_sarif_policy_args, parse_sarif_policy_results,
+        parse_static_language_allowlist, parse_string_value, parse_targeted_test_outcome_args,
+        pr_body_validation_warning, pr_checks_summary, pr_sensitive_file_reason, pr_shape_warnings,
+        pr_summary_body, pr_title_family, pr_triage_findings, pr_triage_markdown,
+        precommit_report_body, public_contract_rows, read_lsp_cockpit_json_value,
+        read_mutation_input_json, receipt_json, receipt_specs, receipt_status_from_reports,
+        render_no_panic_allowlist_proposals_markdown, render_no_panic_allowlist_proposals_toml,
+        repo_badge_artifact_command_args, repo_badge_artifact_jobs,
+        repo_badge_artifacts_summary_markdown, repo_exposure_latency_json,
+        repo_exposure_latency_markdown, repo_exposure_latency_run,
         repo_exposure_latency_run_from_output, repo_exposure_latency_status,
         repo_exposure_latency_trace, repo_root, repo_seam_inventory_command_args_for_root,
         report_index_markdown, report_index_missing_expected, report_status_from_text,
@@ -39140,6 +39544,128 @@ jobs:
         Ok(())
     }
 
+    fn gh_pr_status_pr(checks: Vec<PrTriageCheck>) -> GhPrStatusPullRequest {
+        GhPrStatusPullRequest {
+            number: 42,
+            title: "devex: merge readiness".to_string(),
+            is_draft: false,
+            merge_state_status: "CLEAN".to_string(),
+            head_ref_name: "devex-gh-pr-status".to_string(),
+            base_ref_name: "main".to_string(),
+            review_decision: "APPROVED".to_string(),
+            checks,
+            reviews: vec![GhPrStatusReview {
+                author: "droid".to_string(),
+                state: "APPROVED".to_string(),
+            }],
+        }
+    }
+
+    fn gh_pr_status_check(name: &str, status: &str, conclusion: &str) -> PrTriageCheck {
+        PrTriageCheck {
+            name: name.to_string(),
+            status: status.to_string(),
+            conclusion: conclusion.to_string(),
+        }
+    }
+
+    #[test]
+    fn gh_pr_status_args_parse_pr_number() -> Result<(), String> {
+        assert_eq!(
+            parse_gh_pr_status_args(&["--pr".to_string(), "905".to_string()])?,
+            905
+        );
+        assert_eq!(parse_gh_pr_status_args(&["905".to_string()])?, 905);
+        assert_gh_pr_status_arg_error(&[])?;
+        assert_gh_pr_status_arg_error(&["--pr".to_string()])?;
+        assert_gh_pr_status_arg_error(&["--pr".to_string(), "0".to_string()])?;
+        Ok(())
+    }
+
+    fn assert_gh_pr_status_arg_error(args: &[String]) -> Result<(), String> {
+        match parse_gh_pr_status_args(args) {
+            Ok(number) => Err(format!(
+                "expected gh-pr-status args to fail, parsed #{number}"
+            )),
+            Err(_) => Ok(()),
+        }
+    }
+
+    #[test]
+    fn parse_gh_pr_status_reads_view_json() -> Result<(), String> {
+        let pr = parse_gh_pr_status_pull_request(
+            r#"{
+              "number": 42,
+              "title": "devex: merge readiness",
+              "isDraft": false,
+              "mergeStateStatus": "CLEAN",
+              "headRefName": "devex-gh-pr-status",
+              "baseRefName": "main",
+              "reviewDecision": "APPROVED",
+              "latestReviews": [
+                {"author": {"login": "droid"}, "state": "APPROVED"}
+              ],
+              "statusCheckRollup": [
+                {"__typename": "CheckRun", "name": "rust", "status": "COMPLETED", "conclusion": "SUCCESS"},
+                {"__typename": "StatusContext", "context": "droid/review", "state": "SUCCESS"}
+              ]
+            }"#,
+        )?;
+        assert_eq!(pr.number, 42);
+        assert_eq!(pr.title, "devex: merge readiness");
+        assert_eq!(pr.checks.len(), 2);
+        assert_eq!(pr.reviews.len(), 1);
+        assert_eq!(pr.reviews[0].author, "droid");
+        assert_eq!(
+            parse_required_status_contexts(r#"["rust","msrv","rust"]"#)?,
+            vec!["msrv".to_string(), "rust".to_string()]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gh_pr_status_readiness_selects_safe_next_action() {
+        let contexts = vec!["rust".to_string()];
+        let clean = gh_pr_status_pr(vec![gh_pr_status_check("rust", "COMPLETED", "SUCCESS")]);
+        let clean_readiness = gh_pr_status_readiness(&clean, &contexts, true, Vec::new());
+        assert_eq!(clean_readiness.safe_next_action, "merge");
+
+        let pending = gh_pr_status_pr(vec![gh_pr_status_check("rust", "IN_PROGRESS", "")]);
+        let pending_readiness = gh_pr_status_readiness(&pending, &contexts, true, Vec::new());
+        assert_eq!(pending_readiness.safe_next_action, "wait");
+        assert!(
+            pending_readiness
+                .required_checks_outstanding
+                .iter()
+                .any(|check| check.contains("rust"))
+        );
+
+        let failed = gh_pr_status_pr(vec![gh_pr_status_check("rust", "COMPLETED", "FAILURE")]);
+        let failed_readiness = gh_pr_status_readiness(&failed, &contexts, true, Vec::new());
+        assert_eq!(failed_readiness.safe_next_action, "inspect failure");
+
+        let mut behind = gh_pr_status_pr(vec![gh_pr_status_check("rust", "COMPLETED", "SUCCESS")]);
+        behind.merge_state_status = "BEHIND".to_string();
+        let behind_readiness = gh_pr_status_readiness(&behind, &contexts, true, Vec::new());
+        assert_eq!(gh_pr_safe_next_action(&behind, &behind_readiness), "rebase");
+    }
+
+    #[test]
+    fn gh_pr_status_markdown_reports_reviews_checks_and_action() {
+        let pr = gh_pr_status_pr(vec![
+            gh_pr_status_check("rust", "COMPLETED", "SUCCESS"),
+            gh_pr_status_check("droid/review", "COMPLETED", "SUCCESS"),
+        ]);
+        let contexts = vec!["rust".to_string()];
+        let readiness = gh_pr_status_readiness(&pr, &contexts, true, Vec::new());
+        let markdown = gh_pr_status_markdown(&pr, &contexts, &readiness);
+        assert!(markdown.contains("# GitHub PR Status"));
+        assert!(markdown.contains("safe next action: `merge`"));
+        assert!(markdown.contains("## Required Checks Outstanding"));
+        assert!(markdown.contains("## Reviews"));
+        assert!(markdown.contains("droid/review"));
+    }
+
     #[test]
     fn pr_triage_findings_flag_queue_risks() {
         let mut first = triage_pr(
@@ -39377,6 +39903,14 @@ jobs:
         assert_eq!(
             XtaskCommand::parse(["pr-triage-report".to_string()]),
             XtaskCommand::PrTriageReport
+        );
+        assert_eq!(
+            XtaskCommand::parse([
+                "gh-pr-status".to_string(),
+                "--pr".to_string(),
+                "905".to_string(),
+            ]),
+            XtaskCommand::GhPrStatus(vec!["--pr".to_string(), "905".to_string()])
         );
         assert_eq!(
             XtaskCommand::parse(["specs".to_string(), "next".to_string()]),
@@ -39685,6 +40219,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(commands.contains(&"sarif-policy --current <path> [--baseline <path>]"));
         assert!(commands.contains(&"badges [--check]"));
         assert!(commands.contains(&"pr-triage-report"));
+        assert!(commands.contains(&"gh-pr-status --pr <number>"));
         assert!(commands.contains(&"check-badge-diff-policy"));
         assert!(commands.contains(&"worktree doctor"));
         assert!(commands.contains(&"check-droid-review-config"));
