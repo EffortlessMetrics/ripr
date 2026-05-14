@@ -922,7 +922,7 @@ fn candidate_from_gap_record(record: &GapRecord) -> GateCandidate {
         placement,
         missing_discriminator: changed_behavior.clone(),
         assertion_shape,
-        candidate_values: changed_behavior.into_iter().collect(),
+        candidate_values: Vec::new(),
         recommended_test,
         repair_route,
         verification_commands: record.verification_commands.clone(),
@@ -1104,7 +1104,6 @@ fn baseline_identity(candidate: &GateCandidate) -> Option<String> {
 
 fn stable_identity(candidate: &GateCandidate) -> String {
     baseline_identity(candidate)
-        .or_else(|| candidate.gap_id.clone())
         .unwrap_or_else(|| candidate.source_id.clone())
         .chars()
         .map(|ch| {
@@ -2122,6 +2121,11 @@ mod tests {
         assert_eq!(
             value["decisions"][0]["evidence"]["verification_commands"][0],
             "cargo xtask fixtures boundary_gap"
+        );
+        assert_eq!(
+            value["decisions"][0]["evidence"]["candidate_values"],
+            Value::Array(Vec::new()),
+            "gap ledger records do not carry test input variants"
         );
         let _ = fs::remove_dir_all(dir);
         Ok(())
