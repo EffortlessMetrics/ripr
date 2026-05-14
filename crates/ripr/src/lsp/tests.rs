@@ -1436,6 +1436,161 @@ fn code_action_response_omits_context_action_without_ripr_diagnostic() -> Result
 }
 
 #[test]
+fn gap_code_actions_surface_bounded_repair_actions_when_artifact_is_valid() -> Result<(), String> {
+    let root = unique_lsp_test_root("gap-actions")?;
+    std::fs::create_dir_all(root.path().join("src"))
+        .map_err(|err| format!("create src failed: {err}"))?;
+    std::fs::create_dir_all(root.path().join("tests"))
+        .map_err(|err| format!("create tests failed: {err}"))?;
+    std::fs::write(
+        root.path().join("tests/test_pricing.py"),
+        "def test_discount_boundary():\n    assert price(10) == 9\n",
+    )
+    .map_err(|err| format!("write related test failed: {err}"))?;
+    let uri = file_uri_for_path(&root.path().join("src/pricing.py"))?;
+    let diagnostic = gap_action_diagnostic();
+    let mut snapshot = sample_analysis_snapshot(
+        root.path().to_path_buf(),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.gap_artifacts = vec![validated_gap_artifact()];
+
+    let actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
+        Some(&snapshot),
+    );
+    let commands = code_action_commands(&actions)?;
+
+    assert_eq!(
+        commands
+            .iter()
+            .map(|(title, command, _)| (title.as_str(), command.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("Inspect gap: copy repair packet", COPY_CONTEXT_COMMAND),
+            (
+                "Write targeted test: open best related test",
+                OPEN_RELATED_TEST_COMMAND
+            ),
+            (
+                "Verify after test: copy verify command",
+                COPY_AGENT_VERIFY_COMMAND
+            ),
+            (
+                "Review result: copy receipt command",
+                COPY_AGENT_RECEIPT_COMMAND
+            ),
+            ("Inspect gap: copy static-limit note", COPY_CONTEXT_COMMAND),
+            ("Refresh Analysis - Saved Workspace Check", REFRESH_COMMAND),
+        ]
+    );
+    assert_eq!(commands[0].2[0]["label"], "gap_repair_packet");
+    assert_eq!(commands[0].2[0]["canonical_gap_id"], "gap:py:pricing");
+    assert_eq!(
+        commands[0].2[0]["repair_route"]["related_test"],
+        "tests/test_pricing.py::test_discount_boundary"
+    );
+    assert_eq!(
+        commands[1].2[0]["uri"],
+        file_uri_for_path(&root.path().join("tests/test_pricing.py"))?.as_str()
+    );
+    assert_eq!(commands[1].2[0]["line"], 2);
+    assert_eq!(commands[1].2[0]["test_name"], "test_discount_boundary");
+    assert_eq!(commands[2].2[0]["label"], "gap_verify");
+    assert_eq!(
+        commands[2].2[0]["command"],
+        "ripr agent verify --root . --json"
+    );
+    assert_eq!(commands[3].2[0]["label"], "gap_receipt");
+    assert_eq!(
+        commands[3].2[0]["command"],
+        "ripr agent receipt --root . --json"
+    );
+    assert!(
+        commands[4].2[0]["note"]
+            .as_str()
+            .is_some_and(|note| note.contains("Static limit: missing_import_graph")),
+        "expected static-limit note, got {:?}",
+        commands[4].2[0]
+    );
+    Ok(())
+}
+
+#[test]
+fn gap_code_actions_fail_closed_without_valid_current_artifact() -> Result<(), String> {
+    let diagnostic = gap_action_diagnostic();
+    let uri = test_uri("file:///workspace/src/pricing.py")?;
+    let snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+
+    let actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
+        Some(&snapshot),
+    );
+    let commands = code_action_commands(&actions)?;
+
+    assert_eq!(
+        commands
+            .iter()
+            .map(|(title, command, _)| (title.as_str(), command.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("Refresh Analysis - Saved Workspace Check", REFRESH_COMMAND)],
+        "stale or unvalidated gap diagnostics must not expose repair actions"
+    );
+    Ok(())
+}
+
+#[test]
+fn gap_code_actions_omit_unsafe_related_paths_and_commands() -> Result<(), String> {
+    let root = unique_lsp_test_root("gap-unsafe-actions")?;
+    let uri = file_uri_for_path(&root.path().join("src/pricing.py"))?;
+    let mut diagnostic = gap_action_diagnostic();
+    let data = diagnostic
+        .data
+        .as_mut()
+        .ok_or_else(|| "missing diagnostic data".to_string())?;
+    data["repair_route"]["related_test"] = serde_json::json!("../outside.py::test_escape");
+    data["verification_commands"] =
+        serde_json::json!(["ripr agent verify --root ../outside --json"]);
+    data["receipt_command"] = serde_json::json!("ripr agent receipt --root ../outside --json");
+    data.as_object_mut()
+        .ok_or_else(|| "expected object data".to_string())?
+        .remove("static_limit_kind");
+    data.as_object_mut()
+        .ok_or_else(|| "expected object data".to_string())?
+        .remove("static_limit_detail");
+    let mut snapshot = sample_analysis_snapshot(
+        root.path().to_path_buf(),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.gap_artifacts = vec![validated_gap_artifact()];
+
+    let actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
+        Some(&snapshot),
+    );
+    let commands = code_action_commands(&actions)?;
+
+    assert_eq!(
+        commands
+            .iter()
+            .map(|(title, command, _)| (title.as_str(), command.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("Refresh Analysis - Saved Workspace Check", REFRESH_COMMAND)],
+        "unsafe gap paths or command roots must leave refresh as the only action"
+    );
+    Ok(())
+}
+
+#[test]
 fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Result<(), String> {
     let seam = sample_classified_seam();
     let diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
@@ -2779,6 +2934,78 @@ where
         .await
         .map_err(|err| format!("failed to read LSP body: {err}"))?;
     serde_json::from_slice(&body).map_err(|err| format!("failed to decode LSP message: {err}"))
+}
+
+fn gap_action_diagnostic() -> tower_lsp_server::ls_types::Diagnostic {
+    tower_lsp_server::ls_types::Diagnostic {
+        range: Range {
+            start: Position {
+                line: 11,
+                character: 0,
+            },
+            end: Position {
+                line: 11,
+                character: 120,
+            },
+        },
+        severity: Some(DiagnosticSeverity::WARNING),
+        code: Some(NumberOrString::String(
+            "ripr-gap-MissingBoundaryAssertion".to_string(),
+        )),
+        code_description: None,
+        source: Some("ripr".to_string()),
+        message: "ripr gap: MissingBoundaryAssertion; repair route: AddBoundaryAssertion"
+            .to_string(),
+        related_information: None,
+        tags: None,
+        data: Some(serde_json::json!({
+            "schema_version": "0.1",
+            "source": "gap_decision_ledger",
+            "gap_ledger": "target/ripr/reports/gap-decision-ledger.json",
+            "gap_id": "gap:py:pricing",
+            "canonical_gap_id": "gap:py:pricing",
+            "gap_kind": "MissingBoundaryAssertion",
+            "language": "python",
+            "language_status": "preview",
+            "gap_state": "actionable",
+            "policy_state": "advisory",
+            "repairability": "repairable",
+            "static_limit_kind": "missing_import_graph",
+            "static_limit_detail": "Imported owner targets were not resolved in preview mode.",
+            "repair_route": {
+                "route_kind": "AddBoundaryAssertion",
+                "target_file": "tests/test_pricing.py",
+                "target_line": 2,
+                "related_test": "tests/test_pricing.py::test_discount_boundary",
+                "assertion_shape": "assert price(threshold) == expected",
+                "changed_behavior": "amount >= threshold",
+                "stop_conditions": ["Stop if the related test belongs to another package."]
+            },
+            "verification_commands": ["ripr agent verify --root . --json"],
+            "receipt_command": "ripr agent receipt --root . --json",
+            "authority_boundary": "advisory"
+        })),
+    }
+}
+
+fn validated_gap_artifact() -> ValidatedGapArtifact {
+    ValidatedGapArtifact {
+        kind: GapArtifactKind::GapDecisionLedger,
+        root: Some(".".to_string()),
+        identities: vec![GapArtifactIdentity {
+            canonical_gap_id: Some("gap:py:pricing".to_string()),
+            seam_id: None,
+            finding_id: None,
+        }],
+        language: Some(LanguageId::Python),
+        language_status: Some(LanguageStatus::Preview),
+        gap_state: Some("actionable".to_string()),
+        related_paths: vec!["tests/test_pricing.py".to_string()],
+        verify_commands: vec!["ripr agent verify --root . --json".to_string()],
+        receipt_commands: vec!["ripr agent receipt --root . --json".to_string()],
+        static_limit_kinds: vec!["missing_import_graph".to_string()],
+        has_text_static_limit: false,
+    }
 }
 
 fn sample_analysis_snapshot(
