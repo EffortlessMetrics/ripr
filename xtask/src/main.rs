@@ -38791,66 +38791,68 @@ jobs:
 
     #[test]
     fn xtask_run_helpers_report_success_failure_and_optional_output() -> Result<(), String> {
-        let program = "rustc";
-        let invalid_flag = "--definitely-not-a-real-rustc-flag";
+        with_repo_cwd(|| {
+            let program = "rustc";
+            let invalid_flag = "--definitely-not-a-real-rustc-flag";
 
-        let version = run_output(program, &["--version"])?;
-        if !version.contains("rustc") {
-            return Err(format!("expected rustc version output, got {version:?}"));
-        }
+            let version = run_output(program, &["--version"])?;
+            if !version.contains("rustc") {
+                return Err(format!("expected rustc version output, got {version:?}"));
+            }
 
-        let owned_version = run_output_owned(program, &["--version".to_string()])?;
-        if !owned_version.contains("rustc") {
-            return Err(format!(
-                "expected owned rustc version output, got {owned_version:?}"
-            ));
-        }
+            let owned_version = run_output_owned(program, &["--version".to_string()])?;
+            if !owned_version.contains("rustc") {
+                return Err(format!(
+                    "expected owned rustc version output, got {owned_version:?}"
+                ));
+            }
 
-        let status = run(program, &["--version"])?;
-        if !status.success() {
-            return Err(format!("expected rustc --version to succeed, got {status}"));
-        }
+            let status = run(program, &["--version"])?;
+            if !status.success() {
+                return Err(format!("expected rustc --version to succeed, got {status}"));
+            }
 
-        let captured = capture_output(program, &["--version"], "rustc version")?;
-        if !captured.status.success() || !captured.stdout.contains("rustc") {
-            return Err(format!(
-                "expected captured rustc version output, got status={} stdout={:?}",
-                captured.status, captured.stdout
-            ));
-        }
+            let captured = capture_output(program, &["--version"], "rustc version")?;
+            if !captured.status.success() || !captured.stdout.contains("rustc") {
+                return Err(format!(
+                    "expected captured rustc version output, got status={} stdout={:?}",
+                    captured.status, captured.stdout
+                ));
+            }
 
-        let failed_capture = capture_output(program, &[invalid_flag], "rustc invalid flag")?;
-        if failed_capture.status.success() {
-            return Err("expected invalid rustc flag to fail".to_string());
-        }
+            let failed_capture = capture_output(program, &[invalid_flag], "rustc invalid flag")?;
+            if failed_capture.status.success() {
+                return Err("expected invalid rustc flag to fail".to_string());
+            }
 
-        let optional = run_output_optional(program, &[invalid_flag])?;
-        if !optional.is_empty() {
-            return Err(format!(
-                "expected optional failure to return empty output, got {optional:?}"
-            ));
-        }
+            let optional = run_output_optional(program, &[invalid_flag])?;
+            if !optional.is_empty() {
+                return Err(format!(
+                    "expected optional failure to return empty output, got {optional:?}"
+                ));
+            }
 
-        let failure = run_output(program, &[invalid_flag]).is_err();
-        if !failure {
-            return Err("expected run_output to report non-zero exit".to_string());
-        }
+            let failure = run_output(program, &[invalid_flag]).is_err();
+            if !failure {
+                return Err("expected run_output to report non-zero exit".to_string());
+            }
 
-        let owned_failure = run_output_owned(program, &[invalid_flag.to_string()]).is_err();
-        if !owned_failure {
-            return Err("expected run_output_owned to report non-zero exit".to_string());
-        }
+            let owned_failure = run_output_owned(program, &[invalid_flag.to_string()]).is_err();
+            if !owned_failure {
+                return Err("expected run_output_owned to report non-zero exit".to_string());
+            }
 
-        let missing_program = capture_output(
-            "definitely-missing-ripr-test-binary",
-            &[],
-            "missing test binary",
-        );
-        if missing_program.is_ok() {
-            return Err("expected missing executable to report spawn error".to_string());
-        }
+            let missing_program = capture_output(
+                "definitely-missing-ripr-test-binary",
+                &[],
+                "missing test binary",
+            );
+            if missing_program.is_ok() {
+                return Err("expected missing executable to report spawn error".to_string());
+            }
 
-        Ok(())
+            Ok(())
+        })
     }
 
     #[test]
