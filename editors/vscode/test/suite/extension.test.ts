@@ -286,6 +286,9 @@ suite('Extension Smoke', () => {
       });
       assert.ok(context.status.text.includes('ripr: no seams'));
       assert.ok(String(context.status.tooltip).includes('Enabled languages: rust'));
+      assert.ok(String(context.status.tooltip).includes('last saved workspace state'));
+      assert.ok(String(context.status.tooltip).includes('disabled or unavailable preview languages stay silent'));
+      assert.ok(String(context.status.tooltip).includes('enabled and available in this ripr build'));
 
       context.client.emitNotification('window/logMessage', {
         message: 'ripr analysis refresh completed in 42 ms: generation=1, diagnostics=0, files=0, findings=0, seam_diagnostics=0, enabled_languages=0, enabled_language_names=, published_files=0, cleared_files=0'
@@ -303,6 +306,14 @@ suite('Extension Smoke', () => {
         message: 'ripr analysis refresh completed in 42 ms: generation=2, diagnostics=5, files=2, findings=4, seam_diagnostics=0, enabled_languages=1, enabled_language_names=rust, published_files=2, cleared_files=0'
       });
       assert.ok(context.status.text.includes('ripr: no seams'));
+
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=2, diagnostics=0, files=1, findings=0, seam_diagnostics=0, enabled_languages=3, enabled_language_names=rust|typescript|python, published_files=0, cleared_files=0'
+      });
+      assert.ok(context.status.text.includes('ripr: no seams'));
+      assert.ok(String(context.status.tooltip).includes('Enabled languages: rust, typescript, python'));
+      assert.ok(String(context.status.tooltip).includes('workspace root is correct'));
+      assert.ok(String(context.status.tooltip).includes('available in this ripr build'));
 
       context.client.emitNotification('window/logMessage', {
         message: 'ripr analysis refresh completed in 42 ms: generation=3, diagnostics=2, files=1, findings=1, seam_diagnostics=1, enabled_languages=1, enabled_language_names=rust, published_files=1, cleared_files=0'
