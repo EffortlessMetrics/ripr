@@ -1479,12 +1479,14 @@ evidence = [
   "docs/specs/RIPR-SPEC-0043-presentation-text-evidence.md defines the planned Lane 1 evidence class for changed presentation/help/report/table text",
   "docs/proposals/RIPR-PROP-0005-user-visible-output-evidence.md records the user-visible output evidence motivation and non-goals",
   "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md records the PR-sized sequence and Lane 1 boundary",
-  "fixtures/evidence-quality-benchmark/corpus.json#presentation_text_constant_visibility_unknown pins the screenshot-derived declaration/literal grouping and visibility-unknown static limitation guard"
+  "fixtures/evidence-quality-benchmark/corpus.json#presentation_text_constant_visibility_unknown pins the screenshot-derived declaration/literal grouping and visibility-unknown static limitation guard",
+  "crates/ripr/src/output/json/finding_alignment.rs groups supported presentation-like &str constant declarations and adjacent string literals into one finding_alignment canonical limitation item while preserving raw findings",
+  "crates/ripr/src/output/json/finding_alignment.rs tests pin grouping, line-movement identity, non-collision, unsupported string guards, and no mutation-first repair language"
 ]
 fixtures = [
   "fixtures/evidence-quality-benchmark/corpus.json"
 ]
-next = "analysis/presentation-text-evidence-fields"
+next = "analysis/presentation-text-visibility"
 metric = "presentation_text_total, presentation_text_user_visible, presentation_text_observed, presentation_text_unobserved, presentation_text_internal_only, presentation_text_visibility_unknown, presentation_text_observer_unknown, presentation_text_duplicate_groups, presentation_text_actionable_snapshot, presentation_text_no_action, presentation_text_static_limitations"
 
 [[capability]]
@@ -1498,14 +1500,15 @@ evidence = [
   "fixtures/evidence-quality-benchmark/corpus.json pins manifest-only raw-to-canonical presentation-text cases for actionable, already-observed, internal-only, static-limitation, line-movement, and non-collision states",
   "crates/ripr/src/output/evidence_record.rs emits additive raw_findings, canonical_item, and nullable presentation_text fields from existing static seam facts",
   "crates/ripr/src/output/repo_exposure.rs carries the additive alignment fields under seams[].evidence_record while preserving current seam fields",
+  "crates/ripr/src/output/json/finding_alignment.rs adds the first check-output alignment projection for supported presentation-text declaration/literal groups",
   "xtask/src/main.rs includes alignment fields in Lane 1 evidence-record field-health reporting",
   "docs/OUTPUT_SCHEMA.md documents the additive evidence_record alignment fields",
-  "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md records the remaining presentation-text grouping and visibility work before raw line-local presentation-text findings become one action, no-action state, or named limitation"
+  "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md records the remaining presentation-text visibility, actionability, scorecard/trend, and handoff work"
 ]
 fixtures = [
   "fixtures/evidence-quality-benchmark/corpus.json"
 ]
-next = "analysis/presentation-text-canonical-grouping"
+next = "analysis/presentation-text-visibility"
 metric = "finding_alignment_raw_findings_total, finding_alignment_raw_signals_total, finding_alignment_canonical_items_total, finding_alignment_raw_to_canonical_ratio, finding_alignment_duplicate_groups_total, finding_alignment_actionable_items_total, finding_alignment_actionable_unresolved_canonical_gaps, finding_alignment_already_observed_total, finding_alignment_internal_only_total, finding_alignment_internal_no_action_total, finding_alignment_static_limitation_total, finding_alignment_unknown_total, finding_alignment_calibrated_supported_total, finding_alignment_uncalibrated_total, finding_alignment_visibility_unknown_total, finding_alignment_presentation_text_actionable_total"
 
 [[capability]]

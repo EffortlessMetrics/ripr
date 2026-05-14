@@ -3126,10 +3126,10 @@ Work items:
 | `docs/spec-finding-to-gap-alignment` | done | #927 defined raw finding to canonical evidence item alignment before behavior changes. |
 | `fixtures/finding-alignment-benchmark` | done | #931 pinned grouping, no-action, already-observed, static limitation, and actionable raw-to-canonical cases. |
 | `fixtures/presentation-text-evidence-benchmark` | done | #900 added the screenshot-derived benchmark after the proposal/spec foundation. |
-| `analysis/finding-alignment-evidence-fields` | current | Adds additive `raw_findings[]`, `canonical_item`, and nullable `presentation_text` fields to `evidence_record` without changing rendering, gates, scores, generated tests, provider calls, or mutation execution. |
-| `analysis/presentation-text-evidence-fields` | planned | Adds additive evidence-record fields for the class. |
+| `analysis/finding-alignment-evidence-fields` | done | #935 added additive `raw_findings[]`, `canonical_item`, and nullable `presentation_text` fields to `evidence_record` without changing rendering, gates, scores, generated tests, provider calls, or mutation execution. |
+| `analysis/presentation-text-evidence-fields` | done | #935 reserved nullable evidence-record fields for the class. |
+| `analysis/presentation-text-canonical-grouping` | current | Groups supported presentation-text constant declaration plus adjacent literal raw findings into one visibility-unknown canonical limitation item in `ripr check --json`. |
 | `analysis/presentation-text-visibility` | planned | Classifies obvious output sinks and keeps unsupported routes as limitations. |
-| `analysis/presentation-text-canonical-grouping` | planned | Groups declaration and literal lines into one item. |
 | `analysis/presentation-text-actionability` | planned | Classifies action, no-action, observed, and limitation states. |
 | `report/presentation-text-scorecard-trend-fields` | planned | Reports presentation-text quality counts and deltas. |
 | `docs/presentation-text-consumer-handoff` | planned | Documents downstream rendering contract without changing PR/CI or editor surfaces. |

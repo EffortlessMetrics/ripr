@@ -2676,6 +2676,11 @@ id = "RIPR-SPEC-0043"
 name = "Presentation text evidence"
 spec = "docs/specs/RIPR-SPEC-0043-presentation-text-evidence.md"
 tests = [
+  "crates/ripr/src/output/json/finding_alignment.rs::tests::groups_const_declaration_and_adjacent_literal",
+  "crates/ripr/src/output/json/finding_alignment.rs::tests::canonical_id_is_stable_across_line_movement",
+  "crates/ripr/src/output/json/finding_alignment.rs::tests::similar_text_in_different_constants_does_not_collide",
+  "crates/ripr/src/output/json/finding_alignment.rs::tests::string_literal_without_text_constant_does_not_create_item",
+  "crates/ripr/src/output/json/mod.rs::tests::render_adds_presentation_text_finding_alignment_when_supported",
   "xtask/src/main.rs::tests::evidence_quality_benchmark_corpus_is_valid",
   "xtask/src/main.rs::tests::evidence_quality_benchmark_requires_static_limitation_category_at_case_level",
 ]
@@ -2683,10 +2688,13 @@ fixtures = [
   "fixtures/evidence-quality-benchmark/corpus.json",
 ]
 code = [
+  "crates/ripr/src/output/json/finding_alignment.rs",
+  "crates/ripr/src/output/json/report.rs",
   "xtask/src/main.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0043-presentation-text-evidence.md",
+  "docs/OUTPUT_SCHEMA.md",
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0005-user-visible-output-evidence.md",
   "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md",
@@ -2767,6 +2775,11 @@ id = "RIPR-SPEC-0045"
 name = "Finding-to-gap alignment"
 spec = "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md"
 tests = [
+  "crates/ripr/src/output/json/finding_alignment.rs::tests::groups_const_declaration_and_adjacent_literal",
+  "crates/ripr/src/output/json/finding_alignment.rs::tests::canonical_id_is_stable_across_line_movement",
+  "crates/ripr/src/output/json/finding_alignment.rs::tests::similar_text_in_different_constants_does_not_collide",
+  "crates/ripr/src/output/json/finding_alignment.rs::tests::declaration_without_literal_uses_owner_identity_group",
+  "crates/ripr/src/output/json/mod.rs::tests::render_adds_presentation_text_finding_alignment_when_supported",
   "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_carries_identity_path_guidance_and_calibration_placeholder",
   "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_names_static_limitations_from_unknown_stages",
   "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_carries_supplied_canonical_gap_identity",
@@ -2777,6 +2790,8 @@ fixtures = [
   "fixtures/evidence-quality-benchmark/corpus.json",
 ]
 code = [
+  "crates/ripr/src/output/json/finding_alignment.rs",
+  "crates/ripr/src/output/json/report.rs",
   "crates/ripr/src/output/evidence_record.rs",
   "crates/ripr/src/output/repo_exposure.rs",
   "xtask/src/main.rs",

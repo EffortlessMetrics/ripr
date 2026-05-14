@@ -1,4 +1,5 @@
 mod context_packet;
+mod finding_alignment;
 mod formatter;
 mod report;
 
@@ -98,6 +99,82 @@ mod tests {
         let rendered = render(&output);
 
         assert!(rendered.contains("\"base\": \"origin/main\""));
+    }
+
+    #[test]
+    fn render_adds_presentation_text_finding_alignment_when_supported() -> Result<(), String> {
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("."),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![
+                finding_with_expression(
+                    "decl",
+                    46,
+                    ExposureClass::Exposed,
+                    ProbeFamily::FieldConstruction,
+                    "pub const APPLE_M3_AIR_DEVICE_LABELS_TEXT: &str =",
+                ),
+                finding_with_expression(
+                    "literal",
+                    47,
+                    ExposureClass::StaticUnknown,
+                    ProbeFamily::StaticUnknown,
+                    "\"apple-m3-air-cpu-neon = M3 MacBook Air Apple CPU/NEON lane\";",
+                ),
+            ],
+        };
+
+        let rendered = render(&output);
+        let value: serde_json::Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("check JSON should parse: {err}"))?;
+        let alignment = &value["finding_alignment"];
+
+        assert_eq!(alignment["scope"], "supported_classes");
+        assert_eq!(alignment["summary"]["raw_signals"], 2);
+        assert_eq!(alignment["summary"]["canonical_items"], 1);
+        assert_eq!(alignment["summary"]["aligned_raw_findings"], 2);
+        assert_eq!(alignment["summary"]["static_limitations"], 1);
+        assert_eq!(
+            alignment["items"][0]["canonical_gap_id"],
+            "presentation_text::APPLE_M3_AIR_DEVICE_LABELS_TEXT"
+        );
+        assert_eq!(
+            alignment["items"][0]["group_reason"],
+            "declaration_and_literal_same_text_constant"
+        );
+        assert_eq!(alignment["items"][0]["raw_group_size"], 2);
+        assert_eq!(alignment["items"][0]["gap_state"], "static_limitation");
+        assert_eq!(alignment["items"][0]["actionability"], "inspect_visibility");
+        assert_eq!(
+            alignment["items"][0]["static_limitations"][0]["category"],
+            "presentation_text_visibility_unknown"
+        );
+        assert_eq!(
+            alignment["items"][0]["presentation_text"]["text_literal"],
+            "apple-m3-air-cpu-neon = M3 MacBook Air Apple CPU/NEON lane"
+        );
+        assert!(
+            !alignment["items"][0]["recommended_repair"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("mutation")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn render_omits_finding_alignment_without_supported_items() -> Result<(), String> {
+        let output = sample_output(None);
+        let rendered = render(&output);
+        let value: serde_json::Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("check JSON should parse: {err}"))?;
+
+        assert!(value.get("finding_alignment").is_none());
+        Ok(())
     }
 
     #[test]
@@ -312,5 +389,24 @@ mod tests {
             summary: Summary::default(),
             findings: vec![unknown_finding()],
         }
+    }
+
+    fn finding_with_expression(
+        id_suffix: &str,
+        line: usize,
+        class: ExposureClass,
+        family: ProbeFamily,
+        expression: &str,
+    ) -> Finding {
+        let mut finding = unknown_finding();
+        let id = format!("probe:src_device_labels_rs:{line}:{id_suffix}");
+        finding.id = id.clone();
+        finding.probe.id = ProbeId(id);
+        finding.probe.location = SourceLocation::new("src/device_labels.rs", line, 1);
+        finding.probe.family = family;
+        finding.probe.expression = expression.to_string();
+        finding.class = class;
+        finding.recommended_next_step = None;
+        finding
     }
 }

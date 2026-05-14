@@ -214,6 +214,14 @@ Planned scope:
   the class-specific Lane 1 slices. This is additive and does not change
   rendering, gates, generated tests, provider calls, mutation execution, or
   score definitions.
+- Added the first check-output finding-alignment projection for presentation
+  text constants. `ripr check --json` now groups supported presentation-like
+  `&str` constant declarations and adjacent string-literal raw findings into
+  one visibility-unknown canonical limitation item, preserving the raw
+  `findings[]` array as supporting evidence and avoiding mutation-first repair
+  language for this class. The section is omitted when no supported alignment
+  item exists, and PR/CI rendering, LSP/editor polish, gates, generated tests,
+  provider calls, mutation execution, and score definitions are unchanged.
 - Added a Lane 1 evidence-quality benchmark case for presentation text
   constants, pinning the claim boundary for changed help/label text: visibility
   and actionability must be explicit, declaration and literal lines should
