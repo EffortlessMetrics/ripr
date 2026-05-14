@@ -314,11 +314,12 @@ evidence = [
   "serialized refresh generations",
   "VS Code status bar and ripr: Show Status path for disabled config, server resolution, workspace detection, server unavailable, queued/running/complete/stale/failed refreshes, and no-actionable-seam states",
   "intent-titled diagnostic actions for inspect, write targeted test, agent handoff, verify after test, review receipt, and refresh analysis",
+  "target/ripr/reports/gap-decision-ledger.json can supply projection_eligibility.lsp_diagnostic GapRecord diagnostics with structured gap_id, repair route, anchor, and verification commands",
   "docs/QUICKSTART.md routes the VS Code first hour through status, Problems diagnostics, hover evidence, and intent-titled seam actions"
 ]
 fixtures = []
 next = "maintenance"
-metric = "diagnostics carry finding/probe metadata, editor status names saved-workspace analysis state, and editor actions target the selected finding"
+metric = "diagnostics carry finding/probe metadata, explicit GapRecord repair payloads, editor status names saved-workspace analysis state, and editor actions target the selected finding or gap"
 
 [[capability]]
 id = "parser_backed_syntax_facts"
@@ -1216,11 +1217,13 @@ spec = "RIPR-SPEC-0005"
 evidence = [
   "crates/ripr/src/lsp/actions.rs seam-aware code_action_response",
   "crates/ripr/src/lsp/backend.rs collectContext returns agent seam packets for seam_id",
+  "crates/ripr/src/lsp/backend.rs collectContext returns GapRecord-backed agent packets for gap_id plus gap_ledger without rerunning analysis",
   "crates/ripr/src/lsp/backend.rs collectEvidenceContext returns schema 0.1 editor handoff packets from ClassifiedSeam evidence",
   "framed LSP protocol smoke drives a published boundary-gap seam diagnostic through codeAction and collectEvidenceContext",
   "VS Code e2e drives the real boundary-gap server path through code actions, copied seam packet and verify payloads, and related-test opening",
   "editors/vscode/src/client.ts copySuggestedAssertion and openRelatedTest handlers",
   "diagnostics carrying seam_id surface intent-titled actions for inspecting the seam, writing the targeted test only when related-test or suggested-assertion context exists, copying agent handoff commands, verifying after the test, reviewing the receipt, opening the best related test only when a related-test location exists, and refreshing saved-workspace analysis",
+  "diagnostics carrying gap_id surface Inspect gap: copy agent packet with gap-ledger context fields",
   "copy suggested assertion uses agent seam packet v2 assertion shape when available",
   "stale seam diagnostics fail closed to refresh-only",
   "pre-4B Finding code actions remain available",
@@ -1531,7 +1534,7 @@ evidence = [
   "fixtures/gap-decision-ledger/corpus.json pins the planned GapRecord vocabulary, projection eligibility, safe gate predicate, output-contract repair route, missing-artifact regeneration, preview ineligibility, and receipt movement cases",
   "crates/ripr/src/output/gap_decision_ledger.rs builds and renders the advisory gap_decision_ledger JSON and Markdown report from explicit GapRecord input",
   "crates/ripr/src/cli/commands.rs wires `ripr reports gap-ledger --records ...` without rerunning analysis or changing downstream projection behavior",
-  "ripr first-action --gap-ledger, ripr pr-ledger record --gap-ledger, ripr zero status --gap-ledger, ripr gate evaluate --gap-ledger, ripr review-comments --gap-ledger, ripr agent packet --gap-ledger, and repo-badge formats with --gap-ledger can consume explicit policy-backed gap records while preserving advisory/default-off behavior",
+  "ripr first-action --gap-ledger, ripr pr-ledger record --gap-ledger, ripr zero status --gap-ledger, ripr gate evaluate --gap-ledger, ripr review-comments --gap-ledger, ripr agent packet --gap-ledger, LSP gap diagnostics, and repo-badge formats with --gap-ledger can consume explicit policy-backed gap records while preserving advisory/default-off behavior",
   "docs/OUTPUT_SCHEMA.md documents the implemented gap_decision_ledger JSON shape"
 ]
 fixtures = [
