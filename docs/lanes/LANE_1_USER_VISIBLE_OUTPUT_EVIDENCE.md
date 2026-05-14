@@ -97,8 +97,8 @@ explicitly makes this Lane 1 tracker active.
 | `analysis/presentation-text-canonical-grouping` | Group a constant declaration and its string literal into one canonical evidence item without colliding different constants. | merged in #943 |
 | `analysis/presentation-text-visibility` | Conservatively classify obvious output sinks and keep opaque or indirect routes as limitations. | merged in #947 |
 | `analysis/presentation-text-actionability` | Classify richer observer-aware repair routes and related-test ranking beyond the initial visibility states. | merged in #951 |
-| `report/presentation-text-scorecard-trend-fields` | Add scorecard and trend counts for presentation-text evidence quality. | current |
-| `docs/presentation-text-consumer-handoff` | Hand downstream lanes the evidence contract without changing rendering in this lane. | planned |
+| `report/presentation-text-scorecard-trend-fields` | Add scorecard and trend counts for presentation-text evidence quality. | merged in #957 |
+| `docs/presentation-text-consumer-handoff` | Hand downstream lanes the evidence contract without changing rendering in this lane. | current |
 
 ## Required States
 
@@ -189,7 +189,8 @@ git diff --check
 | `analysis/presentation-text-canonical-grouping` | #943 | merged | Groups supported presentation-text constant declaration plus adjacent literal raw findings into one `finding_alignment.items[]` canonical limitation item in `ripr check --json`; raw `findings[]` remain supporting evidence. |
 | `analysis/presentation-text-visibility` | #947 | merged | Classifies fixture-backed help/report/internal presentation text as actionable, already observed, internal-only, or visibility-unknown without changing PR/CI, LSP/editor, gates, scores, generated tests, provider calls, or mutation execution. |
 | `analysis/presentation-text-actionability` | #951 | merged | Added concrete repair kind, target test type, and suggested assertion fields for presentation-text canonical items without changing rendering, gates, scores, generated tests, provider calls, or mutation execution. |
-| `report/presentation-text-scorecard-trend-fields` | pending | current | Adds scorecard and trend counts for finding-alignment raw-to-canonical quality and presentation-text evidence outcomes without changing rendering, gates, scores, generated tests, provider calls, or mutation execution. |
+| `report/presentation-text-scorecard-trend-fields` | #957 | merged | Added scorecard and trend counts for finding-alignment raw-to-canonical quality and presentation-text evidence outcomes without changing rendering, gates, scores, generated tests, provider calls, or mutation execution. |
+| `docs/presentation-text-consumer-handoff` | pending | current | Documents downstream rendering and projection contract while keeping PR/CI, LSP/editor, gates, scores, generated tests, provider calls, and mutation execution unchanged. |
 
 ## Closeout Conditions
 

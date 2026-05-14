@@ -1483,12 +1483,13 @@ evidence = [
   "crates/ripr/src/output/json/finding_alignment.rs groups supported presentation-like &str constant declarations and adjacent string literals into one finding_alignment canonical item while preserving raw findings",
   "crates/ripr/src/output/json/finding_alignment.rs classifies fixture-backed help/report sink patterns, golden/snapshot observers, internal-only labels, and visibility-unknown limitations",
   "crates/ripr/src/output/json/finding_alignment.rs tests pin grouping, line-movement identity, non-collision, unsupported string guards, conservative visibility/observer states, concrete repair-kind/target-test-type/suggested-assertion fields, and no mutation-first repair language",
-  "xtask/src/main.rs carries presentation-text outcome counts into evidence-quality scorecard and trend reports"
+  "xtask/src/main.rs carries presentation-text outcome counts into evidence-quality scorecard and trend reports",
+  "docs/handoffs/2026-05-14-presentation-text-consumer-handoff.md documents downstream consumer expectations for canonical items, supporting raw findings, evidence states, policy overlays, and must-not-infer boundaries"
 ]
 fixtures = [
   "fixtures/evidence-quality-benchmark/corpus.json"
 ]
-next = "docs/presentation-text-consumer-handoff"
+next = "campaign/user-visible-output-evidence-closeout"
 metric = "presentation_text_total, presentation_text_user_visible, presentation_text_observed, presentation_text_unobserved, presentation_text_internal_only, presentation_text_visibility_unknown, presentation_text_observer_unknown, presentation_text_duplicate_groups, presentation_text_actionable_snapshot, presentation_text_no_action, presentation_text_static_limitations"
 
 [[capability]]
@@ -1505,12 +1506,13 @@ evidence = [
   "crates/ripr/src/output/json/finding_alignment.rs adds the first check-output alignment projection for supported presentation-text declaration/literal groups and classifies fixture-backed visible, observed, internal-only, and visibility-unknown item states with concrete repair routes",
   "xtask/src/main.rs reports raw-to-canonical ratio, duplicate groups, actionable, no-action, static-limitation, calibrated-support, and presentation-text counts in evidence-quality scorecard and trend outputs",
   "docs/OUTPUT_SCHEMA.md documents the additive evidence_record alignment fields",
-  "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md records the remaining consumer handoff work"
+  "docs/handoffs/2026-05-14-presentation-text-consumer-handoff.md documents canonical evidence items as the downstream user-facing unit and raw findings as supporting evidence",
+  "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md records the remaining closeout work"
 ]
 fixtures = [
   "fixtures/evidence-quality-benchmark/corpus.json"
 ]
-next = "docs/presentation-text-consumer-handoff"
+next = "campaign/user-visible-output-evidence-closeout"
 metric = "finding_alignment_raw_findings_total, finding_alignment_raw_signals_total, finding_alignment_canonical_items_total, finding_alignment_raw_to_canonical_ratio, finding_alignment_duplicate_groups_total, finding_alignment_actionable_items_total, finding_alignment_actionable_unresolved_canonical_gaps, finding_alignment_already_observed_total, finding_alignment_internal_only_total, finding_alignment_internal_no_action_total, finding_alignment_static_limitation_total, finding_alignment_unknown_total, finding_alignment_calibrated_supported_total, finding_alignment_uncalibrated_total, finding_alignment_visibility_unknown_total, finding_alignment_presentation_text_actionable_total"
 
 [[capability]]
