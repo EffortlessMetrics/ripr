@@ -10967,6 +10967,7 @@ struct Lane1EvidenceAuditReport {
     root: String,
     repo_exposure_schema_version: Option<String>,
     summary: Lane1EvidenceAuditSummary,
+    finding_alignment: Lane1EvidenceAuditFindingAlignmentSummary,
     largest_canonical_groups: Vec<Lane1EvidenceAuditGroup>,
     duplicate_looking_groups: Vec<Lane1EvidenceAuditGroup>,
     missing_discriminator_reason_counts: BTreeMap<String, usize>,
@@ -11006,6 +11007,38 @@ struct Lane1EvidenceAuditSummary {
     low_or_opaque_top_related_tests: usize,
     calibrated_records: usize,
     uncalibrated_records: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct Lane1EvidenceAuditFindingAlignmentSummary {
+    raw_findings_total: usize,
+    raw_signals_total: usize,
+    canonical_items_total: usize,
+    aligned_raw_findings_total: usize,
+    unaligned_raw_findings_total: usize,
+    duplicate_groups_total: usize,
+    actionable_items_total: usize,
+    actionable_unresolved_canonical_gaps: usize,
+    already_observed_total: usize,
+    internal_only_total: usize,
+    internal_no_action_total: usize,
+    static_limitation_total: usize,
+    unknown_total: usize,
+    calibrated_supported_total: usize,
+    uncalibrated_total: usize,
+    visibility_unknown_total: usize,
+    presentation_text_actionable_total: usize,
+    presentation_text_total: usize,
+    presentation_text_user_visible: usize,
+    presentation_text_observed: usize,
+    presentation_text_unobserved: usize,
+    presentation_text_internal_only: usize,
+    presentation_text_visibility_unknown: usize,
+    presentation_text_observer_unknown: usize,
+    presentation_text_duplicate_groups: usize,
+    presentation_text_actionable_snapshot: usize,
+    presentation_text_no_action: usize,
+    presentation_text_static_limitations: usize,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -11166,6 +11199,7 @@ fn lane1_evidence_audit_from_repo_exposure(
 #[derive(Default)]
 struct Lane1EvidenceAuditBuilder {
     summary: Lane1EvidenceAuditSummary,
+    finding_alignment: Lane1EvidenceAuditFindingAlignmentSummary,
     movement: Lane1EvidenceAuditMovement,
     canonical_groups: BTreeMap<String, Lane1EvidenceAuditGroup>,
     duplicate_groups: BTreeMap<String, Lane1EvidenceAuditGroup>,
@@ -11218,6 +11252,7 @@ impl Lane1EvidenceAuditBuilder {
 
         self.summary.evidence_records_total += 1;
         audit_evidence_record_field_health(record, &mut self.field_health);
+        audit_ingest_finding_alignment(record, &mut self.finding_alignment);
 
         let seam_id = audit_string(record, &["seam_id"]);
         let canonical_gap_id = audit_string(record, &["canonical_gap_id"]);
@@ -11441,6 +11476,7 @@ impl Lane1EvidenceAuditBuilder {
             root,
             repo_exposure_schema_version,
             summary: self.summary,
+            finding_alignment: self.finding_alignment,
             largest_canonical_groups,
             duplicate_looking_groups,
             missing_discriminator_reason_counts: self.missing_reason_counts,
@@ -11511,6 +11547,10 @@ fn lane1_evidence_audit_json(report: &Lane1EvidenceAuditReport) -> Result<String
             "low_or_opaque_top_related_tests": report.summary.low_or_opaque_top_related_tests,
             "calibrated_records": report.summary.calibrated_records,
             "uncalibrated_records": report.summary.uncalibrated_records,
+        },
+        "finding_alignment": {
+            "source": "evidence_record.canonical_item",
+            "summary": audit_finding_alignment_summary_json(&report.finding_alignment),
         },
         "canonical_gap_groups": {
             "total": report.summary.canonical_gap_groups_total,
@@ -11623,6 +11663,66 @@ fn lane1_evidence_audit_markdown(report: &Lane1EvidenceAuditReport) -> String {
         &mut out,
         "Uncalibrated records",
         report.summary.uncalibrated_records,
+    );
+    out.push('\n');
+
+    out.push_str("## Finding Alignment\n\n");
+    out.push_str("| Metric | Count |\n");
+    out.push_str("| --- | ---: |\n");
+    audit_push_count(
+        &mut out,
+        "Raw alignment signals",
+        report.finding_alignment.raw_signals_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Canonical alignment items",
+        report.finding_alignment.canonical_items_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Aligned raw findings",
+        report.finding_alignment.aligned_raw_findings_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Unaligned raw findings",
+        report.finding_alignment.unaligned_raw_findings_total,
+    );
+    if let Some(ratio) = audit_finding_alignment_raw_to_canonical_ratio(&report.finding_alignment) {
+        out.push_str(&format!("| Raw-to-canonical ratio | {ratio:.2} |\n"));
+    } else {
+        out.push_str("| Raw-to-canonical ratio | n/a |\n");
+    }
+    audit_push_count(
+        &mut out,
+        "Actionable canonical items",
+        report.finding_alignment.actionable_items_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Already observed items",
+        report.finding_alignment.already_observed_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Internal no-action items",
+        report.finding_alignment.internal_no_action_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Alignment static limitations",
+        report.finding_alignment.static_limitation_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Alignment uncalibrated items",
+        report.finding_alignment.uncalibrated_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Presentation text items",
+        report.finding_alignment.presentation_text_total,
     );
     out.push('\n');
 
@@ -11831,6 +11931,226 @@ fn audit_file_debt_json(row: &Lane1EvidenceAuditFileDebt) -> Value {
     })
 }
 
+fn audit_finding_alignment_summary_json(
+    summary: &Lane1EvidenceAuditFindingAlignmentSummary,
+) -> Value {
+    let mut object = serde_json::Map::new();
+    audit_insert_usize(&mut object, "raw_findings", summary.raw_findings_total);
+    audit_insert_usize(&mut object, "raw_signals", summary.raw_signals_total);
+    audit_insert_usize(
+        &mut object,
+        "canonical_items",
+        summary.canonical_items_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "aligned_raw_findings",
+        summary.aligned_raw_findings_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "unaligned_raw_findings",
+        summary.unaligned_raw_findings_total,
+    );
+    object.insert(
+        "raw_to_canonical_ratio".to_string(),
+        audit_finding_alignment_raw_to_canonical_ratio(summary)
+            .map(Value::from)
+            .unwrap_or(Value::Null),
+    );
+    audit_insert_usize(
+        &mut object,
+        "duplicate_groups_total",
+        summary.duplicate_groups_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "actionable_gaps",
+        summary.actionable_items_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "already_observed",
+        summary.already_observed_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "internal_no_action",
+        summary.internal_no_action_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "static_limitations",
+        summary.static_limitation_total,
+    );
+    audit_insert_usize(&mut object, "unknown", summary.unknown_total);
+    audit_insert_usize(
+        &mut object,
+        "calibrated_supported",
+        summary.calibrated_supported_total,
+    );
+    audit_insert_usize(&mut object, "uncalibrated", summary.uncalibrated_total);
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_total",
+        summary.presentation_text_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_user_visible",
+        summary.presentation_text_user_visible,
+    );
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_observed",
+        summary.presentation_text_observed,
+    );
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_unobserved",
+        summary.presentation_text_unobserved,
+    );
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_internal_only",
+        summary.presentation_text_internal_only,
+    );
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_visibility_unknown",
+        summary.presentation_text_visibility_unknown,
+    );
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_observer_unknown",
+        summary.presentation_text_observer_unknown,
+    );
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_duplicate_groups",
+        summary.presentation_text_duplicate_groups,
+    );
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_actionable_snapshot",
+        summary.presentation_text_actionable_snapshot,
+    );
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_actionable_output_repairs",
+        summary.presentation_text_actionable_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_no_action",
+        summary.presentation_text_no_action,
+    );
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_static_limitations",
+        summary.presentation_text_static_limitations,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_raw_findings_total",
+        summary.raw_findings_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_raw_signals_total",
+        summary.raw_signals_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_canonical_items_total",
+        summary.canonical_items_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_aligned_raw_findings_total",
+        summary.aligned_raw_findings_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_unaligned_raw_findings_total",
+        summary.unaligned_raw_findings_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_duplicate_groups_total",
+        summary.duplicate_groups_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_actionable_items_total",
+        summary.actionable_items_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_actionable_unresolved_canonical_gaps",
+        summary.actionable_unresolved_canonical_gaps,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_already_observed_total",
+        summary.already_observed_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_internal_only_total",
+        summary.internal_only_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_internal_no_action_total",
+        summary.internal_no_action_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_static_limitation_total",
+        summary.static_limitation_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_unknown_total",
+        summary.unknown_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_calibrated_supported_total",
+        summary.calibrated_supported_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_uncalibrated_total",
+        summary.uncalibrated_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_visibility_unknown_total",
+        summary.visibility_unknown_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_presentation_text_actionable_total",
+        summary.presentation_text_actionable_total,
+    );
+    Value::Object(object)
+}
+
+fn audit_finding_alignment_raw_to_canonical_ratio(
+    summary: &Lane1EvidenceAuditFindingAlignmentSummary,
+) -> Option<f64> {
+    if summary.canonical_items_total == 0 {
+        return None;
+    }
+    Some(summary.raw_signals_total as f64 / summary.canonical_items_total as f64)
+}
+
+fn audit_insert_usize(object: &mut serde_json::Map<String, Value>, key: &str, value: usize) {
+    object.insert(key.to_string(), Value::from(value));
+}
+
 fn audit_get<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
     let mut current = value;
     for segment in path {
@@ -11865,6 +12185,147 @@ fn audit_array<'a>(value: &'a Value, path: &[&str]) -> &'a [Value] {
 fn audit_increment(counts: &mut BTreeMap<String, usize>, key: &str) {
     let entry = counts.entry(key.to_string()).or_insert(0);
     *entry += 1;
+}
+
+fn audit_ingest_finding_alignment(
+    record: &Value,
+    summary: &mut Lane1EvidenceAuditFindingAlignmentSummary,
+) {
+    let raw_findings = audit_array(record, &["raw_findings"]);
+    let Some(canonical_item) =
+        audit_get(record, &["canonical_item"]).filter(|value| value.is_object())
+    else {
+        summary.raw_findings_total += raw_findings.len();
+        summary.raw_signals_total += raw_findings.len();
+        summary.unaligned_raw_findings_total += raw_findings.len();
+        return;
+    };
+
+    let raw_group_size = audit_usize(canonical_item, &["raw_group_size"]).unwrap_or(0);
+    let raw_signal_count = raw_group_size.max(raw_findings.len()).max(1);
+    summary.raw_findings_total += raw_signal_count;
+    summary.raw_signals_total += raw_signal_count;
+    summary.canonical_items_total += 1;
+    summary.aligned_raw_findings_total += raw_signal_count;
+    if raw_signal_count > 1 {
+        summary.duplicate_groups_total += 1;
+    }
+
+    let item_kind = audit_string(canonical_item, &["canonical_item_kind"]).unwrap_or_default();
+    let gap_state = audit_string(canonical_item, &["gap_state"]).unwrap_or_default();
+    let actionability = audit_string(canonical_item, &["actionability"]).unwrap_or_default();
+    let evidence_class = audit_string(canonical_item, &["evidence_class"]).unwrap_or_default();
+    let confidence_basis =
+        audit_string(canonical_item, &["confidence", "basis"]).unwrap_or_default();
+
+    if item_kind == "gap" || gap_state == "actionable" {
+        summary.actionable_items_total += 1;
+        summary.actionable_unresolved_canonical_gaps += 1;
+    }
+    if item_kind == "observed" || gap_state == "already_observed" {
+        summary.already_observed_total += 1;
+    }
+    if item_kind == "no_action" || gap_state == "internal_only" {
+        summary.internal_only_total += 1;
+    }
+    if item_kind == "no_action" || actionability == "no_action_internal" {
+        summary.internal_no_action_total += 1;
+    }
+    if item_kind == "limitation" || gap_state == "static_limitation" {
+        summary.static_limitation_total += 1;
+    }
+    if gap_state == "unknown" {
+        summary.unknown_total += 1;
+    }
+    if confidence_basis == "calibrated" || confidence_basis == "runtime_calibrated" {
+        summary.calibrated_supported_total += 1;
+    } else {
+        summary.uncalibrated_total += 1;
+    }
+
+    let alignment = AuditCanonicalAlignment {
+        evidence_class: &evidence_class,
+        item_kind: &item_kind,
+        gap_state: &gap_state,
+        actionability: &actionability,
+        raw_signal_count,
+    };
+    audit_ingest_presentation_text_alignment(record, canonical_item, &alignment, summary);
+}
+
+struct AuditCanonicalAlignment<'a> {
+    evidence_class: &'a str,
+    item_kind: &'a str,
+    gap_state: &'a str,
+    actionability: &'a str,
+    raw_signal_count: usize,
+}
+
+fn audit_ingest_presentation_text_alignment(
+    record: &Value,
+    canonical_item: &Value,
+    alignment: &AuditCanonicalAlignment<'_>,
+    summary: &mut Lane1EvidenceAuditFindingAlignmentSummary,
+) {
+    let presentation_text = audit_get(record, &["presentation_text"])
+        .filter(|value| value.is_object())
+        .or_else(|| {
+            audit_get(canonical_item, &["presentation_text"]).filter(|value| value.is_object())
+        });
+    if alignment.evidence_class != "presentation_text" && presentation_text.is_none() {
+        return;
+    }
+
+    summary.presentation_text_total += 1;
+    if alignment.raw_signal_count > 1 {
+        summary.presentation_text_duplicate_groups += 1;
+    }
+    if alignment.item_kind == "gap" || alignment.gap_state == "actionable" {
+        summary.presentation_text_unobserved += 1;
+    }
+    if alignment.item_kind == "observed" || alignment.gap_state == "already_observed" {
+        summary.presentation_text_observed += 1;
+    }
+    if alignment.item_kind == "no_action" || alignment.gap_state == "internal_only" {
+        summary.presentation_text_internal_only += 1;
+        summary.presentation_text_no_action += 1;
+    }
+    if alignment.item_kind == "limitation" || alignment.gap_state == "static_limitation" {
+        summary.presentation_text_static_limitations += 1;
+    }
+    if matches!(
+        alignment.actionability,
+        "add_output_observer" | "add_output_test" | "snapshot_or_help_output_test"
+    ) {
+        summary.presentation_text_actionable_total += 1;
+        summary.presentation_text_actionable_snapshot += 1;
+    }
+
+    let visibility = presentation_text
+        .and_then(|value| audit_string(value, &["visibility"]))
+        .unwrap_or_default();
+    let observer = presentation_text
+        .and_then(|value| {
+            audit_string(value, &["observer"]).or_else(|| audit_string(value, &["observer_kind"]))
+        })
+        .unwrap_or_default();
+
+    match visibility.as_str() {
+        "user_visible" => summary.presentation_text_user_visible += 1,
+        "internal_only"
+            if alignment.item_kind != "no_action" && alignment.gap_state != "internal_only" =>
+        {
+            summary.presentation_text_internal_only += 1;
+        }
+        "unknown" => {
+            summary.presentation_text_visibility_unknown += 1;
+            summary.visibility_unknown_total += 1;
+        }
+        _ => {}
+    }
+    if observer == "unknown" {
+        summary.presentation_text_observer_unknown += 1;
+    }
 }
 
 fn audit_evidence_record_field_health(
@@ -41016,6 +41477,28 @@ covered_by = ["cargo xtask check-file-policy"]
             value["related_test_ranking"]["top_confidence_counts"]["low"],
             serde_json::Value::from(1)
         );
+        let alignment = &value["finding_alignment"]["summary"];
+        assert_eq!(alignment["raw_signals"], serde_json::Value::from(3));
+        assert_eq!(alignment["canonical_items"], serde_json::Value::from(3));
+        assert_eq!(
+            alignment["aligned_raw_findings"],
+            serde_json::Value::from(3)
+        );
+        assert_eq!(alignment["actionable_gaps"], serde_json::Value::from(2));
+        assert_eq!(alignment["static_limitations"], serde_json::Value::from(1));
+        assert_eq!(
+            alignment["calibrated_supported"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(alignment["uncalibrated"], serde_json::Value::from(2));
+        assert_eq!(
+            alignment["presentation_text_total"],
+            serde_json::Value::from(0)
+        );
+        assert_eq!(
+            alignment["finding_alignment_raw_signals_total"],
+            serde_json::Value::from(3)
+        );
 
         let fields = value["evidence_record_field_health"]
             .as_array()
@@ -41036,6 +41519,8 @@ covered_by = ["cargo xtask check-file-policy"]
 
         assert!(markdown.contains("Lane 1 evidence quality audit"));
         assert!(markdown.contains("Largest Canonical Gap Groups"));
+        assert!(markdown.contains("Finding Alignment"));
+        assert!(markdown.contains("Raw-to-canonical ratio"));
         assert!(markdown.contains("Duplicate-Looking Groups"));
         assert!(markdown.contains("Missing Discriminator Classes"));
         assert!(markdown.contains("opaque_helper_call"));
@@ -41497,6 +41982,36 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn evidence_quality_scorecard_uses_audit_canonical_item_alignment_summary() -> Result<(), String>
+    {
+        let audit = lane1_scorecard_sample_audit_value()?;
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(false),
+            &audit,
+            None,
+            None,
+        )?;
+
+        assert_eq!(report.summary.finding_alignment_raw_signals_total, 3);
+        assert_eq!(report.summary.finding_alignment_canonical_items_total, 3);
+        assert_eq!(report.summary.finding_alignment_actionable_items_total, 2);
+        assert_eq!(report.summary.finding_alignment_static_limitation_total, 1);
+        assert_eq!(
+            report.summary.finding_alignment_calibrated_supported_total,
+            1
+        );
+        assert_eq!(report.summary.finding_alignment_uncalibrated_total, 2);
+        assert!(
+            !report
+                .unknowns
+                .iter()
+                .any(|unknown| unknown.kind == "finding_alignment_unavailable")
+        );
+        Ok(())
+    }
+
+    #[test]
     fn evidence_quality_trend_reports_no_history_explicitly() -> Result<(), String> {
         let current = scorecard_minimal_audit_value(0, 0, 0, 2, 3);
         let report = evidence_quality_trend_from_values(
@@ -41837,7 +42352,26 @@ covered_by = ["cargo xtask check-file-policy"]
                 },
                 "actionability": {"class": "actionable_assertion_upgrade"},
                 "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
-                "static_limitations": []
+                "static_limitations": [],
+                "raw_findings": [{
+                  "file": "src/lib.rs",
+                  "line": 12,
+                  "kind": "weakly_exposed",
+                  "expression": "discount(amount)"
+                }],
+                "canonical_item": {
+                  "canonical_gap_id": "gap:shared",
+                  "canonical_item_kind": "gap",
+                  "evidence_class": "predicate_boundary",
+                  "gap_state": "actionable",
+                  "actionability": "upgrade_assertion",
+                  "group_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+                  "raw_group_size": 1,
+                  "why": "related tests reach the seam but miss the boundary discriminator",
+                  "recommended_repair": "Add an equality-boundary assertion for the changed predicate.",
+                  "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+                  "confidence": {"basis": "static_only", "notes": []}
+                }
               }
             },
             {
@@ -41888,7 +42422,26 @@ covered_by = ["cargo xtask check-file-policy"]
                 },
                 "actionability": {"class": "actionable_assertion_upgrade"},
                 "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
-                "static_limitations": []
+                "static_limitations": [],
+                "raw_findings": [{
+                  "file": "src/lib.rs",
+                  "line": 18,
+                  "kind": "weakly_exposed",
+                  "expression": "discount(amount)"
+                }],
+                "canonical_item": {
+                  "canonical_gap_id": "gap:shared",
+                  "canonical_item_kind": "gap",
+                  "evidence_class": "predicate_boundary",
+                  "gap_state": "actionable",
+                  "actionability": "upgrade_assertion",
+                  "group_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+                  "raw_group_size": 1,
+                  "why": "related tests reach the seam but miss the boundary discriminator",
+                  "recommended_repair": "Add an equality-boundary assertion for the changed predicate.",
+                  "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+                  "confidence": {"basis": "static_only", "notes": []}
+                }
               }
             },
             {
@@ -41920,7 +42473,26 @@ covered_by = ["cargo xtask check-file-policy"]
                 "recommendation": {"action": "inspect_static_limitation", "reason": "opaque helper", "verify_command": null},
                 "actionability": {"class": "static_limitation"},
                 "calibration": {"availability": "imported", "confidence": "medium", "agreement": "static_runtime_agree"},
-                "static_limitations": [{"stage": "activate", "state": "unknown", "reason": "opaque helper value"}]
+                "static_limitations": [{"stage": "activate", "state": "unknown", "reason": "opaque helper value"}],
+                "raw_findings": [{
+                  "file": "src/opaque.rs",
+                  "line": 30,
+                  "kind": "static_unknown",
+                  "expression": "opaque_helper(value)"
+                }],
+                "canonical_item": {
+                  "canonical_gap_id": null,
+                  "canonical_item_kind": "limitation",
+                  "evidence_class": "call_presence",
+                  "gap_state": "static_limitation",
+                  "actionability": "static_limitation",
+                  "group_reason": null,
+                  "raw_group_size": 1,
+                  "why": "static evidence is opaque for this seam",
+                  "recommended_repair": "Inspect static limitation `opaque_helper_call` via `analysis/oracle-semantics-audit-fixes`.",
+                  "verify_command": null,
+                  "confidence": {"basis": "calibrated", "notes": ["sample imported runtime agreement"]}
+                }
               }
             },
             {
