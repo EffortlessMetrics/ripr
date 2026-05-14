@@ -90,6 +90,7 @@ Run these before claiming the branch is ready:
 cargo xtask shape
 cargo xtask fix-pr
 cargo xtask pr-summary
+cargo xtask pr-triage-report
 cargo xtask precommit
 cargo xtask check-pr
 cargo xtask fixtures
@@ -132,6 +133,7 @@ cargo xtask check-network-policy
 `cargo xtask shape` is allowed to make safe local edits: run `cargo fmt`, sort
 policy allowlists, ensure `target/ripr/reports`, and write a shape report.
 `cargo xtask pr-summary` writes a local reviewer packet from git diff/status.
+`cargo xtask pr-triage-report` writes an advisory open-PR board hygiene report.
 `cargo xtask fix-pr` runs safe shaping and then refreshes the PR summary.
 `cargo xtask precommit` is the cheap non-mutating guardrail.
 `cargo xtask worktree doctor` reports dirty main, branches behind main,
