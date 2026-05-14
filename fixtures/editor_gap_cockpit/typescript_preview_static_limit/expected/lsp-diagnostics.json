@@ -1,0 +1,53 @@
+{
+  "fixture": "editor_gap_cockpit/typescript_preview_static_limit",
+  "diagnostics": [
+    {
+      "uri": "src/pricing.ts",
+      "range": {
+        "start": {
+          "line": 17,
+          "character": 0
+        },
+        "end": {
+          "line": 17,
+          "character": 96
+        }
+      },
+      "severity": "warning",
+      "code": "ripr-gap-MissingMockedModuleAssertion",
+      "source": "ripr",
+      "message": "ripr preview gap: MissingMockedModuleAssertion; static limit: mocked_module; repair route: AddInteractionAssertion",
+      "data": {
+        "schema_version": "0.1",
+        "source": "gap_decision_ledger",
+        "gap_ledger": "target/ripr/reports/gap-decision-ledger.json",
+        "gap_id": "gap:ts:pricing:mocked-discount-client",
+        "canonical_gap_id": "gap:ts:pricing:mocked-discount-client",
+        "gap_kind": "MissingMockedModuleAssertion",
+        "language": "typescript",
+        "language_status": "preview",
+        "gap_state": "actionable",
+        "policy_state": "advisory",
+        "repairability": "repairable",
+        "static_limit_kind": "mocked_module",
+        "static_limit_detail": "Mocked module behavior is syntax-first preview evidence; runtime replacement semantics are not modeled.",
+        "repair_route": {
+          "route_kind": "AddInteractionAssertion",
+          "target_file": "src/pricing.test.ts",
+          "target_line": 12,
+          "related_test": "src/pricing.test.ts::applies_discount_from_client",
+          "assertion_shape": "expect(discountClient.lookup).toHaveBeenCalledWith(customerId)",
+          "changed_behavior": "discountClient.lookup(customerId)",
+          "stop_conditions": [
+            "Stop if the mocked module is no longer in the related test path."
+          ]
+        },
+        "verification_commands": [
+          "ripr agent verify --root . --json"
+        ],
+        "receipt_command": "ripr agent receipt --root . --json",
+        "authority_boundary": "preview advisory"
+      }
+    }
+  ]
+}
