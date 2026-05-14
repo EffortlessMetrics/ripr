@@ -1,4 +1,4 @@
-use super::gap_artifacts::ValidatedGapArtifact;
+use super::gap_artifacts::{GapArtifactRejection, ValidatedGapArtifact};
 use super::uri::{file_uris_match, path_from_file_uri};
 use crate::analysis::ClassifiedSeam;
 use crate::app::Mode;
@@ -52,6 +52,7 @@ pub(super) struct AnalysisSnapshot {
     /// flag is enabled.
     pub(super) classified_seams: Vec<ClassifiedSeam>,
     pub(super) gap_artifacts: Vec<ValidatedGapArtifact>,
+    pub(super) gap_artifact_rejections: Vec<GapArtifactRejection>,
     pub(super) diagnostics_by_uri: BTreeMap<Uri, Vec<Diagnostic>>,
 }
 
@@ -259,6 +260,7 @@ mod tests {
             findings: Vec::new(),
             classified_seams: Vec::new(),
             gap_artifacts: Vec::new(),
+            gap_artifact_rejections: Vec::new(),
             diagnostics_by_uri,
         };
 
@@ -281,6 +283,7 @@ mod tests {
             findings: Vec::new(),
             classified_seams: Vec::new(),
             gap_artifacts: Vec::new(),
+            gap_artifact_rejections: Vec::new(),
             diagnostics_by_uri,
         };
 
