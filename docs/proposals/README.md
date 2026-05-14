@@ -82,3 +82,4 @@ Start new proposals from
 | [RIPR-PROP-0004](RIPR-PROP-0004-pr-ci-review-cockpit.md) | proposed | PR / CI review cockpit |
 | [RIPR-PROP-0005](RIPR-PROP-0005-user-visible-output-evidence.md) | proposed | User-visible output evidence |
 | [RIPR-PROP-0006](RIPR-PROP-0006-rust-usable-gap-projection.md) | proposed | Rust usable gap projection |
+| [RIPR-PROP-0007](RIPR-PROP-0007-editor-gap-cockpit.md) | proposed | Editor gap cockpit |
