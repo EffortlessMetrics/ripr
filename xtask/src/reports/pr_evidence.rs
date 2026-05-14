@@ -84,13 +84,21 @@ fn print_help() {
 }
 
 fn write_pr_evidence(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
+    let check_json = run_ripr_check(repo, options)?;
+    write_pr_evidence_from_check_json(repo, options, &check_json)
+}
+
+fn write_pr_evidence_from_check_json(
+    repo: &Path,
+    options: &PrEvidenceOptions,
+    check_json: &str,
+) -> Result<(), String> {
     verify_revision(repo, &options.base)?;
     verify_revision(repo, &options.head)?;
 
     let changed_files = changed_files(repo, options)?;
     write_diff(repo, options)?;
-    let check_json = run_ripr_check(repo, options)?;
-    let check_value: Value = serde_json::from_str(&check_json)
+    let check_value: Value = serde_json::from_str(check_json)
         .map_err(|err| format!("ripr check output was not valid JSON: {err}"))?;
     let packet = pr_evidence_packet(options, &changed_files, &check_value);
     let json_text = serde_json::to_string_pretty(&packet)
@@ -647,5 +655,75 @@ mod tests {
         assert!(markdown.contains("## RIPR"));
         assert!(markdown.contains("## Targeted Mutation"));
         assert!(markdown.contains("target/ripr/pr/repo-exposure.json"));
+    }
+
+    #[test]
+    fn write_and_check_packet_in_git_repo() -> Result<(), String> {
+        let repo = temp_repo("ripr-pr-packet")?;
+        run_git(&repo, &["init"])?;
+        run_git(&repo, &["config", "user.email", "ripr-pr@example.invalid"])?;
+        run_git(&repo, &["config", "user.name", "RIPR PR Test"])?;
+        write_repo_file(&repo, "README.md", "# sample\n")?;
+        run_git(&repo, &["add", "."])?;
+        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "initial"])?;
+        write_repo_file(&repo, "src/lib.rs", "pub fn value() -> u8 { 1 }\n")?;
+        run_git(&repo, &["add", "."])?;
+        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "add rust"])?;
+
+        let options = PrEvidenceOptions {
+            base: "HEAD~1".to_string(),
+            head: "HEAD".to_string(),
+            ..options()
+        };
+        let check_json = r#"{
+          "summary": {
+            "weakly_exposed": 1,
+            "reachable_unrevealed": 0,
+            "no_static_path": 0
+          }
+        }"#;
+        write_pr_evidence_from_check_json(&repo, &options, check_json)?;
+        check_pr_evidence(&repo, &options)?;
+
+        let packet_text = fs::read_to_string(repo.join(PR_EVIDENCE_JSON))
+            .map_err(|err| format!("read packet: {err}"))?;
+        let packet: Value =
+            serde_json::from_str(&packet_text).map_err(|err| format!("parse packet: {err}"))?;
+        assert_eq!(packet["summary"]["changed_files"], 1);
+        assert_eq!(packet["summary"]["weakly_exposed"], 1);
+        assert_eq!(packet["summary"]["requires_targeted_mutation"], true);
+        assert!(repo.join(PR_DIFF).exists());
+        assert!(repo.join(PR_EVIDENCE_MD).exists());
+
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    fn temp_repo(name: &str) -> Result<PathBuf, String> {
+        let unique = format!(
+            "{}-{}-{}",
+            name,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|err| format!("system clock before epoch: {err}"))?
+                .as_nanos()
+        );
+        let path = env::temp_dir().join(unique);
+        fs::create_dir_all(&path).map_err(|err| format!("create {}: {err}", path.display()))?;
+        Ok(path)
+    }
+
+    fn write_repo_file(repo: &Path, relative: &str, text: &str) -> Result<(), String> {
+        let path = repo.join(relative);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|err| format!("create {}: {err}", parent.display()))?;
+        }
+        fs::write(&path, text).map_err(|err| format!("write {}: {err}", path.display()))
+    }
+
+    fn run_git(repo: &Path, args: &[&str]) -> Result<(), String> {
+        run_output_at_root(repo, "git", args).map(|_| ())
     }
 }
