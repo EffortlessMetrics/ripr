@@ -613,6 +613,20 @@ Seam severities affect LSP seam diagnostics. Valid values are `off`, `info`,
 | --- | --- | --- | --- |
 | `enabled` | array of strings | `["rust"]` | Language adapters the analysis pipeline will dispatch to. Valid values: `rust`, `typescript`, `python`. Unknown values and duplicate entries are rejected. TypeScript covers `.ts`, `.tsx`, `.js`, and `.jsx`; Python covers `.py`. TypeScript and Python are opt-in preview adapters; Rust remains the reference adapter and the only adapter that may be `stable` per [RIPR-SPEC-0026](specs/RIPR-SPEC-0026-language-adapter-contract.md). |
 
+`[languages]` controls runtime routing for the selected repository. The `ripr`
+binary must also be built with the corresponding adapter feature. The default
+published build includes the preview adapter features, while a Rust-only build
+can omit them:
+
+```bash
+cargo build -p ripr --no-default-features --features lang-rust
+```
+
+If repo config enables a language that is not available in the current binary,
+configuration fails closed with a message naming the missing Cargo feature,
+for example `lang-python`. The editor reports that configuration problem
+instead of publishing phantom preview diagnostics.
+
 To evaluate preview languages, keep Rust enabled and add only the preview
 adapters the repo wants to inspect:
 
