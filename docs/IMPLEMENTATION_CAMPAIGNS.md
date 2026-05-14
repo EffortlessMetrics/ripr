@@ -3134,7 +3134,7 @@ Work items:
 | `analysis/presentation-text-actionability` | done | #951 extended repair routes with concrete repair kind, target test type, and suggested assertion fields beyond the initial visibility states. |
 | `report/presentation-text-scorecard-trend-fields` | done | #957 reports presentation-text quality counts and deltas in scorecard and trend output. |
 | `docs/presentation-text-consumer-handoff` | done | #959 documents downstream rendering contract without changing PR/CI or editor surfaces. |
-| `campaign/user-visible-output-evidence-closeout` | done | #TBD records proof, remaining unknowns, final observer-unknown benchmark guard, and the next repair boundary for this focused Lane 1 evidence class. |
+| `campaign/user-visible-output-evidence-closeout` | done | #966 records proof, remaining unknowns, final observer-unknown benchmark guard, and the next repair boundary for this focused Lane 1 evidence class. |
 
 Blocking conditions:
 

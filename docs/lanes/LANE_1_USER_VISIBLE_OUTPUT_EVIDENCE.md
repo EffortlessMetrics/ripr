@@ -103,7 +103,7 @@ explicitly makes this Lane 1 tracker active.
 | `analysis/presentation-text-actionability` | Classify richer observer-aware repair routes and related-test ranking beyond the initial visibility states. | merged in #951 |
 | `report/presentation-text-scorecard-trend-fields` | Add scorecard and trend counts for presentation-text evidence quality. | merged in #957 |
 | `docs/presentation-text-consumer-handoff` | Hand downstream lanes the evidence contract without changing rendering in this lane. | merged in #959 |
-| `campaign/user-visible-output-evidence-closeout` | Record proof, remaining unknowns, and next repair boundary for this focused Lane 1 evidence class. | merged in #TBD |
+| `campaign/user-visible-output-evidence-closeout` | Record proof, remaining unknowns, and next repair boundary for this focused Lane 1 evidence class. | merged in #966 |
 
 ## Required States
 
@@ -196,7 +196,7 @@ git diff --check
 | `analysis/presentation-text-actionability` | #951 | merged | Added concrete repair kind, target test type, and suggested assertion fields for presentation-text canonical items without changing rendering, gates, scores, generated tests, provider calls, or mutation execution. |
 | `report/presentation-text-scorecard-trend-fields` | #957 | merged | Added scorecard and trend counts for finding-alignment raw-to-canonical quality and presentation-text evidence outcomes without changing rendering, gates, scores, generated tests, provider calls, or mutation execution. |
 | `docs/presentation-text-consumer-handoff` | #959 | merged | Documents downstream rendering and projection contract while keeping PR/CI, LSP/editor, gates, scores, generated tests, provider calls, and mutation execution unchanged. |
-| `campaign/user-visible-output-evidence-closeout` | #TBD | merged | Records proof, remaining unknowns, the final observer-unknown benchmark guard, and the next presentation-text repair boundary. |
+| `campaign/user-visible-output-evidence-closeout` | #966 | merged | Records proof, remaining unknowns, the final observer-unknown benchmark guard, and the next presentation-text repair boundary. |
 
 ## Closeout Conditions
 
@@ -218,7 +218,7 @@ This lane can close after:
 - capability and traceability updates are class-scoped and proof-backed;
 - a closeout handoff records proof, remaining unknowns, and the next repair.
 
-Closed by #TBD after those conditions were reviewed in documented
+Closed by #966 after those conditions were reviewed in documented
 presentation-text scope. The closeout does not change PR/CI rendering,
 LSP/editor behavior, gates, generated tests, provider calls, mutation
 execution, source edits, or score definitions.

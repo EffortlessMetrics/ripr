@@ -1,7 +1,7 @@
 # Handoff: Lane 1 User-Visible Output Evidence Closeout
 
 Date: 2026-05-14
-Branch / PR: `lane1-user-visible-output-closeout` / #TBD
+Branch / PR: `lane1-user-visible-output-closeout` / #966
 Latest merged PR: #959 `docs: hand off presentation text consumer contract` (commit `595a9933`)
 
 ## Current work item
@@ -32,7 +32,7 @@ The PR chain:
 - #957 added scorecard and trend counts for finding alignment and
   presentation text evidence quality.
 - #959 handed the canonical evidence item contract to downstream lanes.
-- #TBD closed the focused Lane 1 tracker and added the final observer-unknown
+- #966 closed the focused Lane 1 tracker and added the final observer-unknown
   benchmark guard.
 
 ## Evidence state
