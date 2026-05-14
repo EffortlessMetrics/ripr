@@ -3129,8 +3129,8 @@ Work items:
 | `analysis/finding-alignment-evidence-fields` | done | #935 added additive `raw_findings[]`, `canonical_item`, and nullable `presentation_text` fields to `evidence_record` without changing rendering, gates, scores, generated tests, provider calls, or mutation execution. |
 | `analysis/presentation-text-evidence-fields` | done | #935 reserved nullable evidence-record fields for the class. |
 | `analysis/presentation-text-canonical-grouping` | done | #943 groups supported presentation-text constant declaration plus adjacent literal raw findings into one visibility-unknown canonical limitation item in `ripr check --json`. |
-| `analysis/presentation-text-visibility` | current | Classifies fixture-backed help/report/internal output evidence as actionable, observed, internal-only, or visibility-unknown while keeping unsupported routes as limitations. |
-| `analysis/presentation-text-actionability` | planned | Extends repair routes and observer-aware related-test ranking beyond the initial visibility states. |
+| `analysis/presentation-text-visibility` | done | #947 classifies fixture-backed help/report/internal output evidence as actionable, observed, internal-only, or visibility-unknown while keeping unsupported routes as limitations. |
+| `analysis/presentation-text-actionability` | current | Extends repair routes with concrete repair kind, target test type, and suggested assertion fields beyond the initial visibility states. |
 | `report/presentation-text-scorecard-trend-fields` | planned | Reports presentation-text quality counts and deltas. |
 | `docs/presentation-text-consumer-handoff` | planned | Documents downstream rendering contract without changing PR/CI or editor surfaces. |
 
