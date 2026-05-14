@@ -50,6 +50,140 @@ badge, LSP, or context schemas.
 }
 ```
 
+When supported raw findings align to a canonical evidence item, `ripr check
+--json` also emits an additive `finding_alignment` section. The section is
+omitted when no supported alignment item is present, so existing consumers can
+continue to read `findings` directly. Raw findings remain unchanged and are
+repeated only as supporting evidence for the canonical item.
+
+```json
+{
+  "finding_alignment": {
+    "scope": "supported_classes",
+    "supported_evidence_classes": ["presentation_text"],
+    "summary": {
+      "raw_signals": 2,
+      "canonical_items": 1,
+      "aligned_raw_findings": 2,
+      "unaligned_raw_findings": 0,
+      "raw_to_canonical_ratio": 2.0,
+      "duplicate_groups_total": 1,
+      "actionable_gaps": 0,
+      "already_observed": 0,
+      "internal_no_action": 0,
+      "static_limitations": 1,
+      "unknown": 0,
+      "presentation_text_total": 1,
+      "presentation_text_visibility_unknown": 1,
+      "presentation_text_duplicate_groups": 1,
+      "presentation_text_actionable_output_repairs": 0
+    },
+    "items": [
+      {
+        "canonical_gap_id": "presentation_text::APPLE_M3_AIR_DEVICE_LABELS_TEXT",
+        "canonical_item_kind": "limitation",
+        "evidence_class": "presentation_text",
+        "gap_state": "static_limitation",
+        "actionability": "inspect_visibility",
+        "raw_group_size": 2,
+        "group_reason": "declaration_and_literal_same_text_constant",
+        "why": "Changed presentation text could not be traced to or away from a user-visible output sink.",
+        "recommended_repair": "Trace the string constant to a rendered output path or confirm it is internal-only.",
+        "related_test": null,
+        "verify_command": "cargo xtask evidence-quality-scorecard",
+        "static_limitations": [
+          {
+            "category": "presentation_text_visibility_unknown",
+            "repair_route": "trace_string_constant_to_output_or_snapshot_test",
+            "user_actionability": "unknown_until_visibility_known"
+          }
+        ],
+        "confidence": {
+          "basis": "fixture_backed",
+          "notes": [
+            "Visibility-unknown presentation text is benchmark-pinned; no user repair is claimed without an output sink."
+          ]
+        },
+        "raw_findings": [
+          {
+            "file": "src/device_labels.rs",
+            "line": 46,
+            "kind": "exposed",
+            "expression": "pub const APPLE_M3_AIR_DEVICE_LABELS_TEXT: &str =",
+            "probe_kind": "field_construction",
+            "source_id": "probe:src_device_labels_rs:46:decl",
+            "evidence_record_ref": "probe:src_device_labels_rs:46:decl"
+          },
+          {
+            "file": "src/device_labels.rs",
+            "line": 47,
+            "kind": "static_unknown",
+            "expression": "\"apple-m3-air-cpu-neon = M3 MacBook Air Apple CPU/NEON lane\";",
+            "probe_kind": "static_unknown",
+            "source_id": "probe:src_device_labels_rs:47:literal",
+            "evidence_record_ref": "probe:src_device_labels_rs:47:literal"
+          }
+        ],
+        "presentation_text": {
+          "constant_name": "APPLE_M3_AIR_DEVICE_LABELS_TEXT",
+          "text_literal": "apple-m3-air-cpu-neon = M3 MacBook Air Apple CPU/NEON lane",
+          "visibility": "unknown",
+          "observer": "unknown",
+          "actionability": "static_limitation_visibility_unknown",
+          "source_kind": "const_decl",
+          "canonical_group_reason": "declaration_and_literal_same_text_constant",
+          "recommended_observer": "unknown"
+        }
+      }
+    ]
+  }
+}
+```
+
+Field contract:
+
+- `finding_alignment.scope` - currently `supported_classes`; Lane 1 reports
+  only evidence classes whose grouping behavior is fixture-backed.
+- `finding_alignment.supported_evidence_classes` - evidence classes included
+  in this projection. The first supported class is `presentation_text`.
+- `finding_alignment.summary.raw_signals` - total raw findings emitted in the
+  check output.
+- `finding_alignment.summary.canonical_items` - supported canonical evidence
+  items after alignment.
+- `finding_alignment.summary.aligned_raw_findings` and
+  `unaligned_raw_findings` - how many raw findings were attached to supported
+  canonical items versus left as ordinary raw findings.
+- `finding_alignment.summary.raw_to_canonical_ratio` - raw signal count divided
+  by supported canonical item count; this is diagnostic evidence, not a score.
+- `finding_alignment.summary.duplicate_groups_total` - canonical items with
+  more than one supporting raw finding.
+- `finding_alignment.summary.actionable_gaps`,
+  `already_observed`, `internal_no_action`, `static_limitations`, and
+  `unknown` - Lane 1 evidence states. Policy states such as baseline, waiver,
+  acknowledgement, suppression, or reintroduction remain outside this section.
+- `finding_alignment.summary.presentation_text_*` - presentation-text class
+  counts for visibility, duplicate grouping, and output-observer repairs.
+- `finding_alignment.items[]` - canonical evidence items. Downstream surfaces
+  should prefer these items as the user-facing unit and show raw findings as
+  supporting evidence.
+- `finding_alignment.items[].canonical_gap_id` - stable class-scoped grouping
+  key. For presentation text constants this is currently
+  `presentation_text::<CONSTANT_NAME>`, so line movement does not change the
+  identity.
+- `finding_alignment.items[].gap_state` - one of `actionable`,
+  `already_observed`, `internal_only`, `static_limitation`, or `unknown`.
+- `finding_alignment.items[].actionability` - class-scoped action label such
+  as `inspect_visibility`. Presentation text does not produce user repair work
+  from text alone.
+- `finding_alignment.items[].static_limitations[]` - analyzer limitation
+  categories and repair routes. `presentation_text_visibility_unknown` means
+  RIPR could not safely trace the text to or away from a user-visible output
+  sink.
+- `finding_alignment.items[].presentation_text` - class-specific visibility,
+  observer, actionability, source-kind, grouping reason, and recommended
+  observer context. The first implemented state is visibility unknown for
+  fixture-backed declaration-plus-literal grouping.
+
 ## Finding
 
 A finding contains:
