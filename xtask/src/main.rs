@@ -40482,6 +40482,23 @@ jobs:
         );
         assert_eq!(
             XtaskCommand::parse([
+                "ripr-review-comments".to_string(),
+                "--base".to_string(),
+                "origin/main".to_string(),
+                "--head".to_string(),
+                "HEAD".to_string(),
+                "--check".to_string(),
+            ]),
+            XtaskCommand::RiprReviewComments(vec![
+                "--base".to_string(),
+                "origin/main".to_string(),
+                "--head".to_string(),
+                "HEAD".to_string(),
+                "--check".to_string(),
+            ])
+        );
+        assert_eq!(
+            XtaskCommand::parse([
                 "gh-pr-status".to_string(),
                 "--pr".to_string(),
                 "905".to_string(),
