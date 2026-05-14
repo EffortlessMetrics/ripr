@@ -644,6 +644,18 @@ cargo xtask repo-badge-artifacts
 # writes target/ripr/reports/repo-ripr-badges.md
 ```
 
+When a policy-backed gap decision ledger is the desired badge source, pass it
+explicitly:
+
+```bash
+cargo xtask repo-badge-artifacts --gap-ledger target/ripr/reports/gap-decision-ledger.json
+```
+
+That renders the same repo badge artifact filenames with
+`basis = "gap_decision_ledger"` and counts only the ledger's explicit
+`projection_eligibility.ripr_zero_count` and `ripr_plus_count` targets.
+Without `--gap-ledger`, repo badge artifacts keep the seam-native basis.
+
 ### `ripr` badge product contract
 
 The `ripr` badge product contract is a single sentence:
@@ -715,6 +727,17 @@ cargo xtask update-badge-endpoints
 That regenerates `target/ripr/reports/repo-ripr-{badge,plus-badge}-shields.json`
 via `repo_badge_artifacts()` and copies the two Shields projections
 into `badges/`. Commit the resulting diff.
+
+For a policy-backed endpoint refresh, provide the same explicit gap ledger:
+
+```bash
+cargo xtask badges --gap-ledger target/ripr/reports/gap-decision-ledger.json
+cargo xtask badges --check --gap-ledger target/ripr/reports/gap-decision-ledger.json
+```
+
+This keeps public endpoint updates tied to the same `GapRecord` projection
+targets used by RIPR Zero and avoids treating raw report counts as badge
+authority.
 
 #### Pinned contract for the endpoint
 

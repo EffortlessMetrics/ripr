@@ -60,6 +60,8 @@ Allowed:
 ```text
 cargo xtask badges
 cargo xtask badges --check
+cargo xtask badges --gap-ledger target/ripr/reports/gap-decision-ledger.json
+cargo xtask badges --check --gap-ledger target/ripr/reports/gap-decision-ledger.json
 ```
 
 Not allowed:
