@@ -1,4 +1,10 @@
-use super::language::{LanguageAdapter, LanguageId, PythonAdapter, RustAdapter, TypeScriptAdapter};
+#[cfg(feature = "lang-python")]
+use super::language::PythonAdapter;
+#[cfg(feature = "lang-typescript")]
+use super::language::TypeScriptAdapter;
+use super::language::{
+    LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, RustAdapter,
+};
 use super::{AnalysisOptions, AnalysisResult, diff, sort, summary};
 use crate::config::OraclePolicy;
 use crate::domain::Finding;
@@ -21,11 +27,9 @@ pub(crate) fn run_diff_pipeline_with_oracle_policy(
         let result = match language {
             LanguageId::Rust => RustAdapter.analyze_diff(options, oracle_policy, &changed_files)?,
             LanguageId::TypeScript => {
-                TypeScriptAdapter.analyze_diff(options, oracle_policy, &changed_files)?
+                analyze_typescript_diff(options, oracle_policy, &changed_files)?
             }
-            LanguageId::Python => {
-                PythonAdapter.analyze_diff(options, oracle_policy, &changed_files)?
-            }
+            LanguageId::Python => analyze_python_diff(options, oracle_policy, &changed_files)?,
         };
         findings.extend(result.findings);
         total_changed_files += result.changed_files;
@@ -50,8 +54,8 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
     for language in languages {
         let result = match language {
             LanguageId::Rust => RustAdapter.analyze_repo(options, oracle_policy)?,
-            LanguageId::TypeScript => TypeScriptAdapter.analyze_repo(options, oracle_policy)?,
-            LanguageId::Python => PythonAdapter.analyze_repo(options, oracle_policy)?,
+            LanguageId::TypeScript => analyze_typescript_repo(options, oracle_policy)?,
+            LanguageId::Python => analyze_python_repo(options, oracle_policy)?,
         };
         findings.extend(result.findings);
         total_production_files += result.production_files;
@@ -64,6 +68,83 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
         summary: summary_result,
         findings,
     })
+}
+
+#[cfg(feature = "lang-typescript")]
+fn analyze_typescript_diff(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    changed_files: &[diff::ChangedFile],
+) -> Result<LanguageDiffResult, String> {
+    TypeScriptAdapter.analyze_diff(options, oracle_policy, changed_files)
+}
+
+#[cfg(not(feature = "lang-typescript"))]
+fn analyze_typescript_diff(
+    _options: &AnalysisOptions,
+    _oracle_policy: &OraclePolicy,
+    _changed_files: &[diff::ChangedFile],
+) -> Result<LanguageDiffResult, String> {
+    unavailable_language(LanguageId::TypeScript)
+}
+
+#[cfg(feature = "lang-python")]
+fn analyze_python_diff(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    changed_files: &[diff::ChangedFile],
+) -> Result<LanguageDiffResult, String> {
+    PythonAdapter.analyze_diff(options, oracle_policy, changed_files)
+}
+
+#[cfg(not(feature = "lang-python"))]
+fn analyze_python_diff(
+    _options: &AnalysisOptions,
+    _oracle_policy: &OraclePolicy,
+    _changed_files: &[diff::ChangedFile],
+) -> Result<LanguageDiffResult, String> {
+    unavailable_language(LanguageId::Python)
+}
+
+#[cfg(feature = "lang-typescript")]
+fn analyze_typescript_repo(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+) -> Result<LanguageRepoResult, String> {
+    TypeScriptAdapter.analyze_repo(options, oracle_policy)
+}
+
+#[cfg(not(feature = "lang-typescript"))]
+fn analyze_typescript_repo(
+    _options: &AnalysisOptions,
+    _oracle_policy: &OraclePolicy,
+) -> Result<LanguageRepoResult, String> {
+    unavailable_language(LanguageId::TypeScript)
+}
+
+#[cfg(feature = "lang-python")]
+fn analyze_python_repo(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+) -> Result<LanguageRepoResult, String> {
+    PythonAdapter.analyze_repo(options, oracle_policy)
+}
+
+#[cfg(not(feature = "lang-python"))]
+fn analyze_python_repo(
+    _options: &AnalysisOptions,
+    _oracle_policy: &OraclePolicy,
+) -> Result<LanguageRepoResult, String> {
+    unavailable_language(LanguageId::Python)
+}
+
+#[cfg(any(not(feature = "lang-typescript"), not(feature = "lang-python")))]
+fn unavailable_language<T>(language: LanguageId) -> Result<T, String> {
+    Err(format!(
+        "language `{}` is not available in this ripr binary; rebuild with Cargo feature `{}` to enable it",
+        language.as_str(),
+        language.required_feature()
+    ))
 }
 
 #[cfg(test)]

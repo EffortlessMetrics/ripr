@@ -71,6 +71,11 @@ Planned scope:
 - Added `docs/STATIC_LIMITS.md` so preview-language static-limit labels have a
   user-facing interpretation guide and downstream tools know not to parse
   prose into action semantics.
+- Added Cargo feature gates for preview language adapters. Default builds still
+  include TypeScript/JavaScript and Python preview support, Rust-only binaries
+  can be built with `--no-default-features --features lang-rust`, and repo
+  config now fails closed when it enables a language missing from the current
+  binary.
 - `ripr --help` and every `ripr <subcommand> --help` now lead with an
   action-oriented one-liner before the `Usage:` block (e.g.,
   `ripr pilot --help` opens with "Find the top test gap in this repo and
