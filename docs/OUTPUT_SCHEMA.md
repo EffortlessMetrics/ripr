@@ -733,6 +733,39 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
         "canonical_gap_id": "gap:67fc764ba37d77bd",
         "canonical_gap_group_size": 1,
         "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+        "raw_findings": [
+          {
+            "file": "src/pricing.rs",
+            "line": 88,
+            "kind": "weakly_gripped",
+            "expression": "amount >= discount_threshold",
+            "probe_kind": "predicate_boundary",
+            "source_id": "f3c9e4d21a0b7c88",
+            "evidence_record_ref": "f3c9e4d21a0b7c88"
+          }
+        ],
+        "canonical_item": {
+          "canonical_gap_id": "gap:67fc764ba37d77bd",
+          "raw_group_size": 1,
+          "canonical_item_kind": "gap",
+          "evidence_class": "predicate_boundary",
+          "gap_state": "actionable",
+          "actionability": "extend_related_test",
+          "group_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "why": "extend the nearest related test with the missing discriminator",
+          "recommended_repair": "extend the nearest related test with the missing discriminator",
+          "related_test": {
+            "name": "below_threshold_has_no_discount",
+            "file": "tests/pricing_tests.rs",
+            "line": 12,
+            "reason": "direct_owner_call"
+          },
+          "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json",
+          "confidence": {
+            "basis": "static_only",
+            "notes": ["no imported runtime calibration data"]
+          }
+        },
         "owner": "src/pricing.rs::discounted_total",
         "location": {
           "file": "src/pricing.rs",
@@ -854,7 +887,8 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
           "confidence": "unknown",
           "agreement": "no_runtime_data"
         },
-        "static_limitations": []
+        "static_limitations": [],
+        "presentation_text": null
       }
     }
   ]
@@ -923,6 +957,15 @@ Field contract:
   or `null` when no canonical gap identity is assigned.
 - `seams[].evidence_record.canonical_gap_reason` - grouping reason for the
   canonical identity, or `null` when no canonical gap identity is assigned.
+- `seams[].evidence_record.raw_findings` - supporting raw analyzer signals
+  that contributed to this record. The current seam-native projection emits
+  one raw finding per seam; later class-specific grouping may attach multiple
+  raw findings to one canonical item.
+- `seams[].evidence_record.canonical_item` - additive finding-alignment
+  projection with `gap_state`, class-scoped `actionability`, `why`,
+  `recommended_repair`, `related_test`, `verify_command`, `confidence`, and
+  raw group size. Downstream surfaces should render this canonical item before
+  treating raw findings as separate work.
 - `seams[].evidence_record.evidence_path` - typed reach, activate,
   propagate, observe, and discriminate stages. Each stage carries `state`,
   `confidence`, and `summary`.
@@ -951,6 +994,9 @@ Field contract:
   focused-test instructions. Each entry carries the original `stage`, `state`,
   and `reason` plus a normalized `category` and `repair_route` so Lane 1 can
   group analyzer limits without treating them as user test gaps.
+- `seams[].evidence_record.presentation_text` - reserved presentation-text
+  evidence-class projection. It is `null` until a fixture-backed presentation
+  text slice classifies visibility, observer shape, and output actionability.
 
 The fixture contract corpus at
 `fixtures/boundary_gap/expected/evidence-record-contract/corpus.json` pins
@@ -958,7 +1004,9 @@ representative `evidence_record` v0.1 records for predicate boundaries, exact
 error variants, strong exact-value evidence, broad error assertions, field and
 whole-object oracles, snapshot evidence, side-effect observers, opaque static
 limitations, generated canonical gap identity, and the current
-`no_runtime_data` calibration placeholder. `cargo xtask check-fixture-contracts`
+`no_runtime_data` calibration placeholder. Unit and repo-exposure tests pin the
+additive `raw_findings`, `canonical_item`, and `presentation_text` alignment
+fields before later presentation-text grouping changes. `cargo xtask check-fixture-contracts`
 validates the required case matrix and field shape; `cargo xtask
 check-output-contracts` validates the `evidence_record` schema version in code,
 docs, and the corpus.
