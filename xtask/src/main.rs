@@ -12141,6 +12141,34 @@ struct EvidenceQualityScorecardSummary {
     evidence_records_missing: usize,
     top_repair_count: usize,
     recent_delta_available: bool,
+    finding_alignment_raw_findings_total: usize,
+    finding_alignment_raw_signals_total: usize,
+    finding_alignment_canonical_items_total: usize,
+    finding_alignment_aligned_raw_findings_total: usize,
+    finding_alignment_unaligned_raw_findings_total: usize,
+    finding_alignment_duplicate_groups_total: usize,
+    finding_alignment_actionable_items_total: usize,
+    finding_alignment_actionable_unresolved_canonical_gaps: usize,
+    finding_alignment_already_observed_total: usize,
+    finding_alignment_internal_only_total: usize,
+    finding_alignment_internal_no_action_total: usize,
+    finding_alignment_static_limitation_total: usize,
+    finding_alignment_unknown_total: usize,
+    finding_alignment_calibrated_supported_total: usize,
+    finding_alignment_uncalibrated_total: usize,
+    finding_alignment_visibility_unknown_total: usize,
+    finding_alignment_presentation_text_actionable_total: usize,
+    presentation_text_total: usize,
+    presentation_text_user_visible: usize,
+    presentation_text_observed: usize,
+    presentation_text_unobserved: usize,
+    presentation_text_internal_only: usize,
+    presentation_text_visibility_unknown: usize,
+    presentation_text_observer_unknown: usize,
+    presentation_text_duplicate_groups: usize,
+    presentation_text_actionable_snapshot: usize,
+    presentation_text_no_action: usize,
+    presentation_text_static_limitations: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -12443,7 +12471,205 @@ fn evidence_quality_scorecard_summary(audit: &Value) -> EvidenceQualityScorecard
             .unwrap_or(0),
         top_repair_count: 0,
         recent_delta_available: false,
+        finding_alignment_raw_findings_total: finding_alignment_summary_usize(
+            audit,
+            "raw_signals",
+            "finding_alignment_raw_findings_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_raw_signals_total: finding_alignment_summary_usize(
+            audit,
+            "raw_signals",
+            "finding_alignment_raw_signals_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_canonical_items_total: finding_alignment_summary_usize(
+            audit,
+            "canonical_items",
+            "finding_alignment_canonical_items_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_aligned_raw_findings_total: finding_alignment_summary_usize(
+            audit,
+            "aligned_raw_findings",
+            "finding_alignment_aligned_raw_findings_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_unaligned_raw_findings_total: finding_alignment_summary_usize(
+            audit,
+            "unaligned_raw_findings",
+            "finding_alignment_unaligned_raw_findings_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_duplicate_groups_total: finding_alignment_summary_usize(
+            audit,
+            "duplicate_groups_total",
+            "finding_alignment_duplicate_groups_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_actionable_items_total: finding_alignment_summary_usize(
+            audit,
+            "actionable_gaps",
+            "finding_alignment_actionable_items_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_actionable_unresolved_canonical_gaps: finding_alignment_summary_usize(
+            audit,
+            "actionable_gaps",
+            "finding_alignment_actionable_unresolved_canonical_gaps",
+        )
+        .unwrap_or(0),
+        finding_alignment_already_observed_total: finding_alignment_summary_usize(
+            audit,
+            "already_observed",
+            "finding_alignment_already_observed_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_internal_only_total: finding_alignment_summary_usize(
+            audit,
+            "internal_no_action",
+            "finding_alignment_internal_only_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_internal_no_action_total: finding_alignment_summary_usize(
+            audit,
+            "internal_no_action",
+            "finding_alignment_internal_no_action_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_static_limitation_total: finding_alignment_summary_usize(
+            audit,
+            "static_limitations",
+            "finding_alignment_static_limitation_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_unknown_total: finding_alignment_summary_usize(
+            audit,
+            "unknown",
+            "finding_alignment_unknown_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_calibrated_supported_total: finding_alignment_summary_usize(
+            audit,
+            "calibrated_supported",
+            "finding_alignment_calibrated_supported_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_uncalibrated_total: finding_alignment_summary_usize(
+            audit,
+            "uncalibrated",
+            "finding_alignment_uncalibrated_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_visibility_unknown_total: finding_alignment_summary_usize(
+            audit,
+            "presentation_text_visibility_unknown",
+            "finding_alignment_visibility_unknown_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_presentation_text_actionable_total: finding_alignment_summary_usize(
+            audit,
+            "presentation_text_actionable_output_repairs",
+            "finding_alignment_presentation_text_actionable_total",
+        )
+        .unwrap_or_else(|| {
+            finding_alignment_summary_usize(
+                audit,
+                "presentation_text_actionable_snapshot",
+                "finding_alignment_presentation_text_actionable_total",
+            )
+            .unwrap_or(0)
+        }),
+        presentation_text_total: presentation_text_summary_usize(audit, "presentation_text_total")
+            .unwrap_or(0),
+        presentation_text_user_visible: presentation_text_summary_usize(
+            audit,
+            "presentation_text_user_visible",
+        )
+        .unwrap_or(0),
+        presentation_text_observed: presentation_text_summary_usize(
+            audit,
+            "presentation_text_observed",
+        )
+        .unwrap_or(0),
+        presentation_text_unobserved: presentation_text_summary_usize(
+            audit,
+            "presentation_text_unobserved",
+        )
+        .unwrap_or(0),
+        presentation_text_internal_only: presentation_text_summary_usize(
+            audit,
+            "presentation_text_internal_only",
+        )
+        .unwrap_or(0),
+        presentation_text_visibility_unknown: presentation_text_summary_usize(
+            audit,
+            "presentation_text_visibility_unknown",
+        )
+        .unwrap_or(0),
+        presentation_text_observer_unknown: presentation_text_summary_usize(
+            audit,
+            "presentation_text_observer_unknown",
+        )
+        .unwrap_or(0),
+        presentation_text_duplicate_groups: presentation_text_summary_usize(
+            audit,
+            "presentation_text_duplicate_groups",
+        )
+        .unwrap_or(0),
+        presentation_text_actionable_snapshot: presentation_text_summary_usize(
+            audit,
+            "presentation_text_actionable_snapshot",
+        )
+        .or_else(|| {
+            presentation_text_summary_usize(audit, "presentation_text_actionable_output_repairs")
+        })
+        .unwrap_or(0),
+        presentation_text_no_action: presentation_text_summary_usize(
+            audit,
+            "presentation_text_no_action",
+        )
+        .unwrap_or(0),
+        presentation_text_static_limitations: presentation_text_summary_usize(
+            audit,
+            "presentation_text_static_limitations",
+        )
+        .unwrap_or(0),
     }
+}
+
+fn finding_alignment_summary_usize(
+    value: &Value,
+    source_key: &str,
+    scorecard_key: &str,
+) -> Option<usize> {
+    audit_usize_dynamic(value, &["finding_alignment", "summary"], source_key)
+        .or_else(|| audit_usize_dynamic(value, &["summary"], scorecard_key))
+}
+
+fn presentation_text_summary_usize(value: &Value, key: &str) -> Option<usize> {
+    audit_usize_dynamic(value, &["finding_alignment", "summary"], key)
+        .or_else(|| audit_usize_dynamic(value, &["summary"], key))
+}
+
+fn audit_usize_dynamic(value: &Value, path: &[&str], key: &str) -> Option<usize> {
+    let mut current = value;
+    for segment in path {
+        current = current.get(*segment)?;
+    }
+    current.get(key)?.as_u64().map(|count| count as usize)
+}
+
+fn finding_alignment_raw_to_canonical_ratio(
+    summary: &EvidenceQualityScorecardSummary,
+) -> Option<f64> {
+    if summary.finding_alignment_canonical_items_total == 0 {
+        return None;
+    }
+    Some(
+        summary.finding_alignment_raw_signals_total as f64
+            / summary.finding_alignment_canonical_items_total as f64,
+    )
 }
 
 fn evidence_quality_maturity_rows(
@@ -12748,6 +12974,38 @@ fn evidence_quality_recent_deltas(
         ),
         ("uncalibrated_records", current.uncalibrated_records),
         ("calibrated_records", current.calibrated_records),
+        (
+            "finding_alignment_duplicate_groups_total",
+            current.finding_alignment_duplicate_groups_total,
+        ),
+        (
+            "finding_alignment_actionable_items_total",
+            current.finding_alignment_actionable_items_total,
+        ),
+        (
+            "finding_alignment_static_limitation_total",
+            current.finding_alignment_static_limitation_total,
+        ),
+        (
+            "finding_alignment_calibrated_supported_total",
+            current.finding_alignment_calibrated_supported_total,
+        ),
+        (
+            "finding_alignment_uncalibrated_total",
+            current.finding_alignment_uncalibrated_total,
+        ),
+        (
+            "presentation_text_visibility_unknown",
+            current.presentation_text_visibility_unknown,
+        ),
+        (
+            "presentation_text_actionable_snapshot",
+            current.presentation_text_actionable_snapshot,
+        ),
+        (
+            "presentation_text_static_limitations",
+            current.presentation_text_static_limitations,
+        ),
     ] {
         let Some(before) = audit_usize(previous, &["summary", metric]) else {
             continue;
@@ -12783,7 +13041,9 @@ fn scorecard_delta_direction(metric: &str, before: usize, after: usize) -> Strin
     if before == after {
         return "unchanged".to_string();
     }
-    let improved = if metric == "calibrated_records" {
+    let improved = if metric == "calibrated_records"
+        || metric == "finding_alignment_calibrated_supported_total"
+    {
         after > before
     } else {
         after < before
@@ -12873,7 +13133,22 @@ fn evidence_quality_unknowns(
             Some("fixtures/evidence-quality-benchmark-corpus"),
         );
     }
+    if !finding_alignment_summary_available(audit) {
+        scorecard_push_unknown(
+            &mut unknowns,
+            "finding_alignment_unavailable",
+            "No finding_alignment summary was available in the scorecard input, so raw-to-canonical and presentation-text counts are reported as zero instead of inferred from raw gaps.",
+            Some("report/presentation-text-scorecard-trend-fields"),
+        );
+    }
     unknowns
+}
+
+fn finding_alignment_summary_available(value: &Value) -> bool {
+    audit_get(value, &["finding_alignment", "summary"]).is_some()
+        || audit_get(value, &["summary"])
+            .and_then(|summary| summary.get("finding_alignment_raw_signals_total"))
+            .is_some()
 }
 
 fn scorecard_push_unknown(
@@ -12948,21 +13223,7 @@ fn evidence_quality_scorecard_json(
             "capabilities": scorecard_input_json(&report.inputs.capabilities),
             "traceability": scorecard_input_json(&report.inputs.traceability),
         },
-        "summary": {
-            "raw_headline_gaps": report.summary.raw_headline_gaps,
-            "canonical_gap_groups_total": report.summary.canonical_gap_groups_total,
-            "duplicate_looking_groups_total": report.summary.duplicate_looking_groups_total,
-            "missing_discriminators_total": report.summary.missing_discriminators_total,
-            "static_limitations_total": report.summary.static_limitations_total,
-            "related_tests_total": report.summary.related_tests_total,
-            "low_or_opaque_top_related_tests": report.summary.low_or_opaque_top_related_tests,
-            "calibrated_records": report.summary.calibrated_records,
-            "uncalibrated_records": report.summary.uncalibrated_records,
-            "evidence_records_total": report.summary.evidence_records_total,
-            "evidence_records_missing": report.summary.evidence_records_missing,
-            "top_repair_count": report.summary.top_repair_count,
-            "recent_delta_available": report.summary.recent_delta_available,
-        },
+        "summary": evidence_quality_scorecard_summary_json(&report.summary),
         "maturity_by_class": report.maturity_by_class.iter().map(|row| {
             serde_json::json!({
                 "class": row.class,
@@ -13016,6 +13277,220 @@ fn evidence_quality_scorecard_json(
     serde_json::to_string_pretty(&value)
         .map(|json| format!("{json}\n"))
         .map_err(|err| format!("failed to render evidence quality scorecard JSON: {err}"))
+}
+
+fn evidence_quality_scorecard_summary_json(summary: &EvidenceQualityScorecardSummary) -> Value {
+    let mut object = serde_json::Map::new();
+    scorecard_summary_insert_usize(&mut object, "raw_headline_gaps", summary.raw_headline_gaps);
+    scorecard_summary_insert_usize(
+        &mut object,
+        "canonical_gap_groups_total",
+        summary.canonical_gap_groups_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "duplicate_looking_groups_total",
+        summary.duplicate_looking_groups_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "missing_discriminators_total",
+        summary.missing_discriminators_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "static_limitations_total",
+        summary.static_limitations_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "related_tests_total",
+        summary.related_tests_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "low_or_opaque_top_related_tests",
+        summary.low_or_opaque_top_related_tests,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "calibrated_records",
+        summary.calibrated_records,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "uncalibrated_records",
+        summary.uncalibrated_records,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "evidence_records_total",
+        summary.evidence_records_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "evidence_records_missing",
+        summary.evidence_records_missing,
+    );
+    scorecard_summary_insert_usize(&mut object, "top_repair_count", summary.top_repair_count);
+    object.insert(
+        "recent_delta_available".to_string(),
+        serde_json::json!(summary.recent_delta_available),
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_raw_findings_total",
+        summary.finding_alignment_raw_findings_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_raw_signals_total",
+        summary.finding_alignment_raw_signals_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_canonical_items_total",
+        summary.finding_alignment_canonical_items_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_aligned_raw_findings_total",
+        summary.finding_alignment_aligned_raw_findings_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_unaligned_raw_findings_total",
+        summary.finding_alignment_unaligned_raw_findings_total,
+    );
+    object.insert(
+        "finding_alignment_raw_to_canonical_ratio".to_string(),
+        finding_alignment_raw_to_canonical_ratio(summary)
+            .map_or(serde_json::Value::Null, serde_json::Value::from),
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_duplicate_groups_total",
+        summary.finding_alignment_duplicate_groups_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_actionable_items_total",
+        summary.finding_alignment_actionable_items_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_actionable_unresolved_canonical_gaps",
+        summary.finding_alignment_actionable_unresolved_canonical_gaps,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_already_observed_total",
+        summary.finding_alignment_already_observed_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_internal_only_total",
+        summary.finding_alignment_internal_only_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_internal_no_action_total",
+        summary.finding_alignment_internal_no_action_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_static_limitation_total",
+        summary.finding_alignment_static_limitation_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_unknown_total",
+        summary.finding_alignment_unknown_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_calibrated_supported_total",
+        summary.finding_alignment_calibrated_supported_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_uncalibrated_total",
+        summary.finding_alignment_uncalibrated_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_visibility_unknown_total",
+        summary.finding_alignment_visibility_unknown_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_presentation_text_actionable_total",
+        summary.finding_alignment_presentation_text_actionable_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "presentation_text_total",
+        summary.presentation_text_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "presentation_text_user_visible",
+        summary.presentation_text_user_visible,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "presentation_text_observed",
+        summary.presentation_text_observed,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "presentation_text_unobserved",
+        summary.presentation_text_unobserved,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "presentation_text_internal_only",
+        summary.presentation_text_internal_only,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "presentation_text_visibility_unknown",
+        summary.presentation_text_visibility_unknown,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "presentation_text_observer_unknown",
+        summary.presentation_text_observer_unknown,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "presentation_text_duplicate_groups",
+        summary.presentation_text_duplicate_groups,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "presentation_text_actionable_snapshot",
+        summary.presentation_text_actionable_snapshot,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "presentation_text_no_action",
+        summary.presentation_text_no_action,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "presentation_text_static_limitations",
+        summary.presentation_text_static_limitations,
+    );
+    Value::Object(object)
+}
+
+fn scorecard_summary_insert_usize(
+    object: &mut serde_json::Map<String, Value>,
+    key: &str,
+    value: usize,
+) {
+    object.insert(key.to_string(), serde_json::json!(value));
 }
 
 fn scorecard_input_json(input: &EvidenceQualityScorecardInput) -> Value {
@@ -13072,6 +13547,108 @@ fn evidence_quality_scorecard_markdown(report: &EvidenceQualityScorecardReport) 
         "Uncalibrated records",
         report.summary.uncalibrated_records,
     );
+    out.push('\n');
+
+    out.push_str("## Finding Alignment And Presentation Text\n\n");
+    out.push_str("| Metric | Count |\n");
+    out.push_str("| --- | ---: |\n");
+    audit_push_count(
+        &mut out,
+        "Raw alignment signals",
+        report.summary.finding_alignment_raw_signals_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Canonical alignment items",
+        report.summary.finding_alignment_canonical_items_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Aligned raw findings",
+        report.summary.finding_alignment_aligned_raw_findings_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Unaligned raw findings",
+        report
+            .summary
+            .finding_alignment_unaligned_raw_findings_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Alignment duplicate groups",
+        report.summary.finding_alignment_duplicate_groups_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Actionable canonical items",
+        report.summary.finding_alignment_actionable_items_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Already observed items",
+        report.summary.finding_alignment_already_observed_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Internal no-action items",
+        report.summary.finding_alignment_internal_no_action_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Alignment static limitations",
+        report.summary.finding_alignment_static_limitation_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Alignment calibrated-supported items",
+        report.summary.finding_alignment_calibrated_supported_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Alignment uncalibrated items",
+        report.summary.finding_alignment_uncalibrated_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Presentation text items",
+        report.summary.presentation_text_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Presentation text user-visible",
+        report.summary.presentation_text_user_visible,
+    );
+    audit_push_count(
+        &mut out,
+        "Presentation text observed",
+        report.summary.presentation_text_observed,
+    );
+    audit_push_count(
+        &mut out,
+        "Presentation text unobserved",
+        report.summary.presentation_text_unobserved,
+    );
+    audit_push_count(
+        &mut out,
+        "Presentation text internal-only",
+        report.summary.presentation_text_internal_only,
+    );
+    audit_push_count(
+        &mut out,
+        "Presentation text visibility unknown",
+        report.summary.presentation_text_visibility_unknown,
+    );
+    audit_push_count(
+        &mut out,
+        "Presentation text static limitations",
+        report.summary.presentation_text_static_limitations,
+    );
+    if let Some(ratio) = finding_alignment_raw_to_canonical_ratio(&report.summary) {
+        out.push_str(&format!("| Raw-to-canonical ratio | {:.2} |\n", ratio));
+    } else {
+        out.push_str("| Raw-to-canonical ratio | n/a |\n");
+    }
     out.push('\n');
 
     out.push_str("## Maturity By Class\n\n");
@@ -13541,6 +14118,117 @@ fn evidence_quality_metric_trends(
             current_path: &["summary", "evidence_records_missing"],
             previous_path: &["summary", "evidence_records_missing"],
         },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_raw_signals_total",
+            label: "Finding-alignment raw signals",
+            lower_is_better: true,
+            current_path: &["summary", "finding_alignment_raw_signals_total"],
+            previous_path: &["summary", "finding_alignment_raw_signals_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_canonical_items_total",
+            label: "Finding-alignment canonical items",
+            lower_is_better: true,
+            current_path: &["summary", "finding_alignment_canonical_items_total"],
+            previous_path: &["summary", "finding_alignment_canonical_items_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_duplicate_groups_total",
+            label: "Finding-alignment duplicate groups",
+            lower_is_better: true,
+            current_path: &["summary", "finding_alignment_duplicate_groups_total"],
+            previous_path: &["summary", "finding_alignment_duplicate_groups_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_actionable_items_total",
+            label: "Finding-alignment actionable items",
+            lower_is_better: true,
+            current_path: &["summary", "finding_alignment_actionable_items_total"],
+            previous_path: &["summary", "finding_alignment_actionable_items_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_already_observed_total",
+            label: "Finding-alignment already observed items",
+            lower_is_better: false,
+            current_path: &["summary", "finding_alignment_already_observed_total"],
+            previous_path: &["summary", "finding_alignment_already_observed_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_internal_no_action_total",
+            label: "Finding-alignment internal no-action items",
+            lower_is_better: false,
+            current_path: &["summary", "finding_alignment_internal_no_action_total"],
+            previous_path: &["summary", "finding_alignment_internal_no_action_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_static_limitation_total",
+            label: "Finding-alignment static limitations",
+            lower_is_better: true,
+            current_path: &["summary", "finding_alignment_static_limitation_total"],
+            previous_path: &["summary", "finding_alignment_static_limitation_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_calibrated_supported_total",
+            label: "Finding-alignment calibrated-supported items",
+            lower_is_better: false,
+            current_path: &["summary", "finding_alignment_calibrated_supported_total"],
+            previous_path: &["summary", "finding_alignment_calibrated_supported_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_uncalibrated_total",
+            label: "Finding-alignment uncalibrated items",
+            lower_is_better: true,
+            current_path: &["summary", "finding_alignment_uncalibrated_total"],
+            previous_path: &["summary", "finding_alignment_uncalibrated_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_visibility_unknown_total",
+            label: "Finding-alignment visibility unknown",
+            lower_is_better: true,
+            current_path: &["summary", "finding_alignment_visibility_unknown_total"],
+            previous_path: &["summary", "finding_alignment_visibility_unknown_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_presentation_text_actionable_total",
+            label: "Presentation text actionable items",
+            lower_is_better: true,
+            current_path: &[
+                "summary",
+                "finding_alignment_presentation_text_actionable_total",
+            ],
+            previous_path: &[
+                "summary",
+                "finding_alignment_presentation_text_actionable_total",
+            ],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "presentation_text_visibility_unknown",
+            label: "Presentation text visibility unknown",
+            lower_is_better: true,
+            current_path: &["summary", "presentation_text_visibility_unknown"],
+            previous_path: &["summary", "presentation_text_visibility_unknown"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "presentation_text_static_limitations",
+            label: "Presentation text static limitations",
+            lower_is_better: true,
+            current_path: &["summary", "presentation_text_static_limitations"],
+            previous_path: &["summary", "presentation_text_static_limitations"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "presentation_text_observed",
+            label: "Presentation text observed",
+            lower_is_better: false,
+            current_path: &["summary", "presentation_text_observed"],
+            previous_path: &["summary", "presentation_text_observed"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "presentation_text_no_action",
+            label: "Presentation text no-action",
+            lower_is_better: false,
+            current_path: &["summary", "presentation_text_no_action"],
+            previous_path: &["summary", "presentation_text_no_action"],
+        },
     ]
     .into_iter()
     .map(|spec| evidence_quality_metric_trend(current, previous, spec))
@@ -13631,6 +14319,34 @@ fn evidence_quality_metric_interpretation(metric: &str, direction: &str) -> Stri
         }
         "raw_headline_gaps" | "missing_discriminators_total" => {
             "Lower counts may be useful but require class-scoped fixture context before promotion."
+        }
+        "finding_alignment_raw_signals_total" | "finding_alignment_canonical_items_total" => {
+            "Alignment volume is diagnostic; interpret direction with the raw-to-canonical ratio and class mix."
+        }
+        "finding_alignment_duplicate_groups_total" => {
+            "Lower duplicate group counts mean fewer raw findings are surfacing as duplicate actions."
+        }
+        "finding_alignment_actionable_items_total"
+        | "finding_alignment_presentation_text_actionable_total" => {
+            "Lower unresolved actionable item counts are useful only when already-observed, internal-only, or limitation counts explain the movement."
+        }
+        "finding_alignment_already_observed_total" | "presentation_text_observed" => {
+            "Higher observed counts mean more canonical items are recognized as already gripped."
+        }
+        "finding_alignment_calibrated_supported_total" => {
+            "Higher calibrated-supported counts show more canonical items have checked runtime context."
+        }
+        "finding_alignment_uncalibrated_total" => {
+            "Lower uncalibrated counts indicate more canonical items have class-scoped runtime context."
+        }
+        "finding_alignment_internal_no_action_total" | "presentation_text_no_action" => {
+            "Higher no-action counts mean more raw signals are classified as non-user debt."
+        }
+        "finding_alignment_static_limitation_total"
+        | "finding_alignment_visibility_unknown_total"
+        | "presentation_text_visibility_unknown"
+        | "presentation_text_static_limitations" => {
+            "Lower limitation counts mean fewer analyzer-unknown items remain for this evidence class."
         }
         _ => "Trend is advisory and does not redefine RIPR scores.",
     }
@@ -29247,21 +29963,21 @@ mod tests {
         evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
         evidence_quality_trend_json, evidence_quality_trend_markdown,
         extract_json_object_usize_map, extract_json_string, extract_json_warnings,
-        extract_workflow_run_blocks, finish_worktree_doctor_report, first_line_difference,
-        forbidden_panic_patterns, generated_clean_violations, gh_pr_safe_next_action,
-        gh_pr_status_markdown, gh_pr_status_readiness, github_event_pull_request_title_from_text,
-        glob_matches, golden_changes_without_blessing, golden_drift_semantics,
-        guarded_allow_attribute_lints, guarded_allow_attributes_in_text, install_hooks_in,
-        is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
-        is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
-        is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
-        is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
-        is_stale_agent_boundary_scan_target, json_escape, json_number_after,
-        json_string_values_for_key, json_summary_count, known_commands, known_xtask_command,
-        lane1_evidence_audit_from_repo_exposure, lane1_evidence_audit_json,
-        lane1_evidence_audit_markdown, local_context_line_findings, local_markdown_target,
-        lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
-        markdown_links_in_text, mutation_calibration_report_json,
+        extract_workflow_run_blocks, finding_alignment_raw_to_canonical_ratio,
+        finish_worktree_doctor_report, first_line_difference, forbidden_panic_patterns,
+        generated_clean_violations, gh_pr_safe_next_action, gh_pr_status_markdown,
+        gh_pr_status_readiness, github_event_pull_request_title_from_text, glob_matches,
+        golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
+        guarded_allow_attributes_in_text, install_hooks_in, is_badge_refresh_context,
+        is_bdd_test_name, is_campaign_path, is_dependency_surface_candidate, is_docs_path,
+        is_evidence_path, is_generated_candidate, is_known_campaign_command,
+        is_non_rust_programming_candidate, is_policy_path, is_production_path, is_receipt_status,
+        is_ripr_managed_hook, is_snake_case_id, is_spec_id, is_stale_agent_boundary_scan_target,
+        json_escape, json_number_after, json_string_values_for_key, json_summary_count,
+        known_commands, known_xtask_command, lane1_evidence_audit_from_repo_exposure,
+        lane1_evidence_audit_json, lane1_evidence_audit_markdown, local_context_line_findings,
+        local_markdown_target, lsp_cockpit_report, lsp_cockpit_report_json,
+        lsp_cockpit_report_markdown, markdown_links_in_text, mutation_calibration_report_json,
         mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
         next_spec_id_from_ids, no_panic_toml_string, non_rust_programming_retention_reason,
         normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
@@ -39968,6 +40684,80 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn evidence_quality_scorecard_reports_finding_alignment_presentation_text_counts()
+    -> Result<(), String> {
+        let mut audit = scorecard_minimal_audit_value(0, 0, 0, 0, 0);
+        audit
+            .as_object_mut()
+            .ok_or_else(|| "audit should be an object".to_string())?
+            .insert(
+                "finding_alignment".to_string(),
+                serde_json::json!({
+                    "summary": {
+                        "raw_signals": 6,
+                        "canonical_items": 3,
+                        "aligned_raw_findings": 5,
+                        "unaligned_raw_findings": 1,
+                        "duplicate_groups_total": 2,
+                        "actionable_gaps": 1,
+                        "already_observed": 1,
+                        "internal_no_action": 1,
+                        "static_limitations": 1,
+                        "unknown": 0,
+                        "presentation_text_total": 3,
+                        "presentation_text_user_visible": 2,
+                        "presentation_text_observed": 1,
+                        "presentation_text_unobserved": 1,
+                        "presentation_text_internal_only": 1,
+                        "presentation_text_visibility_unknown": 1,
+                        "presentation_text_observer_unknown": 1,
+                        "presentation_text_duplicate_groups": 2,
+                        "presentation_text_actionable_snapshot": 1,
+                        "presentation_text_no_action": 2,
+                        "presentation_text_static_limitations": 1
+                    }
+                }),
+            );
+
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(false),
+            &audit,
+            None,
+            None,
+        )?;
+        assert_eq!(report.summary.finding_alignment_raw_signals_total, 6);
+        assert_eq!(report.summary.finding_alignment_canonical_items_total, 3);
+        assert_eq!(report.summary.finding_alignment_duplicate_groups_total, 2);
+        assert_eq!(report.summary.finding_alignment_actionable_items_total, 1);
+        assert_eq!(report.summary.finding_alignment_internal_no_action_total, 1);
+        assert_eq!(report.summary.presentation_text_user_visible, 2);
+        assert_eq!(report.summary.presentation_text_observed, 1);
+        assert_eq!(report.summary.presentation_text_no_action, 2);
+        assert_eq!(
+            finding_alignment_raw_to_canonical_ratio(&report.summary),
+            Some(2.0)
+        );
+
+        let json = evidence_quality_scorecard_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(
+            value["summary"]["finding_alignment_raw_to_canonical_ratio"],
+            serde_json::Value::from(2.0)
+        );
+        assert_eq!(
+            value["summary"]["presentation_text_static_limitations"],
+            serde_json::Value::from(1)
+        );
+
+        let markdown = evidence_quality_scorecard_markdown(&report);
+        assert!(markdown.contains("Finding Alignment And Presentation Text"));
+        assert!(markdown.contains("Raw-to-canonical ratio"));
+        Ok(())
+    }
+
+    #[test]
     fn evidence_quality_trend_reports_no_history_explicitly() -> Result<(), String> {
         let current = scorecard_minimal_audit_value(0, 0, 0, 2, 3);
         let report = evidence_quality_trend_from_values(
@@ -40060,6 +40850,40 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(row.before, Some(5));
         assert_eq!(row.after, Some(2));
         assert_eq!(row.direction, "improvement");
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_trend_reports_finding_alignment_presentation_text_deltas()
+    -> Result<(), String> {
+        let mut current = scorecard_minimal_audit_value(0, 0, 0, 0, 0);
+        let mut previous = scorecard_minimal_audit_value(0, 0, 0, 0, 0);
+        set_summary_count(&mut current, "finding_alignment_duplicate_groups_total", 1)?;
+        set_summary_count(&mut previous, "finding_alignment_duplicate_groups_total", 3)?;
+        set_summary_count(&mut current, "presentation_text_observed", 4)?;
+        set_summary_count(&mut previous, "presentation_text_observed", 2)?;
+        set_summary_count(&mut current, "presentation_text_visibility_unknown", 1)?;
+        set_summary_count(&mut previous, "presentation_text_visibility_unknown", 5)?;
+
+        let report = evidence_quality_trend_from_values(
+            "unix_ms:1".to_string(),
+            trend_inputs_for_test(true),
+            &current,
+            Some(&previous),
+        )?;
+
+        assert_eq!(
+            trend_direction_for(&report, "finding_alignment_duplicate_groups_total")?,
+            "improvement"
+        );
+        assert_eq!(
+            trend_direction_for(&report, "presentation_text_observed")?,
+            "improvement"
+        );
+        assert_eq!(
+            trend_direction_for(&report, "presentation_text_visibility_unknown")?,
+            "improvement"
+        );
         Ok(())
     }
 
@@ -40193,6 +41017,19 @@ covered_by = ["cargo xtask check-file-policy"]
             .and_then(serde_json::Value::as_object_mut)
             .ok_or_else(|| "missing static_limitations.by_category object".to_string())?;
         by_category.insert(category.to_string(), serde_json::json!(count));
+        Ok(())
+    }
+
+    fn set_summary_count(
+        value: &mut serde_json::Value,
+        metric: &str,
+        count: usize,
+    ) -> Result<(), String> {
+        let summary = value
+            .get_mut("summary")
+            .and_then(serde_json::Value::as_object_mut)
+            .ok_or_else(|| "missing summary object".to_string())?;
+        summary.insert(metric.to_string(), serde_json::json!(count));
         Ok(())
     }
 

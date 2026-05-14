@@ -24,10 +24,20 @@ struct FindingAlignmentSummary {
     internal_no_action: usize,
     static_limitations: usize,
     unknown: usize,
+    calibrated_supported: usize,
+    uncalibrated: usize,
     presentation_text_total: usize,
+    presentation_text_user_visible: usize,
+    presentation_text_observed: usize,
+    presentation_text_unobserved: usize,
+    presentation_text_internal_only: usize,
     presentation_text_visibility_unknown: usize,
+    presentation_text_observer_unknown: usize,
     presentation_text_duplicate_groups: usize,
+    presentation_text_actionable_snapshot: usize,
     presentation_text_actionable_output_repairs: usize,
+    presentation_text_no_action: usize,
+    presentation_text_static_limitations: usize,
 }
 
 struct FindingAlignmentItem {
@@ -229,9 +239,37 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
         .iter()
         .filter(|item| item.gap_state == "unknown")
         .count();
+    let calibrated_supported = items
+        .iter()
+        .filter(|item| item.confidence.basis == "calibrated")
+        .count();
+    let uncalibrated = items.len().saturating_sub(calibrated_supported);
     let presentation_text_visibility_unknown = items
         .iter()
         .filter(|item| item.presentation_text.visibility == "unknown")
+        .count();
+    let presentation_text_user_visible = items
+        .iter()
+        .filter(|item| item.presentation_text.visibility == "user_visible")
+        .count();
+    let presentation_text_observed = items
+        .iter()
+        .filter(|item| item.gap_state == "already_observed")
+        .count();
+    let presentation_text_unobserved = items
+        .iter()
+        .filter(|item| {
+            item.presentation_text.visibility == "user_visible"
+                && item.presentation_text.observer == "none"
+        })
+        .count();
+    let presentation_text_internal_only = items
+        .iter()
+        .filter(|item| item.gap_state == "internal_only")
+        .count();
+    let presentation_text_observer_unknown = items
+        .iter()
+        .filter(|item| item.presentation_text.observer == "unknown")
         .count();
     let presentation_text_duplicate_groups = items
         .iter()
@@ -243,6 +281,17 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
     let presentation_text_actionable_output_repairs = items
         .iter()
         .filter(|item| item.presentation_text.actionability == "add_output_observer")
+        .count();
+    let presentation_text_no_action = items
+        .iter()
+        .filter(|item| {
+            item.presentation_text.actionability == "already_observed"
+                || item.presentation_text.actionability == "no_action_internal"
+        })
+        .count();
+    let presentation_text_static_limitations = items
+        .iter()
+        .filter(|item| item.gap_state == "static_limitation")
         .count();
 
     FindingAlignmentSummary {
@@ -256,10 +305,20 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
         internal_no_action,
         static_limitations,
         unknown,
+        calibrated_supported,
+        uncalibrated,
         presentation_text_total: items.len(),
+        presentation_text_user_visible,
+        presentation_text_observed,
+        presentation_text_unobserved,
+        presentation_text_internal_only,
         presentation_text_visibility_unknown,
+        presentation_text_observer_unknown,
         presentation_text_duplicate_groups,
+        presentation_text_actionable_snapshot: presentation_text_actionable_output_repairs,
         presentation_text_actionable_output_repairs,
+        presentation_text_no_action,
+        presentation_text_static_limitations,
     }
 }
 
@@ -711,7 +770,7 @@ fn summary_json(out: &mut String, summary: &FindingAlignmentSummary) {
         summary.raw_signals as f64 / summary.canonical_items as f64
     };
     out.push_str(&format!(
-        "{{\"raw_signals\":{},\"canonical_items\":{},\"aligned_raw_findings\":{},\"unaligned_raw_findings\":{},\"raw_to_canonical_ratio\":{ratio:.2},\"duplicate_groups_total\":{},\"actionable_gaps\":{},\"already_observed\":{},\"internal_no_action\":{},\"static_limitations\":{},\"unknown\":{},\"presentation_text_total\":{},\"presentation_text_visibility_unknown\":{},\"presentation_text_duplicate_groups\":{},\"presentation_text_actionable_output_repairs\":{}}}",
+        "{{\"raw_signals\":{},\"canonical_items\":{},\"aligned_raw_findings\":{},\"unaligned_raw_findings\":{},\"raw_to_canonical_ratio\":{ratio:.2},\"duplicate_groups_total\":{},\"actionable_gaps\":{},\"already_observed\":{},\"internal_no_action\":{},\"static_limitations\":{},\"unknown\":{},\"calibrated_supported\":{},\"uncalibrated\":{},\"presentation_text_total\":{},\"presentation_text_user_visible\":{},\"presentation_text_observed\":{},\"presentation_text_unobserved\":{},\"presentation_text_internal_only\":{},\"presentation_text_visibility_unknown\":{},\"presentation_text_observer_unknown\":{},\"presentation_text_duplicate_groups\":{},\"presentation_text_actionable_snapshot\":{},\"presentation_text_actionable_output_repairs\":{},\"presentation_text_no_action\":{},\"presentation_text_static_limitations\":{}}}",
         summary.raw_signals,
         summary.canonical_items,
         summary.aligned_raw_findings,
@@ -722,10 +781,20 @@ fn summary_json(out: &mut String, summary: &FindingAlignmentSummary) {
         summary.internal_no_action,
         summary.static_limitations,
         summary.unknown,
+        summary.calibrated_supported,
+        summary.uncalibrated,
         summary.presentation_text_total,
+        summary.presentation_text_user_visible,
+        summary.presentation_text_observed,
+        summary.presentation_text_unobserved,
+        summary.presentation_text_internal_only,
         summary.presentation_text_visibility_unknown,
+        summary.presentation_text_observer_unknown,
         summary.presentation_text_duplicate_groups,
-        summary.presentation_text_actionable_output_repairs
+        summary.presentation_text_actionable_snapshot,
+        summary.presentation_text_actionable_output_repairs,
+        summary.presentation_text_no_action,
+        summary.presentation_text_static_limitations
     ));
 }
 

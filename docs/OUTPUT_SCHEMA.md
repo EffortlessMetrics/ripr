@@ -73,10 +73,20 @@ repeated only as supporting evidence for the canonical item.
       "internal_no_action": 0,
       "static_limitations": 1,
       "unknown": 0,
+      "calibrated_supported": 0,
+      "uncalibrated": 1,
       "presentation_text_total": 1,
+      "presentation_text_user_visible": 0,
+      "presentation_text_observed": 0,
+      "presentation_text_unobserved": 0,
+      "presentation_text_internal_only": 0,
       "presentation_text_visibility_unknown": 1,
+      "presentation_text_observer_unknown": 1,
       "presentation_text_duplicate_groups": 1,
-      "presentation_text_actionable_output_repairs": 0
+      "presentation_text_actionable_snapshot": 0,
+      "presentation_text_actionable_output_repairs": 0,
+      "presentation_text_no_action": 0,
+      "presentation_text_static_limitations": 1
     },
     "items": [
       {
@@ -164,8 +174,13 @@ Field contract:
   `already_observed`, `internal_no_action`, `static_limitations`, and
   `unknown` - Lane 1 evidence states. Policy states such as baseline, waiver,
   acknowledgement, suppression, or reintroduction remain outside this section.
+- `finding_alignment.summary.calibrated_supported` and `uncalibrated` -
+  confidence-basis counts for canonical items. Current presentation-text items
+  are fixture-backed static evidence unless a later checked runtime calibration
+  class supplies calibrated support.
 - `finding_alignment.summary.presentation_text_*` - presentation-text class
-  counts for visibility, duplicate grouping, and output-observer repairs.
+  counts for visibility, observer status, duplicate grouping, no-action states,
+  static limitations, and output-observer repairs.
 - `finding_alignment.items[]` - canonical evidence items. Downstream surfaces
   should prefer these items as the user-facing unit and show raw findings as
   supporting evidence.
@@ -1675,7 +1690,36 @@ generated tests, provider calls, or runtime execution.
     "evidence_records_total": 9355,
     "evidence_records_missing": 0,
     "top_repair_count": 5,
-    "recent_delta_available": false
+    "recent_delta_available": false,
+    "finding_alignment_raw_findings_total": 2,
+    "finding_alignment_raw_signals_total": 2,
+    "finding_alignment_canonical_items_total": 1,
+    "finding_alignment_aligned_raw_findings_total": 2,
+    "finding_alignment_unaligned_raw_findings_total": 0,
+    "finding_alignment_raw_to_canonical_ratio": 2.0,
+    "finding_alignment_duplicate_groups_total": 1,
+    "finding_alignment_actionable_items_total": 0,
+    "finding_alignment_actionable_unresolved_canonical_gaps": 0,
+    "finding_alignment_already_observed_total": 0,
+    "finding_alignment_internal_only_total": 0,
+    "finding_alignment_internal_no_action_total": 0,
+    "finding_alignment_static_limitation_total": 1,
+    "finding_alignment_unknown_total": 0,
+    "finding_alignment_calibrated_supported_total": 0,
+    "finding_alignment_uncalibrated_total": 1,
+    "finding_alignment_visibility_unknown_total": 1,
+    "finding_alignment_presentation_text_actionable_total": 0,
+    "presentation_text_total": 1,
+    "presentation_text_user_visible": 0,
+    "presentation_text_observed": 0,
+    "presentation_text_unobserved": 0,
+    "presentation_text_internal_only": 0,
+    "presentation_text_visibility_unknown": 1,
+    "presentation_text_observer_unknown": 1,
+    "presentation_text_duplicate_groups": 1,
+    "presentation_text_actionable_snapshot": 0,
+    "presentation_text_no_action": 0,
+    "presentation_text_static_limitations": 1
   },
   "maturity_by_class": [
     {
@@ -1766,7 +1810,11 @@ Field contract:
   version, optional SHA-256, and a short note. Missing optional artifacts are
   reported instead of treated as failures.
 - `summary` - headline scorecard counts copied from the current Lane 1 audit
-  plus scorecard-local repair and delta availability counts.
+  plus scorecard-local repair, delta availability, finding-alignment, and
+  presentation-text counts. Finding-alignment counts preserve raw signals,
+  canonical item totals, raw-to-canonical ratio, evidence states, confidence
+  basis, and class-scoped presentation-text actionability without redefining
+  RIPR scores.
 - `maturity_by_class` - class-scoped maturity rows. Status values are
   `fixture_backed`, `static_only`, `imported_runtime_calibrated`, or
   `uncalibrated`; these are scorecard maturity labels, not RIPR exposure
@@ -1788,10 +1836,11 @@ Field contract:
 - `unknowns` - unavailable inputs and evidence-quality unknowns that should
   stay visible until a fixture, analyzer, or calibration slice addresses them.
 
-The Markdown sibling prints bounded sections for summary, maturity by class,
-top evidence-quality risks, recommended repairs, duplicate/canonical group
-signals, static limitations, missing discriminators, related-test and oracle
-distributions, movement and calibration coverage, recent deltas, and unknowns.
+The Markdown sibling prints bounded sections for summary, finding-alignment and
+presentation-text quality, maturity by class, top evidence-quality risks,
+recommended repairs, duplicate/canonical group signals, static limitations,
+missing discriminators, related-test and oracle distributions, movement and
+calibration coverage, recent deltas, and unknowns.
 
 ## Evidence Quality Trend
 
@@ -1845,7 +1894,7 @@ generated tests, provider calls, score definitions, or runtime execution.
     "improved_metrics": 0,
     "regressed_metrics": 0,
     "unchanged_metrics": 0,
-    "unknown_metrics": 9,
+    "unknown_metrics": 24,
     "no_history": true
   },
   "metric_trends": [
@@ -1884,7 +1933,10 @@ Field contract:
 - `metric_trends[]` - comparable Lane 1 evidence-quality metrics with
   nullable `before`, `after`, and `delta` values plus a direction. Lower counts
   are better for debt and uncertainty metrics; higher counts are better for
-  calibrated records.
+  calibrated records, calibrated-supported canonical items, already-observed
+  items, and internal no-action items. Finding-alignment and presentation-text
+  metrics track raw-to-canonical quality, duplicate groups, actionability,
+  static limitations, visibility unknowns, and no-action/observed outcomes.
 - `static_limitation_category_trends[]` - bounded category-level deltas for
   normalized static limitation classes.
 - `unknowns[]` - missing history or missing current metric fields that must
