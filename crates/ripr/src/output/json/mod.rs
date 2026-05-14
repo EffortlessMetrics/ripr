@@ -240,10 +240,26 @@ mod tests {
             alignment["items"][0]["presentation_text"]["recommended_observer"],
             "cli_help_output"
         );
+        assert_eq!(
+            alignment["items"][0]["presentation_text"]["repair_kind"],
+            "output_observer"
+        );
+        assert_eq!(
+            alignment["items"][0]["presentation_text"]["target_test_type"],
+            "help_output_snapshot"
+        );
+        assert_eq!(
+            alignment["items"][0]["presentation_text"]["suggested_assertion"],
+            "Assert CLI help output includes the HELP_DEVICE_LABEL text."
+        );
         assert_eq!(alignment["items"][1]["gap_state"], "already_observed");
         assert_eq!(
             alignment["items"][1]["presentation_text"]["observer"],
             "golden"
+        );
+        assert_eq!(
+            alignment["items"][1]["presentation_text"]["repair_kind"],
+            "no_action"
         );
         assert_eq!(
             alignment["items"][1]["related_test"]["name"],

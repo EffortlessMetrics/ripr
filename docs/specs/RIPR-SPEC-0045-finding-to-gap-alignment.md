@@ -341,8 +341,11 @@ User-visible unobserved presentation text:
 - Given text flowing to a supported help, report, table, snapshot, or golden
   output sink with no observer found, the canonical item has
   `gap_state = "actionable"`.
-- Actionability is `add_output_test`.
+- Actionability is `add_output_observer`.
 - The recommended repair names the most specific observer class known.
+- The class-specific repair route names `repair_kind`, `target_test_type`, and
+  `suggested_assertion` so downstream surfaces do not infer actionability from
+  raw static classes.
 
 User-visible observed presentation text:
 
@@ -411,8 +414,8 @@ Planned Lane 1 slices:
   fixture-backed visible unobserved help/report text, visible observed
   golden/snapshot-backed text, internal-only labels, and visibility-unknown
   limitations without treating text alone as user test debt.
-- `analysis/finding-alignment-repair-routes` adds concrete repairs and verify
-  commands.
+- `analysis/finding-alignment-repair-routes` adds concrete repairs, target test
+  types, suggested assertion shapes, and verify commands.
 - `report/finding-alignment-quality` adds scorecard and trend metrics.
 - `docs/canonical-gap-action-consumer-handoff` documents downstream
   consumption.
