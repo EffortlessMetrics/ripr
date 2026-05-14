@@ -62,6 +62,12 @@ Planned scope:
   work item is `done`, letting `.ripr/goals/active.toml` honestly record a
   closed campaign until the next campaign is selected. Campaign 26 and Campaign
   27 archived manifests were normalized to that closed state.
+- Closed the generated-evidence discipline lane. Ordinary PRs now have
+  generated-clean and badge endpoint ownership checks, worktree and PR-status
+  operator reports, spec-numbering and campaign/source-of-truth guards,
+  target-local receipts, critic reports, deterministic suggested-fixes patches,
+  and contributor docs that separate authored truth from generated evidence and
+  judgment-required decisions.
 - VS Code `ripr: Show Status` now includes first-run/no-output context:
   workspace root, resolved server source and command, editor selectors,
   enabled languages from the last server refresh, and the next safe action for
