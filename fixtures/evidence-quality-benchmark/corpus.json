@@ -561,6 +561,85 @@
       "repair_route": "analysis/presentation-text-actionability"
     },
     {
+      "id": "presentation_text_observer_unknown_alignment",
+      "case_kind": "static_limitation",
+      "evidence_class": "presentation_text",
+      "maturity_scope": "fixture_backed",
+      "description": "Likely user-visible presentation text with an unsupported observer topology remains an observer-unknown limitation instead of becoming user test debt.",
+      "fixture_reference": "RIPR-SPEC-0043 presentation_text_observer_unknown",
+      "sample": {
+        "file": "src/help_renderer.rs",
+        "declaration_line": 41,
+        "literal_line": 42,
+        "sink": "markdown_help",
+        "observer": "opaque_helper"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-presentation-text-observer-unknown",
+          "canonical_gap_id": "presentation_text::HELP_RENDERED_LABEL",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "HELP_RENDERED_LABEL",
+          "location": {
+            "file": "src/help_renderer.rs",
+            "line": 41
+          },
+          "seam_kind": "presentation_text_constant",
+          "grip_class": "static_unknown",
+          "headline_eligible": false,
+          "evidence_class": "presentation_text",
+          "gap_state": "static_limitation",
+          "actionability": "inspect_visibility",
+          "why": "Changed text appears to reach rendered help output, but the observer path is hidden behind an unsupported helper.",
+          "recommended_repair": "Trace the rendered help output to a supported snapshot, help-output, report, table, or golden observer before claiming a user repair.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/help_renderer.rs",
+              "line": 41,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/help_renderer.rs",
+              "line": 42,
+              "kind": "static_unknown"
+            }
+          ],
+          "presentation_text": {
+            "constant_name": "HELP_RENDERED_LABEL",
+            "visibility": "user_visible",
+            "observer": "unknown",
+            "actionability": "static_limitation_observer_unknown",
+            "recommended_observer": "unknown",
+            "repair_kind": "inspect_observer",
+            "target_test_type": "unknown",
+            "suggested_assertion": "Trace the rendered help output to a supported observer before adding or updating tests."
+          },
+          "static_limitation": {
+            "repair_route": "trace_visible_sink_to_snapshot_help_report_table_or_golden_observer",
+            "user_actionability": "unknown_until_observer_known"
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "presentation_text_observer_unknown",
+        "value": 1
+      },
+      "static_limitation_category": "presentation_text_observer_unknown",
+      "expected_claim": "Likely visible text with unsupported observer topology stays a named limitation until observer evidence is fixture-backed.",
+      "must_not_claim": [
+        "Do not call observer-unknown text an actionable output-observer gap.",
+        "Do not infer observer coverage from helper names alone.",
+        "Do not recommend mutation testing before tracing the output observer.",
+        "Do not suppress the raw declaration and literal findings."
+      ],
+      "repair_route": "analysis/presentation-text-actionability"
+    },
+    {
       "id": "presentation_text_internal_only_alignment",
       "case_kind": "negative_guard",
       "evidence_class": "presentation_text",
