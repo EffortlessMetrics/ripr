@@ -102,6 +102,11 @@ pub(super) fn diagnostic_covers_position(diagnostic: &Diagnostic, position: &Pos
 }
 
 fn diagnostic_hover_markdown(diagnostic: &Diagnostic) -> String {
+    if let Some(data) = &diagnostic.data
+        && data.get("source").and_then(string_value) == Some("gap_decision_ledger")
+    {
+        return gap_diagnostic_hover_markdown(diagnostic, data);
+    }
     let classification = diagnostic
         .code
         .as_ref()
@@ -122,6 +127,185 @@ fn diagnostic_hover_markdown(diagnostic: &Diagnostic) -> String {
         }
     }
     lines.join("\n")
+}
+
+fn gap_diagnostic_hover_markdown(diagnostic: &Diagnostic, data: &Value) -> String {
+    let mut lines = vec!["**ripr** gap decision".to_string(), String::new()];
+    push_gap_evidence_boundary(&mut lines, data);
+    lines.extend([
+        diagnostic.message.clone(),
+        String::new(),
+        "## Gap state".to_string(),
+    ]);
+    push_optional_data_line(&mut lines, "canonical gap", data, &["canonical_gap_id"]);
+    push_optional_data_line(&mut lines, "gap", data, &["gap_id"]);
+    push_optional_data_line(&mut lines, "kind", data, &["gap_kind"]);
+    push_optional_data_line(&mut lines, "state", data, &["gap_state"]);
+    push_optional_data_line(&mut lines, "policy", data, &["policy_state"]);
+    push_optional_data_line(&mut lines, "repairability", data, &["repairability"]);
+    push_optional_data_line(&mut lines, "authority", data, &["authority_boundary"]);
+
+    lines.push(String::new());
+    lines.push("## Why this matters".to_string());
+    lines.push(
+        "This diagnostic maps to a validated gap-decision ledger record. Use the bounded route below as local repair guidance; the editor is projecting existing RIPR artifacts."
+            .to_string(),
+    );
+
+    push_gap_repair_route(&mut lines, data);
+    push_gap_verify_and_receipt(&mut lines, data);
+    push_gap_hover_limits(&mut lines);
+    lines.join("\n")
+}
+
+fn push_gap_evidence_boundary(lines: &mut Vec<String>, data: &Value) {
+    lines.push("## Evidence boundary".to_string());
+    push_optional_data_line(lines, "Language", data, &["language"]);
+    push_optional_data_line(lines, "Status", data, &["language_status"]);
+    if value_at(data, &["language_status"]).and_then(string_value) == Some("preview") {
+        lines.push("Evidence: syntax-first".to_string());
+    }
+    for limit in gap_static_limit_lines(data) {
+        lines.push(limit);
+    }
+    if value_at(data, &["language_status"]).and_then(string_value) == Some("preview") {
+        lines.push("Action: advisory only".to_string());
+    }
+    lines.push(String::new());
+}
+
+fn gap_static_limit_lines(data: &Value) -> Vec<String> {
+    let mut lines = Vec::new();
+    if let Some(kind) = value_at(data, &["static_limit_kind"]).and_then(string_value) {
+        lines.push(format!("Static limit: {kind}"));
+    }
+    if let Some(detail) = value_at(data, &["static_limit_detail"]).and_then(string_value) {
+        lines.push(format!("Static limit detail: {detail}"));
+    }
+    if let Some(items) = value_at(data, &["static_limits"]).and_then(Value::as_array) {
+        for item in items.iter().take(5) {
+            match item {
+                Value::String(text) if !text.trim().is_empty() => {
+                    lines.push(format!("Static limit: {text}"));
+                }
+                Value::Object(_) => {
+                    if let Some(kind) = item.get("static_limit_kind").and_then(string_value) {
+                        lines.push(format!("Static limit: {kind}"));
+                    }
+                    if let Some(detail) = item.get("detail").and_then(string_value) {
+                        lines.push(format!("Static limit detail: {detail}"));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    lines
+}
+
+fn push_gap_repair_route(lines: &mut Vec<String>, data: &Value) {
+    let Some(route) = value_at(data, &["repair_route"]) else {
+        return;
+    };
+    lines.push(String::new());
+    lines.push("## Repair route".to_string());
+    push_optional_data_line(lines, "route", route, &["route_kind"]);
+    push_optional_data_line(lines, "changed behavior", route, &["changed_behavior"]);
+    if let Some(target) = value_at(route, &["target_file"]).and_then(string_value) {
+        let mut target = target.to_string();
+        if let Some(line) = value_at(route, &["target_line"]).and_then(Value::as_u64) {
+            target.push(':');
+            target.push_str(&line.to_string());
+        }
+        lines.push(format!("- target: `{target}`"));
+    }
+    push_optional_data_line(lines, "related test", route, &["related_test"]);
+    push_optional_data_line(lines, "assertion shape", route, &["assertion_shape"]);
+    if let Some(stop_conditions) = value_at(route, &["stop_conditions"]).and_then(Value::as_array) {
+        let stops = stop_conditions
+            .iter()
+            .filter_map(string_value)
+            .take(5)
+            .collect::<Vec<_>>();
+        if !stops.is_empty() {
+            lines.push("- stop if:".to_string());
+            for stop in stops {
+                lines.push(format!("  - {stop}"));
+            }
+        }
+    }
+}
+
+fn push_gap_verify_and_receipt(lines: &mut Vec<String>, data: &Value) {
+    let verify_commands = value_at(data, &["verification_commands"])
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(string_value)
+                .take(5)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let regeneration_commands = value_at(data, &["regeneration_commands"])
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(string_value)
+                .take(5)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let receipt = value_at(data, &["receipt"]);
+    if verify_commands.is_empty() && regeneration_commands.is_empty() && receipt.is_none() {
+        return;
+    }
+
+    lines.push(String::new());
+    lines.push("## Verify and receipt".to_string());
+    for command in verify_commands {
+        lines.push(format!("- verify: `{command}`"));
+    }
+    for command in regeneration_commands {
+        lines.push(format!("- regenerate: `{command}`"));
+    }
+    if let Some(path) = receipt
+        .and_then(|receipt| value_at(receipt, &["path"]))
+        .and_then(string_value)
+    {
+        lines.push(format!("- receipt artifact: `{path}`"));
+    }
+    if let Some(movement) = receipt
+        .and_then(|receipt| value_at(receipt, &["movement"]))
+        .and_then(string_value)
+    {
+        lines.push(format!("- receipt movement: `{movement}`"));
+    }
+}
+
+fn push_gap_hover_limits(lines: &mut Vec<String>) {
+    lines.push(String::new());
+    lines.push("## Limits".to_string());
+    lines.push(
+        "- Static projection only; this hover does not run analysis, mutation testing, providers, or policy gates."
+            .to_string(),
+    );
+    lines.push("- The editor does not edit source or generate tests.".to_string());
+}
+
+fn push_optional_data_line(lines: &mut Vec<String>, label: &str, value: &Value, path: &[&str]) {
+    if let Some(text) = value_at(value, path).and_then(string_value) {
+        lines.push(format!("- {label}: `{text}`"));
+    }
+}
+
+fn value_at<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
+    let mut current = value;
+    for key in path {
+        current = current.get(*key)?;
+    }
+    Some(current)
 }
 
 fn finding_hover_markdown(diagnostic: &Diagnostic, finding: &Finding) -> String {
@@ -769,6 +953,68 @@ mod seam_hover_tests {
         }
     }
 
+    fn sample_gap_diagnostic() -> Diagnostic {
+        Diagnostic {
+            range: Range {
+                start: Position {
+                    line: 41,
+                    character: 0,
+                },
+                end: Position {
+                    line: 41,
+                    character: 120,
+                },
+            },
+            severity: None,
+            code: Some(NumberOrString::String(
+                "ripr-gap-MissingBoundaryAssertion".to_string(),
+            )),
+            code_description: None,
+            source: Some("ripr".to_string()),
+            message: "ripr gap: MissingBoundaryAssertion; repair route: AddBoundaryAssertion; changed behavior: amount >= threshold; suggested check: assert_eq!(price(threshold), expected); preview advisory evidence".to_string(),
+            related_information: None,
+            tags: None,
+            data: Some(serde_json::json!({
+                "schema_version": "0.1",
+                "source": "gap_decision_ledger",
+                "gap_ledger": "target/ripr/reports/gap-decision-ledger.json",
+                "gap_id": "gap:py:pricing:threshold",
+                "canonical_gap_id": "gap:py:pricing:threshold",
+                "gap_kind": "MissingBoundaryAssertion",
+                "language": "python",
+                "language_status": "preview",
+                "scope": "pr_local",
+                "evidence_class": "predicate_boundary",
+                "gap_state": "actionable",
+                "policy_state": "new",
+                "repairability": "repairable",
+                "static_limit_kind": "missing_import_graph",
+                "static_limit_detail": "Imported owner targets were not resolved in preview mode.",
+                "repair_route": {
+                    "route_kind": "AddBoundaryAssertion",
+                    "target_file": "tests/test_pricing.py",
+                    "target_line": 33,
+                    "related_test": "tests/test_pricing.py::test_discount_boundary",
+                    "assertion_shape": "assert price(threshold) == expected",
+                    "changed_behavior": "amount >= threshold",
+                    "stop_conditions": ["Stop if the target owner moved."]
+                },
+                "anchor": {
+                    "file": "src/pricing.py",
+                    "line": 42,
+                    "owner": "pricing.discounted_total"
+                },
+                "verification_commands": ["ripr agent verify --root . --json"],
+                "regeneration_commands": ["cargo xtask ripr-pr --check"],
+                "receipt": {
+                    "path": "target/ripr/agent/agent-receipt.json",
+                    "movement": "improved"
+                },
+                "authority_boundary": "advisory"
+            })),
+        }
+    }
+
     fn sample_snapshot(mode: Mode) -> AnalysisSnapshot {
         AnalysisSnapshot {
             root: PathBuf::from("/workspace"),
@@ -781,6 +1027,78 @@ mod seam_hover_tests {
             gap_artifact_rejections: Vec::new(),
             diagnostics_by_uri: BTreeMap::new(),
         }
+    }
+
+    #[test]
+    fn gap_diagnostic_hover_projects_repair_route_with_preview_limits_first() -> Result<(), String>
+    {
+        let hover = diagnostic_hover_response(&sample_gap_diagnostic());
+        let md = extract_markup(&hover)?;
+        for needle in [
+            "**ripr** gap decision",
+            "## Evidence boundary",
+            "- Language: `python`",
+            "- Status: `preview`",
+            "Evidence: syntax-first",
+            "Static limit: missing_import_graph",
+            "Static limit detail: Imported owner targets were not resolved in preview mode.",
+            "Action: advisory only",
+            "## Gap state",
+            "- canonical gap: `gap:py:pricing:threshold`",
+            "- state: `actionable`",
+            "- authority: `advisory`",
+            "## Why this matters",
+            "validated gap-decision ledger record",
+            "## Repair route",
+            "- route: `AddBoundaryAssertion`",
+            "- changed behavior: `amount >= threshold`",
+            "- target: `tests/test_pricing.py:33`",
+            "- related test: `tests/test_pricing.py::test_discount_boundary`",
+            "- assertion shape: `assert price(threshold) == expected`",
+            "- stop if:",
+            "## Verify and receipt",
+            "- verify: `ripr agent verify --root . --json`",
+            "- regenerate: `cargo xtask ripr-pr --check`",
+            "- receipt artifact: `target/ripr/agent/agent-receipt.json`",
+            "- receipt movement: `improved`",
+            "## Limits",
+            "does not run analysis, mutation testing, providers, or policy gates",
+            "does not edit source or generate tests",
+        ] {
+            if !md.contains(needle) {
+                return Err(format!("missing {needle:?} in:\n{md}"));
+            }
+        }
+        let static_limit_index = md
+            .find("Static limit: missing_import_graph")
+            .ok_or_else(|| format!("missing static limit in:\n{md}"))?;
+        let action_index = md
+            .find("Action: advisory only")
+            .ok_or_else(|| format!("missing advisory action in:\n{md}"))?;
+        let route_index = md
+            .find("## Repair route")
+            .ok_or_else(|| format!("missing repair route in:\n{md}"))?;
+        if !(static_limit_index < action_index && action_index < route_index) {
+            return Err(format!(
+                "preview limit must appear before action and repair route in:\n{md}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn generic_diagnostic_hover_still_renders_non_gap_diagnostic_data() -> Result<(), String> {
+        let hover = diagnostic_hover_response(&sample_diagnostic());
+        let md = extract_markup(&hover)?;
+        if md.contains("## Repair route") || md.contains("gap decision") {
+            return Err(format!(
+                "non-gap diagnostic should not render gap hover:\n{md}"
+            ));
+        }
+        if !md.contains("Probe:") && !md.contains("**ripr**") {
+            return Err(format!("expected generic diagnostic hover in:\n{md}"));
+        }
+        Ok(())
     }
 
     fn unique_hover_root(label: &str) -> Result<PathBuf, String> {

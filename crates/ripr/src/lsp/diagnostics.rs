@@ -319,6 +319,9 @@ fn gap_record_diagnostic_data(ledger_path: &Path, record: &GapRecord) -> serde_j
         "anchor": record.anchor,
         "evidence_ids": record.evidence_ids,
         "verification_commands": record.verification_commands,
+        "regeneration_commands": record.regeneration_commands,
+        "receipt": record.receipt,
+        "authority_boundary": record.authority_boundary,
     })
 }
 
