@@ -90,6 +90,13 @@ Planned scope:
   output-observer repairs, already-observed no-action states, internal no-action
   labels, and visibility-inspection limitations without recommending mutation
   execution as the first action.
+- Evidence-quality scorecard and trend reports now carry finding-alignment and
+  presentation-text counts, including raw signals, canonical items,
+  raw-to-canonical ratio, duplicate groups, actionable items, no-action items,
+  static limitations, calibrated-support context, visibility unknowns, observed
+  text, and output-observer repair counts. This keeps the Lane 1 quality loop
+  repo-local and advisory without changing PR/CI rendering, gates, scores,
+  generated tests, provider calls, or mutation execution.
 - Python preview related-test matching now treats free-function calls more
   conservatively: module import aliases such as `pricing.apply_discount(...)`
   still relate to the owner, but unrelated object method calls no longer make a
