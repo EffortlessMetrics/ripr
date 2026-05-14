@@ -25,7 +25,7 @@ pub(crate) use lsp::lsp_cockpit_report;
 pub(crate) use metrics::metrics_report;
 pub(crate) use mutation::mutation_calibration;
 pub(crate) use operator::operator_cockpit_report;
-pub(crate) use pr::{critic, pr_summary};
+pub(crate) use pr::{critic, pr_summary, pr_triage_report};
 pub(crate) use receipts::{receipts, receipts_write};
 pub(crate) use recommendation::recommendation_calibration;
 pub(crate) use release::release_readiness;

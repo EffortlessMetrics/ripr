@@ -6,6 +6,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::FixPr => super::fix_pr(),
         XtaskCommand::InstallHooks(args) => super::install_hooks(&args),
         XtaskCommand::PrSummary => super::reports::pr_summary(),
+        XtaskCommand::PrTriageReport => super::reports::pr_triage_report(),
         XtaskCommand::Precommit => super::precommit(),
         XtaskCommand::CheckPr => super::check_pr(),
         XtaskCommand::Fixtures(name) => super::reports::fixtures(name.as_ref()),

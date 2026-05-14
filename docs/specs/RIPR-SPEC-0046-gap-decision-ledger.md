@@ -439,9 +439,9 @@ Planned slices:
 - `output/gap-record-model-and-ledger` adds the internal model and public
   JSON/Markdown producer.
 - `report/first-useful-action-gap-record` routes first useful action through
-  gap IDs and repair routes.
+  gap IDs and repair routes. (done)
 - `report/pr-evidence-ledger-gap-record` routes PR evidence ledger movement
-  through the same gap IDs.
+  through the same gap IDs. (done)
 - `policy/ripr-zero-and-badges-gap-targets` makes repo badge targets consume
   policy-backed gap records.
 - `policy/gate-repairable-gap-predicate` makes optional gates consume the safe
