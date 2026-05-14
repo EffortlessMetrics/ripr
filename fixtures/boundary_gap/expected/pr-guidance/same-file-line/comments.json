@@ -41,12 +41,12 @@
     }
   ],
   "head": "HEAD",
-  "limits": {
+  "limits_note": "Advisory static evidence only; no automatic edits, generated tests, runtime mutation execution, or CI blocking.",
+  "mode": "draft",
+  "rendering_limits": {
     "max_inline_comments": 3,
     "max_summary_items": 10
   },
-  "limits_note": "Advisory static evidence only; no automatic edits, generated tests, runtime mutation execution, or CI blocking.",
-  "mode": "draft",
   "root": ".",
   "schema_version": "0.1",
   "status": "advisory",

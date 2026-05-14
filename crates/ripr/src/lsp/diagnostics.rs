@@ -1,5 +1,5 @@
 use super::config::LspAnalysisConfig;
-use super::gap_artifacts::validate_workspace_gap_artifacts;
+use super::gap_artifacts::validate_workspace_gap_artifact_report;
 use super::state::{AnalysisSnapshot, RefreshMetadata};
 use super::uri::file_uri_for_path;
 use crate::analysis::ClassifiedSeam;
@@ -8,7 +8,11 @@ use crate::analysis::seams::SeamGripClass;
 use crate::app::check_workspace_with_config;
 use crate::config::{ConfigSeverity, SeverityConfig};
 use crate::domain::{Finding, LanguageId, RelatedTest};
+use crate::output::gap_decision_ledger::{
+    DEFAULT_GAP_DECISION_LEDGER_OUT, GapRecord, projection_eligible,
+};
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
 use std::path::{Path, PathBuf};
 use tower_lsp_server::ls_types::{
     Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, Location, NumberOrString,
@@ -154,9 +158,11 @@ pub(super) fn workspace_diagnostics_with_config(
         Vec::new()
     };
 
+    append_gap_record_diagnostics(&root, &mut grouped);
+
     let diagnostics_by_uri = grouped.clone();
-    let gap_artifacts =
-        validate_workspace_gap_artifacts(&root, config.repo_config().languages().enabled());
+    let gap_artifact_report =
+        validate_workspace_gap_artifact_report(&root, config.repo_config().languages().enabled());
     let batches = grouped
         .into_iter()
         .map(|(uri, diagnostics)| DiagnosticBatch { uri, diagnostics })
@@ -168,10 +174,164 @@ pub(super) fn workspace_diagnostics_with_config(
         refresh: RefreshMetadata::generated_now(),
         findings,
         classified_seams,
-        gap_artifacts,
+        gap_artifacts: gap_artifact_report.artifacts,
+        gap_artifact_rejections: gap_artifact_report.rejections,
         diagnostics_by_uri,
     };
     Ok(WorkspaceDiagnostics { snapshot, batches })
+}
+
+fn append_gap_record_diagnostics(root: &Path, grouped: &mut BTreeMap<Uri, Vec<Diagnostic>>) {
+    let ledger_path = root.join(DEFAULT_GAP_DECISION_LEDGER_OUT);
+    let contents = match fs::read_to_string(&ledger_path) {
+        Ok(contents) => contents,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return,
+        Err(err) => {
+            eprintln!(
+                "ripr lsp: gap diagnostics skipped: read {} failed: {err}",
+                ledger_path.display()
+            );
+            return;
+        }
+    };
+    let records = match crate::output::gap_decision_ledger::parse_gap_records_json(&contents) {
+        Ok(records) => records,
+        Err(err) => {
+            eprintln!(
+                "ripr lsp: gap diagnostics skipped: parse {} failed: {err}",
+                ledger_path.display()
+            );
+            return;
+        }
+    };
+    for record in &records {
+        let Some((uri, diagnostic)) = diagnostic_for_gap_record(root, &ledger_path, record) else {
+            continue;
+        };
+        grouped.entry(uri).or_default().push(diagnostic);
+    }
+}
+
+fn diagnostic_for_gap_record(
+    root: &Path,
+    ledger_path: &Path,
+    record: &GapRecord,
+) -> Option<(Uri, Diagnostic)> {
+    if !projection_eligible(record, "lsp_diagnostic") {
+        return None;
+    }
+    let anchor = record.anchor.as_ref()?;
+    let file = anchor.file.as_ref()?.trim();
+    if file.is_empty() {
+        return None;
+    }
+    let line = anchor.line?;
+    if line == 0 {
+        return None;
+    }
+    let path = absolute_gap_anchor_path(root, Path::new(file));
+    let uri = file_uri_for_path(&path).ok()?;
+    let line_index = line.saturating_sub(1) as u32;
+    let diagnostic = Diagnostic {
+        range: Range {
+            start: Position {
+                line: line_index,
+                character: 0,
+            },
+            end: Position {
+                line: line_index,
+                character: MAX_DIAGNOSTIC_RANGE_WIDTH,
+            },
+        },
+        severity: Some(gap_record_diagnostic_severity(record)),
+        code: Some(NumberOrString::String(format!(
+            "ripr-gap-{}",
+            record.kind.replace('_', "-")
+        ))),
+        code_description: None,
+        source: Some("ripr".to_string()),
+        message: gap_record_diagnostic_message(record),
+        related_information: None,
+        tags: None,
+        data: Some(gap_record_diagnostic_data(ledger_path, record)),
+    };
+    Some((uri, diagnostic))
+}
+
+fn absolute_gap_anchor_path(root: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        root.join(path)
+    }
+}
+
+fn display_lsp_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn gap_record_diagnostic_severity(record: &GapRecord) -> DiagnosticSeverity {
+    if record.repairability == "repairable" {
+        DiagnosticSeverity::WARNING
+    } else {
+        DiagnosticSeverity::INFORMATION
+    }
+}
+
+fn gap_record_diagnostic_message(record: &GapRecord) -> String {
+    let kind = non_empty(&record.kind).unwrap_or("Unknown");
+    let route = record
+        .repair_route
+        .as_ref()
+        .and_then(|route| non_empty(&route.route_kind))
+        .unwrap_or("InspectGap");
+    let mut message = format!("ripr gap: {kind}; repair route: {route}");
+    if let Some(route) = &record.repair_route {
+        if let Some(changed) = route.changed_behavior.as_deref().and_then(non_empty) {
+            message.push_str(&format!("; changed behavior: {changed}"));
+        }
+        if let Some(assertion) = route.assertion_shape.as_deref().and_then(non_empty) {
+            message.push_str(&format!("; suggested check: {assertion}"));
+        }
+    }
+    if record.language_status == "preview" {
+        message.push_str("; preview advisory evidence");
+    }
+    message
+}
+
+fn gap_record_diagnostic_data(ledger_path: &Path, record: &GapRecord) -> serde_json::Value {
+    serde_json::json!({
+        "schema_version": "0.1",
+        "source": "gap_decision_ledger",
+        "gap_ledger": display_lsp_path(ledger_path),
+        "gap_id": record.gap_id,
+        "canonical_gap_id": record.canonical_gap_id,
+        "gap_kind": record.kind,
+        "language": record.language,
+        "language_status": record.language_status,
+        "scope": record.scope,
+        "evidence_class": record.evidence_class,
+        "gap_state": record.gap_state,
+        "policy_state": record.policy_state,
+        "repairability": record.repairability,
+        "repair_route": record.repair_route,
+        "anchor": record.anchor,
+        "evidence_ids": record.evidence_ids,
+        "verification_commands": record.verification_commands,
+        "regeneration_commands": record.regeneration_commands,
+        "receipt": record.receipt,
+        "authority_boundary": record.authority_boundary,
+    })
+}
+
+fn non_empty(value: &str) -> Option<&str> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
 }
 
 /// Per-class severity for seam diagnostics. WARNING for the headline-
@@ -494,6 +654,7 @@ mod seam_diagnostic_tests {
     };
     use crate::analysis::test_grip_evidence::TestGripEvidence;
     use crate::domain::{Confidence, StageEvidence, StageState};
+    use crate::output::gap_decision_ledger::{GapAnchor, GapRepairRoute, ProjectionEligibility};
 
     fn stage(state: StageState) -> StageEvidence {
         StageEvidence::new(state, Confidence::Medium, "test stage")
@@ -655,6 +816,137 @@ mod seam_diagnostic_tests {
     }
 
     #[test]
+    fn gap_record_diagnostic_carries_shared_repair_payload() -> Result<(), String> {
+        let record = gap_record(true);
+        let (_, diagnostic) = diagnostic_for_gap_record(
+            Path::new("/repo"),
+            Path::new("/repo/target/ripr/reports/gap-decision-ledger.json"),
+            &record,
+        )
+        .ok_or_else(|| "expected gap diagnostic".to_string())?;
+
+        if diagnostic.severity != Some(DiagnosticSeverity::WARNING) {
+            return Err(format!(
+                "expected warning severity, got {:?}",
+                diagnostic.severity
+            ));
+        }
+        match &diagnostic.code {
+            Some(NumberOrString::String(code)) if code == "ripr-gap-MissingBoundaryAssertion" => {}
+            other => return Err(format!("unexpected diagnostic code: {other:?}")),
+        }
+        if !diagnostic
+            .message
+            .contains("repair route: AddBoundaryAssertion")
+            || !diagnostic.message.contains("amount >= threshold")
+            || diagnostic.message.contains("confidence")
+        {
+            return Err(format!(
+                "unexpected gap diagnostic message: {}",
+                diagnostic.message
+            ));
+        }
+        let data = diagnostic
+            .data
+            .as_ref()
+            .ok_or_else(|| "missing diagnostic data".to_string())?;
+        assert_eq!(data["source"], "gap_decision_ledger");
+        assert_eq!(data["gap_id"], "gap:pr:pricing:threshold-boundary");
+        assert_eq!(data["gap_kind"], "MissingBoundaryAssertion");
+        assert_eq!(data["repair_route"]["route_kind"], "AddBoundaryAssertion");
+        assert_eq!(
+            data["verification_commands"][0],
+            "cargo xtask fixtures boundary_gap"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gap_record_diagnostic_requires_projection_eligibility_and_anchor() {
+        let mut record = gap_record(false);
+        assert!(
+            diagnostic_for_gap_record(Path::new("/repo"), Path::new("ledger.json"), &record)
+                .is_none()
+        );
+
+        record.projection_eligibility.insert(
+            "lsp_diagnostic".to_string(),
+            ProjectionEligibility {
+                eligible: true,
+                reason: "local_file_scope".to_string(),
+            },
+        );
+        record.anchor = None;
+        assert!(
+            diagnostic_for_gap_record(Path::new("/repo"), Path::new("ledger.json"), &record)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn gap_record_diagnostic_names_preview_inspection_route() -> Result<(), String> {
+        let mut record = gap_record(true);
+        record.repairability = "inspect_only".to_string();
+        record.language_status = "preview".to_string();
+        record.repair_route = None;
+
+        let (_, diagnostic) =
+            diagnostic_for_gap_record(Path::new("/repo"), Path::new("ledger.json"), &record)
+                .ok_or_else(|| "expected gap diagnostic".to_string())?;
+
+        if diagnostic.severity != Some(DiagnosticSeverity::INFORMATION) {
+            return Err(format!(
+                "expected information severity, got {:?}",
+                diagnostic.severity
+            ));
+        }
+        if !diagnostic.message.contains("repair route: InspectGap")
+            || !diagnostic.message.contains("preview advisory evidence")
+        {
+            return Err(format!(
+                "unexpected preview gap diagnostic message: {}",
+                diagnostic.message
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn append_gap_record_diagnostics_reads_default_ledger() -> Result<(), String> {
+        let root = temp_gap_root()?;
+        let ledger_path = root.join(DEFAULT_GAP_DECISION_LEDGER_OUT);
+        let contents = serde_json::json!({
+            "records": [gap_record(true)]
+        })
+        .to_string();
+        fs::write(&ledger_path, contents)
+            .map_err(|err| format!("write {} failed: {err}", ledger_path.display()))?;
+
+        let mut grouped = std::collections::BTreeMap::new();
+        append_gap_record_diagnostics(&root, &mut grouped);
+
+        let diagnostic_count: usize = grouped.values().map(Vec::len).sum();
+        if diagnostic_count != 1 {
+            return Err(format!(
+                "expected one gap diagnostic, got {diagnostic_count}"
+            ));
+        }
+        let uri = grouped
+            .keys()
+            .next()
+            .ok_or_else(|| "missing diagnostic URI".to_string())?
+            .as_str()
+            .to_string();
+        if !uri.ends_with("/src/pricing.rs") {
+            return Err(format!("unexpected diagnostic URI: {uri}"));
+        }
+
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        Ok(())
+    }
+
+    #[test]
     fn diagnostic_message_names_seam_kind_and_expression() -> Result<(), String> {
         let entry = classified(SeamGripClass::WeaklyGripped);
         let diag = diagnostic_for_classified_seam(Path::new("/repo"), &entry)
@@ -666,6 +958,65 @@ mod seam_diagnostic_tests {
             return Err(format!("message missing expression: {}", diag.message));
         }
         Ok(())
+    }
+
+    fn gap_record(lsp_eligible: bool) -> GapRecord {
+        let mut projection_eligibility = BTreeMap::new();
+        projection_eligibility.insert(
+            "lsp_diagnostic".to_string(),
+            ProjectionEligibility {
+                eligible: lsp_eligible,
+                reason: "local_file_scope".to_string(),
+            },
+        );
+        GapRecord {
+            gap_id: "gap:pr:pricing:threshold-boundary".to_string(),
+            canonical_gap_id: "gap:rust:pricing:threshold-boundary".to_string(),
+            kind: "MissingBoundaryAssertion".to_string(),
+            language: "rust".to_string(),
+            language_status: "stable".to_string(),
+            scope: "pr_local".to_string(),
+            evidence_class: "presentation_text".to_string(),
+            gap_state: "actionable".to_string(),
+            policy_state: "new".to_string(),
+            repairability: "repairable".to_string(),
+            repair_route: Some(GapRepairRoute {
+                route_kind: "AddBoundaryAssertion".to_string(),
+                target_file: Some("tests/pricing.rs".to_string()),
+                target_line: Some(33),
+                related_test: Some("tests/pricing.rs::discount_threshold".to_string()),
+                assertion_shape: Some("assert_eq!(price(threshold), expected)".to_string()),
+                changed_behavior: Some("amount >= threshold".to_string()),
+                stop_conditions: vec!["Stop if the target owner moved.".to_string()],
+            }),
+            anchor: Some(GapAnchor {
+                file: Some("src/pricing.rs".to_string()),
+                line: Some(42),
+                owner: Some("pricing::discounted_total".to_string()),
+                dedupe_fingerprint: Some("gap:rust:pricing:threshold-boundary".to_string()),
+            }),
+            evidence_ids: vec!["evidence:pricing".to_string()],
+            projection_eligibility,
+            verification_commands: vec!["cargo xtask fixtures boundary_gap".to_string()],
+            regeneration_commands: Vec::new(),
+            receipt: None,
+            safe_gate_predicate: None,
+            authority_boundary: "advisory".to_string(),
+        }
+    }
+
+    fn temp_gap_root() -> Result<PathBuf, String> {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| format!("system clock before UNIX_EPOCH: {err}"))?
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "ripr-lsp-gap-diagnostics-{}-{stamp}",
+            std::process::id()
+        ));
+        fs::create_dir_all(root.join("target/ripr/reports"))
+            .map_err(|err| format!("create temp root {} failed: {err}", root.display()))?;
+        Ok(root)
     }
 
     #[test]

@@ -38,6 +38,12 @@ For a repo-scoped badge refresh:
 cargo xtask badges
 ```
 
+For a policy-backed `GapRecord` badge refresh:
+
+```bash
+cargo xtask badges --gap-ledger target/ripr/reports/gap-decision-ledger.json
+```
+
 or trigger the Badge Endpoints workflow and review the generated
 `badge: refresh public endpoints` PR.
 
@@ -50,6 +56,7 @@ Use:
 
 ```bash
 cargo xtask badges --check
+cargo xtask badges --check --gap-ledger target/ripr/reports/gap-decision-ledger.json
 cargo xtask check-badge-diff-policy
 cargo xtask check-generated-clean
 ```

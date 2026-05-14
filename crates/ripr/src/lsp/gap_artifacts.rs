@@ -3,6 +3,7 @@ use crate::output::first_useful_action::DEFAULT_FIRST_USEFUL_ACTION_OUT;
 use crate::output::gap_decision_ledger::DEFAULT_GAP_DECISION_LEDGER_OUT;
 use serde_json::Value;
 use std::collections::BTreeSet;
+use std::io::ErrorKind;
 use std::path::{Component, Path};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -24,6 +25,12 @@ pub(super) struct ValidatedGapArtifact {
     pub(super) receipt_commands: Vec<String>,
     pub(super) static_limit_kinds: Vec<String>,
     pub(super) has_text_static_limit: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(super) struct GapArtifactValidationReport {
+    pub(super) artifacts: Vec<ValidatedGapArtifact>,
+    pub(super) rejections: Vec<GapArtifactRejection>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -107,33 +114,97 @@ impl ValidatedGapArtifact {
             && command_payloads_are_present
             && static_limits_are_structured_or_text
     }
+
+    pub(super) fn is_actionable_gap(&self) -> bool {
+        self.gap_state.as_deref() == Some("actionable")
+    }
+
+    pub(super) fn is_no_action_gap(&self) -> bool {
+        matches!(
+            self.gap_state.as_deref(),
+            Some(
+                "already_improved"
+                    | "baseline_only"
+                    | "no_actionable_seam"
+                    | "suppressed"
+                    | "acknowledged"
+                    | "waived"
+            )
+        )
+    }
+
+    pub(super) fn is_preview(&self) -> bool {
+        self.language_status == Some(LanguageStatus::Preview)
+    }
+
+    pub(super) fn has_static_limit(&self) -> bool {
+        !self.static_limit_kinds.is_empty() || self.has_text_static_limit
+    }
 }
 
-pub(super) fn validate_workspace_gap_artifacts(
+impl GapArtifactRejection {
+    pub(super) fn as_str(&self) -> &'static str {
+        match self {
+            Self::DisabledLanguage(_) => "disabled_language",
+            Self::MalformedArtifact(_) => "malformed_artifact",
+            Self::MalformedCommandPayload(_) => "malformed_command_payload",
+            Self::MissingIdentity => "missing_identity",
+            Self::OutOfWorkspacePath(_) => "out_of_workspace_path",
+            Self::StaleArtifact => "stale_artifact",
+            Self::UnavailableLanguage(_) => "unavailable_language",
+            Self::UnsupportedSchema(_) => "unsupported_schema",
+            Self::UnsupportedStaticLimitKind(_) => "unsupported_static_limit_kind",
+            Self::UnsupportedKind(_) => "unsupported_kind",
+            Self::WrongRoot(_) => "wrong_root",
+        }
+    }
+}
+
+pub(super) fn validate_workspace_gap_artifact_report(
     root: &Path,
     enabled_languages: &[LanguageId],
-) -> Vec<ValidatedGapArtifact> {
+) -> GapArtifactValidationReport {
     let context = GapArtifactValidationContext {
         root,
         enabled_languages,
     };
-    [
+    let mut report = GapArtifactValidationReport::default();
+    for relative in [
         DEFAULT_FIRST_USEFUL_ACTION_OUT,
         DEFAULT_GAP_DECISION_LEDGER_OUT,
-    ]
-    .iter()
-    .filter_map(|relative| validate_workspace_gap_artifact(root, relative, &context))
-    .collect()
+    ] {
+        match validate_workspace_gap_artifact(root, relative, &context) {
+            Some(Ok(artifact)) => report.artifacts.push(artifact),
+            Some(Err(rejection)) => report.rejections.push(rejection),
+            None => {}
+        }
+    }
+    report
 }
 
 fn validate_workspace_gap_artifact(
     root: &Path,
     relative: &str,
     context: &GapArtifactValidationContext<'_>,
-) -> Option<ValidatedGapArtifact> {
-    let text = std::fs::read_to_string(root.join(relative)).ok()?;
-    let value = serde_json::from_str::<Value>(&text).ok()?;
-    validate_gap_artifact(&value, context).ok()
+) -> Option<Result<ValidatedGapArtifact, GapArtifactRejection>> {
+    let text = match std::fs::read_to_string(root.join(relative)) {
+        Ok(text) => text,
+        Err(err) if err.kind() == ErrorKind::NotFound => return None,
+        Err(_) => {
+            return Some(Err(GapArtifactRejection::MalformedArtifact(
+                "gap artifact file must be readable",
+            )));
+        }
+    };
+    let value = match serde_json::from_str::<Value>(&text) {
+        Ok(value) => value,
+        Err(_) => {
+            return Some(Err(GapArtifactRejection::MalformedArtifact(
+                "gap artifact JSON must parse",
+            )));
+        }
+    };
+    Some(validate_gap_artifact(&value, context))
 }
 
 pub(super) fn validate_gap_artifact(
@@ -221,19 +292,28 @@ fn validate_gap_decision_ledger(
     let mut receipt_commands = Vec::new();
     let mut language = None;
     let mut language_status = None;
-    let mut gap_state = None;
+    let gap_state;
+    let mut has_actionable_record = false;
+    let mut no_action_records = 0usize;
     for record in records {
         identities.push(
             identity_from_sources(&[Some(record)]).ok_or(GapArtifactRejection::MissingIdentity)?,
         );
-        language = language.or(language_from_value(record)?);
-        language_status = language_status.or(language_status_from_value(record)?);
-        gap_state = gap_state.or_else(|| {
-            record
-                .get("gap_state")
-                .and_then(Value::as_str)
-                .map(ToOwned::to_owned)
-        });
+        let record_language = language_from_value(record)?;
+        let record_language_status = language_status_from_value(record)?;
+        if record_language_status == Some(LanguageStatus::Preview) {
+            language = record_language.or(language);
+            language_status = Some(LanguageStatus::Preview);
+        } else {
+            language = language.or(record_language);
+            language_status = language_status.or(record_language_status);
+        }
+        if record_is_actionable_for_editor(record) {
+            has_actionable_record = true;
+        }
+        if record_is_no_action(record) {
+            no_action_records += 1;
+        }
         let route = record.get("repair_route");
         let anchor = record.get("anchor");
         let receipt = record.get("receipt");
@@ -258,6 +338,18 @@ fn validate_gap_decision_ledger(
             receipt_commands.push(command.to_string());
         }
     }
+    if has_actionable_record {
+        gap_state = Some("actionable".to_string());
+    } else if !records.is_empty() && no_action_records == records.len() {
+        gap_state = Some("no_actionable_seam".to_string());
+    } else {
+        gap_state = records.iter().find_map(|record| {
+            record
+                .get("gap_state")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+        });
+    }
     Ok(ValidatedGapArtifact {
         kind: GapArtifactKind::GapDecisionLedger,
         root: report_root.map(ToOwned::to_owned),
@@ -271,6 +363,38 @@ fn validate_gap_decision_ledger(
         static_limit_kinds: Vec::new(),
         has_text_static_limit: false,
     })
+}
+
+fn record_is_actionable_for_editor(record: &Value) -> bool {
+    record.get("gap_state").and_then(Value::as_str) == Some("actionable")
+        && record.get("repairability").and_then(Value::as_str) == Some("repairable")
+        && path_value(
+            Some(record),
+            &["projection_eligibility", "lsp_diagnostic", "eligible"],
+        )
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+fn record_is_no_action(record: &Value) -> bool {
+    record.get("repairability").and_then(Value::as_str) == Some("no_action")
+        || matches!(
+            record.get("gap_state").and_then(Value::as_str),
+            Some(
+                "already_improved"
+                    | "already_observed"
+                    | "baseline_only"
+                    | "internal"
+                    | "internal_only"
+                    | "no_actionable_seam"
+                    | "not_policy_targeted"
+                    | "report_only"
+                    | "resolved"
+                    | "suppressed"
+                    | "acknowledged"
+                    | "waived"
+            )
+        )
 }
 
 fn validate_evidence_record(
@@ -537,7 +661,7 @@ fn path_value<'a>(value: Option<&'a Value>, path: &[&str]) -> Option<&'a Value> 
     Some(current)
 }
 
-fn workspace_path_is_safe(root: &Path, raw: &str) -> bool {
+pub(super) fn workspace_path_is_safe(root: &Path, raw: &str) -> bool {
     let path_text = path_part(raw).trim();
     if path_text.is_empty() || path_text.contains('\n') || path_text.contains('\r') {
         return false;
@@ -558,7 +682,7 @@ fn path_part(raw: &str) -> &str {
     raw.split_once("::").map_or(raw, |(path, _)| path)
 }
 
-fn command_payload_is_safe(root: &Path, command: &str) -> bool {
+pub(super) fn command_payload_is_safe(root: &Path, command: &str) -> bool {
     let trimmed = command.trim();
     if trimmed.is_empty() || trimmed.contains('\n') || trimmed.contains('\r') {
         return false;
@@ -751,10 +875,125 @@ mod tests {
                     "verification_commands": [
                         "ripr agent verify --root . --json"
                     ],
-                    "receipt_command": "ripr agent receipt --root . --json"
+                    "receipt_command": "ripr agent receipt --root . --json",
+                    "projection_eligibility": {
+                        "lsp_diagnostic": {
+                            "eligible": true,
+                            "reason": "local_file_scope"
+                        }
+                    }
                 }
             ]
         })
+    }
+
+    fn no_action_gap_record() -> Value {
+        json!({
+            "gap_id": "gap:rust:observed",
+            "canonical_gap_id": "gap:rust:observed",
+            "kind": "NoActionAlreadyObserved",
+            "language": "rust",
+            "language_status": "stable",
+            "scope": "repo_scoped",
+            "evidence_class": "already_observed",
+            "gap_state": "already_observed",
+            "policy_state": "resolved",
+            "repairability": "no_action",
+            "projection_eligibility": {
+                "lsp_diagnostic": {
+                    "eligible": false,
+                    "reason": "no_user_repair_needed"
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn gap_artifact_state_helpers_classify_status_preview_and_static_limits() -> Result<(), String>
+    {
+        let artifact = preview_gap_ledger();
+        let mut validated =
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust, LanguageId::Python]))
+                .map_err(|err| format!("{err:?}"))?;
+
+        assert!(validated.is_actionable_gap());
+        assert!(!validated.is_no_action_gap());
+        assert!(validated.is_preview());
+        assert!(validated.has_static_limit());
+
+        for status in [
+            "already_improved",
+            "baseline_only",
+            "no_actionable_seam",
+            "suppressed",
+            "acknowledged",
+            "waived",
+        ] {
+            validated.gap_state = Some(status.to_string());
+            assert!(validated.is_no_action_gap(), "{status}");
+            assert!(!validated.is_actionable_gap(), "{status}");
+        }
+
+        validated.gap_state = Some("unchanged_after_attempt".to_string());
+        assert!(!validated.is_no_action_gap());
+        assert!(!validated.is_actionable_gap());
+
+        validated.language_status = Some(LanguageStatus::Stable);
+        assert!(!validated.is_preview());
+        validated.static_limit_kinds.clear();
+        validated.has_text_static_limit = false;
+        assert!(!validated.has_static_limit());
+        validated.has_text_static_limit = true;
+        assert!(validated.has_static_limit());
+        Ok(())
+    }
+
+    #[test]
+    fn rejection_kind_strings_cover_fail_closed_reasons() {
+        let cases = [
+            (
+                GapArtifactRejection::DisabledLanguage("python".to_string()),
+                "disabled_language",
+            ),
+            (
+                GapArtifactRejection::MalformedArtifact("bad artifact"),
+                "malformed_artifact",
+            ),
+            (
+                GapArtifactRejection::MalformedCommandPayload("bad command".to_string()),
+                "malformed_command_payload",
+            ),
+            (GapArtifactRejection::MissingIdentity, "missing_identity"),
+            (
+                GapArtifactRejection::OutOfWorkspacePath("../outside.py".to_string()),
+                "out_of_workspace_path",
+            ),
+            (GapArtifactRejection::StaleArtifact, "stale_artifact"),
+            (
+                GapArtifactRejection::UnavailableLanguage("python".to_string()),
+                "unavailable_language",
+            ),
+            (
+                GapArtifactRejection::UnsupportedSchema("9.9".to_string()),
+                "unsupported_schema",
+            ),
+            (
+                GapArtifactRejection::UnsupportedStaticLimitKind("runtime_magic".to_string()),
+                "unsupported_static_limit_kind",
+            ),
+            (
+                GapArtifactRejection::UnsupportedKind("unknown".to_string()),
+                "unsupported_kind",
+            ),
+            (
+                GapArtifactRejection::WrongRoot("/other/workspace".to_string()),
+                "wrong_root",
+            ),
+        ];
+
+        for (rejection, expected) in cases {
+            assert_eq!(rejection.as_str(), expected);
+        }
     }
 
     #[test]
@@ -795,6 +1034,82 @@ mod tests {
         assert_eq!(
             enabled.identities[0].canonical_gap_id.as_deref(),
             Some("gap:py:pricing")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gap_ledger_summary_uses_all_records_for_actionability_and_preview_status()
+    -> Result<(), String> {
+        let mut artifact = preview_gap_ledger();
+        artifact["records"]
+            .as_array_mut()
+            .ok_or_else(|| "expected records array".to_string())?
+            .insert(0, no_action_gap_record());
+
+        let validated =
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust, LanguageId::Python]))
+                .map_err(|err| format!("{err:?}"))?;
+
+        assert_eq!(validated.identities.len(), 2);
+        assert_eq!(validated.gap_state.as_deref(), Some("actionable"));
+        assert!(validated.is_actionable_gap());
+        assert!(validated.is_preview());
+        Ok(())
+    }
+
+    #[test]
+    fn gap_ledger_summary_reports_no_action_only_when_all_records_are_no_action()
+    -> Result<(), String> {
+        let artifact = json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "kind": "gap_decision_ledger",
+            "root": ".",
+            "status": "advisory",
+            "records": [
+                no_action_gap_record(),
+                {
+                    "gap_id": "gap:rust:suppressed",
+                    "canonical_gap_id": "gap:rust:suppressed",
+                    "kind": "MissingBoundaryAssertion",
+                    "language": "rust",
+                    "language_status": "stable",
+                    "scope": "repo_scoped",
+                    "evidence_class": "predicate_boundary",
+                    "gap_state": "suppressed",
+                    "policy_state": "suppressed",
+                    "repairability": "repairable",
+                    "projection_eligibility": {
+                        "lsp_diagnostic": {
+                            "eligible": false,
+                            "reason": "suppressed"
+                        }
+                    }
+                }
+            ]
+        });
+
+        let validated = validate_gap_artifact(&artifact, &context(&[LanguageId::Rust]))
+            .map_err(|err| format!("{err:?}"))?;
+
+        assert_eq!(validated.gap_state.as_deref(), Some("no_actionable_seam"));
+        assert!(validated.is_no_action_gap());
+        assert!(!validated.is_actionable_gap());
+        Ok(())
+    }
+
+    #[test]
+    fn gap_ledger_validation_checks_languages_for_every_record() -> Result<(), String> {
+        let mut artifact = preview_gap_ledger();
+        artifact["records"]
+            .as_array_mut()
+            .ok_or_else(|| "expected records array".to_string())?
+            .insert(0, no_action_gap_record());
+
+        assert_eq!(
+            validate_gap_artifact(&artifact, &context(&[LanguageId::Rust])),
+            Err(GapArtifactRejection::DisabledLanguage("python".to_string()))
         );
         Ok(())
     }
@@ -932,9 +1247,36 @@ mod tests {
         fs::write(&report_path, first_action().to_string())
             .map_err(|err| format!("write {}: {err}", report_path.display()))?;
 
-        let artifacts = validate_workspace_gap_artifacts(&root, &[LanguageId::Rust]);
-        assert_eq!(artifacts.len(), 1);
-        assert_eq!(artifacts[0].kind, GapArtifactKind::FirstUsefulAction);
+        let report = validate_workspace_gap_artifact_report(&root, &[LanguageId::Rust]);
+        assert_eq!(report.artifacts.len(), 1);
+        assert!(report.rejections.is_empty());
+        assert_eq!(report.artifacts[0].kind, GapArtifactKind::FirstUsefulAction);
+
+        fs::remove_dir_all(&root).map_err(|err| format!("remove {}: {err}", root.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_gap_artifact_loader_reports_rejections_for_present_invalid_artifacts()
+    -> Result<(), String> {
+        let root = temp_root("loader-rejection")?;
+        let report_path = root.join(DEFAULT_FIRST_USEFUL_ACTION_OUT);
+        let parent = report_path
+            .parent()
+            .ok_or_else(|| format!("missing parent for {}", report_path.display()))?;
+        fs::create_dir_all(parent).map_err(|err| format!("create {}: {err}", parent.display()))?;
+        fs::write(&report_path, "{")
+            .map_err(|err| format!("write {}: {err}", report_path.display()))?;
+
+        let report = validate_workspace_gap_artifact_report(&root, &[LanguageId::Rust]);
+        assert!(report.artifacts.is_empty());
+        assert_eq!(
+            report.rejections,
+            vec![GapArtifactRejection::MalformedArtifact(
+                "gap artifact JSON must parse"
+            )]
+        );
+        assert_eq!(report.rejections[0].as_str(), "malformed_artifact");
 
         fs::remove_dir_all(&root).map_err(|err| format!("remove {}: {err}", root.display()))?;
         Ok(())

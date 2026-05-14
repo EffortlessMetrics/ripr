@@ -38,6 +38,10 @@ export interface RiprContextTarget {
   probe_id?: string;
   seam_id?: string;
   seam_kind?: string;
+  gap_id?: string;
+  canonical_gap_id?: string;
+  gap_kind?: string;
+  gap_ledger?: string;
 }
 
 export interface RiprSuggestedAssertionTarget {
@@ -304,18 +308,25 @@ export class RiprClientController {
     }
 
     const client = this.client;
-    if (client && (target?.finding_id || target?.seam_id)) {
+    if (client && (target?.finding_id || target?.seam_id || target?.gap_id)) {
       try {
+        const collectContextTarget: RiprContextTarget = {
+          finding_id: target.finding_id,
+          probe_id: target.probe_id,
+          seam_id: target.seam_id,
+          seam_kind: target.seam_kind,
+          uri: target.uri,
+          line: target.line,
+        };
+        if (target.gap_id) {
+          collectContextTarget.gap_id = target.gap_id;
+          collectContextTarget.canonical_gap_id = target.canonical_gap_id;
+          collectContextTarget.gap_kind = target.gap_kind;
+          collectContextTarget.gap_ledger = target.gap_ledger;
+        }
         const packet = await client.sendRequest('workspace/executeCommand', {
           command: 'ripr.collectContext',
-          arguments: [{
-            finding_id: target.finding_id,
-            probe_id: target.probe_id,
-            seam_id: target.seam_id,
-            seam_kind: target.seam_kind,
-            uri: target.uri,
-            line: target.line,
-          }],
+          arguments: [collectContextTarget],
         });
         if (packet && typeof packet === 'object') {
           await this.runtime.writeClipboard(JSON.stringify(packet, null, 2));
@@ -609,6 +620,9 @@ type RiprStatusKind =
   | 'ready'
   | 'analysisRunning'
   | 'analysisReady'
+  | 'gapActionable'
+  | 'gapNoAction'
+  | 'gapArtifactWarning'
   | 'noActionableSeams'
   | 'noEnabledLanguages'
   | 'stale'
@@ -645,7 +659,7 @@ interface FirstUsefulActionStatus {
 }
 
 function statusText(kind: RiprStatusKind, firstAction?: FirstUsefulActionStatus): string {
-  if (firstAction && canProjectFirstUsefulAction(kind)) {
+  if (firstAction && shouldInlineFirstUsefulAction(kind)) {
     if (
       firstAction.status === 'stale' ||
       firstAction.status === 'missing_required_artifact' ||
@@ -684,6 +698,12 @@ function statusText(kind: RiprStatusKind, firstAction?: FirstUsefulActionStatus)
       return '$(sync~spin) ripr: analyzing';
     case 'analysisReady':
       return '$(check) ripr: diagnostics';
+    case 'gapActionable':
+      return '$(lightbulb) ripr: gap ready';
+    case 'gapNoAction':
+      return '$(pass) ripr: gap clear';
+    case 'gapArtifactWarning':
+      return '$(warning) ripr: gap blocked';
     case 'noActionableSeams':
       return '$(circle-slash) ripr: no seams';
     case 'noEnabledLanguages':
@@ -699,7 +719,7 @@ function statusText(kind: RiprStatusKind, firstAction?: FirstUsefulActionStatus)
 }
 
 function statusSummary(status: RiprStatusState, firstAction?: FirstUsefulActionStatus): string {
-  if (!firstAction || !canProjectFirstUsefulAction(status.kind)) {
+  if (!firstAction || !shouldInlineFirstUsefulAction(status.kind)) {
     return status.summary;
   }
   return `${status.summary} First useful action: ${firstAction.title}`;
@@ -788,9 +808,17 @@ function canProjectFirstUsefulAction(kind: RiprStatusKind): boolean {
     || kind === 'analysisQueued'
     || kind === 'analysisRunning'
     || kind === 'analysisReady'
+    || kind === 'gapActionable'
+    || kind === 'gapNoAction'
     || kind === 'noActionableSeams'
     || kind === 'noEnabledLanguages'
     || kind === 'ready';
+}
+
+function shouldInlineFirstUsefulAction(kind: RiprStatusKind): boolean {
+  return canProjectFirstUsefulAction(kind)
+    && kind !== 'gapActionable'
+    && kind !== 'gapNoAction';
 }
 
 function serverLogMessage(params: unknown): string | undefined {
@@ -806,6 +834,13 @@ function statusFromRefreshCompletedMessage(message: string): RiprStatusState {
   const enabledLanguages = numberField(message, 'enabled_languages');
   const previewFindings = numberField(message, 'preview_findings') ?? 0;
   const staticLimits = numberField(message, 'static_limits') ?? 0;
+  const gapArtifacts = numberField(message, 'gap_artifacts') ?? 0;
+  const actionableGapArtifacts = numberField(message, 'actionable_gap_artifacts') ?? 0;
+  const previewGapArtifacts = numberField(message, 'preview_gap_artifacts') ?? 0;
+  const noActionGapArtifacts = numberField(message, 'no_action_gap_artifacts') ?? 0;
+  const gapStaticLimits = numberField(message, 'gap_static_limits') ?? 0;
+  const gapArtifactRejections = numberField(message, 'gap_artifact_rejections') ?? 0;
+  const enabledLanguageNames = stringListField(message, 'enabled_language_names');
   if (enabledLanguages === 0) {
     return {
       kind: 'noEnabledLanguages',
@@ -819,9 +854,77 @@ function statusFromRefreshCompletedMessage(message: string): RiprStatusState {
       ].join('\n')
     };
   }
+  if (gapArtifactRejections > 0) {
+    const rejectionKinds = stringListField(message, 'gap_artifact_rejection_kinds') ?? [];
+    const details = [
+      message,
+      `Rejected gap artifact ${plural(gapArtifactRejections, 'input')} ${gapArtifactRejections === 1 ? 'was' : 'were'} not projected.`
+    ];
+    if (rejectionKinds.length > 0) {
+      details.push(`Rejected kind${rejectionKinds.length === 1 ? '' : 's'}: ${rejectionKinds.join(', ')}`);
+    }
+    details.push('Rejected gap artifacts never create diagnostics, hover repair routes, code actions, or receipts.');
+    return {
+      kind: 'gapArtifactWarning',
+      summary: `ripr ignored ${gapArtifactRejections} unsafe gap artifact ${plural(gapArtifactRejections, 'input')}.`,
+      enabledLanguages: enabledLanguageNames,
+      nextStep: 'Regenerate ripr reports for the current workspace, then refresh saved-workspace diagnostics.',
+      detail: details.join('\n')
+    };
+  }
+  if (actionableGapArtifacts > 0) {
+    const details = [message];
+    if (previewGapArtifacts > 0) {
+      details.push(
+        `${previewGapArtifacts} preview gap artifact ${plural(previewGapArtifacts, 'input')} ${previewGapArtifacts === 1 ? 'is' : 'are'} syntax-first and advisory.`
+      );
+    }
+    if (gapStaticLimits > 0) {
+      details.push(
+        `${gapStaticLimits} gap static limit ${plural(gapStaticLimits, 'entry', 'entries')} must be read before action language.`
+      );
+    }
+    details.push(
+      `${actionableGapArtifacts} actionable gap ${plural(actionableGapArtifacts, 'artifact')} validated for editor projection.`
+    );
+    return {
+      kind: 'gapActionable',
+      summary: gapStaticLimits > 0 || previewGapArtifacts > 0
+        ? 'ripr validated preview-limited gap projection input.'
+        : `ripr validated ${actionableGapArtifacts} actionable gap ${plural(actionableGapArtifacts, 'artifact')}.`,
+      enabledLanguages: enabledLanguageNames,
+      nextStep: gapStaticLimits > 0
+        ? 'Read static limits before opening a related test or copying a repair, verify, or receipt command.'
+        : 'Open the related test or copy a bounded repair packet, then verify and emit a receipt.',
+      detail: details.join('\n')
+    };
+  }
+  if (gapArtifacts > 0) {
+    const details = [message];
+    const noActionCount = noActionGapArtifacts > 0 ? noActionGapArtifacts : gapArtifacts;
+    if (previewGapArtifacts > 0) {
+      details.push(
+        `${previewGapArtifacts} preview gap artifact ${plural(previewGapArtifacts, 'input')} ${previewGapArtifacts === 1 ? 'is' : 'are'} syntax-first and advisory.`
+      );
+    }
+    if (gapStaticLimits > 0) {
+      details.push(
+        `${gapStaticLimits} gap static limit ${plural(gapStaticLimits, 'entry', 'entries')} must be read before any future action language.`
+      );
+    }
+    details.push(
+      `${noActionCount} gap ${plural(noActionCount, 'artifact')} reported no local repair action.`
+    );
+    return {
+      kind: 'gapNoAction',
+      summary: 'ripr validated gap artifacts with no actionable gap.',
+      enabledLanguages: enabledLanguageNames,
+      nextStep: 'No local repair action is projected; refresh after new saved changes or inspect ripr output if this is unexpected.',
+      detail: details.join('\n')
+    };
+  }
   const seamDiagnostics = numberField(message, 'seam_diagnostics');
   if (previewFindings > 0) {
-    const enabledLanguageNames = stringListField(message, 'enabled_language_names');
     const details = [
       message,
       `${previewFindings} preview finding${previewFindings === 1 ? '' : 's'} are syntax-first and advisory.`
@@ -839,7 +942,6 @@ function statusFromRefreshCompletedMessage(message: string): RiprStatusState {
       detail: details.join('\n')
     };
   }
-  const enabledLanguageNames = stringListField(message, 'enabled_language_names');
   if (seamDiagnostics !== undefined && seamDiagnostics === 0) {
     return {
       kind: 'noActionableSeams',
@@ -877,6 +979,10 @@ function stringListField(message: string, field: string): string[] | undefined {
     return [];
   }
   return match[1].split('|').filter((entry) => entry.length > 0);
+}
+
+function plural(count: number, singular: string, pluralForm?: string): string {
+  return count === 1 ? singular : pluralForm ?? `${singular}s`;
 }
 
 function uriFromTarget(target: RiprContextTarget | undefined): vscode.Uri | undefined {

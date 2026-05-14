@@ -51,6 +51,12 @@ cargo xtask ripr-pr
 cargo xtask ripr-pr --check
 cargo xtask ripr-review-comments
 cargo xtask ripr-review-comments --check
+cargo xtask ripr-pr-summary
+cargo xtask ripr-pr-summary --check
+cargo xtask ripr-annotations
+cargo xtask ripr-annotations --check
+cargo xtask impacted-evidence
+cargo xtask impacted-evidence --check
 ```
 
 The command set can be implemented in local `xtask` code, copied from a
