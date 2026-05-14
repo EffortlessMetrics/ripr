@@ -186,7 +186,8 @@ git diff --check
 | `docs/spec-finding-to-gap-alignment` | #927 | merged | Defines raw finding to canonical evidence item alignment before behavior changes. |
 | `fixtures/finding-alignment-benchmark` | #931 | merged | Added manifest-only raw-to-canonical presentation-text alignment cases; no analyzer behavior changes. |
 | `fixtures/presentation-text-evidence-benchmark` | #900 | merged | Added the screenshot-derived constant benchmark after the proposal/spec foundation. |
-| `analysis/finding-alignment-evidence-fields` | pending | current | Adds additive `raw_findings[]`, `canonical_item`, and nullable `presentation_text` fields to `evidence_record`; no rendering, gate, score, provider, generated-test, or mutation-execution changes. |
+| `analysis/finding-alignment-evidence-fields` | #935 | merged | Added additive `raw_findings[]`, `canonical_item`, and nullable `presentation_text` fields to `evidence_record`; no rendering, gate, score, provider, generated-test, or mutation-execution changes. |
+| `analysis/presentation-text-canonical-grouping` | pending | current | Groups supported presentation-text constant declaration plus adjacent literal raw findings into one `finding_alignment.items[]` canonical limitation item in `ripr check --json`; raw `findings[]` remain supporting evidence. |
 
 ## Closeout Conditions
 

@@ -4,6 +4,7 @@ use crate::domain::{
     Finding, FlowSinkFact, MissingDiscriminatorFact, RelatedTest, StageEvidence, ValueFact,
 };
 
+use super::finding_alignment;
 use super::{array_field, escape, field, float_field, number_field};
 
 pub fn render(output: &CheckOutput) -> String {
@@ -11,6 +12,7 @@ pub fn render(output: &CheckOutput) -> String {
 }
 
 pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> String {
+    let finding_alignment = finding_alignment::report_for_findings(&output.findings);
     let mut out = String::new();
     out.push_str("{\n");
     field(&mut out, 1, "schema_version", &output.schema_version, true);
@@ -37,7 +39,15 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         }
         out.push('\n');
     }
-    out.push_str("  ]\n");
+    out.push_str("  ]");
+    if let Some(report) = finding_alignment.as_ref() {
+        out.push_str(",\n");
+        out.push_str("  \"finding_alignment\": ");
+        finding_alignment::report_json(&mut out, report, 1);
+        out.push('\n');
+    } else {
+        out.push('\n');
+    }
     out.push_str("}\n");
     out
 }
