@@ -880,8 +880,8 @@ status = "alpha"
 spec = "RIPR-SPEC-0018"
 evidence = [
   "docs/specs/RIPR-SPEC-0018-pr-evidence-ledger.md defines the PR evidence ledger contract",
-  "ripr pr-ledger record writes advisory pr-evidence-ledger JSON and Markdown from existing PR guidance, gate decision, baseline debt delta, RIPR Zero status, recommendation calibration, agent receipt, optional coverage, and optional history inputs",
-  "crates/ripr/src/output/pr_evidence_ledger.rs renders PR movement, visible waivers, suppressions, repair receipts, top repair route, coverage/grip frontier status, and history summaries without changing gate authority, carrying canonical_gap_id when supplied",
+  "ripr pr-ledger record writes advisory pr-evidence-ledger JSON and Markdown from existing PR guidance, gap decision ledger, gate decision, baseline debt delta, RIPR Zero status, recommendation calibration, agent receipt, optional coverage, and optional history inputs",
+  "crates/ripr/src/output/pr_evidence_ledger.rs renders PR movement, visible waivers, suppressions, repair receipts, top repair route, coverage/grip frontier status, and history summaries without changing gate authority, routing repairable stable Rust GapRecord inputs before legacy fallback artifacts and carrying gap_id/canonical_gap_id when supplied",
   "crates/ripr/src/cli/commands.rs generated GitHub workflow runs pr-ledger record on pull requests when PR guidance exists, uploads pr-evidence-ledger JSON/Markdown with the normal artifact packet, and appends a PR movement summary while keeping gate decisions as the pass/fail authority",
   "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed pins checked JSON and Markdown output for a mixed acknowledged/suppressed/resolved/new-debt case",
   "docs/OUTPUT_SCHEMA.md documents the pr-evidence-ledger JSON/Markdown shape",
@@ -889,7 +889,7 @@ evidence = [
 ]
 fixtures = ["fixtures/boundary_gap/expected/pr-evidence-ledger/mixed"]
 next = "maintenance"
-metric = "pr_evidence_ledger_records, pr_evidence_ledger_new_policy_eligible, pr_evidence_ledger_baseline_still_present, pr_evidence_ledger_baseline_resolved, pr_evidence_ledger_acknowledged, pr_evidence_ledger_suppressed, pr_evidence_ledger_blocking_candidates, pr_evidence_ledger_repair_receipts, pr_evidence_ledger_waiver_age_max_days, pr_evidence_ledger_coverage_grip_frontier_available, pr_evidence_ledger_flat_coverage_grip_improved"
+metric = "pr_evidence_ledger_records, pr_evidence_ledger_new_policy_eligible, pr_evidence_ledger_baseline_still_present, pr_evidence_ledger_baseline_resolved, pr_evidence_ledger_acknowledged, pr_evidence_ledger_suppressed, pr_evidence_ledger_blocking_candidates, pr_evidence_ledger_repair_receipts, pr_evidence_ledger_gap_record_routes, pr_evidence_ledger_waiver_age_max_days, pr_evidence_ledger_coverage_grip_frontier_available, pr_evidence_ledger_flat_coverage_grip_improved"
 
 [[capability]]
 id = "coverage_grip_frontier"
@@ -965,7 +965,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap/expected/first-useful-action"
 ]
-next = "report/pr-evidence-ledger-gap-record"
+next = "policy/ripr-zero-and-badges-gap-targets"
 metric = "first_useful_action_reports, first_useful_action_actionable, first_useful_action_gap_record_routes, first_useful_action_stale, first_useful_action_missing_required_artifact, first_useful_action_baseline_only, first_useful_action_acknowledged, first_useful_action_waived, first_useful_action_suppressed, first_useful_action_no_actionable_seam, first_useful_action_already_improved, first_useful_action_unchanged_after_attempt"
 
 [[capability]]
@@ -1521,12 +1521,13 @@ evidence = [
   "fixtures/gap-decision-ledger/corpus.json pins the planned GapRecord vocabulary, projection eligibility, safe gate predicate, output-contract repair route, missing-artifact regeneration, preview ineligibility, and receipt movement cases",
   "crates/ripr/src/output/gap_decision_ledger.rs builds and renders the advisory gap_decision_ledger JSON and Markdown report from explicit GapRecord input",
   "crates/ripr/src/cli/commands.rs wires `ripr reports gap-ledger --records ...` without rerunning analysis or changing downstream projection behavior",
+  "ripr first-action --gap-ledger and ripr pr-ledger record --gap-ledger can consume explicit repairable stable Rust gap records while preserving advisory/default-off behavior",
   "docs/OUTPUT_SCHEMA.md documents the implemented gap_decision_ledger JSON shape"
 ]
 fixtures = [
   "fixtures/gap-decision-ledger/corpus.json"
 ]
-next = "report/pr-evidence-ledger-gap-record"
+next = "policy/ripr-zero-and-badges-gap-targets"
 metric = "gap_decision_records_total, gap_decision_repairable_total, gap_decision_static_limitation_total, gap_decision_no_action_total, gap_decision_missing_artifact_total, gap_decision_projection_pr_comment_eligible, gap_decision_projection_gate_candidate, gap_decision_projection_agent_packet_eligible, gap_decision_ripr_zero_target_count, gap_decision_ripr_plus_target_count, gap_decision_preview_ineligible_total, gap_decision_receipt_improved_total, gap_decision_receipt_unchanged_after_attempt_total, gap_decision_missing_output_contract_total"
 
 [[capability]]

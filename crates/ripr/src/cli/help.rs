@@ -382,7 +382,7 @@ blocking.
 
 const PR_LEDGER_HELP: &str = r#"Record a read-only PR evidence ledger entry over existing reports.
 
-Usage: ripr pr-ledger record --pr-number VALUE --base REV --head REV [--gate PATH] [--baseline-delta PATH] [--zero-status PATH] [--pr-guidance PATH] [--recommendation-calibration PATH] [--agent-receipt PATH] [--coverage PATH] [--history PATH] [--out PATH] [--out-md PATH]
+Usage: ripr pr-ledger record --pr-number VALUE --base REV --head REV [--gate PATH] [--baseline-delta PATH] [--zero-status PATH] [--pr-guidance PATH] [--gap-ledger PATH] [--recommendation-calibration PATH] [--agent-receipt PATH] [--coverage PATH] [--history PATH] [--out PATH] [--out-md PATH]
 
 Record options:
   --pr-number VALUE                    Pull request number or local identifier.
@@ -393,6 +393,7 @@ Record options:
   --baseline-delta PATH                Optional baseline-debt-delta JSON from `ripr baseline diff`.
   --zero-status PATH                   Optional RIPR Zero status JSON from `ripr zero status`.
   --pr-guidance PATH                   Optional PR guidance JSON from `ripr review-comments`.
+  --gap-ledger PATH                    Optional gap decision ledger JSON with policy-targeted repairable gap records.
   --recommendation-calibration PATH    Optional recommendation calibration JSON.
   --agent-receipt PATH                 Optional agent receipt JSON.
   --coverage PATH                      Optional coverage summary JSON.
