@@ -134,6 +134,8 @@ cargo xtask check-network-policy
 policy allowlists, ensure `target/ripr/reports`, and write a shape report.
 `cargo xtask pr-summary` writes a local reviewer packet from git diff/status.
 `cargo xtask pr-triage-report` writes an advisory open-PR board hygiene report.
+`cargo xtask gh-pr-status --pr <number>` writes a read-only merge-readiness
+packet for one PR after it exists.
 `cargo xtask fix-pr` runs safe shaping and then refreshes the PR summary.
 `cargo xtask precommit` is the cheap non-mutating guardrail.
 `cargo xtask worktree doctor` reports dirty main, branches behind main,
