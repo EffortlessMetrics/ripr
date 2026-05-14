@@ -22,6 +22,14 @@ const RIPR_DOCUMENT_SELECTORS: Array<{ language: string; scheme: 'file' }> = [
 ];
 
 const RIPR_FILE_LANGUAGES = new Set(RIPR_DOCUMENT_SELECTORS.map((selector) => selector.language));
+const RIPR_RELATED_TEST_LANGUAGE_BY_EXTENSION = new Map<string, 'rust' | 'typescript' | 'python'>([
+  ['.rs', 'rust'],
+  ['.ts', 'typescript'],
+  ['.tsx', 'typescript'],
+  ['.js', 'typescript'],
+  ['.jsx', 'typescript'],
+  ['.py', 'python']
+]);
 
 export interface RiprContextTarget {
   uri?: string;
@@ -409,6 +417,27 @@ export class RiprClientController {
     const uri = uriFromTarget(target);
     if (!uri) {
       this.runtime.showInformationMessage('No ripr related test location is available for this diagnostic.');
+      return;
+    }
+    if (uri.scheme !== 'file') {
+      this.runtime.showInformationMessage('ripr related test navigation requires a file URI.');
+      return;
+    }
+    if (!vscode.workspace.getWorkspaceFolder(uri)) {
+      this.runtime.showInformationMessage('ripr related test must be inside the current workspace.');
+      return;
+    }
+    const language = riprRelatedTestLanguage(uri.fsPath);
+    if (!language) {
+      this.runtime.showInformationMessage('ripr related test must be a Rust, TypeScript/JavaScript, or Python file.');
+      return;
+    }
+    if (this.status.kind === 'stale') {
+      this.runtime.showInformationMessage('ripr related test navigation requires current saved-workspace analysis; save or refresh first.');
+      return;
+    }
+    if (this.status.enabledLanguages && !this.status.enabledLanguages.includes(language)) {
+      this.runtime.showInformationMessage(`ripr related test language is disabled by current analysis status: ${language}.`);
       return;
     }
     try {
@@ -1169,6 +1198,10 @@ function firstWorkspaceFolder(): string | undefined {
 
 function isRiprFileDocument(document: vscode.TextDocument): boolean {
   return document.uri.scheme === 'file' && RIPR_FILE_LANGUAGES.has(document.languageId);
+}
+
+function riprRelatedTestLanguage(filePath: string): 'rust' | 'typescript' | 'python' | undefined {
+  return RIPR_RELATED_TEST_LANGUAGE_BY_EXTENSION.get(path.extname(filePath).toLowerCase());
 }
 
 async function writeTestClipboardCapture(text: string): Promise<void> {
