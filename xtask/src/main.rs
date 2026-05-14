@@ -23285,7 +23285,10 @@ fn spec_id_has_file(root: &Path, spec_id: &str) -> Result<bool, String> {
         let Some(name) = entry.file_name().to_str().map(ToString::to_string) else {
             continue;
         };
-        if name.starts_with(spec_id) && name.ends_with(".md") {
+        if name
+            .strip_prefix(spec_id)
+            .is_some_and(|rest| rest.starts_with('-') && rest.ends_with(".md"))
+        {
             return Ok(true);
         }
     }
@@ -38398,6 +38401,27 @@ acceptance = "RIPR-SPEC-0999 defines the focused contract."
             "{violations:?}"
         );
         Ok(())
+    }
+
+    #[test]
+    fn spec_id_file_lookup_requires_filename_boundary() -> Result<(), String> {
+        with_temp_cwd("spec-id-file-boundary", |root| {
+            write(
+                &root.join("docs/specs/RIPR-SPEC-00010-larger.md"),
+                "# Larger spec\n",
+            );
+            if super::spec_id_has_file(root, "RIPR-SPEC-0001")? {
+                return Err("RIPR-SPEC-0001 must not match RIPR-SPEC-00010".to_string());
+            }
+            write(
+                &root.join("docs/specs/RIPR-SPEC-0001-example.md"),
+                "# Exact spec\n",
+            );
+            if !super::spec_id_has_file(root, "RIPR-SPEC-0001")? {
+                return Err("RIPR-SPEC-0001 should match its own spec file".to_string());
+            }
+            Ok(())
+        })
     }
 
     #[test]
