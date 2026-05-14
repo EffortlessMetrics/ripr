@@ -12,6 +12,7 @@ mod receipts;
 mod recommendation;
 mod release;
 mod repo;
+mod review_comments;
 mod sarif;
 mod targeted_test;
 mod test_oracles;
@@ -36,6 +37,7 @@ pub(crate) use repo::{
     evidence_quality_trend_report, lane1_evidence_audit_report, repo_exposure_latency_report,
     repo_exposure_report, repo_seam_inventory,
 };
+pub(crate) use review_comments::ripr_review_comments;
 pub(crate) use sarif::sarif_policy;
 pub(crate) use targeted_test::targeted_test_outcome;
 pub(crate) use test_oracles::{test_efficiency_report, test_oracle_report};

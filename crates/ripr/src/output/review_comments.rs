@@ -119,7 +119,7 @@ pub(crate) fn render_review_comments_json(
         "base": base,
         "head": head,
         "mode": mode.as_str(),
-        "limits": {
+        "rendering_limits": {
             "max_inline_comments": DEFAULT_REVIEW_MAX_INLINE_COMMENTS,
             "max_summary_items": DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
         },
@@ -184,7 +184,7 @@ pub(crate) fn render_gap_record_review_comments_json(
         "inputs": {
             "gap_ledger": gap_ledger_path
         },
-        "limits": {
+        "rendering_limits": {
             "max_inline_comments": DEFAULT_REVIEW_MAX_INLINE_COMMENTS,
             "max_summary_items": DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
         },
