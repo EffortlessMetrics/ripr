@@ -4910,6 +4910,7 @@ fn parse_gate_options(args: &[String]) -> Result<GateOptions, String> {
     let mut root = PathBuf::from(".");
     let mut repo_exposure = None;
     let mut pr_guidance = None;
+    let mut gap_ledger = None;
     let mut sarif_policy = None;
     let mut labels_json = None;
     let mut labels = Vec::new();
@@ -4937,6 +4938,10 @@ fn parse_gate_options(args: &[String]) -> Result<GateOptions, String> {
             "--pr-guidance" => {
                 i += 1;
                 pr_guidance = Some(non_empty_path_arg(args, i, "--pr-guidance", "gate")?);
+            }
+            "--gap-ledger" => {
+                i += 1;
+                gap_ledger = Some(non_empty_path_arg(args, i, "--gap-ledger", "gate")?);
             }
             "--sarif-policy" => {
                 i += 1;
@@ -5011,8 +5016,8 @@ fn parse_gate_options(args: &[String]) -> Result<GateOptions, String> {
         input: output::gate::GateEvaluateInput {
             root,
             repo_exposure,
-            pr_guidance: pr_guidance
-                .ok_or_else(|| "gate evaluate requires --pr-guidance <path>".to_string())?,
+            pr_guidance,
+            gap_ledger,
             sarif_policy,
             labels_json,
             labels,
@@ -7890,6 +7895,8 @@ mod tests {
             "target/ripr/reports/repo-exposure.json",
             "--pr-guidance",
             "target/ripr/review/comments.json",
+            "--gap-ledger",
+            "target/ripr/reports/gap-decision-ledger.json",
             "--sarif-policy",
             "target/ripr/reports/sarif-policy.json",
             "--labels-json",
@@ -7920,7 +7927,10 @@ mod tests {
                 input: output::gate::GateEvaluateInput {
                     root: PathBuf::from("repo"),
                     repo_exposure: Some(PathBuf::from("target/ripr/reports/repo-exposure.json")),
-                    pr_guidance: PathBuf::from("target/ripr/review/comments.json"),
+                    pr_guidance: Some(PathBuf::from("target/ripr/review/comments.json")),
+                    gap_ledger: Some(PathBuf::from(
+                        "target/ripr/reports/gap-decision-ledger.json"
+                    )),
                     sarif_policy: Some(PathBuf::from("target/ripr/reports/sarif-policy.json")),
                     labels_json: Some(PathBuf::from("target/ci/labels.json")),
                     labels: vec!["ripr-waive".to_string()],
@@ -7943,7 +7953,7 @@ mod tests {
     }
 
     #[test]
-    fn gate_requires_pr_guidance_and_rejects_unknown_args() {
+    fn gate_rejects_bad_surface_and_unknown_args() {
         assert_eq!(
             gate(&args(&[])),
             Err("gate requires subcommand `evaluate`".to_string())
@@ -7966,7 +7976,26 @@ mod tests {
         );
         assert_eq!(
             parse_gate_options(&args(&[])),
-            Err("gate evaluate requires --pr-guidance <path>".to_string())
+            Ok(GateOptions {
+                input: output::gate::GateEvaluateInput {
+                    root: PathBuf::from("."),
+                    repo_exposure: None,
+                    pr_guidance: None,
+                    gap_ledger: None,
+                    sarif_policy: None,
+                    labels_json: None,
+                    labels: Vec::new(),
+                    agent_verify: None,
+                    agent_receipt: None,
+                    recommendation_calibration: None,
+                    mutation_calibration: None,
+                    baseline: None,
+                    mode: output::gate::GateMode::VisibleOnly,
+                    acknowledgement_labels: Vec::new(),
+                },
+                out: PathBuf::from(output::gate::DEFAULT_GATE_OUT),
+                out_md: PathBuf::from("target/ripr/reports/gate-decision.md"),
+            })
         );
     }
 

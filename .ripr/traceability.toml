@@ -935,7 +935,7 @@ name = "calibrated gate policy"
 spec = "docs/specs/RIPR-SPEC-0014-calibrated-gate-policy.md"
 tests = [
   "crates/ripr/src/cli/commands.rs::tests::gate_parses_full_option_surface",
-  "crates/ripr/src/cli/commands.rs::tests::gate_requires_pr_guidance_and_rejects_unknown_args",
+  "crates/ripr/src/cli/commands.rs::tests::gate_rejects_bad_surface_and_unknown_args",
   "crates/ripr/src/cli/commands.rs::tests::gate_command_writes_visible_only_reports",
   "crates/ripr/src/cli/commands.rs::tests::gate_command_writes_blocked_report_before_error",
   "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_is_advisory",
@@ -952,6 +952,8 @@ tests = [
   "crates/ripr/src/output/gate.rs::tests::gate_baseline_check_matches_canonical_gap_id_from_evidence_record",
   "crates/ripr/src/output/gate.rs::tests::gate_baseline_index_reads_all_canonical_gap_identity_shapes",
   "crates/ripr/src/output/gate.rs::tests::gate_candidate_reads_canonical_gap_id_from_supported_shapes",
+  "crates/ripr/src/output/gate.rs::tests::gate_acknowledgeable_blocks_safe_gap_ledger_candidate",
+  "crates/ripr/src/output/gate.rs::tests::gate_gap_ledger_static_unknown_only_stays_report_only",
   "crates/ripr/src/output/gate.rs::tests::calibrated_gate_fixture_matrix_matches_checked_outputs",
   "xtask/src/main.rs::tests::dogfood_reports_are_advisory",
   "xtask/src/main.rs::tests::dogfood_gate_adoption_scenarios_have_checked_receipts",
@@ -2884,6 +2886,8 @@ tests = [
   "crates/ripr/src/output/pr_evidence_ledger.rs::tests::pr_evidence_ledger_routes_repairable_gap_records",
   "crates/ripr/src/output/ripr_zero_status.rs::tests::ripr_zero_status_uses_gap_ledger_targets_when_supplied",
   "crates/ripr/src/output/badge.rs::tests::gap_ledger_badge_summary_counts_projection_targets",
+  "crates/ripr/src/output/gate.rs::tests::gate_acknowledgeable_blocks_safe_gap_ledger_candidate",
+  "crates/ripr/src/output/gate.rs::tests::gate_gap_ledger_static_unknown_only_stays_report_only",
   "crates/ripr/src/cli/commands.rs::tests::first_action_cli_writes_gap_record_report",
   "crates/ripr/src/cli/commands.rs::tests::pr_evidence_ledger_writes_json_and_markdown_reports",
   "crates/ripr/tests/cli_smoke.rs::check_repo_badge_json_can_use_gap_ledger_targets",
@@ -2900,6 +2904,7 @@ code = [
   "crates/ripr/src/output/pr_evidence_ledger.rs",
   "crates/ripr/src/output/ripr_zero_status.rs",
   "crates/ripr/src/output/badge.rs",
+  "crates/ripr/src/output/gate.rs",
   "xtask/src/main.rs",
 ]
 outputs = [

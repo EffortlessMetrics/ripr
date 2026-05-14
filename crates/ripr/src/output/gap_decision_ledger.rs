@@ -475,7 +475,7 @@ fn validate_record(record: &GapRecord, warnings: &mut Vec<String>) {
     }
 }
 
-fn safe_gate_predicate_satisfied(record: &GapRecord) -> bool {
+pub(crate) fn safe_gate_predicate_satisfied(record: &GapRecord) -> bool {
     let Some(predicate) = &record.safe_gate_predicate else {
         return false;
     };

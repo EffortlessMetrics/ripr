@@ -1,3 +1,4 @@
+use super::gap_decision_ledger::{self, GapRecord, GapRepairRoute};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -46,7 +47,8 @@ impl GateMode {
 pub(crate) struct GateEvaluateInput {
     pub(crate) root: PathBuf,
     pub(crate) repo_exposure: Option<PathBuf>,
-    pub(crate) pr_guidance: PathBuf,
+    pub(crate) pr_guidance: Option<PathBuf>,
+    pub(crate) gap_ledger: Option<PathBuf>,
     pub(crate) sarif_policy: Option<PathBuf>,
     pub(crate) labels_json: Option<PathBuf>,
     pub(crate) labels: Vec<String>,
@@ -75,7 +77,8 @@ pub(crate) struct GateDecisionReport {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct GateDecisionInputs {
     repo_exposure: Option<String>,
-    pr_guidance: String,
+    pr_guidance: Option<String>,
+    gap_ledger: Option<String>,
     sarif_policy: Option<String>,
     labels_json: Option<String>,
     labels: Vec<String>,
@@ -111,6 +114,8 @@ struct GateDecision {
     source: String,
     decision: String,
     gate_reason: String,
+    gap_id: Option<String>,
+    gap_kind: Option<String>,
     canonical_gap_id: Option<String>,
     seam_id: Option<String>,
     source_id: String,
@@ -141,6 +146,8 @@ struct GateEvidence {
     assertion_shape: Option<String>,
     candidate_values: Vec<String>,
     recommended_test: Option<String>,
+    repair_route: Option<GapRepairRoute>,
+    verification_commands: Vec<String>,
     nearby_test_changed: bool,
     suppressed: bool,
     configured_off: bool,
@@ -159,6 +166,8 @@ struct CalibrationEvidence {
 struct GateCandidate {
     source: String,
     source_id: String,
+    gap_id: Option<String>,
+    gap_kind: Option<String>,
     canonical_gap_id: Option<String>,
     seam_id: Option<String>,
     static_class: Option<String>,
@@ -168,10 +177,15 @@ struct GateCandidate {
     assertion_shape: Option<String>,
     candidate_values: Vec<String>,
     recommended_test: Option<String>,
+    repair_route: Option<GapRepairRoute>,
+    verification_commands: Vec<String>,
     nearby_test_changed: bool,
     suppressed: bool,
     configured_off: bool,
     suppression_reason: Option<String>,
+    gap_ledger_gate_candidate: bool,
+    gap_ledger_gate_reason: Option<String>,
+    gap_ledger_safe_gate_predicate: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -202,17 +216,27 @@ pub(crate) fn build_gate_decision_report(
     let mut warnings = Vec::new();
     let mut config_errors = Vec::new();
     let labels = read_labels(input, &mut warnings)?;
-    let pr_guidance_path = resolve_root_path(&input.root, &input.pr_guidance);
-    let pr_guidance = match read_json_value_with_display(&pr_guidance_path, &input.pr_guidance) {
-        Ok(value) => value,
-        Err(error) => {
-            config_errors.push(format!(
-                "required PR guidance input {} is invalid: {error}",
-                display_path(&input.pr_guidance)
-            ));
-            Value::Null
+    if input.pr_guidance.is_none() && input.gap_ledger.is_none() {
+        config_errors
+            .push("gate evaluate requires --pr-guidance <path> or --gap-ledger <path>".to_string());
+    }
+    let pr_guidance = match input.pr_guidance.as_ref() {
+        Some(path) => {
+            let pr_guidance_path = resolve_root_path(&input.root, path);
+            match read_json_value_with_display(&pr_guidance_path, path) {
+                Ok(value) => value,
+                Err(error) => {
+                    config_errors.push(format!(
+                        "required PR guidance input {} is invalid: {error}",
+                        display_path(path)
+                    ));
+                    Value::Null
+                }
+            }
         }
+        None => Value::Null,
     };
+    let gap_ledger = read_gap_ledger(input, &mut config_errors);
     warn_for_optional_json(
         &input.root,
         input.repo_exposure.as_ref(),
@@ -248,7 +272,11 @@ pub(crate) fn build_gate_decision_report(
     let mutation_calibration = read_mutation_calibration(input, &mut warnings);
     let baseline = read_baseline(input, &mut warnings, &mut config_errors);
     let candidates = if config_errors.is_empty() {
-        candidates_from_pr_guidance(&pr_guidance)
+        if let Some(records) = gap_ledger.as_ref() {
+            candidates_from_gap_ledger(records)
+        } else {
+            candidates_from_pr_guidance(&pr_guidance)
+        }
     } else {
         Vec::new()
     };
@@ -280,7 +308,8 @@ pub(crate) fn build_gate_decision_report(
         root: display_path(&input.root),
         inputs: GateDecisionInputs {
             repo_exposure: input.repo_exposure.as_ref().map(|path| display_path(path)),
-            pr_guidance: display_path(&input.pr_guidance),
+            pr_guidance: input.pr_guidance.as_ref().map(|path| display_path(path)),
+            gap_ledger: input.gap_ledger.as_ref().map(|path| display_path(path)),
             sarif_policy: input.sarif_policy.as_ref().map(|path| display_path(path)),
             labels_json: input.labels_json.as_ref().map(|path| display_path(path)),
             labels,
@@ -439,6 +468,34 @@ fn warn_for_optional_json(
             "optional {name} {} is unavailable: {error}",
             display_path(path)
         ));
+    }
+}
+
+fn read_gap_ledger(
+    input: &GateEvaluateInput,
+    config_errors: &mut Vec<String>,
+) -> Option<Vec<GapRecord>> {
+    let path = input.gap_ledger.as_ref()?;
+    let resolved = resolve_root_path(&input.root, path);
+    let text = match fs::read_to_string(&resolved) {
+        Ok(text) => text,
+        Err(error) => {
+            config_errors.push(format!(
+                "required gap decision ledger input {} is invalid: read failed: {error}",
+                display_path(path)
+            ));
+            return Some(Vec::new());
+        }
+    };
+    match gap_decision_ledger::parse_gap_records_json(&text) {
+        Ok(records) => Some(records),
+        Err(error) => {
+            config_errors.push(format!(
+                "required gap decision ledger input {} is invalid: {error}",
+                display_path(path)
+            ));
+            Some(Vec::new())
+        }
     }
 }
 
@@ -740,6 +797,10 @@ fn candidates_from_pr_guidance(value: &Value) -> Vec<GateCandidate> {
     candidates
 }
 
+fn candidates_from_gap_ledger(records: &[GapRecord]) -> Vec<GateCandidate> {
+    records.iter().map(candidate_from_gap_record).collect()
+}
+
 fn candidate_from_guidance_item(
     source: &str,
     item: &Value,
@@ -781,6 +842,8 @@ fn candidate_from_guidance_item(
     GateCandidate {
         source: source.to_string(),
         source_id,
+        gap_id: None,
+        gap_kind: None,
         canonical_gap_id: canonical_gap_id_from_value(item),
         seam_id: string_field(item.get("seam_id")),
         static_class: string_field(item.get("grip_class"))
@@ -801,10 +864,79 @@ fn candidate_from_guidance_item(
             })
             .unwrap_or_default(),
         recommended_test,
+        repair_route: None,
+        verification_commands: Vec::new(),
         nearby_test_changed,
         suppressed,
         configured_off: suppression_reason.as_deref() == Some("severity_off"),
         suppression_reason,
+        gap_ledger_gate_candidate: false,
+        gap_ledger_gate_reason: None,
+        gap_ledger_safe_gate_predicate: false,
+    }
+}
+
+fn candidate_from_gap_record(record: &GapRecord) -> GateCandidate {
+    let gap_id = non_empty_string(&record.gap_id);
+    let canonical_gap_id = non_empty_string(&record.canonical_gap_id);
+    let source_id = gap_id
+        .clone()
+        .or_else(|| canonical_gap_id.clone())
+        .unwrap_or_else(|| "unknown".to_string());
+    let projection = record.projection_eligibility.get("gate_candidate");
+    let gate_candidate = projection.is_some_and(|projection| projection.eligible);
+    let gate_reason = projection
+        .and_then(|projection| non_empty_string(&projection.reason))
+        .or_else(|| Some("not_gate_candidate".to_string()));
+    let repair_route = record.repair_route.clone();
+    let changed_behavior = repair_route
+        .as_ref()
+        .and_then(|route| route.changed_behavior.clone());
+    let assertion_shape = repair_route
+        .as_ref()
+        .and_then(|route| route.assertion_shape.clone());
+    let recommended_test = repair_route
+        .as_ref()
+        .and_then(|route| route.related_test.clone())
+        .or_else(|| {
+            repair_route
+                .as_ref()
+                .and_then(|route| route.target_file.clone())
+        });
+    let placement = GatePlacement {
+        path: record
+            .anchor
+            .as_ref()
+            .and_then(|anchor| anchor.file.clone()),
+        line: record.anchor.as_ref().and_then(|anchor| anchor.line),
+    };
+    GateCandidate {
+        source: "gap_decision_ledger".to_string(),
+        source_id,
+        gap_id,
+        gap_kind: non_empty_string(&record.kind),
+        canonical_gap_id,
+        seam_id: None,
+        static_class: non_empty_string(&record.kind),
+        severity: Some("warning".to_string()),
+        placement,
+        missing_discriminator: changed_behavior.clone(),
+        assertion_shape,
+        candidate_values: changed_behavior.into_iter().collect(),
+        recommended_test,
+        repair_route,
+        verification_commands: record.verification_commands.clone(),
+        nearby_test_changed: false,
+        suppressed: record.policy_state == "suppressed"
+            || record
+                .safe_gate_predicate
+                .as_ref()
+                .is_some_and(|predicate| predicate.suppressed),
+        configured_off: record.policy_state == "not_policy_targeted",
+        suppression_reason: (record.policy_state == "suppressed").then(|| "suppressed".to_string()),
+        gap_ledger_gate_candidate: gate_candidate,
+        gap_ledger_gate_reason: gate_reason,
+        gap_ledger_safe_gate_predicate: gap_decision_ledger::safe_gate_predicate_satisfied(record),
     }
 }
 
@@ -836,7 +968,9 @@ fn gate_decision(
     );
     let decision = if candidate.suppressed || candidate.configured_off {
         "suppressed"
-    } else if !eligible && candidate.static_class.is_none() {
+    } else if !eligible
+        && (candidate.static_class.is_none() || candidate.source == "gap_decision_ledger")
+    {
         "not_applicable"
     } else if would_block && acknowledgement_label.is_some() {
         "acknowledged"
@@ -862,11 +996,15 @@ fn gate_decision(
         id: format!("ripr-gate-{}", stable_identity(candidate)),
         source: if candidate.source == "summary_only" {
             "pr_guidance_summary".to_string()
+        } else if candidate.source == "gap_decision_ledger" {
+            "gap_decision_ledger".to_string()
         } else {
             "pr_guidance".to_string()
         },
         decision,
         gate_reason,
+        gap_id: candidate.gap_id.clone(),
+        gap_kind: candidate.gap_kind.clone(),
         canonical_gap_id: candidate.canonical_gap_id.clone(),
         seam_id: candidate.seam_id.clone(),
         source_id: candidate.source_id.clone(),
@@ -884,6 +1022,8 @@ fn gate_decision(
             assertion_shape: candidate.assertion_shape.clone(),
             candidate_values: candidate.candidate_values.clone(),
             recommended_test: candidate.recommended_test.clone(),
+            repair_route: candidate.repair_route.clone(),
+            verification_commands: candidate.verification_commands.clone(),
             nearby_test_changed: candidate.nearby_test_changed,
             suppressed: candidate.suppressed,
             configured_off: candidate.configured_off,
@@ -911,6 +1051,16 @@ fn calibration_for_candidate(
 }
 
 fn candidate_is_policy_eligible(candidate: &GateCandidate) -> bool {
+    if candidate.source == "gap_decision_ledger" {
+        return !candidate.suppressed
+            && !candidate.configured_off
+            && candidate.gap_ledger_gate_candidate
+            && candidate.gap_ledger_safe_gate_predicate
+            && candidate.repair_route.is_some()
+            && !candidate.verification_commands.is_empty()
+            && candidate.placement.path.is_some()
+            && candidate.placement.line.is_some();
+    }
     !candidate.suppressed
         && !candidate.configured_off
         && candidate_class_is_policy_eligible(candidate.static_class.as_deref())
@@ -939,6 +1089,7 @@ fn baseline_identity(candidate: &GateCandidate) -> Option<String> {
     candidate
         .canonical_gap_id
         .clone()
+        .or_else(|| candidate.gap_id.clone())
         .or_else(|| candidate.seam_id.clone())
         .or_else(|| (!candidate.source_id.is_empty()).then(|| candidate.source_id.clone()))
         .or_else(|| {
@@ -953,6 +1104,7 @@ fn baseline_identity(candidate: &GateCandidate) -> Option<String> {
 
 fn stable_identity(candidate: &GateCandidate) -> String {
     baseline_identity(candidate)
+        .or_else(|| candidate.gap_id.clone())
         .unwrap_or_else(|| candidate.source_id.clone())
         .chars()
         .map(|ch| {
@@ -1008,6 +1160,29 @@ fn gate_reason(candidate: &GateCandidate, context: GateReasonContext<'_>) -> Str
         );
     }
     if !context.eligible {
+        if candidate.source == "gap_decision_ledger" {
+            if !candidate.gap_ledger_gate_candidate {
+                return format!(
+                    "gap decision ledger record is not gate-candidate eligible: {}",
+                    candidate
+                        .gap_ledger_gate_reason
+                        .as_deref()
+                        .unwrap_or("not_gate_candidate")
+                );
+            }
+            if !candidate.gap_ledger_safe_gate_predicate {
+                return "gap decision ledger record does not satisfy the safe gate predicate"
+                    .to_string();
+            }
+            if candidate.repair_route.is_none() || candidate.verification_commands.is_empty() {
+                return "gap decision ledger record is missing repair route or verification command"
+                    .to_string();
+            }
+            if candidate.placement.path.is_none() || candidate.placement.line.is_none() {
+                return "gap decision ledger record is missing a stable file and line anchor"
+                    .to_string();
+            }
+        }
         if candidate.source == "summary_only" {
             return "summary-only recommendation remains visible and advisory".to_string();
         }
@@ -1028,9 +1203,23 @@ fn gate_reason(candidate: &GateCandidate, context: GateReasonContext<'_>) -> Str
                 .acknowledgement_label
                 .unwrap_or(DEFAULT_ACKNOWLEDGEMENT_LABEL)
         ),
+        "blocking"
+            if candidate.source == "gap_decision_ledger"
+                && context.mode == GateMode::BaselineCheck
+                && context.is_baseline_new =>
+        {
+            format!(
+                "new repairable {} gap blocks under baseline-check from gap decision ledger",
+                candidate.gap_kind.as_deref().unwrap_or("Rust")
+            )
+        }
         "blocking" if context.mode == GateMode::BaselineCheck && context.is_baseline_new => {
             "new policy-eligible gap blocks under baseline-check".to_string()
         }
+        "blocking" if candidate.source == "gap_decision_ledger" => format!(
+            "new repairable {} gap blocks from gap decision ledger",
+            candidate.gap_kind.as_deref().unwrap_or("Rust")
+        ),
         "blocking" if context.mode == GateMode::CalibratedGate => {
             if context.mutation_calibration.confidence_effect == "supports_static_gap" {
                 "new policy-eligible gap has supporting imported mutation calibration".to_string()
@@ -1112,7 +1301,7 @@ fn top_level_status(
 }
 
 fn inputs_json(inputs: &GateDecisionInputs) -> Value {
-    json!({
+    let mut value = json!({
         "repo_exposure": inputs.repo_exposure,
         "pr_guidance": inputs.pr_guidance,
         "sarif_policy": inputs.sarif_policy,
@@ -1123,7 +1312,13 @@ fn inputs_json(inputs: &GateDecisionInputs) -> Value {
         "recommendation_calibration": inputs.recommendation_calibration,
         "mutation_calibration": inputs.mutation_calibration,
         "baseline": inputs.baseline,
-    })
+    });
+    if let Some(gap_ledger) = &inputs.gap_ledger
+        && let Some(object) = value.as_object_mut()
+    {
+        object.insert("gap_ledger".to_string(), Value::String(gap_ledger.clone()));
+    }
+    value
 }
 
 fn policy_json(policy: &GatePolicy) -> Value {
@@ -1179,6 +1374,19 @@ fn decision_json(decision: &GateDecision) -> Value {
             "mutation_calibration": calibration_json(&decision.evidence.mutation_calibration),
         }
     });
+    if let Some(repair_route) = &decision.evidence.repair_route
+        && let Some(evidence) = value.get_mut("evidence").and_then(Value::as_object_mut)
+    {
+        evidence.insert("repair_route".to_string(), json!(repair_route));
+    }
+    if !decision.evidence.verification_commands.is_empty()
+        && let Some(evidence) = value.get_mut("evidence").and_then(Value::as_object_mut)
+    {
+        evidence.insert(
+            "verification_commands".to_string(),
+            json!(decision.evidence.verification_commands),
+        );
+    }
     if let Some(canonical_gap_id) = &decision.canonical_gap_id
         && let Some(object) = value.as_object_mut()
     {
@@ -1186,6 +1394,16 @@ fn decision_json(decision: &GateDecision) -> Value {
             "canonical_gap_id".to_string(),
             Value::String(canonical_gap_id.clone()),
         );
+    }
+    if let Some(gap_id) = &decision.gap_id
+        && let Some(object) = value.as_object_mut()
+    {
+        object.insert("gap_id".to_string(), Value::String(gap_id.clone()));
+    }
+    if let Some(gap_kind) = &decision.gap_kind
+        && let Some(object) = value.as_object_mut()
+    {
+        object.insert("gap_kind".to_string(), Value::String(gap_kind.clone()));
     }
     value
 }
@@ -1255,6 +1473,10 @@ fn string_field(value: Option<&Value>) -> Option<String> {
         .and_then(Value::as_str)
         .filter(|text| !text.is_empty())
         .map(ToOwned::to_owned)
+}
+
+fn non_empty_string(value: &str) -> Option<String> {
+    (!value.trim().is_empty()).then(|| value.to_string())
 }
 
 fn canonical_gap_id_from_value(value: &Value) -> Option<String> {
@@ -1561,7 +1783,7 @@ mod tests {
             }"#,
         )?;
         let mut input = fixture_input(GateMode::BaselineCheck);
-        input.pr_guidance = guidance;
+        input.pr_guidance = Some(guidance);
         input.baseline = Some(baseline);
 
         let report = build_gate_decision_report(&input)?;
@@ -1689,7 +1911,7 @@ mod tests {
         let invalid = write_temp_json(&dir, "invalid.json", "{")?;
         let mut input = fixture_input(GateMode::VisibleOnly);
         input.root = dir.clone();
-        input.pr_guidance = write_temp_json(&dir, "comments.json", PR_GUIDANCE_JSON)?;
+        input.pr_guidance = Some(write_temp_json(&dir, "comments.json", PR_GUIDANCE_JSON)?);
         input.repo_exposure = Some(PathBuf::from("missing-repo.json"));
         input.sarif_policy = Some(
             invalid
@@ -1735,7 +1957,8 @@ mod tests {
         let input = GateEvaluateInput {
             root: repo_root(),
             repo_exposure: None,
-            pr_guidance: PathBuf::from("missing-comments.json"),
+            pr_guidance: Some(PathBuf::from("missing-comments.json")),
+            gap_ledger: None,
             sarif_policy: None,
             labels_json: None,
             labels: Vec::new(),
@@ -1764,10 +1987,12 @@ mod tests {
         let guidance = write_temp_json(&dir, "comments.json", SUMMARY_AND_SUPPRESSED_JSON)?;
         let mut input = fixture_input(GateMode::Acknowledgeable);
         input.root = dir.clone();
-        input.pr_guidance = guidance
-            .strip_prefix(&dir)
-            .map_err(|err| err.to_string())?
-            .to_path_buf();
+        input.pr_guidance = Some(
+            guidance
+                .strip_prefix(&dir)
+                .map_err(|err| err.to_string())?
+                .to_path_buf(),
+        );
 
         let report = build_gate_decision_report(&input)?;
 
@@ -1796,10 +2021,12 @@ mod tests {
         let guidance = write_temp_json(&dir, "comments.json", INELIGIBLE_GUIDANCE_JSON)?;
         let mut input = fixture_input(GateMode::Acknowledgeable);
         input.root = dir.clone();
-        input.pr_guidance = guidance
-            .strip_prefix(&dir)
-            .map_err(|err| err.to_string())?
-            .to_path_buf();
+        input.pr_guidance = Some(
+            guidance
+                .strip_prefix(&dir)
+                .map_err(|err| err.to_string())?
+                .to_path_buf(),
+        );
 
         let report = build_gate_decision_report(&input)?;
 
@@ -1812,10 +2039,12 @@ mod tests {
                 .any(|decision| decision.gate_reason.contains("nearby focused test changed"))
         );
         let missing_guidance = write_temp_json(&dir, "missing.json", MISSING_GUIDANCE_JSON)?;
-        input.pr_guidance = missing_guidance
-            .strip_prefix(&dir)
-            .map_err(|err| err.to_string())?
-            .to_path_buf();
+        input.pr_guidance = Some(
+            missing_guidance
+                .strip_prefix(&dir)
+                .map_err(|err| err.to_string())?
+                .to_path_buf(),
+        );
         let report = build_gate_decision_report(&input)?;
         assert!(
             report
@@ -1839,6 +2068,101 @@ mod tests {
         assert_eq!(report.status, "blocked");
         assert_eq!(report.summary.blocking, 1);
         assert!(report.decisions[0].gate_reason.contains("baseline-check"));
+        let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    #[test]
+    fn gate_acknowledgeable_blocks_safe_gap_ledger_candidate() -> Result<(), String> {
+        let dir = temp_dir("gate-gap-ledger-block")?;
+        let gap_ledger = write_temp_json(&dir, "gap-ledger.json", GAP_LEDGER_BLOCKING_JSON)?;
+        let input = GateEvaluateInput {
+            root: dir.clone(),
+            repo_exposure: None,
+            pr_guidance: None,
+            gap_ledger: Some(
+                gap_ledger
+                    .strip_prefix(&dir)
+                    .map_err(|err| err.to_string())?
+                    .to_path_buf(),
+            ),
+            sarif_policy: None,
+            labels_json: None,
+            labels: Vec::new(),
+            agent_verify: None,
+            agent_receipt: None,
+            recommendation_calibration: None,
+            mutation_calibration: None,
+            baseline: None,
+            mode: GateMode::Acknowledgeable,
+            acknowledgement_labels: Vec::new(),
+        };
+
+        let report = build_gate_decision_report(&input)?;
+        let rendered = render_gate_decision_json(&report)?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("gate decision JSON should parse: {err}"))?;
+
+        assert_eq!(report.status, "blocked");
+        assert_eq!(report.summary.blocking, 1);
+        assert_eq!(report.decisions[0].source, "gap_decision_ledger");
+        assert_eq!(report.decisions[0].gap_id.as_deref(), Some("gap:pricing"));
+        assert_eq!(
+            value["inputs"]["gap_ledger"], "gap-ledger.json",
+            "gate report should name the explicit gap ledger input"
+        );
+        assert_eq!(
+            value["decisions"][0]["gap_kind"],
+            "MissingBoundaryAssertion"
+        );
+        assert_eq!(
+            value["decisions"][0]["evidence"]["repair_route"]["route_kind"],
+            "AddBoundaryAssertion"
+        );
+        assert_eq!(
+            value["decisions"][0]["evidence"]["verification_commands"][0],
+            "cargo xtask fixtures boundary_gap"
+        );
+        let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    #[test]
+    fn gate_gap_ledger_static_unknown_only_stays_report_only() -> Result<(), String> {
+        let dir = temp_dir("gate-gap-ledger-report-only")?;
+        let gap_ledger = write_temp_json(&dir, "gap-ledger.json", GAP_LEDGER_REPORT_ONLY_JSON)?;
+        let input = GateEvaluateInput {
+            root: dir.clone(),
+            repo_exposure: None,
+            pr_guidance: None,
+            gap_ledger: Some(
+                gap_ledger
+                    .strip_prefix(&dir)
+                    .map_err(|err| err.to_string())?
+                    .to_path_buf(),
+            ),
+            sarif_policy: None,
+            labels_json: None,
+            labels: Vec::new(),
+            agent_verify: None,
+            agent_receipt: None,
+            recommendation_calibration: None,
+            mutation_calibration: None,
+            baseline: None,
+            mode: GateMode::Acknowledgeable,
+            acknowledgement_labels: Vec::new(),
+        };
+
+        let report = build_gate_decision_report(&input)?;
+
+        assert_eq!(report.status, "pass");
+        assert_eq!(report.summary.blocking, 0);
+        assert_eq!(report.summary.not_applicable, 1);
+        assert!(
+            report.decisions[0]
+                .gate_reason
+                .contains("not gate-candidate eligible")
+        );
         let _ = fs::remove_dir_all(dir);
         Ok(())
     }
@@ -2034,9 +2358,10 @@ mod tests {
         GateEvaluateInput {
             root: repo_root(),
             repo_exposure: None,
-            pr_guidance: PathBuf::from(
+            pr_guidance: Some(PathBuf::from(
                 "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
-            ),
+            )),
+            gap_ledger: None,
             sarif_policy: None,
             labels_json: None,
             labels: Vec::new(),
@@ -2066,7 +2391,8 @@ mod tests {
             GateEvaluateInput {
                 root: repo_root(),
                 repo_exposure: None,
-                pr_guidance: PathBuf::from(self.pr_guidance),
+                pr_guidance: Some(PathBuf::from(self.pr_guidance)),
+                gap_ledger: None,
                 sarif_policy: None,
                 labels_json: self.labels_json.map(PathBuf::from),
                 labels: self
@@ -2202,5 +2528,83 @@ mod tests {
       ],
       "summary_only": [],
       "suppressed": []
+    }"#;
+
+    const GAP_LEDGER_BLOCKING_JSON: &str = r#"{
+      "gap_records": [
+        {
+          "gap_id": "gap:pricing",
+          "canonical_gap_id": "pricing::discount::threshold",
+          "kind": "MissingBoundaryAssertion",
+          "language": "rust",
+          "language_status": "stable",
+          "scope": "pr_local",
+          "evidence_class": "weakly_exposed",
+          "gap_state": "actionable",
+          "policy_state": "new",
+          "repairability": "repairable",
+          "repair_route": {
+            "route_kind": "AddBoundaryAssertion",
+            "target_file": "tests/pricing.rs",
+            "related_test": "tests/pricing.rs::above_threshold_gets_discount",
+            "assertion_shape": "assert_eq!(price(threshold), discounted)",
+            "changed_behavior": "amount == discount_threshold"
+          },
+          "anchor": {
+            "file": "src/pricing.rs",
+            "line": 88,
+            "owner": "price",
+            "dedupe_fingerprint": "gap:pricing"
+          },
+          "projection_eligibility": {
+            "gate_candidate": {
+              "eligible": true,
+              "reason": "new_repairable_pr_local_gap"
+            }
+          },
+          "verification_commands": ["cargo xtask fixtures boundary_gap"],
+          "safe_gate_predicate": {
+            "policy_target_enabled": true,
+            "suppressed": false,
+            "waived": false,
+            "acknowledged_only": false,
+            "baseline_known": false,
+            "preview_language": false,
+            "static_unknown_only": false
+          }
+        }
+      ]
+    }"#;
+
+    const GAP_LEDGER_REPORT_ONLY_JSON: &str = r#"{
+      "gap_records": [
+        {
+          "gap_id": "gap:unknown",
+          "canonical_gap_id": "pricing::unknown",
+          "kind": "Unknown",
+          "language": "rust",
+          "language_status": "stable",
+          "scope": "pr_local",
+          "evidence_class": "static_unknown",
+          "gap_state": "unknown",
+          "policy_state": "new",
+          "repairability": "analyzer_limitation",
+          "anchor": {
+            "file": "src/pricing.rs",
+            "line": 90,
+            "dedupe_fingerprint": "gap:unknown"
+          },
+          "projection_eligibility": {
+            "gate_candidate": {
+              "eligible": false,
+              "reason": "static_unknown_only"
+            }
+          },
+          "safe_gate_predicate": {
+            "policy_target_enabled": true,
+            "static_unknown_only": true
+          }
+        }
+      ]
     }"#;
 }

@@ -191,12 +191,13 @@ CI blocking by default.
 
 const GATE_HELP: &str = r#"Evaluate the optional pass/fail gate against existing PR guidance (advisory unless explicitly enabled).
 
-Usage: ripr gate evaluate --pr-guidance PATH [--mode MODE] [--out PATH] [--out-md PATH]
+Usage: ripr gate evaluate [--pr-guidance PATH | --gap-ledger PATH] [--mode MODE] [--out PATH] [--out-md PATH]
 
 Options:
   --root PATH                         Workspace root. Defaults to current directory.
   --repo-exposure PATH                Optional repo-exposure JSON input.
-  --pr-guidance PATH                  Required PR guidance JSON from `ripr review-comments`.
+  --pr-guidance PATH                  Optional PR guidance JSON from `ripr review-comments`.
+  --gap-ledger PATH                   Optional gap decision ledger JSON; when supplied, gate candidates come from repairable GapRecord projection targets.
   --sarif-policy PATH                 Optional SARIF policy JSON input.
   --labels-json PATH                  Optional JSON array or object with labels.
   --label LABEL                       Repeatable current PR label input.
