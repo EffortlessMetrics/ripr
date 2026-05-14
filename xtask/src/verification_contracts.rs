@@ -129,6 +129,35 @@ pub(crate) fn check_verification_contracts(args: &[String]) -> Result<(), String
     }
 }
 
+pub(crate) fn validate_json_file_against_schema(
+    root: &Path,
+    value_path: &str,
+    schema_path: &str,
+) -> Result<(), String> {
+    let schema = read_json(root.join(schema_path))?;
+    let value = read_json(root.join(value_path))?;
+    let mut violations = Vec::new();
+    validate_value_against_schema(
+        &value,
+        &schema,
+        &schema,
+        value_path.to_string(),
+        &mut violations,
+    );
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "{value_path} does not match {schema_path}:\n{}",
+            violations
+                .iter()
+                .map(|violation| format!("- {violation}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ))
+    }
+}
+
 fn validate_schema_document(path: &str, schema: &Value, violations: &mut Vec<String>) {
     let Some(object) = schema.as_object() else {
         violations.push(format!("{path} must be a JSON object"));
