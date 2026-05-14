@@ -29,6 +29,7 @@ The current repo automation surface is:
 ```bash
 cargo xtask shape
 cargo xtask fix-pr
+cargo xtask commands
 cargo xtask pr-summary
 cargo xtask pr-triage-report
 cargo xtask gh-pr-status --pr <number>
@@ -70,6 +71,12 @@ Current `shape` responsibilities:
 `fix-pr` is the contributor and agent entrypoint for safe repair. It runs
 `shape`, refreshes the PR summary, and writes
 `target/ripr/reports/fix-pr.md`.
+
+`commands` writes `target/ripr/reports/commands.md` and
+`target/ripr/reports/commands.json`. The catalog classifies xtask commands as
+`mutating`, `non_mutating_check`, `report_only`, `external_state_read`,
+`external_state_mutating`, or `argument_dependent`, and flags commands that
+require judgment before use.
 
 `pr-summary` writes `target/ripr/reports/pr-summary.md` from git diff and git
 status. It classifies changed paths into production, evidence, docs, policy,
@@ -345,6 +352,7 @@ Current:
 
 ```bash
 cargo xtask pr-summary
+cargo xtask commands
 cargo xtask precommit
 cargo xtask check-pr
 cargo xtask fixtures
