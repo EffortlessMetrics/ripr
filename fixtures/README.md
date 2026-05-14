@@ -48,6 +48,14 @@ Optional expected outputs become required when the fixture claims that surface:
 - GitHub annotations: `expected/github.txt`
 - editor-agent loop: `expected/editor-agent-loop/`
 
+Manifest-only fixture corpora can define their own checked shape when a
+contract is not an executable diff workspace. `fixtures/editor_gap_cockpit`
+uses nested cases with `expected/lsp-diagnostics.json`,
+`expected/lsp-hover.md`, `expected/lsp-code-actions.json`,
+`expected/vscode-status.json`, and `expected/gap-projection.json`; the shape is
+validated by `cargo xtask check-fixture-contracts` and summarized by
+`cargo xtask lsp-cockpit-report`.
+
 Run:
 
 ```bash
@@ -81,6 +89,7 @@ The current fixture baseline covers:
   `boundary_gap_nested_tests`, `boundary_gap_reordered_tests`,
   `weak_error_oracle_assert_matches`
 - editor/LSP workflow projection: `editor_lsp_workflow`
+- editor gap cockpit projection: `editor_gap_cockpit`
 
 For defaults-first adoption examples, see
 [`EXAMPLE_CORPUS.md`](EXAMPLE_CORPUS.md). For calibration scenarios, see

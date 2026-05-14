@@ -2979,10 +2979,15 @@ id = "RIPR-SPEC-0047"
 name = "Editor gap projection"
 spec = "docs/specs/RIPR-SPEC-0047-editor-gap-projection.md"
 tests = [
+  "crates/ripr/src/lsp/diagnostics.rs::tests::append_gap_record_diagnostics_reads_default_ledger",
+  "crates/ripr/src/lsp/diagnostics.rs::tests::append_gap_record_diagnostics_fails_closed_for_invalid_artifacts",
 ]
 fixtures = [
+  "fixtures/editor_gap_cockpit",
 ]
 code = [
+  "crates/ripr/src/lsp/diagnostics.rs",
+  "xtask/src/main.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0047-editor-gap-projection.md",
@@ -2994,6 +2999,42 @@ outputs = [
   "docs/lanes/LANE_3_EDITOR_LSP.md",
   "plans/editor-gap-cockpit/implementation-plan.md",
   ".ripr/traceability.toml",
+  "fixtures/editor_gap_cockpit/SPEC.md",
+  "fixtures/editor_gap_cockpit/rust_actionable/expected/lsp-diagnostics.json",
+  "fixtures/editor_gap_cockpit/rust_actionable/expected/lsp-hover.md",
+  "fixtures/editor_gap_cockpit/rust_actionable/expected/lsp-code-actions.json",
+  "fixtures/editor_gap_cockpit/rust_actionable/expected/vscode-status.json",
+  "fixtures/editor_gap_cockpit/rust_actionable/expected/gap-projection.json",
+  "fixtures/editor_gap_cockpit/typescript_preview_static_limit/expected/lsp-diagnostics.json",
+  "fixtures/editor_gap_cockpit/typescript_preview_static_limit/expected/lsp-hover.md",
+  "fixtures/editor_gap_cockpit/typescript_preview_static_limit/expected/lsp-code-actions.json",
+  "fixtures/editor_gap_cockpit/typescript_preview_static_limit/expected/vscode-status.json",
+  "fixtures/editor_gap_cockpit/typescript_preview_static_limit/expected/gap-projection.json",
+  "fixtures/editor_gap_cockpit/python_preview_static_limit/expected/lsp-diagnostics.json",
+  "fixtures/editor_gap_cockpit/python_preview_static_limit/expected/lsp-hover.md",
+  "fixtures/editor_gap_cockpit/python_preview_static_limit/expected/lsp-code-actions.json",
+  "fixtures/editor_gap_cockpit/python_preview_static_limit/expected/vscode-status.json",
+  "fixtures/editor_gap_cockpit/python_preview_static_limit/expected/gap-projection.json",
+  "fixtures/editor_gap_cockpit/disabled_language/expected/lsp-diagnostics.json",
+  "fixtures/editor_gap_cockpit/disabled_language/expected/lsp-hover.md",
+  "fixtures/editor_gap_cockpit/disabled_language/expected/lsp-code-actions.json",
+  "fixtures/editor_gap_cockpit/disabled_language/expected/vscode-status.json",
+  "fixtures/editor_gap_cockpit/disabled_language/expected/gap-projection.json",
+  "fixtures/editor_gap_cockpit/wrong_root/expected/lsp-diagnostics.json",
+  "fixtures/editor_gap_cockpit/wrong_root/expected/lsp-hover.md",
+  "fixtures/editor_gap_cockpit/wrong_root/expected/lsp-code-actions.json",
+  "fixtures/editor_gap_cockpit/wrong_root/expected/vscode-status.json",
+  "fixtures/editor_gap_cockpit/wrong_root/expected/gap-projection.json",
+  "fixtures/editor_gap_cockpit/stale_artifact/expected/lsp-diagnostics.json",
+  "fixtures/editor_gap_cockpit/stale_artifact/expected/lsp-hover.md",
+  "fixtures/editor_gap_cockpit/stale_artifact/expected/lsp-code-actions.json",
+  "fixtures/editor_gap_cockpit/stale_artifact/expected/vscode-status.json",
+  "fixtures/editor_gap_cockpit/stale_artifact/expected/gap-projection.json",
+  "fixtures/editor_gap_cockpit/no_actionable_gap/expected/lsp-diagnostics.json",
+  "fixtures/editor_gap_cockpit/no_actionable_gap/expected/lsp-hover.md",
+  "fixtures/editor_gap_cockpit/no_actionable_gap/expected/lsp-code-actions.json",
+  "fixtures/editor_gap_cockpit/no_actionable_gap/expected/vscode-status.json",
+  "fixtures/editor_gap_cockpit/no_actionable_gap/expected/gap-projection.json",
 ]
 metrics = [
   "editor_gap_artifacts_seen",
