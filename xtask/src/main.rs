@@ -6178,10 +6178,12 @@ fn require_gap_case_diagnostic(
     language_status: &str,
     violations: &mut Vec<String>,
 ) {
-    let Some(diagnostic) = diagnostics.first() else {
+    if diagnostics.len() != 1 {
         violations.push(format!(
-            "editor gap cockpit case {case} must project one diagnostic"
+            "editor gap cockpit case {case} must project exactly one diagnostic"
         ));
+    }
+    let Some(diagnostic) = diagnostics.first() else {
         return;
     };
     let data = diagnostic.get("data").unwrap_or(&Value::Null);
