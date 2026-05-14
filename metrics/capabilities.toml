@@ -619,9 +619,9 @@ evidence = [
   "docs/specs/RIPR-SPEC-0031-lane1-evidence-quality-audit.md defines the repo-local audit contract",
   "cargo xtask lane1-evidence-audit writes target/ripr/reports/lane1-evidence-audit.json and lane1-evidence-audit.md from generated instant-mode repo-exposure JSON",
   "cargo xtask evidence-quality-audit is a compatibility alias for the same report",
-  "xtask/src/main.rs summarizes raw headline gaps, canonical gap groups, duplicate-looking groups, missing discriminator classes, static limitations by reason, stage, normalized category, and repair route, oracle semantics, related-test ranking confidence, movement availability, calibration availability, evidence_record field health, and top files by unresolved evidence debt",
+  "xtask/src/main.rs summarizes raw headline gaps, canonical gap groups, duplicate-looking groups, missing discriminator classes, static limitations by reason, stage, normalized category, and repair route, oracle semantics, related-test ranking confidence, movement availability, calibration availability, evidence_record field health, top files by unresolved evidence debt, and finding_alignment.summary derived from evidence_record.canonical_item",
   "docs/OUTPUT_SCHEMA.md documents the Lane 1 Evidence Quality Audit JSON and Markdown contract",
-  "xtask unit tests pin audit counting, Markdown sections, malformed input handling, command alias parsing, and report facade routing",
+  "xtask unit tests pin audit counting, derived finding-alignment counts, Markdown sections, malformed input handling, command alias parsing, and report facade routing",
   "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json turns the first audit findings into expected evidence_record subsets before analyzer behavior changes",
   "the first audit-driven analyzer improvement split parser-backed match-arm discriminators, reducing duplicate-looking groups from 1287 to 926 and removing the generic match-arm duplicate group from the top rows"
 ]
@@ -629,7 +629,7 @@ fixtures = [
   "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json"
 ]
 next = "maintenance"
-metric = "lane1_evidence_audit_raw_headline_gaps, lane1_evidence_audit_canonical_gap_groups, lane1_evidence_audit_duplicate_looking_groups, lane1_evidence_audit_missing_discriminators, lane1_evidence_audit_static_limitations, lane1_evidence_audit_static_limitation_categories, lane1_evidence_audit_uncalibrated_records"
+metric = "lane1_evidence_audit_raw_headline_gaps, lane1_evidence_audit_canonical_gap_groups, lane1_evidence_audit_duplicate_looking_groups, lane1_evidence_audit_missing_discriminators, lane1_evidence_audit_static_limitations, lane1_evidence_audit_static_limitation_categories, lane1_evidence_audit_uncalibrated_records, finding_alignment_raw_signals_total, finding_alignment_canonical_items_total, finding_alignment_actionable_items_total, finding_alignment_static_limitation_total"
 
 [[capability]]
 id = "evidence_quality_scorecard"
@@ -639,13 +639,13 @@ spec = "RIPR-SPEC-0034"
 evidence = [
   "cargo xtask evidence-quality-scorecard writes target/ripr/reports/evidence-quality-scorecard.json and evidence-quality-scorecard.md",
   "scorecard consumes the current Lane 1 evidence-quality audit, optional evidence-health JSON, previous scorecard when present, capability metadata, and traceability metadata",
-  "xtask/src/main.rs reports class-scoped maturity labels, raw headline gaps, canonical and duplicate-looking group signals, static limitation categories, missing discriminator classes, related-test confidence, oracle semantics distribution, movement availability, calibration coverage, recommended Lane 1 repair slices, recent deltas, and explicit unknowns",
+  "xtask/src/main.rs reports class-scoped maturity labels, raw headline gaps, canonical and duplicate-looking group signals, static limitation categories, missing discriminator classes, related-test confidence, oracle semantics distribution, movement availability, calibration coverage, recommended Lane 1 repair slices, recent deltas, explicit unknowns, and audit-derived raw-to-canonical/actionability counts",
   "docs/OUTPUT_SCHEMA.md documents the Evidence Quality Scorecard JSON and Markdown contract",
-  "xtask unit tests pin required JSON sections, Markdown section coverage, class-scoped maturity labels, risk-prioritized repair ordering, and recent delta reporting"
+  "xtask unit tests pin required JSON sections, Markdown section coverage, class-scoped maturity labels, risk-prioritized repair ordering, recent delta reporting, and the audit canonical-item fallback"
 ]
 fixtures = []
 next = "maintenance"
-metric = "lane1_evidence_scorecard_maturity_classes, lane1_evidence_scorecard_top_risks, lane1_evidence_scorecard_recommended_repairs, lane1_evidence_scorecard_static_only_classes, lane1_evidence_scorecard_calibrated_classes, lane1_evidence_scorecard_uncalibrated_classes, lane1_evidence_scorecard_recent_delta_available"
+metric = "lane1_evidence_scorecard_maturity_classes, lane1_evidence_scorecard_top_risks, lane1_evidence_scorecard_recommended_repairs, lane1_evidence_scorecard_static_only_classes, lane1_evidence_scorecard_calibrated_classes, lane1_evidence_scorecard_uncalibrated_classes, lane1_evidence_scorecard_recent_delta_available, finding_alignment_raw_signals_total, finding_alignment_canonical_items_total, finding_alignment_actionable_items_total, finding_alignment_static_limitation_total"
 
 [[capability]]
 id = "evidence_quality_trend"

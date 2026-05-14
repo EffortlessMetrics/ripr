@@ -97,6 +97,11 @@ Planned scope:
   text, and output-observer repair counts. This keeps the Lane 1 quality loop
   repo-local and advisory without changing PR/CI rendering, gates, scores,
   generated tests, provider calls, or mutation execution.
+- Lane 1 evidence audit now derives a `finding_alignment.summary` from
+  `evidence_record.canonical_item`, so the scorecard can report
+  raw-to-canonical, actionable, observed, static-limitation, and calibration
+  counts even when there is no separate top-level finding-alignment projection.
+  The reports remain repo-local and advisory.
 - Added the Lane 1 presentation-text consumer handoff. It tells downstream
   PR/CI, editor, agent, and report lanes to render canonical evidence items
   before raw findings, keep raw findings as supporting evidence, preserve the
