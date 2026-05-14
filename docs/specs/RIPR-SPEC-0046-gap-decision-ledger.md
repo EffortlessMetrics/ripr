@@ -448,8 +448,10 @@ Planned slices:
   predicate without changing default blocking. (done)
 - `comments/repair-card-projection` makes inline comments render only eligible
   repair cards. (done)
-- `editor/gap-work-packet-projection` makes editor and agent packets consume
-  the same gap decisions.
+- `editor/gap-work-packet-projection` starts by making `ripr agent packet
+  --gap-ledger ... --gap-id ...` consume explicit `GapRecord` inputs without
+  rerunning analysis. LSP diagnostic projection remains the follow-up in this
+  slice family.
 - `analysis/presentation-output-contract-gap-route` connects
   `RIPR-SPEC-0043` evidence to `MissingOutputContract` decisions.
 
