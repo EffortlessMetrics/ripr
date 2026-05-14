@@ -78,6 +78,12 @@ pub(crate) struct GapRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) repair_route: Option<GapRepairRoute>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) static_limit_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) static_limit_detail: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) static_limits: Vec<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) anchor: Option<GapAnchor>,
     #[serde(default)]
     pub(crate) evidence_ids: Vec<String>,
@@ -85,6 +91,8 @@ pub(crate) struct GapRecord {
     pub(crate) projection_eligibility: BTreeMap<String, ProjectionEligibility>,
     #[serde(default)]
     pub(crate) verification_commands: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) receipt_command: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) regeneration_commands: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

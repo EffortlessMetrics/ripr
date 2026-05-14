@@ -297,6 +297,12 @@ impl Backend {
                     ));
                 }
             }
+            if let Some(diagnostic) = overlapping.first() {
+                return Some(hover_with_snapshot_status(
+                    diagnostic_hover_response(diagnostic),
+                    snapshot,
+                ));
+            }
         }
 
         let Ok(last_diagnostics) = self.last_diagnostics.lock() else {

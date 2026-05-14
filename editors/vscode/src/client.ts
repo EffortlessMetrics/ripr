@@ -34,6 +34,8 @@ const RIPR_RELATED_TEST_LANGUAGE_BY_EXTENSION = new Map<string, 'rust' | 'typesc
 export interface RiprContextTarget {
   uri?: string;
   line?: number;
+  label?: string;
+  note?: string;
   finding_id?: string;
   probe_id?: string;
   seam_id?: string;
@@ -299,6 +301,23 @@ export class RiprClientController {
   }
 
   async copyContext(target?: RiprContextTarget): Promise<void> {
+    if (target?.label === 'static_limit_note' && typeof target.note === 'string') {
+      const note = target.note.trim();
+      if (!note) {
+        this.runtime.showInformationMessage('No ripr static-limit note is available for this diagnostic.');
+        return;
+      }
+      try {
+        await this.runtime.writeClipboard(note);
+        this.runtime.showInformationMessage('Copied ripr static-limit note to clipboard.');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.output.appendLine(`ripr copy static-limit note failed: ${message}`);
+        this.runtime.showWarningMessage('ripr could not copy the static-limit note. See ripr output for details.');
+      }
+      return;
+    }
+
     const targetUri = uriFromTarget(target);
     const editor = vscode.window.activeTextEditor;
     const documentUri = targetUri ?? editor?.document.uri;
@@ -1120,7 +1139,7 @@ const FIRST_USEFUL_ACTION_AUDIENCES = new Set([
 ]);
 
 interface AgentLoopCommandContract {
-  targetArtifact: string;
+  targetArtifact?: string;
   startsWith: string;
   includes: string[];
   requiresSeamId: boolean;
@@ -1156,6 +1175,16 @@ const AGENT_LOOP_COMMAND_CONTRACTS: Record<string, AgentLoopCommandContract> = {
     startsWith: 'ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id ',
     includes: [' --json --out target/ripr/agent/agent-receipt.json'],
     requiresSeamId: true
+  },
+  gap_verify: {
+    startsWith: 'ripr agent verify --root .',
+    includes: ['--json'],
+    requiresSeamId: false
+  },
+  gap_receipt: {
+    startsWith: 'ripr agent receipt --root .',
+    includes: ['--json'],
+    requiresSeamId: false
   }
 };
 
@@ -1176,8 +1205,9 @@ function validatedAgentLoopCommand(target?: RiprAgentLoopCommandTarget): string 
     return undefined;
   }
   if (
-    typeof target.target_artifact !== 'string' ||
-    target.target_artifact !== contract.targetArtifact
+    contract.targetArtifact !== undefined &&
+    (typeof target.target_artifact !== 'string' ||
+      target.target_artifact !== contract.targetArtifact)
   ) {
     return undefined;
   }
