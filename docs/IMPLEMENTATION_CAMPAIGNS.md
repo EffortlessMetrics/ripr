@@ -3130,9 +3130,9 @@ Work items:
 | `analysis/presentation-text-evidence-fields` | done | #935 reserved nullable evidence-record fields for the class. |
 | `analysis/presentation-text-canonical-grouping` | done | #943 groups supported presentation-text constant declaration plus adjacent literal raw findings into one visibility-unknown canonical limitation item in `ripr check --json`. |
 | `analysis/presentation-text-visibility` | done | #947 classifies fixture-backed help/report/internal output evidence as actionable, observed, internal-only, or visibility-unknown while keeping unsupported routes as limitations. |
-| `analysis/presentation-text-actionability` | current | Extends repair routes with concrete repair kind, target test type, and suggested assertion fields beyond the initial visibility states. |
-| `report/presentation-text-scorecard-trend-fields` | planned | Reports presentation-text quality counts and deltas. |
-| `docs/presentation-text-consumer-handoff` | planned | Documents downstream rendering contract without changing PR/CI or editor surfaces. |
+| `analysis/presentation-text-actionability` | done | #951 extended repair routes with concrete repair kind, target test type, and suggested assertion fields beyond the initial visibility states. |
+| `report/presentation-text-scorecard-trend-fields` | done | #957 reports presentation-text quality counts and deltas in scorecard and trend output. |
+| `docs/presentation-text-consumer-handoff` | current | Documents downstream rendering contract without changing PR/CI or editor surfaces. |
 
 Blocking conditions:
 
