@@ -42,6 +42,7 @@ jobs:
       - run: cargo xtask check-spec-format
       - run: cargo xtask check-fixture-contracts
       - run: cargo xtask check-generated
+      - run: cargo xtask check-badge-diff-policy
       - run: cargo xtask check-generated-clean
       - run: cargo xtask check-dependencies
       - run: cargo xtask check-process-policy

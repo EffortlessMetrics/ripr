@@ -91,6 +91,8 @@ Committed `badges/*.json` files are generated endpoint snapshots, not
 hand-authored copy. Ordinary PRs should not carry badge endpoint diffs; use
 `cargo xtask badges` or the Badge Endpoints workflow and let the generated
 `badge: refresh public endpoints` PR carry the endpoint update.
+`cargo xtask check-badge-diff-policy` enforces that ownership boundary while
+leaving README badge link/layout edits to normal docs review.
 
 ### `ripr+` fact source vs aggregation scope
 
@@ -707,6 +709,9 @@ into `badges/`. Commit the resulting diff.
 - Only the two `badges/*.json` files are part of the public endpoint
   surface — no reports, no markdown, no diff-scoped artifacts, no
   `target/` snapshots.
+- `cargo xtask check-badge-diff-policy` rejects `badges/*.json` diffs outside
+  an explicit badge refresh branch, title, or work item. README badge link and
+  layout edits remain source docs and can move through ordinary docs PRs.
 - The endpoint URL points at the `main` branch via
   `raw.githubusercontent.com`. Shields/CDN cache layers can take
   minutes to refresh after a `main` push.

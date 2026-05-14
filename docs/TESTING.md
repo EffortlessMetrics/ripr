@@ -51,6 +51,7 @@ cargo xtask check-output-contracts
 cargo xtask check-doc-index
 cargo xtask check-pr-shape
 cargo xtask check-generated
+cargo xtask check-badge-diff-policy
 cargo xtask check-generated-clean
 cargo xtask check-dependencies
 cargo xtask check-process-policy

@@ -860,6 +860,7 @@ fn precommit() -> Result<(), String> {
     check_campaign()?;
     check_pr_shape()?;
     check_generated()?;
+    check_badge_diff_policy()?;
     check_generated_clean()?;
     check_lint_policy()?;
     let body = precommit_report_body();
@@ -912,6 +913,7 @@ fn run_policy_checks() -> Result<(), String> {
     check_campaign()?;
     check_pr_shape()?;
     check_generated()?;
+    check_badge_diff_policy()?;
     check_generated_clean()?;
     check_dependencies()?;
     check_process_policy()?;
@@ -1919,7 +1921,7 @@ fn receipts_report_markdown(
 }
 
 fn precommit_report_body() -> String {
-    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-allow-attributes`\n- `cargo xtask check-local-context`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-droid-review-config`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-readme-state`\n- `cargo xtask markdown-links`\n- `cargo xtask check-campaign`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
+    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-allow-attributes`\n- `cargo xtask check-local-context`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-droid-review-config`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-readme-state`\n- `cargo xtask markdown-links`\n- `cargo xtask check-campaign`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-generated`\n- `cargo xtask check-badge-diff-policy`\n- `cargo xtask check-generated-clean`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
 }
 
 fn check_pr_report_body() -> String {
@@ -21203,7 +21205,7 @@ fn check_generated() -> Result<(), String> {
 
 fn check_generated_clean() -> Result<(), String> {
     let changes = collect_pr_changes()?;
-    let badge_refresh_context = generated_clean_badge_refresh_context();
+    let badge_refresh_context = badge_refresh_context();
     let violations = generated_clean_violations(&changes, badge_refresh_context);
 
     finish_policy_report(
@@ -21224,22 +21226,71 @@ fn check_generated_clean() -> Result<(), String> {
     )
 }
 
-fn generated_clean_badge_refresh_context() -> bool {
+fn check_badge_diff_policy() -> Result<(), String> {
+    check_badge_diff_policy_with_context(badge_refresh_context())
+}
+
+fn check_badge_diff_policy_with_context(badge_refresh_context: bool) -> Result<(), String> {
+    let changes = collect_pr_changes()?;
+    let violations = badge_diff_policy_violations(&changes, badge_refresh_context);
+
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "badge-diff-policy.md",
+            check: "check-badge-diff-policy",
+            why_it_matters: "Public RIPR badge endpoint counts are generated trust markers. Ordinary docs, README, and implementation PRs may edit badge links or layout, but must not hand-author badges/*.json endpoint numbers.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Remove badges/*.json diffs from ordinary PRs.",
+                "For repo-scoped badge count refreshes, use `cargo xtask badges` or the Badge Endpoints workflow.",
+                "Carry generated endpoint JSON only in an explicit `badge: refresh public endpoints` PR or automation/badge-endpoints branch.",
+            ],
+            rerun_command: "cargo xtask check-badge-diff-policy",
+            exception_template: None,
+        },
+        &violations,
+    )
+}
+
+fn badge_refresh_context() -> bool {
     let mut candidates = vec![git_value(&["rev-parse", "--abbrev-ref", "HEAD"])];
     for key in [
         "GITHUB_HEAD_REF",
         "GITHUB_REF_NAME",
         "GITHUB_REF",
         "BRANCH_NAME",
+        "GITHUB_PR_TITLE",
+        "PR_TITLE",
+        "PULL_REQUEST_TITLE",
+        "RIPR_PR_TITLE",
         "RIPR_WORK_ITEM",
     ] {
         if let Ok(value) = std::env::var(key) {
             candidates.push(value);
         }
     }
+    if let Some(title) = github_event_pull_request_title() {
+        candidates.push(title);
+    }
     candidates
         .iter()
         .any(|candidate| is_badge_refresh_context(candidate))
+}
+
+fn github_event_pull_request_title() -> Option<String> {
+    let event_path = std::env::var("GITHUB_EVENT_PATH").ok()?;
+    let text = read_text_lossy(&PathBuf::from(event_path)).ok()?;
+    github_event_pull_request_title_from_text(&text)
+}
+
+fn github_event_pull_request_title_from_text(text: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(text).ok()?;
+    value
+        .get("pull_request")
+        .and_then(|pull_request| pull_request.get("title"))
+        .or_else(|| value.get("issue").and_then(|issue| issue.get("title")))
+        .and_then(Value::as_str)
+        .map(str::to_string)
 }
 
 fn is_badge_refresh_context(value: &str) -> bool {
@@ -21255,16 +21306,10 @@ fn is_badge_refresh_context(value: &str) -> bool {
 }
 
 fn generated_clean_violations(changes: &[ChangedPath], badge_refresh_context: bool) -> Vec<String> {
-    let mut violations = Vec::new();
+    let mut violations = badge_diff_policy_violations(changes, badge_refresh_context);
     for change in changes {
         let path = change.path.trim_end_matches('/');
         if is_badge_endpoint_json(path) {
-            if !badge_refresh_context {
-                violations.push(format!(
-                    "generated badge endpoint changed in an ordinary PR: {}\n  rule: do not manually edit RIPR badge numbers; remove this diff or move it to the generated `badge: refresh public endpoints` PR",
-                    format_changed_path(change)
-                ));
-            }
             continue;
         }
 
@@ -21279,6 +21324,23 @@ fn generated_clean_violations(changes: &[ChangedPath], badge_refresh_context: bo
         if is_sample_target_artifact(path) && !is_deletion_only(change) {
             violations.push(format!(
                 "sample workspace build output is present in the PR diff: {}\n  rule: remove crates/ripr/examples/sample/target residue before review",
+                format_changed_path(change)
+            ));
+        }
+    }
+    violations
+}
+
+fn badge_diff_policy_violations(
+    changes: &[ChangedPath],
+    badge_refresh_context: bool,
+) -> Vec<String> {
+    let mut violations = Vec::new();
+    for change in changes {
+        let path = change.path.trim_end_matches('/');
+        if is_badge_endpoint_json(path) && !badge_refresh_context {
+            violations.push(format!(
+                "generated badge endpoint changed in an ordinary PR: {}\n  rule: do not manually edit RIPR badge numbers; remove this diff or move it to the generated `badge: refresh public endpoints` PR",
                 format_changed_path(change)
             ));
         }
@@ -27717,25 +27779,26 @@ mod tests {
         ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode, SarifPolicyResult,
         SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass,
         badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
-        badge_artifacts_summary_markdown, build_lsp_cockpit_report,
+        badge_artifacts_summary_markdown, badge_diff_policy_violations, build_lsp_cockpit_report,
         build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
-        build_targeted_test_outcome_report, check_allow_attributes, check_droid_review_config,
-        check_executable_files, check_file_policy, check_local_context, check_network_policy,
-        check_no_panic_family, check_process_policy, check_static_language, check_workflows,
-        ci_full_evidence_gates, collect_panic_findings, collect_semantic_panic_findings,
-        critic_findings, dogfood_class_counts, dogfood_first_action_scenarios,
-        dogfood_gate_adoption_scenarios, dogfood_generated_ci_cockpit_run_from_workflow,
-        dogfood_language_preview_run, dogfood_language_preview_scenarios,
-        dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
-        dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
-        dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
-        dogfood_report_packet_index_scenarios, evaluate_semantic_no_panic_policy,
-        evidence_quality_scorecard_from_values, evidence_quality_scorecard_json,
-        evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
-        evidence_quality_trend_json, evidence_quality_trend_markdown,
-        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
-        extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns,
-        generated_clean_violations, glob_matches, golden_changes_without_blessing,
+        build_targeted_test_outcome_report, check_allow_attributes,
+        check_badge_diff_policy_with_context, check_droid_review_config, check_executable_files,
+        check_file_policy, check_local_context, check_network_policy, check_no_panic_family,
+        check_process_policy, check_static_language, check_workflows, ci_full_evidence_gates,
+        collect_panic_findings, collect_semantic_panic_findings, critic_findings,
+        dogfood_class_counts, dogfood_first_action_scenarios, dogfood_gate_adoption_scenarios,
+        dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
+        dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
+        dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
+        dogfood_pr_review_front_panel_scenarios, dogfood_report_json, dogfood_report_markdown,
+        dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
+        evaluate_semantic_no_panic_policy, evidence_quality_scorecard_from_values,
+        evidence_quality_scorecard_json, evidence_quality_scorecard_markdown,
+        evidence_quality_trend_from_values, evidence_quality_trend_json,
+        evidence_quality_trend_markdown, extract_json_object_usize_map, extract_json_string,
+        extract_json_warnings, extract_workflow_run_blocks, first_line_difference,
+        forbidden_panic_patterns, generated_clean_violations,
+        github_event_pull_request_title_from_text, glob_matches, golden_changes_without_blessing,
         golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
         install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
         is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
@@ -36944,6 +37007,82 @@ jobs:
     }
 
     #[test]
+    fn badge_diff_policy_rejects_badge_endpoint_diff_outside_refresh_context() {
+        let changes = vec![changed_path("badges/ripr-plus.json", &["M"])];
+        let violations = badge_diff_policy_violations(&changes, false);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("generated badge endpoint changed"));
+        assert!(violations[0].contains("badge: refresh public endpoints"));
+    }
+
+    #[test]
+    fn badge_diff_policy_allows_badge_endpoint_diff_in_refresh_context() {
+        let changes = vec![changed_path("badges/ripr.json", &["M"])];
+        let violations = badge_diff_policy_violations(&changes, true);
+        assert!(
+            violations.is_empty(),
+            "unexpected violations: {violations:?}"
+        );
+    }
+
+    #[test]
+    fn badge_diff_policy_allows_readme_badge_layout_without_endpoint_diff() {
+        let changes = vec![changed_path("README.md", &["M"])];
+        let violations = badge_diff_policy_violations(&changes, false);
+        assert!(
+            violations.is_empty(),
+            "unexpected violations: {violations:?}"
+        );
+    }
+
+    #[test]
+    fn badge_diff_policy_rejects_badge_endpoint_even_with_readme_change() {
+        let changes = vec![
+            changed_path("README.md", &["M"]),
+            changed_path("badges/ripr.json", &["M"]),
+        ];
+        let violations = badge_diff_policy_violations(&changes, false);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("badges/ripr.json"));
+    }
+
+    #[test]
+    fn check_badge_diff_policy_rejects_endpoint_diff_from_git_status() -> Result<(), String> {
+        with_temp_cwd("badge-diff-policy-rejects", |root| {
+            run("git", &["init"])?;
+            std::fs::create_dir_all(root.join("badges")).map_err(|err| err.to_string())?;
+            std::fs::write(root.join("badges/ripr.json"), "{\"message\":\"1\"}\n")
+                .map_err(|err| err.to_string())?;
+            run("git", &["add", "-N", "badges/ripr.json"])?;
+
+            let message = check_badge_diff_policy_with_context(false)
+                .expect_err("badge endpoint diff should fail");
+            assert!(message.contains("generated badge endpoint changed"));
+            assert!(message.contains("badges/ripr.json"));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn check_badge_diff_policy_allows_readme_only_git_status() -> Result<(), String> {
+        with_temp_cwd("badge-diff-policy-readme", |root| {
+            run("git", &["init"])?;
+            std::fs::write(root.join("README.md"), "[![ripr](badge)](link)\n")
+                .map_err(|err| err.to_string())?;
+
+            check_badge_diff_policy_with_context(false)
+        })
+    }
+
+    #[test]
+    fn github_event_title_reader_accepts_pull_request_title() {
+        let title = github_event_pull_request_title_from_text(
+            r#"{"pull_request":{"title":"badge: refresh public endpoints"}}"#,
+        );
+        assert_eq!(title.as_deref(), Some("badge: refresh public endpoints"));
+    }
+
+    #[test]
     fn generated_clean_allows_badge_endpoint_diff_in_refresh_context() {
         let changes = vec![
             changed_path("badges/ripr.json", &["M"]),
@@ -36956,6 +37095,7 @@ jobs:
         );
         assert!(is_badge_refresh_context("automation/badge-endpoints"));
         assert!(is_badge_refresh_context("badge: refresh public endpoints"));
+        assert!(is_badge_refresh_context("refs/heads/badge-refresh-counts"));
     }
 
     #[test]
@@ -37008,6 +37148,10 @@ jobs:
         assert_eq!(
             XtaskCommand::parse(["check-no-panic-family".to_string(), "--propose".to_string(),]),
             XtaskCommand::CheckNoPanicFamily(vec!["--propose".to_string()])
+        );
+        assert_eq!(
+            XtaskCommand::parse(["check-badge-diff-policy".to_string()]),
+            XtaskCommand::CheckBadgeDiffPolicy
         );
     }
 
@@ -37301,6 +37445,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(commands.contains(&"mutation-calibration [root] --mutants-json <path>"));
         assert!(commands.contains(&"sarif-policy --current <path> [--baseline <path>]"));
         assert!(commands.contains(&"badges [--check]"));
+        assert!(commands.contains(&"check-badge-diff-policy"));
         assert!(commands.contains(&"check-droid-review-config"));
         assert!(commands.contains(&"check-ci-lane-whitelist"));
         assert!(commands.contains(&"vscode-compile"));
