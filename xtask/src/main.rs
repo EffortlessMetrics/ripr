@@ -18,7 +18,9 @@ mod verification_contracts;
 
 #[cfg(test)]
 use command::unknown_command_message;
-use command::{XtaskCommand, known_command_root, known_commands};
+use command::{
+    CommandCatalogEntry, XtaskCommand, command_catalog, known_command_root, known_commands,
+};
 use policy::{
     check_allow_attributes, check_ci_lane_whitelist, check_doc_roles, check_droid_review_config,
     check_executable_files, check_file_policy, check_local_context, check_network_policy,
@@ -1617,6 +1619,78 @@ fn fix_pr() -> Result<(), String> {
     pr_summary()?;
     let body = "# ripr fix-pr report\n\nStatus: pass\n\nActions:\n\n- Ran `cargo xtask shape`.\n- Ran `cargo xtask pr-summary`.\n\nReports:\n\n- `target/ripr/reports/shape.md`\n- `target/ripr/reports/pr-summary.md`\n\nNext commands:\n\n```bash\ncargo xtask check-pr\n```\n";
     write_report("fix-pr.md", body)
+}
+
+fn commands_report() -> Result<(), String> {
+    let entries = command_catalog();
+    write_report("commands.md", &commands_report_markdown(&entries))?;
+    write_report("commands.json", &commands_report_json(&entries))
+}
+
+fn commands_report_markdown(entries: &[CommandCatalogEntry]) -> String {
+    let mut body = "# ripr command mutability catalog\n\n".to_string();
+    body.push_str("Status: pass\n");
+    body.push_str("Mode: advisory\n\n");
+    body.push_str("Purpose:\n\n");
+    body.push_str(
+        "- distinguish commands that may edit the worktree from checks and generated reports\n",
+    );
+    body.push_str("- keep generated evidence separate from authored source-of-truth\n");
+    body.push_str("- make judgment-required operations visible before agents run them\n\n");
+    body.push_str("Boundaries:\n\n");
+    body.push_str("- `check-pr` is non-mutating for tracked files\n");
+    body.push_str("- `target/ripr/**` outputs are generated evidence\n");
+    body.push_str("- judgment-required commands need explicit review before use\n\n");
+    body.push_str("| Command | Mutability | Writes | Judgment required | Notes |\n");
+    body.push_str("| --- | --- | --- | --- | --- |\n");
+    for entry in entries {
+        body.push_str(&format!(
+            "| `{}` | `{}` | {} | {} | {} |\n",
+            markdown_cell(entry.command),
+            markdown_cell(entry.mutability),
+            markdown_cell(entry.writes),
+            if entry.judgment_required { "yes" } else { "no" },
+            markdown_cell(entry.notes)
+        ));
+    }
+    body
+}
+
+fn commands_report_json(entries: &[CommandCatalogEntry]) -> String {
+    let mut body = "{\n".to_string();
+    body.push_str("  \"schema_version\": \"0.1\",\n");
+    body.push_str("  \"mode\": \"advisory\",\n");
+    body.push_str("  \"commands\": [\n");
+    for (index, entry) in entries.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!(
+            "      \"command\": \"{}\",\n",
+            json_escape(entry.command)
+        ));
+        body.push_str(&format!(
+            "      \"mutability\": \"{}\",\n",
+            json_escape(entry.mutability)
+        ));
+        body.push_str(&format!(
+            "      \"writes\": \"{}\",\n",
+            json_escape(entry.writes)
+        ));
+        body.push_str(&format!(
+            "      \"judgment_required\": {},\n",
+            entry.judgment_required
+        ));
+        body.push_str(&format!(
+            "      \"notes\": \"{}\"\n",
+            json_escape(entry.notes)
+        ));
+        body.push_str("    }");
+    }
+    body.push_str("\n  ]\n");
+    body.push_str("}\n");
+    body
 }
 
 fn suggested_fixes() -> Result<(), String> {
@@ -31221,7 +31295,8 @@ mod tests {
         check_badge_diff_policy_with_context, check_droid_review_config, check_executable_files,
         check_file_policy, check_local_context, check_network_policy, check_no_panic_family,
         check_process_policy, check_static_language, check_workflows, ci_full_evidence_gates,
-        collect_panic_findings, collect_semantic_panic_findings, critic_findings, days_from_civil,
+        collect_panic_findings, collect_semantic_panic_findings, command_catalog,
+        commands_report_json, commands_report_markdown, critic_findings, days_from_civil,
         dogfood_class_counts, dogfood_first_action_scenarios, dogfood_gate_adoption_scenarios,
         dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
         dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
@@ -42038,8 +42113,87 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn command_catalog_covers_help_catalog_roots() {
+        let catalog = command_catalog();
+        let catalog_roots = catalog
+            .iter()
+            .map(|entry| {
+                entry
+                    .command
+                    .split_once(' ')
+                    .map_or(entry.command, |(root, _)| root)
+            })
+            .collect::<BTreeSet<_>>();
+
+        for command in known_commands() {
+            let root = command.split_once(' ').map_or(command, |(root, _)| root);
+            assert!(
+                catalog_roots.contains(root),
+                "command catalog missing help root `{root}`"
+            );
+        }
+    }
+
+    #[test]
+    fn command_catalog_has_no_duplicate_entries() {
+        let catalog = command_catalog();
+        let unique = catalog
+            .iter()
+            .map(|entry| entry.command)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(catalog.len(), unique.len());
+    }
+
+    #[test]
+    fn command_catalog_classifies_core_workflow_commands() -> Result<(), String> {
+        let catalog = command_catalog();
+        let find = |command: &str| {
+            catalog
+                .iter()
+                .find(|entry| entry.command == command)
+                .ok_or_else(|| format!("missing command catalog entry `{command}`"))
+        };
+
+        assert_eq!(find("shape")?.mutability, "mutating");
+        assert_eq!(find("check-pr")?.mutability, "non_mutating_check");
+        assert_eq!(find("badges")?.mutability, "mutating");
+        assert_eq!(find("badges --check")?.mutability, "non_mutating_check");
+        assert!(find("goldens bless <name> --reason <reason>")?.judgment_required);
+        assert_eq!(
+            find("release-upload-assets --version <version>")?.mutability,
+            "external_state_mutating"
+        );
+        assert!(find("release-upload-assets --version <version>")?.judgment_required);
+        Ok(())
+    }
+
+    #[test]
+    fn commands_report_json_and_markdown_are_structured() -> Result<(), String> {
+        let catalog = command_catalog();
+        let json = commands_report_json(&catalog);
+        let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["mode"], "advisory");
+        assert!(
+            value["commands"]
+                .as_array()
+                .ok_or("commands must be an array")?
+                .iter()
+                .any(|entry| entry["command"] == "check-pr"
+                    && entry["mutability"] == "non_mutating_check")
+        );
+
+        let markdown = commands_report_markdown(&catalog);
+        assert!(markdown.contains("# ripr command mutability catalog"));
+        assert!(markdown.contains("Status: pass"));
+        assert!(markdown.contains("| `check-pr` | `non_mutating_check` |"));
+        Ok(())
+    }
+
+    #[test]
     fn known_commands_include_current_report_and_policy_commands() {
         let commands = known_commands();
+        assert!(commands.contains(&"commands"));
         assert!(commands.contains(&"install-hooks"));
         assert!(commands.contains(&"repo-seam-inventory"));
         assert!(commands.contains(&"repo-exposure-report"));
