@@ -285,16 +285,20 @@ Planned Lane 1 slices:
   guards.
 - `analysis/presentation-text-evidence-fields` adds additive evidence-record
   fields.
-- `analysis/presentation-text-visibility` classifies supported sinks and
-  limitations.
 - `analysis/presentation-text-canonical-grouping` groups declaration and
   literal raw seams. The initial implementation recognizes supported
   presentation-like `&str` constants, groups the declaration and adjacent
   literal raw findings under `declaration_and_literal_same_text_constant`, and
   emits visibility-unknown limitation context without claiming output-observer
   work.
+- `analysis/presentation-text-visibility` classifies supported sinks and
+  limitations. The initial implementation recognizes conservative help/report
+  file plus constant-name sink patterns, supported snapshot/golden/help/report
+  observer tests, and internal proof/policy/config labels while leaving
+  unsupported routes as visibility-unknown limitations.
 - `analysis/presentation-text-actionability` classifies action/no-action and
-  observer-aware related-test ranking.
+  richer observer-aware related-test ranking beyond the initial visibility
+  states.
 - `report/presentation-text-scorecard-trend-fields` reports quality counts and
   deltas.
 - `docs/presentation-text-consumer-handoff` documents the downstream evidence

@@ -76,6 +76,11 @@ Planned scope:
   can be built with `--no-default-features --features lang-rust`, and repo
   config now fails closed when it enables a language missing from the current
   binary.
+- Presentation-text finding alignment now classifies fixture-backed help/report
+  output text, supported golden/snapshot observers, internal-only labels, and
+  visibility-unknown routes in `ripr check --json` canonical items while
+  preserving raw findings and avoiding PR/CI rendering, gates, scores,
+  generated tests, provider calls, or mutation execution.
 - `ripr --help` and every `ripr <subcommand> --help` now lead with an
   action-oriented one-liner before the `Usage:` block (e.g.,
   `ripr pilot --help` opens with "Find the top test gap in this repo and

@@ -101,7 +101,7 @@ repeated only as supporting evidence for the canonical item.
         "confidence": {
           "basis": "fixture_backed",
           "notes": [
-            "Visibility-unknown presentation text is benchmark-pinned; no user repair is claimed without an output sink."
+            "Visibility-unknown presentation text is benchmark-pinned; no user test debt is claimed without an output sink."
           ]
         },
         "raw_findings": [
@@ -173,16 +173,18 @@ Field contract:
 - `finding_alignment.items[].gap_state` - one of `actionable`,
   `already_observed`, `internal_only`, `static_limitation`, or `unknown`.
 - `finding_alignment.items[].actionability` - class-scoped action label such
-  as `inspect_visibility`. Presentation text does not produce user repair work
-  from text alone.
+  as `inspect_visibility`, `add_output_observer`, `already_observed`, or
+  `no_action`. Presentation text does not produce user repair work from text
+  alone.
 - `finding_alignment.items[].static_limitations[]` - analyzer limitation
   categories and repair routes. `presentation_text_visibility_unknown` means
   RIPR could not safely trace the text to or away from a user-visible output
   sink.
 - `finding_alignment.items[].presentation_text` - class-specific visibility,
   observer, actionability, source-kind, grouping reason, and recommended
-  observer context. The first implemented state is visibility unknown for
-  fixture-backed declaration-plus-literal grouping.
+  observer context. Implemented fixture-backed states include visibility
+  unknown, user-visible unobserved help/report text, user-visible observed
+  report text, and internal-only labels.
 
 ## Finding
 

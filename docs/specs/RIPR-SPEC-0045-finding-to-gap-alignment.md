@@ -407,7 +407,10 @@ Planned Lane 1 slices:
   findings into one `finding_alignment.items[]` canonical limitation item in
   `ripr check --json`, preserving the original `findings[]` array.
 - `analysis/presentation-text-visibility-observers` supplies class-specific
-  state and actionability.
+  state and actionability. The first implementation distinguishes
+  fixture-backed visible unobserved help/report text, visible observed
+  golden/snapshot-backed text, internal-only labels, and visibility-unknown
+  limitations without treating text alone as user test debt.
 - `analysis/finding-alignment-repair-routes` adds concrete repairs and verify
   commands.
 - `report/finding-alignment-quality` adds scorecard and trend metrics.
