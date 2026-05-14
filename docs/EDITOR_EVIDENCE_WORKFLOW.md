@@ -1,7 +1,10 @@
 # Editor Evidence Workflow
 
 Use this workflow when you want RIPR's saved-workspace editor evidence to guide
-one focused test. The editor path keeps the loop local:
+one focused test. For the newer gap-state and repair-packet cockpit that
+projects typed gap artifacts, see
+[Editor gap cockpit workflow](EDITOR_GAP_COCKPIT_WORKFLOW.md). The saved
+workspace editor path keeps the loop local:
 
 ```text
 diagnostic -> evidence hover -> related test or context packet
