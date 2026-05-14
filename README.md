@@ -394,6 +394,7 @@ cargo xtask dogfood
 cargo xtask reports index
 cargo xtask receipts
 cargo xtask receipts check
+cargo xtask suggested-fixes
 cargo xtask check-allow-attributes
 cargo xtask check-local-context
 cargo xtask metrics

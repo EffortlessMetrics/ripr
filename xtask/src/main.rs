@@ -974,6 +974,7 @@ fn check_pr() -> Result<(), String> {
     pr_summary()?;
     let body = check_pr_report_body();
     write_report("check-pr.md", &body)?;
+    suggested_fixes()?;
     receipts_write()?;
     pr_summary()?;
     reports_index()
@@ -1616,6 +1617,103 @@ fn fix_pr() -> Result<(), String> {
     pr_summary()?;
     let body = "# ripr fix-pr report\n\nStatus: pass\n\nActions:\n\n- Ran `cargo xtask shape`.\n- Ran `cargo xtask pr-summary`.\n\nReports:\n\n- `target/ripr/reports/shape.md`\n- `target/ripr/reports/pr-summary.md`\n\nNext commands:\n\n```bash\ncargo xtask check-pr\n```\n";
     write_report("fix-pr.md", body)
+}
+
+fn suggested_fixes() -> Result<(), String> {
+    ensure_reports_dir()?;
+    let (patch, files) = suggested_fixes_patch()?;
+    write_report("suggested-fixes.patch", &patch)?;
+    write_report(
+        "suggested-fixes.md",
+        &suggested_fixes_report_body(&files, patch.is_empty()),
+    )
+}
+
+fn suggested_fixes_patch() -> Result<(String, Vec<String>), String> {
+    let mut patch = String::new();
+    let mut files = Vec::new();
+    for path in deterministic_suggested_fix_files()? {
+        let original = read_text_lossy(&path)?;
+        let sorted = sorted_allowlist_content(&original);
+        if sorted == original {
+            continue;
+        }
+        append_whole_file_patch(&mut patch, &path, &original, &sorted);
+        files.push(normalize_path(&path));
+    }
+    Ok((patch, files))
+}
+
+fn deterministic_suggested_fix_files() -> Result<Vec<PathBuf>, String> {
+    let mut paths = Vec::new();
+    for root in [Path::new(".ripr"), Path::new("policy")] {
+        if !root.exists() {
+            continue;
+        }
+        for path in collect_files(root)? {
+            if path.extension().and_then(|value| value.to_str()) == Some("txt") {
+                paths.push(path);
+            }
+        }
+    }
+    paths.sort_by_key(|path| normalize_path(path));
+    Ok(paths)
+}
+
+fn append_whole_file_patch(body: &mut String, path: &Path, before: &str, after: &str) {
+    let normalized = normalize_path(path);
+    let before_count = patch_line_count(before);
+    let after_count = patch_line_count(after);
+    body.push_str(&format!("diff --git a/{normalized} b/{normalized}\n"));
+    body.push_str(&format!("--- a/{normalized}\n"));
+    body.push_str(&format!("+++ b/{normalized}\n"));
+    body.push_str(&format!(
+        "@@ {} {} @@\n",
+        patch_hunk_range(false, before_count),
+        patch_hunk_range(true, after_count)
+    ));
+    for line in before.lines() {
+        body.push('-');
+        body.push_str(line);
+        body.push('\n');
+    }
+    for line in after.lines() {
+        body.push('+');
+        body.push_str(line);
+        body.push('\n');
+    }
+}
+
+fn patch_line_count(text: &str) -> usize {
+    text.lines().count()
+}
+
+fn patch_hunk_range(addition: bool, count: usize) -> String {
+    let sign = if addition { '+' } else { '-' };
+    if count == 0 {
+        format!("{sign}0,0")
+    } else {
+        format!("{sign}1,{count}")
+    }
+}
+
+fn suggested_fixes_report_body(files: &[String], patch_empty: bool) -> String {
+    let mut body = "# ripr suggested fixes\n\nStatus: pass\n\n".to_string();
+    body.push_str("Patch: `target/ripr/reports/suggested-fixes.patch`\n\n");
+    body.push_str("Scope:\n\n");
+    body.push_str("- deterministic allowlist ordering under `.ripr/*.txt` and `policy/*.txt`\n");
+    body.push_str("- no badge value edits\n");
+    body.push_str("- no golden blessings\n");
+    body.push_str("- no baselines, suppressions, dependency exceptions, or schema changes\n\n");
+    if patch_empty {
+        body.push_str("No deterministic patch suggestions were found.\n");
+    } else {
+        body.push_str("Suggested patch files:\n\n");
+        for file in files {
+            body.push_str(&format!("- `{file}`\n"));
+        }
+    }
+    body
 }
 
 pub(crate) fn pr_summary_impl() -> Result<(), String> {
@@ -30831,8 +30929,8 @@ mod tests {
         run_ci_full_evidence_gates, sarif_policy_report_json, sarif_policy_report_markdown,
         semantic_selector_matches, should_scan_static_language_path, should_skip_path,
         sorted_allowlist_content, spec_id_from_path, spec_ids_in_text, spec_numbering_violations,
-        specs, static_language_allowlist_covers, status_for_report, suspicious_runtime_file_names,
-        targeted_test_outcome, targeted_test_outcome_report_json,
+        specs, static_language_allowlist_covers, status_for_report, suggested_fixes_patch,
+        suspicious_runtime_file_names, targeted_test_outcome, targeted_test_outcome_report_json,
         targeted_test_outcome_report_markdown, test_efficiency_entry, test_efficiency_report_json,
         test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
         test_oracle_tests_in_text, unknown_command_message, validate_local_context_allowlist,
@@ -35008,6 +35106,54 @@ jobs:
             sorted,
             "# Header\n# More\n\na|kind|owner|reason\nz|kind|owner|reason\n"
         );
+    }
+
+    #[test]
+    fn suggested_fixes_patch_sorts_allowlists_only() -> Result<(), String> {
+        with_temp_cwd("suggested-fixes-allowlist", |root| {
+            write(
+                &root.join(".ripr/generated.txt"),
+                "# header\n\nzeta\nalpha\n",
+            );
+            write(&root.join("policy/process.txt"), "gamma\nbeta\n");
+            write(
+                &root.join("badges/ripr.json"),
+                r#"{"schemaVersion":1,"label":"ripr","message":"999","color":"red"}"#,
+            );
+
+            let (patch, files) = suggested_fixes_patch()?;
+
+            assert_eq!(
+                files,
+                vec![
+                    ".ripr/generated.txt".to_string(),
+                    "policy/process.txt".to_string()
+                ]
+            );
+            assert!(patch.contains("diff --git a/.ripr/generated.txt b/.ripr/generated.txt"));
+            assert!(patch.contains("+alpha"));
+            assert!(patch.contains("+zeta"));
+            assert!(patch.contains("diff --git a/policy/process.txt b/policy/process.txt"));
+            assert!(!patch.contains("badges/ripr.json"));
+            assert!(!patch.contains("999"));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn suggested_fixes_patch_is_empty_when_allowlists_are_sorted() -> Result<(), String> {
+        with_temp_cwd("suggested-fixes-empty", |root| {
+            write(
+                &root.join(".ripr/generated.txt"),
+                "# header\n\nalpha\nbeta\n",
+            );
+
+            let (patch, files) = suggested_fixes_patch()?;
+
+            assert!(patch.is_empty());
+            assert!(files.is_empty());
+            Ok(())
+        })
     }
 
     #[test]
