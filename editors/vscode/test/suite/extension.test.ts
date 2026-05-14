@@ -10,6 +10,7 @@ import {
 
 suite('Extension Smoke', () => {
   suiteSetup(async () => {
+    await cleanupEditorGapSmokeFiles();
     await configureTestServer();
     await activateExtension();
   });
@@ -194,6 +195,125 @@ suite('Extension Smoke', () => {
     assert.strictEqual(activeEditor.selection.active.line, 3);
   });
 
+  test('real server surfaces preview gap diagnostic, hover, status, and bounded actions', async function (this: Mocha.Context) {
+    this.timeout(75000);
+    if (!process.env.RIPR_TEST_SERVER_PATH) {
+      this.skip();
+    }
+
+    await cleanupEditorGapSmokeFiles();
+    await writeEditorGapSmokeFiles();
+    const uri = workspaceFileUri('src/pricing.ts');
+    try {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      const document = await vscode.workspace.openTextDocument(uri);
+      assert.strictEqual(document.languageId, 'typescript');
+      await vscode.window.showTextDocument(document);
+      await vscode.commands.executeCommand('ripr.restartServer');
+
+      const diagnostic = await waitForDiagnostic(
+        uri,
+        (entry) => entry.source === 'ripr' && diagnosticCode(entry) === 'ripr-gap-MissingBoundaryAssertion',
+        60000
+      );
+      assert.ok(diagnostic.message.includes('preview advisory evidence'), diagnostic.message);
+
+      const hoverPosition = new vscode.Position(
+        diagnostic.range.start.line,
+        diagnostic.range.start.character + 1
+      );
+      const hoverText = await waitForHoverText(uri, hoverPosition, (text) =>
+        text.includes('**ripr** gap decision') &&
+        text.includes('- Language: `typescript`') &&
+        text.includes('- Status: `preview`') &&
+        text.includes('Static limit: missing_import_graph') &&
+        text.includes('Action: advisory only') &&
+        text.includes('## Repair route')
+      );
+      assert.ok(
+        hoverText.indexOf('Static limit: missing_import_graph') < hoverText.indexOf('Action: advisory only'),
+        hoverText
+      );
+      assert.ok(
+        hoverText.indexOf('Static limit: missing_import_graph') < hoverText.indexOf('## Repair route'),
+        hoverText
+      );
+
+      const actions = await vscode.commands.executeCommand<Array<vscode.CodeAction | vscode.Command>>(
+        'vscode.executeCodeActionProvider',
+        uri,
+        diagnostic.range
+      );
+      const repairPacketCommand = assertCommandAction(
+        actions,
+        'Inspect gap: copy repair packet',
+        'ripr.copyContext'
+      );
+      const relatedTestCommand = assertCommandAction(
+        actions,
+        'Write targeted test: open best related test',
+        'ripr.openRelatedTest'
+      );
+      const verifyCommand = assertCommandAction(
+        actions,
+        'Verify after test: copy verify command',
+        'ripr.copyAgentVerifyCommand',
+        'ripr agent verify'
+      );
+      const receiptCommand = assertCommandAction(
+        actions,
+        'Review result: copy receipt command',
+        'ripr.copyAgentReceiptCommand',
+        'ripr agent receipt'
+      );
+      const staticLimitCommand = assertCommandAction(
+        actions,
+        'Inspect gap: copy static-limit note',
+        'ripr.copyContext'
+      );
+
+      await vscode.commands.executeCommand(repairPacketCommand.command, ...(repairPacketCommand.arguments ?? []));
+      const repairPacketText = await waitForClipboardText((text) =>
+        text.includes('"source": "gap_decision_ledger"') &&
+        text.includes('"canonical_gap_id": "gap:typescript:pricing:threshold-boundary"')
+      );
+      const repairPacket = JSON.parse(repairPacketText) as {
+        source?: string;
+        packets?: Array<{ language?: string; language_status?: string; verify_command?: string }>;
+      };
+      assert.strictEqual(repairPacket.source, 'gap_decision_ledger');
+      assert.strictEqual(repairPacket.packets?.[0]?.language, 'typescript');
+      assert.strictEqual(repairPacket.packets?.[0]?.language_status, 'preview');
+      assert.strictEqual(repairPacket.packets?.[0]?.verify_command, 'ripr agent verify --root . --json');
+
+      await vscode.commands.executeCommand(staticLimitCommand.command, ...(staticLimitCommand.arguments ?? []));
+      const staticLimitText = await waitForClipboardText((text) =>
+        text.includes('Static limit: missing_import_graph')
+      );
+      assert.ok(staticLimitText.includes('TypeScript preview smoke uses syntax-first evidence.'), staticLimitText);
+
+      await vscode.commands.executeCommand(verifyCommand.command, ...(verifyCommand.arguments ?? []));
+      const verifyText = await waitForClipboardText((text) => text.includes('ripr agent verify --root . --json'));
+      assert.strictEqual(verifyText, 'ripr agent verify --root . --json');
+
+      await vscode.commands.executeCommand(receiptCommand.command, ...(receiptCommand.arguments ?? []));
+      const receiptText = await waitForClipboardText((text) => text.includes('ripr agent receipt --root . --json'));
+      assert.strictEqual(receiptText, 'ripr agent receipt --root . --json');
+
+      await vscode.commands.executeCommand(relatedTestCommand.command, ...(relatedTestCommand.arguments ?? []));
+      const activeEditor = vscode.window.activeTextEditor;
+      assert.ok(activeEditor, 'expected related TypeScript test to open an editor');
+      assert.ok(
+        activeEditor.document.uri.fsPath.replace(/\\/g, '/').endsWith('/tests/pricing.test.ts'),
+        activeEditor.document.uri.fsPath
+      );
+      assert.strictEqual(activeEditor.selection.active.line, 3);
+    } finally {
+      await cleanupEditorGapSmokeFiles();
+      await vscode.commands.executeCommand('ripr.restartServer');
+    }
+  });
+
   test('restartServer command is callable', async () => {
     // The command will fail because no ripr server is available in the
     // test environment, but it should not crash the extension.
@@ -253,6 +373,25 @@ suite('Extension Smoke', () => {
       assert.deepStrictEqual(JSON.parse(context.clipboardWrites[0]), {
         seam_packets: [{ seam_id: 'abc123' }]
       });
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('copyContext copies static-limit notes without LSP fallback', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+      await context.controller.copyContext({
+        label: 'static_limit_note',
+        note: 'Static limit: missing_import_graph\nBoundary: static evidence only; advisory action.'
+      });
+
+      assert.deepStrictEqual(context.client.requests, []);
+      assert.strictEqual(
+        context.clipboardWrites[0],
+        'Static limit: missing_import_graph\nBoundary: static evidence only; advisory action.'
+      );
     } finally {
       await context.dispose();
     }
@@ -881,6 +1020,14 @@ suite('Extension Smoke', () => {
           `ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id ${seamId} --json --out target/ripr/agent/agent-receipt.json`,
           'target/ripr/agent/agent-receipt.json',
           { seamId }
+        ),
+        agentLoopCommandTarget(
+          'gap_verify',
+          'ripr agent verify --root . --json'
+        ),
+        agentLoopCommandTarget(
+          'gap_receipt',
+          'ripr agent receipt --root . --json'
         )
       ];
 
@@ -1066,7 +1213,7 @@ interface ControllerTestOptions {
 function agentLoopCommandTarget(
   label: string,
   command: string,
-  targetArtifact: string,
+  targetArtifact?: string,
   options: { seamId?: string; base?: string; mode?: string } = {}
 ): RiprAgentLoopCommandTarget {
   return {
@@ -1277,6 +1424,127 @@ function workspaceFileUri(relativePath: string): vscode.Uri {
   const folder = vscode.workspace.workspaceFolders?.[0];
   assert.ok(folder, 'test workspace should be open');
   return vscode.Uri.joinPath(folder.uri, ...relativePath.split('/'));
+}
+
+function workspaceFilePath(relativePath: string): string {
+  return workspaceFileUri(relativePath).fsPath;
+}
+
+async function writeWorkspaceFile(relativePath: string, contents: string): Promise<void> {
+  const filePath = workspaceFilePath(relativePath);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, contents, 'utf8');
+}
+
+async function removeWorkspacePath(relativePath: string): Promise<void> {
+  await fs.rm(workspaceFilePath(relativePath), { force: true, recursive: true });
+}
+
+async function cleanupEditorGapSmokeFiles(): Promise<void> {
+  await Promise.all([
+    removeWorkspacePath('ripr.toml'),
+    removeWorkspacePath('src/pricing.ts'),
+    removeWorkspacePath('tests/pricing.test.ts'),
+    removeWorkspacePath('target/ripr/reports/gap-decision-ledger.json')
+  ]);
+}
+
+async function writeEditorGapSmokeFiles(): Promise<void> {
+  await writeWorkspaceFile(
+    'ripr.toml',
+    [
+      '[languages]',
+      'enabled = ["rust", "typescript"]',
+      ''
+    ].join('\n')
+  );
+  await writeWorkspaceFile(
+    'src/pricing.ts',
+    [
+      'export function discountedTotal(amount: number, threshold: number): number {',
+      '  if (amount >= threshold) {',
+      '    return amount - 10;',
+      '  }',
+      '  return amount;',
+      '}',
+      ''
+    ].join('\n')
+  );
+  await writeWorkspaceFile(
+    'tests/pricing.test.ts',
+    [
+      "import { discountedTotal } from '../src/pricing';",
+      '',
+      "test('discount threshold boundary', () => {",
+      '  expect(discountedTotal(50, 100)).toBe(50);',
+      '});',
+      ''
+    ].join('\n')
+  );
+  await writeWorkspaceFile(
+    'target/ripr/reports/gap-decision-ledger.json',
+    JSON.stringify(editorGapSmokeLedger(), null, 2)
+  );
+}
+
+function editorGapSmokeLedger(): unknown {
+  return {
+    schema_version: '0.1',
+    tool: 'ripr',
+    kind: 'gap_decision_ledger',
+    status: 'advisory',
+    root: '.',
+    generated_at: '2026-05-14T00:00:00Z',
+    inputs: { records: 'inline' },
+    summary: { records_total: 1 },
+    records: [
+      {
+        gap_id: 'gap:typescript:pricing:threshold-boundary',
+        canonical_gap_id: 'gap:typescript:pricing:threshold-boundary',
+        kind: 'MissingBoundaryAssertion',
+        language: 'typescript',
+        language_status: 'preview',
+        scope: 'workspace',
+        evidence_class: 'syntax_first_preview',
+        gap_state: 'actionable',
+        policy_state: 'advisory',
+        repairability: 'repairable',
+        static_limit_kind: 'missing_import_graph',
+        static_limit_detail: 'TypeScript preview smoke uses syntax-first evidence.',
+        static_limits: [
+          {
+            static_limit_kind: 'missing_import_graph',
+            detail: 'TypeScript preview smoke uses syntax-first evidence without an import graph.'
+          }
+        ],
+        repair_route: {
+          route_kind: 'AddBoundaryAssertion',
+          target_file: 'tests/pricing.test.ts',
+          target_line: 4,
+          related_test: 'tests/pricing.test.ts::discount threshold boundary',
+          assertion_shape: 'expect(discountedTotal(100, 100)).toBe(90)',
+          changed_behavior: 'amount >= threshold',
+          stop_conditions: ['Stop if the related test no longer reaches discountedTotal.']
+        },
+        anchor: {
+          file: 'src/pricing.ts',
+          line: 2,
+          owner: 'discountedTotal',
+          dedupe_fingerprint: 'src/pricing.ts:discountedTotal:threshold'
+        },
+        evidence_ids: ['finding:typescript:pricing:threshold'],
+        projection_eligibility: {
+          lsp_diagnostic: { eligible: true, reason: 'editor gap cockpit smoke' },
+          agent_packet: { eligible: true, reason: 'editor gap cockpit smoke' }
+        },
+        verification_commands: ['ripr agent verify --root . --json'],
+        receipt_command: 'ripr agent receipt --root . --json',
+        authority_boundary: 'advisory static preview evidence only'
+      }
+    ],
+    warnings: [],
+    limits: ['Preview static evidence only.']
+  };
 }
 
 function textDocument(languageId: string, uri: vscode.Uri): vscode.TextDocument {
