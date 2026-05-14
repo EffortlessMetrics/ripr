@@ -1471,6 +1471,31 @@ runtime execution.
     "calibrated_records": 0,
     "uncalibrated_records": 9355
   },
+  "finding_alignment": {
+    "source": "evidence_record.canonical_item",
+    "summary": {
+      "raw_findings": 9355,
+      "raw_signals": 9355,
+      "canonical_items": 9355,
+      "aligned_raw_findings": 9355,
+      "unaligned_raw_findings": 0,
+      "raw_to_canonical_ratio": 1.0,
+      "duplicate_groups_total": 0,
+      "actionable_gaps": 1756,
+      "already_observed": 3200,
+      "internal_no_action": 20,
+      "static_limitations": 4356,
+      "unknown": 23,
+      "calibrated_supported": 0,
+      "uncalibrated": 9355,
+      "presentation_text_total": 0,
+      "presentation_text_visibility_unknown": 0,
+      "finding_alignment_raw_signals_total": 9355,
+      "finding_alignment_canonical_items_total": 9355,
+      "finding_alignment_actionable_items_total": 1756,
+      "finding_alignment_static_limitation_total": 4356
+    }
+  },
   "canonical_gap_groups": {
     "total": 4800,
     "largest": [
@@ -1606,6 +1631,24 @@ Field contract:
   repo exposure JSON, or `null` if absent.
 - `summary.raw_headline_gaps` - count of seams that are headline-eligible in
   the record or top-level repo exposure row.
+- `finding_alignment.source` - source used for audit-local alignment counts;
+  currently `evidence_record.canonical_item`.
+- `finding_alignment.summary.raw_signals` and
+  `finding_alignment.summary.finding_alignment_raw_signals_total` - raw
+  finding/supporting-signal count derived from each evidence record's
+  `raw_findings[]` or `canonical_item.raw_group_size`.
+- `finding_alignment.summary.canonical_items` and
+  `finding_alignment.summary.finding_alignment_canonical_items_total` - count
+  of evidence records carrying a canonical item.
+- `finding_alignment.summary.actionable_gaps`,
+  `already_observed`, `internal_no_action`, `static_limitations`, `unknown`,
+  `calibrated_supported`, and `uncalibrated` - audit-local rollups of
+  `canonical_item.canonical_item_kind`, `gap_state`, `actionability`, and
+  `confidence.basis`.
+- `finding_alignment.summary.presentation_text_*` - presentation-text
+  class-specific counts when those canonical items are present. These remain
+  zero when the instant repo-exposure artifact has no presentation-text
+  canonical items.
 - `canonical_gap_groups.total` - number of distinct canonical gap IDs among
   headline records.
 - `canonical_gap_groups.largest` - top canonical groups by observed count,

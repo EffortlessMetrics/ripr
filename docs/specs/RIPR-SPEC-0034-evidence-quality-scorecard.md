@@ -31,6 +31,13 @@ when no current audit artifact exists, but it must not run mutation execution,
 edit source files, update baselines, post PR comments, change gate behavior, or
 change analyzer classifications.
 
+When the audit contains `finding_alignment.summary` derived from
+`evidence_record.canonical_item`, the scorecard uses those values for
+raw-to-canonical, actionability, observed, static-limitation, and calibration
+counts. It reports finding alignment as unavailable only when the audit lacks
+both that canonical-item-derived summary and a compatible top-level projection
+summary.
+
 The scorecard must summarize:
 
 - evidence maturity by class;
@@ -77,6 +84,9 @@ Each scorecard must include:
   missing discriminators, static limitations, normalized static-limitation
   categories and repair routes, related-test confidence, oracle semantics,
   movement availability, and calibration availability;
+- counts for raw findings/signals, canonical items, actionable items,
+  already-observed items, static limitations, and raw-to-canonical ratio when
+  canonical alignment data is present in the audit;
 - top risks ordered by expected Lane 1 product impact, not raw count alone;
 - class-scoped calibration coverage that distinguishes static-only,
   fixture-backed, imported-runtime-calibrated, and uncalibrated classes;
@@ -201,6 +211,11 @@ the limitation into a user test gap.
 Given no previous audit snapshot, the scorecard marks recent deltas
 unavailable and still emits current maturity, risk, and repair sections.
 
+Given a Lane 1 audit with `evidence_record.canonical_item` data, the scorecard
+reports finding-alignment counts from the audit summary instead of treating
+alignment as unavailable merely because no separate top-level
+`finding_alignment.items[]` projection was present.
+
 Given no previous scorecard or audit snapshot, the trend report marks history
 unavailable and emits `unknown` rather than claiming improvement.
 
@@ -224,6 +239,8 @@ any gate behavior.
   pins recommended repair ordering when count-only ordering would be wrong.
 - `xtask::tests::evidence_quality_scorecard_reports_recent_deltas_when_present`
   pins before and after audit deltas.
+- `xtask::tests::evidence_quality_scorecard_uses_audit_canonical_item_alignment_summary`
+  pins the fallback from audit-derived `canonical_item` alignment summary.
 - `xtask::tests::evidence_quality_trend_reports_no_history_explicitly` pins the
   no-history state.
 - `xtask::tests::evidence_quality_trend_distinguishes_improvement_regression_and_unchanged`

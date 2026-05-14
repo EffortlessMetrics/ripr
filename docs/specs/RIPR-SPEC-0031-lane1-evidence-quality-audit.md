@@ -62,6 +62,7 @@ includes:
 - `status`;
 - `inputs`;
 - `summary`;
+- `finding_alignment`;
 - `canonical_gap_groups`;
 - `duplicate_looking_groups`;
 - `missing_discriminator_classes`;
@@ -81,6 +82,7 @@ The report is additive and repo-local. It is not a replacement for
 The Markdown sibling prints the same audit areas in bounded tables:
 
 - summary;
+- finding alignment;
 - largest canonical gap groups;
 - duplicate-looking groups;
 - missing discriminator classes;
@@ -99,6 +101,8 @@ High-cardinality count maps remain complete in JSON and are capped in Markdown.
 The audit must summarize:
 
 - raw headline gaps;
+- finding-alignment raw signals, canonical items, actionability states, and
+  raw-to-canonical counts derived from `evidence_record.canonical_item`;
 - canonical gap groups;
 - largest canonical groups;
 - duplicate-looking groups;
@@ -116,6 +120,11 @@ The audit must summarize:
 
 Given two headline seams with the same canonical gap ID, the audit reports one
 canonical group and lists that group as duplicate-looking.
+
+Given evidence records that carry `canonical_item`, the audit reports a
+`finding_alignment.summary` so the scorecard can count canonical items,
+actionable items, observed items, static limitations, calibration support, and
+raw-to-canonical alignment without requiring a separate top-level projection.
 
 Given a headline seam with no canonical gap ID, the audit counts it under
 `headline_without_canonical_gap_id`.
@@ -135,7 +144,7 @@ audit report only; it does not change static classifications.
 - `xtask::tests::lane1_evidence_audit_counts_quality_gaps_from_evidence_record`
   pins JSON counts for canonical groups, duplicate groups, missing
   discriminators, static limitation categories, ranking confidence,
-  calibration, and field health.
+  calibration, derived finding-alignment summary, and field health.
 - `xtask::tests::lane1_evidence_audit_markdown_names_required_sections` pins
   Markdown section coverage.
 - `xtask::tests::lane1_evidence_audit_rejects_repo_exposure_without_seams` pins
@@ -170,6 +179,10 @@ The audit feeds these Lane 1 metrics:
 - `lane1_evidence_audit_missing_discriminators`;
 - `lane1_evidence_audit_static_limitations`;
 - `lane1_evidence_audit_uncalibrated_records`.
+- `finding_alignment_raw_signals_total`;
+- `finding_alignment_canonical_items_total`;
+- `finding_alignment_actionable_items_total`;
+- `finding_alignment_static_limitation_total`.
 
 ## Non-Goals
 
