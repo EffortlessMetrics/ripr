@@ -4,4 +4,5 @@
 - [LANGUAGE_ADAPTER_PREVIEW.md](LANGUAGE_ADAPTER_PREVIEW.md) - opt-in TypeScript, JavaScript, and Python preview workflow
 - [STATIC_LIMITS.md](STATIC_LIMITS.md) - how to read preview static-limit labels
 - [VERIFICATION.md](VERIFICATION.md) — README badge meanings, generated endpoints, and PR evidence boundaries
+- [verification/README.md](verification/README.md) - portable verification contract for badges, PR evidence, artifacts, and annotations
 - [DOCUMENTATION.md](DOCUMENTATION.md) — documentation system map and maintained index

@@ -89,6 +89,7 @@ Current reference docs:
 - [Static limits](STATIC_LIMITS.md)
 - [Badge policy](BADGE_POLICY.md)
 - [Verification](VERIFICATION.md)
+- [Verification contracts](verification/README.md)
 - [Defaults-first adoption](specs/RIPR-SPEC-0009-defaults-first-adoption.md)
 - [Spec-test-code traceability](SPEC_TEST_CODE.md)
 - [Spec format](SPEC_FORMAT.md)
