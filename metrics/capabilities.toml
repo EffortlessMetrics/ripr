@@ -1223,7 +1223,7 @@ evidence = [
   "VS Code e2e drives the real boundary-gap server path through code actions, copied seam packet and verify payloads, and related-test opening",
   "editors/vscode/src/client.ts copySuggestedAssertion and openRelatedTest handlers",
   "diagnostics carrying seam_id surface intent-titled actions for inspecting the seam, writing the targeted test only when related-test or suggested-assertion context exists, copying agent handoff commands, verifying after the test, reviewing the receipt, opening the best related test only when a related-test location exists, and refreshing saved-workspace analysis",
-  "diagnostics carrying gap_id surface Inspect gap: copy agent packet with gap-ledger context fields",
+  "current validated diagnostics carrying gap_id surface bounded gap repair actions for copying a repair packet, opening a safe related test, copying safe verify/receipt commands, copying static-limit notes, and refreshing saved-workspace analysis",
   "copy suggested assertion uses agent seam packet v2 assertion shape when available",
   "stale seam diagnostics fail closed to refresh-only",
   "pre-4B Finding code actions remain available",

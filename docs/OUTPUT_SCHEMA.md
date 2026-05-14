@@ -7595,12 +7595,15 @@ GapRecord diagnostic shape:
 }
 ```
 
-Gap diagnostics drive `Inspect gap: copy agent packet`, which calls
-`ripr.collectContext` with `gap_id` and `gap_ledger`. The command returns the
-same GapRecord-backed agent packet produced by
-`ripr agent packet --gap-ledger ... --gap-id ...`; it does not rerun analysis,
-edit source, generate tests, call a provider, run mutation testing, or parse the
-diagnostic message.
+Validated gap diagnostics can drive bounded repair actions such as `Inspect
+gap: copy repair packet`, `Verify after test: copy verify command`, and `Review
+result: copy receipt command` when the current artifact supplies safe payloads.
+The repair-packet action calls `ripr.collectContext` with `gap_id` and
+`gap_ledger`. The command returns the same GapRecord-backed agent packet
+produced by `ripr agent packet --gap-ledger ... --gap-id ...`; it does not
+rerun analysis, edit source, generate tests, call a provider, run mutation
+testing, or parse the diagnostic message. Stale, missing, disabled, or
+unvalidated gap artifacts fail closed to refresh-only actions.
 
 Per-class severity:
 

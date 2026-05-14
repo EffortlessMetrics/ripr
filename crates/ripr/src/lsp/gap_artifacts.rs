@@ -661,7 +661,7 @@ fn path_value<'a>(value: Option<&'a Value>, path: &[&str]) -> Option<&'a Value> 
     Some(current)
 }
 
-fn workspace_path_is_safe(root: &Path, raw: &str) -> bool {
+pub(super) fn workspace_path_is_safe(root: &Path, raw: &str) -> bool {
     let path_text = path_part(raw).trim();
     if path_text.is_empty() || path_text.contains('\n') || path_text.contains('\r') {
         return false;
@@ -682,7 +682,7 @@ fn path_part(raw: &str) -> &str {
     raw.split_once("::").map_or(raw, |(path, _)| path)
 }
 
-fn command_payload_is_safe(root: &Path, command: &str) -> bool {
+pub(super) fn command_payload_is_safe(root: &Path, command: &str) -> bool {
     let trimmed = command.trim();
     if trimmed.is_empty() || trimmed.contains('\n') || trimmed.contains('\r') {
         return false;
