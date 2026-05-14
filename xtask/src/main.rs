@@ -14,6 +14,7 @@ mod dispatch;
 mod policy;
 mod reports;
 mod run;
+mod verification_contracts;
 
 #[cfg(test)]
 use command::unknown_command_message;

@@ -413,6 +413,15 @@ classification = "fixture"
 reason = "Fixture workspaces may intentionally contain analyzed source files."
 covered_by = ["cargo xtask check-fixture-contracts", "cargo xtask fixtures"]
 
+[[allow]]
+glob = "tests/fixtures/verification/**/*.json"
+kind = "verification_contract_fixture"
+owner = "contracts"
+surface = "fixtures"
+classification = "fixture"
+reason = "Sample JSON packets proving portable verification schemas are executable."
+covered_by = ["cargo xtask check-verification-contracts"]
+
 # ---------------------------------------------------------------------------
 # Brand / assets
 # ---------------------------------------------------------------------------
