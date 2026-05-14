@@ -11,7 +11,7 @@ Target campaign: Rust usable gap projection
 Linked specs:
 
 - `RIPR-SPEC-0045`: Finding-to-gap alignment
-- `RIPR-SPEC-0046`: Gap decision ledger, planned
+- `RIPR-SPEC-0046`: Gap decision ledger
 - `RIPR-SPEC-0017`: RIPR Zero reporting
 - `RIPR-SPEC-0018`: PR evidence ledger
 - `RIPR-SPEC-0020`: First useful action report
