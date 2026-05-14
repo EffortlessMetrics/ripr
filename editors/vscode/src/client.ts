@@ -38,6 +38,10 @@ export interface RiprContextTarget {
   probe_id?: string;
   seam_id?: string;
   seam_kind?: string;
+  gap_id?: string;
+  canonical_gap_id?: string;
+  gap_kind?: string;
+  gap_ledger?: string;
 }
 
 export interface RiprSuggestedAssertionTarget {
@@ -304,18 +308,25 @@ export class RiprClientController {
     }
 
     const client = this.client;
-    if (client && (target?.finding_id || target?.seam_id)) {
+    if (client && (target?.finding_id || target?.seam_id || target?.gap_id)) {
       try {
+        const collectContextTarget: RiprContextTarget = {
+          finding_id: target.finding_id,
+          probe_id: target.probe_id,
+          seam_id: target.seam_id,
+          seam_kind: target.seam_kind,
+          uri: target.uri,
+          line: target.line,
+        };
+        if (target.gap_id) {
+          collectContextTarget.gap_id = target.gap_id;
+          collectContextTarget.canonical_gap_id = target.canonical_gap_id;
+          collectContextTarget.gap_kind = target.gap_kind;
+          collectContextTarget.gap_ledger = target.gap_ledger;
+        }
         const packet = await client.sendRequest('workspace/executeCommand', {
           command: 'ripr.collectContext',
-          arguments: [{
-            finding_id: target.finding_id,
-            probe_id: target.probe_id,
-            seam_id: target.seam_id,
-            seam_kind: target.seam_kind,
-            uri: target.uri,
-            line: target.line,
-          }],
+          arguments: [collectContextTarget],
         });
         if (packet && typeof packet === 'object') {
           await this.runtime.writeClipboard(JSON.stringify(packet, null, 2));

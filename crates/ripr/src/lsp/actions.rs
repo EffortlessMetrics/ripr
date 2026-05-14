@@ -31,7 +31,19 @@ pub(super) fn code_action_response(
         .context
         .diagnostics
         .iter()
-        .find(|d| is_ripr_diagnostic(d) && !is_seam_diagnostic(d))
+        .find(|d| is_ripr_diagnostic(d) && is_gap_diagnostic(d))
+    {
+        actions.push(copy_context_action(
+            INSPECT_GAP_PACKET_TITLE,
+            INSPECT_GAP_PACKET_COMMAND_TITLE,
+            copy_context_target(params, diagnostic),
+        ));
+    }
+    if let Some(diagnostic) = params
+        .context
+        .diagnostics
+        .iter()
+        .find(|d| is_ripr_diagnostic(d) && !is_seam_diagnostic(d) && !is_gap_diagnostic(d))
     {
         actions.push(copy_context_action(
             INSPECT_FINDING_CONTEXT_TITLE,
@@ -205,6 +217,8 @@ fn copy_context_action(title: &str, command_title: &str, target: LSPAny) -> Code
 
 const COMMAND_ROOT: &str = ".";
 
+const INSPECT_GAP_PACKET_TITLE: &str = "Inspect gap: copy agent packet";
+const INSPECT_GAP_PACKET_COMMAND_TITLE: &str = "Inspect gap: copy context";
 const INSPECT_FINDING_CONTEXT_TITLE: &str = "Inspect finding: copy context packet";
 const INSPECT_FINDING_CONTEXT_COMMAND_TITLE: &str = "Inspect finding: copy context";
 const INSPECT_SEAM_PACKET_TITLE: &str = "Inspect Test Gap - Copy Context";
@@ -348,6 +362,15 @@ fn is_seam_diagnostic(diagnostic: &Diagnostic) -> bool {
         .is_some()
 }
 
+fn is_gap_diagnostic(diagnostic: &Diagnostic) -> bool {
+    diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get("gap_id"))
+        .and_then(|value| value.as_str())
+        .is_some()
+}
+
 fn copy_context_target(params: &CodeActionParams, diagnostic: &Diagnostic) -> LSPAny {
     let mut target = serde_json::Map::new();
     target.insert(
@@ -386,6 +409,14 @@ fn copy_context_target(params: &CodeActionParams, diagnostic: &Diagnostic) -> LS
                 "seam_kind".to_string(),
                 serde_json::Value::String(seam_kind.to_string()),
             );
+        }
+        for key in ["gap_id", "canonical_gap_id", "gap_kind", "gap_ledger"] {
+            if let Some(value) = obj.get(key).and_then(|v| v.as_str()) {
+                target.insert(
+                    key.to_string(),
+                    serde_json::Value::String(value.to_string()),
+                );
+            }
         }
     }
     serde_json::Value::Object(target)
@@ -451,5 +482,126 @@ fn absolute_related_test_path(snapshot: &AnalysisSnapshot, related: &RelatedTest
         related.file.clone()
     } else {
         snapshot.root.join(&related.file)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tower_lsp_server::ls_types::{
+        CodeActionContext, DiagnosticSeverity, Position, Range, TextDocumentIdentifier, Uri,
+    };
+
+    #[test]
+    fn gap_diagnostic_gets_gap_packet_action_without_finding_fallback() -> Result<(), String> {
+        let diagnostic = gap_diagnostic();
+        let params = code_action_params(vec![diagnostic])?;
+
+        let actions = code_action_response(&params, None);
+        let titles = action_titles(&actions);
+
+        if !titles.contains(&INSPECT_GAP_PACKET_TITLE) {
+            return Err(format!("missing gap packet action: {titles:?}"));
+        }
+        if titles.contains(&INSPECT_FINDING_CONTEXT_TITLE) {
+            return Err(format!(
+                "gap diagnostic also produced finding context action: {titles:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn copy_context_target_forwards_gap_identity_and_ledger() -> Result<(), String> {
+        let diagnostic = gap_diagnostic();
+        let params = code_action_params(vec![diagnostic.clone()])?;
+
+        let target = copy_context_target(&params, &diagnostic);
+
+        assert_eq!(
+            target["uri"], "file:///workspace/src/pricing.rs",
+            "target URI should match request URI"
+        );
+        assert_eq!(target["line"], 12);
+        assert_eq!(target["gap_id"], "gap:pr:pricing:threshold-boundary");
+        assert_eq!(
+            target["canonical_gap_id"],
+            "gap:rust:pricing:threshold-boundary"
+        );
+        assert_eq!(target["gap_kind"], "MissingBoundaryAssertion");
+        assert_eq!(
+            target["gap_ledger"],
+            "target/ripr/reports/gap-decision-ledger.json"
+        );
+        Ok(())
+    }
+
+    fn code_action_params(diagnostics: Vec<Diagnostic>) -> Result<CodeActionParams, String> {
+        Ok(CodeActionParams {
+            text_document: TextDocumentIdentifier::new(test_uri(
+                "file:///workspace/src/pricing.rs",
+            )?),
+            range: Range {
+                start: Position {
+                    line: 11,
+                    character: 0,
+                },
+                end: Position {
+                    line: 11,
+                    character: 120,
+                },
+            },
+            context: CodeActionContext {
+                diagnostics,
+                only: None,
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        })
+    }
+
+    fn gap_diagnostic() -> Diagnostic {
+        Diagnostic {
+            range: Range {
+                start: Position {
+                    line: 11,
+                    character: 0,
+                },
+                end: Position {
+                    line: 11,
+                    character: 120,
+                },
+            },
+            severity: Some(DiagnosticSeverity::WARNING),
+            code: None,
+            code_description: None,
+            source: Some("ripr".to_string()),
+            message: "ripr gap: MissingBoundaryAssertion".to_string(),
+            related_information: None,
+            tags: None,
+            data: Some(serde_json::json!({
+                "source": "gap_decision_ledger",
+                "gap_id": "gap:pr:pricing:threshold-boundary",
+                "canonical_gap_id": "gap:rust:pricing:threshold-boundary",
+                "gap_kind": "MissingBoundaryAssertion",
+                "gap_ledger": "target/ripr/reports/gap-decision-ledger.json"
+            })),
+        }
+    }
+
+    fn action_titles(actions: &[CodeActionOrCommand]) -> Vec<&str> {
+        actions
+            .iter()
+            .map(|action| match action {
+                CodeActionOrCommand::CodeAction(action) => action.title.as_str(),
+                CodeActionOrCommand::Command(command) => command.title.as_str(),
+            })
+            .collect()
+    }
+
+    fn test_uri(uri: &str) -> Result<Uri, String> {
+        uri.parse::<Uri>()
+            .map_err(|err| format!("failed to parse test URI: {err}"))
     }
 }
