@@ -7509,6 +7509,47 @@ Diagnostic shape:
 }
 ```
 
+When `target/ripr/reports/gap-decision-ledger.json` exists, the LSP server also
+publishes advisory diagnostics for records whose
+`projection_eligibility.lsp_diagnostic.eligible` flag is true and whose anchor
+contains a local file and line. These diagnostics are sourced from the explicit
+GapRecord; they do not infer projectability from raw findings and do not make
+gate or badge decisions.
+
+GapRecord diagnostic shape:
+
+```jsonc
+{
+  "range": { "start": { "line": 41, "character": 0 }, "end": { "line": 41, "character": 120 } },
+  "severity": 2,
+  "code": "ripr-gap-MissingBoundaryAssertion",
+  "source": "ripr",
+  "message": "ripr gap: MissingBoundaryAssertion; repair route: AddBoundaryAssertion; changed behavior: amount >= threshold; suggested check: assert_eq!(...)",
+  "data": {
+    "schema_version": "0.1",
+    "source": "gap_decision_ledger",
+    "gap_ledger": "target/ripr/reports/gap-decision-ledger.json",
+    "gap_id": "gap:pr:pricing:threshold-boundary",
+    "canonical_gap_id": "gap:rust:pricing:threshold-boundary",
+    "gap_kind": "MissingBoundaryAssertion",
+    "language": "rust",
+    "language_status": "stable",
+    "scope": "pr_local",
+    "policy_state": "new",
+    "repairability": "repairable",
+    "repair_route": { "route_kind": "AddBoundaryAssertion" },
+    "verification_commands": ["cargo xtask fixtures boundary_gap"]
+  }
+}
+```
+
+Gap diagnostics drive `Inspect gap: copy agent packet`, which calls
+`ripr.collectContext` with `gap_id` and `gap_ledger`. The command returns the
+same GapRecord-backed agent packet produced by
+`ripr agent packet --gap-ledger ... --gap-id ...`; it does not rerun analysis,
+edit source, generate tests, call a provider, run mutation testing, or parse the
+diagnostic message.
+
 Per-class severity:
 
 | `SeamGripClass`            | Severity      | Diagnostic? |

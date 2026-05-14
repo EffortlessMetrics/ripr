@@ -38,6 +38,10 @@ export interface RiprContextTarget {
   probe_id?: string;
   seam_id?: string;
   seam_kind?: string;
+  gap_id?: string;
+  canonical_gap_id?: string;
+  gap_kind?: string;
+  gap_ledger?: string;
 }
 
 export interface RiprSuggestedAssertionTarget {
@@ -304,7 +308,7 @@ export class RiprClientController {
     }
 
     const client = this.client;
-    if (client && (target?.finding_id || target?.seam_id)) {
+    if (client && (target?.finding_id || target?.seam_id || target?.gap_id)) {
       try {
         const packet = await client.sendRequest('workspace/executeCommand', {
           command: 'ripr.collectContext',
@@ -313,6 +317,10 @@ export class RiprClientController {
             probe_id: target.probe_id,
             seam_id: target.seam_id,
             seam_kind: target.seam_kind,
+            gap_id: target.gap_id,
+            canonical_gap_id: target.canonical_gap_id,
+            gap_kind: target.gap_kind,
+            gap_ledger: target.gap_ledger,
             uri: target.uri,
             line: target.line,
           }],

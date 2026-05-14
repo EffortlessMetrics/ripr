@@ -16,10 +16,15 @@ use crate::analysis::ClassifiedSeam;
 use crate::domain::context_packet::ContextPacket;
 use crate::domain::{StageEvidence, StageState};
 use crate::output::agent_seam_packets::{
-    suggested_assertion_for_classified_seam, targeted_test_brief_outline_for_classified_seam,
+    render_agent_gap_record_packet_json, suggested_assertion_for_classified_seam,
+    targeted_test_brief_outline_for_classified_seam,
+};
+use crate::output::gap_decision_ledger::{
+    DEFAULT_GAP_DECISION_LEDGER_OUT, GapRecord, parse_gap_records_json,
 };
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
@@ -520,6 +525,9 @@ impl Backend {
     fn collect_context_packet(&self, arguments: &[LSPAny]) -> Option<LSPAny> {
         let args = context_arguments(arguments)?;
         let snapshot = self.latest_analysis.lock().ok()?.clone()?;
+        if let Some(gap_id) = args.get("gap_id").and_then(|v| v.as_str()) {
+            return collect_gap_record_context_packet(&snapshot.root, args, gap_id);
+        }
         if let Some(seam_id) = args.get("seam_id").and_then(|v| v.as_str()) {
             let seam = snapshot.classified_seam_by_id(seam_id)?;
             let packet = crate::output::agent_seam_packets::render_agent_seam_packets_json(
@@ -550,6 +558,44 @@ impl Backend {
         let seam = snapshot.classified_seam_by_id(seam_id)?;
         Some(evidence_context_packet(&snapshot, seam))
     }
+}
+
+fn collect_gap_record_context_packet(
+    root: &Path,
+    args: &serde_json::Map<String, serde_json::Value>,
+    gap_id: &str,
+) -> Option<LSPAny> {
+    let gap_id = gap_id.trim();
+    if gap_id.is_empty() {
+        return None;
+    }
+    let ledger_arg = args
+        .get("gap_ledger")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(DEFAULT_GAP_DECISION_LEDGER_OUT);
+    let ledger_path = absolute_context_path(root, Path::new(ledger_arg));
+    let contents = fs::read_to_string(&ledger_path).ok()?;
+    let records = parse_gap_records_json(&contents).ok()?;
+    let record = records
+        .iter()
+        .find(|record| gap_record_matches(record, gap_id))?;
+    let rendered =
+        render_agent_gap_record_packet_json(&display_lsp_path(&ledger_path), record).ok()?;
+    serde_json::from_str(&rendered).ok()
+}
+
+fn absolute_context_path(root: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        root.join(path)
+    }
+}
+
+fn gap_record_matches(record: &GapRecord, gap_id: &str) -> bool {
+    record.gap_id == gap_id || record.canonical_gap_id == gap_id
 }
 
 fn evidence_context_packet(snapshot: &AnalysisSnapshot, entry: &ClassifiedSeam) -> LSPAny {
@@ -665,4 +711,128 @@ fn evidence_stage_status(evidence: &StageEvidence) -> &'static str {
 
 fn display_lsp_path(path: &std::path::Path) -> String {
     path.to_string_lossy().replace('\\', "/")
+}
+
+#[cfg(test)]
+mod gap_record_context_tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn collect_context_packet_for_gap_id_reads_explicit_ledger() -> Result<(), String> {
+        let root = temp_root()?;
+        write_gap_ledger(&root)?;
+        let args_value = serde_json::json!({
+            "gap_id": "gap:pr:pricing:threshold-boundary",
+            "gap_ledger": DEFAULT_GAP_DECISION_LEDGER_OUT,
+        });
+        let args = args_value
+            .as_object()
+            .ok_or_else(|| "expected object args".to_string())?;
+
+        let packet =
+            collect_gap_record_context_packet(&root, args, "gap:pr:pricing:threshold-boundary")
+                .ok_or_else(|| "expected gap packet".to_string())?;
+
+        assert_eq!(packet["source"], "gap_decision_ledger");
+        let gap_packet = &packet["packets"][0];
+        assert_eq!(gap_packet["gap_id"], "gap:pr:pricing:threshold-boundary");
+        assert_eq!(
+            gap_packet["repair_route"]["route_kind"],
+            "AddBoundaryAssertion"
+        );
+        assert_eq!(
+            gap_packet["verification_commands"][0],
+            "cargo xtask fixtures boundary_gap"
+        );
+
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn collect_context_packet_for_gap_id_matches_canonical_gap_id() -> Result<(), String> {
+        let root = temp_root()?;
+        write_gap_ledger(&root)?;
+        let args_value = serde_json::json!({
+            "gap_id": "gap:rust:pricing:threshold-boundary",
+            "gap_ledger": DEFAULT_GAP_DECISION_LEDGER_OUT,
+        });
+        let args = args_value
+            .as_object()
+            .ok_or_else(|| "expected object args".to_string())?;
+
+        let packet =
+            collect_gap_record_context_packet(&root, args, "gap:rust:pricing:threshold-boundary")
+                .ok_or_else(|| "expected gap packet".to_string())?;
+
+        assert_eq!(
+            packet["packets"][0]["gap_id"],
+            "gap:pr:pricing:threshold-boundary"
+        );
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        Ok(())
+    }
+
+    fn temp_root() -> Result<PathBuf, String> {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|err| format!("system clock before UNIX_EPOCH: {err}"))?
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "ripr-lsp-gap-record-context-{}-{stamp}",
+            std::process::id()
+        ));
+        fs::create_dir_all(root.join("target/ripr/reports"))
+            .map_err(|err| format!("create temp root {} failed: {err}", root.display()))?;
+        Ok(root)
+    }
+
+    fn write_gap_ledger(root: &Path) -> Result<(), String> {
+        let path = root.join(DEFAULT_GAP_DECISION_LEDGER_OUT);
+        fs::write(path, gap_ledger_json())
+            .map_err(|err| format!("write gap ledger in {} failed: {err}", root.display()))
+    }
+
+    fn gap_ledger_json() -> &'static str {
+        r#"{
+  "records": [
+    {
+      "gap_id": "gap:pr:pricing:threshold-boundary",
+      "canonical_gap_id": "gap:rust:pricing:threshold-boundary",
+      "kind": "MissingBoundaryAssertion",
+      "language": "rust",
+      "language_status": "stable",
+      "scope": "pr_local",
+      "evidence_class": "static_exposure",
+      "gap_state": "actionable",
+      "policy_state": "new",
+      "repairability": "repairable",
+      "repair_route": {
+        "route_kind": "AddBoundaryAssertion",
+        "target_file": "tests/pricing.rs",
+        "target_line": 33,
+        "related_test": "tests/pricing.rs::discount_threshold",
+        "assertion_shape": "assert_eq!(price(threshold), expected)",
+        "changed_behavior": "amount >= threshold",
+        "stop_conditions": ["Stop if the target owner moved."]
+      },
+      "anchor": {
+        "file": "src/pricing.rs",
+        "line": 42,
+        "owner": "pricing::discounted_total",
+        "dedupe_fingerprint": "gap:rust:pricing:threshold-boundary"
+      },
+      "evidence_ids": ["evidence:pricing"],
+      "projection_eligibility": {
+        "agent_packet": { "eligible": true, "reason": "bounded_repair_route" }
+      },
+      "verification_commands": ["cargo xtask fixtures boundary_gap"],
+      "authority_boundary": "advisory"
+    }
+  ]
+}"#
+    }
 }

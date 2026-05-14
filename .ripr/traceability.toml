@@ -2906,6 +2906,10 @@ tests = [
   "crates/ripr/src/cli/agent.rs::tests::agent_packet_parses_gap_ledger_request",
   "crates/ripr/src/cli/commands.rs::tests::agent_packet_gap_ledger_renders_without_analysis",
   "crates/ripr/src/cli/commands.rs::tests::agent_packet_gap_ledger_reports_missing_and_ineligible_records",
+  "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::gap_record_diagnostic_carries_shared_repair_payload",
+  "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::gap_record_diagnostic_requires_projection_eligibility_and_anchor",
+  "crates/ripr/src/lsp/backend.rs::gap_record_context_tests::collect_context_packet_for_gap_id_reads_explicit_ledger",
+  "crates/ripr/src/lsp/backend.rs::gap_record_context_tests::collect_context_packet_for_gap_id_matches_canonical_gap_id",
   "crates/ripr/src/cli/commands.rs::tests::first_action_cli_writes_gap_record_report",
   "crates/ripr/src/cli/commands.rs::tests::pr_evidence_ledger_writes_json_and_markdown_reports",
   "crates/ripr/tests/cli_smoke.rs::check_repo_badge_json_can_use_gap_ledger_targets",
@@ -2926,6 +2930,10 @@ code = [
   "crates/ripr/src/output/review_comments.rs",
   "crates/ripr/src/output/pr_inline_comment_publish_plan.rs",
   "crates/ripr/src/output/agent_seam_packets.rs",
+  "crates/ripr/src/lsp/diagnostics.rs",
+  "crates/ripr/src/lsp/actions.rs",
+  "crates/ripr/src/lsp/backend.rs",
+  "editors/vscode/src/client.ts",
   "xtask/src/main.rs",
 ]
 outputs = [

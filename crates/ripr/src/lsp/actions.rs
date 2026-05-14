@@ -31,7 +31,19 @@ pub(super) fn code_action_response(
         .context
         .diagnostics
         .iter()
-        .find(|d| is_ripr_diagnostic(d) && !is_seam_diagnostic(d))
+        .find(|d| is_ripr_diagnostic(d) && is_gap_diagnostic(d))
+    {
+        actions.push(copy_context_action(
+            INSPECT_GAP_PACKET_TITLE,
+            INSPECT_GAP_PACKET_COMMAND_TITLE,
+            copy_context_target(params, diagnostic),
+        ));
+    }
+    if let Some(diagnostic) = params
+        .context
+        .diagnostics
+        .iter()
+        .find(|d| is_ripr_diagnostic(d) && !is_seam_diagnostic(d) && !is_gap_diagnostic(d))
     {
         actions.push(copy_context_action(
             INSPECT_FINDING_CONTEXT_TITLE,
@@ -205,6 +217,8 @@ fn copy_context_action(title: &str, command_title: &str, target: LSPAny) -> Code
 
 const COMMAND_ROOT: &str = ".";
 
+const INSPECT_GAP_PACKET_TITLE: &str = "Inspect gap: copy agent packet";
+const INSPECT_GAP_PACKET_COMMAND_TITLE: &str = "Inspect gap: copy context";
 const INSPECT_FINDING_CONTEXT_TITLE: &str = "Inspect finding: copy context packet";
 const INSPECT_FINDING_CONTEXT_COMMAND_TITLE: &str = "Inspect finding: copy context";
 const INSPECT_SEAM_PACKET_TITLE: &str = "Inspect Test Gap - Copy Context";
@@ -348,6 +362,15 @@ fn is_seam_diagnostic(diagnostic: &Diagnostic) -> bool {
         .is_some()
 }
 
+fn is_gap_diagnostic(diagnostic: &Diagnostic) -> bool {
+    diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get("gap_id"))
+        .and_then(|value| value.as_str())
+        .is_some()
+}
+
 fn copy_context_target(params: &CodeActionParams, diagnostic: &Diagnostic) -> LSPAny {
     let mut target = serde_json::Map::new();
     target.insert(
@@ -386,6 +409,14 @@ fn copy_context_target(params: &CodeActionParams, diagnostic: &Diagnostic) -> LS
                 "seam_kind".to_string(),
                 serde_json::Value::String(seam_kind.to_string()),
             );
+        }
+        for key in ["gap_id", "canonical_gap_id", "gap_kind", "gap_ledger"] {
+            if let Some(value) = obj.get(key).and_then(|v| v.as_str()) {
+                target.insert(
+                    key.to_string(),
+                    serde_json::Value::String(value.to_string()),
+                );
+            }
         }
     }
     serde_json::Value::Object(target)
