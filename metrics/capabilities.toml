@@ -567,7 +567,7 @@ evidence = [
   "docs/specs/RIPR-SPEC-0021-evidence-record.md defines the additive seam-native evidence record contract",
   "docs/lanes/LANE_1_EVIDENCE_SPINE.md records Evidence Spine Stabilization as complete and names PR #697 gate canonical identity as the final consumer closeout without replacing the active Codex Goals manifest",
   "docs/lanes/LANE_1_EVIDENCE_ACCURACY.md defines the Evidence Accuracy Evaluation objective, audit-first next slices, fixture-first analyzer rule, calibration boundary, and non-goals",
-  "crates/ripr/src/output/evidence_record.rs projects existing ClassifiedSeam facts into identity, evidence path, observed values, missing discriminators, related tests, recommendation, actionability, calibration placeholder, and static limitations with normalized category and repair-route fields",
+  "crates/ripr/src/output/evidence_record.rs projects existing ClassifiedSeam facts into identity, raw findings, canonical item alignment state, evidence path, observed values, missing discriminators, related tests, recommendation, actionability, calibration placeholder, nullable presentation text projection, and static limitations with normalized category and repair-route fields",
   "crates/ripr/src/analysis/canonical_gap.rs generates deterministic canonical_gap_id values from owner, seam kind, flow sink, missing discriminator, and assertion shape while leaving line numbers as locators",
   "crates/ripr/src/analysis/canonical_gap.rs tests pin match-arm discriminator splitting and same-arm line-movement grouping",
   "crates/ripr/src/output/repo_exposure.rs attaches seams[].evidence_record while preserving existing repo-exposure seam fields",
@@ -579,7 +579,7 @@ evidence = [
   "crates/ripr/src/output/pr_evidence_ledger.rs carries canonical_gap_id through waiver, suppression, repair receipt, and top repair route records when supplied by source artifacts",
   "crates/ripr/src/output/gate.rs carries canonical_gap_id from PR guidance/evidence_record into gate decisions and baseline comparison before legacy identities",
   "docs/OUTPUT_SCHEMA.md documents evidence_record schema 0.1 under repo-exposure schema 0.3",
-  "unit tests pin identity, generated canonical gap identity, grip class, evidence path, recommendation/actionability, calibration placeholder, static limitation category and repair-route normalization, oracle semantics including opaque custom-helper and duplicative-equality guards, packet projection, RIPR Zero repair-route consumption, evidence-record movement consumption, assistant-proof evidence-record consumption, and canonical gap identity routing",
+  "unit tests pin identity, generated canonical gap identity, grip class, raw finding support, canonical item gap state/actionability/repair/confidence, evidence path, recommendation/actionability, calibration placeholder, nullable presentation text projection, static limitation category and repair-route normalization, oracle semantics including opaque custom-helper and duplicative-equality guards, packet projection, RIPR Zero repair-route consumption, evidence-record movement consumption, assistant-proof evidence-record consumption, and canonical gap identity routing",
   "fixtures/boundary_gap/expected/evidence-record-contract/corpus.json pins the v0.1 record contract matrix for predicate, error, strong value, broad error, field, whole-object, snapshot, side-effect, opaque limitation, canonical-gap, and calibration-placeholder cases with related-test oracle_semantics",
   "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json pins audit-derived expected evidence_record subsets for duplicate canonical groups, match-arm overgrouping reduction, equality-boundary misses, activation static limitations, mock-expectation observer semantics, and no-runtime-data calibration gaps",
   "cargo xtask check-fixture-contracts validates the evidence-record contract corpus case matrix and field shape; cargo xtask check-output-contracts validates the evidence_record schema version"
@@ -589,7 +589,7 @@ fixtures = [
   "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json"
 ]
 next = "maintenance"
-metric = "evidence_record_projected_seams, evidence_record_actionable_guidance, evidence_record_static_limitations, evidence_record_static_limitation_categories"
+metric = "evidence_record_projected_seams, evidence_record_actionable_guidance, evidence_record_static_limitations, evidence_record_static_limitation_categories, evidence_record_finding_alignment_fields"
 
 [[capability]]
 id = "evidence_health_report"
@@ -1473,7 +1473,7 @@ metric = "policy_promotion_packets, policy_promotion_allowed, policy_promotion_b
 [[capability]]
 id = "presentation_text_evidence"
 name = "Presentation text evidence"
-status = "planned"
+status = "alpha"
 spec = "RIPR-SPEC-0043"
 evidence = [
   "docs/specs/RIPR-SPEC-0043-presentation-text-evidence.md defines the planned Lane 1 evidence class for changed presentation/help/report/table text",
@@ -1490,18 +1490,22 @@ metric = "presentation_text_total, presentation_text_user_visible, presentation_
 [[capability]]
 id = "finding_to_gap_alignment"
 name = "Finding-to-gap alignment"
-status = "planned"
+status = "alpha"
 spec = "RIPR-SPEC-0045"
 evidence = [
-  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md defines the planned Lane 1 contract for preserving raw findings as supporting evidence while rolling them up into canonical evidence items",
+  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md defines the Lane 1 contract for preserving raw findings as supporting evidence while rolling them up into canonical evidence items",
   "canonical items carry gap_state, actionability, why, recommended repair, verification, static limitations, confidence, and raw_findings",
   "fixtures/evidence-quality-benchmark/corpus.json pins manifest-only raw-to-canonical presentation-text cases for actionable, already-observed, internal-only, static-limitation, line-movement, and non-collision states",
-  "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md records this as the contract step before raw line-local presentation-text findings become one action, no-action state, or named limitation"
+  "crates/ripr/src/output/evidence_record.rs emits additive raw_findings, canonical_item, and nullable presentation_text fields from existing static seam facts",
+  "crates/ripr/src/output/repo_exposure.rs carries the additive alignment fields under seams[].evidence_record while preserving current seam fields",
+  "xtask/src/main.rs includes alignment fields in Lane 1 evidence-record field-health reporting",
+  "docs/OUTPUT_SCHEMA.md documents the additive evidence_record alignment fields",
+  "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md records the remaining presentation-text grouping and visibility work before raw line-local presentation-text findings become one action, no-action state, or named limitation"
 ]
 fixtures = [
   "fixtures/evidence-quality-benchmark/corpus.json"
 ]
-next = "analysis/finding-alignment-evidence-fields"
+next = "analysis/presentation-text-canonical-grouping"
 metric = "finding_alignment_raw_findings_total, finding_alignment_raw_signals_total, finding_alignment_canonical_items_total, finding_alignment_raw_to_canonical_ratio, finding_alignment_duplicate_groups_total, finding_alignment_actionable_items_total, finding_alignment_actionable_unresolved_canonical_gaps, finding_alignment_already_observed_total, finding_alignment_internal_only_total, finding_alignment_internal_no_action_total, finding_alignment_static_limitation_total, finding_alignment_unknown_total, finding_alignment_calibrated_supported_total, finding_alignment_uncalibrated_total, finding_alignment_visibility_unknown_total, finding_alignment_presentation_text_actionable_total"
 
 [[capability]]
