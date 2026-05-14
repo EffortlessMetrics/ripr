@@ -41072,6 +41072,19 @@ jobs:
         );
         assert_eq!(
             XtaskCommand::parse([
+                "impacted-evidence".to_string(),
+                "--label".to_string(),
+                "release-risk".to_string(),
+                "--check".to_string(),
+            ]),
+            XtaskCommand::ImpactedEvidence(vec![
+                "--label".to_string(),
+                "release-risk".to_string(),
+                "--check".to_string(),
+            ])
+        );
+        assert_eq!(
+            XtaskCommand::parse([
                 "ripr-pr".to_string(),
                 "--base".to_string(),
                 "origin/main".to_string(),
