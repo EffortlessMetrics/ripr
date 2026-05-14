@@ -264,6 +264,11 @@ suite('Extension Smoke', () => {
 
       assert.ok(context.status.text.includes('ripr: queued'));
       assert.ok(String(context.status.tooltip).includes('saved-workspace analysis is queued'));
+      assert.ok(String(context.status.tooltip).includes('Workspace:'));
+      assert.ok(String(context.status.tooltip).includes('Server command: ripr'));
+      assert.ok(String(context.status.tooltip).includes('Editor selectors: rust, typescript'));
+      assert.ok(String(context.status.tooltip).includes('Enabled languages: not reported yet'));
+      assert.ok(String(context.status.tooltip).includes('Next safe action:'));
 
       context.client.emitNotification('window/logMessage', {
         message: 'ripr analysis refresh queued: generation=1'
@@ -277,35 +282,41 @@ suite('Extension Smoke', () => {
       assert.ok(context.status.text.includes('ripr: analyzing'));
 
       context.client.emitNotification('window/logMessage', {
-        message: 'ripr analysis refresh completed in 42 ms: generation=1, diagnostics=0, files=0, findings=0, seam_diagnostics=0, published_files=0, cleared_files=0'
+        message: 'ripr analysis refresh completed in 42 ms: generation=1, diagnostics=0, files=0, findings=0, seam_diagnostics=0, enabled_languages=1, enabled_language_names=rust, published_files=0, cleared_files=0'
       });
       assert.ok(context.status.text.includes('ripr: no seams'));
+      assert.ok(String(context.status.tooltip).includes('Enabled languages: rust'));
 
       context.client.emitNotification('window/logMessage', {
-        message: 'ripr analysis refresh completed in 42 ms: generation=1, diagnostics=0, files=0, findings=0, seam_diagnostics=0, enabled_languages=0, published_files=0, cleared_files=0'
+        message: 'ripr analysis refresh completed in 42 ms: generation=1, diagnostics=0, files=0, findings=0, seam_diagnostics=0, enabled_languages=0, enabled_language_names=, published_files=0, cleared_files=0'
       });
       assert.ok(context.status.text.includes('ripr: languages off'));
       assert.ok(String(context.status.tooltip).includes('[languages] enabled = []'));
+      assert.ok(String(context.status.tooltip).includes('Enabled languages: none'));
+      assert.ok(String(context.status.tooltip).includes('ripr.toml [languages] enabled'));
       await context.controller.showStatus();
       assert.ok(context.infoMessages.at(-1)?.includes('no enabled languages'));
+      assert.ok(context.outputLines.join('\n').includes('Enabled languages: none'));
+      assert.ok(context.outputLines.join('\n').includes('Next safe action:'));
 
       context.client.emitNotification('window/logMessage', {
-        message: 'ripr analysis refresh completed in 42 ms: generation=2, diagnostics=5, files=2, findings=4, seam_diagnostics=0, published_files=2, cleared_files=0'
+        message: 'ripr analysis refresh completed in 42 ms: generation=2, diagnostics=5, files=2, findings=4, seam_diagnostics=0, enabled_languages=1, enabled_language_names=rust, published_files=2, cleared_files=0'
       });
       assert.ok(context.status.text.includes('ripr: no seams'));
 
       context.client.emitNotification('window/logMessage', {
-        message: 'ripr analysis refresh completed in 42 ms: generation=3, diagnostics=2, files=1, findings=1, seam_diagnostics=1, published_files=1, cleared_files=0'
+        message: 'ripr analysis refresh completed in 42 ms: generation=3, diagnostics=2, files=1, findings=1, seam_diagnostics=1, enabled_languages=1, enabled_language_names=rust, published_files=1, cleared_files=0'
       });
       assert.ok(context.status.text.includes('ripr: diagnostics'));
 
       context.client.emitNotification('window/logMessage', {
-        message: 'ripr analysis refresh completed in 42 ms: generation=4, diagnostics=2, files=1, findings=1, preview_findings=1, static_limits=1, seam_diagnostics=0, published_files=1, cleared_files=0'
+        message: 'ripr analysis refresh completed in 42 ms: generation=4, diagnostics=2, files=1, findings=1, preview_findings=1, static_limits=1, seam_diagnostics=0, enabled_languages=3, enabled_language_names=rust|typescript|python, published_files=1, cleared_files=0'
       });
       assert.ok(context.status.text.includes('ripr: diagnostics'));
       assert.ok(String(context.status.tooltip).includes('1 preview'));
       assert.ok(String(context.status.tooltip).includes('syntax-first and advisory'));
       assert.ok(String(context.status.tooltip).includes('static limit'));
+      assert.ok(String(context.status.tooltip).includes('Enabled languages: rust, typescript, python'));
 
       context.client.emitNotification('window/logMessage', {
         message: 'ripr analysis refresh failed after 3 ms: workspace analysis failed'
@@ -425,7 +436,7 @@ suite('Extension Smoke', () => {
       await context.controller.showStatus();
       const output = context.outputLines.join('\n');
       assert.ok(output.includes('First useful action report: available, but editor evidence is stale.'));
-      assert.ok(output.includes('Save or refresh the Rust workspace before acting on this report.'));
+      assert.ok(output.includes('Save or refresh the workspace before acting on this report.'));
       assert.ok(output.includes('Report: target/ripr/reports/first-useful-action.json'));
       assert.ok(!context.infoMessages.at(-1)?.includes('First useful action:'));
     } finally {
@@ -567,6 +578,9 @@ suite('Extension Smoke', () => {
 
       assert.ok(context.status.text.includes('ripr: disabled'));
       assert.ok(String(context.status.tooltip).includes('Set ripr.enabled to true'));
+      assert.ok(String(context.status.tooltip).includes('Workspace: not open'));
+      assert.ok(String(context.status.tooltip).includes('Server: not resolved'));
+      assert.ok(String(context.status.tooltip).includes('Next safe action: Set ripr.enabled to true'));
       assert.strictEqual(context.client.startCalls, 0);
     } finally {
       await context.dispose();
@@ -580,6 +594,8 @@ suite('Extension Smoke', () => {
 
       assert.ok(context.status.text.includes('ripr: open workspace'));
       assert.ok(String(context.status.tooltip).includes('needs a workspace folder'));
+      assert.ok(String(context.status.tooltip).includes('Workspace: not open'));
+      assert.ok(String(context.status.tooltip).includes('Next safe action: Open a workspace folder'));
       assert.strictEqual(context.client.startCalls, 0);
     } finally {
       await context.dispose();
@@ -598,6 +614,9 @@ suite('Extension Smoke', () => {
 
       assert.ok(context.status.text.includes('ripr: server missing'));
       assert.ok(String(context.status.tooltip).includes('Missing configured ripr server path'));
+      assert.ok(String(context.status.tooltip).includes('Workspace:'));
+      assert.ok(String(context.status.tooltip).includes('Server: not resolved'));
+      assert.ok(String(context.status.tooltip).includes('Next safe action: Set ripr.server.path'));
       assert.strictEqual(context.errorMessages.length, 1);
       assert.strictEqual(context.client.startCalls, 0);
     } finally {
