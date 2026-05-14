@@ -259,7 +259,9 @@ tests = [
   "crates/ripr/src/output/repo_exposure.rs::tests::markdown_uses_static_exposure_vocabulary",
   "crates/ripr/src/output/badge.rs::tests::seam_badge_summary_counts_visible_headline_eligible_seams",
   "crates/ripr/src/output/badge.rs::tests::seam_badge_summary_respects_configured_off_severity",
+  "crates/ripr/src/output/badge.rs::tests::gap_ledger_badge_summary_counts_projection_targets",
   "crates/ripr/tests/cli_smoke.rs::check_repo_badge_json_emits_repo_scope_metadata",
+  "crates/ripr/tests/cli_smoke.rs::check_repo_badge_json_can_use_gap_ledger_targets",
   "crates/ripr/tests/cli_smoke.rs::check_repo_badge_does_not_consult_diff_arg_when_supplied",
   "crates/ripr/tests/cli_smoke.rs::check_repo_badge_plus_json_emits_repo_scope_metadata",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::given_weakly_gripped_boundary_seam_when_packet_is_rendered_then_missing_boundary_value_is_present",
@@ -1129,6 +1131,7 @@ tests = [
   "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_treats_non_object_review_metadata_as_absent",
   "crates/ripr/src/output/baseline_update.rs::tests::baseline_update_removes_resolved_without_adopting_new_current_debt",
   "crates/ripr/src/output/ripr_zero_status.rs::tests::ripr_zero_status_reports_not_yet_with_metadata_and_repair_route",
+  "crates/ripr/src/output/ripr_zero_status.rs::tests::ripr_zero_status_uses_gap_ledger_targets_when_supplied",
   "crates/ripr/src/output/ripr_zero_status.rs::tests::ripr_zero_status_prefers_evidence_record_repair_context",
   "crates/ripr/src/output/ripr_zero_status.rs::tests::ripr_zero_status_reports_achieved_when_no_visible_debt_remains",
   "crates/ripr/src/output/ripr_zero_status.rs::tests::ripr_zero_status_reports_incomplete_when_delta_is_missing",
@@ -2879,8 +2882,11 @@ tests = [
   "crates/ripr/src/cli/commands.rs::tests::reports_gap_ledger_requires_records_input",
   "crates/ripr/src/output/first_useful_action.rs::tests::first_useful_action_routes_gap_record_without_assistant_proof",
   "crates/ripr/src/output/pr_evidence_ledger.rs::tests::pr_evidence_ledger_routes_repairable_gap_records",
+  "crates/ripr/src/output/ripr_zero_status.rs::tests::ripr_zero_status_uses_gap_ledger_targets_when_supplied",
+  "crates/ripr/src/output/badge.rs::tests::gap_ledger_badge_summary_counts_projection_targets",
   "crates/ripr/src/cli/commands.rs::tests::first_action_cli_writes_gap_record_report",
   "crates/ripr/src/cli/commands.rs::tests::pr_evidence_ledger_writes_json_and_markdown_reports",
+  "crates/ripr/tests/cli_smoke.rs::check_repo_badge_json_can_use_gap_ledger_targets",
 ]
 fixtures = [
   "fixtures/gap-decision-ledger/corpus.json",
@@ -2892,6 +2898,8 @@ code = [
   "crates/ripr/src/cli/help.rs",
   "crates/ripr/src/output/first_useful_action.rs",
   "crates/ripr/src/output/pr_evidence_ledger.rs",
+  "crates/ripr/src/output/ripr_zero_status.rs",
+  "crates/ripr/src/output/badge.rs",
   "xtask/src/main.rs",
 ]
 outputs = [
@@ -2899,6 +2907,8 @@ outputs = [
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0006-rust-usable-gap-projection.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/BADGE_POLICY.md",
+  "docs/CAPABILITY_MATRIX.md",
   "fixtures/gap-decision-ledger/README.md",
   "fixtures/gap-decision-ledger/corpus.json",
   ".ripr/traceability.toml",

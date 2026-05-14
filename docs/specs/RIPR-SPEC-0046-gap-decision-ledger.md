@@ -442,8 +442,8 @@ Planned slices:
   gap IDs and repair routes. (done)
 - `report/pr-evidence-ledger-gap-record` routes PR evidence ledger movement
   through the same gap IDs. (done)
-- `policy/ripr-zero-and-badges-gap-targets` makes repo badge targets consume
-  policy-backed gap records.
+- `policy/ripr-zero-and-badges-gap-targets` makes RIPR Zero status and repo
+  badge targets consume policy-backed gap records. (done)
 - `policy/gate-repairable-gap-predicate` makes optional gates consume the safe
   predicate without changing default blocking.
 - `comments/repair-card-projection` makes inline comments render only eligible

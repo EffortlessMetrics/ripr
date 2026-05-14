@@ -166,7 +166,7 @@ pub(crate) fn build_gap_decision_ledger_report(
 ) -> GapDecisionLedgerReport {
     let mut warnings = Vec::new();
     let records = match input.records_json {
-        Ok(contents) => match parse_gap_records(&contents) {
+        Ok(contents) => match parse_gap_records_json(&contents) {
             Ok(records) => records,
             Err(err) => {
                 warnings.push(format!("parse {} failed: {err}", input.records_path));
@@ -304,7 +304,7 @@ pub(crate) fn render_gap_decision_ledger_markdown(report: &GapDecisionLedgerRepo
     out
 }
 
-fn parse_gap_records(contents: &str) -> Result<Vec<GapRecord>, String> {
+pub(crate) fn parse_gap_records_json(contents: &str) -> Result<Vec<GapRecord>, String> {
     let value: Value =
         serde_json::from_str(contents).map_err(|err| format!("invalid JSON: {err}"))?;
     gap_records_from_value(&value)
@@ -495,7 +495,7 @@ fn safe_gate_predicate_satisfied(record: &GapRecord) -> bool {
         && !predicate.static_unknown_only
 }
 
-fn projection_eligible(record: &GapRecord, projection: &str) -> bool {
+pub(crate) fn projection_eligible(record: &GapRecord, projection: &str) -> bool {
     record
         .projection_eligibility
         .get(projection)

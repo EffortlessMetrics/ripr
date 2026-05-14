@@ -305,7 +305,7 @@ mod tests {
         let rendered = render_check(&output, &OutputFormat::BadgeJson)?;
 
         // Native snake_case wire shape with all required top-level keys.
-        assert!(rendered.contains("\"schema_version\": \"0.3\""));
+        assert!(rendered.contains("\"schema_version\": \"0.4\""));
         assert!(rendered.contains("\"kind\": \"ripr\""));
         assert!(rendered.contains("\"scope\": \"diff\""));
         assert!(rendered.contains("\"basis\": \"finding_exposure\""));
@@ -375,7 +375,7 @@ mod tests {
         let output = check_output_with_temp_seam_workspace(vec![sample_finding("src/lib.rs", 1)])?;
         let rendered = render_check(&output, &OutputFormat::RepoBadgeJson)?;
 
-        assert!(rendered.contains("\"schema_version\": \"0.3\""));
+        assert!(rendered.contains("\"schema_version\": \"0.4\""));
         assert!(rendered.contains("\"scope\": \"repo\""));
         assert!(rendered.contains("\"basis\": \"seam_native\""));
         assert!(!rendered.contains("\"scope\": \"diff\""));

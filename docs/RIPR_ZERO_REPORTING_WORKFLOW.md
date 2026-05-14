@@ -9,6 +9,7 @@ new gate.
 ```text
 reviewed baseline
 -> baseline debt delta
+-> optional gap decision ledger
 -> optional gate decision
 -> optional PR guidance and recommendation calibration
 -> RIPR Zero status
@@ -33,6 +34,7 @@ available:
 ripr zero status \
   --baseline .ripr/gate-baseline.json \
   --delta target/ripr/reports/baseline-debt-delta.json \
+  --gap-ledger target/ripr/reports/gap-decision-ledger.json \
   --gate target/ripr/reports/gate-decision.json \
   --pr-guidance target/ripr/review/comments.json \
   --recommendation-calibration target/ripr/reports/recommendation-calibration.json \
@@ -51,6 +53,11 @@ RIPR_GATE_BASELINE=.ripr/gate-baseline.json
 
 The status report is advisory. `ripr gate evaluate` still owns pass/fail
 decisions for configured gate modes.
+
+When `--gap-ledger` is supplied, RIPR Zero uses explicit
+`projection_eligibility.ripr_zero_count` GapRecord targets as the visible
+target count. Without it, the report keeps the legacy baseline-debt-delta count
+path.
 
 ## Read The First Screen
 
