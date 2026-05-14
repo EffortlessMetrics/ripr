@@ -1937,6 +1937,89 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn first_useful_action_supports_gap_record_shapes_and_output_routes() -> Result<(), String> {
+        let raw_array: Value = serde_json::from_str(&format!("[{}]", output_contract_gap_record()))
+            .map_err(|err| format!("parse raw gap records: {err}"))?;
+        assert_eq!(gap_records(&raw_array).len(), 1);
+
+        let wrapped_gap_records: Value = serde_json::from_str(&format!(
+            r#"{{"gap_records":[{}]}}"#,
+            output_contract_gap_record()
+        ))
+        .map_err(|err| format!("parse wrapped gap_records: {err}"))?;
+        assert!(first_actionable_gap_record(&wrapped_gap_records).is_some());
+
+        let fixture_cases: Value = serde_json::from_str(&format!(
+            r#"{{"cases":[{{"expected_gap_record":{}}}]}}"#,
+            output_contract_gap_record()
+        ))
+        .map_err(|err| format!("parse fixture-style gap records: {err}"))?;
+        assert!(first_actionable_gap_record(&fixture_cases).is_some());
+
+        let report = build_first_useful_action_report(FirstUsefulActionInput {
+            root: ".".to_string(),
+            generated_at: "2026-05-09T12:00:00Z".to_string(),
+            pr_guidance_path: None,
+            assistant_proof_path: None,
+            gap_ledger_path: Some("gap-decision-ledger.json".to_string()),
+            ledger_path: None,
+            baseline_delta_path: None,
+            receipt_path: None,
+            gate_decision_path: None,
+            coverage_frontier_path: None,
+            editor_context_path: None,
+            pr_guidance_json: None,
+            assistant_proof_json: None,
+            gap_ledger_json: Some(Ok(format!(
+                r#"{{"gap_records":[{}]}}"#,
+                output_contract_gap_record()
+            ))),
+            ledger_json: None,
+            baseline_delta_json: None,
+            receipt_json: None,
+            gate_decision_json: None,
+            coverage_frontier_json: None,
+            editor_context_json: None,
+        });
+
+        let rendered = render_first_useful_action_json(&report)?;
+        assert!(rendered.contains(r#""action_kind": "generate_missing_artifact""#));
+        assert!(rendered.contains(r#""repair_route": "AddOutputGolden""#));
+        assert!(rendered.contains(r#""verify": "cargo xtask goldens check""#));
+        assert!(rendered.contains(r#""file": "fixtures/boundary_gap/expected/output.json""#));
+        Ok(())
+    }
+
+    fn output_contract_gap_record() -> &'static str {
+        r#"{
+  "gap_id": "gap:pr:output:first-action-golden",
+  "canonical_gap_id": "gap:rust:output:first-action-golden",
+  "kind": "MissingOutputContract",
+  "language": "rust",
+  "language_status": "stable",
+  "scope": "pr_local",
+  "evidence_class": "presentation_text",
+  "gap_state": "actionable",
+  "policy_state": "reintroduced",
+  "repairability": "repairable",
+  "anchor": {
+    "file": "crates/ripr/src/output/human.rs",
+    "line": 17,
+    "dedupe_fingerprint": "gap:rust:output:first-action-golden"
+  },
+  "repair_route": {
+    "route_kind": "AddOutputGolden",
+    "target_file": "fixtures/boundary_gap/expected/output.json",
+    "target_line": 1,
+    "assertion_shape": "refresh output golden"
+  },
+  "verification_commands": [
+    "cargo xtask goldens check"
+  ]
+}"#
+    }
+
     fn repo_root() -> Result<PathBuf, String> {
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         manifest_dir
