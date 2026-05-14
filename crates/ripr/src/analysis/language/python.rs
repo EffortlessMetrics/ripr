@@ -654,20 +654,91 @@ fn related_test_relation(test: &PythonTest, owner: &PythonOwner) -> Option<Pytho
 }
 
 fn body_calls_owner(body_text: &str, owner: &PythonOwner) -> bool {
-    let direct_call = format!("{}(", owner.name);
-    let method_call = format!(".{}(", owner.name);
-    let qualified_call = format!("{}(", owner.qualified_name);
-    body_text.contains(&direct_call)
-        || body_text.contains(&method_call)
-        || body_text.contains(&qualified_call)
+    contains_call_name(body_text, &owner.name)
+        || (owner.qualified_name != owner.name
+            && contains_call_name(body_text, &owner.qualified_name))
+        || (matches!(owner.owner_kind, OwnerKind::Method | OwnerKind::ClassMethod)
+            && contains_any_attribute_call(body_text, &owner.name))
 }
 
 fn import_alias_calls_owner(test: &PythonTest, owner: &PythonOwner) -> bool {
     test.imports.iter().any(|import| {
-        import.imported == owner.name
+        (import.imported == owner.name
             && import.alias != owner.name
-            && test.body_text.contains(&format!("{}(", import.alias))
+            && contains_call_name(&test.body_text, &import.alias))
+            || (imported_module_matches_owner(import, owner)
+                && contains_attribute_call(&test.body_text, &import.alias, &owner.name))
     })
+}
+
+fn imported_module_matches_owner(import: &PythonImport, owner: &PythonOwner) -> bool {
+    owner
+        .file
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .is_some_and(|stem| import.imported.rsplit('.').next() == Some(stem))
+}
+
+fn contains_call_name(body_text: &str, call_name: &str) -> bool {
+    let needle = format!("{call_name}(");
+    body_text.match_indices(&needle).any(|(idx, _)| {
+        has_call_boundary(body_text, idx)
+            && !line_prefix_looks_like_comment_or_string(body_text, idx)
+    })
+}
+
+fn contains_attribute_call(body_text: &str, receiver: &str, attr: &str) -> bool {
+    let needle = format!("{receiver}.{attr}(");
+    body_text.match_indices(&needle).any(|(idx, _)| {
+        has_call_boundary(body_text, idx)
+            && !line_prefix_looks_like_comment_or_string(body_text, idx)
+    })
+}
+
+fn contains_any_attribute_call(body_text: &str, attr: &str) -> bool {
+    let needle = format!(".{attr}(");
+    body_text
+        .match_indices(&needle)
+        .any(|(idx, _)| !line_prefix_looks_like_comment_or_string(body_text, idx))
+}
+
+fn has_call_boundary(body_text: &str, idx: usize) -> bool {
+    body_text[..idx]
+        .chars()
+        .next_back()
+        .is_none_or(|ch| !is_python_identifier_char(ch) && ch != '.')
+}
+
+fn line_prefix_looks_like_comment_or_string(body_text: &str, idx: usize) -> bool {
+    let line_start = body_text[..idx].rfind('\n').map_or(0, |offset| offset + 1);
+    let prefix = &body_text[line_start..idx];
+    prefix.trim_start().starts_with('#') || has_unclosed_quote(prefix)
+}
+
+fn has_unclosed_quote(prefix: &str) -> bool {
+    let mut escaped = false;
+    let mut in_single = false;
+    let mut in_double = false;
+    for ch in prefix.chars() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '\'' && !in_double {
+            in_single = !in_single;
+        } else if ch == '"' && !in_single {
+            in_double = !in_double;
+        }
+    }
+    in_single || in_double
+}
+
+fn is_python_identifier_char(ch: char) -> bool {
+    ch == '_' || ch.is_ascii_alphanumeric()
 }
 
 fn same_stem_related(test: &PythonTest, owner: &PythonOwner) -> bool {
@@ -1587,6 +1658,56 @@ def test_notifies_callback():
     }
 
     #[test]
+    fn related_test_matching_ignores_object_method_calls_for_free_functions() {
+        let owners = extract_owners(
+            Path::new("src/pricing.py"),
+            "def apply_discount(amount):\n    return amount - 10\n",
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_order_methods.py"),
+            "def test_order_discount_method():\n    assert order.apply_discount(100) == 90\n",
+        );
+
+        let related = related_test_candidates(&owners[0], &tests);
+
+        assert!(related.is_empty());
+    }
+
+    #[test]
+    fn related_test_matching_accepts_module_alias_attribute_calls() {
+        let owners = extract_owners(
+            Path::new("src/pricing.py"),
+            "def apply_discount(amount):\n    return amount - 10\n",
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_module_alias_pricing.py"),
+            "import src.pricing as pricing\n\ndef test_discount_module_alias():\n    assert pricing.apply_discount(100) == 90\n",
+        );
+
+        let related = related_test_candidates(&owners[0], &tests);
+
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].relation, PythonRelationKind::ImportAliasCall);
+    }
+
+    #[test]
+    fn related_test_matching_keeps_method_owner_object_calls() {
+        let owners = extract_owners(
+            Path::new("src/cart.py"),
+            "class Cart:\n    def apply_discount(self, amount):\n        return amount - 10\n",
+        );
+        let tests = extract_tests(
+            Path::new("tests/test_cart.py"),
+            "def test_cart_discount_method():\n    assert cart.apply_discount(100) == 90\n",
+        );
+
+        let related = related_test_candidates(&owners[0], &tests);
+
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].relation, PythonRelationKind::SyntacticCall);
+    }
+
+    #[test]
     fn classify_change_uses_import_alias_call_as_strong_relation() -> Result<(), String> {
         let owners = extract_owners(
             Path::new("src/tax.py"),
@@ -1807,7 +1928,7 @@ def test_notifies_callback():
         );
         let tests = extract_tests(
             Path::new("tests/test_docs.py"),
-            "def test_docs_mentions_owner():\n    assert \"apply_discount\" in \"apply_discount\"\n",
+            "def test_docs_mentions_owner():\n    assert \"apply_discount(\" in \"apply_discount(\"\n",
         );
 
         let Some(finding) = classify_change(
