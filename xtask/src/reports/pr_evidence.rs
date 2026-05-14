@@ -1,8 +1,8 @@
+use crate::run::run_output_owned;
 use serde_json::{Map, Value, json};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 const DEFAULT_ROOT: &str = ".";
 const DEFAULT_BASE: &str = "origin/main";
@@ -177,16 +177,15 @@ fn check_pr_evidence(repo: &Path, options: &PrEvidenceOptions) -> Result<(), Str
 
 fn verify_revision(repo: &Path, rev: &str) -> Result<(), String> {
     let commit = format!("{rev}^{{commit}}");
-    run_output_at_root(repo, "git", &["rev-parse", "--verify", commit.as_str()])
+    run_git_output(repo, &["rev-parse", "--verify", commit.as_str()])
         .map(|_| ())
         .map_err(|err| format!("bad base/head revision {rev:?}: {err}"))
 }
 
 fn changed_files(repo: &Path, options: &PrEvidenceOptions) -> Result<Vec<String>, String> {
     let range = format!("{}...{}", options.base, options.head);
-    let output = run_output_at_root(
+    let output = run_git_output(
         repo,
-        "git",
         &["diff", "--name-only", "--diff-filter=ACMR", range.as_str()],
     )?;
     Ok(output
@@ -205,61 +204,57 @@ fn write_diff(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
     fs::create_dir_all(parent)
         .map_err(|err| format!("failed to create {PR_DIFF} parent: {err}"))?;
     let range = format!("{}...{}", options.base, options.head);
-    let diff = run_output_at_root(
-        repo,
-        "git",
-        &["diff", "--binary", "--no-ext-diff", range.as_str()],
-    )?;
+    let diff = run_git_output(repo, &["diff", "--binary", "--no-ext-diff", range.as_str()])?;
     fs::write(&out, diff).map_err(|err| format!("failed to write {PR_DIFF}: {err}"))
 }
 
 fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, String> {
     let diff_path = repo.join(PR_DIFF);
     let diff_arg = diff_path.display().to_string();
+    let root_arg = command_root_arg(repo, &options.root);
     let ripr_args = vec![
         "check".to_string(),
         "--root".to_string(),
-        options.root.clone(),
+        root_arg,
         "--diff".to_string(),
         diff_arg,
         "--format".to_string(),
         "json".to_string(),
     ];
-    let ripr_arg_refs = ripr_args.iter().map(String::as_str).collect::<Vec<_>>();
     if let Ok(binary) = env::var("RIPR_BIN") {
         if binary.trim().is_empty() {
             return Err("RIPR_BIN is set but empty".to_string());
         }
-        return run_output_at_root(repo, binary.as_str(), &ripr_arg_refs);
+        return run_output_owned(binary.as_str(), &ripr_args);
     }
 
     let mut cargo_args = ["run", "-p", "ripr", "--quiet", "--"]
         .iter()
         .map(|arg| (*arg).to_string())
         .collect::<Vec<_>>();
+    cargo_args.splice(
+        1..1,
+        [
+            "--manifest-path".to_string(),
+            repo.join("Cargo.toml").display().to_string(),
+        ],
+    );
     cargo_args.extend(ripr_args);
-    let cargo_arg_refs = cargo_args.iter().map(String::as_str).collect::<Vec<_>>();
-    run_output_at_root(repo, "cargo", &cargo_arg_refs)
+    run_output_owned("cargo", &cargo_args)
 }
 
-fn run_output_at_root(repo: &Path, program: &str, args: &[&str]) -> Result<String, String> {
-    let output = Command::new(program)
-        .args(args)
-        .current_dir(repo)
-        .output()
-        .map_err(|err| format!("failed to run {program} {}: {err}", args.join(" ")))?;
-    if output.status.success() {
-        return Ok(String::from_utf8_lossy(&output.stdout).into_owned());
+fn command_root_arg(repo: &Path, root: &str) -> String {
+    let root_path = Path::new(root);
+    if root_path.is_absolute() {
+        return root.to_string();
     }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    Err(format!(
-        "{program} {} failed with {}\nstdout:\n{}\nstderr:\n{}",
-        args.join(" "),
-        output.status,
-        stdout.trim(),
-        stderr.trim()
-    ))
+    repo.join(root_path).display().to_string()
+}
+
+fn run_git_output(repo: &Path, args: &[&str]) -> Result<String, String> {
+    let mut git_args = vec!["-C".to_string(), repo.display().to_string()];
+    git_args.extend(args.iter().map(|arg| (*arg).to_string()));
+    run_output_owned("git", &git_args)
 }
 
 fn pr_evidence_packet(
@@ -745,6 +740,6 @@ mod tests {
     }
 
     fn run_git(repo: &Path, args: &[&str]) -> Result<(), String> {
-        run_output_at_root(repo, "git", args).map(|_| ())
+        run_git_output(repo, args).map(|_| ())
     }
 }
