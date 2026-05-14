@@ -848,6 +848,9 @@ fn test_has_mocked_module(test: &PythonTest) -> bool {
         .any(|decorator| decorator == "patch" || decorator.ends_with(".patch"))
         || test.body_text.contains("patch(")
         || test.body_text.contains(".patch(")
+        || test.body_text.contains("monkeypatch.setattr(")
+        || test.body_text.contains("monkeypatch.setitem(")
+        || test.body_text.contains("monkeypatch.delattr(")
 }
 
 fn line_uses_imported_symbol(text: &str, imports: &[PythonImport]) -> bool {
@@ -1805,6 +1808,11 @@ def test_notifies_callback():
             "from unittest.mock import patch\nfrom src.service import total\n\n@patch(\"src.service.remote_total\")\ndef test_total(mock_remote):\n    assert total() == 1\n",
         );
         let candidates = related_test_candidates(&plain_owner, &tests);
+        let monkeypatch_tests = extract_tests(
+            Path::new("tests/test_service.py"),
+            "from src.service import total\n\ndef test_total(monkeypatch):\n    monkeypatch.setattr(\"src.service.remote_total\", lambda: 1)\n    assert total() == 1\n",
+        );
+        let monkeypatch_candidates = related_test_candidates(&plain_owner, &monkeypatch_tests);
 
         assert_eq!(
             static_limit_for_change("    return getattr(client, name)()", &plain_owner, &[])
@@ -1822,6 +1830,11 @@ def test_notifies_callback():
         );
         assert_eq!(
             static_limit_for_change("    return total()", &plain_owner, &candidates)
+                .map(|limit| limit.kind),
+            Some(StaticLimitKind::MockedModule)
+        );
+        assert_eq!(
+            static_limit_for_change("    return total()", &plain_owner, &monkeypatch_candidates)
                 .map(|limit| limit.kind),
             Some(StaticLimitKind::MockedModule)
         );
