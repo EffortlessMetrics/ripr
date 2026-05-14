@@ -247,8 +247,18 @@ fn push_gap_verify_and_receipt(lines: &mut Vec<String>, data: &Value) {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
+    let regeneration_commands = value_at(data, &["regeneration_commands"])
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(string_value)
+                .take(5)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
     let receipt = value_at(data, &["receipt"]);
-    if verify_commands.is_empty() && receipt.is_none() {
+    if verify_commands.is_empty() && regeneration_commands.is_empty() && receipt.is_none() {
         return;
     }
 
@@ -256,6 +266,9 @@ fn push_gap_verify_and_receipt(lines: &mut Vec<String>, data: &Value) {
     lines.push("## Verify and receipt".to_string());
     for command in verify_commands {
         lines.push(format!("- verify: `{command}`"));
+    }
+    for command in regeneration_commands {
+        lines.push(format!("- regenerate: `{command}`"));
     }
     if let Some(path) = receipt
         .and_then(|receipt| value_at(receipt, &["path"]))
@@ -992,6 +1005,7 @@ mod seam_hover_tests {
                     "owner": "pricing.discounted_total"
                 },
                 "verification_commands": ["ripr agent verify --root . --json"],
+                "regeneration_commands": ["cargo xtask ripr-pr --check"],
                 "receipt": {
                     "path": "target/ripr/agent/agent-receipt.json",
                     "movement": "improved"
@@ -1044,6 +1058,7 @@ mod seam_hover_tests {
             "- stop if:",
             "## Verify and receipt",
             "- verify: `ripr agent verify --root . --json`",
+            "- regenerate: `cargo xtask ripr-pr --check`",
             "- receipt artifact: `target/ripr/agent/agent-receipt.json`",
             "- receipt movement: `improved`",
             "## Limits",
