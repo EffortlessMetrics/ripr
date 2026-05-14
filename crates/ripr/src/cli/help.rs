@@ -174,17 +174,23 @@ testing, edit source files, configure CI policy, or make gate decisions.
 
 const REVIEW_COMMENTS_HELP: &str = r#"Write advisory PR test guidance on changed lines (does not post to GitHub).
 
-Usage: ripr review-comments [--root PATH] --base SHA --head SHA [--out PATH]
+Usage: ripr review-comments [--root PATH] --base SHA --head SHA [--gap-ledger PATH] [--out PATH]
 
 Options:
   --root PATH    Workspace root. Defaults to current directory.
   --base SHA     Pull-request base revision.
   --head SHA     Pull-request head revision.
+  --gap-ledger PATH
+                 Optional gap decision ledger JSON; when supplied, changed-line
+                 repair cards come only from `projection_eligibility.pr_comment`
+                 GapRecord targets.
   --out PATH     JSON output path. Defaults to target/ripr/review/comments.json.
 
 The review-comments command writes a bounded advisory PR guidance report as
 JSON plus a sibling Markdown file. It joins existing static seam evidence with
-the changed-line diff and only places line guidance on changed lines. It does
+the changed-line diff by default and only places line guidance on changed
+lines. When `--gap-ledger` is supplied, it does not rerun analysis; it renders
+only eligible PR-local repair cards from explicit GapRecord records. It does
 not post to GitHub, edit source, generate tests, run mutation testing, or make
 CI blocking by default.
 "#;
