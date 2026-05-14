@@ -286,6 +286,7 @@ cargo xtask fix-pr
 cargo xtask pr-summary
 cargo xtask pr-triage-report
 cargo xtask gh-pr-status --pr <number>
+cargo xtask suggested-fixes
 cargo xtask precommit
 cargo xtask check-pr
 cargo xtask fixtures
@@ -307,6 +308,10 @@ runs `shape`, refreshes `pr-summary`, and writes a local fix-pr report.
 `gh-pr-status --pr <number>` writes a read-only merge-readiness packet for one
 PR, including merge state, required check status when GitHub exposes it,
 reviews, Droid status, and the next safe action.
+`suggested-fixes` writes a deterministic repair patch and companion report
+under `target/ripr/reports/`; v1 only suggests allowlist ordering fixes and
+never writes badge values, baselines, suppressions, goldens, dependency
+exceptions, or schema changes.
 `precommit` is the cheap non-mutating local guardrail. `check-pr` is the
 review-ready local gate and intentionally does not run package or publish
 dry-run checks. `check-badge-diff-policy` fails ordinary PRs that carry
