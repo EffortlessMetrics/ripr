@@ -85,6 +85,9 @@ Planned scope:
   conservatively: module import aliases such as `pricing.apply_discount(...)`
   still relate to the owner, but unrelated object method calls no longer make a
   top-level function look related.
+- Python preview static limits now treat common pytest `monkeypatch` runtime
+  substitution calls as `mocked_module`, keeping related-test evidence advisory
+  when the test changes module or attribute behavior at runtime.
 - TypeScript preview related-test matching now uses the same conservative
   token-aware owner-call boundary, so string/comment mentions and arbitrary
   object method calls no longer make a top-level function look related or

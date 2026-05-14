@@ -119,7 +119,8 @@ values defined in RIPR-SPEC-0026:
   adapter cannot resolve syntactically)
 - `decorator_indirection` (the decorator changes the call semantics in a
   way the syntax-first adapter cannot follow)
-- `mocked_module` (e.g., `@patch(...)` observed at the call site)
+- `mocked_module` (e.g., `@patch(...)` or `monkeypatch.setattr(...)`
+  observed at the related-test call site)
 - `unsupported_syntax`
 
 ## Required Evidence
