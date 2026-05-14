@@ -859,6 +859,7 @@ fn precommit() -> Result<(), String> {
     check_workflows()?;
     check_droid_review_config()?;
     check_spec_format()?;
+    check_spec_numbering()?;
     check_fixture_contracts()?;
     check_traceability()?;
     check_capabilities()?;
@@ -912,6 +913,7 @@ fn run_policy_checks() -> Result<(), String> {
     check_workflows()?;
     check_droid_review_config()?;
     check_spec_format()?;
+    check_spec_numbering()?;
     check_fixture_contracts()?;
     check_traceability()?;
     check_capabilities()?;
@@ -1933,7 +1935,7 @@ fn receipts_report_markdown(
 }
 
 fn precommit_report_body() -> String {
-    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-allow-attributes`\n- `cargo xtask check-local-context`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-droid-review-config`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-readme-state`\n- `cargo xtask markdown-links`\n- `cargo xtask check-campaign`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-generated`\n- `cargo xtask check-badge-diff-policy`\n- `cargo xtask check-generated-clean`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
+    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-allow-attributes`\n- `cargo xtask check-local-context`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-droid-review-config`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-spec-numbering`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-readme-state`\n- `cargo xtask markdown-links`\n- `cargo xtask check-campaign`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-generated`\n- `cargo xtask check-badge-diff-policy`\n- `cargo xtask check-generated-clean`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
 }
 
 fn check_pr_report_body() -> String {
@@ -3803,6 +3805,218 @@ fn check_spec_format() -> Result<(), String> {
         },
         &violations,
     )
+}
+
+fn specs(args: &[String]) -> Result<(), String> {
+    match args.first().map(String::as_str) {
+        Some("next") => {
+            println!("{}", next_spec_id(Path::new("."))?);
+            Ok(())
+        }
+        Some(other) => Err(format!(
+            "unknown specs command `{other}`\nusage: cargo xtask specs next"
+        )),
+        None => Err("missing specs command\nusage: cargo xtask specs next".to_string()),
+    }
+}
+
+fn check_spec_numbering() -> Result<(), String> {
+    let violations = spec_numbering_violations(Path::new("."))?;
+    finish_spec_numbering_report(&violations)
+}
+
+fn finish_spec_numbering_report(violations: &[String]) -> Result<(), String> {
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "spec-numbering.md",
+            check: "check-spec-numbering",
+            why_it_matters: "Spec IDs are source-of-truth identifiers; current numbering and references should be mechanical instead of agent memory.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Run `cargo xtask specs next` before creating a new docs/specs/RIPR-SPEC-NNNN file.",
+                "Add every spec file to docs/specs/README.md.",
+                "Use only existing RIPR-SPEC-NNNN IDs in traceability and capability surfaces.",
+            ],
+            rerun_command: "cargo xtask check-spec-numbering",
+            exception_template: None,
+        },
+        violations,
+    )
+}
+
+fn next_spec_id(root: &Path) -> Result<String, String> {
+    let specs = collect_spec_files_for_root(root)?;
+    Ok(next_spec_id_from_ids(
+        specs.iter().map(|spec| spec.id.as_str()),
+    ))
+}
+
+fn next_spec_id_from_ids<'a>(ids: impl Iterator<Item = &'a str>) -> String {
+    let next = match ids.filter_map(spec_number_from_id).max() {
+        Some(max) => max + 1,
+        None => 1,
+    };
+    format!("RIPR-SPEC-{next:04}")
+}
+
+fn spec_numbering_violations(root: &Path) -> Result<Vec<String>, String> {
+    let specs = collect_spec_files_for_root(root)?;
+    let mut violations = Vec::new();
+    let mut ids = BTreeMap::<String, Vec<String>>::new();
+    for spec in &specs {
+        ids.entry(spec.id.clone())
+            .or_default()
+            .push(spec.relative_path.clone());
+    }
+    for (id, paths) in &ids {
+        if paths.len() > 1 {
+            violations.push(format!(
+                "{id} is used by multiple spec files: {}",
+                paths.join(", ")
+            ));
+        }
+    }
+
+    validate_specs_readme_index(root, &specs, &ids, &mut violations)?;
+    validate_spec_references(root, &ids, &mut violations)?;
+
+    violations.sort();
+    violations.dedup();
+    Ok(violations)
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct SpecFile {
+    id: String,
+    file_name: String,
+    relative_path: String,
+}
+
+fn collect_spec_files_for_root(root: &Path) -> Result<Vec<SpecFile>, String> {
+    let spec_dir = root.join("docs/specs");
+    let mut specs = Vec::new();
+    if !spec_dir.exists() {
+        return Ok(specs);
+    }
+    for path in collect_files(&spec_dir)? {
+        if path.extension().and_then(|value| value.to_str()) != Some("md") {
+            continue;
+        }
+        let Some(file_name) = path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        if !file_name.starts_with("RIPR-SPEC-") {
+            continue;
+        }
+        let Some(id) = spec_id_from_path(&path) else {
+            continue;
+        };
+        specs.push(SpecFile {
+            id,
+            file_name: file_name.to_string(),
+            relative_path: root_relative_path(root, &path),
+        });
+    }
+    specs.sort_by(|left, right| {
+        left.id
+            .cmp(&right.id)
+            .then_with(|| left.relative_path.cmp(&right.relative_path))
+    });
+    Ok(specs)
+}
+
+fn validate_specs_readme_index(
+    root: &Path,
+    specs: &[SpecFile],
+    ids: &BTreeMap<String, Vec<String>>,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let readme = root.join("docs/specs/README.md");
+    if !readme.exists() {
+        violations.push("docs/specs/README.md is missing".to_string());
+        return Ok(());
+    }
+    let text = read_text_lossy(&readme)?;
+    for spec in specs {
+        let link = format!("[{}]({})", spec.id, spec.file_name);
+        if !text.contains(&link) {
+            violations.push(format!(
+                "docs/specs/README.md is missing index link `{link}` for {}",
+                spec.relative_path
+            ));
+        }
+    }
+    for id in spec_ids_in_text(&text) {
+        if !ids.contains_key(&id) {
+            violations.push(format!(
+                "docs/specs/README.md references missing spec `{id}`"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_spec_references(
+    root: &Path,
+    ids: &BTreeMap<String, Vec<String>>,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    for relative in [
+        ".ripr/traceability.toml",
+        "metrics/capabilities.toml",
+        "docs/CAPABILITY_MATRIX.md",
+    ] {
+        let path = root.join(relative);
+        if !path.exists() {
+            continue;
+        }
+        let text = read_text_lossy(&path)?;
+        for id in spec_ids_in_text(&text) {
+            if !ids.contains_key(&id) {
+                violations.push(format!("{relative} references missing spec `{id}`"));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn spec_ids_in_text(text: &str) -> BTreeSet<String> {
+    let mut ids = BTreeSet::new();
+    let id_len = "RIPR-SPEC-0000".len();
+    for (offset, _) in text.match_indices("RIPR-SPEC-") {
+        let Some(candidate) = text.get(offset..offset + id_len) else {
+            continue;
+        };
+        if text
+            .as_bytes()
+            .get(offset + id_len)
+            .is_some_and(u8::is_ascii_digit)
+        {
+            continue;
+        }
+        if is_spec_id(candidate) {
+            ids.insert(candidate.to_string());
+        }
+    }
+    ids
+}
+
+fn spec_number_from_id(id: &str) -> Option<u32> {
+    let suffix = id.strip_prefix("RIPR-SPEC-")?;
+    if suffix.len() == 4 && is_ascii_digits(suffix) {
+        suffix.parse::<u32>().ok()
+    } else {
+        None
+    }
+}
+
+fn root_relative_path(root: &Path, path: &Path) -> String {
+    match path.strip_prefix(root) {
+        Ok(relative) => relative,
+        Err(_) => path,
+    }
+    .to_string_lossy()
+    .replace('\\', "/")
 }
 
 fn check_fixture_contracts() -> Result<(), String> {
@@ -28066,7 +28280,7 @@ mod tests {
         lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
         markdown_links_in_text, mutation_calibration_report_json,
         mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
-        no_panic_toml_string, non_rust_programming_retention_reason,
+        next_spec_id_from_ids, no_panic_toml_string, non_rust_programming_retention_reason,
         normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
         panic_family_from_pattern, parse_campaign_manifest, parse_file_policy_allowlist,
         parse_inline_array, parse_mutation_calibration_args, parse_mutation_outcomes_json,
@@ -28085,15 +28299,16 @@ mod tests {
         ripr_command_literals_in_text, ripr_debug_binary, ripr_pre_commit_hook,
         run_ci_full_evidence_gates, sarif_policy_report_json, sarif_policy_report_markdown,
         semantic_selector_matches, should_scan_static_language_path, should_skip_path,
-        sorted_allowlist_content, spec_id_from_path, static_language_allowlist_covers,
-        status_for_report, suspicious_runtime_file_names, targeted_test_outcome,
-        targeted_test_outcome_report_json, targeted_test_outcome_report_markdown,
-        test_efficiency_entry, test_efficiency_report_json, test_efficiency_report_markdown,
-        test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
-        unknown_command_message, validate_local_context_allowlist, vscode_compile_command,
-        vscode_extension_dir, vscode_package_command, vscode_package_version,
-        vscode_test_e2e_command, windows_absolute_path_tokens, workflow_runtime_violations,
-        worktree, worktree_doctor_findings, write_repo_exposure_latency_report,
+        sorted_allowlist_content, spec_id_from_path, spec_ids_in_text, spec_numbering_violations,
+        specs, static_language_allowlist_covers, status_for_report, suspicious_runtime_file_names,
+        targeted_test_outcome, targeted_test_outcome_report_json,
+        targeted_test_outcome_report_markdown, test_efficiency_entry, test_efficiency_report_json,
+        test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
+        test_oracle_tests_in_text, unknown_command_message, validate_local_context_allowlist,
+        vscode_compile_command, vscode_extension_dir, vscode_package_command,
+        vscode_package_version, vscode_test_e2e_command, windows_absolute_path_tokens,
+        workflow_runtime_violations, worktree, worktree_doctor_findings,
+        write_repo_exposure_latency_report,
     };
     use super::{
         DeclaredIntent, LocalContextFinding,
@@ -37567,6 +37782,119 @@ jobs:
     }
 
     #[test]
+    fn specs_next_id_is_mechanical() {
+        assert_eq!(
+            next_spec_id_from_ids(["RIPR-SPEC-0001", "RIPR-SPEC-0046"].into_iter()),
+            "RIPR-SPEC-0047"
+        );
+        assert_eq!(
+            next_spec_id_from_ids(std::iter::empty::<&str>()),
+            "RIPR-SPEC-0001"
+        );
+    }
+
+    #[test]
+    fn specs_command_rejects_missing_or_unknown_subcommand() {
+        let missing = match specs(&[]) {
+            Ok(()) => "unexpected pass".to_string(),
+            Err(err) => err,
+        };
+        assert!(missing.contains("cargo xtask specs next"));
+
+        let unknown = match specs(&["current".to_string()]) {
+            Ok(()) => "unexpected pass".to_string(),
+            Err(err) => err,
+        };
+        assert!(unknown.contains("unknown specs command"));
+        assert!(unknown.contains("cargo xtask specs next"));
+    }
+
+    #[test]
+    fn spec_ids_in_text_extracts_four_digit_ids_only() {
+        let ids = spec_ids_in_text(
+            "RIPR-SPEC-0001 RIPR-SPEC-001 RIPR-SPEC-9999 RIPR-SPEC-abcd RIPR-SPEC-12345",
+        );
+        assert!(ids.contains("RIPR-SPEC-0001"));
+        assert!(ids.contains("RIPR-SPEC-9999"));
+        assert!(!ids.contains("RIPR-SPEC-001"));
+        assert!(!ids.contains("RIPR-SPEC-1234"));
+    }
+
+    #[test]
+    fn spec_numbering_detects_missing_index_and_reference_drift() -> Result<(), String> {
+        let root = temp_dir("spec-numbering-drift");
+        write(
+            &root.join("docs/specs/RIPR-SPEC-0001-one.md"),
+            "# RIPR-SPEC-0001: One\n",
+        );
+        write(
+            &root.join("docs/specs/RIPR-SPEC-0002-two.md"),
+            "# RIPR-SPEC-0002: Two\n",
+        );
+        write(
+            &root.join("docs/specs/README.md"),
+            "| Spec | Status | Title |\n| --- | --- | --- |\n| [RIPR-SPEC-0001](RIPR-SPEC-0001-one.md) | proposed | One |\n| [RIPR-SPEC-9999](missing.md) | proposed | Missing |\n",
+        );
+        write(
+            &root.join(".ripr/traceability.toml"),
+            "spec = \"RIPR-SPEC-9998\"\n",
+        );
+        write(
+            &root.join("metrics/capabilities.toml"),
+            "spec = \"RIPR-SPEC-9997\"\n",
+        );
+        write(
+            &root.join("docs/CAPABILITY_MATRIX.md"),
+            "| Capability | RIPR-SPEC-9996 |\n",
+        );
+
+        let violations = spec_numbering_violations(&root)?;
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("missing index link `[RIPR-SPEC-0002]"))
+        );
+        assert!(violations.iter().any(|violation| {
+            violation.contains("README.md references missing spec `RIPR-SPEC-9999`")
+        }));
+        assert!(violations.iter().any(|violation| {
+            violation.contains(".ripr/traceability.toml references missing spec `RIPR-SPEC-9998`")
+        }));
+        assert!(violations.iter().any(|violation| {
+            violation.contains("metrics/capabilities.toml references missing spec `RIPR-SPEC-9997`")
+        }));
+        assert!(violations.iter().any(|violation| {
+            violation.contains("docs/CAPABILITY_MATRIX.md references missing spec `RIPR-SPEC-9996`")
+        }));
+        Ok(())
+    }
+
+    #[test]
+    fn spec_numbering_detects_duplicate_spec_ids() -> Result<(), String> {
+        let root = temp_dir("spec-numbering-duplicate");
+        write(
+            &root.join("docs/specs/RIPR-SPEC-0001-one.md"),
+            "# RIPR-SPEC-0001: One\n",
+        );
+        write(
+            &root.join("docs/specs/RIPR-SPEC-0001-two.md"),
+            "# RIPR-SPEC-0001: Two\n",
+        );
+        write(
+            &root.join("docs/specs/README.md"),
+            "| Spec | Status | Title |\n| --- | --- | --- |\n| [RIPR-SPEC-0001](RIPR-SPEC-0001-one.md) | proposed | One |\n",
+        );
+
+        let violations = spec_numbering_violations(&root)?;
+        assert!(
+            violations.iter().any(
+                |violation| violation.contains("RIPR-SPEC-0001 is used by multiple spec files")
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
     fn xtask_command_parse_preserves_subcommand_arguments() {
         assert_eq!(
             XtaskCommand::parse([
@@ -37587,6 +37915,14 @@ jobs:
         assert_eq!(
             XtaskCommand::parse(["check-badge-diff-policy".to_string()]),
             XtaskCommand::CheckBadgeDiffPolicy
+        );
+        assert_eq!(
+            XtaskCommand::parse(["specs".to_string(), "next".to_string()]),
+            XtaskCommand::Specs(vec!["next".to_string()])
+        );
+        assert_eq!(
+            XtaskCommand::parse(["check-spec-numbering".to_string()]),
+            XtaskCommand::CheckSpecNumbering
         );
     }
 

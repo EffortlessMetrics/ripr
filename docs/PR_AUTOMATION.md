@@ -43,9 +43,12 @@ cargo xtask critic
 cargo xtask reports index
 cargo xtask receipts
 cargo xtask receipts check
+cargo xtask specs next
 cargo xtask check-allow-attributes
 cargo xtask check-local-context
 cargo xtask check-droid-review-config
+cargo xtask check-spec-format
+cargo xtask check-spec-numbering
 cargo xtask check-supply-chain
 cargo xtask ci-fast
 ```
@@ -72,8 +75,9 @@ Top-level `plans/` files are documentation evidence and campaign-planning
 inputs. They appear in the docs, evidence/support, and campaign-planning
 sections of the reviewer packet without being treated as production behavior.
 
-`precommit` is the cheap non-mutating guardrail. It checks formatting and the
-policy surfaces that should fail quickly before review.
+`precommit` is the cheap non-mutating guardrail. It checks formatting, spec
+format and numbering, and the policy surfaces that should fail quickly before
+review.
 
 `worktree doctor` is the agent hygiene check. It reports dirty `main`
 worktrees, branches behind `origin/main`, generated badge/target residue, and
@@ -478,6 +482,7 @@ cargo xtask check-workflows
 cargo xtask check-droid-review-config
 cargo xtask worktree doctor
 cargo xtask check-spec-format
+cargo xtask check-spec-numbering
 cargo xtask check-fixture-contracts
 cargo xtask check-traceability
 cargo xtask check-capabilities
