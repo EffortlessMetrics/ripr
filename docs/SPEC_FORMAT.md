@@ -43,13 +43,26 @@ docs/specs/RIPR-SPEC-0004-predicate-boundary-activation.md
 Use these IDs in tests, fixtures, traceability entries, metrics, and PR
 summaries when behavior changes.
 
+Before adding a new spec, ask the repo for the next live ID:
+
+```bash
+cargo xtask specs next
+```
+
+Spec IDs are source-of-truth identifiers, not generated runtime counts. The
+helper only prevents stale numbering assumptions; humans still author the spec
+contract.
+
 ## Checks
 
 Run:
 
 ```bash
 cargo xtask check-spec-format
+cargo xtask check-spec-numbering
 ```
 
 The check verifies required sections, status values, and title/filename ID
-consistency.
+consistency. The numbering guard verifies that every spec file appears in
+`docs/specs/README.md` and that traceability/capability surfaces do not
+reference missing spec IDs.
