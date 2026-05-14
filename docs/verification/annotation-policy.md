@@ -26,6 +26,16 @@ Only this collection can annotate:
 target/ripr/review/comments.json -> comments[]
 ```
 
+The default local command is:
+
+```text
+cargo xtask ripr-annotations
+cargo xtask ripr-annotations --check
+```
+
+It emits GitHub Actions `::warning` lines only. It does not post inline review
+comments.
+
 The annotation consumer must ignore:
 
 ```text

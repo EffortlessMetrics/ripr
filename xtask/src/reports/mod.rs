@@ -1,3 +1,4 @@
+mod annotations;
 mod badges;
 mod dogfood;
 mod fixtures;
@@ -18,6 +19,7 @@ mod sarif;
 mod targeted_test;
 mod test_oracles;
 
+pub(crate) use annotations::ripr_annotations;
 pub(crate) use badges::{
     badge_artifacts, check_badge_endpoints, repo_badge_artifacts, update_badge_endpoints,
 };
