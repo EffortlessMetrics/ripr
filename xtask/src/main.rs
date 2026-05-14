@@ -20554,8 +20554,11 @@ fn check_generated_clean() -> Result<(), String> {
 }
 
 fn check_badge_diff_policy() -> Result<(), String> {
+    check_badge_diff_policy_with_context(badge_refresh_context())
+}
+
+fn check_badge_diff_policy_with_context(badge_refresh_context: bool) -> Result<(), String> {
     let changes = collect_pr_changes()?;
-    let badge_refresh_context = badge_refresh_context();
     let violations = badge_diff_policy_violations(&changes, badge_refresh_context);
 
     finish_policy_report(
@@ -20604,7 +20607,11 @@ fn badge_refresh_context() -> bool {
 fn github_event_pull_request_title() -> Option<String> {
     let event_path = std::env::var("GITHUB_EVENT_PATH").ok()?;
     let text = read_text_lossy(&PathBuf::from(event_path)).ok()?;
-    let value: Value = serde_json::from_str(&text).ok()?;
+    github_event_pull_request_title_from_text(&text)
+}
+
+fn github_event_pull_request_title_from_text(text: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(text).ok()?;
     value
         .get("pull_request")
         .and_then(|pull_request| pull_request.get("title"))
@@ -27101,23 +27108,24 @@ mod tests {
         badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
         badge_artifacts_summary_markdown, badge_diff_policy_violations, build_lsp_cockpit_report,
         build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
-        build_targeted_test_outcome_report, check_allow_attributes, check_droid_review_config,
-        check_executable_files, check_file_policy, check_local_context, check_network_policy,
-        check_no_panic_family, check_process_policy, check_static_language, check_workflows,
-        ci_full_evidence_gates, collect_panic_findings, collect_semantic_panic_findings,
-        critic_findings, dogfood_class_counts, dogfood_first_action_scenarios,
-        dogfood_gate_adoption_scenarios, dogfood_generated_ci_cockpit_run_from_workflow,
-        dogfood_language_preview_run, dogfood_language_preview_scenarios,
-        dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
-        dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
-        dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
-        dogfood_report_packet_index_scenarios, evaluate_semantic_no_panic_policy,
-        evidence_quality_scorecard_from_values, evidence_quality_scorecard_json,
-        evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
-        evidence_quality_trend_json, evidence_quality_trend_markdown,
-        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
-        extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns,
-        generated_clean_violations, glob_matches, golden_changes_without_blessing,
+        build_targeted_test_outcome_report, check_allow_attributes,
+        check_badge_diff_policy_with_context, check_droid_review_config, check_executable_files,
+        check_file_policy, check_local_context, check_network_policy, check_no_panic_family,
+        check_process_policy, check_static_language, check_workflows, ci_full_evidence_gates,
+        collect_panic_findings, collect_semantic_panic_findings, critic_findings,
+        dogfood_class_counts, dogfood_first_action_scenarios, dogfood_gate_adoption_scenarios,
+        dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
+        dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
+        dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
+        dogfood_pr_review_front_panel_scenarios, dogfood_report_json, dogfood_report_markdown,
+        dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
+        evaluate_semantic_no_panic_policy, evidence_quality_scorecard_from_values,
+        evidence_quality_scorecard_json, evidence_quality_scorecard_markdown,
+        evidence_quality_trend_from_values, evidence_quality_trend_json,
+        evidence_quality_trend_markdown, extract_json_object_usize_map, extract_json_string,
+        extract_json_warnings, extract_workflow_run_blocks, first_line_difference,
+        forbidden_panic_patterns, generated_clean_violations,
+        github_event_pull_request_title_from_text, glob_matches, golden_changes_without_blessing,
         golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
         install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
         is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
@@ -36124,6 +36132,42 @@ jobs:
         let violations = badge_diff_policy_violations(&changes, false);
         assert_eq!(violations.len(), 1);
         assert!(violations[0].contains("badges/ripr.json"));
+    }
+
+    #[test]
+    fn check_badge_diff_policy_rejects_endpoint_diff_from_git_status() -> Result<(), String> {
+        with_temp_cwd("badge-diff-policy-rejects", |root| {
+            run("git", &["init"])?;
+            std::fs::create_dir_all(root.join("badges")).map_err(|err| err.to_string())?;
+            std::fs::write(root.join("badges/ripr.json"), "{\"message\":\"1\"}\n")
+                .map_err(|err| err.to_string())?;
+            run("git", &["add", "-N", "badges/ripr.json"])?;
+
+            let message = check_badge_diff_policy_with_context(false)
+                .expect_err("badge endpoint diff should fail");
+            assert!(message.contains("generated badge endpoint changed"));
+            assert!(message.contains("badges/ripr.json"));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn check_badge_diff_policy_allows_readme_only_git_status() -> Result<(), String> {
+        with_temp_cwd("badge-diff-policy-readme", |root| {
+            run("git", &["init"])?;
+            std::fs::write(root.join("README.md"), "[![ripr](badge)](link)\n")
+                .map_err(|err| err.to_string())?;
+
+            check_badge_diff_policy_with_context(false)
+        })
+    }
+
+    #[test]
+    fn github_event_title_reader_accepts_pull_request_title() {
+        let title = github_event_pull_request_title_from_text(
+            r#"{"pull_request":{"title":"badge: refresh public endpoints"}}"#,
+        );
+        assert_eq!(title.as_deref(), Some("badge: refresh public endpoints"));
     }
 
     #[test]
