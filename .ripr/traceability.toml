@@ -2118,6 +2118,7 @@ name = "Lane 1 evidence quality audit"
 spec = "docs/specs/RIPR-SPEC-0031-lane1-evidence-quality-audit.md"
 tests = [
   "xtask::tests::lane1_evidence_audit_counts_quality_gaps_from_evidence_record",
+  "xtask::tests::lane1_evidence_audit_reports_alignment_coverage_holes",
   "xtask::tests::lane1_evidence_audit_markdown_names_required_sections",
   "xtask::tests::lane1_evidence_audit_rejects_repo_exposure_without_seams",
   "xtask::tests::xtask_command_parse_preserves_compatibility_aliases",
@@ -2155,6 +2156,11 @@ metrics = [
   "finding_alignment_canonical_items_total",
   "finding_alignment_actionable_items_total",
   "finding_alignment_static_limitation_total",
+  "finding_alignment_coverage_by_class",
+  "finding_alignment_unaligned_raw_findings_by_class",
+  "finding_alignment_static_unknown_without_named_limitation",
+  "finding_alignment_canonical_items_without_repair_route",
+  "finding_alignment_canonical_items_without_verify_command",
 ]
 
 [[behavior]]

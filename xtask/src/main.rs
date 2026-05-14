@@ -10968,6 +10968,13 @@ struct Lane1EvidenceAuditReport {
     repo_exposure_schema_version: Option<String>,
     summary: Lane1EvidenceAuditSummary,
     finding_alignment: Lane1EvidenceAuditFindingAlignmentSummary,
+    alignment_coverage_by_class: Vec<Lane1EvidenceAuditAlignmentClassCoverage>,
+    unaligned_raw_findings_by_class: BTreeMap<String, usize>,
+    top_unaligned_examples: Vec<Lane1EvidenceAuditUnalignedExample>,
+    same_line_duplicate_groups: Vec<Lane1EvidenceAuditSameLineDuplicateGroup>,
+    static_unknown_without_named_limitation: usize,
+    canonical_items_without_repair_route: usize,
+    canonical_items_without_verify_command: usize,
     largest_canonical_groups: Vec<Lane1EvidenceAuditGroup>,
     duplicate_looking_groups: Vec<Lane1EvidenceAuditGroup>,
     missing_discriminator_reason_counts: BTreeMap<String, usize>,
@@ -11039,6 +11046,50 @@ struct Lane1EvidenceAuditFindingAlignmentSummary {
     presentation_text_actionable_snapshot: usize,
     presentation_text_no_action: usize,
     presentation_text_static_limitations: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct Lane1EvidenceAuditAlignmentClassCoverage {
+    evidence_class: String,
+    raw_findings: usize,
+    canonical_items: usize,
+    aligned_raw_findings: usize,
+    unaligned_raw_findings: usize,
+    actionable_items: usize,
+    already_observed_items: usize,
+    internal_no_action_items: usize,
+    static_limitation_items: usize,
+    unknown_items: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Lane1EvidenceAuditUnalignedExample {
+    evidence_class: String,
+    file: String,
+    line: Option<usize>,
+    kind: String,
+    expression: String,
+    reason: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Lane1EvidenceAuditSameLineDuplicateGroup {
+    file: String,
+    line: usize,
+    raw_findings: usize,
+    evidence_classes: Vec<String>,
+    kinds: Vec<String>,
+    example_expression: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Lane1EvidenceAuditSameLineDuplicateBuilder {
+    file: String,
+    line: usize,
+    raw_findings: usize,
+    evidence_classes: BTreeSet<String>,
+    kinds: BTreeSet<String>,
+    example_expression: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -11201,6 +11252,13 @@ struct Lane1EvidenceAuditBuilder {
     summary: Lane1EvidenceAuditSummary,
     finding_alignment: Lane1EvidenceAuditFindingAlignmentSummary,
     movement: Lane1EvidenceAuditMovement,
+    alignment_class_coverage: BTreeMap<String, Lane1EvidenceAuditAlignmentClassCoverage>,
+    unaligned_raw_findings_by_class: BTreeMap<String, usize>,
+    unaligned_examples: Vec<Lane1EvidenceAuditUnalignedExample>,
+    same_line_raw_findings: BTreeMap<String, Lane1EvidenceAuditSameLineDuplicateBuilder>,
+    static_unknown_without_named_limitation: usize,
+    canonical_items_without_repair_route: usize,
+    canonical_items_without_verify_command: usize,
     canonical_groups: BTreeMap<String, Lane1EvidenceAuditGroup>,
     duplicate_groups: BTreeMap<String, Lane1EvidenceAuditGroup>,
     field_health: BTreeMap<String, Lane1EvidenceAuditFieldHealth>,
@@ -11253,6 +11311,7 @@ impl Lane1EvidenceAuditBuilder {
         self.summary.evidence_records_total += 1;
         audit_evidence_record_field_health(record, &mut self.field_health);
         audit_ingest_finding_alignment(record, &mut self.finding_alignment);
+        self.ingest_alignment_coverage(record);
 
         let seam_id = audit_string(record, &["seam_id"]);
         let canonical_gap_id = audit_string(record, &["canonical_gap_id"]);
@@ -11439,6 +11498,118 @@ impl Lane1EvidenceAuditBuilder {
         }
     }
 
+    fn ingest_alignment_coverage(&mut self, record: &Value) {
+        let raw_findings = audit_array(record, &["raw_findings"]);
+        let canonical_item =
+            audit_get(record, &["canonical_item"]).filter(|value| value.is_object());
+        let evidence_class = audit_alignment_evidence_class(record, canonical_item);
+        let raw_signal_count = canonical_item
+            .and_then(|item| audit_usize(item, &["raw_group_size"]))
+            .unwrap_or(raw_findings.len())
+            .max(raw_findings.len())
+            .max(1);
+        for raw in raw_findings {
+            self.ingest_same_line_raw_finding(record, raw, &evidence_class);
+        }
+
+        let Some(canonical_item) = canonical_item else {
+            {
+                let coverage = self
+                    .alignment_class_coverage
+                    .entry(evidence_class.clone())
+                    .or_insert_with(|| Lane1EvidenceAuditAlignmentClassCoverage {
+                        evidence_class: evidence_class.clone(),
+                        ..Lane1EvidenceAuditAlignmentClassCoverage::default()
+                    });
+                coverage.raw_findings += raw_signal_count;
+                coverage.unaligned_raw_findings += raw_signal_count;
+            }
+            *self
+                .unaligned_raw_findings_by_class
+                .entry(evidence_class.clone())
+                .or_insert(0) += raw_signal_count;
+            let example = audit_unaligned_example(record, raw_findings, &evidence_class);
+            if self.unaligned_examples.len() < LANE1_EVIDENCE_AUDIT_TOP_LIMIT {
+                self.unaligned_examples.push(example);
+            }
+            return;
+        };
+
+        let item_kind = audit_string(canonical_item, &["canonical_item_kind"]).unwrap_or_default();
+        let gap_state = audit_string(canonical_item, &["gap_state"]).unwrap_or_default();
+        let actionability = audit_string(canonical_item, &["actionability"]).unwrap_or_default();
+        {
+            let coverage = self
+                .alignment_class_coverage
+                .entry(evidence_class.clone())
+                .or_insert_with(|| Lane1EvidenceAuditAlignmentClassCoverage {
+                    evidence_class: evidence_class.clone(),
+                    ..Lane1EvidenceAuditAlignmentClassCoverage::default()
+                });
+            coverage.raw_findings += raw_signal_count;
+            coverage.canonical_items += 1;
+            coverage.aligned_raw_findings += raw_signal_count;
+            if item_kind == "gap" || gap_state == "actionable" {
+                coverage.actionable_items += 1;
+            }
+            if item_kind == "observed" || gap_state == "already_observed" {
+                coverage.already_observed_items += 1;
+            }
+            if item_kind == "no_action" || gap_state == "internal_only" {
+                coverage.internal_no_action_items += 1;
+            }
+            if item_kind == "limitation" || gap_state == "static_limitation" {
+                coverage.static_limitation_items += 1;
+            }
+            if gap_state == "unknown" {
+                coverage.unknown_items += 1;
+            }
+        }
+        if audit_non_empty_string(canonical_item, &["recommended_repair"]).is_none() {
+            self.canonical_items_without_repair_route += 1;
+        }
+        if audit_non_empty_string(canonical_item, &["verify_command"]).is_none() {
+            self.canonical_items_without_verify_command += 1;
+        }
+        if audit_has_static_unknown_signal(record, canonical_item, &gap_state, &actionability)
+            && !audit_has_named_static_limitation(record, canonical_item)
+        {
+            self.static_unknown_without_named_limitation += 1;
+        }
+    }
+
+    fn ingest_same_line_raw_finding(&mut self, record: &Value, raw: &Value, evidence_class: &str) {
+        let Some(line) =
+            audit_usize(raw, &["line"]).or_else(|| audit_usize(record, &["location", "line"]))
+        else {
+            return;
+        };
+        let file = audit_string(raw, &["file"])
+            .or_else(|| audit_string(record, &["location", "file"]))
+            .unwrap_or_else(|| "unknown".to_string());
+        let key = format!("{file}:{line}");
+        let entry = self.same_line_raw_findings.entry(key).or_insert_with(|| {
+            Lane1EvidenceAuditSameLineDuplicateBuilder {
+                file,
+                line,
+                raw_findings: 0,
+                evidence_classes: BTreeSet::new(),
+                kinds: BTreeSet::new(),
+                example_expression: audit_string(raw, &["expression"]),
+            }
+        });
+        entry.raw_findings += 1;
+        entry.evidence_classes.insert(evidence_class.to_string());
+        entry.kinds.insert(
+            audit_string(raw, &["kind"])
+                .or_else(|| audit_string(raw, &["probe_kind"]))
+                .unwrap_or_else(|| "unknown".to_string()),
+        );
+        if entry.example_expression.is_none() {
+            entry.example_expression = audit_string(raw, &["expression"]);
+        }
+    }
+
     fn finish(
         mut self,
         root: String,
@@ -11472,11 +11643,54 @@ impl Lane1EvidenceAuditBuilder {
         });
         file_debt.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
 
+        let mut alignment_coverage_by_class = self
+            .alignment_class_coverage
+            .into_values()
+            .collect::<Vec<_>>();
+        alignment_coverage_by_class.sort_by(|left, right| {
+            right
+                .raw_findings
+                .cmp(&left.raw_findings)
+                .then_with(|| left.evidence_class.cmp(&right.evidence_class))
+        });
+
+        let mut top_unaligned_examples = self.unaligned_examples;
+        top_unaligned_examples.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
+
+        let mut same_line_duplicate_groups = self
+            .same_line_raw_findings
+            .into_values()
+            .filter(|group| group.raw_findings > 1)
+            .map(|group| Lane1EvidenceAuditSameLineDuplicateGroup {
+                file: group.file,
+                line: group.line,
+                raw_findings: group.raw_findings,
+                evidence_classes: group.evidence_classes.into_iter().collect(),
+                kinds: group.kinds.into_iter().collect(),
+                example_expression: group.example_expression,
+            })
+            .collect::<Vec<_>>();
+        same_line_duplicate_groups.sort_by(|left, right| {
+            right
+                .raw_findings
+                .cmp(&left.raw_findings)
+                .then_with(|| left.file.cmp(&right.file))
+                .then_with(|| left.line.cmp(&right.line))
+        });
+        same_line_duplicate_groups.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
+
         Lane1EvidenceAuditReport {
             root,
             repo_exposure_schema_version,
             summary: self.summary,
             finding_alignment: self.finding_alignment,
+            alignment_coverage_by_class,
+            unaligned_raw_findings_by_class: self.unaligned_raw_findings_by_class,
+            top_unaligned_examples,
+            same_line_duplicate_groups,
+            static_unknown_without_named_limitation: self.static_unknown_without_named_limitation,
+            canonical_items_without_repair_route: self.canonical_items_without_repair_route,
+            canonical_items_without_verify_command: self.canonical_items_without_verify_command,
             largest_canonical_groups,
             duplicate_looking_groups,
             missing_discriminator_reason_counts: self.missing_reason_counts,
@@ -11551,6 +11765,27 @@ fn lane1_evidence_audit_json(report: &Lane1EvidenceAuditReport) -> Result<String
         "finding_alignment": {
             "source": "evidence_record.canonical_item",
             "summary": audit_finding_alignment_summary_json(&report.finding_alignment),
+            "coverage": {
+                "alignment_coverage_by_class": report
+                    .alignment_coverage_by_class
+                    .iter()
+                    .map(audit_alignment_class_coverage_json)
+                    .collect::<Vec<_>>(),
+                "unaligned_raw_findings_by_class": report.unaligned_raw_findings_by_class,
+                "top_unaligned_examples": report
+                    .top_unaligned_examples
+                    .iter()
+                    .map(audit_unaligned_example_json)
+                    .collect::<Vec<_>>(),
+                "same_line_duplicate_groups": report
+                    .same_line_duplicate_groups
+                    .iter()
+                    .map(audit_same_line_duplicate_group_json)
+                    .collect::<Vec<_>>(),
+                "static_unknown_without_named_limitation": report.static_unknown_without_named_limitation,
+                "canonical_items_without_repair_route": report.canonical_items_without_repair_route,
+                "canonical_items_without_verify_command": report.canonical_items_without_verify_command,
+            },
         },
         "canonical_gap_groups": {
             "total": report.summary.canonical_gap_groups_total,
@@ -11725,6 +11960,35 @@ fn lane1_evidence_audit_markdown(report: &Lane1EvidenceAuditReport) -> String {
         report.finding_alignment.presentation_text_total,
     );
     out.push('\n');
+
+    out.push_str("## Finding Alignment Coverage\n\n");
+    out.push_str("| Metric | Count |\n");
+    out.push_str("| --- | ---: |\n");
+    audit_push_count(
+        &mut out,
+        "Static unknown without named limitation",
+        report.static_unknown_without_named_limitation,
+    );
+    audit_push_count(
+        &mut out,
+        "Canonical items without repair route",
+        report.canonical_items_without_repair_route,
+    );
+    audit_push_count(
+        &mut out,
+        "Canonical items without verify command",
+        report.canonical_items_without_verify_command,
+    );
+    out.push('\n');
+    audit_push_alignment_class_coverage_table(&mut out, &report.alignment_coverage_by_class);
+    audit_push_counts_table_limited(
+        &mut out,
+        "Unaligned raw finding class",
+        &report.unaligned_raw_findings_by_class,
+        LANE1_EVIDENCE_AUDIT_TOP_LIMIT,
+    );
+    audit_push_unaligned_examples_table(&mut out, &report.top_unaligned_examples);
+    audit_push_same_line_duplicate_table(&mut out, &report.same_line_duplicate_groups);
 
     out.push_str("## Largest Canonical Gap Groups\n\n");
     audit_push_group_table(&mut out, &report.largest_canonical_groups);
@@ -12138,6 +12402,43 @@ fn audit_finding_alignment_summary_json(
     Value::Object(object)
 }
 
+fn audit_alignment_class_coverage_json(row: &Lane1EvidenceAuditAlignmentClassCoverage) -> Value {
+    serde_json::json!({
+        "evidence_class": row.evidence_class,
+        "raw_findings": row.raw_findings,
+        "canonical_items": row.canonical_items,
+        "aligned_raw_findings": row.aligned_raw_findings,
+        "unaligned_raw_findings": row.unaligned_raw_findings,
+        "actionable_items": row.actionable_items,
+        "already_observed_items": row.already_observed_items,
+        "internal_no_action_items": row.internal_no_action_items,
+        "static_limitation_items": row.static_limitation_items,
+        "unknown_items": row.unknown_items,
+    })
+}
+
+fn audit_unaligned_example_json(example: &Lane1EvidenceAuditUnalignedExample) -> Value {
+    serde_json::json!({
+        "evidence_class": example.evidence_class,
+        "file": example.file,
+        "line": example.line,
+        "kind": example.kind,
+        "expression": example.expression,
+        "reason": example.reason,
+    })
+}
+
+fn audit_same_line_duplicate_group_json(group: &Lane1EvidenceAuditSameLineDuplicateGroup) -> Value {
+    serde_json::json!({
+        "file": group.file,
+        "line": group.line,
+        "raw_findings": group.raw_findings,
+        "evidence_classes": group.evidence_classes,
+        "kinds": group.kinds,
+        "example_expression": group.example_expression,
+    })
+}
+
 fn audit_finding_alignment_raw_to_canonical_ratio(
     summary: &Lane1EvidenceAuditFindingAlignmentSummary,
 ) -> Option<f64> {
@@ -12165,6 +12466,10 @@ fn audit_string(value: &Value, path: &[&str]) -> Option<String> {
         .map(ToString::to_string)
 }
 
+fn audit_non_empty_string(value: &Value, path: &[&str]) -> Option<String> {
+    audit_string(value, path).filter(|text| !text.trim().is_empty())
+}
+
 fn audit_bool(value: &Value, path: &[&str]) -> Option<bool> {
     audit_get(value, path).and_then(Value::as_bool)
 }
@@ -12185,6 +12490,77 @@ fn audit_array<'a>(value: &'a Value, path: &[&str]) -> &'a [Value] {
 fn audit_increment(counts: &mut BTreeMap<String, usize>, key: &str) {
     let entry = counts.entry(key.to_string()).or_insert(0);
     *entry += 1;
+}
+
+fn audit_alignment_evidence_class(record: &Value, canonical_item: Option<&Value>) -> String {
+    canonical_item
+        .and_then(|item| audit_non_empty_string(item, &["evidence_class"]))
+        .or_else(|| {
+            audit_get(record, &["presentation_text"])
+                .filter(|value| value.is_object())
+                .map(|_| "presentation_text".to_string())
+        })
+        .or_else(|| audit_non_empty_string(record, &["seam_kind"]))
+        .or_else(|| {
+            audit_array(record, &["raw_findings"])
+                .first()
+                .and_then(|raw| {
+                    audit_non_empty_string(raw, &["probe_kind"])
+                        .or_else(|| audit_non_empty_string(raw, &["kind"]))
+                })
+        })
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn audit_unaligned_example(
+    record: &Value,
+    raw_findings: &[Value],
+    evidence_class: &str,
+) -> Lane1EvidenceAuditUnalignedExample {
+    let raw = raw_findings.first();
+    Lane1EvidenceAuditUnalignedExample {
+        evidence_class: evidence_class.to_string(),
+        file: raw
+            .and_then(|raw| audit_non_empty_string(raw, &["file"]))
+            .or_else(|| audit_non_empty_string(record, &["location", "file"]))
+            .unwrap_or_else(|| "unknown".to_string()),
+        line: raw
+            .and_then(|raw| audit_usize(raw, &["line"]))
+            .or_else(|| audit_usize(record, &["location", "line"])),
+        kind: raw
+            .and_then(|raw| audit_non_empty_string(raw, &["kind"]))
+            .or_else(|| raw.and_then(|raw| audit_non_empty_string(raw, &["probe_kind"])))
+            .unwrap_or_else(|| "unknown".to_string()),
+        expression: raw
+            .and_then(|raw| audit_non_empty_string(raw, &["expression"]))
+            .unwrap_or_else(|| "unknown".to_string()),
+        reason: "missing canonical_item".to_string(),
+    }
+}
+
+fn audit_has_static_unknown_signal(
+    record: &Value,
+    canonical_item: &Value,
+    gap_state: &str,
+    actionability: &str,
+) -> bool {
+    gap_state == "static_limitation"
+        || actionability.contains("static_limitation")
+        || audit_array(record, &["raw_findings"]).iter().any(|raw| {
+            audit_string(raw, &["kind"]).as_deref() == Some("static_unknown")
+                || audit_string(raw, &["probe_kind"]).as_deref() == Some("static_unknown")
+        })
+        || audit_string(canonical_item, &["evidence_class"]).as_deref() == Some("static_unknown")
+}
+
+fn audit_has_named_static_limitation(record: &Value, canonical_item: &Value) -> bool {
+    audit_array(record, &["static_limitations"])
+        .iter()
+        .chain(audit_array(canonical_item, &["static_limitations"]).iter())
+        .any(|limitation| {
+            audit_non_empty_string(limitation, &["category"]).is_some()
+                && audit_non_empty_string(limitation, &["repair_route"]).is_some()
+        })
 }
 
 fn audit_ingest_finding_alignment(
@@ -12613,6 +12989,88 @@ fn audit_push_counts_table_limited(
     });
     for (key, count) in rows.iter().take(limit) {
         out.push_str(&format!("| {} | {} |\n", audit_markdown_cell(key), count));
+    }
+    out.push('\n');
+}
+
+fn audit_push_alignment_class_coverage_table(
+    out: &mut String,
+    rows: &[Lane1EvidenceAuditAlignmentClassCoverage],
+) {
+    if rows.is_empty() {
+        out.push_str("No finding alignment coverage rows were reported.\n\n");
+        return;
+    }
+    out.push_str("| Evidence class | Raw | Canonical | Aligned raw | Unaligned raw | Actionable | Observed | No-action | Limitations | Unknown |\n");
+    out.push_str("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
+    for row in rows.iter().take(LANE1_EVIDENCE_AUDIT_TOP_LIMIT) {
+        out.push_str(&format!(
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
+            audit_markdown_cell(&row.evidence_class),
+            row.raw_findings,
+            row.canonical_items,
+            row.aligned_raw_findings,
+            row.unaligned_raw_findings,
+            row.actionable_items,
+            row.already_observed_items,
+            row.internal_no_action_items,
+            row.static_limitation_items,
+            row.unknown_items,
+        ));
+    }
+    out.push('\n');
+}
+
+fn audit_push_unaligned_examples_table(
+    out: &mut String,
+    rows: &[Lane1EvidenceAuditUnalignedExample],
+) {
+    if rows.is_empty() {
+        out.push_str("No unaligned raw finding examples were reported.\n\n");
+        return;
+    }
+    out.push_str("| Evidence class | File | Line | Kind | Reason | Expression |\n");
+    out.push_str("| --- | --- | ---: | --- | --- | --- |\n");
+    for row in rows {
+        let line = row
+            .line
+            .map(|line| line.to_string())
+            .unwrap_or_else(|| "n/a".to_string());
+        out.push_str(&format!(
+            "| {} | {} | {} | {} | {} | {} |\n",
+            audit_markdown_cell(&row.evidence_class),
+            audit_markdown_cell(&row.file),
+            line,
+            audit_markdown_cell(&row.kind),
+            audit_markdown_cell(&row.reason),
+            audit_markdown_cell(&row.expression),
+        ));
+    }
+    out.push('\n');
+}
+
+fn audit_push_same_line_duplicate_table(
+    out: &mut String,
+    rows: &[Lane1EvidenceAuditSameLineDuplicateGroup],
+) {
+    if rows.is_empty() {
+        out.push_str("No same-line duplicate raw finding groups were reported.\n\n");
+        return;
+    }
+    out.push_str(
+        "| File | Line | Raw findings | Evidence classes | Kinds | Example expression |\n",
+    );
+    out.push_str("| --- | ---: | ---: | --- | --- | --- |\n");
+    for row in rows {
+        out.push_str(&format!(
+            "| {} | {} | {} | {} | {} | {} |\n",
+            audit_markdown_cell(&row.file),
+            row.line,
+            row.raw_findings,
+            audit_markdown_cell(&row.evidence_classes.join(", ")),
+            audit_markdown_cell(&row.kinds.join(", ")),
+            audit_markdown_cell(row.example_expression.as_deref().unwrap_or("n/a")),
+        ));
     }
     out.push('\n');
 }
@@ -41647,6 +42105,36 @@ covered_by = ["cargo xtask check-file-policy"]
             alignment["finding_alignment_raw_signals_total"],
             serde_json::Value::from(3)
         );
+        let coverage = &value["finding_alignment"]["coverage"];
+        assert_eq!(
+            coverage["static_unknown_without_named_limitation"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            coverage["canonical_items_without_repair_route"],
+            serde_json::Value::from(0)
+        );
+        assert_eq!(
+            coverage["canonical_items_without_verify_command"],
+            serde_json::Value::from(1)
+        );
+        let class_rows = coverage["alignment_coverage_by_class"]
+            .as_array()
+            .ok_or_else(|| "alignment coverage rows should be an array".to_string())?;
+        let predicate = class_rows
+            .iter()
+            .find(|row| row["evidence_class"] == "predicate_boundary")
+            .ok_or_else(|| "missing predicate_boundary coverage row".to_string())?;
+        assert_eq!(predicate["canonical_items"], serde_json::Value::from(2));
+        assert_eq!(predicate["actionable_items"], serde_json::Value::from(2));
+        let call_presence = class_rows
+            .iter()
+            .find(|row| row["evidence_class"] == "call_presence")
+            .ok_or_else(|| "missing call_presence coverage row".to_string())?;
+        assert_eq!(
+            call_presence["static_limitation_items"],
+            serde_json::Value::from(1)
+        );
 
         let fields = value["evidence_record_field_health"]
             .as_array()
@@ -41661,6 +42149,85 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn lane1_evidence_audit_reports_alignment_coverage_holes() -> Result<(), String> {
+        let report = lane1_evidence_audit_from_repo_exposure(
+            ".",
+            r#"{
+              "schema_version": "0.3",
+              "scope": "repo",
+              "seams": [
+                {
+                  "seam_id": "raw-config",
+                  "headline_eligible": true,
+                  "file": "src/policy.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "seam-config",
+                    "canonical_gap_id": null,
+                    "owner": "policy::labels",
+                    "location": {"file": "src/policy.rs", "line": 10},
+                    "seam_kind": "config_or_policy_constant",
+                    "grip_class": "static_unknown",
+                    "headline_eligible": true,
+                    "evidence_path": {},
+                    "observed_values": [],
+                    "missing_discriminators": [],
+                    "related_tests_total": 0,
+                    "related_tests": [],
+                    "recommendation": {"action": "inspect_static_limitation", "reason": "alignment missing", "verify_command": null},
+                    "actionability": {"class": "static_limitation"},
+                    "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+                    "static_limitations": [],
+                    "raw_findings": [
+                      {
+                        "file": "src/policy.rs",
+                        "line": 10,
+                        "kind": "exposed",
+                        "probe_kind": "config_or_policy_constant",
+                        "expression": "pub const POLICY_LABEL: &str ="
+                      },
+                      {
+                        "file": "src/policy.rs",
+                        "line": 10,
+                        "kind": "static_unknown",
+                        "probe_kind": "static_unknown",
+                        "expression": "pub const POLICY_LABEL: &str = \"internal\";"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }"#,
+        )?;
+        let json = lane1_evidence_audit_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        let coverage = &value["finding_alignment"]["coverage"];
+
+        assert_eq!(
+            coverage["unaligned_raw_findings_by_class"]["config_or_policy_constant"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(
+            coverage["alignment_coverage_by_class"][0]["unaligned_raw_findings"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(
+            coverage["top_unaligned_examples"][0]["evidence_class"],
+            "config_or_policy_constant"
+        );
+        assert_eq!(
+            coverage["same_line_duplicate_groups"][0]["raw_findings"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(
+            coverage["same_line_duplicate_groups"][0]["kinds"][1],
+            "static_unknown"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn lane1_evidence_audit_markdown_names_required_sections() -> Result<(), String> {
         let report = lane1_evidence_audit_from_repo_exposure(".", lane1_audit_sample_json())?;
         let markdown = lane1_evidence_audit_markdown(&report);
@@ -41668,6 +42235,8 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("Lane 1 evidence quality audit"));
         assert!(markdown.contains("Largest Canonical Gap Groups"));
         assert!(markdown.contains("Finding Alignment"));
+        assert!(markdown.contains("Finding Alignment Coverage"));
+        assert!(markdown.contains("Static unknown without named limitation"));
         assert!(markdown.contains("Raw-to-canonical ratio"));
         assert!(markdown.contains("Duplicate-Looking Groups"));
         assert!(markdown.contains("Missing Discriminator Classes"));

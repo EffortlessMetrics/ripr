@@ -103,6 +103,9 @@ The audit must summarize:
 - raw headline gaps;
 - finding-alignment raw signals, canonical items, actionability states, and
   raw-to-canonical counts derived from `evidence_record.canonical_item`;
+- finding-alignment coverage by evidence class, unaligned raw finding examples,
+  same-line duplicate groups, static-unknown items without named limitations,
+  and canonical items missing repair or verification guidance;
 - canonical gap groups;
 - largest canonical groups;
 - duplicate-looking groups;
@@ -126,6 +129,12 @@ Given evidence records that carry `canonical_item`, the audit reports a
 actionable items, observed items, static limitations, calibration support, and
 raw-to-canonical alignment without requiring a separate top-level projection.
 
+Given evidence records with and without `canonical_item`, the audit reports
+`finding_alignment.coverage` so maintainers can see which evidence classes are
+aligned, which raw findings remain unaligned, whether duplicate raw findings
+share a file and line, and whether canonical items lack repair routes,
+verification commands, or named static-limitation categories.
+
 Given a headline seam with no canonical gap ID, the audit counts it under
 `headline_without_canonical_gap_id`.
 
@@ -144,7 +153,10 @@ audit report only; it does not change static classifications.
 - `xtask::tests::lane1_evidence_audit_counts_quality_gaps_from_evidence_record`
   pins JSON counts for canonical groups, duplicate groups, missing
   discriminators, static limitation categories, ranking confidence,
-  calibration, derived finding-alignment summary, and field health.
+  calibration, derived finding-alignment summary, alignment coverage, and
+  field health.
+- `xtask::tests::lane1_evidence_audit_reports_alignment_coverage_holes` pins
+  unaligned raw finding examples and same-line duplicate grouping.
 - `xtask::tests::lane1_evidence_audit_markdown_names_required_sections` pins
   Markdown section coverage.
 - `xtask::tests::lane1_evidence_audit_rejects_repo_exposure_without_seams` pins
@@ -183,6 +195,11 @@ The audit feeds these Lane 1 metrics:
 - `finding_alignment_canonical_items_total`;
 - `finding_alignment_actionable_items_total`;
 - `finding_alignment_static_limitation_total`.
+- `finding_alignment_coverage_by_class`;
+- `finding_alignment_unaligned_raw_findings_by_class`;
+- `finding_alignment_static_unknown_without_named_limitation`;
+- `finding_alignment_canonical_items_without_repair_route`;
+- `finding_alignment_canonical_items_without_verify_command`.
 
 ## Non-Goals
 
