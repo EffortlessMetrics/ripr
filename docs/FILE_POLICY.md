@@ -160,6 +160,7 @@ cargo xtask check-file-policy
 cargo xtask check-executable-files
 cargo xtask check-workflows
 cargo xtask check-generated
+cargo xtask check-badge-diff-policy
 cargo xtask check-generated-clean
 cargo xtask check-dependencies
 cargo xtask check-process-policy
