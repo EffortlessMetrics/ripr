@@ -10,6 +10,8 @@ Badges are the front panel. Generated evidence, CI receipts, and release artifac
 
 For the current maturity boundary across Rust, preview languages, PR cockpit,
 agent packets, badges, and gates, see [Support tiers](status/SUPPORT_TIERS.md).
+For the portable contract that adopted Rust repos should share, see
+[Verification contracts](verification/README.md).
 
 ## README badges
 
