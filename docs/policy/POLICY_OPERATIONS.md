@@ -244,6 +244,26 @@ No ready work item remains in this focused tracker. Future policy tightening or
 preview-language promotion work should open a new focused policy tracker or spec
 instead of extending this closed campaign.
 
+## Lane 2 Reopening Triggers
+
+This tracker is closed for policy operations. Do not reopen Lane 2 for UI
+polish, PR front-panel rendering, queue cleanup, generated-artifact hygiene, or
+documentation reshaping unless the work changes policy authority.
+
+Open a new focused policy tracker or spec before changing any of these policy
+surfaces:
+
+- a new evidence class;
+- a preview-language promotion request;
+- gate eligibility expansion;
+- baseline adoption policy;
+- suppression semantics;
+- calibration confidence promotion;
+- static/runtime vocabulary.
+
+Those changes can alter what evidence is allowed to mean. They need explicit
+Lane 2 review before implementation.
+
 ## Boundaries
 
 This tracker does not authorize:
