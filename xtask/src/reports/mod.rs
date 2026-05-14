@@ -2,6 +2,7 @@ mod annotations;
 mod badges;
 mod dogfood;
 mod fixtures;
+mod impacted_evidence;
 mod index;
 mod lsp;
 mod metrics;
@@ -25,6 +26,7 @@ pub(crate) use badges::{
 };
 pub(crate) use dogfood::dogfood;
 pub(crate) use fixtures::{fixtures, golden_drift, goldens};
+pub(crate) use impacted_evidence::impacted_evidence;
 pub(crate) use index::{reports, reports_index};
 pub(crate) use lsp::lsp_cockpit_report;
 pub(crate) use metrics::metrics_report;

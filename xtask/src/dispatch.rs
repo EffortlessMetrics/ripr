@@ -44,6 +44,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
             super::reports::recommendation_calibration(&args)
         }
         XtaskCommand::SarifPolicy(args) => super::reports::sarif_policy(&args),
+        XtaskCommand::ImpactedEvidence(args) => super::reports::impacted_evidence(&args),
         XtaskCommand::RiprPr(args) => super::reports::ripr_pr(&args),
         XtaskCommand::RiprReviewComments(args) => super::reports::ripr_review_comments(&args),
         XtaskCommand::RiprPrSummary(args) => super::reports::ripr_pr_summary(&args),
