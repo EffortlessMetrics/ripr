@@ -6723,6 +6723,15 @@ generated via `cargo xtask agent-seam-packets`.
 dump the full repo packet set. Missing seam IDs, non-actionable seam classes,
 and seams whose configured severity is `off` return an actionable error.
 
+`ripr agent packet --root . --gap-ledger <path> --gap-id <id> --json` emits
+the same packet envelope from one explicit `GapRecord`, matched by `gap_id` or
+`canonical_gap_id`. This mode does not rerun analysis and does not infer
+projectability from raw classifications. The selected record must have
+`projection_eligibility.agent_packet.eligible = true`, a `repair_route`, and
+`verification_commands`. Records that are already observed, waived,
+suppressed, preview-gating ineligible, or otherwise not agent-packet eligible
+return an actionable error instead of a repair packet.
+
 ```json
 {
   "schema_version": "0.3",
@@ -6949,6 +6958,11 @@ Field contract:
 - `scope` — always `"repo"`, including the one-seam `ripr agent packet`
   expansion. The one-seam command is a filtered view of the repo packet
   contract, not a second packet schema.
+- `source` - optional. Present as `"gap_decision_ledger"` when the packet was
+  rendered from explicit `GapRecord` input rather than live seam analysis.
+- `inputs.gap_ledger` - optional. Present with gap-ledger packet mode so
+  reviewers and agents can trace the packet back to the artifact that owned
+  projection eligibility.
 - `packets_total` — number of actionable packets emitted. Equals the
   count of headline-eligible seams plus opaque seams (which emit
   `inspect_static_limitation`). Strongly-gripped, intentional, and
@@ -6956,7 +6970,32 @@ Field contract:
 - `packets[].task` — `"write_targeted_test"` for headline-eligible
   seams; `"inspect_static_limitation"` for opaque seams. Future
   versions may add tasks like `"strengthen_oracle"` or
-  `"add_match_arm_observer"`.
+  `"add_match_arm_observer"`. Gap-ledger packet mode also uses
+  `"write_targeted_test"` for repairable assertion routes,
+  `"inspect_static_limitation"` for explicit inspection routes, and
+  `"add_output_golden"` for `MissingOutputContract` records whose repair
+  route is `AddOutputGolden`.
+- `packets[].gap_id`, `packets[].canonical_gap_id`, `packets[].gap_kind`,
+  `packets[].language`, `packets[].language_status`,
+  `packets[].policy_state`, `packets[].gap_state`,
+  `packets[].repairability` - optional GapRecord identity and policy fields.
+  Present only when `source = "gap_decision_ledger"`.
+- `packets[].anchor` - optional GapRecord anchor with `file`, `line`, `owner`,
+  and `dedupe_fingerprint` when supplied by the ledger.
+- `packets[].repair_route` - optional full GapRecord repair route. Present
+  for gap-ledger packet mode and mirrors the source ledger instead of
+  reconstructing repair intent from rendered prose.
+- `packets[].verification_commands` and `packets[].verify_command` - optional
+  GapRecord verification commands. `verify_command` is the first command and
+  is provided for existing single-command consumers.
+- `packets[].stop_conditions` - optional agent stop conditions. Gap-ledger
+  packet mode uses the route's `stop_conditions` when supplied and otherwise
+  adds bounded operational stop conditions so agents know when to stop instead
+  of inventing a fix.
+- `packets[].repair_card` - optional GapRecord-backed repair card carrying
+  repair text, route, source artifact, verification commands, and the
+  authority boundary. It is the same repair vocabulary used by PR comment
+  projection.
 - `packets[].current_grip` — one of the `SeamGripClass` strings the
   packet is emitted for (`weakly_gripped`, `ungripped`,
   `reachable_unrevealed`, the four `*_unknown` classes, or

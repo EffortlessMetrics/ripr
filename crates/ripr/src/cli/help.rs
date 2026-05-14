@@ -672,16 +672,21 @@ tests, edit files, change cache behavior, or touch LSP/MCP surfaces.
 const AGENT_PACKET_HELP: &str = r#"Write a per-change handoff packet for a coding agent.
 
 Usage: ripr agent packet [--root PATH] --seam-id ID --json
+       ripr agent packet [--root PATH] --gap-ledger PATH --gap-id ID --json
 
 Options:
-  --root PATH      Workspace root. Defaults to current directory.
-  --seam-id ID     Select one visible seam by ID.
-  --json           Required until a human packet surface exists.
+  --root PATH        Workspace root. Defaults to current directory.
+  --seam-id ID       Select one visible seam by ID.
+  --gap-ledger PATH  Explicit gap decision ledger JSON.
+  --gap-id ID        Select a GapRecord by gap_id or canonical_gap_id.
+  --json             Required until a human packet surface exists.
 
 The packet command expands a seam selected by `ripr agent brief` into the
-existing agent-seam-packets-json envelope with one packet. It remains advisory
-and static; it does not run mutation testing, generate tests, edit files, change
-cache behavior, or touch LSP/MCP surfaces.
+existing agent-seam-packets-json envelope with one packet. With `--gap-ledger`,
+it renders one agent packet from an explicit agent-packet-eligible GapRecord
+without rerunning analysis. It remains advisory and static; it does not run
+mutation testing, generate tests, edit files, change cache behavior, or touch
+LSP/MCP surfaces.
 "#;
 
 const AGENT_VERIFY_HELP: &str = r#"Verify static-evidence movement between a before and after snapshot.
