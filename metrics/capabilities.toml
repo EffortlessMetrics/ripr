@@ -764,8 +764,10 @@ evidence = [
   "docs/OUTPUT_SCHEMA.md PR Test Guidance section defines the review-comments JSON shape",
   "docs/PR_REVIEW_GUIDANCE.md documents the command, generated CI behavior, placement-safe reviewer loop, fixture matrix, and inline-comment opt-in boundary",
   "ripr review-comments --root . --base <sha> --head <sha> --out target/ripr/review/comments.json writes JSON plus Markdown without posting to GitHub",
-  "crates/ripr/src/output/review_comments.rs renders bounded line annotations, summary-only fallbacks, cap suppression, nearby-test suppression, LLM guidance, and static limits",
-  "crates/ripr/src/cli/commands.rs exposes the command and parses required revisions",
+  "ripr review-comments --gap-ledger renders changed-line repair cards only from PR-comment-eligible GapRecord records without rerunning analysis",
+  "crates/ripr/src/output/review_comments.rs renders bounded line annotations, GapRecord repair cards, summary-only fallbacks, cap suppression, nearby-test suppression, LLM guidance, and static limits",
+  "crates/ripr/src/output/pr_inline_comment_publish_plan.rs renders repair_card bodies as repair instructions instead of raw classification labels or confidence scores",
+  "crates/ripr/src/cli/commands.rs exposes the command and parses required revisions plus optional gap-ledger input",
   "docs/CI.md PR Test Guidance Annotations section documents the default job-summary and check-annotation posture",
   "docs/IMPLEMENTATION_CAMPAIGNS.md Campaign 13 marks campaign/pr-review-guidance-closeout done after generated CI, fixtures, and docs aligned",
   "ripr init --ci github generates an advisory workflow that runs ripr review-comments on pull requests, writes a RIPR advisory summary, and emits non-blocking changed-line check annotations when target/ripr/review/comments.json exists",
@@ -776,7 +778,7 @@ evidence = [
   "docs/handoffs/2026-05-08-campaign-13-closeout.md records the closeout proof and non-goals"
 ]
 fixtures = ["fixtures/boundary_gap/expected/pr-guidance"]
-next = "maintenance"
+next = "editor/gap-work-packet-projection"
 metric = "PR guidance projects existing seam evidence into bounded changed-line annotations without blocking by default"
 
 [[capability]]
@@ -966,7 +968,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap/expected/first-useful-action"
 ]
-next = "comments/repair-card-projection"
+next = "editor/gap-work-packet-projection"
 metric = "first_useful_action_reports, first_useful_action_actionable, first_useful_action_gap_record_routes, first_useful_action_stale, first_useful_action_missing_required_artifact, first_useful_action_baseline_only, first_useful_action_acknowledged, first_useful_action_waived, first_useful_action_suppressed, first_useful_action_no_actionable_seam, first_useful_action_already_improved, first_useful_action_unchanged_after_attempt"
 
 [[capability]]
@@ -1526,13 +1528,13 @@ evidence = [
   "fixtures/gap-decision-ledger/corpus.json pins the planned GapRecord vocabulary, projection eligibility, safe gate predicate, output-contract repair route, missing-artifact regeneration, preview ineligibility, and receipt movement cases",
   "crates/ripr/src/output/gap_decision_ledger.rs builds and renders the advisory gap_decision_ledger JSON and Markdown report from explicit GapRecord input",
   "crates/ripr/src/cli/commands.rs wires `ripr reports gap-ledger --records ...` without rerunning analysis or changing downstream projection behavior",
-  "ripr first-action --gap-ledger, ripr pr-ledger record --gap-ledger, ripr zero status --gap-ledger, ripr gate evaluate --gap-ledger, and repo-badge formats with --gap-ledger can consume explicit policy-backed gap records while preserving advisory/default-off behavior",
+  "ripr first-action --gap-ledger, ripr pr-ledger record --gap-ledger, ripr zero status --gap-ledger, ripr gate evaluate --gap-ledger, ripr review-comments --gap-ledger, and repo-badge formats with --gap-ledger can consume explicit policy-backed gap records while preserving advisory/default-off behavior",
   "docs/OUTPUT_SCHEMA.md documents the implemented gap_decision_ledger JSON shape"
 ]
 fixtures = [
   "fixtures/gap-decision-ledger/corpus.json"
 ]
-next = "comments/repair-card-projection"
+next = "editor/gap-work-packet-projection"
 metric = "gap_decision_records_total, gap_decision_repairable_total, gap_decision_static_limitation_total, gap_decision_no_action_total, gap_decision_missing_artifact_total, gap_decision_projection_pr_comment_eligible, gap_decision_projection_gate_candidate, gap_decision_projection_agent_packet_eligible, gap_decision_ripr_zero_target_count, gap_decision_ripr_plus_target_count, gap_decision_preview_ineligible_total, gap_decision_receipt_improved_total, gap_decision_receipt_unchanged_after_attempt_total, gap_decision_missing_output_contract_total"
 
 [[capability]]
