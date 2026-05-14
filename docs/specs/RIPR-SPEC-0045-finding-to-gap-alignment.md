@@ -106,7 +106,10 @@ The planned additive evidence-record subset is:
 ```
 
 This is additive. Existing evidence-record v0.1 consumers may keep using legacy
-fields until they opt into aligned canonical items.
+fields until they opt into aligned canonical items. The first implementation
+adds `raw_findings[]` and `canonical_item` to `seams[].evidence_record` while
+leaving the existing `actionability` object intact; the class-scoped alignment
+label lives at `canonical_item.actionability`.
 
 ### Counting Model
 
@@ -396,8 +399,8 @@ Planned Lane 1 slices:
 - `docs/spec-finding-to-gap-alignment` defines this contract.
 - `fixtures/finding-alignment-benchmark` pins raw-to-canonical examples and
   must-not-claim guards.
-- `analysis/finding-alignment-evidence-fields` adds additive evidence-record
-  fields.
+- `analysis/finding-alignment-evidence-fields` adds additive `raw_findings[]`,
+  `canonical_item`, and nullable `presentation_text` evidence-record fields.
 - `analysis/presentation-text-canonical-grouping` applies the contract to
   declaration plus literal grouping.
 - `analysis/presentation-text-visibility-observers` supplies class-specific

@@ -212,6 +212,13 @@ Planned scope:
   for presentation text: actionable visible-unobserved output, already-observed
   output, internal no-action labels, declaration/literal line movement, and
   different constants that must not collapse into one item.
+- Added the first implemented finding-alignment fields to `evidence_record`.
+  Repo exposure now carries supporting `raw_findings[]`, a canonical item with
+  gap state, class-scoped actionability, repair, related test, verification, and
+  confidence context, plus a nullable presentation-text projection reserved for
+  the class-specific Lane 1 slices. This is additive and does not change
+  rendering, gates, generated tests, provider calls, mutation execution, or
+  score definitions.
 - Added a Lane 1 evidence-quality benchmark case for presentation text
   constants, pinning the claim boundary for changed help/label text: visibility
   and actionability must be explicit, declaration and literal lines should

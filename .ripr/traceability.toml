@@ -2776,16 +2776,24 @@ id = "RIPR-SPEC-0045"
 name = "Finding-to-gap alignment"
 spec = "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md"
 tests = [
+  "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_carries_identity_path_guidance_and_calibration_placeholder",
+  "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_names_static_limitations_from_unknown_stages",
+  "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_carries_supplied_canonical_gap_identity",
+  "crates/ripr/src/output/repo_exposure.rs::tests::json_carries_full_classified_record",
   "xtask/src/main.rs::tests::evidence_quality_benchmark_corpus_is_valid",
 ]
 fixtures = [
   "fixtures/evidence-quality-benchmark/corpus.json",
 ]
 code = [
+  "crates/ripr/src/output/evidence_record.rs",
+  "crates/ripr/src/output/repo_exposure.rs",
   "xtask/src/main.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
+  "docs/specs/RIPR-SPEC-0021-evidence-record.md",
+  "docs/OUTPUT_SCHEMA.md",
   "docs/specs/README.md",
   "docs/DOCUMENTATION.md",
   "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md",
