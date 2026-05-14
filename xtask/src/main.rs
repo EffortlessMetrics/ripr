@@ -41110,6 +41110,19 @@ jobs:
         );
         assert_eq!(
             XtaskCommand::parse([
+                "ripr-annotations".to_string(),
+                "--comments".to_string(),
+                "target/ripr/review/comments.json".to_string(),
+                "--check".to_string(),
+            ]),
+            XtaskCommand::RiprAnnotations(vec![
+                "--comments".to_string(),
+                "target/ripr/review/comments.json".to_string(),
+                "--check".to_string(),
+            ])
+        );
+        assert_eq!(
+            XtaskCommand::parse([
                 "gh-pr-status".to_string(),
                 "--pr".to_string(),
                 "905".to_string(),
