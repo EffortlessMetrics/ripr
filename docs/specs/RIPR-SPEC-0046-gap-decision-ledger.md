@@ -447,7 +447,7 @@ Planned slices:
 - `policy/gate-repairable-gap-predicate` makes optional gates consume the safe
   predicate without changing default blocking. (done)
 - `comments/repair-card-projection` makes inline comments render only eligible
-  repair cards.
+  repair cards. (done)
 - `editor/gap-work-packet-projection` makes editor and agent packets consume
   the same gap decisions.
 - `analysis/presentation-output-contract-gap-route` connects

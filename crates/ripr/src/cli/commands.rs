@@ -67,6 +67,7 @@ struct ReviewCommentsOptions {
     root: PathBuf,
     base: String,
     head: String,
+    gap_ledger: Option<PathBuf>,
     out: PathBuf,
 }
 
@@ -4574,6 +4575,45 @@ fn review_comments_with_diff_loader(
     };
     apply_to_check_input(&mut input, &config, CheckInputExplicit::default());
 
+    if let Some(gap_ledger) = &options.gap_ledger {
+        let gap_ledger_text = std::fs::read_to_string(gap_ledger).map_err(|err| {
+            format!(
+                "review-comments --gap-ledger {} is invalid: read failed: {err}",
+                output::pr_inline_comment_publish_plan::display_path(gap_ledger)
+            )
+        })?;
+        let records = output::gap_decision_ledger::parse_gap_records_json(&gap_ledger_text)
+            .map_err(|err| {
+                format!(
+                    "review-comments --gap-ledger {} is invalid: {err}",
+                    output::pr_inline_comment_publish_plan::display_path(gap_ledger)
+                )
+            })?;
+        let gap_ledger_path = output::pr_inline_comment_publish_plan::display_path(gap_ledger);
+        let rendered_json = output::review_comments::render_gap_record_review_comments_json(
+            &input.root,
+            &options.base,
+            &options.head,
+            &input.mode,
+            &gap_ledger_path,
+            &records,
+        )?;
+        let rendered_md = output::review_comments::render_gap_record_review_comments_markdown(
+            &input.root,
+            &options.base,
+            &options.head,
+            &input.mode,
+            &gap_ledger_path,
+            &records,
+        );
+        let markdown_path = review_comments_markdown_path(&options.out);
+        write_text_file(&options.out, &rendered_json)?;
+        write_text_file(&markdown_path, &rendered_md)?;
+        println!("Wrote {}", options.out.display());
+        println!("Wrote {}", markdown_path.display());
+        return Ok(());
+    }
+
     let diff_text = load_diff(&input.root, &options.base, &options.head)?;
     let changed_lines = agent_brief_lines_from_diff(&input.root, &diff_text);
     let changed_owners = agent_brief_owners_for_lines(&input.root, &changed_lines);
@@ -4860,6 +4900,7 @@ fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOption
     let mut root = PathBuf::from(".");
     let mut base: Option<String> = None;
     let mut head: Option<String> = None;
+    let mut gap_ledger = None;
     let mut out = PathBuf::from("target/ripr/review/comments.json");
 
     let mut i = 0usize;
@@ -4885,6 +4926,16 @@ fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOption
                 }
                 head = Some(value.to_string());
             }
+            "--gap-ledger" => {
+                i += 1;
+                let value = expect_value(args, i, "--gap-ledger")?;
+                if value.trim().is_empty() {
+                    return Err(
+                        "review-comments --gap-ledger requires a non-empty path".to_string()
+                    );
+                }
+                gap_ledger = Some(PathBuf::from(value));
+            }
             "--out" => {
                 i += 1;
                 let value = expect_value(args, i, "--out")?;
@@ -4902,6 +4953,7 @@ fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOption
         root,
         base: base.ok_or_else(|| "review-comments requires --base <sha>".to_string())?,
         head: head.ok_or_else(|| "review-comments requires --head <sha>".to_string())?,
+        gap_ledger,
         out,
     })
 }
@@ -7835,6 +7887,26 @@ mod tests {
                 root: PathBuf::from("repo"),
                 base: "origin/main".to_string(),
                 head: "HEAD".to_string(),
+                gap_ledger: None,
+                out: PathBuf::from("target/ripr/review/comments.json"),
+            })
+        );
+        assert_eq!(
+            parse_review_comments_options(&args(&[
+                "--base",
+                "origin/main",
+                "--head",
+                "HEAD",
+                "--gap-ledger",
+                "target/ripr/reports/gap-decision-ledger.json",
+            ])),
+            Ok(ReviewCommentsOptions {
+                root: PathBuf::from("."),
+                base: "origin/main".to_string(),
+                head: "HEAD".to_string(),
+                gap_ledger: Some(PathBuf::from(
+                    "target/ripr/reports/gap-decision-ledger.json"
+                )),
                 out: PathBuf::from("target/ripr/review/comments.json"),
             })
         );
@@ -7871,6 +7943,17 @@ mod tests {
                 "--base", "main", "--head", "HEAD", "--out", "",
             ])),
             Err("review-comments --out requires a non-empty path".to_string())
+        );
+        assert_eq!(
+            parse_review_comments_options(&args(&[
+                "--base",
+                "main",
+                "--head",
+                "HEAD",
+                "--gap-ledger",
+                "",
+            ])),
+            Err("review-comments --gap-ledger requires a non-empty path".to_string())
         );
         assert_eq!(
             parse_review_comments_options(&args(&["--base", "main", "--head", "HEAD", "--bad"])),
@@ -9877,6 +9960,104 @@ language = "rust"
         assert!(rendered_json.contains("\"head\": \"HEAD\""));
         assert!(rendered_md.contains("# RIPR PR Guidance"));
         assert!(rendered_md.contains("Advisory static evidence only"));
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_gap_ledger_writes_repair_cards_without_loading_diff() -> Result<(), String> {
+        let root = unique_command_test_dir("review-comments-gap-ledger");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        let gap_ledger = root.join("gap-ledger.json");
+        let out = root.join("target/ripr/review/comments.json");
+        std::fs::write(
+            &gap_ledger,
+            r#"{"records":[{"gap_id":"gap:pr:pricing","kind":"MissingBoundaryAssertion","language":"rust","language_status":"stable","scope":"pr_local","evidence_class":"predicate_boundary","gap_state":"actionable","policy_state":"new","repairability":"repairable","anchor":{"file":"src/pricing.rs","line":42,"dedupe_fingerprint":"gap:pricing"},"repair_route":{"route_kind":"AddBoundaryAssertion","target_file":"tests/pricing.rs","assertion_shape":"assert_eq!(discount(100, 100), 90)","changed_behavior":"amount == threshold"},"verification_commands":["cargo xtask fixtures boundary_gap"],"projection_eligibility":{"pr_comment":{"eligible":true,"reason":"stable_anchor_and_repair_route"}}}]}"#,
+        )
+        .map_err(|err| format!("write gap ledger: {err}"))?;
+
+        review_comments_with_diff_loader(
+            &args(&[
+                "--root",
+                &root.display().to_string(),
+                "--base",
+                "main",
+                "--head",
+                "HEAD",
+                "--gap-ledger",
+                &gap_ledger.display().to_string(),
+                "--out",
+                &out.display().to_string(),
+            ]),
+            |_root, _base, _head| Err("gap-ledger path should not load git diff".to_string()),
+        )?;
+
+        let rendered_json = std::fs::read_to_string(&out)
+            .map_err(|err| format!("read gap-ledger review comments JSON: {err}"))?;
+        let rendered_md = std::fs::read_to_string(out.with_extension("md"))
+            .map_err(|err| format!("read gap-ledger review comments Markdown: {err}"))?;
+        assert!(rendered_json.contains(r#""source": "gap_decision_ledger""#));
+        assert!(rendered_json.contains(r#""repair_card""#));
+        assert!(rendered_md.contains("ripr first-action"));
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_gap_ledger_reports_read_and_parse_errors() -> Result<(), String> {
+        let root = unique_command_test_dir("review-comments-gap-ledger-errors");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        let missing_ledger = root.join("missing-gap-ledger.json");
+        let out = root.join("target/ripr/review/comments.json");
+
+        let read_err = match review_comments_with_diff_loader(
+            &args(&[
+                "--root",
+                &root.display().to_string(),
+                "--base",
+                "main",
+                "--head",
+                "HEAD",
+                "--gap-ledger",
+                &missing_ledger.display().to_string(),
+                "--out",
+                &out.display().to_string(),
+            ]),
+            |_root, _base, _head| Err("gap-ledger path should not load git diff".to_string()),
+        ) {
+            Ok(()) => return Err("missing gap ledger should fail before diff loading".to_string()),
+            Err(err) => err,
+        };
+        assert!(read_err.contains("review-comments --gap-ledger"));
+        assert!(read_err.contains("read failed"));
+
+        let malformed_ledger = root.join("malformed-gap-ledger.json");
+        std::fs::write(&malformed_ledger, "{not json")
+            .map_err(|err| format!("write malformed gap ledger: {err}"))?;
+        let parse_err = match review_comments_with_diff_loader(
+            &args(&[
+                "--root",
+                &root.display().to_string(),
+                "--base",
+                "main",
+                "--head",
+                "HEAD",
+                "--gap-ledger",
+                &malformed_ledger.display().to_string(),
+                "--out",
+                &out.display().to_string(),
+            ]),
+            |_root, _base, _head| Err("gap-ledger path should not load git diff".to_string()),
+        ) {
+            Ok(()) => {
+                return Err("malformed gap ledger should fail before diff loading".to_string());
+            }
+            Err(err) => err,
+        };
+        assert!(parse_err.contains("review-comments --gap-ledger"));
+        assert!(parse_err.contains("invalid"));
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
         Ok(())

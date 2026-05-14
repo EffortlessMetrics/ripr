@@ -830,7 +830,9 @@ tests = [
   "crates/ripr/src/output/review_comments.rs::review_comments_falls_back_to_summary_only_without_safe_line",
   "crates/ripr/src/output/review_comments.rs::review_comments_suppresses_when_recommended_test_changed",
   "crates/ripr/src/output/review_comments.rs::review_comments_markdown_names_static_boundaries",
+  "crates/ripr/src/output/review_comments.rs::review_comments_gap_ledger_renders_only_eligible_repair_cards",
   "crates/ripr/src/cli/commands.rs::review_comments_writes_json_and_markdown_from_loaded_diff",
+  "crates/ripr/src/cli/commands.rs::review_comments_gap_ledger_writes_repair_cards_without_loading_diff",
   "crates/ripr/src/cli/commands.rs::review_comments_parses_required_revisions_and_out",
   "crates/ripr/src/cli/commands.rs::review_comments_requires_base_and_head",
   "crates/ripr/src/cli/commands.rs::review_comments_rejects_empty_values_and_unknown_args",
@@ -1733,6 +1735,7 @@ name = "PR inline comment publisher"
 spec = "docs/specs/RIPR-SPEC-0025-pr-inline-comment-publisher.md"
 tests = [
   "crates/ripr/src/output/pr_inline_comment_publish_plan.rs::inline_comment_publish_plan_matches_fixture_corpus",
+  "crates/ripr/src/output/pr_inline_comment_publish_plan.rs::inline_comment_body_prefers_gap_repair_card",
   "crates/ripr/src/output/pr_inline_comment_publish_plan.rs::inline_comment_publish_plan_blocks_missing_dedupe_and_placement",
   "crates/ripr/src/output/pr_inline_comment_publish_plan.rs::inline_comment_publish_plan_allows_same_repo_inline_when_context_is_safe",
   "crates/ripr/src/cli/commands.rs::pr_comments_plan_parses_option_surface",
@@ -2888,6 +2891,9 @@ tests = [
   "crates/ripr/src/output/badge.rs::tests::gap_ledger_badge_summary_counts_projection_targets",
   "crates/ripr/src/output/gate.rs::tests::gate_acknowledgeable_blocks_safe_gap_ledger_candidate",
   "crates/ripr/src/output/gate.rs::tests::gate_gap_ledger_static_unknown_only_stays_report_only",
+  "crates/ripr/src/output/review_comments.rs::review_comments_gap_ledger_renders_only_eligible_repair_cards",
+  "crates/ripr/src/cli/commands.rs::review_comments_gap_ledger_writes_repair_cards_without_loading_diff",
+  "crates/ripr/src/output/pr_inline_comment_publish_plan.rs::inline_comment_body_prefers_gap_repair_card",
   "crates/ripr/src/cli/commands.rs::tests::first_action_cli_writes_gap_record_report",
   "crates/ripr/src/cli/commands.rs::tests::pr_evidence_ledger_writes_json_and_markdown_reports",
   "crates/ripr/tests/cli_smoke.rs::check_repo_badge_json_can_use_gap_ledger_targets",
@@ -2905,6 +2911,8 @@ code = [
   "crates/ripr/src/output/ripr_zero_status.rs",
   "crates/ripr/src/output/badge.rs",
   "crates/ripr/src/output/gate.rs",
+  "crates/ripr/src/output/review_comments.rs",
+  "crates/ripr/src/output/pr_inline_comment_publish_plan.rs",
   "xtask/src/main.rs",
 ]
 outputs = [

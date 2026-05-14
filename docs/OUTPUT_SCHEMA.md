@@ -2409,13 +2409,29 @@ RIPR-SPEC-0012 defines the pinned contract for the
 advisory pull-request guidance:
 
 ```text
-ripr review-comments --root . --base <sha> --head <sha> --out target/ripr/review/comments.json
+ripr review-comments \
+  --root . \
+  --base <sha> \
+  --head <sha> \
+  --out target/ripr/review/comments.json
+
+ripr review-comments \
+  --root . \
+  --base <sha> \
+  --head <sha> \
+  --gap-ledger target/ripr/reports/gap-decision-ledger.json \
+  --out target/ripr/review/comments.json
 ```
 
-The command is a pure renderer. It does not post to GitHub, run mutation
-testing, refresh LSP state, edit source files, or generate tests. CI can use
-the JSON to write a job summary and emit check annotations by default. Inline
-PR review comments require a custom explicit opt-in publisher.
+The command is a pure renderer. The default path joins existing static seam
+evidence with the changed-line diff. When `--gap-ledger` is supplied, the
+command does not rerun analysis; it renders changed-line repair cards only from
+explicit `GapRecord` entries with `projection_eligibility.pr_comment.eligible =
+true`, PR-local scope, a stable anchor, a dedupe fingerprint, a repair route,
+and verification commands. It does not post to GitHub, run mutation testing,
+refresh LSP state, edit source files, or generate tests. CI can use the JSON to
+write a job summary and emit check annotations by default. Inline PR review
+comments require a custom explicit opt-in publisher.
 
 JSON shape:
 
@@ -2428,6 +2444,9 @@ JSON shape:
   "base": "origin/main",
   "head": "HEAD",
   "mode": "draft",
+  "inputs": {
+    "gap_ledger": "target/ripr/reports/gap-decision-ledger.json"
+  },
   "limits": {
     "max_inline_comments": 3,
     "max_summary_items": 10
@@ -2467,6 +2486,17 @@ JSON shape:
         "prompt": "Write one focused Rust test for the missing equality boundary. Place it near tests/pricing.rs::applies_discount_above_threshold. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
         "command": "ripr agent brief --root . --seam-id 67fc764ba37d77bd --json > target/ripr/workflow/agent-brief.json",
         "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+      },
+      "repair_card": {
+        "gap_kind": "MissingBoundaryAssertion",
+        "changed_behavior": "amount == discount_threshold",
+        "why_this_matters": "Changed behavior `amount == discount_threshold` has a repairable MissingBoundaryAssertion gap.",
+        "repair": "Assert the returned discount behavior directly.",
+        "evidence_ids": ["evidence:pricing-threshold-reached"],
+        "verification_commands": ["cargo xtask fixtures boundary_gap"],
+        "verify_command": "cargo xtask fixtures boundary_gap",
+        "source_artifact": "target/ripr/reports/gap-decision-ledger.json",
+        "authority_boundary": "gate_decision_artifact_only"
       }
     }
   ],
@@ -2485,6 +2515,8 @@ Field contract:
   policy.
 - `root`, `base`, `head`, and `mode` - the workspace root, compared revisions,
   and RIPR analysis mode used to render the report.
+- `inputs.gap_ledger` - optional explicit gap decision ledger used for
+  repair-card projection. It is present only when `--gap-ledger` is supplied.
 - `limits.max_inline_comments` - default cap for changed-line annotations.
 - `limits.max_summary_items` - default cap for total recommendations.
 - `summary.comments` - count of guidance items with safe changed-line
@@ -2518,6 +2550,11 @@ Field contract:
   available.
 - `comments[].llm_guidance` - bounded handoff command and prompt for one
   focused test. It is not a request for free-form diff review.
+- `comments[].repair_card` - optional GapRecord-backed repair card. When
+  present, inline publish planning should use this field for the human/LLM
+  comment body instead of raw static classes. It carries gap kind, changed
+  behavior when available, why the gap matters, the bounded repair route,
+  evidence IDs, verification commands, source artifact, and authority boundary.
 - `summary_only[]` - same recommendation shape without `placement`. CI should
   show these in the Markdown/job summary but must not invent a changed-line
   annotation for them.
