@@ -387,8 +387,11 @@
             "constant_name": "APPLE_M3_AIR_DEVICE_LABELS_TEXT",
             "text_literal": "apple-m3-air-cpu-neon = M3 MacBook Air Apple CPU/NEON lane",
             "visibility": "unknown",
-            "actionability": "static_limitation",
-            "recommended_observer": "unknown"
+            "actionability": "static_limitation_visibility_unknown",
+            "recommended_observer": "unknown",
+            "repair_kind": "inspect_visibility",
+            "target_test_type": "unknown",
+            "suggested_assertion": "Trace the constant to a supported output sink before adding or updating tests."
           },
           "static_limitation": {
             "repair_route": "trace_string_constant_to_output_or_snapshot_test",
@@ -464,7 +467,10 @@
             "visibility": "user_visible",
             "observer": "none",
             "actionability": "add_output_observer",
-            "recommended_observer": "cli_help_output"
+            "recommended_observer": "cli_help_output",
+            "repair_kind": "output_observer",
+            "target_test_type": "help_output_snapshot",
+            "suggested_assertion": "Assert CLI help output includes the HELP_DEVICE_LABEL text."
           }
         }
       },
@@ -534,7 +540,10 @@
             "visibility": "user_visible",
             "observer": "golden",
             "actionability": "already_observed",
-            "recommended_observer": "golden"
+            "recommended_observer": "golden",
+            "repair_kind": "no_action",
+            "target_test_type": "golden",
+            "suggested_assertion": "Existing golden observer already covers the rendered report output."
           }
         }
       },
@@ -603,7 +612,10 @@
             "visibility": "internal_only",
             "observer": "none",
             "actionability": "no_action_internal",
-            "recommended_observer": "none"
+            "recommended_observer": "none",
+            "repair_kind": "no_action",
+            "target_test_type": "none",
+            "suggested_assertion": "No user-facing assertion is recommended for this internal label."
           }
         }
       },

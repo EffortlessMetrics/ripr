@@ -85,6 +85,11 @@ Planned scope:
   visibility-unknown routes in `ripr check --json` canonical items while
   preserving raw findings and avoiding PR/CI rendering, gates, scores,
   generated tests, provider calls, or mutation execution.
+- Presentation-text canonical items now include concrete repair guidance:
+  `repair_kind`, `target_test_type`, and `suggested_assertion` fields distinguish
+  output-observer repairs, already-observed no-action states, internal no-action
+  labels, and visibility-inspection limitations without recommending mutation
+  execution as the first action.
 - Python preview related-test matching now treats free-function calls more
   conservatively: module import aliases such as `pricing.apply_discount(...)`
   still relate to the owner, but unrelated object method calls no longer make a
