@@ -68,6 +68,9 @@ Planned scope:
   disabled, no-workspace, unavailable-server, stale, language-off, no-seam,
   preview, and diagnostic states. LSP refresh logs now include enabled language
   names alongside the existing count.
+- Added `docs/STATIC_LIMITS.md` so preview-language static-limit labels have a
+  user-facing interpretation guide and downstream tools know not to parse
+  prose into action semantics.
 - `ripr --help` and every `ripr <subcommand> --help` now lead with an
   action-oriented one-liner before the `Usage:` block (e.g.,
   `ripr pilot --help` opens with "Find the top test gap in this repo and
