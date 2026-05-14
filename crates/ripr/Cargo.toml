@@ -28,23 +28,29 @@ name = "ripr"
 path = "src/main.rs"
 
 [dependencies]
-oxc_allocator = "0.130"
-oxc_ast = "0.130"
-oxc_parser = "0.130"
-oxc_span = "0.130"
+oxc_allocator = { version = "0.130", optional = true }
+oxc_ast = { version = "0.130", optional = true }
+oxc_parser = { version = "0.130", optional = true }
+oxc_span = { version = "0.130", optional = true }
 ra_ap_syntax = "0.0.330"
 # Default features pull `malachite-bigint` (LGPL-3.0-only), which is
 # incompatible with our MIT/Apache-2.0 license posture. Disable the
 # default and select `num-bigint` (MIT/Apache-2.0) for arbitrary-precision
 # integer literals in the Python AST. `location` is required so the
 # AST carries span information for the upcoming fact extractor.
-rustpython-parser = { version = "0.4", default-features = false, features = ["location", "num-bigint"] }
+rustpython-parser = { version = "0.4", optional = true, default-features = false, features = ["location", "num-bigint"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 toml = "0.9"
 tokio = { version = "1", features = ["rt-multi-thread", "io-std", "io-util", "time"] }
 tower-lsp-server = "0.23.0"
+
+[features]
+default = ["lang-rust", "lang-typescript", "lang-python"]
+lang-rust = []
+lang-typescript = ["dep:oxc_allocator", "dep:oxc_ast", "dep:oxc_parser", "dep:oxc_span"]
+lang-python = ["dep:rustpython-parser"]
 
 [lints]
 workspace = true

@@ -1811,14 +1811,21 @@ name = "Language adapter contract"
 spec = "docs/specs/RIPR-SPEC-0026-language-adapter-contract.md"
 tests = [
   "crates/ripr/src/domain/language.rs",
+  "crates/ripr/src/analysis/pipeline.rs::tests::diff_pipeline_dispatches_enabled_preview_feature_adapters",
+  "crates/ripr/src/analysis/pipeline.rs::tests::repo_pipeline_dispatches_enabled_preview_feature_adapters",
+  "crates/ripr/src/config.rs::tests::languages_section",
   "crates/ripr/src/output/json/mod.rs",
 ]
 fixtures = [
   "fixtures/typescript_mocked_module_limit",
 ]
 code = [
+  "crates/ripr/Cargo.toml",
+  "crates/ripr/src/config.rs",
   "crates/ripr/src/domain/language.rs",
   "crates/ripr/src/domain/probe.rs",
+  "crates/ripr/src/analysis/language/mod.rs",
+  "crates/ripr/src/analysis/pipeline.rs",
   "crates/ripr/src/output/json/report.rs",
   "crates/ripr/src/analysis/language/typescript.rs",
 ]
@@ -1828,7 +1835,9 @@ outputs = [
   "docs/proposals/RIPR-PROP-0001-multi-language-adapter-preview.md",
   "docs/proposals/README.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/CONFIGURATION.md",
   "docs/LANGUAGE_ADAPTER_PREVIEW.md",
+  "ripr.toml.example",
   "fixtures/typescript_mocked_module_limit/expected/check.json",
   "docs/REPO_TRACKING_MODEL.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",

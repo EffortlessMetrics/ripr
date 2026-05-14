@@ -50,6 +50,11 @@
 //! ```
 //!
 
+#[cfg(not(feature = "lang-rust"))]
+compile_error!(
+    "ripr requires the `lang-rust` Cargo feature; build rust-only binaries with `--no-default-features --features lang-rust`."
+);
+
 // Kept public for compatibility; prefer the crate-root re-exports for new
 // integrations.
 pub(crate) mod agent;

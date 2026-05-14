@@ -29,6 +29,19 @@ Add preview languages to the repo-root `ripr.toml`:
 enabled = ["rust", "typescript", "python"]
 ```
 
+This runtime opt-in is separate from build-time adapter availability. The
+default published `ripr` build includes the TypeScript/JavaScript and Python
+preview adapter features. Rust-only binaries can be built with:
+
+```bash
+cargo build -p ripr --no-default-features --features lang-rust
+```
+
+If a Rust-only binary reads config that enables `typescript` or `python`, it
+fails closed with a configuration error naming the missing Cargo feature. The
+editor should surface that unavailable-adapter status instead of publishing
+preview diagnostics.
+
 Use the smallest list that matches the repository. For a Python-only preview
 evaluation in an otherwise Rust repo, use:
 
