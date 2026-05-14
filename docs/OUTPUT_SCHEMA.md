@@ -132,7 +132,10 @@ repeated only as supporting evidence for the canonical item.
           "actionability": "static_limitation_visibility_unknown",
           "source_kind": "const_decl",
           "canonical_group_reason": "declaration_and_literal_same_text_constant",
-          "recommended_observer": "unknown"
+          "recommended_observer": "unknown",
+          "repair_kind": "inspect_visibility",
+          "target_test_type": "unknown",
+          "suggested_assertion": "Trace the constant to a supported output sink before adding or updating tests."
         }
       }
     ]
@@ -181,10 +184,11 @@ Field contract:
   RIPR could not safely trace the text to or away from a user-visible output
   sink.
 - `finding_alignment.items[].presentation_text` - class-specific visibility,
-  observer, actionability, source-kind, grouping reason, and recommended
-  observer context. Implemented fixture-backed states include visibility
-  unknown, user-visible unobserved help/report text, user-visible observed
-  report text, and internal-only labels.
+  observer, actionability, source-kind, grouping reason, recommended observer,
+  repair kind, target test type, and suggested assertion context. Implemented
+  fixture-backed states include visibility unknown, user-visible unobserved
+  help/report text, user-visible observed report text, and internal-only
+  labels.
 
 ## Finding
 

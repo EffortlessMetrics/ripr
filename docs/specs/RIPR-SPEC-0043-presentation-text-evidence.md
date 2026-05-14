@@ -138,6 +138,8 @@ downstream consumers to render one action/no-action/limitation state:
 - visibility classification and reason;
 - observer shape and related-test candidate when available;
 - actionability classification;
+- repair kind, target test type, and suggested assertion shape when an action is
+  known;
 - canonical gap identity, group size, and grouping reason when raw seams group;
 - static limitation category and repair route for unknowns;
 - must-not-claim guard coverage in fixtures or benchmark cases.
@@ -179,7 +181,10 @@ The expected evidence-record subset is:
     "visibility_reason": "no_supported_output_sink_traced",
     "observer": "unknown",
     "actionability": "static_limitation_visibility_unknown",
-    "recommended_observer": "unknown"
+    "recommended_observer": "unknown",
+    "repair_kind": "inspect_visibility",
+    "target_test_type": "unknown",
+    "suggested_assertion": "Trace the constant to a supported output sink before adding or updating tests."
   },
   "static_limitation_category": "presentation_text_visibility_unknown",
   "static_limitation": {
@@ -226,7 +231,10 @@ User-visible unobserved help text:
 - Given a constant flowing into CLI help output with no help-output snapshot,
   visibility is `user_visible`.
 - Observer is `none`.
-- Actionability is `snapshot_or_help_output_test`.
+- Actionability is `add_output_observer`.
+- Repair kind is `output_observer`, target test type is
+  `help_output_snapshot`, and the suggested assertion names the rendered output
+  surface rather than mutation execution.
 - Related-test ranking prefers help-output or snapshot tests over lexical-only
   same-file tests.
 
@@ -296,9 +304,9 @@ Planned Lane 1 slices:
   file plus constant-name sink patterns, supported snapshot/golden/help/report
   observer tests, and internal proof/policy/config labels while leaving
   unsupported routes as visibility-unknown limitations.
-- `analysis/presentation-text-actionability` classifies action/no-action and
-  richer observer-aware related-test ranking beyond the initial visibility
-  states.
+- `analysis/presentation-text-actionability` classifies action/no-action repair
+  routes with concrete repair kind, target test type, and suggested assertion
+  fields beyond the initial visibility states.
 - `report/presentation-text-scorecard-trend-fields` reports quality counts and
   deltas.
 - `docs/presentation-text-consumer-handoff` documents the downstream evidence

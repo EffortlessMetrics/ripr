@@ -1482,12 +1482,12 @@ evidence = [
   "fixtures/evidence-quality-benchmark/corpus.json#presentation_text_constant_visibility_unknown pins the screenshot-derived declaration/literal grouping and visibility-unknown static limitation guard",
   "crates/ripr/src/output/json/finding_alignment.rs groups supported presentation-like &str constant declarations and adjacent string literals into one finding_alignment canonical item while preserving raw findings",
   "crates/ripr/src/output/json/finding_alignment.rs classifies fixture-backed help/report sink patterns, golden/snapshot observers, internal-only labels, and visibility-unknown limitations",
-  "crates/ripr/src/output/json/finding_alignment.rs tests pin grouping, line-movement identity, non-collision, unsupported string guards, conservative visibility/observer states, and no mutation-first repair language"
+  "crates/ripr/src/output/json/finding_alignment.rs tests pin grouping, line-movement identity, non-collision, unsupported string guards, conservative visibility/observer states, concrete repair-kind/target-test-type/suggested-assertion fields, and no mutation-first repair language"
 ]
 fixtures = [
   "fixtures/evidence-quality-benchmark/corpus.json"
 ]
-next = "analysis/presentation-text-actionability"
+next = "report/presentation-text-scorecard-trend-fields"
 metric = "presentation_text_total, presentation_text_user_visible, presentation_text_observed, presentation_text_unobserved, presentation_text_internal_only, presentation_text_visibility_unknown, presentation_text_observer_unknown, presentation_text_duplicate_groups, presentation_text_actionable_snapshot, presentation_text_no_action, presentation_text_static_limitations"
 
 [[capability]]
@@ -1501,15 +1501,15 @@ evidence = [
   "fixtures/evidence-quality-benchmark/corpus.json pins manifest-only raw-to-canonical presentation-text cases for actionable, already-observed, internal-only, static-limitation, line-movement, and non-collision states",
   "crates/ripr/src/output/evidence_record.rs emits additive raw_findings, canonical_item, and nullable presentation_text fields from existing static seam facts",
   "crates/ripr/src/output/repo_exposure.rs carries the additive alignment fields under seams[].evidence_record while preserving current seam fields",
-  "crates/ripr/src/output/json/finding_alignment.rs adds the first check-output alignment projection for supported presentation-text declaration/literal groups and classifies fixture-backed visible, observed, internal-only, and visibility-unknown item states",
+  "crates/ripr/src/output/json/finding_alignment.rs adds the first check-output alignment projection for supported presentation-text declaration/literal groups and classifies fixture-backed visible, observed, internal-only, and visibility-unknown item states with concrete repair routes",
   "xtask/src/main.rs includes alignment fields in Lane 1 evidence-record field-health reporting",
   "docs/OUTPUT_SCHEMA.md documents the additive evidence_record alignment fields",
-  "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md records the remaining presentation-text actionability, scorecard/trend, and handoff work"
+  "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md records the remaining scorecard/trend and handoff work"
 ]
 fixtures = [
   "fixtures/evidence-quality-benchmark/corpus.json"
 ]
-next = "analysis/presentation-text-actionability"
+next = "report/presentation-text-scorecard-trend-fields"
 metric = "finding_alignment_raw_findings_total, finding_alignment_raw_signals_total, finding_alignment_canonical_items_total, finding_alignment_raw_to_canonical_ratio, finding_alignment_duplicate_groups_total, finding_alignment_actionable_items_total, finding_alignment_actionable_unresolved_canonical_gaps, finding_alignment_already_observed_total, finding_alignment_internal_only_total, finding_alignment_internal_no_action_total, finding_alignment_static_limitation_total, finding_alignment_unknown_total, finding_alignment_calibrated_supported_total, finding_alignment_uncalibrated_total, finding_alignment_visibility_unknown_total, finding_alignment_presentation_text_actionable_total"
 
 [[capability]]

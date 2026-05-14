@@ -84,6 +84,9 @@ struct FindingAlignmentPresentationText {
     source_kind: String,
     canonical_group_reason: String,
     recommended_observer: String,
+    repair_kind: String,
+    target_test_type: String,
+    suggested_assertion: String,
 }
 
 struct PresentationTextClassification {
@@ -99,12 +102,17 @@ struct PresentationTextClassification {
     observer: String,
     presentation_actionability: String,
     recommended_observer: String,
+    repair_kind: String,
+    target_test_type: String,
+    suggested_assertion: String,
 }
 
 struct PresentationTextSink {
     recommended_observer: &'static str,
     repair_target: &'static str,
     description: &'static str,
+    target_test_type: &'static str,
+    assertion_subject: &'static str,
 }
 
 #[derive(Clone)]
@@ -291,6 +299,9 @@ fn presentation_text_item(
             source_kind: "const_decl".to_string(),
             canonical_group_reason: group_reason.to_string(),
             recommended_observer: classification.recommended_observer,
+            repair_kind: classification.repair_kind,
+            target_test_type: classification.target_test_type,
+            suggested_assertion: classification.suggested_assertion,
         },
     }
 }
@@ -313,7 +324,7 @@ fn classify_presentation_text(
             return observed_classification(sink, observer, related_test);
         }
 
-        return actionable_output_classification(sink);
+        return actionable_output_classification(sink, constant_name);
     }
 
     visibility_unknown_classification()
@@ -344,6 +355,11 @@ fn visibility_unknown_classification() -> PresentationTextClassification {
         observer: "unknown".to_string(),
         presentation_actionability: "static_limitation_visibility_unknown".to_string(),
         recommended_observer: "unknown".to_string(),
+        repair_kind: "inspect_visibility".to_string(),
+        target_test_type: "unknown".to_string(),
+        suggested_assertion:
+            "Trace the constant to a supported output sink before adding or updating tests."
+                .to_string(),
     }
 }
 
@@ -366,10 +382,26 @@ fn internal_only_classification() -> PresentationTextClassification {
         observer: "none".to_string(),
         presentation_actionability: "no_action_internal".to_string(),
         recommended_observer: "none".to_string(),
+        repair_kind: "no_action".to_string(),
+        target_test_type: "none".to_string(),
+        suggested_assertion: "No user-facing assertion is recommended for this internal label."
+            .to_string(),
     }
 }
 
-fn actionable_output_classification(sink: PresentationTextSink) -> PresentationTextClassification {
+fn actionable_output_classification(
+    sink: PresentationTextSink,
+    constant_name: &str,
+) -> PresentationTextClassification {
+    let recommended_repair = format!(
+        "Add or update a {} for {constant_name}.",
+        sink.repair_target,
+    );
+    let suggested_assertion = format!(
+        "Assert {} includes the {constant_name} text.",
+        sink.assertion_subject,
+    );
+
     PresentationTextClassification {
         canonical_item_kind: "gap".to_string(),
         gap_state: "actionable".to_string(),
@@ -378,7 +410,7 @@ fn actionable_output_classification(sink: PresentationTextSink) -> PresentationT
             "Changed text flows to {} and no supported output observer is found.",
             sink.description
         ),
-        recommended_repair: format!("Add or update a {} for this changed text.", sink.repair_target),
+        recommended_repair,
         related_test: None,
         static_limitations: vec![],
         confidence: FindingAlignmentConfidence {
@@ -391,6 +423,9 @@ fn actionable_output_classification(sink: PresentationTextSink) -> PresentationT
         observer: "none".to_string(),
         presentation_actionability: "add_output_observer".to_string(),
         recommended_observer: sink.recommended_observer.to_string(),
+        repair_kind: "output_observer".to_string(),
+        target_test_type: sink.target_test_type.to_string(),
+        suggested_assertion,
     }
 }
 
@@ -420,6 +455,12 @@ fn observed_classification(
         observer: observer.to_string(),
         presentation_actionability: "already_observed".to_string(),
         recommended_observer: observer.to_string(),
+        repair_kind: "no_action".to_string(),
+        target_test_type: observer.to_string(),
+        suggested_assertion: format!(
+            "Existing {observer} observer already covers the {}.",
+            sink.description
+        ),
     }
 }
 
@@ -433,6 +474,8 @@ fn visible_sink_for(constant_name: &str, file: &str) -> Option<PresentationTextS
             recommended_observer: "cli_help_output",
             repair_target: "help-output snapshot assertion",
             description: "CLI help output",
+            target_test_type: "help_output_snapshot",
+            assertion_subject: "CLI help output",
         });
     }
 
@@ -441,6 +484,8 @@ fn visible_sink_for(constant_name: &str, file: &str) -> Option<PresentationTextS
             recommended_observer: "report_render",
             repair_target: "report-render or golden-output test",
             description: "rendered report output",
+            target_test_type: "report_render_or_golden",
+            assertion_subject: "the rendered report output",
         });
     }
 
@@ -451,6 +496,8 @@ fn visible_sink_for(constant_name: &str, file: &str) -> Option<PresentationTextS
             recommended_observer: "table_render",
             repair_target: "table-render or golden-output test",
             description: "rendered table output",
+            target_test_type: "table_render_or_golden",
+            assertion_subject: "the rendered table output",
         });
     }
 
@@ -887,6 +934,27 @@ fn presentation_text_json(
         indent + 1,
         "recommended_observer",
         &presentation_text.recommended_observer,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "repair_kind",
+        &presentation_text.repair_kind,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "target_test_type",
+        &presentation_text.target_test_type,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "suggested_assertion",
+        &presentation_text.suggested_assertion,
         false,
     );
     out.push_str(&format!("{}}}", "  ".repeat(indent)));
@@ -1133,6 +1201,19 @@ mod tests {
             item.presentation_text.recommended_observer,
             "cli_help_output"
         );
+        assert_eq!(
+            item.recommended_repair,
+            "Add or update a help-output snapshot assertion for HELP_DEVICE_LABEL."
+        );
+        assert_eq!(item.presentation_text.repair_kind, "output_observer");
+        assert_eq!(
+            item.presentation_text.target_test_type,
+            "help_output_snapshot"
+        );
+        assert_eq!(
+            item.presentation_text.suggested_assertion,
+            "Assert CLI help output includes the HELP_DEVICE_LABEL text."
+        );
         assert!(item.related_test.is_none());
         assert!(!item.recommended_repair.contains("mutation"));
         Ok(())
@@ -1179,6 +1260,12 @@ mod tests {
         assert_eq!(item.presentation_text.visibility, "user_visible");
         assert_eq!(item.presentation_text.observer, "golden");
         assert_eq!(item.presentation_text.actionability, "already_observed");
+        assert_eq!(item.presentation_text.repair_kind, "no_action");
+        assert_eq!(item.presentation_text.target_test_type, "golden");
+        assert_eq!(
+            item.presentation_text.suggested_assertion,
+            "Existing golden observer already covers the rendered report output."
+        );
         assert_eq!(
             item.related_test.as_ref().map(|test| test.name.as_str()),
             Some("report_golden_observes_label")
@@ -1220,6 +1307,12 @@ mod tests {
         assert_eq!(item.presentation_text.visibility, "internal_only");
         assert_eq!(item.presentation_text.observer, "none");
         assert_eq!(item.presentation_text.actionability, "no_action_internal");
+        assert_eq!(item.presentation_text.repair_kind, "no_action");
+        assert_eq!(item.presentation_text.target_test_type, "none");
+        assert_eq!(
+            item.presentation_text.suggested_assertion,
+            "No user-facing assertion is recommended for this internal label."
+        );
         assert!(item.static_limitations.is_empty());
         Ok(())
     }
@@ -1244,6 +1337,12 @@ mod tests {
         assert_eq!(item.actionability, "inspect_visibility");
         assert_eq!(item.presentation_text.visibility, "unknown");
         assert_eq!(item.presentation_text.observer, "unknown");
+        assert_eq!(item.presentation_text.repair_kind, "inspect_visibility");
+        assert_eq!(item.presentation_text.target_test_type, "unknown");
+        assert_eq!(
+            item.presentation_text.suggested_assertion,
+            "Trace the constant to a supported output sink before adding or updating tests."
+        );
         assert_eq!(
             item.static_limitations
                 .first()
