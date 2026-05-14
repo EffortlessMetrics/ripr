@@ -315,9 +315,13 @@ evidence = [
   "VS Code status bar and ripr: Show Status path for disabled config, server resolution, workspace detection, server unavailable, queued/running/complete/stale/failed refreshes, and no-actionable-seam states",
   "intent-titled diagnostic actions for inspect, write targeted test, agent handoff, verify after test, review receipt, and refresh analysis",
   "target/ripr/reports/gap-decision-ledger.json can supply projection_eligibility.lsp_diagnostic GapRecord diagnostics with structured gap_id, repair route, anchor, and verification commands",
+  "gap-decision ledger diagnostics validate artifact schema, workspace root, freshness, enabled language, identity, path, static-limit, and command payloads before projection",
+  "fixtures/editor_gap_cockpit pins Rust actionable, preview static-limit, disabled-language, wrong-root, stale-artifact, and no-action gap diagnostic projection",
   "docs/QUICKSTART.md routes the VS Code first hour through status, Problems diagnostics, hover evidence, and intent-titled seam actions"
 ]
-fixtures = []
+fixtures = [
+  "fixtures/editor_gap_cockpit"
+]
 next = "maintenance"
 metric = "diagnostics carry finding/probe metadata, explicit GapRecord repair payloads, editor status names saved-workspace analysis state, and editor actions target the selected finding or gap"
 
@@ -1200,11 +1204,13 @@ evidence = [
   "preserves pre-4B Finding hover fallback",
   "fixtures/boundary_gap/expected/lsp-diagnostics.json",
   "fixtures/editor_lsp_workflow/expected/lsp-hover.md",
+  "fixtures/editor_gap_cockpit/*/expected/lsp-hover.md",
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-brief.json"
 ]
 fixtures = [
   "fixtures/boundary_gap",
-  "fixtures/editor_lsp_workflow"
+  "fixtures/editor_lsp_workflow",
+  "fixtures/editor_gap_cockpit"
 ]
 next = "maintenance"
 metric = "hover renders evidence path from ClassifiedSeam, never parses diagnostic message"
@@ -1234,12 +1240,15 @@ evidence = [
   "fixtures/editor_lsp_workflow/expected/lsp-code-actions.json",
   "fixtures/editor_lsp_workflow/expected/vscode-status.json",
   "fixtures/editor_lsp_workflow/expected/first-useful-action-status.json",
+  "fixtures/editor_gap_cockpit/*/expected/lsp-code-actions.json",
+  "fixtures/editor_gap_cockpit/*/expected/vscode-status.json",
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json",
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json"
 ]
 fixtures = [
   "fixtures/boundary_gap",
-  "fixtures/editor_lsp_workflow"
+  "fixtures/editor_lsp_workflow",
+  "fixtures/editor_gap_cockpit"
 ]
 next = "maintenance"
 metric = "seam diagnostics expose only supported packet/assertion/test actions without automatic edits"

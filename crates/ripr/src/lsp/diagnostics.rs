@@ -1,5 +1,8 @@
 use super::config::LspAnalysisConfig;
-use super::gap_artifacts::validate_workspace_gap_artifact_report;
+use super::gap_artifacts::{
+    GapArtifactKind, GapArtifactValidationContext, validate_gap_artifact,
+    validate_workspace_gap_artifact_report,
+};
 use super::state::{AnalysisSnapshot, RefreshMetadata};
 use super::uri::file_uri_for_path;
 use crate::analysis::ClassifiedSeam;
@@ -158,7 +161,11 @@ pub(super) fn workspace_diagnostics_with_config(
         Vec::new()
     };
 
-    append_gap_record_diagnostics(&root, &mut grouped);
+    append_gap_record_diagnostics(
+        &root,
+        config.repo_config().languages().enabled(),
+        &mut grouped,
+    );
 
     let diagnostics_by_uri = grouped.clone();
     let gap_artifact_report =
@@ -181,7 +188,11 @@ pub(super) fn workspace_diagnostics_with_config(
     Ok(WorkspaceDiagnostics { snapshot, batches })
 }
 
-fn append_gap_record_diagnostics(root: &Path, grouped: &mut BTreeMap<Uri, Vec<Diagnostic>>) {
+fn append_gap_record_diagnostics(
+    root: &Path,
+    enabled_languages: &[LanguageId],
+    grouped: &mut BTreeMap<Uri, Vec<Diagnostic>>,
+) {
     let ledger_path = root.join(DEFAULT_GAP_DECISION_LEDGER_OUT);
     let contents = match fs::read_to_string(&ledger_path) {
         Ok(contents) => contents,
@@ -194,6 +205,38 @@ fn append_gap_record_diagnostics(root: &Path, grouped: &mut BTreeMap<Uri, Vec<Di
             return;
         }
     };
+    let artifact = match serde_json::from_str::<serde_json::Value>(&contents) {
+        Ok(artifact) => artifact,
+        Err(err) => {
+            eprintln!(
+                "ripr lsp: gap diagnostics skipped: parse {} failed: {err}",
+                ledger_path.display()
+            );
+            return;
+        }
+    };
+    let context = GapArtifactValidationContext {
+        root,
+        enabled_languages,
+    };
+    match validate_gap_artifact(&artifact, &context) {
+        Ok(validated) if validated.kind == GapArtifactKind::GapDecisionLedger => {}
+        Ok(_) => {
+            eprintln!(
+                "ripr lsp: gap diagnostics skipped: {} is not a gap decision ledger",
+                ledger_path.display()
+            );
+            return;
+        }
+        Err(rejection) => {
+            eprintln!(
+                "ripr lsp: gap diagnostics skipped: {} rejected as {}",
+                ledger_path.display(),
+                rejection.as_str()
+            );
+            return;
+        }
+    }
     let records = match crate::output::gap_decision_ledger::parse_gap_records_json(&contents) {
         Ok(records) => records,
         Err(err) => {
@@ -915,15 +958,12 @@ mod seam_diagnostic_tests {
     fn append_gap_record_diagnostics_reads_default_ledger() -> Result<(), String> {
         let root = temp_gap_root()?;
         let ledger_path = root.join(DEFAULT_GAP_DECISION_LEDGER_OUT);
-        let contents = serde_json::json!({
-            "records": [gap_record(true)]
-        })
-        .to_string();
+        let contents = gap_ledger_json(vec![gap_record(true)]).to_string();
         fs::write(&ledger_path, contents)
             .map_err(|err| format!("write {} failed: {err}", ledger_path.display()))?;
 
         let mut grouped = std::collections::BTreeMap::new();
-        append_gap_record_diagnostics(&root, &mut grouped);
+        append_gap_record_diagnostics(&root, &[LanguageId::Rust], &mut grouped);
 
         let diagnostic_count: usize = grouped.values().map(Vec::len).sum();
         if diagnostic_count != 1 {
@@ -940,6 +980,108 @@ mod seam_diagnostic_tests {
         if !uri.ends_with("/src/pricing.rs") {
             return Err(format!("unexpected diagnostic URI: {uri}"));
         }
+
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn append_gap_record_diagnostics_fails_closed_for_invalid_artifacts() -> Result<(), String> {
+        let root = temp_gap_root()?;
+        let ledger_path = root.join(DEFAULT_GAP_DECISION_LEDGER_OUT);
+
+        let mut stale = gap_ledger_json(vec![gap_record(true)]);
+        stale["status"] = serde_json::json!("stale");
+        fs::write(&ledger_path, stale.to_string())
+            .map_err(|err| format!("write stale ledger failed: {err}"))?;
+        let mut grouped = std::collections::BTreeMap::new();
+        append_gap_record_diagnostics(&root, &[LanguageId::Rust], &mut grouped);
+        assert!(
+            grouped.is_empty(),
+            "stale gap artifact must not publish diagnostics"
+        );
+
+        fs::write(&ledger_path, "{")
+            .map_err(|err| format!("write malformed ledger failed: {err}"))?;
+        append_gap_record_diagnostics(&root, &[LanguageId::Rust], &mut grouped);
+        assert!(
+            grouped.is_empty(),
+            "malformed gap artifact must not publish diagnostics"
+        );
+
+        let first_action = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "kind": "first_useful_action",
+            "root": ".",
+            "status": "actionable",
+            "selected": {
+                "seam_id": "seam:pricing",
+                "path": "src/pricing.rs"
+            },
+            "target": {
+                "file": "tests/pricing.rs",
+                "related_test": "tests/pricing.rs::handles_threshold"
+            },
+            "commands": {
+                "verify": "ripr agent verify --root . --json",
+                "receipt": "ripr agent receipt --root . --json"
+            }
+        });
+        fs::write(&ledger_path, first_action.to_string())
+            .map_err(|err| format!("write wrong-kind ledger failed: {err}"))?;
+        append_gap_record_diagnostics(&root, &[LanguageId::Rust], &mut grouped);
+        assert!(
+            grouped.is_empty(),
+            "non-ledger gap artifact must not publish diagnostics"
+        );
+
+        let mut wrong_root = gap_ledger_json(vec![gap_record(true)]);
+        wrong_root["root"] = serde_json::json!("/other/workspace");
+        fs::write(&ledger_path, wrong_root.to_string())
+            .map_err(|err| format!("write wrong-root ledger failed: {err}"))?;
+        append_gap_record_diagnostics(&root, &[LanguageId::Rust], &mut grouped);
+        assert!(
+            grouped.is_empty(),
+            "wrong-root gap artifact must not publish diagnostics"
+        );
+
+        let mut disabled_record = gap_record(true);
+        disabled_record.language = "python".to_string();
+        disabled_record.language_status = "preview".to_string();
+        let disabled = gap_ledger_json(vec![disabled_record]);
+        fs::write(&ledger_path, disabled.to_string())
+            .map_err(|err| format!("write disabled-language ledger failed: {err}"))?;
+        append_gap_record_diagnostics(&root, &[LanguageId::Rust], &mut grouped);
+        assert!(
+            grouped.is_empty(),
+            "disabled preview-language gap artifact must not publish diagnostics"
+        );
+
+        fs::write(&ledger_path, "{not json")
+            .map_err(|err| format!("write malformed ledger failed: {err}"))?;
+        append_gap_record_diagnostics(&root, &[LanguageId::Rust], &mut grouped);
+        assert!(
+            grouped.is_empty(),
+            "malformed gap artifact must not publish diagnostics"
+        );
+
+        let first_useful_action = serde_json::json!({
+            "schema_version": "0.1",
+            "kind": "first_useful_action",
+            "root": ".",
+            "canonical_gap_id": "gap:rust:first-useful-action",
+            "language": "rust",
+            "language_status": "stable",
+        });
+        fs::write(&ledger_path, first_useful_action.to_string())
+            .map_err(|err| format!("write non-ledger artifact failed: {err}"))?;
+        append_gap_record_diagnostics(&root, &[LanguageId::Rust], &mut grouped);
+        assert!(
+            grouped.is_empty(),
+            "non-ledger gap artifact must not publish ledger diagnostics"
+        );
 
         fs::remove_dir_all(&root)
             .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
@@ -1003,6 +1145,17 @@ mod seam_diagnostic_tests {
             safe_gate_predicate: None,
             authority_boundary: "advisory".to_string(),
         }
+    }
+
+    fn gap_ledger_json(records: Vec<GapRecord>) -> serde_json::Value {
+        serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "kind": "gap_decision_ledger",
+            "status": "advisory",
+            "root": ".",
+            "records": records,
+        })
     }
 
     fn temp_gap_root() -> Result<PathBuf, String> {
