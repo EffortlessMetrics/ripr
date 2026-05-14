@@ -10,6 +10,9 @@ use super::diagnostics::{
     workspace_diagnostic_batches, workspace_diagnostic_batches_with_config,
     workspace_diagnostics_with_config,
 };
+use super::gap_artifacts::{
+    GapArtifactIdentity, GapArtifactKind, GapArtifactRejection, ValidatedGapArtifact,
+};
 use super::hover::{classified_seam_hover_response, hover_response, hover_with_snapshot_status};
 use super::state::{AnalysisSnapshot, DocumentStore, RefreshMetadata, format_duration};
 use super::uri::{encode_uri_path, file_uri_for_path, file_uris_match, path_from_file_uri};
@@ -1147,6 +1150,13 @@ fn refresh_completion_log_message_includes_duration_and_counts() -> Result<(), S
     assert!(message.contains("preview_findings=0"));
     assert!(message.contains("static_limits=0"));
     assert!(message.contains("seam_diagnostics=1"));
+    assert!(message.contains("gap_artifacts=0"));
+    assert!(message.contains("actionable_gap_artifacts=0"));
+    assert!(message.contains("preview_gap_artifacts=0"));
+    assert!(message.contains("no_action_gap_artifacts=0"));
+    assert!(message.contains("gap_static_limits=0"));
+    assert!(message.contains("gap_artifact_rejections=0"));
+    assert!(message.contains("gap_artifact_rejection_kinds="));
     assert!(message.contains("enabled_languages=1"));
     assert!(message.contains("enabled_language_names=rust"));
     assert!(message.contains("published_files=1"));
@@ -1174,6 +1184,52 @@ fn refresh_completion_log_message_counts_preview_findings_and_limits() -> Result
 
     assert!(message.contains("preview_findings=1"));
     assert!(message.contains("static_limits=1"));
+    Ok(())
+}
+
+#[test]
+fn refresh_completion_log_message_counts_gap_artifact_state() -> Result<(), String> {
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &sample_finding());
+    let uri = test_uri("file:///workspace/src/pricing.py")?;
+    let mut snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![diagnostic],
+        Vec::new(),
+    );
+    snapshot.gap_artifacts.push(ValidatedGapArtifact {
+        kind: GapArtifactKind::GapDecisionLedger,
+        root: Some(".".to_string()),
+        identities: vec![GapArtifactIdentity {
+            canonical_gap_id: Some("gap:py:pricing".to_string()),
+            seam_id: None,
+            finding_id: None,
+        }],
+        language: Some(LanguageId::Python),
+        language_status: Some(LanguageStatus::Preview),
+        gap_state: Some("actionable".to_string()),
+        related_paths: vec!["tests/test_pricing.py".to_string()],
+        verify_commands: vec!["ripr agent verify --root . --json".to_string()],
+        receipt_commands: vec!["ripr agent receipt --root . --json".to_string()],
+        static_limit_kinds: vec!["missing_import_graph".to_string()],
+        has_text_static_limit: false,
+    });
+    snapshot
+        .gap_artifact_rejections
+        .push(GapArtifactRejection::WrongRoot(
+            "/other/workspace".to_string(),
+        ));
+
+    let summary = RefreshLogSummary::from_snapshot(9, &snapshot);
+    let message = refresh_completed_log_message(&summary, 1, 0);
+
+    assert!(message.contains("gap_artifacts=1"));
+    assert!(message.contains("actionable_gap_artifacts=1"));
+    assert!(message.contains("preview_gap_artifacts=1"));
+    assert!(message.contains("no_action_gap_artifacts=0"));
+    assert!(message.contains("gap_static_limits=1"));
+    assert!(message.contains("gap_artifact_rejections=1"));
+    assert!(message.contains("gap_artifact_rejection_kinds=wrong_root"));
     Ok(())
 }
 
@@ -2741,6 +2797,7 @@ fn sample_analysis_snapshot(
         findings,
         classified_seams: Vec::new(),
         gap_artifacts: Vec::new(),
+        gap_artifact_rejections: Vec::new(),
         diagnostics_by_uri,
     }
 }

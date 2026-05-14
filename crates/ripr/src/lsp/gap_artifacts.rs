@@ -3,6 +3,7 @@ use crate::output::first_useful_action::DEFAULT_FIRST_USEFUL_ACTION_OUT;
 use crate::output::gap_decision_ledger::DEFAULT_GAP_DECISION_LEDGER_OUT;
 use serde_json::Value;
 use std::collections::BTreeSet;
+use std::io::ErrorKind;
 use std::path::{Component, Path};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -24,6 +25,12 @@ pub(super) struct ValidatedGapArtifact {
     pub(super) receipt_commands: Vec<String>,
     pub(super) static_limit_kinds: Vec<String>,
     pub(super) has_text_static_limit: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(super) struct GapArtifactValidationReport {
+    pub(super) artifacts: Vec<ValidatedGapArtifact>,
+    pub(super) rejections: Vec<GapArtifactRejection>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -107,33 +114,97 @@ impl ValidatedGapArtifact {
             && command_payloads_are_present
             && static_limits_are_structured_or_text
     }
+
+    pub(super) fn is_actionable_gap(&self) -> bool {
+        self.gap_state.as_deref() == Some("actionable")
+    }
+
+    pub(super) fn is_no_action_gap(&self) -> bool {
+        matches!(
+            self.gap_state.as_deref(),
+            Some(
+                "already_improved"
+                    | "baseline_only"
+                    | "no_actionable_seam"
+                    | "suppressed"
+                    | "acknowledged"
+                    | "waived"
+            )
+        )
+    }
+
+    pub(super) fn is_preview(&self) -> bool {
+        self.language_status == Some(LanguageStatus::Preview)
+    }
+
+    pub(super) fn has_static_limit(&self) -> bool {
+        !self.static_limit_kinds.is_empty() || self.has_text_static_limit
+    }
 }
 
-pub(super) fn validate_workspace_gap_artifacts(
+impl GapArtifactRejection {
+    pub(super) fn as_str(&self) -> &'static str {
+        match self {
+            Self::DisabledLanguage(_) => "disabled_language",
+            Self::MalformedArtifact(_) => "malformed_artifact",
+            Self::MalformedCommandPayload(_) => "malformed_command_payload",
+            Self::MissingIdentity => "missing_identity",
+            Self::OutOfWorkspacePath(_) => "out_of_workspace_path",
+            Self::StaleArtifact => "stale_artifact",
+            Self::UnavailableLanguage(_) => "unavailable_language",
+            Self::UnsupportedSchema(_) => "unsupported_schema",
+            Self::UnsupportedStaticLimitKind(_) => "unsupported_static_limit_kind",
+            Self::UnsupportedKind(_) => "unsupported_kind",
+            Self::WrongRoot(_) => "wrong_root",
+        }
+    }
+}
+
+pub(super) fn validate_workspace_gap_artifact_report(
     root: &Path,
     enabled_languages: &[LanguageId],
-) -> Vec<ValidatedGapArtifact> {
+) -> GapArtifactValidationReport {
     let context = GapArtifactValidationContext {
         root,
         enabled_languages,
     };
-    [
+    let mut report = GapArtifactValidationReport::default();
+    for relative in [
         DEFAULT_FIRST_USEFUL_ACTION_OUT,
         DEFAULT_GAP_DECISION_LEDGER_OUT,
-    ]
-    .iter()
-    .filter_map(|relative| validate_workspace_gap_artifact(root, relative, &context))
-    .collect()
+    ] {
+        match validate_workspace_gap_artifact(root, relative, &context) {
+            Some(Ok(artifact)) => report.artifacts.push(artifact),
+            Some(Err(rejection)) => report.rejections.push(rejection),
+            None => {}
+        }
+    }
+    report
 }
 
 fn validate_workspace_gap_artifact(
     root: &Path,
     relative: &str,
     context: &GapArtifactValidationContext<'_>,
-) -> Option<ValidatedGapArtifact> {
-    let text = std::fs::read_to_string(root.join(relative)).ok()?;
-    let value = serde_json::from_str::<Value>(&text).ok()?;
-    validate_gap_artifact(&value, context).ok()
+) -> Option<Result<ValidatedGapArtifact, GapArtifactRejection>> {
+    let text = match std::fs::read_to_string(root.join(relative)) {
+        Ok(text) => text,
+        Err(err) if err.kind() == ErrorKind::NotFound => return None,
+        Err(_) => {
+            return Some(Err(GapArtifactRejection::MalformedArtifact(
+                "gap artifact file must be readable",
+            )));
+        }
+    };
+    let value = match serde_json::from_str::<Value>(&text) {
+        Ok(value) => value,
+        Err(_) => {
+            return Some(Err(GapArtifactRejection::MalformedArtifact(
+                "gap artifact JSON must parse",
+            )));
+        }
+    };
+    Some(validate_gap_artifact(&value, context))
 }
 
 pub(super) fn validate_gap_artifact(
@@ -932,9 +1003,36 @@ mod tests {
         fs::write(&report_path, first_action().to_string())
             .map_err(|err| format!("write {}: {err}", report_path.display()))?;
 
-        let artifacts = validate_workspace_gap_artifacts(&root, &[LanguageId::Rust]);
-        assert_eq!(artifacts.len(), 1);
-        assert_eq!(artifacts[0].kind, GapArtifactKind::FirstUsefulAction);
+        let report = validate_workspace_gap_artifact_report(&root, &[LanguageId::Rust]);
+        assert_eq!(report.artifacts.len(), 1);
+        assert!(report.rejections.is_empty());
+        assert_eq!(report.artifacts[0].kind, GapArtifactKind::FirstUsefulAction);
+
+        fs::remove_dir_all(&root).map_err(|err| format!("remove {}: {err}", root.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_gap_artifact_loader_reports_rejections_for_present_invalid_artifacts()
+    -> Result<(), String> {
+        let root = temp_root("loader-rejection")?;
+        let report_path = root.join(DEFAULT_FIRST_USEFUL_ACTION_OUT);
+        let parent = report_path
+            .parent()
+            .ok_or_else(|| format!("missing parent for {}", report_path.display()))?;
+        fs::create_dir_all(parent).map_err(|err| format!("create {}: {err}", parent.display()))?;
+        fs::write(&report_path, "{")
+            .map_err(|err| format!("write {}: {err}", report_path.display()))?;
+
+        let report = validate_workspace_gap_artifact_report(&root, &[LanguageId::Rust]);
+        assert!(report.artifacts.is_empty());
+        assert_eq!(
+            report.rejections,
+            vec![GapArtifactRejection::MalformedArtifact(
+                "gap artifact JSON must parse"
+            )]
+        );
+        assert_eq!(report.rejections[0].as_str(), "malformed_artifact");
 
         fs::remove_dir_all(&root).map_err(|err| format!("remove {}: {err}", root.display()))?;
         Ok(())

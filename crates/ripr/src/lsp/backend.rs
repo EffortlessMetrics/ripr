@@ -312,6 +312,13 @@ pub(super) struct RefreshLogSummary {
     preview_findings: usize,
     static_limits: usize,
     seam_diagnostics: usize,
+    gap_artifacts: usize,
+    actionable_gap_artifacts: usize,
+    preview_gap_artifacts: usize,
+    no_action_gap_artifacts: usize,
+    gap_static_limits: usize,
+    gap_artifact_rejections: usize,
+    gap_artifact_rejection_kinds: Vec<&'static str>,
     enabled_languages: usize,
     enabled_language_names: Vec<&'static str>,
 }
@@ -344,6 +351,35 @@ impl RefreshLogSummary {
                 .filter(|finding| finding.static_limit_kind.is_some())
                 .count(),
             seam_diagnostics: snapshot.seam_diagnostic_count(),
+            gap_artifacts: snapshot.gap_artifacts.len(),
+            actionable_gap_artifacts: snapshot
+                .gap_artifacts
+                .iter()
+                .filter(|artifact| artifact.is_actionable_gap())
+                .count(),
+            preview_gap_artifacts: snapshot
+                .gap_artifacts
+                .iter()
+                .filter(|artifact| artifact.is_preview())
+                .count(),
+            no_action_gap_artifacts: snapshot
+                .gap_artifacts
+                .iter()
+                .filter(|artifact| artifact.is_no_action_gap())
+                .count(),
+            gap_static_limits: snapshot
+                .gap_artifacts
+                .iter()
+                .filter(|artifact| artifact.has_static_limit())
+                .count(),
+            gap_artifact_rejections: snapshot.gap_artifact_rejections.len(),
+            gap_artifact_rejection_kinds: snapshot
+                .gap_artifact_rejections
+                .iter()
+                .map(|rejection| rejection.as_str())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect(),
             enabled_languages: 1,
             enabled_language_names: vec!["rust"],
         }
@@ -403,7 +439,7 @@ pub(super) fn refresh_completed_log_message(
 ) -> String {
     let duration = format_duration(summary.duration);
     format!(
-        "ripr analysis refresh completed in {duration}: generation={}, diagnostics={}, files={}, findings={}, preview_findings={}, static_limits={}, seam_diagnostics={}, enabled_languages={}, enabled_language_names={}, published_files={}, cleared_files={}",
+        "ripr analysis refresh completed in {duration}: generation={}, diagnostics={}, files={}, findings={}, preview_findings={}, static_limits={}, seam_diagnostics={}, gap_artifacts={}, actionable_gap_artifacts={}, preview_gap_artifacts={}, no_action_gap_artifacts={}, gap_static_limits={}, gap_artifact_rejections={}, gap_artifact_rejection_kinds={}, enabled_languages={}, enabled_language_names={}, published_files={}, cleared_files={}",
         summary.generation,
         summary.diagnostics,
         summary.files,
@@ -411,6 +447,13 @@ pub(super) fn refresh_completed_log_message(
         summary.preview_findings,
         summary.static_limits,
         summary.seam_diagnostics,
+        summary.gap_artifacts,
+        summary.actionable_gap_artifacts,
+        summary.preview_gap_artifacts,
+        summary.no_action_gap_artifacts,
+        summary.gap_static_limits,
+        summary.gap_artifact_rejections,
+        summary.gap_artifact_rejection_kinds.join("|"),
         summary.enabled_languages,
         summary.enabled_language_names.join("|"),
         published_uri_count,

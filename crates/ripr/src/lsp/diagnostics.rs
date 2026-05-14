@@ -1,5 +1,5 @@
 use super::config::LspAnalysisConfig;
-use super::gap_artifacts::validate_workspace_gap_artifacts;
+use super::gap_artifacts::validate_workspace_gap_artifact_report;
 use super::state::{AnalysisSnapshot, RefreshMetadata};
 use super::uri::file_uri_for_path;
 use crate::analysis::ClassifiedSeam;
@@ -155,8 +155,8 @@ pub(super) fn workspace_diagnostics_with_config(
     };
 
     let diagnostics_by_uri = grouped.clone();
-    let gap_artifacts =
-        validate_workspace_gap_artifacts(&root, config.repo_config().languages().enabled());
+    let gap_artifact_report =
+        validate_workspace_gap_artifact_report(&root, config.repo_config().languages().enabled());
     let batches = grouped
         .into_iter()
         .map(|(uri, diagnostics)| DiagnosticBatch { uri, diagnostics })
@@ -168,7 +168,8 @@ pub(super) fn workspace_diagnostics_with_config(
         refresh: RefreshMetadata::generated_now(),
         findings,
         classified_seams,
-        gap_artifacts,
+        gap_artifacts: gap_artifact_report.artifacts,
+        gap_artifact_rejections: gap_artifact_report.rejections,
         diagnostics_by_uri,
     };
     Ok(WorkspaceDiagnostics { snapshot, batches })
