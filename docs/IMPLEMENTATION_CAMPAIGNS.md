@@ -3374,7 +3374,7 @@ Work items:
 | `devex/check-pr-non-mutating-badges` | done | #938 routes PR validation through non-mutating badge checks instead of refreshing committed endpoint JSON. |
 | `devex/worktree-doctor` | done | #941 added `cargo xtask worktree doctor` for dirty main, behind branches, generated residue, untracked sample targets, and broad diff warnings. |
 | `docs/spec-numbering-helper` | done | #946 added `cargo xtask specs next` and `cargo xtask check-spec-numbering`. |
-| `devex/pr-triage-report` | done | #950 added `cargo xtask pr-triage-report` for duplicate families, stale drafts, behind branches, validation gaps, and sensitive surfaces. |
+| `devex/pr-triage-report` | done | #950 added `cargo xtask pr-triage-report` for duplicate families, stale drafts, behind branches, validation gaps, and sensitive surfaces. Follow-up JSON output makes the same advisory queue packet agent-readable under `target/ripr/reports/pr-triage.json`. |
 | `devex/gh-pr-status` | done | #952 added `cargo xtask gh-pr-status --pr <number>` with safe next action guidance. |
 | `policy/lane2-reopening-triggers` | done | #958 documented when future policy authority changes must reopen explicit Lane 2 work. |
 | `devex/campaign-source-of-truth-hardening` | done | #965 hardened focused-tracker, done-item command, spec, closeout, and active-manifest checks. |
@@ -3382,6 +3382,7 @@ Work items:
 | `automation/critic-report` | done | #84 already supplied the advisory critic report; this lane keeps it target-local and reviewer-focused. |
 | `automation/suggested-fixes-patch` | done | #971 added deterministic `suggested-fixes.{patch,md}` output under `target/ripr/reports/`. |
 | `docs/generated-evidence-discipline` | done | #975 added `docs/GENERATED_EVIDENCE.md` and linked contributor/automation docs. |
+| `devex/command-mutability-catalog` | done | Adds `cargo xtask commands` to classify xtask commands by mutability, generated-output paths, external-state access, and judgment-required boundaries. |
 | `campaign/generated-evidence-discipline-closeout` | done | Closed after the generated-clean, badge ownership, worktree, triage, PR status, spec numbering, campaign hardening, receipt, critic, suggested-fixes, and docs surfaces aligned; see `docs/handoffs/2026-05-14-generated-evidence-discipline-closeout.md`. |
 
 Blocking conditions:

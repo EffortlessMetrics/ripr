@@ -1,0 +1,22 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_gap_cockpit/typescript_preview_static_limit",
+  "states": [
+    {
+      "name": "preview_actionable_static_limit",
+      "status_bar": "ripr: preview evidence available",
+      "show_status_contains": [
+        "Language: typescript",
+        "Status: preview",
+        "Static limit: mocked_module",
+        "Next safe action: copy repair packet or static-limit note"
+      ],
+      "must_not": [
+        "runtime adequacy",
+        "edit source",
+        "generate tests",
+        "run mutation testing"
+      ]
+    }
+  ]
+}

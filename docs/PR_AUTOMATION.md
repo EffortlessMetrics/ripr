@@ -29,6 +29,7 @@ The current repo automation surface is:
 ```bash
 cargo xtask shape
 cargo xtask fix-pr
+cargo xtask commands
 cargo xtask pr-summary
 cargo xtask pr-triage-report
 cargo xtask gh-pr-status --pr <number>
@@ -71,6 +72,12 @@ Current `shape` responsibilities:
 `shape`, refreshes the PR summary, and writes
 `target/ripr/reports/fix-pr.md`.
 
+`commands` writes `target/ripr/reports/commands.md` and
+`target/ripr/reports/commands.json`. The catalog classifies xtask commands as
+`mutating`, `non_mutating_check`, `report_only`, `external_state_read`,
+`external_state_mutating`, or `argument_dependent`, and flags commands that
+require judgment before use.
+
 `pr-summary` writes `target/ripr/reports/pr-summary.md` from git diff and git
 status. It classifies changed paths into production, evidence, docs, policy,
 workflow, extension, and public-contract surfaces.
@@ -88,10 +95,11 @@ worktrees, branches behind `origin/main`, generated badge/target residue, and
 broad source-of-truth diffs that lack an obvious work item marker.
 
 `pr-triage-report` is the open-board hygiene report. It reads open PR metadata
-through GitHub CLI and writes `target/ripr/reports/pr-triage.md`. It flags
-same-title families, identical changed-file sets, stale drafts, branches behind
-main, incomplete validation signals, and policy/gate/generated workflow
-surfaces. It is advisory and never updates, closes, merges, or comments on PRs.
+through GitHub CLI and writes `target/ripr/reports/pr-triage.md` plus
+`target/ripr/reports/pr-triage.json`. It flags same-title families, identical
+changed-file sets, stale drafts, branches behind main, incomplete validation
+signals, and policy/gate/generated workflow surfaces. It is advisory and never
+updates, closes, merges, or comments on PRs.
 
 `gh-pr-status --pr <number>` is the per-PR merge-readiness packet. It reads
 GitHub CLI PR status, branch-protection required contexts when available,
@@ -345,6 +353,7 @@ Current:
 
 ```bash
 cargo xtask pr-summary
+cargo xtask commands
 cargo xtask precommit
 cargo xtask check-pr
 cargo xtask fixtures
