@@ -72,14 +72,13 @@ explicitly makes this Lane 1 tracker active.
 - The scorecard, benchmark corpus, static limitation taxonomy,
   oracle-semantics audit fix, runtime-fixtures-v3, evidence-quality trend, and
   class-scoped closeout proof are in place.
-- Presentation text is not yet a first-class evidence class in implemented
-  analyzer behavior.
+- Presentation text is now a first check-output alignment class in implemented
+  behavior for supported Rust `&str` constants.
 - PR #900 started a screenshot-derived benchmark case for the changed
   `APPLE_M3_AIR_DEVICE_LABELS_TEXT` constant. Treat it as the benchmark slice
   after the proposal and spec foundation land.
-- The next contract step is finding-to-gap alignment so raw line-local findings
-  roll up into one canonical item with state, actionability, reason, repair,
-  proof, and supporting raw evidence.
+- The first finding-to-gap alignment projection groups declaration and adjacent
+  literal raw findings into one canonical `finding_alignment.items[]` item.
 - PR #931 added manifest-only finding-alignment benchmark cases for actionable,
   already-observed, internal-only, static-limitation, line-movement, and
   non-collision states.
@@ -93,11 +92,11 @@ explicitly makes this Lane 1 tracker active.
 | `docs/spec-finding-to-gap-alignment` | Define how raw findings roll up into canonical evidence items with state, actionability, repair, confidence, and supporting raw evidence. | merged in #927 |
 | `fixtures/finding-alignment-benchmark` | Add raw-to-canonical benchmark cases for grouping, no-action, already-observed, static limitation, and actionable states. | merged in #931 |
 | `fixtures/presentation-text-evidence-benchmark` | Add benchmark cases for user-visible observed/unobserved text, internal-only labels, visibility unknowns, declaration/literal grouping, and unrelated strings. | merged in #900 |
-| `analysis/finding-alignment-evidence-fields` | Add additive evidence-record fields for raw findings, canonical item state, repair, confidence, and nullable class-specific presentation-text projection. | current |
-| `analysis/presentation-text-evidence-fields` | Add additive evidence-record fields for presentation text visibility, observer, actionability, source kind, and grouping. | planned |
-| `analysis/presentation-text-visibility` | Conservatively classify obvious output sinks and keep opaque or indirect routes as limitations. | planned |
-| `analysis/presentation-text-canonical-grouping` | Group a constant declaration and its string literal into one canonical evidence item without colliding different constants. | planned |
-| `analysis/presentation-text-actionability` | Classify snapshot/help-output/report-test action, already-observed output, internal no-action, and limitation states. | planned |
+| `analysis/finding-alignment-evidence-fields` | Add additive evidence-record fields for raw findings, canonical item state, repair, confidence, and nullable class-specific presentation-text projection. | merged in #935 |
+| `analysis/presentation-text-evidence-fields` | Add additive evidence-record fields for presentation text visibility, observer, actionability, source kind, and grouping. | merged in #935 |
+| `analysis/presentation-text-canonical-grouping` | Group a constant declaration and its string literal into one canonical evidence item without colliding different constants. | merged in #943 |
+| `analysis/presentation-text-visibility` | Conservatively classify obvious output sinks and keep opaque or indirect routes as limitations. | current |
+| `analysis/presentation-text-actionability` | Classify richer observer-aware repair routes and related-test ranking beyond the initial visibility states. | planned |
 | `report/presentation-text-scorecard-trend-fields` | Add scorecard and trend counts for presentation-text evidence quality. | planned |
 | `docs/presentation-text-consumer-handoff` | Hand downstream lanes the evidence contract without changing rendering in this lane. | planned |
 
@@ -187,7 +186,8 @@ git diff --check
 | `fixtures/finding-alignment-benchmark` | #931 | merged | Added manifest-only raw-to-canonical presentation-text alignment cases; no analyzer behavior changes. |
 | `fixtures/presentation-text-evidence-benchmark` | #900 | merged | Added the screenshot-derived constant benchmark after the proposal/spec foundation. |
 | `analysis/finding-alignment-evidence-fields` | #935 | merged | Added additive `raw_findings[]`, `canonical_item`, and nullable `presentation_text` fields to `evidence_record`; no rendering, gate, score, provider, generated-test, or mutation-execution changes. |
-| `analysis/presentation-text-canonical-grouping` | pending | current | Groups supported presentation-text constant declaration plus adjacent literal raw findings into one `finding_alignment.items[]` canonical limitation item in `ripr check --json`; raw `findings[]` remain supporting evidence. |
+| `analysis/presentation-text-canonical-grouping` | #943 | merged | Groups supported presentation-text constant declaration plus adjacent literal raw findings into one `finding_alignment.items[]` canonical limitation item in `ripr check --json`; raw `findings[]` remain supporting evidence. |
+| `analysis/presentation-text-visibility` | pending | current | Classifies fixture-backed help/report/internal presentation text as actionable, already observed, internal-only, or visibility-unknown without changing PR/CI, LSP/editor, gates, scores, generated tests, provider calls, or mutation execution. |
 
 ## Closeout Conditions
 

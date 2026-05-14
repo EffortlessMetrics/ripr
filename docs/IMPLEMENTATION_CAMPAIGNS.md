@@ -3128,9 +3128,9 @@ Work items:
 | `fixtures/presentation-text-evidence-benchmark` | done | #900 added the screenshot-derived benchmark after the proposal/spec foundation. |
 | `analysis/finding-alignment-evidence-fields` | done | #935 added additive `raw_findings[]`, `canonical_item`, and nullable `presentation_text` fields to `evidence_record` without changing rendering, gates, scores, generated tests, provider calls, or mutation execution. |
 | `analysis/presentation-text-evidence-fields` | done | #935 reserved nullable evidence-record fields for the class. |
-| `analysis/presentation-text-canonical-grouping` | current | Groups supported presentation-text constant declaration plus adjacent literal raw findings into one visibility-unknown canonical limitation item in `ripr check --json`. |
-| `analysis/presentation-text-visibility` | planned | Classifies obvious output sinks and keeps unsupported routes as limitations. |
-| `analysis/presentation-text-actionability` | planned | Classifies action, no-action, observed, and limitation states. |
+| `analysis/presentation-text-canonical-grouping` | done | #943 groups supported presentation-text constant declaration plus adjacent literal raw findings into one visibility-unknown canonical limitation item in `ripr check --json`. |
+| `analysis/presentation-text-visibility` | current | Classifies fixture-backed help/report/internal output evidence as actionable, observed, internal-only, or visibility-unknown while keeping unsupported routes as limitations. |
+| `analysis/presentation-text-actionability` | planned | Extends repair routes and observer-aware related-test ranking beyond the initial visibility states. |
 | `report/presentation-text-scorecard-trend-fields` | planned | Reports presentation-text quality counts and deltas. |
 | `docs/presentation-text-consumer-handoff` | planned | Documents downstream rendering contract without changing PR/CI or editor surfaces. |
 
