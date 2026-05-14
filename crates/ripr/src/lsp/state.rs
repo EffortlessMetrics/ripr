@@ -69,13 +69,19 @@ impl AnalysisSnapshot {
                 super::diagnostics::diagnostic_severity_for_grip_class(entry.class).is_some()
             })
             .count();
+        let gap_diagnostics = self
+            .diagnostics_by_uri
+            .values()
+            .flatten()
+            .filter(|diagnostic| diagnostic_has_string_data(diagnostic, "gap_id"))
+            .count();
         !self.root.as_os_str().is_empty()
             && self
                 .base
                 .as_ref()
                 .is_none_or(|base| !base.trim().is_empty())
             && !self.mode.as_str().is_empty()
-            && self.findings.len() + surfacable_seams == diagnostic_count
+            && self.findings.len() + surfacable_seams + gap_diagnostics == diagnostic_count
             && self
                 .gap_artifacts
                 .iter()
@@ -155,6 +161,15 @@ impl AnalysisSnapshot {
     }
 }
 
+fn diagnostic_has_string_data(diagnostic: &Diagnostic, key: &str) -> bool {
+    diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get(key))
+        .and_then(|value| value.as_str())
+        .is_some()
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct DocumentState {
     pub(super) uri: Uri,
@@ -224,4 +239,93 @@ pub(super) fn format_duration(duration: Duration) -> String {
         return "1 second".to_string();
     }
     format!("{} seconds", duration.as_secs())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tower_lsp_server::ls_types::{Position, Range};
+
+    #[test]
+    fn snapshot_consistency_counts_gap_record_diagnostics() -> Result<(), String> {
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+        let mut diagnostics_by_uri = BTreeMap::new();
+        diagnostics_by_uri.insert(uri, vec![gap_diagnostic()]);
+        let snapshot = AnalysisSnapshot {
+            root: PathBuf::from("/workspace"),
+            base: None,
+            mode: Mode::Draft,
+            refresh: RefreshMetadata::default(),
+            findings: Vec::new(),
+            classified_seams: Vec::new(),
+            gap_artifacts: Vec::new(),
+            diagnostics_by_uri,
+        };
+
+        if !snapshot.is_consistent() {
+            return Err("gap diagnostics should count as explicit diagnostics".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn snapshot_consistency_rejects_unknown_extra_diagnostic() -> Result<(), String> {
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+        let mut diagnostics_by_uri = BTreeMap::new();
+        diagnostics_by_uri.insert(uri, vec![plain_diagnostic()]);
+        let snapshot = AnalysisSnapshot {
+            root: PathBuf::from("/workspace"),
+            base: None,
+            mode: Mode::Draft,
+            refresh: RefreshMetadata::default(),
+            findings: Vec::new(),
+            classified_seams: Vec::new(),
+            gap_artifacts: Vec::new(),
+            diagnostics_by_uri,
+        };
+
+        if snapshot.is_consistent() {
+            return Err(
+                "plain diagnostics should still require matching source evidence".to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    fn gap_diagnostic() -> Diagnostic {
+        let mut diagnostic = plain_diagnostic();
+        diagnostic.data = Some(serde_json::json!({
+            "source": "gap_decision_ledger",
+            "gap_id": "gap:pr:pricing:threshold-boundary"
+        }));
+        diagnostic
+    }
+
+    fn plain_diagnostic() -> Diagnostic {
+        Diagnostic {
+            range: Range {
+                start: Position {
+                    line: 10,
+                    character: 0,
+                },
+                end: Position {
+                    line: 10,
+                    character: 120,
+                },
+            },
+            severity: None,
+            code: None,
+            code_description: None,
+            source: Some("ripr".to_string()),
+            message: "test diagnostic".to_string(),
+            related_information: None,
+            tags: None,
+            data: None,
+        }
+    }
+
+    fn test_uri(uri: &str) -> Result<Uri, String> {
+        uri.parse::<Uri>()
+            .map_err(|err| format!("failed to parse test URI: {err}"))
+    }
 }

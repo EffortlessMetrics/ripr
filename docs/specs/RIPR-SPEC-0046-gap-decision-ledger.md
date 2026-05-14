@@ -450,8 +450,8 @@ Planned slices:
   repair cards. (done)
 - `editor/gap-work-packet-projection` starts by making `ripr agent packet
   --gap-ledger ... --gap-id ...` consume explicit `GapRecord` inputs without
-  rerunning analysis. LSP diagnostic projection remains the follow-up in this
-  slice family.
+  rerunning analysis, then projects `projection_eligibility.lsp_diagnostic`
+  records into editor diagnostics and `ripr.collectContext` gap packets.
 - `analysis/presentation-output-contract-gap-route` connects
   `RIPR-SPEC-0043` evidence to `MissingOutputContract` decisions.
 
