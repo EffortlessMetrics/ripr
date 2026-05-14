@@ -331,6 +331,38 @@ suite('Extension Smoke', () => {
       assert.ok(String(context.status.tooltip).includes('Enabled languages: rust, typescript, python'));
 
       context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=5, diagnostics=2, files=1, findings=1, preview_findings=1, static_limits=1, seam_diagnostics=1, gap_artifacts=1, actionable_gap_artifacts=1, preview_gap_artifacts=1, no_action_gap_artifacts=0, gap_static_limits=1, gap_artifact_rejections=0, gap_artifact_rejection_kinds=, enabled_languages=3, enabled_language_names=rust|typescript|python, published_files=1, cleared_files=0'
+      });
+      assert.ok(context.status.text.includes('ripr: gap ready'));
+      const actionableGapTooltip = String(context.status.tooltip);
+      assert.ok(actionableGapTooltip.includes('preview-limited gap projection input'));
+      assert.ok(actionableGapTooltip.includes('preview gap artifact input is syntax-first and advisory'));
+      assert.ok(actionableGapTooltip.includes('gap static limit entry must be read before action language'));
+      assert.ok(actionableGapTooltip.includes('1 actionable gap artifact validated for editor projection'));
+      assert.ok(actionableGapTooltip.includes('Next safe action: Read static limits'));
+      assert.ok(
+        actionableGapTooltip.indexOf('gap static limit entry') <
+          actionableGapTooltip.indexOf('1 actionable gap artifact'),
+        actionableGapTooltip
+      );
+      await context.controller.showStatus();
+      assert.ok(context.outputLines.join('\n').includes('ripr validated preview-limited gap projection input.'));
+
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=6, diagnostics=0, files=0, findings=0, preview_findings=0, static_limits=0, seam_diagnostics=0, gap_artifacts=1, actionable_gap_artifacts=0, preview_gap_artifacts=0, no_action_gap_artifacts=1, gap_static_limits=0, gap_artifact_rejections=0, gap_artifact_rejection_kinds=, enabled_languages=1, enabled_language_names=rust, published_files=0, cleared_files=0'
+      });
+      assert.ok(context.status.text.includes('ripr: gap clear'));
+      assert.ok(String(context.status.tooltip).includes('no local repair action'));
+
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=7, diagnostics=0, files=0, findings=0, preview_findings=0, static_limits=0, seam_diagnostics=0, gap_artifacts=0, actionable_gap_artifacts=0, preview_gap_artifacts=0, no_action_gap_artifacts=0, gap_static_limits=0, gap_artifact_rejections=1, gap_artifact_rejection_kinds=wrong_root, enabled_languages=1, enabled_language_names=rust, published_files=0, cleared_files=0'
+      });
+      assert.ok(context.status.text.includes('ripr: gap blocked'));
+      assert.ok(String(context.status.tooltip).includes('wrong_root'));
+      assert.ok(String(context.status.tooltip).includes('not projected'));
+      assert.ok(String(context.status.tooltip).includes('never create diagnostics'));
+
+      context.client.emitNotification('window/logMessage', {
         message: 'ripr analysis refresh failed after 3 ms: workspace analysis failed'
       });
       assert.ok(context.status.text.includes('ripr: failed'));
