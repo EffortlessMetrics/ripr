@@ -304,6 +304,7 @@ struct FirstActionOptions {
     root: String,
     pr_guidance: Option<PathBuf>,
     assistant_proof: Option<PathBuf>,
+    gap_ledger: Option<PathBuf>,
     ledger: Option<PathBuf>,
     baseline_delta: Option<PathBuf>,
     receipt: Option<PathBuf>,
@@ -3429,6 +3430,10 @@ pub(super) fn first_action(args: &[String]) -> Result<(), String> {
         .assistant_proof
         .as_ref()
         .map(|path| output::first_useful_action::display_path(path));
+    let gap_ledger_path = options
+        .gap_ledger
+        .as_ref()
+        .map(|path| output::first_useful_action::display_path(path));
     let ledger_path = options
         .ledger
         .as_ref()
@@ -3458,6 +3463,7 @@ pub(super) fn first_action(args: &[String]) -> Result<(), String> {
         generated_at: first_action_generated_at()?,
         pr_guidance_path,
         assistant_proof_path,
+        gap_ledger_path,
         ledger_path,
         baseline_delta_path,
         receipt_path,
@@ -3472,6 +3478,10 @@ pub(super) fn first_action(args: &[String]) -> Result<(), String> {
             .assistant_proof
             .as_ref()
             .map(|path| read_optional_text_for_report("assistant proof", path)),
+        gap_ledger_json: options
+            .gap_ledger
+            .as_ref()
+            .map(|path| read_optional_text_for_report("gap decision ledger", path)),
         ledger_json: options
             .ledger
             .as_ref()
@@ -6610,6 +6620,7 @@ fn parse_first_action_options(args: &[String]) -> Result<FirstActionOptions, Str
     let mut root = ".".to_string();
     let mut pr_guidance = None;
     let mut assistant_proof = None;
+    let mut gap_ledger = None;
     let mut ledger = None;
     let mut baseline_delta = None;
     let mut receipt = None;
@@ -6643,6 +6654,10 @@ fn parse_first_action_options(args: &[String]) -> Result<FirstActionOptions, Str
                     "--assistant-proof",
                     "first-action",
                 )?);
+            }
+            "--gap-ledger" => {
+                i += 1;
+                gap_ledger = Some(non_empty_path_arg(args, i, "--gap-ledger", "first-action")?);
             }
             "--ledger" => {
                 i += 1;
@@ -6703,6 +6718,7 @@ fn parse_first_action_options(args: &[String]) -> Result<FirstActionOptions, Str
 
     if pr_guidance.is_none()
         && assistant_proof.is_none()
+        && gap_ledger.is_none()
         && ledger.is_none()
         && baseline_delta.is_none()
         && receipt.is_none()
@@ -6717,6 +6733,7 @@ fn parse_first_action_options(args: &[String]) -> Result<FirstActionOptions, Str
         root,
         pr_guidance,
         assistant_proof,
+        gap_ledger,
         ledger,
         baseline_delta,
         receipt,
@@ -9289,6 +9306,8 @@ language = "rust"
                 "target/ripr/review/comments.json",
                 "--assistant-proof",
                 "target/ripr/reports/test-oracle-assistant-proof.json",
+                "--gap-ledger",
+                "target/ripr/reports/gap-decision-ledger.json",
                 "--ledger",
                 "target/ripr/reports/pr-evidence-ledger.json",
                 "--baseline-delta",
@@ -9311,6 +9330,9 @@ language = "rust"
                 pr_guidance: Some(PathBuf::from("target/ripr/review/comments.json")),
                 assistant_proof: Some(PathBuf::from(
                     "target/ripr/reports/test-oracle-assistant-proof.json",
+                )),
+                gap_ledger: Some(PathBuf::from(
+                    "target/ripr/reports/gap-decision-ledger.json"
                 )),
                 ledger: Some(PathBuf::from("target/ripr/reports/pr-evidence-ledger.json")),
                 baseline_delta: Some(PathBuf::from(
@@ -9342,6 +9364,71 @@ language = "rust"
             parse_first_action_options(&args(&["--bad"])),
             Err("unknown first-action argument \"--bad\"".to_string())
         );
+    }
+
+    #[test]
+    fn first_action_cli_writes_gap_record_report() -> Result<(), String> {
+        let dir = unique_command_test_dir("first-action-gap-record");
+        std::fs::create_dir_all(&dir)
+            .map_err(|err| format!("create first-action gap-record dir: {err}"))?;
+        let gap_ledger = dir.join("gap-decision-ledger.json");
+        let out = dir.join("first-useful-action.json");
+        let out_md = dir.join("first-useful-action.md");
+        std::fs::write(
+            &gap_ledger,
+            r#"{
+  "kind": "gap_decision_ledger",
+  "records": [
+    {
+      "gap_id": "gap:pr:pricing:threshold-boundary",
+      "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+      "kind": "MissingBoundaryAssertion",
+      "language": "rust",
+      "language_status": "stable",
+      "scope": "pr_local",
+      "evidence_class": "predicate_boundary",
+      "gap_state": "actionable",
+      "policy_state": "new",
+      "repairability": "repairable",
+      "anchor": {
+        "file": "src/pricing.rs",
+        "line": 42,
+        "dedupe_fingerprint": "gap:rust:pricing:discount:threshold-boundary"
+      },
+      "repair_route": {
+        "route_kind": "AddBoundaryAssertion",
+        "target_file": "tests/pricing.rs",
+        "assertion_shape": "assert_eq!(discount(100, 100), 90)"
+      },
+      "verification_commands": [
+        "cargo xtask fixtures boundary_gap"
+      ]
+    }
+  ]
+}"#,
+        )
+        .map_err(|err| format!("write gap decision ledger: {err}"))?;
+
+        first_action(&args(&[
+            "--gap-ledger",
+            &gap_ledger.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json = std::fs::read_to_string(&out)
+            .map_err(|err| format!("read first-action JSON: {err}"))?;
+        assert!(json.contains(r#""source": "gap_ledger""#));
+        assert!(json.contains(r#""repair_route": "AddBoundaryAssertion""#));
+        let markdown = std::fs::read_to_string(&out_md)
+            .map_err(|err| format!("read first-action Markdown: {err}"))?;
+        assert!(markdown.contains("Repair MissingBoundaryAssertion via AddBoundaryAssertion"));
+
+        std::fs::remove_dir_all(&dir)
+            .map_err(|err| format!("remove first-action gap-record dir: {err}"))?;
+        Ok(())
     }
 
     #[test]

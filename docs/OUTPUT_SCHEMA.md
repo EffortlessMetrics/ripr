@@ -5046,11 +5046,11 @@ warnings, optional CI projection, and advisory limits.
 
 RIPR-SPEC-0020 defines the first useful action report. `ripr first-action`
 writes an advisory JSON and Markdown report that compresses existing
-editor, PR guidance, ledger, baseline, assistant proof, receipt, optional gate,
-optional coverage/grip, and staleness evidence into one next test action or one
-fallback reason. The report is read-only and must not rerun hidden analysis,
-edit source, generate tests, call a provider, run mutation testing, invent
-policy, or change default CI blocking.
+editor, PR guidance, gap decision ledger, PR evidence ledger, baseline,
+assistant proof, receipt, optional gate, optional coverage/grip, and staleness
+evidence into one next test action or one fallback reason. The report is
+read-only and must not rerun hidden analysis, edit source, generate tests, call
+a provider, run mutation testing, invent policy, or change default CI blocking.
 
 See [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) for how
 developers, reviewers, and coding agents read the report, act on the selected
@@ -5067,6 +5067,7 @@ ripr first-action \
   --root . \
   --pr-guidance target/ripr/review/comments.json \
   --assistant-proof target/ripr/reports/test-oracle-assistant-proof.json \
+  --gap-ledger target/ripr/reports/gap-decision-ledger.json \
   --ledger target/ripr/reports/pr-evidence-ledger.json \
   --baseline-delta target/ripr/reports/baseline-debt-delta.json \
   --receipt target/ripr/reports/agent-receipt.json \
@@ -5099,6 +5100,7 @@ JSON shape:
   "inputs": {
     "pr_guidance": "target/ripr/review/comments.json",
     "assistant_proof": "target/ripr/reports/test-oracle-assistant-proof.json",
+    "gap_ledger": "target/ripr/reports/gap-decision-ledger.json",
     "ledger": "target/ripr/reports/pr-evidence-ledger.json",
     "baseline_delta": "target/ripr/reports/baseline-debt-delta.json",
     "receipt": "target/ripr/reports/agent-receipt.json",
@@ -5114,7 +5116,10 @@ JSON shape:
     "path": "src/pricing.rs",
     "line": 88,
     "classification": "weakly_exposed",
-    "missing_discriminator": "amount == discount_threshold"
+    "missing_discriminator": "amount == discount_threshold",
+    "gap_id": "gap:pr:pricing:threshold-boundary",
+    "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+    "repair_route": "AddBoundaryAssertion"
   },
   "title": "Add equality-boundary discriminator test",
   "why": "Changed predicate boundary is weakly exposed and lacks an equality-boundary discriminator.",
@@ -5138,6 +5143,7 @@ JSON shape:
   "evidence": {
     "pr_guidance": "target/ripr/review/comments.json",
     "assistant_proof": "target/ripr/reports/test-oracle-assistant-proof.json",
+    "gap_ledger": "target/ripr/reports/gap-decision-ledger.json",
     "receipt": "target/ripr/reports/agent-receipt.json",
     "ledger": "target/ripr/reports/pr-evidence-ledger.json",
     "static_movement": "unknown"
@@ -5166,11 +5172,14 @@ Field contract:
   `generate_missing_artifact`, `acknowledge_baseline`, `inspect_proof_report`,
   `revise_focused_test`, or `no_action`.
 - `audience` is `developer`, `reviewer`, or `agent`.
-- `inputs.*` records explicit input paths. Missing optional inputs are `null`;
-  missing or invalid supplied inputs produce warnings and an appropriate
-  fallback status.
+- `inputs.*` records explicit input paths. Missing optional inputs are `null`
+  or omitted for additive unsupplied fields; missing or invalid supplied inputs
+  produce warnings and an appropriate fallback status.
 - `selected.*` is copied from existing RIPR artifacts. The report must not
   mint a new seam identity or rerank findings with a provider.
+- `selected.gap_id`, `selected.canonical_gap_id`, and
+  `selected.repair_route` are present when an explicit gap decision ledger
+  drives the first action.
 - `why_first` records deterministic routing reasons. It must not be an opaque
   score.
 - `target.*` records the recommended test file, related test, suggested test
