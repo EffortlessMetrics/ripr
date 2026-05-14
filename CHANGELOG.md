@@ -90,6 +90,10 @@ Planned scope:
   conservatively: module import aliases such as `pricing.apply_discount(...)`
   still relate to the owner, but unrelated object method calls no longer make a
   top-level function look related.
+- TypeScript preview related-test matching now uses the same conservative
+  token-aware owner-call boundary, so string/comment mentions and arbitrary
+  object method calls no longer make a top-level function look related or
+  trigger mocked-module static limits.
 - `ripr --help` and every `ripr <subcommand> --help` now lead with an
   action-oriented one-liner before the `Usage:` block (e.g.,
   `ripr pilot --help` opens with "Find the top test gap in this repo and
