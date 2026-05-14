@@ -7535,9 +7535,18 @@ GapRecord diagnostic shape:
     "language": "rust",
     "language_status": "stable",
     "scope": "pr_local",
+    "evidence_class": "boundary_assertion",
+    "gap_state": "actionable",
     "policy_state": "new",
     "repairability": "repairable",
     "repair_route": { "route_kind": "AddBoundaryAssertion" },
+    "anchor": {
+      "file": "src/pricing.rs",
+      "line": 42,
+      "owner": "pricing::discounted_total",
+      "dedupe_fingerprint": "gap:rust:pricing:threshold-boundary"
+    },
+    "evidence_ids": ["evidence:pricing:threshold-boundary"],
     "verification_commands": ["cargo xtask fixtures boundary_gap"]
   }
 }

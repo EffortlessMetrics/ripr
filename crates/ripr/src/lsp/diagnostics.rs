@@ -876,6 +876,69 @@ mod seam_diagnostic_tests {
     }
 
     #[test]
+    fn gap_record_diagnostic_names_preview_inspection_route() -> Result<(), String> {
+        let mut record = gap_record(true);
+        record.repairability = "inspect_only".to_string();
+        record.language_status = "preview".to_string();
+        record.repair_route = None;
+
+        let (_, diagnostic) =
+            diagnostic_for_gap_record(Path::new("/repo"), Path::new("ledger.json"), &record)
+                .ok_or_else(|| "expected gap diagnostic".to_string())?;
+
+        if diagnostic.severity != Some(DiagnosticSeverity::INFORMATION) {
+            return Err(format!(
+                "expected information severity, got {:?}",
+                diagnostic.severity
+            ));
+        }
+        if !diagnostic.message.contains("repair route: InspectGap")
+            || !diagnostic.message.contains("preview advisory evidence")
+        {
+            return Err(format!(
+                "unexpected preview gap diagnostic message: {}",
+                diagnostic.message
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn append_gap_record_diagnostics_reads_default_ledger() -> Result<(), String> {
+        let root = temp_gap_root()?;
+        let ledger_path = root.join(DEFAULT_GAP_DECISION_LEDGER_OUT);
+        let contents = serde_json::json!({
+            "records": [gap_record(true)]
+        })
+        .to_string();
+        fs::write(&ledger_path, contents)
+            .map_err(|err| format!("write {} failed: {err}", ledger_path.display()))?;
+
+        let mut grouped = std::collections::BTreeMap::new();
+        append_gap_record_diagnostics(&root, &mut grouped);
+
+        let diagnostic_count: usize = grouped.values().map(Vec::len).sum();
+        if diagnostic_count != 1 {
+            return Err(format!(
+                "expected one gap diagnostic, got {diagnostic_count}"
+            ));
+        }
+        let uri = grouped
+            .keys()
+            .next()
+            .ok_or_else(|| "missing diagnostic URI".to_string())?
+            .as_str()
+            .to_string();
+        if !uri.ends_with("/src/pricing.rs") {
+            return Err(format!("unexpected diagnostic URI: {uri}"));
+        }
+
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        Ok(())
+    }
+
+    #[test]
     fn diagnostic_message_names_seam_kind_and_expression() -> Result<(), String> {
         let entry = classified(SeamGripClass::WeaklyGripped);
         let diag = diagnostic_for_classified_seam(Path::new("/repo"), &entry)
@@ -932,6 +995,20 @@ mod seam_diagnostic_tests {
             safe_gate_predicate: None,
             authority_boundary: "advisory".to_string(),
         }
+    }
+
+    fn temp_gap_root() -> Result<PathBuf, String> {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| format!("system clock before UNIX_EPOCH: {err}"))?
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "ripr-lsp-gap-diagnostics-{}-{stamp}",
+            std::process::id()
+        ));
+        fs::create_dir_all(root.join("target/ripr/reports"))
+            .map_err(|err| format!("create temp root {} failed: {err}", root.display()))?;
+        Ok(root)
     }
 
     #[test]

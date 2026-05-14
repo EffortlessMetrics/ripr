@@ -776,6 +776,31 @@ mod gap_record_context_tests {
         Ok(())
     }
 
+    #[test]
+    fn collect_context_packet_for_gap_id_uses_default_ledger_path() -> Result<(), String> {
+        let root = temp_root()?;
+        write_gap_ledger(&root)?;
+        let args_value = serde_json::json!({
+            "gap_id": "gap:pr:pricing:threshold-boundary",
+        });
+        let args = args_value
+            .as_object()
+            .ok_or_else(|| "expected object args".to_string())?;
+
+        let packet =
+            collect_gap_record_context_packet(&root, args, "gap:pr:pricing:threshold-boundary")
+                .ok_or_else(|| "expected gap packet".to_string())?;
+
+        assert_eq!(packet["source"], "gap_decision_ledger");
+        assert_eq!(
+            packet["packets"][0]["repair_card"]["source_artifact"],
+            display_lsp_path(&root.join(DEFAULT_GAP_DECISION_LEDGER_OUT))
+        );
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        Ok(())
+    }
+
     fn temp_root() -> Result<PathBuf, String> {
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
