@@ -115,6 +115,12 @@ Planned scope:
   raw-to-canonical, actionable, observed, static-limitation, and calibration
   counts even when there is no separate top-level finding-alignment projection.
   The reports remain repo-local and advisory.
+- Lane 1 evidence audit now includes finding-alignment coverage by evidence
+  class: aligned versus unaligned raw findings, top unaligned examples,
+  same-line duplicate raw signals, static-unknown items missing named
+  limitations, and canonical items missing repair or verification guidance.
+  This remains repo-local and does not change PR/CI rendering, gates, scores,
+  generated tests, provider calls, source edits, or mutation execution.
 - Clarified the finding-to-gap alignment contract with explicit
   `primary_anchor` and `raw_spans[]` semantics plus class-scoped action,
   observed, no-action, limitation, and must-not-infer rules. This is a
