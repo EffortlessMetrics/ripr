@@ -627,9 +627,53 @@ struct DogfoodLanguagePreviewRun {
     errors: Vec<String>,
 }
 
+#[derive(Debug)]
+struct DogfoodEditorGapCockpitScenario {
+    name: String,
+    expected_state: String,
+    expected_language: Option<String>,
+    expected_language_status: Option<String>,
+    expected_diagnostics: usize,
+    expected_fail_closed: bool,
+    expected_actions: Vec<String>,
+    expected_static_limit_kind: Option<String>,
+    reason: String,
+}
+
+#[derive(Debug)]
+struct DogfoodEditorGapCockpitRun {
+    name: String,
+    expected_dir: PathBuf,
+    projection_path: PathBuf,
+    diagnostics_path: PathBuf,
+    hover_path: PathBuf,
+    code_actions_path: PathBuf,
+    status_path: PathBuf,
+    state: String,
+    language: Option<String>,
+    language_status: Option<String>,
+    diagnostics_projected: usize,
+    actual_diagnostics: usize,
+    fail_closed: bool,
+    actions_projected: Vec<String>,
+    actual_actions: usize,
+    static_limit_kind: Option<String>,
+    hover_static_before_action: bool,
+    expected_state: String,
+    expected_language: Option<String>,
+    expected_language_status: Option<String>,
+    expected_diagnostics: usize,
+    expected_fail_closed: bool,
+    expected_actions: Vec<String>,
+    expected_static_limit_kind: Option<String>,
+    reason: String,
+    errors: Vec<String>,
+}
+
 struct DogfoodPreviewProjectionRuns<'a> {
     generated_ci_cockpit: &'a [DogfoodGeneratedCiCockpitRun],
     language_preview: &'a [DogfoodLanguagePreviewRun],
+    editor_gap_cockpit: &'a [DogfoodEditorGapCockpitRun],
 }
 
 #[derive(Debug)]
@@ -19769,9 +19813,14 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         .into_iter()
         .map(|scenario| dogfood_language_preview_run(&scenario))
         .collect::<Vec<_>>();
+    let editor_gap_cockpit_runs = dogfood_editor_gap_cockpit_scenarios()
+        .into_iter()
+        .map(|scenario| dogfood_editor_gap_cockpit_run(&scenario))
+        .collect::<Vec<_>>();
     let preview_projection_runs = DogfoodPreviewProjectionRuns {
         generated_ci_cockpit: &generated_ci_cockpit_runs,
         language_preview: &language_preview_runs,
+        editor_gap_cockpit: &editor_gap_cockpit_runs,
     };
     let pr_inline_comment_runs = dogfood_pr_inline_comment_scenarios()
         .into_iter()
@@ -21280,6 +21329,383 @@ fn dogfood_language_preview_run(
     }
 }
 
+fn dogfood_editor_gap_cockpit_scenarios() -> Vec<DogfoodEditorGapCockpitScenario> {
+    let scenario = |name: &str,
+                    state: &str,
+                    language: Option<&str>,
+                    language_status: Option<&str>,
+                    diagnostics: usize,
+                    fail_closed: bool,
+                    actions: Vec<&str>,
+                    static_limit_kind: Option<&str>,
+                    reason: &str| {
+        DogfoodEditorGapCockpitScenario {
+            name: name.to_string(),
+            expected_state: state.to_string(),
+            expected_language: language.map(str::to_string),
+            expected_language_status: language_status.map(str::to_string),
+            expected_diagnostics: diagnostics,
+            expected_fail_closed: fail_closed,
+            expected_actions: actions.into_iter().map(str::to_string).collect(),
+            expected_static_limit_kind: static_limit_kind.map(str::to_string),
+            reason: reason.to_string(),
+        }
+    };
+
+    vec![
+        scenario(
+            "rust_actionable",
+            "actionable",
+            Some("rust"),
+            Some("stable"),
+            1,
+            false,
+            vec![
+                "copy_repair_packet",
+                "open_related_test",
+                "copy_verify_command",
+                "copy_receipt_command",
+                "refresh",
+            ],
+            None,
+            "Rust stable gap projects a related test, repair packet, verify command, and receipt command.",
+        ),
+        scenario(
+            "typescript_preview_static_limit",
+            "actionable",
+            Some("typescript"),
+            Some("preview"),
+            1,
+            false,
+            vec!["copy_repair_packet", "copy_static_limit_note", "refresh"],
+            Some("mocked_module"),
+            "TypeScript preview gap keeps static-limit evidence visible before action language.",
+        ),
+        scenario(
+            "python_preview_static_limit",
+            "actionable",
+            Some("python"),
+            Some("preview"),
+            1,
+            false,
+            vec!["copy_repair_packet", "copy_static_limit_note", "refresh"],
+            Some("missing_import_graph"),
+            "Python preview gap keeps missing-import-graph limits visible before action language.",
+        ),
+        scenario(
+            "disabled_language",
+            "disabled_language",
+            Some("python"),
+            Some("preview"),
+            0,
+            true,
+            vec!["refresh"],
+            None,
+            "Disabled preview language produces status and refresh only, not diagnostics or repair packets.",
+        ),
+        scenario(
+            "wrong_root",
+            "wrong_root",
+            None,
+            None,
+            0,
+            true,
+            vec!["refresh"],
+            None,
+            "Wrong-root artifacts fail closed and leave refresh as the only safe action.",
+        ),
+        scenario(
+            "stale_artifact",
+            "stale_artifact",
+            None,
+            None,
+            0,
+            true,
+            vec!["refresh"],
+            None,
+            "Stale artifacts suppress diagnostics and repair actions until refreshed.",
+        ),
+        scenario(
+            "no_actionable_gap",
+            "no_actionable_gap",
+            Some("rust"),
+            Some("stable"),
+            0,
+            true,
+            vec!["refresh"],
+            None,
+            "No-action state explains that no local repair packet should be projected.",
+        ),
+    ]
+}
+
+fn dogfood_editor_gap_cockpit_run(
+    scenario: &DogfoodEditorGapCockpitScenario,
+) -> DogfoodEditorGapCockpitRun {
+    let expected_dir = Path::new("fixtures")
+        .join("editor_gap_cockpit")
+        .join(&scenario.name)
+        .join("expected");
+    let projection_path = expected_dir.join("gap-projection.json");
+    let diagnostics_path = expected_dir.join("lsp-diagnostics.json");
+    let hover_path = expected_dir.join("lsp-hover.md");
+    let code_actions_path = expected_dir.join("lsp-code-actions.json");
+    let status_path = expected_dir.join("vscode-status.json");
+    let mut errors = Vec::new();
+
+    for (label, path) in [
+        ("gap projection", &projection_path),
+        ("diagnostics", &diagnostics_path),
+        ("hover", &hover_path),
+        ("code actions", &code_actions_path),
+        ("VS Code status", &status_path),
+    ] {
+        if !path.exists() {
+            errors.push(format!(
+                "{label} fixture is missing: {}",
+                normalize_path(path)
+            ));
+        }
+    }
+
+    let mut state = "missing".to_string();
+    let mut language = None;
+    let mut language_status = None;
+    let mut diagnostics_projected = 0usize;
+    let mut fail_closed = false;
+    let mut actions_projected = Vec::<String>::new();
+    let mut static_limit_kind = None;
+
+    match read_json_value(&projection_path) {
+        Ok(projection) => {
+            if json_string_field(&projection, "schema_version").as_deref() != Some("0.1") {
+                errors.push("gap projection schema_version must be 0.1".to_string());
+            }
+            if json_string_field(&projection, "case").as_deref() != Some(scenario.name.as_str()) {
+                errors.push(format!("gap projection case should be {}", scenario.name));
+            }
+            state =
+                json_string_field(&projection, "state").unwrap_or_else(|| "missing".to_string());
+            language = json_string_field(&projection, "language");
+            language_status = json_string_field(&projection, "language_status");
+            diagnostics_projected =
+                json_usize_field(&projection, "diagnostics_projected").unwrap_or(0);
+            fail_closed = json_bool_field(&projection, "fail_closed").unwrap_or(false);
+            actions_projected = json_string_array_field(&projection, "actions_projected");
+            static_limit_kind = json_string_field(&projection, "static_limit_kind");
+        }
+        Err(err) => errors.push(err),
+    }
+
+    let mut actual_diagnostics = 0usize;
+    match read_json_value(&diagnostics_path) {
+        Ok(diagnostics) => {
+            actual_diagnostics = diagnostics
+                .get("diagnostics")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len);
+            let expected_fixture = format!("editor_gap_cockpit/{}", scenario.name);
+            if json_string_field(&diagnostics, "fixture").as_deref()
+                != Some(expected_fixture.as_str())
+            {
+                errors.push("diagnostics fixture name does not match scenario".to_string());
+            }
+        }
+        Err(err) => errors.push(err),
+    }
+
+    let mut actual_actions = 0usize;
+    match read_json_value(&code_actions_path) {
+        Ok(actions) => {
+            let action_items = actions.get("actions").and_then(Value::as_array);
+            actual_actions = action_items.map_or(0, Vec::len);
+            if scenario
+                .expected_actions
+                .iter()
+                .any(|action| action == "refresh")
+            {
+                let has_refresh = action_items.is_some_and(|items| {
+                    items.iter().any(|item| {
+                        json_string_field(item, "command").as_deref() == Some("ripr.refresh")
+                    })
+                });
+                if !has_refresh {
+                    errors.push("code actions should include refresh".to_string());
+                }
+            }
+            if scenario
+                .expected_actions
+                .iter()
+                .any(|action| action == "open_related_test")
+            {
+                let has_open_related_test = action_items.is_some_and(|items| {
+                    items.iter().any(|item| {
+                        json_string_field(item, "command").as_deref()
+                            == Some("ripr.openRelatedTest")
+                    })
+                });
+                if !has_open_related_test {
+                    errors.push("code actions should include related-test opening".to_string());
+                }
+            }
+        }
+        Err(err) => errors.push(err),
+    }
+
+    let mut hover_static_before_action = false;
+    match fs::read_to_string(&hover_path) {
+        Ok(hover) => {
+            if let Some(kind) = &scenario.expected_static_limit_kind {
+                let static_needle = format!("Static limit: {kind}");
+                match (hover.find(&static_needle), hover.find("Suggested action")) {
+                    (Some(static_index), Some(action_index)) if static_index < action_index => {
+                        hover_static_before_action = true;
+                    }
+                    _ => errors.push(format!(
+                        "hover should show static limit `{kind}` before suggested action"
+                    )),
+                }
+            }
+            if !hover
+                .contains("no source edits, generated tests, provider calls, or mutation execution")
+            {
+                errors.push("hover should preserve projection-only editor limits".to_string());
+            }
+            if scenario.expected_language_status.as_deref() == Some("preview")
+                && !hover.to_ascii_lowercase().contains("preview")
+            {
+                errors.push("preview hover should label preview evidence".to_string());
+            }
+        }
+        Err(err) => errors.push(format!(
+            "failed to read editor gap cockpit hover {}: {err}",
+            normalize_path(&hover_path)
+        )),
+    }
+
+    match read_json_value(&status_path) {
+        Ok(status) => {
+            if json_string_field(&status, "schema_version").as_deref() != Some("0.1") {
+                errors.push("VS Code status schema_version must be 0.1".to_string());
+            }
+            let states = status.get("states").and_then(Value::as_array);
+            if states.is_none_or(|items| items.is_empty()) {
+                errors.push("VS Code status should contain at least one state".to_string());
+            }
+            if let Some(first) = states.and_then(|items| items.first()) {
+                if json_string_field(first, "status_bar")
+                    .is_none_or(|status_bar| status_bar.trim().is_empty())
+                {
+                    errors.push("VS Code status should include status_bar copy".to_string());
+                }
+                if first
+                    .get("show_status_contains")
+                    .and_then(Value::as_array)
+                    .is_none_or(|items| items.is_empty())
+                {
+                    errors
+                        .push("VS Code status should include Show Status expectations".to_string());
+                }
+            }
+        }
+        Err(err) => errors.push(err),
+    }
+
+    if state != scenario.expected_state {
+        errors.push(format!(
+            "expected state {}, got {}",
+            scenario.expected_state, state
+        ));
+    }
+    if language != scenario.expected_language {
+        errors.push(format!(
+            "expected language {:?}, got {:?}",
+            scenario.expected_language, language
+        ));
+    }
+    if language_status != scenario.expected_language_status {
+        errors.push(format!(
+            "expected language_status {:?}, got {:?}",
+            scenario.expected_language_status, language_status
+        ));
+    }
+    if diagnostics_projected != scenario.expected_diagnostics {
+        errors.push(format!(
+            "expected {} projected diagnostic(s), got {}",
+            scenario.expected_diagnostics, diagnostics_projected
+        ));
+    }
+    if actual_diagnostics != diagnostics_projected {
+        errors.push(format!(
+            "diagnostics file has {} diagnostic(s), projection says {}",
+            actual_diagnostics, diagnostics_projected
+        ));
+    }
+    if fail_closed != scenario.expected_fail_closed {
+        errors.push(format!(
+            "expected fail_closed {}, got {}",
+            scenario.expected_fail_closed, fail_closed
+        ));
+    }
+    if actions_projected != scenario.expected_actions {
+        errors.push(format!(
+            "expected actions {:?}, got {:?}",
+            scenario.expected_actions, actions_projected
+        ));
+    }
+    if actual_actions != actions_projected.len() {
+        errors.push(format!(
+            "code action file has {} action(s), projection says {}",
+            actual_actions,
+            actions_projected.len()
+        ));
+    }
+    if static_limit_kind != scenario.expected_static_limit_kind {
+        errors.push(format!(
+            "expected static_limit_kind {:?}, got {:?}",
+            scenario.expected_static_limit_kind, static_limit_kind
+        ));
+    }
+    if fail_closed
+        && (actions_projected.len() != 1
+            || actions_projected.first().map(String::as_str) != Some("refresh"))
+    {
+        errors.push("fail-closed cases should project refresh only".to_string());
+    }
+    if fail_closed && diagnostics_projected > 0 {
+        errors.push("fail-closed cases should not project diagnostics".to_string());
+    }
+
+    DogfoodEditorGapCockpitRun {
+        name: scenario.name.clone(),
+        expected_dir,
+        projection_path,
+        diagnostics_path,
+        hover_path,
+        code_actions_path,
+        status_path,
+        state,
+        language,
+        language_status,
+        diagnostics_projected,
+        actual_diagnostics,
+        fail_closed,
+        actions_projected,
+        actual_actions,
+        static_limit_kind,
+        hover_static_before_action,
+        expected_state: scenario.expected_state.clone(),
+        expected_language: scenario.expected_language.clone(),
+        expected_language_status: scenario.expected_language_status.clone(),
+        expected_diagnostics: scenario.expected_diagnostics,
+        expected_fail_closed: scenario.expected_fail_closed,
+        expected_actions: scenario.expected_actions.clone(),
+        expected_static_limit_kind: scenario.expected_static_limit_kind.clone(),
+        reason: scenario.reason.clone(),
+        errors,
+    }
+}
+
 fn dogfood_pr_inline_comment_scenarios() -> Vec<DogfoodPrInlineCommentScenario> {
     let corpus_path =
         Path::new("fixtures/boundary_gap/expected/pr-inline-comment-publisher/corpus.json");
@@ -21661,6 +22087,10 @@ fn dogfood_report_status(
             .any(|run| !run.errors.is_empty())
         || preview_projection_runs
             .language_preview
+            .iter()
+            .any(|run| !run.errors.is_empty())
+        || preview_projection_runs
+            .editor_gap_cockpit
             .iter()
             .any(|run| !run.errors.is_empty())
         || pr_inline_comment_runs
@@ -22114,6 +22544,104 @@ fn dogfood_report_markdown(
             "- Static limits: `{}` (expected `{}`)\n",
             markdown_cell(&run.static_limit_kinds.join(", ")),
             markdown_cell(&run.expected_static_limit_kinds.join(", "))
+        ));
+        body.push_str(&format!("- Reason: {}\n", markdown_cell(&run.reason)));
+        if run.errors.is_empty() {
+            body.push_str("- Errors: none\n\n");
+        } else {
+            body.push_str("- Errors:\n");
+            for error in &run.errors {
+                body.push_str(&format!("  - `{}`\n", markdown_cell(error)));
+            }
+            body.push('\n');
+        }
+    }
+    body.push_str("## Editor Gap Cockpit Receipts\n\n");
+    body.push_str("These receipts validate checked `fixtures/editor_gap_cockpit` projections for the local repair cockpit. They verify actionable Rust repair routing, preview static-limit ordering, disabled-language no-diagnostic state, wrong-root and stale fail-closed behavior, and no-action refresh-only behavior without changing analyzer truth, source files, generated tests, provider calls, mutation execution, policy, gates, or PR comments.\n\n");
+    body.push_str("- Default CI blocking: no\n");
+    body.push_str("- Editor behavior: saved-workspace and projection-only\n");
+    body.push_str("- Receipt outputs: `fixtures/editor_gap_cockpit/<case>/expected/*`\n\n");
+    body.push_str(
+        "| Case | State | Language | Diagnostics | Fail closed | Actions | Static limit |\n",
+    );
+    body.push_str("| --- | --- | --- | ---: | --- | --- | --- |\n");
+    for run in preview_projection_runs.editor_gap_cockpit {
+        body.push_str(&format!(
+            "| `{}` | `{}` | `{}` | {} | {} | `{}` | `{}` |\n",
+            markdown_cell(&run.name),
+            markdown_cell(&run.state),
+            markdown_cell(run.language.as_deref().unwrap_or("not_projected")),
+            run.diagnostics_projected,
+            if run.fail_closed { "yes" } else { "no" },
+            markdown_cell(&run.actions_projected.join(", ")),
+            markdown_cell(run.static_limit_kind.as_deref().unwrap_or(""))
+        ));
+    }
+    body.push('\n');
+    for run in preview_projection_runs.editor_gap_cockpit {
+        body.push_str(&format!("### Editor Gap Cockpit `{}`\n\n", run.name));
+        body.push_str(&format!("- State: `{}`\n", markdown_cell(&run.state)));
+        body.push_str(&format!(
+            "- Expected state: `{}`\n",
+            markdown_cell(&run.expected_state)
+        ));
+        body.push_str(&format!(
+            "- Language: `{}` (expected `{}`)\n",
+            markdown_cell(run.language.as_deref().unwrap_or("not_projected")),
+            markdown_cell(run.expected_language.as_deref().unwrap_or("not_projected"))
+        ));
+        body.push_str(&format!(
+            "- Language status: `{}` (expected `{}`)\n",
+            markdown_cell(run.language_status.as_deref().unwrap_or("not_projected")),
+            markdown_cell(
+                run.expected_language_status
+                    .as_deref()
+                    .unwrap_or("not_projected")
+            )
+        ));
+        body.push_str(&format!(
+            "- Diagnostics: {} projected, {} actual, expected {}\n",
+            run.diagnostics_projected, run.actual_diagnostics, run.expected_diagnostics
+        ));
+        body.push_str(&format!(
+            "- Fail closed: {} (expected {})\n",
+            run.fail_closed, run.expected_fail_closed
+        ));
+        body.push_str(&format!(
+            "- Actions: `{}` (expected `{}`; actual count {})\n",
+            markdown_cell(&run.actions_projected.join(", ")),
+            markdown_cell(&run.expected_actions.join(", ")),
+            run.actual_actions
+        ));
+        body.push_str(&format!(
+            "- Static limit: `{}` (expected `{}`)\n",
+            markdown_cell(run.static_limit_kind.as_deref().unwrap_or("")),
+            markdown_cell(run.expected_static_limit_kind.as_deref().unwrap_or(""))
+        ));
+        body.push_str(&format!(
+            "- Static limit before action: {}\n",
+            run.hover_static_before_action
+        ));
+        body.push_str(&format!(
+            "- Projection JSON: `{}`\n",
+            normalize_path(&run.projection_path)
+        ));
+        body.push_str(&format!(
+            "- Diagnostics JSON: `{}`\n",
+            normalize_path(&run.diagnostics_path)
+        ));
+        body.push_str(&format!("- Hover: `{}`\n", normalize_path(&run.hover_path)));
+        body.push_str(&format!(
+            "- Code actions JSON: `{}`\n",
+            normalize_path(&run.code_actions_path)
+        ));
+        body.push_str(&format!(
+            "- VS Code status JSON: `{}`\n",
+            normalize_path(&run.status_path)
+        ));
+        body.push_str(&format!(
+            "- Expected directory: `{}`\n",
+            normalize_path(&run.expected_dir)
         ));
         body.push_str(&format!("- Reason: {}\n", markdown_cell(&run.reason)));
         if run.errors.is_empty() {
@@ -22772,6 +23300,118 @@ fn dogfood_report_json(
         write_json_string_array(&mut body, &run.errors);
         body.push_str("]\n      }");
     }
+    body.push_str("\n    ]\n  },\n  \"editor_gap_cockpit\": {\n");
+    body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str("    \"editor_behavior\": \"saved-workspace projection-only\",\n");
+    body.push_str("    \"receipt_dir\": \"fixtures/editor_gap_cockpit\",\n    \"cases\": [\n");
+    for (index, run) in preview_projection_runs
+        .editor_gap_cockpit
+        .iter()
+        .enumerate()
+    {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("      {\n");
+        body.push_str(&format!(
+            "        \"name\": \"{}\",\n",
+            json_escape(&run.name)
+        ));
+        body.push_str(&format!(
+            "        \"expected_dir\": \"{}\",\n",
+            json_escape(&normalize_path(&run.expected_dir))
+        ));
+        body.push_str(&format!(
+            "        \"projection_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.projection_path))
+        ));
+        body.push_str(&format!(
+            "        \"diagnostics_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.diagnostics_path))
+        ));
+        body.push_str(&format!(
+            "        \"hover_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.hover_path))
+        ));
+        body.push_str(&format!(
+            "        \"code_actions_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.code_actions_path))
+        ));
+        body.push_str(&format!(
+            "        \"status_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.status_path))
+        ));
+        body.push_str(&format!(
+            "        \"state\": \"{}\",\n",
+            json_escape(&run.state)
+        ));
+        body.push_str(&format!(
+            "        \"language\": {},\n",
+            json_optional_string(run.language.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"language_status\": {},\n",
+            json_optional_string(run.language_status.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"diagnostics_projected\": {},\n",
+            run.diagnostics_projected
+        ));
+        body.push_str(&format!(
+            "        \"actual_diagnostics\": {},\n",
+            run.actual_diagnostics
+        ));
+        body.push_str(&format!("        \"fail_closed\": {},\n", run.fail_closed));
+        body.push_str("        \"actions_projected\": [");
+        write_json_string_array(&mut body, &run.actions_projected);
+        body.push_str("],\n");
+        body.push_str(&format!(
+            "        \"actual_actions\": {},\n",
+            run.actual_actions
+        ));
+        body.push_str(&format!(
+            "        \"static_limit_kind\": {},\n",
+            json_optional_string(run.static_limit_kind.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"hover_static_before_action\": {},\n",
+            run.hover_static_before_action
+        ));
+        body.push_str(&format!(
+            "        \"expected_state\": \"{}\",\n",
+            json_escape(&run.expected_state)
+        ));
+        body.push_str(&format!(
+            "        \"expected_language\": {},\n",
+            json_optional_string(run.expected_language.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"expected_language_status\": {},\n",
+            json_optional_string(run.expected_language_status.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"expected_diagnostics\": {},\n",
+            run.expected_diagnostics
+        ));
+        body.push_str(&format!(
+            "        \"expected_fail_closed\": {},\n",
+            run.expected_fail_closed
+        ));
+        body.push_str("        \"expected_actions\": [");
+        write_json_string_array(&mut body, &run.expected_actions);
+        body.push_str("],\n");
+        body.push_str(&format!(
+            "        \"expected_static_limit_kind\": {},\n",
+            json_optional_string(run.expected_static_limit_kind.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"reason\": \"{}\",\n",
+            json_escape(&run.reason)
+        ));
+        body.push_str("        \"errors\": [");
+        write_json_string_array(&mut body, &run.errors);
+        body.push_str("]\n      }");
+    }
     body.push_str("\n    ]\n  },\n  \"pr_inline_comment_publisher\": {\n");
     body.push_str("    \"default_ci_blocking\": false,\n");
     body.push_str("    \"default_inline_comments\": \"off\",\n");
@@ -23279,6 +23919,12 @@ fn write_json_string_array(body: &mut String, values: &[String]) {
 
 fn markdown_cell(value: &str) -> String {
     value.replace('|', "\\|")
+}
+
+fn json_optional_string(value: Option<&str>) -> String {
+    value
+        .map(|value| format!("\"{}\"", json_escape(value)))
+        .unwrap_or_else(|| "null".to_string())
 }
 
 fn json_escape(value: &str) -> String {
@@ -31905,8 +32551,8 @@ mod tests {
     };
     use super::{
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
-        CheckStatus, CheckViolation, CiFullEvidenceGate, CwdCommand, DogfoodFirstActionRun,
-        DogfoodFrontPanelRun, DogfoodGateRun, DogfoodGeneratedCiCockpitRun,
+        CheckStatus, CheckViolation, CiFullEvidenceGate, CwdCommand, DogfoodEditorGapCockpitRun,
+        DogfoodFirstActionRun, DogfoodFrontPanelRun, DogfoodGateRun, DogfoodGeneratedCiCockpitRun,
         DogfoodLanguagePreviewRun, DogfoodPrInlineCommentRun, DogfoodPreviewProjectionRuns,
         DogfoodReportPacketIndexRun, DogfoodRun, EvidenceQualityScorecardInput,
         EvidenceQualityScorecardInputs, EvidenceQualityScorecardReport, EvidenceQualityTrendInputs,
@@ -31927,7 +32573,8 @@ mod tests {
         check_process_policy, check_static_language, check_workflows, ci_full_evidence_gates,
         collect_panic_findings, collect_semantic_panic_findings, command_catalog,
         commands_report_json, commands_report_markdown, critic_findings, days_from_civil,
-        dogfood_class_counts, dogfood_first_action_scenarios, dogfood_gate_adoption_scenarios,
+        dogfood_class_counts, dogfood_editor_gap_cockpit_run, dogfood_editor_gap_cockpit_scenarios,
+        dogfood_first_action_scenarios, dogfood_gate_adoption_scenarios,
         dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
         dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
         dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
@@ -37687,6 +38334,60 @@ fn exact_owner_call_has_external_expected_value() {
             reason: "mixed-language fixture must not cross-route related tests".to_string(),
             errors: Vec::new(),
         };
+        let editor_gap_cockpit_run = DogfoodEditorGapCockpitRun {
+            name: "typescript_preview_static_limit".to_string(),
+            expected_dir: Path::new(
+                "fixtures/editor_gap_cockpit/typescript_preview_static_limit/expected",
+            )
+            .to_path_buf(),
+            projection_path: Path::new(
+                "fixtures/editor_gap_cockpit/typescript_preview_static_limit/expected/gap-projection.json",
+            )
+            .to_path_buf(),
+            diagnostics_path: Path::new(
+                "fixtures/editor_gap_cockpit/typescript_preview_static_limit/expected/lsp-diagnostics.json",
+            )
+            .to_path_buf(),
+            hover_path: Path::new(
+                "fixtures/editor_gap_cockpit/typescript_preview_static_limit/expected/lsp-hover.md",
+            )
+            .to_path_buf(),
+            code_actions_path: Path::new(
+                "fixtures/editor_gap_cockpit/typescript_preview_static_limit/expected/lsp-code-actions.json",
+            )
+            .to_path_buf(),
+            status_path: Path::new(
+                "fixtures/editor_gap_cockpit/typescript_preview_static_limit/expected/vscode-status.json",
+            )
+            .to_path_buf(),
+            state: "actionable".to_string(),
+            language: Some("typescript".to_string()),
+            language_status: Some("preview".to_string()),
+            diagnostics_projected: 1,
+            actual_diagnostics: 1,
+            fail_closed: false,
+            actions_projected: vec![
+                "copy_repair_packet".to_string(),
+                "copy_static_limit_note".to_string(),
+                "refresh".to_string(),
+            ],
+            actual_actions: 3,
+            static_limit_kind: Some("mocked_module".to_string()),
+            hover_static_before_action: true,
+            expected_state: "actionable".to_string(),
+            expected_language: Some("typescript".to_string()),
+            expected_language_status: Some("preview".to_string()),
+            expected_diagnostics: 1,
+            expected_fail_closed: false,
+            expected_actions: vec![
+                "copy_repair_packet".to_string(),
+                "copy_static_limit_note".to_string(),
+                "refresh".to_string(),
+            ],
+            expected_static_limit_kind: Some("mocked_module".to_string()),
+            reason: "preview static-limit fixture".to_string(),
+            errors: Vec::new(),
+        };
         let pr_inline_comment_run = DogfoodPrInlineCommentRun {
             name: "publishable_changed_line".to_string(),
             actual_dir: Path::new(
@@ -37732,13 +38433,16 @@ fn exact_owner_call_has_external_expected_value() {
         };
         let generated_ci_runs = [generated_ci_run];
         let language_preview_runs = [language_preview_run];
+        let editor_gap_cockpit_runs = [editor_gap_cockpit_run];
         let preview_projection_runs = DogfoodPreviewProjectionRuns {
             generated_ci_cockpit: &generated_ci_runs,
             language_preview: &language_preview_runs,
+            editor_gap_cockpit: &editor_gap_cockpit_runs,
         };
         let empty_projection_runs = DogfoodPreviewProjectionRuns {
             generated_ci_cockpit: &[],
             language_preview: &[],
+            editor_gap_cockpit: &[],
         };
 
         let markdown = dogfood_report_markdown(
@@ -37759,6 +38463,7 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(markdown.contains("Report Packet Index Receipts"));
         assert!(markdown.contains("Generated CI Cockpit Receipts"));
         assert!(markdown.contains("Language Preview Receipts"));
+        assert!(markdown.contains("Editor Gap Cockpit Receipts"));
         assert!(markdown.contains("PR Inline Comment Publisher Receipts"));
         assert!(markdown.contains("Gate Adoption Receipts"));
         assert!(markdown.contains("Default CI blocking: no"));
@@ -37771,6 +38476,7 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(json.contains("\"report_packet_index\""));
         assert!(json.contains("\"generated_ci_cockpit\""));
         assert!(json.contains("\"language_preview\""));
+        assert!(json.contains("\"editor_gap_cockpit\""));
         assert!(json.contains("\"pr_inline_comment_publisher\""));
     }
 
@@ -37899,6 +38605,66 @@ jobs:
             assert_eq!(run.static_limit_kinds, vec!["mocked_module".to_string()]);
             assert!(run.json_path.exists());
             assert!(run.human_path.exists());
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn dogfood_editor_gap_cockpit_scenarios_cover_fail_closed_states() {
+        let scenarios = dogfood_editor_gap_cockpit_scenarios();
+        let names = scenarios
+            .iter()
+            .map(|scenario| scenario.name.as_str())
+            .collect::<BTreeSet<_>>();
+
+        assert!(names.contains("rust_actionable"));
+        assert!(names.contains("typescript_preview_static_limit"));
+        assert!(names.contains("python_preview_static_limit"));
+        assert!(names.contains("disabled_language"));
+        assert!(names.contains("wrong_root"));
+        assert!(names.contains("stale_artifact"));
+        assert!(names.contains("no_actionable_gap"));
+
+        for name in [
+            "disabled_language",
+            "wrong_root",
+            "stale_artifact",
+            "no_actionable_gap",
+        ] {
+            let scenario = scenarios.iter().find(|scenario| scenario.name == name);
+            assert!(
+                scenario.is_some_and(|scenario| {
+                    scenario.expected_fail_closed
+                        && scenario.expected_diagnostics == 0
+                        && scenario.expected_actions == vec!["refresh".to_string()]
+                }),
+                "{name} should fail closed with refresh only"
+            );
+        }
+    }
+
+    #[test]
+    fn dogfood_editor_gap_cockpit_run_checks_static_limit_ordering() -> Result<(), String> {
+        with_repo_cwd(|| {
+            let scenario = dogfood_editor_gap_cockpit_scenarios()
+                .into_iter()
+                .find(|scenario| scenario.name == "typescript_preview_static_limit")
+                .ok_or_else(|| {
+                    "typescript_preview_static_limit editor gap scenario is missing".to_string()
+                })?;
+
+            let run = dogfood_editor_gap_cockpit_run(&scenario);
+
+            assert!(run.errors.is_empty(), "{:?}", run.errors);
+            assert_eq!(run.language.as_deref(), Some("typescript"));
+            assert_eq!(run.language_status.as_deref(), Some("preview"));
+            assert_eq!(run.diagnostics_projected, 1);
+            assert_eq!(run.actual_diagnostics, 1);
+            assert!(!run.fail_closed);
+            assert_eq!(run.static_limit_kind.as_deref(), Some("mocked_module"));
+            assert!(run.hover_static_before_action);
+            assert!(run.projection_path.exists());
+            assert!(run.hover_path.exists());
             Ok(())
         })
     }
