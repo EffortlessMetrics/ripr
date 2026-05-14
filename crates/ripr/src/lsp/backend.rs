@@ -75,7 +75,7 @@ impl Backend {
         let Some(config) = self.analysis_config() else {
             return;
         };
-        let enabled_language_count = config.repo_config().languages().enabled().len();
+        let enabled_languages = config.repo_config().languages().enabled().to_vec();
         let started = Instant::now();
         self.log_refresh_started(generation).await;
         let diagnostics = match tokio::task::spawn_blocking(move || {
@@ -108,7 +108,7 @@ impl Backend {
             return;
         }
         let summary = RefreshLogSummary::from_snapshot(generation, &diagnostics.snapshot)
-            .with_enabled_language_count(enabled_language_count);
+            .with_enabled_languages(&enabled_languages);
         let Some(refresh) = self.refresh_plan(diagnostics) else {
             self.report_refresh_failure_after(
                 "diagnostic snapshot was inconsistent with publish batches".to_string(),
@@ -313,6 +313,7 @@ pub(super) struct RefreshLogSummary {
     static_limits: usize,
     seam_diagnostics: usize,
     enabled_languages: usize,
+    enabled_language_names: Vec<&'static str>,
 }
 
 impl RefreshLogSummary {
@@ -344,11 +345,19 @@ impl RefreshLogSummary {
                 .count(),
             seam_diagnostics: snapshot.seam_diagnostic_count(),
             enabled_languages: 1,
+            enabled_language_names: vec!["rust"],
         }
     }
 
-    pub(super) fn with_enabled_language_count(mut self, enabled_languages: usize) -> Self {
-        self.enabled_languages = enabled_languages;
+    pub(super) fn with_enabled_languages(
+        mut self,
+        enabled_languages: &[crate::domain::LanguageId],
+    ) -> Self {
+        self.enabled_languages = enabled_languages.len();
+        self.enabled_language_names = enabled_languages
+            .iter()
+            .map(crate::domain::LanguageId::as_str)
+            .collect();
         self
     }
 }
@@ -394,7 +403,7 @@ pub(super) fn refresh_completed_log_message(
 ) -> String {
     let duration = format_duration(summary.duration);
     format!(
-        "ripr analysis refresh completed in {duration}: generation={}, diagnostics={}, files={}, findings={}, preview_findings={}, static_limits={}, seam_diagnostics={}, enabled_languages={}, published_files={}, cleared_files={}",
+        "ripr analysis refresh completed in {duration}: generation={}, diagnostics={}, files={}, findings={}, preview_findings={}, static_limits={}, seam_diagnostics={}, enabled_languages={}, enabled_language_names={}, published_files={}, cleared_files={}",
         summary.generation,
         summary.diagnostics,
         summary.files,
@@ -403,6 +412,7 @@ pub(super) fn refresh_completed_log_message(
         summary.static_limits,
         summary.seam_diagnostics,
         summary.enabled_languages,
+        summary.enabled_language_names.join("|"),
         published_uri_count,
         cleared_uri_count
     )

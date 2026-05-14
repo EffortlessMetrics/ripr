@@ -860,6 +860,7 @@ fn precommit() -> Result<(), String> {
     check_campaign()?;
     check_pr_shape()?;
     check_generated()?;
+    check_generated_clean()?;
     check_lint_policy()?;
     let body = precommit_report_body();
     write_report("precommit.md", &body)
@@ -911,6 +912,7 @@ fn run_policy_checks() -> Result<(), String> {
     check_campaign()?;
     check_pr_shape()?;
     check_generated()?;
+    check_generated_clean()?;
     check_dependencies()?;
     check_process_policy()?;
     check_network_policy()?;
@@ -2123,7 +2125,7 @@ fn fixture_dirs() -> Result<Vec<PathBuf>, String> {
 fn is_manifest_only_fixture_dir(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
-        .is_some_and(|name| name == "evidence-quality-benchmark")
+        .is_some_and(|name| matches!(name, "evidence-quality-benchmark" | "gap-decision-ledger"))
 }
 
 fn fixture_dir_for_name(name: &str) -> Result<PathBuf, String> {
@@ -3814,6 +3816,7 @@ fn check_fixture_contracts() -> Result<(), String> {
     validate_evidence_record_contract_fixture_corpus(&mut violations)?;
     validate_lane1_evidence_quality_failure_fixture_corpus(&mut violations)?;
     validate_evidence_quality_benchmark_fixture_corpus(&mut violations)?;
+    validate_gap_decision_ledger_fixture_corpus(&mut violations)?;
     validate_pr_review_front_panel_fixture_corpus(&mut violations)?;
     validate_report_packet_index_fixture_corpus(&mut violations)?;
     validate_pr_inline_comment_publisher_fixture_corpus(&mut violations)?;
@@ -3933,6 +3936,48 @@ const EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CASE_KINDS: &[&str] = &[
     "equivalent_code",
     "static_limitation",
     "calibration",
+];
+
+const GAP_DECISION_LEDGER_CORPUS: &str = "fixtures/gap-decision-ledger/corpus.json";
+
+const GAP_DECISION_REQUIRED_KINDS: &[&str] = &[
+    "MissingBoundaryAssertion",
+    "MissingErrorDiscriminator",
+    "MissingValueAssertion",
+    "MissingSideEffectObserver",
+    "MissingOutputContract",
+    "StaticLimitation",
+    "NoActionAlreadyObserved",
+    "NoActionInternal",
+    "Unknown",
+];
+
+const GAP_DECISION_REQUIRED_SCOPES: &[&str] = &[
+    "pr_local",
+    "repo_scoped",
+    "baseline_debt",
+    "artifact_missing",
+];
+
+const GAP_DECISION_REQUIRED_POLICY_STATES: &[&str] = &[
+    "new",
+    "baseline_known",
+    "waived",
+    "suppressed",
+    "acknowledged",
+    "resolved",
+    "reintroduced",
+    "blocked",
+    "not_policy_targeted",
+    "unknown",
+];
+
+const GAP_DECISION_REQUIRED_REPAIRABILITY: &[&str] = &[
+    "repairable",
+    "needs_human_design",
+    "analyzer_limitation",
+    "no_action",
+    "unknown",
 ];
 
 fn validate_evidence_record_contract_fixture_corpus(
@@ -4617,6 +4662,600 @@ fn validate_benchmark_line_movement(
         ));
     }
     *has_line_movement_guard = true;
+}
+
+fn validate_gap_decision_ledger_fixture_corpus(violations: &mut Vec<String>) -> Result<(), String> {
+    validate_gap_decision_ledger_fixture_corpus_at(
+        Path::new(GAP_DECISION_LEDGER_CORPUS),
+        violations,
+    )
+}
+
+fn validate_gap_decision_ledger_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let Some(base) = path.parent() else {
+        violations.push(format!(
+            "gap-decision ledger corpus path has no parent: {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    };
+    for required in ["README.md", "corpus.json"] {
+        let required_path = base.join(required);
+        if !required_path.exists() {
+            violations.push(format!(
+                "gap-decision ledger corpus is missing {}",
+                normalize_path(&required_path)
+            ));
+        }
+    }
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let corpus = match read_json_value(path) {
+        Ok(value) => value,
+        Err(err) => {
+            violations.push(err);
+            return Ok(());
+        }
+    };
+    validate_gap_decision_ledger_corpus_value(path, &corpus, violations);
+    Ok(())
+}
+
+fn validate_gap_decision_ledger_corpus_value(
+    path: &Path,
+    corpus: &Value,
+    violations: &mut Vec<String>,
+) {
+    let normalized = normalize_path(path);
+    if json_string_field(corpus, "kind").as_deref() != Some("gap_decision_ledger_corpus") {
+        violations.push(format!(
+            "{normalized} kind must be gap_decision_ledger_corpus"
+        ));
+    }
+    if json_string_field(corpus, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!("{normalized} schema_version must be 0.1"));
+    }
+    if json_string_field(corpus, "spec").as_deref() != Some("RIPR-SPEC-0046") {
+        violations.push(format!("{normalized} spec must be RIPR-SPEC-0046"));
+    }
+    if json_string_field(corpus, "proposal").as_deref() != Some("RIPR-PROP-0006") {
+        violations.push(format!("{normalized} proposal must be RIPR-PROP-0006"));
+    }
+
+    require_string_array_contains_all(
+        corpus,
+        "required_gap_kinds",
+        GAP_DECISION_REQUIRED_KINDS,
+        "Gap decision ledger",
+        violations,
+    );
+    require_string_array_contains_all(
+        corpus,
+        "required_scopes",
+        GAP_DECISION_REQUIRED_SCOPES,
+        "Gap decision ledger",
+        violations,
+    );
+    require_string_array_contains_all(
+        corpus,
+        "required_policy_states",
+        GAP_DECISION_REQUIRED_POLICY_STATES,
+        "Gap decision ledger",
+        violations,
+    );
+    require_string_array_contains_all(
+        corpus,
+        "required_repairability",
+        GAP_DECISION_REQUIRED_REPAIRABILITY,
+        "Gap decision ledger",
+        violations,
+    );
+
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        violations.push(format!("{normalized} is missing cases array"));
+        return;
+    };
+
+    let mut seen_ids = BTreeSet::new();
+    let mut seen_kinds = BTreeSet::new();
+    let mut seen_scopes = BTreeSet::new();
+    let mut seen_policy_states = BTreeSet::new();
+    let mut seen_repairability = BTreeSet::new();
+    let mut has_pr_comment_eligible = false;
+    let mut has_gate_candidate = false;
+    let mut has_ripr_zero_target = false;
+    let mut has_output_contract_gap = false;
+    let mut has_preview_ineligible = false;
+    let mut has_missing_artifact = false;
+    let mut has_receipt_improved = false;
+    let mut has_receipt_unchanged = false;
+
+    for case in cases {
+        let case_id = json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string());
+        if !seen_ids.insert(case_id.clone()) {
+            violations.push(format!("gap-decision ledger case {case_id} is duplicated"));
+        }
+        validate_gap_decision_ledger_case(
+            &case_id,
+            case,
+            &mut seen_kinds,
+            &mut seen_scopes,
+            &mut seen_policy_states,
+            &mut seen_repairability,
+            &mut has_pr_comment_eligible,
+            &mut has_gate_candidate,
+            &mut has_ripr_zero_target,
+            &mut has_output_contract_gap,
+            &mut has_preview_ineligible,
+            &mut has_missing_artifact,
+            &mut has_receipt_improved,
+            &mut has_receipt_unchanged,
+            violations,
+        );
+    }
+
+    for required in GAP_DECISION_REQUIRED_KINDS {
+        if !seen_kinds.contains(*required) {
+            violations.push(format!(
+                "gap-decision ledger is missing gap kind {required}"
+            ));
+        }
+    }
+    for required in GAP_DECISION_REQUIRED_SCOPES {
+        if !seen_scopes.contains(*required) {
+            violations.push(format!("gap-decision ledger is missing scope {required}"));
+        }
+    }
+    for required in GAP_DECISION_REQUIRED_POLICY_STATES {
+        if !seen_policy_states.contains(*required) {
+            violations.push(format!(
+                "gap-decision ledger is missing policy_state {required}"
+            ));
+        }
+    }
+    for required in GAP_DECISION_REQUIRED_REPAIRABILITY {
+        if !seen_repairability.contains(*required) {
+            violations.push(format!(
+                "gap-decision ledger is missing repairability {required}"
+            ));
+        }
+    }
+    if !has_pr_comment_eligible {
+        violations.push(
+            "gap-decision ledger must include a PR-comment-eligible repair card case".to_string(),
+        );
+    }
+    if !has_gate_candidate {
+        violations.push("gap-decision ledger must include a safe gate-candidate case".to_string());
+    }
+    if !has_ripr_zero_target {
+        violations.push("gap-decision ledger must include a RIPR Zero target case".to_string());
+    }
+    if !has_output_contract_gap {
+        violations
+            .push("gap-decision ledger must include a MissingOutputContract case".to_string());
+    }
+    if !has_preview_ineligible {
+        violations.push("gap-decision ledger must include a preview-ineligible case".to_string());
+    }
+    if !has_missing_artifact {
+        violations.push("gap-decision ledger must include a missing-artifact case".to_string());
+    }
+    if !has_receipt_improved {
+        violations.push("gap-decision ledger must include an improved receipt case".to_string());
+    }
+    if !has_receipt_unchanged {
+        violations.push(
+            "gap-decision ledger must include an unchanged-after-attempt receipt case".to_string(),
+        );
+    }
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "fixture corpus guard tracks independent coverage flags explicitly"
+)]
+fn validate_gap_decision_ledger_case(
+    case_id: &str,
+    case: &Value,
+    seen_kinds: &mut BTreeSet<String>,
+    seen_scopes: &mut BTreeSet<String>,
+    seen_policy_states: &mut BTreeSet<String>,
+    seen_repairability: &mut BTreeSet<String>,
+    has_pr_comment_eligible: &mut bool,
+    has_gate_candidate: &mut bool,
+    has_ripr_zero_target: &mut bool,
+    has_output_contract_gap: &mut bool,
+    has_preview_ineligible: &mut bool,
+    has_missing_artifact: &mut bool,
+    has_receipt_improved: &mut bool,
+    has_receipt_unchanged: &mut bool,
+    violations: &mut Vec<String>,
+) {
+    for field in ["id", "description", "expected_claim"] {
+        require_gap_decision_json_string_at(case, field, case_id, violations);
+    }
+    require_gap_decision_non_empty_string_array_at(case, "source_artifacts", case_id, violations);
+    require_gap_decision_non_empty_string_array_at(case, "must_not_claim", case_id, violations);
+
+    let Some(record @ Value::Object(_)) = case.get("expected_gap_record") else {
+        violations.push(format!(
+            "gap-decision ledger case {case_id} is missing expected_gap_record object"
+        ));
+        return;
+    };
+
+    for field in [
+        "gap_id",
+        "canonical_gap_id",
+        "kind",
+        "language",
+        "language_status",
+        "scope",
+        "evidence_class",
+        "gap_state",
+        "policy_state",
+        "repairability",
+    ] {
+        require_gap_decision_json_string_at(record, field, case_id, violations);
+    }
+    require_gap_decision_non_empty_string_array_at(record, "evidence_ids", case_id, violations);
+    require_gap_decision_non_empty_string_array_at(
+        record,
+        "verification_commands",
+        case_id,
+        violations,
+    );
+
+    let kind = json_string_field(record, "kind");
+    let language = json_string_field(record, "language");
+    let language_status = json_string_field(record, "language_status");
+    let scope = json_string_field(record, "scope");
+    let evidence_class = json_string_field(record, "evidence_class");
+    let policy_state = json_string_field(record, "policy_state");
+    let repairability = json_string_field(record, "repairability");
+    let route_kind = audit_string(record, &["repair_route", "route_kind"]);
+
+    gap_decision_track_allowed(
+        case_id,
+        "kind",
+        kind.as_deref(),
+        GAP_DECISION_REQUIRED_KINDS,
+        seen_kinds,
+        violations,
+    );
+    gap_decision_track_allowed(
+        case_id,
+        "scope",
+        scope.as_deref(),
+        GAP_DECISION_REQUIRED_SCOPES,
+        seen_scopes,
+        violations,
+    );
+    gap_decision_track_allowed(
+        case_id,
+        "policy_state",
+        policy_state.as_deref(),
+        GAP_DECISION_REQUIRED_POLICY_STATES,
+        seen_policy_states,
+        violations,
+    );
+    gap_decision_track_allowed(
+        case_id,
+        "repairability",
+        repairability.as_deref(),
+        GAP_DECISION_REQUIRED_REPAIRABILITY,
+        seen_repairability,
+        violations,
+    );
+
+    if !matches!(record.get("projection_eligibility"), Some(Value::Object(_))) {
+        violations.push(format!(
+            "gap-decision ledger case {case_id} is missing projection_eligibility object"
+        ));
+    }
+    for projection in [
+        "ci_summary",
+        "report_packet",
+        "pr_comment",
+        "lsp_diagnostic",
+        "agent_packet",
+        "gate_candidate",
+        "ripr_zero_count",
+        "ripr_plus_count",
+    ] {
+        validate_gap_projection(case_id, record, projection, violations);
+    }
+
+    if repairability.as_deref() == Some("repairable") {
+        if !matches!(record.get("repair_route"), Some(Value::Object(_))) {
+            violations.push(format!(
+                "gap-decision ledger repairable case {case_id} is missing repair_route object"
+            ));
+        }
+        if route_kind.is_none() {
+            violations.push(format!(
+                "gap-decision ledger repairable case {case_id} is missing repair_route.route_kind"
+            ));
+        }
+    }
+
+    if projection_eligible(record, "pr_comment") == Some(true) {
+        *has_pr_comment_eligible = true;
+        if language.as_deref() != Some("rust") || language_status.as_deref() != Some("stable") {
+            violations.push(format!(
+                "gap-decision ledger PR-comment case {case_id} must be stable Rust"
+            ));
+        }
+        if scope.as_deref() != Some("pr_local") || repairability.as_deref() != Some("repairable") {
+            violations.push(format!(
+                "gap-decision ledger PR-comment case {case_id} must be PR-local and repairable"
+            ));
+        }
+        if audit_string(record, &["anchor", "dedupe_fingerprint"]).is_none() {
+            violations.push(format!(
+                "gap-decision ledger PR-comment case {case_id} is missing anchor.dedupe_fingerprint"
+            ));
+        }
+        if route_kind.is_none() {
+            violations.push(format!(
+                "gap-decision ledger PR-comment case {case_id} is missing repair route"
+            ));
+        }
+    }
+
+    if projection_eligible(record, "gate_candidate") == Some(true) {
+        *has_gate_candidate = true;
+        validate_gap_decision_safe_gate_candidate(
+            case_id,
+            record,
+            language.as_deref(),
+            language_status.as_deref(),
+            scope.as_deref(),
+            policy_state.as_deref(),
+            repairability.as_deref(),
+            route_kind.as_deref(),
+            violations,
+        );
+    }
+
+    if projection_eligible(record, "ripr_zero_count") == Some(true) {
+        *has_ripr_zero_target = true;
+        if language.as_deref() != Some("rust")
+            || scope.as_deref() != Some("repo_scoped")
+            || matches!(policy_state.as_deref(), Some("waived" | "suppressed"))
+        {
+            violations.push(format!(
+                "gap-decision ledger RIPR Zero case {case_id} must be repo-scoped unresolved Rust policy debt"
+            ));
+        }
+    }
+
+    if kind.as_deref() == Some("MissingOutputContract") {
+        *has_output_contract_gap = true;
+        if evidence_class.as_deref() != Some("presentation_text") {
+            violations.push(format!(
+                "gap-decision ledger MissingOutputContract case {case_id} must use presentation_text evidence"
+            ));
+        }
+        if !matches!(
+            route_kind.as_deref(),
+            Some("AddOutputGolden" | "AddHelpOutputSnapshot" | "AddReportRenderGolden")
+        ) {
+            violations.push(format!(
+                "gap-decision ledger MissingOutputContract case {case_id} must route to output/golden repair"
+            ));
+        }
+    }
+
+    if language_status.as_deref() == Some("preview") {
+        *has_preview_ineligible = true;
+        for projection in ["gate_candidate", "ripr_zero_count", "ripr_plus_count"] {
+            if projection_eligible(record, projection) == Some(true) {
+                violations.push(format!(
+                    "gap-decision ledger preview case {case_id} must not be eligible for {projection}"
+                ));
+            }
+        }
+    }
+
+    if case.get("static_unknown_only").and_then(Value::as_bool) == Some(true)
+        && (repairability.as_deref() == Some("repairable")
+            || projection_eligible(record, "pr_comment") == Some(true)
+            || projection_eligible(record, "gate_candidate") == Some(true))
+    {
+        violations.push(format!(
+            "gap-decision ledger static-unknown-only case {case_id} must stay report-only unless a repair route exists"
+        ));
+    }
+
+    if matches!(
+        policy_state.as_deref(),
+        Some("baseline_known" | "waived" | "suppressed" | "acknowledged")
+    ) && projection_eligible(record, "gate_candidate") == Some(true)
+    {
+        violations.push(format!(
+            "gap-decision ledger policy-overlay case {case_id} must not be gate-candidate eligible"
+        ));
+    }
+    if matches!(policy_state.as_deref(), Some("waived" | "suppressed"))
+        && projection_eligible(record, "ripr_zero_count") == Some(true)
+    {
+        violations.push(format!(
+            "gap-decision ledger waived/suppressed case {case_id} must not count toward RIPR Zero"
+        ));
+    }
+
+    if scope.as_deref() == Some("artifact_missing") {
+        *has_missing_artifact = true;
+        require_gap_decision_non_empty_string_array_at(
+            record,
+            "regeneration_commands",
+            case_id,
+            violations,
+        );
+        if projection_eligible(record, "pr_comment") == Some(true)
+            || projection_eligible(record, "gate_candidate") == Some(true)
+        {
+            violations.push(format!(
+                "gap-decision ledger missing-artifact case {case_id} must not be PR-comment or gate eligible"
+            ));
+        }
+    }
+
+    if let Some(movement) = audit_string(record, &["receipt", "movement"]) {
+        match movement.as_str() {
+            "improved" => *has_receipt_improved = true,
+            "unchanged_after_attempt" => *has_receipt_unchanged = true,
+            "resolved" | "worsened" | "missing_receipt" | "not_applicable" => {}
+            other => violations.push(format!(
+                "gap-decision ledger case {case_id} has unsupported receipt movement {other}"
+            )),
+        }
+    }
+}
+
+fn gap_decision_track_allowed(
+    case_id: &str,
+    field: &str,
+    value: Option<&str>,
+    allowed: &[&str],
+    seen: &mut BTreeSet<String>,
+    violations: &mut Vec<String>,
+) {
+    match value {
+        Some(value) if allowed.contains(&value) => {
+            seen.insert(value.to_string());
+        }
+        Some(value) => violations.push(format!(
+            "gap-decision ledger case {case_id} has unsupported {field} {value}"
+        )),
+        None => violations.push(format!(
+            "gap-decision ledger case {case_id} is missing {field}"
+        )),
+    }
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "safe gate predicate guard receives normalized case fields"
+)]
+fn validate_gap_decision_safe_gate_candidate(
+    case_id: &str,
+    record: &Value,
+    language: Option<&str>,
+    language_status: Option<&str>,
+    scope: Option<&str>,
+    policy_state: Option<&str>,
+    repairability: Option<&str>,
+    route_kind: Option<&str>,
+    violations: &mut Vec<String>,
+) {
+    if language != Some("rust") || language_status != Some("stable") {
+        violations.push(format!(
+            "gap-decision ledger gate candidate {case_id} must be stable Rust"
+        ));
+    }
+    if scope != Some("pr_local") {
+        violations.push(format!(
+            "gap-decision ledger gate candidate {case_id} must be PR-local"
+        ));
+    }
+    if !matches!(policy_state, Some("new" | "blocked")) {
+        violations.push(format!(
+            "gap-decision ledger gate candidate {case_id} must be new or blocked policy state"
+        ));
+    }
+    if repairability != Some("repairable") || route_kind.is_none() {
+        violations.push(format!(
+            "gap-decision ledger gate candidate {case_id} must have repairable route"
+        ));
+    }
+    if audit_get(record, &["safe_gate_predicate", "policy_target_enabled"]).and_then(Value::as_bool)
+        != Some(true)
+    {
+        violations.push(format!(
+            "gap-decision ledger gate candidate {case_id} must set safe_gate_predicate.policy_target_enabled=true"
+        ));
+    }
+    for forbidden in [
+        "suppressed",
+        "waived",
+        "acknowledged_only",
+        "baseline_known",
+        "preview_language",
+        "static_unknown_only",
+    ] {
+        if audit_get(record, &["safe_gate_predicate", forbidden]).and_then(Value::as_bool)
+            != Some(false)
+        {
+            violations.push(format!(
+                "gap-decision ledger gate candidate {case_id} must set safe_gate_predicate.{forbidden}=false"
+            ));
+        }
+    }
+}
+
+fn validate_gap_projection(
+    case_id: &str,
+    record: &Value,
+    projection: &str,
+    violations: &mut Vec<String>,
+) {
+    let Some(value @ Value::Object(_)) = audit_get(record, &["projection_eligibility", projection])
+    else {
+        violations.push(format!(
+            "gap-decision ledger case {case_id} is missing projection_eligibility.{projection}"
+        ));
+        return;
+    };
+    if value.get("eligible").and_then(Value::as_bool).is_none() {
+        violations.push(format!(
+            "gap-decision ledger case {case_id} projection {projection} is missing eligible boolean"
+        ));
+    }
+    if json_string_field(value, "reason").is_none() {
+        violations.push(format!(
+            "gap-decision ledger case {case_id} projection {projection} is missing reason"
+        ));
+    }
+}
+
+fn projection_eligible(record: &Value, projection: &str) -> Option<bool> {
+    audit_get(record, &["projection_eligibility", projection, "eligible"]).and_then(Value::as_bool)
+}
+
+fn require_gap_decision_json_string_at(
+    value: &Value,
+    field: &str,
+    case_id: &str,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(value, field).is_none() {
+        violations.push(format!(
+            "gap-decision ledger case {case_id} is missing string field {field}"
+        ));
+    }
+}
+
+fn require_gap_decision_non_empty_string_array_at(
+    value: &Value,
+    field: &str,
+    case_id: &str,
+    violations: &mut Vec<String>,
+) {
+    match value.get(field) {
+        Some(Value::Array(items))
+            if !items.is_empty() && items.iter().all(|item| item.as_str().is_some()) => {}
+        _ => violations.push(format!(
+            "gap-decision ledger case {case_id} {field} must be a non-empty string array"
+        )),
+    }
 }
 
 fn validate_lane1_evidence_quality_record(
@@ -20526,6 +21165,114 @@ fn check_generated() -> Result<(), String> {
     )
 }
 
+fn check_generated_clean() -> Result<(), String> {
+    let changes = collect_pr_changes()?;
+    let badge_refresh_context = generated_clean_badge_refresh_context();
+    let violations = generated_clean_violations(&changes, badge_refresh_context);
+
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "generated-clean.md",
+            check: "check-generated-clean",
+            why_it_matters: "Generated evidence and build residue should not leak into ordinary PR diffs. Public badge endpoint counts are generated trust markers, and target artifacts are local/CI outputs.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Remove generated target artifacts from the PR diff.",
+                "Remove badges/*.json diffs unless this is the generated badge endpoint refresh PR.",
+                "For public badge count refreshes, use `cargo xtask badges` or the Badge Endpoints workflow on an explicit badge refresh branch.",
+            ],
+            rerun_command: "cargo xtask check-generated-clean",
+            exception_template: None,
+        },
+        &violations,
+    )
+}
+
+fn generated_clean_badge_refresh_context() -> bool {
+    let mut candidates = vec![git_value(&["rev-parse", "--abbrev-ref", "HEAD"])];
+    for key in [
+        "GITHUB_HEAD_REF",
+        "GITHUB_REF_NAME",
+        "GITHUB_REF",
+        "BRANCH_NAME",
+        "RIPR_WORK_ITEM",
+    ] {
+        if let Ok(value) = std::env::var(key) {
+            candidates.push(value);
+        }
+    }
+    candidates
+        .iter()
+        .any(|candidate| is_badge_refresh_context(candidate))
+}
+
+fn is_badge_refresh_context(value: &str) -> bool {
+    let normalized = value
+        .trim()
+        .trim_start_matches("refs/heads/")
+        .to_ascii_lowercase();
+    normalized == "automation/badge-endpoints"
+        || normalized == "badge: refresh public endpoints"
+        || normalized.contains("badge-refresh")
+        || normalized.contains("badge/endpoints")
+        || normalized.contains("badge-endpoints")
+}
+
+fn generated_clean_violations(changes: &[ChangedPath], badge_refresh_context: bool) -> Vec<String> {
+    let mut violations = Vec::new();
+    for change in changes {
+        let path = change.path.trim_end_matches('/');
+        if is_badge_endpoint_json(path) {
+            if !badge_refresh_context {
+                violations.push(format!(
+                    "generated badge endpoint changed in an ordinary PR: {}\n  rule: do not manually edit RIPR badge numbers; remove this diff or move it to the generated `badge: refresh public endpoints` PR",
+                    format_changed_path(change)
+                ));
+            }
+            continue;
+        }
+
+        if is_ripr_target_artifact(path) && !is_deletion_only(change) {
+            violations.push(format!(
+                "generated RIPR target artifact is present in the PR diff: {}\n  rule: keep PR-scoped RIPR evidence under ignored target/ripr artifacts, not committed source control",
+                format_changed_path(change)
+            ));
+            continue;
+        }
+
+        if is_sample_target_artifact(path) && !is_deletion_only(change) {
+            violations.push(format!(
+                "sample workspace build output is present in the PR diff: {}\n  rule: remove crates/ripr/examples/sample/target residue before review",
+                format_changed_path(change)
+            ));
+        }
+    }
+    violations
+}
+
+fn is_badge_endpoint_json(path: &str) -> bool {
+    path.starts_with("badges/")
+        && path.ends_with(".json")
+        && path["badges/".len()..].find('/').is_none()
+}
+
+fn is_ripr_target_artifact(path: &str) -> bool {
+    path == "target/ripr" || path.starts_with("target/ripr/")
+}
+
+fn is_sample_target_artifact(path: &str) -> bool {
+    path == "crates/ripr/examples/sample/target"
+        || path.starts_with("crates/ripr/examples/sample/target/")
+}
+
+fn is_deletion_only(change: &ChangedPath) -> bool {
+    !change.statuses.is_empty()
+        && change
+            .statuses
+            .iter()
+            .all(|status| status.chars().all(|character| character == 'D'))
+}
+
 /// Parse a `[workspace.lints.<section>]` block from `Cargo.toml`-shaped TOML.
 ///
 /// Returns a map of bare lint name (e.g. `unwrap_used`, `unsafe_code`) to its
@@ -26951,9 +27698,10 @@ mod tests {
         evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
         evidence_quality_trend_json, evidence_quality_trend_markdown,
         extract_json_object_usize_map, extract_json_string, extract_json_warnings,
-        extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns, glob_matches,
-        golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
-        guarded_allow_attributes_in_text, install_hooks_in, is_bdd_test_name, is_campaign_path,
+        extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns,
+        generated_clean_violations, glob_matches, golden_changes_without_blessing,
+        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
+        install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
         is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
         is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
         is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
@@ -28272,11 +29020,250 @@ mod tests {
         assert!(super::is_manifest_only_fixture_dir(Path::new(
             "fixtures/evidence-quality-benchmark"
         )));
+        assert!(super::is_manifest_only_fixture_dir(Path::new(
+            "fixtures/gap-decision-ledger"
+        )));
         assert!(!super::is_manifest_only_fixture_dir(Path::new(
             "fixtures/boundary_gap"
         )));
         let violations =
             super::fixture_contract_violations(Path::new("fixtures/evidence-quality-benchmark"))?;
+        assert_eq!(violations, Vec::<String>::new());
+        Ok(())
+    }
+
+    fn gap_decision_ledger_corpus_path() -> Result<PathBuf, String> {
+        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask manifest must have workspace parent".to_string())?;
+        Ok(repo_root.join("fixtures/gap-decision-ledger/corpus.json"))
+    }
+
+    fn gap_decision_ledger_corpus_value() -> Result<Value, String> {
+        let corpus = gap_decision_ledger_corpus_path()?;
+        super::read_json_value(&corpus)
+    }
+
+    fn gap_decision_ledger_violations(corpus: &Value) -> Vec<String> {
+        let mut violations = Vec::new();
+        super::validate_gap_decision_ledger_corpus_value(
+            Path::new("fixtures/gap-decision-ledger/corpus.json"),
+            corpus,
+            &mut violations,
+        );
+        violations
+    }
+
+    fn gap_decision_ledger_case_mut<'a>(
+        corpus: &'a mut Value,
+        case_id: &str,
+    ) -> Result<&'a mut Value, String> {
+        let cases = corpus
+            .get_mut("cases")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| "gap-decision ledger corpus must have cases array".to_string())?;
+        cases
+            .iter_mut()
+            .find(|case| case.get("id").and_then(Value::as_str) == Some(case_id))
+            .ok_or_else(|| format!("gap-decision ledger corpus is missing case {case_id}"))
+    }
+
+    #[test]
+    fn gap_decision_ledger_corpus_is_valid() -> Result<(), String> {
+        let corpus = gap_decision_ledger_corpus_path()?;
+        let mut violations = Vec::new();
+        super::validate_gap_decision_ledger_fixture_corpus_at(&corpus, &mut violations)?;
+
+        assert_eq!(violations, Vec::<String>::new());
+        Ok(())
+    }
+
+    #[test]
+    fn gap_decision_ledger_reports_contract_drift() {
+        let corpus = serde_json::json!({
+            "kind": "wrong",
+            "schema_version": "0.2",
+            "spec": "RIPR-SPEC-9999",
+            "proposal": "RIPR-PROP-9999",
+            "required_gap_kinds": ["MissingBoundaryAssertion"],
+            "required_scopes": ["pr_local"],
+            "required_policy_states": ["new"],
+            "required_repairability": ["repairable"],
+            "cases": [
+                {
+                    "id": "bad",
+                    "description": "bad case",
+                    "source_artifacts": [],
+                    "expected_claim": "claim",
+                    "must_not_claim": [],
+                    "expected_gap_record": {
+                        "gap_id": "gap:bad",
+                        "canonical_gap_id": "gap:bad",
+                        "kind": "surprise",
+                        "language": "rust",
+                        "language_status": "stable",
+                        "scope": "global",
+                        "evidence_class": "unknown",
+                        "gap_state": "actionable",
+                        "policy_state": "mystery",
+                        "repairability": "maybe",
+                        "evidence_ids": [],
+                        "verification_commands": [],
+                        "projection_eligibility": {
+                            "ci_summary": {"eligible": "yes", "reason": null}
+                        }
+                    }
+                },
+                {
+                    "id": "bad",
+                    "description": "duplicate case",
+                    "source_artifacts": ["artifact"],
+                    "expected_claim": "claim",
+                    "must_not_claim": ["guard"],
+                    "expected_gap_record": {
+                        "gap_id": "gap:dup",
+                        "canonical_gap_id": "gap:dup",
+                        "kind": "MissingBoundaryAssertion",
+                        "language": "rust",
+                        "language_status": "stable",
+                        "scope": "pr_local",
+                        "evidence_class": "predicate_boundary",
+                        "gap_state": "actionable",
+                        "policy_state": "new",
+                        "repairability": "repairable",
+                        "evidence_ids": ["evidence"],
+                        "verification_commands": ["cargo xtask check-pr"],
+                        "projection_eligibility": {}
+                    }
+                }
+            ]
+        });
+
+        let report = gap_decision_ledger_violations(&corpus).join("\n");
+
+        assert!(report.contains("kind must be gap_decision_ledger_corpus"));
+        assert!(report.contains("schema_version must be 0.1"));
+        assert!(report.contains("spec must be RIPR-SPEC-0046"));
+        assert!(report.contains("proposal must be RIPR-PROP-0006"));
+        assert!(report.contains("required_gap_kinds is missing MissingErrorDiscriminator"));
+        assert!(report.contains("required_scopes is missing repo_scoped"));
+        assert!(report.contains("required_policy_states is missing baseline_known"));
+        assert!(report.contains("required_repairability is missing needs_human_design"));
+        assert!(report.contains("case bad is duplicated"));
+        assert!(report.contains("source_artifacts must be a non-empty string array"));
+        assert!(report.contains("must_not_claim must be a non-empty string array"));
+        assert!(report.contains("has unsupported kind surprise"));
+        assert!(report.contains("has unsupported scope global"));
+        assert!(report.contains("has unsupported policy_state mystery"));
+        assert!(report.contains("has unsupported repairability maybe"));
+        assert!(report.contains("evidence_ids must be a non-empty string array"));
+        assert!(report.contains("verification_commands must be a non-empty string array"));
+        assert!(report.contains("projection ci_summary is missing eligible boolean"));
+        assert!(report.contains("projection ci_summary is missing reason"));
+        assert!(report.contains("is missing projection_eligibility.report_packet"));
+        assert!(report.contains("repairable case bad is missing repair_route object"));
+        assert!(report.contains("must include a safe gate-candidate case"));
+        assert!(report.contains("must include a MissingOutputContract case"));
+    }
+
+    #[test]
+    fn gap_decision_ledger_gate_candidate_requires_safe_predicate() -> Result<(), String> {
+        let mut corpus = gap_decision_ledger_corpus_value()?;
+        let case = gap_decision_ledger_case_mut(
+            &mut corpus,
+            "repairable_boundary_gap_pr_comment_gate_candidate",
+        )?;
+        let record = case
+            .get_mut("expected_gap_record")
+            .ok_or_else(|| "case must have expected_gap_record".to_string())?;
+        record["language_status"] = serde_json::json!("preview");
+        record["safe_gate_predicate"]["policy_target_enabled"] = serde_json::json!(false);
+        record["safe_gate_predicate"]["static_unknown_only"] = serde_json::json!(true);
+
+        let report = gap_decision_ledger_violations(&corpus).join("\n");
+
+        assert!(report.contains(
+            "PR-comment case repairable_boundary_gap_pr_comment_gate_candidate must be stable Rust"
+        ));
+        assert!(report.contains(
+            "gate candidate repairable_boundary_gap_pr_comment_gate_candidate must be stable Rust"
+        ));
+        assert!(report.contains("must set safe_gate_predicate.policy_target_enabled=true"));
+        assert!(report.contains("must set safe_gate_predicate.static_unknown_only=false"));
+        Ok(())
+    }
+
+    #[test]
+    fn gap_decision_ledger_missing_output_contract_requires_output_route() -> Result<(), String> {
+        let mut corpus = gap_decision_ledger_corpus_value()?;
+        let case = gap_decision_ledger_case_mut(
+            &mut corpus,
+            "missing_output_contract_routes_to_output_golden",
+        )?;
+        let record = case
+            .get_mut("expected_gap_record")
+            .ok_or_else(|| "case must have expected_gap_record".to_string())?;
+        record["evidence_class"] = serde_json::json!("return_value");
+        record["repair_route"]["route_kind"] = serde_json::json!("AddBoundaryAssertion");
+
+        let report = gap_decision_ledger_violations(&corpus).join("\n");
+
+        assert!(report.contains(
+            "MissingOutputContract case missing_output_contract_routes_to_output_golden must use presentation_text evidence"
+        ));
+        assert!(report.contains(
+            "MissingOutputContract case missing_output_contract_routes_to_output_golden must route to output/golden repair"
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn gap_decision_ledger_static_unknown_only_stays_report_only() -> Result<(), String> {
+        let mut corpus = gap_decision_ledger_corpus_value()?;
+        let case = gap_decision_ledger_case_mut(&mut corpus, "static_unknown_report_only")?;
+        let record = case
+            .get_mut("expected_gap_record")
+            .ok_or_else(|| "case must have expected_gap_record".to_string())?;
+        record["repairability"] = serde_json::json!("repairable");
+        record["repair_route"] = serde_json::json!({
+            "route_kind": "AddBoundaryAssertion",
+            "target_file": "tests/macros.rs",
+            "assertion_shape": "assert boundary"
+        });
+        record["projection_eligibility"]["pr_comment"]["eligible"] = serde_json::json!(true);
+
+        let report = gap_decision_ledger_violations(&corpus).join("\n");
+
+        assert!(report.contains(
+            "static-unknown-only case static_unknown_report_only must stay report-only unless a repair route exists"
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn gap_decision_ledger_missing_artifact_requires_regeneration() -> Result<(), String> {
+        let mut corpus = gap_decision_ledger_corpus_value()?;
+        let case =
+            gap_decision_ledger_case_mut(&mut corpus, "missing_artifact_warning_regeneration")?;
+        let record = case
+            .get_mut("expected_gap_record")
+            .ok_or_else(|| "case must have expected_gap_record".to_string())?;
+        record["regeneration_commands"] = serde_json::json!([]);
+        record["projection_eligibility"]["gate_candidate"]["eligible"] = serde_json::json!(true);
+
+        let report = gap_decision_ledger_violations(&corpus).join("\n");
+
+        assert!(report.contains("regeneration_commands must be a non-empty string array"));
+        assert!(report.contains(
+            "missing-artifact case missing_artifact_warning_regeneration must not be PR-comment or gate eligible"
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn gap_decision_ledger_is_manifest_only_fixture_dir() -> Result<(), String> {
+        let violations =
+            super::fixture_contract_violations(Path::new("fixtures/gap-decision-ledger"))?;
         assert_eq!(violations, Vec::<String>::new());
         Ok(())
     }
@@ -35901,6 +36888,73 @@ jobs:
         assert!(message.contains("cargo xtask help"));
     }
 
+    fn changed_path(path: &str, statuses: &[&str]) -> ChangedPath {
+        ChangedPath {
+            path: path.to_string(),
+            statuses: statuses
+                .iter()
+                .map(|status| (*status).to_string())
+                .collect::<BTreeSet<_>>(),
+        }
+    }
+
+    #[test]
+    fn generated_clean_rejects_badge_endpoint_diff_outside_refresh_context() {
+        let changes = vec![changed_path("badges/ripr.json", &["M"])];
+        let violations = generated_clean_violations(&changes, false);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("generated badge endpoint changed"));
+        assert!(violations[0].contains("do not manually edit RIPR badge numbers"));
+    }
+
+    #[test]
+    fn generated_clean_allows_badge_endpoint_diff_in_refresh_context() {
+        let changes = vec![
+            changed_path("badges/ripr.json", &["M"]),
+            changed_path("badges/ripr-plus.json", &["M"]),
+        ];
+        let violations = generated_clean_violations(&changes, true);
+        assert!(
+            violations.is_empty(),
+            "unexpected violations: {violations:?}"
+        );
+        assert!(is_badge_refresh_context("automation/badge-endpoints"));
+        assert!(is_badge_refresh_context("badge: refresh public endpoints"));
+    }
+
+    #[test]
+    fn generated_clean_rejects_target_residue() {
+        let changes = vec![
+            changed_path("target/ripr/reports/check-pr.md", &["A"]),
+            changed_path(
+                "crates/ripr/examples/sample/target/debug/.fingerprint",
+                &["??"],
+            ),
+        ];
+        let violations = generated_clean_violations(&changes, false);
+        assert_eq!(violations.len(), 2);
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("generated RIPR target artifact"))
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("sample workspace build output"))
+        );
+    }
+
+    #[test]
+    fn generated_clean_allows_deleting_committed_target_residue() {
+        let changes = vec![changed_path("target/ripr/reports/old.md", &["D"])];
+        let violations = generated_clean_violations(&changes, false);
+        assert!(
+            violations.is_empty(),
+            "unexpected violations: {violations:?}"
+        );
+    }
+
     #[test]
     fn xtask_command_parse_preserves_subcommand_arguments() {
         assert_eq!(
@@ -36010,7 +37064,6 @@ jobs:
                 XtaskCommand::TargetedTestOutcome(Vec::new()),
                 XtaskCommand::MutationCalibration(Vec::new()),
                 XtaskCommand::SarifPolicy(Vec::new()),
-                XtaskCommand::UpdateBadgeEndpoints,
                 XtaskCommand::CheckBadgeEndpoints,
                 XtaskCommand::Dogfood,
                 XtaskCommand::Critic,
