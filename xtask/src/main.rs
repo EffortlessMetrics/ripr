@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -11672,7 +11672,87 @@ fn write_lane1_evidence_audit_repo_exposure(path: &Path) -> Result<(), String> {
         "--format".to_string(),
         "repo-exposure-json".to_string(),
     ];
-    run_output_to_file_owned("cargo", &args, path)
+    match run_output_to_file_owned("cargo", &args, path) {
+        Ok(()) => Ok(()),
+        Err(err) => match lane1_repo_exposure_file_looks_complete(path) {
+            Ok(true) => {
+                eprintln!(
+                    "warning: repo exposure generation returned non-zero status; continuing because {} contains a complete repo-exposure JSON document",
+                    path.display()
+                );
+                Ok(())
+            }
+            Ok(false) => Err(err),
+            Err(inspect_err) => Err(format!(
+                "{err}\nfailed to inspect captured repo exposure {}: {inspect_err}",
+                path.display()
+            )),
+        },
+    }
+}
+
+fn lane1_repo_exposure_file_looks_complete(path: &Path) -> Result<bool, String> {
+    let file = fs::File::open(path).map_err(|err| {
+        format!(
+            "failed to open captured repo exposure {}: {err}",
+            path.display()
+        )
+    })?;
+    let metadata = file.metadata().map_err(|err| {
+        format!(
+            "failed to read captured repo exposure metadata {}: {err}",
+            path.display()
+        )
+    })?;
+    if metadata.len() == 0 {
+        return Ok(false);
+    }
+
+    let mut reader = BufReader::new(file);
+    let mut saw_seams_array = false;
+    let mut line = String::new();
+    for _ in 0..1024 {
+        line.clear();
+        let bytes = reader.read_line(&mut line).map_err(|err| {
+            format!(
+                "failed to inspect captured repo exposure header {}: {err}",
+                path.display()
+            )
+        })?;
+        if bytes == 0 {
+            break;
+        }
+        if line.trim_start().starts_with("\"seams\":") {
+            saw_seams_array = true;
+            break;
+        }
+    }
+    if !saw_seams_array {
+        return Ok(false);
+    }
+
+    let mut file = fs::File::open(path).map_err(|err| {
+        format!(
+            "failed to reopen captured repo exposure {}: {err}",
+            path.display()
+        )
+    })?;
+    let tail_len = metadata.len().min(4096) as usize;
+    file.seek(SeekFrom::End(-(tail_len as i64)))
+        .map_err(|err| {
+            format!(
+                "failed to inspect captured repo exposure tail {}: {err}",
+                path.display()
+            )
+        })?;
+    let mut tail = vec![0; tail_len];
+    file.read_exact(&mut tail).map_err(|err| {
+        format!(
+            "failed to read captured repo exposure tail {}: {err}",
+            path.display()
+        )
+    })?;
+    Ok(String::from_utf8_lossy(&tail).trim_end().ends_with('}'))
 }
 
 fn lane1_evidence_audit_from_repo_exposure_file(
@@ -43086,6 +43166,50 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(commands.contains(&"vscode-package"));
         assert!(commands.contains(&"vscode-test"));
         assert!(commands.contains(&"vscode-test-e2e"));
+    }
+
+    #[test]
+    fn lane1_repo_exposure_file_completion_check_requires_seams_and_closing_brace()
+    -> Result<(), String> {
+        let root = temp_dir("lane1-repo-exposure-complete");
+        let complete = root.join("complete.json");
+        write(
+            &complete,
+            r#"{
+  "schema_version": "0.3",
+  "seams": []
+}
+"#,
+        );
+        if !super::lane1_repo_exposure_file_looks_complete(&complete)? {
+            return Err("complete repo-exposure JSON should be accepted".to_string());
+        }
+
+        let missing_seams = root.join("missing-seams.json");
+        write(
+            &missing_seams,
+            r#"{
+  "schema_version": "0.3"
+}
+"#,
+        );
+        if super::lane1_repo_exposure_file_looks_complete(&missing_seams)? {
+            return Err("repo-exposure JSON without seams should be rejected".to_string());
+        }
+
+        let truncated = root.join("truncated.json");
+        write(
+            &truncated,
+            r#"{
+  "schema_version": "0.3",
+  "seams": [
+"#,
+        );
+        if super::lane1_repo_exposure_file_looks_complete(&truncated)? {
+            return Err("truncated repo-exposure JSON should be rejected".to_string());
+        }
+
+        Ok(())
     }
 
     #[test]
