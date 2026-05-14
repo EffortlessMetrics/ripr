@@ -619,6 +619,34 @@ mod tests {
         include_str!("../../../../fixtures/gap-decision-ledger/corpus.json").to_string()
     }
 
+    fn minimal_record() -> Value {
+        serde_json::json!({
+            "gap_id": "gap:minimal",
+            "canonical_gap_id": "gap:minimal",
+            "kind": "AlreadyObserved",
+            "language": "rust",
+            "language_status": "stable",
+            "scope": "repo_scoped",
+            "evidence_class": "already_observed",
+            "gap_state": "already_improved",
+            "policy_state": "baseline",
+            "repairability": "no_action",
+            "projection_eligibility": {
+                "agent_packet": {"eligible": false, "reason": "already_observed"}
+            },
+            "authority_boundary": "gate_decision_artifact_only"
+        })
+    }
+
+    fn report_from_json(value: Value) -> GapDecisionLedgerReport {
+        build_gap_decision_ledger_report(GapDecisionLedgerInput {
+            root: ".".to_string(),
+            generated_at: "test".to_string(),
+            records_path: "records.json".to_string(),
+            records_json: Ok(value.to_string()),
+        })
+    }
+
     #[test]
     fn gap_decision_ledger_parses_corpus_records_and_summarizes_projection_boundaries() {
         let report = build_gap_decision_ledger_report(GapDecisionLedgerInput {
@@ -637,6 +665,21 @@ mod tests {
         assert_eq!(report.summary.receipt_improved_total, 1);
         assert_eq!(report.summary.receipt_unchanged_after_attempt_total, 1);
         assert!(report.warnings.is_empty());
+    }
+
+    #[test]
+    fn gap_decision_ledger_accepts_supported_record_roots() {
+        let raw_array = report_from_json(serde_json::json!([minimal_record()]));
+        assert_eq!(raw_array.status, "advisory");
+        assert_eq!(raw_array.summary.records_total, 1);
+
+        let records = report_from_json(serde_json::json!({"records": [minimal_record()]}));
+        assert_eq!(records.status, "advisory");
+        assert_eq!(records.summary.no_action_total, 1);
+
+        let gap_records = report_from_json(serde_json::json!({"gap_records": [minimal_record()]}));
+        assert_eq!(gap_records.status, "advisory");
+        assert_eq!(gap_records.summary.no_action_total, 1);
     }
 
     #[test]
@@ -665,6 +708,51 @@ mod tests {
     }
 
     #[test]
+    fn gap_decision_ledger_renders_optional_markdown_fields_and_escapes_inline_text() {
+        let report = report_from_json(serde_json::json!({
+            "records": [
+                {
+                    "gap_id": "gap:`pipe|line",
+                    "canonical_gap_id": "gap:escaped",
+                    "kind": "MissingArtifact",
+                    "language": "rust",
+                    "language_status": "stable",
+                    "scope": "artifact_missing",
+                    "evidence_class": "missing_artifact",
+                    "gap_state": "missing_artifact",
+                    "policy_state": "not_policy_targeted",
+                    "repairability": "repairable",
+                    "repair_route": {
+                        "route_kind": "RegenerateArtifact",
+                        "target_file": "target/ripr/reports/index.md",
+                        "assertion_shape": "report contains `start|here`"
+                    },
+                    "anchor": {
+                        "file": "docs|OUTPUT_SCHEMA.md",
+                        "line": 7,
+                        "owner": "output::`schema`",
+                        "dedupe_fingerprint": "gap:escaped"
+                    },
+                    "projection_eligibility": {
+                        "agent_packet": {"eligible": true, "reason": "repair_command_present"}
+                    },
+                    "verification_commands": ["cargo xtask check-output-contracts"],
+                    "regeneration_commands": ["cargo xtask reports\nindex"],
+                    "receipt": {"movement": "missing_receipt"}
+                }
+            ]
+        }));
+
+        let markdown = render_gap_decision_ledger_markdown(&report);
+        assert!(markdown.contains("gap:'pipe\\|line"));
+        assert!(markdown.contains("docs\\|OUTPUT_SCHEMA.md`:7"));
+        assert!(markdown.contains("owner `output::'schema'`"));
+        assert!(markdown.contains("Assertion or observer: `report contains 'start\\|here'`"));
+        assert!(markdown.contains("cargo xtask reports index"));
+        assert!(markdown.contains("Receipt movement: `missing_receipt`"));
+    }
+
+    #[test]
     fn gap_decision_ledger_reports_bad_or_missing_records_as_blocked() {
         let report = build_gap_decision_ledger_report(GapDecisionLedgerInput {
             root: ".".to_string(),
@@ -679,6 +767,28 @@ mod tests {
             report.warnings,
             vec!["read missing.json failed: not found".to_string()]
         );
+    }
+
+    #[test]
+    fn gap_decision_ledger_reports_malformed_record_inputs() {
+        let invalid_json = build_gap_decision_ledger_report(GapDecisionLedgerInput {
+            root: ".".to_string(),
+            generated_at: "test".to_string(),
+            records_path: "bad.json".to_string(),
+            records_json: Ok("{".to_string()),
+        });
+        assert_eq!(invalid_json.status, "blocked");
+        assert!(invalid_json.warnings[0].contains("invalid JSON"));
+
+        let wrong_root = report_from_json(serde_json::json!("not records"));
+        assert_eq!(wrong_root.status, "blocked");
+        assert!(wrong_root.warnings[0].contains("expected object or array"));
+
+        let missing_case_record = report_from_json(serde_json::json!({
+            "cases": [{"id": "missing"}]
+        }));
+        assert_eq!(missing_case_record.status, "blocked");
+        assert!(missing_case_record.warnings[0].contains("missing expected_gap_record"));
     }
 
     #[test]

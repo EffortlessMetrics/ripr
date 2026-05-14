@@ -7528,6 +7528,37 @@ mod tests {
     }
 
     #[test]
+    fn reports_gap_ledger_writes_json_and_markdown_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("gap-ledger");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create gap ledger dir: {err}"))?;
+        let records = repo_root().join("fixtures/gap-decision-ledger/corpus.json");
+        let out = dir.join("gap-decision-ledger.json");
+        let out_md = dir.join("gap-decision-ledger.md");
+
+        reports(&args(&[
+            "gap-ledger",
+            "--records",
+            &records.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text =
+            std::fs::read_to_string(&out).map_err(|err| format!("read gap ledger JSON: {err}"))?;
+        assert!(json_text.contains("\"kind\": \"gap_decision_ledger\""));
+        assert!(json_text.contains("\"records_total\": 18"));
+        let markdown = std::fs::read_to_string(&out_md)
+            .map_err(|err| format!("read gap ledger Markdown: {err}"))?;
+        assert!(markdown.contains("# RIPR Gap Decision Ledger"));
+        assert!(markdown.contains("gate candidates=`1`"));
+
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove gap ledger dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
     fn pilot_requires_values_for_value_flags() {
         assert_eq!(
             pilot(&args(&["--root"])),
