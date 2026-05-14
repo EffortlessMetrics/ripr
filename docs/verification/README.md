@@ -33,6 +33,13 @@ Machine-readable schemas live under `schemas/`:
 | [`schemas/ripr/pr-evidence.schema.json`](../../schemas/ripr/pr-evidence.schema.json) | Canonical PR evidence summary packet. |
 | [`schemas/ripr/review-comments.schema.json`](../../schemas/ripr/review-comments.schema.json) | `ripr review-comments` guidance output. |
 
+The schema set and valid fixture packets are checked by:
+
+```text
+cargo xtask check-verification-contracts
+cargo xtask check-verification-contracts --check
+```
+
 ## Adoption Boundary
 
 An adopted repository should expose the same command and path shape:

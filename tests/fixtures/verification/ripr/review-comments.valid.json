@@ -1,0 +1,113 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "advisory",
+  "root": ".",
+  "base": "origin/main",
+  "head": "HEAD",
+  "generated_at": "2026-05-14T00:00:00Z",
+  "mode": "fast",
+  "rendering_limits": {
+    "max_inline_comments": 10,
+    "max_summary_items": 25
+  },
+  "summary": {
+    "comments": 1,
+    "summary_only": 1,
+    "suppressed": 1,
+    "unchanged_tests": false
+  },
+  "comments": [
+    {
+      "id": "rec-1",
+      "seam_id": "seam:src/lib.rs:42",
+      "dedupe_key": "seam:src/lib.rs:42:boundary",
+      "kind": "focused_test",
+      "grip_class": "weakly_exposed",
+      "severity": "medium",
+      "owner": "src/lib.rs::parse_limit",
+      "seam": {
+        "file": "src/lib.rs",
+        "line": 42,
+        "expression": "limit + 1"
+      },
+      "reason": "Changed boundary logic has only broad static evidence.",
+      "missing_discriminator": "No assertion covers the inclusive edge.",
+      "suggested_test": {
+        "intent": "Assert the inclusive upper edge is accepted.",
+        "candidate_values": [
+          "0",
+          "1",
+          "max"
+        ],
+        "assertion_shape": "direct equality",
+        "assertion_kind": "unit",
+        "recommended_file": "src/lib.rs",
+        "recommended_name": "accepts_inclusive_upper_edge",
+        "near_test": null
+      },
+      "llm_guidance": {
+        "prompt": "Add one focused discriminator test for the inclusive edge.",
+        "command": "cargo test -p ripr accepts_inclusive_upper_edge",
+        "verify_command": "cargo test -p ripr accepts_inclusive_upper_edge"
+      },
+      "placement": {
+        "path": "src/lib.rs",
+        "line": 42,
+        "side": "RIGHT",
+        "mode": "exact_seam_line"
+      }
+    }
+  ],
+  "summary_only": [
+    {
+      "id": "rec-2",
+      "seam_id": "seam:src/config.rs:9",
+      "dedupe_key": "seam:src/config.rs:9:default",
+      "kind": "focused_test",
+      "grip_class": "reachable_unrevealed",
+      "severity": "low",
+      "owner": "src/config.rs::default_policy",
+      "seam": {
+        "file": "src/config.rs",
+        "line": 9,
+        "expression": "Default::default()"
+      },
+      "reason": "No safe changed line is available for annotation.",
+      "missing_discriminator": null,
+      "suggested_test": {
+        "intent": "Assert the default policy remains conservative.",
+        "candidate_values": [],
+        "assertion_shape": "snapshot",
+        "assertion_kind": "unit",
+        "recommended_file": "src/config.rs",
+        "recommended_name": "default_policy_is_conservative",
+        "near_test": null
+      },
+      "llm_guidance": {
+        "prompt": "Add a focused default-policy assertion.",
+        "command": "cargo test -p ripr default_policy_is_conservative",
+        "verify_command": "cargo test -p ripr default_policy_is_conservative"
+      },
+      "placement": null,
+      "summary_reason": "No changed line is safe for this recommendation."
+    }
+  ],
+  "suppressed": [
+    {
+      "seam_id": "seam:src/noise.rs:3",
+      "file": "src/noise.rs",
+      "line": 3,
+      "reason": "cap",
+      "message": "Suppressed after reaching summary limit."
+    }
+  ],
+  "warnings": [
+    {
+      "kind": "placement_warning",
+      "message": "One recommendation could not be placed on a changed line.",
+      "path": "src/config.rs"
+    }
+  ],
+  "limits_note": "Comments are capped and advisory; summary-only items never annotate."
+}
