@@ -31410,6 +31410,213 @@ mod tests {
         fs::write(path, text).unwrap();
     }
 
+    #[test]
+    fn editor_gap_cockpit_fixture_corpus_validator_accepts_complete_matrix() -> Result<(), String> {
+        with_temp_cwd("editor-gap-cockpit-fixtures", |root| {
+            write_editor_gap_cockpit_corpus(root, true);
+
+            let mut violations = Vec::new();
+            super::validate_editor_gap_cockpit_fixture_corpus(&mut violations)?;
+            assert_eq!(violations, Vec::<String>::new());
+
+            let fixture_dirs = super::lsp_cockpit_fixture_dirs()?;
+            let fixture_names = fixture_dirs
+                .iter()
+                .map(|(fixture, _)| fixture.as_str())
+                .collect::<BTreeSet<_>>();
+            assert!(fixture_names.contains("editor_gap_cockpit/rust_actionable"));
+            assert!(fixture_names.contains("editor_gap_cockpit/typescript_preview_static_limit"));
+            assert!(fixture_names.contains("editor_gap_cockpit/python_preview_static_limit"));
+            assert!(fixture_names.contains("editor_gap_cockpit/disabled_language"));
+            assert!(fixture_names.contains("editor_gap_cockpit/wrong_root"));
+            assert!(fixture_names.contains("editor_gap_cockpit/stale_artifact"));
+            assert!(fixture_names.contains("editor_gap_cockpit/no_actionable_gap"));
+            let (preview_name, preview_path) = fixture_dirs
+                .iter()
+                .find(|(fixture, _)| {
+                    fixture.as_str() == "editor_gap_cockpit/typescript_preview_static_limit"
+                })
+                .ok_or_else(|| "typescript preview fixture must exist".to_string())?;
+            let preview = super::lsp_cockpit_fixture_report(preview_name, preview_path).and_then(
+                |report| {
+                    report.ok_or_else(|| "typescript preview fixture report must exist".to_string())
+                },
+            )?;
+            assert_eq!(preview.diagnostic_count, 1);
+            assert!(preview.context.refresh_available);
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn editor_gap_cockpit_fixture_corpus_validator_reports_missing_and_misordered_cases()
+    -> Result<(), String> {
+        with_temp_cwd("editor-gap-cockpit-violations", |root| {
+            let mut violations = Vec::new();
+            super::validate_editor_gap_cockpit_fixture_corpus(&mut violations)?;
+            assert!(violations.iter().any(|violation| {
+                violation.contains("editor gap cockpit fixture corpus is missing")
+            }));
+
+            write_editor_gap_cockpit_corpus(root, false);
+            let mut violations = Vec::new();
+            super::validate_editor_gap_cockpit_fixture_corpus(&mut violations)?;
+            assert!(violations.iter().any(|violation| {
+                violation.contains(
+                    "editor gap cockpit case typescript_preview_static_limit hover must show static limits before action language",
+                )
+            }));
+            Ok(())
+        })
+    }
+
+    fn write_editor_gap_cockpit_corpus(root: &Path, valid_preview_hover_order: bool) {
+        let corpus = root.join("fixtures/editor_gap_cockpit");
+        write(
+            &corpus.join("SPEC.md"),
+            "# Fixture Corpus: editor_gap_cockpit\n\nSpec: RIPR-SPEC-0047\n\n## Given\n\nArtifacts exist.\n\n## When\n\nThe LSP cockpit report runs.\n\n## Then\n\nCases are pinned.\n\n## Must Not\n\n- Edit source.\n",
+        );
+        for (case, language, language_status, diagnostics, actions, hover) in [
+            (
+                "rust_actionable",
+                "rust",
+                "stable",
+                true,
+                vec![
+                    "Inspect gap: copy repair packet",
+                    "Write targeted test: open best related test",
+                    "Verify after test: copy verify command",
+                    "Review result: copy receipt command",
+                    "Refresh Analysis - Saved Workspace Check",
+                ],
+                "## Evidence boundary\n\nLanguage: rust\n\n## Gap state\n\nactionable\n\n## Limits\n\nStatic evidence only.\n",
+            ),
+            (
+                "typescript_preview_static_limit",
+                "typescript",
+                "preview",
+                true,
+                vec![
+                    "Inspect gap: copy repair packet",
+                    "Inspect gap: copy static-limit note",
+                    "Refresh Analysis - Saved Workspace Check",
+                ],
+                if valid_preview_hover_order {
+                    "## Evidence boundary\n\nStatic limit: mocked_module\n\n## Gap state\n\nactionable\n\nSuggested action: add one assertion.\n\n## Limits\n\nStatic evidence only.\n"
+                } else {
+                    "## Evidence boundary\n\nSuggested action: add one assertion.\n\n## Gap state\n\nactionable\n\nStatic limit: mocked_module\n\n## Limits\n\nStatic evidence only.\n"
+                },
+            ),
+            (
+                "python_preview_static_limit",
+                "python",
+                "preview",
+                true,
+                vec![
+                    "Inspect gap: copy repair packet",
+                    "Inspect gap: copy static-limit note",
+                    "Refresh Analysis - Saved Workspace Check",
+                ],
+                "## Evidence boundary\n\nStatic limit: missing_import_graph\n\n## Gap state\n\nactionable\n\nSuggested action: add one assertion.\n\n## Limits\n\nStatic evidence only.\n",
+            ),
+            (
+                "disabled_language",
+                "python",
+                "preview",
+                false,
+                vec!["Refresh Analysis - Saved Workspace Check"],
+                "## Evidence boundary\n\nLanguage disabled.\n\n## Gap state\n\ndisabled\n\n## Limits\n\nStatic evidence only.\n",
+            ),
+            (
+                "wrong_root",
+                "rust",
+                "stable",
+                false,
+                vec!["Refresh Analysis - Saved Workspace Check"],
+                "## Evidence boundary\n\nWrong root.\n\n## Gap state\n\nwrong_root\n\n## Limits\n\nStatic evidence only.\n",
+            ),
+            (
+                "stale_artifact",
+                "rust",
+                "stable",
+                false,
+                vec!["Refresh Analysis - Saved Workspace Check"],
+                "## Evidence boundary\n\nStale.\n\n## Gap state\n\nstale\n\n## Limits\n\nStatic evidence only.\n",
+            ),
+            (
+                "no_actionable_gap",
+                "rust",
+                "stable",
+                false,
+                vec!["Refresh Analysis - Saved Workspace Check"],
+                "## Evidence boundary\n\nNo action.\n\n## Gap state\n\nno action\n\n## Limits\n\nStatic evidence only.\n",
+            ),
+        ] {
+            let expected = corpus.join(case).join("expected");
+            let diagnostic_items = if diagnostics {
+                vec![serde_json::json!({
+                    "uri": "src/lib.rs",
+                    "message": "gap",
+                    "data": {
+                        "canonical_gap_id": format!("gap:{case}"),
+                        "language": language,
+                        "language_status": language_status
+                    }
+                })]
+            } else {
+                Vec::new()
+            };
+            let action_items = actions
+                .iter()
+                .map(|title| {
+                    serde_json::json!({
+                        "title": title,
+                        "command": if *title == "Refresh Analysis - Saved Workspace Check" {
+                            "ripr.refresh"
+                        } else {
+                            "ripr.copyContext"
+                        },
+                        "arguments": []
+                    })
+                })
+                .collect::<Vec<_>>();
+            write(
+                &expected.join("lsp-diagnostics.json"),
+                &serde_json::json!({
+                    "fixture": format!("editor_gap_cockpit/{case}"),
+                    "diagnostics": diagnostic_items
+                })
+                .to_string(),
+            );
+            write(
+                &expected.join("lsp-code-actions.json"),
+                &serde_json::json!({
+                    "fixture": format!("editor_gap_cockpit/{case}"),
+                    "actions": action_items
+                })
+                .to_string(),
+            );
+            write(&expected.join("lsp-hover.md"), hover);
+            write(
+                &expected.join("vscode-status.json"),
+                &serde_json::json!({
+                    "schema_version": "0.1",
+                    "fixture": format!("editor_gap_cockpit/{case}"),
+                    "states": []
+                })
+                .to_string(),
+            );
+            write(
+                &expected.join("gap-projection.json"),
+                &serde_json::json!({
+                    "schema_version": "0.1",
+                    "case": case
+                })
+                .to_string(),
+            );
+        }
+    }
+
     fn semantic_panic_finding(
         line: usize,
         container: &str,
