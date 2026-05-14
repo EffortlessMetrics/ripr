@@ -1096,6 +1096,51 @@ mod tests {
         }
     }
 
+    fn sample_actionability(
+        class: &str,
+        reason: &str,
+        has_concrete_guidance: bool,
+    ) -> EvidenceRecordActionability {
+        EvidenceRecordActionability {
+            class: class.to_string(),
+            reason: reason.to_string(),
+            has_concrete_guidance,
+            signals: EvidenceRecordActionabilitySignals {
+                missing_discriminator: has_concrete_guidance,
+                candidate_value: has_concrete_guidance,
+                assertion_shape: has_concrete_guidance,
+                related_test: has_concrete_guidance,
+                recommended_test_target: has_concrete_guidance,
+                verification_command: has_concrete_guidance,
+            },
+        }
+    }
+
+    fn sample_recommendation(reason: &str) -> EvidenceRecordRecommendation {
+        EvidenceRecordRecommendation {
+            action: "no_action".to_string(),
+            reason: reason.to_string(),
+            recommended_test: None,
+            nearest_test_to_imitate: None,
+            candidate_values: Vec::new(),
+            assertion_shape: None,
+            verify_command: None,
+        }
+    }
+
+    fn sample_static_limitation(
+        category: &str,
+        repair_route: &str,
+    ) -> EvidenceRecordStaticLimitation {
+        EvidenceRecordStaticLimitation {
+            stage: "observe".to_string(),
+            state: "unknown".to_string(),
+            reason: "helper hides assertion".to_string(),
+            category: category.to_string(),
+            repair_route: repair_route.to_string(),
+        }
+    }
+
     #[test]
     fn evidence_record_carries_identity_path_guidance_and_calibration_placeholder() {
         let entry = sample_classified(StageState::Yes, SeamGripClass::WeaklyGripped);
@@ -1382,6 +1427,121 @@ mod tests {
                 "unexpected repair route for {category}"
             );
         }
+    }
+
+    #[test]
+    fn evidence_record_alignment_helpers_cover_non_actionable_states() {
+        let not_policy_relevant =
+            sample_actionability("not_policy_relevant", "no user action", false);
+        let strong = sample_classified(StageState::Yes, SeamGripClass::StronglyGripped);
+        let intentional = sample_classified(StageState::Yes, SeamGripClass::Intentional);
+        let unknown = sample_classified(StageState::Yes, SeamGripClass::Suppressed);
+
+        assert_eq!(
+            gap_state_for(&strong, &not_policy_relevant),
+            "already_observed"
+        );
+        assert_eq!(
+            gap_state_for(&intentional, &not_policy_relevant),
+            "internal_only"
+        );
+        assert_eq!(gap_state_for(&unknown, &not_policy_relevant), "unknown");
+        assert_eq!(canonical_item_kind_for("already_observed"), "observed");
+        assert_eq!(canonical_item_kind_for("internal_only"), "no_action");
+        assert_eq!(canonical_item_kind_for("unknown"), "evidence");
+        assert_eq!(
+            alignment_actionability_for(&strong, &not_policy_relevant),
+            "already_observed"
+        );
+        assert_eq!(
+            alignment_actionability_for(&intentional, &not_policy_relevant),
+            "no_action"
+        );
+        assert_eq!(
+            alignment_actionability_for(
+                &unknown,
+                &sample_actionability("actionable_focused_test", "add focused test", true)
+            ),
+            "add_focused_test"
+        );
+        assert_eq!(
+            alignment_actionability_for(&unknown, &not_policy_relevant),
+            "unknown"
+        );
+
+        let recommendation = sample_recommendation("fallback repair");
+        assert_eq!(
+            recommended_repair_for(
+                "already_observed",
+                &recommendation,
+                &not_policy_relevant,
+                &[]
+            ),
+            "No new RIPR action; current static evidence already observes this seam."
+        );
+        assert_eq!(
+            recommended_repair_for("internal_only", &recommendation, &not_policy_relevant, &[]),
+            "No user test action in documented scope."
+        );
+        assert_eq!(
+            recommended_repair_for("unknown", &recommendation, &not_policy_relevant, &[]),
+            "fallback repair"
+        );
+        assert_eq!(
+            recommended_repair_for(
+                "static_limitation",
+                &recommendation,
+                &not_policy_relevant,
+                &[sample_static_limitation(
+                    "opaque_helper_call",
+                    "analysis/oracle-semantics-audit-fixes"
+                )],
+            ),
+            "Inspect static limitation `opaque_helper_call` via `analysis/oracle-semantics-audit-fixes`."
+        );
+
+        let unknown_confidence = alignment_confidence_for("unknown", &[]);
+        assert_eq!(unknown_confidence.basis, "unknown");
+        assert_eq!(
+            unknown_confidence.notes,
+            vec!["no imported runtime calibration data"]
+        );
+        let limited_confidence = alignment_confidence_for(
+            "static_limitation",
+            &[sample_static_limitation(
+                "opaque_helper_call",
+                "analysis/oracle-semantics-audit-fixes",
+            )],
+        );
+        assert_eq!(limited_confidence.basis, "static_only");
+        assert_eq!(
+            limited_confidence.notes[1],
+            "static limitation: opaque_helper_call"
+        );
+    }
+
+    #[test]
+    fn presentation_text_json_serializes_nullable_alignment_fields() {
+        let presentation_text = EvidenceRecordPresentationText {
+            visibility: "unknown".to_string(),
+            observer: "unknown".to_string(),
+            actionability: "inspect_visibility".to_string(),
+            source_kind: "const_decl".to_string(),
+            canonical_group_reason: Some("declaration_and_literal_same_text_constant".to_string()),
+            recommended_observer: "cli_help_output".to_string(),
+        };
+
+        let json = presentation_text_json(&presentation_text);
+
+        assert_eq!(json["visibility"], "unknown");
+        assert_eq!(json["observer"], "unknown");
+        assert_eq!(json["actionability"], "inspect_visibility");
+        assert_eq!(json["source_kind"], "const_decl");
+        assert_eq!(
+            json["canonical_group_reason"],
+            "declaration_and_literal_same_text_constant"
+        );
+        assert_eq!(json["recommended_observer"], "cli_help_output");
     }
 
     #[test]
