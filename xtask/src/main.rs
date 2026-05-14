@@ -28051,19 +28051,20 @@ mod tests {
         evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
         evidence_quality_trend_json, evidence_quality_trend_markdown,
         extract_json_object_usize_map, extract_json_string, extract_json_warnings,
-        extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns,
-        generated_clean_violations, github_event_pull_request_title_from_text, glob_matches,
-        golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
-        guarded_allow_attributes_in_text, install_hooks_in, is_badge_refresh_context,
-        is_bdd_test_name, is_campaign_path, is_dependency_surface_candidate, is_docs_path,
-        is_evidence_path, is_generated_candidate, is_known_campaign_command,
-        is_non_rust_programming_candidate, is_policy_path, is_production_path, is_receipt_status,
-        is_ripr_managed_hook, is_snake_case_id, is_spec_id, is_stale_agent_boundary_scan_target,
-        json_escape, json_number_after, json_string_values_for_key, json_summary_count,
-        known_commands, known_xtask_command, lane1_evidence_audit_from_repo_exposure,
-        lane1_evidence_audit_json, lane1_evidence_audit_markdown, local_context_line_findings,
-        local_markdown_target, lsp_cockpit_report, lsp_cockpit_report_json,
-        lsp_cockpit_report_markdown, markdown_links_in_text, mutation_calibration_report_json,
+        extract_workflow_run_blocks, finish_worktree_doctor_report, first_line_difference,
+        forbidden_panic_patterns, generated_clean_violations,
+        github_event_pull_request_title_from_text, glob_matches, golden_changes_without_blessing,
+        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
+        install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
+        is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
+        is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
+        is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
+        is_stale_agent_boundary_scan_target, json_escape, json_number_after,
+        json_string_values_for_key, json_summary_count, known_commands, known_xtask_command,
+        lane1_evidence_audit_from_repo_exposure, lane1_evidence_audit_json,
+        lane1_evidence_audit_markdown, local_context_line_findings, local_markdown_target,
+        lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
+        markdown_links_in_text, mutation_calibration_report_json,
         mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
         no_panic_toml_string, non_rust_programming_retention_reason,
         normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
@@ -28092,7 +28093,7 @@ mod tests {
         unknown_command_message, validate_local_context_allowlist, vscode_compile_command,
         vscode_extension_dir, vscode_package_command, vscode_package_version,
         vscode_test_e2e_command, windows_absolute_path_tokens, workflow_runtime_violations,
-        worktree_doctor_findings, write_repo_exposure_latency_report,
+        worktree, worktree_doctor_findings, write_repo_exposure_latency_report,
     };
     use super::{
         DeclaredIntent, LocalContextFinding,
@@ -37318,6 +37319,36 @@ jobs:
     }
 
     #[test]
+    fn worktree_doctor_rejects_dirty_generated_artifacts() {
+        let changes = vec![
+            changed_path("target/ripr/reports/policy-operations.json", &["A"]),
+            changed_path("crates/ripr/examples/sample/target/debug/sample", &["A"]),
+        ];
+        let findings =
+            worktree_doctor_findings("feature/generated", 0, &changes, false, false, false);
+
+        assert!(doctor_has_error(
+            &findings,
+            "generated RIPR target artifact is dirty"
+        ));
+        assert!(doctor_has_error(
+            &findings,
+            "sample workspace target artifact is dirty"
+        ));
+
+        let deletion = vec![changed_path("target/ripr/reports/old.json", &["D"])];
+        let deletion_findings =
+            worktree_doctor_findings("feature/generated", 0, &deletion, false, false, false);
+        assert!(
+            !doctor_has_error(
+                &deletion_findings,
+                "generated RIPR target artifact is dirty"
+            ),
+            "unexpected findings: {deletion_findings:?}"
+        );
+    }
+
+    #[test]
     fn worktree_doctor_warns_about_broad_diff_without_work_item_marker() {
         let changes = vec![
             changed_path("docs/specs/RIPR-SPEC-9999-example.md", &["A"]),
@@ -37347,6 +37378,67 @@ jobs:
             ),
             "unexpected findings: {marker_findings:?}"
         );
+    }
+
+    #[test]
+    fn worktree_command_rejects_missing_and_unknown_subcommands() -> Result<(), String> {
+        let Err(missing) = worktree(&[]) else {
+            return Err("missing subcommand should fail".to_string());
+        };
+        assert!(missing.contains("missing worktree command"));
+        assert!(missing.contains("cargo xtask worktree doctor"));
+
+        let Err(unknown) = worktree(&["inspect".to_string()]) else {
+            return Err("unknown subcommand should fail".to_string());
+        };
+        assert!(unknown.contains("unknown worktree command"));
+        assert!(unknown.contains("cargo xtask worktree doctor"));
+        Ok(())
+    }
+
+    #[test]
+    fn worktree_doctor_command_writes_clean_report_in_git_worktree() -> Result<(), String> {
+        with_temp_cwd("worktree-doctor-command", |root| -> Result<(), String> {
+            run("git", &["init", "-b", "feature"])?;
+            worktree(&["doctor".to_string()])?;
+            let report_path = root.join("target/ripr/reports/worktree-doctor.md");
+            let report = fs::read_to_string(&report_path)
+                .map_err(|err| format!("failed to read {}: {err}", report_path.display()))?;
+
+            assert!(report.contains("Status: pass"));
+            assert!(report.contains("No findings."));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn worktree_doctor_report_renders_warnings_and_errors() -> Result<(), String> {
+        with_temp_cwd("worktree-doctor-report", |root| -> Result<(), String> {
+            let warnings = vec![WorktreeDoctorFinding {
+                severity: WorktreeDoctorSeverity::Warning,
+                message: "target/ripr exists".to_string(),
+            }];
+            finish_worktree_doctor_report(&warnings)?;
+            let report_path = root.join("target/ripr/reports/worktree-doctor.md");
+            let warning_report = fs::read_to_string(&report_path)
+                .map_err(|err| format!("failed to read {}: {err}", report_path.display()))?;
+            assert!(warning_report.contains("Status: warn"));
+            assert!(warning_report.contains("Warnings:"));
+
+            let errors = vec![WorktreeDoctorFinding {
+                severity: WorktreeDoctorSeverity::Error,
+                message: "branch is behind origin/main".to_string(),
+            }];
+            let Err(err) = finish_worktree_doctor_report(&errors) else {
+                return Err("error findings should fail the doctor report".to_string());
+            };
+            assert!(err.contains("worktree doctor found blocking issues"));
+            let error_report = fs::read_to_string(&report_path)
+                .map_err(|err| format!("failed to read {}: {err}", report_path.display()))?;
+            assert!(error_report.contains("Status: fail"));
+            assert!(error_report.contains("Errors:"));
+            Ok(())
+        })
     }
 
     #[test]
