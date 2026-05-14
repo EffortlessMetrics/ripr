@@ -2449,7 +2449,7 @@ enabled = ["rust"]
 
     assert_eq!(
         rust_only_projection, default_projection,
-        "explicit [languages] enabled = [\"rust\"] must preserve the saved-workspace Rust editor projection"
+        "explicit [languages] enabled = [\"rust\"] must preserve the saved-workspace Rust editor diagnostics, hover, actions, and status projection"
     );
     Ok(())
 }
@@ -2875,11 +2875,15 @@ fn workspace_projection_contract(
         &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic.clone()])?,
         Some(&diagnostics.snapshot),
     );
+    let summary = RefreshLogSummary::from_snapshot(1, &diagnostics.snapshot)
+        .with_enabled_languages(config.repo_config().languages().enabled());
+    let status = refresh_completed_log_message(&summary, diagnostics.batches.len(), 0);
 
     Ok(serde_json::json!({
         "diagnostics": projected_diagnostics,
         "hover": normalize_snapshot_age(&hover_markdown),
         "actions": project_code_actions(root, &actions)?,
+        "status": status,
     }))
 }
 
@@ -3497,9 +3501,21 @@ fn preview_finding_hover_shows_boundary_before_evidence() -> Result<(), String> 
                 .value
                 .find("## RIPR Evidence")
                 .ok_or_else(|| "expected evidence section".to_string())?;
+            let static_limit_index = markup
+                .value
+                .find("Static limit: missing_import_graph")
+                .ok_or_else(|| "expected static limit".to_string())?;
+            let action_index = markup
+                .value
+                .find("Add an exact boundary assertion.")
+                .ok_or_else(|| "expected suggested action text".to_string())?;
             assert!(
                 preview_index < evidence_index,
                 "preview boundary must appear before evidence details"
+            );
+            assert!(
+                static_limit_index < action_index,
+                "static limits must appear before suggested action language"
             );
             assert!(markup.value.contains("Language: python"));
             assert!(markup.value.contains("Status: preview"));
@@ -3510,6 +3526,43 @@ fn preview_finding_hover_shows_boundary_before_evidence() -> Result<(), String> 
         }
         _ => Err("expected markup hover".to_string()),
     }
+}
+
+#[test]
+fn preview_finding_code_actions_stay_bounded_to_context_and_refresh() -> Result<(), String> {
+    let mut finding = sample_finding();
+    finding.language = Some(LanguageId::Python);
+    finding.language_status = Some(LanguageStatus::Preview);
+    finding.owner_kind = Some(OwnerKind::Function);
+    finding.static_limit_kind = Some(StaticLimitKind::MissingImportGraph);
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let uri = test_uri("file:///workspace/src/pricing.py")?;
+    let snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        vec![finding],
+    );
+    let actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
+        Some(&snapshot),
+    );
+
+    let commands = code_action_commands(&actions)?;
+    assert_eq!(
+        commands
+            .iter()
+            .map(|(title, command, _)| (title.as_str(), command.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("Inspect finding: copy context packet", COPY_CONTEXT_COMMAND),
+            ("Refresh Analysis - Saved Workspace Check", REFRESH_COMMAND),
+        ],
+        "preview findings must not expose seam repair, related-test, verify, or receipt actions without validated seam/gap evidence"
+    );
+    assert_eq!(commands[0].2[0]["finding_id"], "probe:pricing:88:predicate");
+    assert_eq!(commands[0].2[0]["probe_id"], "probe:pricing:88:predicate");
+    Ok(())
 }
 
 #[test]
