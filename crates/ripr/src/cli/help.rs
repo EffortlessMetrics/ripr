@@ -494,6 +494,7 @@ Index options:
 
 Gap ledger options:
   --records PATH        Explicit GapRecord JSON, gap_records JSON, or fixture corpus JSON.
+  --repo-exposure PATH  Derive repo-scoped Rust GapRecords from seams[].evidence_record.
   --root PATH           Workspace root label. Defaults to current directory.
   --out PATH            JSON output path. Defaults to target/ripr/reports/gap-decision-ledger.json.
   --out-md PATH         Markdown output path. Defaults to target/ripr/reports/gap-decision-ledger.md.
@@ -506,11 +507,12 @@ does not rerun analysis, edit source, generate tests, call providers, run
 mutation testing, publish inline comments, or make CI blocking by default.
 
 The gap decision ledger command is a read-only advisory renderer for explicit
-GapRecord input. It normalizes supplied gap records into JSON and Markdown,
+GapRecord input or existing repo-exposure evidence records. It normalizes
+supplied or derived gap records into JSON and Markdown,
 summarizes projection eligibility, preserves gate-decision as the configured
-pass/fail authority, and does not infer analyzer truth, publish comments, edit
-source, generate tests, call providers, run mutation testing, or change default
-CI blocking.
+pass/fail authority, and does not rerun hidden analysis, publish comments,
+edit source, generate tests, call providers, run mutation testing, or change
+default CI blocking.
 "#;
 
 const COVERAGE_GRIP_HELP: &str = r#"Report whether line coverage and behavior evidence moved together.

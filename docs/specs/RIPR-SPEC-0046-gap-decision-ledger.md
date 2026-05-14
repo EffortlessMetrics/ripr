@@ -437,7 +437,11 @@ Planned slices:
 - `fixtures/gap-decision-ledger-corpus` pins the record vocabulary and edge
   cases.
 - `output/gap-record-model-and-ledger` adds the internal model and public
-  JSON/Markdown producer.
+  JSON/Markdown producer over explicit `GapRecord` input.
+- `report/gap-ledger-evidence-record-input` derives conservative repo-scoped
+  Rust `GapRecord` entries from existing repo-exposure
+  `seams[].evidence_record.canonical_item` data without rerunning analysis or
+  making PR-local gate/comment claims.
 - `report/first-useful-action-gap-record` routes first useful action through
   gap IDs and repair routes. (done)
 - `report/pr-evidence-ledger-gap-record` routes PR evidence ledger movement

@@ -264,9 +264,39 @@ struct ReportPacketIndexOptions {
 #[derive(Debug, PartialEq, Eq)]
 struct GapDecisionLedgerOptions {
     root: String,
-    records: PathBuf,
+    source: GapDecisionLedgerSource,
     out: PathBuf,
     out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum GapDecisionLedgerSource {
+    Records(PathBuf),
+    RepoExposure(PathBuf),
+}
+
+impl GapDecisionLedgerSource {
+    fn path(&self) -> &Path {
+        match self {
+            Self::Records(path) | Self::RepoExposure(path) => path,
+        }
+    }
+
+    fn kind(&self) -> output::gap_decision_ledger::GapDecisionLedgerSourceKind {
+        match self {
+            Self::Records(_) => output::gap_decision_ledger::GapDecisionLedgerSourceKind::Records,
+            Self::RepoExposure(_) => {
+                output::gap_decision_ledger::GapDecisionLedgerSourceKind::RepoExposure
+            }
+        }
+    }
+
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Records(_) => "gap records",
+            Self::RepoExposure(_) => "repo exposure",
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -3596,12 +3626,13 @@ fn report_packet_index(args: &[String]) -> Result<(), String> {
 
 fn gap_decision_ledger(args: &[String]) -> Result<(), String> {
     let options = parse_gap_decision_ledger_options(args)?;
-    let records_path = output::baseline_delta::display_path(&options.records);
+    let records_path = output::baseline_delta::display_path(options.source.path());
     let input = output::gap_decision_ledger::GapDecisionLedgerInput {
         root: options.root,
         generated_at: gap_decision_ledger_generated_at()?,
+        source_kind: options.source.kind(),
         records_path,
-        records_json: read_optional_text_for_report("gap records", &options.records),
+        records_json: read_optional_text_for_report(options.source.label(), options.source.path()),
     };
     let report = output::gap_decision_ledger::build_gap_decision_ledger_report(input);
     let rendered_json = output::gap_decision_ledger::render_gap_decision_ledger_json(&report)?;
@@ -6438,6 +6469,7 @@ fn parse_report_packet_index_options(args: &[String]) -> Result<ReportPacketInde
 fn parse_gap_decision_ledger_options(args: &[String]) -> Result<GapDecisionLedgerOptions, String> {
     let mut root = ".".to_string();
     let mut records = None;
+    let mut repo_exposure = None;
     let mut out = PathBuf::from(output::gap_decision_ledger::DEFAULT_GAP_DECISION_LEDGER_OUT);
     let mut out_md = PathBuf::from(output::gap_decision_ledger::DEFAULT_GAP_DECISION_LEDGER_MD_OUT);
 
@@ -6457,6 +6489,15 @@ fn parse_gap_decision_ledger_options(args: &[String]) -> Result<GapDecisionLedge
                     "reports gap-ledger",
                 )?);
             }
+            "--repo-exposure" => {
+                i += 1;
+                repo_exposure = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--repo-exposure",
+                    "reports gap-ledger",
+                )?);
+            }
             "--out" => {
                 i += 1;
                 out = non_empty_path_arg(args, i, "--out", "reports gap-ledger")?;
@@ -6470,12 +6511,25 @@ fn parse_gap_decision_ledger_options(args: &[String]) -> Result<GapDecisionLedge
         i += 1;
     }
 
-    let records =
-        records.ok_or_else(|| "reports gap-ledger requires --records PATH".to_string())?;
+    let source = match (records, repo_exposure) {
+        (Some(records), None) => GapDecisionLedgerSource::Records(records),
+        (None, Some(repo_exposure)) => GapDecisionLedgerSource::RepoExposure(repo_exposure),
+        (None, None) => {
+            return Err(
+                "reports gap-ledger requires --records PATH or --repo-exposure PATH".to_string(),
+            );
+        }
+        (Some(_), Some(_)) => {
+            return Err(
+                "reports gap-ledger accepts either --records or --repo-exposure, not both"
+                    .to_string(),
+            );
+        }
+    };
 
     Ok(GapDecisionLedgerOptions {
         root,
-        records,
+        source,
         out,
         out_md,
     })
@@ -7703,11 +7757,28 @@ mod tests {
     fn reports_gap_ledger_requires_records_input() {
         assert_eq!(
             reports(&args(&["gap-ledger"])),
-            Err("reports gap-ledger requires --records PATH".to_string())
+            Err("reports gap-ledger requires --records PATH or --repo-exposure PATH".to_string())
         );
         assert_eq!(
             reports(&args(&["gap-ledger", "--records"])),
             Err("missing value for --records".to_string())
+        );
+        assert_eq!(
+            reports(&args(&["gap-ledger", "--repo-exposure"])),
+            Err("missing value for --repo-exposure".to_string())
+        );
+        assert_eq!(
+            reports(&args(&[
+                "gap-ledger",
+                "--records",
+                "records.json",
+                "--repo-exposure",
+                "repo-exposure.json"
+            ])),
+            Err(
+                "reports gap-ledger accepts either --records or --repo-exposure, not both"
+                    .to_string()
+            )
         );
         assert_eq!(
             reports(&args(&["unknown"])),
@@ -7747,6 +7818,127 @@ mod tests {
 
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove gap ledger dir: {err}"))?;
         Ok(())
+    }
+
+    #[test]
+    fn reports_gap_ledger_derives_repo_scoped_records_from_repo_exposure() -> Result<(), String> {
+        let dir = unique_command_test_dir("gap-ledger-repo-exposure");
+        std::fs::create_dir_all(&dir)
+            .map_err(|err| format!("create gap ledger repo exposure dir: {err}"))?;
+        let repo_exposure = dir.join("repo-exposure.json");
+        let out = dir.join("gap-decision-ledger.json");
+        let out_md = dir.join("gap-decision-ledger.md");
+        std::fs::write(
+            &repo_exposure,
+            repo_exposure_with_actionable_evidence_record(),
+        )
+        .map_err(|err| format!("write repo exposure: {err}"))?;
+
+        reports(&args(&[
+            "gap-ledger",
+            "--repo-exposure",
+            &repo_exposure.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text = std::fs::read_to_string(&out)
+            .map_err(|err| format!("read derived gap ledger JSON: {err}"))?;
+        assert!(json_text.contains("\"source_kind\": \"repo_exposure\""));
+        assert!(json_text.contains("\"records_total\": 1"));
+        assert!(json_text.contains("\"kind\": \"MissingBoundaryAssertion\""));
+        assert!(json_text.contains("\"scope\": \"repo_scoped\""));
+        assert!(json_text.contains("\"route_kind\": \"AddBoundaryAssertion\""));
+        assert!(json_text.contains("\"ripr_zero_count\":"));
+        let markdown = std::fs::read_to_string(&out_md)
+            .map_err(|err| format!("read derived gap ledger Markdown: {err}"))?;
+        assert!(markdown.contains("AddBoundaryAssertion"));
+        assert!(markdown.contains("repo_scoped"));
+
+        std::fs::remove_dir_all(&dir)
+            .map_err(|err| format!("remove gap ledger repo exposure dir: {err}"))?;
+        Ok(())
+    }
+
+    fn repo_exposure_with_actionable_evidence_record() -> &'static str {
+        r#"{
+  "schema_version": "0.3",
+  "scope": "repo",
+  "seams": [
+    {
+      "seam_id": "seam-pricing-threshold",
+      "file": "src/pricing.rs",
+      "line": 88,
+      "evidence_record": {
+        "schema_version": "0.1",
+        "seam_id": "seam-pricing-threshold",
+        "canonical_gap_id": "gap:rust:pricing:threshold",
+        "raw_findings": [
+          {
+            "file": "src/pricing.rs",
+            "line": 88,
+            "kind": "weakly_gripped",
+            "expression": "amount >= discount_threshold",
+            "probe_kind": "predicate_boundary",
+            "source_id": "seam-pricing-threshold",
+            "evidence_record_ref": "seam-pricing-threshold"
+          }
+        ],
+        "canonical_item": {
+          "canonical_gap_id": "gap:rust:pricing:threshold",
+          "raw_group_size": 1,
+          "canonical_item_kind": "gap",
+          "evidence_class": "predicate_boundary",
+          "gap_state": "actionable",
+          "actionability": "upgrade_assertion",
+          "group_reason": "same owner and missing discriminator",
+          "why": "related tests reach the seam but miss the boundary discriminator",
+          "recommended_repair": "Add an exact boundary assertion.",
+          "related_test": {
+            "name": "below_threshold_has_no_discount",
+            "file": "tests/pricing_tests.rs",
+            "line": 12,
+            "reason": "direct owner call"
+          },
+          "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json",
+          "confidence": {
+            "basis": "static_only",
+            "notes": ["no imported runtime calibration data"]
+          }
+        },
+        "owner": "pricing::discounted_total",
+        "location": {
+          "file": "src/pricing.rs",
+          "line": 88
+        },
+        "seam_kind": "predicate_boundary",
+        "grip_class": "weakly_gripped",
+        "headline_eligible": true,
+        "recommendation": {
+          "action": "write_targeted_test",
+          "reason": "add the missing boundary assertion",
+          "recommended_test": {
+            "name": "discounts_at_threshold",
+            "file": "tests/pricing_tests.rs",
+            "reason": "nearest pricing test module"
+          },
+          "assertion_shape": {
+            "kind": "exact_return_value",
+            "example": "assert_eq!(discounted_total(100, 100), 90)"
+          },
+          "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"
+        },
+        "actionability": {
+          "class": "actionable_assertion_upgrade",
+          "reason": "related tests reach the seam but still miss a concrete discriminator",
+          "has_concrete_guidance": true
+        }
+      }
+    }
+  ]
+}"#
     }
 
     #[test]
