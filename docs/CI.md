@@ -309,7 +309,8 @@ agents can distinguish mutating commands, non-mutating checks, report-only
 commands, external-state reads, external-state mutations, and
 argument-dependent commands.
 `pr-summary` writes `target/ripr/reports/pr-summary.md` from git diff/status.
-`pr-triage-report` writes the advisory open-board hygiene report.
+`pr-triage-report` writes the advisory open-board hygiene report as Markdown
+and JSON.
 `gh-pr-status --pr <number>` writes a read-only merge-readiness packet for one
 PR, including merge state, required check status when GitHub exposes it,
 reviews, Droid status, and the next safe action.

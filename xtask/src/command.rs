@@ -368,7 +368,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
         command_entry(
             "pr-triage-report",
             "external_state_read",
-            "target/ripr/reports/pr-triage.md",
+            "target/ripr/reports/pr-triage.{md,json}",
             false,
             "Reads GitHub PR metadata and writes an advisory queue report.",
         ),

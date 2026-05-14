@@ -72,6 +72,9 @@ Planned scope:
   classifies xtask commands as mutating, non-mutating checks, report-only,
   external-state reads, external-state mutations, or argument-dependent, and
   flags commands that require explicit judgment before use.
+- `cargo xtask pr-triage-report` now writes agent-readable JSON next to the
+  Markdown queue report so open-board risks can be consumed without scraping
+  prose.
 - VS Code `ripr: Show Status` now includes first-run/no-output context:
   workspace root, resolved server source and command, editor selectors,
   enabled languages from the last server refresh, and the next safe action for
