@@ -90,7 +90,10 @@ Assertions / oracles the adapter must recognise:
 
 Related-test heuristics mirror the Rust and TypeScript adapters: changed
 owner name match, import-reference match, file-path proximity, and
-syntactic call proximity.
+syntactic call proximity. Direct owner calls must be token-aware. Module
+import aliases may match attribute calls such as `pricing.apply_discount(...)`;
+arbitrary object method calls must not be treated as related to a top-level
+function owner unless the changed owner is itself a method or class method.
 
 ## Probe Facts
 
