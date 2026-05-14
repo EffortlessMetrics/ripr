@@ -34,6 +34,9 @@ Each canonical evidence item must have:
 - an `evidence_class`;
 - a `gap_state`;
 - `actionability`;
+- a primary anchor when the item is eligible for a user-facing annotation,
+  diagnostic, or repair packet;
+- raw spans or raw findings that explain every contributing analyzer signal;
 - a concise `why` explanation;
 - a recommended repair or no-action/limitation explanation;
 - related-test and verification commands when known;
@@ -60,6 +63,39 @@ Raw findings remain available for audit, debugging, and line-local support:
 Downstream user surfaces may show raw findings as supporting context, but must
 not treat each raw finding as an independent action by default.
 
+### Primary Anchor And Raw Spans
+
+Canonical items separate placement from supporting evidence:
+
+| Field | Meaning |
+| --- | --- |
+| `primary_anchor` | The one preferred file/line/span/symbol target for rendering or repair routing. |
+| `raw_spans[]` | Every contributing raw source span, including duplicate, adjacent, or same-line raw findings. |
+| `raw_findings[]` | Full raw finding records with static class, expression, probe kind, and evidence references. |
+
+`primary_anchor` is required before another lane may publish a user-facing
+inline annotation, editor diagnostic, or repair packet for an aligned item. If
+Lane 1 cannot choose a safe primary anchor, the item may still appear in
+repo-local reports, but downstream surfaces must treat it as report-only until
+an anchor is supplied by a later evidence or policy artifact.
+
+Anchor selection must be deterministic and class-scoped:
+
+- prefer the semantic owner or changed declaration over a supporting literal,
+  helper call, or derived expression;
+- keep adjacent declaration-plus-literal groups as one item with one primary
+  anchor and multiple raw spans;
+- keep same-line duplicate raw findings as one item with one primary anchor;
+- keep line movement stable through `canonical_gap_id` even when the concrete
+  anchor line changes;
+- avoid using raw line location alone when different owners, discriminators, or
+  evidence classes could collide.
+
+For presentation text constants, the default primary anchor is the constant
+declaration line when present. The assigned string literal line remains a raw
+span. Literal-only findings may use the literal span as primary anchor only
+when the owning constant or rendered-label owner is known.
+
 ### Canonical Item Contract
 
 The planned additive evidence-record subset is:
@@ -85,6 +121,26 @@ The planned additive evidence-record subset is:
   "evidence_class": "presentation_text",
   "gap_state": "static_limitation",
   "actionability": "inspect_visibility",
+  "primary_anchor": {
+    "file": "src/devices.rs",
+    "line": 46,
+    "span": null,
+    "symbol": "APPLE_M3_AIR_DEVICE_LABELS_TEXT"
+  },
+  "raw_spans": [
+    {
+      "file": "src/devices.rs",
+      "line": 46,
+      "span": null,
+      "role": "declaration"
+    },
+    {
+      "file": "src/devices.rs",
+      "line": 47,
+      "span": null,
+      "role": "assigned_literal"
+    }
+  ],
   "group_reason": "declaration_and_literal_same_text_constant",
   "why": "Changed presentation text could not be traced to or away from a user-visible output sink.",
   "recommended_repair": "Trace the string constant to a rendered output path or confirm it is internal-only.",
@@ -109,7 +165,11 @@ This is additive. Existing evidence-record v0.1 consumers may keep using legacy
 fields until they opt into aligned canonical items. The first implementation
 adds `raw_findings[]` and `canonical_item` to `seams[].evidence_record` while
 leaving the existing `actionability` object intact; the class-scoped alignment
-label lives at `canonical_item.actionability`.
+label lives at `canonical_item.actionability`. Explicit `primary_anchor` and
+`raw_spans[]` fields are the contract for follow-up projection work that needs
+one authoritative placement target. Until those fields are present in a
+specific output, consumers must not infer projectable placement from every raw
+finding line.
 
 ### Counting Model
 
@@ -181,6 +241,26 @@ values are:
 Other evidence classes may define their own actionability values, but they must
 map to the same `gap_state` vocabulary.
 
+### Evidence Class Rules
+
+Each evidence class must define what counts as action, already-observed,
+internal/no-action, limitation, and must-not-infer behavior before Lane 1 marks
+the class stable.
+
+| Evidence class | Actionable when | Already observed when | Internal/no-action when | Limitation when | Must not infer |
+| --- | --- | --- | --- | --- | --- |
+| `behavior_boundary` | A reachable owner lacks an exact boundary value or discriminator assertion. | A related test observes the exact boundary value and discriminating result. | The changed boundary is outside user-observable behavior in documented scope. | Activation values, constants, or owner flow cannot be resolved. | Broad reach, smoke assertions, or coverage-like signals are enough. |
+| `error_path` | A related test checks broad error shape but misses an exact error variant or payload discriminator. | A related test asserts the exact variant or discriminating payload. | The error path is unreachable or intentionally internal in documented scope. | Helper, macro, or dynamic error construction hides the observed discriminator. | `is_err`, `to_string`, or helper names prove exact error observation. |
+| `return_value` | A changed returned or constructed value is reached but not exactly observed. | A related test observes the exact returned value or changed field. | The value is internal-only or intentionally not policy-relevant. | Value origin, builder override, or cross-file constant resolution is unsupported. | A call, unwrap, or broad predicate proves the changed value is asserted. |
+| `side_effect` | The changed behavior affects a supported event, state, persistence, mock, log, or outbound call sink without an observer. | A supported observer checks the changed side effect. | The effect is internal-only or non-observable in documented scope. | Sink identity, mock shape, dynamic dispatch, or effect target is unsupported. | A call mention or mock name alone proves side-effect observation. |
+| `presentation_text` | User-visible output text lacks a snapshot, help-output, report, table, or golden observer. | A supported observer checks the rendered output text. | The label is internal-only in documented scope. | Visibility or observer topology cannot be traced safely. | Text alone creates user test debt or mutation testing is the first repair. |
+| `config_or_policy_constant` | A changed config or policy constant flows to a supported user-observable behavior without a discriminator. | A related test observes the behavior selected by the constant. | The constant only drives internal defaults, proof labels, or non-rendered metadata. | Cross-file formatting, macro expansion, generated config, or opaque lookup hides the behavior path. | Every changed constant is user-visible behavior or test debt. |
+| `static_limitation_only` | Never directly user-actionable without a stronger evidence class. | Not applicable. | Not applicable. | Static evidence is blocked by a named analyzer limitation. | Static limitations should be counted as user repair work. |
+
+New classes may start as report-only. A class becomes projectable only after it
+has fixture-backed grouping, anchor, actionability, limitation, and
+must-not-claim coverage.
+
 ### Grouping
 
 Multiple raw findings may map to one canonical item when they describe the same
@@ -194,6 +274,8 @@ deterministic and conservative:
   same;
 - unrelated owners, missing discriminators, or evidence classes must not
   collide.
+- primary anchor movement must not create duplicate user annotations when the
+  canonical item identity is unchanged.
 
 Presentation-text declaration and literal findings should group when they
 describe the same string constant:
@@ -227,6 +309,10 @@ An implemented finding-to-gap alignment feature must show:
 - canonical items carry `canonical_gap_id`, `evidence_class`, `gap_state`,
   `actionability`, `why`, `recommended_repair`, `verify_command`,
   `static_limitations`, `confidence`, and `raw_findings`;
+- projectable items carry or can derive one `primary_anchor` and retain all
+  supporting `raw_spans[]` or `raw_findings[]`;
+- each supported evidence class documents actionable, already-observed,
+  internal/no-action, limitation, and must-not-infer behavior;
 - duplicate raw findings can map to one canonical item with a group reason and
   raw group size;
 - static limitations are classified as limitations, not user test debt;
@@ -265,6 +351,26 @@ projection as an additive object. The minimum output contract is:
   "evidence_class": "presentation_text",
   "gap_state": "static_limitation",
   "actionability": "inspect_visibility",
+  "primary_anchor": {
+    "file": "src/devices.rs",
+    "line": 46,
+    "span": null,
+    "symbol": "APPLE_M3_AIR_DEVICE_LABELS_TEXT"
+  },
+  "raw_spans": [
+    {
+      "file": "src/devices.rs",
+      "line": 46,
+      "span": null,
+      "role": "declaration"
+    },
+    {
+      "file": "src/devices.rs",
+      "line": 47,
+      "span": null,
+      "role": "assigned_literal"
+    }
+  ],
   "why": "Visibility is unknown through unsupported output tracing.",
   "recommended_repair": "Trace the constant to an output sink or confirm internal-only use.",
   "related_test": null,
@@ -321,6 +427,8 @@ Declaration plus literal grouping:
 - RIPR emits one canonical item with
   `canonical_gap_id = "presentation_text::APPLE_M3_AIR_DEVICE_LABELS_TEXT"`.
 - `raw_findings` contains both source lines.
+- `primary_anchor` points at the declaration line.
+- `raw_spans` contains both the declaration and assigned literal line.
 - `group_reason = "declaration_and_literal_same_text_constant"`.
 - Downstream surfaces have one item to render.
 
@@ -388,7 +496,7 @@ Follow-up implementation should include:
 - user-visible unobserved, user-visible observed, internal-only, and
   visibility-unknown presentation-text cases;
 - evidence-record contract tests for raw findings, gap state, actionability,
-  group reason, repair route, and confidence fields;
+  group reason, repair route, primary anchor, raw spans, and confidence fields;
 - report tests proving raw findings remain supporting evidence;
 - consumer-handoff docs that identify canonical items as authoritative;
 - scorecard/trend tests for alignment metrics.
@@ -404,6 +512,8 @@ Planned Lane 1 slices:
   must-not-claim guards.
 - `analysis/finding-alignment-evidence-fields` adds additive `raw_findings[]`,
   `canonical_item`, and nullable `presentation_text` evidence-record fields.
+- `analysis/finding-alignment-primary-anchors` adds explicit `primary_anchor`
+  and `raw_spans[]` fields for projectable canonical items.
 - `analysis/presentation-text-canonical-grouping` applies the contract to
   declaration plus literal grouping. The first implemented projection groups
   supported changed `&str` presentation constants and adjacent literal raw
