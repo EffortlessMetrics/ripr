@@ -12,6 +12,7 @@ pub(crate) mod evidence_health;
 pub(crate) mod evidence_record;
 pub(crate) mod first_useful_action;
 pub(crate) mod format;
+pub(crate) mod gap_decision_ledger;
 pub(crate) mod gate;
 pub mod github;
 pub mod human;

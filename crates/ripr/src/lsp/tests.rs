@@ -2878,9 +2878,23 @@ fn workspace_projection_contract(
 
     Ok(serde_json::json!({
         "diagnostics": projected_diagnostics,
-        "hover": hover_markdown,
+        "hover": normalize_snapshot_age(&hover_markdown),
         "actions": project_code_actions(root, &actions)?,
     }))
+}
+
+fn normalize_snapshot_age(markdown: &str) -> String {
+    markdown
+        .lines()
+        .map(|line| {
+            if line.starts_with("Analysis snapshot: generated ") {
+                "Analysis snapshot: generated <elapsed> ago.".to_string()
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn first_seam_diagnostic(

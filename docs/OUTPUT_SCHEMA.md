@@ -7889,6 +7889,116 @@ command is not represented in the e2e command scan. The report is not a schema
 for LSP protocol messages; those remain pinned by fixture expectations and LSP
 unit tests.
 
+## Gap Decision Ledger
+
+`ripr reports gap-ledger --records <path>` renders a read-only advisory ledger
+from explicit `GapRecord` input. The input may be a `records` array,
+`gap_records` array, raw record array, or the `fixtures/gap-decision-ledger`
+corpus shape where each case contains `expected_gap_record`.
+
+The command writes JSON to `target/ripr/reports/gap-decision-ledger.json` and
+Markdown to `target/ripr/reports/gap-decision-ledger.md` by default. It does
+not rerun analysis, infer analyzer truth, publish comments, edit source,
+generate tests, call providers, run mutation testing, change gate policy, or
+make CI blocking by default.
+
+JSON shape:
+
+```jsonc
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "gap_decision_ledger",
+  "status": "advisory",
+  "root": ".",
+  "generated_at": "unix_ms:1778710000000",
+  "inputs": {
+    "records": "fixtures/gap-decision-ledger/corpus.json"
+  },
+  "summary": {
+    "records_total": 18,
+    "repairable_total": 9,
+    "static_limitation_total": 1,
+    "no_action_total": 5,
+    "missing_artifact_total": 1,
+    "projection_pr_comment_eligible": 5,
+    "projection_gate_candidate": 1,
+    "projection_agent_packet_eligible": 10,
+    "ripr_zero_target_count": 1,
+    "ripr_plus_target_count": 2,
+    "preview_ineligible_total": 1,
+    "receipt_improved_total": 1,
+    "receipt_unchanged_after_attempt_total": 1,
+    "missing_output_contract_total": 1
+  },
+  "records": [
+    {
+      "gap_id": "gap:pr:pricing:threshold-boundary",
+      "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+      "kind": "MissingBoundaryAssertion",
+      "language": "rust",
+      "language_status": "stable",
+      "scope": "pr_local",
+      "evidence_class": "predicate_boundary",
+      "gap_state": "actionable",
+      "policy_state": "new",
+      "repairability": "repairable",
+      "repair_route": {
+        "route_kind": "AddBoundaryAssertion",
+        "target_file": "tests/pricing.rs",
+        "assertion_shape": "assert_eq!(discount(100, 100), 90)"
+      },
+      "anchor": {
+        "file": "src/pricing.rs",
+        "line": 42,
+        "owner": "pricing::discount",
+        "dedupe_fingerprint": "gap:rust:pricing:discount:threshold-boundary"
+      },
+      "evidence_ids": [
+        "evidence:pricing-threshold-reached"
+      ],
+      "projection_eligibility": {
+        "pr_comment": {
+          "eligible": true,
+          "reason": "stable_anchor_and_repair_route"
+        },
+        "gate_candidate": {
+          "eligible": true,
+          "reason": "safe_gate_predicate_satisfied"
+        }
+      },
+      "verification_commands": [
+        "cargo xtask fixtures boundary_gap"
+      ],
+      "safe_gate_predicate": {
+        "policy_target_enabled": true,
+        "suppressed": false,
+        "waived": false,
+        "acknowledged_only": false,
+        "baseline_known": false,
+        "preview_language": false,
+        "static_unknown_only": false
+      },
+      "receipt": {
+        "state": "missing_receipt",
+        "movement": "missing_receipt"
+      },
+      "authority_boundary": "gate_decision_artifact_only"
+    }
+  ],
+  "warnings": [],
+  "limits": [
+    "Advisory static gap decisions only.",
+    "Gate-decision artifacts remain the only configured pass/fail authority."
+  ]
+}
+```
+
+`status` is `advisory` when records parse cleanly, `advisory_with_warnings`
+when records are present but violate projection-safety checks, and `blocked`
+when no records can be read. The summary counts are projection inputs only;
+they are not gate authority.
+
 ## Mutation Calibration Reports
 
 `ripr calibrate cargo-mutants --mutants-json <path> --repo-exposure-json <repo-exposure-json>`
