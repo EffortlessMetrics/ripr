@@ -26,8 +26,8 @@ use policy::{
     check_static_language, check_workflows,
 };
 use reports::{
-    dogfood, fixtures, metrics_report, pr_summary, receipts_write, repo_badge_artifacts,
-    reports_index, test_oracle_report,
+    dogfood, fixtures, metrics_report, pr_summary, receipts_write, reports_index,
+    test_oracle_report,
 };
 #[cfg(test)]
 use reports::{lsp_cockpit_report, targeted_test_outcome};
@@ -18549,55 +18549,98 @@ fn normalize_report_path(path: &str) -> String {
         .to_string()
 }
 
-pub(crate) fn repo_badge_artifacts_impl() -> Result<(), String> {
-    run_with_repo_root_cwd(|| {
-        test_efficiency_report_impl()?;
-
-        let badge_dir = Path::new("target").join("ripr");
-        fs::create_dir_all(&badge_dir).map_err(|err| {
-            format!(
-                "failed to create badge directory {}: {err}",
-                normalize_path(&badge_dir)
-            )
-        })?;
-
-        // Repo scope is intentionally diff-free: the badge formats render from
-        // classified repo seams rather than `git diff origin/main...HEAD`.
-        // Capturing a diff would silently make the artifact dependent on branch
-        // state.
-        let mut ripr_native_json = String::new();
-        let mut ripr_plus_native_json = String::new();
-
-        for job in repo_badge_artifact_jobs() {
-            let output = run_repo_badge_artifact_job(job.format)?;
-            write_report(job.output_file, &output)?;
-            match badge_artifact_native_slot(job.format) {
-                Some(BadgeNativeSlot::Ripr) => ripr_native_json = output,
-                Some(BadgeNativeSlot::RiprPlus) => ripr_plus_native_json = output,
-                None => {}
-            }
-        }
-
-        let summary =
-            repo_badge_artifacts_summary_markdown(&ripr_native_json, &ripr_plus_native_json);
-        write_report("repo-ripr-badges.md", &summary)
-    })
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct RepoBadgeArtifactOptions {
+    gap_ledger: Option<PathBuf>,
 }
 
-fn run_repo_badge_artifact_job(format: &str) -> Result<String, String> {
+pub(crate) fn repo_badge_artifacts_impl(args: &[String]) -> Result<(), String> {
+    let options = parse_repo_badge_artifact_options(args, "repo-badge-artifacts")?;
+    run_with_repo_root_cwd(|| write_repo_badge_artifacts(&options))
+}
+
+fn write_repo_badge_artifacts(options: &RepoBadgeArtifactOptions) -> Result<(), String> {
+    test_efficiency_report_impl()?;
+
+    let badge_dir = Path::new("target").join("ripr");
+    fs::create_dir_all(&badge_dir).map_err(|err| {
+        format!(
+            "failed to create badge directory {}: {err}",
+            normalize_path(&badge_dir)
+        )
+    })?;
+
+    // Repo scope is intentionally diff-free: the badge formats render from
+    // classified repo seams or from an explicit gap decision ledger rather
+    // than `git diff origin/main...HEAD`. Capturing a diff would silently make
+    // the artifact dependent on branch state.
+    let mut ripr_native_json = String::new();
+    let mut ripr_plus_native_json = String::new();
+
+    for job in repo_badge_artifact_jobs() {
+        let output = run_repo_badge_artifact_job(job.format, options.gap_ledger.as_deref())?;
+        write_report(job.output_file, &output)?;
+        match badge_artifact_native_slot(job.format) {
+            Some(BadgeNativeSlot::Ripr) => ripr_native_json = output,
+            Some(BadgeNativeSlot::RiprPlus) => ripr_plus_native_json = output,
+            None => {}
+        }
+    }
+
+    let summary = repo_badge_artifacts_summary_markdown(
+        &ripr_native_json,
+        &ripr_plus_native_json,
+        options.gap_ledger.as_deref(),
+    );
+    write_report("repo-ripr-badges.md", &summary)
+}
+
+fn parse_repo_badge_artifact_options(
+    args: &[String],
+    command_name: &str,
+) -> Result<RepoBadgeArtifactOptions, String> {
+    let mut options = RepoBadgeArtifactOptions::default();
+    let mut index = 0usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--check" => {}
+            "--gap-ledger" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err(format!("{command_name} --gap-ledger requires a path"));
+                };
+                if value.trim().is_empty() {
+                    return Err(format!(
+                        "{command_name} --gap-ledger requires a non-empty path"
+                    ));
+                }
+                options.gap_ledger = Some(PathBuf::from(value));
+            }
+            other => return Err(format!("unknown {command_name} argument {other:?}")),
+        }
+        index += 1;
+    }
+    Ok(options)
+}
+
+fn run_repo_badge_artifact_job(format: &str, gap_ledger: Option<&Path>) -> Result<String, String> {
     if let Ok(ripr_bin) = std::env::var("RIPR_BIN") {
         let repo_root = repo_root()?;
-        let args = vec![
+        let mut args = vec![
             "check".to_string(),
             "--root".to_string(),
             normalize_path(&repo_root),
             "--format".to_string(),
             format.to_string(),
         ];
+        if let Some(gap_ledger) = gap_ledger {
+            args.push("--gap-ledger".to_string());
+            args.push(normalize_path(gap_ledger));
+        }
         return run_output_owned(&ripr_bin, &args);
     }
 
-    let args = repo_badge_artifact_command_args(format);
+    let args = repo_badge_artifact_command_args(format, gap_ledger);
     run_output_owned("cargo", &args)
 }
 
@@ -18634,12 +18677,12 @@ fn repo_badge_artifact_jobs() -> Vec<BadgeArtifactJob> {
     ]
 }
 
-fn repo_badge_artifact_command_args(format: &str) -> Vec<String> {
+fn repo_badge_artifact_command_args(format: &str, gap_ledger: Option<&Path>) -> Vec<String> {
     // Intentionally omits any `--diff` / `--base` argument: repo scope must
     // not consult `git diff origin/main...HEAD`. The regression test
     // `repo_badge_artifact_command_args_does_not_use_git_diff` pins this
     // contract.
-    vec![
+    let mut args = vec![
         "run".to_string(),
         "-p".to_string(),
         "ripr".to_string(),
@@ -18650,20 +18693,35 @@ fn repo_badge_artifact_command_args(format: &str) -> Vec<String> {
         ".".to_string(),
         "--format".to_string(),
         format.to_string(),
-    ]
+    ];
+    if let Some(gap_ledger) = gap_ledger {
+        args.push("--gap-ledger".to_string());
+        args.push(normalize_path(gap_ledger));
+    }
+    args
 }
 
 fn repo_badge_artifacts_summary_markdown(
     ripr_native_json: &str,
     ripr_plus_native_json: &str,
+    gap_ledger: Option<&Path>,
 ) -> String {
     let mut markdown = String::from("# ripr repo badges\n\n");
-    markdown.push_str(
-        "Repo-scoped artifacts: rendered against classified repo seams, not \
+    if let Some(gap_ledger) = gap_ledger {
+        markdown.push_str(&format!(
+            "Repo-scoped artifacts: rendered from explicit gap decision ledger \
+`{}`. Counts reflect policy-targeted `GapRecord` projection eligibility, not \
+`git diff origin/main...HEAD`. They are not runtime mutation confirmation.\n\n",
+            normalize_path(gap_ledger)
+        ));
+    } else {
+        markdown.push_str(
+            "Repo-scoped artifacts: rendered against classified repo seams, not \
 against `git diff origin/main...HEAD`. Counts reflect seam-native unresolved \
 exposure gaps and unsuppressed actionable test-efficiency findings under the \
 configured policy. They are not runtime mutation confirmation.\n\n",
-    );
+        );
+    }
     append_badge_section(&mut markdown, "ripr", ripr_native_json);
     append_badge_section(&mut markdown, "ripr+", ripr_plus_native_json);
     markdown.push_str("## Artifacts\n\n");
@@ -18693,9 +18751,10 @@ const BADGE_ENDPOINT_FILES: &[(&str, &str)] = &[
 /// via `repo_badge_artifacts()` and copies the two Shields projections
 /// into the committed `badges/` directory so the README endpoint URLs
 /// reflect the latest repo-scoped state.
-pub(crate) fn update_badge_endpoints_impl() -> Result<(), String> {
+pub(crate) fn update_badge_endpoints_impl(args: &[String]) -> Result<(), String> {
+    let options = parse_repo_badge_artifact_options(args, "badges")?;
     run_with_repo_root_cwd(|| {
-        repo_badge_artifacts()?;
+        write_repo_badge_artifacts(&options)?;
         copy_badge_endpoints_from_reports(Path::new("target/ripr/reports"), Path::new("."))
     })
 }
@@ -18783,9 +18842,10 @@ fn badge_endpoint_violation(
 /// requiring every PR to also update `badges/` is too much friction
 /// before the headline stabilizes. Use locally before campaign
 /// closeouts and after material analyzer changes.
-pub(crate) fn check_badge_endpoints_impl() -> Result<(), String> {
+pub(crate) fn check_badge_endpoints_impl(args: &[String]) -> Result<(), String> {
+    let options = parse_repo_badge_artifact_options(args, "badges")?;
     run_with_repo_root_cwd(|| {
-        repo_badge_artifacts()?;
+        write_repo_badge_artifacts(&options)?;
         let violations =
             compute_badge_endpoint_violations(Path::new("target/ripr/reports"), Path::new("."))?;
         finish_policy_report(
@@ -39562,7 +39622,7 @@ acceptance = "RIPR-SPEC-0999 defines the focused contract."
             "repo-badge-plus-json",
             "repo-badge-plus-shields",
         ] {
-            let args = repo_badge_artifact_command_args(format);
+            let args = repo_badge_artifact_command_args(format, None);
             for arg in &args {
                 if arg == "--diff" || arg == "--base" {
                     return Err(format!(
@@ -39581,6 +39641,27 @@ acceptance = "RIPR-SPEC-0999 defines the focused contract."
                     args.last()
                 ));
             }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn repo_badge_artifact_command_args_can_use_gap_ledger_without_diff() -> Result<(), String> {
+        let args =
+            repo_badge_artifact_command_args("repo-badge-json", Some(Path::new("gap-ledger.json")));
+        if args.iter().any(|arg| arg == "--diff" || arg == "--base") {
+            return Err(format!(
+                "gap-ledger repo-scope command args must remain diff-free: {args:?}"
+            ));
+        }
+        let gap_arg = args
+            .windows(2)
+            .find(|window| window[0] == "--gap-ledger")
+            .map(|window| window[1].as_str());
+        if gap_arg != Some("gap-ledger.json") {
+            return Err(format!(
+                "expected --gap-ledger gap-ledger.json in repo args, got {args:?}"
+            ));
         }
         Ok(())
     }
@@ -39639,6 +39720,7 @@ acceptance = "RIPR-SPEC-0999 defines the focused contract."
         let markdown = repo_badge_artifacts_summary_markdown(
             STUB_RIPR_NATIVE_JSON,
             STUB_RIPR_PLUS_NATIVE_JSON,
+            None,
         );
 
         let must_contain = [
@@ -39651,6 +39733,28 @@ acceptance = "RIPR-SPEC-0999 defines the focused contract."
             "- `repo-ripr-plus-badge-shields.json`",
         ];
         for expected in must_contain {
+            if !markdown.contains(expected) {
+                return Err(format!(
+                    "expected '{expected}' in repo markdown, got:\n{markdown}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn repo_badge_artifacts_summary_markdown_names_gap_ledger_basis() -> Result<(), String> {
+        let markdown = repo_badge_artifacts_summary_markdown(
+            STUB_RIPR_NATIVE_JSON,
+            STUB_RIPR_PLUS_NATIVE_JSON,
+            Some(Path::new("target/ripr/reports/gap-decision-ledger.json")),
+        );
+
+        for expected in [
+            "explicit gap decision ledger",
+            "policy-targeted `GapRecord` projection eligibility",
+            "target/ripr/reports/gap-decision-ledger.json",
+        ] {
             if !markdown.contains(expected) {
                 return Err(format!(
                     "expected '{expected}' in repo markdown, got:\n{markdown}"
@@ -40007,6 +40111,7 @@ acceptance = "RIPR-SPEC-0999 defines the focused contract."
         let markdown = repo_badge_artifacts_summary_markdown(
             STUB_RIPR_NATIVE_JSON,
             STUB_RIPR_PLUS_NATIVE_JSON,
+            None,
         );
 
         // Repo badge output is public-facing: it must not borrow runtime
@@ -41485,11 +41590,24 @@ jobs:
         );
         assert_eq!(
             XtaskCommand::parse(["badges".to_string()]),
-            XtaskCommand::UpdateBadgeEndpoints
+            XtaskCommand::UpdateBadgeEndpoints(Vec::new())
         );
         assert_eq!(
             XtaskCommand::parse(["badges".to_string(), "--check".to_string()]),
-            XtaskCommand::CheckBadgeEndpoints
+            XtaskCommand::CheckBadgeEndpoints(vec!["--check".to_string()])
+        );
+        assert_eq!(
+            XtaskCommand::parse([
+                "badges".to_string(),
+                "--check".to_string(),
+                "--gap-ledger".to_string(),
+                "target/ripr/reports/gap-decision-ledger.json".to_string(),
+            ]),
+            XtaskCommand::CheckBadgeEndpoints(vec![
+                "--check".to_string(),
+                "--gap-ledger".to_string(),
+                "target/ripr/reports/gap-decision-ledger.json".to_string(),
+            ])
         );
         assert_eq!(
             XtaskCommand::parse(["worktree".to_string(), "doctor".to_string()]),
@@ -41512,7 +41630,7 @@ jobs:
                 XtaskCommand::TestOracleReport,
                 XtaskCommand::TestEfficiencyReport,
                 XtaskCommand::BadgeArtifacts,
-                XtaskCommand::RepoBadgeArtifacts,
+                XtaskCommand::RepoBadgeArtifacts(Vec::new()),
                 XtaskCommand::RepoSeamInventory,
                 XtaskCommand::RepoExposureReport,
                 XtaskCommand::RepoExposureLatencyReport,
@@ -41527,7 +41645,7 @@ jobs:
                 XtaskCommand::TargetedTestOutcome(Vec::new()),
                 XtaskCommand::MutationCalibration(Vec::new()),
                 XtaskCommand::SarifPolicy(Vec::new()),
-                XtaskCommand::CheckBadgeEndpoints,
+                XtaskCommand::CheckBadgeEndpoints(Vec::new()),
                 XtaskCommand::Dogfood,
                 XtaskCommand::Critic,
                 XtaskCommand::Reports(vec!["index".to_string()]),
@@ -41729,7 +41847,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(commands.contains(&"targeted-test-outcome --before <path> --after <path>"));
         assert!(commands.contains(&"mutation-calibration [root] --mutants-json <path>"));
         assert!(commands.contains(&"sarif-policy --current <path> [--baseline <path>]"));
-        assert!(commands.contains(&"badges [--check]"));
+        assert!(commands.contains(&"badges [--check] [--gap-ledger <path>]"));
         assert!(commands.contains(&"pr-triage-report"));
         assert!(commands.contains(&"gh-pr-status --pr <number>"));
         assert!(commands.contains(&"check-badge-diff-policy"));
