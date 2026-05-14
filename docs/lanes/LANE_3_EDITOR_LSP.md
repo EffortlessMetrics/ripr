@@ -461,6 +461,66 @@ or unsaved-buffer overlays.
 | Preview diagnostics, hover, status, and actions visibly label preview evidence and static limits | LSP diagnostic data, hover markdown, status refresh logs, existing cockpit actions, `fixtures/python_missing_import_graph_limit`, `fixtures/typescript_mocked_module_limit`, `fixtures/python_disabled`, `cargo xtask lsp-cockpit-report` | Implemented for diagnostic metadata, hover boundary text, status preview/static-limit counts, bounded finding actions, and disabled-preview no-diagnostic behavior; actions keep the existing cockpit model |
 | No editor hidden analysis reruns, source edits, generated tests, provider calls, mutation execution, gate semantics, default blocking, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays | Lane 3 Scope, Non-Goals, and Cross-Lane Rules in this tracker | Current tracker preserves the boundary; future routing must re-audit it |
 
+## Next Selected Slice: Editor Gap Cockpit
+
+Campaign 27 closed language routing. The next Lane 3 end state is the Editor
+Gap Cockpit: make the editor consume existing RIPR evidence artifacts and
+project one safe local next action.
+
+Durable sources:
+
+- [RIPR-PROP-0007: Editor Gap Cockpit](../proposals/RIPR-PROP-0007-editor-gap-cockpit.md)
+- [RIPR-SPEC-0047: Editor Gap Projection](../specs/RIPR-SPEC-0047-editor-gap-projection.md)
+- [ADR-0012: Editor Gap Projection Is Read-Only](../adr/0012-editor-gap-projection-is-read-only.md)
+- [Editor gap cockpit implementation plan](../../plans/editor-gap-cockpit/implementation-plan.md)
+
+The target loop is:
+
+```text
+diagnostic
+-> hover evidence
+-> gap state / preview limit / repair route
+-> related test or repair packet
+-> one focused test
+-> verify
+-> receipt
+-> refresh
+```
+
+Lane 3 should resolve editor surfaces through one identity path:
+
+```text
+diagnostic.data
+-> canonical_gap_id / seam_id / finding_id
+-> evidence_record or gap_record
+-> repair route / related test / verify command
+-> receipt
+```
+
+Other lanes provide evidence truth, gap records, repair routes, policy state,
+PR/CI surfaces, and receipts. Lane 3 consumes those artifacts read-only. It
+does not create analyzer facts, decide policy, publish PR comments, compose
+generated CI summaries, edit source, generate tests, call providers, run
+mutation, or act as a gate authority.
+
+Planned PR path:
+
+1. `docs(lane3): open editor gap cockpit source-of-truth stack`
+2. `test(lsp): pin post-campaign editor contract`
+3. `lsp(gap): add read-only gap artifact validation`
+4. `lsp(gap): project gap state in Show Status`
+5. `lsp(gap): enrich hover with repair route`
+6. `lsp(gap): add bounded repair packet actions`
+7. `fixtures(editor): add gap cockpit workflow fixtures`
+8. `test(vscode): smoke editor gap cockpit`
+9. `docs(editor): document gap cockpit workflow`
+10. `dogfood(lane3): record editor gap cockpit receipts`
+11. `campaign(lane3): close editor gap cockpit`
+
+Start with the docs-only source-of-truth PR. Do not add new diagnostics, hover,
+actions, status behavior, VS Code behavior, fixtures, or `.ripr/goals` manifest
+state in that PR.
+
 ## Lane 3 Document Model
 
 Lane 3 uses the repo tracking model in layers so future editor-preview work

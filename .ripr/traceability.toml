@@ -2964,3 +2964,39 @@ metrics = [
   "gap_decision_receipt_unchanged_after_attempt_total",
   "gap_decision_missing_output_contract_total",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0047"
+name = "Editor gap projection"
+spec = "docs/specs/RIPR-SPEC-0047-editor-gap-projection.md"
+tests = [
+]
+fixtures = [
+]
+code = [
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0047-editor-gap-projection.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0007-editor-gap-cockpit.md",
+  "docs/proposals/README.md",
+  "docs/adr/0012-editor-gap-projection-is-read-only.md",
+  "docs/adr/README.md",
+  "docs/lanes/LANE_3_EDITOR_LSP.md",
+  "plans/editor-gap-cockpit/implementation-plan.md",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "editor_gap_artifacts_seen",
+  "editor_gap_artifacts_validated",
+  "editor_gap_artifacts_rejected_wrong_root",
+  "editor_gap_artifacts_rejected_stale",
+  "editor_gap_artifacts_rejected_unsupported_schema",
+  "editor_gap_artifacts_rejected_missing_identity",
+  "editor_gap_actions_projected",
+  "editor_gap_actions_suppressed_stale",
+  "editor_gap_actions_suppressed_path_escape",
+  "editor_gap_status_actionable",
+  "editor_gap_status_no_action",
+  "editor_gap_status_preview_limited",
+]
