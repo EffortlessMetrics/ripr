@@ -288,7 +288,11 @@ Planned Lane 1 slices:
 - `analysis/presentation-text-visibility` classifies supported sinks and
   limitations.
 - `analysis/presentation-text-canonical-grouping` groups declaration and
-  literal raw seams.
+  literal raw seams. The initial implementation recognizes supported
+  presentation-like `&str` constants, groups the declaration and adjacent
+  literal raw findings under `declaration_and_literal_same_text_constant`, and
+  emits visibility-unknown limitation context without claiming output-observer
+  work.
 - `analysis/presentation-text-actionability` classifies action/no-action and
   observer-aware related-test ranking.
 - `report/presentation-text-scorecard-trend-fields` reports quality counts and
