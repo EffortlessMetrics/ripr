@@ -238,6 +238,26 @@ an explicitly configured `ripr gate evaluate`.
 - No automatic baseline adoption.
 - No preview-language gate promotion without explicit later policy.
 
+## Lane 2 Reopening Triggers
+
+This tracker is closed for the readiness foundation. Do not reopen Lane 2 for
+UI polish, PR front-panel rendering, queue cleanup, generated-artifact hygiene,
+or documentation reshaping unless the work changes policy authority.
+
+Open a new focused policy tracker or spec before changing any of these policy
+surfaces:
+
+- a new evidence class;
+- a preview-language promotion request;
+- gate eligibility expansion;
+- baseline adoption policy;
+- suppression semantics;
+- calibration confidence promotion;
+- static/runtime vocabulary.
+
+Those changes can alter what evidence is allowed to mean. They need explicit
+Lane 2 review before implementation.
+
 ## Validation
 
 Docs and tracker changes should run:
