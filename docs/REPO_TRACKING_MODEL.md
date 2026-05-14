@@ -130,6 +130,10 @@ cargo xtask goals next
 cargo xtask check-pr
 ```
 
-These checks keep the spec index, ADR index, campaign manifest, traceability
-manifest, capability matrix, and PR-shape rails consistent across the
-layers above.
+These checks keep the spec index, ADR index, campaign manifest, focused tracker
+manifests, traceability manifest, capability matrix, and PR-shape rails
+consistent across the layers above. `check-campaign` also verifies that tracker
+manifest paths referenced from campaign docs exist, focused trackers remain
+separate from `.ripr/goals/active.toml`, done tracker work items carry proof
+commands, declared proposal/plan/spec/receipt/closeout paths exist, and closed
+tracker capability rows point at `maintenance`.
