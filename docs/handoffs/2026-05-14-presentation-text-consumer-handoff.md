@@ -1,8 +1,8 @@
 # Handoff: Presentation Text Consumer Contract
 
 Date: 2026-05-14
-Branch / PR: `lane1-presentation-text-consumer-handoff` / pending
-Latest merged PR: #957 `report: track presentation text finding alignment quality` (commit `55e9f456`)
+Branch / PR: `lane1-presentation-text-consumer-handoff` / #959
+Latest merged PR: #959 `docs: hand off presentation text consumer contract` (commit `595a9933`)
 
 ## Current work item
 
@@ -10,9 +10,9 @@ Latest merged PR: #957 `report: track presentation text finding alignment qualit
 
 Lane 1 now emits fixture-backed presentation-text finding alignment for
 supported `ripr check --json` cases and reports those counts through the
-evidence-quality scorecard and trend reports. This handoff tells downstream
-PR/CI, editor, agent, and report lanes which fields are authoritative and which
-fields are supporting evidence.
+evidence-quality scorecard and trend reports. PR #957 landed the preceding
+report slice. This handoff tells downstream PR/CI, editor, agent, and report
+lanes which fields are authoritative and which fields are supporting evidence.
 
 ## Consumer contract
 
@@ -150,8 +150,8 @@ cargo xtask check-pr
 git diff --check
 ```
 
-The handoff PR is docs-only and should validate the documentation, capability,
-traceability, and PR gates.
+The handoff PR (#959) was docs-only and validated the documentation,
+capability, traceability, and PR gates before merge.
 
 ## Artifacts
 
@@ -165,8 +165,8 @@ traceability, and PR gates.
 
 ## Recommended next action
 
-Close the Lane 1 User-Visible Output Evidence tracker after the handoff PR
-lands, if the tracker closeout conditions remain satisfied.
+Review the Lane 1 User-Visible Output Evidence closeout conditions and open a
+focused closeout PR if the lane owner wants to close this tracker.
 
 ## What not to do
 

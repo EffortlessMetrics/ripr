@@ -3132,7 +3132,8 @@ Work items:
 | `analysis/presentation-text-visibility` | done | #947 classifies fixture-backed help/report/internal output evidence as actionable, observed, internal-only, or visibility-unknown while keeping unsupported routes as limitations. |
 | `analysis/presentation-text-actionability` | done | #951 extended repair routes with concrete repair kind, target test type, and suggested assertion fields beyond the initial visibility states. |
 | `report/presentation-text-scorecard-trend-fields` | done | #957 reports presentation-text quality counts and deltas in scorecard and trend output. |
-| `docs/presentation-text-consumer-handoff` | current | Documents downstream rendering contract without changing PR/CI or editor surfaces. |
+| `docs/presentation-text-consumer-handoff` | done | #959 documents downstream rendering contract without changing PR/CI or editor surfaces. |
+| `campaign/user-visible-output-evidence-closeout` | planned | Records proof, remaining unknowns, and the next repair boundary for this focused Lane 1 evidence class. |
 
 Blocking conditions:
 
