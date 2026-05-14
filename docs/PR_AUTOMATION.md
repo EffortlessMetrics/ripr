@@ -31,6 +31,7 @@ cargo xtask fix-pr
 cargo xtask pr-summary
 cargo xtask pr-triage-report
 cargo xtask gh-pr-status --pr <number>
+cargo xtask suggested-fixes
 cargo xtask precommit
 cargo xtask check-pr
 cargo xtask fixtures
@@ -99,12 +100,20 @@ failed checks, behind-main state, review status, and a safe next action:
 `wait`, `rebase`, `inspect failure`, or `merge`. It is advisory and never
 updates the branch, comments, approves, or merges.
 
+`suggested-fixes` writes `target/ripr/reports/suggested-fixes.patch` and
+`target/ripr/reports/suggested-fixes.md` with safe deterministic repair
+suggestions. The v1 patch only covers allowlist ordering under `.ripr/*.txt`
+and `policy/*.txt`. It never generates badge endpoint values, golden blessings,
+baselines, suppressions, dependency exceptions, or schema-version changes.
+
 `check-pr` is the review-ready local gate. It runs the current fast CI lane,
 then clippy, docs, and PR summary generation. It intentionally leaves
 release/package verification to `ci-full` or release-specific workflows.
 Its fast policy lane includes `check-badge-diff-policy`, which rejects
 generated badge endpoint diffs in ordinary PRs, and `check-generated-clean`,
-which rejects generated target/sample build residue.
+which rejects generated target/sample build residue. Before writing the final
+report index, it also refreshes the deterministic suggested-fixes patch under
+`target/ripr/reports/`.
 
 `fixtures` validates fixture contract shape, runs `ripr check` for fixture
 directories when they exist, writes actual outputs under
@@ -593,11 +602,15 @@ metrics.md
 metrics.json
 release-readiness.md
 release-readiness.json
+suggested-fixes.md
 suggested-fixes.patch
 ```
 
 For untrusted PRs, CI should not push fixes. It may upload a suggested patch for
-safe deterministic changes so authors or agents can apply it locally.
+safe deterministic changes so authors or agents can apply it locally. Suggested
+patches are repair hints, not policy exceptions: they must not carry badge
+counts, golden blessings, baselines, suppressions, dependency exceptions, or
+schema changes.
 
 ## Current Automation Queue
 
