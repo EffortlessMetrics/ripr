@@ -1477,46 +1477,48 @@ metric = "policy_promotion_packets, policy_promotion_allowed, policy_promotion_b
 [[capability]]
 id = "presentation_text_evidence"
 name = "Presentation text evidence"
-status = "alpha"
+status = "stable"
 spec = "RIPR-SPEC-0043"
 evidence = [
   "docs/specs/RIPR-SPEC-0043-presentation-text-evidence.md defines the planned Lane 1 evidence class for changed presentation/help/report/table text",
   "docs/proposals/RIPR-PROP-0005-user-visible-output-evidence.md records the user-visible output evidence motivation and non-goals",
   "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md records the PR-sized sequence and Lane 1 boundary",
   "fixtures/evidence-quality-benchmark/corpus.json#presentation_text_constant_visibility_unknown pins the screenshot-derived declaration/literal grouping and visibility-unknown static limitation guard",
+  "fixtures/evidence-quality-benchmark/corpus.json#presentation_text_observer_unknown_alignment pins likely-visible text with unsupported observer topology as a named limitation",
   "crates/ripr/src/output/json/finding_alignment.rs groups supported presentation-like &str constant declarations and adjacent string literals into one finding_alignment canonical item while preserving raw findings",
   "crates/ripr/src/output/json/finding_alignment.rs classifies fixture-backed help/report sink patterns, golden/snapshot observers, internal-only labels, and visibility-unknown limitations",
   "crates/ripr/src/output/json/finding_alignment.rs tests pin grouping, line-movement identity, non-collision, unsupported string guards, conservative visibility/observer states, concrete repair-kind/target-test-type/suggested-assertion fields, and no mutation-first repair language",
   "xtask/src/main.rs carries presentation-text outcome counts into evidence-quality scorecard and trend reports",
-  "docs/handoffs/2026-05-14-presentation-text-consumer-handoff.md documents downstream consumer expectations for canonical items, supporting raw findings, evidence states, policy overlays, and must-not-infer boundaries"
+  "docs/handoffs/2026-05-14-presentation-text-consumer-handoff.md documents downstream consumer expectations for canonical items, supporting raw findings, evidence states, policy overlays, and must-not-infer boundaries",
+  "docs/handoffs/2026-05-14-user-visible-output-evidence-closeout.md records the documented stable scope and remaining unsupported routes"
 ]
 fixtures = [
   "fixtures/evidence-quality-benchmark/corpus.json"
 ]
-next = "campaign/user-visible-output-evidence-closeout"
+next = "maintenance"
 metric = "presentation_text_total, presentation_text_user_visible, presentation_text_observed, presentation_text_unobserved, presentation_text_internal_only, presentation_text_visibility_unknown, presentation_text_observer_unknown, presentation_text_duplicate_groups, presentation_text_actionable_snapshot, presentation_text_no_action, presentation_text_static_limitations"
 
 [[capability]]
 id = "finding_to_gap_alignment"
 name = "Finding-to-gap alignment"
-status = "alpha"
+status = "stable"
 spec = "RIPR-SPEC-0045"
 evidence = [
   "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md defines the Lane 1 contract for preserving raw findings as supporting evidence while rolling them up into canonical evidence items",
   "canonical items carry gap_state, actionability, why, recommended repair, verification, static limitations, confidence, and raw_findings",
-  "fixtures/evidence-quality-benchmark/corpus.json pins manifest-only raw-to-canonical presentation-text cases for actionable, already-observed, internal-only, static-limitation, line-movement, and non-collision states",
+  "fixtures/evidence-quality-benchmark/corpus.json pins manifest-only raw-to-canonical presentation-text cases for actionable, already-observed, internal-only, static-limitation, observer-unknown, line-movement, and non-collision states",
   "crates/ripr/src/output/evidence_record.rs emits additive raw_findings, canonical_item, and nullable presentation_text fields from existing static seam facts",
   "crates/ripr/src/output/repo_exposure.rs carries the additive alignment fields under seams[].evidence_record while preserving current seam fields",
   "crates/ripr/src/output/json/finding_alignment.rs adds the first check-output alignment projection for supported presentation-text declaration/literal groups and classifies fixture-backed visible, observed, internal-only, and visibility-unknown item states with concrete repair routes",
   "xtask/src/main.rs reports raw-to-canonical ratio, duplicate groups, actionable, no-action, static-limitation, calibrated-support, and presentation-text counts in evidence-quality scorecard and trend outputs",
   "docs/OUTPUT_SCHEMA.md documents the additive evidence_record alignment fields",
   "docs/handoffs/2026-05-14-presentation-text-consumer-handoff.md documents canonical evidence items as the downstream user-facing unit and raw findings as supporting evidence",
-  "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md records the remaining closeout work"
+  "docs/handoffs/2026-05-14-user-visible-output-evidence-closeout.md records the class-scoped closeout boundary"
 ]
 fixtures = [
   "fixtures/evidence-quality-benchmark/corpus.json"
 ]
-next = "campaign/user-visible-output-evidence-closeout"
+next = "maintenance"
 metric = "finding_alignment_raw_findings_total, finding_alignment_raw_signals_total, finding_alignment_canonical_items_total, finding_alignment_raw_to_canonical_ratio, finding_alignment_duplicate_groups_total, finding_alignment_actionable_items_total, finding_alignment_actionable_unresolved_canonical_gaps, finding_alignment_already_observed_total, finding_alignment_internal_only_total, finding_alignment_internal_no_action_total, finding_alignment_static_limitation_total, finding_alignment_unknown_total, finding_alignment_calibrated_supported_total, finding_alignment_uncalibrated_total, finding_alignment_visibility_unknown_total, finding_alignment_presentation_text_actionable_total"
 
 [[capability]]

@@ -3080,8 +3080,8 @@ tests, provider calls, mutation execution, or score redefinition.
 
 ## Focused Lane 1 Tracker: User-Visible Output Evidence
 
-Status: open as a focused Lane 1 tracker. Campaign 27 is closed; this focused
-tracker is not the active execution campaign.
+Status: closed as a focused Lane 1 tracker. Campaign 27 is closed; this
+focused tracker was not the active execution campaign.
 
 Sources of truth:
 
@@ -3092,6 +3092,7 @@ Sources of truth:
 - [RIPR-SPEC-0045](specs/RIPR-SPEC-0045-finding-to-gap-alignment.md)
   finding-to-gap alignment
 - [ADR 0010](adr/0010-fixture-first-evidence-confidence.md)
+- [Lane 1 User-Visible Output Evidence closeout](handoffs/2026-05-14-user-visible-output-evidence-closeout.md)
 
 Objective:
 
@@ -3133,7 +3134,7 @@ Work items:
 | `analysis/presentation-text-actionability` | done | #951 extended repair routes with concrete repair kind, target test type, and suggested assertion fields beyond the initial visibility states. |
 | `report/presentation-text-scorecard-trend-fields` | done | #957 reports presentation-text quality counts and deltas in scorecard and trend output. |
 | `docs/presentation-text-consumer-handoff` | done | #959 documents downstream rendering contract without changing PR/CI or editor surfaces. |
-| `campaign/user-visible-output-evidence-closeout` | planned | Records proof, remaining unknowns, and the next repair boundary for this focused Lane 1 evidence class. |
+| `campaign/user-visible-output-evidence-closeout` | done | #966 records proof, remaining unknowns, final observer-unknown benchmark guard, and the next repair boundary for this focused Lane 1 evidence class. |
 
 Blocking conditions:
 
@@ -3158,6 +3159,12 @@ cargo xtask check-capabilities
 cargo xtask check-pr
 git diff --check
 ```
+
+Closeout:
+
+- [Lane 1 User-Visible Output Evidence closeout](handoffs/2026-05-14-user-visible-output-evidence-closeout.md)
+  records the PR chain, proof, remaining limitations, and boundary that
+  downstream PR/CI and editor rendering work belongs to the owning lanes.
 
 ## Focused Lane 2 Tracker: Policy Readiness and Preview Evidence Governance
 
