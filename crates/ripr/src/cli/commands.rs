@@ -200,6 +200,7 @@ struct PrEvidenceLedgerOptions {
     baseline_delta: Option<PathBuf>,
     zero_status: Option<PathBuf>,
     pr_guidance: Option<PathBuf>,
+    gap_ledger: Option<PathBuf>,
     recommendation_calibration: Option<PathBuf>,
     agent_receipt: Option<PathBuf>,
     coverage: Option<PathBuf>,
@@ -3988,6 +3989,10 @@ fn pr_evidence_ledger_record(args: &[String]) -> Result<(), String> {
         .pr_guidance
         .as_ref()
         .map(|path| output::pr_evidence_ledger::display_path(path));
+    let gap_ledger_path = options
+        .gap_ledger
+        .as_ref()
+        .map(|path| output::pr_evidence_ledger::display_path(path));
     let recommendation_calibration_path = options
         .recommendation_calibration
         .as_ref()
@@ -4015,6 +4020,7 @@ fn pr_evidence_ledger_record(args: &[String]) -> Result<(), String> {
         baseline_delta_path,
         zero_status_path,
         pr_guidance_path,
+        gap_ledger_path,
         recommendation_calibration_path,
         agent_receipt_path,
         coverage_path,
@@ -4035,6 +4041,10 @@ fn pr_evidence_ledger_record(args: &[String]) -> Result<(), String> {
             .pr_guidance
             .as_ref()
             .map(|path| read_optional_text_for_report("PR guidance", path)),
+        gap_ledger_json: options
+            .gap_ledger
+            .as_ref()
+            .map(|path| read_optional_text_for_report("gap decision ledger", path)),
         recommendation_calibration_json: options
             .recommendation_calibration
             .as_ref()
@@ -5772,6 +5782,7 @@ fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerO
     let mut baseline_delta = None;
     let mut zero_status = None;
     let mut pr_guidance = None;
+    let mut gap_ledger = None;
     let mut recommendation_calibration = None;
     let mut agent_receipt = None;
     let mut coverage = None;
@@ -5839,6 +5850,15 @@ fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerO
                     "pr-ledger record",
                 )?);
             }
+            "--gap-ledger" => {
+                i += 1;
+                gap_ledger = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--gap-ledger",
+                    "pr-ledger record",
+                )?);
+            }
             "--recommendation-calibration" => {
                 i += 1;
                 recommendation_calibration = Some(non_empty_path_arg(
@@ -5888,10 +5908,14 @@ fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerO
         i += 1;
     }
 
-    if gate.is_none() && baseline_delta.is_none() && zero_status.is_none() && pr_guidance.is_none()
+    if gate.is_none()
+        && baseline_delta.is_none()
+        && zero_status.is_none()
+        && pr_guidance.is_none()
+        && gap_ledger.is_none()
     {
         return Err(
-            "pr-ledger record requires at least one of --gate, --baseline-delta, --zero-status, or --pr-guidance"
+            "pr-ledger record requires at least one of --gate, --baseline-delta, --zero-status, --pr-guidance, or --gap-ledger"
                 .to_string(),
         );
     }
@@ -5906,6 +5930,7 @@ fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerO
         baseline_delta,
         zero_status,
         pr_guidance,
+        gap_ledger,
         recommendation_calibration,
         agent_receipt,
         coverage,
@@ -9091,6 +9116,8 @@ language = "rust"
                 "target/ripr/reports/ripr-zero-status.json",
                 "--pr-guidance",
                 "target/ripr/review/comments.json",
+                "--gap-ledger",
+                "target/ripr/reports/gap-decision-ledger.json",
                 "--recommendation-calibration",
                 "target/ripr/reports/recommendation-calibration.json",
                 "--agent-receipt",
@@ -9115,6 +9142,9 @@ language = "rust"
                 )),
                 zero_status: Some(PathBuf::from("target/ripr/reports/ripr-zero-status.json")),
                 pr_guidance: Some(PathBuf::from("target/ripr/review/comments.json")),
+                gap_ledger: Some(PathBuf::from(
+                    "target/ripr/reports/gap-decision-ledger.json"
+                )),
                 recommendation_calibration: Some(PathBuf::from(
                     "target/ripr/reports/recommendation-calibration.json"
                 )),
@@ -9147,9 +9177,23 @@ language = "rust"
                 "head"
             ])),
             Err(
-                "pr-ledger record requires at least one of --gate, --baseline-delta, --zero-status, or --pr-guidance"
+                "pr-ledger record requires at least one of --gate, --baseline-delta, --zero-status, --pr-guidance, or --gap-ledger"
                     .to_string()
             )
+        );
+        assert_eq!(
+            parse_pr_evidence_ledger_options(&args(&[
+                "--pr-number",
+                "123",
+                "--base",
+                "base",
+                "--head",
+                "head",
+                "--gap-ledger",
+                "gap-ledger.json",
+            ]))
+            .map(|options| options.gap_ledger),
+            Ok(Some(PathBuf::from("gap-ledger.json")))
         );
         assert_eq!(
             parse_pr_evidence_ledger_options(&args(&[
@@ -9522,7 +9566,13 @@ language = "rust"
         std::fs::create_dir_all(&dir).map_err(|err| format!("create ledger dir: {err}"))?;
         let out = dir.join("pr-evidence-ledger.json");
         let out_md = dir.join("pr-evidence-ledger.md");
+        let gap_ledger = dir.join("gap-decision-ledger.json");
         let fixture = repo_root().join("fixtures/boundary_gap/expected/pr-evidence-ledger/mixed");
+        std::fs::write(
+            &gap_ledger,
+            r#"{"gap_records":[{"gap_id":"gap:pr:cli","canonical_gap_id":"gap:rust:cli","kind":"MissingBoundaryAssertion","language":"rust","language_status":"stable","scope":"pr_local","gap_state":"actionable","policy_state":"new","repairability":"repairable","anchor":{"file":"src/cli.rs","line":7},"repair_route":{"route_kind":"AddBoundaryAssertion","assertion_shape":"assert!(cli())"},"verification_commands":["cargo xtask fixtures boundary_gap"]}]}"#,
+        )
+        .map_err(|err| format!("write gap ledger: {err}"))?;
 
         pr_ledger(&args(&[
             "record",
@@ -9543,6 +9593,8 @@ language = "rust"
             &fixture.join("ripr-zero-status.json").display().to_string(),
             "--pr-guidance",
             &fixture.join("comments.json").display().to_string(),
+            "--gap-ledger",
+            &gap_ledger.display().to_string(),
             "--agent-receipt",
             &fixture.join("agent-receipt.json").display().to_string(),
             "--history",
@@ -9557,10 +9609,13 @@ language = "rust"
             std::fs::read_to_string(&out).map_err(|err| format!("read ledger json: {err}"))?;
         assert!(json_text.contains("\"kind\": \"pr_evidence_ledger\""));
         assert!(json_text.contains("\"baseline_resolved\": 3"));
+        assert!(json_text.contains("\"source\": \"gap_decision_ledger\""));
+        assert!(json_text.contains("\"gap_id\": \"gap:pr:cli\""));
         let md_text =
             std::fs::read_to_string(&out_md).map_err(|err| format!("read ledger md: {err}"))?;
         assert!(md_text.contains("# RIPR PR Evidence Ledger"));
         assert!(md_text.contains("Gate: acknowledgeable / acknowledged"));
+        assert!(md_text.contains("Gap decision ledger:"));
 
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove ledger dir: {err}"))?;
         Ok(())
