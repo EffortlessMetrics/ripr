@@ -445,7 +445,7 @@ Planned slices:
 - `policy/ripr-zero-and-badges-gap-targets` makes RIPR Zero status and repo
   badge targets consume policy-backed gap records. (done)
 - `policy/gate-repairable-gap-predicate` makes optional gates consume the safe
-  predicate without changing default blocking.
+  predicate without changing default blocking. (done)
 - `comments/repair-card-projection` makes inline comments render only eligible
   repair cards.
 - `editor/gap-work-packet-projection` makes editor and agent packets consume

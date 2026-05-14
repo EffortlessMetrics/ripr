@@ -2889,8 +2889,8 @@ Field contract:
 
 RIPR-SPEC-0014 defines the optional calibrated gate policy contract. The gate
 decision report is read-only policy over existing repo exposure, PR guidance,
-SARIF policy, labels, receipts, recommendation calibration, and optional
-imported mutation calibration artifacts.
+GapRecord decisions, SARIF policy, labels, receipts, recommendation
+calibration, and optional imported mutation calibration artifacts.
 
 The evaluator is:
 
@@ -2899,6 +2899,7 @@ ripr gate evaluate \
   --root . \
   --repo-exposure target/ripr/reports/repo-exposure.json \
   --pr-guidance target/ripr/review/comments.json \
+  --gap-ledger target/ripr/reports/gap-decision-ledger.json \
   --sarif-policy target/ripr/reports/sarif-policy.json \
   --labels-json target/ci/labels.json \
   --agent-verify target/ripr/workflow/agent-verify.json \
@@ -2918,10 +2919,13 @@ target/ripr/reports/gate-decision.md
 ```
 
 This is an optional policy surface. Generated workflows remain advisory and
-non-blocking by default. The evaluator writes JSON and Markdown before
-returning a non-zero exit for `blocked` or `config_error` decisions. It must
-not post comments, edit source files, generate tests, run mutation testing,
-upload SARIF, mutate GitHub state, or hide acknowledged decisions.
+non-blocking by default. When `--gap-ledger` is supplied, gate candidates come
+from explicit GapRecord `projection_eligibility.gate_candidate` records that
+satisfy the safe gate predicate; PR guidance remains the legacy/fallback input.
+The evaluator writes JSON and Markdown before returning a non-zero exit for
+`blocked` or `config_error` decisions. It must not post comments, edit source
+files, generate tests, run mutation testing, upload SARIF, mutate GitHub state,
+or hide acknowledged decisions.
 
 Generated CI runs this evaluator only when `RIPR_GATE_MODE` is explicitly set.
 The default generated workflow leaves `RIPR_GATE_MODE` empty, captures pull
@@ -2950,6 +2954,7 @@ JSON shape:
   "inputs": {
     "repo_exposure": "target/ripr/reports/repo-exposure.json",
     "pr_guidance": "target/ripr/review/comments.json",
+    "gap_ledger": "target/ripr/reports/gap-decision-ledger.json",
     "sarif_policy": "target/ripr/reports/sarif-policy.json",
     "labels_json": "target/ci/labels.json",
     "labels": ["ripr-waive"],
@@ -2977,9 +2982,11 @@ JSON shape:
   "decisions": [
     {
       "id": "ripr-gate-67fc764ba37d77bd",
-      "source": "pr_guidance",
+      "source": "gap_decision_ledger",
       "decision": "acknowledged",
       "gate_reason": "policy-eligible gap acknowledged by ripr-waive",
+      "gap_id": "gap:pricing",
+      "gap_kind": "MissingBoundaryAssertion",
       "seam_id": "67fc764ba37d77bd",
       "source_id": "ripr-review-67fc764ba37d77bd",
       "static_class": "weakly_gripped",
@@ -2999,6 +3006,14 @@ JSON shape:
         "assertion_shape": "Assert the returned discount behavior directly.",
         "candidate_values": ["amount == discount_threshold"],
         "recommended_test": "tests/pricing.rs::discounted_total_boundary",
+        "repair_route": {
+          "route_kind": "AddBoundaryAssertion",
+          "target_file": "tests/pricing.rs",
+          "related_test": "tests/pricing.rs::discounted_total_boundary",
+          "assertion_shape": "Assert the returned discount behavior directly.",
+          "changed_behavior": "amount == discount_threshold"
+        },
+        "verification_commands": ["cargo xtask fixtures boundary_gap"],
         "nearby_test_changed": false,
         "suppressed": false,
         "configured_off": false,
@@ -3028,6 +3043,9 @@ Field contract:
   `calibrated-gate`.
 - `inputs` - normalized paths and labels used by the evaluator. Optional inputs
   should appear as `null` or produce a warning when they are absent.
+- `inputs.gap_ledger` - optional explicit gap decision ledger input. When
+  supplied, gate candidates come from GapRecord gate-candidate projection
+  targets instead of raw PR guidance candidates.
 - `policy.mode` - effective gate mode after config and CLI precedence.
 - `policy.threshold` - initially `high_confidence_new_gap`.
 - `policy.acknowledgement_labels` - configured labels that can turn a blocking
@@ -3046,7 +3064,9 @@ Field contract:
 - `summary.unknown_confidence` - count of candidates that could not satisfy
   high-confidence requirements.
 - `decisions[].source` - source artifact family such as `pr_guidance`,
-  `repo_exposure`, `sarif_policy`, or `agent_receipt`.
+  `gap_decision_ledger`, `repo_exposure`, `sarif_policy`, or `agent_receipt`.
+- `decisions[].gap_id` and `decisions[].gap_kind` - optional GapRecord identity
+  and repair-problem kind copied when the decision came from a gap ledger.
 - `decisions[].canonical_gap_id` - optional semantic Lane 1 gap identity copied
   from the source candidate when supplied directly, through
   `identity.canonical_gap_id`, or through `evidence_record.canonical_gap_id`.
@@ -3064,6 +3084,9 @@ Field contract:
   ID, dedupe-key, and path/line/static-class fallback identities.
 - `decisions[].evidence` - static evidence and optional calibration confidence
   effects used for the candidate.
+- `decisions[].evidence.repair_route` and `verification_commands` - optional
+  GapRecord repair route and verification commands. These fields are present
+  when the gate decision is driven by a repairable gap ledger record.
 - `warnings[]` - missing optional inputs, unsupported labels, ambiguous
   calibration, baseline limitations, or schema limitations.
 - `limits_note` - static/runtime and advisory-default boundary text.
