@@ -1024,6 +1024,30 @@ mod seam_diagnostic_tests {
             "disabled preview-language gap artifact must not publish diagnostics"
         );
 
+        fs::write(&ledger_path, "{not json")
+            .map_err(|err| format!("write malformed ledger failed: {err}"))?;
+        append_gap_record_diagnostics(&root, &[LanguageId::Rust], &mut grouped);
+        assert!(
+            grouped.is_empty(),
+            "malformed gap artifact must not publish diagnostics"
+        );
+
+        let first_useful_action = serde_json::json!({
+            "schema_version": "0.1",
+            "kind": "first_useful_action",
+            "root": ".",
+            "canonical_gap_id": "gap:rust:first-useful-action",
+            "language": "rust",
+            "language_status": "stable",
+        });
+        fs::write(&ledger_path, first_useful_action.to_string())
+            .map_err(|err| format!("write non-ledger artifact failed: {err}"))?;
+        append_gap_record_diagnostics(&root, &[LanguageId::Rust], &mut grouped);
+        assert!(
+            grouped.is_empty(),
+            "non-ledger gap artifact must not publish ledger diagnostics"
+        );
+
         fs::remove_dir_all(&root)
             .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
         Ok(())
