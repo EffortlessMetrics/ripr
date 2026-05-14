@@ -1805,8 +1805,13 @@ fn check_pr_shape() -> Result<(), String> {
 pub(crate) fn pr_triage_report_impl() -> Result<(), String> {
     let prs = collect_open_prs_for_triage()?;
     let today = current_epoch_day()?;
+    let generated_at = generated_at_unix_ms()?;
     let findings = pr_triage_findings(&prs, today);
-    write_report("pr-triage.md", &pr_triage_markdown(&prs, &findings, today))
+    write_report("pr-triage.md", &pr_triage_markdown(&prs, &findings, today))?;
+    write_report(
+        "pr-triage.json",
+        &pr_triage_json(&prs, &findings, today, &generated_at),
+    )
 }
 
 pub(crate) fn gh_pr_status_impl(args: &[String]) -> Result<(), String> {
@@ -2683,6 +2688,169 @@ fn pr_triage_markdown(
     body.push_str("gh pr view <number> --json mergeStateStatus,statusCheckRollup,files\n");
     body.push_str("```\n");
     body
+}
+
+fn pr_triage_json(
+    prs: &[PrTriagePullRequest],
+    findings: &[PrTriageFinding],
+    today: i64,
+    generated_at: &str,
+) -> String {
+    let status = if findings.is_empty() { "pass" } else { "warn" };
+    let mut body = "{\n".to_string();
+    body.push_str("  \"schema_version\": \"0.1\",\n");
+    body.push_str("  \"mode\": \"advisory\",\n");
+    body.push_str(&format!("  \"status\": \"{}\",\n", json_escape(status)));
+    body.push_str(&format!(
+        "  \"generated_at\": \"{}\",\n",
+        json_escape(generated_at)
+    ));
+    body.push_str("  \"open_prs\": [\n");
+    for (index, pr) in prs.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        write_pr_triage_pull_request_json(&mut body, pr, today);
+    }
+    body.push_str("\n  ],\n");
+    body.push_str("  \"findings\": [\n");
+    for (index, finding) in findings.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        write_pr_triage_finding_json(&mut body, finding, 4);
+    }
+    body.push_str("\n  ],\n");
+    body.push_str("  \"recommended_actions\": [\n");
+    for (index, finding) in findings.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!(
+            "      \"category\": \"{}\",\n",
+            json_escape(&finding.category)
+        ));
+        body.push_str("      \"prs\": ");
+        write_json_u64_array(&mut body, &finding.prs);
+        body.push_str(",\n");
+        body.push_str(&format!(
+            "      \"action\": \"{}\"\n",
+            json_escape(&finding.recommended_action)
+        ));
+        body.push_str("    }");
+    }
+    body.push_str("\n  ]\n");
+    body.push_str("}\n");
+    body
+}
+
+fn write_pr_triage_pull_request_json(body: &mut String, pr: &PrTriagePullRequest, today: i64) {
+    body.push_str("    {\n");
+    body.push_str(&format!("      \"number\": {},\n", pr.number));
+    body.push_str(&format!(
+        "      \"title\": \"{}\",\n",
+        json_escape(&pr.title)
+    ));
+    body.push_str(&format!("      \"is_draft\": {},\n", pr.is_draft));
+    body.push_str(&format!(
+        "      \"created_at\": \"{}\",\n",
+        json_escape(&pr.created_at)
+    ));
+    body.push_str(&format!(
+        "      \"updated_at\": \"{}\",\n",
+        json_escape(&pr.updated_at)
+    ));
+    body.push_str("      \"age_days\": ");
+    match pr_created_day(&pr.created_at) {
+        Some(created_day) => body.push_str(&(today - created_day).to_string()),
+        None => body.push_str("null"),
+    }
+    body.push_str(",\n");
+    body.push_str(&format!(
+        "      \"merge_state_status\": \"{}\",\n",
+        json_escape(&pr.merge_state_status)
+    ));
+    body.push_str(&format!(
+        "      \"head_ref_name\": \"{}\",\n",
+        json_escape(&pr.head_ref_name)
+    ));
+    body.push_str(&format!(
+        "      \"base_ref_name\": \"{}\",\n",
+        json_escape(&pr.base_ref_name)
+    ));
+    body.push_str(&format!(
+        "      \"review_decision\": \"{}\",\n",
+        json_escape(&pr.review_decision)
+    ));
+    body.push_str(&format!(
+        "      \"checks_summary\": \"{}\",\n",
+        json_escape(&pr_checks_summary(&pr.checks))
+    ));
+    body.push_str("      \"labels\": [");
+    write_json_string_array(body, &pr.labels);
+    body.push_str("],\n      \"files\": [");
+    write_json_string_array(body, &pr.files);
+    body.push_str("],\n      \"checks\": [\n");
+    for (index, check) in pr.checks.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("        {\n");
+        body.push_str(&format!(
+            "          \"name\": \"{}\",\n",
+            json_escape(&check.name)
+        ));
+        body.push_str(&format!(
+            "          \"status\": \"{}\",\n",
+            json_escape(&check.status)
+        ));
+        body.push_str(&format!(
+            "          \"conclusion\": \"{}\"\n",
+            json_escape(&check.conclusion)
+        ));
+        body.push_str("        }");
+    }
+    body.push_str("\n      ]\n");
+    body.push_str("    }");
+}
+
+fn write_pr_triage_finding_json(body: &mut String, finding: &PrTriageFinding, indent: usize) {
+    let pad = " ".repeat(indent);
+    let inner = " ".repeat(indent + 2);
+    body.push_str(&format!("{pad}{{\n"));
+    body.push_str(&format!(
+        "{inner}\"category\": \"{}\",\n",
+        json_escape(&finding.category)
+    ));
+    body.push_str(&format!(
+        "{inner}\"severity\": \"{}\",\n",
+        json_escape(&finding.severity)
+    ));
+    body.push_str(&format!(
+        "{inner}\"message\": \"{}\",\n",
+        json_escape(&finding.message)
+    ));
+    body.push_str(&format!("{inner}\"prs\": "));
+    write_json_u64_array(body, &finding.prs);
+    body.push_str(&format!(",\n{inner}\"details\": ["));
+    write_json_string_array(body, &finding.details);
+    body.push_str(&format!(
+        "],\n{inner}\"recommended_action\": \"{}\"\n",
+        json_escape(&finding.recommended_action)
+    ));
+    body.push_str(&format!("{pad}}}"));
+}
+
+fn write_json_u64_array(body: &mut String, values: &[u64]) {
+    body.push('[');
+    for (index, value) in values.iter().enumerate() {
+        if index > 0 {
+            body.push_str(", ");
+        }
+        body.push_str(&value.to_string());
+    }
+    body.push(']');
 }
 
 fn pr_age_label(pr: &PrTriagePullRequest, today: i64) -> String {
@@ -13258,6 +13426,10 @@ fn scorecard_optional_json(path: &Path) -> Result<Option<Value>, String> {
 }
 
 fn evidence_quality_scorecard_generated_at() -> Result<String, String> {
+    generated_at_unix_ms()
+}
+
+fn generated_at_unix_ms() -> Result<String, String> {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|err| format!("system clock before unix epoch: {err}"))?
@@ -31334,7 +31506,7 @@ mod tests {
         parse_required_status_contexts, parse_sarif_policy_args, parse_sarif_policy_results,
         parse_static_language_allowlist, parse_string_value, parse_targeted_test_outcome_args,
         pr_body_validation_warning, pr_checks_summary, pr_sensitive_file_reason, pr_shape_warnings,
-        pr_summary_body, pr_title_family, pr_triage_findings, pr_triage_markdown,
+        pr_summary_body, pr_title_family, pr_triage_findings, pr_triage_json, pr_triage_markdown,
         precommit_report_body, public_contract_rows, read_lsp_cockpit_json_value,
         read_mutation_input_json, receipt_json, receipt_specs, receipt_status_from_reports,
         render_no_panic_allowlist_proposals_markdown, render_no_panic_allowlist_proposals_toml,
@@ -41809,6 +41981,32 @@ jobs:
         assert!(markdown.contains("Status: warn"));
         assert!(markdown.contains("## Open PRs"));
         assert!(markdown.contains("cargo xtask pr-triage-report"));
+    }
+
+    #[test]
+    fn pr_triage_json_lists_prs_findings_and_actions() -> Result<(), String> {
+        let pr = triage_pr(9, "devex: report", &["xtask/src/main.rs"]);
+        let finding = PrTriageFinding {
+            category: "same title family".to_string(),
+            severity: "warn".to_string(),
+            message: "#9 shares a title family".to_string(),
+            prs: vec![9],
+            details: vec!["#9 devex: report".to_string()],
+            recommended_action: "Choose a canonical PR.".to_string(),
+        };
+        let json = pr_triage_json(&[pr], &[finding], days_from_civil(2026, 5, 14), "unix_ms:1");
+        let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+
+        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["mode"], "advisory");
+        assert_eq!(value["generated_at"], "unix_ms:1");
+        assert_eq!(value["open_prs"][0]["number"], 9);
+        assert_eq!(value["findings"][0]["category"], "same title family");
+        assert_eq!(
+            value["recommended_actions"][0]["action"],
+            "Choose a canonical PR."
+        );
+        Ok(())
     }
 
     #[test]
