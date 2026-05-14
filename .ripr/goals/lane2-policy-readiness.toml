@@ -94,6 +94,17 @@ id = "report/waiver-aging"
 status = "done"
 branch = "report-waiver-aging"
 acceptance = "`ripr policy waiver-aging` writes advisory waiver-aging JSON and Markdown from explicit PR evidence ledger inputs so repeated waiver stays visible as a signal, not treated as a failure or hidden exception."
+commands = [
+  "cargo test -p ripr waiver_aging",
+  "cargo test -p ripr policy_readiness",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
 
 [[work_item]]
 id = "policy/suppression-ledger-health"

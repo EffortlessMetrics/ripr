@@ -500,16 +500,10 @@ mod tests {
         let actions = code_action_response(&params, None);
         let titles = action_titles(&actions);
 
-        if !titles
-            .iter()
-            .any(|title| *title == INSPECT_GAP_PACKET_TITLE)
-        {
+        if !titles.contains(&INSPECT_GAP_PACKET_TITLE) {
             return Err(format!("missing gap packet action: {titles:?}"));
         }
-        if titles
-            .iter()
-            .any(|title| *title == INSPECT_FINDING_CONTEXT_TITLE)
-        {
+        if titles.contains(&INSPECT_FINDING_CONTEXT_TITLE) {
             return Err(format!(
                 "gap diagnostic also produced finding context action: {titles:?}"
             ));
@@ -599,9 +593,9 @@ mod tests {
     fn action_titles(actions: &[CodeActionOrCommand]) -> Vec<&str> {
         actions
             .iter()
-            .filter_map(|action| match action {
-                CodeActionOrCommand::CodeAction(action) => Some(action.title.as_str()),
-                CodeActionOrCommand::Command(command) => Some(command.title.as_str()),
+            .map(|action| match action {
+                CodeActionOrCommand::CodeAction(action) => action.title.as_str(),
+                CodeActionOrCommand::Command(command) => command.title.as_str(),
             })
             .collect()
     }

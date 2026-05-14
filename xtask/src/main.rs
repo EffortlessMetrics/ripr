@@ -195,7 +195,11 @@ struct CampaignManifest {
     id: Option<String>,
     title: Option<String>,
     status: Option<String>,
+    issue: Option<String>,
+    lane: Option<String>,
     end_state: Vec<String>,
+    hard_rules: Vec<String>,
+    non_goals: Vec<String>,
     work_items: Vec<CampaignWorkItem>,
 }
 
@@ -206,6 +210,12 @@ struct CampaignWorkItem {
     status: Option<String>,
     branch: Option<String>,
     stackable: Option<bool>,
+    proposal: Option<String>,
+    plan: Option<String>,
+    spec: Option<String>,
+    specs: Vec<String>,
+    receipt: Option<String>,
+    closeout: Option<String>,
     acceptance: Option<String>,
     commands: Vec<String>,
     blocked_by: Vec<String>,
@@ -22667,6 +22677,7 @@ fn check_campaign() -> Result<(), String> {
     let (manifest, parse_violations) = parse_campaign_manifest(manifest_path)?;
     violations.extend(parse_violations);
     validate_campaign_manifest(&manifest, &mut violations)?;
+    violations.extend(campaign_source_truth_violations()?);
     finish_campaign_report(&violations)
 }
 
@@ -22717,6 +22728,9 @@ fn finish_campaign_report(violations: &[String]) -> Result<(), String> {
             fix_kind: FixKind::AuthorDecisionRequired,
             recommended_fixes: &[
                 "Keep .ripr/goals/active.toml synchronized with docs/IMPLEMENTATION_CAMPAIGNS.md.",
+                "Keep focused tracker manifests referenced from docs and separate from .ripr/goals/active.toml.",
+                "Give done work items proof command entries.",
+                "Keep declared proposal, plan, spec, receipt, and closeout paths pointing at files that exist.",
                 "Use only done, active, ready, or blocked work item statuses.",
                 "Give every non-blocked work item a branch, acceptance claim, and valid command list.",
                 "Use blocked_by or blocked_reason when a work item is blocked.",
@@ -22956,6 +22970,332 @@ fn validate_campaign_manifest(
     Ok(())
 }
 
+fn campaign_source_truth_violations() -> Result<Vec<String>, String> {
+    campaign_source_truth_violations_for_root(Path::new("."))
+}
+
+fn campaign_source_truth_violations_for_root(root: &Path) -> Result<Vec<String>, String> {
+    let mut violations = Vec::new();
+    let active_path = root.join(".ripr/goals/active.toml");
+    let (active_manifest, active_parse_violations) = parse_campaign_manifest(&active_path)?;
+    violations.extend(active_parse_violations);
+
+    let referenced = referenced_goal_manifest_paths(root)?;
+    for reference in &referenced {
+        if !root.join(reference).exists() {
+            violations.push(format!(
+                "campaign docs reference `{reference}`, but that manifest does not exist"
+            ));
+        }
+    }
+
+    for path in focused_goal_manifest_paths(root)? {
+        let normalized = normalize_repo_relative(root, &path);
+        let text = read_text_lossy(&path)?;
+        let (manifest, parse_violations) = parse_campaign_manifest(&path)?;
+        violations.extend(parse_violations);
+        validate_focused_campaign_source_truth(
+            root,
+            &normalized,
+            &text,
+            &manifest,
+            &active_manifest,
+            &mut violations,
+        )?;
+    }
+
+    Ok(violations)
+}
+
+fn referenced_goal_manifest_paths(root: &Path) -> Result<BTreeSet<String>, String> {
+    let mut paths = BTreeSet::new();
+    for relative in [
+        "docs/IMPLEMENTATION_CAMPAIGNS.md",
+        "docs/IMPLEMENTATION_PLAN.md",
+        "docs/ROADMAP.md",
+        "docs/REPO_TRACKING_MODEL.md",
+        "docs/CODEX_GOALS.md",
+    ] {
+        let path = root.join(relative);
+        if !path.exists() {
+            continue;
+        }
+        let text = read_text_lossy(&path)?;
+        paths.extend(extract_goal_manifest_paths(&text));
+    }
+    Ok(paths)
+}
+
+fn extract_goal_manifest_paths(text: &str) -> BTreeSet<String> {
+    let mut paths = BTreeSet::new();
+    for raw in text.split(|ch: char| {
+        ch.is_whitespace()
+            || matches!(
+                ch,
+                '`' | '"' | '\'' | '(' | ')' | '[' | ']' | '<' | '>' | ',' | ';'
+            )
+    }) {
+        let mut token = raw.trim_end_matches(|ch: char| {
+            matches!(ch, '.' | ':' | ',' | ';' | ')' | ']') && !raw.ends_with(".toml")
+        });
+        while let Some(stripped) = token.strip_prefix("../") {
+            token = stripped;
+        }
+        if let Some(index) = token.find(".ripr/goals/") {
+            let candidate = &token[index..];
+            if candidate.ends_with(".toml") {
+                paths.insert(
+                    normalize_slashes(candidate)
+                        .trim_start_matches("./")
+                        .to_string(),
+                );
+            }
+        }
+    }
+    paths
+}
+
+fn focused_goal_manifest_paths(root: &Path) -> Result<Vec<PathBuf>, String> {
+    let goals_dir = root.join(".ripr/goals");
+    let mut paths = Vec::new();
+    let entries = fs::read_dir(&goals_dir)
+        .map_err(|err| format!("read {}: {err}", normalize_path(&goals_dir)))?;
+    for entry in entries {
+        let entry =
+            entry.map_err(|err| format!("read {} entry: {err}", normalize_path(&goals_dir)))?;
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("toml") {
+            continue;
+        }
+        let normalized = normalize_repo_relative(root, &path);
+        if normalized == ".ripr/goals/active.toml" {
+            continue;
+        }
+        let text = read_text_lossy(&path)?;
+        let (manifest, _) = parse_campaign_manifest(&path)?;
+        if is_focused_campaign_manifest(&normalized, &text, &manifest) {
+            paths.push(path);
+        }
+    }
+    paths.sort();
+    Ok(paths)
+}
+
+fn is_focused_campaign_manifest(path: &str, text: &str, manifest: &CampaignManifest) -> bool {
+    path.starts_with(".ripr/goals/lane")
+        || text.contains("Focused")
+        || manifest.status.as_deref() == Some("tracker")
+        || manifest.issue.is_some()
+        || manifest.lane.is_some()
+}
+
+fn validate_focused_campaign_source_truth(
+    root: &Path,
+    manifest_path: &str,
+    text: &str,
+    manifest: &CampaignManifest,
+    active_manifest: &CampaignManifest,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !text.contains("not the active Codex Goals manifest") {
+        violations.push(format!(
+            "focused tracker manifest `{manifest_path}` must state that it is not the active Codex Goals manifest"
+        ));
+    }
+    if manifest.id.is_some() && manifest.id == active_manifest.id {
+        violations.push(format!(
+            "focused tracker manifest `{manifest_path}` reuses the active campaign id `{}`",
+            manifest.id.as_deref().unwrap_or("<missing>")
+        ));
+    }
+    if manifest.title.is_some() && manifest.title == active_manifest.title {
+        violations.push(format!(
+            "focused tracker manifest `{manifest_path}` reuses the active campaign title `{}`",
+            manifest.title.as_deref().unwrap_or("<missing>")
+        ));
+    }
+
+    for item in &manifest.work_items {
+        let item_id = item.id.as_deref().unwrap_or("<missing>");
+        if item.status.as_deref() == Some("done") && item.commands.is_empty() {
+            violations.push(format!(
+                "{manifest_path}:{item_id} is done but has no proof command entries"
+            ));
+        }
+        validate_manifest_artifact_path(
+            root,
+            manifest_path,
+            item_id,
+            "proposal",
+            item.proposal.as_deref(),
+            violations,
+        );
+        validate_manifest_artifact_path(
+            root,
+            manifest_path,
+            item_id,
+            "plan",
+            item.plan.as_deref(),
+            violations,
+        );
+        validate_manifest_artifact_path(
+            root,
+            manifest_path,
+            item_id,
+            "spec",
+            item.spec.as_deref(),
+            violations,
+        );
+        for spec in &item.specs {
+            validate_manifest_artifact_path(
+                root,
+                manifest_path,
+                item_id,
+                "specs",
+                Some(spec.as_str()),
+                violations,
+            );
+        }
+        validate_manifest_artifact_path(
+            root,
+            manifest_path,
+            item_id,
+            "receipt",
+            item.receipt.as_deref(),
+            violations,
+        );
+        validate_manifest_artifact_path(
+            root,
+            manifest_path,
+            item_id,
+            "closeout",
+            item.closeout.as_deref(),
+            violations,
+        );
+        if let Some(acceptance) = item.acceptance.as_ref() {
+            for spec_id in extract_spec_ids(acceptance) {
+                if !spec_id_has_file(root, &spec_id)? {
+                    violations.push(format!(
+                        "{manifest_path}:{item_id} references `{spec_id}` in acceptance, but docs/specs has no matching file"
+                    ));
+                }
+            }
+        }
+    }
+
+    if manifest.status.as_deref() == Some("closed") {
+        validate_closed_manifest_capability_next(root, manifest_path, violations)?;
+    }
+
+    Ok(())
+}
+
+fn validate_manifest_artifact_path(
+    root: &Path,
+    manifest_path: &str,
+    item_id: &str,
+    field: &str,
+    value: Option<&str>,
+    violations: &mut Vec<String>,
+) {
+    let Some(value) = value else {
+        return;
+    };
+    let relative = repo_relative_reference(value);
+    if relative.is_empty() {
+        violations.push(format!(
+            "{manifest_path}:{item_id} has empty `{field}` source-of-truth path"
+        ));
+        return;
+    }
+    if !root.join(&relative).exists() {
+        violations.push(format!(
+            "{manifest_path}:{item_id} `{field}` references missing `{relative}`"
+        ));
+    }
+}
+
+fn validate_closed_manifest_capability_next(
+    root: &Path,
+    manifest_path: &str,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let matrix_path = root.join("docs/CAPABILITY_MATRIX.md");
+    if !matrix_path.exists() {
+        return Ok(());
+    }
+    let matrix = read_text_lossy(&matrix_path)?;
+    for (index, line) in matrix.lines().enumerate() {
+        if !line.starts_with('|') || !line.contains(manifest_path) {
+            continue;
+        }
+        let columns = line
+            .trim_matches('|')
+            .split('|')
+            .map(|column| column.trim().trim_matches('`'))
+            .collect::<Vec<_>>();
+        if columns.len() < 5 {
+            continue;
+        }
+        if columns[4] != "maintenance" {
+            violations.push(format!(
+                "docs/CAPABILITY_MATRIX.md:{} references closed manifest `{manifest_path}` but next is `{}` instead of `maintenance`",
+                index + 1,
+                columns[4]
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn repo_relative_reference(value: &str) -> String {
+    let mut normalized = normalize_slashes(value)
+        .trim()
+        .trim_matches('`')
+        .trim_matches('"')
+        .to_string();
+    while let Some(stripped) = normalized.strip_prefix("../") {
+        normalized = stripped.to_string();
+    }
+    normalized.trim_start_matches("./").to_string()
+}
+
+fn normalize_repo_relative(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .map(normalize_path)
+        .unwrap_or_else(|_| normalize_path(path))
+}
+
+fn extract_spec_ids(text: &str) -> BTreeSet<String> {
+    text.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '-'))
+        .filter(|part| is_spec_id(part))
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn spec_id_has_file(root: &Path, spec_id: &str) -> Result<bool, String> {
+    let specs_dir = root.join("docs/specs");
+    if !specs_dir.exists() {
+        return Ok(false);
+    }
+    for entry in fs::read_dir(&specs_dir)
+        .map_err(|err| format!("read {}: {err}", normalize_path(&specs_dir)))?
+    {
+        let entry =
+            entry.map_err(|err| format!("read {} entry: {err}", normalize_path(&specs_dir)))?;
+        let Some(name) = entry.file_name().to_str().map(ToString::to_string) else {
+            continue;
+        };
+        if name
+            .strip_prefix(spec_id)
+            .is_some_and(|rest| rest.starts_with('-') && rest.ends_with(".md"))
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 fn campaign_status_report_body(manifest: &CampaignManifest, violations: &[String]) -> String {
     let status = if violations.is_empty() {
         "pass"
@@ -23158,12 +23498,18 @@ fn assign_campaign_array(
 ) {
     if let Some(item) = current.as_mut() {
         match key {
+            "specs" => item.specs = values,
             "commands" => item.commands = values,
             "blocked_by" => item.blocked_by = values,
             _ => {}
         }
-    } else if key == "end_state" {
-        manifest.end_state = values;
+    } else {
+        match key {
+            "end_state" => manifest.end_state = values,
+            "hard_rules" => manifest.hard_rules = values,
+            "non_goals" => manifest.non_goals = values,
+            _ => {}
+        }
     }
 }
 
@@ -23185,6 +23531,21 @@ fn assign_campaign_scalar(
             }),
             "branch" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
                 item.branch = Some(parsed);
+            }),
+            "proposal" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
+                item.proposal = Some(parsed);
+            }),
+            "plan" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
+                item.plan = Some(parsed);
+            }),
+            "spec" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
+                item.spec = Some(parsed);
+            }),
+            "receipt" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
+                item.receipt = Some(parsed);
+            }),
+            "closeout" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
+                item.closeout = Some(parsed);
             }),
             "acceptance" => {
                 assign_quoted_campaign_value(value, line_number, violations, |parsed| {
@@ -23212,6 +23573,10 @@ fn assign_campaign_scalar(
             "status" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
                 manifest.status = Some(parsed);
             }),
+            "issue" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
+                manifest.issue = Some(parsed);
+            }),
+            "lane" => manifest.lane = Some(value.trim_matches('"').to_string()),
             _ => violations.push(format!(
                 "campaign manifest line {line_number} uses unsupported campaign field `{key}`"
             )),
@@ -29949,36 +30314,37 @@ mod tests {
         badge_artifact_jobs, badge_artifact_native_slot, badge_artifacts_summary_markdown,
         badge_diff_policy_violations, build_lsp_cockpit_report, build_no_panic_allowlist_proposals,
         build_repo_exposure_latency_report, build_targeted_test_outcome_report,
-        check_allow_attributes, check_badge_diff_policy_with_context, check_droid_review_config,
-        check_executable_files, check_file_policy, check_local_context, check_network_policy,
-        check_no_panic_family, check_process_policy, check_static_language, check_workflows,
-        ci_full_evidence_gates, collect_panic_findings, collect_semantic_panic_findings,
-        critic_findings, days_from_civil, dogfood_class_counts, dogfood_first_action_scenarios,
-        dogfood_gate_adoption_scenarios, dogfood_generated_ci_cockpit_run_from_workflow,
-        dogfood_language_preview_run, dogfood_language_preview_scenarios,
-        dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
-        dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
-        dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
-        dogfood_report_packet_index_scenarios, evaluate_semantic_no_panic_policy,
-        evidence_quality_scorecard_from_values, evidence_quality_scorecard_json,
-        evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
-        evidence_quality_trend_json, evidence_quality_trend_markdown,
-        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
-        extract_workflow_run_blocks, finding_alignment_raw_to_canonical_ratio,
-        finish_worktree_doctor_report, first_line_difference, forbidden_panic_patterns,
-        generated_clean_violations, gh_pr_safe_next_action, gh_pr_status_markdown,
-        gh_pr_status_readiness, github_event_pull_request_title_from_text, glob_matches,
-        golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
-        guarded_allow_attributes_in_text, install_hooks_in, is_badge_refresh_context,
-        is_bdd_test_name, is_campaign_path, is_dependency_surface_candidate, is_docs_path,
-        is_evidence_path, is_generated_candidate, is_known_campaign_command,
-        is_non_rust_programming_candidate, is_policy_path, is_production_path, is_receipt_status,
-        is_ripr_managed_hook, is_snake_case_id, is_spec_id, is_stale_agent_boundary_scan_target,
-        json_escape, json_number_after, json_string_values_for_key, json_summary_count,
-        known_commands, known_xtask_command, lane1_evidence_audit_from_repo_exposure,
-        lane1_evidence_audit_json, lane1_evidence_audit_markdown, local_context_line_findings,
-        local_markdown_target, lsp_cockpit_report, lsp_cockpit_report_json,
-        lsp_cockpit_report_markdown, markdown_links_in_text, mutation_calibration_report_json,
+        campaign_source_truth_violations_for_root, check_allow_attributes,
+        check_badge_diff_policy_with_context, check_droid_review_config, check_executable_files,
+        check_file_policy, check_local_context, check_network_policy, check_no_panic_family,
+        check_process_policy, check_static_language, check_workflows, ci_full_evidence_gates,
+        collect_panic_findings, collect_semantic_panic_findings, critic_findings, days_from_civil,
+        dogfood_class_counts, dogfood_first_action_scenarios, dogfood_gate_adoption_scenarios,
+        dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
+        dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
+        dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
+        dogfood_pr_review_front_panel_scenarios, dogfood_report_json, dogfood_report_markdown,
+        dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
+        evaluate_semantic_no_panic_policy, evidence_quality_scorecard_from_values,
+        evidence_quality_scorecard_json, evidence_quality_scorecard_markdown,
+        evidence_quality_trend_from_values, evidence_quality_trend_json,
+        evidence_quality_trend_markdown, extract_json_object_usize_map, extract_json_string,
+        extract_json_warnings, extract_workflow_run_blocks,
+        finding_alignment_raw_to_canonical_ratio, finish_worktree_doctor_report,
+        first_line_difference, forbidden_panic_patterns, generated_clean_violations,
+        gh_pr_safe_next_action, gh_pr_status_markdown, gh_pr_status_readiness,
+        github_event_pull_request_title_from_text, glob_matches, golden_changes_without_blessing,
+        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
+        install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
+        is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
+        is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
+        is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
+        is_stale_agent_boundary_scan_target, json_escape, json_number_after,
+        json_string_values_for_key, json_summary_count, known_commands, known_xtask_command,
+        lane1_evidence_audit_from_repo_exposure, lane1_evidence_audit_json,
+        lane1_evidence_audit_markdown, local_context_line_findings, local_markdown_target,
+        lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
+        markdown_links_in_text, mutation_calibration_report_json,
         mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
         next_spec_id_from_ids, no_panic_toml_string, non_rust_programming_retention_reason,
         normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
@@ -37868,6 +38234,198 @@ commands = ["cargo xtask check-pr"]
     }
 
     #[test]
+    fn campaign_source_truth_accepts_focused_tracker_with_proof_links() -> Result<(), String> {
+        let violations = with_temp_cwd("campaign-source-truth-focused", |root| {
+            write(
+                &root.join("docs/IMPLEMENTATION_CAMPAIGNS.md"),
+                "Focused tracker: `.ripr/goals/lane9-focused.toml`\n",
+            );
+            write(&root.join("docs/IMPLEMENTATION_PLAN.md"), "");
+            write(&root.join("docs/ROADMAP.md"), "");
+            write(&root.join("docs/REPO_TRACKING_MODEL.md"), "");
+            write(&root.join("docs/CODEX_GOALS.md"), "");
+            write(
+                &root.join("docs/CAPABILITY_MATRIX.md"),
+                "| Capability | Status | Spec | Evidence | Next | Metrics |\n| --- | --- | --- | --- | --- | --- |\n| Focused proof | `alpha` | `RIPR-SPEC-0999` | `.ripr/goals/lane9-focused.toml` | `maintenance` | focused_metric |\n",
+            );
+            write(
+                &root.join("docs/specs/RIPR-SPEC-0999-focused.md"),
+                "# Spec\n",
+            );
+            write(
+                &root.join("docs/proposals/RIPR-PROP-0999-focused.md"),
+                "# Proposal\n",
+            );
+            write(
+                &root.join("docs/handoffs/focused-receipt.md"),
+                "# Receipt\n",
+            );
+            write(
+                &root.join("docs/handoffs/focused-closeout.md"),
+                "# Closeout\n",
+            );
+            write(
+                &root.join(".ripr/goals/active.toml"),
+                r#"
+id = "active-campaign"
+title = "Active Campaign"
+status = "closed"
+end_state = ["closed"]
+
+[[work_item]]
+id = "docs/active"
+status = "done"
+branch = "docs-active"
+stackable = false
+acceptance = "done"
+commands = ["cargo xtask check-pr"]
+"#,
+            );
+            write(
+                &root.join(".ripr/goals/lane9-focused.toml"),
+                r#"
+id = "focused-tracker"
+title = "Focused Tracker"
+status = "closed"
+lane = 9
+
+# Focused tracker. This is not the active Codex Goals manifest.
+
+end_state = ["focused tracker closed"]
+
+[[work_item]]
+id = "spec/focused-contract"
+status = "done"
+branch = "spec-focused-contract"
+stackable = false
+proposal = "docs/proposals/RIPR-PROP-0999-focused.md"
+spec = "docs/specs/RIPR-SPEC-0999-focused.md"
+receipt = "docs/handoffs/focused-receipt.md"
+closeout = "docs/handoffs/focused-closeout.md"
+acceptance = "RIPR-SPEC-0999 defines the focused contract."
+commands = ["cargo xtask check-spec-format"]
+"#,
+            );
+
+            campaign_source_truth_violations_for_root(root)
+        })?;
+
+        assert!(violations.is_empty(), "{violations:?}");
+        Ok(())
+    }
+
+    #[test]
+    fn campaign_source_truth_reports_focused_tracker_drift() -> Result<(), String> {
+        let violations = with_temp_cwd("campaign-source-truth-drift", |root| {
+            write(
+                &root.join("docs/IMPLEMENTATION_CAMPAIGNS.md"),
+                "Focused tracker: `.ripr/goals/lane9-focused.toml`\n",
+            );
+            write(&root.join("docs/IMPLEMENTATION_PLAN.md"), "");
+            write(&root.join("docs/ROADMAP.md"), "");
+            write(&root.join("docs/REPO_TRACKING_MODEL.md"), "");
+            write(&root.join("docs/CODEX_GOALS.md"), "");
+            write(
+                &root.join("docs/CAPABILITY_MATRIX.md"),
+                "| Capability | Status | Spec | Evidence | Next | Metrics |\n| --- | --- | --- | --- | --- | --- |\n| Focused proof | `alpha` | `RIPR-SPEC-0999` | `.ripr/goals/lane9-focused.toml` | `ready` | focused_metric |\n",
+            );
+            write(
+                &root.join(".ripr/goals/active.toml"),
+                r#"
+id = "active-campaign"
+title = "Active Campaign"
+status = "closed"
+end_state = ["closed"]
+
+[[work_item]]
+id = "docs/active"
+status = "done"
+branch = "docs-active"
+stackable = false
+acceptance = "done"
+commands = ["cargo xtask check-pr"]
+"#,
+            );
+            write(
+                &root.join(".ripr/goals/lane9-focused.toml"),
+                r#"
+id = "focused-tracker"
+title = "Focused Tracker"
+status = "closed"
+lane = 9
+
+# Focused tracker.
+
+end_state = ["focused tracker closed"]
+
+[[work_item]]
+id = "spec/focused-contract"
+status = "done"
+branch = "spec-focused-contract"
+stackable = false
+spec = "docs/specs/RIPR-SPEC-0999-focused.md"
+closeout = "docs/handoffs/focused-closeout.md"
+acceptance = "RIPR-SPEC-0999 defines the focused contract."
+"#,
+            );
+
+            campaign_source_truth_violations_for_root(root)
+        })?;
+
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("not the active Codex Goals manifest")),
+            "{violations:?}"
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("done but has no proof command entries")),
+            "{violations:?}"
+        );
+        assert!(
+            violations.iter().any(|violation| violation
+                .contains("references missing `docs/specs/RIPR-SPEC-0999-focused.md`")),
+            "{violations:?}"
+        );
+        assert!(
+            violations.iter().any(|violation| {
+                violation.contains("references `RIPR-SPEC-0999` in acceptance")
+            }),
+            "{violations:?}"
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("instead of `maintenance`")),
+            "{violations:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn spec_id_file_lookup_requires_filename_boundary() -> Result<(), String> {
+        with_temp_cwd("spec-id-file-boundary", |root| {
+            write(
+                &root.join("docs/specs/RIPR-SPEC-00010-larger.md"),
+                "# Larger spec\n",
+            );
+            if super::spec_id_has_file(root, "RIPR-SPEC-0001")? {
+                return Err("RIPR-SPEC-0001 must not match RIPR-SPEC-00010".to_string());
+            }
+            write(
+                &root.join("docs/specs/RIPR-SPEC-0001-example.md"),
+                "# Exact spec\n",
+            );
+            if !super::spec_id_has_file(root, "RIPR-SPEC-0001")? {
+                return Err("RIPR-SPEC-0001 should match its own spec file".to_string());
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
     fn local_context_findings_are_sorted_deterministically() {
         let mut findings = [
             LocalContextFinding {
@@ -39904,6 +40462,23 @@ jobs:
         assert_eq!(
             XtaskCommand::parse(["pr-triage-report".to_string()]),
             XtaskCommand::PrTriageReport
+        );
+        assert_eq!(
+            XtaskCommand::parse([
+                "ripr-pr".to_string(),
+                "--base".to_string(),
+                "origin/main".to_string(),
+                "--head".to_string(),
+                "HEAD".to_string(),
+                "--check".to_string(),
+            ]),
+            XtaskCommand::RiprPr(vec![
+                "--base".to_string(),
+                "origin/main".to_string(),
+                "--head".to_string(),
+                "HEAD".to_string(),
+                "--check".to_string(),
+            ])
         );
         assert_eq!(
             XtaskCommand::parse([
