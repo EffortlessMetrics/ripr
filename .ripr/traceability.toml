@@ -3065,11 +3065,20 @@ id = "RIPR-SPEC-0048"
 name = "Config and policy constant evidence"
 spec = "docs/specs/RIPR-SPEC-0048-config-policy-constant-evidence.md"
 tests = []
-fixtures = []
-code = []
+tests = [
+  "xtask::tests::evidence_quality_benchmark_corpus_is_valid",
+]
+fixtures = [
+  "fixtures/evidence-quality-benchmark/corpus.json",
+]
+code = [
+  "xtask/src/main.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0048-config-policy-constant-evidence.md",
+  "docs/specs/RIPR-SPEC-0035-evidence-quality-benchmark-corpus.md",
   "docs/specs/README.md",
+  "fixtures/evidence-quality-benchmark/README.md",
   ".ripr/traceability.toml",
   "CHANGELOG.md",
 ]

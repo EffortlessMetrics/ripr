@@ -79,6 +79,10 @@ Planned scope:
   how internal policy metadata, rendered config/report labels, behavior
   selectors, named limitations, repair routes, and must-not-claim guards should
   fit the raw-finding to canonical-item alignment model before analyzer work.
+- Added config/policy constant cases to the Lane 1 evidence-quality benchmark,
+  pinning internal no-action metadata, rendered output-observer repairs,
+  observed schema labels, cross-file flow unknowns, and opaque lookup
+  limitations before analyzer work.
 - VS Code `ripr: Show Status` now includes first-run/no-output context:
   workspace root, resolved server source and command, editor selectors,
   enabled languages from the last server refresh, and the next safe action for
