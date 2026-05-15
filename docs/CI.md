@@ -331,7 +331,10 @@ for reviewers. `test-oracle-report` writes an advisory baseline for the strength
 of `ripr`'s own Rust test oracles. `dogfood` writes a non-blocking
 `ripr`-on-`ripr` report from stable fixture diffs. `critic` writes an advisory
 adversarial review packet from the current diff, reports, and receipts.
-`reports index` writes a reviewer front door for generated reports.
+`reports index` writes a reviewer front door for generated reports and includes
+the repo-ops packet statuses for command mutability, worktree doctor, PR triage,
+per-PR merge readiness, generated-clean, badge ownership, critic, receipts,
+suggested fixes, and `check-pr`.
 `receipts` writes machine-readable gate evidence under `target/ripr/receipts`,
 and `receipts check` validates the receipt set.
 

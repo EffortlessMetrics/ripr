@@ -3,10 +3,18 @@ use crate::domain::{Finding, OracleKind, OracleStrength, RelatedTest};
 use super::{array_field, escape, field, number_field};
 
 const PRESENTATION_TEXT_CLASS: &str = "presentation_text";
+const CONFIG_POLICY_CLASS: &str = "config_or_policy_constant";
 const GROUP_REASON_DECL_LITERAL: &str = "declaration_and_literal_same_text_constant";
 const GROUP_REASON_OWNER: &str = "constant_owner_identity";
+const GROUP_REASON_CONFIG_POLICY: &str = "same_config_policy_constant";
 const VISIBILITY_UNKNOWN_CATEGORY: &str = "presentation_text_visibility_unknown";
 const VISIBILITY_UNKNOWN_REPAIR_ROUTE: &str = "trace_string_constant_to_output_or_snapshot_test";
+const CONFIG_POLICY_FLOW_UNKNOWN_CATEGORY: &str = "config_policy_flow_unknown";
+const CONFIG_POLICY_FLOW_UNKNOWN_REPAIR_ROUTE: &str =
+    "trace_constant_to_output_schema_validation_or_behavior_sink";
+const OPAQUE_CONFIG_LOOKUP_CATEGORY: &str = "opaque_config_lookup";
+const OPAQUE_CONFIG_LOOKUP_REPAIR_ROUTE: &str =
+    "add_fixture_backed_support_for_opaque_config_lookup";
 
 pub(super) struct FindingAlignmentReport {
     summary: FindingAlignmentSummary,
@@ -38,6 +46,20 @@ struct FindingAlignmentSummary {
     presentation_text_actionable_output_repairs: usize,
     presentation_text_no_action: usize,
     presentation_text_static_limitations: usize,
+    config_policy_constant_total: usize,
+    config_policy_user_visible: usize,
+    config_policy_observed: usize,
+    config_policy_unobserved: usize,
+    config_policy_internal_only: usize,
+    config_policy_flow_unknown: usize,
+    config_policy_observer_unknown: usize,
+    config_policy_duplicate_groups: usize,
+    config_policy_actionable_output_observer: usize,
+    config_policy_actionable_behavior_discriminator: usize,
+    config_policy_no_action: usize,
+    config_policy_static_limitations: usize,
+    config_policy_repair_route_coverage: usize,
+    config_policy_verify_command_coverage: usize,
 }
 
 struct FindingAlignmentItem {
@@ -55,7 +77,8 @@ struct FindingAlignmentItem {
     static_limitations: Vec<FindingAlignmentStaticLimitation>,
     confidence: FindingAlignmentConfidence,
     raw_findings: Vec<FindingAlignmentRawFinding>,
-    presentation_text: FindingAlignmentPresentationText,
+    presentation_text: Option<FindingAlignmentPresentationText>,
+    config_policy: Option<FindingAlignmentConfigPolicy>,
 }
 
 struct FindingAlignmentRawFinding {
@@ -99,6 +122,18 @@ struct FindingAlignmentPresentationText {
     suggested_assertion: String,
 }
 
+struct FindingAlignmentConfigPolicy {
+    constant: String,
+    role: String,
+    source_kind: String,
+    visibility: String,
+    observer: String,
+    actionability: String,
+    repair_kind: String,
+    target_test_type: String,
+    suggested_assertion: String,
+}
+
 struct PresentationTextClassification {
     canonical_item_kind: String,
     gap_state: String,
@@ -117,10 +152,38 @@ struct PresentationTextClassification {
     suggested_assertion: String,
 }
 
+struct ConfigPolicyClassification {
+    canonical_item_kind: String,
+    gap_state: String,
+    actionability: String,
+    why: String,
+    recommended_repair: String,
+    related_test: Option<FindingAlignmentRelatedTest>,
+    static_limitations: Vec<FindingAlignmentStaticLimitation>,
+    confidence: FindingAlignmentConfidence,
+    role: String,
+    visibility: String,
+    observer: String,
+    config_actionability: String,
+    repair_kind: String,
+    target_test_type: String,
+    suggested_assertion: String,
+}
+
 struct PresentationTextSink {
     recommended_observer: &'static str,
     repair_target: &'static str,
     description: &'static str,
+    target_test_type: &'static str,
+    assertion_subject: &'static str,
+}
+
+struct ConfigPolicySink {
+    role: &'static str,
+    repair_target: &'static str,
+    description: &'static str,
+    actionability: &'static str,
+    repair_kind: &'static str,
     target_test_type: &'static str,
     assertion_subject: &'static str,
 }
@@ -137,6 +200,38 @@ pub(super) fn report_for_findings(findings: &[Finding]) -> Option<FindingAlignme
 
     for (index, finding) in findings.iter().enumerate() {
         if used[index] {
+            continue;
+        }
+
+        if let Some(declaration) = parse_config_policy_declaration(&finding.probe.expression) {
+            let mut raw_indices = vec![index];
+            if declaration.inline_literal.is_none()
+                && finding.probe.expression.trim_end().ends_with('=')
+                && let Some(literal_index) = adjacent_literal_index(findings, &used, index)
+            {
+                raw_indices.push(literal_index);
+            }
+
+            used[index] = true;
+            for raw_index in raw_indices.iter().skip(1) {
+                used[*raw_index] = true;
+            }
+
+            let source_findings = raw_indices
+                .iter()
+                .map(|raw_index| &findings[*raw_index])
+                .collect::<Vec<_>>();
+            let classification =
+                classify_config_policy_constant(&declaration.constant_name, &source_findings);
+            let raw_findings = raw_indices
+                .iter()
+                .map(|raw_index| raw_finding_for(&findings[*raw_index]))
+                .collect::<Vec<_>>();
+            items.push(config_policy_item(
+                &declaration.constant_name,
+                raw_findings,
+                classification,
+            ));
             continue;
         }
 
@@ -192,7 +287,10 @@ pub(super) fn report_json(out: &mut String, report: &FindingAlignmentReport, ind
         out,
         indent + 1,
         "supported_evidence_classes",
-        &[PRESENTATION_TEXT_CLASS.to_string()],
+        &[
+            PRESENTATION_TEXT_CLASS.to_string(),
+            CONFIG_POLICY_CLASS.to_string(),
+        ],
         true,
     );
     out.push_str(&format!("{}\"summary\": ", "  ".repeat(indent + 1)));
@@ -244,54 +342,174 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
         .filter(|item| item.confidence.basis == "calibrated")
         .count();
     let uncalibrated = items.len().saturating_sub(calibrated_supported);
-    let presentation_text_visibility_unknown = items
+    let presentation_items = items
         .iter()
-        .filter(|item| item.presentation_text.visibility == "unknown")
-        .count();
-    let presentation_text_user_visible = items
+        .filter(|item| item.evidence_class == PRESENTATION_TEXT_CLASS)
+        .collect::<Vec<_>>();
+    let config_policy_items = items
         .iter()
-        .filter(|item| item.presentation_text.visibility == "user_visible")
+        .filter(|item| item.evidence_class == CONFIG_POLICY_CLASS)
+        .collect::<Vec<_>>();
+    let presentation_text_visibility_unknown = presentation_items
+        .iter()
+        .filter(|item| {
+            item.presentation_text
+                .as_ref()
+                .is_some_and(|text| text.visibility == "unknown")
+        })
         .count();
-    let presentation_text_observed = items
+    let presentation_text_user_visible = presentation_items
+        .iter()
+        .filter(|item| {
+            item.presentation_text
+                .as_ref()
+                .is_some_and(|text| text.visibility == "user_visible")
+        })
+        .count();
+    let presentation_text_observed = presentation_items
         .iter()
         .filter(|item| item.gap_state == "already_observed")
         .count();
-    let presentation_text_unobserved = items
+    let presentation_text_unobserved = presentation_items
         .iter()
         .filter(|item| {
-            item.presentation_text.visibility == "user_visible"
-                && item.presentation_text.observer == "none"
+            item.presentation_text
+                .as_ref()
+                .is_some_and(|text| text.visibility == "user_visible" && text.observer == "none")
         })
         .count();
-    let presentation_text_internal_only = items
+    let presentation_text_internal_only = presentation_items
         .iter()
         .filter(|item| item.gap_state == "internal_only")
         .count();
-    let presentation_text_observer_unknown = items
-        .iter()
-        .filter(|item| item.presentation_text.observer == "unknown")
-        .count();
-    let presentation_text_duplicate_groups = items
+    let presentation_text_observer_unknown = presentation_items
         .iter()
         .filter(|item| {
-            item.presentation_text.canonical_group_reason == GROUP_REASON_DECL_LITERAL
-                && item.raw_findings.len() > 1
+            item.presentation_text
+                .as_ref()
+                .is_some_and(|text| text.observer == "unknown")
         })
         .count();
-    let presentation_text_actionable_output_repairs = items
-        .iter()
-        .filter(|item| item.presentation_text.actionability == "add_output_observer")
-        .count();
-    let presentation_text_no_action = items
+    let presentation_text_duplicate_groups = presentation_items
         .iter()
         .filter(|item| {
-            item.presentation_text.actionability == "already_observed"
-                || item.presentation_text.actionability == "no_action_internal"
+            item.presentation_text.as_ref().is_some_and(|text| {
+                text.canonical_group_reason == GROUP_REASON_DECL_LITERAL
+                    && item.raw_findings.len() > 1
+            })
         })
         .count();
-    let presentation_text_static_limitations = items
+    let presentation_text_actionable_output_repairs = presentation_items
+        .iter()
+        .filter(|item| {
+            item.presentation_text
+                .as_ref()
+                .is_some_and(|text| text.actionability == "add_output_observer")
+        })
+        .count();
+    let presentation_text_no_action = presentation_items
+        .iter()
+        .filter(|item| {
+            item.presentation_text.as_ref().is_some_and(|text| {
+                text.actionability == "already_observed"
+                    || text.actionability == "no_action_internal"
+            })
+        })
+        .count();
+    let presentation_text_static_limitations = presentation_items
         .iter()
         .filter(|item| item.gap_state == "static_limitation")
+        .count();
+    let config_policy_user_visible = config_policy_items
+        .iter()
+        .filter(|item| {
+            item.config_policy
+                .as_ref()
+                .is_some_and(|config| config.visibility == "user_visible")
+        })
+        .count();
+    let config_policy_observed = config_policy_items
+        .iter()
+        .filter(|item| item.gap_state == "already_observed")
+        .count();
+    let config_policy_unobserved = config_policy_items
+        .iter()
+        .filter(|item| {
+            item.config_policy.as_ref().is_some_and(|config| {
+                config.visibility == "user_visible" && config.observer == "none"
+            })
+        })
+        .count();
+    let config_policy_internal_only = config_policy_items
+        .iter()
+        .filter(|item| item.gap_state == "internal_only")
+        .count();
+    let config_policy_flow_unknown = config_policy_items
+        .iter()
+        .filter(|item| {
+            item.static_limitations
+                .iter()
+                .any(|limitation| limitation.category == CONFIG_POLICY_FLOW_UNKNOWN_CATEGORY)
+        })
+        .count();
+    let config_policy_observer_unknown = config_policy_items
+        .iter()
+        .filter(|item| {
+            item.config_policy
+                .as_ref()
+                .is_some_and(|config| config.observer == "unknown")
+        })
+        .count();
+    let config_policy_duplicate_groups = config_policy_items
+        .iter()
+        .filter(|item| {
+            item.group_reason == GROUP_REASON_CONFIG_POLICY && item.raw_findings.len() > 1
+        })
+        .count();
+    let config_policy_actionable_output_observer = config_policy_items
+        .iter()
+        .filter(|item| {
+            item.config_policy
+                .as_ref()
+                .is_some_and(|config| config.actionability == "add_output_observer")
+        })
+        .count();
+    let config_policy_actionable_behavior_discriminator = config_policy_items
+        .iter()
+        .filter(|item| {
+            item.config_policy
+                .as_ref()
+                .is_some_and(|config| config.actionability == "add_behavior_discriminator")
+        })
+        .count();
+    let config_policy_no_action = config_policy_items
+        .iter()
+        .filter(|item| {
+            item.config_policy.as_ref().is_some_and(|config| {
+                config.actionability == "already_observed"
+                    || config.actionability == "no_action_internal"
+            })
+        })
+        .count();
+    let config_policy_static_limitations = config_policy_items
+        .iter()
+        .filter(|item| item.gap_state == "static_limitation")
+        .count();
+    let config_policy_repair_route_coverage = config_policy_items
+        .iter()
+        .filter(|item| item.gap_state == "actionable")
+        .filter(|item| {
+            !item.recommended_repair.is_empty()
+                && item
+                    .config_policy
+                    .as_ref()
+                    .is_some_and(|config| config.repair_kind != "unknown")
+        })
+        .count();
+    let config_policy_verify_command_coverage = config_policy_items
+        .iter()
+        .filter(|item| item.gap_state == "actionable")
+        .filter(|item| !item.verify_command.is_empty() && item.verify_command != "unknown")
         .count();
 
     FindingAlignmentSummary {
@@ -307,7 +525,7 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
         unknown,
         calibrated_supported,
         uncalibrated,
-        presentation_text_total: items.len(),
+        presentation_text_total: presentation_items.len(),
         presentation_text_user_visible,
         presentation_text_observed,
         presentation_text_unobserved,
@@ -319,6 +537,20 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
         presentation_text_actionable_output_repairs,
         presentation_text_no_action,
         presentation_text_static_limitations,
+        config_policy_constant_total: config_policy_items.len(),
+        config_policy_user_visible,
+        config_policy_observed,
+        config_policy_unobserved,
+        config_policy_internal_only,
+        config_policy_flow_unknown,
+        config_policy_observer_unknown,
+        config_policy_duplicate_groups,
+        config_policy_actionable_output_observer,
+        config_policy_actionable_behavior_discriminator,
+        config_policy_no_action,
+        config_policy_static_limitations,
+        config_policy_repair_route_coverage,
+        config_policy_verify_command_coverage,
     }
 }
 
@@ -349,7 +581,7 @@ fn presentation_text_item(
         static_limitations: classification.static_limitations,
         confidence: classification.confidence,
         raw_findings,
-        presentation_text: FindingAlignmentPresentationText {
+        presentation_text: Some(FindingAlignmentPresentationText {
             constant_name: constant_name.to_string(),
             text_literal,
             visibility: classification.visibility,
@@ -361,7 +593,49 @@ fn presentation_text_item(
             repair_kind: classification.repair_kind,
             target_test_type: classification.target_test_type,
             suggested_assertion: classification.suggested_assertion,
-        },
+        }),
+        config_policy: None,
+    }
+}
+
+fn config_policy_item(
+    constant_name: &str,
+    raw_findings: Vec<FindingAlignmentRawFinding>,
+    classification: ConfigPolicyClassification,
+) -> FindingAlignmentItem {
+    let group_reason = if raw_findings.len() > 1 {
+        GROUP_REASON_CONFIG_POLICY
+    } else {
+        GROUP_REASON_OWNER
+    };
+
+    FindingAlignmentItem {
+        canonical_gap_id: format!("config_or_policy_constant::{constant_name}"),
+        canonical_item_kind: classification.canonical_item_kind,
+        evidence_class: CONFIG_POLICY_CLASS.to_string(),
+        gap_state: classification.gap_state,
+        actionability: classification.actionability,
+        raw_group_size: raw_findings.len(),
+        group_reason: group_reason.to_string(),
+        why: classification.why,
+        recommended_repair: classification.recommended_repair,
+        related_test: classification.related_test,
+        verify_command: "cargo xtask evidence-quality-scorecard".to_string(),
+        static_limitations: classification.static_limitations,
+        confidence: classification.confidence,
+        raw_findings,
+        presentation_text: None,
+        config_policy: Some(FindingAlignmentConfigPolicy {
+            constant: constant_name.to_string(),
+            role: classification.role,
+            source_kind: "const_decl".to_string(),
+            visibility: classification.visibility,
+            observer: classification.observer,
+            actionability: classification.config_actionability,
+            repair_kind: classification.repair_kind,
+            target_test_type: classification.target_test_type,
+            suggested_assertion: classification.suggested_assertion,
+        }),
     }
 }
 
@@ -523,6 +797,185 @@ fn observed_classification(
     }
 }
 
+fn classify_config_policy_constant(
+    constant_name: &str,
+    raw_findings: &[&Finding],
+) -> ConfigPolicyClassification {
+    let source_file = raw_findings
+        .first()
+        .map(|finding| finding.probe.location.file.display().to_string())
+        .unwrap_or_default();
+
+    if is_internal_only_config_policy(constant_name, &source_file) {
+        return internal_config_policy_classification();
+    }
+
+    if is_opaque_config_policy_lookup(constant_name, &source_file) {
+        return config_policy_limitation_classification(
+            OPAQUE_CONFIG_LOOKUP_CATEGORY,
+            OPAQUE_CONFIG_LOOKUP_REPAIR_ROUTE,
+            "Changed config or policy constant is routed through an unsupported lookup helper.",
+            "Add fixture-backed support for this lookup shape before claiming visibility or observer debt.",
+            "unknown_until_lookup_supported",
+        );
+    }
+
+    if let Some(sink) = config_policy_visible_sink_for(constant_name, &source_file) {
+        if let Some((observer, related_test)) = observer_for_findings(raw_findings) {
+            return observed_config_policy_classification(sink, observer, related_test);
+        }
+
+        return actionable_config_policy_classification(sink, constant_name);
+    }
+
+    config_policy_limitation_classification(
+        CONFIG_POLICY_FLOW_UNKNOWN_CATEGORY,
+        CONFIG_POLICY_FLOW_UNKNOWN_REPAIR_ROUTE,
+        "Changed config or policy constant could not be traced to or away from a supported output, schema, validation, or behavior sink.",
+        "Trace the constant to a supported output, schema, validation, or behavior sink before claiming user test debt.",
+        "unknown_until_config_flow_known",
+    )
+}
+
+fn internal_config_policy_classification() -> ConfigPolicyClassification {
+    ConfigPolicyClassification {
+        canonical_item_kind: "no_action".to_string(),
+        gap_state: "internal_only".to_string(),
+        actionability: "no_action_internal".to_string(),
+        why: "Changed constant is confined to internal allowlist, proof, or policy metadata in fixture-backed scope.".to_string(),
+        recommended_repair: "No user test action.".to_string(),
+        related_test: None,
+        static_limitations: vec![],
+        confidence: FindingAlignmentConfidence {
+            basis: "fixture_backed".to_string(),
+            notes: vec![
+                "Internal config or policy metadata is benchmark-pinned as no-action evidence, not user test debt.".to_string(),
+            ],
+        },
+        role: "internal_policy_metadata".to_string(),
+        visibility: "internal_only".to_string(),
+        observer: "none".to_string(),
+        config_actionability: "no_action_internal".to_string(),
+        repair_kind: "no_action".to_string(),
+        target_test_type: "none".to_string(),
+        suggested_assertion:
+            "No user-facing assertion is recommended for this internal policy constant."
+                .to_string(),
+    }
+}
+
+fn actionable_config_policy_classification(
+    sink: ConfigPolicySink,
+    constant_name: &str,
+) -> ConfigPolicyClassification {
+    let recommended_repair = format!(
+        "Add or update a {} for {constant_name}.",
+        sink.repair_target
+    );
+    let suggested_assertion = format!(
+        "Assert {} includes the {constant_name} value or selected behavior.",
+        sink.assertion_subject
+    );
+
+    ConfigPolicyClassification {
+        canonical_item_kind: "gap".to_string(),
+        gap_state: "actionable".to_string(),
+        actionability: sink.actionability.to_string(),
+        why: format!(
+            "Changed config or policy constant flows to {} and no supported observer or discriminator is found.",
+            sink.description
+        ),
+        recommended_repair,
+        related_test: None,
+        static_limitations: vec![],
+        confidence: FindingAlignmentConfidence {
+            basis: "fixture_backed".to_string(),
+            notes: vec![
+                "Visible unobserved config or policy constants are actionable only for supported sink patterns.".to_string(),
+            ],
+        },
+        role: sink.role.to_string(),
+        visibility: "user_visible".to_string(),
+        observer: "none".to_string(),
+        config_actionability: sink.actionability.to_string(),
+        repair_kind: sink.repair_kind.to_string(),
+        target_test_type: sink.target_test_type.to_string(),
+        suggested_assertion,
+    }
+}
+
+fn observed_config_policy_classification(
+    sink: ConfigPolicySink,
+    observer: &'static str,
+    related_test: FindingAlignmentRelatedTest,
+) -> ConfigPolicyClassification {
+    ConfigPolicyClassification {
+        canonical_item_kind: "observed".to_string(),
+        gap_state: "already_observed".to_string(),
+        actionability: "already_observed".to_string(),
+        why: format!(
+            "Changed config or policy constant flows to {} and a supported {observer} observer covers it.",
+            sink.description
+        ),
+        recommended_repair: "No new RIPR action.".to_string(),
+        related_test: Some(related_test),
+        static_limitations: vec![],
+        confidence: FindingAlignmentConfidence {
+            basis: "fixture_backed".to_string(),
+            notes: vec![
+                "Observed config or policy constants stay visible as evidence without becoming user repair work.".to_string(),
+            ],
+        },
+        role: sink.role.to_string(),
+        visibility: "user_visible".to_string(),
+        observer: observer.to_string(),
+        config_actionability: "already_observed".to_string(),
+        repair_kind: "no_action".to_string(),
+        target_test_type: observer.to_string(),
+        suggested_assertion: format!(
+            "Existing {observer} observer already covers the {}.",
+            sink.description
+        ),
+    }
+}
+
+fn config_policy_limitation_classification(
+    category: &str,
+    repair_route: &str,
+    why: &str,
+    recommended_repair: &str,
+    user_actionability: &str,
+) -> ConfigPolicyClassification {
+    ConfigPolicyClassification {
+        canonical_item_kind: "limitation".to_string(),
+        gap_state: "static_limitation".to_string(),
+        actionability: "inspect_config_flow".to_string(),
+        why: why.to_string(),
+        recommended_repair: recommended_repair.to_string(),
+        related_test: None,
+        static_limitations: vec![FindingAlignmentStaticLimitation {
+            category: category.to_string(),
+            repair_route: repair_route.to_string(),
+            user_actionability: user_actionability.to_string(),
+        }],
+        confidence: FindingAlignmentConfidence {
+            basis: "fixture_backed".to_string(),
+            notes: vec![
+                "Config/policy unknowns are benchmark-pinned as named limitations; no user test debt is claimed without supported sink evidence.".to_string(),
+            ],
+        },
+        role: "unknown".to_string(),
+        visibility: "unknown".to_string(),
+        observer: "unknown".to_string(),
+        config_actionability: "inspect_config_flow".to_string(),
+        repair_kind: "inspect_config_flow".to_string(),
+        target_test_type: "unknown".to_string(),
+        suggested_assertion:
+            "Trace the constant to a supported output or behavior sink before adding tests."
+                .to_string(),
+    }
+}
+
 fn visible_sink_for(constant_name: &str, file: &str) -> Option<PresentationTextSink> {
     let file = normalize_token_text(file);
 
@@ -563,6 +1016,71 @@ fn visible_sink_for(constant_name: &str, file: &str) -> Option<PresentationTextS
     None
 }
 
+fn config_policy_visible_sink_for(constant_name: &str, file: &str) -> Option<ConfigPolicySink> {
+    let file = normalize_token_text(file);
+
+    if (name_has_token(constant_name, "SCHEMA") || name_has_token(constant_name, "FIELD"))
+        && file.contains("schema")
+    {
+        return Some(ConfigPolicySink {
+            role: "schema_field_label",
+            repair_target: "schema-render or golden-output test",
+            description: "rendered schema output",
+            actionability: "add_output_observer",
+            repair_kind: "output_observer",
+            target_test_type: "schema_render_or_golden",
+            assertion_subject: "the rendered schema output",
+        });
+    }
+
+    if (name_has_token(constant_name, "REPORT")
+        || (name_has_token(constant_name, "POLICY") && name_has_token(constant_name, "LABEL")))
+        && file.contains("report")
+    {
+        return Some(ConfigPolicySink {
+            role: "rendered_policy_label",
+            repair_target: "report-render or golden-output test",
+            description: "rendered report output",
+            actionability: "add_output_observer",
+            repair_kind: "output_observer",
+            target_test_type: "report_render_or_golden",
+            assertion_subject: "the rendered report output",
+        });
+    }
+
+    if (name_has_token(constant_name, "CONFIG") || name_has_token(constant_name, "SETTING"))
+        && (file.contains("settings") || file.contains("output") || file.contains("render"))
+    {
+        return Some(ConfigPolicySink {
+            role: "rendered_config_label",
+            repair_target: "config-output, snapshot, or golden-output test",
+            description: "rendered config output",
+            actionability: "add_output_observer",
+            repair_kind: "output_observer",
+            target_test_type: "config_output_or_golden",
+            assertion_subject: "the rendered config output",
+        });
+    }
+
+    if (name_has_token(constant_name, "THRESHOLD")
+        || name_has_token(constant_name, "SELECTOR")
+        || name_has_token(constant_name, "VALIDATION"))
+        && (file.contains("validation") || file.contains("routing") || file.contains("selector"))
+    {
+        return Some(ConfigPolicySink {
+            role: "behavior_selector",
+            repair_target: "behavior discriminator test",
+            description: "observable validation or routing behavior",
+            actionability: "add_behavior_discriminator",
+            repair_kind: "behavior_discriminator",
+            target_test_type: "validation_behavior",
+            assertion_subject: "the selected behavior",
+        });
+    }
+
+    None
+}
+
 fn is_internal_only_text(constant_name: &str, file: &str) -> bool {
     let file = normalize_token_text(file);
     name_has_token(constant_name, "INTERNAL")
@@ -573,6 +1091,26 @@ fn is_internal_only_text(constant_name: &str, file: &str) -> bool {
         || file.contains("policy")
         || file.contains("config")
         || file.contains("internal")
+}
+
+fn is_internal_only_config_policy(constant_name: &str, file: &str) -> bool {
+    let file = normalize_token_text(file);
+    name_has_token(constant_name, "INTERNAL")
+        || name_has_token(constant_name, "ALLOWLIST")
+        || name_has_token(constant_name, "DENYLIST")
+        || name_has_token(constant_name, "PROOF")
+        || file.contains("internal")
+        || file.contains("allowlist")
+        || file.contains("denylist")
+        || file.contains("proof")
+}
+
+fn is_opaque_config_policy_lookup(constant_name: &str, file: &str) -> bool {
+    let file = normalize_token_text(file);
+    name_has_token(constant_name, "OPAQUE")
+        || file.contains("registry")
+        || file.contains("lookup")
+        || file.contains("dynamic")
 }
 
 fn observer_for_findings(
@@ -611,8 +1149,20 @@ fn observer_for_related_test(test: &RelatedTest) -> Option<(u8, &'static str)> {
         return Some((3, "report_render"));
     }
 
+    if strong_oracle && text.contains("schema") {
+        return Some((4, "schema_render"));
+    }
+
+    if strong_oracle && (text.contains("config") || text.contains("settings")) {
+        return Some((5, "config_output"));
+    }
+
+    if strong_oracle && (text.contains("validation") || text.contains("routing")) {
+        return Some((6, "validation_behavior"));
+    }
+
     if strong_oracle && (text.contains("table") || text.contains("display")) {
-        return Some((4, "table_render"));
+        return Some((7, "table_render"));
     }
 
     None
@@ -676,6 +1226,37 @@ fn adjacent_literal_index(
         })
 }
 
+fn parse_config_policy_declaration(expression: &str) -> Option<PresentationTextDeclaration> {
+    let trimmed = expression.trim();
+    let const_pos = trimmed.find("const ")?;
+    if const_pos > 0
+        && trimmed[..const_pos]
+            .chars()
+            .last()
+            .is_some_and(|ch| ch.is_alphanumeric() || ch == '_')
+    {
+        return None;
+    }
+
+    let after_const = &trimmed[const_pos + "const ".len()..];
+    let name_end = after_const
+        .find(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
+        .unwrap_or(after_const.len());
+    let constant_name = &after_const[..name_end];
+    if constant_name.is_empty() || !is_config_policy_constant_name(constant_name) {
+        return None;
+    }
+
+    let after_name = after_const[name_end..].trim_start();
+    let after_colon = after_name.strip_prefix(':')?.trim_start();
+    let equals_pos = after_colon.find('=')?;
+    let after_equals = after_colon[equals_pos + 1..].trim_start();
+    Some(PresentationTextDeclaration {
+        constant_name: constant_name.to_string(),
+        inline_literal: parse_string_literal(after_equals),
+    })
+}
+
 fn parse_presentation_text_declaration(expression: &str) -> Option<PresentationTextDeclaration> {
     let trimmed = expression.trim();
     let const_pos = trimmed.find("const ")?;
@@ -710,6 +1291,28 @@ fn parse_presentation_text_declaration(expression: &str) -> Option<PresentationT
         constant_name: constant_name.to_string(),
         inline_literal: parse_string_literal(after_equals),
     })
+}
+
+fn is_config_policy_constant_name(name: &str) -> bool {
+    let upper = name.to_ascii_uppercase();
+    [
+        "CONFIG",
+        "SETTING",
+        "SETTINGS",
+        "POLICY",
+        "ALLOWLIST",
+        "DENYLIST",
+        "SCHEMA",
+        "FIELD",
+        "THRESHOLD",
+        "SELECTOR",
+        "VALIDATION",
+        "ROUTING",
+        "ROUTE",
+        "OPAQUE",
+    ]
+    .iter()
+    .any(|marker| upper.split('_').any(|part| part == *marker))
 }
 
 fn is_presentation_text_constant_name(name: &str) -> bool {
@@ -770,7 +1373,7 @@ fn summary_json(out: &mut String, summary: &FindingAlignmentSummary) {
         summary.raw_signals as f64 / summary.canonical_items as f64
     };
     out.push_str(&format!(
-        "{{\"raw_signals\":{},\"canonical_items\":{},\"aligned_raw_findings\":{},\"unaligned_raw_findings\":{},\"raw_to_canonical_ratio\":{ratio:.2},\"duplicate_groups_total\":{},\"actionable_gaps\":{},\"already_observed\":{},\"internal_no_action\":{},\"static_limitations\":{},\"unknown\":{},\"calibrated_supported\":{},\"uncalibrated\":{},\"presentation_text_total\":{},\"presentation_text_user_visible\":{},\"presentation_text_observed\":{},\"presentation_text_unobserved\":{},\"presentation_text_internal_only\":{},\"presentation_text_visibility_unknown\":{},\"presentation_text_observer_unknown\":{},\"presentation_text_duplicate_groups\":{},\"presentation_text_actionable_snapshot\":{},\"presentation_text_actionable_output_repairs\":{},\"presentation_text_no_action\":{},\"presentation_text_static_limitations\":{}}}",
+        "{{\"raw_signals\":{},\"canonical_items\":{},\"aligned_raw_findings\":{},\"unaligned_raw_findings\":{},\"raw_to_canonical_ratio\":{ratio:.2},\"duplicate_groups_total\":{},\"actionable_gaps\":{},\"already_observed\":{},\"internal_no_action\":{},\"static_limitations\":{},\"unknown\":{},\"calibrated_supported\":{},\"uncalibrated\":{},\"presentation_text_total\":{},\"presentation_text_user_visible\":{},\"presentation_text_observed\":{},\"presentation_text_unobserved\":{},\"presentation_text_internal_only\":{},\"presentation_text_visibility_unknown\":{},\"presentation_text_observer_unknown\":{},\"presentation_text_duplicate_groups\":{},\"presentation_text_actionable_snapshot\":{},\"presentation_text_actionable_output_repairs\":{},\"presentation_text_no_action\":{},\"presentation_text_static_limitations\":{},\"config_policy_constant_total\":{},\"config_policy_user_visible\":{},\"config_policy_observed\":{},\"config_policy_unobserved\":{},\"config_policy_internal_only\":{},\"config_policy_flow_unknown\":{},\"config_policy_observer_unknown\":{},\"config_policy_duplicate_groups\":{},\"config_policy_actionable_output_observer\":{},\"config_policy_actionable_behavior_discriminator\":{},\"config_policy_no_action\":{},\"config_policy_static_limitations\":{},\"config_policy_repair_route_coverage\":{},\"config_policy_verify_command_coverage\":{}}}",
         summary.raw_signals,
         summary.canonical_items,
         summary.aligned_raw_findings,
@@ -794,7 +1397,21 @@ fn summary_json(out: &mut String, summary: &FindingAlignmentSummary) {
         summary.presentation_text_actionable_snapshot,
         summary.presentation_text_actionable_output_repairs,
         summary.presentation_text_no_action,
-        summary.presentation_text_static_limitations
+        summary.presentation_text_static_limitations,
+        summary.config_policy_constant_total,
+        summary.config_policy_user_visible,
+        summary.config_policy_observed,
+        summary.config_policy_unobserved,
+        summary.config_policy_internal_only,
+        summary.config_policy_flow_unknown,
+        summary.config_policy_observer_unknown,
+        summary.config_policy_duplicate_groups,
+        summary.config_policy_actionable_output_observer,
+        summary.config_policy_actionable_behavior_discriminator,
+        summary.config_policy_no_action,
+        summary.config_policy_static_limitations,
+        summary.config_policy_repair_route_coverage,
+        summary.config_policy_verify_command_coverage
     ));
 }
 
@@ -849,7 +1466,9 @@ fn item_json(out: &mut String, item: &FindingAlignmentItem, indent: usize) {
     out.push_str(",\n");
     raw_findings_json(out, &item.raw_findings, indent + 1);
     out.push_str(",\n");
-    presentation_text_json(out, &item.presentation_text, indent + 1);
+    presentation_text_json(out, item.presentation_text.as_ref(), indent + 1);
+    out.push_str(",\n");
+    config_policy_json(out, item.config_policy.as_ref(), indent + 1);
     out.push('\n');
     out.push_str(&format!("{sp}}}"));
 }
@@ -943,13 +1562,15 @@ fn raw_findings_json(out: &mut String, raw_findings: &[FindingAlignmentRawFindin
 
 fn presentation_text_json(
     out: &mut String,
-    presentation_text: &FindingAlignmentPresentationText,
+    presentation_text: Option<&FindingAlignmentPresentationText>,
     indent: usize,
 ) {
-    out.push_str(&format!(
-        "{}\"presentation_text\": {{\n",
-        "  ".repeat(indent)
-    ));
+    out.push_str(&format!("{}\"presentation_text\": ", "  ".repeat(indent)));
+    let Some(presentation_text) = presentation_text else {
+        out.push_str("null");
+        return;
+    };
+    out.push_str("{\n");
     field(
         out,
         indent + 1,
@@ -1029,11 +1650,70 @@ fn presentation_text_json(
     out.push_str(&format!("{}}}", "  ".repeat(indent)));
 }
 
+fn config_policy_json(
+    out: &mut String,
+    config_policy: Option<&FindingAlignmentConfigPolicy>,
+    indent: usize,
+) {
+    out.push_str(&format!("{}\"config_policy\": ", "  ".repeat(indent)));
+    let Some(config_policy) = config_policy else {
+        out.push_str("null");
+        return;
+    };
+    out.push_str("{\n");
+    field(out, indent + 1, "constant", &config_policy.constant, true);
+    field(out, indent + 1, "role", &config_policy.role, true);
+    field(
+        out,
+        indent + 1,
+        "source_kind",
+        &config_policy.source_kind,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "visibility",
+        &config_policy.visibility,
+        true,
+    );
+    field(out, indent + 1, "observer", &config_policy.observer, true);
+    field(
+        out,
+        indent + 1,
+        "actionability",
+        &config_policy.actionability,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "repair_kind",
+        &config_policy.repair_kind,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "target_test_type",
+        &config_policy.target_test_type,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "suggested_assertion",
+        &config_policy.suggested_assertion,
+        false,
+    );
+    out.push_str(&format!("{}}}", "  ".repeat(indent)));
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        GROUP_REASON_DECL_LITERAL, GROUP_REASON_OWNER, parse_presentation_text_declaration,
-        parse_string_literal, report_for_findings,
+        GROUP_REASON_CONFIG_POLICY, GROUP_REASON_DECL_LITERAL, GROUP_REASON_OWNER,
+        parse_presentation_text_declaration, parse_string_literal, report_for_findings,
     };
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, OracleKind,
@@ -1075,8 +1755,9 @@ mod tests {
         assert_eq!(item.group_reason, GROUP_REASON_DECL_LITERAL);
         assert_eq!(item.gap_state, "static_limitation");
         assert_eq!(item.actionability, "inspect_visibility");
+        let presentation_text = presentation_text_for(item)?;
         assert_eq!(
-            item.presentation_text.text_literal.as_deref(),
+            presentation_text.text_literal.as_deref(),
             Some("apple-m3-air-cpu-neon = M3 MacBook Air Apple CPU/NEON lane")
         );
         Ok(())
@@ -1222,7 +1903,11 @@ mod tests {
 
         assert_eq!(report.items[0].raw_group_size, 1);
         assert_eq!(report.items[0].group_reason, GROUP_REASON_OWNER);
-        assert!(report.items[0].presentation_text.text_literal.is_none());
+        assert!(
+            presentation_text_for(&report.items[0])?
+                .text_literal
+                .is_none()
+        );
         Ok(())
     }
 
@@ -1264,23 +1949,18 @@ mod tests {
         assert_eq!(item.canonical_item_kind, "gap");
         assert_eq!(item.gap_state, "actionable");
         assert_eq!(item.actionability, "add_output_observer");
-        assert_eq!(item.presentation_text.visibility, "user_visible");
-        assert_eq!(item.presentation_text.observer, "none");
-        assert_eq!(
-            item.presentation_text.recommended_observer,
-            "cli_help_output"
-        );
+        let presentation_text = presentation_text_for(item)?;
+        assert_eq!(presentation_text.visibility, "user_visible");
+        assert_eq!(presentation_text.observer, "none");
+        assert_eq!(presentation_text.recommended_observer, "cli_help_output");
         assert_eq!(
             item.recommended_repair,
             "Add or update a help-output snapshot assertion for HELP_DEVICE_LABEL."
         );
-        assert_eq!(item.presentation_text.repair_kind, "output_observer");
+        assert_eq!(presentation_text.repair_kind, "output_observer");
+        assert_eq!(presentation_text.target_test_type, "help_output_snapshot");
         assert_eq!(
-            item.presentation_text.target_test_type,
-            "help_output_snapshot"
-        );
-        assert_eq!(
-            item.presentation_text.suggested_assertion,
+            presentation_text.suggested_assertion,
             "Assert CLI help output includes the HELP_DEVICE_LABEL text."
         );
         assert!(item.related_test.is_none());
@@ -1326,13 +2006,14 @@ mod tests {
         assert_eq!(item.canonical_item_kind, "observed");
         assert_eq!(item.gap_state, "already_observed");
         assert_eq!(item.actionability, "already_observed");
-        assert_eq!(item.presentation_text.visibility, "user_visible");
-        assert_eq!(item.presentation_text.observer, "golden");
-        assert_eq!(item.presentation_text.actionability, "already_observed");
-        assert_eq!(item.presentation_text.repair_kind, "no_action");
-        assert_eq!(item.presentation_text.target_test_type, "golden");
+        let presentation_text = presentation_text_for(item)?;
+        assert_eq!(presentation_text.visibility, "user_visible");
+        assert_eq!(presentation_text.observer, "golden");
+        assert_eq!(presentation_text.actionability, "already_observed");
+        assert_eq!(presentation_text.repair_kind, "no_action");
+        assert_eq!(presentation_text.target_test_type, "golden");
         assert_eq!(
-            item.presentation_text.suggested_assertion,
+            presentation_text.suggested_assertion,
             "Existing golden observer already covers the rendered report output."
         );
         assert_eq!(
@@ -1373,13 +2054,14 @@ mod tests {
         assert_eq!(item.canonical_item_kind, "no_action");
         assert_eq!(item.gap_state, "internal_only");
         assert_eq!(item.actionability, "no_action");
-        assert_eq!(item.presentation_text.visibility, "internal_only");
-        assert_eq!(item.presentation_text.observer, "none");
-        assert_eq!(item.presentation_text.actionability, "no_action_internal");
-        assert_eq!(item.presentation_text.repair_kind, "no_action");
-        assert_eq!(item.presentation_text.target_test_type, "none");
+        let presentation_text = presentation_text_for(item)?;
+        assert_eq!(presentation_text.visibility, "internal_only");
+        assert_eq!(presentation_text.observer, "none");
+        assert_eq!(presentation_text.actionability, "no_action_internal");
+        assert_eq!(presentation_text.repair_kind, "no_action");
+        assert_eq!(presentation_text.target_test_type, "none");
         assert_eq!(
-            item.presentation_text.suggested_assertion,
+            presentation_text.suggested_assertion,
             "No user-facing assertion is recommended for this internal label."
         );
         assert!(item.static_limitations.is_empty());
@@ -1404,12 +2086,13 @@ mod tests {
         assert_eq!(report.summary.static_limitations, 1);
         assert_eq!(item.gap_state, "static_limitation");
         assert_eq!(item.actionability, "inspect_visibility");
-        assert_eq!(item.presentation_text.visibility, "unknown");
-        assert_eq!(item.presentation_text.observer, "unknown");
-        assert_eq!(item.presentation_text.repair_kind, "inspect_visibility");
-        assert_eq!(item.presentation_text.target_test_type, "unknown");
+        let presentation_text = presentation_text_for(item)?;
+        assert_eq!(presentation_text.visibility, "unknown");
+        assert_eq!(presentation_text.observer, "unknown");
+        assert_eq!(presentation_text.repair_kind, "inspect_visibility");
+        assert_eq!(presentation_text.target_test_type, "unknown");
         assert_eq!(
-            item.presentation_text.suggested_assertion,
+            presentation_text.suggested_assertion,
             "Trace the constant to a supported output sink before adding or updating tests."
         );
         assert_eq!(
@@ -1418,6 +2101,228 @@ mod tests {
                 .map(|limitation| limitation.category.as_str()),
             Some("presentation_text_visibility_unknown")
         );
+        Ok(())
+    }
+
+    #[test]
+    fn internal_policy_metadata_is_no_action() -> Result<(), String> {
+        let findings = vec![
+            finding_in_file(
+                "src/policy.rs",
+                "decl",
+                14,
+                ExposureClass::Exposed,
+                ProbeFamily::FieldConstruction,
+                "pub const INTERNAL_POLICY_LABEL: &str =",
+            ),
+            finding_in_file(
+                "src/policy.rs",
+                "literal",
+                15,
+                ExposureClass::StaticUnknown,
+                ProbeFamily::StaticUnknown,
+                "\"internal policy label\";",
+            ),
+        ];
+
+        let report = report_for_findings(&findings)
+            .ok_or_else(|| "internal policy constant should align".to_string())?;
+        let item = &report.items[0];
+        let config_policy = config_policy_for(item)?;
+
+        assert_eq!(report.summary.canonical_items, 1);
+        assert_eq!(report.summary.internal_no_action, 1);
+        assert_eq!(report.summary.config_policy_constant_total, 1);
+        assert_eq!(report.summary.config_policy_internal_only, 1);
+        assert_eq!(
+            item.canonical_gap_id,
+            "config_or_policy_constant::INTERNAL_POLICY_LABEL"
+        );
+        assert_eq!(item.group_reason, GROUP_REASON_CONFIG_POLICY);
+        assert_eq!(item.raw_group_size, 2);
+        assert_eq!(item.gap_state, "internal_only");
+        assert_eq!(item.actionability, "no_action_internal");
+        assert_eq!(config_policy.role, "internal_policy_metadata");
+        assert_eq!(config_policy.visibility, "internal_only");
+        assert_eq!(config_policy.repair_kind, "no_action");
+        assert!(item.presentation_text.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn rendered_policy_label_without_observer_is_actionable() -> Result<(), String> {
+        let findings = vec![
+            finding_in_file(
+                "src/report_config.rs",
+                "decl",
+                22,
+                ExposureClass::Exposed,
+                ProbeFamily::FieldConstruction,
+                "pub const REPORT_POLICY_LABEL: &str =",
+            ),
+            finding_in_file(
+                "src/report_config.rs",
+                "literal",
+                23,
+                ExposureClass::WeaklyExposed,
+                ProbeFamily::StaticUnknown,
+                "\"Policy label\";",
+            ),
+        ];
+
+        let report = report_for_findings(&findings)
+            .ok_or_else(|| "rendered policy label should align".to_string())?;
+        let item = &report.items[0];
+        let config_policy = config_policy_for(item)?;
+
+        assert_eq!(report.summary.actionable_gaps, 1);
+        assert_eq!(report.summary.config_policy_user_visible, 1);
+        assert_eq!(report.summary.config_policy_unobserved, 1);
+        assert_eq!(report.summary.config_policy_actionable_output_observer, 1);
+        assert_eq!(report.summary.config_policy_repair_route_coverage, 1);
+        assert_eq!(report.summary.config_policy_verify_command_coverage, 1);
+        assert_eq!(item.canonical_item_kind, "gap");
+        assert_eq!(item.gap_state, "actionable");
+        assert_eq!(item.actionability, "add_output_observer");
+        assert_eq!(config_policy.role, "rendered_policy_label");
+        assert_eq!(config_policy.visibility, "user_visible");
+        assert_eq!(config_policy.observer, "none");
+        assert_eq!(config_policy.repair_kind, "output_observer");
+        assert_eq!(config_policy.target_test_type, "report_render_or_golden");
+        assert!(!item.recommended_repair.contains("mutation"));
+        Ok(())
+    }
+
+    #[test]
+    fn schema_label_with_golden_observer_is_already_observed() -> Result<(), String> {
+        let golden = related_test(
+            "schema_render_golden_observes_field",
+            "tests/golden/schema_output.rs",
+            31,
+            OracleKind::Snapshot,
+            OracleStrength::Strong,
+        );
+        let findings = vec![
+            finding_in_file_with_related(
+                "src/schema.rs",
+                "decl",
+                31,
+                ExposureClass::Exposed,
+                ProbeFamily::FieldConstruction,
+                "pub const SCHEMA_POLICY_FIELD: &str =",
+                vec![golden],
+            ),
+            finding_in_file(
+                "src/schema.rs",
+                "literal",
+                32,
+                ExposureClass::Exposed,
+                ProbeFamily::StaticUnknown,
+                "\"policy\";",
+            ),
+        ];
+
+        let report = report_for_findings(&findings)
+            .ok_or_else(|| "schema policy field should align".to_string())?;
+        let item = &report.items[0];
+        let config_policy = config_policy_for(item)?;
+
+        assert_eq!(report.summary.already_observed, 1);
+        assert_eq!(report.summary.config_policy_observed, 1);
+        assert_eq!(report.summary.config_policy_no_action, 1);
+        assert_eq!(item.canonical_item_kind, "observed");
+        assert_eq!(item.gap_state, "already_observed");
+        assert_eq!(config_policy.role, "schema_field_label");
+        assert_eq!(config_policy.visibility, "user_visible");
+        assert_eq!(config_policy.observer, "golden");
+        assert_eq!(config_policy.repair_kind, "no_action");
+        assert_eq!(
+            item.related_test.as_ref().map(|test| test.name.as_str()),
+            Some("schema_render_golden_observes_field")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn cross_file_config_flow_stays_named_limitation() -> Result<(), String> {
+        let findings = vec![
+            finding_in_file(
+                "src/config_labels.rs",
+                "decl",
+                44,
+                ExposureClass::Exposed,
+                ProbeFamily::FieldConstruction,
+                "pub const CONFIG_TABLE_LABEL: &str =",
+            ),
+            finding_in_file(
+                "src/config_labels.rs",
+                "literal",
+                45,
+                ExposureClass::StaticUnknown,
+                ProbeFamily::StaticUnknown,
+                "\"Config table label\";",
+            ),
+        ];
+
+        let report = report_for_findings(&findings)
+            .ok_or_else(|| "config flow unknown should align".to_string())?;
+        let item = &report.items[0];
+        let config_policy = config_policy_for(item)?;
+
+        assert_eq!(report.summary.static_limitations, 1);
+        assert_eq!(report.summary.config_policy_flow_unknown, 1);
+        assert_eq!(report.summary.config_policy_observer_unknown, 1);
+        assert_eq!(report.summary.config_policy_static_limitations, 1);
+        assert_eq!(item.gap_state, "static_limitation");
+        assert_eq!(item.actionability, "inspect_config_flow");
+        assert_eq!(config_policy.visibility, "unknown");
+        assert_eq!(config_policy.observer, "unknown");
+        assert_eq!(
+            item.static_limitations
+                .first()
+                .map(|limitation| limitation.category.as_str()),
+            Some("config_policy_flow_unknown")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn opaque_config_lookup_stays_named_limitation() -> Result<(), String> {
+        let findings = vec![
+            finding_in_file(
+                "src/config_registry.rs",
+                "decl",
+                58,
+                ExposureClass::Exposed,
+                ProbeFamily::FieldConstruction,
+                "pub const OPAQUE_CONFIG_LABEL: &str =",
+            ),
+            finding_in_file(
+                "src/config_registry.rs",
+                "literal",
+                59,
+                ExposureClass::StaticUnknown,
+                ProbeFamily::StaticUnknown,
+                "\"Opaque label\";",
+            ),
+        ];
+
+        let report = report_for_findings(&findings)
+            .ok_or_else(|| "opaque config lookup should align".to_string())?;
+        let item = &report.items[0];
+        let config_policy = config_policy_for(item)?;
+
+        assert_eq!(report.summary.static_limitations, 1);
+        assert_eq!(item.gap_state, "static_limitation");
+        assert_eq!(config_policy.visibility, "unknown");
+        assert_eq!(config_policy.repair_kind, "inspect_config_flow");
+        assert_eq!(
+            item.static_limitations
+                .first()
+                .map(|limitation| limitation.category.as_str()),
+            Some("opaque_config_lookup")
+        );
+        assert!(!item.recommended_repair.contains("mutation"));
         Ok(())
     }
 
@@ -1533,6 +2438,22 @@ mod tests {
             oracle_kind,
             oracle_strength,
         }
+    }
+
+    fn presentation_text_for(
+        item: &super::FindingAlignmentItem,
+    ) -> Result<&super::FindingAlignmentPresentationText, String> {
+        item.presentation_text
+            .as_ref()
+            .ok_or_else(|| "item should include presentation_text".to_string())
+    }
+
+    fn config_policy_for(
+        item: &super::FindingAlignmentItem,
+    ) -> Result<&super::FindingAlignmentConfigPolicy, String> {
+        item.config_policy
+            .as_ref()
+            .ok_or_else(|| "item should include config_policy".to_string())
     }
 
     fn stage(summary: &str) -> StageEvidence {
