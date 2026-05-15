@@ -79,6 +79,10 @@ Planned scope:
   to the Markdown merge-readiness packet so agents can consume merge state,
   outstanding checks, Droid status, reviews, and the safe next action without
   scraping prose.
+- `cargo xtask reports index` now includes repo-ops packet status in Markdown
+  and JSON for command mutability, worktree doctor, PR triage, per-PR merge
+  readiness, generated-clean, badge ownership, critic, receipts, suggested
+  fixes, and `check-pr` artifacts.
 - Added `RIPR-SPEC-0048` for Lane 1 config/policy constant evidence, defining
   how internal policy metadata, rendered config/report labels, behavior
   selectors, named limitations, repair routes, and must-not-claim guards should
