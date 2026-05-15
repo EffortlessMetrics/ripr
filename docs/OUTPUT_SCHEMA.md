@@ -77,6 +77,8 @@ repeated only as supporting evidence for the canonical item.
       "uncalibrated": 1,
       "repair_route_coverage": 0,
       "actionable_items_without_repair_route": 0,
+      "verify_command_coverage": 0,
+      "actionable_items_without_verify_command": 0,
       "presentation_text_total": 1,
       "presentation_text_user_visible": 0,
       "presentation_text_observed": 0,
@@ -204,6 +206,12 @@ Field contract:
   actionable canonical items that are missing a concrete top-level repair
   route. Supported fixture-backed classes should keep this at zero; no-action
   and static-limitation items are not counted as missing user repair routes.
+- `finding_alignment.summary.verify_command_coverage` - count of actionable
+  canonical items that carry a concrete `verify_command`.
+- `finding_alignment.summary.actionable_items_without_verify_command` - count
+  of actionable canonical items missing a concrete verification route. Supported
+  fixture-backed classes should keep this at zero; no-action and
+  static-limitation items are not counted as missing user verification commands.
 - `finding_alignment.summary.presentation_text_*` - presentation-text class
   counts for visibility, observer status, duplicate grouping, no-action states,
   static limitations, and output-observer repairs.

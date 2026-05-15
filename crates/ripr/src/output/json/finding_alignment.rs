@@ -36,6 +36,8 @@ struct FindingAlignmentSummary {
     uncalibrated: usize,
     repair_route_coverage: usize,
     actionable_items_without_repair_route: usize,
+    verify_command_coverage: usize,
+    actionable_items_without_verify_command: usize,
     presentation_text_total: usize,
     presentation_text_user_visible: usize,
     presentation_text_observed: usize,
@@ -358,6 +360,13 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
         .count();
     let actionable_items_without_repair_route =
         actionable_gaps.saturating_sub(repair_route_coverage);
+    let verify_command_coverage = items
+        .iter()
+        .filter(|item| item.gap_state == "actionable")
+        .filter(|item| item_has_verify_command(item))
+        .count();
+    let actionable_items_without_verify_command =
+        actionable_gaps.saturating_sub(verify_command_coverage);
     let presentation_items = items
         .iter()
         .filter(|item| item.evidence_class == PRESENTATION_TEXT_CLASS)
@@ -543,6 +552,8 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
         uncalibrated,
         repair_route_coverage,
         actionable_items_without_repair_route,
+        verify_command_coverage,
+        actionable_items_without_verify_command,
         presentation_text_total: presentation_items.len(),
         presentation_text_user_visible,
         presentation_text_observed,
@@ -1198,6 +1209,15 @@ fn item_has_repair_route(item: &FindingAlignmentItem) -> bool {
     })
 }
 
+fn item_has_verify_command(item: &FindingAlignmentItem) -> bool {
+    !verify_command_is_missing(&item.verify_command)
+}
+
+fn verify_command_is_missing(value: &str) -> bool {
+    let value = value.trim();
+    value.is_empty() || value == "unknown" || value == "verify_command_unknown"
+}
+
 fn route_field_is_missing(value: &str) -> bool {
     let value = value.trim();
     value.is_empty() || value == "unknown" || value == "none" || value == "no_action"
@@ -1450,7 +1470,7 @@ fn summary_json(out: &mut String, summary: &FindingAlignmentSummary) {
         summary.raw_signals as f64 / summary.canonical_items as f64
     };
     out.push_str(&format!(
-        "{{\"raw_signals\":{},\"canonical_items\":{},\"aligned_raw_findings\":{},\"unaligned_raw_findings\":{},\"raw_to_canonical_ratio\":{ratio:.2},\"duplicate_groups_total\":{},\"actionable_gaps\":{},\"already_observed\":{},\"internal_no_action\":{},\"static_limitations\":{},\"unknown\":{},\"calibrated_supported\":{},\"uncalibrated\":{},\"repair_route_coverage\":{},\"actionable_items_without_repair_route\":{},\"presentation_text_total\":{},\"presentation_text_user_visible\":{},\"presentation_text_observed\":{},\"presentation_text_unobserved\":{},\"presentation_text_internal_only\":{},\"presentation_text_visibility_unknown\":{},\"presentation_text_observer_unknown\":{},\"presentation_text_duplicate_groups\":{},\"presentation_text_actionable_snapshot\":{},\"presentation_text_actionable_output_repairs\":{},\"presentation_text_no_action\":{},\"presentation_text_static_limitations\":{},\"config_policy_constant_total\":{},\"config_policy_user_visible\":{},\"config_policy_observed\":{},\"config_policy_unobserved\":{},\"config_policy_internal_only\":{},\"config_policy_flow_unknown\":{},\"config_policy_observer_unknown\":{},\"config_policy_duplicate_groups\":{},\"config_policy_actionable_output_observer\":{},\"config_policy_actionable_behavior_discriminator\":{},\"config_policy_no_action\":{},\"config_policy_static_limitations\":{},\"config_policy_repair_route_coverage\":{},\"config_policy_verify_command_coverage\":{}}}",
+        "{{\"raw_signals\":{},\"canonical_items\":{},\"aligned_raw_findings\":{},\"unaligned_raw_findings\":{},\"raw_to_canonical_ratio\":{ratio:.2},\"duplicate_groups_total\":{},\"actionable_gaps\":{},\"already_observed\":{},\"internal_no_action\":{},\"static_limitations\":{},\"unknown\":{},\"calibrated_supported\":{},\"uncalibrated\":{},\"repair_route_coverage\":{},\"actionable_items_without_repair_route\":{},\"verify_command_coverage\":{},\"actionable_items_without_verify_command\":{},\"presentation_text_total\":{},\"presentation_text_user_visible\":{},\"presentation_text_observed\":{},\"presentation_text_unobserved\":{},\"presentation_text_internal_only\":{},\"presentation_text_visibility_unknown\":{},\"presentation_text_observer_unknown\":{},\"presentation_text_duplicate_groups\":{},\"presentation_text_actionable_snapshot\":{},\"presentation_text_actionable_output_repairs\":{},\"presentation_text_no_action\":{},\"presentation_text_static_limitations\":{},\"config_policy_constant_total\":{},\"config_policy_user_visible\":{},\"config_policy_observed\":{},\"config_policy_unobserved\":{},\"config_policy_internal_only\":{},\"config_policy_flow_unknown\":{},\"config_policy_observer_unknown\":{},\"config_policy_duplicate_groups\":{},\"config_policy_actionable_output_observer\":{},\"config_policy_actionable_behavior_discriminator\":{},\"config_policy_no_action\":{},\"config_policy_static_limitations\":{},\"config_policy_repair_route_coverage\":{},\"config_policy_verify_command_coverage\":{}}}",
         summary.raw_signals,
         summary.canonical_items,
         summary.aligned_raw_findings,
@@ -1465,6 +1485,8 @@ fn summary_json(out: &mut String, summary: &FindingAlignmentSummary) {
         summary.uncalibrated,
         summary.repair_route_coverage,
         summary.actionable_items_without_repair_route,
+        summary.verify_command_coverage,
+        summary.actionable_items_without_verify_command,
         summary.presentation_text_total,
         summary.presentation_text_user_visible,
         summary.presentation_text_observed,
@@ -1830,6 +1852,7 @@ mod tests {
     use super::{
         GROUP_REASON_CONFIG_POLICY, GROUP_REASON_DECL_LITERAL, GROUP_REASON_OWNER,
         parse_presentation_text_declaration, parse_string_literal, report_for_findings,
+        verify_command_is_missing,
     };
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, OracleKind,
@@ -2303,6 +2326,8 @@ mod tests {
         assert_eq!(report.summary.actionable_gaps, 1);
         assert_eq!(report.summary.repair_route_coverage, 1);
         assert_eq!(report.summary.actionable_items_without_repair_route, 0);
+        assert_eq!(report.summary.verify_command_coverage, 1);
+        assert_eq!(report.summary.actionable_items_without_verify_command, 0);
         assert_eq!(report.summary.config_policy_user_visible, 1);
         assert_eq!(report.summary.config_policy_unobserved, 1);
         assert_eq!(report.summary.config_policy_actionable_output_observer, 1);
@@ -2362,6 +2387,8 @@ mod tests {
         assert_eq!(report.summary.actionable_gaps, 2);
         assert_eq!(report.summary.repair_route_coverage, 2);
         assert_eq!(report.summary.actionable_items_without_repair_route, 0);
+        assert_eq!(report.summary.verify_command_coverage, 2);
+        assert_eq!(report.summary.actionable_items_without_verify_command, 0);
         for item in report
             .items
             .iter()
@@ -2371,6 +2398,7 @@ mod tests {
             assert_ne!(repair_route.repair_kind, "unknown");
             assert_ne!(repair_route.target_test_type, "unknown");
             assert!(!repair_route.suggested_assertion.trim().is_empty());
+            assert!(!verify_command_is_missing(&item.verify_command));
             assert!(!item.recommended_repair.contains("mutation"));
         }
 
