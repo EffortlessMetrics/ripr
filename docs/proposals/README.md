@@ -83,3 +83,4 @@ Start new proposals from
 | [RIPR-PROP-0005](RIPR-PROP-0005-user-visible-output-evidence.md) | proposed | User-visible output evidence |
 | [RIPR-PROP-0006](RIPR-PROP-0006-rust-usable-gap-projection.md) | accepted | Rust usable gap projection |
 | [RIPR-PROP-0007](RIPR-PROP-0007-editor-gap-cockpit.md) | accepted | Editor gap cockpit |
+| [RIPR-PROP-0008](RIPR-PROP-0008-editor-first-run-usability.md) | proposed | Editor first-run usability |
