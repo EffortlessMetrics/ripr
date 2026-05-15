@@ -1,6 +1,6 @@
 # RIPR-PROP-0007: Editor Gap Cockpit
 
-Status: proposed
+Status: accepted
 
 Owner: Lane 3 - Editor / LSP UX
 

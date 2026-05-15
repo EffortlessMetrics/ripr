@@ -57,4 +57,4 @@ observable behavior.
 | [RIPR-SPEC-0044](RIPR-SPEC-0044-preview-evidence-promotion-packet.md) | proposed | Preview evidence promotion packet |
 | [RIPR-SPEC-0045](RIPR-SPEC-0045-finding-to-gap-alignment.md) | proposed | Finding-to-gap alignment |
 | [RIPR-SPEC-0046](RIPR-SPEC-0046-gap-decision-ledger.md) | proposed | Gap decision ledger |
-| [RIPR-SPEC-0047](RIPR-SPEC-0047-editor-gap-projection.md) | proposed | Editor gap projection |
+| [RIPR-SPEC-0047](RIPR-SPEC-0047-editor-gap-projection.md) | accepted | Editor gap projection |
