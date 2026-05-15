@@ -524,22 +524,67 @@ Do not reopen this slice for speculative editor furniture. Future first-run,
 install, CodeLens, inlay, semantic-token, inline-patch, or unsaved-buffer work
 needs a new editor campaign.
 
+## Selected Slice: Editor First-Run and Repair Usability
+
+The next Lane 3 campaign is Editor First-Run and Repair Usability. It does not
+reopen Campaign 27 language routing or the Editor Gap Cockpit. The goal is to
+make the existing cockpit self-orienting for a first-time or low-context user:
+
+```text
+install / open workspace
+-> diagnose setup
+-> understand no-output state
+-> inspect one Rust gap
+-> open related test or copy first repair packet
+-> verify
+-> emit receipt
+-> refresh
+```
+
+Durable sources for the selected docs stack:
+
+- [RIPR-PROP-0008: Editor First-Run Usability](../proposals/RIPR-PROP-0008-editor-first-run-usability.md)
+- [RIPR-SPEC-0048: Editor Setup Status](../specs/RIPR-SPEC-0048-editor-setup-status.md)
+- [RIPR-SPEC-0049: Editor First Repair Loop](../specs/RIPR-SPEC-0049-editor-first-repair-loop.md)
+- [ADR-0013: Editor Setup Diagnostics Are Read-Only](../adr/0013-editor-setup-diagnostics-are-read-only.md)
+- [Editor first-run usability implementation plan](../../plans/editor-first-run-usability/implementation-plan.md)
+
+Planned PR path:
+
+1. `docs(lane3): open editor first-run usability stack`
+2. `vscode: add setup diagnosis status model`
+3. `vscode: add ripr Diagnose Setup command`
+4. `test(vscode): smoke first-run and no-output states`
+5. `lsp: link receipts into Show Status`
+6. `lsp: add first-repair action packet`
+7. `fixtures(editor): add first-run usability fixtures`
+8. `docs(editor): write first-run-to-first-receipt guide`
+9. `dogfood(lane3): record first-run repair receipts`
+10. `campaign(lane3): close editor first-run usability`
+
+This campaign consumes existing server, workspace, config, language, artifact,
+gap, command, and receipt state. It may explain setup and no-output states,
+show existing receipt status, and expose bounded copy actions when typed fields
+support them. It must not install binaries, mutate config, run hidden analysis,
+create receipts, edit source, generate tests, call providers, run mutation,
+publish PR comments, decide gates, or add CodeLens, inlays, semantic tokens,
+inline patches, or unsaved-buffer overlays.
+
 ## Lane 3 Document Model
 
-Lane 3 uses the repo tracking model in layers so future editor-preview work
-does not mix why, behavior contracts, architecture decisions, execution state,
-and proof in one file:
+Lane 3 uses the repo tracking model in layers so future editor work does not
+mix why, behavior contracts, architecture decisions, execution state, and
+validation in one file:
 
-- proposals in [`docs/proposals/`](../proposals/) explain why editor preview
-  routing exists, who benefits, alternatives, risks, and success criteria;
-- specs in [`docs/specs/`](../specs/) define what editor routing and
-  preview static-limit projection must do for users, tests, fixtures, and
-  future agents;
+- proposals in [`docs/proposals/`](../proposals/) explain why an editor slice
+  exists, who benefits, alternatives, risks, and success criteria;
+- specs in [`docs/specs/`](../specs/) define what the editor behavior must do
+  for users, tests, fixtures, and future agents;
 - ADRs in [`docs/adr/`](../adr/) record durable editor architecture decisions,
-  including the projection-only boundary;
-- campaign-specific plans in
-  [`plans/campaign-27/`](../../plans/campaign-27/) define the PR sequence,
-  acceptance, proof commands, and rollback notes for the Lane 3 slice;
+  including projection-only and read-only setup boundaries;
+- campaign-specific plans under [`plans/`](../../plans/) define the PR
+  sequence, acceptance, validation commands, and rollback notes for the Lane 3
+  slice;
 - `.ripr/goals/active.toml` records current machine-readable execution state
   only;
 - this lane tracker records Lane 3 scope, readiness, blocker state, and
@@ -561,6 +606,11 @@ Traceability for future editor-preview specs should list the docs outputs that
 define the contract and add tests, fixtures, code, and reports only as the
 behavior PRs land. Do not point future preview-routing specs at the existing
 Rust cockpit tests as if those tests prove a new preview-language behavior.
+
+Traceability for future first-run usability specs follows the same rule:
+source-of-truth PRs list the docs outputs that define the contract, while
+setup-status tests, receipt-status tests, VS Code smoke tests, fixtures, and
+metrics are added by the behavior PRs that implement them.
 
 ## Preview Routing Path
 
