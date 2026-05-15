@@ -406,8 +406,16 @@ suite('Extension Smoke', () => {
       assert.ok(String(context.status.tooltip).includes('saved-workspace analysis is queued'));
       assert.ok(String(context.status.tooltip).includes('Workspace:'));
       assert.ok(String(context.status.tooltip).includes('Server command: ripr'));
+      assert.ok(String(context.status.tooltip).includes('Server version: ripr 0.5.0-test'));
+      assert.ok(String(context.status.tooltip).includes('Server started: yes'));
+      assert.ok(String(context.status.tooltip).includes('Config: ripr.toml (missing'));
       assert.ok(String(context.status.tooltip).includes('Editor selectors: rust, typescript'));
       assert.ok(String(context.status.tooltip).includes('Enabled languages: not reported yet'));
+      assert.ok(String(context.status.tooltip).includes('Available languages: not reported by server'));
+      assert.ok(String(context.status.tooltip).includes('Evidence freshness: pending refresh'));
+      assert.ok(String(context.status.tooltip).includes('Artifact first useful action report: target/ripr/reports/first-useful-action.json (missing'));
+      assert.ok(String(context.status.tooltip).includes('Artifact gap decision ledger: target/ripr/reports/gap-decision-ledger.json (missing'));
+      assert.ok(String(context.status.tooltip).includes('Artifact editor agent receipt: target/ripr/agent/agent-receipt.json (missing'));
       assert.ok(String(context.status.tooltip).includes('Next safe action:'));
 
       context.client.emitNotification('window/logMessage', {
@@ -429,6 +437,7 @@ suite('Extension Smoke', () => {
       assert.ok(String(context.status.tooltip).includes('last saved workspace state'));
       assert.ok(String(context.status.tooltip).includes('disabled or unavailable preview languages stay silent'));
       assert.ok(String(context.status.tooltip).includes('enabled and available in this ripr build'));
+      assert.ok(String(context.status.tooltip).includes('Evidence freshness: current saved-workspace status reported by server refresh'));
 
       context.client.emitNotification('window/logMessage', {
         message: 'ripr analysis refresh completed in 42 ms: generation=1, diagnostics=0, files=0, findings=0, seam_diagnostics=0, enabled_languages=0, enabled_language_names=, published_files=0, cleared_files=0'
@@ -552,6 +561,31 @@ suite('Extension Smoke', () => {
       assert.ok(context.infoMessages.at(-1)?.includes('First useful action: Add equality-boundary discriminator test'));
       assert.ok(context.outputLines.join('\n').includes('First useful action: Add equality-boundary discriminator test'));
       assert.ok(context.outputLines.join('\n').includes('Report: target/ripr/reports/first-useful-action.json'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('status model reports setup files found and missing', async () => {
+    const context = createControllerTestContext({
+      files: {
+        'ripr.toml': '[languages]\nenabled = ["rust"]\n',
+        'target/ripr/reports/first-useful-action.json': firstActionReport({}),
+        'target/ripr/reports/gap-decision-ledger.json': '{"schema_version":"0.1"}',
+        'target/ripr/agent/agent-receipt.json': '{"schema_version":"0.1"}'
+      }
+    });
+    try {
+      await context.controller.start();
+      await context.controller.showStatus();
+
+      const statusOutput = context.outputLines.join('\n');
+      assert.ok(statusOutput.includes('Config: ripr.toml (found; found in current workspace'));
+      assert.ok(statusOutput.includes('Artifact first useful action report: target/ripr/reports/first-useful-action.json (found; found in current workspace'));
+      assert.ok(statusOutput.includes('Artifact gap decision ledger: target/ripr/reports/gap-decision-ledger.json (found; found in current workspace'));
+      assert.ok(statusOutput.includes('Artifact editor agent receipt: target/ripr/agent/agent-receipt.json (found; found in current workspace'));
+      assert.ok(statusOutput.includes('First useful action: Add equality-boundary discriminator test'));
+      assert.ok(statusOutput.includes('Server version: ripr 0.5.0-test'));
     } finally {
       await context.dispose();
     }
@@ -761,8 +795,10 @@ suite('Extension Smoke', () => {
 
       assert.ok(context.status.text.includes('ripr: disabled'));
       assert.ok(String(context.status.tooltip).includes('Set ripr.enabled to true'));
-      assert.ok(String(context.status.tooltip).includes('Workspace: not open'));
+      assert.ok(String(context.status.tooltip).includes('Workspace:'));
       assert.ok(String(context.status.tooltip).includes('Server: not resolved'));
+      assert.ok(String(context.status.tooltip).includes('Server started: no; extension disabled'));
+      assert.ok(String(context.status.tooltip).includes('Config: ripr.toml'));
       assert.ok(String(context.status.tooltip).includes('Next safe action: Set ripr.enabled to true'));
       assert.strictEqual(context.client.startCalls, 0);
     } finally {
@@ -778,6 +814,8 @@ suite('Extension Smoke', () => {
       assert.ok(context.status.text.includes('ripr: open workspace'));
       assert.ok(String(context.status.tooltip).includes('needs a workspace folder'));
       assert.ok(String(context.status.tooltip).includes('Workspace: not open'));
+      assert.ok(String(context.status.tooltip).includes('Config: ripr.toml (no workspace'));
+      assert.ok(String(context.status.tooltip).includes('Server started: no; workspace unavailable'));
       assert.ok(String(context.status.tooltip).includes('Next safe action: Open a workspace folder'));
       assert.strictEqual(context.client.startCalls, 0);
     } finally {
@@ -799,6 +837,8 @@ suite('Extension Smoke', () => {
       assert.ok(String(context.status.tooltip).includes('Missing configured ripr server path'));
       assert.ok(String(context.status.tooltip).includes('Workspace:'));
       assert.ok(String(context.status.tooltip).includes('Server: not resolved'));
+      assert.ok(String(context.status.tooltip).includes('Server started: no; server unavailable'));
+      assert.ok(String(context.status.tooltip).includes('Config: ripr.toml'));
       assert.ok(String(context.status.tooltip).includes('Next safe action: Set ripr.server.path'));
       assert.strictEqual(context.errorMessages.length, 1);
       assert.strictEqual(context.client.startCalls, 0);
@@ -1206,6 +1246,7 @@ interface ControllerTestOptions {
   lspError?: Error;
   cliResult?: string;
   firstActionJson?: string | null;
+  files?: Record<string, string | null>;
   workspaceRoot?: string | null;
   resolveFailure?: { message: string; detail: string };
 }
@@ -1332,13 +1373,14 @@ function createControllerTestContext(options: ControllerTestOptions) {
     resolveServer: async () => options.resolveFailure ?? ({
       command: 'ripr',
       source: 'path',
-      detail: 'test ripr on PATH'
+      detail: 'test ripr on PATH',
+      version: 'ripr 0.5.0-test'
     }),
     createLanguageClient: (_serverOptions, options) => {
       clientOptions = options;
       return client;
     },
-    readFile: async () => options.firstActionJson ?? undefined,
+    readFile: async (filePath) => testFileContents(filePath, options),
     runRipr: async (command, args, cwd) => {
       runRiprCalls.push({ command, args, cwd });
       return options.cliResult ?? '{}';
@@ -1377,6 +1419,24 @@ function createControllerTestContext(options: ControllerTestOptions) {
       status.dispose();
     }
   };
+}
+
+function testFileContents(filePath: string, options: ControllerTestOptions): string | undefined {
+  const normalizedPath = normalizeTestPath(filePath);
+  for (const [candidate, contents] of Object.entries(options.files ?? {})) {
+    const normalizedCandidate = normalizeTestPath(candidate);
+    if (normalizedPath === normalizedCandidate || normalizedPath.endsWith(`/${normalizedCandidate}`)) {
+      return contents ?? undefined;
+    }
+  }
+  if (normalizedPath.endsWith('target/ripr/reports/first-useful-action.json')) {
+    return options.firstActionJson ?? undefined;
+  }
+  return undefined;
+}
+
+function normalizeTestPath(filePath: string): string {
+  return filePath.replace(/\\/g, '/');
 }
 
 function fakeOutputChannel(lines: string[] = []): vscode.OutputChannel {
