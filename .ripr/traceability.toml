@@ -3198,10 +3198,16 @@ id = "RIPR-SPEC-0051"
 name = "First successful PR UX"
 spec = "docs/specs/RIPR-SPEC-0051-first-successful-pr-ux.md"
 tests = [
+  "xtask/src/reports/first_pr.rs",
+  "xtask/src/main.rs",
 ]
 fixtures = [
 ]
 code = [
+  "xtask/src/reports/first_pr.rs",
+  "xtask/src/command.rs",
+  "xtask/src/dispatch.rs",
+  "xtask/src/reports/mod.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0051-first-successful-pr-ux.md",
