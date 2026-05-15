@@ -1,6 +1,6 @@
 # Editor Gap Cockpit Implementation Plan
 
-Status: proposed
+Status: closed
 
 Owner: Lane 3 - Editor / LSP UX
 
@@ -17,10 +17,27 @@ saved-workspace editor path, and TypeScript, JavaScript, and Python preview
 routing exists behind opt-in language configuration with preview labels and
 static limits.
 
-The next Lane 3 campaign is Editor Gap Cockpit. It makes the editor consume
-existing RIPR evidence artifacts and project one safe local next action. It is
-not a language-routing campaign, analyzer campaign, policy campaign, PR/CI
-campaign, provider campaign, mutation campaign, or source-edit campaign.
+Editor Gap Cockpit is closed. It made the editor consume existing RIPR evidence
+artifacts and project one safe local next action. It was not a language-routing
+campaign, analyzer campaign, policy campaign, PR/CI campaign, provider
+campaign, mutation campaign, or source-edit campaign.
+
+Closeout handoff:
+`docs/handoffs/2026-05-15-editor-gap-cockpit-closeout.md`.
+
+Merged PR chain:
+
+1. #967 `docs(lane3): open editor gap cockpit source-of-truth stack`
+2. #970 `test(lsp): pin post-campaign editor contract`
+3. #973 `lsp(gap): add read-only gap artifact validation`
+4. #969 `lsp(gap): project gap records into editor diagnostics`
+5. #976 `lsp(gap): project gap state in Show Status`
+6. #981 `lsp(gap): enrich hover repair route`
+7. #983 `lsp(gap): add bounded repair actions`
+8. #985 `fixtures(editor): add gap cockpit workflow fixtures`
+9. #993 `test(vscode): smoke editor gap cockpit`
+10. #996 `docs(editor): document gap cockpit workflow`
+11. #998 `dogfood(lane3): record editor gap cockpit receipts`
 
 ## Hard Boundaries
 
