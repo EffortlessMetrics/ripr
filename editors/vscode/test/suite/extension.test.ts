@@ -592,6 +592,111 @@ suite('Extension Smoke', () => {
     }
   });
 
+  test('status model projects existing receipt state without producing receipts', async () => {
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/first-useful-action.json': firstActionReport({}),
+      }
+    }, async (context) => {
+      await context.controller.start();
+      await context.controller.showStatus();
+      const statusOutput = context.outputLines.join('\n');
+      assert.ok(statusOutput.includes('Receipt status: missing; no matching receipt was found for seam 67fc764ba37d77bd'));
+      assert.ok(statusOutput.includes('Receipt command: ripr agent receipt --root . --json'));
+      assert.ok(statusOutput.includes('No receipt movement is claimed.'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/first-useful-action.json': firstActionReport({}),
+        'target/ripr/agent/agent-receipt.json': agentReceipt({ movement: 'improved' })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      await context.controller.showStatus();
+      const statusOutput = context.outputLines.join('\n');
+      assert.ok(statusOutput.includes('Receipt status: movement improved; matching receipt found for seam 67fc764ba37d77bd'));
+      assert.ok(statusOutput.includes('does not prove runtime adequacy or gate eligibility'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/first-useful-action.json': firstActionReport({}),
+        'target/ripr/agent/agent-receipt.json': agentReceipt({ movement: 'unchanged' })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      await context.controller.showStatus();
+      const statusOutput = context.outputLines.join('\n');
+      assert.ok(statusOutput.includes('Receipt status: movement unchanged; matching receipt found for seam 67fc764ba37d77bd'));
+      assert.ok(statusOutput.includes('inspect the focused test and missing discriminator'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/first-useful-action.json': firstActionReport({}),
+        'target/ripr/agent/agent-receipt.json': agentReceipt({ seamId: 'different-seam' })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      await context.controller.showStatus();
+      const statusOutput = context.outputLines.join('\n');
+      assert.ok(statusOutput.includes('Receipt status: gap mismatch; receipt seam different-seam does not match current seam 67fc764ba37d77bd'));
+      assert.ok(statusOutput.includes('Receipt movement is not projected.'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/first-useful-action.json': firstActionReport({
+          generated_at: '2026-05-15T12:00:00Z'
+        }),
+        'target/ripr/agent/agent-receipt.json': agentReceipt({
+          generatedAt: '2026-05-15T11:00:00Z',
+          movement: 'improved'
+        })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      await context.controller.showStatus();
+      const statusOutput = context.outputLines.join('\n');
+      assert.ok(statusOutput.includes('Receipt status: stale; receipt for seam 67fc764ba37d77bd is older than the current first useful action report.'));
+      assert.ok(statusOutput.includes('rerun verify/receipt before trusting movement'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/first-useful-action.json': firstActionReport({}),
+        'target/ripr/agent/agent-receipt.json': agentReceipt({ repoRoot: '/tmp/not-this-workspace' })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      await context.controller.showStatus();
+      const statusOutput = context.outputLines.join('\n');
+      assert.ok(statusOutput.includes('Receipt status: wrong root; receipt root /tmp/not-this-workspace does not match this workspace.'));
+      assert.ok(statusOutput.includes('Receipt movement is not projected.'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/first-useful-action.json': firstActionReport({}),
+        'target/ripr/agent/agent-receipt.json': '{not-json'
+      }
+    }, async (context) => {
+      await context.controller.start();
+      await context.controller.showStatus();
+      const statusOutput = context.outputLines.join('\n');
+      assert.ok(statusOutput.includes('Receipt status: malformed; target/ripr/agent/agent-receipt.json could not be parsed as an agent receipt.'));
+      assert.ok(statusOutput.includes('Receipt movement is not projected.'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+  });
+
   test('diagnoseSetup writes read-only setup report', async () => {
     const context = createControllerTestContext({
       files: {
@@ -1440,11 +1545,13 @@ function firstActionReport(overrides: Record<string, unknown>): string {
     tool: 'ripr',
     kind: 'first_useful_action',
     root: '.',
+    generated_at: '2026-05-15T12:00:00Z',
     status: 'actionable',
     audience: 'developer',
     action_kind: 'write_focused_test',
     title: 'Add equality-boundary discriminator test',
     selected: {
+      seam_id: '67fc764ba37d77bd',
       path: 'src/lib.rs',
       line: 2,
       missing_discriminator: 'discount_threshold equality boundary'
@@ -1467,6 +1574,52 @@ function firstActionReport(overrides: Record<string, unknown>): string {
     }
   }
   return JSON.stringify(report);
+}
+
+function agentReceipt(overrides: {
+  seamId?: string;
+  movement?: string;
+  repoRoot?: string;
+  generatedAt?: string;
+}): string {
+  const seamId = overrides.seamId ?? '67fc764ba37d77bd';
+  const movement = overrides.movement ?? 'unchanged';
+  return JSON.stringify({
+    schema_version: '0.3',
+    tool: 'ripr',
+    status: 'advisory',
+    inputs: {
+      agent_verify_json: 'target/ripr/agent/agent-verify.json',
+      before: 'target/ripr/pilot/repo-exposure.json',
+      after: 'target/ripr/pilot/after.repo-exposure.json'
+    },
+    provenance: {
+      repo_root: overrides.repoRoot ?? '.',
+      generated_at: overrides.generatedAt ?? '2026-05-15T12:00:00Z',
+      seam_id: seamId,
+      movement,
+      limits: {
+        runtime_adequacy_claim: false,
+        runtime_mutation_execution: false,
+        static_artifact_relationship: true
+      }
+    },
+    seam: {
+      seam_id: seamId,
+      seam_kind: 'predicate_boundary',
+      file: 'src/lib.rs',
+      line: 2,
+      change: movement
+    },
+    summary: {
+      next_action: {
+        kind: movement,
+        summary: 'Static receipt movement for test.',
+        recommended_action: 'Inspect the focused test.',
+        safe_to_merge: false
+      }
+    }
+  });
 }
 
 async function withControllerTestContext(
