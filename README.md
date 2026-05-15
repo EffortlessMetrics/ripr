@@ -155,6 +155,8 @@ or CI users.
 
 For the full first-hour path, including troubleshooting and known limits, read
 [Quickstart](docs/QUICKSTART.md).
+For a single real PR adoption proof, use the
+[first successful PR workflow](docs/FIRST_PR_WORKFLOW.md).
 
 Before rollout, check [Support tiers](docs/status/SUPPORT_TIERS.md) for the
 plain-language map of what is usable alpha, preview, scaffold, blocked, or

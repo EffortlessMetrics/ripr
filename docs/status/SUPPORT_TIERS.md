@@ -76,8 +76,10 @@ preview + editor routing:
 
 ## Next Adoption Steps
 
-For first use, start with the [Quickstart](../QUICKSTART.md). The shortest
-proof loop is:
+For first use, start with the [Quickstart](../QUICKSTART.md). For a
+single-PR adoption proof, use the
+[first successful PR workflow](../FIRST_PR_WORKFLOW.md). The shortest proof
+loop is:
 
 ```text
 ripr pilot --root .
