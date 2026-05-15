@@ -105,6 +105,10 @@ Planned scope:
   `suggested_assertion`, plus route-coverage counts, so downstream consumers
   can use one canonical repair contract instead of inferring actionability from
   raw static classes or class-specific fields.
+- Finding-alignment summaries now include actionable verify-command coverage
+  and missing-verify counts, keeping repair routes and verification routes
+  explicit for canonical gaps without changing PR/CI rendering, gate policy,
+  scores, generated tests, provider calls, source edits, or mutation execution.
 - VS Code `ripr: Show Status` now includes first-run/no-output context:
   workspace root, resolved server source and command, editor selectors,
   enabled languages from the last server refresh, and the next safe action for
