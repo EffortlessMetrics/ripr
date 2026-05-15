@@ -38147,7 +38147,7 @@ fn exact_owner_call_has_external_expected_value() {
     }
 
     #[test]
-    fn dogfood_reports_are_advisory() {
+    fn dogfood_reports_are_advisory() -> Result<(), String> {
         let run = DogfoodRun {
             name: "boundary_gap".to_string(),
             root: Path::new("fixtures/boundary_gap/input").to_path_buf(),
@@ -38439,12 +38439,6 @@ fn exact_owner_call_has_external_expected_value() {
             language_preview: &language_preview_runs,
             editor_gap_cockpit: &editor_gap_cockpit_runs,
         };
-        let empty_projection_runs = DogfoodPreviewProjectionRuns {
-            generated_ci_cockpit: &[],
-            language_preview: &[],
-            editor_gap_cockpit: &[],
-        };
-
         let markdown = dogfood_report_markdown(
             &[run],
             &[gate_run],
@@ -38454,7 +38448,7 @@ fn exact_owner_call_has_external_expected_value() {
             &preview_projection_runs,
             &[pr_inline_comment_run],
         );
-        let json = dogfood_report_json(&[], &[], &[], &[], &[], &empty_projection_runs, &[]);
+        let json = dogfood_report_json(&[], &[], &[], &[], &[], &preview_projection_runs, &[]);
 
         assert!(markdown.contains("Mode: advisory"));
         assert!(markdown.contains("boundary_gap"));
@@ -38476,8 +38470,67 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(json.contains("\"report_packet_index\""));
         assert!(json.contains("\"generated_ci_cockpit\""));
         assert!(json.contains("\"language_preview\""));
-        assert!(json.contains("\"editor_gap_cockpit\""));
+        let value: Value =
+            serde_json::from_str(&json).map_err(|err| format!("dogfood JSON invalid: {err}"))?;
+        let editor_gap_cockpit = value
+            .get("editor_gap_cockpit")
+            .ok_or_else(|| "editor_gap_cockpit section missing".to_string())?;
+        assert_eq!(
+            editor_gap_cockpit
+                .get("receipt_dir")
+                .and_then(Value::as_str),
+            Some("fixtures/editor_gap_cockpit")
+        );
+        let cases = editor_gap_cockpit
+            .get("cases")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "editor_gap_cockpit cases missing".to_string())?;
+        assert_eq!(cases.len(), 1);
+        let case = cases
+            .first()
+            .ok_or_else(|| "editor_gap_cockpit case missing".to_string())?;
+        assert_eq!(
+            case.get("name").and_then(Value::as_str),
+            Some("typescript_preview_static_limit")
+        );
+        assert_eq!(
+            case.get("state").and_then(Value::as_str),
+            Some("actionable")
+        );
+        assert_eq!(
+            case.get("language").and_then(Value::as_str),
+            Some("typescript")
+        );
+        assert_eq!(
+            case.get("language_status").and_then(Value::as_str),
+            Some("preview")
+        );
+        assert_eq!(
+            case.get("diagnostics_projected").and_then(Value::as_u64),
+            Some(1)
+        );
+        assert_eq!(
+            case.get("static_limit_kind").and_then(Value::as_str),
+            Some("mocked_module")
+        );
+        assert_eq!(
+            case.get("hover_static_before_action")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        let actions = case
+            .get("actions_projected")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "editor_gap_cockpit actions missing".to_string())?
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actions,
+            vec!["copy_repair_packet", "copy_static_limit_note", "refresh"]
+        );
         assert!(json.contains("\"pr_inline_comment_publisher\""));
+        Ok(())
     }
 
     #[test]
