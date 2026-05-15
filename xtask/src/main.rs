@@ -1020,6 +1020,7 @@ fn precommit() -> Result<(), String> {
     markdown_links()?;
     check_campaign()?;
     check_pr_shape()?;
+    check_command_catalog()?;
     check_generated()?;
     check_badge_diff_policy()?;
     check_generated_clean()?;
@@ -1075,6 +1076,7 @@ fn run_policy_checks() -> Result<(), String> {
     markdown_links()?;
     check_campaign()?;
     check_pr_shape()?;
+    check_command_catalog()?;
     check_generated()?;
     check_badge_diff_policy()?;
     check_generated_clean()?;
@@ -1695,6 +1697,106 @@ fn commands_report() -> Result<(), String> {
     let entries = command_catalog();
     write_report("commands.md", &commands_report_markdown(&entries))?;
     write_report("commands.json", &commands_report_json(&entries))
+}
+
+fn check_command_catalog() -> Result<(), String> {
+    let commands = known_commands();
+    let catalog = command_catalog();
+    let violations = command_catalog_violations(&commands, &catalog);
+
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "command-catalog.md",
+            check: "check-command-catalog",
+            why_it_matters: "The command mutability catalog is the repo-ops map for agents. Every xtask command must stay classified so workers know what is safe to run, what writes generated evidence, and what requires judgment.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Add a command catalog entry for every new xtask command.",
+                "Remove catalog entries for commands that no longer exist.",
+                "Document writes for mutating, external-state, and argument-dependent commands.",
+                "Mark external-state mutations as judgment-required.",
+            ],
+            rerun_command: "cargo xtask check-command-catalog",
+            exception_template: None,
+        },
+        &violations,
+    )
+}
+
+fn command_catalog_violations(
+    commands: &[&'static str],
+    catalog: &[CommandCatalogEntry],
+) -> Vec<String> {
+    let known_roots = command_roots(commands.iter().copied());
+    let catalog_roots = command_roots(catalog.iter().map(|entry| entry.command));
+    let mut violations = Vec::new();
+
+    for root in known_roots.difference(&catalog_roots) {
+        violations.push(format!(
+            "command `{root}` is listed in help but missing from the command mutability catalog"
+        ));
+    }
+    for root in catalog_roots.difference(&known_roots) {
+        violations.push(format!(
+            "command catalog entry `{root}` does not match any known xtask command"
+        ));
+    }
+
+    let mut seen = BTreeSet::<&str>::new();
+    for entry in catalog {
+        if !seen.insert(entry.command) {
+            violations.push(format!(
+                "command catalog has duplicate entry `{}`",
+                entry.command
+            ));
+        }
+        if !is_command_mutability(entry.mutability) {
+            violations.push(format!(
+                "command `{}` uses unknown mutability `{}`",
+                entry.command, entry.mutability
+            ));
+        }
+        if entry.writes.trim().is_empty() {
+            violations.push(format!("command `{}` must document writes", entry.command));
+        }
+        if entry.mutability == "external_state_mutating" && !entry.judgment_required {
+            violations.push(format!(
+                "external-state mutating command `{}` must be judgment-required",
+                entry.command
+            ));
+        }
+        if entry.mutability == "argument_dependent" {
+            let notes = entry.notes.to_ascii_lowercase();
+            if !(notes.contains("depending")
+                || notes.contains("--check")
+                || notes.contains("--propose")
+                || notes.contains("default"))
+            {
+                violations.push(format!(
+                    "argument-dependent command `{}` must explain when it writes",
+                    entry.command
+                ));
+            }
+        }
+    }
+
+    violations
+}
+
+fn command_roots<'a>(commands: impl Iterator<Item = &'a str>) -> BTreeSet<&'a str> {
+    commands.map(known_command_root).collect()
+}
+
+fn is_command_mutability(value: &str) -> bool {
+    matches!(
+        value,
+        "mutating"
+            | "non_mutating_check"
+            | "report_only"
+            | "external_state_read"
+            | "external_state_mutating"
+            | "argument_dependent"
+    )
 }
 
 fn commands_report_markdown(entries: &[CommandCatalogEntry]) -> String {
@@ -27675,6 +27777,13 @@ fn repo_ops_packet_specs() -> &'static [RepoOpsPacketSpec] {
             ],
         },
         RepoOpsPacketSpec {
+            id: "command_catalog_check",
+            label: "Command catalog check",
+            command: "cargo xtask check-command-catalog",
+            description: "Verifies every xtask command has a current mutability catalog entry.",
+            artifacts: &["target/ripr/reports/command-catalog.md"],
+        },
+        RepoOpsPacketSpec {
             id: "worktree_doctor",
             label: "Worktree doctor",
             command: "cargo xtask worktree doctor",
@@ -32924,29 +33033,30 @@ mod tests {
     };
     use super::{
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
-        CheckStatus, CheckViolation, CiFullEvidenceGate, CwdCommand, DogfoodEditorGapCockpitRun,
-        DogfoodFirstActionRun, DogfoodFrontPanelRun, DogfoodGateRun, DogfoodGeneratedCiCockpitRun,
-        DogfoodLanguagePreviewRun, DogfoodPrInlineCommentRun, DogfoodPreviewProjectionRuns,
-        DogfoodReportPacketIndexRun, DogfoodRun, EvidenceQualityScorecardInput,
-        EvidenceQualityScorecardInputs, EvidenceQualityScorecardReport, EvidenceQualityTrendInputs,
-        EvidenceQualityTrendReport, FixKind, GENERATED_CI_FIRST_ACTION_REPAIR,
-        GENERATED_CI_FRONT_PANEL_REPAIR, GENERATED_CI_PACKET_INDEX_REPAIR, GhPrStatusPullRequest,
-        GhPrStatusReview, LocalContextAllow, LspCockpitFixture, LspCockpitReport, MarkdownLink,
-        PrTriageCheck, PrTriageFinding, PrTriagePullRequest, ReceiptRecord,
-        RepoExposureLatencyReport, RepoExposureLatencyRun, RepoExposureLatencyTrace,
-        ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode, SarifPolicyResult,
-        SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass,
-        WorktreeDoctorFinding, WorktreeDoctorSeverity, badge_artifact_command_args,
-        badge_artifact_jobs, badge_artifact_native_slot, badge_artifacts_summary_markdown,
-        badge_diff_policy_violations, build_lsp_cockpit_report, build_no_panic_allowlist_proposals,
-        build_repo_exposure_latency_report, build_targeted_test_outcome_report,
-        campaign_source_truth_violations_for_root, check_allow_attributes,
-        check_badge_diff_policy_with_context, check_droid_review_config, check_executable_files,
-        check_file_policy, check_local_context, check_network_policy, check_no_panic_family,
-        check_process_policy, check_static_language, check_workflows, ci_full_evidence_gates,
-        collect_panic_findings, collect_semantic_panic_findings, command_catalog,
-        commands_report_json, commands_report_markdown, critic_findings, days_from_civil,
-        dogfood_class_counts, dogfood_editor_gap_cockpit_run, dogfood_editor_gap_cockpit_scenarios,
+        CheckStatus, CheckViolation, CiFullEvidenceGate, CommandCatalogEntry, CwdCommand,
+        DogfoodEditorGapCockpitRun, DogfoodFirstActionRun, DogfoodFrontPanelRun, DogfoodGateRun,
+        DogfoodGeneratedCiCockpitRun, DogfoodLanguagePreviewRun, DogfoodPrInlineCommentRun,
+        DogfoodPreviewProjectionRuns, DogfoodReportPacketIndexRun, DogfoodRun,
+        EvidenceQualityScorecardInput, EvidenceQualityScorecardInputs,
+        EvidenceQualityScorecardReport, EvidenceQualityTrendInputs, EvidenceQualityTrendReport,
+        FixKind, GENERATED_CI_FIRST_ACTION_REPAIR, GENERATED_CI_FRONT_PANEL_REPAIR,
+        GENERATED_CI_PACKET_INDEX_REPAIR, GhPrStatusPullRequest, GhPrStatusReview,
+        LocalContextAllow, LspCockpitFixture, LspCockpitReport, MarkdownLink, PrTriageCheck,
+        PrTriageFinding, PrTriagePullRequest, ReceiptRecord, RepoExposureLatencyReport,
+        RepoExposureLatencyRun, RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
+        SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry,
+        StaticLanguageMatcher, TestOracleClass, WorktreeDoctorFinding, WorktreeDoctorSeverity,
+        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
+        badge_artifacts_summary_markdown, badge_diff_policy_violations, build_lsp_cockpit_report,
+        build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
+        build_targeted_test_outcome_report, campaign_source_truth_violations_for_root,
+        check_allow_attributes, check_badge_diff_policy_with_context, check_droid_review_config,
+        check_executable_files, check_file_policy, check_local_context, check_network_policy,
+        check_no_panic_family, check_process_policy, check_static_language, check_workflows,
+        ci_full_evidence_gates, collect_panic_findings, collect_semantic_panic_findings,
+        command_catalog, command_catalog_violations, commands_report_json,
+        commands_report_markdown, critic_findings, days_from_civil, dogfood_class_counts,
+        dogfood_editor_gap_cockpit_run, dogfood_editor_gap_cockpit_scenarios,
         dogfood_first_action_scenarios, dogfood_gate_adoption_scenarios,
         dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
         dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
@@ -44322,6 +44432,53 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn command_catalog_check_accepts_current_catalog() {
+        let commands = known_commands();
+        let catalog = command_catalog();
+
+        assert_eq!(
+            command_catalog_violations(&commands, &catalog),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn command_catalog_check_reports_drift_and_missing_classification() {
+        let commands = vec!["shape", "missing-command", "arg-command"];
+        let catalog = vec![
+            CommandCatalogEntry {
+                command: "shape",
+                mutability: "mutating",
+                writes: "",
+                judgment_required: false,
+                notes: "Writes local files.",
+            },
+            CommandCatalogEntry {
+                command: "removed-command",
+                mutability: "external_state_mutating",
+                writes: "GitHub",
+                judgment_required: false,
+                notes: "Uploads artifacts.",
+            },
+            CommandCatalogEntry {
+                command: "arg-command",
+                mutability: "argument_dependent",
+                writes: "target/ripr/reports",
+                judgment_required: false,
+                notes: "May write.",
+            },
+        ];
+
+        let report = command_catalog_violations(&commands, &catalog).join("\n");
+
+        assert!(report.contains("missing from the command mutability catalog"));
+        assert!(report.contains("does not match any known xtask command"));
+        assert!(report.contains("command `shape` must document writes"));
+        assert!(report.contains("must be judgment-required"));
+        assert!(report.contains("must explain when it writes"));
+    }
+
+    #[test]
     fn command_catalog_classifies_core_workflow_commands() -> Result<(), String> {
         let catalog = command_catalog();
         let find = |command: &str| {
@@ -44333,6 +44490,10 @@ covered_by = ["cargo xtask check-file-policy"]
 
         assert_eq!(find("shape")?.mutability, "mutating");
         assert_eq!(find("check-pr")?.mutability, "non_mutating_check");
+        assert_eq!(
+            find("check-command-catalog")?.mutability,
+            "non_mutating_check"
+        );
         assert_eq!(find("badges")?.mutability, "mutating");
         assert_eq!(find("badges --check")?.mutability, "non_mutating_check");
         assert!(find("goldens bless <name> --reason <reason>")?.judgment_required);
@@ -44393,6 +44554,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(commands.contains(&"pr-triage-report"));
         assert!(commands.contains(&"gh-pr-status --pr <number>"));
         assert!(commands.contains(&"check-badge-diff-policy"));
+        assert!(commands.contains(&"check-command-catalog"));
         assert!(commands.contains(&"worktree doctor"));
         assert!(commands.contains(&"check-droid-review-config"));
         assert!(commands.contains(&"check-ci-lane-whitelist"));
