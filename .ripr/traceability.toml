@@ -3157,10 +3157,12 @@ id = "RIPR-SPEC-0050"
 name = "Editor first repair loop"
 spec = "docs/specs/RIPR-SPEC-0050-editor-first-repair-loop.md"
 tests = [
+  "editors/vscode/test/suite/extension.test.ts::status model projects existing receipt state without producing receipts",
 ]
 fixtures = [
 ]
 code = [
+  "editors/vscode/src/client.ts",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0050-editor-first-repair-loop.md",
