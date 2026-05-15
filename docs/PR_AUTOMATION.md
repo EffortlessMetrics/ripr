@@ -104,10 +104,11 @@ updates, closes, merges, or comments on PRs.
 `gh-pr-status --pr <number>` is the per-PR merge-readiness packet. It reads
 GitHub CLI PR status, branch-protection required contexts when available,
 latest reviews, and Droid-related checks, then writes
-`target/ripr/reports/gh-pr-status.md` with the merge state, outstanding checks,
-failed checks, behind-main state, review status, and a safe next action:
-`wait`, `rebase`, `inspect failure`, or `merge`. It is advisory and never
-updates the branch, comments, approves, or merges.
+`target/ripr/reports/gh-pr-status.md` and
+`target/ripr/reports/gh-pr-status.json` with the merge state, outstanding
+checks, failed checks, behind-main state, review status, Droid status, and a
+safe next action: `wait`, `rebase`, `inspect failure`, or `merge`. It is
+advisory and never updates the branch, comments, approves, or merges.
 
 `suggested-fixes` writes `target/ripr/reports/suggested-fixes.patch` and
 `target/ripr/reports/suggested-fixes.md` with safe deterministic repair

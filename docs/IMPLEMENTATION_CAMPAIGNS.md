@@ -3375,7 +3375,7 @@ Work items:
 | `devex/worktree-doctor` | done | #941 added `cargo xtask worktree doctor` for dirty main, behind branches, generated residue, untracked sample targets, and broad diff warnings. |
 | `docs/spec-numbering-helper` | done | #946 added `cargo xtask specs next` and `cargo xtask check-spec-numbering`. |
 | `devex/pr-triage-report` | done | #950 added `cargo xtask pr-triage-report` for duplicate families, stale drafts, behind branches, validation gaps, and sensitive surfaces. Follow-up JSON output makes the same advisory queue packet agent-readable under `target/ripr/reports/pr-triage.json`. |
-| `devex/gh-pr-status` | done | #952 added `cargo xtask gh-pr-status --pr <number>` with safe next action guidance. |
+| `devex/gh-pr-status` | done | #952 added `cargo xtask gh-pr-status --pr <number>` with safe next action guidance. Follow-up JSON output makes the same merge-readiness packet agent-readable under `target/ripr/reports/gh-pr-status.json`. |
 | `policy/lane2-reopening-triggers` | done | #958 documented when future policy authority changes must reopen explicit Lane 2 work. |
 | `devex/campaign-source-of-truth-hardening` | done | #965 hardened focused-tracker, done-item command, spec, closeout, and active-manifest checks. |
 | `automation/gate-receipts` | done | #55 already supplied target-local receipt commands; this lane treats them as generated evidence. |
