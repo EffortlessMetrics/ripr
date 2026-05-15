@@ -312,8 +312,8 @@ argument-dependent commands.
 `pr-triage-report` writes the advisory open-board hygiene report as Markdown
 and JSON.
 `gh-pr-status --pr <number>` writes a read-only merge-readiness packet for one
-PR, including merge state, required check status when GitHub exposes it,
-reviews, Droid status, and the next safe action.
+PR as Markdown and JSON, including merge state, required check status when
+GitHub exposes it, reviews, Droid status, and the next safe action.
 `suggested-fixes` writes a deterministic repair patch and companion report
 under `target/ripr/reports/`; v1 only suggests allowlist ordering fixes and
 never writes badge values, baselines, suppressions, goldens, dependency

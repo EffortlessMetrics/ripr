@@ -1880,6 +1880,10 @@ pub(crate) fn gh_pr_status_impl(args: &[String]) -> Result<(), String> {
     );
     let body = gh_pr_status_markdown(&pr, &required_contexts, &readiness);
     write_report("gh-pr-status.md", &body)?;
+    write_report(
+        "gh-pr-status.json",
+        &gh_pr_status_json(&pr, &required_contexts, &readiness),
+    )?;
     println!(
         "PR #{} safe next action: {}",
         pr.number, readiness.safe_next_action
@@ -2208,6 +2212,103 @@ fn gh_pr_status_markdown(
     body.push_str("\n## Warnings\n\n");
     append_markdown_list(&mut body, &readiness.warnings, "None");
     body
+}
+
+fn gh_pr_status_json(
+    pr: &GhPrStatusPullRequest,
+    required_contexts: &[String],
+    readiness: &GhPrStatusReadiness,
+) -> String {
+    let advisory_checks = gh_pr_advisory_checks(pr, required_contexts, readiness);
+    let mut body = "{\n".to_string();
+    body.push_str("  \"schema_version\": \"0.1\",\n");
+    body.push_str("  \"mode\": \"advisory\",\n");
+    body.push_str(&format!("  \"pr_number\": {},\n", pr.number));
+    body.push_str(&format!("  \"title\": \"{}\",\n", json_escape(&pr.title)));
+    body.push_str("  \"branch\": {\n");
+    body.push_str(&format!(
+        "    \"head\": \"{}\",\n",
+        json_escape(&pr.head_ref_name)
+    ));
+    body.push_str(&format!(
+        "    \"base\": \"{}\"\n",
+        json_escape(&pr.base_ref_name)
+    ));
+    body.push_str("  },\n");
+    body.push_str(&format!(
+        "  \"merge_state\": \"{}\",\n",
+        json_escape(&pr.merge_state_status)
+    ));
+    body.push_str(&format!("  \"behind_main\": {},\n", readiness.behind_main));
+    body.push_str(&format!("  \"draft\": {},\n", pr.is_draft));
+    body.push_str(&format!(
+        "  \"required_contexts_available\": {},\n",
+        readiness.required_contexts_available
+    ));
+    body.push_str("  \"required_checks_outstanding\": [");
+    write_json_string_array(&mut body, &readiness.required_checks_outstanding);
+    body.push_str("],\n");
+    body.push_str("  \"failed_checks\": [");
+    write_json_string_array(&mut body, &readiness.failed_checks);
+    body.push_str("],\n");
+    body.push_str("  \"pending_checks\": [");
+    write_json_string_array(&mut body, &readiness.pending_checks);
+    body.push_str("],\n");
+    body.push_str("  \"advisory_checks\": [");
+    write_json_string_array(&mut body, &advisory_checks);
+    body.push_str("],\n");
+    body.push_str("  \"droid_status\": [");
+    write_json_string_array(&mut body, &readiness.droid_checks);
+    body.push_str("],\n");
+    body.push_str(&format!(
+        "  \"review_decision\": \"{}\",\n",
+        json_escape(&pr.review_decision)
+    ));
+    body.push_str("  \"reviews\": [\n");
+    for (index, review) in pr.reviews.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!(
+            "      \"author\": \"{}\",\n",
+            json_escape(&review.author)
+        ));
+        body.push_str(&format!(
+            "      \"state\": \"{}\"\n",
+            json_escape(&review.state)
+        ));
+        body.push_str("    }");
+    }
+    body.push_str("\n  ],\n");
+    body.push_str(&format!(
+        "  \"safe_next_action\": \"{}\",\n",
+        json_escape(&readiness.safe_next_action)
+    ));
+    body.push_str("  \"warnings\": [");
+    write_json_string_array(&mut body, &readiness.warnings);
+    body.push_str("]\n");
+    body.push_str("}\n");
+    body
+}
+
+fn gh_pr_advisory_checks(
+    pr: &GhPrStatusPullRequest,
+    required_contexts: &[String],
+    readiness: &GhPrStatusReadiness,
+) -> Vec<String> {
+    if !readiness.required_contexts_available {
+        return Vec::new();
+    }
+    pr.checks
+        .iter()
+        .filter(|check| {
+            !required_contexts
+                .iter()
+                .any(|context| context.eq_ignore_ascii_case(&check.name))
+        })
+        .map(format_gh_pr_check_status)
+        .collect()
 }
 
 fn value_or_unknown(value: &str) -> &str {
@@ -32587,7 +32688,7 @@ mod tests {
         extract_json_warnings, extract_workflow_run_blocks,
         finding_alignment_raw_to_canonical_ratio, finish_worktree_doctor_report,
         first_line_difference, forbidden_panic_patterns, generated_clean_violations,
-        gh_pr_safe_next_action, gh_pr_status_markdown, gh_pr_status_readiness,
+        gh_pr_safe_next_action, gh_pr_status_json, gh_pr_status_markdown, gh_pr_status_readiness,
         github_event_pull_request_title_from_text, glob_matches, golden_changes_without_blessing,
         golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
         install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
@@ -43159,6 +43260,31 @@ jobs:
         assert!(markdown.contains("## Required Checks Outstanding"));
         assert!(markdown.contains("## Reviews"));
         assert!(markdown.contains("droid/review"));
+    }
+
+    #[test]
+    fn gh_pr_status_json_reports_merge_readiness_packet() -> Result<(), String> {
+        let pr = gh_pr_status_pr(vec![
+            gh_pr_status_check("rust", "COMPLETED", "SUCCESS"),
+            gh_pr_status_check("droid/review", "COMPLETED", "SUCCESS"),
+        ]);
+        let contexts = vec!["rust".to_string()];
+        let readiness = gh_pr_status_readiness(&pr, &contexts, true, Vec::new());
+        let json: Value = serde_json::from_str(&gh_pr_status_json(&pr, &contexts, &readiness))
+            .map_err(|err| format!("gh-pr-status JSON should parse: {err}"))?;
+
+        assert_eq!(json["schema_version"], "0.1");
+        assert_eq!(json["mode"], "advisory");
+        assert_eq!(json["pr_number"], pr.number);
+        assert_eq!(json["merge_state"], "CLEAN");
+        assert_eq!(json["behind_main"], false);
+        assert_eq!(json["review_decision"], "APPROVED");
+        assert_eq!(json["safe_next_action"], "merge");
+        assert_eq!(
+            json["advisory_checks"][0],
+            "droid/review (status=COMPLETED, conclusion=SUCCESS)"
+        );
+        Ok(())
     }
 
     #[test]
