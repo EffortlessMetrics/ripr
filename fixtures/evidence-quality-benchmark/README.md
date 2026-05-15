@@ -35,6 +35,10 @@ promote any capability globally.
   while pinning one canonical evidence item, explicit `gap_state`,
   `actionability`, repair route, and count bucket for user-visible,
   already-observed, internal-only, static-limitation, and non-collision states.
+- Config/policy constants must not become user test debt from metadata alone.
+  The benchmark requires role, visibility, observer/discriminator,
+  actionability, and named static-limitation evidence before downstream
+  surfaces can render repair guidance.
 
 Run:
 
