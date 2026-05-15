@@ -3059,3 +3059,33 @@ metrics = [
   "editor_gap_status_no_action",
   "editor_gap_status_preview_limited",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0048"
+name = "Config and policy constant evidence"
+spec = "docs/specs/RIPR-SPEC-0048-config-policy-constant-evidence.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0048-config-policy-constant-evidence.md",
+  "docs/specs/README.md",
+  ".ripr/traceability.toml",
+  "CHANGELOG.md",
+]
+metrics = [
+  "config_policy_constant_total",
+  "config_policy_user_visible",
+  "config_policy_observed",
+  "config_policy_unobserved",
+  "config_policy_internal_only",
+  "config_policy_flow_unknown",
+  "config_policy_observer_unknown",
+  "config_policy_duplicate_groups",
+  "config_policy_actionable_output_observer",
+  "config_policy_actionable_behavior_discriminator",
+  "config_policy_no_action",
+  "config_policy_static_limitations",
+  "config_policy_repair_route_coverage",
+  "config_policy_verify_command_coverage",
+]
