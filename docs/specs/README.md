@@ -61,3 +61,4 @@ observable behavior.
 | [RIPR-SPEC-0048](RIPR-SPEC-0048-config-policy-constant-evidence.md) | proposed | Config and policy constant evidence |
 | [RIPR-SPEC-0049](RIPR-SPEC-0049-editor-setup-status.md) | proposed | Editor setup status |
 | [RIPR-SPEC-0050](RIPR-SPEC-0050-editor-first-repair-loop.md) | proposed | Editor first repair loop |
+| [RIPR-SPEC-0051](RIPR-SPEC-0051-first-successful-pr-ux.md) | proposed | First successful PR UX |
