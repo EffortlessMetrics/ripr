@@ -3103,3 +3103,68 @@ metrics = [
   "config_policy_repair_route_coverage",
   "config_policy_verify_command_coverage",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0049"
+name = "Editor setup status"
+spec = "docs/specs/RIPR-SPEC-0049-editor-setup-status.md"
+tests = [
+]
+fixtures = [
+]
+code = [
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0049-editor-setup-status.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0008-editor-first-run-usability.md",
+  "docs/proposals/README.md",
+  "docs/adr/0013-editor-setup-diagnostics-are-read-only.md",
+  "docs/adr/README.md",
+  "docs/lanes/LANE_3_EDITOR_LSP.md",
+  "plans/editor-first-run-usability/implementation-plan.md",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "editor_setup_status_reports",
+  "editor_setup_server_unavailable",
+  "editor_setup_artifact_missing",
+  "editor_setup_artifact_stale",
+  "editor_setup_language_disabled",
+  "editor_setup_adapter_unavailable",
+  "editor_setup_next_safe_action_refresh",
+  "editor_setup_no_actionable_gap",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0050"
+name = "Editor first repair loop"
+spec = "docs/specs/RIPR-SPEC-0050-editor-first-repair-loop.md"
+tests = [
+]
+fixtures = [
+]
+code = [
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0050-editor-first-repair-loop.md",
+  "docs/specs/RIPR-SPEC-0049-editor-setup-status.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0008-editor-first-run-usability.md",
+  "docs/proposals/README.md",
+  "docs/adr/0013-editor-setup-diagnostics-are-read-only.md",
+  "docs/adr/README.md",
+  "docs/lanes/LANE_3_EDITOR_LSP.md",
+  "plans/editor-first-run-usability/implementation-plan.md",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "editor_first_repair_packets_copied",
+  "editor_first_repair_packets_suppressed_missing_identity",
+  "editor_receipt_status_found",
+  "editor_receipt_status_missing",
+  "editor_receipt_status_stale",
+  "editor_receipt_status_gap_mismatch",
+  "editor_receipt_status_movement_improved",
+  "editor_receipt_status_movement_unchanged",
+]
