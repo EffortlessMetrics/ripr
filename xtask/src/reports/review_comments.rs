@@ -102,7 +102,9 @@ fn write_review_comments_with_runner(
 ) -> Result<(), String> {
     verify_revision(repo, &options.base)?;
     verify_revision(repo, &options.head)?;
-    if let Err(err) = run_producer(repo, options) {
+    if !has_changed_paths(repo, &options.base, &options.head)? {
+        write_empty_review_comments(repo, options)?;
+    } else if let Err(err) = run_producer(repo, options) {
         write_error_review_comments(repo, options, &err)?;
     }
     validate_review_comments(repo, options, true)?;
@@ -365,6 +367,7 @@ fn write_error_review_comments(
     options: &ReviewCommentsOptions,
     error: &str,
 ) -> Result<(), String> {
+    ensure_review_comments_parent(repo)?;
     let packet = error_review_comments_packet(repo, options, error);
     let json_text = serde_json::to_string_pretty(&packet)
         .map_err(|err| format!("serialize review comments error packet: {err}"))?;
@@ -373,6 +376,27 @@ fn write_error_review_comments(
         .map_err(|err| format!("failed to write {REVIEW_COMMENTS_JSON}: {err}"))?;
     fs::write(repo.join(REVIEW_COMMENTS_MD), markdown)
         .map_err(|err| format!("failed to write {REVIEW_COMMENTS_MD}: {err}"))
+}
+
+fn write_empty_review_comments(repo: &Path, options: &ReviewCommentsOptions) -> Result<(), String> {
+    ensure_review_comments_parent(repo)?;
+    let packet = empty_review_comments_packet(repo, options);
+    let json_text = serde_json::to_string_pretty(&packet)
+        .map_err(|err| format!("serialize review comments empty packet: {err}"))?;
+    let markdown = render_empty_review_comments_markdown(&packet);
+    fs::write(repo.join(REVIEW_COMMENTS_JSON), format!("{json_text}\n"))
+        .map_err(|err| format!("failed to write {REVIEW_COMMENTS_JSON}: {err}"))?;
+    fs::write(repo.join(REVIEW_COMMENTS_MD), markdown)
+        .map_err(|err| format!("failed to write {REVIEW_COMMENTS_MD}: {err}"))
+}
+
+fn ensure_review_comments_parent(repo: &Path) -> Result<(), String> {
+    let path = repo.join(REVIEW_COMMENTS_JSON);
+    let Some(parent) = path.parent() else {
+        return Err(format!("{REVIEW_COMMENTS_JSON} has no parent directory"));
+    };
+    fs::create_dir_all(parent)
+        .map_err(|err| format!("failed to create {REVIEW_COMMENTS_JSON} parent: {err}"))
 }
 
 fn error_review_comments_packet(
@@ -412,6 +436,33 @@ fn error_review_comments_packet(
     })
 }
 
+fn empty_review_comments_packet(repo: &Path, options: &ReviewCommentsOptions) -> Value {
+    serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "status": "advisory",
+        "root": normalize_path_text(&command_root_arg(repo, &options.root)),
+        "base": options.base,
+        "head": options.head,
+        "mode": "fast",
+        "rendering_limits": {
+            "max_inline_comments": 0,
+            "max_summary_items": 0
+        },
+        "summary": {
+            "comments": 0,
+            "summary_only": 0,
+            "suppressed": 0,
+            "unchanged_tests": true
+        },
+        "comments": [],
+        "summary_only": [],
+        "suppressed": [],
+        "warnings": [],
+        "limits_note": "No changed paths were detected, so no changed-line review guidance is emitted."
+    })
+}
+
 fn render_error_review_comments_markdown(packet: &Value) -> String {
     let warning = packet
         .get("warnings")
@@ -431,6 +482,20 @@ fn render_error_review_comments_markdown(packet: &Value) -> String {
             .and_then(Value::as_str)
             .unwrap_or(DEFAULT_HEAD),
         md_escape(warning)
+    )
+}
+
+fn render_empty_review_comments_markdown(packet: &Value) -> String {
+    format!(
+        "# RIPR PR Guidance\n\n- status: advisory\n- base: `{}`\n- head: `{}`\n- line annotations: 0\n- summary-only recommendations: 0\n- suppressed recommendations: 0\n\nNo changed paths were detected.\n",
+        packet
+            .get("base")
+            .and_then(Value::as_str)
+            .unwrap_or(DEFAULT_BASE),
+        packet
+            .get("head")
+            .and_then(Value::as_str)
+            .unwrap_or(DEFAULT_HEAD)
     )
 }
 
@@ -458,6 +523,12 @@ fn run_git_output(repo: &Path, args: &[&str]) -> Result<String, String> {
     let mut git_args = vec!["-C".to_string(), repo.display().to_string()];
     git_args.extend(args.iter().map(|arg| (*arg).to_string()));
     run_output_owned("git", &git_args)
+}
+
+fn has_changed_paths(repo: &Path, base: &str, head: &str) -> Result<bool, String> {
+    let range = format!("{base}..{head}");
+    let output = run_git_output(repo, &["diff", "--name-only", range.as_str()])?;
+    Ok(output.lines().any(|line| !line.trim().is_empty()))
 }
 
 fn command_root_arg(repo: &Path, root: &str) -> String {
@@ -635,6 +706,40 @@ mod tests {
         let markdown = fs::read_to_string(repo.join(REVIEW_COMMENTS_MD))
             .map_err(|err| format!("read error Markdown: {err}"))?;
         assert!(markdown.contains("No review guidance was generated."));
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn write_wrapper_skips_producer_for_empty_diff() -> Result<(), String> {
+        let (repo, mut options) = prepared_review_repo("ripr-review-comments-empty")?;
+        options.base = "HEAD".to_string();
+        options.head = "HEAD".to_string();
+
+        write_review_comments_with_runner(&repo, &options, |_repo, _options| {
+            Err("producer should not run for an empty diff".to_string())
+        })?;
+
+        let packet = read_packet(&repo)?;
+        assert_eq!(packet["status"], "advisory");
+        assert_eq!(packet["summary"]["comments"], 0);
+        assert_eq!(
+            packet["warnings"].as_array().map_or(usize::MAX, Vec::len),
+            0
+        );
+        let markdown = fs::read_to_string(repo.join(REVIEW_COMMENTS_MD))
+            .map_err(|err| format!("read empty Markdown: {err}"))?;
+        assert!(markdown.contains("No changed paths were detected."));
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn changed_path_detection_distinguishes_empty_and_non_empty_diffs() -> Result<(), String> {
+        let (repo, options) = prepared_review_repo("ripr-review-comments-diff")?;
+
+        assert!(has_changed_paths(&repo, &options.base, &options.head)?);
+        assert!(!has_changed_paths(&repo, "HEAD", "HEAD")?);
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
     }
