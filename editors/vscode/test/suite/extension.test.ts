@@ -619,6 +619,144 @@ suite('Extension Smoke', () => {
     }
   });
 
+  test('diagnoseSetup distinguishes first-run and no-output states', async () => {
+    await withControllerTestContext({ workspaceRoot: null }, async (context) => {
+      await context.controller.start();
+      const report = await diagnoseSetupReport(context);
+      assertReportIncludes(report, [
+        'Status: Open a workspace for ripr diagnostics.',
+        'Workspace: not open',
+        'Server started: no; workspace unavailable',
+        'Config: ripr.toml (no workspace',
+        'Next safe action: Open a workspace folder'
+      ]);
+      assert.strictEqual(context.client.startCalls, 0);
+    });
+
+    await withControllerTestContext({
+      resolveFailure: {
+        message: 'Configured ripr.server.path does not exist.',
+        detail: 'Missing configured ripr server path for this test.'
+      }
+    }, async (context) => {
+      await context.controller.start();
+      const report = await diagnoseSetupReport(context);
+      assertReportIncludes(report, [
+        'Status: ripr server is not available.',
+        'Missing configured ripr server path for this test.',
+        'Server: not resolved',
+        'Server started: no; server unavailable',
+        'Next safe action: Set ripr.server.path'
+      ]);
+      assert.strictEqual(context.client.startCalls, 0);
+    });
+
+    await withControllerTestContext({}, async (context) => {
+      await context.controller.start();
+      const report = await diagnoseSetupReport(context);
+      assertReportIncludes(report, [
+        'Status: ripr saved-workspace analysis is queued.',
+        'Server command: ripr',
+        'Server version: ripr 0.5.0-test',
+        'Config: ripr.toml (missing',
+        'Artifact first useful action report: target/ripr/reports/first-useful-action.json (missing',
+        'Evidence freshness: pending refresh'
+      ]);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'ripr.toml': '[languages]\nenabled = ["rust"]\n'
+      }
+    }, async (context) => {
+      await context.controller.start();
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=1, diagnostics=0, files=0, findings=0, seam_diagnostics=0, enabled_languages=1, enabled_language_names=rust, published_files=0, cleared_files=0'
+      });
+      const report = await diagnoseSetupReport(context);
+      assertReportIncludes(report, [
+        'Status: ripr analysis completed with no actionable seam diagnostics.',
+        'Config: ripr.toml (found',
+        'Enabled languages: rust',
+        'No ripr seam diagnostics were published',
+        'disabled or unavailable preview languages stay silent'
+      ]);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'ripr.toml': '[languages]\nenabled = []\n'
+      }
+    }, async (context) => {
+      await context.controller.start();
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=2, diagnostics=0, files=0, findings=0, seam_diagnostics=0, enabled_languages=0, enabled_language_names=, published_files=0, cleared_files=0'
+      });
+      const report = await diagnoseSetupReport(context);
+      assertReportIncludes(report, [
+        'Status: ripr analysis completed with no enabled languages.',
+        'Enabled languages: none',
+        '[languages] enabled = []',
+        'Next safe action: Edit ripr.toml [languages] enabled'
+      ]);
+    });
+
+    await withControllerTestContext({}, async (context) => {
+      await context.controller.start();
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=3, diagnostics=0, files=0, findings=0, seam_diagnostics=0, gap_artifacts=0, actionable_gap_artifacts=0, preview_gap_artifacts=0, no_action_gap_artifacts=0, gap_static_limits=0, gap_artifact_rejections=1, gap_artifact_rejection_kinds=unavailable_language, enabled_languages=1, enabled_language_names=rust, published_files=0, cleared_files=0'
+      });
+      const report = await diagnoseSetupReport(context);
+      assertReportIncludes(report, [
+        'Status: ripr ignored 1 unsafe gap artifact input.',
+        'Rejected kind: unavailable_language',
+        'not projected',
+        'never create diagnostics'
+      ]);
+    });
+
+    await withControllerTestContext({
+      firstActionJson: firstActionReport({})
+    }, async (context) => {
+      await context.controller.start();
+      const document = await vscode.workspace.openTextDocument(workspaceFileUri('src/lib.rs'));
+      context.controller.markWorkspaceStale(document);
+      const report = await diagnoseSetupReport(context);
+      assertReportIncludes(report, [
+        'Status: ripr analysis is stale until the file is saved.',
+        'Evidence freshness: stale; save or refresh before acting',
+        'First useful action report: available, but editor evidence is stale.',
+        'Save or refresh the workspace before acting on this report.'
+      ]);
+    });
+
+    await withControllerTestContext({}, async (context) => {
+      await context.controller.start();
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=4, diagnostics=0, files=0, findings=0, preview_findings=0, static_limits=0, seam_diagnostics=0, gap_artifacts=1, actionable_gap_artifacts=0, preview_gap_artifacts=0, no_action_gap_artifacts=1, gap_static_limits=0, gap_artifact_rejections=0, gap_artifact_rejection_kinds=, enabled_languages=1, enabled_language_names=rust, published_files=0, cleared_files=0'
+      });
+      const report = await diagnoseSetupReport(context);
+      assertReportIncludes(report, [
+        'Status: ripr validated gap artifacts with no actionable gap.',
+        'no local repair action',
+        'Next safe action: No local repair action is projected'
+      ]);
+    });
+
+    await withControllerTestContext({}, async (context) => {
+      await context.controller.start();
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=5, diagnostics=2, files=1, findings=1, preview_findings=0, static_limits=0, seam_diagnostics=1, gap_artifacts=1, actionable_gap_artifacts=1, preview_gap_artifacts=0, no_action_gap_artifacts=0, gap_static_limits=0, gap_artifact_rejections=0, gap_artifact_rejection_kinds=, enabled_languages=1, enabled_language_names=rust, published_files=1, cleared_files=0'
+      });
+      const report = await diagnoseSetupReport(context);
+      assertReportIncludes(report, [
+        'Status: ripr validated 1 actionable gap artifact.',
+        '1 actionable gap artifact validated for editor projection.',
+        'Next safe action: Open the related test or copy a bounded repair packet'
+      ]);
+    });
+  });
+
   test('status bar ignores first useful action report for another workspace', async () => {
     const context = createControllerTestContext({
       workspaceRoot: '/tmp/ripr-workspace',
@@ -1329,6 +1467,30 @@ function firstActionReport(overrides: Record<string, unknown>): string {
     }
   }
   return JSON.stringify(report);
+}
+
+async function withControllerTestContext(
+  options: ControllerTestOptions,
+  run: (context: ReturnType<typeof createControllerTestContext>) => Promise<void>
+): Promise<void> {
+  const context = createControllerTestContext(options);
+  try {
+    await run(context);
+  } finally {
+    await context.dispose();
+  }
+}
+
+async function diagnoseSetupReport(context: ReturnType<typeof createControllerTestContext>): Promise<string> {
+  context.outputLines.length = 0;
+  await context.controller.diagnoseSetup();
+  return context.outputLines.join('\n');
+}
+
+function assertReportIncludes(report: string, expectedLines: string[]): void {
+  for (const expected of expectedLines) {
+    assert.ok(report.includes(expected), `expected setup report to include ${expected}\n\n${report}`);
+  }
 }
 
 class FakeLanguageClient {
