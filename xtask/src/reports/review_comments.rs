@@ -2,6 +2,7 @@ use crate::run::{capture_output_with_timeout, run_output_owned};
 use crate::verification_contracts::validate_json_file_against_schema;
 use serde_json::Value;
 use std::env;
+use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -325,13 +326,25 @@ fn ripr_exe_name() -> &'static str {
 
 fn built_ripr_binary_path(repo: &Path) -> Result<PathBuf, String> {
     let cwd = env::current_dir().map_err(|err| format!("resolve current directory: {err}"))?;
-    Ok(cargo_target_dir(repo, &cwd)
-        .join("debug")
-        .join(ripr_exe_name()))
+    Ok(built_ripr_binary_path_from_target_dir(
+        repo,
+        &cwd,
+        env::var_os("CARGO_TARGET_DIR").as_deref(),
+    ))
 }
 
-fn cargo_target_dir(repo: &Path, cwd: &Path) -> PathBuf {
-    match env::var_os("CARGO_TARGET_DIR") {
+fn built_ripr_binary_path_from_target_dir(
+    repo: &Path,
+    cwd: &Path,
+    target_dir: Option<&OsStr>,
+) -> PathBuf {
+    cargo_target_dir(repo, cwd, target_dir)
+        .join("debug")
+        .join(ripr_exe_name())
+}
+
+fn cargo_target_dir(repo: &Path, cwd: &Path, target_dir: Option<&OsStr>) -> PathBuf {
+    match target_dir {
         Some(value) if !value.is_empty() => target_dir_from_value(repo, cwd, &PathBuf::from(value)),
         _ => repo.join("target"),
     }
@@ -627,11 +640,32 @@ mod tests {
     }
 
     #[test]
-    fn target_dir_honors_absolute_and_relative_cargo_target_dir() {
+    fn built_path_resolves_to_debug_ripr_binary() -> Result<(), String> {
+        let repo = env::temp_dir().join("ripr-review-repo");
+        let path = built_ripr_binary_path(&repo)?;
+
+        assert_eq!(path.file_name(), Some(OsStr::new(ripr_exe_name())));
+        assert_eq!(
+            path.parent().and_then(Path::file_name),
+            Some(OsStr::new("debug"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn target_dir_honors_default_absolute_and_relative_cargo_target_dir() {
         let repo = env::temp_dir().join("ripr-review-repo");
         let cwd = env::temp_dir().join("ripr-review-cwd");
         let absolute_target = env::temp_dir().join("ripr-review-target");
 
+        assert_eq!(
+            built_ripr_binary_path_from_target_dir(&repo, &cwd, None),
+            repo.join("target").join("debug").join(ripr_exe_name())
+        );
+        assert_eq!(
+            built_ripr_binary_path_from_target_dir(&repo, &cwd, Some(absolute_target.as_os_str())),
+            absolute_target.join("debug").join(ripr_exe_name())
+        );
         assert_eq!(
             target_dir_from_value(&repo, &cwd, &absolute_target),
             absolute_target
