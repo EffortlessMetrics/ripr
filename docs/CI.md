@@ -288,6 +288,7 @@ cargo xtask pr-summary
 cargo xtask pr-triage-report
 cargo xtask gh-pr-status --pr <number>
 cargo xtask suggested-fixes
+cargo xtask check-command-catalog
 cargo xtask precommit
 cargo xtask check-pr
 cargo xtask fixtures
@@ -308,6 +309,9 @@ runs `shape`, refreshes `pr-summary`, and writes a local fix-pr report.
 agents can distinguish mutating commands, non-mutating checks, report-only
 commands, external-state reads, external-state mutations, and
 argument-dependent commands.
+`check-command-catalog` verifies that the help catalog and mutability catalog
+stay aligned, that write surfaces are documented, and that external-state
+mutations remain judgment-required.
 `pr-summary` writes `target/ripr/reports/pr-summary.md` from git diff/status.
 `pr-triage-report` writes the advisory open-board hygiene report as Markdown
 and JSON.
@@ -333,8 +337,8 @@ of `ripr`'s own Rust test oracles. `dogfood` writes a non-blocking
 adversarial review packet from the current diff, reports, and receipts.
 `reports index` writes a reviewer front door for generated reports and includes
 the repo-ops packet statuses for command mutability, worktree doctor, PR triage,
-per-PR merge readiness, generated-clean, badge ownership, critic, receipts,
-suggested fixes, and `check-pr`.
+per-PR merge readiness, generated-clean, badge ownership, command catalog
+coverage, critic, receipts, suggested fixes, and `check-pr`.
 `receipts` writes machine-readable gate evidence under `target/ripr/receipts`,
 and `receipts check` validates the receipt set.
 
@@ -376,6 +380,7 @@ cargo xtask markdown-links
 cargo xtask check-campaign
 cargo xtask check-pr-shape
 cargo xtask check-generated
+cargo xtask check-command-catalog
 cargo xtask check-badge-diff-policy
 cargo xtask check-generated-clean
 cargo xtask check-dependencies
