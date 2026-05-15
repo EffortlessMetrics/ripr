@@ -3160,10 +3160,14 @@ name = "Editor first repair loop"
 spec = "docs/specs/RIPR-SPEC-0050-editor-first-repair-loop.md"
 tests = [
   "editors/vscode/test/suite/extension.test.ts::status model projects existing receipt state without producing receipts",
+  "crates/ripr/src/lsp/tests.rs::gap_code_actions_surface_bounded_gap_actions",
+  "crates/ripr/src/lsp/tests.rs::gap_code_actions_suppress_first_repair_packet_without_verify_or_receipt_command",
+  "editors/vscode/test/suite/extension.test.ts::copyContext copies first repair packets without LSP fallback",
 ]
 fixtures = [
 ]
 code = [
+  "crates/ripr/src/lsp/actions.rs",
   "editors/vscode/src/client.ts",
 ]
 outputs = [
