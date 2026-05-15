@@ -10,7 +10,7 @@ Target campaign: First-run UX and adoption hardening
 
 Linked specs:
 
-- `RIPR-SPEC-0048`: First successful PR UX contract, planned
+- `RIPR-SPEC-0049`: First successful PR UX contract, planned
 - `RIPR-SPEC-0046`: Gap decision ledger
 - `RIPR-SPEC-0020`: First useful action report
 - `RIPR-SPEC-0023`: PR review front panel report
@@ -146,7 +146,7 @@ implementation plan should decide that based on existing command ownership.
 
 ## Behavior specs to create or update
 
-- Add `RIPR-SPEC-0048`: First successful PR UX contract.
+- Add `RIPR-SPEC-0049`: First successful PR UX contract.
 - Update `RIPR-SPEC-0020` if start-here selection changes first useful action
   behavior or inputs.
 - Update `RIPR-SPEC-0023`, `RIPR-SPEC-0024`, and `RIPR-SPEC-0038` if generated
@@ -263,4 +263,3 @@ This proposal can move to `accepted` when:
   advisory rollout path without overclaiming authority;
 - closeout records what shipped, what stayed advisory, and what remains for
   future lanes.
-
