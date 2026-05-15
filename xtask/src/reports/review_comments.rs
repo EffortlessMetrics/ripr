@@ -287,11 +287,7 @@ fn run_ripr_review_comments(repo: &Path, options: &ReviewCommentsOptions) -> Res
                 "--quiet".to_string(),
             ];
             run_output_owned("cargo", &build_args)?;
-            repo.join("target")
-                .join("debug")
-                .join(ripr_exe_name())
-                .display()
-                .to_string()
+            built_ripr_binary_path(repo)?.display().to_string()
         }
     };
     let timeout = Duration::from_secs(review_comments_timeout_secs()?);
@@ -325,6 +321,30 @@ fn review_comments_timeout_secs() -> Result<u64, String> {
 
 fn ripr_exe_name() -> &'static str {
     if cfg!(windows) { "ripr.exe" } else { "ripr" }
+}
+
+fn built_ripr_binary_path(repo: &Path) -> Result<PathBuf, String> {
+    let cwd = env::current_dir().map_err(|err| format!("resolve current directory: {err}"))?;
+    Ok(cargo_target_dir(repo, &cwd)
+        .join("debug")
+        .join(ripr_exe_name()))
+}
+
+fn cargo_target_dir(repo: &Path, cwd: &Path) -> PathBuf {
+    match env::var_os("CARGO_TARGET_DIR") {
+        Some(value) if !value.is_empty() => target_dir_from_value(repo, cwd, &PathBuf::from(value)),
+        _ => repo.join("target"),
+    }
+}
+
+fn target_dir_from_value(repo: &Path, cwd: &Path, value: &Path) -> PathBuf {
+    if value.is_absolute() {
+        value.to_path_buf()
+    } else if cwd.is_absolute() {
+        cwd.join(value)
+    } else {
+        repo.join(value)
+    }
 }
 
 fn write_error_review_comments(
@@ -604,6 +624,26 @@ mod tests {
         assert!(markdown.contains("No review guidance was generated."));
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
+    }
+
+    #[test]
+    fn target_dir_honors_absolute_and_relative_cargo_target_dir() {
+        let repo = env::temp_dir().join("ripr-review-repo");
+        let cwd = env::temp_dir().join("ripr-review-cwd");
+        let absolute_target = env::temp_dir().join("ripr-review-target");
+
+        assert_eq!(
+            target_dir_from_value(&repo, &cwd, &absolute_target),
+            absolute_target
+        );
+        assert_eq!(
+            target_dir_from_value(&repo, &cwd, Path::new("target-alt")),
+            cwd.join("target-alt")
+        );
+        assert_eq!(
+            target_dir_from_value(&repo, Path::new("relative-cwd"), Path::new("target-alt")),
+            repo.join("target-alt")
+        );
     }
 
     fn valid_packet(options: &ReviewCommentsOptions) -> Value {
