@@ -138,6 +138,11 @@ mod tests {
         assert_eq!(alignment["summary"]["canonical_items"], 1);
         assert_eq!(alignment["summary"]["aligned_raw_findings"], 2);
         assert_eq!(alignment["summary"]["static_limitations"], 1);
+        assert_eq!(alignment["summary"]["repair_route_coverage"], 0);
+        assert_eq!(
+            alignment["summary"]["actionable_items_without_repair_route"],
+            0
+        );
         assert_eq!(
             alignment["items"][0]["canonical_gap_id"],
             "presentation_text::APPLE_M3_AIR_DEVICE_LABELS_TEXT"
@@ -149,6 +154,7 @@ mod tests {
         assert_eq!(alignment["items"][0]["raw_group_size"], 2);
         assert_eq!(alignment["items"][0]["gap_state"], "static_limitation");
         assert_eq!(alignment["items"][0]["actionability"], "inspect_visibility");
+        assert!(alignment["items"][0]["repair_route"].is_null());
         assert_eq!(
             alignment["items"][0]["static_limitations"][0]["category"],
             "presentation_text_visibility_unknown"
@@ -230,6 +236,11 @@ mod tests {
 
         assert_eq!(alignment["summary"]["canonical_items"], 2);
         assert_eq!(alignment["summary"]["actionable_gaps"], 1);
+        assert_eq!(alignment["summary"]["repair_route_coverage"], 1);
+        assert_eq!(
+            alignment["summary"]["actionable_items_without_repair_route"],
+            0
+        );
         assert_eq!(alignment["summary"]["already_observed"], 1);
         assert_eq!(
             alignment["summary"]["presentation_text_actionable_output_repairs"],
@@ -245,14 +256,27 @@ mod tests {
             "output_observer"
         );
         assert_eq!(
+            alignment["items"][0]["repair_route"]["repair_kind"],
+            "output_observer"
+        );
+        assert_eq!(
             alignment["items"][0]["presentation_text"]["target_test_type"],
+            "help_output_snapshot"
+        );
+        assert_eq!(
+            alignment["items"][0]["repair_route"]["target_test_type"],
             "help_output_snapshot"
         );
         assert_eq!(
             alignment["items"][0]["presentation_text"]["suggested_assertion"],
             "Assert CLI help output includes the HELP_DEVICE_LABEL text."
         );
+        assert_eq!(
+            alignment["items"][0]["repair_route"]["suggested_assertion"],
+            "Assert CLI help output includes the HELP_DEVICE_LABEL text."
+        );
         assert_eq!(alignment["items"][1]["gap_state"], "already_observed");
+        assert!(alignment["items"][1]["repair_route"].is_null());
         assert_eq!(
             alignment["items"][1]["presentation_text"]["observer"],
             "golden"
@@ -377,6 +401,11 @@ mod tests {
             alignment["summary"]["config_policy_actionable_output_observer"],
             1
         );
+        assert_eq!(alignment["summary"]["repair_route_coverage"], 1);
+        assert_eq!(
+            alignment["summary"]["actionable_items_without_repair_route"],
+            0
+        );
         assert_eq!(alignment["summary"]["config_policy_observed"], 1);
         assert_eq!(alignment["summary"]["config_policy_static_limitations"], 1);
         assert_eq!(alignment["items"][0]["gap_state"], "internal_only");
@@ -389,7 +418,16 @@ mod tests {
             alignment["items"][1]["config_policy"]["target_test_type"],
             "report_render_or_golden"
         );
+        assert_eq!(
+            alignment["items"][1]["repair_route"]["repair_kind"],
+            "output_observer"
+        );
+        assert_eq!(
+            alignment["items"][1]["repair_route"]["target_test_type"],
+            "report_render_or_golden"
+        );
         assert_eq!(alignment["items"][2]["gap_state"], "already_observed");
+        assert!(alignment["items"][2]["repair_route"].is_null());
         assert_eq!(alignment["items"][2]["config_policy"]["observer"], "golden");
         assert_eq!(alignment["items"][3]["gap_state"], "static_limitation");
         assert_eq!(

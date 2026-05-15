@@ -75,6 +75,8 @@ repeated only as supporting evidence for the canonical item.
       "unknown": 0,
       "calibrated_supported": 0,
       "uncalibrated": 1,
+      "repair_route_coverage": 0,
+      "actionable_items_without_repair_route": 0,
       "presentation_text_total": 1,
       "presentation_text_user_visible": 0,
       "presentation_text_observed": 0,
@@ -113,6 +115,7 @@ repeated only as supporting evidence for the canonical item.
         "group_reason": "declaration_and_literal_same_text_constant",
         "why": "Changed presentation text could not be traced to or away from a user-visible output sink.",
         "recommended_repair": "Trace the string constant to a rendered output path or confirm it is internal-only.",
+        "repair_route": null,
         "related_test": null,
         "verify_command": "cargo xtask evidence-quality-scorecard",
         "static_limitations": [
@@ -194,6 +197,13 @@ Field contract:
   confidence-basis counts for canonical items. Current presentation-text items
   are fixture-backed static evidence unless a later checked runtime calibration
   class supplies calibrated support.
+- `finding_alignment.summary.repair_route_coverage` - count of actionable
+  canonical items that carry a concrete top-level `repair_route` with
+  `repair_kind`, `target_test_type`, and `suggested_assertion`.
+- `finding_alignment.summary.actionable_items_without_repair_route` - count of
+  actionable canonical items that are missing a concrete top-level repair
+  route. Supported fixture-backed classes should keep this at zero; no-action
+  and static-limitation items are not counted as missing user repair routes.
 - `finding_alignment.summary.presentation_text_*` - presentation-text class
   counts for visibility, observer status, duplicate grouping, no-action states,
   static limitations, and output-observer repairs.
@@ -215,6 +225,10 @@ Field contract:
   as `inspect_visibility`, `add_output_observer`, `already_observed`, or
   `no_action`. Presentation text does not produce user repair work from text
   alone.
+- `finding_alignment.items[].repair_route` - nullable normalized repair route
+  copied from class-specific evidence. It is required for
+  `gap_state = "actionable"` in supported classes and is `null` for
+  already-observed, internal-only, and static-limitation items.
 - `finding_alignment.items[].static_limitations[]` - analyzer limitation
   categories and repair routes. `presentation_text_visibility_unknown` means
   RIPR could not safely trace the text to or away from a user-visible output
