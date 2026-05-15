@@ -1546,6 +1546,7 @@ evidence = [
   "`ripr reports gap-ledger --repo-exposure ...` derives conservative repo-scoped Rust GapRecords from existing seams[].evidence_record.canonical_item data without making PR-local gate/comment claims",
   "`ripr reports gap-ledger --check-output ...` derives PR-local MissingOutputContract records from presentation-text finding_alignment.items[] with AddOutputGolden repair guidance and cargo xtask goldens check verification",
   "ripr first-action --gap-ledger, ripr pr-ledger record --gap-ledger, ripr zero status --gap-ledger, ripr gate evaluate --gap-ledger, ripr review-comments --gap-ledger, ripr agent packet --gap-ledger, LSP gap diagnostics, and repo-badge formats with --gap-ledger can consume explicit policy-backed gap records while preserving advisory/default-off behavior",
+  "docs/FIRST_PR_WORKFLOW.md documents the first successful Rust PR loop from one repairable gap to one focused proof and receipt",
   "docs/OUTPUT_SCHEMA.md documents the implemented gap_decision_ledger JSON shape"
 ]
 fixtures = [
