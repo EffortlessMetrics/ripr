@@ -23,6 +23,7 @@ pub(crate) struct GapDecisionLedgerInput {
 pub(crate) enum GapDecisionLedgerSourceKind {
     Records,
     RepoExposure,
+    CheckOutput,
 }
 
 impl GapDecisionLedgerSourceKind {
@@ -30,6 +31,7 @@ impl GapDecisionLedgerSourceKind {
         match self {
             Self::Records => "records",
             Self::RepoExposure => "repo_exposure",
+            Self::CheckOutput => "check_output",
         }
     }
 }
@@ -343,7 +345,33 @@ fn parse_gap_decision_source(
     match source_kind {
         GapDecisionLedgerSourceKind::Records => parse_gap_records_json(contents),
         GapDecisionLedgerSourceKind::RepoExposure => gap_records_from_repo_exposure_json(contents),
+        GapDecisionLedgerSourceKind::CheckOutput => gap_records_from_check_output_json(contents),
     }
+}
+
+fn gap_records_from_check_output_json(contents: &str) -> Result<Vec<GapRecord>, String> {
+    let value: Value =
+        serde_json::from_str(contents).map_err(|err| format!("invalid JSON: {err}"))?;
+    let items = value
+        .get("finding_alignment")
+        .and_then(|alignment| alignment.get("items"))
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            "expected check output object with finding_alignment.items array".to_string()
+        })?;
+    let mut records = Vec::new();
+    for (index, item) in items.iter().enumerate() {
+        let Some(record) = gap_record_from_finding_alignment_item(item, index) else {
+            continue;
+        };
+        if record.gap_id.is_empty() {
+            return Err(format!(
+                "finding_alignment item {index} produced an empty gap_id"
+            ));
+        }
+        records.push(record);
+    }
+    Ok(records)
 }
 
 fn gap_records_from_repo_exposure_json(contents: &str) -> Result<Vec<GapRecord>, String> {
@@ -493,7 +521,10 @@ fn repairability_from_evidence(gap_state: &str, actionability: &str) -> &'static
         "actionable"
             if matches!(
                 actionability,
-                "add_focused_test" | "upgrade_assertion" | "extend_related_test"
+                "add_focused_test"
+                    | "upgrade_assertion"
+                    | "extend_related_test"
+                    | "add_output_observer"
             ) =>
         {
             "repairable"
@@ -510,6 +541,7 @@ fn gap_kind_from_evidence(gap_state: &str, seam_kind: &str) -> &'static str {
         "internal_only" => "NoActionInternal",
         "static_limitation" => "StaticLimitation",
         "actionable" => match seam_kind {
+            "presentation_text" => "MissingOutputContract",
             "predicate_boundary" | "match_arm" => "MissingBoundaryAssertion",
             "error_variant" => "MissingErrorDiscriminator",
             "field_construction" | "return_value" => "MissingValueAssertion",
@@ -518,6 +550,145 @@ fn gap_kind_from_evidence(gap_state: &str, seam_kind: &str) -> &'static str {
         },
         _ => "Unknown",
     }
+}
+
+fn gap_record_from_finding_alignment_item(item: &Value, index: usize) -> Option<GapRecord> {
+    let evidence_class = string_at(item, &["evidence_class"]).unwrap_or("unknown");
+    if evidence_class != "presentation_text" {
+        return None;
+    }
+
+    let gap_state = string_at(item, &["gap_state"]).unwrap_or("unknown");
+    let actionability = string_at(item, &["actionability"]).unwrap_or("unknown");
+    let repairability = repairability_from_evidence(gap_state, actionability);
+    let canonical_gap_id = string_at(item, &["canonical_gap_id"])
+        .map(ToString::to_string)
+        .unwrap_or_else(|| format!("presentation_text::item_{index}"));
+    let presentation_text = item.get("presentation_text");
+    let raw_findings = array_values_at(item, &["raw_findings"]).unwrap_or_default();
+    let first_raw = raw_findings.first();
+    let anchor = GapAnchor {
+        file: first_raw.and_then(|raw| string_at(raw, &["file"]).map(ToString::to_string)),
+        line: first_raw.and_then(|raw| u64_at(raw, &["line"])),
+        owner: presentation_text
+            .and_then(|text| string_at(text, &["constant_name"]))
+            .map(ToString::to_string),
+        dedupe_fingerprint: Some(canonical_gap_id.clone()),
+    };
+    let static_limits = array_values_at(item, &["static_limitations"]).unwrap_or_default();
+    let static_limit_kind = static_limits
+        .iter()
+        .find_map(|limit| string_at(limit, &["category"]).or_else(|| string_at(limit, &["kind"])))
+        .map(ToString::to_string);
+    let static_limit_detail = static_limits
+        .iter()
+        .find_map(|limit| {
+            string_at(limit, &["repair_route"])
+                .or_else(|| string_at(limit, &["detail"]))
+                .or_else(|| string_at(limit, &["reason"]))
+        })
+        .map(ToString::to_string);
+    let repair_route = presentation_text_repair_route_from_alignment_item(item, repairability);
+    let verification_commands =
+        verification_commands_from_alignment_item(item, evidence_class, repairability);
+    let projection_eligibility = projection_eligibility_from_pr_evidence(
+        repairability,
+        repair_route.is_some(),
+        !verification_commands.is_empty(),
+        anchor.file.is_some() && anchor.line.is_some(),
+        gap_state,
+    );
+
+    Some(GapRecord {
+        gap_id: format!("gap:pr:{canonical_gap_id}"),
+        canonical_gap_id: canonical_gap_id.clone(),
+        kind: gap_kind_from_evidence(gap_state, evidence_class).to_string(),
+        language: "rust".to_string(),
+        language_status: "stable".to_string(),
+        scope: "pr_local".to_string(),
+        evidence_class: evidence_class.to_string(),
+        gap_state: gap_state.to_string(),
+        policy_state: if gap_state == "actionable" {
+            "new".to_string()
+        } else {
+            "not_policy_targeted".to_string()
+        },
+        repairability: repairability.to_string(),
+        repair_route,
+        static_limit_kind,
+        static_limit_detail,
+        static_limits,
+        anchor: Some(anchor),
+        evidence_ids: evidence_ids_from_alignment_item(item, &canonical_gap_id),
+        projection_eligibility,
+        verification_commands,
+        receipt_command: None,
+        regeneration_commands: Vec::new(),
+        receipt: None,
+        safe_gate_predicate: None,
+        authority_boundary: "gate_decision_artifact_only".to_string(),
+    })
+}
+
+fn presentation_text_repair_route_from_alignment_item(
+    item: &Value,
+    repairability: &str,
+) -> Option<GapRepairRoute> {
+    if repairability != "repairable" {
+        return None;
+    }
+    let presentation_text = item.get("presentation_text");
+    Some(GapRepairRoute {
+        route_kind: "AddOutputGolden".to_string(),
+        target_file: string_at(item, &["related_test", "file"]).map(ToString::to_string),
+        target_line: u64_at(item, &["related_test", "line"]),
+        related_test: string_at(item, &["related_test", "name"]).map(ToString::to_string),
+        assertion_shape: presentation_text
+            .and_then(|text| string_at(text, &["suggested_assertion"]))
+            .or_else(|| string_at(item, &["recommended_repair"]))
+            .map(ToString::to_string),
+        changed_behavior: presentation_text
+            .and_then(|text| string_at(text, &["text_literal"]))
+            .or_else(|| presentation_text.and_then(|text| string_at(text, &["constant_name"])))
+            .map(ToString::to_string),
+        stop_conditions: vec![
+            "Stop if the changed text is not user-facing in the current product surface."
+                .to_string(),
+            "Stop if the output/golden fixture would assert unrelated formatting churn."
+                .to_string(),
+        ],
+    })
+}
+
+fn verification_commands_from_alignment_item(
+    item: &Value,
+    evidence_class: &str,
+    repairability: &str,
+) -> Vec<String> {
+    if evidence_class == "presentation_text" && repairability == "repairable" {
+        return vec!["cargo xtask goldens check".to_string()];
+    }
+    string_at(item, &["verify_command"])
+        .map(|command| vec![command.to_string()])
+        .unwrap_or_default()
+}
+
+fn evidence_ids_from_alignment_item(item: &Value, canonical_gap_id: &str) -> Vec<String> {
+    let mut ids = Vec::new();
+    if let Some(raw_findings) = array_values_at(item, &["raw_findings"]) {
+        for raw in raw_findings {
+            if let Some(id) = string_at(&raw, &["evidence_record_ref"])
+                .or_else(|| string_at(&raw, &["source_id"]))
+                && !ids.iter().any(|existing| existing == id)
+            {
+                ids.push(id.to_string());
+            }
+        }
+    }
+    if ids.is_empty() {
+        ids.push(canonical_gap_id.to_string());
+    }
+    ids
 }
 
 fn repair_route_from_evidence(
@@ -637,6 +808,76 @@ fn projection_eligibility_from_repo_evidence(
             "not_unresolved_repairable_repo_gap"
         },
     );
+    projections
+}
+
+fn projection_eligibility_from_pr_evidence(
+    repairability: &str,
+    has_repair_route: bool,
+    has_verify_command: bool,
+    has_local_anchor: bool,
+    gap_state: &str,
+) -> BTreeMap<String, ProjectionEligibility> {
+    let mut projections = BTreeMap::new();
+    insert_projection(&mut projections, "ci_summary", true, "pr_local_gap_record");
+    insert_projection(
+        &mut projections,
+        "report_packet",
+        true,
+        "all_gap_records_are_reportable",
+    );
+    let repairable = repairability == "repairable" && has_repair_route && has_verify_command;
+    insert_projection(
+        &mut projections,
+        "pr_comment",
+        repairable && has_local_anchor,
+        if repairable && has_local_anchor {
+            "stable_anchor_and_repair_route"
+        } else {
+            "not_repairable_or_missing_anchor"
+        },
+    );
+    insert_projection(
+        &mut projections,
+        "gate_candidate",
+        false,
+        "policy_target_not_supplied",
+    );
+    insert_projection(
+        &mut projections,
+        "agent_packet",
+        repairable,
+        if repairable {
+            "bounded_repair_route"
+        } else {
+            "not_repairable"
+        },
+    );
+    insert_projection(
+        &mut projections,
+        "lsp_diagnostic",
+        repairable && has_local_anchor,
+        if repairable && has_local_anchor {
+            "local_file_scope"
+        } else {
+            "not_repairable_or_missing_anchor"
+        },
+    );
+    insert_projection(
+        &mut projections,
+        "ripr_zero_count",
+        false,
+        "pr_local_not_repo_scoped",
+    );
+    insert_projection(
+        &mut projections,
+        "ripr_plus_count",
+        false,
+        "pr_local_not_repo_scoped",
+    );
+    if gap_state != "actionable" {
+        insert_projection(&mut projections, "pr_comment", false, "not_actionable_gap");
+    }
     projections
 }
 
@@ -1007,6 +1248,16 @@ mod tests {
         })
     }
 
+    fn report_from_check_output(value: Value) -> GapDecisionLedgerReport {
+        build_gap_decision_ledger_report(GapDecisionLedgerInput {
+            root: ".".to_string(),
+            generated_at: "test".to_string(),
+            source_kind: GapDecisionLedgerSourceKind::CheckOutput,
+            records_path: "check.json".to_string(),
+            records_json: Ok(value.to_string()),
+        })
+    }
+
     #[test]
     fn gap_decision_ledger_parses_corpus_records_and_summarizes_projection_boundaries() {
         let report = build_gap_decision_ledger_report(GapDecisionLedgerInput {
@@ -1041,6 +1292,106 @@ mod tests {
         let gap_records = report_from_json(serde_json::json!({"gap_records": [minimal_record()]}));
         assert_eq!(gap_records.status, "advisory");
         assert_eq!(gap_records.summary.no_action_total, 1);
+    }
+
+    #[test]
+    fn gap_decision_ledger_derives_missing_output_contract_from_check_output_alignment() {
+        let report = report_from_check_output(serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "finding_alignment": {
+                "scope": "supported_classes",
+                "items": [
+                    {
+                        "canonical_gap_id": "presentation_text::HELP_DEVICE_LABEL",
+                        "canonical_item_kind": "gap",
+                        "evidence_class": "presentation_text",
+                        "gap_state": "actionable",
+                        "actionability": "add_output_observer",
+                        "raw_group_size": 2,
+                        "group_reason": "declaration_and_literal_same_text_constant",
+                        "why": "Changed text flows to CLI help output and no supported output observer is found.",
+                        "recommended_repair": "Add or update a help-output snapshot assertion for HELP_DEVICE_LABEL.",
+                        "related_test": null,
+                        "verify_command": "cargo xtask evidence-quality-scorecard",
+                        "static_limitations": [],
+                        "confidence": {
+                            "basis": "fixture_backed",
+                            "notes": ["Visible unobserved presentation text is actionable only for supported sink patterns."]
+                        },
+                        "raw_findings": [
+                            {
+                                "file": "crates/ripr/src/cli/help.rs",
+                                "line": 42,
+                                "kind": "exposed",
+                                "expression": "pub const HELP_DEVICE_LABEL: &str =",
+                                "probe_kind": "field_construction",
+                                "source_id": "help-label-decl",
+                                "evidence_record_ref": "help-label-decl"
+                            },
+                            {
+                                "file": "crates/ripr/src/cli/help.rs",
+                                "line": 43,
+                                "kind": "static_unknown",
+                                "expression": "\"Device label\";",
+                                "probe_kind": "static_unknown",
+                                "source_id": "help-label-literal",
+                                "evidence_record_ref": "help-label-literal"
+                            }
+                        ],
+                        "presentation_text": {
+                            "constant_name": "HELP_DEVICE_LABEL",
+                            "text_literal": "Device label",
+                            "visibility": "user_visible",
+                            "observer": "none",
+                            "actionability": "add_output_observer",
+                            "source_kind": "const_decl",
+                            "canonical_group_reason": "declaration_and_literal_same_text_constant",
+                            "recommended_observer": "cli_help_output",
+                            "repair_kind": "output_observer",
+                            "target_test_type": "help_output_snapshot",
+                            "suggested_assertion": "Assert CLI help output includes the HELP_DEVICE_LABEL text."
+                        }
+                    }
+                ]
+            }
+        }));
+
+        assert_eq!(report.status, "advisory");
+        assert_eq!(report.summary.records_total, 1);
+        assert_eq!(report.summary.repairable_total, 1);
+        assert_eq!(report.summary.missing_output_contract_total, 1);
+        assert_eq!(report.summary.projection_pr_comment_eligible, 1);
+        assert_eq!(report.summary.projection_gate_candidate, 0);
+        assert_eq!(report.summary.ripr_zero_target_count, 0);
+        let record = &report.records[0];
+        assert_eq!(record.kind, "MissingOutputContract");
+        assert_eq!(record.scope, "pr_local");
+        assert_eq!(
+            record
+                .repair_route
+                .as_ref()
+                .map(|route| route.route_kind.as_str()),
+            Some("AddOutputGolden")
+        );
+        assert_eq!(
+            record.verification_commands,
+            vec!["cargo xtask goldens check".to_string()]
+        );
+        assert_eq!(
+            record
+                .projection_eligibility
+                .get("pr_comment")
+                .map(|projection| projection.eligible),
+            Some(true)
+        );
+        assert_eq!(
+            record.evidence_ids,
+            vec![
+                "help-label-decl".to_string(),
+                "help-label-literal".to_string()
+            ]
+        );
     }
 
     #[test]

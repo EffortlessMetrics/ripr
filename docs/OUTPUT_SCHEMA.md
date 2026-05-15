@@ -8250,6 +8250,15 @@ are repo-scoped projection inputs for reports, badges, LSP diagnostics, and
 agent packets when the evidence record already supplies a repair route and
 verification command.
 
+`ripr reports gap-ledger --check-output <path>` derives PR-local
+presentation/output contract gap records from an existing check JSON
+`finding_alignment.items[]` section. Supported visible output text without a
+checked observer becomes `MissingOutputContract` with
+`repair_route.route_kind = "AddOutputGolden"` and
+`verification_commands = ["cargo xtask goldens check"]`. Visibility-unknown
+presentation text remains a static limitation and does not become a generic
+`static_unknown` repair instruction.
+
 The command writes JSON to `target/ripr/reports/gap-decision-ledger.json` and
 Markdown to `target/ripr/reports/gap-decision-ledger.md` by default. It does
 not rerun analysis, infer analyzer truth, publish comments, edit source,

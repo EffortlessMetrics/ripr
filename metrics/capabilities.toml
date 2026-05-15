@@ -1544,13 +1544,14 @@ evidence = [
   "crates/ripr/src/output/gap_decision_ledger.rs builds and renders the advisory gap_decision_ledger JSON and Markdown report from explicit GapRecord input",
   "crates/ripr/src/cli/commands.rs wires `ripr reports gap-ledger --records ...` without rerunning analysis or changing downstream projection behavior",
   "`ripr reports gap-ledger --repo-exposure ...` derives conservative repo-scoped Rust GapRecords from existing seams[].evidence_record.canonical_item data without making PR-local gate/comment claims",
+  "`ripr reports gap-ledger --check-output ...` derives PR-local MissingOutputContract records from presentation-text finding_alignment.items[] with AddOutputGolden repair guidance and cargo xtask goldens check verification",
   "ripr first-action --gap-ledger, ripr pr-ledger record --gap-ledger, ripr zero status --gap-ledger, ripr gate evaluate --gap-ledger, ripr review-comments --gap-ledger, ripr agent packet --gap-ledger, LSP gap diagnostics, and repo-badge formats with --gap-ledger can consume explicit policy-backed gap records while preserving advisory/default-off behavior",
   "docs/OUTPUT_SCHEMA.md documents the implemented gap_decision_ledger JSON shape"
 ]
 fixtures = [
   "fixtures/gap-decision-ledger/corpus.json"
 ]
-next = "editor/gap-work-packet-projection"
+next = "maintenance"
 metric = "gap_decision_records_total, gap_decision_repairable_total, gap_decision_static_limitation_total, gap_decision_no_action_total, gap_decision_missing_artifact_total, gap_decision_projection_pr_comment_eligible, gap_decision_projection_gate_candidate, gap_decision_projection_agent_packet_eligible, gap_decision_ripr_zero_target_count, gap_decision_ripr_plus_target_count, gap_decision_preview_ineligible_total, gap_decision_receipt_improved_total, gap_decision_receipt_unchanged_after_attempt_total, gap_decision_missing_output_contract_total"
 
 [[capability]]
