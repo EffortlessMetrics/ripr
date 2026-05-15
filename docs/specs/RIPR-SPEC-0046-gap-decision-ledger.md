@@ -457,7 +457,9 @@ Planned slices:
   rerunning analysis, then projects `projection_eligibility.lsp_diagnostic`
   records into editor diagnostics and `ripr.collectContext` gap packets.
 - `analysis/presentation-output-contract-gap-route` connects
-  `RIPR-SPEC-0043` evidence to `MissingOutputContract` decisions.
+  `RIPR-SPEC-0043` `finding_alignment.items[]` evidence from check output to
+  `MissingOutputContract` decisions with `AddOutputGolden` repair guidance.
+  (done)
 
 Expected implementation files, once the code slice starts:
 

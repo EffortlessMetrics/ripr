@@ -273,12 +273,13 @@ struct GapDecisionLedgerOptions {
 enum GapDecisionLedgerSource {
     Records(PathBuf),
     RepoExposure(PathBuf),
+    CheckOutput(PathBuf),
 }
 
 impl GapDecisionLedgerSource {
     fn path(&self) -> &Path {
         match self {
-            Self::Records(path) | Self::RepoExposure(path) => path,
+            Self::Records(path) | Self::RepoExposure(path) | Self::CheckOutput(path) => path,
         }
     }
 
@@ -288,6 +289,9 @@ impl GapDecisionLedgerSource {
             Self::RepoExposure(_) => {
                 output::gap_decision_ledger::GapDecisionLedgerSourceKind::RepoExposure
             }
+            Self::CheckOutput(_) => {
+                output::gap_decision_ledger::GapDecisionLedgerSourceKind::CheckOutput
+            }
         }
     }
 
@@ -295,6 +299,7 @@ impl GapDecisionLedgerSource {
         match self {
             Self::Records(_) => "gap records",
             Self::RepoExposure(_) => "repo exposure",
+            Self::CheckOutput(_) => "check output",
         }
     }
 }
@@ -6470,6 +6475,7 @@ fn parse_gap_decision_ledger_options(args: &[String]) -> Result<GapDecisionLedge
     let mut root = ".".to_string();
     let mut records = None;
     let mut repo_exposure = None;
+    let mut check_output = None;
     let mut out = PathBuf::from(output::gap_decision_ledger::DEFAULT_GAP_DECISION_LEDGER_OUT);
     let mut out_md = PathBuf::from(output::gap_decision_ledger::DEFAULT_GAP_DECISION_LEDGER_MD_OUT);
 
@@ -6498,6 +6504,15 @@ fn parse_gap_decision_ledger_options(args: &[String]) -> Result<GapDecisionLedge
                     "reports gap-ledger",
                 )?);
             }
+            "--check-output" => {
+                i += 1;
+                check_output = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--check-output",
+                    "reports gap-ledger",
+                )?);
+            }
             "--out" => {
                 i += 1;
                 out = non_empty_path_arg(args, i, "--out", "reports gap-ledger")?;
@@ -6511,20 +6526,31 @@ fn parse_gap_decision_ledger_options(args: &[String]) -> Result<GapDecisionLedge
         i += 1;
     }
 
-    let source = match (records, repo_exposure) {
-        (Some(records), None) => GapDecisionLedgerSource::Records(records),
-        (None, Some(repo_exposure)) => GapDecisionLedgerSource::RepoExposure(repo_exposure),
-        (None, None) => {
-            return Err(
-                "reports gap-ledger requires --records PATH or --repo-exposure PATH".to_string(),
-            );
-        }
-        (Some(_), Some(_)) => {
-            return Err(
-                "reports gap-ledger accepts either --records or --repo-exposure, not both"
-                    .to_string(),
-            );
-        }
+    let supplied_sources =
+        records.is_some() as u8 + repo_exposure.is_some() as u8 + check_output.is_some() as u8;
+    if supplied_sources == 0 {
+        return Err(
+            "reports gap-ledger requires --records PATH, --repo-exposure PATH, or --check-output PATH"
+                .to_string(),
+        );
+    }
+    if supplied_sources > 1 {
+        return Err(
+            "reports gap-ledger accepts only one of --records, --repo-exposure, or --check-output"
+                .to_string(),
+        );
+    }
+    let source = if let Some(records) = records {
+        GapDecisionLedgerSource::Records(records)
+    } else if let Some(repo_exposure) = repo_exposure {
+        GapDecisionLedgerSource::RepoExposure(repo_exposure)
+    } else if let Some(check_output) = check_output {
+        GapDecisionLedgerSource::CheckOutput(check_output)
+    } else {
+        return Err(
+            "reports gap-ledger requires --records PATH, --repo-exposure PATH, or --check-output PATH"
+                .to_string(),
+        );
     };
 
     Ok(GapDecisionLedgerOptions {
@@ -7757,7 +7783,10 @@ mod tests {
     fn reports_gap_ledger_requires_records_input() {
         assert_eq!(
             reports(&args(&["gap-ledger"])),
-            Err("reports gap-ledger requires --records PATH or --repo-exposure PATH".to_string())
+            Err(
+                "reports gap-ledger requires --records PATH, --repo-exposure PATH, or --check-output PATH"
+                    .to_string()
+            )
         );
         assert_eq!(
             reports(&args(&["gap-ledger", "--records"])),
@@ -7768,15 +7797,19 @@ mod tests {
             Err("missing value for --repo-exposure".to_string())
         );
         assert_eq!(
+            reports(&args(&["gap-ledger", "--check-output"])),
+            Err("missing value for --check-output".to_string())
+        );
+        assert_eq!(
             reports(&args(&[
                 "gap-ledger",
                 "--records",
                 "records.json",
-                "--repo-exposure",
-                "repo-exposure.json"
+                "--check-output",
+                "check.json"
             ])),
             Err(
-                "reports gap-ledger accepts either --records or --repo-exposure, not both"
+                "reports gap-ledger accepts only one of --records, --repo-exposure, or --check-output"
                     .to_string()
             )
         );
@@ -7817,6 +7850,45 @@ mod tests {
         assert!(markdown.contains("gate candidates=`1`"));
 
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove gap ledger dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn reports_gap_ledger_derives_output_contract_gap_from_check_output() -> Result<(), String> {
+        let dir = unique_command_test_dir("gap-ledger-check-output");
+        std::fs::create_dir_all(&dir)
+            .map_err(|err| format!("create gap ledger check output dir: {err}"))?;
+        let check_output = dir.join("check.json");
+        let out = dir.join("gap-decision-ledger.json");
+        let out_md = dir.join("gap-decision-ledger.md");
+        std::fs::write(&check_output, check_output_with_presentation_text_gap())
+            .map_err(|err| format!("write check output: {err}"))?;
+
+        reports(&args(&[
+            "gap-ledger",
+            "--check-output",
+            &check_output.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text = std::fs::read_to_string(&out)
+            .map_err(|err| format!("read check-output gap ledger JSON: {err}"))?;
+        assert!(json_text.contains("\"source_kind\": \"check_output\""));
+        assert!(json_text.contains("\"kind\": \"MissingOutputContract\""));
+        assert!(json_text.contains("\"route_kind\": \"AddOutputGolden\""));
+        assert!(json_text.contains("cargo xtask goldens check"));
+        assert!(json_text.contains("\"projection_pr_comment_eligible\": 1"));
+        assert!(json_text.contains("\"projection_gate_candidate\": 0"));
+        let markdown = std::fs::read_to_string(&out_md)
+            .map_err(|err| format!("read check-output gap ledger Markdown: {err}"))?;
+        assert!(markdown.contains("MissingOutputContract"));
+        assert!(markdown.contains("AddOutputGolden"));
+
+        std::fs::remove_dir_all(&dir)
+            .map_err(|err| format!("remove gap ledger check output dir: {err}"))?;
         Ok(())
     }
 
@@ -7938,6 +8010,69 @@ mod tests {
       }
     }
   ]
+}"#
+    }
+
+    fn check_output_with_presentation_text_gap() -> &'static str {
+        r#"{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "finding_alignment": {
+    "scope": "supported_classes",
+    "items": [
+      {
+        "canonical_gap_id": "presentation_text::HELP_DEVICE_LABEL",
+        "canonical_item_kind": "gap",
+        "evidence_class": "presentation_text",
+        "gap_state": "actionable",
+        "actionability": "add_output_observer",
+        "raw_group_size": 2,
+        "group_reason": "declaration_and_literal_same_text_constant",
+        "why": "Changed text flows to CLI help output and no supported output observer is found.",
+        "recommended_repair": "Add or update a help-output snapshot assertion for HELP_DEVICE_LABEL.",
+        "related_test": null,
+        "verify_command": "cargo xtask evidence-quality-scorecard",
+        "static_limitations": [],
+        "confidence": {
+          "basis": "fixture_backed",
+          "notes": ["Visible unobserved presentation text is actionable only for supported sink patterns."]
+        },
+        "raw_findings": [
+          {
+            "file": "crates/ripr/src/cli/help.rs",
+            "line": 42,
+            "kind": "exposed",
+            "expression": "pub const HELP_DEVICE_LABEL: &str =",
+            "probe_kind": "field_construction",
+            "source_id": "help-label-decl",
+            "evidence_record_ref": "help-label-decl"
+          },
+          {
+            "file": "crates/ripr/src/cli/help.rs",
+            "line": 43,
+            "kind": "static_unknown",
+            "expression": "\"Device label\";",
+            "probe_kind": "static_unknown",
+            "source_id": "help-label-literal",
+            "evidence_record_ref": "help-label-literal"
+          }
+        ],
+        "presentation_text": {
+          "constant_name": "HELP_DEVICE_LABEL",
+          "text_literal": "Device label",
+          "visibility": "user_visible",
+          "observer": "none",
+          "actionability": "add_output_observer",
+          "source_kind": "const_decl",
+          "canonical_group_reason": "declaration_and_literal_same_text_constant",
+          "recommended_observer": "cli_help_output",
+          "repair_kind": "output_observer",
+          "target_test_type": "help_output_snapshot",
+          "suggested_assertion": "Assert CLI help output includes the HELP_DEVICE_LABEL text."
+        }
+      }
+    ]
+  }
 }"#
     }
 

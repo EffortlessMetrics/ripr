@@ -479,6 +479,7 @@ const REPORTS_HELP: &str = r#"Write reviewer-first report projections from expli
 Usage:
   ripr reports index [--root PATH] [--reports-dir PATH] [--review-dir PATH] [--receipts-dir PATH] [--workflow-dir PATH] [--agent-dir PATH] [--pilot-dir PATH] [--ci-dir PATH] [--out PATH] [--out-md PATH]
   ripr reports gap-ledger --records PATH [--root PATH] [--out PATH] [--out-md PATH]
+  ripr reports gap-ledger --check-output PATH [--root PATH] [--out PATH] [--out-md PATH]
 
 Index options:
   --root PATH           Workspace root label. Defaults to current directory.
@@ -495,6 +496,7 @@ Index options:
 Gap ledger options:
   --records PATH        Explicit GapRecord JSON, gap_records JSON, or fixture corpus JSON.
   --repo-exposure PATH  Derive repo-scoped Rust GapRecords from seams[].evidence_record.
+  --check-output PATH   Derive PR-local presentation/output contract gaps from finding_alignment.items.
   --root PATH           Workspace root label. Defaults to current directory.
   --out PATH            JSON output path. Defaults to target/ripr/reports/gap-decision-ledger.json.
   --out-md PATH         Markdown output path. Defaults to target/ripr/reports/gap-decision-ledger.md.
