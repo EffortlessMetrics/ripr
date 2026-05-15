@@ -110,6 +110,11 @@ should not be committed. It is the review-facing map for mutating commands,
 non-mutating checks, report-only commands, external-state reads, external-state
 mutations, and argument-dependent commands.
 
+`cargo xtask check-command-catalog` writes
+`target/ripr/reports/command-catalog.md` and fails when that map drifts from the
+help catalog or omits write/judgment details. The report is generated evidence
+and should not be committed.
+
 ## Deterministic Repair
 
 Safe deterministic repair can be automated or represented as a patch:
