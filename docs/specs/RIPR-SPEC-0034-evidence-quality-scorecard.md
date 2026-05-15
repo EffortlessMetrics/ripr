@@ -38,6 +38,12 @@ counts. It reports finding alignment as unavailable only when the audit lacks
 both that canonical-item-derived summary and a compatible top-level projection
 summary.
 
+The scorecard must lead with actionable canonical gaps when finding-alignment
+counts are available. Raw finding counts remain diagnostic context, while
+canonical items are the countable evidence unit and actionable canonical gaps
+are the user-facing repair count. This headline does not redefine public badges
+or gate policy.
+
 The scorecard must summarize:
 
 - evidence maturity by class;
@@ -87,6 +93,10 @@ Each scorecard must include:
 - counts for raw findings/signals, canonical items, actionable items,
   already-observed items, static limitations, and raw-to-canonical ratio when
   canonical alignment data is present in the audit;
+- a headline object that names
+  `finding_alignment_actionable_unresolved_canonical_gaps` as the primary
+  scorecard count while preserving raw signal, canonical item, no-action,
+  limitation, unknown, and raw-to-canonical context;
 - top risks ordered by expected Lane 1 product impact, not raw count alone;
 - class-scoped calibration coverage that distinguishes static-only,
   fixture-backed, imported-runtime-calibrated, and uncalibrated classes;
@@ -129,6 +139,7 @@ The JSON output includes:
 - `generated_at`;
 - `scope`;
 - `inputs`;
+- `headline`;
 - `summary`;
 - `maturity_by_class`;
 - `canonical_gap_groups`;
@@ -216,6 +227,10 @@ reports finding-alignment counts from the audit summary instead of treating
 alignment as unavailable merely because no separate top-level
 `finding_alignment.items[]` projection was present.
 
+Given a Lane 1 audit with raw signals, canonical items, and actionable canonical
+gaps, the scorecard headline uses actionable canonical gaps as the primary
+count and keeps raw signals as diagnostic context.
+
 Given no previous scorecard or audit snapshot, the trend report marks history
 unavailable and emits `unknown` rather than claiming improvement.
 
@@ -241,6 +256,8 @@ any gate behavior.
   pins before and after audit deltas.
 - `xtask::tests::evidence_quality_scorecard_uses_audit_canonical_item_alignment_summary`
   pins the fallback from audit-derived `canonical_item` alignment summary.
+- `xtask::tests::evidence_quality_scorecard_headline_prefers_actionable_canonical_gaps`
+  pins the scorecard headline counting model.
 - `xtask::tests::evidence_quality_trend_reports_no_history_explicitly` pins the
   no-history state.
 - `xtask::tests::evidence_quality_trend_distinguishes_improvement_regression_and_unchanged`
