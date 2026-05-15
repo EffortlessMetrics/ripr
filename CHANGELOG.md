@@ -87,6 +87,12 @@ Planned scope:
   pinning internal no-action metadata, rendered output-observer repairs,
   observed schema labels, cross-file flow unknowns, and opaque lookup
   limitations before analyzer work.
+- Config/policy constants now align into `ripr check --json` canonical
+  evidence items for fixture-backed internal metadata, visible unobserved
+  report/config labels, observed schema labels, cross-file flow unknowns, and
+  opaque lookup limitations. Raw findings remain supporting evidence; no
+  PR/CI rendering, gate, score, generated-test, provider, source-edit, or
+  mutation-execution behavior changed.
 - VS Code `ripr: Show Status` now includes first-run/no-output context:
   workspace root, resolved server source and command, editor selectors,
   enabled languages from the last server refresh, and the next safe action for
