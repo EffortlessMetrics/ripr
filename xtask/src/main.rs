@@ -5659,6 +5659,7 @@ const EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CLASSES: &[&str] = &[
     "opaque_helper_static_limitation",
     "cross_file_constant_limitation",
     "presentation_text",
+    "config_or_policy_constant",
     "side_effect_observer",
     "snapshot_discriminator",
     "mock_expectation",
