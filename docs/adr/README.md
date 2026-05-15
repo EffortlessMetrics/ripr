@@ -18,4 +18,4 @@ PR. They should be short, dated, and focused on consequences.
 | [0009](0009-python-parser-substrate.md) | proposed | Use `rustpython-parser` for the Python preview adapter. |
 | [0010](0010-fixture-first-evidence-confidence.md) | accepted | Keep Lane 1 evidence confidence fixture-first and class-scoped. |
 | [0011](0011-editor-preview-routing-is-projection-only.md) | proposed | Keep editor preview routing projection-only. |
-| [0012](0012-editor-gap-projection-is-read-only.md) | proposed | Keep editor gap projection read-only. |
+| [0012](0012-editor-gap-projection-is-read-only.md) | accepted | Keep editor gap projection read-only. |

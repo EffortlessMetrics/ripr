@@ -1,6 +1,6 @@
 # RIPR-SPEC-0047: Editor Gap Projection
 
-Status: proposed
+Status: accepted
 
 ## Problem
 

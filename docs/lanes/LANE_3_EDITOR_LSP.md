@@ -461,11 +461,11 @@ or unsaved-buffer overlays.
 | Preview diagnostics, hover, status, and actions visibly label preview evidence and static limits | LSP diagnostic data, hover markdown, status refresh logs, existing cockpit actions, `fixtures/python_missing_import_graph_limit`, `fixtures/typescript_mocked_module_limit`, `fixtures/python_disabled`, `cargo xtask lsp-cockpit-report` | Implemented for diagnostic metadata, hover boundary text, status preview/static-limit counts, bounded finding actions, and disabled-preview no-diagnostic behavior; actions keep the existing cockpit model |
 | No editor hidden analysis reruns, source edits, generated tests, provider calls, mutation execution, gate semantics, default blocking, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays | Lane 3 Scope, Non-Goals, and Cross-Lane Rules in this tracker | Current tracker preserves the boundary; future routing must re-audit it |
 
-## Next Selected Slice: Editor Gap Cockpit
+## Closed Slice: Editor Gap Cockpit
 
-Campaign 27 closed language routing. The next Lane 3 end state is the Editor
-Gap Cockpit: make the editor consume existing RIPR evidence artifacts and
-project one safe local next action.
+Campaign 27 closed language routing. The next Lane 3 slice, Editor Gap
+Cockpit, is now closed. It made the editor consume existing RIPR evidence
+artifacts and project one safe local next action.
 
 Durable sources:
 
@@ -473,6 +473,7 @@ Durable sources:
 - [RIPR-SPEC-0047: Editor Gap Projection](../specs/RIPR-SPEC-0047-editor-gap-projection.md)
 - [ADR-0012: Editor Gap Projection Is Read-Only](../adr/0012-editor-gap-projection-is-read-only.md)
 - [Editor gap cockpit implementation plan](../../plans/editor-gap-cockpit/implementation-plan.md)
+- [Editor Gap Cockpit closeout](../handoffs/2026-05-15-editor-gap-cockpit-closeout.md)
 
 The target loop is:
 
@@ -487,7 +488,7 @@ diagnostic
 -> refresh
 ```
 
-Lane 3 should resolve editor surfaces through one identity path:
+Lane 3 resolves editor surfaces through one identity path:
 
 ```text
 diagnostic.data
@@ -503,23 +504,25 @@ does not create analyzer facts, decide policy, publish PR comments, compose
 generated CI summaries, edit source, generate tests, call providers, run
 mutation, or act as a gate authority.
 
-Planned PR path:
+Completed PR path:
 
-1. `docs(lane3): open editor gap cockpit source-of-truth stack`
-2. `test(lsp): pin post-campaign editor contract`
-3. `lsp(gap): add read-only gap artifact validation`
-4. `lsp(gap): project gap state in Show Status`
-5. `lsp(gap): enrich hover with repair route`
-6. `lsp(gap): add bounded repair packet actions`
-7. `fixtures(editor): add gap cockpit workflow fixtures`
-8. `test(vscode): smoke editor gap cockpit`
-9. `docs(editor): document gap cockpit workflow`
-10. `dogfood(lane3): record editor gap cockpit receipts`
-11. `campaign(lane3): close editor gap cockpit`
+1. #967 `docs(lane3): open editor gap cockpit source-of-truth stack`
+2. #970 `test(lsp): pin post-campaign editor contract`
+3. #973 `lsp(gap): add read-only gap artifact validation`
+4. #969 `lsp(gap): project gap records into editor diagnostics`
+5. #976 `lsp(gap): project gap state in Show Status`
+6. #981 `lsp(gap): enrich hover repair route`
+7. #983 `lsp(gap): add bounded repair actions`
+8. #985 `fixtures(editor): add gap cockpit workflow fixtures`
+9. #993 `test(vscode): smoke editor gap cockpit`
+10. #996 `docs(editor): document gap cockpit workflow`
+11. #998 `dogfood(lane3): record editor gap cockpit receipts`
+12. `campaign(lane3): close editor gap cockpit`
 
-Start with the docs-only source-of-truth PR. Do not add new diagnostics, hover,
-actions, status behavior, VS Code behavior, fixtures, or `.ripr/goals` manifest
-state in that PR.
+Post-closeout posture: there is no selected behavior-bearing Lane 3 PR open.
+Do not reopen this slice for speculative editor furniture. Future first-run,
+install, CodeLens, inlay, semantic-token, inline-patch, or unsaved-buffer work
+needs a new editor campaign.
 
 ## Lane 3 Document Model
 

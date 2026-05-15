@@ -1,6 +1,6 @@
 # ADR 0012: Editor Gap Projection Is Read-Only
 
-Status: proposed
+Status: accepted
 
 Date: 2026-05-14
 
