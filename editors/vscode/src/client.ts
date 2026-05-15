@@ -721,12 +721,15 @@ interface RiprSetupFileStatus {
 interface RiprSetupStatus {
   config: RiprSetupFileStatus;
   artifacts: RiprSetupFileStatus[];
+  receipt: RiprReceiptArtifactStatus;
 }
 
 interface FirstUsefulActionStatus {
   status: string;
   actionKind: string;
   title: string;
+  generatedAt?: string;
+  seamId?: string;
   selectedLocation?: string;
   missingDiscriminator?: string;
   target?: string;
@@ -736,6 +739,26 @@ interface FirstUsefulActionStatus {
   fallback?: string;
   reportPath: string;
   warningCount: number;
+}
+
+type RiprReceiptArtifactState =
+  | 'found'
+  | 'missing'
+  | 'unreadable'
+  | 'malformed'
+  | 'unsupportedSchema'
+  | 'wrongRoot'
+  | 'noWorkspace';
+
+interface RiprReceiptArtifactStatus {
+  relativePath: string;
+  path?: string;
+  state: RiprReceiptArtifactState;
+  detail?: string;
+  seamId?: string;
+  movement?: string;
+  repoRoot?: string;
+  generatedAt?: string;
 }
 
 function statusText(kind: RiprStatusKind, firstAction?: FirstUsefulActionStatus): string {
@@ -830,6 +853,12 @@ function statusTooltip(
       `Report: ${firstAction.reportPath}`
     );
   }
+  if (context) {
+    const receiptLines = receiptStatusLines(status, firstAction, context);
+    if (receiptLines.length > 0) {
+      lines.push('', ...receiptLines);
+    }
+  }
   return lines.join('\n');
 }
 
@@ -857,6 +886,10 @@ function setupDiagnosisReport(
       'Save or refresh the workspace before acting on this report.',
       `Report: ${firstAction.reportPath}`
     );
+  }
+  const receiptLines = receiptStatusLines(status, firstAction, context);
+  if (receiptLines.length > 0) {
+    lines.push('', ...receiptLines);
   }
   lines.push(
     '',
@@ -975,6 +1008,9 @@ function firstUsefulActionLines(firstAction: FirstUsefulActionStatus): string[] 
     `Status: ${firstAction.status}`,
     `Action: ${firstAction.actionKind}`,
   ];
+  if (firstAction.seamId) {
+    lines.push(`Gap identity: ${firstAction.seamId}`);
+  }
   if (firstAction.selectedLocation) {
     lines.push(`Seam: ${firstAction.selectedLocation}`);
   }
@@ -1000,6 +1036,123 @@ function firstUsefulActionLines(firstAction: FirstUsefulActionStatus): string[] 
   lines.push(`Warnings: ${firstAction.warningCount}`);
   lines.push('Advisory static evidence only; gate evaluation remains the pass/fail authority.');
   return lines;
+}
+
+function receiptStatusLines(
+  status: RiprStatusState,
+  firstAction: FirstUsefulActionStatus | undefined,
+  context: RiprStatusContext
+): string[] {
+  const receipt = context.setupStatus.receipt;
+  if (receipt.state === 'noWorkspace') {
+    return [];
+  }
+  const currentSeam = firstAction?.seamId;
+  if (status.kind === 'stale' && receipt.state === 'found') {
+    return [
+      'Receipt status: stale; refresh saved-workspace evidence before trusting receipt movement.',
+      `Receipt: ${receipt.relativePath}`,
+      'Receipt movement is not projected from stale editor evidence.'
+    ];
+  }
+  if (!currentSeam) {
+    if (receipt.state === 'missing') {
+      return [];
+    }
+    return [
+      `Receipt status: found; ${receipt.relativePath} exists, but no current gap identity is projected.`,
+      'Receipt movement is not projected without a matching gap identity.'
+    ];
+  }
+  switch (receipt.state) {
+    case 'missing': {
+      const lines = [
+        `Receipt status: missing; no matching receipt was found for seam ${currentSeam}.`
+      ];
+      if (firstAction?.receiptCommand) {
+        lines.push(`Receipt command: ${firstAction.receiptCommand}`);
+      }
+      lines.push('No receipt movement is claimed.');
+      return lines;
+    }
+    case 'unreadable':
+      return [
+        `Receipt status: unreadable; ${receipt.relativePath} could not be read.`,
+        receipt.detail ?? 'No reader detail was reported.',
+        'Receipt movement is not projected.'
+      ];
+    case 'malformed':
+      return [
+        `Receipt status: malformed; ${receipt.relativePath} could not be parsed as an agent receipt.`,
+        receipt.detail ?? 'No parser detail was reported.',
+        'Receipt movement is not projected.'
+      ];
+    case 'unsupportedSchema':
+      return [
+        `Receipt status: malformed; ${receipt.relativePath} uses an unsupported receipt schema.`,
+        receipt.detail ?? 'No schema detail was reported.',
+        'Receipt movement is not projected.'
+      ];
+    case 'wrongRoot':
+      return [
+        `Receipt status: wrong root; receipt root ${receipt.repoRoot ?? 'unknown'} does not match this workspace.`,
+        'Receipt movement is not projected.'
+      ];
+    case 'found':
+      break;
+  }
+  if (!receipt.seamId) {
+    return [
+      `Receipt status: malformed; ${receipt.relativePath} is missing a seam identity.`,
+      'Receipt movement is not projected.'
+    ];
+  }
+  if (receipt.seamId !== currentSeam) {
+    return [
+      `Receipt status: gap mismatch; receipt seam ${receipt.seamId} does not match current seam ${currentSeam}.`,
+      'Receipt movement is not projected.'
+    ];
+  }
+  if (receiptIsOlderThanFirstAction(receipt, firstAction)) {
+    return [
+      `Receipt status: stale; receipt for seam ${currentSeam} is older than the current first useful action report.`,
+      'Refresh saved-workspace evidence and rerun verify/receipt before trusting movement.'
+    ];
+  }
+  if (receipt.movement === 'improved' || receipt.movement === 'resolved') {
+    return [
+      `Receipt status: movement improved; matching receipt found for seam ${currentSeam}.`,
+      'Receipt records static movement only; it does not prove runtime adequacy or gate eligibility.'
+    ];
+  }
+  if (receipt.movement === 'unchanged') {
+    return [
+      `Receipt status: movement unchanged; matching receipt found for seam ${currentSeam}.`,
+      'Next safe action: inspect the focused test and missing discriminator before requesting another seam.'
+    ];
+  }
+  return [
+    `Receipt status: found; matching receipt exists for seam ${currentSeam}.`,
+    `Receipt movement: ${receipt.movement ?? 'not reported'}`,
+    'Receipt records static movement only; it does not prove runtime adequacy or gate eligibility.'
+  ];
+}
+
+function receiptIsOlderThanFirstAction(
+  receipt: RiprReceiptArtifactStatus,
+  firstAction: FirstUsefulActionStatus | undefined
+): boolean {
+  const receiptTime = parseTimestamp(receipt.generatedAt);
+  const firstActionTime = parseTimestamp(firstAction?.generatedAt);
+  return receiptTime !== undefined && firstActionTime !== undefined && receiptTime < firstActionTime;
+}
+
+function parseTimestamp(value: string | undefined): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function canProjectFirstUsefulAction(kind: RiprStatusKind): boolean {
@@ -1241,7 +1394,8 @@ async function readSetupStatusFiles(
       'artifact missing; run or refresh saved-workspace evidence when needed'
     )
   ));
-  return { config, artifacts };
+  const receipt = await readReceiptStatus(workspaceRoot, readFile);
+  return { config, artifacts, receipt };
 }
 
 async function readSetupFileStatus(
@@ -1275,7 +1429,12 @@ async function readSetupFileStatus(
 function setupStatusWithoutWorkspace(): RiprSetupStatus {
   return {
     config: setupNoWorkspaceFile('ripr config', RIPR_CONFIG_RELATIVE_PATH),
-    artifacts: RIPR_SETUP_ARTIFACTS.map((artifact) => setupNoWorkspaceFile(artifact.label, artifact.relativePath))
+    artifacts: RIPR_SETUP_ARTIFACTS.map((artifact) => setupNoWorkspaceFile(artifact.label, artifact.relativePath)),
+    receipt: {
+      relativePath: 'target/ripr/agent/agent-receipt.json',
+      state: 'noWorkspace',
+      detail: 'open a workspace before matching receipt artifacts'
+    }
   };
 }
 
@@ -1290,6 +1449,83 @@ function setupNoWorkspaceFile(label: string, relativePath: string): RiprSetupFil
 
 function setupFilePath(workspaceRoot: string, relativePath: string): string {
   return path.join(workspaceRoot, ...relativePath.split('/'));
+}
+
+async function readReceiptStatus(
+  workspaceRoot: string,
+  readFile: RiprClientRuntime['readFile']
+): Promise<RiprReceiptArtifactStatus> {
+  const relativePath = 'target/ripr/agent/agent-receipt.json';
+  const filePath = setupFilePath(workspaceRoot, relativePath);
+  let raw: string | undefined;
+  try {
+    raw = await readFile(filePath);
+  } catch (error) {
+    return {
+      relativePath,
+      path: filePath,
+      state: 'unreadable',
+      detail: error instanceof Error ? error.message : String(error)
+    };
+  }
+  if (raw === undefined) {
+    return {
+      relativePath,
+      path: filePath,
+      state: 'missing',
+      detail: 'receipt artifact missing; run verify and receipt after a focused repair'
+    };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    return {
+      relativePath,
+      path: filePath,
+      state: 'malformed',
+      detail: error instanceof Error ? error.message : String(error)
+    };
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return {
+      relativePath,
+      path: filePath,
+      state: 'malformed',
+      detail: 'receipt JSON root is not an object'
+    };
+  }
+  const receipt = parsed as Record<string, unknown>;
+  if (stringField(receipt, 'schema_version') !== '0.3' || stringField(receipt, 'tool') !== 'ripr') {
+    return {
+      relativePath,
+      path: filePath,
+      state: 'unsupportedSchema',
+      detail: 'expected ripr agent receipt schema_version 0.3'
+    };
+  }
+  const provenance = objectField(receipt, 'provenance');
+  const repoRoot = provenance ? stringField(provenance, 'repo_root') : undefined;
+  if (!rootMatchesWorkspace(repoRoot, workspaceRoot)) {
+    return {
+      relativePath,
+      path: filePath,
+      state: 'wrongRoot',
+      repoRoot,
+      detail: 'receipt repo_root does not match the active workspace'
+    };
+  }
+  const seam = objectField(receipt, 'seam');
+  return {
+    relativePath,
+    path: filePath,
+    state: 'found',
+    detail: 'receipt artifact found in current workspace',
+    seamId: seam ? stringField(seam, 'seam_id') : provenance ? stringField(provenance, 'seam_id') : undefined,
+    movement: provenance ? stringField(provenance, 'movement') : seam ? stringField(seam, 'change') : undefined,
+    repoRoot,
+    generatedAt: provenance ? stringField(provenance, 'generated_at') : undefined
+  };
 }
 
 async function readOptionalFile(filePath: string): Promise<string | undefined> {
@@ -1349,6 +1585,8 @@ function parseFirstUsefulAction(
     status,
     actionKind,
     title,
+    generatedAt: stringField(report, 'generated_at'),
+    seamId: selected ? stringField(selected, 'seam_id') : undefined,
     selectedLocation: selectedLocation(selected),
     missingDiscriminator: selected ? stringField(selected, 'missing_discriminator') : undefined,
     target: target ? stringField(target, 'file') : undefined,
