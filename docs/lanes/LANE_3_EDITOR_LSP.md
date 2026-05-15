@@ -544,8 +544,8 @@ install / open workspace
 Durable sources for the selected docs stack:
 
 - [RIPR-PROP-0008: Editor First-Run Usability](../proposals/RIPR-PROP-0008-editor-first-run-usability.md)
-- [RIPR-SPEC-0048: Editor Setup Status](../specs/RIPR-SPEC-0048-editor-setup-status.md)
-- [RIPR-SPEC-0049: Editor First Repair Loop](../specs/RIPR-SPEC-0049-editor-first-repair-loop.md)
+- [RIPR-SPEC-0049: Editor Setup Status](../specs/RIPR-SPEC-0049-editor-setup-status.md)
+- [RIPR-SPEC-0050: Editor First Repair Loop](../specs/RIPR-SPEC-0050-editor-first-repair-loop.md)
 - [ADR-0013: Editor Setup Diagnostics Are Read-Only](../adr/0013-editor-setup-diagnostics-are-read-only.md)
 - [Editor first-run usability implementation plan](../../plans/editor-first-run-usability/implementation-plan.md)
 

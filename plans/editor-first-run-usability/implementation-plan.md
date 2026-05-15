@@ -6,7 +6,7 @@ Owner: Lane 3 - Editor / LSP UX
 
 Linked proposal: `RIPR-PROP-0008`
 
-Linked specs: `RIPR-SPEC-0048`, `RIPR-SPEC-0049`
+Linked specs: `RIPR-SPEC-0049`, `RIPR-SPEC-0050`
 
 Linked ADR: `ADR-0013`
 

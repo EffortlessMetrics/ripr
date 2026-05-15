@@ -95,8 +95,8 @@ Negative:
 ## Related Specs and Plans
 
 - [RIPR-PROP-0008: Editor First-Run Usability](../proposals/RIPR-PROP-0008-editor-first-run-usability.md)
-- [RIPR-SPEC-0048: Editor Setup Status](../specs/RIPR-SPEC-0048-editor-setup-status.md)
-- [RIPR-SPEC-0049: Editor First Repair Loop](../specs/RIPR-SPEC-0049-editor-first-repair-loop.md)
+- [RIPR-SPEC-0049: Editor Setup Status](../specs/RIPR-SPEC-0049-editor-setup-status.md)
+- [RIPR-SPEC-0050: Editor First Repair Loop](../specs/RIPR-SPEC-0050-editor-first-repair-loop.md)
 - [RIPR-SPEC-0047: Editor Gap Projection](../specs/RIPR-SPEC-0047-editor-gap-projection.md)
 - [Lane 3 editor/LSP tracker](../lanes/LANE_3_EDITOR_LSP.md)
 - [Editor first-run usability implementation plan](../../plans/editor-first-run-usability/implementation-plan.md)

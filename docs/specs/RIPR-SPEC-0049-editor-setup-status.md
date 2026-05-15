@@ -1,4 +1,4 @@
-# RIPR-SPEC-0048: Editor Setup Status
+# RIPR-SPEC-0049: Editor Setup Status
 
 Status: proposed
 
@@ -210,7 +210,7 @@ Planned slices:
 7. `dogfood(lane3): record first-run repair receipts`
 8. `campaign(lane3): close editor first-run usability`
 
-Receipt-specific behavior is defined in `RIPR-SPEC-0049`.
+Receipt-specific behavior is defined in `RIPR-SPEC-0050`.
 
 ## Metrics
 

@@ -10,8 +10,8 @@ Target campaign: Editor first-run and repair usability
 
 Linked specs:
 
-- `RIPR-SPEC-0048`: Editor setup status
-- `RIPR-SPEC-0049`: Editor first repair loop
+- `RIPR-SPEC-0049`: Editor setup status
+- `RIPR-SPEC-0050`: Editor first repair loop
 - `RIPR-SPEC-0047`: Editor gap projection
 
 Linked ADRs:
@@ -134,8 +134,8 @@ publish PR comments, or decide gates.
 
 ## Behavior specs to create or update
 
-- Add `RIPR-SPEC-0048`: Editor setup status.
-- Add `RIPR-SPEC-0049`: Editor first repair loop.
+- Add `RIPR-SPEC-0049`: Editor setup status.
+- Add `RIPR-SPEC-0050`: Editor first repair loop.
 - Continue to reference `RIPR-SPEC-0047` for existing editor gap projection.
 
 ## Architecture decisions needed

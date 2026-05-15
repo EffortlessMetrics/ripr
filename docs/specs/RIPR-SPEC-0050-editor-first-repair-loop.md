@@ -1,4 +1,4 @@
-# RIPR-SPEC-0049: Editor First Repair Loop
+# RIPR-SPEC-0050: Editor First Repair Loop
 
 Status: proposed
 
@@ -214,7 +214,7 @@ Planned slices:
 7. `dogfood(lane3): record first-run repair receipts`
 8. `campaign(lane3): close editor first-run usability`
 
-Setup and no-output behavior is defined in `RIPR-SPEC-0048`.
+Setup and no-output behavior is defined in `RIPR-SPEC-0049`.
 
 ## Metrics
 

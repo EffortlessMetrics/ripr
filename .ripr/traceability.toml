@@ -3062,8 +3062,38 @@ metrics = [
 
 [[behavior]]
 id = "RIPR-SPEC-0048"
+name = "Config and policy constant evidence"
+spec = "docs/specs/RIPR-SPEC-0048-config-policy-constant-evidence.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0048-config-policy-constant-evidence.md",
+  "docs/specs/README.md",
+  ".ripr/traceability.toml",
+  "CHANGELOG.md",
+]
+metrics = [
+  "config_policy_constant_total",
+  "config_policy_user_visible",
+  "config_policy_observed",
+  "config_policy_unobserved",
+  "config_policy_internal_only",
+  "config_policy_flow_unknown",
+  "config_policy_observer_unknown",
+  "config_policy_duplicate_groups",
+  "config_policy_actionable_output_observer",
+  "config_policy_actionable_behavior_discriminator",
+  "config_policy_no_action",
+  "config_policy_static_limitations",
+  "config_policy_repair_route_coverage",
+  "config_policy_verify_command_coverage",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0049"
 name = "Editor setup status"
-spec = "docs/specs/RIPR-SPEC-0048-editor-setup-status.md"
+spec = "docs/specs/RIPR-SPEC-0049-editor-setup-status.md"
 tests = [
 ]
 fixtures = [
@@ -3071,7 +3101,7 @@ fixtures = [
 code = [
 ]
 outputs = [
-  "docs/specs/RIPR-SPEC-0048-editor-setup-status.md",
+  "docs/specs/RIPR-SPEC-0049-editor-setup-status.md",
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0008-editor-first-run-usability.md",
   "docs/proposals/README.md",
@@ -3093,9 +3123,9 @@ metrics = [
 ]
 
 [[behavior]]
-id = "RIPR-SPEC-0049"
+id = "RIPR-SPEC-0050"
 name = "Editor first repair loop"
-spec = "docs/specs/RIPR-SPEC-0049-editor-first-repair-loop.md"
+spec = "docs/specs/RIPR-SPEC-0050-editor-first-repair-loop.md"
 tests = [
 ]
 fixtures = [
@@ -3103,8 +3133,8 @@ fixtures = [
 code = [
 ]
 outputs = [
-  "docs/specs/RIPR-SPEC-0049-editor-first-repair-loop.md",
-  "docs/specs/RIPR-SPEC-0048-editor-setup-status.md",
+  "docs/specs/RIPR-SPEC-0050-editor-first-repair-loop.md",
+  "docs/specs/RIPR-SPEC-0049-editor-setup-status.md",
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0008-editor-first-run-usability.md",
   "docs/proposals/README.md",
