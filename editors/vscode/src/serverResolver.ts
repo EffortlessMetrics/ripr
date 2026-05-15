@@ -14,6 +14,7 @@ export interface ResolvedServer {
   readonly command: string;
   readonly source: ServerSource;
   readonly detail: string;
+  readonly version?: string;
 }
 
 export interface ResolveFailure {
@@ -119,6 +120,8 @@ async function probeExistingCandidate(
 function probeCandidate(command: string, source: ServerSource, detail: string): Promise<ResolvedServer | ResolveFailure> {
   return new Promise((resolve) => {
     const child = cp.spawn(command, ['--version'], { shell: false });
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
     const timer = setTimeout(() => {
       child.kill();
       resolve({
@@ -126,6 +129,9 @@ function probeCandidate(command: string, source: ServerSource, detail: string): 
         detail: `Timed out after ${START_TIMEOUT_MS}ms while running ${command} --version.`
       });
     }, START_TIMEOUT_MS);
+
+    child.stdout?.on('data', (chunk: Buffer) => stdoutChunks.push(chunk));
+    child.stderr?.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
 
     child.once('error', (error) => {
       clearTimeout(timer);
@@ -135,7 +141,12 @@ function probeCandidate(command: string, source: ServerSource, detail: string): 
     child.once('exit', (code) => {
       clearTimeout(timer);
       if (code === 0) {
-        resolve({ command, source, detail });
+        resolve({
+          command,
+          source,
+          detail,
+          version: firstOutputLine(stdoutChunks, stderrChunks)
+        });
       } else {
         resolve({ message: `${detail} failed version check.`, detail: `${command} --version exited with code ${code}.` });
       }
@@ -145,4 +156,12 @@ function probeCandidate(command: string, source: ServerSource, detail: string): 
 
 function isResolved(result: ResolvedServer | ResolveFailure): result is ResolvedServer {
   return 'command' in result;
+}
+
+function firstOutputLine(stdoutChunks: Buffer[], stderrChunks: Buffer[]): string | undefined {
+  const output = Buffer.concat(stdoutChunks.length > 0 ? stdoutChunks : stderrChunks).toString('utf8');
+  return output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
 }
