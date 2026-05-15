@@ -219,7 +219,11 @@ It does not fail CI.
 `reports index` writes `target/ripr/reports/index.md` and
 `target/ripr/reports/index.json` as a reviewer front door. It summarizes the
 active campaign, available reports, missing expected reports for the changed
-surface, advisory reports, and suggested next commands.
+surface, advisory reports, and suggested next commands. The index also carries
+repo-ops packet status for command mutability, worktree doctor, PR triage,
+per-PR merge readiness, generated-clean, badge ownership, critic, receipts,
+suggested fixes, and `check-pr` artifacts so agents can consume the operating
+packet as JSON instead of scraping prose.
 
 `receipts` writes machine-readable gate receipts under `target/ripr/receipts/`
 for shape, fix-pr, ci-fast, check-pr, fixtures, goldens, test-oracle, dogfood,

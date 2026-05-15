@@ -5991,6 +5991,27 @@ JSON shape:
       ]
     }
   ],
+  "repo_ops_packets": [
+    {
+      "id": "gh_pr_status",
+      "label": "PR merge readiness",
+      "status": "warn",
+      "next_command": "cargo xtask gh-pr-status --pr <number>",
+      "description": "Summarizes one PR's merge state, checks, reviews, and safe next action.",
+      "artifacts": [
+        {
+          "path": "target/ripr/reports/gh-pr-status.md",
+          "status": "warn",
+          "available": true
+        },
+        {
+          "path": "target/ripr/reports/gh-pr-status.json",
+          "status": "warn",
+          "available": true
+        }
+      ]
+    }
+  ],
   "missing_expected": [
     {
       "id": "assistant_loop_health",
@@ -6040,6 +6061,12 @@ Field contract:
 - `groups[].entries[]` records artifact id, label, kind, path, optional JSON
   sibling, status, availability, requiredness, authority, description, and
   next command.
+- `repo_ops_packets[]` is the repo-local operating packet index used by
+  `cargo xtask reports index`. It records command mutability, worktree doctor,
+  PR triage, per-PR merge readiness, generated-clean, badge ownership, critic,
+  receipts, suggested-fixes, and `check-pr` artifacts with status, known output
+  paths, and regeneration commands. It is advisory front-door metadata only and
+  never becomes gate authority.
 - `entries[].status` is `available`, `missing`, `pass`, `warn`, `fail`,
   `blocked`, `acknowledged`, `suppressed`, `stale`, `incomplete`,
   `unreadable`, or `not_applicable`.

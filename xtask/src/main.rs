@@ -732,6 +732,32 @@ struct ReportIndexEntry {
 }
 
 #[derive(Clone, Debug)]
+struct RepoOpsPacketSpec {
+    id: &'static str,
+    label: &'static str,
+    command: &'static str,
+    description: &'static str,
+    artifacts: &'static [&'static str],
+}
+
+#[derive(Clone, Debug)]
+struct ReportIndexRepoOpsPacket {
+    id: &'static str,
+    label: &'static str,
+    status: String,
+    command: &'static str,
+    description: &'static str,
+    artifacts: Vec<ReportIndexRepoOpsArtifact>,
+}
+
+#[derive(Clone, Debug)]
+struct ReportIndexRepoOpsArtifact {
+    path: String,
+    status: String,
+    available: bool,
+}
+
+#[derive(Clone, Debug)]
 struct ReceiptSpec {
     file: &'static str,
     command: &'static str,
@@ -27611,6 +27637,167 @@ fn receipt_index_entries() -> Result<Vec<ReportIndexEntry>, String> {
     file_index_entries(&receipts_dir(), &[])
 }
 
+fn report_index_repo_ops_packets(
+    reports: &[ReportIndexEntry],
+    receipts: &[ReportIndexEntry],
+) -> Vec<ReportIndexRepoOpsPacket> {
+    repo_ops_packet_specs()
+        .iter()
+        .map(|spec| {
+            let artifacts = spec
+                .artifacts
+                .iter()
+                .map(|path| report_index_repo_ops_artifact(path, reports, receipts))
+                .collect::<Vec<_>>();
+            ReportIndexRepoOpsPacket {
+                id: spec.id,
+                label: spec.label,
+                status: report_index_repo_ops_status(&artifacts),
+                command: spec.command,
+                description: spec.description,
+                artifacts,
+            }
+        })
+        .collect()
+}
+
+fn repo_ops_packet_specs() -> &'static [RepoOpsPacketSpec] {
+    &[
+        RepoOpsPacketSpec {
+            id: "command_mutability_catalog",
+            label: "Command mutability catalog",
+            command: "cargo xtask commands",
+            description: "Classifies xtask commands by mutability and judgment requirements.",
+            artifacts: &[
+                "target/ripr/reports/commands.md",
+                "target/ripr/reports/commands.json",
+            ],
+        },
+        RepoOpsPacketSpec {
+            id: "worktree_doctor",
+            label: "Worktree doctor",
+            command: "cargo xtask worktree doctor",
+            description: "Reports local branch, generated-residue, and worktree hygiene.",
+            artifacts: &["target/ripr/reports/worktree-doctor.md"],
+        },
+        RepoOpsPacketSpec {
+            id: "pr_triage",
+            label: "Open PR triage",
+            command: "cargo xtask pr-triage-report",
+            description: "Summarizes stale, duplicate, behind, sensitive, and generated-artifact PRs.",
+            artifacts: &[
+                "target/ripr/reports/pr-triage.md",
+                "target/ripr/reports/pr-triage.json",
+            ],
+        },
+        RepoOpsPacketSpec {
+            id: "gh_pr_status",
+            label: "PR merge readiness",
+            command: "cargo xtask gh-pr-status --pr <number>",
+            description: "Summarizes one PR's merge state, checks, reviews, and safe next action.",
+            artifacts: &[
+                "target/ripr/reports/gh-pr-status.md",
+                "target/ripr/reports/gh-pr-status.json",
+            ],
+        },
+        RepoOpsPacketSpec {
+            id: "generated_clean",
+            label: "Generated-clean guard",
+            command: "cargo xtask check-generated-clean",
+            description: "Rejects generated residue and badge endpoint diffs in ordinary PRs.",
+            artifacts: &["target/ripr/reports/generated-clean.md"],
+        },
+        RepoOpsPacketSpec {
+            id: "badge_diff_policy",
+            label: "Badge diff policy",
+            command: "cargo xtask check-badge-diff-policy",
+            description: "Confirms public badge endpoint JSON is owned by badge-refresh automation.",
+            artifacts: &["target/ripr/reports/badge-diff-policy.md"],
+        },
+        RepoOpsPacketSpec {
+            id: "critic",
+            label: "Critic report",
+            command: "cargo xtask critic",
+            description: "Advisory adversarial review packet for missing evidence and risky drift.",
+            artifacts: &[
+                "target/ripr/reports/critic.md",
+                "target/ripr/reports/critic.json",
+            ],
+        },
+        RepoOpsPacketSpec {
+            id: "receipts",
+            label: "Gate receipts",
+            command: "cargo xtask receipts check",
+            description: "Machine-readable local gate evidence and receipt validation summary.",
+            artifacts: &[
+                "target/ripr/reports/receipts.md",
+                "target/ripr/receipts/check-pr.json",
+            ],
+        },
+        RepoOpsPacketSpec {
+            id: "suggested_fixes",
+            label: "Suggested fixes",
+            command: "cargo xtask suggested-fixes",
+            description: "Deterministic repair patch for safe repo-hygiene-only fixes.",
+            artifacts: &[
+                "target/ripr/reports/suggested-fixes.md",
+                "target/ripr/reports/suggested-fixes.patch",
+            ],
+        },
+        RepoOpsPacketSpec {
+            id: "check_pr",
+            label: "Review-ready gate",
+            command: "cargo xtask check-pr",
+            description: "Local review-ready gate packet and matching check-pr receipt.",
+            artifacts: &[
+                "target/ripr/reports/check-pr.md",
+                "target/ripr/receipts/check-pr.json",
+            ],
+        },
+    ]
+}
+
+fn report_index_repo_ops_artifact(
+    path: &str,
+    reports: &[ReportIndexEntry],
+    receipts: &[ReportIndexEntry],
+) -> ReportIndexRepoOpsArtifact {
+    let source = if let Some(file) = path.strip_prefix("target/ripr/reports/") {
+        reports.iter().find(|entry| entry.file == file)
+    } else if let Some(file) = path.strip_prefix("target/ripr/receipts/") {
+        receipts.iter().find(|entry| entry.file == file)
+    } else {
+        None
+    };
+    let status = source
+        .map(|entry| entry.status.clone())
+        .unwrap_or_else(|| "missing".to_string());
+    ReportIndexRepoOpsArtifact {
+        path: path.to_string(),
+        available: source.is_some(),
+        status,
+    }
+}
+
+fn report_index_repo_ops_status(artifacts: &[ReportIndexRepoOpsArtifact]) -> String {
+    if artifacts.iter().all(|artifact| !artifact.available) {
+        return "missing".to_string();
+    }
+    if artifacts.iter().any(|artifact| artifact.status == "fail") {
+        return "fail".to_string();
+    }
+    if artifacts.iter().any(|artifact| artifact.status == "warn") {
+        return "warn".to_string();
+    }
+    if artifacts.iter().any(|artifact| !artifact.available) {
+        return "incomplete".to_string();
+    }
+    if artifacts.iter().all(|artifact| artifact.status == "pass") {
+        return "pass".to_string();
+    }
+    "present".to_string()
+}
+
 fn file_index_entries(dir: &Path, exclude_names: &[&str]) -> Result<Vec<ReportIndexEntry>, String> {
     let mut entries = Vec::new();
     if !dir.exists() {
@@ -28075,6 +28262,19 @@ fn report_index_markdown(
         ));
     }
 
+    let repo_ops_packets = report_index_repo_ops_packets(reports, receipts);
+    body.push_str("\n## Repo-Ops Packets\n\n");
+    body.push_str("| Packet | Status | Artifacts | Next command |\n| --- | --- | --- | --- |\n");
+    for packet in &repo_ops_packets {
+        body.push_str(&format!(
+            "| {} | `{}` | {} | `{}` |\n",
+            markdown_cell(packet.label),
+            markdown_cell(&packet.status),
+            markdown_cell(&repo_ops_artifacts_markdown(&packet.artifacts)),
+            markdown_cell(packet.command)
+        ));
+    }
+
     body.push_str("\n## Available Reports\n\n");
     if reports.is_empty() {
         body.push_str("- None detected.\n");
@@ -28143,6 +28343,12 @@ fn report_index_json(
     body.push_str("  \"receipts\": [\n");
     write_report_index_entry_array(&mut body, receipts);
     body.push_str("  ],\n");
+    body.push_str("  \"repo_ops_packets\": [\n");
+    write_report_index_repo_ops_packet_array(
+        &mut body,
+        &report_index_repo_ops_packets(reports, receipts),
+    );
+    body.push_str("  ],\n");
     body.push_str("  \"missing_expected_reports\": [");
     write_json_string_array(&mut body, missing);
     body.push_str("],\n");
@@ -28151,6 +28357,14 @@ fn report_index_json(
     body.push_str("]\n");
     body.push_str("}\n");
     body
+}
+
+fn repo_ops_artifacts_markdown(artifacts: &[ReportIndexRepoOpsArtifact]) -> String {
+    artifacts
+        .iter()
+        .map(|artifact| format!("{} ({})", artifact.path, artifact.status))
+        .collect::<Vec<_>>()
+        .join("<br>")
 }
 
 fn write_report_index_entry_array(body: &mut String, entries: &[ReportIndexEntry]) {
@@ -28174,6 +28388,63 @@ fn write_report_index_entry_array(body: &mut String, entries: &[ReportIndexEntry
         body.push_str("    }");
     }
     if !entries.is_empty() {
+        body.push('\n');
+    }
+}
+
+fn write_report_index_repo_ops_packet_array(
+    body: &mut String,
+    packets: &[ReportIndexRepoOpsPacket],
+) {
+    for (index, packet) in packets.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!("      \"id\": \"{}\",\n", json_escape(packet.id)));
+        body.push_str(&format!(
+            "      \"label\": \"{}\",\n",
+            json_escape(packet.label)
+        ));
+        body.push_str(&format!(
+            "      \"status\": \"{}\",\n",
+            json_escape(&packet.status)
+        ));
+        body.push_str(&format!(
+            "      \"next_command\": \"{}\",\n",
+            json_escape(packet.command)
+        ));
+        body.push_str(&format!(
+            "      \"description\": \"{}\",\n",
+            json_escape(packet.description)
+        ));
+        body.push_str("      \"artifacts\": [\n");
+        for (artifact_index, artifact) in packet.artifacts.iter().enumerate() {
+            if artifact_index > 0 {
+                body.push_str(",\n");
+            }
+            body.push_str("        {\n");
+            body.push_str(&format!(
+                "          \"path\": \"{}\",\n",
+                json_escape(&artifact.path)
+            ));
+            body.push_str(&format!(
+                "          \"status\": \"{}\",\n",
+                json_escape(&artifact.status)
+            ));
+            body.push_str(&format!(
+                "          \"available\": {}\n",
+                artifact.available
+            ));
+            body.push_str("        }");
+        }
+        if !packet.artifacts.is_empty() {
+            body.push('\n');
+        }
+        body.push_str("      ]\n");
+        body.push_str("    }");
+    }
+    if !packets.is_empty() {
         body.push('\n');
     }
 }
@@ -32721,12 +32992,13 @@ mod tests {
         repo_exposure_latency_markdown, repo_exposure_latency_run,
         repo_exposure_latency_run_from_output, repo_exposure_latency_status,
         repo_exposure_latency_trace, repo_root, repo_seam_inventory_command_args_for_root,
-        report_index_markdown, report_index_missing_expected, report_status_from_text,
-        ripr_command_literals_in_text, ripr_debug_binary, ripr_pre_commit_hook,
-        run_ci_full_evidence_gates, sarif_policy_report_json, sarif_policy_report_markdown,
-        semantic_selector_matches, should_scan_static_language_path, should_skip_path,
-        sorted_allowlist_content, spec_id_from_path, spec_ids_in_text, spec_numbering_violations,
-        specs, static_language_allowlist_covers, status_for_report, suggested_fixes_patch,
+        report_index_json, report_index_markdown, report_index_missing_expected,
+        report_index_repo_ops_packets, report_status_from_text, ripr_command_literals_in_text,
+        ripr_debug_binary, ripr_pre_commit_hook, run_ci_full_evidence_gates,
+        sarif_policy_report_json, sarif_policy_report_markdown, semantic_selector_matches,
+        should_scan_static_language_path, should_skip_path, sorted_allowlist_content,
+        spec_id_from_path, spec_ids_in_text, spec_numbering_violations, specs,
+        static_language_allowlist_covers, status_for_report, suggested_fixes_patch,
         suspicious_runtime_file_names, targeted_test_outcome, targeted_test_outcome_report_json,
         targeted_test_outcome_report_markdown, test_efficiency_entry, test_efficiency_report_json,
         test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
@@ -37727,8 +37999,104 @@ jobs:
         assert!(body.contains("# ripr report index"));
         assert!(body.contains("output/unknown-stop-reason-invariant"));
         assert!(body.contains("Suggested Reviewer Path"));
+        assert!(body.contains("Repo-Ops Packets"));
         assert_eq!(status_for_report(&reports, "pr-summary.md"), "pass");
         assert_eq!(status_for_report(&reports, "missing.md"), "missing");
+    }
+
+    #[test]
+    fn report_index_repo_ops_packets_are_structured_for_agents() {
+        let reports = [
+            ("commands.md", "present"),
+            ("commands.json", "present"),
+            ("generated-clean.md", "pass"),
+            ("gh-pr-status.md", "warn"),
+            ("gh-pr-status.json", "warn"),
+            ("suggested-fixes.md", "pass"),
+            ("suggested-fixes.patch", "present"),
+            ("check-pr.md", "pass"),
+        ]
+        .into_iter()
+        .map(|(file, status)| ReportIndexEntry {
+            file: file.to_string(),
+            path: format!("target/ripr/reports/{file}"),
+            status: status.to_string(),
+        })
+        .collect::<Vec<_>>();
+        let receipts = vec![ReportIndexEntry {
+            file: "check-pr.json".to_string(),
+            path: "target/ripr/receipts/check-pr.json".to_string(),
+            status: "pass".to_string(),
+        }];
+
+        let packets = report_index_repo_ops_packets(&reports, &receipts);
+
+        assert_eq!(
+            packets
+                .iter()
+                .find(|packet| packet.id == "command_mutability_catalog")
+                .map(|packet| packet.status.as_str()),
+            Some("present")
+        );
+        assert_eq!(
+            packets
+                .iter()
+                .find(|packet| packet.id == "gh_pr_status")
+                .map(|packet| packet.status.as_str()),
+            Some("warn")
+        );
+        assert_eq!(
+            packets
+                .iter()
+                .find(|packet| packet.id == "worktree_doctor")
+                .map(|packet| packet.status.as_str()),
+            Some("missing")
+        );
+        assert_eq!(
+            packets
+                .iter()
+                .find(|packet| packet.id == "check_pr")
+                .map(|packet| packet.status.as_str()),
+            Some("pass")
+        );
+    }
+
+    #[test]
+    fn report_index_json_includes_repo_ops_packet_queue() -> Result<(), String> {
+        let campaign = ReportIndexCampaign {
+            id: "repo-ops-ux".to_string(),
+            title: "Repo-Ops UX".to_string(),
+            status: "active".to_string(),
+            ready_work_items: Vec::new(),
+            issues: Vec::new(),
+        };
+        let reports = vec![ReportIndexEntry {
+            file: "commands.json".to_string(),
+            path: "target/ripr/reports/commands.json".to_string(),
+            status: "present".to_string(),
+        }];
+
+        let body = report_index_json(
+            "warn",
+            &campaign,
+            &reports,
+            &[],
+            &["target/ripr/reports/check-pr.md".to_string()],
+            &["cargo xtask check-pr".to_string()],
+        );
+        let value: serde_json::Value =
+            serde_json::from_str(&body).map_err(|err| err.to_string())?;
+        let packets = value["repo_ops_packets"]
+            .as_array()
+            .ok_or_else(|| "repo_ops_packets must be an array".to_string())?;
+
+        assert!(packets.iter().any(|packet| {
+            packet["id"] == "command_mutability_catalog"
+                && packet["status"] == "incomplete"
+                && packet["next_command"] == "cargo xtask commands"
+        }));
+        assert!(packets.iter().any(|packet| packet["id"] == "pr_triage"));
+        Ok(())
     }
 
     #[test]
