@@ -21,6 +21,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('ripr.restartServer', async () => controller?.restart()),
     vscode.commands.registerCommand('ripr.showOutput', () => controller?.showOutput()),
     vscode.commands.registerCommand('ripr.showStatus', () => controller?.showStatus()),
+    vscode.commands.registerCommand('ripr.diagnoseSetup', () => controller?.diagnoseSetup()),
     vscode.commands.registerCommand('ripr.copyContext', async (target?: RiprContextTarget) =>
       controller?.copyContext(target)
     ),
