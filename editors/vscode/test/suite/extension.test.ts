@@ -31,6 +31,7 @@ suite('Extension Smoke', () => {
     assert.ok(commands.includes('ripr.restartServer'));
     assert.ok(commands.includes('ripr.showOutput'));
     assert.ok(commands.includes('ripr.showStatus'));
+    assert.ok(commands.includes('ripr.diagnoseSetup'));
     assert.ok(commands.includes('ripr.copyContext'));
     assert.ok(commands.includes('ripr.copySuggestedAssertion'));
     assert.ok(commands.includes('ripr.copyTargetedTestBrief'));
@@ -586,6 +587,33 @@ suite('Extension Smoke', () => {
       assert.ok(statusOutput.includes('Artifact editor agent receipt: target/ripr/agent/agent-receipt.json (found; found in current workspace'));
       assert.ok(statusOutput.includes('First useful action: Add equality-boundary discriminator test'));
       assert.ok(statusOutput.includes('Server version: ripr 0.5.0-test'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('diagnoseSetup writes read-only setup report', async () => {
+    const context = createControllerTestContext({
+      files: {
+        'ripr.toml': '[languages]\nenabled = ["rust"]\n',
+        'target/ripr/reports/first-useful-action.json': firstActionReport({}),
+        'target/ripr/reports/gap-decision-ledger.json': '{"schema_version":"0.1"}',
+        'target/ripr/agent/agent-receipt.json': '{"schema_version":"0.1"}'
+      }
+    });
+    try {
+      await context.controller.start();
+      await context.controller.diagnoseSetup();
+
+      const report = context.outputLines.join('\n');
+      assert.ok(report.includes('ripr setup diagnosis:'));
+      assert.ok(report.includes('Status: ripr saved-workspace analysis is queued.'));
+      assert.ok(report.includes('Server version: ripr 0.5.0-test'));
+      assert.ok(report.includes('Config: ripr.toml (found; found in current workspace'));
+      assert.ok(report.includes('Artifact gap decision ledger: target/ripr/reports/gap-decision-ledger.json (found'));
+      assert.ok(report.includes('First useful action: Add equality-boundary discriminator test'));
+      assert.ok(report.includes('Limits: read-only setup diagnosis only'));
+      assert.ok(context.infoMessages.at(-1)?.includes('setup diagnosis'));
     } finally {
       await context.dispose();
     }

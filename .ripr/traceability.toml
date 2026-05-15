@@ -3116,6 +3116,7 @@ spec = "docs/specs/RIPR-SPEC-0049-editor-setup-status.md"
 tests = [
   "editors/vscode/test/suite/extension.test.ts::status bar reports server readiness and refresh state",
   "editors/vscode/test/suite/extension.test.ts::status model reports setup files found and missing",
+  "editors/vscode/test/suite/extension.test.ts::diagnoseSetup writes read-only setup report",
   "editors/vscode/test/suite/extension.test.ts::status bar reports disabled configuration without starting server",
   "editors/vscode/test/suite/extension.test.ts::status bar reports missing workspace without starting server",
   "editors/vscode/test/suite/extension.test.ts::status bar reports unavailable server without hanging on modal UI",
@@ -3124,7 +3125,9 @@ fixtures = [
 ]
 code = [
   "editors/vscode/src/client.ts",
+  "editors/vscode/src/extension.ts",
   "editors/vscode/src/serverResolver.ts",
+  "editors/vscode/package.json",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0049-editor-setup-status.md",

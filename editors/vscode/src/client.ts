@@ -511,6 +511,10 @@ export class RiprClientController {
     return this.showStatusAsync();
   }
 
+  diagnoseSetup(): Promise<void> {
+    return this.diagnoseSetupAsync();
+  }
+
   private handleServerLog(params: unknown): void {
     const message = serverLogMessage(params);
     if (!message) {
@@ -589,6 +593,16 @@ export class RiprClientController {
     }
     this.output.show();
     this.runtime.showInformationMessage(statusSummary(this.status, this.firstUsefulAction));
+  }
+
+  private async diagnoseSetupAsync(): Promise<void> {
+    await this.refreshSetupStatusFiles();
+    await this.refreshFirstUsefulActionStatus();
+    const report = setupDiagnosisReport(this.status, this.firstUsefulAction, this.statusContext());
+    this.output.appendLine('ripr setup diagnosis:');
+    this.output.appendLine(report);
+    this.output.show();
+    this.runtime.showInformationMessage('ripr setup diagnosis was written to the ripr output channel.');
   }
 
   private async refreshFirstUsefulActionStatus(): Promise<void> {
@@ -816,6 +830,38 @@ function statusTooltip(
       `Report: ${firstAction.reportPath}`
     );
   }
+  return lines.join('\n');
+}
+
+function setupDiagnosisReport(
+  status: RiprStatusState,
+  firstAction: FirstUsefulActionStatus | undefined,
+  context: RiprStatusContext
+): string {
+  const lines = [
+    `Status: ${status.summary}`,
+    ...statusContextLines(status, context)
+  ];
+  if (status.detail) {
+    lines.push('', 'Detail:', status.detail);
+  }
+  if (status.nextStep) {
+    lines.push('', `Next safe action: ${status.nextStep}`);
+  }
+  if (firstAction && canProjectFirstUsefulAction(status.kind)) {
+    lines.push('', ...firstUsefulActionLines(firstAction));
+  } else if (firstAction && status.kind === 'stale') {
+    lines.push(
+      '',
+      'First useful action report: available, but editor evidence is stale.',
+      'Save or refresh the workspace before acting on this report.',
+      `Report: ${firstAction.reportPath}`
+    );
+  }
+  lines.push(
+    '',
+    'Limits: read-only setup diagnosis only; no source edits, generated tests, provider calls, mutation execution, or gate decision.'
+  );
   return lines.join('\n');
 }
 
