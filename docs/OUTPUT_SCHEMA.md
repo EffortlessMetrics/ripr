@@ -6090,10 +6090,10 @@ Field contract:
   next command.
 - `repo_ops_packets[]` is the repo-local operating packet index used by
   `cargo xtask reports index`. It records command mutability, worktree doctor,
-  PR triage, per-PR merge readiness, generated-clean, badge ownership, critic,
-  receipts, suggested-fixes, and `check-pr` artifacts with status, known output
-  paths, and regeneration commands. It is advisory front-door metadata only and
-  never becomes gate authority.
+  PR triage, per-PR merge readiness, generated-clean, badge ownership, command
+  catalog coverage, critic, receipts, suggested-fixes, and `check-pr` artifacts
+  with status, known output paths, and regeneration commands. It is advisory
+  front-door metadata only and never becomes gate authority.
 - `entries[].status` is `available`, `missing`, `pass`, `warn`, `fail`,
   `blocked`, `acknowledged`, `suppressed`, `stale`, `incomplete`,
   `unreadable`, or `not_applicable`.

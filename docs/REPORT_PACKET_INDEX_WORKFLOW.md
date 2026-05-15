@@ -86,7 +86,8 @@ Repo-local automation also projects repo-ops operating packets into
 `repo_ops_packets[]` in `target/ripr/reports/index.json` and the Repo-Ops
 Packets table in `target/ripr/reports/index.md`. These entries cover command
 mutability, worktree doctor, PR triage, per-PR merge readiness, generated-clean,
-badge ownership, critic, receipts, suggested fixes, and `check-pr` artifacts.
+badge ownership, command catalog coverage, critic, receipts, suggested fixes,
+and `check-pr` artifacts.
 They are advisory navigation metadata, not pass/fail authority.
 
 Treat the group order as the review path:
