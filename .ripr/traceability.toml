@@ -3175,3 +3175,37 @@ metrics = [
   "editor_receipt_status_movement_improved",
   "editor_receipt_status_movement_unchanged",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0051"
+name = "First successful PR UX"
+spec = "docs/specs/RIPR-SPEC-0051-first-successful-pr-ux.md"
+tests = [
+]
+fixtures = [
+]
+code = [
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0051-first-successful-pr-ux.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0009-first-run-ux-adoption-hardening.md",
+  "docs/FIRST_PR_WORKFLOW.md",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "first_run_packets_total",
+  "first_run_top_gap_selected_total",
+  "first_run_no_action_total",
+  "first_run_missing_artifact_total",
+  "first_run_stale_artifact_total",
+  "first_run_wrong_root_total",
+  "first_run_malformed_artifact_total",
+  "first_run_timeout_total",
+  "first_run_repair_attempted_total",
+  "first_run_receipt_present_total",
+  "first_run_movement_improved_total",
+  "first_run_movement_unchanged_total",
+  "first_run_false_interruption_total",
+  "first_run_time_to_first_useful_action_seconds",
+]
