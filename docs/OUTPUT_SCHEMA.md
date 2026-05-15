@@ -60,7 +60,7 @@ repeated only as supporting evidence for the canonical item.
 {
   "finding_alignment": {
     "scope": "supported_classes",
-    "supported_evidence_classes": ["presentation_text"],
+    "supported_evidence_classes": ["presentation_text", "config_or_policy_constant"],
     "summary": {
       "raw_signals": 2,
       "canonical_items": 1,
@@ -86,7 +86,21 @@ repeated only as supporting evidence for the canonical item.
       "presentation_text_actionable_snapshot": 0,
       "presentation_text_actionable_output_repairs": 0,
       "presentation_text_no_action": 0,
-      "presentation_text_static_limitations": 1
+      "presentation_text_static_limitations": 1,
+      "config_policy_constant_total": 0,
+      "config_policy_user_visible": 0,
+      "config_policy_observed": 0,
+      "config_policy_unobserved": 0,
+      "config_policy_internal_only": 0,
+      "config_policy_flow_unknown": 0,
+      "config_policy_observer_unknown": 0,
+      "config_policy_duplicate_groups": 0,
+      "config_policy_actionable_output_observer": 0,
+      "config_policy_actionable_behavior_discriminator": 0,
+      "config_policy_no_action": 0,
+      "config_policy_static_limitations": 0,
+      "config_policy_repair_route_coverage": 0,
+      "config_policy_verify_command_coverage": 0
     },
     "items": [
       {
@@ -146,7 +160,8 @@ repeated only as supporting evidence for the canonical item.
           "repair_kind": "inspect_visibility",
           "target_test_type": "unknown",
           "suggested_assertion": "Trace the constant to a supported output sink before adding or updating tests."
-        }
+        },
+        "config_policy": null
       }
     ]
   }
@@ -158,7 +173,8 @@ Field contract:
 - `finding_alignment.scope` - currently `supported_classes`; Lane 1 reports
   only evidence classes whose grouping behavior is fixture-backed.
 - `finding_alignment.supported_evidence_classes` - evidence classes included
-  in this projection. The first supported class is `presentation_text`.
+  in this projection. The current fixture-backed classes are
+  `presentation_text` and `config_or_policy_constant`.
 - `finding_alignment.summary.raw_signals` - total raw findings emitted in the
   check output.
 - `finding_alignment.summary.canonical_items` - supported canonical evidence
@@ -181,6 +197,11 @@ Field contract:
 - `finding_alignment.summary.presentation_text_*` - presentation-text class
   counts for visibility, observer status, duplicate grouping, no-action states,
   static limitations, and output-observer repairs.
+- `finding_alignment.summary.config_policy_*` - config/policy constant class
+  counts for visibility, observer or discriminator status, duplicate grouping,
+  no-action states, static limitations, output-observer repairs,
+  behavior-discriminator repairs, repair-route coverage, and verify-command
+  coverage.
 - `finding_alignment.items[]` - canonical evidence items. Downstream surfaces
   should prefer these items as the user-facing unit and show raw findings as
   supporting evidence.
@@ -204,6 +225,12 @@ Field contract:
   fixture-backed states include visibility unknown, user-visible unobserved
   help/report text, user-visible observed report text, and internal-only
   labels.
+- `finding_alignment.items[].config_policy` - class-specific constant role,
+  source-kind, visibility, observer/discriminator, actionability, repair kind,
+  target test type, and suggested assertion context. Implemented
+  fixture-backed states include internal-only policy metadata, visible
+  unobserved report/config labels, observed schema labels, cross-file flow
+  unknown limitations, and opaque lookup limitations.
 
 ## Finding
 
