@@ -100,6 +100,11 @@ Planned scope:
   opaque lookup limitations. Raw findings remain supporting evidence; no
   PR/CI rendering, gate, score, generated-test, provider, source-edit, or
   mutation-execution behavior changed.
+- Actionable finding-alignment items now expose a normalized top-level
+  `repair_route` with `repair_kind`, `target_test_type`, and
+  `suggested_assertion`, plus route-coverage counts, so downstream consumers
+  can use one canonical repair contract instead of inferring actionability from
+  raw static classes or class-specific fields.
 - VS Code `ripr: Show Status` now includes first-run/no-output context:
   workspace root, resolved server source and command, editor selectors,
   enabled languages from the last server refresh, and the next safe action for
