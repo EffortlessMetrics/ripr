@@ -143,6 +143,11 @@ mod tests {
             alignment["summary"]["actionable_items_without_repair_route"],
             0
         );
+        assert_eq!(alignment["summary"]["verify_command_coverage"], 0);
+        assert_eq!(
+            alignment["summary"]["actionable_items_without_verify_command"],
+            0
+        );
         assert_eq!(
             alignment["items"][0]["canonical_gap_id"],
             "presentation_text::APPLE_M3_AIR_DEVICE_LABELS_TEXT"
@@ -239,6 +244,11 @@ mod tests {
         assert_eq!(alignment["summary"]["repair_route_coverage"], 1);
         assert_eq!(
             alignment["summary"]["actionable_items_without_repair_route"],
+            0
+        );
+        assert_eq!(alignment["summary"]["verify_command_coverage"], 1);
+        assert_eq!(
+            alignment["summary"]["actionable_items_without_verify_command"],
             0
         );
         assert_eq!(alignment["summary"]["already_observed"], 1);
@@ -404,6 +414,11 @@ mod tests {
         assert_eq!(alignment["summary"]["repair_route_coverage"], 1);
         assert_eq!(
             alignment["summary"]["actionable_items_without_repair_route"],
+            0
+        );
+        assert_eq!(alignment["summary"]["verify_command_coverage"], 1);
+        assert_eq!(
+            alignment["summary"]["actionable_items_without_verify_command"],
             0
         );
         assert_eq!(alignment["summary"]["config_policy_observed"], 1);

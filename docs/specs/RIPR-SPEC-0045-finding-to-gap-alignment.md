@@ -557,4 +557,6 @@ Alignment scorecard and trend work should expose:
 - `finding_alignment_visibility_unknown_total`;
 - `finding_alignment_presentation_text_actionable_total`;
 - `finding_alignment_repair_route_coverage`;
-- `finding_alignment_actionable_items_without_repair_route`.
+- `finding_alignment_actionable_items_without_repair_route`;
+- `finding_alignment_verify_command_coverage`;
+- `finding_alignment_actionable_items_without_verify_command`.
