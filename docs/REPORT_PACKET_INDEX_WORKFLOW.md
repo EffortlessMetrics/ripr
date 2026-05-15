@@ -82,6 +82,13 @@ The index groups artifacts by reviewer use instead of filename order.
 | `sarif_badges` | SARIF/code scanning and badge outputs. |
 | `local_context` | Operator or repo-local context that helps maintainers but is not the PR decision surface. |
 
+Repo-local automation also projects repo-ops operating packets into
+`repo_ops_packets[]` in `target/ripr/reports/index.json` and the Repo-Ops
+Packets table in `target/ripr/reports/index.md`. These entries cover command
+mutability, worktree doctor, PR triage, per-PR merge readiness, generated-clean,
+badge ownership, critic, receipts, suggested fixes, and `check-pr` artifacts.
+They are advisory navigation metadata, not pass/fail authority.
+
 Treat the group order as the review path:
 
 ```text
