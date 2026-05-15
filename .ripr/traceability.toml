@@ -3117,6 +3117,7 @@ tests = [
   "editors/vscode/test/suite/extension.test.ts::status bar reports server readiness and refresh state",
   "editors/vscode/test/suite/extension.test.ts::status model reports setup files found and missing",
   "editors/vscode/test/suite/extension.test.ts::diagnoseSetup writes read-only setup report",
+  "editors/vscode/test/suite/extension.test.ts::diagnoseSetup distinguishes first-run and no-output states",
   "editors/vscode/test/suite/extension.test.ts::status bar reports disabled configuration without starting server",
   "editors/vscode/test/suite/extension.test.ts::status bar reports missing workspace without starting server",
   "editors/vscode/test/suite/extension.test.ts::status bar reports unavailable server without hanging on modal UI",
