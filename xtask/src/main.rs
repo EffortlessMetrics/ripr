@@ -43952,6 +43952,19 @@ jobs:
         );
         assert_eq!(
             XtaskCommand::parse([
+                "first-pr".to_string(),
+                "--gap-ledger".to_string(),
+                "target/ripr/reports/gap-decision-ledger.json".to_string(),
+                "--check".to_string(),
+            ]),
+            XtaskCommand::FirstPr(vec![
+                "--gap-ledger".to_string(),
+                "target/ripr/reports/gap-decision-ledger.json".to_string(),
+                "--check".to_string(),
+            ])
+        );
+        assert_eq!(
+            XtaskCommand::parse([
                 "ripr-review-comments".to_string(),
                 "--base".to_string(),
                 "origin/main".to_string(),
