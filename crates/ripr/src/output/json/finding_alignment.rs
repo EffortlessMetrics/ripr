@@ -604,7 +604,7 @@ fn config_policy_item(
     classification: ConfigPolicyClassification,
 ) -> FindingAlignmentItem {
     let group_reason = if raw_findings.len() > 1 {
-        GROUP_REASON_CONFIG_POLICY
+        GROUP_REASON_DECL_LITERAL
     } else {
         GROUP_REASON_OWNER
     };
@@ -2134,11 +2134,12 @@ mod tests {
         assert_eq!(report.summary.internal_no_action, 1);
         assert_eq!(report.summary.config_policy_constant_total, 1);
         assert_eq!(report.summary.config_policy_internal_only, 1);
+        assert_eq!(report.summary.config_policy_duplicate_groups, 0);
         assert_eq!(
             item.canonical_gap_id,
             "config_or_policy_constant::INTERNAL_POLICY_LABEL"
         );
-        assert_eq!(item.group_reason, GROUP_REASON_CONFIG_POLICY);
+        assert_eq!(item.group_reason, GROUP_REASON_DECL_LITERAL);
         assert_eq!(item.raw_group_size, 2);
         assert_eq!(item.gap_state, "internal_only");
         assert_eq!(item.actionability, "no_action_internal");
