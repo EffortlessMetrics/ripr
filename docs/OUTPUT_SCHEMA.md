@@ -8242,6 +8242,14 @@ from explicit `GapRecord` input. The input may be a `records` array,
 `gap_records` array, raw record array, or the `fixtures/gap-decision-ledger`
 corpus shape where each case contains `expected_gap_record`.
 
+`ripr reports gap-ledger --repo-exposure <path>` derives conservative
+repo-scoped Rust `GapRecord` entries from existing
+`seams[].evidence_record.canonical_item` data in a repo-exposure report. This
+does not rerun analysis or make PR-local gate/comment claims; derived records
+are repo-scoped projection inputs for reports, badges, LSP diagnostics, and
+agent packets when the evidence record already supplies a repair route and
+verification command.
+
 The command writes JSON to `target/ripr/reports/gap-decision-ledger.json` and
 Markdown to `target/ripr/reports/gap-decision-ledger.md` by default. It does
 not rerun analysis, infer analyzer truth, publish comments, edit source,
@@ -8259,6 +8267,7 @@ JSON shape:
   "root": ".",
   "generated_at": "unix_ms:1778710000000",
   "inputs": {
+    "source_kind": "records",
     "records": "fixtures/gap-decision-ledger/corpus.json"
   },
   "summary": {
