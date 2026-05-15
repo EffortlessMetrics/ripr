@@ -83,6 +83,7 @@ Common generated reports:
 ```bash
 cargo xtask pr-summary
 cargo xtask commands
+cargo xtask pr-ready
 cargo xtask reports index
 cargo xtask receipts
 cargo xtask receipts check
@@ -114,6 +115,21 @@ mutations, and argument-dependent commands.
 `target/ripr/reports/command-catalog.md` and fails when that map drifts from the
 help catalog or omits write/judgment details. The report is generated evidence
 and should not be committed.
+
+## PR Ready Packet
+
+Run this before opening or updating a PR when you want one local repo-ops
+packet instead of checking each hygiene report by hand:
+
+```bash
+cargo xtask pr-ready
+```
+
+The command writes `target/ripr/reports/pr-ready.md` and
+`target/ripr/reports/pr-ready.json`. It composes worktree doctor, command
+mutability, PR summary, critic, receipts check, suggested fixes,
+generated-clean, and badge diff policy. The packet is generated evidence and
+should not be committed. It does not replace `cargo xtask check-pr`.
 
 ## Deterministic Repair
 

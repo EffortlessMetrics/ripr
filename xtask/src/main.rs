@@ -160,6 +160,16 @@ struct GhPrStatusReadiness {
     warnings: Vec<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PrReadyStep {
+    id: &'static str,
+    command: &'static str,
+    report: &'static str,
+    required: bool,
+    status: String,
+    summary: String,
+}
+
 #[derive(Debug, Default)]
 struct TraceBehavior {
     line: usize,
@@ -1697,6 +1707,294 @@ fn commands_report() -> Result<(), String> {
     let entries = command_catalog();
     write_report("commands.md", &commands_report_markdown(&entries))?;
     write_report("commands.json", &commands_report_json(&entries))
+}
+
+fn pr_ready() -> Result<(), String> {
+    let steps = vec![
+        pr_ready_step(
+            "worktree_doctor",
+            "cargo xtask worktree doctor",
+            "target/ripr/reports/worktree-doctor.md",
+            true,
+            worktree_doctor,
+        ),
+        pr_ready_step(
+            "command_mutability_catalog",
+            "cargo xtask commands",
+            "target/ripr/reports/commands.md",
+            false,
+            commands_report,
+        ),
+        pr_ready_step(
+            "pr_summary",
+            "cargo xtask pr-summary",
+            "target/ripr/reports/pr-summary.md",
+            false,
+            pr_summary,
+        ),
+        pr_ready_step(
+            "critic",
+            "cargo xtask critic",
+            "target/ripr/reports/critic.md",
+            false,
+            critic_impl,
+        ),
+        pr_ready_step(
+            "receipts_check",
+            "cargo xtask receipts check",
+            "target/ripr/reports/receipts.md",
+            false,
+            receipts_check,
+        ),
+        pr_ready_step(
+            "suggested_fixes",
+            "cargo xtask suggested-fixes",
+            "target/ripr/reports/suggested-fixes.md",
+            false,
+            suggested_fixes,
+        ),
+        pr_ready_step(
+            "generated_clean",
+            "cargo xtask check-generated-clean",
+            "target/ripr/reports/generated-clean.md",
+            true,
+            check_generated_clean,
+        ),
+        pr_ready_step(
+            "badge_diff_policy",
+            "cargo xtask check-badge-diff-policy",
+            "target/ripr/reports/badge-diff-policy.md",
+            true,
+            check_badge_diff_policy,
+        ),
+    ];
+    let status = pr_ready_status(&steps);
+    write_report("pr-ready.md", &pr_ready_markdown(&steps))?;
+    write_report("pr-ready.json", &pr_ready_json(&steps))?;
+    let index_result = reports_index();
+
+    if status == "fail" {
+        let _ = index_result;
+        Err(
+            "pr-ready found blocking repo-ops issues; see target/ripr/reports/pr-ready.md"
+                .to_string(),
+        )
+    } else {
+        index_result
+    }
+}
+
+fn pr_ready_step(
+    id: &'static str,
+    command: &'static str,
+    report: &'static str,
+    required: bool,
+    run_step: fn() -> Result<(), String>,
+) -> PrReadyStep {
+    match run_step() {
+        Ok(()) => PrReadyStep {
+            id,
+            command,
+            report,
+            required,
+            status: "pass".to_string(),
+            summary: "completed".to_string(),
+        },
+        Err(err) => PrReadyStep {
+            id,
+            command,
+            report,
+            required,
+            status: if required { "fail" } else { "needs_attention" }.to_string(),
+            summary: first_error_line(&err),
+        },
+    }
+}
+
+fn first_error_line(err: &str) -> String {
+    err.lines()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or(err)
+        .trim()
+        .to_string()
+}
+
+fn pr_ready_status(steps: &[PrReadyStep]) -> &'static str {
+    if steps
+        .iter()
+        .any(|step| step.required && step.status != "pass")
+    {
+        "fail"
+    } else if steps.iter().any(|step| step.status != "pass") {
+        "actionable"
+    } else {
+        "pass"
+    }
+}
+
+fn pr_ready_next_action(steps: &[PrReadyStep]) -> &'static str {
+    match pr_ready_status(steps) {
+        "fail" => {
+            "repair blocking generated-evidence or worktree hygiene issues before opening or updating a PR"
+        }
+        "actionable" => {
+            "review the attention items, then run cargo xtask check-pr for full gate receipts"
+        }
+        _ => "run cargo xtask check-pr",
+    }
+}
+
+fn pr_ready_markdown(steps: &[PrReadyStep]) -> String {
+    let status = pr_ready_status(steps);
+    let mut body = format!("# ripr PR Ready\n\nStatus: {status}\nMode: advisory\n\n");
+    body.push_str("## Next Action\n\n");
+    body.push_str("- ");
+    body.push_str(pr_ready_next_action(steps));
+    body.push_str("\n\n");
+
+    let attention = steps
+        .iter()
+        .filter(|step| step.status != "pass")
+        .collect::<Vec<_>>();
+    body.push_str("## Current Risks\n\n");
+    if attention.is_empty() {
+        body.push_str("- none detected\n\n");
+    } else {
+        for step in attention {
+            body.push_str(&format!(
+                "- `{}`: {} ({})\n",
+                step.id, step.summary, step.status
+            ));
+        }
+        body.push('\n');
+    }
+
+    body.push_str("## Step Summary\n\n");
+    body.push_str("| Step | Status | Required | Command | Report |\n");
+    body.push_str("| --- | --- | --- | --- | --- |\n");
+    for step in steps {
+        body.push_str(&format!(
+            "| `{}` | `{}` | `{}` | `{}` | `{}` |\n",
+            step.id, step.status, step.required, step.command, step.report
+        ));
+    }
+
+    body.push_str("\n## Safe Repairs\n\n");
+    for repair in pr_ready_safe_repairs() {
+        body.push_str("- ");
+        body.push_str(repair);
+        body.push('\n');
+    }
+
+    body.push_str("\n## Generated Only\n\n");
+    for artifact in pr_ready_generated_only() {
+        body.push_str("- `");
+        body.push_str(artifact);
+        body.push_str("`\n");
+    }
+
+    body.push_str("\n## Stop / Judgment Required\n\n");
+    for item in pr_ready_judgment_required() {
+        body.push_str("- ");
+        body.push_str(item);
+        body.push('\n');
+    }
+
+    body.push_str("\n## Next Commands\n\n```bash\ncargo xtask check-pr\n```\n");
+    body
+}
+
+fn pr_ready_json(steps: &[PrReadyStep]) -> String {
+    let mut body = "{\n".to_string();
+    body.push_str("  \"schema_version\": \"0.1\",\n");
+    body.push_str("  \"mode\": \"advisory\",\n");
+    body.push_str(&format!(
+        "  \"status\": \"{}\",\n",
+        json_escape(pr_ready_status(steps))
+    ));
+    body.push_str(&format!(
+        "  \"next_action\": \"{}\",\n",
+        json_escape(pr_ready_next_action(steps))
+    ));
+    body.push_str("  \"steps\": [\n");
+    for (index, step) in steps.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!("      \"id\": \"{}\",\n", json_escape(step.id)));
+        body.push_str(&format!(
+            "      \"command\": \"{}\",\n",
+            json_escape(step.command)
+        ));
+        body.push_str(&format!(
+            "      \"status\": \"{}\",\n",
+            json_escape(&step.status)
+        ));
+        body.push_str(&format!("      \"required\": {},\n", step.required));
+        body.push_str(&format!(
+            "      \"report\": \"{}\",\n",
+            json_escape(step.report)
+        ));
+        body.push_str(&format!(
+            "      \"summary\": \"{}\"\n",
+            json_escape(&step.summary)
+        ));
+        body.push_str("    }");
+    }
+    body.push_str("\n  ],\n");
+    body.push_str("  \"safe_repairs\": [");
+    write_json_string_array_from_strs(&mut body, pr_ready_safe_repairs());
+    body.push_str("],\n");
+    body.push_str("  \"generated_only\": [");
+    write_json_string_array_from_strs(&mut body, pr_ready_generated_only());
+    body.push_str("],\n");
+    body.push_str("  \"judgment_required\": [");
+    write_json_string_array_from_strs(&mut body, pr_ready_judgment_required());
+    body.push_str("],\n");
+    body.push_str("  \"next_commands\": [\"cargo xtask check-pr\"]\n");
+    body.push_str("}\n");
+    body
+}
+
+fn write_json_string_array_from_strs(body: &mut String, values: &[&str]) {
+    for (index, value) in values.iter().enumerate() {
+        if index > 0 {
+            body.push_str(", ");
+        }
+        body.push('"');
+        body.push_str(&json_escape(value));
+        body.push('"');
+    }
+}
+
+fn pr_ready_safe_repairs() -> &'static [&'static str] {
+    &[
+        "run cargo xtask fix-pr",
+        "restore generated badge endpoint residue in ordinary PRs",
+        "review target/ripr/reports/suggested-fixes.patch before applying deterministic fixes",
+    ]
+}
+
+fn pr_ready_generated_only() -> &'static [&'static str] {
+    &[
+        "badges/*.json",
+        "target/ripr/**",
+        "crates/ripr/examples/sample/target/**",
+        "target/ripr/receipts/**",
+    ]
+}
+
+fn pr_ready_judgment_required() -> &'static [&'static str] {
+    &[
+        "badge endpoint refresh",
+        "golden blessing",
+        "suppression",
+        "baseline adoption",
+        "dependency exception",
+        "branch protection",
+        "policy authority change",
+    ]
 }
 
 fn check_command_catalog() -> Result<(), String> {
@@ -27784,6 +28082,16 @@ fn repo_ops_packet_specs() -> &'static [RepoOpsPacketSpec] {
             artifacts: &["target/ripr/reports/command-catalog.md"],
         },
         RepoOpsPacketSpec {
+            id: "pr_ready",
+            label: "PR ready cockpit",
+            command: "cargo xtask pr-ready",
+            description: "Composes local repo-ops checks into one advisory PR readiness packet.",
+            artifacts: &[
+                "target/ripr/reports/pr-ready.md",
+                "target/ripr/reports/pr-ready.json",
+            ],
+        },
+        RepoOpsPacketSpec {
             id: "worktree_doctor",
             label: "Worktree doctor",
             command: "cargo xtask worktree doctor",
@@ -27897,6 +28205,12 @@ fn report_index_repo_ops_status(artifacts: &[ReportIndexRepoOpsArtifact]) -> Str
         return "fail".to_string();
     }
     if artifacts.iter().any(|artifact| artifact.status == "warn") {
+        return "warn".to_string();
+    }
+    if artifacts
+        .iter()
+        .any(|artifact| artifact.status == "actionable")
+    {
         return "warn".to_string();
     }
     if artifacts.iter().any(|artifact| !artifact.available) {
@@ -33093,7 +33407,8 @@ mod tests {
         parse_pr_triage_pull_requests, parse_reason, parse_repo_exposure_static_seams,
         parse_required_status_contexts, parse_sarif_policy_args, parse_sarif_policy_results,
         parse_static_language_allowlist, parse_string_value, parse_targeted_test_outcome_args,
-        pr_body_validation_warning, pr_checks_summary, pr_sensitive_file_reason, pr_shape_warnings,
+        pr_body_validation_warning, pr_checks_summary, pr_ready_json, pr_ready_markdown,
+        pr_ready_next_action, pr_ready_status, pr_sensitive_file_reason, pr_shape_warnings,
         pr_summary_body, pr_title_family, pr_triage_findings, pr_triage_json, pr_triage_markdown,
         precommit_report_body, public_contract_rows, read_lsp_cockpit_json_value,
         read_mutation_input_json, receipt_json, receipt_specs, receipt_status_from_reports,
@@ -33121,7 +33436,7 @@ mod tests {
     };
     use super::{
         DeclaredIntent, LocalContextFinding,
-        MUTATION_CALIBRATION_STATIC_WITHOUT_RUNTIME_SAMPLE_LIMIT, TestEfficiencyEntry,
+        MUTATION_CALIBRATION_STATIC_WITHOUT_RUNTIME_SAMPLE_LIMIT, PrReadyStep, TestEfficiencyEntry,
         TestEfficiencyValue, TestIntentDeclaration, TestIntentKind, TestIntentReportSummary,
         apply_duplicate_discriminator_groups, apply_test_intent_to_entries,
         build_mutation_calibration_report, parse_test_intent_manifest, test_efficiency_metrics,
@@ -38123,6 +38438,8 @@ jobs:
             ("generated-clean.md", "pass"),
             ("gh-pr-status.md", "warn"),
             ("gh-pr-status.json", "warn"),
+            ("pr-ready.md", "actionable"),
+            ("pr-ready.json", "actionable"),
             ("suggested-fixes.md", "pass"),
             ("suggested-fixes.patch", "present"),
             ("check-pr.md", "pass"),
@@ -38162,6 +38479,13 @@ jobs:
                 .find(|packet| packet.id == "worktree_doctor")
                 .map(|packet| packet.status.as_str()),
             Some("missing")
+        );
+        assert_eq!(
+            packets
+                .iter()
+                .find(|packet| packet.id == "pr_ready")
+                .map(|packet| packet.status.as_str()),
+            Some("warn")
         );
         assert_eq!(
             packets
@@ -38206,6 +38530,7 @@ jobs:
                 && packet["status"] == "incomplete"
                 && packet["next_command"] == "cargo xtask commands"
         }));
+        assert!(packets.iter().any(|packet| packet["id"] == "pr_ready"));
         assert!(packets.iter().any(|packet| packet["id"] == "pr_triage"));
         Ok(())
     }
@@ -44031,6 +44356,10 @@ jobs:
             XtaskCommand::PrTriageReport
         );
         assert_eq!(
+            XtaskCommand::parse(["pr-ready".to_string()]),
+            XtaskCommand::PrReady
+        );
+        assert_eq!(
             XtaskCommand::parse([
                 "impacted-evidence".to_string(),
                 "--label".to_string(),
@@ -44490,6 +44819,7 @@ covered_by = ["cargo xtask check-file-policy"]
 
         assert_eq!(find("shape")?.mutability, "mutating");
         assert_eq!(find("check-pr")?.mutability, "non_mutating_check");
+        assert_eq!(find("pr-ready")?.mutability, "report_only");
         assert_eq!(
             find("check-command-catalog")?.mutability,
             "non_mutating_check"
@@ -44529,6 +44859,78 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn pr_ready_packet_marks_required_failure_as_fail() -> Result<(), String> {
+        let steps = vec![
+            PrReadyStep {
+                id: "worktree_doctor",
+                command: "cargo xtask worktree doctor",
+                report: "target/ripr/reports/worktree-doctor.md",
+                required: true,
+                status: "fail".to_string(),
+                summary: "branch is behind origin/main".to_string(),
+            },
+            PrReadyStep {
+                id: "receipts_check",
+                command: "cargo xtask receipts check",
+                report: "target/ripr/reports/receipts.md",
+                required: false,
+                status: "needs_attention".to_string(),
+                summary: "missing receipt".to_string(),
+            },
+        ];
+
+        assert_eq!(pr_ready_status(&steps), "fail");
+        let json = pr_ready_json(&steps);
+        let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["mode"], "advisory");
+        assert_eq!(value["status"], "fail");
+        assert_eq!(value["steps"][0]["id"], "worktree_doctor");
+        assert_eq!(value["steps"][0]["required"], true);
+        assert!(
+            value["judgment_required"]
+                .as_array()
+                .ok_or("judgment_required must be an array")?
+                .iter()
+                .any(|entry| entry == "golden blessing")
+        );
+
+        let markdown = pr_ready_markdown(&steps);
+        assert!(markdown.contains("# ripr PR Ready"));
+        assert!(markdown.contains("Status: fail"));
+        assert!(markdown.contains("## Stop / Judgment Required"));
+        Ok(())
+    }
+
+    #[test]
+    fn pr_ready_packet_keeps_nonblocking_items_actionable() {
+        let steps = vec![
+            PrReadyStep {
+                id: "worktree_doctor",
+                command: "cargo xtask worktree doctor",
+                report: "target/ripr/reports/worktree-doctor.md",
+                required: true,
+                status: "pass".to_string(),
+                summary: "completed".to_string(),
+            },
+            PrReadyStep {
+                id: "receipts_check",
+                command: "cargo xtask receipts check",
+                report: "target/ripr/reports/receipts.md",
+                required: false,
+                status: "needs_attention".to_string(),
+                summary: "missing receipt".to_string(),
+            },
+        ];
+
+        assert_eq!(pr_ready_status(&steps), "actionable");
+        assert_eq!(
+            pr_ready_next_action(&steps),
+            "review the attention items, then run cargo xtask check-pr for full gate receipts"
+        );
+    }
+
+    #[test]
     fn known_commands_include_current_report_and_policy_commands() {
         let commands = known_commands();
         assert!(commands.contains(&"commands"));
@@ -44546,6 +44948,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(commands.contains(&"lsp-cockpit-report"));
         assert!(commands.contains(&"operator-cockpit"));
         assert!(commands.contains(&"operator-cockpit-report"));
+        assert!(commands.contains(&"pr-ready"));
         assert!(commands.contains(&"release-readiness --version <version>"));
         assert!(commands.contains(&"targeted-test-outcome --before <path> --after <path>"));
         assert!(commands.contains(&"mutation-calibration [root] --mutants-json <path>"));

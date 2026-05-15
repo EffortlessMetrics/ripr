@@ -285,6 +285,7 @@ cargo xtask shape
 cargo xtask fix-pr
 cargo xtask commands
 cargo xtask pr-summary
+cargo xtask pr-ready
 cargo xtask pr-triage-report
 cargo xtask gh-pr-status --pr <number>
 cargo xtask suggested-fixes
@@ -313,6 +314,10 @@ argument-dependent commands.
 stay aligned, that write surfaces are documented, and that external-state
 mutations remain judgment-required.
 `pr-summary` writes `target/ripr/reports/pr-summary.md` from git diff/status.
+`pr-ready` writes `target/ripr/reports/pr-ready.md` and
+`target/ripr/reports/pr-ready.json` by composing worktree doctor, command
+catalog, PR summary, critic, receipts check, suggested fixes, generated-clean,
+and badge ownership into one advisory local operator packet.
 `pr-triage-report` writes the advisory open-board hygiene report as Markdown
 and JSON.
 `gh-pr-status --pr <number>` writes a read-only merge-readiness packet for one
@@ -336,9 +341,9 @@ of `ripr`'s own Rust test oracles. `dogfood` writes a non-blocking
 `ripr`-on-`ripr` report from stable fixture diffs. `critic` writes an advisory
 adversarial review packet from the current diff, reports, and receipts.
 `reports index` writes a reviewer front door for generated reports and includes
-the repo-ops packet statuses for command mutability, worktree doctor, PR triage,
-per-PR merge readiness, generated-clean, badge ownership, command catalog
-coverage, critic, receipts, suggested fixes, and `check-pr`.
+the repo-ops packet statuses for command mutability, PR-ready, worktree doctor,
+PR triage, per-PR merge readiness, generated-clean, badge ownership, command
+catalog coverage, critic, receipts, suggested fixes, and `check-pr`.
 `receipts` writes machine-readable gate evidence under `target/ripr/receipts`,
 and `receipts check` validates the receipt set.
 
