@@ -34,6 +34,8 @@ struct FindingAlignmentSummary {
     unknown: usize,
     calibrated_supported: usize,
     uncalibrated: usize,
+    repair_route_coverage: usize,
+    actionable_items_without_repair_route: usize,
     presentation_text_total: usize,
     presentation_text_user_visible: usize,
     presentation_text_observed: usize,
@@ -72,6 +74,7 @@ struct FindingAlignmentItem {
     group_reason: String,
     why: String,
     recommended_repair: String,
+    repair_route: Option<FindingAlignmentRepairRoute>,
     related_test: Option<FindingAlignmentRelatedTest>,
     verify_command: String,
     static_limitations: Vec<FindingAlignmentStaticLimitation>,
@@ -106,6 +109,12 @@ struct FindingAlignmentRelatedTest {
     name: String,
     file: String,
     line: usize,
+}
+
+struct FindingAlignmentRepairRoute {
+    repair_kind: String,
+    target_test_type: String,
+    suggested_assertion: String,
 }
 
 struct FindingAlignmentPresentationText {
@@ -342,6 +351,13 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
         .filter(|item| item.confidence.basis == "calibrated")
         .count();
     let uncalibrated = items.len().saturating_sub(calibrated_supported);
+    let repair_route_coverage = items
+        .iter()
+        .filter(|item| item.gap_state == "actionable")
+        .filter(|item| item_has_repair_route(item))
+        .count();
+    let actionable_items_without_repair_route =
+        actionable_gaps.saturating_sub(repair_route_coverage);
     let presentation_items = items
         .iter()
         .filter(|item| item.evidence_class == PRESENTATION_TEXT_CLASS)
@@ -525,6 +541,8 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
         unknown,
         calibrated_supported,
         uncalibrated,
+        repair_route_coverage,
+        actionable_items_without_repair_route,
         presentation_text_total: presentation_items.len(),
         presentation_text_user_visible,
         presentation_text_observed,
@@ -565,6 +583,16 @@ fn presentation_text_item(
     } else {
         GROUP_REASON_OWNER
     };
+    let repair_route = repair_route_for(
+        &classification.gap_state,
+        &classification.repair_kind,
+        &classification.target_test_type,
+        &classification.suggested_assertion,
+    );
+    debug_assert!(
+        classification.gap_state != "actionable" || repair_route.is_some(),
+        "actionable finding alignment item must carry a concrete repair route"
+    );
 
     FindingAlignmentItem {
         canonical_gap_id: format!("presentation_text::{constant_name}"),
@@ -576,6 +604,7 @@ fn presentation_text_item(
         group_reason: group_reason.to_string(),
         why: classification.why,
         recommended_repair: classification.recommended_repair,
+        repair_route,
         related_test: classification.related_test,
         verify_command: "cargo xtask evidence-quality-scorecard".to_string(),
         static_limitations: classification.static_limitations,
@@ -608,6 +637,16 @@ fn config_policy_item(
     } else {
         GROUP_REASON_OWNER
     };
+    let repair_route = repair_route_for(
+        &classification.gap_state,
+        &classification.repair_kind,
+        &classification.target_test_type,
+        &classification.suggested_assertion,
+    );
+    debug_assert!(
+        classification.gap_state != "actionable" || repair_route.is_some(),
+        "actionable finding alignment item must carry a concrete repair route"
+    );
 
     FindingAlignmentItem {
         canonical_gap_id: format!("config_or_policy_constant::{constant_name}"),
@@ -619,6 +658,7 @@ fn config_policy_item(
         group_reason: group_reason.to_string(),
         why: classification.why,
         recommended_repair: classification.recommended_repair,
+        repair_route,
         related_test: classification.related_test,
         verify_command: "cargo xtask evidence-quality-scorecard".to_string(),
         static_limitations: classification.static_limitations,
@@ -1126,6 +1166,43 @@ fn observer_for_findings(
         .map(|(_, observer, test)| (observer, related_test_for(test)))
 }
 
+fn repair_route_for(
+    gap_state: &str,
+    repair_kind: &str,
+    target_test_type: &str,
+    suggested_assertion: &str,
+) -> Option<FindingAlignmentRepairRoute> {
+    if gap_state != "actionable" {
+        return None;
+    }
+
+    if route_field_is_missing(repair_kind)
+        || route_field_is_missing(target_test_type)
+        || suggested_assertion.trim().is_empty()
+    {
+        return None;
+    }
+
+    Some(FindingAlignmentRepairRoute {
+        repair_kind: repair_kind.to_string(),
+        target_test_type: target_test_type.to_string(),
+        suggested_assertion: suggested_assertion.to_string(),
+    })
+}
+
+fn item_has_repair_route(item: &FindingAlignmentItem) -> bool {
+    item.repair_route.as_ref().is_some_and(|route| {
+        !route_field_is_missing(&route.repair_kind)
+            && !route_field_is_missing(&route.target_test_type)
+            && !route.suggested_assertion.trim().is_empty()
+    })
+}
+
+fn route_field_is_missing(value: &str) -> bool {
+    let value = value.trim();
+    value.is_empty() || value == "unknown" || value == "none" || value == "no_action"
+}
+
 fn observer_for_related_test(test: &RelatedTest) -> Option<(u8, &'static str)> {
     let text = normalize_token_text(&format!("{} {}", test.name, test.file.display()));
     let strong_oracle = matches!(
@@ -1373,7 +1450,7 @@ fn summary_json(out: &mut String, summary: &FindingAlignmentSummary) {
         summary.raw_signals as f64 / summary.canonical_items as f64
     };
     out.push_str(&format!(
-        "{{\"raw_signals\":{},\"canonical_items\":{},\"aligned_raw_findings\":{},\"unaligned_raw_findings\":{},\"raw_to_canonical_ratio\":{ratio:.2},\"duplicate_groups_total\":{},\"actionable_gaps\":{},\"already_observed\":{},\"internal_no_action\":{},\"static_limitations\":{},\"unknown\":{},\"calibrated_supported\":{},\"uncalibrated\":{},\"presentation_text_total\":{},\"presentation_text_user_visible\":{},\"presentation_text_observed\":{},\"presentation_text_unobserved\":{},\"presentation_text_internal_only\":{},\"presentation_text_visibility_unknown\":{},\"presentation_text_observer_unknown\":{},\"presentation_text_duplicate_groups\":{},\"presentation_text_actionable_snapshot\":{},\"presentation_text_actionable_output_repairs\":{},\"presentation_text_no_action\":{},\"presentation_text_static_limitations\":{},\"config_policy_constant_total\":{},\"config_policy_user_visible\":{},\"config_policy_observed\":{},\"config_policy_unobserved\":{},\"config_policy_internal_only\":{},\"config_policy_flow_unknown\":{},\"config_policy_observer_unknown\":{},\"config_policy_duplicate_groups\":{},\"config_policy_actionable_output_observer\":{},\"config_policy_actionable_behavior_discriminator\":{},\"config_policy_no_action\":{},\"config_policy_static_limitations\":{},\"config_policy_repair_route_coverage\":{},\"config_policy_verify_command_coverage\":{}}}",
+        "{{\"raw_signals\":{},\"canonical_items\":{},\"aligned_raw_findings\":{},\"unaligned_raw_findings\":{},\"raw_to_canonical_ratio\":{ratio:.2},\"duplicate_groups_total\":{},\"actionable_gaps\":{},\"already_observed\":{},\"internal_no_action\":{},\"static_limitations\":{},\"unknown\":{},\"calibrated_supported\":{},\"uncalibrated\":{},\"repair_route_coverage\":{},\"actionable_items_without_repair_route\":{},\"presentation_text_total\":{},\"presentation_text_user_visible\":{},\"presentation_text_observed\":{},\"presentation_text_unobserved\":{},\"presentation_text_internal_only\":{},\"presentation_text_visibility_unknown\":{},\"presentation_text_observer_unknown\":{},\"presentation_text_duplicate_groups\":{},\"presentation_text_actionable_snapshot\":{},\"presentation_text_actionable_output_repairs\":{},\"presentation_text_no_action\":{},\"presentation_text_static_limitations\":{},\"config_policy_constant_total\":{},\"config_policy_user_visible\":{},\"config_policy_observed\":{},\"config_policy_unobserved\":{},\"config_policy_internal_only\":{},\"config_policy_flow_unknown\":{},\"config_policy_observer_unknown\":{},\"config_policy_duplicate_groups\":{},\"config_policy_actionable_output_observer\":{},\"config_policy_actionable_behavior_discriminator\":{},\"config_policy_no_action\":{},\"config_policy_static_limitations\":{},\"config_policy_repair_route_coverage\":{},\"config_policy_verify_command_coverage\":{}}}",
         summary.raw_signals,
         summary.canonical_items,
         summary.aligned_raw_findings,
@@ -1386,6 +1463,8 @@ fn summary_json(out: &mut String, summary: &FindingAlignmentSummary) {
         summary.unknown,
         summary.calibrated_supported,
         summary.uncalibrated,
+        summary.repair_route_coverage,
+        summary.actionable_items_without_repair_route,
         summary.presentation_text_total,
         summary.presentation_text_user_visible,
         summary.presentation_text_observed,
@@ -1451,6 +1530,8 @@ fn item_json(out: &mut String, item: &FindingAlignmentItem, indent: usize) {
         &item.recommended_repair,
         true,
     );
+    repair_route_json(out, item.repair_route.as_ref(), indent + 1);
+    out.push_str(",\n");
     related_test_json(out, item.related_test.as_ref(), indent + 1);
     out.push_str(",\n");
     field(
@@ -1471,6 +1552,41 @@ fn item_json(out: &mut String, item: &FindingAlignmentItem, indent: usize) {
     config_policy_json(out, item.config_policy.as_ref(), indent + 1);
     out.push('\n');
     out.push_str(&format!("{sp}}}"));
+}
+
+fn repair_route_json(
+    out: &mut String,
+    repair_route: Option<&FindingAlignmentRepairRoute>,
+    indent: usize,
+) {
+    out.push_str(&format!("{}\"repair_route\": ", "  ".repeat(indent)));
+    let Some(repair_route) = repair_route else {
+        out.push_str("null");
+        return;
+    };
+    out.push_str("{\n");
+    field(
+        out,
+        indent + 1,
+        "repair_kind",
+        &repair_route.repair_kind,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "target_test_type",
+        &repair_route.target_test_type,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "suggested_assertion",
+        &repair_route.suggested_assertion,
+        false,
+    );
+    out.push_str(&format!("{}}}", "  ".repeat(indent)));
 }
 
 fn related_test_json(
@@ -1945,10 +2061,19 @@ mod tests {
         let item = &report.items[0];
 
         assert_eq!(report.summary.actionable_gaps, 1);
+        assert_eq!(report.summary.repair_route_coverage, 1);
+        assert_eq!(report.summary.actionable_items_without_repair_route, 0);
         assert_eq!(report.summary.static_limitations, 0);
         assert_eq!(item.canonical_item_kind, "gap");
         assert_eq!(item.gap_state, "actionable");
         assert_eq!(item.actionability, "add_output_observer");
+        let repair_route = repair_route_for_item(item)?;
+        assert_eq!(repair_route.repair_kind, "output_observer");
+        assert_eq!(repair_route.target_test_type, "help_output_snapshot");
+        assert_eq!(
+            repair_route.suggested_assertion,
+            "Assert CLI help output includes the HELP_DEVICE_LABEL text."
+        );
         let presentation_text = presentation_text_for(item)?;
         assert_eq!(presentation_text.visibility, "user_visible");
         assert_eq!(presentation_text.observer, "none");
@@ -2176,6 +2301,8 @@ mod tests {
         let config_policy = config_policy_for(item)?;
 
         assert_eq!(report.summary.actionable_gaps, 1);
+        assert_eq!(report.summary.repair_route_coverage, 1);
+        assert_eq!(report.summary.actionable_items_without_repair_route, 0);
         assert_eq!(report.summary.config_policy_user_visible, 1);
         assert_eq!(report.summary.config_policy_unobserved, 1);
         assert_eq!(report.summary.config_policy_actionable_output_observer, 1);
@@ -2184,12 +2311,69 @@ mod tests {
         assert_eq!(item.canonical_item_kind, "gap");
         assert_eq!(item.gap_state, "actionable");
         assert_eq!(item.actionability, "add_output_observer");
+        let repair_route = repair_route_for_item(item)?;
+        assert_eq!(repair_route.repair_kind, "output_observer");
+        assert_eq!(repair_route.target_test_type, "report_render_or_golden");
+        assert_eq!(
+            repair_route.suggested_assertion,
+            "Assert the rendered report output includes the REPORT_POLICY_LABEL value or selected behavior."
+        );
         assert_eq!(config_policy.role, "rendered_policy_label");
         assert_eq!(config_policy.visibility, "user_visible");
         assert_eq!(config_policy.observer, "none");
         assert_eq!(config_policy.repair_kind, "output_observer");
         assert_eq!(config_policy.target_test_type, "report_render_or_golden");
         assert!(!item.recommended_repair.contains("mutation"));
+        Ok(())
+    }
+
+    #[test]
+    fn actionable_canonical_items_require_repair_routes() -> Result<(), String> {
+        let findings = vec![
+            finding_in_file(
+                "src/help.rs",
+                "help-decl",
+                18,
+                ExposureClass::Exposed,
+                ProbeFamily::FieldConstruction,
+                "pub const HELP_DEVICE_LABEL: &str =",
+            ),
+            finding_in_file(
+                "src/help.rs",
+                "help-literal",
+                19,
+                ExposureClass::WeaklyExposed,
+                ProbeFamily::StaticUnknown,
+                "\"Device label\";",
+            ),
+            finding_in_file(
+                "src/validation.rs",
+                "validation-decl",
+                40,
+                ExposureClass::Exposed,
+                ProbeFamily::FieldConstruction,
+                "pub const VALIDATION_THRESHOLD: i32 = 7;",
+            ),
+        ];
+
+        let report = report_for_findings(&findings)
+            .ok_or_else(|| "actionable items should align".to_string())?;
+
+        assert_eq!(report.summary.actionable_gaps, 2);
+        assert_eq!(report.summary.repair_route_coverage, 2);
+        assert_eq!(report.summary.actionable_items_without_repair_route, 0);
+        for item in report
+            .items
+            .iter()
+            .filter(|item| item.gap_state == "actionable")
+        {
+            let repair_route = repair_route_for_item(item)?;
+            assert_ne!(repair_route.repair_kind, "unknown");
+            assert_ne!(repair_route.target_test_type, "unknown");
+            assert!(!repair_route.suggested_assertion.trim().is_empty());
+            assert!(!item.recommended_repair.contains("mutation"));
+        }
+
         Ok(())
     }
 
@@ -2454,6 +2638,14 @@ mod tests {
         item.config_policy
             .as_ref()
             .ok_or_else(|| "item should include config_policy".to_string())
+    }
+
+    fn repair_route_for_item(
+        item: &super::FindingAlignmentItem,
+    ) -> Result<&super::FindingAlignmentRepairRoute, String> {
+        item.repair_route
+            .as_ref()
+            .ok_or_else(|| "actionable item should include repair_route".to_string())
     }
 
     fn stage(summary: &str) -> StageEvidence {

@@ -144,6 +144,7 @@ The planned additive evidence-record subset is:
   "group_reason": "declaration_and_literal_same_text_constant",
   "why": "Changed presentation text could not be traced to or away from a user-visible output sink.",
   "recommended_repair": "Trace the string constant to a rendered output path or confirm it is internal-only.",
+  "repair_route": null,
   "related_test": null,
   "verify_command": "cargo xtask evidence-quality-scorecard",
   "static_limitations": [
@@ -525,7 +526,9 @@ Planned Lane 1 slices:
   golden/snapshot-backed text, internal-only labels, and visibility-unknown
   limitations without treating text alone as user test debt.
 - `analysis/finding-alignment-repair-routes` adds concrete repairs, target test
-  types, suggested assertion shapes, and verify commands.
+  types, suggested assertion shapes, and verify commands. Actionable supported
+  classes also expose the normalized top-level `repair_route` so downstream
+  consumers do not parse class-specific fields to determine the user repair.
 - `report/finding-alignment-quality` adds scorecard and trend metrics.
 - `docs/canonical-gap-action-consumer-handoff` documents downstream
   consumption.
@@ -552,4 +555,6 @@ Alignment scorecard and trend work should expose:
 - `finding_alignment_calibrated_supported_total`;
 - `finding_alignment_uncalibrated_total`;
 - `finding_alignment_visibility_unknown_total`;
-- `finding_alignment_presentation_text_actionable_total`.
+- `finding_alignment_presentation_text_actionable_total`;
+- `finding_alignment_repair_route_coverage`;
+- `finding_alignment_actionable_items_without_repair_route`.
