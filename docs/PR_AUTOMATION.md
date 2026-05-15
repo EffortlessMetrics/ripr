@@ -54,6 +54,7 @@ cargo xtask check-local-context
 cargo xtask check-droid-review-config
 cargo xtask check-spec-format
 cargo xtask check-spec-numbering
+cargo xtask check-command-catalog
 cargo xtask check-supply-chain
 cargo xtask ci-fast
 ```
@@ -77,6 +78,12 @@ Current `shape` responsibilities:
 `mutating`, `non_mutating_check`, `report_only`, `external_state_read`,
 `external_state_mutating`, or `argument_dependent`, and flags commands that
 require judgment before use.
+
+`check-command-catalog` writes `target/ripr/reports/command-catalog.md` and
+fails when the help catalog and mutability catalog drift apart, when a command
+uses an unknown mutability class, when mutating commands omit their write
+surface, when external-state mutations are not judgment-required, or when an
+argument-dependent command does not explain when it writes.
 
 `pr-summary` writes `target/ripr/reports/pr-summary.md` from git diff and git
 status. It classifies changed paths into production, evidence, docs, policy,
@@ -223,7 +230,9 @@ surface, advisory reports, and suggested next commands. The index also carries
 repo-ops packet status for command mutability, worktree doctor, PR triage,
 per-PR merge readiness, generated-clean, badge ownership, critic, receipts,
 suggested fixes, and `check-pr` artifacts so agents can consume the operating
-packet as JSON instead of scraping prose.
+packet as JSON instead of scraping prose. The command catalog check packet is
+included next to the catalog itself so catalog drift is visible in the same
+front-door index.
 
 `receipts` writes machine-readable gate receipts under `target/ripr/receipts/`
 for shape, fix-pr, ci-fast, check-pr, fixtures, goldens, test-oracle, dogfood,
