@@ -75,6 +75,10 @@ Planned scope:
 - `cargo xtask pr-triage-report` now writes agent-readable JSON next to the
   Markdown queue report so open-board risks can be consumed without scraping
   prose.
+- `cargo xtask gh-pr-status --pr <number>` now writes agent-readable JSON next
+  to the Markdown merge-readiness packet so agents can consume merge state,
+  outstanding checks, Droid status, reviews, and the safe next action without
+  scraping prose.
 - Added `RIPR-SPEC-0048` for Lane 1 config/policy constant evidence, defining
   how internal policy metadata, rendered config/report labels, behavior
   selectors, named limitations, repair routes, and must-not-claim guards should

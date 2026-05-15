@@ -375,7 +375,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
         command_entry(
             "gh-pr-status --pr <number>",
             "external_state_read",
-            "target/ripr/reports/gh-pr-status.md",
+            "target/ripr/reports/gh-pr-status.{md,json}",
             false,
             "Reads one GitHub PR and reports safe next action.",
         ),
