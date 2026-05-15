@@ -28,7 +28,8 @@ Linked ADRs:
 
 Linked work items:
 
-- To be recorded when the campaign manifest opens.
+- `plans/rust-usable-gap-projection/implementation-plan.md`
+- `.ripr/goals/archive/2026-05-15-rust-usable-gap-projection.toml`
 
 ## Problem
 
@@ -192,11 +193,13 @@ Each slice follows the [scoped PR contract](../SCOPED_PR_CONTRACT.md).
 9. `comments/repair-card-projection`
 10. `editor/gap-work-packet-projection`
 11. `analysis/presentation-output-contract-gap-route`
-12. `dogfood/gap-projection-repair-receipts`
+12. `docs/rust-gap-repair-adoption`
 13. `campaign/rust-usable-gap-projection-closeout`
 
 Keep implementation slices Rust-first and projection-safe. Do not mix badge,
 gate, PR comment, LSP, and presentation-text behavior in one production PR.
+The completed sequence and proof commands are recorded in
+[`plans/rust-usable-gap-projection/implementation-plan.md`](../../plans/rust-usable-gap-projection/implementation-plan.md).
 
 ## Evidence plan
 
