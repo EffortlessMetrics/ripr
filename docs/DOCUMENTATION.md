@@ -11,6 +11,8 @@ Current and planned tutorial docs:
 
 - [Quickstart](QUICKSTART.md) - first-hour paths for VS Code, CI, CLI, and
   agent or reviewer handoff
+- [First successful PR workflow](FIRST_PR_WORKFLOW.md) - one Rust PR,
+  one repairable gap, one focused proof, one receipt
 - README quick start
 - future first-extension-install walkthrough
 - future first-fixture walkthrough
@@ -67,6 +69,7 @@ Current how-to docs:
 - [Lane 4 PR / CI review cockpit tracker](lanes/LANE_4_PR_CI_REVIEW.md)
 - [Release](RELEASE.md)
 - [Installation verification](INSTALLATION_VERIFICATION.md)
+- [First successful PR workflow](FIRST_PR_WORKFLOW.md)
 - [Publishing](PUBLISHING.md)
 - [Editor extension](EDITOR_EXTENSION.md)
 - [Editor gap cockpit workflow](EDITOR_GAP_COCKPIT_WORKFLOW.md)
@@ -182,6 +185,7 @@ Current explanation docs:
 - [ADRs](adr/)
 - [Specs](specs/)
 - [Agent workflows](AGENT_WORKFLOWS.md)
+- [First successful PR workflow](FIRST_PR_WORKFLOW.md)
 - [Agent dispatch workflow](AGENT_DISPATCH_WORKFLOW.md)
 - [Editor agent integration](EDITOR_AGENT_INTEGRATION.md)
 - [Editor gap cockpit workflow](EDITOR_GAP_COCKPIT_WORKFLOW.md)
