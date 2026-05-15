@@ -398,6 +398,37 @@ suite('Extension Smoke', () => {
     }
   });
 
+  test('copyContext copies first repair packets without LSP fallback', async () => {
+    const context = createControllerTestContext({});
+    const packet = [
+      'RIPR first repair packet',
+      '',
+      'Gap identity: gap:rust:pricing',
+      'Language: rust',
+      'Suggested action:',
+      '- Add one focused assertion.',
+      'Verify command:',
+      'ripr agent verify --root . --json',
+      'Receipt command:',
+      'ripr agent receipt --root . --json',
+      'Limits and non-claims:',
+      '- Static editor evidence only.'
+    ].join('\n');
+    try {
+      await context.controller.start();
+      await context.controller.copyContext({
+        label: 'first_repair_packet',
+        packet
+      });
+
+      assert.deepStrictEqual(context.client.requests, []);
+      assert.strictEqual(context.clipboardWrites[0], packet);
+      assert.ok(context.infoMessages.at(-1)?.includes('first repair packet'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
   test('status bar reports server readiness and refresh state', async () => {
     const context = createControllerTestContext({});
     try {
