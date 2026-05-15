@@ -34,6 +34,12 @@ execution, coverage adequacy claims, generated tests, provider calls, automatic
 source edits, branch protection changes, default CI blocking, preview-language
 promotion, or a public crate split.
 
+Durable restart context:
+
+- [implementation plan](../../plans/rust-usable-gap-projection/implementation-plan.md)
+- [agent route](../../plans/rust-usable-gap-projection/agent-context-route.md)
+- [closed manifest](../../.ripr/goals/archive/2026-05-15-rust-usable-gap-projection.toml)
+
 ## Prompt-To-Artifact Audit
 
 | Requirement | Artifact | Validation |
