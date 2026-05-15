@@ -55,6 +55,7 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [Rust Usable Gap Projection closeout](2026-05-15-rust-usable-gap-projection-closeout.md)
 - [Editor Gap Cockpit closeout](2026-05-15-editor-gap-cockpit-closeout.md)
 - [Generated evidence discipline closeout](2026-05-14-generated-evidence-discipline-closeout.md)
 - [Lane 1 User-Visible Output Evidence closeout](2026-05-14-user-visible-output-evidence-closeout.md)

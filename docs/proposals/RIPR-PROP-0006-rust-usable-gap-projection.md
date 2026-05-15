@@ -1,6 +1,6 @@
 # RIPR-PROP-0006: Rust Usable Gap Projection
 
-Status: proposed
+Status: accepted
 
 Owner: ripr maintainers
 
