@@ -7915,6 +7915,7 @@ fixtures/boundary_gap/expected/pr-review-front-panel/<case>/pr-review-front-pane
 fixtures/boundary_gap/expected/pr-review-front-panel/<case>/pr-review-front-panel.md
 fixtures/boundary_gap/expected/report-packet-index/<case>/index.json
 fixtures/boundary_gap/expected/report-packet-index/<case>/index.md
+fixtures/finding-alignment-dogfood/corpus.json
 ```
 
 The report is advisory. It runs `ripr check --mode fast` against stable fixture
@@ -7934,7 +7935,11 @@ receipts are read from `fixtures/boundary_gap/expected/first-useful-action/`.
 The checked front-panel receipts are read from
 `fixtures/boundary_gap/expected/pr-review-front-panel/`. The checked
 report-packet index receipts are read from
-`fixtures/boundary_gap/expected/report-packet-index/`.
+`fixtures/boundary_gap/expected/report-packet-index/`. The checked finding
+alignment receipts are read from `fixtures/finding-alignment-dogfood/` and
+record real RIPR PR examples where raw findings remain supporting evidence,
+canonical items are the countable unit, actionable items have repair and
+verification routes, and static limitations name analyzer repair routes.
 The calibrated-gate dogfood case expects a non-zero evaluator exit only for the
 explicit blocking mode and treats that as healthy when the written decision
 report has the expected `blocked` status and count.
@@ -8087,6 +8092,36 @@ JSON shape:
         "default_advisory": true,
         "artifact_upload": true,
         "language_grouping_status": "deferred",
+        "errors": []
+      }
+    ]
+  },
+  "finding_alignment": {
+    "default_ci_blocking": false,
+    "receipt_dir": "fixtures/finding-alignment-dogfood",
+    "cases": [
+      {
+        "name": "config_policy_rendered_label_unobserved",
+        "source_pr": "EffortlessMetrics/ripr#1016",
+        "evidence_class": "config_or_policy_constant",
+        "raw_findings_total": 2,
+        "canonical_items_total": 1,
+        "gap_state": "actionable",
+        "actionability": "add_output_observer",
+        "user_outcome": "actionable_gap",
+        "repair_kind": "output_observer",
+        "target_test_type": "report_render_or_golden",
+        "verify_command": "cargo xtask evidence-quality-scorecard",
+        "static_limitation_category": null,
+        "static_limitation_repair_route": null,
+        "raw_findings_supporting_only": true,
+        "recommended_repair": "Add or update a report-render, config-output, snapshot, or golden observer for the rendered policy label.",
+        "must_not_claim": [
+          "Do not count declaration and literal findings as separate user actions.",
+          "Do not infer actionability from raw static class.",
+          "Do not recommend mutation testing before output-observer work."
+        ],
+        "reason": "A rendered config or policy label with no supported observer should become one actionable output-observer item.",
         "errors": []
       }
     ]
