@@ -1,7 +1,7 @@
 # Handoff: Finding Alignment Consumer Contract v2
 
 Date: 2026-05-16
-Branch / PR: `lane1-finding-alignment-contract-v2` / pending
+Branch / PR: `lane1-finding-alignment-contract-v2` / #1042
 Latest prerequisite PR: #1034 `dogfood: record finding alignment examples`
 (commit `613c640f`)
 
