@@ -2747,6 +2747,7 @@ code = [
 outputs = [
   "docs/specs/RIPR-SPEC-0043-presentation-text-evidence.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/handoffs/2026-05-16-finding-alignment-consumer-contract-v2.md",
   "docs/handoffs/2026-05-14-presentation-text-consumer-handoff.md",
   "docs/handoffs/2026-05-14-user-visible-output-evidence-closeout.md",
   "docs/specs/README.md",
@@ -3097,6 +3098,7 @@ outputs = [
   "docs/specs/RIPR-SPEC-0048-config-policy-constant-evidence.md",
   "docs/specs/RIPR-SPEC-0035-evidence-quality-benchmark-corpus.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/handoffs/2026-05-16-finding-alignment-consumer-contract-v2.md",
   "docs/specs/README.md",
   "fixtures/evidence-quality-benchmark/README.md",
   "fixtures/finding-alignment-dogfood/SPEC.md",
