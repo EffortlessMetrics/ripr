@@ -1850,9 +1850,8 @@ fn config_policy_json(
 #[cfg(test)]
 mod tests {
     use super::{
-        GROUP_REASON_CONFIG_POLICY, GROUP_REASON_DECL_LITERAL, GROUP_REASON_OWNER,
-        parse_presentation_text_declaration, parse_string_literal, report_for_findings,
-        verify_command_is_missing,
+        GROUP_REASON_DECL_LITERAL, GROUP_REASON_OWNER, parse_presentation_text_declaration,
+        parse_string_literal, report_for_findings, verify_command_is_missing,
     };
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, OracleKind,
