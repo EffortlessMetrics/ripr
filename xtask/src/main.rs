@@ -37399,6 +37399,72 @@ mod tests {
         Ok(())
     }
 
+    fn first_successful_pr_corpus_path() -> Result<PathBuf, String> {
+        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask manifest must have workspace parent".to_string())?;
+        Ok(repo_root.join("fixtures/first_successful_pr/corpus.json"))
+    }
+
+    #[test]
+    fn first_successful_pr_corpus_is_valid() -> Result<(), String> {
+        let corpus = first_successful_pr_corpus_path()?;
+        let mut violations = Vec::new();
+        super::validate_first_successful_pr_fixture_corpus_at(&corpus, &mut violations)?;
+
+        assert_eq!(violations, Vec::<String>::new());
+        Ok(())
+    }
+
+    #[test]
+    fn first_successful_pr_corpus_reports_contract_drift() -> Result<(), String> {
+        let root = temp_dir("first-successful-pr-invalid");
+        let corpus = root.join("corpus.json");
+        write(
+            &corpus,
+            r#"{
+  "kind": "wrong",
+  "schema_version": "0.2",
+  "spec": "RIPR-SPEC-9999",
+  "cases": [
+    {
+      "id": "boundary-gap",
+      "description": "bad case",
+      "expected_status": "blocked",
+      "expected_state": "wrong_state"
+    },
+    {
+      "id": "boundary-gap",
+      "description": "duplicate case",
+      "expected_status": "actionable",
+      "expected_state": "top_gap"
+    },
+    {
+      "id": "output-contract-gap",
+      "description": "wrong status case",
+      "expected_status": "blocked",
+      "expected_state": "wrong_state"
+    }
+  ]
+}"#,
+        );
+        let mut violations = Vec::new();
+        super::validate_first_successful_pr_fixture_corpus_at(&corpus, &mut violations)?;
+        let report = violations.join("\n");
+
+        assert!(report.contains("kind must be first_successful_pr_corpus"));
+        assert!(report.contains("schema_version must be 0.1"));
+        assert!(report.contains("spec must be RIPR-SPEC-0051"));
+        assert!(report.contains("case boundary-gap is duplicated"));
+        assert!(report.contains("case output-contract-gap must be actionable/top_gap"));
+        assert!(report.contains("is missing case empty-diff"));
+        assert!(report.contains("is missing case blocked-ledger"));
+        assert!(report.contains("inputs/reports/gap-decision-ledger.json"));
+        assert!(report.contains("expected/start-here.json"));
+        assert!(report.contains("expected/start-here.md"));
+        Ok(())
+    }
+
     #[test]
     fn gap_decision_ledger_reports_contract_drift() {
         let corpus = serde_json::json!({
