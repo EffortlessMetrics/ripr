@@ -1610,9 +1610,13 @@ agent receipt, gate decision, coverage/grip frontier, and editor context
 inputs when those files exist, then writes and uploads
 `target/ripr/reports/first-useful-action.json` and
 `target/ripr/reports/first-useful-action.md` with the normal report packet. The
-job summary appends the recommended next test at a glance plus the Markdown report. If
-no inputs exist, the step logs that no first-useful-action inputs were
-available and leaves CI pass/fail behavior unchanged.
+job summary appends a first-run status card near the top of the advisory
+summary, then the recommended next test at a glance plus the Markdown report.
+The first-run card names the selected gap or no-action fallback, repair target,
+agent packet command, verify command, receipt command, artifact paths, and the
+advisory gate boundary. If no inputs exist, the step logs that no
+first-useful-action inputs were available, the summary shows the regeneration
+command, and CI pass/fail behavior is unchanged.
 
 See [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) for how
 developers, reviewers, and coding agents should read that summary, act on the
