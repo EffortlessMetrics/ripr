@@ -60,6 +60,7 @@ specs and fixtures justify a higher status.
 | Diff (paths + spans) | yes | Same diff inputs as the Rust path. |
 | Source file content | yes | Read through the existing file abstraction. |
 | Repo configuration | yes | `ripr.toml` declares which languages are enabled. |
+| Cargo feature set | yes | Determines which preview adapters are available in the current binary. |
 | Language router decision | yes | Maps each changed file to at most one adapter. |
 | Existing report inputs | optional | Lane 4 producers continue to consume their existing artifacts; language metadata is additive. |
 
@@ -122,6 +123,15 @@ The default `enabled` value is `["rust"]`. Preview adapters do not run
 when absent from `enabled`. A `--languages rust,typescript` CLI flag
 overrides config when needed.
 
+Runtime opt-in is not the same as build-time availability. The published
+default build may include preview adapter support, but Rust-only binaries
+are allowed. If `languages.enabled` names a preview language that was not
+compiled into the current binary, config validation must fail closed with
+an actionable message naming the missing Cargo feature, such as
+`lang-typescript` or `lang-python`. The editor and other projection
+surfaces must treat that as unavailable adapter state, not as a reason to
+invent diagnostics.
+
 ## Required Evidence
 
 The contract is supported only when the implementation can show:
@@ -140,6 +150,8 @@ The contract is supported only when the implementation can show:
   `.js`, `.jsx`, `.py`, unmatched extensions, and excluded paths.
 - `ripr.toml` parses `[languages] enabled` and rejects unsupported
   values with a clear error.
+- `ripr.toml` rejects languages whose adapter Cargo feature is unavailable
+  in the current binary with a clear error naming the missing feature.
 - Generated CI fixtures cover Rust-default behavior (unchanged) and
   language-grouped advisory summaries when more than Rust is enabled.
 - `policy/architecture.txt`, `policy/workspace_shape.txt`,
@@ -153,6 +165,8 @@ The contract is supported only when the implementation can show:
 
 - No runtime mutation execution.
 - No default-on preview adapters.
+- No requirement that every distributed binary ships every preview parser
+  dependency.
 - No new published crate, binary, LSP server, or editor extension.
 - No typechecker, build-graph, or runtime tool dependency by default.
 - No generated tests.

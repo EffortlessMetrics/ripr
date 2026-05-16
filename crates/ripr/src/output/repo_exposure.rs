@@ -11,6 +11,7 @@ use crate::analysis::canonical_gap::{CanonicalGapIdentity, canonical_gap_identit
 use crate::analysis::seams::SeamGripClass;
 use crate::output::evidence_record::{evidence_record_for, evidence_record_json_value};
 use crate::output::json::escape as json_escape;
+use std::io;
 
 pub(crate) const REPO_EXPOSURE_SCHEMA_VERSION: &str = "0.3";
 
@@ -24,54 +25,72 @@ const MAX_RELATED_TESTS_PER_SEAM_JSON: usize = 8;
 
 /// Render the repo exposure JSON.
 pub(crate) fn render_repo_exposure_json(classified: &[ClassifiedSeam]) -> String {
+    let mut bytes = Vec::new();
+    if write_repo_exposure_json(classified, &mut bytes).is_err() {
+        return String::new();
+    }
+    match String::from_utf8(bytes) {
+        Ok(json) => json,
+        Err(err) => String::from_utf8_lossy(&err.into_bytes()).into_owned(),
+    }
+}
+
+/// Stream the repo exposure JSON without materializing the whole artifact.
+///
+/// Repo exposure can be multi-gigabyte on dogfood-sized workspaces because
+/// each seam carries its evidence record. CLI callers use this writer path so
+/// the JSON schema stays unchanged while memory pressure scales with one seam
+/// record rather than the full artifact.
+pub(crate) fn write_repo_exposure_json<W: io::Write>(
+    classified: &[ClassifiedSeam],
+    out: &mut W,
+) -> io::Result<()> {
     let metrics = ExposureMetrics::from(classified);
     let canonical_gaps = canonical_gap_identities(classified);
 
-    let mut out = String::new();
-    out.push_str("{\n");
-    out.push_str(&format!(
-        "  \"schema_version\": \"{}\",\n",
+    writeln!(out, "{{")?;
+    writeln!(
+        out,
+        "  \"schema_version\": \"{}\",",
         REPO_EXPOSURE_SCHEMA_VERSION
-    ));
-    out.push_str("  \"scope\": \"repo\",\n");
+    )?;
+    writeln!(out, "  \"scope\": \"repo\",")?;
 
-    out.push_str("  \"metrics\": {\n");
-    out.push_str(&format!("    \"seams_total\": {},\n", metrics.seams_total));
-    out.push_str(&format!(
-        "    \"headline_eligible\": {},\n",
+    writeln!(out, "  \"metrics\": {{")?;
+    writeln!(out, "    \"seams_total\": {},", metrics.seams_total)?;
+    writeln!(
+        out,
+        "    \"headline_eligible\": {},",
         metrics.headline_eligible
-    ));
+    )?;
     let total_classes = SeamGripClass::ALL.len();
     for (idx, class) in SeamGripClass::ALL.iter().enumerate() {
         let count = metrics.count_for(*class);
         let trailing = if idx + 1 == total_classes { "" } else { "," };
-        out.push_str(&format!(
-            "    \"{}\": {}{}\n",
-            class.as_str(),
-            count,
-            trailing
-        ));
+        writeln!(out, "    \"{}\": {}{}", class.as_str(), count, trailing)?;
     }
-    out.push_str("  },\n");
+    writeln!(out, "  }},")?;
 
-    out.push_str("  \"seams\": [");
+    write!(out, "  \"seams\": [")?;
     for (idx, entry) in classified.iter().enumerate() {
         if idx == 0 {
-            out.push('\n');
+            writeln!(out)?;
         }
-        push_classified_json(&mut out, entry, canonical_gaps.get(entry.seam.id()));
+        let mut seam_json = String::new();
+        push_classified_json(&mut seam_json, entry, canonical_gaps.get(entry.seam.id()));
+        out.write_all(seam_json.as_bytes())?;
         if idx + 1 != classified.len() {
-            out.push_str(",\n");
+            writeln!(out, ",")?;
         } else {
-            out.push('\n');
+            writeln!(out)?;
         }
     }
     if !classified.is_empty() {
-        out.push_str("  ");
+        write!(out, "  ")?;
     }
-    out.push_str("]\n");
-    out.push_str("}\n");
-    out
+    writeln!(out, "]")?;
+    writeln!(out, "}}")?;
+    out.flush()
 }
 
 fn push_classified_json(
@@ -528,6 +547,10 @@ mod tests {
             "\"canonical_gap_id\":\"gap:",
             "\"canonical_gap_group_size\":1",
             "\"canonical_gap_reason\":\"same owner, seam kind, flow sink, missing discriminator, and assertion shape\"",
+            "\"raw_findings\":[",
+            "\"canonical_item\":",
+            "\"gap_state\":\"actionable\"",
+            "\"actionability\":\"extend_related_test\"",
             "\"evidence_path\":",
             "\"actionable_related_test_extension\"",
             "\"agreement\":\"no_runtime_data\"",

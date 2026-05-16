@@ -1139,7 +1139,7 @@ fn check_badge_json_output_has_native_badge_shape() {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.3""#));
+    assert!(stdout.contains(r#""schema_version": "0.4""#));
     assert!(stdout.contains(r#""kind": "ripr""#));
     assert!(stdout.contains(r#""scope": "diff""#));
     assert!(stdout.contains(r#""basis": "finding_exposure""#));
@@ -1366,6 +1366,7 @@ fn init_ci_github_dry_run_prints_config_and_workflow_without_writing() -> Result
     assert!(stdout.contains("ripr agent review-summary"));
     assert!(stdout.contains("target/ripr/workflow/agent-status.md"));
     assert!(stdout.contains("target/ripr/workflow/agent-review-summary.md"));
+    assert!(stdout.contains("### Language preview grouping"));
     assert!(stdout.contains("github/codeql-action/upload-sarif@v4"));
     assert!(!workspace.join("ripr.toml").exists());
     assert!(!workspace.join(".github/workflows/ripr.yml").exists());
@@ -1450,6 +1451,7 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
     assert!(workflow.contains("Emit RIPR PR guidance annotations"));
     assert!(workflow.contains("Add RIPR advisory summary"));
     assert!(workflow.contains("## RIPR advisory summary"));
+    assert!(workflow.contains("### Language preview grouping"));
     assert!(workflow.contains("### SARIF and badge status"));
     assert!(workflow.contains("### PR guidance annotations"));
     assert!(workflow.contains("### Known limits"));
@@ -1932,6 +1934,148 @@ fn calibrate_cargo_mutants_writes_json_when_requested() -> Result<(), String> {
 fn calibration_runtime_fixture_matches_checked_reports() -> Result<(), String> {
     let root = workspace_root();
     let fixture = root.join("fixtures/boundary_gap/calibration/runtime-fixtures-v1");
+    let value = assert_calibration_fixture_matches_checked_reports(&fixture)?;
+
+    assert_eq!(value["agreement"]["static_gap_and_runtime_signal"], 1);
+    assert_eq!(value["agreement"]["static_gap_without_runtime_signal"], 3);
+    assert_eq!(value["agreement"]["runtime_signal_without_static_gap"], 2);
+    assert_eq!(value["agreement"]["static_clean_and_runtime_clean"], 1);
+    assert_eq!(value["agreement"]["runtime_inconclusive"], 2);
+    assert_eq!(value["metrics"]["ambiguous_file_line_total"], 1);
+    assert_eq!(value["metrics"]["unmatched_mutants_total"], 1);
+    assert_eq!(value["metrics"]["static_without_runtime_total"], 1);
+    assert_eq!(value["metrics"]["join_method_counts"]["file_line"], 1);
+    assert_eq!(value["metrics"]["join_method_counts"]["seam_id"], 5);
+
+    Ok(())
+}
+
+#[test]
+fn calibration_runtime_fixture_v2_matches_checked_reports() -> Result<(), String> {
+    let root = workspace_root();
+    let fixture = root.join("fixtures/boundary_gap/calibration/runtime-fixtures-v2");
+    let value = assert_calibration_fixture_matches_checked_reports(&fixture)?;
+
+    assert_eq!(value["agreement"]["static_gap_and_runtime_signal"], 2);
+    assert_eq!(value["agreement"]["static_gap_without_runtime_signal"], 1);
+    assert_eq!(value["agreement"]["runtime_signal_without_static_gap"], 1);
+    assert_eq!(value["agreement"]["static_clean_and_runtime_clean"], 1);
+    assert_eq!(value["agreement"]["runtime_inconclusive"], 1);
+    assert_eq!(value["metrics"]["ambiguous_file_line_total"], 1);
+    assert_eq!(value["metrics"]["unmatched_mutants_total"], 1);
+    assert_eq!(value["metrics"]["static_without_runtime_total"], 0);
+    assert_eq!(value["metrics"]["join_method_counts"]["seam_id"], 4);
+
+    assert_eq!(
+        calibration_match_confidence(&value, "cal-v2-side-effect-observer")?,
+        "supports_static_gap"
+    );
+    assert_eq!(
+        calibration_match_confidence(&value, "cal-v2-mock-expectation")?,
+        "supports_static_clean"
+    );
+    assert_eq!(
+        calibration_match_confidence(&value, "cal-v2-weak-snapshot-oracle")?,
+        "contradicts_static_gap"
+    );
+    assert_eq!(
+        calibration_match_confidence(&value, "cal-v2-opaque-dispatch")?,
+        "supports_static_gap"
+    );
+
+    assert_eq!(
+        value["ambiguous_file_line_matches"][0]["confidence_label"],
+        "ambiguous_runtime_join"
+    );
+    assert_eq!(
+        value["ambiguous_file_line_matches"][0]["candidates"]
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+    assert_eq!(
+        value["missed_runtime_signals"][0]["confidence_label"],
+        "runtime_only_signal"
+    );
+    assert!(
+        value["missed_runtime_signals"][0]["static"].is_null(),
+        "runtime-only signal must not create a static gap"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn calibration_runtime_fixture_v3_matches_checked_reports() -> Result<(), String> {
+    let root = workspace_root();
+    let fixture = root.join("fixtures/boundary_gap/calibration/runtime-fixtures-v3");
+    let value = assert_calibration_fixture_matches_checked_reports(&fixture)?;
+
+    assert_eq!(value["agreement"]["static_gap_and_runtime_signal"], 2);
+    assert_eq!(value["agreement"]["static_gap_without_runtime_signal"], 2);
+    assert_eq!(value["agreement"]["runtime_signal_without_static_gap"], 2);
+    assert_eq!(value["agreement"]["static_clean_and_runtime_clean"], 1);
+    assert_eq!(value["agreement"]["runtime_inconclusive"], 1);
+    assert_eq!(value["metrics"]["ambiguous_file_line_total"], 1);
+    assert_eq!(value["metrics"]["unmatched_mutants_total"], 1);
+    assert_eq!(value["metrics"]["static_without_runtime_total"], 1);
+    assert_eq!(value["metrics"]["join_method_counts"]["seam_id"], 5);
+
+    assert_eq!(
+        calibration_match_confidence(&value, "cal-v3-custom-helper-outcome")?,
+        "supports_static_gap"
+    );
+    assert_eq!(
+        calibration_match_confidence(&value, "cal-v3-table-boundary-outcome")?,
+        "supports_static_clean"
+    );
+    assert_eq!(
+        calibration_match_confidence(&value, "cal-v3-builder-override-outcome")?,
+        "contradicts_static_gap"
+    );
+    assert_eq!(
+        calibration_match_confidence(&value, "cal-v3-snapshot-field-discriminator")?,
+        "contradicts_static_clean"
+    );
+    assert_eq!(
+        calibration_match_confidence(&value, "cal-v3-mock-expectation-mismatch")?,
+        "supports_static_gap"
+    );
+
+    assert!(
+        value["static_only_findings"]
+            .as_array()
+            .is_some_and(|findings| findings.iter().any(|finding| {
+                finding["confidence_label"] == "no_runtime_data"
+                    && finding["static"]["seam_id"] == "cal-v3-cross-file-constant-boundary"
+            })),
+        "cross-file constant sample must remain no_runtime_data until a joined runtime sample exists"
+    );
+    assert_eq!(
+        value["ambiguous_file_line_matches"][0]["confidence_label"],
+        "ambiguous_runtime_join"
+    );
+    assert_eq!(
+        value["ambiguous_file_line_matches"][0]["candidates"]
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+    assert!(
+        value["missed_runtime_signals"]
+            .as_array()
+            .is_some_and(|signals| signals.iter().any(|signal| {
+                signal["confidence_label"] == "runtime_only_signal" && signal["static"].is_null()
+            })),
+        "runtime-only signal must stay calibration context without creating a static gap"
+    );
+
+    Ok(())
+}
+
+fn assert_calibration_fixture_matches_checked_reports(
+    fixture: &Path,
+) -> Result<serde_json::Value, String> {
     let mutants = fixture.join("runtime-mutants.json").display().to_string();
     let repo = fixture.join("repo-exposure.json").display().to_string();
 
@@ -1954,16 +2098,6 @@ fn calibration_runtime_fixture_matches_checked_reports() -> Result<(), String> {
 
     let value: serde_json::Value = serde_json::from_str(&expected_json)
         .map_err(|e| format!("parse checked calibration json: {e}"))?;
-    assert_eq!(value["agreement"]["static_gap_and_runtime_signal"], 1);
-    assert_eq!(value["agreement"]["static_gap_without_runtime_signal"], 3);
-    assert_eq!(value["agreement"]["runtime_signal_without_static_gap"], 2);
-    assert_eq!(value["agreement"]["static_clean_and_runtime_clean"], 1);
-    assert_eq!(value["agreement"]["runtime_inconclusive"], 2);
-    assert_eq!(value["metrics"]["ambiguous_file_line_total"], 1);
-    assert_eq!(value["metrics"]["unmatched_mutants_total"], 1);
-    assert_eq!(value["metrics"]["static_without_runtime_total"], 1);
-    assert_eq!(value["metrics"]["join_method_counts"]["file_line"], 1);
-    assert_eq!(value["metrics"]["join_method_counts"]["seam_id"], 5);
 
     let md_output = run_ripr(&[
         "calibrate",
@@ -1982,7 +2116,23 @@ fn calibration_runtime_fixture_matches_checked_reports() -> Result<(), String> {
         .map_err(|e| format!("decode calibration markdown stdout: {e}"))?;
     assert_eq!(actual_md, expected_md);
 
-    Ok(())
+    Ok(value)
+}
+
+fn calibration_match_confidence<'a>(
+    value: &'a serde_json::Value,
+    seam_id: &str,
+) -> Result<&'a str, String> {
+    value["matches"]
+        .as_array()
+        .and_then(|matches| {
+            matches.iter().find_map(|record| {
+                (record["static"]["seam_id"] == seam_id)
+                    .then(|| record["confidence_label"].as_str())
+                    .flatten()
+            })
+        })
+        .ok_or_else(|| format!("missing calibration match for seam `{seam_id}`"))
 }
 
 fn write_outcome_snapshots(workspace: &Path) -> Result<(), String> {
@@ -2133,7 +2283,7 @@ fn check_repo_badge_plus_json_emits_native_shape_with_fixture_report() -> Result
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.3""#));
+    assert!(stdout.contains(r#""schema_version": "0.4""#));
     assert!(stdout.contains(r#""kind": "ripr_plus""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "seam_native""#));
@@ -2232,7 +2382,7 @@ fn check_repo_badge_json_emits_repo_scope_metadata() -> Result<(), String> {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.3""#));
+    assert!(stdout.contains(r#""schema_version": "0.4""#));
     assert!(stdout.contains(r#""kind": "ripr""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "seam_native""#));
@@ -2242,6 +2392,70 @@ fn check_repo_badge_json_emits_repo_scope_metadata() -> Result<(), String> {
     );
     assert!(stdout.contains(r#""label": "ripr""#));
     assert!(stdout.contains(r#""counts""#));
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn check_repo_badge_json_can_use_gap_ledger_targets() -> Result<(), String> {
+    let workspace = make_temp_workspace(None)?;
+    let ledger = workspace.join("gap-decision-ledger.json");
+    std::fs::write(
+        &ledger,
+        r#"{
+          "gap_records": [
+            {
+              "gap_id": "gap:repo:pricing:reintroduced-boundary",
+              "kind": "MissingBoundaryAssertion",
+              "language": "rust",
+              "language_status": "stable",
+              "scope": "repo_scoped",
+              "gap_state": "reintroduced",
+              "policy_state": "reintroduced",
+              "repairability": "repairable",
+              "projection_eligibility": {
+                "ripr_zero_count": {"eligible": true, "reason": "repo_policy_targeted_unresolved_gap"},
+                "ripr_plus_count": {"eligible": true, "reason": "broader_repo_advisory_gap"}
+              }
+            },
+            {
+              "gap_id": "gap:repo:waived",
+              "kind": "MissingValueAssertion",
+              "language": "rust",
+              "language_status": "stable",
+              "scope": "repo_scoped",
+              "gap_state": "waived",
+              "policy_state": "waived",
+              "repairability": "no_action",
+              "projection_eligibility": {
+                "ripr_zero_count": {"eligible": false, "reason": "waived"},
+                "ripr_plus_count": {"eligible": false, "reason": "waived"}
+              }
+            }
+          ]
+        }"#,
+    )
+    .map_err(|e| format!("write gap ledger: {e}"))?;
+
+    let root = workspace.display().to_string();
+    let ledger_path = ledger.display().to_string();
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--format",
+        "repo-badge-json",
+        "--gap-ledger",
+        &ledger_path,
+    ]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains(r#""schema_version": "0.4""#));
+    assert!(stdout.contains(r#""basis": "gap_decision_ledger""#));
+    assert!(stdout.contains(r#""message": "1""#));
+    assert!(stdout.contains(r#""analyzed_gap_records": 2"#));
 
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())
@@ -2291,7 +2505,7 @@ fn check_repo_badge_plus_json_emits_repo_scope_metadata() -> Result<(), String> 
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.3""#));
+    assert!(stdout.contains(r#""schema_version": "0.4""#));
     assert!(stdout.contains(r#""kind": "ripr_plus""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "seam_native""#));

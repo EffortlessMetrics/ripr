@@ -1,0 +1,39 @@
+{
+  "diagnostics": [
+    {
+      "code": "exposed",
+      "data": {
+        "classification": "exposed",
+        "confidence": 0.6,
+        "finding_id": "probe:src_totals.py:4:python_preview",
+        "language": "python",
+        "language_status": "preview",
+        "owner_kind": "function",
+        "probe_family": "return_value",
+        "probe_id": "probe:src_totals.py:4:python_preview",
+        "schema_version": "0.1",
+        "source_range": {
+          "column": 1,
+          "file": "src/totals.py",
+          "line": 4
+        },
+        "static_limit_kind": "missing_import_graph"
+      },
+      "message": "python preview evidence (syntax-first, advisory): Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value. Static limit: missing_import_graph.",
+      "range": {
+        "end": {
+          "character": 54,
+          "line": 3
+        },
+        "start": {
+          "character": 0,
+          "line": 3
+        }
+      },
+      "severity": "info",
+      "source": "ripr",
+      "uri": "src/totals.py"
+    }
+  ],
+  "fixture": "python_missing_import_graph_limit"
+}

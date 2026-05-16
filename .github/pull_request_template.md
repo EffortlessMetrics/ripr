@@ -96,8 +96,11 @@ normal CI cannot validate the revert, document that explicitly.
 - [ ] `cargo xtask check-executable-files`
 - [ ] `cargo xtask check-workflows`
 - [ ] `cargo xtask check-spec-format`
+- [ ] `cargo xtask check-spec-numbering`
 - [ ] `cargo xtask check-fixture-contracts`
 - [ ] `cargo xtask check-generated`
+- [ ] `cargo xtask check-badge-diff-policy`
+- [ ] `cargo xtask check-generated-clean`
 - [ ] `cargo xtask check-dependencies`
 - [ ] `cargo xtask check-process-policy`
 - [ ] `cargo xtask check-network-policy`

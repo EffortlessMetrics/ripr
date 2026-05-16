@@ -1,3 +1,4 @@
+use super::gap_decision_ledger::{self, GapRecord};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -15,11 +16,13 @@ pub(crate) struct RiprZeroStatusInput {
     pub(crate) generated_at: String,
     pub(crate) baseline_path: Option<String>,
     pub(crate) delta_path: String,
+    pub(crate) gap_ledger_path: Option<String>,
     pub(crate) gate_path: Option<String>,
     pub(crate) pr_guidance_path: Option<String>,
     pub(crate) recommendation_calibration_path: Option<String>,
     pub(crate) baseline_json: Option<Result<String, String>>,
     pub(crate) delta_json: Result<String, String>,
+    pub(crate) gap_ledger_json: Option<Result<String, String>>,
     pub(crate) gate_json: Option<Result<String, String>>,
     pub(crate) pr_guidance_json: Option<Result<String, String>>,
     pub(crate) recommendation_calibration_json: Option<Result<String, String>>,
@@ -44,6 +47,7 @@ pub(crate) struct RiprZeroStatusReport {
 struct RiprZeroInputs {
     baseline: Option<String>,
     baseline_debt_delta: String,
+    gap_decision_ledger: Option<String>,
     gate_decision: Option<String>,
     pr_guidance: Option<String>,
     recommendation_calibration: Option<String>,
@@ -53,6 +57,7 @@ struct RiprZeroInputs {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct RiprZeroSummary {
     state: String,
+    target_source: String,
     visible_unresolved: usize,
     new_policy_eligible: usize,
     blocking_candidates: usize,
@@ -114,6 +119,8 @@ struct TopDebtArea {
 struct RepairRoute {
     rank: usize,
     source: String,
+    gap_id: Option<String>,
+    canonical_gap_id: Option<String>,
     seam_id: Option<String>,
     path: Option<String>,
     line: Option<u64>,
@@ -133,6 +140,15 @@ struct DeltaParse {
     baseline_entries: usize,
     counts: DebtDeltaSummary,
     items: Vec<DeltaItem>,
+    warnings: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct GapLedgerParse {
+    status: ParseStatus,
+    supplied: bool,
+    ripr_zero_targets: usize,
+    repair_routes: Vec<RepairRoute>,
     warnings: Vec<String>,
 }
 
@@ -221,6 +237,7 @@ struct AreaAccumulator {
 
 pub(crate) fn build_ripr_zero_status_report(input: RiprZeroStatusInput) -> RiprZeroStatusReport {
     let delta = parse_delta(&input.delta_path, input.delta_json);
+    let gap_ledger = parse_gap_ledger(input.gap_ledger_path.as_deref(), input.gap_ledger_json);
     let gate = parse_gate(input.gate_path.as_deref(), input.gate_json);
     let baseline = parse_baseline(
         input.baseline_path.as_deref(),
@@ -230,6 +247,7 @@ pub(crate) fn build_ripr_zero_status_report(input: RiprZeroStatusInput) -> RiprZ
     );
     let mut warnings = Vec::new();
     warnings.extend(delta.warnings.clone());
+    warnings.extend(gap_ledger.warnings.clone());
     warnings.extend(gate.warnings.clone());
     warnings.extend(baseline.warnings.clone());
     warnings.extend(optional_input_warnings(
@@ -253,8 +271,19 @@ pub(crate) fn build_ripr_zero_status_report(input: RiprZeroStatusInput) -> RiprZ
         "incomplete"
     }
     .to_string();
-    let visible_unresolved =
+    let delta_visible_unresolved =
         delta.counts.still_present + delta.counts.new_policy_eligible + delta.counts.acknowledged;
+    let target_from_gap_ledger = gap_ledger.supplied && gap_ledger.status == ParseStatus::Loaded;
+    let visible_unresolved = if target_from_gap_ledger {
+        gap_ledger.ripr_zero_targets
+    } else {
+        delta_visible_unresolved
+    };
+    let target_source = if target_from_gap_ledger {
+        "gap_decision_ledger"
+    } else {
+        "baseline_debt_delta"
+    };
     let state = if delta.status != ParseStatus::Loaded {
         "unknown"
     } else if visible_unresolved == 0
@@ -269,6 +298,7 @@ pub(crate) fn build_ripr_zero_status_report(input: RiprZeroStatusInput) -> RiprZ
     .to_string();
     let ripr_zero = RiprZeroSummary {
         state,
+        target_source: target_source.to_string(),
         visible_unresolved,
         new_policy_eligible: delta.counts.new_policy_eligible,
         blocking_candidates: gate.blocking_candidates,
@@ -296,6 +326,7 @@ pub(crate) fn build_ripr_zero_status_report(input: RiprZeroStatusInput) -> RiprZ
         inputs: RiprZeroInputs {
             baseline: input.baseline_path,
             baseline_debt_delta: input.delta_path,
+            gap_decision_ledger: input.gap_ledger_path,
             gate_decision: input.gate_path,
             pr_guidance: input.pr_guidance_path,
             recommendation_calibration: input.recommendation_calibration_path,
@@ -312,7 +343,11 @@ pub(crate) fn build_ripr_zero_status_report(input: RiprZeroStatusInput) -> RiprZ
             new_policy_eligible_delta: None,
         },
         top_debt_areas: top_debt_areas(&delta.items),
-        repair_routes: repair_routes(&delta.items),
+        repair_routes: if target_from_gap_ledger && !gap_ledger.repair_routes.is_empty() {
+            gap_ledger.repair_routes
+        } else {
+            repair_routes(&delta.items)
+        },
         warnings,
     }
 }
@@ -345,6 +380,10 @@ pub(crate) fn render_ripr_zero_status_markdown(report: &RiprZeroStatusReport) ->
     out.push_str("# RIPR Zero Status\n\n");
     out.push_str(&format!("Status: {}\n", report.status));
     out.push_str(&format!("RIPR 0: {}\n\n", report.ripr_zero.state));
+    out.push_str(&format!(
+        "Target source: `{}`\n\n",
+        report.ripr_zero.target_source
+    ));
     out.push_str("| Measure | Count |\n");
     out.push_str("| --- | ---: |\n");
     out.push_str(&format!(
@@ -497,6 +536,50 @@ fn parse_delta(path: &str, text: Result<String, String>) -> DeltaParse {
         counts,
         items,
         warnings: warnings_from_value(&value),
+    }
+}
+
+fn parse_gap_ledger(path: Option<&str>, text: Option<Result<String, String>>) -> GapLedgerParse {
+    let Some((path, text)) = path.zip(text) else {
+        return GapLedgerParse::default();
+    };
+    let text = match text {
+        Ok(text) => text,
+        Err(error) => {
+            return GapLedgerParse {
+                status: ParseStatus::Missing,
+                supplied: true,
+                warnings: vec![format!(
+                    "optional gap decision ledger input {path} is invalid: {error}"
+                )],
+                ..GapLedgerParse::default()
+            };
+        }
+    };
+    let records = match gap_decision_ledger::parse_gap_records_json(&text) {
+        Ok(records) => records,
+        Err(error) => {
+            return GapLedgerParse {
+                status: ParseStatus::Invalid,
+                supplied: true,
+                warnings: vec![format!(
+                    "optional gap decision ledger input {path} is invalid: {error}"
+                )],
+                ..GapLedgerParse::default()
+            };
+        }
+    };
+    let ripr_zero_targets = records
+        .iter()
+        .filter(|record| gap_decision_ledger::projection_eligible(record, "ripr_zero_count"))
+        .count();
+    let repair_routes = gap_repair_routes(&records);
+    GapLedgerParse {
+        status: ParseStatus::Loaded,
+        supplied: true,
+        ripr_zero_targets,
+        repair_routes,
+        warnings: Vec::new(),
     }
 }
 
@@ -876,6 +959,52 @@ fn top_debt_areas(items: &[DeltaItem]) -> Vec<TopDebtArea> {
         .collect()
 }
 
+fn gap_repair_routes(records: &[GapRecord]) -> Vec<RepairRoute> {
+    records
+        .iter()
+        .filter(|record| {
+            gap_decision_ledger::projection_eligible(record, "ripr_zero_count")
+                && record.repairability == "repairable"
+                && record.repair_route.is_some()
+        })
+        .take(5)
+        .enumerate()
+        .map(|(index, record)| {
+            let route = record.repair_route.as_ref();
+            let anchor = record.anchor.as_ref();
+            let seam_id = if record.canonical_gap_id.is_empty() {
+                (!record.gap_id.is_empty()).then(|| record.gap_id.clone())
+            } else {
+                Some(record.canonical_gap_id.clone())
+            };
+            RepairRoute {
+                rank: index + 1,
+                source: "gap_decision_ledger".to_string(),
+                gap_id: (!record.gap_id.is_empty()).then(|| record.gap_id.clone()),
+                canonical_gap_id: (!record.canonical_gap_id.is_empty())
+                    .then(|| record.canonical_gap_id.clone()),
+                seam_id: seam_id.clone(),
+                path: anchor
+                    .and_then(|anchor| anchor.file.clone())
+                    .or_else(|| route.and_then(|route| route.target_file.clone())),
+                line: anchor.and_then(|anchor| anchor.line),
+                static_class: (!record.evidence_class.is_empty())
+                    .then(|| record.evidence_class.clone()),
+                missing_discriminator: (!record.kind.is_empty()).then(|| record.kind.clone()),
+                suggested_test: route.and_then(|route| route.assertion_shape.clone()),
+                related_test: route.and_then(|route| route.related_test.clone()),
+                verify_command: record.verification_commands.first().cloned(),
+                agent_command: seam_id.as_ref().map(|seam_id| {
+                    format!(
+                        "ripr agent start --root . --seam-id {seam_id} --out target/ripr/workflow"
+                    )
+                }),
+                static_limitations: Vec::new(),
+            }
+        })
+        .collect()
+}
+
 fn repair_routes(items: &[DeltaItem]) -> Vec<RepairRoute> {
     let mut candidates = items
         .iter()
@@ -901,6 +1030,8 @@ fn repair_routes(items: &[DeltaItem]) -> Vec<RepairRoute> {
             RepairRoute {
                 rank: index + 1,
                 source: "baseline_debt_delta".to_string(),
+                gap_id: None,
+                canonical_gap_id: None,
                 seam_id: seam_id.clone(),
                 path: evidence
                     .and_then(|record| record.path.clone())
@@ -1028,6 +1159,7 @@ fn inputs_json(inputs: &RiprZeroInputs) -> Value {
     json!({
         "baseline": inputs.baseline,
         "baseline_debt_delta": inputs.baseline_debt_delta,
+        "gap_decision_ledger": inputs.gap_decision_ledger,
         "gate_decision": inputs.gate_decision,
         "pr_guidance": inputs.pr_guidance,
         "recommendation_calibration": inputs.recommendation_calibration,
@@ -1038,6 +1170,7 @@ fn inputs_json(inputs: &RiprZeroInputs) -> Value {
 fn ripr_zero_json(summary: &RiprZeroSummary) -> Value {
     json!({
         "state": summary.state,
+        "target_source": summary.target_source,
         "visible_unresolved": summary.visible_unresolved,
         "new_policy_eligible": summary.new_policy_eligible,
         "blocking_candidates": summary.blocking_candidates,
@@ -1102,6 +1235,8 @@ fn repair_route_json(route: &RepairRoute) -> Value {
     json!({
         "rank": route.rank,
         "source": route.source,
+        "gap_id": route.gap_id,
+        "canonical_gap_id": route.canonical_gap_id,
         "seam_id": route.seam_id,
         "path": route.path,
         "line": route.line,
@@ -1227,11 +1362,13 @@ mod tests {
             generated_at: "unix_ms:100000000".to_string(),
             baseline_path: Some(".ripr/gate-baseline.json".to_string()),
             delta_path: "target/ripr/reports/baseline-debt-delta.json".to_string(),
+            gap_ledger_path: None,
             gate_path: Some("target/ripr/reports/gate-decision.json".to_string()),
             pr_guidance_path: None,
             recommendation_calibration_path: None,
             baseline_json: Some(Ok(baseline.to_string())),
             delta_json: Ok(delta.to_string()),
+            gap_ledger_json: None,
             gate_json: Some(Ok(gate.to_string())),
             pr_guidance_json: None,
             recommendation_calibration_json: None,
@@ -1250,6 +1387,82 @@ mod tests {
         assert!(markdown.contains("RIPR 0: not_yet"));
         assert!(markdown.contains("Top repair route:"));
         assert!(markdown.contains("new == 4"));
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_uses_gap_ledger_targets_when_supplied() -> Result<(), String> {
+        let delta = r#"{
+          "schema_version": "0.1",
+          "tool": "ripr",
+          "kind": "baseline_debt_delta",
+          "baseline": {"entries": 0},
+          "delta": {
+            "still_present": 0,
+            "resolved": 0,
+            "new_policy_eligible": 0,
+            "acknowledged": 0,
+            "suppressed": 0,
+            "stale_baseline_entry": 0,
+            "invalid_baseline_entry": 0,
+            "missing_current_input": 0
+          },
+          "items": []
+        }"#;
+        let gap_ledger = r#"{
+          "gap_records": [
+            {
+              "gap_id": "gap:repo:pricing:reintroduced-boundary",
+              "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+              "kind": "MissingBoundaryAssertion",
+              "language": "rust",
+              "language_status": "stable",
+              "scope": "repo_scoped",
+              "evidence_class": "predicate_boundary",
+              "gap_state": "reintroduced",
+              "policy_state": "reintroduced",
+              "repairability": "repairable",
+              "anchor": {"file": "src/pricing.rs", "line": 42},
+              "repair_route": {
+                "route_kind": "AddBoundaryAssertion",
+                "target_file": "tests/pricing.rs",
+                "assertion_shape": "assert_eq!(discount(100, 100), 90)"
+              },
+              "verification_commands": ["cargo xtask fixtures boundary_gap"],
+              "projection_eligibility": {
+                "ripr_zero_count": {"eligible": true, "reason": "repo_policy_targeted_unresolved_gap"},
+                "ripr_plus_count": {"eligible": true, "reason": "broader_repo_advisory_gap"}
+              }
+            }
+          ]
+        }"#;
+
+        let report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "target/ripr/reports/baseline-debt-delta.json".to_string(),
+            gap_ledger_path: Some("target/ripr/reports/gap-decision-ledger.json".to_string()),
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(delta.to_string()),
+            gap_ledger_json: Some(Ok(gap_ledger.to_string())),
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+
+        let rendered = render_ripr_zero_status_json(&report)?;
+        assert!(rendered.contains("\"target_source\": \"gap_decision_ledger\""));
+        assert!(rendered.contains("\"visible_unresolved\": 1"));
+        assert!(rendered.contains("\"source\": \"gap_decision_ledger\""));
+        assert!(rendered.contains("\"gap_id\": \"gap:repo:pricing:reintroduced-boundary\""));
+        assert!(rendered.contains("\"verify_command\": \"cargo xtask fixtures boundary_gap\""));
+        let markdown = render_ripr_zero_status_markdown(&report);
+        assert!(markdown.contains("Target source: `gap_decision_ledger`"));
+        assert!(markdown.contains("assert_eq!(discount(100, 100), 90)"));
         Ok(())
     }
 
@@ -1339,11 +1552,13 @@ mod tests {
             generated_at: "unix_ms:100000000".to_string(),
             baseline_path: None,
             delta_path: "target/ripr/reports/baseline-debt-delta.json".to_string(),
+            gap_ledger_path: None,
             gate_path: None,
             pr_guidance_path: None,
             recommendation_calibration_path: None,
             baseline_json: None,
             delta_json: Ok(delta.to_string()),
+            gap_ledger_json: None,
             gate_json: None,
             pr_guidance_json: None,
             recommendation_calibration_json: None,
@@ -1558,11 +1773,13 @@ mod tests {
             generated_at: "unix_ms:100000000".to_string(),
             baseline_path: None,
             delta_path: "target/ripr/reports/baseline-debt-delta.json".to_string(),
+            gap_ledger_path: None,
             gate_path: None,
             pr_guidance_path: None,
             recommendation_calibration_path: None,
             baseline_json: None,
             delta_json: Ok(delta.to_string()),
+            gap_ledger_json: None,
             gate_json: None,
             pr_guidance_json: None,
             recommendation_calibration_json: None,
@@ -1648,11 +1865,13 @@ mod tests {
             generated_at: "unix_ms:100000000".to_string(),
             baseline_path: None,
             delta_path: "delta.json".to_string(),
+            gap_ledger_path: None,
             gate_path: None,
             pr_guidance_path: None,
             recommendation_calibration_path: None,
             baseline_json: None,
             delta_json: Ok(delta.to_string()),
+            gap_ledger_json: None,
             gate_json: None,
             pr_guidance_json: None,
             recommendation_calibration_json: None,
@@ -1670,11 +1889,13 @@ mod tests {
             generated_at: "unix_ms:100000000".to_string(),
             baseline_path: None,
             delta_path: "missing.json".to_string(),
+            gap_ledger_path: None,
             gate_path: None,
             pr_guidance_path: None,
             recommendation_calibration_path: None,
             baseline_json: None,
             delta_json: Err("read missing.json failed: not found".to_string()),
+            gap_ledger_json: None,
             gate_json: None,
             pr_guidance_json: None,
             recommendation_calibration_json: None,

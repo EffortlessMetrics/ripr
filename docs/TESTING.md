@@ -41,6 +41,7 @@ cargo xtask check-file-policy
 cargo xtask check-executable-files
 cargo xtask check-workflows
 cargo xtask check-spec-format
+cargo xtask check-spec-numbering
 cargo xtask check-fixture-contracts
 cargo xtask check-traceability
 cargo xtask check-capabilities
@@ -51,6 +52,8 @@ cargo xtask check-output-contracts
 cargo xtask check-doc-index
 cargo xtask check-pr-shape
 cargo xtask check-generated
+cargo xtask check-badge-diff-policy
+cargo xtask check-generated-clean
 cargo xtask check-dependencies
 cargo xtask check-process-policy
 cargo xtask check-network-policy

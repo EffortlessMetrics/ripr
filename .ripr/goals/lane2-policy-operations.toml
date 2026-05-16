@@ -1,0 +1,252 @@
+id = "policy-operations-promotion-readiness"
+title = "Policy Operations and Promotion Readiness"
+status = "closed"
+issue = "closed by focused Lane 2 closeout"
+
+# Focused Lane 2 tracker. This is not the active Codex Goals manifest.
+# `.ripr/goals/active.toml` remains the active execution manifest for
+# Campaign 27: Language Adapter Preview.
+
+objective = """
+Make RIPR policy adoption operational. Maintainers should be able to see the
+current safe policy ceiling, next safe action, blockers to stricter modes,
+policy health over time, and read-only promotion packets for stricter modes and
+preview-language evidence.
+"""
+
+hard_rules = [
+  "Evidence stays visible.",
+  "Policy decides what evidence means.",
+  "Waivers are visible PR-time acknowledgements.",
+  "Suppressions are durable policy exceptions.",
+  "Baselines are adoption checkpoints, not acceptance forever.",
+  "Baseline refresh remains shrink-only unless a later explicit manual adopt-new policy exists.",
+  "Calibration is confidence evidence, not runtime proof for static reports.",
+  "Gate decisions are explicit, configured, narrow, reversible, and earned.",
+  "Preview language evidence is advisory until promoted by later explicit policy.",
+  "No default CI blocking.",
+  "No automatic config mutation.",
+  "No automatic baseline adoption.",
+  "No automatic suppression creation.",
+]
+
+non_goals = [
+  "No analyzer truth changes.",
+  "No evidence identity rewrites.",
+  "No recommendation ranking changes.",
+  "No LSP/editor behavior changes.",
+  "No PR/CI front-panel redesign.",
+  "No generated tests.",
+  "No provider calls.",
+  "No mutation execution.",
+  "No default CI blocking.",
+  "No automatic config mutation.",
+  "No automatic baseline adoption.",
+  "No automatic suppression creation.",
+  "No preview-language gate promotion.",
+  "No runtime-proof claims from static evidence.",
+]
+
+[[work_item]]
+id = "campaign/policy-operations-tracker"
+status = "done"
+branch = "lane2-policy-ops-tracker"
+acceptance = "Open docs/policy/POLICY_OPERATIONS.md and this focused Lane 2 manifest, with roadmap, implementation-plan, and campaign references, without behavior changes."
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-campaign",
+  "cargo xtask check-pr",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "spec/policy-operations-report"
+status = "done"
+branch = "spec-policy-operations-report"
+acceptance = "RIPR-SPEC-0039 defines the read-only policy operations report contract over explicit policy readiness, waiver aging, suppression health, baseline delta, gate decision, calibration, and preview-boundary inputs."
+commands = [
+  "cargo xtask check-spec-format",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-campaign",
+  "cargo xtask check-pr",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "policy/operations-report"
+status = "done"
+branch = "policy-operations-report"
+acceptance = "`ripr policy operations` writes policy-operations JSON and Markdown from explicit existing artifacts only, with current ceiling, safe and blocked target modes, blockers, grouped actions, warnings, unknowns, and input artifact status."
+commands = [
+  "cargo test -p ripr policy_operations",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-campaign",
+  "cargo xtask check-pr",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "spec/policy-history-ledger"
+status = "done"
+branch = "spec-policy-history-ledger"
+acceptance = "RIPR-SPEC-0041 defines the read-only policy history report over current policy operations and optional history JSONL input, with no automatic append, telemetry, dashboard, gate, mutation, or config change."
+commands = [
+  "cargo xtask check-spec-format",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-campaign",
+  "cargo xtask check-pr",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "policy/history-report"
+status = "done"
+branch = "policy-history-report"
+acceptance = "`ripr policy history` writes advisory policy-history JSON and Markdown, summarizes readiness movement, waiver pressure, suppression health, baseline movement, preview boundary state, and calibration movement, and never appends history automatically."
+commands = [
+  "cargo test -p ripr policy_history",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-campaign",
+  "cargo xtask check-pr",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "spec/policy-promotion-packets"
+status = "done"
+branch = "spec-policy-promotion-packets"
+acceptance = "RIPR-SPEC-0042 defines read-only promotion packets for visible-only, acknowledgeable, baseline-check, and calibrated-gate manual-review targets without config, baseline, suppression, workflow, branch-protection, CI-default, history, or preview-eligibility mutation."
+commands = [
+  "cargo xtask check-spec-format",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-campaign",
+  "cargo xtask check-pr",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "policy/promotion-packet-report"
+status = "done"
+branch = "policy-promotion-packet-report"
+acceptance = "`ripr policy promote --to ...` writes policy-promotion packets from policy operations and optional policy history without mutating config, baselines, suppressions, workflows, branch protection, CI defaults, history, or preview eligibility."
+commands = [
+  "cargo test -p ripr policy_promotion",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-campaign",
+  "cargo xtask check-pr",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "spec/preview-evidence-promotion-packet"
+status = "done"
+branch = "spec-preview-evidence-promotion-packet"
+acceptance = "Define default-blocked preview-language promotion packets with evidence accounting, advisory generated-CI posture, and no actual promotion."
+commands = [
+  "cargo xtask check-spec-format",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-campaign",
+  "cargo xtask check-pr",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "policy/preview-promotion-packet-report"
+status = "done"
+branch = "policy-preview-promotion-packet-report"
+acceptance = "`ripr policy preview-promote --language ... --class ...` writes preview-promotion packets with required, supplied, and missing evidence while preserving advisory preview defaults and no gate eligibility, RIPR Zero inclusion, calibrated confidence, CI blocking, or preview eligibility."
+commands = [
+  "cargo test -p ripr preview_promotion",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-campaign",
+  "cargo xtask check-pr",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "docs/policy-operator-workflow"
+status = "done"
+branch = "docs-policy-operator-workflow"
+acceptance = "docs/POLICY_OPERATIONS_WORKFLOW.md documents readiness, operations, history, promotion packets, preview packets, manual config review, post-change monitoring, and hard boundaries for maintainers."
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "ci/policy-operations-advisory-projection"
+status = "done"
+branch = "ci-policy-operations-advisory-projection"
+acceptance = "Generated CI may upload and summarize policy operations, history, promotion, and preview-promotion artifacts, but gains no pass/fail authority, required checks, comment posting, baseline mutation, config mutation, or default blocking."
+commands = [
+  "cargo test -p ripr generated_init",
+  "cargo xtask check-workflows",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-campaign",
+  "cargo xtask check-pr",
+  "git diff --check",
+]
+
+[[work_item]]
+id = "campaign/policy-operations-closeout"
+status = "done"
+branch = "lane2-policy-operations-closeout"
+acceptance = "Close only after policy operations, policy history, promotion packets, preview promotion packets, operator workflow, advisory CI projection, capability/metrics/traceability updates, and handoff artifacts exist."
+commands = [
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]

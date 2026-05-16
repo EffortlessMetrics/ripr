@@ -13,8 +13,8 @@ use crate::cli::agent::{
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_format, parse_mode};
 use crate::config::{
-    CONFIG_FILE_NAME, CheckInputExplicit, DEFAULT_LSP_SEAM_DIAGNOSTICS, apply_to_check_input,
-    config_fingerprint, generated_init_config, load_for_root,
+    CONFIG_FILE_NAME, CheckInputExplicit, DEFAULT_LSP_SEAM_DIAGNOSTICS, RiprConfig,
+    apply_to_check_input, config_fingerprint, generated_init_config, load_for_root,
 };
 use crate::output;
 use std::path::{Path, PathBuf};
@@ -67,6 +67,7 @@ struct ReviewCommentsOptions {
     root: PathBuf,
     base: String,
     head: String,
+    gap_ledger: Option<PathBuf>,
     out: PathBuf,
 }
 
@@ -105,6 +106,7 @@ struct BaselineUpdateOptions {
 struct RiprZeroStatusOptions {
     baseline: Option<PathBuf>,
     delta: PathBuf,
+    gap_ledger: Option<PathBuf>,
     gate: Option<PathBuf>,
     pr_guidance: Option<PathBuf>,
     recommendation_calibration: Option<PathBuf>,
@@ -123,6 +125,52 @@ struct PolicyReadinessOptions {
     suppression_health: Option<PathBuf>,
     repo_config: Option<PathBuf>,
     previous_readiness: Option<PathBuf>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct PolicyOperationsOptions {
+    root: String,
+    policy_readiness: Option<PathBuf>,
+    waiver_aging: Option<PathBuf>,
+    suppression_health: Option<PathBuf>,
+    baseline_delta: Option<PathBuf>,
+    gate_decision: Option<PathBuf>,
+    recommendation_calibration: Option<PathBuf>,
+    mutation_calibration: Option<PathBuf>,
+    preview_boundary: Option<PathBuf>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct PolicyHistoryOptions {
+    root: String,
+    current: PathBuf,
+    history: Option<PathBuf>,
+    commit: Option<String>,
+    pr_number: Option<String>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct PolicyPromotionOptions {
+    root: String,
+    target_mode: String,
+    operations: PathBuf,
+    history: Option<PathBuf>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct PolicyPreviewPromotionOptions {
+    root: String,
+    language: String,
+    candidate_class: String,
+    evidence: Option<PathBuf>,
     out: PathBuf,
     out_md: PathBuf,
 }
@@ -154,6 +202,7 @@ struct PrEvidenceLedgerOptions {
     baseline_delta: Option<PathBuf>,
     zero_status: Option<PathBuf>,
     pr_guidance: Option<PathBuf>,
+    gap_ledger: Option<PathBuf>,
     recommendation_calibration: Option<PathBuf>,
     agent_receipt: Option<PathBuf>,
     coverage: Option<PathBuf>,
@@ -213,6 +262,49 @@ struct ReportPacketIndexOptions {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+struct GapDecisionLedgerOptions {
+    root: String,
+    source: GapDecisionLedgerSource,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum GapDecisionLedgerSource {
+    Records(PathBuf),
+    RepoExposure(PathBuf),
+    CheckOutput(PathBuf),
+}
+
+impl GapDecisionLedgerSource {
+    fn path(&self) -> &Path {
+        match self {
+            Self::Records(path) | Self::RepoExposure(path) | Self::CheckOutput(path) => path,
+        }
+    }
+
+    fn kind(&self) -> output::gap_decision_ledger::GapDecisionLedgerSourceKind {
+        match self {
+            Self::Records(_) => output::gap_decision_ledger::GapDecisionLedgerSourceKind::Records,
+            Self::RepoExposure(_) => {
+                output::gap_decision_ledger::GapDecisionLedgerSourceKind::RepoExposure
+            }
+            Self::CheckOutput(_) => {
+                output::gap_decision_ledger::GapDecisionLedgerSourceKind::CheckOutput
+            }
+        }
+    }
+
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Records(_) => "gap records",
+            Self::RepoExposure(_) => "repo exposure",
+            Self::CheckOutput(_) => "check output",
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 struct CoverageGripFrontierOptions {
     coverage: Option<PathBuf>,
     ledger: Option<PathBuf>,
@@ -250,6 +342,7 @@ struct FirstActionOptions {
     root: String,
     pr_guidance: Option<PathBuf>,
     assistant_proof: Option<PathBuf>,
+    gap_ledger: Option<PathBuf>,
     ledger: Option<PathBuf>,
     baseline_delta: Option<PathBuf>,
     receipt: Option<PathBuf>,
@@ -434,21 +527,55 @@ fn run_agent_packet(options: AgentPacketOptions) -> Result<(), String> {
         ));
     }
 
+    if let (Some(gap_ledger), Some(gap_id)) = (&options.gap_ledger, &options.gap_id) {
+        let rendered = render_agent_packet_from_gap_ledger(gap_ledger, gap_id)?;
+        println!("{rendered}");
+        return Ok(());
+    }
+
+    let seam_id = options.seam_id.as_deref().ok_or_else(|| {
+        "agent packet requires --seam-id or --gap-ledger with --gap-id".to_string()
+    })?;
     let config = load_for_root(&options.root)?;
     let classified = analysis::inventory_classified_seams_at_with_config(&options.root, &config)?;
     let entry = classified
         .iter()
-        .find(|entry| entry.seam.id().as_str() == options.seam_id)
-        .ok_or_else(|| format!("agent packet seam_id {} was not found", options.seam_id))?;
+        .find(|entry| entry.seam.id().as_str() == seam_id)
+        .ok_or_else(|| format!("agent packet seam_id {seam_id} was not found"))?;
 
     let policy = AgentBriefPolicy::from_config(&config);
     if let Some(reason) = policy.omission_reason_for_class(entry.class) {
-        return Err(format!("agent packet seam_id {} {reason}", options.seam_id));
+        return Err(format!("agent packet seam_id {seam_id} {reason}"));
     }
 
     let rendered = output::agent_seam_packets::render_agent_seam_packet_json(entry);
     println!("{rendered}");
     Ok(())
+}
+
+fn render_agent_packet_from_gap_ledger(gap_ledger: &Path, gap_id: &str) -> Result<String, String> {
+    let contents = std::fs::read_to_string(gap_ledger).map_err(|err| {
+        format!(
+            "agent packet --gap-ledger {} is invalid: read failed: {err}",
+            gap_ledger.display()
+        )
+    })?;
+    let records =
+        output::gap_decision_ledger::parse_gap_records_json(&contents).map_err(|err| {
+            format!(
+                "agent packet --gap-ledger {} is invalid: {err}",
+                gap_ledger.display()
+            )
+        })?;
+    let record = records
+        .iter()
+        .find(|record| record.gap_id == gap_id || record.canonical_gap_id == gap_id)
+        .ok_or_else(|| format!("agent packet gap_id {gap_id} was not found"))?;
+    output::agent_seam_packets::render_agent_gap_record_packet_json(
+        &output::outcome::display_path(gap_ledger),
+        record,
+    )
+    .map_err(|err| format!("agent packet gap_id {gap_id} {err}"))
 }
 
 fn run_agent_verify(options: AgentVerifyOptions) -> Result<(), String> {
@@ -1474,6 +1601,121 @@ jobs:
           fi
           ripr "${policy_args[@]}"
 
+      - name: Render RIPR policy operations
+        if: always() && hashFiles('target/ripr/reports/policy-readiness.json') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          operations_args=(
+            policy operations
+            --root .
+            --policy-readiness target/ripr/reports/policy-readiness.json
+            --out target/ripr/reports/policy-operations.json
+            --out-md target/ripr/reports/policy-operations.md
+          )
+          if [ -f target/ripr/reports/waiver-aging.json ]; then
+            operations_args+=(--waiver-aging target/ripr/reports/waiver-aging.json)
+          fi
+          if [ -f target/ripr/reports/suppression-health.json ]; then
+            operations_args+=(--suppression-health target/ripr/reports/suppression-health.json)
+          fi
+          if [ -f target/ripr/reports/baseline-debt-delta.json ]; then
+            operations_args+=(--baseline-delta target/ripr/reports/baseline-debt-delta.json)
+          fi
+          if [ -f target/ripr/reports/gate-decision.json ]; then
+            operations_args+=(--gate-decision target/ripr/reports/gate-decision.json)
+          fi
+          if [ -f target/ripr/reports/recommendation-calibration.json ]; then
+            operations_args+=(--recommendation-calibration target/ripr/reports/recommendation-calibration.json)
+          fi
+          if [ -f target/ripr/reports/mutation-calibration.json ]; then
+            operations_args+=(--mutation-calibration target/ripr/reports/mutation-calibration.json)
+          fi
+          if [ -f target/ripr/reports/repo-exposure.json ]; then
+            operations_args+=(--preview-boundary target/ripr/reports/repo-exposure.json)
+          fi
+          ripr "${operations_args[@]}"
+
+      - name: Render RIPR policy history
+        if: always() && hashFiles('target/ripr/reports/policy-operations.json') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          history_args=(
+            policy history
+            --root .
+            --current target/ripr/reports/policy-operations.json
+            --commit "$GITHUB_SHA"
+            --out target/ripr/reports/policy-history.json
+            --out-md target/ripr/reports/policy-history.md
+          )
+          if [ -f .ripr/policy-history.jsonl ]; then
+            history_args+=(--history .ripr/policy-history.jsonl)
+          fi
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            history_args+=(--pr-number "${{ github.event.number }}")
+          fi
+          ripr "${history_args[@]}"
+
+      - name: Render RIPR policy promotion packets
+        if: always() && hashFiles('target/ripr/reports/policy-operations.json') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          for target_mode in visible-only acknowledgeable baseline-check calibrated-gate; do
+            promotion_args=(
+              policy promote
+              --to "$target_mode"
+              --operations target/ripr/reports/policy-operations.json
+              --out "target/ripr/reports/policy-promotion-${target_mode}.json"
+              --out-md "target/ripr/reports/policy-promotion-${target_mode}.md"
+            )
+            if [ -f target/ripr/reports/policy-history.json ]; then
+              promotion_args+=(--history target/ripr/reports/policy-history.json)
+            fi
+            ripr "${promotion_args[@]}"
+          done
+
+      - name: Render RIPR preview promotion packets
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          configured_languages="$(
+            ripr doctor --root . 2>/dev/null \
+              | sed -n 's/^- Enabled languages: //p' \
+              | tail -n 1 \
+              || true
+          )"
+          preview_languages="$(
+            printf '%s\n' "$configured_languages" \
+              | tr ',' '\n' \
+              | sed 's/^ *//; s/ *$//' \
+              | sed -n '/^typescript$/p; /^python$/p' \
+              | sort -u \
+              | tr '\n' ' ' \
+              | sed 's/ $//' \
+              || true
+          )"
+          if [ -z "$preview_languages" ]; then
+            echo 'No TypeScript or Python preview languages are configured; preview promotion packets were not generated.'
+            exit 0
+          fi
+          for language in $preview_languages; do
+            class_label=boundary_gap
+            preview_args=(
+              policy preview-promote
+              --language "$language"
+              --class "$class_label"
+              --out "target/ripr/reports/preview-promotion-${language}-${class_label//_/-}.json"
+              --out-md "target/ripr/reports/preview-promotion-${language}-${class_label//_/-}.md"
+            )
+            if [ -f target/ripr/reports/preview-promotion-evidence.json ]; then
+              preview_args+=(--evidence target/ripr/reports/preview-promotion-evidence.json)
+            fi
+            ripr "${preview_args[@]}"
+          done
+
       - name: Render RIPR test-oracle assistant proof
         if: always() && hashFiles('target/ripr/review/comments.json') != '' && hashFiles('target/ripr/workflow/agent-brief.json') != '' && hashFiles('target/ripr/workflow/before.repo-exposure.json') != '' && hashFiles('target/ripr/workflow/after.repo-exposure.json') != '' && hashFiles('target/ripr/reports/agent-receipt.json') != '' && hashFiles('target/ripr/reports/pr-evidence-ledger.json') != ''
         continue-on-error: true
@@ -1558,6 +1800,7 @@ jobs:
             ripr "${first_action_args[@]}"
           else
             echo 'No RIPR first-useful-action inputs were available.'
+            echo 'Regenerate command: `ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md` (add other available inputs as needed).'
           fi
 
       - name: Render RIPR PR review front panel
@@ -1624,6 +1867,7 @@ jobs:
             ripr "${front_panel_args[@]}"
           else
             echo 'No RIPR PR review front-panel inputs were available.'
+            echo 'Regenerate command: `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md` (add other available inputs as needed).'
           fi
 
       - name: Render RIPR report packet index
@@ -1644,6 +1888,14 @@ jobs:
             target/ripr/reports/waiver-aging.md \
             target/ripr/reports/suppression-health.md \
             target/ripr/reports/policy-readiness.md \
+            target/ripr/reports/policy-operations.md \
+            target/ripr/reports/policy-history.md \
+            target/ripr/reports/policy-promotion-visible-only.md \
+            target/ripr/reports/policy-promotion-acknowledgeable.md \
+            target/ripr/reports/policy-promotion-baseline-check.md \
+            target/ripr/reports/policy-promotion-calibrated-gate.md \
+            target/ripr/reports/preview-promotion-typescript-boundary-gap.md \
+            target/ripr/reports/preview-promotion-python-boundary-gap.md \
             target/ripr/reports/baseline-debt-delta.md \
             target/ripr/reports/ripr-zero-status.md \
             target/ripr/reports/gate-decision.md \
@@ -1674,6 +1926,7 @@ jobs:
               --out-md target/ripr/reports/index.md
           else
             echo 'No RIPR report-packet index inputs were available.'
+            echo 'Regenerate command: `ripr reports index --root . --reports-dir target/ripr/reports --review-dir target/ripr/review --receipts-dir target/ripr/receipts --workflow-dir target/ripr/workflow --agent-dir target/ripr/agent --pilot-dir target/ripr/pilot --ci-dir target/ci --out target/ripr/reports/index.json --out-md target/ripr/reports/index.md`.'
           fi
 
       - name: Render RIPR LLM work-loop summaries
@@ -1744,6 +1997,81 @@ jobs:
             echo
             echo "RIPR is advisory static evidence. It does not edit source, generate tests, or run mutation testing."
             echo
+            echo '### Start here'
+            echo '- Open `target/ripr/reports/pr-review-front-panel.md` first when it exists.'
+            echo '- Then open `target/ripr/reports/index.md` to navigate the uploaded artifact packet.'
+            echo '- Repair route: use the verify or agent command shown in the front panel or first useful action.'
+            echo '- Gate authority: `ripr gate evaluate` remains the pass/fail source only when `RIPR_GATE_MODE` is configured.'
+            echo
+            configured_languages="$(
+              ripr doctor --root . 2>/dev/null \
+                | sed -n 's/^- Enabled languages: //p' \
+                | tail -n 1 \
+                || true
+            )"
+            if [ -z "$configured_languages" ]; then
+              configured_languages="rust"
+            fi
+            preview_languages="$(
+              printf '%s\n' "$configured_languages" \
+                | tr ',' '\n' \
+                | sed 's/^ *//; s/ *$//' \
+                | sed -n '/^typescript$/p; /^python$/p' \
+                | sort -u \
+                | tr '\n' ' ' \
+                | sed 's/ $//' \
+                || true
+            )"
+            if [ -n "$preview_languages" ]; then
+              configured_inline="$(markdown_inline "$configured_languages")"
+              echo '### Language preview grouping'
+              echo "- Configured languages: \`$configured_inline\`"
+              echo "- Boundary: preview-language groups are advisory presentation only; \`ripr gate evaluate\` remains pass/fail authority when explicitly configured."
+              for language in $preview_languages; do
+                language_inputs=()
+                if [ -f target/ripr/reports/repo-exposure.json ]; then
+                  language_inputs+=(target/ripr/reports/repo-exposure.json)
+                elif [ -f target/ripr/pilot/repo-exposure.json ]; then
+                  language_inputs+=(target/ripr/pilot/repo-exposure.json)
+                fi
+                for language_json in \
+                  target/ripr/review/comments.json \
+                  target/ripr/reports/gate-decision.json \
+                  target/ripr/reports/pr-evidence-ledger.json; do
+                  if [ -f "$language_json" ]; then
+                    language_inputs+=("$language_json")
+                  fi
+                done
+
+                artifact_entries=0
+                preview_entries=0
+                missing_preview_status=0
+                static_limit_entries=0
+                class_counts="none"
+                static_limit_kinds="none"
+                if [ "${#language_inputs[@]}" -gt 0 ]; then
+                  artifact_entries="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language)] | length' "${language_inputs[@]}" 2>/dev/null || echo 0)"
+                  preview_entries="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language and .language_status? == "preview")] | length' "${language_inputs[@]}" 2>/dev/null || echo 0)"
+                  missing_preview_status="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language and .language_status? != "preview")] | length' "${language_inputs[@]}" 2>/dev/null || echo 0)"
+                  static_limit_entries="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language and .static_limit_kind? != null)] | length' "${language_inputs[@]}" 2>/dev/null || echo 0)"
+                  class_counts="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language and .classification? != null) | .classification] | sort | group_by(.) | map("\(.[0])=\(length)") | if length == 0 then "none" else join(", ") end' "${language_inputs[@]}" 2>/dev/null || echo none)"
+                  static_limit_kinds="$(jq -s -r --arg language "$language" '[.[] | .. | objects | select(.language? == $language) | .static_limit_kind? | select(. != null)] | unique | if length == 0 then "none" else join(", ") end' "${language_inputs[@]}" 2>/dev/null || echo none)"
+                fi
+                language_inline="$(markdown_inline "$language")"
+                artifact_entries="$(markdown_inline "$artifact_entries")"
+                preview_entries="$(markdown_inline "$preview_entries")"
+                missing_preview_status="$(markdown_inline "$missing_preview_status")"
+                static_limit_entries="$(markdown_inline "$static_limit_entries")"
+                class_counts="$(markdown_inline "$class_counts")"
+                static_limit_kinds="$(markdown_inline "$static_limit_kinds")"
+                if [ "$artifact_entries" = "0" ]; then
+                  echo "- \`$language_inline\`: configured preview/advisory; no language findings were emitted in this run."
+                else
+                  echo "- \`$language_inline\`: artifact_entries=\`$artifact_entries\`, preview_entries=\`$preview_entries\`, missing_preview_status=\`$missing_preview_status\`, static_limit_entries=\`$static_limit_entries\`, classifications=\`$class_counts\`, static_limit_kinds=\`$static_limit_kinds\`"
+                fi
+              done
+              echo
+            fi
             echo '### PR review summary'
             if [ -f target/ripr/reports/pr-review-front-panel.json ] || [ -f target/ripr/reports/pr-review-front-panel.md ]; then
               if [ -f target/ripr/reports/pr-review-front-panel.json ]; then
@@ -1823,6 +2151,7 @@ jobs:
               fi
             else
               echo 'PR review summary was not generated. It runs when existing PR guidance, first-useful-action, assistant proof, health, ledger, baseline, gate, calibration, coverage/grip, or receipt artifacts are available.'
+              echo 'Regenerate command: `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md` (add other available inputs as needed).'
             fi
             echo
             echo '### Recommended next test'
@@ -1869,6 +2198,7 @@ jobs:
               fi
             else
               echo 'Recommended next test was not generated. It runs when existing PR guidance, assistant proof, ledger, baseline, receipt, gate, coverage/grip, or editor context artifacts are available.'
+              echo 'Regenerate command: `ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md` (add other available inputs as needed).'
             fi
             echo
             echo '### Top recommendation'
@@ -1937,6 +2267,7 @@ jobs:
               fi
             else
               echo 'Uploaded review artifacts summary was not generated. It runs when existing RIPR report, review, receipt, workflow, agent, pilot, or CI artifacts are available.'
+              echo 'Regenerate command: `ripr reports index --root . --reports-dir target/ripr/reports --review-dir target/ripr/review --receipts-dir target/ripr/receipts --workflow-dir target/ripr/workflow --agent-dir target/ripr/agent --pilot-dir target/ripr/pilot --ci-dir target/ci --out target/ripr/reports/index.json --out-md target/ripr/reports/index.md`.'
             fi
             echo
             echo '### PR evidence ledger'
@@ -2121,6 +2452,156 @@ jobs:
             else
               echo 'Policy readiness was not generated. It is advisory and requires existing policy artifacts to be useful.'
             fi
+            echo
+            echo '### Policy operations'
+            if [ -f target/ripr/reports/policy-operations.json ]; then
+              operations_json=target/ripr/reports/policy-operations.json
+              operations_ceiling="$(jq -r '.current_policy_ceiling // "unknown"' "$operations_json" 2>/dev/null || echo unknown)"
+              operations_next="$(jq -r '.recommended_next_action // "not_available"' "$operations_json" 2>/dev/null || echo unknown)"
+              operations_safe="$(jq -r '(.safe_to_promote_to // [] | length)' "$operations_json" 2>/dev/null || echo 0)"
+              operations_blocked="$(jq -r '(.not_safe_to_promote_to // [] | length)' "$operations_json" 2>/dev/null || echo 0)"
+              operations_blockers="$(jq -r '(.promotion_blockers // [] | length)' "$operations_json" 2>/dev/null || echo 0)"
+              operations_top_blocker="$(jq -r '([.promotion_blockers[]?.repair_action] | first) // "none"' "$operations_json" 2>/dev/null || echo unknown)"
+              operations_warnings="$(jq -r '(.warnings // [] | length)' "$operations_json" 2>/dev/null || echo 0)"
+              operations_unknowns="$(jq -r '(.unknowns // [] | length)' "$operations_json" 2>/dev/null || echo 0)"
+              operations_ceiling="$(markdown_inline "$operations_ceiling")"
+              operations_next="$(markdown_inline "$operations_next")"
+              operations_safe="$(markdown_inline "$operations_safe")"
+              operations_blocked="$(markdown_inline "$operations_blocked")"
+              operations_blockers="$(markdown_inline "$operations_blockers")"
+              operations_top_blocker="$(markdown_inline "$operations_top_blocker")"
+              operations_warnings="$(markdown_inline "$operations_warnings")"
+              operations_unknowns="$(markdown_inline "$operations_unknowns")"
+              echo '#### Policy operations at a glance'
+              echo "- Current ceiling: \`$operations_ceiling\`"
+              echo "- Next safe action: \`$operations_next\`"
+              echo "- Promotion modes: allowed=\`$operations_safe\`, blocked=\`$operations_blocked\`"
+              echo "- Blockers: total=\`$operations_blockers\`, first=\`$operations_top_blocker\`"
+              echo "- Warnings: \`$operations_warnings\`; unknowns: \`$operations_unknowns\`"
+              echo "- Policy operations artifacts: \`target/ripr/reports/policy-operations.json\`, \`target/ripr/reports/policy-operations.md\`"
+              echo "- Boundary: advisory operations packet only; promotion requires manual review and separate configuration changes."
+              echo
+            fi
+            if [ -f target/ripr/reports/policy-operations.md ]; then
+              cat target/ripr/reports/policy-operations.md
+            else
+              echo 'Policy operations was not generated. It requires policy-readiness and keeps promotion advisory until packet review.'
+            fi
+            echo
+            echo '### Policy history'
+            if [ -f target/ripr/reports/policy-history.json ]; then
+              history_json=target/ripr/reports/policy-history.json
+              history_ceiling="$(jq -r '.current.current_policy_ceiling // "unknown"' "$history_json" 2>/dev/null || echo unknown)"
+              history_entries="$(jq -r '.history_summary.entries // 0' "$history_json" 2>/dev/null || echo 0)"
+              history_readiness="$(jq -r '.trend.ceiling.direction // "unknown"' "$history_json" 2>/dev/null || echo unknown)"
+              history_waiver="$(jq -r '.trend.waiver_count.direction // "unknown"' "$history_json" 2>/dev/null || echo unknown)"
+              history_suppression="$(jq -r '.trend.stale_suppression_count.direction // "unknown"' "$history_json" 2>/dev/null || echo unknown)"
+              history_baseline_present="$(jq -r '.trend.baseline_still_present.direction // "unknown"' "$history_json" 2>/dev/null || echo unknown)"
+              history_baseline_resolved="$(jq -r '.trend.baseline_resolved.direction // "unknown"' "$history_json" 2>/dev/null || echo unknown)"
+              history_preview="$(jq -r '.trend.preview_boundary_state.direction // "unknown"' "$history_json" 2>/dev/null || echo unknown)"
+              history_warnings="$(jq -r '(.warnings // [] | length)' "$history_json" 2>/dev/null || echo 0)"
+              history_unknowns="$(jq -r '(.unknowns // [] | length)' "$history_json" 2>/dev/null || echo 0)"
+              history_ceiling="$(markdown_inline "$history_ceiling")"
+              history_entries="$(markdown_inline "$history_entries")"
+              history_readiness="$(markdown_inline "$history_readiness")"
+              history_waiver="$(markdown_inline "$history_waiver")"
+              history_suppression="$(markdown_inline "$history_suppression")"
+              history_baseline_present="$(markdown_inline "$history_baseline_present")"
+              history_baseline_resolved="$(markdown_inline "$history_baseline_resolved")"
+              history_preview="$(markdown_inline "$history_preview")"
+              history_warnings="$(markdown_inline "$history_warnings")"
+              history_unknowns="$(markdown_inline "$history_unknowns")"
+              echo '#### Policy history at a glance'
+              echo "- Current ceiling: \`$history_ceiling\`; history entries: \`$history_entries\`"
+              echo "- Trends: readiness=\`$history_readiness\`, waiver_pressure=\`$history_waiver\`, suppression_health=\`$history_suppression\`, baseline_still_present=\`$history_baseline_present\`, baseline_resolved=\`$history_baseline_resolved\`, preview_boundary=\`$history_preview\`"
+              echo "- Warnings: \`$history_warnings\`; unknowns: \`$history_unknowns\`"
+              echo "- Policy history artifacts: \`target/ripr/reports/policy-history.json\`, \`target/ripr/reports/policy-history.md\`"
+              echo "- Boundary: history is read-only and never appends to \`.ripr/policy-history.jsonl\` automatically."
+              echo
+            fi
+            if [ -f target/ripr/reports/policy-history.md ]; then
+              cat target/ripr/reports/policy-history.md
+            else
+              echo 'Policy history was not generated. It requires policy-operations and never writes history automatically.'
+            fi
+            echo
+            echo '### Policy promotion packets'
+            promotion_found=false
+            for promotion_json in \
+              target/ripr/reports/policy-promotion-visible-only.json \
+              target/ripr/reports/policy-promotion-acknowledgeable.json \
+              target/ripr/reports/policy-promotion-baseline-check.json \
+              target/ripr/reports/policy-promotion-calibrated-gate.json; do
+              if [ -f "$promotion_json" ]; then
+                promotion_found=true
+                promotion_target="$(jq -r '.target_mode // "unknown"' "$promotion_json" 2>/dev/null || echo unknown)"
+                promotion_allowed="$(jq -r '.allowed_now // false' "$promotion_json" 2>/dev/null || echo false)"
+                promotion_repairs="$(jq -r '(.required_repairs // [] | length)' "$promotion_json" 2>/dev/null || echo 0)"
+                promotion_receipts="$(jq -r '(.required_receipts // [] | length)' "$promotion_json" 2>/dev/null || echo 0)"
+                promotion_warnings="$(jq -r '(.warnings // [] | length)' "$promotion_json" 2>/dev/null || echo 0)"
+                promotion_unknowns="$(jq -r '(.unknowns // [] | length)' "$promotion_json" 2>/dev/null || echo 0)"
+                promotion_reason="$(jq -r '.why_or_why_not // "not_available"' "$promotion_json" 2>/dev/null || echo unknown)"
+                promotion_target="$(markdown_inline "$promotion_target")"
+                promotion_allowed="$(markdown_inline "$promotion_allowed")"
+                promotion_repairs="$(markdown_inline "$promotion_repairs")"
+                promotion_receipts="$(markdown_inline "$promotion_receipts")"
+                promotion_warnings="$(markdown_inline "$promotion_warnings")"
+                promotion_unknowns="$(markdown_inline "$promotion_unknowns")"
+                promotion_reason="$(markdown_inline "$promotion_reason")"
+                echo "- \`$promotion_target\`: allowed_now=\`$promotion_allowed\`, repairs=\`$promotion_repairs\`, receipts=\`$promotion_receipts\`, warnings=\`$promotion_warnings\`, unknowns=\`$promotion_unknowns\`, why=\`$promotion_reason\`"
+              fi
+            done
+            if [ "$promotion_found" = false ]; then
+              echo 'Policy promotion packets were not generated. They require policy-operations and remain read-only manual review packets.'
+            else
+              echo "- Promotion packet artifacts: \`target/ripr/reports/policy-promotion-*.json\`, \`target/ripr/reports/policy-promotion-*.md\`"
+              echo "- Boundary: packets do not edit \`ripr.toml\`, baselines, suppressions, workflows, branch protection, CI defaults, or preview eligibility."
+            fi
+            for promotion_md in \
+              target/ripr/reports/policy-promotion-visible-only.md \
+              target/ripr/reports/policy-promotion-acknowledgeable.md \
+              target/ripr/reports/policy-promotion-baseline-check.md \
+              target/ripr/reports/policy-promotion-calibrated-gate.md; do
+              if [ -f "$promotion_md" ]; then
+                echo
+                cat "$promotion_md"
+              fi
+            done
+            echo
+            echo '### Preview promotion packets'
+            preview_found=false
+            for preview_json in target/ripr/reports/preview-promotion-*-*.json; do
+              if [ -f "$preview_json" ]; then
+                preview_found=true
+                preview_language="$(jq -r '.language // "unknown"' "$preview_json" 2>/dev/null || echo unknown)"
+                preview_class="$(jq -r '.candidate_class // "unknown"' "$preview_json" 2>/dev/null || echo unknown)"
+                preview_allowed="$(jq -r '.allowed_now // false' "$preview_json" 2>/dev/null || echo false)"
+                preview_missing="$(jq -r '(.missing_evidence // [] | length)' "$preview_json" 2>/dev/null || echo 0)"
+                preview_supplied="$(jq -r '(.supplied_evidence // [] | length)' "$preview_json" 2>/dev/null || echo 0)"
+                preview_warnings="$(jq -r '(.warnings // [] | length)' "$preview_json" 2>/dev/null || echo 0)"
+                preview_unknowns="$(jq -r '(.unknowns // [] | length)' "$preview_json" 2>/dev/null || echo 0)"
+                preview_language="$(markdown_inline "$preview_language")"
+                preview_class="$(markdown_inline "$preview_class")"
+                preview_allowed="$(markdown_inline "$preview_allowed")"
+                preview_missing="$(markdown_inline "$preview_missing")"
+                preview_supplied="$(markdown_inline "$preview_supplied")"
+                preview_warnings="$(markdown_inline "$preview_warnings")"
+                preview_unknowns="$(markdown_inline "$preview_unknowns")"
+                echo "- \`$preview_language\`/\`$preview_class\`: allowed_now=\`$preview_allowed\`, supplied_evidence=\`$preview_supplied\`, missing_evidence=\`$preview_missing\`, warnings=\`$preview_warnings\`, unknowns=\`$preview_unknowns\`"
+              fi
+            done
+            if [ "$preview_found" = false ]; then
+              echo 'Preview promotion packets were not generated. They are only surfaced when TypeScript or Python preview adapters are configured.'
+            else
+              echo "- Preview promotion artifacts: \`target/ripr/reports/preview-promotion-*.json\`, \`target/ripr/reports/preview-promotion-*.md\`"
+              echo "- Boundary: preview evidence remains visible and non-gating unless a later explicit promotion policy is reviewed."
+            fi
+            for preview_md in target/ripr/reports/preview-promotion-*-*.md; do
+              if [ -f "$preview_md" ]; then
+                echo
+                cat "$preview_md"
+              fi
+            done
             echo
             echo '### Waiver aging'
             if [ -f target/ripr/reports/waiver-aging.json ]; then
@@ -2907,16 +3388,20 @@ pub(super) fn policy(args: &[String]) -> Result<(), String> {
     }
     let Some((subcommand, rest)) = args.split_first() else {
         return Err(
-            "policy requires subcommand `readiness`, `waiver-aging`, or `suppression-health`"
+            "policy requires subcommand `readiness`, `operations`, `history`, `promote`, `preview-promote`, `waiver-aging`, or `suppression-health`"
                 .to_string(),
         );
     };
     match subcommand.as_str() {
         "readiness" => policy_readiness(rest),
+        "operations" => policy_operations(rest),
+        "history" => policy_history(rest),
+        "promote" => policy_promotion(rest),
+        "preview-promote" => policy_preview_promotion(rest),
         "waiver-aging" => policy_waiver_aging(rest),
         "suppression-health" => policy_suppression_health(rest),
         _ => Err(format!(
-            "unknown policy subcommand {subcommand:?}; expected `readiness`, `waiver-aging`, or `suppression-health`"
+            "unknown policy subcommand {subcommand:?}; expected `readiness`, `operations`, `history`, `promote`, `preview-promote`, `waiver-aging`, or `suppression-health`"
         )),
     }
 }
@@ -3017,6 +3502,10 @@ pub(super) fn first_action(args: &[String]) -> Result<(), String> {
         .assistant_proof
         .as_ref()
         .map(|path| output::first_useful_action::display_path(path));
+    let gap_ledger_path = options
+        .gap_ledger
+        .as_ref()
+        .map(|path| output::first_useful_action::display_path(path));
     let ledger_path = options
         .ledger
         .as_ref()
@@ -3046,6 +3535,7 @@ pub(super) fn first_action(args: &[String]) -> Result<(), String> {
         generated_at: first_action_generated_at()?,
         pr_guidance_path,
         assistant_proof_path,
+        gap_ledger_path,
         ledger_path,
         baseline_delta_path,
         receipt_path,
@@ -3060,6 +3550,10 @@ pub(super) fn first_action(args: &[String]) -> Result<(), String> {
             .assistant_proof
             .as_ref()
             .map(|path| read_optional_text_for_report("assistant proof", path)),
+        gap_ledger_json: options
+            .gap_ledger
+            .as_ref()
+            .map(|path| read_optional_text_for_report("gap decision ledger", path)),
         ledger_json: options
             .ledger
             .as_ref()
@@ -3101,14 +3595,15 @@ pub(super) fn reports(args: &[String]) -> Result<(), String> {
         return Ok(());
     }
     let Some((subcommand, rest)) = args.split_first() else {
-        return Err("reports requires subcommand `index`".to_string());
+        return Err("reports requires subcommand `index` or `gap-ledger`".to_string());
     };
-    if subcommand != "index" {
-        return Err(format!(
-            "unknown reports subcommand {subcommand:?}; expected `index`"
-        ));
+    match subcommand.as_str() {
+        "index" => report_packet_index(rest),
+        "gap-ledger" => gap_decision_ledger(rest),
+        _ => Err(format!(
+            "unknown reports subcommand {subcommand:?}; expected `index` or `gap-ledger`"
+        )),
     }
-    report_packet_index(rest)
 }
 
 fn report_packet_index(args: &[String]) -> Result<(), String> {
@@ -3134,6 +3629,26 @@ fn report_packet_index(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+fn gap_decision_ledger(args: &[String]) -> Result<(), String> {
+    let options = parse_gap_decision_ledger_options(args)?;
+    let records_path = output::baseline_delta::display_path(options.source.path());
+    let input = output::gap_decision_ledger::GapDecisionLedgerInput {
+        root: options.root,
+        generated_at: gap_decision_ledger_generated_at()?,
+        source_kind: options.source.kind(),
+        records_path,
+        records_json: read_optional_text_for_report(options.source.label(), options.source.path()),
+    };
+    let report = output::gap_decision_ledger::build_gap_decision_ledger_report(input);
+    let rendered_json = output::gap_decision_ledger::render_gap_decision_ledger_json(&report)?;
+    let rendered_md = output::gap_decision_ledger::render_gap_decision_ledger_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    Ok(())
+}
+
 fn ripr_zero_status(args: &[String]) -> Result<(), String> {
     let options = parse_ripr_zero_status_options(args)?;
     let baseline_path = options
@@ -3142,6 +3657,10 @@ fn ripr_zero_status(args: &[String]) -> Result<(), String> {
         .map(|path| output::ripr_zero_status::display_path(path));
     let gate_path = options
         .gate
+        .as_ref()
+        .map(|path| output::ripr_zero_status::display_path(path));
+    let gap_ledger_path = options
+        .gap_ledger
         .as_ref()
         .map(|path| output::ripr_zero_status::display_path(path));
     let pr_guidance_path = options
@@ -3157,6 +3676,7 @@ fn ripr_zero_status(args: &[String]) -> Result<(), String> {
         generated_at: baseline_created_at()?,
         baseline_path,
         delta_path: output::ripr_zero_status::display_path(&options.delta),
+        gap_ledger_path,
         gate_path,
         pr_guidance_path,
         recommendation_calibration_path,
@@ -3165,6 +3685,10 @@ fn ripr_zero_status(args: &[String]) -> Result<(), String> {
             .as_ref()
             .map(|path| read_optional_text_for_report("baseline", path)),
         delta_json: read_optional_text_for_report("baseline debt delta", &options.delta),
+        gap_ledger_json: options
+            .gap_ledger
+            .as_ref()
+            .map(|path| read_optional_text_for_report("gap decision ledger", path)),
         gate_json: options
             .gate
             .as_ref()
@@ -3276,6 +3800,199 @@ fn policy_readiness(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+fn policy_operations(args: &[String]) -> Result<(), String> {
+    let options = parse_policy_operations_options(args)?;
+    let input = output::policy_operations::PolicyOperationsInput {
+        root: options.root,
+        generated_at: policy_readiness_generated_at()?,
+        policy_readiness_path: options
+            .policy_readiness
+            .as_ref()
+            .map(|path| output::policy_operations::display_path(path)),
+        waiver_aging_path: options
+            .waiver_aging
+            .as_ref()
+            .map(|path| output::policy_operations::display_path(path)),
+        suppression_health_path: options
+            .suppression_health
+            .as_ref()
+            .map(|path| output::policy_operations::display_path(path)),
+        baseline_delta_path: options
+            .baseline_delta
+            .as_ref()
+            .map(|path| output::policy_operations::display_path(path)),
+        gate_decision_path: options
+            .gate_decision
+            .as_ref()
+            .map(|path| output::policy_operations::display_path(path)),
+        recommendation_calibration_path: options
+            .recommendation_calibration
+            .as_ref()
+            .map(|path| output::policy_operations::display_path(path)),
+        mutation_calibration_path: options
+            .mutation_calibration
+            .as_ref()
+            .map(|path| output::policy_operations::display_path(path)),
+        preview_boundary_path: options
+            .preview_boundary
+            .as_ref()
+            .map(|path| output::policy_operations::display_path(path)),
+        policy_readiness_json: options
+            .policy_readiness
+            .as_ref()
+            .map(|path| read_optional_text_for_report("policy readiness", path)),
+        waiver_aging_json: options
+            .waiver_aging
+            .as_ref()
+            .map(|path| read_optional_text_for_report("waiver aging", path)),
+        suppression_health_json: options
+            .suppression_health
+            .as_ref()
+            .map(|path| read_optional_text_for_report("suppression health", path)),
+        baseline_delta_json: options
+            .baseline_delta
+            .as_ref()
+            .map(|path| read_optional_text_for_report("baseline debt delta", path)),
+        gate_decision_json: options
+            .gate_decision
+            .as_ref()
+            .map(|path| read_optional_text_for_report("gate decision", path)),
+        recommendation_calibration_json: options
+            .recommendation_calibration
+            .as_ref()
+            .map(|path| read_optional_text_for_report("recommendation calibration", path)),
+        mutation_calibration_json: options
+            .mutation_calibration
+            .as_ref()
+            .map(|path| read_optional_text_for_report("mutation calibration", path)),
+        preview_boundary_json: options
+            .preview_boundary
+            .as_ref()
+            .map(|path| read_optional_text_for_report("preview boundary", path)),
+    };
+    let report = output::policy_operations::build_policy_operations_report(input);
+    let rendered_json = output::policy_operations::render_policy_operations_json(&report)?;
+    let rendered_md = output::policy_operations::render_policy_operations_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    println!(
+        "Current ceiling: {}",
+        output::policy_operations::policy_operations_current_ceiling(&report)
+    );
+    println!(
+        "Next safe action: {}",
+        output::policy_operations::policy_operations_next_action(&report)
+    );
+    Ok(())
+}
+
+fn policy_history(args: &[String]) -> Result<(), String> {
+    let options = parse_policy_history_options(args)?;
+    let input = output::policy_history::PolicyHistoryInput {
+        root: options.root,
+        generated_at: policy_readiness_generated_at()?,
+        current_path: output::policy_history::display_path(&options.current),
+        history_path: options
+            .history
+            .as_ref()
+            .map(|path| output::policy_history::display_path(path)),
+        commit: options.commit,
+        pr_number: options.pr_number,
+        current_json: read_optional_text_for_report("policy operations", &options.current),
+        history_jsonl: options
+            .history
+            .as_ref()
+            .map(|path| read_optional_text_for_report("policy history", path)),
+    };
+    let report = output::policy_history::build_policy_history_report(input);
+    let rendered_json = output::policy_history::render_policy_history_json(&report)?;
+    let rendered_md = output::policy_history::render_policy_history_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    println!(
+        "Current ceiling: {}",
+        output::policy_history::policy_history_current_ceiling(&report)
+    );
+    println!(
+        "Readiness trend: {}",
+        output::policy_history::policy_history_trend_direction(&report)
+    );
+    Ok(())
+}
+
+fn policy_promotion(args: &[String]) -> Result<(), String> {
+    let options = parse_policy_promotion_options(args)?;
+    let input = output::policy_promotion::PolicyPromotionInput {
+        root: options.root,
+        generated_at: policy_readiness_generated_at()?,
+        target_mode: options.target_mode,
+        operations_path: output::policy_promotion::display_path(&options.operations),
+        history_path: options
+            .history
+            .as_ref()
+            .map(|path| output::policy_promotion::display_path(path)),
+        operations_json: read_optional_text_for_report("policy operations", &options.operations),
+        history_json: options
+            .history
+            .as_ref()
+            .map(|path| read_optional_text_for_report("policy history", path)),
+    };
+    let report = output::policy_promotion::build_policy_promotion_report(input);
+    let rendered_json = output::policy_promotion::render_policy_promotion_json(&report)?;
+    let rendered_md = output::policy_promotion::render_policy_promotion_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    println!(
+        "Allowed now: {}",
+        if output::policy_promotion::policy_promotion_allowed_now(&report) {
+            "yes"
+        } else {
+            "no"
+        }
+    );
+    Ok(())
+}
+
+fn policy_preview_promotion(args: &[String]) -> Result<(), String> {
+    let options = parse_policy_preview_promotion_options(args)?;
+    let input = output::policy_preview_promotion::PreviewPromotionInput {
+        root: options.root,
+        generated_at: policy_readiness_generated_at()?,
+        language: options.language,
+        candidate_class: options.candidate_class,
+        evidence_path: options
+            .evidence
+            .as_ref()
+            .map(|path| output::policy_preview_promotion::display_path(path)),
+        evidence_json: options
+            .evidence
+            .as_ref()
+            .map(|path| read_optional_text_for_report("preview promotion evidence", path)),
+    };
+    let report = output::policy_preview_promotion::build_preview_promotion_report(input);
+    let rendered_json = output::policy_preview_promotion::render_preview_promotion_json(&report)?;
+    let rendered_md = output::policy_preview_promotion::render_preview_promotion_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    println!(
+        "Allowed now: {}",
+        if output::policy_preview_promotion::preview_promotion_allowed_now(&report) {
+            "yes"
+        } else {
+            "no"
+        }
+    );
+    Ok(())
+}
+
 fn policy_waiver_aging(args: &[String]) -> Result<(), String> {
     let options = parse_policy_waiver_aging_options(args)?;
     let input = output::waiver_aging::WaiverAgingInput {
@@ -3353,6 +4070,10 @@ fn pr_evidence_ledger_record(args: &[String]) -> Result<(), String> {
         .pr_guidance
         .as_ref()
         .map(|path| output::pr_evidence_ledger::display_path(path));
+    let gap_ledger_path = options
+        .gap_ledger
+        .as_ref()
+        .map(|path| output::pr_evidence_ledger::display_path(path));
     let recommendation_calibration_path = options
         .recommendation_calibration
         .as_ref()
@@ -3380,6 +4101,7 @@ fn pr_evidence_ledger_record(args: &[String]) -> Result<(), String> {
         baseline_delta_path,
         zero_status_path,
         pr_guidance_path,
+        gap_ledger_path,
         recommendation_calibration_path,
         agent_receipt_path,
         coverage_path,
@@ -3400,6 +4122,10 @@ fn pr_evidence_ledger_record(args: &[String]) -> Result<(), String> {
             .pr_guidance
             .as_ref()
             .map(|path| read_optional_text_for_report("PR guidance", path)),
+        gap_ledger_json: options
+            .gap_ledger
+            .as_ref()
+            .map(|path| read_optional_text_for_report("gap decision ledger", path)),
         recommendation_calibration_json: options
             .recommendation_calibration
             .as_ref()
@@ -3919,6 +4645,45 @@ fn review_comments_with_diff_loader(
     };
     apply_to_check_input(&mut input, &config, CheckInputExplicit::default());
 
+    if let Some(gap_ledger) = &options.gap_ledger {
+        let gap_ledger_text = std::fs::read_to_string(gap_ledger).map_err(|err| {
+            format!(
+                "review-comments --gap-ledger {} is invalid: read failed: {err}",
+                output::pr_inline_comment_publish_plan::display_path(gap_ledger)
+            )
+        })?;
+        let records = output::gap_decision_ledger::parse_gap_records_json(&gap_ledger_text)
+            .map_err(|err| {
+                format!(
+                    "review-comments --gap-ledger {} is invalid: {err}",
+                    output::pr_inline_comment_publish_plan::display_path(gap_ledger)
+                )
+            })?;
+        let gap_ledger_path = output::pr_inline_comment_publish_plan::display_path(gap_ledger);
+        let rendered_json = output::review_comments::render_gap_record_review_comments_json(
+            &input.root,
+            &options.base,
+            &options.head,
+            &input.mode,
+            &gap_ledger_path,
+            &records,
+        )?;
+        let rendered_md = output::review_comments::render_gap_record_review_comments_markdown(
+            &input.root,
+            &options.base,
+            &options.head,
+            &input.mode,
+            &gap_ledger_path,
+            &records,
+        );
+        let markdown_path = review_comments_markdown_path(&options.out);
+        write_text_file(&options.out, &rendered_json)?;
+        write_text_file(&markdown_path, &rendered_md)?;
+        println!("Wrote {}", options.out.display());
+        println!("Wrote {}", markdown_path.display());
+        return Ok(());
+    }
+
     let diff_text = load_diff(&input.root, &options.base, &options.head)?;
     let changed_lines = agent_brief_lines_from_diff(&input.root, &diff_text);
     let changed_owners = agent_brief_owners_for_lines(&input.root, &changed_lines);
@@ -4205,6 +4970,7 @@ fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOption
     let mut root = PathBuf::from(".");
     let mut base: Option<String> = None;
     let mut head: Option<String> = None;
+    let mut gap_ledger = None;
     let mut out = PathBuf::from("target/ripr/review/comments.json");
 
     let mut i = 0usize;
@@ -4230,6 +4996,16 @@ fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOption
                 }
                 head = Some(value.to_string());
             }
+            "--gap-ledger" => {
+                i += 1;
+                let value = expect_value(args, i, "--gap-ledger")?;
+                if value.trim().is_empty() {
+                    return Err(
+                        "review-comments --gap-ledger requires a non-empty path".to_string()
+                    );
+                }
+                gap_ledger = Some(PathBuf::from(value));
+            }
             "--out" => {
                 i += 1;
                 let value = expect_value(args, i, "--out")?;
@@ -4247,6 +5023,7 @@ fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOption
         root,
         base: base.ok_or_else(|| "review-comments requires --base <sha>".to_string())?,
         head: head.ok_or_else(|| "review-comments requires --head <sha>".to_string())?,
+        gap_ledger,
         out,
     })
 }
@@ -4255,6 +5032,7 @@ fn parse_gate_options(args: &[String]) -> Result<GateOptions, String> {
     let mut root = PathBuf::from(".");
     let mut repo_exposure = None;
     let mut pr_guidance = None;
+    let mut gap_ledger = None;
     let mut sarif_policy = None;
     let mut labels_json = None;
     let mut labels = Vec::new();
@@ -4282,6 +5060,10 @@ fn parse_gate_options(args: &[String]) -> Result<GateOptions, String> {
             "--pr-guidance" => {
                 i += 1;
                 pr_guidance = Some(non_empty_path_arg(args, i, "--pr-guidance", "gate")?);
+            }
+            "--gap-ledger" => {
+                i += 1;
+                gap_ledger = Some(non_empty_path_arg(args, i, "--gap-ledger", "gate")?);
             }
             "--sarif-policy" => {
                 i += 1;
@@ -4356,8 +5138,8 @@ fn parse_gate_options(args: &[String]) -> Result<GateOptions, String> {
         input: output::gate::GateEvaluateInput {
             root,
             repo_exposure,
-            pr_guidance: pr_guidance
-                .ok_or_else(|| "gate evaluate requires --pr-guidance <path>".to_string())?,
+            pr_guidance,
+            gap_ledger,
             sarif_policy,
             labels_json,
             labels,
@@ -4488,6 +5270,7 @@ fn parse_baseline_update_options(args: &[String]) -> Result<BaselineUpdateOption
 fn parse_ripr_zero_status_options(args: &[String]) -> Result<RiprZeroStatusOptions, String> {
     let mut baseline = None;
     let mut delta = None;
+    let mut gap_ledger = None;
     let mut gate = None;
     let mut pr_guidance = None;
     let mut recommendation_calibration = None;
@@ -4504,6 +5287,10 @@ fn parse_ripr_zero_status_options(args: &[String]) -> Result<RiprZeroStatusOptio
             "--delta" => {
                 i += 1;
                 delta = Some(non_empty_path_arg(args, i, "--delta", "zero status")?);
+            }
+            "--gap-ledger" => {
+                i += 1;
+                gap_ledger = Some(non_empty_path_arg(args, i, "--gap-ledger", "zero status")?);
             }
             "--gate" => {
                 i += 1;
@@ -4538,6 +5325,7 @@ fn parse_ripr_zero_status_options(args: &[String]) -> Result<RiprZeroStatusOptio
     Ok(RiprZeroStatusOptions {
         baseline,
         delta: delta.ok_or_else(|| "zero status requires --delta <path>".to_string())?,
+        gap_ledger,
         gate,
         pr_guidance,
         recommendation_calibration,
@@ -4666,6 +5454,370 @@ fn parse_policy_readiness_options(args: &[String]) -> Result<PolicyReadinessOpti
     })
 }
 
+fn parse_policy_operations_options(args: &[String]) -> Result<PolicyOperationsOptions, String> {
+    let mut root = ".".to_string();
+    let mut policy_readiness = None;
+    let mut waiver_aging = None;
+    let mut suppression_health = None;
+    let mut baseline_delta = None;
+    let mut gate_decision = None;
+    let mut recommendation_calibration = None;
+    let mut mutation_calibration = None;
+    let mut preview_boundary = None;
+    let mut out = PathBuf::from(output::policy_operations::DEFAULT_POLICY_OPERATIONS_OUT);
+    let mut out_md = PathBuf::from(output::policy_operations::DEFAULT_POLICY_OPERATIONS_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "policy operations")?;
+            }
+            "--policy-readiness" => {
+                i += 1;
+                policy_readiness = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--policy-readiness",
+                    "policy operations",
+                )?);
+            }
+            "--waiver-aging" => {
+                i += 1;
+                waiver_aging = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--waiver-aging",
+                    "policy operations",
+                )?);
+            }
+            "--suppression-health" => {
+                i += 1;
+                suppression_health = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--suppression-health",
+                    "policy operations",
+                )?);
+            }
+            "--baseline-delta" => {
+                i += 1;
+                baseline_delta = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--baseline-delta",
+                    "policy operations",
+                )?);
+            }
+            "--gate-decision" => {
+                i += 1;
+                gate_decision = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--gate-decision",
+                    "policy operations",
+                )?);
+            }
+            "--recommendation-calibration" => {
+                i += 1;
+                recommendation_calibration = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--recommendation-calibration",
+                    "policy operations",
+                )?);
+            }
+            "--mutation-calibration" => {
+                i += 1;
+                mutation_calibration = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--mutation-calibration",
+                    "policy operations",
+                )?);
+            }
+            "--preview-boundary" => {
+                i += 1;
+                preview_boundary = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--preview-boundary",
+                    "policy operations",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "policy operations")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "policy operations")?;
+            }
+            other => return Err(format!("unknown policy operations argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    let policy_readiness = policy_readiness
+        .ok_or_else(|| "policy operations requires --policy-readiness <path>".to_string())?;
+
+    Ok(PolicyOperationsOptions {
+        root,
+        policy_readiness: Some(policy_readiness),
+        waiver_aging,
+        suppression_health,
+        baseline_delta,
+        gate_decision,
+        recommendation_calibration,
+        mutation_calibration,
+        preview_boundary,
+        out,
+        out_md,
+    })
+}
+
+fn parse_policy_history_options(args: &[String]) -> Result<PolicyHistoryOptions, String> {
+    let mut root = ".".to_string();
+    let mut current = None;
+    let mut history = None;
+    let mut commit = None;
+    let mut pr_number = None;
+    let mut out = PathBuf::from(output::policy_history::DEFAULT_POLICY_HISTORY_OUT);
+    let mut out_md = PathBuf::from(output::policy_history::DEFAULT_POLICY_HISTORY_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "policy history")?;
+            }
+            "--current" => {
+                i += 1;
+                current = Some(non_empty_path_arg(args, i, "--current", "policy history")?);
+            }
+            "--history" => {
+                i += 1;
+                history = Some(non_empty_path_arg(args, i, "--history", "policy history")?);
+            }
+            "--commit" => {
+                i += 1;
+                commit = Some(non_empty_string_arg(args, i, "--commit", "policy history")?);
+            }
+            "--pr-number" => {
+                i += 1;
+                pr_number = Some(non_empty_string_arg(
+                    args,
+                    i,
+                    "--pr-number",
+                    "policy history",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "policy history")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "policy history")?;
+            }
+            other => return Err(format!("unknown policy history argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    Ok(PolicyHistoryOptions {
+        root,
+        current: current.ok_or_else(|| "policy history requires --current <path>".to_string())?,
+        history,
+        commit,
+        pr_number,
+        out,
+        out_md,
+    })
+}
+
+fn parse_policy_promotion_options(args: &[String]) -> Result<PolicyPromotionOptions, String> {
+    let mut root = ".".to_string();
+    let mut target_mode = None;
+    let mut operations = None;
+    let mut history = None;
+    let mut out = None;
+    let mut out_md = None;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "policy promote")?;
+            }
+            "--to" => {
+                i += 1;
+                target_mode = Some(non_empty_string_arg(args, i, "--to", "policy promote")?);
+            }
+            "--operations" => {
+                i += 1;
+                operations = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--operations",
+                    "policy promote",
+                )?);
+            }
+            "--history" => {
+                i += 1;
+                history = Some(non_empty_path_arg(args, i, "--history", "policy promote")?);
+            }
+            "--out" => {
+                i += 1;
+                out = Some(non_empty_path_arg(args, i, "--out", "policy promote")?);
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = Some(non_empty_path_arg(args, i, "--out-md", "policy promote")?);
+            }
+            other => return Err(format!("unknown policy promote argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    let target_mode =
+        target_mode.ok_or_else(|| "policy promote requires --to <mode>".to_string())?;
+    if !output::policy_promotion::is_supported_target_mode(&target_mode) {
+        return Err(format!(
+            "unknown policy promotion target {target_mode:?}; expected `visible-only`, `acknowledgeable`, `baseline-check`, or `calibrated-gate`"
+        ));
+    }
+    let operations =
+        operations.ok_or_else(|| "policy promote requires --operations <path>".to_string())?;
+    let out = out.unwrap_or_else(|| {
+        PathBuf::from(output::policy_promotion::default_policy_promotion_out(
+            &target_mode,
+        ))
+    });
+    let out_md = out_md.unwrap_or_else(|| {
+        PathBuf::from(output::policy_promotion::default_policy_promotion_md_out(
+            &target_mode,
+        ))
+    });
+
+    Ok(PolicyPromotionOptions {
+        root,
+        target_mode,
+        operations,
+        history,
+        out,
+        out_md,
+    })
+}
+
+fn parse_policy_preview_promotion_options(
+    args: &[String],
+) -> Result<PolicyPreviewPromotionOptions, String> {
+    let mut root = ".".to_string();
+    let mut language = None;
+    let mut candidate_class = None;
+    let mut evidence = None;
+    let mut out = None;
+    let mut out_md = None;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "policy preview-promote")?;
+            }
+            "--language" => {
+                i += 1;
+                language = Some(non_empty_string_arg(
+                    args,
+                    i,
+                    "--language",
+                    "policy preview-promote",
+                )?);
+            }
+            "--class" => {
+                i += 1;
+                candidate_class = Some(non_empty_string_arg(
+                    args,
+                    i,
+                    "--class",
+                    "policy preview-promote",
+                )?);
+            }
+            "--evidence" => {
+                i += 1;
+                evidence = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--evidence",
+                    "policy preview-promote",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--out",
+                    "policy preview-promote",
+                )?);
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--out-md",
+                    "policy preview-promote",
+                )?);
+            }
+            other => {
+                return Err(format!("unknown policy preview-promote argument {other:?}"));
+            }
+        }
+        i += 1;
+    }
+
+    let language = language
+        .ok_or_else(|| "policy preview-promote requires --language <language>".to_string())?;
+    if !output::policy_preview_promotion::is_supported_language(&language) {
+        return Err(format!(
+            "unknown preview promotion language {language:?}; expected `typescript` or `python`"
+        ));
+    }
+    let candidate_class = candidate_class
+        .ok_or_else(|| "policy preview-promote requires --class <class>".to_string())?;
+    let out = out.unwrap_or_else(|| {
+        PathBuf::from(
+            output::policy_preview_promotion::default_preview_promotion_out(
+                &language,
+                &candidate_class,
+            ),
+        )
+    });
+    let out_md = out_md.unwrap_or_else(|| {
+        PathBuf::from(
+            output::policy_preview_promotion::default_preview_promotion_md_out(
+                &language,
+                &candidate_class,
+            ),
+        )
+    });
+
+    Ok(PolicyPreviewPromotionOptions {
+        root,
+        language,
+        candidate_class,
+        evidence,
+        out,
+        out_md,
+    })
+}
+
 fn parse_policy_waiver_aging_options(args: &[String]) -> Result<PolicyWaiverAgingOptions, String> {
     let mut root = ".".to_string();
     let mut ledger = None;
@@ -4773,6 +5925,7 @@ fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerO
     let mut baseline_delta = None;
     let mut zero_status = None;
     let mut pr_guidance = None;
+    let mut gap_ledger = None;
     let mut recommendation_calibration = None;
     let mut agent_receipt = None;
     let mut coverage = None;
@@ -4840,6 +5993,15 @@ fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerO
                     "pr-ledger record",
                 )?);
             }
+            "--gap-ledger" => {
+                i += 1;
+                gap_ledger = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--gap-ledger",
+                    "pr-ledger record",
+                )?);
+            }
             "--recommendation-calibration" => {
                 i += 1;
                 recommendation_calibration = Some(non_empty_path_arg(
@@ -4889,10 +6051,14 @@ fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerO
         i += 1;
     }
 
-    if gate.is_none() && baseline_delta.is_none() && zero_status.is_none() && pr_guidance.is_none()
+    if gate.is_none()
+        && baseline_delta.is_none()
+        && zero_status.is_none()
+        && pr_guidance.is_none()
+        && gap_ledger.is_none()
     {
         return Err(
-            "pr-ledger record requires at least one of --gate, --baseline-delta, --zero-status, or --pr-guidance"
+            "pr-ledger record requires at least one of --gate, --baseline-delta, --zero-status, --pr-guidance, or --gap-ledger"
                 .to_string(),
         );
     }
@@ -4907,6 +6073,7 @@ fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerO
         baseline_delta,
         zero_status,
         pr_guidance,
+        gap_ledger,
         recommendation_calibration,
         agent_receipt,
         coverage,
@@ -5304,6 +6471,96 @@ fn parse_report_packet_index_options(args: &[String]) -> Result<ReportPacketInde
     })
 }
 
+fn parse_gap_decision_ledger_options(args: &[String]) -> Result<GapDecisionLedgerOptions, String> {
+    let mut root = ".".to_string();
+    let mut records = None;
+    let mut repo_exposure = None;
+    let mut check_output = None;
+    let mut out = PathBuf::from(output::gap_decision_ledger::DEFAULT_GAP_DECISION_LEDGER_OUT);
+    let mut out_md = PathBuf::from(output::gap_decision_ledger::DEFAULT_GAP_DECISION_LEDGER_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "reports gap-ledger")?;
+            }
+            "--records" => {
+                i += 1;
+                records = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--records",
+                    "reports gap-ledger",
+                )?);
+            }
+            "--repo-exposure" => {
+                i += 1;
+                repo_exposure = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--repo-exposure",
+                    "reports gap-ledger",
+                )?);
+            }
+            "--check-output" => {
+                i += 1;
+                check_output = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--check-output",
+                    "reports gap-ledger",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "reports gap-ledger")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "reports gap-ledger")?;
+            }
+            other => return Err(format!("unknown reports gap-ledger argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    let supplied_sources =
+        records.is_some() as u8 + repo_exposure.is_some() as u8 + check_output.is_some() as u8;
+    if supplied_sources == 0 {
+        return Err(
+            "reports gap-ledger requires --records PATH, --repo-exposure PATH, or --check-output PATH"
+                .to_string(),
+        );
+    }
+    if supplied_sources > 1 {
+        return Err(
+            "reports gap-ledger accepts only one of --records, --repo-exposure, or --check-output"
+                .to_string(),
+        );
+    }
+    let source = if let Some(records) = records {
+        GapDecisionLedgerSource::Records(records)
+    } else if let Some(repo_exposure) = repo_exposure {
+        GapDecisionLedgerSource::RepoExposure(repo_exposure)
+    } else if let Some(check_output) = check_output {
+        GapDecisionLedgerSource::CheckOutput(check_output)
+    } else {
+        return Err(
+            "reports gap-ledger requires --records PATH, --repo-exposure PATH, or --check-output PATH"
+                .to_string(),
+        );
+    };
+
+    Ok(GapDecisionLedgerOptions {
+        root,
+        source,
+        out,
+        out_md,
+    })
+}
+
 fn parse_coverage_grip_frontier_options(
     args: &[String],
 ) -> Result<CoverageGripFrontierOptions, String> {
@@ -5575,6 +6832,7 @@ fn parse_first_action_options(args: &[String]) -> Result<FirstActionOptions, Str
     let mut root = ".".to_string();
     let mut pr_guidance = None;
     let mut assistant_proof = None;
+    let mut gap_ledger = None;
     let mut ledger = None;
     let mut baseline_delta = None;
     let mut receipt = None;
@@ -5608,6 +6866,10 @@ fn parse_first_action_options(args: &[String]) -> Result<FirstActionOptions, Str
                     "--assistant-proof",
                     "first-action",
                 )?);
+            }
+            "--gap-ledger" => {
+                i += 1;
+                gap_ledger = Some(non_empty_path_arg(args, i, "--gap-ledger", "first-action")?);
             }
             "--ledger" => {
                 i += 1;
@@ -5668,6 +6930,7 @@ fn parse_first_action_options(args: &[String]) -> Result<FirstActionOptions, Str
 
     if pr_guidance.is_none()
         && assistant_proof.is_none()
+        && gap_ledger.is_none()
         && ledger.is_none()
         && baseline_delta.is_none()
         && receipt.is_none()
@@ -5682,6 +6945,7 @@ fn parse_first_action_options(args: &[String]) -> Result<FirstActionOptions, Str
         root,
         pr_guidance,
         assistant_proof,
+        gap_ledger,
         ledger,
         baseline_delta,
         receipt,
@@ -5726,6 +6990,14 @@ fn comment_publish_plan_generated_at() -> Result<String, String> {
 }
 
 fn report_packet_index_generated_at() -> Result<String, String> {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| format!("system clock before unix epoch: {err}"))?
+        .as_millis();
+    Ok(format!("unix_ms:{millis}"))
+}
+
+fn gap_decision_ledger_generated_at() -> Result<String, String> {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|err| format!("system clock before unix epoch: {err}"))?
@@ -5839,6 +7111,7 @@ fn review_comments_markdown_path(json_path: &Path) -> PathBuf {
 pub(super) fn check(args: &[String]) -> Result<(), String> {
     let mut input = CheckInput::default();
     let mut explicit = CheckInputExplicit::default();
+    let mut gap_ledger: Option<PathBuf> = None;
     let mut i = 0usize;
     while i < args.len() {
         match args[i].as_str() {
@@ -5864,6 +7137,10 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
                 i += 1;
                 input.format = parse_format(expect_value(args, i, "--format")?)?;
             }
+            "--gap-ledger" => {
+                i += 1;
+                gap_ledger = Some(PathBuf::from(expect_value(args, i, "--gap-ledger")?));
+            }
             "--no-unchanged-tests" => {
                 input.include_unchanged_tests = false;
                 explicit.include_unchanged_tests = true;
@@ -5879,6 +7156,21 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     let config = load_for_root(&input.root)?;
     apply_to_check_input(&mut input, &config, explicit);
     let format = input.format.clone();
+    if let Some(gap_ledger) = gap_ledger.as_ref() {
+        print!(
+            "{}",
+            render_check_gap_ledger_badge(gap_ledger, &format, &config)?
+        );
+        return Ok(());
+    }
+    if matches!(format, OutputFormat::RepoExposureJson) {
+        let classified = analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
+        let stdout = std::io::stdout();
+        let mut handle = stdout.lock();
+        output::repo_exposure::write_repo_exposure_json(&classified, &mut handle)
+            .map_err(|err| format!("write repo exposure JSON failed: {err}"))?;
+        return Ok(());
+    }
     let output = if format.is_repo_seam_inventory() {
         // Repo seam-driven formats do not consume legacy repo `Findings`,
         // so skip `run_repo_analysis` and let `render_check` drive the
@@ -5895,6 +7187,36 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
         app::render_check_with_config(&output, &format, &config)?
     );
     Ok(())
+}
+
+fn render_check_gap_ledger_badge(
+    gap_ledger: &Path,
+    format: &OutputFormat,
+    config: &RiprConfig,
+) -> Result<String, String> {
+    let (kind, shields) = match format {
+        OutputFormat::RepoBadgeJson => (output::badge::BadgeKind::Ripr, false),
+        OutputFormat::RepoBadgeShields => (output::badge::BadgeKind::Ripr, true),
+        OutputFormat::RepoBadgePlusJson => (output::badge::BadgeKind::RiprPlus, false),
+        OutputFormat::RepoBadgePlusShields => (output::badge::BadgeKind::RiprPlus, true),
+        _ => {
+            return Err(
+                "check --gap-ledger is only supported with repo-badge-* formats".to_string(),
+            );
+        }
+    };
+    let text = std::fs::read_to_string(gap_ledger)
+        .map_err(|err| format!("failed to read gap ledger {}: {err}", gap_ledger.display()))?;
+    let policy = output::badge::BadgePolicy {
+        suppressions_path: config.suppressions().display_path(),
+        ..output::badge::BadgePolicy::default()
+    };
+    let summary = output::badge::repo_gap_ledger_badge_summary_from_json(&text, kind, policy)?;
+    if shields {
+        Ok(output::badge::render_shields_json(&summary))
+    } else {
+        Ok(output::badge::render_native_json(&summary))
+    }
 }
 
 pub(super) fn explain(args: &[String]) -> Result<(), String> {
@@ -6155,6 +7477,20 @@ mod tests {
             .unwrap_or_else(|| PathBuf::from("."))
     }
 
+    fn copy_sample_workspace_to_temp(label: &str) -> Result<PathBuf, String> {
+        let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/sample");
+        let dest = unique_command_test_dir(label);
+        std::fs::create_dir_all(dest.join("src"))
+            .map_err(|err| format!("failed to create temp sample src: {err}"))?;
+        std::fs::create_dir_all(dest.join("tests"))
+            .map_err(|err| format!("failed to create temp sample tests: {err}"))?;
+        for relative in ["example.diff", "src/lib.rs", "tests/pricing.rs"] {
+            std::fs::copy(source.join(relative), dest.join(relative))
+                .map_err(|err| format!("failed to copy sample file {relative}: {err}"))?;
+        }
+        Ok(dest)
+    }
+
     struct GeneratedWorkflowSmokeFixture<'a> {
         commands: &'a [&'a str],
         artifact_paths: &'a [&'a str],
@@ -6182,6 +7518,10 @@ mod tests {
                 "policy waiver-aging",
                 "policy suppression-health",
                 "policy readiness",
+                "policy operations",
+                "policy history",
+                "policy promote",
+                "policy preview-promote",
                 "assistant-loop proof",
                 "assistant-loop health",
                 "first-action",
@@ -6227,6 +7567,22 @@ mod tests {
                 "target/ripr/reports/suppression-health.md",
                 "target/ripr/reports/policy-readiness.json",
                 "target/ripr/reports/policy-readiness.md",
+                "target/ripr/reports/policy-operations.json",
+                "target/ripr/reports/policy-operations.md",
+                "target/ripr/reports/policy-history.json",
+                "target/ripr/reports/policy-history.md",
+                "target/ripr/reports/policy-promotion-visible-only.json",
+                "target/ripr/reports/policy-promotion-visible-only.md",
+                "target/ripr/reports/policy-promotion-acknowledgeable.json",
+                "target/ripr/reports/policy-promotion-acknowledgeable.md",
+                "target/ripr/reports/policy-promotion-baseline-check.json",
+                "target/ripr/reports/policy-promotion-baseline-check.md",
+                "target/ripr/reports/policy-promotion-calibrated-gate.json",
+                "target/ripr/reports/policy-promotion-calibrated-gate.md",
+                "target/ripr/reports/preview-promotion-${language}-${class_label//_/-}.json",
+                "target/ripr/reports/preview-promotion-${language}-${class_label//_/-}.md",
+                "target/ripr/reports/preview-promotion-typescript-boundary-gap.md",
+                "target/ripr/reports/preview-promotion-python-boundary-gap.md",
                 "target/ripr/reports/test-oracle-assistant-proof.json",
                 "target/ripr/reports/test-oracle-assistant-proof.md",
                 "target/ripr/reports/assistant-loop-health.json",
@@ -6245,6 +7601,8 @@ mod tests {
             ],
             summary_sections: &[
                 "## RIPR advisory summary",
+                "### Start here",
+                "### Language preview grouping",
                 "### PR review summary",
                 "#### PR review at a glance",
                 "### Recommended next test",
@@ -6264,6 +7622,12 @@ mod tests {
                 "#### PR movement at a glance",
                 "### Policy readiness",
                 "#### Policy readiness at a glance",
+                "### Policy operations",
+                "#### Policy operations at a glance",
+                "### Policy history",
+                "#### Policy history at a glance",
+                "### Policy promotion packets",
+                "### Preview promotion packets",
                 "### Waiver aging",
                 "#### Waiver aging at a glance",
                 "### Suppression health",
@@ -6291,6 +7655,10 @@ mod tests {
                 "Render RIPR waiver aging",
                 "Render RIPR suppression health",
                 "Render RIPR policy readiness",
+                "Render RIPR policy operations",
+                "Render RIPR policy history",
+                "Render RIPR policy promotion packets",
+                "Render RIPR preview promotion packets",
                 "Render RIPR test-oracle assistant proof",
                 "Render RIPR assistant loop health",
                 "Render RIPR first useful action",
@@ -6375,6 +7743,24 @@ mod tests {
     }
 
     #[test]
+    fn check_repo_exposure_json_streams_output() -> Result<(), String> {
+        let root = copy_sample_workspace_to_temp("repo-exposure-json")?;
+        let root_arg = root.to_string_lossy().into_owned();
+        assert_eq!(
+            check(&[
+                "--root".to_string(),
+                root_arg,
+                "--format".to_string(),
+                "repo-exposure-json".to_string()
+            ]),
+            Ok(())
+        );
+        std::fs::remove_dir_all(root)
+            .map_err(|err| format!("failed to remove temp sample workspace: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
     fn command_help_branches_return_ok() {
         assert_eq!(init(&args(&["--help"])), Ok(()));
         assert_eq!(pilot(&args(&["--help"])), Ok(()));
@@ -6388,8 +7774,306 @@ mod tests {
         assert_eq!(check(&args(&["--help"])), Ok(()));
         assert_eq!(explain(&args(&["--help"])), Ok(()));
         assert_eq!(context(&args(&["--help"])), Ok(()));
+        assert_eq!(reports(&args(&["--help"])), Ok(()));
         assert_eq!(doctor(&args(&["--help"])), Ok(()));
         assert_eq!(lsp(&args(&["--help"])), Ok(()));
+    }
+
+    #[test]
+    fn reports_gap_ledger_requires_records_input() {
+        assert_eq!(
+            reports(&args(&["gap-ledger"])),
+            Err(
+                "reports gap-ledger requires --records PATH, --repo-exposure PATH, or --check-output PATH"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            reports(&args(&["gap-ledger", "--records"])),
+            Err("missing value for --records".to_string())
+        );
+        assert_eq!(
+            reports(&args(&["gap-ledger", "--repo-exposure"])),
+            Err("missing value for --repo-exposure".to_string())
+        );
+        assert_eq!(
+            reports(&args(&["gap-ledger", "--check-output"])),
+            Err("missing value for --check-output".to_string())
+        );
+        assert_eq!(
+            reports(&args(&[
+                "gap-ledger",
+                "--records",
+                "records.json",
+                "--check-output",
+                "check.json"
+            ])),
+            Err(
+                "reports gap-ledger accepts only one of --records, --repo-exposure, or --check-output"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            reports(&args(&["unknown"])),
+            Err(
+                "unknown reports subcommand \"unknown\"; expected `index` or `gap-ledger`"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn reports_gap_ledger_writes_json_and_markdown_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("gap-ledger");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create gap ledger dir: {err}"))?;
+        let records = repo_root().join("fixtures/gap-decision-ledger/corpus.json");
+        let out = dir.join("gap-decision-ledger.json");
+        let out_md = dir.join("gap-decision-ledger.md");
+
+        reports(&args(&[
+            "gap-ledger",
+            "--records",
+            &records.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text =
+            std::fs::read_to_string(&out).map_err(|err| format!("read gap ledger JSON: {err}"))?;
+        assert!(json_text.contains("\"kind\": \"gap_decision_ledger\""));
+        assert!(json_text.contains("\"records_total\": 18"));
+        let markdown = std::fs::read_to_string(&out_md)
+            .map_err(|err| format!("read gap ledger Markdown: {err}"))?;
+        assert!(markdown.contains("# RIPR Gap Decision Ledger"));
+        assert!(markdown.contains("gate candidates=`1`"));
+
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove gap ledger dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn reports_gap_ledger_derives_output_contract_gap_from_check_output() -> Result<(), String> {
+        let dir = unique_command_test_dir("gap-ledger-check-output");
+        std::fs::create_dir_all(&dir)
+            .map_err(|err| format!("create gap ledger check output dir: {err}"))?;
+        let check_output = dir.join("check.json");
+        let out = dir.join("gap-decision-ledger.json");
+        let out_md = dir.join("gap-decision-ledger.md");
+        std::fs::write(&check_output, check_output_with_presentation_text_gap())
+            .map_err(|err| format!("write check output: {err}"))?;
+
+        reports(&args(&[
+            "gap-ledger",
+            "--check-output",
+            &check_output.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text = std::fs::read_to_string(&out)
+            .map_err(|err| format!("read check-output gap ledger JSON: {err}"))?;
+        assert!(json_text.contains("\"source_kind\": \"check_output\""));
+        assert!(json_text.contains("\"kind\": \"MissingOutputContract\""));
+        assert!(json_text.contains("\"route_kind\": \"AddOutputGolden\""));
+        assert!(json_text.contains("cargo xtask goldens check"));
+        assert!(json_text.contains("\"projection_pr_comment_eligible\": 1"));
+        assert!(json_text.contains("\"projection_gate_candidate\": 0"));
+        let markdown = std::fs::read_to_string(&out_md)
+            .map_err(|err| format!("read check-output gap ledger Markdown: {err}"))?;
+        assert!(markdown.contains("MissingOutputContract"));
+        assert!(markdown.contains("AddOutputGolden"));
+
+        std::fs::remove_dir_all(&dir)
+            .map_err(|err| format!("remove gap ledger check output dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn reports_gap_ledger_derives_repo_scoped_records_from_repo_exposure() -> Result<(), String> {
+        let dir = unique_command_test_dir("gap-ledger-repo-exposure");
+        std::fs::create_dir_all(&dir)
+            .map_err(|err| format!("create gap ledger repo exposure dir: {err}"))?;
+        let repo_exposure = dir.join("repo-exposure.json");
+        let out = dir.join("gap-decision-ledger.json");
+        let out_md = dir.join("gap-decision-ledger.md");
+        std::fs::write(
+            &repo_exposure,
+            repo_exposure_with_actionable_evidence_record(),
+        )
+        .map_err(|err| format!("write repo exposure: {err}"))?;
+
+        reports(&args(&[
+            "gap-ledger",
+            "--repo-exposure",
+            &repo_exposure.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text = std::fs::read_to_string(&out)
+            .map_err(|err| format!("read derived gap ledger JSON: {err}"))?;
+        assert!(json_text.contains("\"source_kind\": \"repo_exposure\""));
+        assert!(json_text.contains("\"records_total\": 1"));
+        assert!(json_text.contains("\"kind\": \"MissingBoundaryAssertion\""));
+        assert!(json_text.contains("\"scope\": \"repo_scoped\""));
+        assert!(json_text.contains("\"route_kind\": \"AddBoundaryAssertion\""));
+        assert!(json_text.contains("\"ripr_zero_count\":"));
+        let markdown = std::fs::read_to_string(&out_md)
+            .map_err(|err| format!("read derived gap ledger Markdown: {err}"))?;
+        assert!(markdown.contains("AddBoundaryAssertion"));
+        assert!(markdown.contains("repo_scoped"));
+
+        std::fs::remove_dir_all(&dir)
+            .map_err(|err| format!("remove gap ledger repo exposure dir: {err}"))?;
+        Ok(())
+    }
+
+    fn repo_exposure_with_actionable_evidence_record() -> &'static str {
+        r#"{
+  "schema_version": "0.3",
+  "scope": "repo",
+  "seams": [
+    {
+      "seam_id": "seam-pricing-threshold",
+      "file": "src/pricing.rs",
+      "line": 88,
+      "evidence_record": {
+        "schema_version": "0.1",
+        "seam_id": "seam-pricing-threshold",
+        "canonical_gap_id": "gap:rust:pricing:threshold",
+        "raw_findings": [
+          {
+            "file": "src/pricing.rs",
+            "line": 88,
+            "kind": "weakly_gripped",
+            "expression": "amount >= discount_threshold",
+            "probe_kind": "predicate_boundary",
+            "source_id": "seam-pricing-threshold",
+            "evidence_record_ref": "seam-pricing-threshold"
+          }
+        ],
+        "canonical_item": {
+          "canonical_gap_id": "gap:rust:pricing:threshold",
+          "raw_group_size": 1,
+          "canonical_item_kind": "gap",
+          "evidence_class": "predicate_boundary",
+          "gap_state": "actionable",
+          "actionability": "upgrade_assertion",
+          "group_reason": "same owner and missing discriminator",
+          "why": "related tests reach the seam but miss the boundary discriminator",
+          "recommended_repair": "Add an exact boundary assertion.",
+          "related_test": {
+            "name": "below_threshold_has_no_discount",
+            "file": "tests/pricing_tests.rs",
+            "line": 12,
+            "reason": "direct owner call"
+          },
+          "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json",
+          "confidence": {
+            "basis": "static_only",
+            "notes": ["no imported runtime calibration data"]
+          }
+        },
+        "owner": "pricing::discounted_total",
+        "location": {
+          "file": "src/pricing.rs",
+          "line": 88
+        },
+        "seam_kind": "predicate_boundary",
+        "grip_class": "weakly_gripped",
+        "headline_eligible": true,
+        "recommendation": {
+          "action": "write_targeted_test",
+          "reason": "add the missing boundary assertion",
+          "recommended_test": {
+            "name": "discounts_at_threshold",
+            "file": "tests/pricing_tests.rs",
+            "reason": "nearest pricing test module"
+          },
+          "assertion_shape": {
+            "kind": "exact_return_value",
+            "example": "assert_eq!(discounted_total(100, 100), 90)"
+          },
+          "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"
+        },
+        "actionability": {
+          "class": "actionable_assertion_upgrade",
+          "reason": "related tests reach the seam but still miss a concrete discriminator",
+          "has_concrete_guidance": true
+        }
+      }
+    }
+  ]
+}"#
+    }
+
+    fn check_output_with_presentation_text_gap() -> &'static str {
+        r#"{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "finding_alignment": {
+    "scope": "supported_classes",
+    "items": [
+      {
+        "canonical_gap_id": "presentation_text::HELP_DEVICE_LABEL",
+        "canonical_item_kind": "gap",
+        "evidence_class": "presentation_text",
+        "gap_state": "actionable",
+        "actionability": "add_output_observer",
+        "raw_group_size": 2,
+        "group_reason": "declaration_and_literal_same_text_constant",
+        "why": "Changed text flows to CLI help output and no supported output observer is found.",
+        "recommended_repair": "Add or update a help-output snapshot assertion for HELP_DEVICE_LABEL.",
+        "related_test": null,
+        "verify_command": "cargo xtask evidence-quality-scorecard",
+        "static_limitations": [],
+        "confidence": {
+          "basis": "fixture_backed",
+          "notes": ["Visible unobserved presentation text is actionable only for supported sink patterns."]
+        },
+        "raw_findings": [
+          {
+            "file": "crates/ripr/src/cli/help.rs",
+            "line": 42,
+            "kind": "exposed",
+            "expression": "pub const HELP_DEVICE_LABEL: &str =",
+            "probe_kind": "field_construction",
+            "source_id": "help-label-decl",
+            "evidence_record_ref": "help-label-decl"
+          },
+          {
+            "file": "crates/ripr/src/cli/help.rs",
+            "line": 43,
+            "kind": "static_unknown",
+            "expression": "\"Device label\";",
+            "probe_kind": "static_unknown",
+            "source_id": "help-label-literal",
+            "evidence_record_ref": "help-label-literal"
+          }
+        ],
+        "presentation_text": {
+          "constant_name": "HELP_DEVICE_LABEL",
+          "text_literal": "Device label",
+          "visibility": "user_visible",
+          "observer": "none",
+          "actionability": "add_output_observer",
+          "source_kind": "const_decl",
+          "canonical_group_reason": "declaration_and_literal_same_text_constant",
+          "recommended_observer": "cli_help_output",
+          "repair_kind": "output_observer",
+          "target_test_type": "help_output_snapshot",
+          "suggested_assertion": "Assert CLI help output includes the HELP_DEVICE_LABEL text."
+        }
+      }
+    ]
+  }
+}"#
     }
 
     #[test]
@@ -6473,8 +8157,9 @@ mod tests {
 
     #[test]
     fn pilot_analysis_timeout_returns_partial_result() {
-        let result = run_pilot_analysis_with_timeout(1, || {
-            std::thread::sleep(std::time::Duration::from_millis(20));
+        let (_hold_tx, hold_rx) = mpsc::channel::<()>();
+        let result = run_pilot_analysis_with_timeout(1, move || {
+            let _ignored = hold_rx.recv();
             Ok(Vec::new())
         });
 
@@ -6563,6 +8248,26 @@ mod tests {
                 root: PathBuf::from("repo"),
                 base: "origin/main".to_string(),
                 head: "HEAD".to_string(),
+                gap_ledger: None,
+                out: PathBuf::from("target/ripr/review/comments.json"),
+            })
+        );
+        assert_eq!(
+            parse_review_comments_options(&args(&[
+                "--base",
+                "origin/main",
+                "--head",
+                "HEAD",
+                "--gap-ledger",
+                "target/ripr/reports/gap-decision-ledger.json",
+            ])),
+            Ok(ReviewCommentsOptions {
+                root: PathBuf::from("."),
+                base: "origin/main".to_string(),
+                head: "HEAD".to_string(),
+                gap_ledger: Some(PathBuf::from(
+                    "target/ripr/reports/gap-decision-ledger.json"
+                )),
                 out: PathBuf::from("target/ripr/review/comments.json"),
             })
         );
@@ -6601,6 +8306,17 @@ mod tests {
             Err("review-comments --out requires a non-empty path".to_string())
         );
         assert_eq!(
+            parse_review_comments_options(&args(&[
+                "--base",
+                "main",
+                "--head",
+                "HEAD",
+                "--gap-ledger",
+                "",
+            ])),
+            Err("review-comments --gap-ledger requires a non-empty path".to_string())
+        );
+        assert_eq!(
             parse_review_comments_options(&args(&["--base", "main", "--head", "HEAD", "--bad"])),
             Err("unknown review-comments argument \"--bad\"".to_string())
         );
@@ -6623,6 +8339,8 @@ mod tests {
             "target/ripr/reports/repo-exposure.json",
             "--pr-guidance",
             "target/ripr/review/comments.json",
+            "--gap-ledger",
+            "target/ripr/reports/gap-decision-ledger.json",
             "--sarif-policy",
             "target/ripr/reports/sarif-policy.json",
             "--labels-json",
@@ -6653,7 +8371,10 @@ mod tests {
                 input: output::gate::GateEvaluateInput {
                     root: PathBuf::from("repo"),
                     repo_exposure: Some(PathBuf::from("target/ripr/reports/repo-exposure.json")),
-                    pr_guidance: PathBuf::from("target/ripr/review/comments.json"),
+                    pr_guidance: Some(PathBuf::from("target/ripr/review/comments.json")),
+                    gap_ledger: Some(PathBuf::from(
+                        "target/ripr/reports/gap-decision-ledger.json"
+                    )),
                     sarif_policy: Some(PathBuf::from("target/ripr/reports/sarif-policy.json")),
                     labels_json: Some(PathBuf::from("target/ci/labels.json")),
                     labels: vec!["ripr-waive".to_string()],
@@ -6676,7 +8397,7 @@ mod tests {
     }
 
     #[test]
-    fn gate_requires_pr_guidance_and_rejects_unknown_args() {
+    fn gate_rejects_bad_surface_and_unknown_args() {
         assert_eq!(
             gate(&args(&[])),
             Err("gate requires subcommand `evaluate`".to_string())
@@ -6699,7 +8420,26 @@ mod tests {
         );
         assert_eq!(
             parse_gate_options(&args(&[])),
-            Err("gate evaluate requires --pr-guidance <path>".to_string())
+            Ok(GateOptions {
+                input: output::gate::GateEvaluateInput {
+                    root: PathBuf::from("."),
+                    repo_exposure: None,
+                    pr_guidance: None,
+                    gap_ledger: None,
+                    sarif_policy: None,
+                    labels_json: None,
+                    labels: Vec::new(),
+                    agent_verify: None,
+                    agent_receipt: None,
+                    recommendation_calibration: None,
+                    mutation_calibration: None,
+                    baseline: None,
+                    mode: output::gate::GateMode::VisibleOnly,
+                    acknowledgement_labels: Vec::new(),
+                },
+                out: PathBuf::from(output::gate::DEFAULT_GATE_OUT),
+                out_md: PathBuf::from("target/ripr/reports/gate-decision.md"),
+            })
         );
     }
 
@@ -6937,6 +8677,8 @@ mod tests {
                 ".ripr/gate-baseline.json",
                 "--delta",
                 "target/ripr/reports/baseline-debt-delta.json",
+                "--gap-ledger",
+                "target/ripr/reports/gap-decision-ledger.json",
                 "--gate",
                 "target/ripr/reports/gate-decision.json",
                 "--pr-guidance",
@@ -6951,6 +8693,9 @@ mod tests {
             Ok(RiprZeroStatusOptions {
                 baseline: Some(PathBuf::from(".ripr/gate-baseline.json")),
                 delta: PathBuf::from("target/ripr/reports/baseline-debt-delta.json"),
+                gap_ledger: Some(PathBuf::from(
+                    "target/ripr/reports/gap-decision-ledger.json"
+                )),
                 gate: Some(PathBuf::from("target/ripr/reports/gate-decision.json")),
                 pr_guidance: Some(PathBuf::from("target/ripr/review/comments.json")),
                 recommendation_calibration: Some(PathBuf::from(
@@ -7040,18 +8785,69 @@ mod tests {
     }
 
     #[test]
+    fn policy_operations_parses_option_surface() {
+        assert_eq!(
+            parse_policy_operations_options(&args(&[
+                "--root",
+                ".",
+                "--policy-readiness",
+                "target/ripr/reports/policy-readiness.json",
+                "--waiver-aging",
+                "target/ripr/reports/waiver-aging.json",
+                "--suppression-health",
+                "target/ripr/reports/suppression-health.json",
+                "--baseline-delta",
+                "target/ripr/reports/baseline-debt-delta.json",
+                "--gate-decision",
+                "target/ripr/reports/gate-decision.json",
+                "--recommendation-calibration",
+                "target/ripr/reports/recommendation-calibration.json",
+                "--mutation-calibration",
+                "target/ripr/reports/mutation-calibration.json",
+                "--preview-boundary",
+                "target/ripr/reports/preview-boundary.json",
+                "--out",
+                "target/ripr/reports/policy-operations.json",
+                "--out-md",
+                "target/ripr/reports/policy-operations.md",
+            ])),
+            Ok(PolicyOperationsOptions {
+                root: ".".to_string(),
+                policy_readiness: Some(PathBuf::from("target/ripr/reports/policy-readiness.json")),
+                waiver_aging: Some(PathBuf::from("target/ripr/reports/waiver-aging.json")),
+                suppression_health: Some(PathBuf::from(
+                    "target/ripr/reports/suppression-health.json"
+                )),
+                baseline_delta: Some(PathBuf::from(
+                    "target/ripr/reports/baseline-debt-delta.json"
+                )),
+                gate_decision: Some(PathBuf::from("target/ripr/reports/gate-decision.json")),
+                recommendation_calibration: Some(PathBuf::from(
+                    "target/ripr/reports/recommendation-calibration.json"
+                )),
+                mutation_calibration: Some(PathBuf::from(
+                    "target/ripr/reports/mutation-calibration.json"
+                )),
+                preview_boundary: Some(PathBuf::from("target/ripr/reports/preview-boundary.json")),
+                out: PathBuf::from("target/ripr/reports/policy-operations.json"),
+                out_md: PathBuf::from("target/ripr/reports/policy-operations.md"),
+            })
+        );
+    }
+
+    #[test]
     fn policy_readiness_rejects_unknown_args() {
         assert_eq!(
             policy(&args(&[])),
             Err(
-                "policy requires subcommand `readiness`, `waiver-aging`, or `suppression-health`"
+                "policy requires subcommand `readiness`, `operations`, `history`, `promote`, `preview-promote`, `waiver-aging`, or `suppression-health`"
                     .to_string()
             )
         );
         assert_eq!(
             policy(&args(&["unknown"])),
             Err(
-                "unknown policy subcommand \"unknown\"; expected `readiness`, `waiver-aging`, or `suppression-health`"
+                "unknown policy subcommand \"unknown\"; expected `readiness`, `operations`, `history`, `promote`, `preview-promote`, `waiver-aging`, or `suppression-health`"
                     .to_string()
             )
         );
@@ -7062,6 +8858,210 @@ mod tests {
         assert_eq!(
             parse_policy_readiness_options(&args(&["--bad"])),
             Err("unknown policy readiness argument \"--bad\"".to_string())
+        );
+        assert_eq!(
+            parse_policy_operations_options(&args(&[])),
+            Err("policy operations requires --policy-readiness <path>".to_string())
+        );
+        assert_eq!(
+            parse_policy_operations_options(&args(&["--policy-readiness", ""])),
+            Err("policy operations --policy-readiness requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_policy_operations_options(&args(&["--bad"])),
+            Err("unknown policy operations argument \"--bad\"".to_string())
+        );
+        assert_eq!(
+            parse_policy_promotion_options(&args(&[])),
+            Err("policy promote requires --to <mode>".to_string())
+        );
+        assert_eq!(
+            parse_policy_promotion_options(&args(&["--to", "strict"])),
+            Err(
+                "unknown policy promotion target \"strict\"; expected `visible-only`, `acknowledgeable`, `baseline-check`, or `calibrated-gate`"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_policy_promotion_options(&args(&["--to", "visible-only"])),
+            Err("policy promote requires --operations <path>".to_string())
+        );
+        assert_eq!(
+            parse_policy_promotion_options(&args(&["--to", "visible-only", "--operations", ""])),
+            Err("policy promote --operations requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_policy_promotion_options(&args(&["--bad"])),
+            Err("unknown policy promote argument \"--bad\"".to_string())
+        );
+        assert_eq!(
+            parse_policy_preview_promotion_options(&args(&[])),
+            Err("policy preview-promote requires --language <language>".to_string())
+        );
+        assert_eq!(
+            parse_policy_preview_promotion_options(&args(&["--language", "ruby"])),
+            Err(
+                "unknown preview promotion language \"ruby\"; expected `typescript` or `python`"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_policy_preview_promotion_options(&args(&["--language", "typescript"])),
+            Err("policy preview-promote requires --class <class>".to_string())
+        );
+        assert_eq!(
+            parse_policy_preview_promotion_options(&args(&[
+                "--language",
+                "typescript",
+                "--class",
+                "",
+            ])),
+            Err("policy preview-promote --class requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_policy_preview_promotion_options(&args(&["--bad"])),
+            Err("unknown policy preview-promote argument \"--bad\"".to_string())
+        );
+    }
+
+    #[test]
+    fn policy_history_parses_option_surface() {
+        assert_eq!(
+            parse_policy_history_options(&args(&[
+                "--root",
+                ".",
+                "--current",
+                "target/ripr/reports/policy-operations.json",
+                "--history",
+                ".ripr/policy-history.jsonl",
+                "--commit",
+                "HEAD",
+                "--pr-number",
+                "123",
+                "--out",
+                "target/ripr/reports/policy-history.json",
+                "--out-md",
+                "target/ripr/reports/policy-history.md",
+            ])),
+            Ok(PolicyHistoryOptions {
+                root: ".".to_string(),
+                current: PathBuf::from("target/ripr/reports/policy-operations.json"),
+                history: Some(PathBuf::from(".ripr/policy-history.jsonl")),
+                commit: Some("HEAD".to_string()),
+                pr_number: Some("123".to_string()),
+                out: PathBuf::from("target/ripr/reports/policy-history.json"),
+                out_md: PathBuf::from("target/ripr/reports/policy-history.md"),
+            })
+        );
+        assert_eq!(
+            parse_policy_history_options(&args(&[])),
+            Err("policy history requires --current <path>".to_string())
+        );
+        assert_eq!(
+            parse_policy_history_options(&args(&["--current", ""])),
+            Err("policy history --current requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_policy_history_options(&args(&["--current", "ops.json", "--bad"])),
+            Err("unknown policy history argument \"--bad\"".to_string())
+        );
+    }
+
+    #[test]
+    fn policy_promotion_parses_option_surface() {
+        assert_eq!(
+            parse_policy_promotion_options(&args(&[
+                "--root",
+                ".",
+                "--to",
+                "baseline-check",
+                "--operations",
+                "target/ripr/reports/policy-operations.json",
+                "--history",
+                "target/ripr/reports/policy-history.json",
+                "--out",
+                "target/ripr/reports/policy-promotion-baseline-check.json",
+                "--out-md",
+                "target/ripr/reports/policy-promotion-baseline-check.md",
+            ])),
+            Ok(PolicyPromotionOptions {
+                root: ".".to_string(),
+                target_mode: "baseline-check".to_string(),
+                operations: PathBuf::from("target/ripr/reports/policy-operations.json"),
+                history: Some(PathBuf::from("target/ripr/reports/policy-history.json")),
+                out: PathBuf::from("target/ripr/reports/policy-promotion-baseline-check.json"),
+                out_md: PathBuf::from("target/ripr/reports/policy-promotion-baseline-check.md"),
+            })
+        );
+        assert_eq!(
+            parse_policy_promotion_options(&args(&[
+                "--to",
+                "visible-only",
+                "--operations",
+                "target/ripr/reports/policy-operations.json",
+            ])),
+            Ok(PolicyPromotionOptions {
+                root: ".".to_string(),
+                target_mode: "visible-only".to_string(),
+                operations: PathBuf::from("target/ripr/reports/policy-operations.json"),
+                history: None,
+                out: PathBuf::from("target/ripr/reports/policy-promotion-visible-only.json"),
+                out_md: PathBuf::from("target/ripr/reports/policy-promotion-visible-only.md"),
+            })
+        );
+    }
+
+    #[test]
+    fn policy_preview_promotion_parses_option_surface() {
+        assert_eq!(
+            parse_policy_preview_promotion_options(&args(&[
+                "--root",
+                ".",
+                "--language",
+                "typescript",
+                "--class",
+                "boundary_gap",
+                "--evidence",
+                "target/ripr/reports/preview-promotion-evidence.json",
+                "--out",
+                "target/ripr/reports/preview-promotion-typescript-boundary-gap.json",
+                "--out-md",
+                "target/ripr/reports/preview-promotion-typescript-boundary-gap.md",
+            ])),
+            Ok(PolicyPreviewPromotionOptions {
+                root: ".".to_string(),
+                language: "typescript".to_string(),
+                candidate_class: "boundary_gap".to_string(),
+                evidence: Some(PathBuf::from(
+                    "target/ripr/reports/preview-promotion-evidence.json"
+                )),
+                out: PathBuf::from(
+                    "target/ripr/reports/preview-promotion-typescript-boundary-gap.json"
+                ),
+                out_md: PathBuf::from(
+                    "target/ripr/reports/preview-promotion-typescript-boundary-gap.md"
+                ),
+            })
+        );
+        assert_eq!(
+            parse_policy_preview_promotion_options(&args(&[
+                "--language",
+                "python",
+                "--class",
+                "boundary_gap",
+            ])),
+            Ok(PolicyPreviewPromotionOptions {
+                root: ".".to_string(),
+                language: "python".to_string(),
+                candidate_class: "boundary_gap".to_string(),
+                evidence: None,
+                out: PathBuf::from(
+                    "target/ripr/reports/preview-promotion-python-boundary-gap.json"
+                ),
+                out_md: PathBuf::from(
+                    "target/ripr/reports/preview-promotion-python-boundary-gap.md"
+                ),
+            })
         );
     }
 
@@ -7193,6 +9193,304 @@ mod tests {
         assert!(md_text.contains("# RIPR Policy Readiness"));
         assert!(md_text.contains("Recommended mode: baseline-check"));
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove policy dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn policy_operations_command_writes_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("policy-operations");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create operations dir: {err}"))?;
+        let readiness = dir.join("policy-readiness.json");
+        let waiver = dir.join("waiver-aging.json");
+        let suppression = dir.join("suppression-health.json");
+        let baseline = dir.join("baseline-debt-delta.json");
+        let gate = dir.join("gate-decision.json");
+        let out = dir.join("policy-operations.json");
+        let out_md = dir.join("policy-operations.md");
+        std::fs::write(
+            &readiness,
+            r#"{
+              "schema_version": "0.1",
+              "kind": "policy_readiness",
+              "status": "ready_for_acknowledgeable",
+              "next_policy_action": "Review baseline blockers before baseline-check.",
+              "preview_evidence_boundary": {
+                "state": "healthy",
+                "preview_languages": ["typescript"],
+                "preview_findings_visible": 1,
+                "preview_findings_gate_eligible": 0,
+                "preview_findings_ripr_zero_blocking": 0,
+                "preview_findings_calibrated_confidence": 0,
+                "missing_language_status": 0,
+                "static_limits_seen": 1
+              }
+            }"#,
+        )
+        .map_err(|err| format!("write readiness: {err}"))?;
+        std::fs::write(
+            &waiver,
+            r#"{"schema_version":"0.1","kind":"waiver_aging","status":"advisory","summary":{"waiver_count":1}}"#,
+        )
+        .map_err(|err| format!("write waiver: {err}"))?;
+        std::fs::write(
+            &suppression,
+            r#"{"schema_version":"0.1","kind":"suppression_health","status":"healthy","summary":{"warnings":0,"config_errors":0}}"#,
+        )
+        .map_err(|err| format!("write suppression: {err}"))?;
+        std::fs::write(
+            &baseline,
+            r#"{
+              "schema_version": "0.1",
+              "kind": "baseline_debt_delta",
+              "delta": {"still_present": 1, "resolved": 0, "new_policy_eligible": 0, "acknowledged": 0, "suppressed": 0, "stale_baseline_entry": 1, "invalid_baseline_entry": 0, "missing_current_input": 0}
+            }"#,
+        )
+        .map_err(|err| format!("write baseline: {err}"))?;
+        std::fs::write(
+            &gate,
+            r#"{"schema_version":"0.1","kind":"gate_decision","status":"advisory","mode":"visible-only"}"#,
+        )
+        .map_err(|err| format!("write gate: {err}"))?;
+
+        policy(&args(&[
+            "operations",
+            "--policy-readiness",
+            &readiness.display().to_string(),
+            "--waiver-aging",
+            &waiver.display().to_string(),
+            "--suppression-health",
+            &suppression.display().to_string(),
+            "--baseline-delta",
+            &baseline.display().to_string(),
+            "--gate-decision",
+            &gate.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text =
+            std::fs::read_to_string(&out).map_err(|err| format!("read operations json: {err}"))?;
+        let md_text =
+            std::fs::read_to_string(&out_md).map_err(|err| format!("read operations md: {err}"))?;
+        assert!(json_text.contains("\"kind\": \"policy_operations\""));
+        assert!(json_text.contains("\"current_policy_ceiling\": \"ready_for_acknowledgeable\""));
+        assert!(json_text.contains("\"mode\": \"acknowledgeable\""));
+        assert!(json_text.contains("\"mode\": \"baseline-check\""));
+        assert!(json_text.contains("\"baseline_stale_entries\""));
+        assert!(md_text.contains("# RIPR Policy Operations"));
+        assert!(md_text.contains("Current ceiling: ready_for_acknowledgeable"));
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove operations dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn policy_history_command_writes_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("policy-history");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create history dir: {err}"))?;
+        let current = dir.join("policy-operations.json");
+        let history = dir.join("policy-history.jsonl");
+        let out = dir.join("policy-history.json");
+        let out_md = dir.join("policy-history.md");
+        std::fs::write(
+            &current,
+            r#"{
+              "schema_version": "0.1",
+              "kind": "policy_operations",
+              "generated_at": "unix_ms:10",
+              "current_policy_ceiling": "ready_for_acknowledgeable",
+              "safe_to_promote_to": [
+                {"mode": "visible-only", "allowed_now": true, "reason": "ok", "source_artifacts": []},
+                {"mode": "acknowledgeable", "allowed_now": true, "reason": "ok", "source_artifacts": []}
+              ],
+              "not_safe_to_promote_to": [],
+              "promotion_blockers": [],
+              "input_artifacts": [
+                {"kind":"baseline_delta","path":"baseline.json","status":"read"},
+                {"kind":"waiver_aging","path":"waiver.json","status":"read"},
+                {"kind":"suppression_health","path":"suppression.json","status":"read"},
+                {"kind":"recommendation_calibration","path":"recommendation.json","status":"omitted"}
+              ],
+              "current": {
+                "new_policy_eligible_count": 1,
+                "waiver_count": 2,
+                "stale_suppression_count": 0,
+                "baseline_still_present": 4,
+                "baseline_resolved": 1
+              }
+            }"#,
+        )
+        .map_err(|err| format!("write current: {err}"))?;
+        let history_text = r#"{"generated_at":"unix_ms:1","current_policy_ceiling":"ready_for_visible_only","recommended_mode":"visible-only","baseline_health":"healthy","waiver_health":"healthy","suppression_health":"healthy","calibration_health":"not_ready","preview_boundary_state":"healthy","new_policy_eligible_count":1,"waiver_count":2,"stale_suppression_count":0,"baseline_still_present":5,"baseline_resolved":0}
+"#;
+        std::fs::write(&history, history_text).map_err(|err| format!("write history: {err}"))?;
+
+        policy(&args(&[
+            "history",
+            "--current",
+            &current.display().to_string(),
+            "--history",
+            &history.display().to_string(),
+            "--commit",
+            "HEAD",
+            "--pr-number",
+            "123",
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text =
+            std::fs::read_to_string(&out).map_err(|err| format!("read history json: {err}"))?;
+        let md_text =
+            std::fs::read_to_string(&out_md).map_err(|err| format!("read history md: {err}"))?;
+        assert!(json_text.contains("\"kind\": \"policy_history\""));
+        assert!(json_text.contains("\"readiness_improved\": true"));
+        assert!(json_text.contains("\"example_append_record\""));
+        assert!(md_text.contains("# RIPR Policy History"));
+        assert!(md_text.contains("Readiness: improved"));
+        assert_eq!(
+            std::fs::read_to_string(&history).map_err(|err| format!("read history: {err}"))?,
+            history_text
+        );
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove history dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn policy_promotion_command_writes_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("policy-promotion");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create promotion dir: {err}"))?;
+        let operations = dir.join("policy-operations.json");
+        let history = dir.join("policy-history.json");
+        let out = dir.join("policy-promotion-baseline-check.json");
+        let out_md = dir.join("policy-promotion-baseline-check.md");
+        std::fs::write(
+            &operations,
+            r#"{
+              "schema_version": "0.1",
+              "kind": "policy_operations",
+              "current_policy_ceiling": "ready_for_acknowledgeable",
+              "safe_to_promote_to": [
+                {"mode": "visible-only", "allowed_now": true, "reason": "visible ok", "source_artifacts": []},
+                {"mode": "acknowledgeable", "allowed_now": true, "reason": "ack ok", "source_artifacts": []}
+              ],
+              "not_safe_to_promote_to": [
+                {"mode": "baseline-check", "allowed_now": false, "reason": "baseline-check is blocked", "blockers": ["Review stale baseline entries."]}
+              ],
+              "promotion_blockers": [
+                {
+                  "kind": "baseline_stale_entries",
+                  "severity": "warning",
+                  "message": "Baseline contains stale entries.",
+                  "target_modes": ["baseline-check"],
+                  "source_artifact": "baseline-debt-delta.json",
+                  "repair_action": "Run shrink-only baseline review."
+                }
+              ],
+              "baseline_actions": ["Run shrink-only baseline review."],
+              "waiver_actions": [],
+              "suppression_actions": [],
+              "calibration_actions": [],
+              "preview_boundary_actions": ["Keep preview evidence advisory."],
+              "warnings": [],
+              "unknowns": [],
+              "input_artifacts": []
+            }"#,
+        )
+        .map_err(|err| format!("write operations: {err}"))?;
+        std::fs::write(
+            &history,
+            r#"{"schema_version":"0.1","kind":"policy_history","history_summary":{"entries":1}}"#,
+        )
+        .map_err(|err| format!("write history: {err}"))?;
+
+        policy(&args(&[
+            "promote",
+            "--to",
+            "baseline-check",
+            "--operations",
+            &operations.display().to_string(),
+            "--history",
+            &history.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text =
+            std::fs::read_to_string(&out).map_err(|err| format!("read promotion json: {err}"))?;
+        let md_text =
+            std::fs::read_to_string(&out_md).map_err(|err| format!("read promotion md: {err}"))?;
+        assert!(json_text.contains("\"kind\": \"policy_promotion_packet\""));
+        assert!(json_text.contains("\"target_mode\": \"baseline-check\""));
+        assert!(json_text.contains("\"allowed_now\": false"));
+        assert!(json_text.contains("Run shrink-only baseline review."));
+        assert!(md_text.contains("# RIPR Policy Promotion Packet"));
+        assert!(md_text.contains("Allowed now: no"));
+        assert_eq!(
+            std::fs::read_to_string(&history).map_err(|err| format!("read history: {err}"))?,
+            r#"{"schema_version":"0.1","kind":"policy_history","history_summary":{"entries":1}}"#
+        );
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove promotion dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn policy_preview_promotion_command_writes_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("policy-preview-promotion");
+        std::fs::create_dir_all(&dir)
+            .map_err(|err| format!("create preview promotion dir: {err}"))?;
+        let evidence = dir.join("preview-promotion-evidence.json");
+        let out = dir.join("preview-promotion-typescript-boundary-gap.json");
+        let out_md = dir.join("preview-promotion-typescript-boundary-gap.md");
+        let evidence_text = r#"{
+          "language": "typescript",
+          "language_status": "preview",
+          "candidate_class": "boundary_gap",
+          "supplied_evidence": ["fixture_corpus_coverage"],
+          "static_limit_exclusions": true
+        }"#;
+        std::fs::write(&evidence, evidence_text)
+            .map_err(|err| format!("write preview evidence: {err}"))?;
+
+        policy(&args(&[
+            "preview-promote",
+            "--language",
+            "typescript",
+            "--class",
+            "boundary_gap",
+            "--evidence",
+            &evidence.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text = std::fs::read_to_string(&out)
+            .map_err(|err| format!("read preview promotion json: {err}"))?;
+        let md_text = std::fs::read_to_string(&out_md)
+            .map_err(|err| format!("read preview promotion md: {err}"))?;
+        assert!(json_text.contains("\"kind\": \"preview_evidence_promotion_packet\""));
+        assert!(json_text.contains("\"language_status\": \"preview\""));
+        assert!(json_text.contains("\"allowed_now\": false"));
+        assert!(json_text.contains("\"fixture_corpus_coverage\""));
+        assert!(json_text.contains("\"recommendation_calibration\""));
+        assert!(json_text.contains("\"may_fail_check\": false"));
+        assert!(md_text.contains("# RIPR Preview Evidence Promotion Packet"));
+        assert!(md_text.contains("Allowed now: no"));
+        assert!(md_text.contains("may fail check: no"));
+        assert_eq!(
+            std::fs::read_to_string(&evidence)
+                .map_err(|err| format!("read preview evidence: {err}"))?,
+            evidence_text
+        );
+        std::fs::remove_dir_all(&dir)
+            .map_err(|err| format!("remove preview promotion dir: {err}"))?;
         Ok(())
     }
 
@@ -7354,6 +9652,8 @@ language = "rust"
                 "target/ripr/reports/ripr-zero-status.json",
                 "--pr-guidance",
                 "target/ripr/review/comments.json",
+                "--gap-ledger",
+                "target/ripr/reports/gap-decision-ledger.json",
                 "--recommendation-calibration",
                 "target/ripr/reports/recommendation-calibration.json",
                 "--agent-receipt",
@@ -7378,6 +9678,9 @@ language = "rust"
                 )),
                 zero_status: Some(PathBuf::from("target/ripr/reports/ripr-zero-status.json")),
                 pr_guidance: Some(PathBuf::from("target/ripr/review/comments.json")),
+                gap_ledger: Some(PathBuf::from(
+                    "target/ripr/reports/gap-decision-ledger.json"
+                )),
                 recommendation_calibration: Some(PathBuf::from(
                     "target/ripr/reports/recommendation-calibration.json"
                 )),
@@ -7410,9 +9713,23 @@ language = "rust"
                 "head"
             ])),
             Err(
-                "pr-ledger record requires at least one of --gate, --baseline-delta, --zero-status, or --pr-guidance"
+                "pr-ledger record requires at least one of --gate, --baseline-delta, --zero-status, --pr-guidance, or --gap-ledger"
                     .to_string()
             )
+        );
+        assert_eq!(
+            parse_pr_evidence_ledger_options(&args(&[
+                "--pr-number",
+                "123",
+                "--base",
+                "base",
+                "--head",
+                "head",
+                "--gap-ledger",
+                "gap-ledger.json",
+            ]))
+            .map(|options| options.gap_ledger),
+            Ok(Some(PathBuf::from("gap-ledger.json")))
         );
         assert_eq!(
             parse_pr_evidence_ledger_options(&args(&[
@@ -7569,6 +9886,8 @@ language = "rust"
                 "target/ripr/review/comments.json",
                 "--assistant-proof",
                 "target/ripr/reports/test-oracle-assistant-proof.json",
+                "--gap-ledger",
+                "target/ripr/reports/gap-decision-ledger.json",
                 "--ledger",
                 "target/ripr/reports/pr-evidence-ledger.json",
                 "--baseline-delta",
@@ -7591,6 +9910,9 @@ language = "rust"
                 pr_guidance: Some(PathBuf::from("target/ripr/review/comments.json")),
                 assistant_proof: Some(PathBuf::from(
                     "target/ripr/reports/test-oracle-assistant-proof.json",
+                )),
+                gap_ledger: Some(PathBuf::from(
+                    "target/ripr/reports/gap-decision-ledger.json"
                 )),
                 ledger: Some(PathBuf::from("target/ripr/reports/pr-evidence-ledger.json")),
                 baseline_delta: Some(PathBuf::from(
@@ -7622,6 +9944,71 @@ language = "rust"
             parse_first_action_options(&args(&["--bad"])),
             Err("unknown first-action argument \"--bad\"".to_string())
         );
+    }
+
+    #[test]
+    fn first_action_cli_writes_gap_record_report() -> Result<(), String> {
+        let dir = unique_command_test_dir("first-action-gap-record");
+        std::fs::create_dir_all(&dir)
+            .map_err(|err| format!("create first-action gap-record dir: {err}"))?;
+        let gap_ledger = dir.join("gap-decision-ledger.json");
+        let out = dir.join("first-useful-action.json");
+        let out_md = dir.join("first-useful-action.md");
+        std::fs::write(
+            &gap_ledger,
+            r#"{
+  "kind": "gap_decision_ledger",
+  "records": [
+    {
+      "gap_id": "gap:pr:pricing:threshold-boundary",
+      "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+      "kind": "MissingBoundaryAssertion",
+      "language": "rust",
+      "language_status": "stable",
+      "scope": "pr_local",
+      "evidence_class": "predicate_boundary",
+      "gap_state": "actionable",
+      "policy_state": "new",
+      "repairability": "repairable",
+      "anchor": {
+        "file": "src/pricing.rs",
+        "line": 42,
+        "dedupe_fingerprint": "gap:rust:pricing:discount:threshold-boundary"
+      },
+      "repair_route": {
+        "route_kind": "AddBoundaryAssertion",
+        "target_file": "tests/pricing.rs",
+        "assertion_shape": "assert_eq!(discount(100, 100), 90)"
+      },
+      "verification_commands": [
+        "cargo xtask fixtures boundary_gap"
+      ]
+    }
+  ]
+}"#,
+        )
+        .map_err(|err| format!("write gap decision ledger: {err}"))?;
+
+        first_action(&args(&[
+            "--gap-ledger",
+            &gap_ledger.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json = std::fs::read_to_string(&out)
+            .map_err(|err| format!("read first-action JSON: {err}"))?;
+        assert!(json.contains(r#""source": "gap_ledger""#));
+        assert!(json.contains(r#""repair_route": "AddBoundaryAssertion""#));
+        let markdown = std::fs::read_to_string(&out_md)
+            .map_err(|err| format!("read first-action Markdown: {err}"))?;
+        assert!(markdown.contains("Repair MissingBoundaryAssertion via AddBoundaryAssertion"));
+
+        std::fs::remove_dir_all(&dir)
+            .map_err(|err| format!("remove first-action gap-record dir: {err}"))?;
+        Ok(())
     }
 
     #[test]
@@ -7715,7 +10102,13 @@ language = "rust"
         std::fs::create_dir_all(&dir).map_err(|err| format!("create ledger dir: {err}"))?;
         let out = dir.join("pr-evidence-ledger.json");
         let out_md = dir.join("pr-evidence-ledger.md");
+        let gap_ledger = dir.join("gap-decision-ledger.json");
         let fixture = repo_root().join("fixtures/boundary_gap/expected/pr-evidence-ledger/mixed");
+        std::fs::write(
+            &gap_ledger,
+            r#"{"gap_records":[{"gap_id":"gap:pr:cli","canonical_gap_id":"gap:rust:cli","kind":"MissingBoundaryAssertion","language":"rust","language_status":"stable","scope":"pr_local","gap_state":"actionable","policy_state":"new","repairability":"repairable","anchor":{"file":"src/cli.rs","line":7},"repair_route":{"route_kind":"AddBoundaryAssertion","assertion_shape":"assert!(cli())"},"verification_commands":["cargo xtask fixtures boundary_gap"]}]}"#,
+        )
+        .map_err(|err| format!("write gap ledger: {err}"))?;
 
         pr_ledger(&args(&[
             "record",
@@ -7736,6 +10129,8 @@ language = "rust"
             &fixture.join("ripr-zero-status.json").display().to_string(),
             "--pr-guidance",
             &fixture.join("comments.json").display().to_string(),
+            "--gap-ledger",
+            &gap_ledger.display().to_string(),
             "--agent-receipt",
             &fixture.join("agent-receipt.json").display().to_string(),
             "--history",
@@ -7750,10 +10145,13 @@ language = "rust"
             std::fs::read_to_string(&out).map_err(|err| format!("read ledger json: {err}"))?;
         assert!(json_text.contains("\"kind\": \"pr_evidence_ledger\""));
         assert!(json_text.contains("\"baseline_resolved\": 3"));
+        assert!(json_text.contains("\"source\": \"gap_decision_ledger\""));
+        assert!(json_text.contains("\"gap_id\": \"gap:pr:cli\""));
         let md_text =
             std::fs::read_to_string(&out_md).map_err(|err| format!("read ledger md: {err}"))?;
         assert!(md_text.contains("# RIPR PR Evidence Ledger"));
         assert!(md_text.contains("Gate: acknowledgeable / acknowledged"));
+        assert!(md_text.contains("Gap decision ledger:"));
 
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove ledger dir: {err}"))?;
         Ok(())
@@ -7923,6 +10321,104 @@ language = "rust"
         assert!(rendered_json.contains("\"head\": \"HEAD\""));
         assert!(rendered_md.contains("# RIPR PR Guidance"));
         assert!(rendered_md.contains("Advisory static evidence only"));
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_gap_ledger_writes_repair_cards_without_loading_diff() -> Result<(), String> {
+        let root = unique_command_test_dir("review-comments-gap-ledger");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        let gap_ledger = root.join("gap-ledger.json");
+        let out = root.join("target/ripr/review/comments.json");
+        std::fs::write(
+            &gap_ledger,
+            r#"{"records":[{"gap_id":"gap:pr:pricing","kind":"MissingBoundaryAssertion","language":"rust","language_status":"stable","scope":"pr_local","evidence_class":"predicate_boundary","gap_state":"actionable","policy_state":"new","repairability":"repairable","anchor":{"file":"src/pricing.rs","line":42,"dedupe_fingerprint":"gap:pricing"},"repair_route":{"route_kind":"AddBoundaryAssertion","target_file":"tests/pricing.rs","assertion_shape":"assert_eq!(discount(100, 100), 90)","changed_behavior":"amount == threshold"},"verification_commands":["cargo xtask fixtures boundary_gap"],"projection_eligibility":{"pr_comment":{"eligible":true,"reason":"stable_anchor_and_repair_route"}}}]}"#,
+        )
+        .map_err(|err| format!("write gap ledger: {err}"))?;
+
+        review_comments_with_diff_loader(
+            &args(&[
+                "--root",
+                &root.display().to_string(),
+                "--base",
+                "main",
+                "--head",
+                "HEAD",
+                "--gap-ledger",
+                &gap_ledger.display().to_string(),
+                "--out",
+                &out.display().to_string(),
+            ]),
+            |_root, _base, _head| Err("gap-ledger path should not load git diff".to_string()),
+        )?;
+
+        let rendered_json = std::fs::read_to_string(&out)
+            .map_err(|err| format!("read gap-ledger review comments JSON: {err}"))?;
+        let rendered_md = std::fs::read_to_string(out.with_extension("md"))
+            .map_err(|err| format!("read gap-ledger review comments Markdown: {err}"))?;
+        assert!(rendered_json.contains(r#""source": "gap_decision_ledger""#));
+        assert!(rendered_json.contains(r#""repair_card""#));
+        assert!(rendered_md.contains("ripr first-action"));
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_gap_ledger_reports_read_and_parse_errors() -> Result<(), String> {
+        let root = unique_command_test_dir("review-comments-gap-ledger-errors");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        let missing_ledger = root.join("missing-gap-ledger.json");
+        let out = root.join("target/ripr/review/comments.json");
+
+        let read_err = match review_comments_with_diff_loader(
+            &args(&[
+                "--root",
+                &root.display().to_string(),
+                "--base",
+                "main",
+                "--head",
+                "HEAD",
+                "--gap-ledger",
+                &missing_ledger.display().to_string(),
+                "--out",
+                &out.display().to_string(),
+            ]),
+            |_root, _base, _head| Err("gap-ledger path should not load git diff".to_string()),
+        ) {
+            Ok(()) => return Err("missing gap ledger should fail before diff loading".to_string()),
+            Err(err) => err,
+        };
+        assert!(read_err.contains("review-comments --gap-ledger"));
+        assert!(read_err.contains("read failed"));
+
+        let malformed_ledger = root.join("malformed-gap-ledger.json");
+        std::fs::write(&malformed_ledger, "{not json")
+            .map_err(|err| format!("write malformed gap ledger: {err}"))?;
+        let parse_err = match review_comments_with_diff_loader(
+            &args(&[
+                "--root",
+                &root.display().to_string(),
+                "--base",
+                "main",
+                "--head",
+                "HEAD",
+                "--gap-ledger",
+                &malformed_ledger.display().to_string(),
+                "--out",
+                &out.display().to_string(),
+            ]),
+            |_root, _base, _head| Err("gap-ledger path should not load git diff".to_string()),
+        ) {
+            Ok(()) => {
+                return Err("malformed gap ledger should fail before diff loading".to_string());
+            }
+            Err(err) => err,
+        };
+        assert!(parse_err.contains("review-comments --gap-ledger"));
+        assert!(parse_err.contains("invalid"));
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
         Ok(())
@@ -8149,6 +10645,58 @@ language = "rust"
                     .to_string()
             )
         );
+    }
+
+    #[test]
+    fn agent_packet_gap_ledger_renders_without_analysis() -> Result<(), String> {
+        let root = unique_command_test_dir("agent-packet-gap-ledger");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        let gap_ledger = root.join("gap-ledger.json");
+        std::fs::write(
+            &gap_ledger,
+            r#"{"records":[{"gap_id":"gap:pr:pricing","canonical_gap_id":"gap:rust:pricing","kind":"MissingBoundaryAssertion","language":"rust","language_status":"stable","scope":"pr_local","evidence_class":"predicate_boundary","gap_state":"actionable","policy_state":"new","repairability":"repairable","anchor":{"file":"src/pricing.rs","line":42,"owner":"pricing::discount"},"repair_route":{"route_kind":"AddBoundaryAssertion","target_file":"tests/pricing.rs","assertion_shape":"assert_eq!(discount(100, 100), 90)","changed_behavior":"amount == threshold"},"verification_commands":["cargo xtask fixtures boundary_gap"],"projection_eligibility":{"agent_packet":{"eligible":true,"reason":"bounded repair route"}}}]}"#,
+        )
+        .map_err(|err| format!("write gap ledger: {err}"))?;
+
+        let rendered = render_agent_packet_from_gap_ledger(&gap_ledger, "gap:rust:pricing")?;
+        assert!(rendered.contains(r#""source": "gap_decision_ledger""#));
+        assert!(rendered.contains(r#""gap_id": "gap:pr:pricing""#));
+        assert!(rendered.contains(r#""repair_kind": "AddBoundaryAssertion""#));
+        assert!(rendered.contains(r#""verify_command": "cargo xtask fixtures boundary_gap""#));
+        assert!(
+            !rendered.contains(r#""confidence""#),
+            "gap packet should not expose generic confidence: {rendered}"
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_packet_gap_ledger_reports_missing_and_ineligible_records() -> Result<(), String> {
+        let root = unique_command_test_dir("agent-packet-gap-ledger-errors");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        let gap_ledger = root.join("gap-ledger.json");
+        std::fs::write(
+            &gap_ledger,
+            r#"{"records":[{"gap_id":"gap:no-action","kind":"NoActionAlreadyObserved","language":"rust","language_status":"stable","scope":"pr_local","policy_state":"resolved","repairability":"no_action","repair_route":{"route_kind":"NoAction"},"verification_commands":["cargo xtask fixtures"],"projection_eligibility":{"agent_packet":{"eligible":false,"reason":"already_observed"}}}]}"#,
+        )
+        .map_err(|err| format!("write gap ledger: {err}"))?;
+
+        assert_eq!(
+            render_agent_packet_from_gap_ledger(&gap_ledger, "gap:missing"),
+            Err("agent packet gap_id gap:missing was not found".to_string())
+        );
+        assert_eq!(
+            render_agent_packet_from_gap_ledger(&gap_ledger, "gap:no-action"),
+            Err(
+                "agent packet gap_id gap:no-action is not agent-packet eligible: already_observed"
+                    .to_string()
+            )
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
     }
 
     #[test]
@@ -8550,6 +11098,30 @@ language = "rust"
         assert!(workflow.contains("target/ripr/reports/suppression-health.md"));
         assert!(workflow.contains("target/ripr/reports/policy-readiness.json"));
         assert!(workflow.contains("target/ripr/reports/policy-readiness.md"));
+        assert!(workflow.contains("target/ripr/reports/policy-operations.json"));
+        assert!(workflow.contains("target/ripr/reports/policy-operations.md"));
+        assert!(workflow.contains("target/ripr/reports/policy-history.json"));
+        assert!(workflow.contains("target/ripr/reports/policy-history.md"));
+        assert!(workflow.contains("target/ripr/reports/policy-promotion-visible-only.json"));
+        assert!(workflow.contains("target/ripr/reports/policy-promotion-visible-only.md"));
+        assert!(workflow.contains("target/ripr/reports/policy-promotion-acknowledgeable.json"));
+        assert!(workflow.contains("target/ripr/reports/policy-promotion-acknowledgeable.md"));
+        assert!(workflow.contains("target/ripr/reports/policy-promotion-baseline-check.json"));
+        assert!(workflow.contains("target/ripr/reports/policy-promotion-baseline-check.md"));
+        assert!(workflow.contains("target/ripr/reports/policy-promotion-calibrated-gate.json"));
+        assert!(workflow.contains("target/ripr/reports/policy-promotion-calibrated-gate.md"));
+        assert!(workflow.contains(
+            "target/ripr/reports/preview-promotion-${language}-${class_label//_/-}.json"
+        ));
+        assert!(
+            workflow.contains(
+                "target/ripr/reports/preview-promotion-${language}-${class_label//_/-}.md"
+            )
+        );
+        assert!(
+            workflow.contains("target/ripr/reports/preview-promotion-typescript-boundary-gap.md")
+        );
+        assert!(workflow.contains("target/ripr/reports/preview-promotion-python-boundary-gap.md"));
         assert!(workflow.contains("target/ripr/reports/test-oracle-assistant-proof.json"));
         assert!(workflow.contains("target/ripr/reports/test-oracle-assistant-proof.md"));
         assert!(workflow.contains("target/ripr/reports/assistant-loop-health.json"));
@@ -8577,6 +11149,10 @@ language = "rust"
         assert!(workflow.contains("name: Render RIPR waiver aging"));
         assert!(workflow.contains("name: Render RIPR suppression health"));
         assert!(workflow.contains("name: Render RIPR policy readiness"));
+        assert!(workflow.contains("name: Render RIPR policy operations"));
+        assert!(workflow.contains("name: Render RIPR policy history"));
+        assert!(workflow.contains("name: Render RIPR policy promotion packets"));
+        assert!(workflow.contains("name: Render RIPR preview promotion packets"));
         assert!(workflow.contains("name: Render RIPR test-oracle assistant proof"));
         assert!(workflow.contains("name: Render RIPR assistant loop health"));
         assert!(workflow.contains("name: Render RIPR first useful action"));
@@ -8588,6 +11164,8 @@ language = "rust"
         assert!(workflow.contains("title=$annotation_title"));
         assert!(workflow.contains("name: Add RIPR advisory summary"));
         assert!(workflow.contains("## RIPR advisory summary"));
+        assert!(workflow.contains("### Start here"));
+        assert!(workflow.contains("### Language preview grouping"));
         assert!(workflow.contains("### PR review summary"));
         assert!(workflow.contains("#### PR review at a glance"));
         assert!(workflow.contains("### Recommended next test"));
@@ -8606,6 +11184,12 @@ language = "rust"
         assert!(workflow.contains("#### PR movement at a glance"));
         assert!(workflow.contains("### Policy readiness"));
         assert!(workflow.contains("#### Policy readiness at a glance"));
+        assert!(workflow.contains("### Policy operations"));
+        assert!(workflow.contains("#### Policy operations at a glance"));
+        assert!(workflow.contains("### Policy history"));
+        assert!(workflow.contains("#### Policy history at a glance"));
+        assert!(workflow.contains("### Policy promotion packets"));
+        assert!(workflow.contains("### Preview promotion packets"));
         assert!(workflow.contains("### Waiver aging"));
         assert!(workflow.contains("#### Waiver aging at a glance"));
         assert!(workflow.contains("### Suppression health"));
@@ -8624,6 +11208,10 @@ language = "rust"
         assert!(workflow.contains("Gate artifacts"));
         assert!(workflow.contains("Baseline delta artifacts"));
         assert!(workflow.contains("Policy readiness artifacts"));
+        assert!(workflow.contains("Policy operations artifacts"));
+        assert!(workflow.contains("Policy history artifacts"));
+        assert!(workflow.contains("Promotion packet artifacts"));
+        assert!(workflow.contains("Preview promotion artifacts"));
         assert!(workflow.contains("Waiver-aging artifacts"));
         assert!(workflow.contains("Suppression-health artifacts"));
         assert!(workflow.contains("Proof artifacts"));
@@ -8770,6 +11358,85 @@ language = "rust"
     }
 
     #[test]
+    fn init_generated_github_workflow_names_cockpit_repair_commands() {
+        let workflow = generated_github_actions_workflow();
+
+        let first_action = workflow_step(&workflow, "Render RIPR first useful action");
+        assert!(first_action.contains(
+            "Regenerate command: `ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md`"
+        ));
+
+        let front_panel = workflow_step(&workflow, "Render RIPR PR review front panel");
+        assert!(front_panel.contains(
+            "Regenerate command: `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md`"
+        ));
+
+        let packet_index = workflow_step(&workflow, "Render RIPR report packet index");
+        assert!(packet_index.contains(
+            "Regenerate command: `ripr reports index --root . --reports-dir target/ripr/reports --review-dir target/ripr/review --receipts-dir target/ripr/receipts --workflow-dir target/ripr/workflow --agent-dir target/ripr/agent --pilot-dir target/ripr/pilot --ci-dir target/ci --out target/ripr/reports/index.json --out-md target/ripr/reports/index.md`."
+        ));
+
+        let summary = workflow_step(&workflow, "Add RIPR advisory summary");
+        assert!(summary.contains("### Start here"));
+        assert!(
+            summary.contains(
+                "Open `target/ripr/reports/pr-review-front-panel.md` first when it exists."
+            )
+        );
+        assert!(summary.contains(
+            "Then open `target/ripr/reports/index.md` to navigate the uploaded artifact packet."
+        ));
+        assert!(summary.contains(
+            "Gate authority: `ripr gate evaluate` remains the pass/fail source only when `RIPR_GATE_MODE` is configured."
+        ));
+        assert!(summary.contains(
+            "Regenerate command: `ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md`"
+        ));
+        assert!(summary.contains(
+            "Regenerate command: `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md`"
+        ));
+        assert!(summary.contains(
+            "Regenerate command: `ripr reports index --root . --reports-dir target/ripr/reports --review-dir target/ripr/review --receipts-dir target/ripr/receipts --workflow-dir target/ripr/workflow --agent-dir target/ripr/agent --pilot-dir target/ripr/pilot --ci-dir target/ci --out target/ripr/reports/index.json --out-md target/ripr/reports/index.md`."
+        ));
+    }
+
+    #[test]
+    fn init_generated_github_workflow_groups_preview_languages_only_when_configured() {
+        let workflow = generated_github_actions_workflow();
+        let summary = workflow_step(&workflow, "Add RIPR advisory summary");
+
+        assert!(summary.contains("ripr doctor --root ."));
+        assert!(summary.contains("sed -n '/^typescript$/p; /^python$/p'"));
+        assert!(summary.contains("| tail -n 1 \\"));
+        assert!(summary.contains("|| true"));
+        assert!(summary.contains("target/ripr/reports/repo-exposure.json"));
+        assert!(summary.contains("target/ripr/pilot/repo-exposure.json"));
+        assert!(summary.contains(".language_status? != \"preview\""));
+        assert!(summary.contains("configured preview/advisory"));
+        assert!(summary.contains("artifact_entries=\\`$artifact_entries\\`"));
+        assert!(summary.contains(
+            "preview-language groups are advisory presentation only; \\`ripr gate evaluate\\` remains pass/fail authority"
+        ));
+
+        let guard = summary
+            .find("if [ -n \"$preview_languages\" ]; then")
+            .unwrap_or(usize::MAX);
+        let grouping = summary
+            .find("echo '### Language preview grouping'")
+            .unwrap_or(usize::MAX);
+        let pr_review = summary
+            .find("echo '### PR review summary'")
+            .unwrap_or(usize::MAX);
+        assert_ne!(guard, usize::MAX, "missing language grouping guard");
+        assert_ne!(grouping, usize::MAX, "missing language grouping heading");
+        assert_ne!(pr_review, usize::MAX, "missing PR review heading");
+        assert!(
+            guard < grouping && grouping < pr_review,
+            "language grouping must stay opt-in and before the PR review summary"
+        );
+    }
+
+    #[test]
     fn init_generated_github_workflow_matches_smoke_fixture() {
         let workflow = generated_github_actions_workflow();
         let fixture = generated_workflow_smoke_fixture();
@@ -8908,6 +11575,26 @@ language = "rust"
         assert_step_before(
             &workflow,
             "Render RIPR policy readiness",
+            "Render RIPR policy operations",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR policy operations",
+            "Render RIPR policy history",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR policy history",
+            "Render RIPR policy promotion packets",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR policy promotion packets",
+            "Render RIPR preview promotion packets",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR preview promotion packets",
             "Render RIPR test-oracle assistant proof",
         );
         assert_step_before(
@@ -9076,6 +11763,91 @@ language = "rust"
         );
         assert!(policy_readiness.contains("ripr \"${policy_args[@]}\""));
 
+        let policy_operations = workflow_step(&workflow, "Render RIPR policy operations");
+        assert!(
+            policy_operations.contains("hashFiles('target/ripr/reports/policy-readiness.json')")
+        );
+        assert!(policy_operations.contains("continue-on-error: true"));
+        assert!(policy_operations.contains("policy operations"));
+        assert!(policy_operations.contains("--root ."));
+        assert!(
+            policy_operations
+                .contains("--policy-readiness target/ripr/reports/policy-readiness.json")
+        );
+        assert!(policy_operations.contains("--out target/ripr/reports/policy-operations.json"));
+        assert!(policy_operations.contains("--out-md target/ripr/reports/policy-operations.md"));
+        assert!(policy_operations.contains("--waiver-aging target/ripr/reports/waiver-aging.json"));
+        assert!(
+            policy_operations
+                .contains("--suppression-health target/ripr/reports/suppression-health.json")
+        );
+        assert!(
+            policy_operations
+                .contains("--baseline-delta target/ripr/reports/baseline-debt-delta.json")
+        );
+        assert!(
+            policy_operations.contains("--gate-decision target/ripr/reports/gate-decision.json")
+        );
+        assert!(policy_operations.contains(
+            "--recommendation-calibration target/ripr/reports/recommendation-calibration.json"
+        ));
+        assert!(
+            policy_operations
+                .contains("--mutation-calibration target/ripr/reports/mutation-calibration.json")
+        );
+        assert!(
+            policy_operations.contains("--preview-boundary target/ripr/reports/repo-exposure.json")
+        );
+        assert!(policy_operations.contains("ripr \"${operations_args[@]}\""));
+
+        let policy_history = workflow_step(&workflow, "Render RIPR policy history");
+        assert!(policy_history.contains("hashFiles('target/ripr/reports/policy-operations.json')"));
+        assert!(policy_history.contains("continue-on-error: true"));
+        assert!(policy_history.contains("policy history"));
+        assert!(policy_history.contains("--current target/ripr/reports/policy-operations.json"));
+        assert!(policy_history.contains("--commit \"$GITHUB_SHA\""));
+        assert!(policy_history.contains("--history .ripr/policy-history.jsonl"));
+        assert!(policy_history.contains("--pr-number \"${{ github.event.number }}\""));
+        assert!(policy_history.contains("--out target/ripr/reports/policy-history.json"));
+        assert!(policy_history.contains("--out-md target/ripr/reports/policy-history.md"));
+        assert!(policy_history.contains("ripr \"${history_args[@]}\""));
+
+        let promotion_packets = workflow_step(&workflow, "Render RIPR policy promotion packets");
+        assert!(
+            promotion_packets.contains("hashFiles('target/ripr/reports/policy-operations.json')")
+        );
+        assert!(promotion_packets.contains("continue-on-error: true"));
+        assert!(promotion_packets.contains(
+            "for target_mode in visible-only acknowledgeable baseline-check calibrated-gate"
+        ));
+        assert!(promotion_packets.contains("policy promote"));
+        assert!(promotion_packets.contains("--to \"$target_mode\""));
+        assert!(
+            promotion_packets.contains("--operations target/ripr/reports/policy-operations.json")
+        );
+        assert!(promotion_packets.contains("--history target/ripr/reports/policy-history.json"));
+        assert!(
+            promotion_packets.contains("target/ripr/reports/policy-promotion-${target_mode}.json")
+        );
+        assert!(promotion_packets.contains("ripr \"${promotion_args[@]}\""));
+
+        let preview_packets = workflow_step(&workflow, "Render RIPR preview promotion packets");
+        assert!(preview_packets.contains("if: always()"));
+        assert!(preview_packets.contains("continue-on-error: true"));
+        assert!(preview_packets.contains("ripr doctor --root ."));
+        assert!(preview_packets.contains("policy preview-promote"));
+        assert!(preview_packets.contains("--language \"$language\""));
+        assert!(preview_packets.contains("--class \"$class_label\""));
+        assert!(preview_packets.contains(
+            "target/ripr/reports/preview-promotion-${language}-${class_label//_/-}.json"
+        ));
+        assert!(
+            preview_packets
+                .contains("--evidence target/ripr/reports/preview-promotion-evidence.json")
+        );
+        assert!(preview_packets.contains("TypeScript or Python preview languages are configured"));
+        assert!(preview_packets.contains("ripr \"${preview_args[@]}\""));
+
         let assistant_proof = workflow_step(&workflow, "Render RIPR test-oracle assistant proof");
         assert!(assistant_proof.contains("hashFiles('target/ripr/review/comments.json')"));
         assert!(assistant_proof.contains("hashFiles('target/ripr/workflow/agent-brief.json')"));
@@ -9209,6 +11981,13 @@ language = "rust"
         assert!(packet_index.contains("--out-md target/ripr/reports/index.md"));
         assert!(packet_index.contains("target/ripr/reports/pr-review-front-panel.md"));
         assert!(packet_index.contains("target/ripr/review/comments.json"));
+        assert!(packet_index.contains("target/ripr/reports/policy-operations.md"));
+        assert!(packet_index.contains("target/ripr/reports/policy-history.md"));
+        assert!(packet_index.contains("target/ripr/reports/policy-promotion-baseline-check.md"));
+        assert!(
+            packet_index
+                .contains("target/ripr/reports/preview-promotion-typescript-boundary-gap.md")
+        );
         assert!(packet_index.contains("target/ripr/reports/gate-decision.md"));
         assert!(packet_index.contains("target/ripr/reports/agent-receipt.json"));
         assert!(packet_index.contains("index_has_input=true"));
@@ -9355,6 +12134,48 @@ language = "rust"
         assert!(summary.contains("advisory readiness projection only"));
         assert!(summary.contains("cat target/ripr/reports/policy-readiness.md"));
         assert!(summary.contains("Policy readiness was not generated"));
+        assert!(summary.contains("### Policy operations"));
+        assert!(summary.contains("#### Policy operations at a glance"));
+        assert!(summary.contains("target/ripr/reports/policy-operations.json"));
+        assert!(summary.contains("target/ripr/reports/policy-operations.md"));
+        assert!(summary.contains(".current_policy_ceiling // \"unknown\""));
+        assert!(summary.contains(".recommended_next_action // \"not_available\""));
+        assert!(summary.contains(".safe_to_promote_to // [] | length"));
+        assert!(summary.contains(".not_safe_to_promote_to // [] | length"));
+        assert!(summary.contains(".promotion_blockers // [] | length"));
+        assert!(summary.contains("promotion requires manual review"));
+        assert!(summary.contains("cat target/ripr/reports/policy-operations.md"));
+        assert!(summary.contains("Policy operations was not generated"));
+        assert!(summary.contains("### Policy history"));
+        assert!(summary.contains("#### Policy history at a glance"));
+        assert!(summary.contains("target/ripr/reports/policy-history.json"));
+        assert!(summary.contains("target/ripr/reports/policy-history.md"));
+        assert!(summary.contains(".current.current_policy_ceiling // \"unknown\""));
+        assert!(summary.contains(".history_summary.entries // 0"));
+        assert!(summary.contains(".trend.ceiling.direction // \"unknown\""));
+        assert!(summary.contains(".trend.waiver_count.direction // \"unknown\""));
+        assert!(summary.contains(".trend.preview_boundary_state.direction // \"unknown\""));
+        assert!(
+            summary.contains("never appends to \\`.ripr/policy-history.jsonl\\` automatically")
+        );
+        assert!(summary.contains("cat target/ripr/reports/policy-history.md"));
+        assert!(summary.contains("Policy history was not generated"));
+        assert!(summary.contains("### Policy promotion packets"));
+        assert!(summary.contains("policy-promotion-visible-only.json"));
+        assert!(summary.contains("policy-promotion-acknowledgeable.json"));
+        assert!(summary.contains("policy-promotion-baseline-check.json"));
+        assert!(summary.contains("policy-promotion-calibrated-gate.json"));
+        assert!(summary.contains(".why_or_why_not // \"not_available\""));
+        assert!(summary.contains("packets do not edit \\`ripr.toml\\`"));
+        assert!(summary.contains("Policy promotion packets were not generated"));
+        assert!(summary.contains("cat \"$promotion_md\""));
+        assert!(summary.contains("### Preview promotion packets"));
+        assert!(summary.contains("preview-promotion-*-*.json"));
+        assert!(summary.contains(".candidate_class // \"unknown\""));
+        assert!(summary.contains(".missing_evidence // [] | length"));
+        assert!(summary.contains("preview evidence remains visible and non-gating"));
+        assert!(summary.contains("Preview promotion packets were not generated"));
+        assert!(summary.contains("cat \"$preview_md\""));
         assert!(summary.contains("### Waiver aging"));
         assert!(summary.contains("#### Waiver aging at a glance"));
         assert!(summary.contains("target/ripr/reports/waiver-aging.json"));

@@ -137,6 +137,23 @@ The report index should be the front door for artifact discovery. CI should not
 require reviewers to inspect raw job logs to find the packet that justifies a
 decision.
 
+For repo-local operator work, run:
+
+```bash
+cargo xtask cockpit
+cargo xtask pr-ready
+cargo xtask check-pr
+```
+
+`cockpit` is the repo-level advisory front panel for board state,
+source-of-truth checks, generated-evidence rails, badge ownership, and command
+catalog coverage. `pr-ready` is the active-branch pre-review packet. Neither
+command changes badge endpoint JSON, branch protection, baseline state,
+suppressions, generated tests, or policy authority.
+Use [Merge freshness and watcher policy](MERGE_WATCH_POLICY.md) when watching a
+specific PR through hosted checks, branch freshness, Droid/advisory status, and
+merge execution.
+
 The `pr-plan-changes.txt` file is the current structural advisory artifact;
 the `target/ci/ci-plan.json` forecast remains planned. The `editor-agent-loop`
 paths reflect the current split between the local bulk packet envelope
@@ -239,6 +256,7 @@ cargo xtask check-file-policy
 cargo xtask check-executable-files
 cargo xtask check-workflows
 cargo xtask check-spec-format
+cargo xtask check-spec-numbering
 cargo xtask check-fixture-contracts
 cargo xtask check-traceability
 cargo xtask check-capabilities
@@ -252,6 +270,8 @@ cargo xtask markdown-links
 cargo xtask check-campaign
 cargo xtask check-pr-shape
 cargo xtask check-generated
+cargo xtask check-badge-diff-policy
+cargo xtask check-generated-clean
 cargo xtask check-dependencies
 cargo xtask check-process-policy
 cargo xtask check-network-policy
@@ -280,7 +300,13 @@ the worktree:
 ```bash
 cargo xtask shape
 cargo xtask fix-pr
+cargo xtask commands
 cargo xtask pr-summary
+cargo xtask pr-ready
+cargo xtask pr-triage-report
+cargo xtask gh-pr-status --pr <number>
+cargo xtask suggested-fixes
+cargo xtask check-command-catalog
 cargo xtask precommit
 cargo xtask check-pr
 cargo xtask fixtures
@@ -297,17 +323,46 @@ cargo xtask receipts check
 They are safe to run before checks. `shape` runs `cargo fmt`, sorts allowlists,
 ensures `target/ripr/reports`, and writes a local report. `fix-pr` currently
 runs `shape`, refreshes `pr-summary`, and writes a local fix-pr report.
+`commands` writes the xtask mutability catalog under `target/ripr/reports/` so
+agents can distinguish mutating commands, non-mutating checks, report-only
+commands, external-state reads, external-state mutations, and
+argument-dependent commands.
+`check-command-catalog` verifies that the help catalog and mutability catalog
+stay aligned, that write surfaces are documented, and that external-state
+mutations remain judgment-required.
 `pr-summary` writes `target/ripr/reports/pr-summary.md` from git diff/status.
+`pr-ready` writes `target/ripr/reports/pr-ready.md` and
+`target/ripr/reports/pr-ready.json` by composing worktree doctor, command
+catalog, PR summary, critic, receipts check, suggested fixes, generated-clean,
+and badge diff policy into one advisory local operator packet.
+`pr-triage-report` writes the advisory open-board hygiene report as Markdown
+and JSON.
+`gh-pr-status --pr <number>` writes a read-only merge-readiness packet for one
+PR as Markdown and JSON, including merge state, required check status when
+GitHub exposes it, reviews, Droid status, and the next safe action.
+`suggested-fixes` writes a deterministic repair patch and companion report
+under `target/ripr/reports/`; it suggests allowlist ordering fixes and docs
+index table ordering for specs and ADRs, plus traceability behavior block
+ordering by spec ID and capability block ordering by spec ID and capability ID.
+It never writes badge values, baselines, suppressions, goldens, dependency
+exceptions, or schema changes.
 `precommit` is the cheap non-mutating local guardrail. `check-pr` is the
 review-ready local gate and intentionally does not run package or publish
-dry-run checks. `fixtures` and `goldens check` validate the current fixture and
+dry-run checks. `check-badge-diff-policy` fails ordinary PRs that carry
+generated badge endpoint diffs, while `check-generated-clean` fails generated
+target/sample build residue and shares the same badge endpoint boundary.
+`fixtures` and
+`goldens check` validate the current fixture and
 expected-output scaffolding without accepting output drift. `golden-drift`
 writes advisory Markdown and JSON summaries of semantic expected-output drift
 for reviewers. `test-oracle-report` writes an advisory baseline for the strength
 of `ripr`'s own Rust test oracles. `dogfood` writes a non-blocking
 `ripr`-on-`ripr` report from stable fixture diffs. `critic` writes an advisory
 adversarial review packet from the current diff, reports, and receipts.
-`reports index` writes a reviewer front door for generated reports.
+`reports index` writes a reviewer front door for generated reports and includes
+the repo-ops packet statuses for command mutability, PR-ready, worktree doctor,
+PR triage, per-PR merge readiness, generated-clean, badge diff policy, command
+catalog coverage, critic, receipts, suggested fixes, and `check-pr`.
 `receipts` writes machine-readable gate evidence under `target/ripr/receipts`,
 and `receipts check` validates the receipt set.
 
@@ -335,6 +390,7 @@ cargo xtask check-file-policy
 cargo xtask check-executable-files
 cargo xtask check-workflows
 cargo xtask check-spec-format
+cargo xtask check-spec-numbering
 cargo xtask check-fixture-contracts
 cargo xtask check-traceability
 cargo xtask check-capabilities
@@ -348,6 +404,9 @@ cargo xtask markdown-links
 cargo xtask check-campaign
 cargo xtask check-pr-shape
 cargo xtask check-generated
+cargo xtask check-command-catalog
+cargo xtask check-badge-diff-policy
+cargo xtask check-generated-clean
 cargo xtask check-dependencies
 cargo xtask check-supply-chain
 cargo xtask check-process-policy
@@ -534,7 +593,8 @@ For a CI-first user, the useful output is the artifact packet:
 The workflow also writes a `RIPR advisory summary` step summary. It includes
 the PR review front panel when existing inputs allow
 `ripr pr-review front-panel` to run, the first useful action when existing
-inputs allow `ripr first-action` to run, policy readiness, waiver aging, and
+inputs allow `ripr first-action` to run, a language preview grouping section
+when `[languages]` enables TypeScript or Python, policy readiness, waiver aging, and
 suppression health when their input artifacts exist, assistant-loop health when
 proof artifacts exist, the report packet index when any indexed artifact exists,
 the top recommendation, the agent review packet when present, artifact links,
@@ -1507,6 +1567,15 @@ safest current policy mode. It does not run a gate, change baseline state, post
 comments, create required checks, or add pass/fail authority beyond an
 explicitly configured `ripr gate evaluate`.
 
+When policy readiness exists, generated CI also writes and uploads
+`policy-operations.{json,md}`, `policy-history.{json,md}`,
+`policy-promotion-*.{json,md}`, and configured preview-language
+`preview-promotion-*.{json,md}` packets. These reports are advisory operator
+packets: they summarize the current policy ceiling, history trend, manual
+promotion readiness, and preview-promotion evidence gaps. They do not mutate
+`ripr.toml`, baselines, suppressions, workflows, branch protection, CI defaults,
+history ledgers, or preview-language eligibility.
+
 See [Test-oracle assistant proof report](TEST_ORACLE_ASSISTANT_PROOF_REPORT.md)
 for how to read the proof report, warnings, static movement, optional CI
 projection, and advisory limits.
@@ -2045,6 +2114,9 @@ Planned CI work:
 A branch is ready to merge when:
 
 - required gates for touched areas pass on a committed tree
+- the branch is current enough for repository freshness policy, or a maintainer
+  has approved an explicit freshness exception using
+  [Merge freshness and watcher policy](MERGE_WATCH_POLICY.md)
 - docs and changelog are updated for user-visible changes
 - static output language rules are preserved
 - spec-test-code traceability is present for behavior changes

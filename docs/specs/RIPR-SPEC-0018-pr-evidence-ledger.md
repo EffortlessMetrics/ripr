@@ -107,6 +107,7 @@ ripr pr-ledger record \
   --baseline-delta target/ripr/reports/baseline-debt-delta.json \
   --zero-status target/ripr/reports/ripr-zero-status.json \
   --pr-guidance target/ripr/review/comments.json \
+  --gap-ledger target/ripr/reports/gap-decision-ledger.json \
   --recommendation-calibration target/ripr/reports/recommendation-calibration.json \
   --agent-receipt target/ripr/reports/agent-receipt.json \
   --coverage target/ripr/reports/coverage-summary.json \
@@ -120,7 +121,7 @@ Required inputs:
 - PR identity: number or equivalent local identifier, base revision, and head
   revision;
 - at least one current RIPR evidence source: gate decision, baseline debt
-  delta, RIPR Zero status, or PR guidance.
+  delta, RIPR Zero status, PR guidance, or gap decision ledger.
 
 Recommended inputs:
 
@@ -128,6 +129,7 @@ Recommended inputs:
 - baseline debt delta JSON;
 - RIPR Zero status JSON;
 - PR guidance JSON;
+- gap decision ledger JSON;
 - recommendation calibration JSON.
 
 Optional inputs:
@@ -191,6 +193,7 @@ The JSON report uses schema version `0.1`:
     "baseline_debt_delta": "target/ripr/reports/baseline-debt-delta.json",
     "ripr_zero_status": "target/ripr/reports/ripr-zero-status.json",
     "pr_guidance": "target/ripr/review/comments.json",
+    "gap_decision_ledger": "target/ripr/reports/gap-decision-ledger.json",
     "recommendation_calibration": "target/ripr/reports/recommendation-calibration.json",
     "agent_receipt": "target/ripr/reports/agent-receipt.json",
     "coverage": "target/ripr/reports/coverage-summary.json",
@@ -262,7 +265,8 @@ The JSON report uses schema version `0.1`:
     }
   },
   "top_repair_route": {
-    "source": "ripr_zero_status",
+    "source": "gap_decision_ledger",
+    "gap_id": "gap:pr:pricing:threshold-boundary",
     "canonical_gap_id": "pricing::discount::threshold_equality",
     "seam_id": "67fc764ba37d77bd",
     "path": "src/pricing.rs",
@@ -313,9 +317,12 @@ Field contract:
 - `coverage_grip_frontier.*` must keep coverage movement separate from RIPR
   evidence movement. Coverage movement is execution evidence, not test
   adequacy.
-- `top_repair_route` is copied from existing PR guidance, RIPR Zero status,
-  gate decision, agent packet, or receipt artifacts. Missing fields are `null`
-  plus warnings, not invented. `top_repair_route.canonical_gap_id` is copied
+- `top_repair_route` is copied from an explicit gap decision ledger when it
+  supplies a repairable, stable Rust, PR-local gap record with a verification
+  command. If no such gap record is present, the ledger falls back to existing
+  PR guidance, RIPR Zero status, gate decision, agent packet, or receipt
+  artifacts. Missing fields are `null` plus warnings, not invented.
+  `top_repair_route.gap_id` and `top_repair_route.canonical_gap_id` are copied
   from the selected source artifact when available.
 - `history.*` is present only when a prior ledger history or previous ledger
   summary is supplied.
@@ -343,6 +350,7 @@ Gate: baseline-check / acknowledged
 Top focused test to add:
 - src/pricing.rs:88 weakly_gripped
   Missing: amount == discount_threshold
+  Gap: gap:pr:pricing:threshold-boundary
   Suggested test: Add an equality-boundary assertion.
   Verify: ripr agent verify --root . --before ... --after ... --json
 
@@ -352,6 +360,7 @@ Coverage / grip frontier:
 - Interpretation: behavioral grip improved without line-coverage movement.
 
 Receipts:
+- Gap decision ledger: target/ripr/reports/gap-decision-ledger.json
 - Agent receipt: target/ripr/reports/agent-receipt.json
 - Full ledger: target/ripr/reports/pr-evidence-ledger.json
 

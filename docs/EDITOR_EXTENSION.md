@@ -65,7 +65,8 @@ or controlled environments.
 The editor path should not require report-format knowledge:
 
 1. Install `EffortlessMetrics.ripr` from VS Code Marketplace or Open VSX.
-2. Open a Rust/Cargo workspace.
+2. Open a Rust/Cargo workspace, or a workspace with explicitly enabled
+   TypeScript, JavaScript, or Python preview languages.
 3. Check the `ripr` status bar item for server state, workspace state,
    analysis progress, stale analysis, analysis failure, recommended next
    action, or "no focused test gap found." (Internal status IDs such as
@@ -82,10 +83,16 @@ The extension owns normal first-run server provisioning. A separate
 `cargo install ripr` remains a fallback for offline, pinned, or controlled
 environments.
 
-For the complete saved-workspace loop from diagnostic to receipt, see
+For a first install-to-receipt walkthrough, see
+[Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md). For
+the local repair loop from diagnostic to gap state, bounded action, verify,
+receipt, and refresh, see
+[Editor gap cockpit workflow](EDITOR_GAP_COCKPIT_WORKFLOW.md). For the older
+saved-workspace seam walkthrough, see
 [Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md). For the plain-language
-↔ internal vocabulary bridge (seam, discriminator, grip, canonical gap, etc.),
-see [Terminology](TERMINOLOGY.md).
+to internal vocabulary bridge (seam, discriminator, grip, canonical gap, etc.),
+see [Terminology](TERMINOLOGY.md). For preview-language static-limit labels,
+see [Static limits](STATIC_LIMITS.md).
 
 ## Settings
 
@@ -117,6 +124,10 @@ configuration.
 The status bar item and `ripr: Show Status` command name the current
 saved-workspace state using user-readable copy. The underlying JSON keeps
 stable internal status IDs so editor automation and tests stay deterministic.
+`ripr: Show Status` also prints the workspace root, resolved server source and
+command, editor selector set, enabled languages reported by the last server
+refresh, and the next safe action for the current state. This is the first
+place to check when no diagnostics appear.
 
 - disabled by `ripr.enabled = false`
 - workspace unresolved
@@ -124,8 +135,13 @@ stable internal status IDs so editor automation and tests stay deterministic.
 - analysis queued
 - analysis running
 - analysis complete (ripr-flagged changes present)
+- no enabled languages (`[languages] enabled = []`)
 - no focused test gap found (internal status ID: `no-actionable-seam`)
-- stale because a Rust buffer has unsaved edits
+- actionable gap available from a trusted gap artifact
+- already observed, with no local repair action needed
+- preview adapter unavailable in the current server binary
+- wrong-root, malformed, or unsupported gap artifact ignored
+- stale because a Rust or preview-language buffer has unsaved edits
 - analysis failed
 
 When `target/ripr/reports/first-useful-action.json` already exists in the
@@ -142,6 +158,16 @@ extension keeps stale status visible, including when a first-useful-action
 report is present, so diagnostics are not presented as fresh evidence for
 unsaved text. Saving or closing the Rust buffer clears the stale marker and
 queues the next saved-workspace refresh.
+
+Preview-language static limits should be read before action language in hover
+and status text. A static limit names what RIPR could not safely infer from
+syntax-first evidence; it does not mean the editor ran mutation testing, edited
+source, generated a test, or made the finding policy-eligible.
+
+When gap cockpit artifacts are present, status and actions stay fail-closed:
+wrong-root, stale, malformed, disabled-language, unavailable-adapter, and
+out-of-workspace related-test states suppress repair actions and leave status
+inspection or refresh as the safe next step.
 
 ## Defaults-First Stance
 
@@ -232,6 +258,31 @@ Windows and Unix workspace path separators, including workspace roots with
 spaces, without needing shell-specific quoting for absolute workspace paths. If
 a diagnostic is stale and its `seam_id` no longer maps to the current analysis
 snapshot, the LSP does not emit agent-loop copy actions; refresh analysis first.
+
+### Gap Cockpit Actions
+
+When a diagnostic maps to a trusted gap or evidence artifact, the LSP server can
+also project repair-oriented actions. These actions use typed diagnostic and
+artifact fields such as gap identity, language status, related-test path,
+repair route, static-limit kind, verify command, and receipt command. They do
+not parse prose to decide what is safe.
+
+Gap cockpit actions remain conditional:
+
+- `Write targeted test: open best related test` appears only for a
+  workspace-local related test in the current language.
+- `Inspect Test Gap - Copy Context` and repair-packet actions appear only when
+  gap identity and repair route exist.
+- `Write targeted test: copy brief` appears only when there is enough evidence
+  to describe one focused test.
+- verify and receipt copy actions appear only when the command payloads match
+  the current workspace contract.
+- static-limit notes appear only when a limit is present.
+- refresh remains the safe fallback when the server is available.
+
+Stale, wrong-root, malformed, disabled-language, unavailable-adapter, and path
+escape states suppress repair actions. The editor may explain the state in
+status or hover, but it should not offer an unsafe packet.
 
 ## Missing Server Behavior
 
@@ -424,11 +475,12 @@ command registration, defaults-first `draft` mode, LSP-first seam context
 collection with CLI fallback, targeted-test brief copying, suggested assertion
 copying, related-test opening, malformed command argument handling, and
 `restartServer` callability. When a test server path is supplied, the suite also
-opens the boundary-gap fixture through the real server path, waits for a seam
-diagnostic, checks hover evidence and code actions, copies seam packet and
-verify command payloads, and opens the best related test. Agent-loop command
-copy handlers fail closed unless the payload matches the expected label, root,
-base, mode, seam, and target artifact contract. CI runs the suite headless with
+opens the boundary-gap and editor gap cockpit fixtures through the real server
+path, waits for diagnostics, checks hover evidence and static-limit ordering,
+checks bounded actions, copies packet, verify, and receipt payloads, and opens
+the best related test only when the path is safe. Agent-loop command copy
+handlers fail closed unless the payload matches the expected label, root, base,
+mode, identity, and target artifact contract. CI runs the suite headless with
 `xvfb-run`.
 
 ## Current Limitations

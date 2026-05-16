@@ -9,6 +9,11 @@ traceability manifest, and output contracts. It does not switch to another
 campaign merely because `.ripr/goals/active.toml` points at a PR/CI, editor, or
 policy surface.
 
+The Lane 1 source-of-truth stack is defined in
+[docs/lanes/README.md](README.md). This tracker records the evidence-spine
+stabilization state; it does not replace proposals, specs, ADRs, capability
+evidence, traceability, closeouts, or the active operator manifest.
+
 This document is now the stabilization record for the shared evidence spine.
 The next Lane 1 objective is Evidence Accuracy Evaluation, tracked in
 [LANE_1_EVIDENCE_ACCURACY.md](LANE_1_EVIDENCE_ACCURACY.md).
@@ -30,6 +35,15 @@ Lane 1 owns these evidence surfaces:
 
 Downstream surfaces may consume this evidence, but they should not reinterpret
 it independently.
+
+For new Lane 1 work, use the layered source-of-truth model:
+
+- proposal for why the evidence-quality work matters;
+- spec for behavior contracts and acceptance examples;
+- ADR only for durable evidence-model decisions;
+- lane tracker for current slices and non-goals;
+- capability matrix and traceability for proof;
+- closeout handoff for what landed and what remains.
 
 ## Current Stable Spine
 
@@ -109,9 +123,11 @@ named classes. They remain advisory and do not run mutation testing.
   static gap plus runtime clean, runtime signal without a static seam,
   static clean plus runtime clean, inconclusive runtime outcomes, ambiguous
   file-line joins, unmatched runtime data, static seams without runtime data,
-  and seam-id or unambiguous file-line joins. Planned side-effect, mock,
-  snapshot, and dynamic-dispatch runtime samples remain outside the calibrated
-  scope until checked fixtures land.
+  and seam-id or unambiguous file-line joins. The checked
+  `runtime-fixtures-v2` sample expands imported-runtime calibration to
+  side-effect observer, mock expectation, snapshot oracle, and dynamic or
+  opaque dispatch classes while keeping ambiguous joins ambiguous and
+  runtime-only signals out of static gap creation.
 
 ## Current Open PRs
 
@@ -174,8 +190,9 @@ git diff --check
 
 ## Cross-Lane Rules
 
-- `.ripr/goals/active.toml` is the active Codex Goals manifest, not the whole
-  product board.
+- `.ripr/goals/active.toml` is the current Codex Goals manifest, not the whole
+  product board. Its top-level status may be `closed` after campaign closeout
+  until a successor campaign is selected.
 - Lane 1 may add or change evidence consumed by PR/CI, editor, agent, baseline,
   or gate surfaces.
 - Lane 1 should not implement PR/CI summary projection, editor UX polish,

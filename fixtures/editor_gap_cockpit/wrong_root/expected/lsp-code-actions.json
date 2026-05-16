@@ -1,0 +1,10 @@
+{
+  "fixture": "editor_gap_cockpit/wrong_root",
+  "actions": [
+    {
+      "title": "Refresh Analysis - Saved Workspace Check",
+      "command": "ripr.refresh",
+      "arguments": []
+    }
+  ]
+}

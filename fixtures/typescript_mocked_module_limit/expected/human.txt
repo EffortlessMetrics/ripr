@@ -13,6 +13,10 @@ Probe
   family: predicate
   delta:  control
 
+Language
+  language: typescript
+  status: preview
+
 Static exposure
   exposed (info, confidence 0.60)
 

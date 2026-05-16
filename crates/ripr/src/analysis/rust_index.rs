@@ -220,6 +220,8 @@ fn checks_error() {
         let whole_object = classify_assertion("assert_eq!(quote, Quote { total: 100 });");
         let side_effect = classify_assertion("assert!(events.published().contains(&Event::Sent));");
         let custom_helper = classify_assertion("assert_total_matches(&quote, 100);");
+        let opaque_helper = classify_assertion("assert_discount_is_valid(&quote);");
+        let duplicated_equality = classify_assertion("assert_eq!(quote.total, quote.total);");
         let mock_setup = classify_assertion("let mock_service = MockPublisher::new();");
         let mock_expectation = classify_assertion("mock_service.expect_publish().times(1);");
 
@@ -231,10 +233,58 @@ fn checks_error() {
         assert_eq!(side_effect.strength, OracleStrength::Medium);
         assert_eq!(custom_helper.kind, OracleKind::ExactValue);
         assert_eq!(custom_helper.strength, OracleStrength::Strong);
+        assert_eq!(opaque_helper.kind, OracleKind::Unknown);
+        assert_eq!(opaque_helper.strength, OracleStrength::Unknown);
+        assert_eq!(duplicated_equality.kind, OracleKind::RelationalCheck);
+        assert_eq!(duplicated_equality.strength, OracleStrength::Weak);
         assert_eq!(mock_setup.kind, OracleKind::Unknown);
         assert_eq!(mock_setup.strength, OracleStrength::Unknown);
         assert_eq!(mock_expectation.kind, OracleKind::MockExpectation);
         assert_eq!(mock_expectation.strength, OracleStrength::Medium);
+    }
+
+    #[test]
+    fn classifies_only_clear_custom_helpers_as_exact_value_oracles() {
+        for exact in [
+            "assert_total_matches(&quote, 100);",
+            "helpers::assert_amount_equal(actual, 100);",
+            "quote.assert_total_eq(100);",
+        ] {
+            let oracle = classify_assertion(exact);
+            assert_eq!(oracle.kind, OracleKind::ExactValue, "case: {exact}");
+            assert_eq!(oracle.strength, OracleStrength::Strong, "case: {exact}");
+        }
+
+        for opaque in [
+            "assert_valid_quote(&quote);",
+            "helpers::assert_discount(&quote);",
+            "quote.assert_business_rules();",
+        ] {
+            let oracle = classify_assertion(opaque);
+            assert_eq!(oracle.kind, OracleKind::Unknown, "case: {opaque}");
+            assert_eq!(oracle.strength, OracleStrength::Unknown, "case: {opaque}");
+        }
+    }
+
+    #[test]
+    fn classifies_duplicative_equality_as_weak_oracle() {
+        for duplicative in [
+            "assert_eq!(quote.total, quote.total);",
+            "assert_eq!(render(actual), render(actual), \"same expression\");",
+            "assert_ne!(status, status);",
+        ] {
+            let oracle = classify_assertion(duplicative);
+            assert_eq!(
+                oracle.kind,
+                OracleKind::RelationalCheck,
+                "case: {duplicative}"
+            );
+            assert_eq!(oracle.strength, OracleStrength::Weak, "case: {duplicative}");
+        }
+
+        let exact = classify_assertion("assert_eq!(quote.total, 100);");
+        assert_eq!(exact.kind, OracleKind::ExactValue);
+        assert_eq!(exact.strength, OracleStrength::Strong);
     }
 
     #[test]
@@ -478,6 +528,16 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
         });
     }
 
+    let _marker = match service.kind() {
+        "=>" => 1,
+        _ => 0,
+    };
+
+    let _block_marker = match { service.kind() } {
+        "block" => 1,
+        _ => 0,
+    };
+
     match amount {
         0 => Err(Error::Zero),
         _ => Ok(Quote { total: amount }),
@@ -498,6 +558,21 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
         assert!(kinds.contains(&PROBE_SHAPE_FIELD_CONSTRUCTION));
         assert!(kinds.contains(&PROBE_SHAPE_SIDE_EFFECT));
         assert!(kinds.contains(&PROBE_SHAPE_MATCH_ARM));
+
+        let match_shapes = facts
+            .probe_shapes
+            .iter()
+            .filter(|shape| shape.kind == PROBE_SHAPE_MATCH_ARM)
+            .map(|shape| shape.text.as_str())
+            .collect::<Vec<_>>();
+        assert!(match_shapes.contains(&"match amount"));
+        assert!(match_shapes.contains(&"match service.kind()"));
+        assert!(match_shapes.contains(&"match { service.kind() }"));
+        assert!(match_shapes.contains(&r#""=>" =>"#));
+        assert!(match_shapes.contains(&r#""block" =>"#));
+        assert!(match_shapes.contains(&"0 =>"));
+        assert!(match_shapes.contains(&"_ =>"));
+        assert!(!match_shapes.contains(&"=>"));
         Ok(())
     }
 

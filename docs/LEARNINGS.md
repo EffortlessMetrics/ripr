@@ -267,16 +267,106 @@ Observed inventory during PR 0:
 analyzed user code and are not panic-family call sites.
 ```
 
+## 2026-05-12: Evidence Text Now, Structured Field When Second Consumer Appears
+
+### Context
+
+A recurring situation while extending analyzers: a new evidence kind
+needs to flow from an adapter to the rest of `ripr`, and a spec
+already documents a structured shape for it. The textbook move is to
+add the typed field today. In practice, doing that for a single
+producer with no consumer balloons the diff and pulls in renderer,
+fixture, and golden churn that defends nothing observable.
+
+Surfaced concretely during Campaign 27 work on TypeScript preview
+facts, where `mocked_module` static-limit detection had a choice
+between adding a structured `Finding.static_limit_kind` enum field
+and emitting a stable-prefix string in the existing
+`Finding.evidence` array.
+
+### The pattern
+
+For a new evidence kind, ship as a stable-prefix string in the
+existing `evidence` array first:
+
+```text
+static_limit mocked_module: `./api`
+```
+
+The prefix is grep-friendly (`starts_with("static_limit ")` is a
+stable contract). The renderer, JSON shape, SARIF emitter, badge
+output, and the LSP all keep working without changes. Fixture
+re-bless touches the one file that actually gained evidence.
+
+Promote to a structured field on `Finding` (or wherever the spec
+places it) when a real second consumer appears. Until that trigger
+exists, the text-with-prefix carries the information forward without
+paying for schema ceremony that nothing reads.
+
+### When text-with-prefix is the right call
+
+- At the time of the scoped text-prefix ship, a single adapter is the
+  only producer of the signal.
+- At that same decision point, no live consumer reads the typed shape:
+  no scanner aggregating by kind, no LSP code-action keyed on the
+  variant, no policy aggregator counting cases.
+- The scoped-PR contract is pushing for one production delta in
+  this PR; promoting to a schema field would expand the diff several
+  times over (constructor sites, every renderer, every TS fixture
+  re-blessed to confirm field absence, serialization tests).
+- The signal is straightforward enough that one stable prefix
+  encodes it cleanly.
+
+### When to promote to the structured field
+
+- A second adapter wants to emit the same kind of signal, and the
+  text prefix is starting to feel like a small parallel protocol.
+- A real consumer materializes: a policy-readiness scanner that
+  needs to aggregate by kind, an LSP code-action that branches on
+  the variant, a metric over the typed vocabulary.
+- The prefix family has grown past two or three forms and the
+  string-parser at the consumer side is becoming non-trivial.
+- The spec's structured vocabulary needs to be enforced — at that
+  point, the typed enum carries the closure over the variant set
+  and the text prefix cannot.
+
+### Hazard
+
+A structured field that exists on paper in a spec but is not yet
+emitted by any adapter is an attractive nuisance. The next reader
+sees the spec, sees the absence, and reads the text-only ship as
+under-delivery rather than as a deliberate deferral.
+
+Mitigation: file the follow-up issue at the same time as the
+text-only ship. Name the second-consumer trigger explicitly in the
+issue, link the spec line that documents the structured shape, and
+link the analyzer site that emits the text form today. The deferral
+is then recorded, not hidden.
+
+### Concrete example
+
+- PR #791 (`analysis(ts): TypeScript preview facts — mocked-module
+  static-limit reporting`) chose the text-with-prefix form before a
+  live typed consumer existed.
+- Issue #807 (`domain: emit structured static_limit_kind field on
+  Finding`) records the follow-up after the consumer pressure became
+  real.
+- The scanner that aggregates by kind once the typed field is emitted:
+  `crates/ripr/src/output/policy_readiness.rs:800-810`.
+- The spec defining the structured vocabulary:
+  `docs/specs/RIPR-SPEC-0026-language-adapter-contract.md`
+  (`static_limit_kind`).
+
 ## 2026-05-12: Cache-TTL-Aware CI Watcher Economics
 
 ### Context
 
-Agent loops that poll external state during a long-running task — CI
+Agent loops that poll external state during a long-running task - CI
 watchers, deploy waiters, queue drainers, anything that sleeps and
-then checks — have a non-obvious cost dimension beyond API rate
-limits: the LLM's prompt-cache TTL shapes the optimal polling
-interval. Surfaced concretely during Campaign 27's PR watcher work
-(PRs #794, #801, #804).
+then checks - have a non-obvious cost dimension beyond API rate
+limits: the LLM prompt-cache TTL shapes the optimal polling interval.
+Surfaced concretely during Campaign 27 PR watcher work on PRs #794,
+#801, and #804.
 
 ### The math
 
@@ -294,43 +384,42 @@ committed sleep:  sleep >> ~5 min   one cache miss across a long wait
 - A watcher that sleeps exactly through the TTL pays a full re-read
   of the conversation context every cycle. This is the worst-case
   region: highest token cost per useful poll.
-- A watcher that commits to a long sleep (twenty-plus minutes) pays
-  one cache miss, but spreads that cost across many minutes of
+- A watcher that commits to a long sleep, such as twenty-plus minutes,
+  pays one cache miss but spreads that cost across many minutes of
   external progress.
 
-This is a generally-true coordination protocol for any agentic system
-that polls external state. The specific TTL is an Anthropic-prompt-
-cache fact today; other providers have their own cache windows, but
-the three-region structure is the same.
+This is a general coordination protocol for agentic systems that poll
+external state. The specific TTL is an Anthropic prompt-cache fact
+today; other providers have their own cache windows, but the
+three-region structure is the same.
 
 ### What works
 
-- Active CI watch: 180–270 s backoff. Stays inside the warm zone,
-  with enough headroom that one slow tool call does not push the
-  cycle over the TTL.
-- Genuinely idle ticks (no active PR, waiting for an unrelated
-  trigger): 1200–1800 s. Commits to one cache miss per long wait
-  instead of churning.
-- Exit-early signals on every wake: a CI state of `CLEAN`,
-  `UNSTABLE`, or `HAS_HOOKS` means ready to merge; a failure
-  conclusion means stop and report; a `BEHIND` mergeable state
-  means rebase, then re-watch.
+- Active CI watch: 180-270 s backoff. This stays inside the warm zone,
+  with enough headroom that one slow tool call does not push the cycle
+  over the TTL.
+- Genuinely idle ticks, such as no active PR or waiting for an
+  unrelated trigger: 1200-1800 s. This commits to one cache miss per
+  long wait instead of churning.
+- Exit-early signals on every wake: a CI state of `CLEAN`, `UNSTABLE`,
+  or `HAS_HOOKS` means ready to merge; a failure conclusion means stop
+  and report; a `BEHIND` mergeable state means rebase, then re-watch.
 
-### What doesn't
+### What does not work
 
-- `gh pr watch` default cadence (three-second polling). Burns the
-  authenticated GitHub API rate limit fast, and re-enters the agent
-  loop too often to amortize cache cost meaningfully.
-- ~300 s polling. Lands in the danger zone — each wake pays a full
-  cache miss without buying much external progress.
-- Tight infinite loops with no backoff. Same failure mode as the
-  default `gh pr watch`, plus the agent has no chance to terminate
-  on the exit-early signals above.
+- `gh pr watch` default cadence, which polls every three seconds. It
+  burns the authenticated GitHub API rate limit quickly and re-enters
+  the agent loop too often to amortize cache cost meaningfully.
+- Roughly 300 s polling. This lands in the danger zone: each wake pays
+  a full cache miss without buying much external progress.
+- Tight infinite loops with no backoff. They have the same failure mode
+  as the default `gh pr watch`, plus the agent has no chance to
+  terminate on the exit-early signals above.
 
 ### Operational signals to watch for
 
-For GitHub PR watchers specifically, the merge-readiness signals
-worth handling explicitly:
+For GitHub PR watchers, handle these merge-readiness signals
+explicitly:
 
 ```text
 CLEAN       ready
@@ -340,17 +429,17 @@ BEHIND      needs rebase, then re-watch
 DIRTY       conflict, stop and report
 ```
 
-Without GitHub merge-queue / auto-merge enabled, concurrent merges
-on a busy repo produce repeated `BEHIND` transitions; Campaign 27
-saw five to six rebase cycles per PR. Merge queue removes that
-class of loop entirely.
+Without GitHub merge queue or auto-merge enabled, concurrent merges on
+a busy repo produce repeated `BEHIND` transitions. Campaign 27 saw
+five to six rebase cycles per PR. Merge queue removes that class of
+loop.
 
 ### Limitations
 
-- The five-minute number is the current Anthropic prompt-cache TTL.
-  If that window changes, or if the watcher runs on a different
-  provider, the warm/danger/committed boundaries shift but the
-  three-region structure does not.
+- The five-minute number is the current Anthropic prompt-cache TTL. If
+  that window changes, or if the watcher runs on a different provider,
+  the warm, danger, and committed boundaries shift but the three-region
+  structure does not.
 - The exit-early signals above are GitHub-specific. The general
-  principle — wake, check, exit on a small set of terminal states,
-  back off otherwise — transfers to other coordination targets.
+  principle - wake, check, exit on a small set of terminal states, and
+  back off otherwise - transfers to other coordination targets.

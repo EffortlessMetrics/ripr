@@ -80,6 +80,15 @@ classification = "docs"
 reason = "Documentation, examples, snippets, and reference material."
 covered_by = ["cargo xtask check-doc-index", "cargo xtask check-spec-format"]
 
+[[allow]]
+glob = "schemas/**/*.json"
+kind = "json_schema"
+owner = "contracts"
+surface = "docs"
+classification = "config"
+reason = "Machine-readable verification contract schemas for badges and PR evidence."
+covered_by = ["cargo xtask check-file-policy", "cargo xtask check-output-contracts"]
+
 # ---------------------------------------------------------------------------
 # Rust workspace metadata
 # ---------------------------------------------------------------------------
@@ -404,6 +413,15 @@ classification = "fixture"
 reason = "Fixture workspaces may intentionally contain analyzed source files."
 covered_by = ["cargo xtask check-fixture-contracts", "cargo xtask fixtures"]
 
+[[allow]]
+glob = "tests/fixtures/verification/**/*.json"
+kind = "verification_contract_fixture"
+owner = "contracts"
+surface = "fixtures"
+classification = "fixture"
+reason = "Sample JSON packets proving portable verification schemas are executable."
+covered_by = ["cargo xtask check-verification-contracts"]
+
 # ---------------------------------------------------------------------------
 # Brand / assets
 # ---------------------------------------------------------------------------
@@ -419,9 +437,10 @@ covered_by = []
 
 [[allow]]
 glob = "badges/*.json"
-kind = "badge_endpoint"
-owner = "repo-policy"
-surface = "brand"
+kind = "generated_badge_endpoint"
+owner = "release/ci"
+surface = "docs"
 classification = "generated"
-reason = "Repo-scoped Shields endpoint JSON committed under main; refreshed by `cargo xtask update-badge-endpoints`. v1 dogfood self-hosted endpoint per docs/BADGE_POLICY.md and deferred/hosted-badge-service."
-covered_by = ["cargo xtask check-badge-endpoints", "cargo xtask update-badge-endpoints"]
+reason = "Generated Shields endpoint JSON for public README badges."
+generated_by = "cargo xtask badges"
+covered_by = ["cargo xtask badges --check", "cargo xtask badges", "cargo xtask check-badge-endpoints", "cargo xtask update-badge-endpoints"]

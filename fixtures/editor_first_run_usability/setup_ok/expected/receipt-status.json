@@ -1,0 +1,9 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_run_usability/setup_ok",
+  "receipt_state": "receipt_missing",
+  "gap_identity": "gap:rust:pricing",
+  "runtime_adequacy_claim": false,
+  "gate_eligibility_claim": false,
+  "next_safe_action": "Run verify after the focused test, then emit a receipt."
+}

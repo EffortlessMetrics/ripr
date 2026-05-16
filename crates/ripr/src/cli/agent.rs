@@ -39,7 +39,9 @@ pub(super) struct AgentBriefOptions {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct AgentPacketOptions {
     pub(super) root: PathBuf,
-    pub(super) seam_id: String,
+    pub(super) seam_id: Option<String>,
+    pub(super) gap_ledger: Option<PathBuf>,
+    pub(super) gap_id: Option<String>,
     pub(super) json: bool,
 }
 
@@ -280,6 +282,8 @@ pub(super) fn parse_agent_brief_options(args: &[String]) -> Result<AgentBriefOpt
 pub(super) fn parse_agent_packet_options(args: &[String]) -> Result<AgentPacketOptions, String> {
     let mut root = PathBuf::from(".");
     let mut seam_id: Option<String> = None;
+    let mut gap_ledger: Option<PathBuf> = None;
+    let mut gap_id: Option<String> = None;
     let mut json = false;
 
     let mut i = 0usize;
@@ -297,6 +301,22 @@ pub(super) fn parse_agent_packet_options(args: &[String]) -> Result<AgentPacketO
                 }
                 seam_id = Some(value.to_string());
             }
+            "--gap-ledger" => {
+                i += 1;
+                let value = expect_value(args, i, "--gap-ledger")?;
+                if value.trim().is_empty() {
+                    return Err("agent packet --gap-ledger requires a non-empty path".to_string());
+                }
+                gap_ledger = Some(PathBuf::from(value));
+            }
+            "--gap-id" => {
+                i += 1;
+                let value = expect_value(args, i, "--gap-id")?;
+                if value.trim().is_empty() {
+                    return Err("agent packet --gap-id requires a non-empty ID".to_string());
+                }
+                gap_id = Some(value.to_string());
+            }
             "--json" => json = true,
             other => return Err(format!("unknown agent packet argument {other:?}")),
         }
@@ -306,10 +326,33 @@ pub(super) fn parse_agent_packet_options(args: &[String]) -> Result<AgentPacketO
     if !json {
         return Err("agent packet requires --json until human output is implemented".to_string());
     }
+    if seam_id.is_some() && (gap_ledger.is_some() || gap_id.is_some()) {
+        return Err(
+            "agent packet accepts either --seam-id or --gap-ledger with --gap-id, not both"
+                .to_string(),
+        );
+    }
+    match (seam_id.is_some(), gap_ledger.is_some(), gap_id.is_some()) {
+        (true, false, false) | (false, true, true) => {}
+        (false, true, false) => {
+            return Err("agent packet --gap-ledger requires --gap-id".to_string());
+        }
+        (false, false, true) => {
+            return Err("agent packet --gap-id requires --gap-ledger".to_string());
+        }
+        (false, false, false) => {
+            return Err(
+                "agent packet requires --seam-id or --gap-ledger with --gap-id".to_string(),
+            );
+        }
+        _ => {}
+    }
 
     Ok(AgentPacketOptions {
         root,
-        seam_id: seam_id.ok_or_else(|| "agent packet requires --seam-id".to_string())?,
+        seam_id,
+        gap_ledger,
+        gap_id,
         json,
     })
 }
@@ -827,7 +870,9 @@ mod tests {
             ])),
             Ok(AgentPacketOptions {
                 root: PathBuf::from("repo"),
-                seam_id: "f3c9e4d21a0b7c88".to_string(),
+                seam_id: Some("f3c9e4d21a0b7c88".to_string()),
+                gap_ledger: None,
+                gap_id: None,
                 json: true,
             })
         );
@@ -841,7 +886,7 @@ mod tests {
         );
         assert_eq!(
             parse_agent_packet_options(&args(&["--json"])),
-            Err("agent packet requires --seam-id".to_string())
+            Err("agent packet requires --seam-id or --gap-ledger with --gap-id".to_string())
         );
         assert_eq!(
             parse_agent_packet_options(&args(&["--seam-id", "", "--json"])),
@@ -859,6 +904,71 @@ mod tests {
                 "--xml",
             ])),
             Err("unknown agent packet argument \"--xml\"".to_string())
+        );
+    }
+
+    #[test]
+    fn agent_packet_parses_gap_ledger_request() {
+        assert_eq!(
+            parse_agent_packet_options(&args(&[
+                "--root",
+                "repo",
+                "--gap-ledger",
+                "target/ripr/reports/gap-decision-ledger.json",
+                "--gap-id",
+                "gap:pr:pricing",
+                "--json",
+            ])),
+            Ok(AgentPacketOptions {
+                root: PathBuf::from("repo"),
+                seam_id: None,
+                gap_ledger: Some(PathBuf::from(
+                    "target/ripr/reports/gap-decision-ledger.json"
+                )),
+                gap_id: Some("gap:pr:pricing".to_string()),
+                json: true,
+            })
+        );
+    }
+
+    #[test]
+    fn agent_packet_requires_one_identity_source() {
+        assert_eq!(
+            parse_agent_packet_options(&args(&[
+                "--seam-id",
+                "abc",
+                "--gap-ledger",
+                "ledger.json",
+                "--gap-id",
+                "gap:a",
+                "--json",
+            ])),
+            Err(
+                "agent packet accepts either --seam-id or --gap-ledger with --gap-id, not both"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_agent_packet_options(&args(&["--gap-ledger", "ledger.json", "--json"])),
+            Err("agent packet --gap-ledger requires --gap-id".to_string())
+        );
+        assert_eq!(
+            parse_agent_packet_options(&args(&["--gap-id", "gap:a", "--json"])),
+            Err("agent packet --gap-id requires --gap-ledger".to_string())
+        );
+        assert_eq!(
+            parse_agent_packet_options(&args(&["--gap-ledger", "", "--gap-id", "gap:a", "--json"])),
+            Err("agent packet --gap-ledger requires a non-empty path".to_string())
+        );
+        assert_eq!(
+            parse_agent_packet_options(&args(&[
+                "--gap-ledger",
+                "ledger.json",
+                "--gap-id",
+                "",
+                "--json"
+            ])),
+            Err("agent packet --gap-id requires a non-empty ID".to_string())
         );
     }
 

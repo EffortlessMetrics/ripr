@@ -2814,7 +2814,7 @@ Closeout:
 
 Campaign ID: `pr-inline-comment-publisher`
 
-Status: active
+Status: closed
 
 Campaigns 13 through 25 made PR guidance, generated-CI summaries, changed-line
 check annotations, optional gates, baselines, ledgers, assistant proof, first
@@ -2900,7 +2900,7 @@ Next:
 
 Campaign ID: `language-adapter-preview`
 
-Status: active
+Status: closed
 
 Campaigns 1 through 26 built a credible Rust static oracle-gap analyzer with
 an editor evidence loop, an advisory PR review front panel, baselines, RIPR
@@ -2966,14 +2966,14 @@ Work items:
 | `output/language-metadata` | done | Added additive optional `language` field on each `Finding` (Rust adapter sets `"rust"`, omitted otherwise) and `language_status` (preview adapters set `"preview"`; omitted for Rust per spec). `LanguageId`/`LanguageStatus` moved to `domain::language` as pure-data enums so output renderers can serialize without depending on the analysis layer. JSON renderer emits the fields when populated; goldens refreshed accordingly. `owner_kind` and `static_limit_kind` remain deferred until preview adapters populate them. |
 | `config/languages-opt-in` | done | Added `[languages] enabled` to `ripr.toml` with default `["rust"]`, vocabulary validation (rust/typescript/python), duplicate rejection, `deny_unknown_fields`, and a doctor-command surface. Generated `ripr init` config, `ripr.toml.example`, and `docs/CONFIGURATION.md` updated. |
 | `analysis/typescript-preview-adapter` | done | Add the TypeScript/JavaScript syntax-first adapter, the TypeScript fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Scaffold sub-slice landed `oxc_parser`, the `TypeScriptAdapter` struct, and language-aware dispatch through `[languages] enabled`. Owner+test sub-slice (#777) added top-level function-declaration + `test()`/`it()` extraction, related-test matching by name reference, a minimal `WeaklyExposed`/`NoStaticPath` classifier, and `fixtures/typescript_boundary_gap/`. Assertion-shape extraction (#781 closes #767) refined the gradient to `Exposed`/`WeaklyExposed`/`NoStaticPath` via `toBe`/`toEqual`/`toThrow` plus async `.resolves`/`.rejects`. Probe-shape classification (#784 closes #768) replaced the placeholder `Predicate`/`Control` default with syntax-first `ProbeFamily`/`DeltaKind` per changed line, with `fixtures/typescript_return_value_shape/`. Mocked-module static-limit reporting (#791 closes #769) surfaces `vi.mock(...)`/`jest.mock(...)` via `evidence`/`missing` text without downgrading classification, with `fixtures/typescript_mocked_module_limit/`. Together these slices establish the first useful TypeScript preview loop end-to-end. Remaining preview polish — structured `static_limit_kind` field, additional limit kinds, arrow-function const owners, class methods — is intentionally deferred to follow-up issues and is not on the Campaign 27 critical path. Targets 0.6.0. |
-| `analysis/typescript-editor-readiness` | blocked | Resolve or explicitly supersede the TypeScript preview gaps that make editor projection unsafe before `lsp/editor-language-routing` can consume TypeScript evidence: #779 human output must visibly label preview TypeScript evidence, #780 owner matching must be file-scoped before line-range matching, #782 broad `toThrow()` must not become exact error evidence, #785 awaited `Promise.reject(...)` must classify as error-path preview evidence, and #786 fixture/golden evidence must cover every TypeScript probe family. No VS Code selector, LSP routing, source edit, generated test, provider, mutation execution, gate, or default-blocking behavior changes in this work item. |
+| `analysis/typescript-editor-readiness` | done | Resolved the TypeScript preview gaps that made editor projection unsafe before `lsp/editor-language-routing` can consume TypeScript evidence: #779 human output visibly labels preview TypeScript evidence, #780 owner matching is file-scoped before line-range matching, #782 broad `toThrow()` remains weak broad-error evidence, #785 awaited `Promise.reject(...)` classifies as error-path preview evidence, and #786 fixture/golden evidence covers every TypeScript probe family currently emitted by the preview adapter. Landed without VS Code selector, LSP routing, source edit, generated test, provider, mutation execution, gate, or default-blocking behavior changes. |
 | `adr/python-parser-substrate` | done | Pin the Python parser-substrate decision before any Cargo dependency or adapter code lands, mirroring how ADR 0008 (`oxc_parser`) was sequenced ahead of the TypeScript scaffold. Landed via #794 (closes #770) — adds `docs/adr/0009-python-parser-substrate.md`, registers it in `docs/adr/README.md`, and adds the approved-decision comment to `policy/dependency_allowlist.txt`. ADR 0009 was superseded in-place by a follow-up correction PR after discovering the originally-picked `ruff_python_parser` is `publish = false` in the astral-sh/ruff workspace and unavailable on crates.io; the corrected pick is `rustpython-parser`, the documented natural fallback already named under the ADR's Revisit Criteria. No Cargo dependency, no adapter code, no behavior change. |
-| `analysis/python-preview-adapter` | active | Add the Python syntax-first adapter, the Python fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Scaffold sub-slice mirrors the TypeScript scaffold (PR #759): adds the `rustpython-parser` Cargo dependency approved by the corrected ADR 0009, the `PythonAdapter` type, language-aware pipeline dispatch through `[languages] enabled`, and a real production parse-validation use of `rustpython-parser`. To avoid an LGPL-3.0-only transitive (`malachite-bigint`), the dependency disables default features and selects `num-bigint` (MIT/Apache-2.0) for Python int-literal representation. Owner / test / assertion / probe / related-test fact extraction lands in subsequent sub-slices against RIPR-SPEC-0028's fixture corpus. |
-| `lsp/editor-language-routing` | blocked | Extend the VS Code extension to register the TypeScript, TypeScript React, JavaScript, JavaScript React, and Python selectors and route saved-workspace analysis through the adapter layer without changing Rust saved-workspace defaults. Blocked by `analysis/typescript-editor-readiness` and `analysis/python-preview-adapter`. |
-| `ci/language-aware-grouping` | blocked | Update generated GitHub CI summaries to group advisory output by language only when `[languages]` declares more than Rust, keeping Rust-default behavior identical and gate authority unchanged. |
-| `docs/language-adapter-preview-workflow` | blocked | Document enabling preview adapters, reading mixed-language reports, interpreting preview labels, the static-limit boundary, and rollback. |
-| `dogfood/language-adapter-preview-receipts` | blocked | Extend `cargo xtask dogfood` with checked TypeScript and Python preview receipts without changing analyzer behavior, default CI, or inline-comment defaults. |
-| `campaign/language-adapter-preview-closeout` | blocked | Close Campaign 27 after the spec, adapter boundary, Rust adapter, output metadata, preview adapters, editor routing, CI grouping, workflow docs, dogfood receipts, and validation show preview adapters are syntax-first, opt-in, advisory, and label-correct, while Rust behavior is preserved. |
+| `analysis/python-preview-adapter` | done | Add the Python syntax-first adapter, the Python fixture corpus, and the preview labeling without changing Rust behavior, default CI, or inline-comment defaults. Scaffold sub-slice mirrors the TypeScript scaffold (PR #759): adds the `rustpython-parser` Cargo dependency approved by the corrected ADR 0009, the `PythonAdapter` type, language-aware pipeline dispatch through `[languages] enabled`, and a real production parse-validation use of `rustpython-parser`. To avoid an LGPL-3.0-only transitive (`malachite-bigint`), the dependency disables default features and selects `num-bigint` (MIT/Apache-2.0) for Python int-literal representation. Owner/test sub-slice adds syntax-first `def` / `async def` / method owner facts, pytest and unittest test discovery, preview `owner_kind` output, and Python owner/test fixture families. Assertion/oracle sub-slice adds syntax-first pytest, unittest, boolean, broad-error, and mock-call oracle facts plus fixture families. Probe-shape sub-slice adds syntax-first predicate, return-value, error-path, field-assignment, call, and mock-initializer probe families plus fixture coverage. Related-test sub-slice adds direct-call, import-alias, same-stem, and unrelated-mention fixtures with conservative weak proximity behavior. Static-limit sub-slice adds structured `dynamic_dispatch`, `decorator_indirection`, `mocked_module`, `missing_import_graph`, `metaprogramming`, and `unsupported_syntax` facts plus fixture coverage while preserving strong related-test classifications. Final corpus-completion audit records that owner/test/assertion/probe/related-test/static-limit Python preview facts are fixture-backed and editor-projectable. |
+| `lsp/editor-language-routing` | done | Extended the VS Code extension activation events and document selector to TypeScript, TypeScript React, JavaScript, JavaScript React, and Python while preserving Rust saved-workspace defaults. Routed stale-buffer guards through the same supported-language selector set; preview findings now carry language, status, owner, and static-limit metadata through LSP diagnostic data, hover shows the preview syntax-first/advisory boundary before RIPR evidence, and status text surfaces preview/static-limit counts from refresh logs. LSP analysis remains config-gated by `[languages]` through the existing adapter layer. Landed without analyzer behavior changes, source edits, generated tests, provider calls, mutation execution, policy/gate/default-blocking behavior, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays. |
+| `ci/language-aware-grouping` | done | Generated GitHub CI summaries now read enabled languages through the public `ripr doctor` surface, keep the language grouping section hidden for Rust-only config, and group TypeScript/Python advisory artifact entries, preview-status counts, classifications, and static-limit kinds only when preview adapters are configured. Preview groups remain advisory presentation only; `ripr gate evaluate` remains configured pass/fail authority. |
+| `docs/language-adapter-preview-workflow` | done | `docs/LANGUAGE_ADAPTER_PREVIEW.md` documents enabling preview adapters, reading mixed-language reports, interpreting preview labels, the static-limit boundary, editor projection, generated-CI language grouping, gate authority, and rollback; Quickstart, Configuration, Support Tiers, capability, traceability, and documentation-index surfaces link to it. |
+| `dogfood/language-adapter-preview-receipts` | done | `cargo xtask dogfood` now checks TypeScript and Python preview receipts for preview labels, structured static limits, disabled-language behavior, and no cross-language related-test routing. The dogfood report records generated-CI preview grouping as checked while preserving advisory defaults, Rust-default behavior, gate authority, and inline-comment defaults. |
+| `campaign/language-adapter-preview-closeout` | done | Closed after the spec, adapter boundary, Rust adapter, output metadata, preview adapters, editor routing, CI grouping, workflow docs, dogfood receipts, closeout handoff, and validation showed preview adapters are syntax-first, opt-in, advisory, and label-correct, while Rust behavior is preserved. |
 
 References:
 
@@ -2981,6 +2981,11 @@ References:
 - [RIPR-SPEC-0026: Language adapter contract](specs/RIPR-SPEC-0026-language-adapter-contract.md)
 - [RIPR-SPEC-0027: TypeScript preview static facts](specs/RIPR-SPEC-0027-typescript-preview-static-facts.md)
 - [RIPR-SPEC-0028: Python preview static facts](specs/RIPR-SPEC-0028-python-preview-static-facts.md)
+- [RIPR-PROP-0003: Editor Preview Routing](proposals/RIPR-PROP-0003-editor-preview-routing.md)
+- [RIPR-SPEC-0036: Editor Preview Routing](specs/RIPR-SPEC-0036-editor-preview-routing.md)
+- [RIPR-SPEC-0037: Editor Preview Static-Limit Projection](specs/RIPR-SPEC-0037-editor-preview-static-limit-projection.md)
+- [ADR 0011: Editor Preview Routing Is Projection-Only](adr/0011-editor-preview-routing-is-projection-only.md)
+- [Lane 3 editor preview routing plan](../plans/campaign-27/lane3-editor-preview-routing.md)
 - [Repo tracking model](REPO_TRACKING_MODEL.md)
 - [Architecture](ARCHITECTURE.md)
 - [Static exposure model](STATIC_EXPOSURE_MODEL.md)
@@ -3028,11 +3033,138 @@ cargo xtask check-pr
 
 Next:
 
-- Land the spec slice first, then open the adapter boundary work item with
-  no observable Rust behavior change. Do not fold analyzer rewrites,
-  policy, gate, mutation, provider, generated-test, source-edit,
-  inline-comment, branch-protection, or default-CI changes into this
-  campaign.
+- Campaign 27 is closed. Keep TypeScript and Python preview evidence opt-in,
+  visibly preview/advisory, and outside default gate authority until a later
+  promotion policy explicitly changes that boundary.
+
+## Focused Lane 1 Tracker: Evidence Quality Leadership
+
+Status: closed in documented scope. Campaign 27 is closed; the closed Campaign
+27 manifest remains in `.ripr/goals/active.toml` until the next campaign is
+selected.
+
+Sources of truth:
+
+- [Lane 1 Evidence Quality Leadership tracker](lanes/LANE_1_EVIDENCE_QUALITY_LEADERSHIP.md)
+- [RIPR-PROP-0002](proposals/RIPR-PROP-0002-lane-1-evidence-quality-leadership.md)
+- [RIPR-SPEC-0034](specs/RIPR-SPEC-0034-evidence-quality-scorecard.md)
+- [RIPR-SPEC-0035](specs/RIPR-SPEC-0035-evidence-quality-benchmark-corpus.md)
+- [RIPR-SPEC-0040](specs/RIPR-SPEC-0040-static-runtime-confidence-expansion.md)
+- [ADR 0010](adr/0010-fixture-first-evidence-confidence.md)
+- [closeout handoff](handoffs/2026-05-13-lane-1-evidence-quality-leadership-closeout.md)
+
+Objective:
+
+```text
+Make RIPR self-aware about evidence quality: what it believes, why it believes
+it, which fixture or calibration class supports that belief, what remains
+unknown, and which evidence-class repair should happen next.
+```
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `report/evidence-quality-scorecard` | done | #850 added the repo-local scorecard over the Lane 1 audit. |
+| `fixtures/evidence-quality-benchmark-corpus` | done | #851 added the manifest-only benchmark corpus with positive cases and must-not-claim guards. |
+| `analysis/static-limitation-taxonomy` | done | #861 normalized static limitation categories and repair routes without turning limitations into user test gaps. |
+| `analysis/oracle-semantics-audit-fixes` | done | #871 tightened clear custom helper, opaque helper, and duplicative equality semantics from audit-backed cases. |
+| `calibration/runtime-fixtures-v3` | done | #881 added checked imported-runtime calibration classes while keeping runtime-only signal from creating static gaps. |
+| `report/evidence-quality-trend` | done | #885 added scorecard/audit snapshot trend reporting with explicit no-history states. |
+| `campaign/evidence-quality-leadership-closeout` | done | Closed after scorecard, benchmark corpus, two audit-driven improvements, runtime-fixtures-v3, trend reporting, class-scoped capabilities, traceability, and handoff proof. |
+
+Future Lane 1 work should open only when the scorecard, audit, or a documented
+consumer requirement identifies a new measured evidence class. Do not reopen
+Lane 1 for PR/CI front-panel work, LSP/editor polish, gate policy, generated
+tests, provider calls, mutation execution, or score redefinition.
+
+## Focused Lane 1 Tracker: User-Visible Output Evidence
+
+Status: closed as a focused Lane 1 tracker. Campaign 27 is closed; this
+focused tracker was not the active execution campaign.
+
+Sources of truth:
+
+- [Lane 1 User-Visible Output Evidence tracker](lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md)
+- [RIPR-PROP-0005](proposals/RIPR-PROP-0005-user-visible-output-evidence.md)
+- [RIPR-SPEC-0043](specs/RIPR-SPEC-0043-presentation-text-evidence.md)
+  presentation text evidence
+- [RIPR-SPEC-0045](specs/RIPR-SPEC-0045-finding-to-gap-alignment.md)
+  finding-to-gap alignment
+- [ADR 0010](adr/0010-fixture-first-evidence-confidence.md)
+- [Lane 1 User-Visible Output Evidence closeout](handoffs/2026-05-14-user-visible-output-evidence-closeout.md)
+
+Objective:
+
+```text
+Make changed presentation/help/report/table text one evidence-quality-aware
+action, no-action state, or static limitation instead of raw duplicate
+line-local notices.
+```
+
+End state:
+
+- changed presentation text is a distinct evidence class;
+- visibility is `user_visible`, `internal_only`, or `unknown`;
+- observer shape is snapshot, CLI help output, report render, table render,
+  golden output, none, or unknown;
+- declaration and literal raw seams group into one canonical evidence item;
+- raw line-local findings remain supporting evidence and roll up into canonical
+  evidence items with explicit state, actionability, repair, confidence, and
+  proof;
+- actionability distinguishes snapshot/help-output/report test, already
+  observed, internal no-action, and static limitation states;
+- scorecard or trend fields track presentation-text evidence quality;
+- downstream lanes receive a consumer contract but no rendering change lands in
+  this Lane 1 tracker.
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `docs/proposal-user-visible-output-evidence` | done | #904 opened RIPR-PROP-0005 and the Lane 1 tracker. |
+| `docs/spec-presentation-text-evidence` | done | #909 added RIPR-SPEC-0043 for visibility, observer, actionability, canonical grouping, static limitation, and must-not-claim behavior. |
+| `docs/spec-finding-to-gap-alignment` | done | #927 defined raw finding to canonical evidence item alignment before behavior changes. |
+| `fixtures/finding-alignment-benchmark` | done | #931 pinned grouping, no-action, already-observed, static limitation, and actionable raw-to-canonical cases. |
+| `fixtures/presentation-text-evidence-benchmark` | done | #900 added the screenshot-derived benchmark after the proposal/spec foundation. |
+| `analysis/finding-alignment-evidence-fields` | done | #935 added additive `raw_findings[]`, `canonical_item`, and nullable `presentation_text` fields to `evidence_record` without changing rendering, gates, scores, generated tests, provider calls, or mutation execution. |
+| `analysis/presentation-text-evidence-fields` | done | #935 reserved nullable evidence-record fields for the class. |
+| `analysis/presentation-text-canonical-grouping` | done | #943 groups supported presentation-text constant declaration plus adjacent literal raw findings into one visibility-unknown canonical limitation item in `ripr check --json`. |
+| `analysis/presentation-text-visibility` | done | #947 classifies fixture-backed help/report/internal output evidence as actionable, observed, internal-only, or visibility-unknown while keeping unsupported routes as limitations. |
+| `analysis/presentation-text-actionability` | done | #951 extended repair routes with concrete repair kind, target test type, and suggested assertion fields beyond the initial visibility states. |
+| `report/presentation-text-scorecard-trend-fields` | done | #957 reports presentation-text quality counts and deltas in scorecard and trend output. |
+| `docs/presentation-text-consumer-handoff` | done | #959 documents downstream rendering contract without changing PR/CI or editor surfaces. |
+| `campaign/user-visible-output-evidence-closeout` | done | #966 records proof, remaining unknowns, final observer-unknown benchmark guard, and the next repair boundary for this focused Lane 1 evidence class. |
+
+Blocking conditions:
+
+- PR/CI rendering changes
+- LSP/editor polish
+- gate-policy changes or default blocking
+- generated tests or source edits
+- provider/model calls
+- mutation execution
+- score redefinition
+- user-visible claims inferred through opaque helpers or unsupported output
+  paths
+
+Commands:
+
+```bash
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-pr
+git diff --check
+```
+
+Closeout:
+
+- [Lane 1 User-Visible Output Evidence closeout](handoffs/2026-05-14-user-visible-output-evidence-closeout.md)
+  records the PR chain, proof, remaining limitations, and boundary that
+  downstream PR/CI and editor rendering work belongs to the owning lanes.
 
 ## Focused Lane 2 Tracker: Policy Readiness and Preview Evidence Governance
 
@@ -3042,7 +3174,7 @@ Status: tracker
 
 GitHub issue: [#755](https://github.com/EffortlessMetrics/ripr/issues/755)
 
-Campaign 27 is the active machine-readable campaign. This focused Lane 2
+Campaign 27 is closed in the machine-readable manifest. This focused Lane 2
 tracker is not a replacement for `.ripr/goals/active.toml`; it records the
 policy boundary that Campaign 27 and later policy work must not cross.
 
@@ -3080,7 +3212,7 @@ Work items:
 | `policy/exception-ledger-convergence` | done | `docs/POLICY_ALLOWLISTS.md` now aligns no-panic, Clippy, non-Rust, workflow, RIPR suppression, baseline, and waiver ledgers around one reviewed reason per exception, semantic identity where available, and stale-entry behavior by class. |
 | `docs/blocking-readiness-guide` | done | `docs/BLOCKING_READINESS.md` now uses policy readiness as the ceiling for advisory, visible-only, acknowledgeable, baseline-check, and calibrated-gate promotion, including calibration, baseline, waiver, suppression, and preview-evidence health. |
 | `ci/policy-readiness-advisory-projection` | done | Generated CI writes, uploads, and summarizes waiver-aging, suppression-health, and policy-readiness artifacts as advisory-only projections: no pass/fail authority, no new required checks, no default blocking, and no comment posting. |
-| `campaign/policy-readiness-closeout` | done | Closed the focused Lane 2 tracker after policy readiness, preview boundary, waiver aging, suppression health, baseline refresh guardrails, exception ledger semantics, blocking readiness guidance, and advisory CI projection landed. The closeout audit is recorded in `docs/handoffs/2026-05-12-policy-readiness-closeout.md`; the active machine-readable campaign remains Campaign 27. |
+| `campaign/policy-readiness-closeout` | done | Closed the focused Lane 2 tracker after policy readiness, preview boundary, waiver aging, suppression health, baseline refresh guardrails, exception ledger semantics, blocking readiness guidance, and advisory CI projection landed. The closeout audit is recorded in `docs/handoffs/2026-05-12-policy-readiness-closeout.md`; Campaign 27 is now closed in the machine-readable manifest. |
 
 References:
 
@@ -3119,6 +3251,167 @@ cargo xtask check-capabilities
 cargo xtask check-output-contracts
 cargo xtask check-pr
 ```
+
+## Focused Lane 2 Tracker: Policy Operations and Promotion Readiness
+
+Status: closed as a focused Lane 2 tracker. Campaign 27 is closed in the
+machine-readable manifest.
+
+Sources of truth:
+
+- [Policy operations tracker](policy/POLICY_OPERATIONS.md)
+- [Focused Lane 2 policy operations manifest](../.ripr/goals/lane2-policy-operations.toml)
+- [Policy readiness tracker](policy/POLICY_READINESS.md)
+
+Objective:
+
+```text
+Make RIPR policy adoption operational. The policy layer should tell maintainers
+what policy posture is safe now, what blocks stricter modes, what changed over
+time, and what explicit promotion packet would be required before
+baseline-check, calibrated-gate, or preview-language evidence promotion. All
+outputs are read-only and advisory unless an existing explicit gate mode is
+configured.
+```
+
+End state:
+
+- maintainers can see the current safe policy ceiling
+- maintainers can see the next safe policy action
+- baseline, waiver, suppression, calibration, and preview-boundary blockers are
+  named before stricter modes are recommended
+- promotion packets make manual policy changes reviewable without mutating
+  config
+- preview promotion packets keep TypeScript and Python evidence visible but
+  non-gating until explicit promotion evidence exists
+- policy history shows whether readiness improved or regressed over time
+- generated CI may surface advisory artifacts without pass/fail authority
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `campaign/policy-operations-tracker` | done | Opened `docs/policy/POLICY_OPERATIONS.md`, `.ripr/goals/lane2-policy-operations.toml`, roadmap, plan, and campaign references without behavior changes. Current `main` already uses `RIPR-SPEC-0034` through `RIPR-SPEC-0037`, so policy operations specs must use the next available IDs. |
+| `spec/policy-operations-report` | done | RIPR-SPEC-0039 defines a read-only report composing policy-readiness, waiver-aging, suppression-health, baseline-delta, gate-decision, calibration, and preview-boundary inputs. |
+| `policy/operations-report` | done | `ripr policy operations` writes JSON and Markdown over explicit existing artifacts only, with current ceiling, next safe action, promotion blockers, grouped actions, warnings, unknowns, and input artifact status. |
+| `spec/policy-history-ledger` | done | RIPR-SPEC-0041 defines a read-only policy history report and optional append-only input without gates, telemetry, dashboards, required history files, or automatic appends. |
+| `policy/history-report` | done | `ripr policy history` writes read-only JSON and Markdown trend packets over explicit policy operations and optional history JSONL inputs without automatic appends. |
+| `spec/policy-promotion-packets` | done | RIPR-SPEC-0042 defines read-only promotion packets for `visible-only`, `acknowledgeable`, `baseline-check`, and `calibrated-gate` without config, baseline, suppression, workflow, CI, history, or preview-eligibility mutation. |
+| `policy/promotion-packet-report` | done | `ripr policy promote --to ...` writes manual-review packets from policy operations and optional policy history without mutating config, baselines, suppressions, workflows, CI defaults, history, or preview eligibility. |
+| `spec/preview-evidence-promotion-packet` | done | RIPR-SPEC-0044 defines preview-language promotion packets with default `allowed_now = false`, explicit required/supplied/missing evidence accounting, advisory generated-CI posture, rollback guidance, and no actual promotion. |
+| `policy/preview-promotion-packet-report` | done | Added `ripr policy preview-promote --language ... --class ...` while preserving advisory preview defaults. |
+| `docs/policy-operator-workflow` | done | `docs/POLICY_OPERATIONS_WORKFLOW.md` documents readiness, operations, history, promotion packets, preview packets, manual config review, post-change monitoring, and hard boundaries for maintainers. |
+| `ci/policy-operations-advisory-projection` | done | Generated CI renders, uploads, indexes, and summarizes policy operations, history, promotion, and configured preview-promotion artifacts as advisory-only packets without pass/fail authority, required checks, comment posting, baseline mutation, config mutation, or default blocking. |
+| `campaign/policy-operations-closeout` | done | Closed after operations, history, promotion packets, preview promotion packets, workflow, advisory CI projection, capability, metrics, traceability, and handoff surfaces landed; see `docs/handoffs/2026-05-13-policy-operations-closeout.md`. |
+
+Blocking conditions:
+
+- analyzer truth changes or evidence identity rewrites
+- recommendation ranking changes
+- LSP/editor behavior changes
+- PR/CI front-panel redesign
+- generated tests, provider calls, or mutation execution
+- default CI blocking, required checks, or comment posting
+- automatic config mutation, baseline adoption, or suppression creation
+- preview-language gate promotion without explicit later policy
+- runtime-proof claims from static evidence
+
+Commands:
+
+```bash
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-campaign
+cargo xtask check-pr
+git diff --check
+```
+
+Closeout:
+
+- [Policy Operations closeout](handoffs/2026-05-13-policy-operations-closeout.md)
+  records the PR chain, prompt-to-artifact audit, validation plan, and the
+  boundary that future policy promotion or preview promotion work should open
+  explicitly.
+
+## Focused Repo Operations Lane: Generated Evidence Discipline
+
+Status: closed as a repo-operations lane. This lane does not replace the
+machine-readable active campaign.
+
+Objective:
+
+```text
+Make generated evidence, authored source-of-truth, deterministic repair,
+judgment-required decisions, and review receipts mechanically distinct so
+agents can prepare reviewable PRs without hand-editing generated trust markers
+or relying on chat memory for process rules.
+```
+
+End state:
+
+- ordinary PRs cannot carry generated badge endpoint diffs or target residue
+  without an explicit generated-artifact refresh context
+- public badge endpoint numbers are generated by `cargo xtask badges` or the
+  Badge Endpoints workflow, not hand-authored
+- `check-pr` stays non-mutating for committed badge endpoint files
+- workers can run a worktree doctor before opening or updating PRs
+- operators can produce board-level PR triage and single-PR merge-readiness
+  reports without ad hoc polling
+- spec numbering and campaign/source-of-truth drift have mechanical checks
+- receipts, critic reports, and deterministic suggested-fixes patches stay
+  generated under `target/ripr/`
+- contributor docs explain which surfaces are authored truth, generated
+  evidence, deterministic repair, and judgment-required decisions
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `badge/generated-endpoint-workflow` | done | #874 added the Badge Endpoints workflow plus badge endpoint docs and commands. |
+| `devex/generated-clean-check` | done | #930 added `cargo xtask check-generated-clean` and PR gate wiring for generated residue. |
+| `badge/endpoint-ownership-policy` | done | #938 added `cargo xtask check-badge-diff-policy`, allowed README badge layout edits, and rejected ordinary endpoint JSON diffs. |
+| `devex/check-pr-non-mutating-badges` | done | #938 routes PR validation through non-mutating badge checks instead of refreshing committed endpoint JSON. |
+| `devex/worktree-doctor` | done | #941 added `cargo xtask worktree doctor` for dirty main, behind branches, generated residue, untracked sample targets, and broad diff warnings. |
+| `docs/spec-numbering-helper` | done | #946 added `cargo xtask specs next` and `cargo xtask check-spec-numbering`. |
+| `devex/pr-triage-report` | done | #950 added `cargo xtask pr-triage-report` for duplicate families, stale drafts, behind branches, validation gaps, and sensitive surfaces. Follow-up JSON output makes the same advisory queue packet agent-readable under `target/ripr/reports/pr-triage.json`. |
+| `devex/gh-pr-status` | done | #952 added `cargo xtask gh-pr-status --pr <number>` with safe next action guidance. Follow-up JSON output makes the same merge-readiness packet agent-readable under `target/ripr/reports/gh-pr-status.json`. |
+| `policy/lane2-reopening-triggers` | done | #958 documented when future policy authority changes must reopen explicit Lane 2 work. |
+| `devex/campaign-source-of-truth-hardening` | done | #965 hardened focused-tracker, done-item command, spec, closeout, and active-manifest checks. |
+| `automation/gate-receipts` | done | #55 already supplied target-local receipt commands; this lane treats them as generated evidence. |
+| `automation/critic-report` | done | #84 already supplied the advisory critic report; this lane keeps it target-local and reviewer-focused. |
+| `automation/suggested-fixes-patch` | done | #971 added deterministic `suggested-fixes.{patch,md}` output under `target/ripr/reports/`. |
+| `docs/generated-evidence-discipline` | done | #975 added `docs/GENERATED_EVIDENCE.md` and linked contributor/automation docs. |
+| `devex/command-mutability-catalog` | done | Adds `cargo xtask commands` to classify xtask commands by mutability, generated-output paths, external-state access, and judgment-required boundaries. |
+| `campaign/generated-evidence-discipline-closeout` | done | Closed after the generated-clean, badge diff policy, worktree, triage, PR status, spec numbering, campaign hardening, receipt, critic, suggested-fixes, and docs surfaces aligned; see `docs/handoffs/2026-05-14-generated-evidence-discipline-closeout.md`. |
+
+Blocking conditions:
+
+- analyzer semantics, evidence identity, or recommendation ranking changes
+- LSP/editor behavior changes
+- generated tests, provider calls, or mutation execution
+- branch protection, default CI blocking, baseline adoption, suppression
+  creation, or preview-language promotion
+- manual badge endpoint number edits
+- deterministic repair for judgment-required decisions
+
+Commands:
+
+```bash
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-generated-clean
+cargo xtask check-campaign
+cargo xtask check-pr
+git diff --check
+```
+
+Closeout:
+
+- [Generated Evidence Discipline closeout](handoffs/2026-05-14-generated-evidence-discipline-closeout.md)
+  records the PR chain, prompt-to-artifact audit, validation plan, and the
+  boundary that future repo-operations guardrails should open explicitly.
 
 ## Future Campaign: Editor Evidence UX
 
