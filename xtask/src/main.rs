@@ -2418,13 +2418,12 @@ fn command_catalog_order_violation(
 ) -> Option<String> {
     let mut order = BTreeMap::new();
     for (index, command) in commands.iter().enumerate() {
-        order.insert(known_command_root(command), index);
+        order.insert(*command, index);
     }
 
     let mut last = None;
     for entry in catalog {
-        let root = known_command_root(entry.command);
-        let Some(index) = order.get(root).copied() else {
+        let Some(index) = order.get(entry.command).copied() else {
             continue;
         };
         if last.is_some_and(|last| index < last) {
@@ -2828,7 +2827,7 @@ fn sorted_command_catalog_content(text: &str) -> String {
 fn sorted_command_catalog_entry_blocks(body: &str) -> Option<String> {
     let mut order = BTreeMap::new();
     for (index, command) in known_commands().iter().enumerate() {
-        order.insert(known_command_root(command).to_string(), index);
+        order.insert(command.to_string(), index);
     }
 
     let mut blocks = Vec::new();
@@ -2852,8 +2851,7 @@ fn sorted_command_catalog_entry_blocks(body: &str) -> Option<String> {
         current.push_str(line);
         if trimmed == ")," {
             let command = command_catalog_entry_block_command(&current)?;
-            let root = known_command_root(&command);
-            let index = *order.get(root)?;
+            let index = *order.get(&command)?;
             blocks.push((index, blocks.len(), std::mem::take(&mut current)));
             in_block = false;
         }
@@ -40150,6 +40148,37 @@ jobs:
     }
 
     #[test]
+    fn sorted_command_catalog_content_sorts_commands_with_shared_roots() {
+        let input = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        command_entry(
+            "goldens bless <name> --reason <reason>",
+            "mutating",
+            "fixtures/**/expected/**",
+            true,
+            "Updates golden expected outputs.",
+        ),
+        command_entry(
+            "goldens check",
+            "non_mutating_check",
+            "target/ripr/reports/goldens.md",
+            false,
+            "Checks golden drift.",
+        ),
+    ]
+}
+"#;
+        let sorted = sorted_command_catalog_content(input);
+
+        assert!(
+            sorted
+                .find("\"goldens check\"")
+                .zip(sorted.find("\"goldens bless <name> --reason <reason>\""))
+                .is_some_and(|(check, bless)| check < bless)
+        );
+    }
+
+    #[test]
     fn sorted_command_catalog_content_skips_unknown_or_malformed_catalogs() {
         let unknown = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
     vec![
@@ -47538,6 +47567,31 @@ covered_by = ["cargo xtask check-file-policy"]
                 writes: "source files",
                 judgment_required: false,
                 notes: "Runs deterministic shaping.",
+            },
+        ];
+
+        let report = command_catalog_violations(&commands, &catalog).join("\n");
+
+        assert!(report.contains("must follow the xtask help catalog order"));
+    }
+
+    #[test]
+    fn command_catalog_check_reports_order_drift_for_commands_with_shared_roots() {
+        let commands = vec!["goldens check", "goldens bless <name> --reason <reason>"];
+        let catalog = vec![
+            CommandCatalogEntry {
+                command: "goldens bless <name> --reason <reason>",
+                mutability: "mutating",
+                writes: "fixtures/**/expected/**",
+                judgment_required: true,
+                notes: "Updates golden expected outputs.",
+            },
+            CommandCatalogEntry {
+                command: "goldens check",
+                mutability: "non_mutating_check",
+                writes: "target/ripr/reports/goldens.md",
+                judgment_required: false,
+                notes: "Checks golden drift.",
             },
         ];
 
