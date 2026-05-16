@@ -7226,19 +7226,19 @@ fn validate_editor_first_run_actions(case: &str, actions: &Value, violations: &m
             "editor first-run usability case {case} lsp-code-actions schema_version must be 0.1"
         ));
     }
-    let titles = actions
+    let items = actions
         .get("actions")
         .and_then(Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| json_string_field(item, "title"))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    let has_first_repair_packet = titles
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let first_repair_actions = items
         .iter()
-        .any(|title| title == "Copy first repair packet");
+        .filter(|item| {
+            json_string_field(item, "title").as_deref() == Some("Copy first repair packet")
+                || json_string_field(item, "command").as_deref() == Some("ripr.copyContext")
+        })
+        .collect::<Vec<_>>();
+    let has_first_repair_packet = !first_repair_actions.is_empty();
     if matches!(case, "setup_ok" | "receipt_improved" | "receipt_unchanged")
         && !has_first_repair_packet
     {
@@ -7259,6 +7259,50 @@ fn validate_editor_first_run_actions(case: &str, actions: &Value, violations: &m
         violations.push(format!(
             "editor first-run usability case {case} must not expose first repair packet"
         ));
+    }
+    for action in first_repair_actions {
+        validate_editor_first_run_repair_action(case, action, violations);
+    }
+}
+
+fn validate_editor_first_run_repair_action(
+    case: &str,
+    action: &Value,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(action, "title").as_deref() != Some("Copy first repair packet") {
+        violations.push(format!(
+            "editor first-run usability case {case} first repair action must use the Copy first repair packet title"
+        ));
+    }
+    if json_string_field(action, "command").as_deref() != Some("ripr.copyContext") {
+        violations.push(format!(
+            "editor first-run usability case {case} first repair action must use ripr.copyContext"
+        ));
+    }
+    let packet = action
+        .get("arguments")
+        .and_then(Value::as_array)
+        .and_then(|args| args.iter().find_map(|arg| json_string_field(arg, "packet")));
+    let Some(packet) = packet else {
+        violations.push(format!(
+            "editor first-run usability case {case} first repair action must carry a packet argument"
+        ));
+        return;
+    };
+    for required in [
+        "RIPR first repair packet",
+        "Gap identity:",
+        "Suggested action:",
+        "Verify command:",
+        "Receipt command:",
+        "Limits and non-claims:",
+    ] {
+        if !packet.contains(required) {
+            violations.push(format!(
+                "editor first-run usability case {case} first repair packet is missing `{required}`"
+            ));
+        }
     }
 }
 
@@ -33851,6 +33895,7 @@ mod tests {
             write_editor_first_run_usability_corpus(root);
             write_editor_first_run_status(root, "server_missing", "active", None);
             write_editor_first_run_actions(root, "setup_ok", &[]);
+            write_editor_first_run_actions(root, "artifact_missing", &["Copy first repair packet"]);
             write(
                 &root.join(
                     "fixtures/editor_first_run_usability/artifact_stale/expected/receipt-status.json",
@@ -33873,6 +33918,11 @@ mod tests {
             assert!(violations.iter().any(|violation| {
                 violation
                     .contains("editor first-run usability case setup_ok must include Copy first repair packet")
+            }));
+            assert!(violations.iter().any(|violation| {
+                violation.contains(
+                    "editor first-run usability case artifact_missing must not expose first repair packet",
+                )
             }));
             assert!(violations.iter().any(|violation| {
                 violation
@@ -33990,10 +34040,17 @@ mod tests {
                 serde_json::json!({
                     "title": title,
                     "command": if *title == "Copy first repair packet" {
-                        "ripr.copyFirstRepairPacket"
+                        "ripr.copyContext"
                     } else {
                         "ripr.refresh"
-                    }
+                    },
+                    "arguments": if *title == "Copy first repair packet" {
+                        serde_json::json!([{
+                            "packet": "RIPR first repair packet\nGap identity: gap:test\nSuggested action:\n- Add one focused assertion.\nVerify command:\nripr agent verify --root . --json\nReceipt command:\nripr agent receipt --root . --json\nLimits and non-claims:\n- Static editor evidence only."
+                        }])
+                    } else {
+                        serde_json::json!([])
+                    },
                 })
             })
             .collect::<Vec<_>>();
