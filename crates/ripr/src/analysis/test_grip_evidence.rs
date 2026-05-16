@@ -422,55 +422,109 @@ fn find_related_tests_with_context<'context, 'index>(
     seam: &RepoSeam,
     context: &'context CompactGripContext<'index>,
 ) -> Vec<(&'context CompactTest<'index>, RelationReason)> {
-    let owner_fn = find_owner_function(seam, context.index);
-    let owner_name = owner_fn.map(|f| f.name.as_str()).unwrap_or("");
-    let owner_name_lower = owner_name.to_ascii_lowercase();
-    let owner_file = owner_fn.map(|f| f.file.as_path());
-    let owner_file_stem = owner_file
-        .and_then(|p| p.file_stem())
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
-    let owner_module_path = owner_file.and_then(module_path_for);
-    let prefix = owner_fn.and_then(|f| package_prefix(&f.file));
-    let fixture_names = owner_file
-        .and_then(|file| context.index.files.get(file))
-        .map(fixture_names_for_owner_file)
-        .unwrap_or_default();
+    let owner = OwnerContext::resolve(seam, context);
+    let target_tokens = assertion_target_tokens(seam);
+    let prefix = owner.prefix.as_deref();
 
-    // Tokens from `RequiredDiscriminator` and `ExpectedSink` for
-    // `assertion_target_affinity`. Filtered through
-    // `extract_identifier_tokens`, so common stop-words and short
-    // tokens are already excluded — the residual set is what a test
-    // assertion would have to mention to count.
-    let discriminator_tokens = required_discriminator_tokens(seam);
-    let sink_tokens = extract_identifier_tokens(seam.expected_sink().as_str());
-    let target_tokens: BTreeSet<String> = discriminator_tokens
-        .into_iter()
-        .chain(sink_tokens)
-        .collect();
+    let mut candidates: BTreeMap<usize, RelationReason> = BTreeMap::new();
+    match_direct_owner_call(&mut candidates, context, prefix, &owner);
+    match_assertion_target_affinity(&mut candidates, context, prefix, &target_tokens);
+    match_same_test_file(&mut candidates, context, prefix, &owner);
+    match_same_module(&mut candidates, context, prefix, &owner);
+    match_owner_named_test(&mut candidates, context, prefix, &owner);
+    match_import_path_affinity(&mut candidates, context, prefix, &owner);
+    match_fixture_owner_affinity(&mut candidates, context, prefix, &owner);
 
-    let mut candidate_reasons: BTreeMap<usize, RelationReason> = BTreeMap::new();
-    let prefix = prefix.as_deref();
+    dedupe_related_candidates(candidates, context)
+}
 
-    if !owner_name.is_empty()
-        && let Some(indices) = context.tests_by_call_name.get(owner_name)
-    {
-        for test_index in indices {
-            insert_related_candidate(
-                &mut candidate_reasons,
-                context,
-                prefix,
-                *test_index,
-                RelationReason::DirectOwnerCall,
-            );
+/// Cached facts about a seam's owning function that every relationship
+/// strategy reads from. Resolved once per seam to avoid re-walking the
+/// index and re-deriving file stems / module paths per strategy.
+struct OwnerContext {
+    name: String,
+    name_lower: String,
+    file_stem: String,
+    module_path: Option<String>,
+    prefix: Option<String>,
+    fixture_names: BTreeSet<String>,
+}
+
+impl OwnerContext {
+    fn resolve(seam: &RepoSeam, context: &CompactGripContext<'_>) -> Self {
+        let owner_fn = find_owner_function(seam, context.index);
+        let name = owner_fn.map(|f| f.name.as_str()).unwrap_or("").to_string();
+        let name_lower = name.to_ascii_lowercase();
+        let owner_file = owner_fn.map(|f| f.file.as_path());
+        let file_stem = owner_file
+            .and_then(|p| p.file_stem())
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+        let module_path = owner_file.and_then(module_path_for);
+        let prefix = owner_fn.and_then(|f| package_prefix(&f.file));
+        let fixture_names = owner_file
+            .and_then(|file| context.index.files.get(file))
+            .map(fixture_names_for_owner_file)
+            .unwrap_or_default();
+        Self {
+            name,
+            name_lower,
+            file_stem,
+            module_path,
+            prefix,
+            fixture_names,
         }
     }
+}
 
-    for token in &target_tokens {
+/// Tokens from `RequiredDiscriminator` and `ExpectedSink` that an
+/// `assertion_target_affinity` match must mention. Already filtered
+/// through `extract_identifier_tokens`, so stop-words and short tokens
+/// are excluded.
+fn assertion_target_tokens(seam: &RepoSeam) -> BTreeSet<String> {
+    let discriminator_tokens = required_discriminator_tokens(seam);
+    let sink_tokens = extract_identifier_tokens(seam.expected_sink().as_str());
+    discriminator_tokens
+        .into_iter()
+        .chain(sink_tokens)
+        .collect()
+}
+
+fn match_direct_owner_call(
+    candidates: &mut BTreeMap<usize, RelationReason>,
+    context: &CompactGripContext<'_>,
+    prefix: Option<&str>,
+    owner: &OwnerContext,
+) {
+    if owner.name.is_empty() {
+        return;
+    }
+    let Some(indices) = context.tests_by_call_name.get(&owner.name) else {
+        return;
+    };
+    for test_index in indices {
+        insert_related_candidate(
+            candidates,
+            context,
+            prefix,
+            *test_index,
+            RelationReason::DirectOwnerCall,
+        );
+    }
+}
+
+fn match_assertion_target_affinity(
+    candidates: &mut BTreeMap<usize, RelationReason>,
+    context: &CompactGripContext<'_>,
+    prefix: Option<&str>,
+    target_tokens: &BTreeSet<String>,
+) {
+    for token in target_tokens {
         if let Some(indices) = context.tests_by_assertion_token.get(token) {
             for test_index in indices {
                 insert_related_candidate(
-                    &mut candidate_reasons,
+                    candidates,
                     context,
                     prefix,
                     *test_index,
@@ -479,75 +533,115 @@ fn find_related_tests_with_context<'context, 'index>(
             }
         }
     }
+}
 
-    if !owner_file_stem.is_empty() {
-        for stem in [
-            owner_file_stem.to_string(),
-            format!("{owner_file_stem}_test"),
-            format!("{owner_file_stem}_tests"),
-        ] {
-            if let Some(indices) = context.tests_by_file_stem.get(&stem) {
-                for test_index in indices {
-                    insert_related_candidate(
-                        &mut candidate_reasons,
-                        context,
-                        prefix,
-                        *test_index,
-                        RelationReason::SameTestFile,
-                    );
-                }
+fn match_same_test_file(
+    candidates: &mut BTreeMap<usize, RelationReason>,
+    context: &CompactGripContext<'_>,
+    prefix: Option<&str>,
+    owner: &OwnerContext,
+) {
+    if owner.file_stem.is_empty() {
+        return;
+    }
+    let stems = [
+        owner.file_stem.clone(),
+        format!("{}_test", owner.file_stem),
+        format!("{}_tests", owner.file_stem),
+    ];
+    for stem in stems {
+        if let Some(indices) = context.tests_by_file_stem.get(&stem) {
+            for test_index in indices {
+                insert_related_candidate(
+                    candidates,
+                    context,
+                    prefix,
+                    *test_index,
+                    RelationReason::SameTestFile,
+                );
             }
         }
     }
+}
 
-    if let Some(owner_module_path) = owner_module_path.as_deref() {
-        for test_index in context.same_module_indices(owner_module_path) {
-            insert_related_candidate(
-                &mut candidate_reasons,
-                context,
-                prefix,
-                test_index,
-                RelationReason::SameModule,
-            );
-        }
-    }
-
-    for test_index in context.owner_named_indices(&owner_name_lower) {
+fn match_same_module(
+    candidates: &mut BTreeMap<usize, RelationReason>,
+    context: &CompactGripContext<'_>,
+    prefix: Option<&str>,
+    owner: &OwnerContext,
+) {
+    let Some(module_path) = owner.module_path.as_deref() else {
+        return;
+    };
+    for test_index in context.same_module_indices(module_path) {
         insert_related_candidate(
-            &mut candidate_reasons,
+            candidates,
+            context,
+            prefix,
+            test_index,
+            RelationReason::SameModule,
+        );
+    }
+}
+
+fn match_owner_named_test(
+    candidates: &mut BTreeMap<usize, RelationReason>,
+    context: &CompactGripContext<'_>,
+    prefix: Option<&str>,
+    owner: &OwnerContext,
+) {
+    for test_index in context.owner_named_indices(&owner.name_lower) {
+        insert_related_candidate(
+            candidates,
             context,
             prefix,
             test_index,
             RelationReason::OwnerNamedTest,
         );
     }
+}
 
-    if !owner_name.is_empty()
-        && let Some(indices) = context.tests_by_import_token.get(owner_name)
-    {
-        for test_index in indices {
-            if !context
-                .tests
-                .get(*test_index)
-                .is_some_and(|indexed| test_imports_owner_compact(indexed, owner_name))
-            {
-                continue;
-            }
-            insert_related_candidate(
-                &mut candidate_reasons,
-                context,
-                prefix,
-                *test_index,
-                RelationReason::ImportPathAffinity,
-            );
-        }
+fn match_import_path_affinity(
+    candidates: &mut BTreeMap<usize, RelationReason>,
+    context: &CompactGripContext<'_>,
+    prefix: Option<&str>,
+    owner: &OwnerContext,
+) {
+    if owner.name.is_empty() {
+        return;
     }
+    let Some(indices) = context.tests_by_import_token.get(&owner.name) else {
+        return;
+    };
+    for test_index in indices {
+        if !context
+            .tests
+            .get(*test_index)
+            .is_some_and(|indexed| test_imports_owner_compact(indexed, &owner.name))
+        {
+            continue;
+        }
+        insert_related_candidate(
+            candidates,
+            context,
+            prefix,
+            *test_index,
+            RelationReason::ImportPathAffinity,
+        );
+    }
+}
 
-    for fixture_name in &fixture_names {
+fn match_fixture_owner_affinity(
+    candidates: &mut BTreeMap<usize, RelationReason>,
+    context: &CompactGripContext<'_>,
+    prefix: Option<&str>,
+    owner: &OwnerContext,
+) {
+    for fixture_name in &owner.fixture_names {
         if let Some(indices) = context.tests_by_call_name.get(fixture_name) {
             for test_index in indices {
                 insert_related_candidate(
-                    &mut candidate_reasons,
+                    candidates,
                     context,
                     prefix,
                     *test_index,
@@ -556,12 +650,17 @@ fn find_related_tests_with_context<'context, 'index>(
             }
         }
     }
+}
 
+fn dedupe_related_candidates<'context, 'index>(
+    candidates: BTreeMap<usize, RelationReason>,
+    context: &'context CompactGripContext<'index>,
+) -> Vec<(&'context CompactTest<'index>, RelationReason)> {
     let mut related: Vec<(&'context CompactTest<'index>, RelationReason)> = Vec::new();
-    let mut seen: std::collections::HashSet<(String, std::path::PathBuf, usize)> =
+    let mut seen: std::collections::HashSet<(String, PathBuf, usize)> =
         std::collections::HashSet::new();
 
-    for (test_index, reason) in candidate_reasons {
+    for (test_index, reason) in candidates {
         let Some(indexed) = context.tests.get(test_index) else {
             continue;
         };
