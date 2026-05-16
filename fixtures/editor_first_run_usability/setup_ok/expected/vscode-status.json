@@ -1,0 +1,22 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_run_usability/setup_ok",
+  "status": "setup_ok",
+  "projection": "active",
+  "workspace_root": "fixtures/editor_first_run_usability/setup_ok/workspace",
+  "server": {
+    "state": "available",
+    "path": "ripr",
+    "version": "ripr 0.5.0"
+  },
+  "languages": {
+    "enabled": ["rust"],
+    "available": ["rust", "typescript", "javascript", "python"]
+  },
+  "artifacts": {
+    "first_useful_action": "found",
+    "gap_decision_ledger": "found",
+    "agent_receipt": "missing"
+  },
+  "next_safe_action": "Inspect the diagnostic, open the related test, or copy the first repair packet."
+}

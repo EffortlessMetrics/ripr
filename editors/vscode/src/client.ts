@@ -86,6 +86,12 @@ export interface RiprRelatedTestTarget {
   test_name?: string;
 }
 
+interface StartRepairAction {
+  title: string;
+  command: vscode.Command;
+  priority: number;
+}
+
 interface RiprLanguageClient {
   onNotification(method: string, handler: (params: unknown) => void): vscode.Disposable;
   sendRequest(method: string, params: unknown): Promise<unknown>;
@@ -430,6 +436,56 @@ export class RiprClientController {
       this.output.appendLine(`ripr context failed: ${message}`);
       this.runtime.showWarningMessage(`ripr context failed for ${selector}. See ripr output for details.`);
     }
+  }
+
+  async startCurrentRepair(): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || !isRiprFileDocument(editor.document)) {
+      this.runtime.showInformationMessage('Open a Rust, TypeScript/JavaScript, or Python file before starting a ripr repair.');
+      return;
+    }
+    const diagnostic = nearestGapDiagnostic(editor);
+    if (!diagnostic) {
+      this.runtime.showInformationMessage('No current ripr repair gap is available near the active selection.');
+      return;
+    }
+
+    try {
+      await vscode.commands.executeCommand('editor.action.showHover');
+    } catch {
+      // Hover is an ergonomic hint only; code actions remain the source of truth.
+    }
+
+    let actions: Array<vscode.CodeAction | vscode.Command> | undefined;
+    try {
+      actions = await vscode.commands.executeCommand<Array<vscode.CodeAction | vscode.Command>>(
+        'vscode.executeCodeActionProvider',
+        editor.document.uri,
+        diagnostic.range
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr start current repair failed to collect code actions: ${message}`);
+      this.runtime.showWarningMessage('ripr could not collect current repair actions. See ripr output for details.');
+      return;
+    }
+
+    const candidates = startRepairActions(actions ?? []);
+    if (candidates.length === 0) {
+      this.runtime.showInformationMessage('No bounded ripr repair action is available for the current gap. Refresh saved-workspace analysis if this looks stale.');
+      return;
+    }
+
+    const selected = candidates.length === 1
+      ? candidates[0]
+      : await pickStartRepairAction(candidates);
+    if (!selected) {
+      return;
+    }
+    await vscode.commands.executeCommand(
+      selected.command.command,
+      ...(selected.command.arguments ?? [])
+    );
   }
 
   async copySuggestedAssertion(target?: RiprSuggestedAssertionTarget): Promise<void> {
@@ -1762,6 +1818,138 @@ function boundedPayloadString(value: unknown): boolean {
 
 function hasUnsafeShellMetacharacter(command: string): boolean {
   return /[\r\n\0`;&|\\]/.test(command);
+}
+
+function nearestGapDiagnostic(editor: vscode.TextEditor): vscode.Diagnostic | undefined {
+  const position = editor.selection.active;
+  return vscode.languages
+    .getDiagnostics(editor.document.uri)
+    .filter(isRiprGapDiagnostic)
+    .map((diagnostic) => ({
+      diagnostic,
+      containsSelection: diagnostic.range.contains(position),
+      lineDistance: Math.abs(diagnostic.range.start.line - position.line),
+      characterDistance: Math.abs(diagnostic.range.start.character - position.character)
+    }))
+    .sort((left, right) =>
+      Number(right.containsSelection) - Number(left.containsSelection) ||
+      left.lineDistance - right.lineDistance ||
+      left.characterDistance - right.characterDistance
+    )[0]?.diagnostic;
+}
+
+function isRiprGapDiagnostic(diagnostic: vscode.Diagnostic): boolean {
+  return diagnostic.source === 'ripr' && diagnosticCodeText(diagnostic).startsWith('ripr-gap-');
+}
+
+function diagnosticCodeText(diagnostic: vscode.Diagnostic): string {
+  const code = diagnostic.code;
+  if (typeof code === 'string' || typeof code === 'number') {
+    return String(code);
+  }
+  if (code && typeof code === 'object' && 'value' in code) {
+    return String(code.value);
+  }
+  return '';
+}
+
+function startRepairActions(actions: Array<vscode.CodeAction | vscode.Command>): StartRepairAction[] {
+  const candidates: StartRepairAction[] = [];
+  for (const action of actions) {
+    const command = commandForAction(action);
+    if (!command) {
+      continue;
+    }
+    const title = action.title || command.title;
+    const priority = startRepairActionPriority(title, command);
+    if (priority === undefined) {
+      continue;
+    }
+    candidates.push({ title, command, priority });
+  }
+  return candidates.sort((left, right) =>
+    left.priority - right.priority || left.title.localeCompare(right.title)
+  );
+}
+
+function commandForAction(action: vscode.CodeAction | vscode.Command): vscode.Command | undefined {
+  const codeActionCommand = (action as vscode.CodeAction).command;
+  if (codeActionCommand && typeof codeActionCommand !== 'string') {
+    return codeActionCommand;
+  }
+  const command = (action as vscode.Command).command;
+  return typeof command === 'string' ? action as vscode.Command : undefined;
+}
+
+function startRepairActionPriority(title: string, command: vscode.Command): number | undefined {
+  if (
+    command.command === 'ripr.copyContext' &&
+    firstArgumentLabelIs(command, 'first_repair_packet')
+  ) {
+    return 0;
+  }
+  if (
+    command.command === 'ripr.copyContext' &&
+    (title === 'Inspect gap: copy repair packet' || firstArgumentLabelIs(command, 'gap_repair_packet'))
+  ) {
+    return 1;
+  }
+  if (command.command === 'ripr.openRelatedTest') {
+    return 2;
+  }
+  if (command.command === 'ripr.copyAgentVerifyCommand' && firstArgumentLabelIs(command, 'gap_verify')) {
+    return 3;
+  }
+  if (command.command === 'ripr.copyAgentReceiptCommand' && firstArgumentLabelIs(command, 'gap_receipt')) {
+    return 4;
+  }
+  if (
+    command.command === 'ripr.copyContext' &&
+    (title === 'Inspect gap: copy static-limit note' || firstArgumentLabelIs(command, 'static_limit_note'))
+  ) {
+    return 5;
+  }
+  return undefined;
+}
+
+function firstArgumentLabelIs(command: vscode.Command, expected: string): boolean {
+  const first = command.arguments?.[0];
+  return Boolean(
+    first &&
+    typeof first === 'object' &&
+    'label' in first &&
+    (first as { label?: unknown }).label === expected
+  );
+}
+
+async function pickStartRepairAction(actions: StartRepairAction[]): Promise<StartRepairAction | undefined> {
+  const items = actions.map((action) => ({
+    label: action.title,
+    description: startRepairActionDescription(action.command),
+    action
+  }));
+  const selected = await vscode.window.showQuickPick(items, {
+    placeHolder: 'Start current ripr repair',
+    matchOnDescription: true
+  });
+  return selected?.action;
+}
+
+function startRepairActionDescription(command: vscode.Command): string | undefined {
+  switch (command.command) {
+    case 'ripr.copyContext':
+      return firstArgumentLabelIs(command, 'first_repair_packet')
+        ? 'Copy the bounded packet'
+        : 'Copy the gap context';
+    case 'ripr.openRelatedTest':
+      return 'Open the likely repair target';
+    case 'ripr.copyAgentVerifyCommand':
+      return 'Copy the verify command';
+    case 'ripr.copyAgentReceiptCommand':
+      return 'Copy the receipt command';
+    default:
+      return undefined;
+  }
 }
 
 function shellArgToken(value: unknown): string {
