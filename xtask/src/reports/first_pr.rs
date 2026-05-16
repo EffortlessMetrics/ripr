@@ -1239,6 +1239,22 @@ mod tests {
         cleanup(&repo)
     }
 
+    #[test]
+    fn first_successful_pr_fixture_corpus_matches_expected_outputs() -> Result<(), String> {
+        let corpus = repo_root()?.join("fixtures/first_successful_pr");
+        let manifest = read_packet(&corpus.join("corpus.json"))?;
+        let cases = manifest
+            .get("cases")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "first_successful_pr corpus is missing cases".to_string())?;
+        for case in cases {
+            let case_id = string_path(case, &["id"])
+                .ok_or_else(|| "first_successful_pr case is missing id".to_string())?;
+            assert_first_successful_pr_case(&corpus, &case_id)?;
+        }
+        Ok(())
+    }
+
     fn ledger_with_repairable_gap() -> Value {
         json!({
             "schema_version": "0.1",
@@ -1302,6 +1318,31 @@ mod tests {
         let text =
             fs::read_to_string(path).map_err(|err| format!("read {}: {err}", path.display()))?;
         serde_json::from_str(&text).map_err(|err| format!("parse {}: {err}", path.display()))
+    }
+
+    fn assert_first_successful_pr_case(corpus: &Path, case_id: &str) -> Result<(), String> {
+        let case = corpus.join(case_id);
+        let options = FirstPrOptions {
+            root: format!("fixtures/first_successful_pr/{case_id}"),
+            gap_ledger: "inputs/reports/gap-decision-ledger.json".to_string(),
+            ..FirstPrOptions::default()
+        };
+        let actual_json = render_start_here_packet(&case, &options);
+        let expected_json = read_packet(&case.join("expected/start-here.json"))?;
+        assert_eq!(
+            actual_json, expected_json,
+            "start-here JSON drift in {case_id}"
+        );
+
+        let actual_md = render_start_here_markdown(&actual_json);
+        let expected_md = fs::read_to_string(case.join("expected/start-here.md"))
+            .map_err(|err| format!("read expected start-here markdown for {case_id}: {err}"))?;
+        assert_eq!(
+            actual_md.replace("\r\n", "\n"),
+            expected_md.replace("\r\n", "\n"),
+            "start-here Markdown drift in {case_id}"
+        );
+        Ok(())
     }
 
     fn temp_repo(name: &str) -> Result<PathBuf, String> {

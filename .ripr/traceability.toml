@@ -3227,6 +3227,7 @@ tests = [
   "xtask/src/main.rs",
 ]
 fixtures = [
+  "fixtures/first_successful_pr",
 ]
 code = [
   "xtask/src/reports/first_pr.rs",

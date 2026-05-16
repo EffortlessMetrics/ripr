@@ -1,0 +1,95 @@
+{
+  "artifacts": [
+    {
+      "id": "gap_ledger",
+      "label": "Gap decision ledger",
+      "path": "inputs/reports/gap-decision-ledger.json",
+      "regeneration_command": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out inputs/reports/gap-decision-ledger.json --out-md inputs/reports/gap-decision-ledger.md",
+      "status": "present"
+    },
+    {
+      "id": "first_action",
+      "label": "First useful action",
+      "path": "target/ripr/reports/first-useful-action.json",
+      "regeneration_command": "ripr first-action --root fixtures/first_successful_pr/output-contract-gap --gap-ledger inputs/reports/gap-decision-ledger.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md",
+      "status": "missing"
+    },
+    {
+      "id": "review_comments",
+      "label": "PR repair cards",
+      "path": "target/ripr/review/comments.json",
+      "regeneration_command": "ripr review-comments --root fixtures/first_successful_pr/output-contract-gap --base <base> --head <head> --gap-ledger inputs/reports/gap-decision-ledger.json --out target/ripr/review/comments.json",
+      "status": "missing"
+    },
+    {
+      "id": "agent_packet",
+      "label": "Agent repair packet",
+      "path": "target/ripr/workflow/agent-packet.json",
+      "regeneration_command": "ripr agent packet --root fixtures/first_successful_pr/output-contract-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:output:device-label --json > target/ripr/workflow/agent-packet.json",
+      "status": "missing"
+    },
+    {
+      "id": "gate_decision",
+      "label": "Gate decision",
+      "path": "target/ripr/reports/gate-decision.json",
+      "regeneration_command": "ripr gate evaluate --gap-ledger inputs/reports/gap-decision-ledger.json --out target/ripr/reports/gate-decision.json --out-md target/ripr/reports/gate-decision.md",
+      "status": "missing"
+    }
+  ],
+  "authority": {
+    "boundary": "Pass/fail authority remains with explicit gate-decision artifacts when configured; this first-run packet does not gate.",
+    "gate_decision": "target/ripr/reports/gate-decision.json",
+    "status": "advisory"
+  },
+  "commands": {
+    "agent_packet": "ripr agent packet --root fixtures/first_successful_pr/output-contract-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:output:device-label --json > target/ripr/workflow/agent-packet.json",
+    "regenerate_gap_ledger": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out inputs/reports/gap-decision-ledger.json --out-md inputs/reports/gap-decision-ledger.md",
+    "verify": "cargo xtask goldens check"
+  },
+  "inputs": {
+    "agent_packet": "target/ripr/workflow/agent-packet.json",
+    "first_action": "target/ripr/reports/first-useful-action.json",
+    "gap_ledger": "inputs/reports/gap-decision-ledger.json",
+    "gate_decision": "target/ripr/reports/gate-decision.json",
+    "receipts_dir": "target/ripr/receipts",
+    "review_comments": "target/ripr/review/comments.json"
+  },
+  "kind": "first_pr_start_here",
+  "limits": [
+    "Composes explicit RIPR artifacts only.",
+    "Does not run hidden analysis.",
+    "Does not edit source or generate tests.",
+    "Does not run mutation testing.",
+    "Does not change CI blocking or gate policy."
+  ],
+  "posture": "advisory",
+  "root": "fixtures/first_successful_pr/output-contract-gap",
+  "schema_version": "0.1",
+  "selected": {
+    "agent_packet_command": "ripr agent packet --root fixtures/first_successful_pr/output-contract-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:output:device-label --json > target/ripr/workflow/agent-packet.json",
+    "anchor": {
+      "dedupe_fingerprint": "gap:rust:output:device-label",
+      "file": "src/output/device_labels.rs",
+      "line": 12,
+      "owner": "output::device_labels"
+    },
+    "canonical_gap_id": "gap:rust:output:device-label",
+    "changed_behavior": "APPLE_M3_AIR_DEVICE_LABELS_TEXT",
+    "gap_id": "gap:pr:output:device-label",
+    "kind": "MissingOutputContract",
+    "receipt_command": null,
+    "repair": {
+      "related_test": "fixtures/device-labels",
+      "route": "AddOutputGolden",
+      "suggested_assertion": "golden output contains APPLE_M3_AIR_DEVICE_LABELS_TEXT",
+      "target_file": "fixtures/device-labels/expected/human.txt"
+    },
+    "source_artifact": "inputs/reports/gap-decision-ledger.json",
+    "state": "top_gap",
+    "verify_command": "cargo xtask goldens check",
+    "why": "User-facing output changed, but the gap ledger did not find checked output or golden evidence for the changed text."
+  },
+  "status": "actionable",
+  "tool": "ripr",
+  "warnings": []
+}
