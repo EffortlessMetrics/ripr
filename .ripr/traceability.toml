@@ -3076,7 +3076,6 @@ metrics = [
 id = "RIPR-SPEC-0048"
 name = "Config and policy constant evidence"
 spec = "docs/specs/RIPR-SPEC-0048-config-policy-constant-evidence.md"
-tests = []
 tests = [
   "crates/ripr/src/output/json/finding_alignment.rs::tests::actionable_canonical_items_require_repair_routes",
   "crates/ripr/src/output/json/finding_alignment.rs::tests::rendered_policy_label_without_observer_is_actionable",
