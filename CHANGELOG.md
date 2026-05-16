@@ -140,6 +140,10 @@ Planned scope:
   examples, pinning actionable, already-observed, internal no-action, and named
   static-limitation outcomes without changing PR/CI rendering, gates, public
   scores, generated tests, provider calls, source edits, or mutation execution.
+- Documented the canonical finding-alignment consumer contract v2 so downstream
+  PR/CI, editor, report, and agent lanes render canonical evidence items first,
+  keep raw findings as supporting evidence, and avoid inferring actionability
+  from raw static classes.
 - VS Code `ripr: Show Status` now includes first-run/no-output context:
   workspace root, resolved server source and command, editor selectors,
   enabled languages from the last server refresh, and the next safe action for
