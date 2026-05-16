@@ -32,19 +32,30 @@
 <!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-10 after the 0.5.0 publish: 4 installs. Refresh the count and date from publisher metrics whenever you check; do not use live VS Marketplace Shields routes. -->
 
 
-`ripr` finds changed behavior that your tests probably reach but do not
-actually check.
+`ripr` points reviewers and coding agents at changed Rust behavior whose tests
+appear to reach the code but miss the check that would catch the change.
 
-It reads a PR diff, looks at the changed branch, return value, error path,
-field, or side effect, then checks whether nearby tests have assertions strong
-enough to catch that change. When the test exists but the check is weak, `ripr`
-points at the gap and suggests the focused test to add next.
+It reads a PR diff, finds changed branches, return values, error paths, fields,
+side effects, and output text, then turns the useful cases into repair cards:
+what changed, why the current proof is weak, where to add the focused test or
+output golden, and which command verifies movement.
+
+The first successful use should feel small:
+
+```text
+one PR
+-> one repairable gap
+-> one focused test or output proof
+-> one before/after receipt
+```
 
 Use it while a PR is still moving:
 
-- in CI, as an advisory PR summary;
-- in VS Code, as diagnostics, hovers, and targeted-test actions;
-- from the CLI, as a before/after receipt for one improved seam.
+- in generated CI, as an advisory first-screen summary and artifact packet;
+- in VS Code, as diagnostics, hovers, and repair packets for the current work;
+- from the CLI, as a before/after receipt for one improved Rust gap;
+- with coding agents, as a bounded packet that names the repair route and stop
+  conditions.
 
 `ripr` is not coverage and does not run mutants. Coverage asks whether code
 executed. Mutation testing asks whether tests fail against a concrete mutant.
@@ -54,10 +65,10 @@ executed. Mutation testing asks whether tests fail against a concrete mutant.
 Does this changed behavior appear exposed to a meaningful test assertion?
 ```
 
-The usable repair loop is Rust/Cargo: find one repairable gap, add one focused
-proof outside `ripr`, and keep the before/after receipt. TypeScript and Python
-are opt-in preview surfaces; see [Support tiers](docs/status/SUPPORT_TIERS.md)
-for what is usable, stable, preview, advisory, blocked, or unsupported.
+The usable repair loop is Rust/Cargo: find one named gap, add one focused proof
+outside `ripr`, and keep the receipt. TypeScript and Python are opt-in preview
+surfaces; see [Support tiers](docs/status/SUPPORT_TIERS.md) for what is usable,
+stable, preview, advisory, blocked, or unsupported.
 
 ## The Problem
 
