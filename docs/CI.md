@@ -2112,8 +2112,8 @@ Planned CI work:
 A branch is ready to merge when:
 
 - required gates for touched areas pass on a committed tree
-- the branch is current enough for repository freshness policy, or the operator
-  has recorded an explicit refresh plan using
+- the branch is current enough for repository freshness policy, or a maintainer
+  has approved an explicit freshness exception using
   [Merge freshness and watcher policy](MERGE_WATCH_POLICY.md)
 - docs and changelog are updated for user-visible changes
 - static output language rules are preserved

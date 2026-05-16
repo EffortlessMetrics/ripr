@@ -56,12 +56,12 @@ Use the packet's recommendation as the default, then apply these rules:
 | --- | --- | --- |
 | `wait` | required checks are pending and the branch is otherwise current | a required check already failed or GitHub says the branch cannot merge |
 | `inspect failure` | a required check failed, was cancelled unexpectedly, or is missing | the only issue is that optional advisory checks are still running |
-| `refresh branch` | the PR is behind main and strict freshness is required before merge | long required jobs are near completion and their result is still useful |
+| `rebase` | the PR is behind main and strict freshness is required before merge | long required jobs are near completion and their result is still useful |
 | `merge` | required checks pass, review requirements are satisfied, and mergeability is clean | the branch changed externally and has not been re-read |
 | `stop for judgment` | auto-merge settings, branch protection, required review, or duplicate-PR selection is unclear | the issue is deterministic cleanup that the repo already reports |
 
-`refresh branch` means update the PR branch by the repo's normal flow. It does
-not mean force-push over remote work.
+`rebase` means update the PR branch by the repo's normal freshness flow. It
+does not mean force-push over remote work.
 
 ## Branch Freshness
 
