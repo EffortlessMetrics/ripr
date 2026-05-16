@@ -496,6 +496,23 @@ fn select_from_gap_ledger(gap_ledger: &Value, root: &Path, options: &FirstPrOpti
             Some(regenerate_gap_ledger_command(&options.gap_ledger)),
         );
     }
+    if ledger_reports_blocked(gap_ledger) {
+        let message = first_string_array_item(gap_ledger, &["warnings"]).map_or_else(
+            || {
+                "The gap decision ledger is blocked; refresh the first-run evidence before assigning repair work.".to_string()
+            },
+            |warning| {
+                format!(
+                    "The gap decision ledger is blocked: {warning}. Refresh the first-run evidence before assigning repair work."
+                )
+            },
+        );
+        return Selection::blocked(
+            "blocked_artifact",
+            message,
+            Some(regenerate_gap_ledger_command(&options.gap_ledger)),
+        );
+    }
     if ledger_reports_empty_diff(gap_ledger) {
         return Selection::no_action(
             "empty_diff",
@@ -539,6 +556,15 @@ fn ledger_reports_empty_diff(value: &Value) -> bool {
             .or_else(|| string_path(value, &["reason"]))
             .as_deref(),
         Some("empty_diff")
+    )
+}
+
+fn ledger_reports_blocked(value: &Value) -> bool {
+    matches!(
+        string_path(value, &["status"])
+            .or_else(|| string_path(value, &["state"]))
+            .as_deref(),
+        Some("blocked")
     )
 }
 
@@ -926,9 +952,8 @@ fn validate_selected_state(status: &str, selected: &Value, violations: &mut Vec<
     };
     let expected_status = match state {
         "top_gap" => "actionable",
-        "missing_artifact" | "malformed_artifact" | "stale_artifact" | "wrong_root" | "timeout" => {
-            "blocked"
-        }
+        "missing_artifact" | "malformed_artifact" | "stale_artifact" | "wrong_root"
+        | "blocked_artifact" | "timeout" => "blocked",
         "empty_diff" | "no_action" => "no_action",
         other => {
             violations.push(format!("selected.state {other:?} is not contract-valid"));
@@ -1121,6 +1146,37 @@ mod tests {
         let packet = render_start_here_packet(&repo, &FirstPrOptions::default());
         assert_eq!(packet["status"], "blocked");
         assert_eq!(packet["selected"]["state"], "timeout");
+        assert!(
+            packet["selected"]["next_command"]
+                .as_str()
+                .is_some_and(|command| command.contains("ripr reports gap-ledger"))
+        );
+        cleanup(&repo)
+    }
+
+    #[test]
+    fn blocked_gap_ledger_writes_retry_packet() -> Result<(), String> {
+        let repo = temp_repo("first-pr-blocked-ledger")?;
+        let ledger = repo.join(DEFAULT_GAP_LEDGER);
+        write_json(
+            &ledger,
+            json!({
+                "schema_version": "0.1",
+                "kind": "gap_decision_ledger",
+                "status": "blocked",
+                "warnings": ["read missing.json failed: not found"],
+                "summary": {"records_total": 0},
+                "records": []
+            }),
+        )?;
+        let packet = render_start_here_packet(&repo, &FirstPrOptions::default());
+        assert_eq!(packet["status"], "blocked");
+        assert_eq!(packet["selected"]["state"], "blocked_artifact");
+        assert!(
+            packet["selected"]["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("read missing.json failed"))
+        );
         assert!(
             packet["selected"]["next_command"]
                 .as_str()

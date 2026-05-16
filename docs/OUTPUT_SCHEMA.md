@@ -6336,8 +6336,8 @@ JSON shape:
       "id": "gap_ledger",
       "label": "Gap decision ledger",
       "path": "target/ripr/reports/gap-decision-ledger.json",
-      "status": "available",
-      "available": true
+      "status": "present",
+      "regeneration_command": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json --out-md target/ripr/reports/gap-decision-ledger.md"
     }
   ],
   "authority": {
@@ -6367,18 +6367,18 @@ Field contract:
 - `posture` is always `advisory`.
 - `selected.state` is `top_gap` for a selected repairable gap,
   `missing_artifact`, `malformed_artifact`, `stale_artifact`, `wrong_root`, or
-  `timeout` for blocked recovery states, and `empty_diff` or `no_action` for
-  no-action states.
+  `blocked_artifact` or `timeout` for blocked recovery states, and
+  `empty_diff` or `no_action` for no-action states.
 - `top_gap` requires `status = "actionable"`.
 - `missing_artifact`, `malformed_artifact`, `stale_artifact`, `wrong_root`,
-  and `timeout` require `status = "blocked"` and a bounded next command when
-  one is known.
+  `blocked_artifact`, and `timeout` require `status = "blocked"` and a
+  bounded next command when one is known.
 - `empty_diff` and `no_action` require `status = "no_action"` and must not
   produce a repair interruption.
 - `commands.regenerate_gap_ledger` is always present so missing, stale,
   wrong-root, malformed, and timeout states can point to a known refresh path.
-- `artifacts[]` records the explicit artifact paths the packet inspected and
-  whether each one was available.
+- `artifacts[]` records artifact id, label, path, `present` or `missing`
+  status, and optional regeneration command.
 - `authority.boundary` preserves the gate boundary. This packet never becomes
   pass/fail authority.
 - `warnings[]` carries blocked-state context without converting it to waiver,
