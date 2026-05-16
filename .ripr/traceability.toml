@@ -3238,6 +3238,7 @@ outputs = [
   "docs/specs/RIPR-SPEC-0051-first-successful-pr-ux.md",
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0009-first-run-ux-adoption-hardening.md",
+  "docs/OUTPUT_SCHEMA.md",
   "docs/FIRST_PR_WORKFLOW.md",
   ".ripr/traceability.toml",
 ]
