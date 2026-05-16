@@ -1273,12 +1273,12 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
             SeamKind::MatchArm,
             SeamKind::CallPresence,
         ] {
-            if !kinds.contains(&required) {
-                return Err(format!(
-                    "expected SeamKind::{:?} to be inventoried, got {:?}",
-                    required, kinds
-                ));
-            }
+            assert!(
+                kinds.contains(&required),
+                "expected SeamKind::{:?} to be inventoried, got {:?}",
+                required,
+                kinds
+            );
         }
         Ok(())
     }
@@ -1297,19 +1297,21 @@ pub fn publish_event(service: &mut Service) {
 
         let call_seam = seams
             .iter()
-            .find(|seam| seam.kind() == SeamKind::CallPresence)
-            .ok_or_else(|| {
-                format!(
-                    "expected a CallPresence seam, got kinds {:?}",
-                    seams.iter().map(|seam| seam.kind()).collect::<Vec<_>>()
-                )
-            })?;
-        if !call_seam.owner().contains("publish_event") {
-            return Err(format!(
-                "CallPresence owner should contain publish_event, got {}",
-                call_seam.owner()
-            ));
-        }
+            .find(|seam| seam.kind() == SeamKind::CallPresence);
+        let owner = match call_seam {
+            Some(seam) => seam.owner().to_string(),
+            None => String::new(),
+        };
+        assert!(
+            call_seam.is_some(),
+            "expected a CallPresence seam, got kinds {:?}",
+            seams.iter().map(|seam| seam.kind()).collect::<Vec<_>>()
+        );
+        assert!(
+            owner.contains("publish_event"),
+            "CallPresence owner should contain publish_event, got {}",
+            owner
+        );
         Ok(())
     }
 
@@ -1338,24 +1340,23 @@ mod tests {
         let index = index_from_files(&[(path.clone(), source)])?;
         let seams = inventory_seams_from_index(&[path], &index);
 
-        for seam in &seams {
-            if seam.owner().contains("inline_test_with_predicate") {
-                return Err(format!(
-                    "seam emitted from inline #[test] owner: kind={} owner={}",
-                    seam.kind().as_str(),
-                    seam.owner()
-                ));
-            }
-        }
-        if !seams.iter().any(|seam| seam.owner().contains("classify")) {
-            return Err(format!(
-                "expected production owner `classify` to remain in the inventory, got owners {:?}",
-                seams
-                    .iter()
-                    .map(|seam| seam.owner().to_string())
-                    .collect::<Vec<_>>()
-            ));
-        }
+        let inline_test_seam = seams
+            .iter()
+            .find(|seam| seam.owner().contains("inline_test_with_predicate"));
+        assert!(
+            inline_test_seam.is_none(),
+            "seam emitted from inline #[test] owner: {:?}",
+            inline_test_seam.map(|seam| (seam.kind().as_str(), seam.owner().to_string()))
+        );
+        let production_owner_present = seams.iter().any(|seam| seam.owner().contains("classify"));
+        assert!(
+            production_owner_present,
+            "expected production owner `classify` to remain in the inventory, got owners {:?}",
+            seams
+                .iter()
+                .map(|seam| seam.owner().to_string())
+                .collect::<Vec<_>>()
+        );
         Ok(())
     }
 }
