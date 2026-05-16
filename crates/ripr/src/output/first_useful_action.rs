@@ -2040,4 +2040,1624 @@ mod tests {
             Err(_) => display_path(path),
         }
     }
+
+    // ── helper: build a bare-minimum FirstUsefulActionInput with all Nones ──
+
+    fn bare_input() -> FirstUsefulActionInput {
+        FirstUsefulActionInput {
+            root: ".".to_string(),
+            generated_at: "2026-01-01T00:00:00Z".to_string(),
+            pr_guidance_path: None,
+            assistant_proof_path: None,
+            gap_ledger_path: None,
+            ledger_path: None,
+            baseline_delta_path: None,
+            receipt_path: None,
+            gate_decision_path: None,
+            coverage_frontier_path: None,
+            editor_context_path: None,
+            pr_guidance_json: None,
+            assistant_proof_json: None,
+            gap_ledger_json: None,
+            ledger_json: None,
+            baseline_delta_json: None,
+            receipt_json: None,
+            gate_decision_json: None,
+            coverage_frontier_json: None,
+            editor_context_json: None,
+        }
+    }
+
+    // ── parse_optional_json branches ─────────────────────────────────────────
+
+    #[test]
+    fn parse_optional_json_no_path_returns_none() -> Result<(), String> {
+        // When path is None the function immediately returns None without touching
+        // ParsedSources – zero warnings, zero read_errors.
+        let mut parsed = ParsedSources::default();
+        let result = parse_optional_json("label", None, &Some(Ok("{}".to_string())), &mut parsed);
+        if result.is_some() {
+            return Err("expected None when path is None".to_string());
+        }
+        if !parsed.warnings.is_empty() {
+            return Err(format!(
+                "expected no warnings but got {:?}",
+                parsed.warnings
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_optional_json_path_but_no_text_records_warning() -> Result<(), String> {
+        // path is Some, but text (Option<Result>) is None → warning + read_error
+        let mut parsed = ParsedSources::default();
+        let result = parse_optional_json("my-label", Some("some/path.json"), &None, &mut parsed);
+        if result.is_some() {
+            return Err("expected None when text is absent".to_string());
+        }
+        if parsed.warnings.is_empty() {
+            return Err("expected a warning when text is absent".to_string());
+        }
+        if parsed.warnings[0].contains("some/path.json") && parsed.warnings[0].contains("my-label")
+        {
+            // correct
+        } else {
+            return Err(format!("unexpected warning text: {}", parsed.warnings[0]));
+        }
+        if parsed.read_errors.is_empty() {
+            return Err("expected a read_error entry".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_optional_json_io_error_records_warning() -> Result<(), String> {
+        // text is Some(Err(...)) → warning + read_error
+        let mut parsed = ParsedSources::default();
+        let result = parse_optional_json(
+            "my-label",
+            Some("broken.json"),
+            &Some(Err("permission denied".to_string())),
+            &mut parsed,
+        );
+        if result.is_some() {
+            return Err("expected None on Err text".to_string());
+        }
+        let warning = parsed.warnings.first().ok_or("expected a warning")?.clone();
+        if !warning.contains("permission denied") {
+            return Err(format!("expected error text in warning, got: {warning}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_optional_json_invalid_json_records_warning() -> Result<(), String> {
+        // text is Some(Ok(...)) but not valid JSON → warning + read_error
+        let mut parsed = ParsedSources::default();
+        let result = parse_optional_json(
+            "my-label",
+            Some("bad.json"),
+            &Some(Ok("not json {{{".to_string())),
+            &mut parsed,
+        );
+        if result.is_some() {
+            return Err("expected None on invalid JSON".to_string());
+        }
+        if parsed.warnings.is_empty() {
+            return Err("expected warning on invalid JSON".to_string());
+        }
+        if parsed.read_errors.is_empty() {
+            return Err("expected read_error on invalid JSON".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_optional_json_valid_json_returns_value() -> Result<(), String> {
+        let mut parsed = ParsedSources::default();
+        let result = parse_optional_json(
+            "my-label",
+            Some("ok.json"),
+            &Some(Ok(r#"{"key": "value"}"#.to_string())),
+            &mut parsed,
+        );
+        let val = result.ok_or("expected Some(Value) on valid JSON")?;
+        if val.get("key").and_then(|v| v.as_str()) != Some("value") {
+            return Err("unexpected parsed value".to_string());
+        }
+        if !parsed.warnings.is_empty() {
+            return Err("expected no warnings on valid JSON".to_string());
+        }
+        Ok(())
+    }
+
+    // ── generated_at empty / whitespace → DEFAULT_GENERATED_AT ─────────────
+
+    #[test]
+    fn empty_generated_at_uses_default() -> Result<(), String> {
+        let mut input = bare_input();
+        input.generated_at = "  ".to_string();
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(&format!(r#""generated_at": "{DEFAULT_GENERATED_AT}""#)) {
+            return Err(format!(
+                "expected generated_at to be '{DEFAULT_GENERATED_AT}' in: {rendered}"
+            ));
+        }
+        Ok(())
+    }
+
+    // ── no_actionable_report – both warning and no-warning branches ──────────
+
+    #[test]
+    fn no_actionable_report_with_no_inputs_warns() -> Result<(), String> {
+        // All inputs None → warning injected
+        let report = build_first_useful_action_report(bare_input());
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(r#""status": "no_actionable_seam""#) {
+            return Err(format!(
+                "expected no_actionable_seam status but got: {rendered}"
+            ));
+        }
+        if !rendered.contains("no explicit first-action artifact input was supplied") {
+            return Err("expected warning about no inputs".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn no_actionable_report_with_inputs_no_warning() -> Result<(), String> {
+        // Some input paths provided but all JSON parses fine to non-actionable content
+        let mut input = bare_input();
+        input.pr_guidance_path = Some("guidance.json".to_string());
+        input.pr_guidance_json = Some(Ok(r#"{"comments":[]}"#.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(r#""status": "no_actionable_seam""#) {
+            return Err("expected no_actionable_seam".to_string());
+        }
+        if rendered.contains("no explicit first-action artifact input was supplied") {
+            return Err("should not warn when inputs are present".to_string());
+        }
+        Ok(())
+    }
+
+    // ── read_error_report ────────────────────────────────────────────────────
+
+    #[test]
+    fn read_error_triggers_missing_required_report() -> Result<(), String> {
+        // Providing a path with no JSON text creates a read_error
+        let mut input = bare_input();
+        input.pr_guidance_path = Some("guidance.json".to_string());
+        input.pr_guidance_json = None; // path given but text not loaded
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(r#""status": "missing_required_artifact""#) {
+            return Err(format!(
+                "expected missing_required_artifact but got: {rendered}"
+            ));
+        }
+        if !rendered.contains("guidance.json") {
+            return Err("expected missing path in report".to_string());
+        }
+        Ok(())
+    }
+
+    // ── receipt_report: improved/resolved ────────────────────────────────────
+
+    #[test]
+    fn receipt_improved_routes_already_improved() -> Result<(), String> {
+        let receipt_json = r#"{
+            "provenance": { "movement": "improved", "seam_id": "seam-abc" }
+        }"#;
+        let mut input = bare_input();
+        input.receipt_path = Some("receipt.json".to_string());
+        input.receipt_json = Some(Ok(receipt_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(r#""status": "already_improved""#) {
+            return Err(format!(
+                "expected already_improved status but got: {rendered}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn receipt_resolved_routes_already_improved() -> Result<(), String> {
+        let receipt_json = r#"{
+            "provenance": { "movement": "resolved", "seam_id": "seam-xyz" }
+        }"#;
+        let mut input = bare_input();
+        input.receipt_path = Some("receipt.json".to_string());
+        input.receipt_json = Some(Ok(receipt_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(r#""status": "already_improved""#) {
+            return Err(format!("expected already_improved but got: {rendered}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn receipt_unchanged_routes_unchanged_after_attempt() -> Result<(), String> {
+        let receipt_json = r#"{
+            "provenance": { "movement": "unchanged", "seam_id": "seam-u" }
+        }"#;
+        let mut input = bare_input();
+        input.receipt_path = Some("receipt.json".to_string());
+        input.receipt_json = Some(Ok(receipt_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(r#""status": "unchanged_after_attempt""#) {
+            return Err(format!(
+                "expected unchanged_after_attempt but got: {rendered}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn receipt_unknown_movement_does_not_route_receipt() -> Result<(), String> {
+        // movement = "other" → receipt_report returns None → falls through
+        let receipt_json = r#"{"provenance": {"movement": "other"}}"#;
+        let mut input = bare_input();
+        input.receipt_path = Some("receipt.json".to_string());
+        input.receipt_json = Some(Ok(receipt_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if rendered.contains(r#""status": "already_improved""#)
+            || rendered.contains(r#""status": "unchanged_after_attempt""#)
+        {
+            return Err(format!(
+                "should not route as receipt for unknown movement: {rendered}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn receipt_movement_from_seam_change_field() -> Result<(), String> {
+        // receipt_movement also reads ["seam"]["change"]
+        let receipt_json = r#"{"seam": {"change": "improved"}}"#;
+        let mut input = bare_input();
+        input.receipt_path = Some("receipt.json".to_string());
+        input.receipt_json = Some(Ok(receipt_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(r#""status": "already_improved""#) {
+            return Err(format!("expected already_improved but got: {rendered}"));
+        }
+        Ok(())
+    }
+
+    // ── suppressed_report ───────────────────────────────────────────────────
+
+    #[test]
+    fn suppressed_guidance_routes_suppressed() -> Result<(), String> {
+        let pr_guidance_json = r#"{
+            "suppressed": [{"seam_id": "seam-s", "kind": "predicate_boundary"}]
+        }"#;
+        let mut input = bare_input();
+        input.pr_guidance_path = Some("guidance.json".to_string());
+        input.pr_guidance_json = Some(Ok(pr_guidance_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(r#""status": "suppressed""#) {
+            return Err(format!("expected suppressed status but got: {rendered}"));
+        }
+        if !rendered.contains(r#""action_kind": "no_action""#) {
+            return Err("expected no_action for suppressed".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn suppressed_guidance_via_warning_text() -> Result<(), String> {
+        // has_suppressed_guidance also checks warnings array containing "configured off"
+        let pr_guidance_json = r#"{
+            "warnings": ["seam configured off by policy"]
+        }"#;
+        let mut input = bare_input();
+        input.pr_guidance_path = Some("guidance.json".to_string());
+        input.pr_guidance_json = Some(Ok(pr_guidance_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(r#""status": "suppressed""#) {
+            return Err(format!(
+                "expected suppressed from warning text, got: {rendered}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn suppressed_guidance_via_warning_text_suppressed_keyword() -> Result<(), String> {
+        let pr_guidance_json = r#"{
+            "warnings": ["seam is suppressed by ripr policy"]
+        }"#;
+        let mut input = bare_input();
+        input.pr_guidance_path = Some("guidance.json".to_string());
+        input.pr_guidance_json = Some(Ok(pr_guidance_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(r#""status": "suppressed""#) {
+            return Err(format!(
+                "expected suppressed from warning text, got: {rendered}"
+            ));
+        }
+        Ok(())
+    }
+
+    // ── acknowledged_report via baseline_delta ───────────────────────────────
+
+    #[test]
+    fn acknowledged_bucket_in_baseline_delta_routes_acknowledged() -> Result<(), String> {
+        let delta_json = r#"{
+            "items": [
+                {"bucket": "acknowledged", "path": "src/lib.rs", "line": 10, "kind": "predicate_boundary"}
+            ]
+        }"#;
+        let mut input = bare_input();
+        input.baseline_delta_path = Some("delta.json".to_string());
+        input.baseline_delta_json = Some(Ok(delta_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(r#""status": "acknowledged""#) {
+            return Err(format!("expected acknowledged but got: {rendered}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn acknowledged_via_ledger_movement_count() -> Result<(), String> {
+        // No baseline_delta, but ledger has acknowledged count > 0
+        let ledger_json = r#"{
+            "movement": {"acknowledged": 1},
+            "top_repair_route": {"seam_id": "seam-ack"}
+        }"#;
+        let mut input = bare_input();
+        input.ledger_path = Some("ledger.json".to_string());
+        input.ledger_json = Some(Ok(ledger_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(r#""status": "acknowledged""#) {
+            return Err(format!(
+                "expected acknowledged via ledger but got: {rendered}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn zero_acknowledged_in_ledger_does_not_route_acknowledged() -> Result<(), String> {
+        let ledger_json = r#"{"movement": {"acknowledged": 0}}"#;
+        let mut input = bare_input();
+        input.ledger_path = Some("ledger.json".to_string());
+        input.ledger_json = Some(Ok(ledger_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if rendered.contains(r#""status": "acknowledged""#) {
+            return Err("should not route acknowledged when count is 0".to_string());
+        }
+        Ok(())
+    }
+
+    // ── waived_report ────────────────────────────────────────────────────────
+
+    #[test]
+    fn gate_decision_with_waiver_routes_waived() -> Result<(), String> {
+        let gate_json = r#"{
+            "waiver": {"state": "waived"},
+            "seam_id": "seam-w",
+            "path": "src/main.rs",
+            "line": 5
+        }"#;
+        let mut input = bare_input();
+        input.gate_decision_path = Some("gate.json".to_string());
+        input.gate_decision_json = Some(Ok(gate_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(r#""status": "waived""#) {
+            return Err(format!("expected waived status but got: {rendered}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn gate_decision_waivers_array_non_empty_routes_waived() -> Result<(), String> {
+        let gate_json = r#"{
+            "waivers": [{"id": "w1"}],
+            "seam_id": "seam-ww"
+        }"#;
+        let mut input = bare_input();
+        input.gate_decision_path = Some("gate.json".to_string());
+        input.gate_decision_json = Some(Ok(gate_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(r#""status": "waived""#) {
+            return Err(format!(
+                "expected waived via waivers array but got: {rendered}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn gate_decision_visible_status_routes_waived() -> Result<(), String> {
+        let gate_json = r#"{"status": "visible"}"#;
+        let mut input = bare_input();
+        input.gate_decision_path = Some("gate.json".to_string());
+        input.gate_decision_json = Some(Ok(gate_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(r#""status": "waived""#) {
+            return Err(format!(
+                "expected waived for visible status but got: {rendered}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn gate_decision_without_waiver_does_not_route_waived() -> Result<(), String> {
+        let gate_json = r#"{"status": "blocking"}"#;
+        let mut input = bare_input();
+        input.gate_decision_path = Some("gate.json".to_string());
+        input.gate_decision_json = Some(Ok(gate_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if rendered.contains(r#""status": "waived""#) {
+            return Err("should not route waived for non-waived gate".to_string());
+        }
+        Ok(())
+    }
+
+    // ── baseline_only_report ─────────────────────────────────────────────────
+
+    #[test]
+    fn baseline_delta_still_present_routes_baseline_only() -> Result<(), String> {
+        let delta_json = r#"{
+            "items": [
+                {"bucket": "still_present", "path": "src/lib.rs", "line": 20}
+            ]
+        }"#;
+        let mut input = bare_input();
+        input.baseline_delta_path = Some("delta.json".to_string());
+        input.baseline_delta_json = Some(Ok(delta_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(r#""status": "baseline_only""#) {
+            return Err(format!("expected baseline_only status but got: {rendered}"));
+        }
+        if !rendered.contains(r#""action_kind": "acknowledge_baseline""#) {
+            return Err("expected acknowledge_baseline action".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_delta_only_bucket_routes_baseline_only() -> Result<(), String> {
+        let delta_json = r#"{
+            "items": [
+                {"bucket": "baseline_only", "path": "src/other.rs", "line": 5}
+            ]
+        }"#;
+        let mut input = bare_input();
+        input.baseline_delta_path = Some("delta.json".to_string());
+        input.baseline_delta_json = Some(Ok(delta_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(r#""status": "baseline_only""#) {
+            return Err(format!("expected baseline_only but got: {rendered}"));
+        }
+        Ok(())
+    }
+
+    // ── is_stale variants ────────────────────────────────────────────────────
+
+    #[test]
+    fn is_stale_detects_analysis_stale_status() -> Result<(), String> {
+        let ctx_json = r#"{"status": "analysis_stale", "seam_id": "seam-s"}"#;
+        let mut input = bare_input();
+        input.editor_context_path = Some("ctx.json".to_string());
+        input.editor_context_json = Some(Ok(ctx_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(r#""status": "stale""#) {
+            return Err(format!(
+                "expected stale for analysis_stale status but got: {rendered}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn is_stale_detects_stale_state_field() -> Result<(), String> {
+        let ctx_json = r#"{"state": "stale", "seam_id": "seam-s"}"#;
+        let mut input = bare_input();
+        input.editor_context_path = Some("ctx.json".to_string());
+        input.editor_context_json = Some(Ok(ctx_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(r#""status": "stale""#) {
+            return Err(format!(
+                "expected stale from state field but got: {rendered}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn is_stale_detects_stale_evidence_state_field() -> Result<(), String> {
+        let ctx_json = r#"{"evidence_state": "stale", "seam_id": "seam-s"}"#;
+        let mut input = bare_input();
+        input.editor_context_path = Some("ctx.json".to_string());
+        input.editor_context_json = Some(Ok(ctx_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(r#""status": "stale""#) {
+            return Err(format!(
+                "expected stale from evidence_state but got: {rendered}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn is_stale_detects_bool_stale_field() -> Result<(), String> {
+        let ctx_json = r#"{"stale": true, "seam_id": "seam-s"}"#;
+        let mut input = bare_input();
+        input.editor_context_path = Some("ctx.json".to_string());
+        input.editor_context_json = Some(Ok(ctx_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(r#""status": "stale""#) {
+            return Err(format!(
+                "expected stale from bool stale field but got: {rendered}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn is_stale_with_reason_included_in_warnings() -> Result<(), String> {
+        // stale_warnings picks up "reason", "stale_reason", "freshness_reason"
+        let ctx_json = r#"{"freshness": "stale", "reason": "outdated cache"}"#;
+        let mut input = bare_input();
+        input.editor_context_path = Some("ctx.json".to_string());
+        input.editor_context_json = Some(Ok(ctx_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains("outdated cache") {
+            return Err(format!(
+                "expected stale reason in warnings but got: {rendered}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn is_stale_with_freshness_reason_included_in_warnings() -> Result<(), String> {
+        let ctx_json = r#"{"freshness": "stale", "freshness_reason": "file changed"}"#;
+        let mut input = bare_input();
+        input.editor_context_path = Some("ctx.json".to_string());
+        input.editor_context_json = Some(Ok(ctx_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains("file changed") {
+            return Err(format!("expected freshness_reason in warnings: {rendered}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn non_stale_editor_context_does_not_route_stale() -> Result<(), String> {
+        let ctx_json = r#"{"freshness": "current", "seam_id": "seam-s"}"#;
+        let mut input = bare_input();
+        input.editor_context_path = Some("ctx.json".to_string());
+        input.editor_context_json = Some(Ok(ctx_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if rendered.contains(r#""status": "stale""#) {
+            return Err("should not route stale for current freshness".to_string());
+        }
+        Ok(())
+    }
+
+    // ── render_first_useful_action_markdown branches ─────────────────────────
+
+    #[test]
+    fn markdown_includes_why_first_when_non_empty() -> Result<(), String> {
+        // The existing actionable fixture exercises why_first – build a simple
+        // actionable report from inline JSON so we don't need file I/O.
+        let proof_json = r#"{
+            "seam": {
+                "seam_id": "seam-md",
+                "seam_kind": "predicate_boundary",
+                "path": "src/lib.rs",
+                "line": 5,
+                "grip_class": "weakly_gripped",
+                "missing_discriminator": "assert boundary"
+            },
+            "recommendation": {
+                "related_test": "tests/lib.rs::test_me",
+                "suggested_test_name": "test_boundary"
+            }
+        }"#;
+        let pr_guidance_json = r#"{"comments":[{"seam_id":"seam-md"}]}"#;
+        let mut input = bare_input();
+        input.pr_guidance_path = Some("g.json".to_string());
+        input.assistant_proof_path = Some("proof.json".to_string());
+        input.pr_guidance_json = Some(Ok(pr_guidance_json.to_string()));
+        input.assistant_proof_json = Some(Ok(proof_json.to_string()));
+
+        let report = build_first_useful_action_report(input);
+        let md = render_first_useful_action_markdown(&report);
+
+        // The actionable report has why_first bullets
+        if !md.contains("## Why First") {
+            return Err(format!("expected Why First section in markdown: {md}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn markdown_includes_where_section_for_write_focused_test() -> Result<(), String> {
+        let proof_json = r#"{
+            "seam": {
+                "seam_id": "seam-where",
+                "seam_kind": "predicate_boundary",
+                "path": "src/lib.rs",
+                "line": 7,
+                "grip_class": "weakly_gripped"
+            },
+            "recommendation": {
+                "related_test": "tests/lib.rs::test_boundary",
+                "recommended_file": "tests/lib.rs",
+                "suggested_test_name": "test_boundary_at_seven"
+            }
+        }"#;
+        let pr_guidance_json = r#"{"comments":[{"seam_id":"seam-where","suggested_test":{"recommended_file":"tests/lib.rs","near_test":"tests/lib.rs::test_boundary","recommended_name":"test_boundary_at_seven"}}]}"#;
+        let mut input = bare_input();
+        input.pr_guidance_path = Some("g.json".to_string());
+        input.assistant_proof_path = Some("proof.json".to_string());
+        input.pr_guidance_json = Some(Ok(pr_guidance_json.to_string()));
+        input.assistant_proof_json = Some(Ok(proof_json.to_string()));
+
+        let report = build_first_useful_action_report(input);
+        let md = render_first_useful_action_markdown(&report);
+
+        if !md.contains("## Where") {
+            return Err(format!("expected Where section in markdown: {md}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn markdown_fallback_with_missing_artifact() -> Result<(), String> {
+        // missing_required_report includes fallback with missing field
+        let mut input = bare_input();
+        input.pr_guidance_path = Some("g.json".to_string());
+        input.pr_guidance_json = None; // forces read_error → missing_required_report
+        let report = build_first_useful_action_report(input);
+        let md = render_first_useful_action_markdown(&report);
+        if !md.contains("## Fallback") {
+            return Err(format!("expected Fallback section: {md}"));
+        }
+        if !md.contains("Missing required artifact") {
+            return Err(format!("expected 'Missing required artifact' text: {md}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn markdown_fallback_with_summary_text() -> Result<(), String> {
+        // suppressed report uses fallback with summary (not missing)
+        let pr_guidance_json = r#"{"suppressed":[{"seam_id":"seam-s"}]}"#;
+        let mut input = bare_input();
+        input.pr_guidance_path = Some("g.json".to_string());
+        input.pr_guidance_json = Some(Ok(pr_guidance_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let md = render_first_useful_action_markdown(&report);
+        if !md.contains("## Fallback") {
+            return Err(format!("expected Fallback section in markdown: {md}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn markdown_no_fallback_for_actionable_status() -> Result<(), String> {
+        // actionable report has no fallback – markdown should not show Fallback section
+        let proof_json = r#"{
+            "seam": {"seam_id": "seam-a", "seam_kind": "predicate_boundary", "grip_class": "weakly_gripped"},
+            "recommendation": {}
+        }"#;
+        let pr_guidance_json = r#"{"comments":[{"seam_id":"seam-a"}]}"#;
+        let mut input = bare_input();
+        input.pr_guidance_path = Some("g.json".to_string());
+        input.assistant_proof_path = Some("proof.json".to_string());
+        input.pr_guidance_json = Some(Ok(pr_guidance_json.to_string()));
+        input.assistant_proof_json = Some(Ok(proof_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let md = render_first_useful_action_markdown(&report);
+        // actionable status → fallback section suppressed
+        if md.contains("## Fallback") {
+            return Err(format!(
+                "should not show Fallback for actionable status: {md}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn markdown_limits_section_present() -> Result<(), String> {
+        // All routing branches produce limits; verify they appear in markdown
+        let report = build_first_useful_action_report(bare_input());
+        let md = render_first_useful_action_markdown(&report);
+        if !md.contains("## Limits") {
+            return Err(format!("expected Limits section in markdown: {md}"));
+        }
+        Ok(())
+    }
+
+    // ── with_period / trim_period / str_or ───────────────────────────────────
+
+    #[test]
+    fn with_period_appends_when_missing() -> Result<(), String> {
+        let result = with_period("hello");
+        if result != "hello." {
+            return Err(format!("expected 'hello.' but got '{result}'"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn with_period_does_not_double_period() -> Result<(), String> {
+        let result = with_period("done.");
+        if result != "done." {
+            return Err(format!("expected 'done.' but got '{result}'"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn trim_period_removes_trailing_dot() -> Result<(), String> {
+        let result = trim_period("word.");
+        if result != "word" {
+            return Err(format!("expected 'word' but got '{result}'"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn trim_period_leaves_no_dot_unchanged() -> Result<(), String> {
+        let result = trim_period("word");
+        if result != "word" {
+            return Err(format!("expected 'word' but got '{result}'"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn str_or_returns_value_when_some() -> Result<(), String> {
+        let result = str_or(Some("actual"), "fallback");
+        if result != "actual" {
+            return Err(format!("expected 'actual' but got '{result}'"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn str_or_returns_fallback_when_none() -> Result<(), String> {
+        let result = str_or(None, "fallback");
+        if result != "fallback" {
+            return Err(format!("expected 'fallback' but got '{result}'"));
+        }
+        Ok(())
+    }
+
+    // ── normalize_suggested_assertion ────────────────────────────────────────
+
+    #[test]
+    fn normalize_suggested_assertion_reformats_add_focused_test_pattern() -> Result<(), String> {
+        let input = "Add a focused test where x > 0 and assert the exact output is 1.";
+        let result = normalize_suggested_assertion(input);
+        if !result.starts_with("Assert the exact") {
+            return Err(format!("expected reformatted assertion but got: {result}"));
+        }
+        if result.contains("Add a focused test where") {
+            return Err(format!(
+                "should not contain original prefix after normalization: {result}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn normalize_suggested_assertion_passes_through_unmatched() -> Result<(), String> {
+        let input = "assert_eq!(f(x), 42)";
+        let result = normalize_suggested_assertion(input);
+        if result != input {
+            return Err(format!("expected pass-through but got: {result}"));
+        }
+        Ok(())
+    }
+
+    // ── classification_from_sources alias mapping ────────────────────────────
+
+    #[test]
+    fn classification_from_sources_maps_weakly_gripped() -> Result<(), String> {
+        let value: Value = serde_json::from_str(r#"{"grip_class": "weakly_gripped"}"#)
+            .map_err(|e| e.to_string())?;
+        let result = classification_from_sources(&[(Some(&value), &["grip_class"])]);
+        if result.as_deref() != Some("weakly_exposed") {
+            return Err(format!("expected weakly_exposed but got: {result:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn classification_from_sources_maps_strongly_gripped() -> Result<(), String> {
+        let value: Value = serde_json::from_str(r#"{"grip_class": "strongly_gripped"}"#)
+            .map_err(|e| e.to_string())?;
+        let result = classification_from_sources(&[(Some(&value), &["grip_class"])]);
+        if result.as_deref() != Some("exposed") {
+            return Err(format!("expected exposed but got: {result:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn classification_from_sources_passes_through_other() -> Result<(), String> {
+        let value: Value = serde_json::from_str(r#"{"classification": "static_unknown"}"#)
+            .map_err(|e| e.to_string())?;
+        let result = classification_from_sources(&[(Some(&value), &["classification"])]);
+        if result.as_deref() != Some("static_unknown") {
+            return Err(format!("expected static_unknown but got: {result:?}"));
+        }
+        Ok(())
+    }
+
+    // ── path_value numeric index ─────────────────────────────────────────────
+
+    #[test]
+    fn path_value_resolves_numeric_array_index() -> Result<(), String> {
+        let value: Value =
+            serde_json::from_str(r#"{"items": ["a", "b", "c"]}"#).map_err(|e| e.to_string())?;
+        let result = path_value(&value, &["items", "1"]);
+        if result.and_then(Value::as_str) != Some("b") {
+            return Err(format!("expected 'b' at index 1 but got: {result:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn path_value_returns_none_for_missing_key() -> Result<(), String> {
+        let value: Value = serde_json::from_str(r#"{"a": 1}"#).map_err(|e| e.to_string())?;
+        let result = path_value(&value, &["b", "c"]);
+        if result.is_some() {
+            return Err("expected None for missing key".to_string());
+        }
+        Ok(())
+    }
+
+    // ── value_as_string numeric coercion ─────────────────────────────────────
+
+    #[test]
+    fn value_as_string_coerces_i64() -> Result<(), String> {
+        let value: Value = serde_json::from_str(r#"-42"#).map_err(|e| e.to_string())?;
+        let result = value_as_string(&value);
+        if result.as_deref() != Some("-42") {
+            return Err(format!("expected '-42' but got: {result:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn value_as_string_coerces_u64() -> Result<(), String> {
+        let value: Value =
+            serde_json::from_str(r#"18446744073709551615"#).map_err(|e| e.to_string())?;
+        let result = value_as_string(&value);
+        if result.is_none() {
+            return Err("expected Some for large u64".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn value_as_string_returns_none_for_object() -> Result<(), String> {
+        let value: Value = serde_json::from_str(r#"{"k": 1}"#).map_err(|e| e.to_string())?;
+        let result = value_as_string(&value);
+        if result.is_some() {
+            return Err("expected None for object value".to_string());
+        }
+        Ok(())
+    }
+
+    // ── bool_path ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn bool_path_extracts_true_value() -> Result<(), String> {
+        let value: Value = serde_json::from_str(r#"{"stale": true}"#).map_err(|e| e.to_string())?;
+        let result = bool_path(&value, &["stale"]);
+        if result != Some(true) {
+            return Err(format!("expected Some(true) but got: {result:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn bool_path_extracts_false_value() -> Result<(), String> {
+        let value: Value =
+            serde_json::from_str(r#"{"stale": false}"#).map_err(|e| e.to_string())?;
+        let result = bool_path(&value, &["stale"]);
+        if result != Some(false) {
+            return Err(format!("expected Some(false) but got: {result:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn bool_path_returns_none_for_missing_key() -> Result<(), String> {
+        let value: Value = serde_json::from_str(r#"{}"#).map_err(|e| e.to_string())?;
+        let result = bool_path(&value, &["stale"]);
+        if result.is_some() {
+            return Err("expected None for missing key".to_string());
+        }
+        Ok(())
+    }
+
+    // ── has_any_input / has_any_parsed ───────────────────────────────────────
+
+    #[test]
+    fn has_any_input_false_when_all_none() -> Result<(), String> {
+        let input = bare_input();
+        if has_any_input(&input) {
+            return Err("expected has_any_input to be false with all Nones".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn has_any_input_true_when_one_path_set() -> Result<(), String> {
+        let mut input = bare_input();
+        input.coverage_frontier_path = Some("frontier.json".to_string());
+        if !has_any_input(&input) {
+            return Err("expected has_any_input to be true".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn has_any_parsed_false_when_all_none() -> Result<(), String> {
+        let parsed = ParsedSources::default();
+        if has_any_parsed(&parsed) {
+            return Err("expected has_any_parsed to be false".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn has_any_parsed_true_when_coverage_frontier_set() -> Result<(), String> {
+        let parsed = ParsedSources {
+            coverage_frontier: Some(serde_json::Value::Bool(true)),
+            ..ParsedSources::default()
+        };
+        if !has_any_parsed(&parsed) {
+            return Err("expected has_any_parsed to be true".to_string());
+        }
+        Ok(())
+    }
+
+    // ── first_guidance_item / first_summary_only_item / first_suppressed_item ─
+
+    #[test]
+    fn first_guidance_item_returns_first_comment() -> Result<(), String> {
+        let guidance: Value =
+            serde_json::from_str(r#"{"comments":[{"seam_id":"s1"},{"seam_id":"s2"}]}"#)
+                .map_err(|e| e.to_string())?;
+        let item = first_guidance_item(Some(&guidance));
+        let seam_id = item.and_then(|v| v.get("seam_id")).and_then(|v| v.as_str());
+        if seam_id != Some("s1") {
+            return Err(format!("expected 's1' but got: {seam_id:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn first_guidance_item_returns_none_when_empty() -> Result<(), String> {
+        let guidance: Value =
+            serde_json::from_str(r#"{"comments":[]}"#).map_err(|e| e.to_string())?;
+        if first_guidance_item(Some(&guidance)).is_some() {
+            return Err("expected None for empty comments".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn first_summary_only_item_returns_first() -> Result<(), String> {
+        let guidance: Value = serde_json::from_str(r#"{"summary_only":[{"seam_id":"so1"}]}"#)
+            .map_err(|e| e.to_string())?;
+        let item = first_summary_only_item(Some(&guidance));
+        if item.is_none() {
+            return Err("expected Some for summary_only item".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn first_suppressed_item_returns_first() -> Result<(), String> {
+        let guidance: Value = serde_json::from_str(r#"{"suppressed":[{"seam_id":"sup1"}]}"#)
+            .map_err(|e| e.to_string())?;
+        let item = first_suppressed_item(Some(&guidance));
+        if item.is_none() {
+            return Err("expected Some for suppressed item".to_string());
+        }
+        Ok(())
+    }
+
+    // ── has_actionable_guidance ──────────────────────────────────────────────
+
+    #[test]
+    fn has_actionable_guidance_true_for_comments() -> Result<(), String> {
+        let guidance: Value = serde_json::from_str(r#"{"comments":[{"seam_id":"s1"}]}"#)
+            .map_err(|e| e.to_string())?;
+        if !has_actionable_guidance(Some(&guidance)) {
+            return Err("expected actionable guidance for comments".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn has_actionable_guidance_true_for_summary_only() -> Result<(), String> {
+        let guidance: Value = serde_json::from_str(r#"{"summary_only":[{"seam_id":"s2"}]}"#)
+            .map_err(|e| e.to_string())?;
+        if !has_actionable_guidance(Some(&guidance)) {
+            return Err("expected actionable guidance for summary_only".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn has_actionable_guidance_false_when_none() -> Result<(), String> {
+        if has_actionable_guidance(None) {
+            return Err("expected false when guidance is None".to_string());
+        }
+        Ok(())
+    }
+
+    // ── has_suppressed_guidance ──────────────────────────────────────────────
+
+    #[test]
+    fn has_suppressed_guidance_false_when_none() -> Result<(), String> {
+        if has_suppressed_guidance(None) {
+            return Err("expected false when guidance is None".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn has_suppressed_guidance_true_for_suppressed_array() -> Result<(), String> {
+        let guidance: Value = serde_json::from_str(r#"{"suppressed":[{"seam_id":"s"}]}"#)
+            .map_err(|e| e.to_string())?;
+        if !has_suppressed_guidance(Some(&guidance)) {
+            return Err("expected suppressed guidance".to_string());
+        }
+        Ok(())
+    }
+
+    // ── first_item_with_bucket ───────────────────────────────────────────────
+
+    #[test]
+    fn first_item_with_bucket_finds_matching_bucket() -> Result<(), String> {
+        let report: Value = serde_json::from_str(
+            r#"{
+            "items": [
+                {"bucket": "resolved", "path": "a.rs"},
+                {"bucket": "still_present", "path": "b.rs"}
+            ]
+        }"#,
+        )
+        .map_err(|e| e.to_string())?;
+        let item = first_item_with_bucket(&report, &["still_present"]);
+        let path = item.and_then(|v| v.get("path")).and_then(|v| v.as_str());
+        if path != Some("b.rs") {
+            return Err(format!("expected b.rs but got: {path:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn first_item_with_bucket_returns_none_when_no_match() -> Result<(), String> {
+        let report: Value = serde_json::from_str(r#"{"items": [{"bucket": "resolved"}]}"#)
+            .map_err(|e| e.to_string())?;
+        if first_item_with_bucket(&report, &["still_present"]).is_some() {
+            return Err("expected None when no bucket matches".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn first_item_with_bucket_returns_none_when_no_items() -> Result<(), String> {
+        let report: Value = serde_json::from_str(r#"{}"#).map_err(|e| e.to_string())?;
+        if first_item_with_bucket(&report, &["still_present"]).is_some() {
+            return Err("expected None when no items key".to_string());
+        }
+        Ok(())
+    }
+
+    // ── gate_has_waiver variants ─────────────────────────────────────────────
+
+    #[test]
+    fn gate_has_waiver_detects_decision_waived() -> Result<(), String> {
+        let gate: Value =
+            serde_json::from_str(r#"{"decision": "waived"}"#).map_err(|e| e.to_string())?;
+        if !gate_has_waiver(&gate) {
+            return Err("expected waiver for decision=waived".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn gate_has_waiver_false_for_empty_waivers_array() -> Result<(), String> {
+        let gate: Value = serde_json::from_str(r#"{"waivers": []}"#).map_err(|e| e.to_string())?;
+        if gate_has_waiver(&gate) {
+            return Err("expected no waiver for empty waivers array".to_string());
+        }
+        Ok(())
+    }
+
+    // ── first_gate_* helpers ─────────────────────────────────────────────────
+
+    #[test]
+    fn first_gate_seam_from_top_level() -> Result<(), String> {
+        let gate: Value =
+            serde_json::from_str(r#"{"seam_id": "top-seam"}"#).map_err(|e| e.to_string())?;
+        let result = first_gate_seam(&gate);
+        if result.as_deref() != Some("top-seam") {
+            return Err(format!("expected top-seam but got: {result:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn first_gate_seam_from_items_array() -> Result<(), String> {
+        let gate: Value = serde_json::from_str(r#"{"items": [{"seam_id": "item-seam"}]}"#)
+            .map_err(|e| e.to_string())?;
+        let result = first_gate_seam(&gate);
+        if result.as_deref() != Some("item-seam") {
+            return Err(format!("expected item-seam but got: {result:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn first_gate_path_from_top_level() -> Result<(), String> {
+        let gate: Value =
+            serde_json::from_str(r#"{"path": "src/gate.rs"}"#).map_err(|e| e.to_string())?;
+        let result = first_gate_path(&gate);
+        if result.as_deref() != Some("src/gate.rs") {
+            return Err(format!("expected src/gate.rs but got: {result:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn first_gate_line_from_top_level() -> Result<(), String> {
+        let gate: Value = serde_json::from_str(r#"{"line": 42}"#).map_err(|e| e.to_string())?;
+        let result = first_gate_line(&gate);
+        if result != Some(42) {
+            return Err(format!("expected Some(42) but got: {result:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn first_gate_missing_discriminator_from_top_level() -> Result<(), String> {
+        let gate: Value = serde_json::from_str(r#"{"missing_discriminator": "assert x == 1"}"#)
+            .map_err(|e| e.to_string())?;
+        let result = first_gate_missing_discriminator(&gate);
+        if result.as_deref() != Some("assert x == 1") {
+            return Err(format!("expected 'assert x == 1' but got: {result:?}"));
+        }
+        Ok(())
+    }
+
+    // ── receipt_command / selected_seam_id ───────────────────────────────────
+
+    #[test]
+    fn receipt_command_with_seam_id_from_receipt_provenance() -> Result<(), String> {
+        let receipt_json = r#"{"provenance": {"movement": "improved", "seam_id": "seam-rc"}}"#;
+        let mut input = bare_input();
+        input.receipt_path = Some("receipt.json".to_string());
+        input.receipt_json = Some(Ok(receipt_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        // already_improved route → receipt command uses seam_id
+        if !rendered.contains("seam-rc") {
+            return Err(format!("expected seam-rc in rendered: {rendered}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn selected_seam_id_from_ledger_top_repair_route() -> Result<(), String> {
+        let ledger_json =
+            r#"{"movement": {"acknowledged": 1}, "top_repair_route": {"seam_id": "seam-ledger"}}"#;
+        let mut input = bare_input();
+        input.ledger_path = Some("ledger.json".to_string());
+        input.ledger_json = Some(Ok(ledger_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains("seam-ledger") {
+            return Err(format!("expected seam-ledger in rendered: {rendered}"));
+        }
+        Ok(())
+    }
+
+    // ── gap_records: "records" key shape ─────────────────────────────────────
+
+    #[test]
+    fn gap_records_from_records_key() -> Result<(), String> {
+        let value: Value = serde_json::from_str(r#"{"records": [{"gap_id": "g1"}]}"#)
+            .map_err(|e| e.to_string())?;
+        let records = gap_records(&value);
+        if records.len() != 1 {
+            return Err(format!("expected 1 record but got {}", records.len()));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn gap_records_from_cases_key() -> Result<(), String> {
+        let value: Value = serde_json::from_str(
+            r#"{"cases": [{"expected_gap_record": {"gap_id": "g2"}}, {"no_gap": true}]}"#,
+        )
+        .map_err(|e| e.to_string())?;
+        let records = gap_records(&value);
+        // Only the case with expected_gap_record is included
+        if records.len() != 1 {
+            return Err(format!(
+                "expected 1 record from cases but got {}",
+                records.len()
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn gap_records_from_empty_object_returns_empty() -> Result<(), String> {
+        let value: Value = serde_json::from_str(r#"{}"#).map_err(|e| e.to_string())?;
+        let records = gap_records(&value);
+        if !records.is_empty() {
+            return Err(format!("expected empty records but got {}", records.len()));
+        }
+        Ok(())
+    }
+
+    // ── first_actionable_gap_record: reintroduced policy_state ───────────────
+
+    #[test]
+    fn first_actionable_gap_record_accepts_reintroduced_policy_state() -> Result<(), String> {
+        let record_json = r#"[{
+            "gap_id": "g-r",
+            "kind": "MissingAssertion",
+            "language": "rust",
+            "language_status": "stable",
+            "scope": "pr_local",
+            "gap_state": "actionable",
+            "policy_state": "reintroduced",
+            "repairability": "repairable",
+            "repair_route": {"route_kind": "AddBoundaryAssertion"},
+            "verification_commands": ["cargo test"]
+        }]"#;
+        let value: Value = serde_json::from_str(record_json).map_err(|e| e.to_string())?;
+        if first_actionable_gap_record(&value).is_none() {
+            return Err("expected reintroduced policy_state to be accepted".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn first_actionable_gap_record_rejects_missing_repair_route() -> Result<(), String> {
+        let record_json = r#"[{
+            "gap_id": "g-no-route",
+            "language": "rust",
+            "language_status": "stable",
+            "scope": "pr_local",
+            "gap_state": "actionable",
+            "policy_state": "new",
+            "repairability": "repairable",
+            "verification_commands": ["cargo test"]
+        }]"#;
+        let value: Value = serde_json::from_str(record_json).map_err(|e| e.to_string())?;
+        if first_actionable_gap_record(&value).is_some() {
+            return Err("expected None when repair_route is absent".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn first_actionable_gap_record_rejects_empty_verification_commands() -> Result<(), String> {
+        let record_json = r#"[{
+            "gap_id": "g-empty-cmds",
+            "language": "rust",
+            "language_status": "stable",
+            "scope": "pr_local",
+            "gap_state": "actionable",
+            "policy_state": "new",
+            "repairability": "repairable",
+            "repair_route": {"route_kind": "AddAssertion"},
+            "verification_commands": ["   "]
+        }]"#;
+        let value: Value = serde_json::from_str(record_json).map_err(|e| e.to_string())?;
+        if first_actionable_gap_record(&value).is_some() {
+            return Err("expected None for whitespace-only verification commands".to_string());
+        }
+        Ok(())
+    }
+
+    // ── action_kind_for_gap_route ─────────────────────────────────────────────
+
+    #[test]
+    fn action_kind_for_add_output_golden() -> Result<(), String> {
+        let result = action_kind_for_gap_route("AddOutputGolden");
+        if result != "generate_missing_artifact" {
+            return Err(format!(
+                "expected generate_missing_artifact but got: {result}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn action_kind_for_regenerate_artifact() -> Result<(), String> {
+        let result = action_kind_for_gap_route("RegenerateArtifact");
+        if result != "generate_missing_artifact" {
+            return Err(format!(
+                "expected generate_missing_artifact but got: {result}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn action_kind_for_other_route() -> Result<(), String> {
+        let result = action_kind_for_gap_route("AddBoundaryAssertion");
+        if result != "write_focused_test" {
+            return Err(format!("expected write_focused_test but got: {result}"));
+        }
+        Ok(())
+    }
+
+    // ── target_from_gap_record filter ────────────────────────────────────────
+
+    #[test]
+    fn target_from_gap_record_returns_none_when_no_useful_fields() -> Result<(), String> {
+        // repair_route present but none of file/related_test/assertion_shape set
+        let record: Value =
+            serde_json::from_str(r#"{"repair_route": {"route_kind": "AddAssertion"}}"#)
+                .map_err(|e| e.to_string())?;
+        let result = target_from_gap_record(&record);
+        if result.is_some() {
+            return Err("expected None when no target fields".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn target_from_gap_record_returns_some_when_file_set() -> Result<(), String> {
+        let record: Value = serde_json::from_str(
+            r#"{"repair_route": {"route_kind": "AddAssertion", "target_file": "tests/foo.rs"}}"#,
+        )
+        .map_err(|e| e.to_string())?;
+        let result = target_from_gap_record(&record);
+        if result.is_none() {
+            return Err("expected Some when target_file is set".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn target_from_gap_record_none_when_no_repair_route() -> Result<(), String> {
+        let record: Value =
+            serde_json::from_str(r#"{"gap_id": "g1"}"#).map_err(|e| e.to_string())?;
+        let result = target_from_gap_record(&record);
+        if result.is_some() {
+            return Err("expected None when repair_route missing".to_string());
+        }
+        Ok(())
+    }
+
+    // ── push_wrapped_paragraph ───────────────────────────────────────────────
+
+    #[test]
+    fn push_wrapped_paragraph_formats_text() -> Result<(), String> {
+        let mut out = String::new();
+        push_wrapped_paragraph(&mut out, "short text");
+        if !out.contains("short text") {
+            return Err(format!("expected 'short text' in output: {out}"));
+        }
+        if !out.ends_with('\n') {
+            return Err("expected trailing newline".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn push_wrapped_paragraph_wraps_long_text() -> Result<(), String> {
+        let long_text = "word ".repeat(20).trim().to_string();
+        let mut out = String::new();
+        push_wrapped_paragraph(&mut out, &long_text);
+        let lines: Vec<&str> = out.lines().collect();
+        if lines.len() < 2 {
+            return Err(format!(
+                "expected wrapped text to have multiple lines but got: {out}"
+            ));
+        }
+        Ok(())
+    }
+
+    // ── selected_from_receipt_or_sources seam_id fallback ────────────────────
+
+    #[test]
+    fn selected_from_receipt_uses_proof_seam_id_fallback() -> Result<(), String> {
+        // receipt has no seam_id, but assistant_proof has seam.seam_id
+        let receipt_json = r#"{"provenance": {"movement": "improved"}}"#;
+        let proof_json = r#"{"seam": {"seam_id": "proof-seam-id"}}"#;
+        let pr_guidance_json = r#"{"comments":[{"seam_id":"g1"}]}"#;
+        let mut input = bare_input();
+        input.receipt_path = Some("receipt.json".to_string());
+        input.receipt_json = Some(Ok(receipt_json.to_string()));
+        input.assistant_proof_path = Some("proof.json".to_string());
+        input.assistant_proof_json = Some(Ok(proof_json.to_string()));
+        input.pr_guidance_path = Some("g.json".to_string());
+        input.pr_guidance_json = Some(Ok(pr_guidance_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains("proof-seam-id") {
+            return Err(format!(
+                "expected proof-seam-id in receipt selected: {rendered}"
+            ));
+        }
+        Ok(())
+    }
+
+    // ── selected_from_guidance: summary_only fallback ────────────────────────
+
+    #[test]
+    fn selected_from_guidance_uses_summary_only_item() -> Result<(), String> {
+        // suppressed items are absent but summary_only is present, and suppressed string in warnings
+        // forces suppressed route → guidance selected from summary_only fallback
+        let pr_guidance_json = r#"{
+            "summary_only": [{"seam_id": "so-seam", "kind": "predicate_boundary"}],
+            "warnings": ["seam configured off by policy"]
+        }"#;
+        let mut input = bare_input();
+        input.pr_guidance_path = Some("g.json".to_string());
+        input.pr_guidance_json = Some(Ok(pr_guidance_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        // suppressed route triggered by warning text
+        if !rendered.contains(r#""status": "suppressed""#) {
+            return Err(format!("expected suppressed but got: {rendered}"));
+        }
+        Ok(())
+    }
+
+    // ── selected_acknowledged: ledger fallback seam_id ───────────────────────
+
+    #[test]
+    fn selected_acknowledged_uses_fallback_seam_id_when_no_top_repair_route() -> Result<(), String>
+    {
+        let ledger_json = r#"{"movement": {"acknowledged": 2}}"#;
+        let mut input = bare_input();
+        input.ledger_path = Some("ledger.json".to_string());
+        input.ledger_json = Some(Ok(ledger_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains("acknowledged-boundary-0001") {
+            return Err(format!(
+                "expected fallback seam_id in acknowledged: {rendered}"
+            ));
+        }
+        Ok(())
+    }
+
+    // ── selected_waived: fallback seam_id when no seam_id present ────────────
+
+    #[test]
+    fn selected_waived_uses_fallback_seam_id_when_no_seam_id() -> Result<(), String> {
+        let gate_json = r#"{"waivers": [{"id": "w1"}]}"#;
+        let mut input = bare_input();
+        input.gate_decision_path = Some("gate.json".to_string());
+        input.gate_decision_json = Some(Ok(gate_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains("waived-boundary-0001") {
+            return Err(format!("expected fallback seam_id for waived: {rendered}"));
+        }
+        Ok(())
+    }
+
+    // ── display_path round-trip ───────────────────────────────────────────────
+
+    #[test]
+    fn display_path_converts_backslashes() -> Result<(), String> {
+        let path = Path::new("some\\windows\\path.json");
+        let result = display_path(path);
+        if result.contains('\\') {
+            return Err(format!("expected forward slashes but got: {result}"));
+        }
+        if !result.contains("some/windows/path.json") {
+            return Err(format!("unexpected path: {result}"));
+        }
+        Ok(())
+    }
+
+    // ── render_first_useful_action_json: verify schema fields present ─────────
+
+    #[test]
+    fn render_first_useful_action_json_includes_schema_version() -> Result<(), String> {
+        let report = build_first_useful_action_report(bare_input());
+        let rendered = render_first_useful_action_json(&report)?;
+        if !rendered.contains(r#""schema_version": "0.1""#) {
+            return Err(format!(
+                "expected schema_version in JSON output: {rendered}"
+            ));
+        }
+        if !rendered.contains(r#""kind": "first_useful_action""#) {
+            return Err(format!("expected kind field in JSON output: {rendered}"));
+        }
+        Ok(())
+    }
+
+    // ── coverage_frontier and editor_context parsed but not actionable ────────
+
+    #[test]
+    fn coverage_frontier_does_not_block_no_actionable_routing() -> Result<(), String> {
+        let mut input = bare_input();
+        input.coverage_frontier_path = Some("frontier.json".to_string());
+        input.coverage_frontier_json = Some(Ok(r#"{"kind": "coverage_frontier"}"#.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        // coverage frontier alone doesn't trigger actionable routing
+        if !rendered.contains(r#""status": "no_actionable_seam""#) {
+            return Err(format!(
+                "expected no_actionable_seam with only frontier: {rendered}"
+            ));
+        }
+        Ok(())
+    }
+
+    // ── markdown receipt section ─────────────────────────────────────────────
+
+    #[test]
+    fn markdown_verify_section_present_for_actionable() -> Result<(), String> {
+        // The actionable report emits seam_commands which include a verify command
+        let proof_json = r#"{
+            "seam": {
+                "seam_id": "seam-verify",
+                "seam_kind": "predicate_boundary",
+                "grip_class": "weakly_gripped"
+            },
+            "recommendation": {}
+        }"#;
+        let pr_guidance_json = r#"{"comments":[{"seam_id":"seam-verify"}]}"#;
+        let mut input = bare_input();
+        input.pr_guidance_path = Some("g.json".to_string());
+        input.assistant_proof_path = Some("proof.json".to_string());
+        input.pr_guidance_json = Some(Ok(pr_guidance_json.to_string()));
+        input.assistant_proof_json = Some(Ok(proof_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let md = render_first_useful_action_markdown(&report);
+        if !md.contains("## Verify") {
+            return Err(format!(
+                "expected Verify section in actionable markdown: {md}"
+            ));
+        }
+        Ok(())
+    }
 }
