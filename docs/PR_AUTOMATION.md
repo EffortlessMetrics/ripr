@@ -227,12 +227,21 @@ It does not fail CI.
 `target/ripr/reports/index.json` as a reviewer front door. It summarizes the
 active campaign, available reports, missing expected reports for the changed
 surface, advisory reports, and suggested next commands. The index also carries
-repo-ops packet status for command mutability, PR-ready, worktree doctor, PR
-triage, per-PR merge readiness, generated-clean, badge diff policy, critic,
-receipts, suggested fixes, and `check-pr` artifacts so agents can consume the
-operating packet as JSON instead of scraping prose. The command catalog check
-packet is included next to the catalog itself so catalog drift is visible in the
-same front-door index.
+repo-ops packet status for command mutability, the repo cockpit, PR-ready,
+worktree doctor, PR triage, per-PR merge readiness, generated-clean, badge diff
+policy, critic, receipts, suggested fixes, and `check-pr` artifacts so agents
+can consume the operating packet as JSON instead of scraping prose. The command
+catalog check packet is included next to the catalog itself so catalog drift is
+visible in the same front-door index.
+
+`cockpit` writes `target/ripr/reports/cockpit.md` and
+`target/ripr/reports/cockpit.json`. It is the repo-level maintainer front door:
+it composes worktree doctor, command mutability, command-catalog coverage, spec
+numbering, campaign/source-of-truth checks, open PR triage, generated-clean, and
+badge diff policy into one advisory action queue. It reads GitHub PR metadata
+through `pr-triage-report`, writes local report packets, and does not close
+PRs, update branches, edit badge endpoint JSON, mutate source, or change
+policy authority.
 
 `pr-ready` writes `target/ripr/reports/pr-ready.md` and
 `target/ripr/reports/pr-ready.json`. It composes the local repo-ops checks that

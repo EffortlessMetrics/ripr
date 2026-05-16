@@ -137,6 +137,20 @@ The report index should be the front door for artifact discovery. CI should not
 require reviewers to inspect raw job logs to find the packet that justifies a
 decision.
 
+For repo-local operator work, run:
+
+```bash
+cargo xtask cockpit
+cargo xtask pr-ready
+cargo xtask check-pr
+```
+
+`cockpit` is the repo-level advisory front panel for board state,
+source-of-truth checks, generated-evidence rails, badge ownership, and command
+catalog coverage. `pr-ready` is the active-branch pre-review packet. Neither
+command changes badge endpoint JSON, branch protection, baseline state,
+suppressions, generated tests, or policy authority.
+
 The `pr-plan-changes.txt` file is the current structural advisory artifact;
 the `target/ci/ci-plan.json` forecast remains planned. The `editor-agent-loop`
 paths reflect the current split between the local bulk packet envelope
