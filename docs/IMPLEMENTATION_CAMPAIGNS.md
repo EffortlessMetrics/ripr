@@ -3363,6 +3363,13 @@ End state:
   generated under `target/ripr/`
 - contributor docs explain which surfaces are authored truth, generated
   evidence, deterministic repair, and judgment-required decisions
+- `cargo xtask pr-ready` gives agents one local PR readiness packet before
+  opening or updating a PR
+- `cargo xtask cockpit` gives maintainers one repo-level advisory action queue
+  for board state, generated-evidence hygiene, source-of-truth checks, and next
+  commands
+- report packets have Markdown for humans and JSON for agents instead of
+  requiring prose scraping
 
 Work items:
 
@@ -3384,6 +3391,16 @@ Work items:
 | `docs/generated-evidence-discipline` | done | #975 added `docs/GENERATED_EVIDENCE.md` and linked contributor/automation docs. |
 | `devex/command-mutability-catalog` | done | Adds `cargo xtask commands` to classify xtask commands by mutability, generated-output paths, external-state access, and judgment-required boundaries. |
 | `campaign/generated-evidence-discipline-closeout` | done | Closed after the generated-clean, badge diff policy, worktree, triage, PR status, spec numbering, campaign hardening, receipt, critic, suggested-fixes, and docs surfaces aligned; see `docs/handoffs/2026-05-14-generated-evidence-discipline-closeout.md`. |
+| `devex/pr-triage-json` | done | Commit `9cf2c039` added `target/ripr/reports/pr-triage.json` so the board-level advisory packet is agent-readable. |
+| `devex/gh-pr-status-json` | done | #1011 added `target/ripr/reports/gh-pr-status.json` for single-PR merge readiness. |
+| `reports/repo-ops-packet-index` | done | #1015 added repo-ops packet status to `cargo xtask reports index`, including command mutability, cockpit, PR-ready, worktree doctor, PR triage, merge readiness, generated-clean, badge policy, critic, receipts, suggested fixes, and check-pr artifacts. |
+| `devex/check-command-catalog` | done | #1018 added `cargo xtask check-command-catalog` so new xtask commands cannot bypass mutability classification. |
+| `devex/pr-ready-cockpit` | done | #1025 added `cargo xtask pr-ready`, writing `target/ripr/reports/pr-ready.{md,json}` as the local PR front door. |
+| `devex/repo-cockpit` | done | #1035 added `cargo xtask cockpit`, writing `target/ripr/reports/cockpit.{md,json}` as the repo-level maintainer front door. |
+| `docs/merge-watch-policy` | done | #1036 added `docs/MERGE_WATCH_POLICY.md` for polling cadence, branch-refresh decisions, REST fallback, Droid/advisory checks, and local merge limits. |
+| `automation/suggested-fixes-expansion` | done | #1039, #1041, #1044, and #1053 expanded deterministic suggested fixes for docs index ordering, traceability ordering, capability ordering, and command catalog ordering while preserving judgment-required boundaries. |
+| `devex/pr-triage-queue-disposition` | done | #1047 added advisory queue dispositions for merge candidates, stale/duplicate work, rebase needs, fresh-validation gaps, owner decisions, and wrong-lane work. |
+| `campaign/repo-ops-ux-cockpit-closeout` | done | Closed after the front-door packet flow landed; see `docs/handoffs/2026-05-16-repo-ops-ux-cockpit-closeout.md`. |
 
 Blocking conditions:
 
@@ -3402,6 +3419,8 @@ cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
 cargo xtask check-generated-clean
+cargo xtask pr-ready
+cargo xtask cockpit
 cargo xtask check-campaign
 cargo xtask check-pr
 git diff --check
@@ -3410,8 +3429,10 @@ git diff --check
 Closeout:
 
 - [Generated Evidence Discipline closeout](handoffs/2026-05-14-generated-evidence-discipline-closeout.md)
-  records the PR chain, prompt-to-artifact audit, validation plan, and the
-  boundary that future repo-operations guardrails should open explicitly.
+- [Repo-Ops UX cockpit closeout](handoffs/2026-05-16-repo-ops-ux-cockpit-closeout.md)
+  records the front-door follow-up PR chain, prompt-to-artifact audit,
+  validation plan, and boundary that future repo-operations guardrails should
+  open explicitly.
 
 ## Future Campaign: Editor Evidence UX
 

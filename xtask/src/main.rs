@@ -2367,6 +2367,9 @@ fn command_catalog_violations(
             "command catalog entry `{root}` does not match any known xtask command"
         ));
     }
+    if let Some(order_violation) = command_catalog_order_violation(commands, catalog) {
+        violations.push(order_violation);
+    }
 
     let mut seen = BTreeSet::<&str>::new();
     for entry in catalog {
@@ -2407,6 +2410,30 @@ fn command_catalog_violations(
     }
 
     violations
+}
+
+fn command_catalog_order_violation(
+    commands: &[&'static str],
+    catalog: &[CommandCatalogEntry],
+) -> Option<String> {
+    let mut order = BTreeMap::new();
+    for (index, command) in commands.iter().enumerate() {
+        order.insert(*command, index);
+    }
+
+    let mut last = None;
+    for entry in catalog {
+        let Some(index) = order.get(entry.command).copied() else {
+            continue;
+        };
+        if last.is_some_and(|last| index < last) {
+            return Some(
+                "command catalog entries must follow the xtask help catalog order".to_string(),
+            );
+        }
+        last = Some(index);
+    }
+    None
 }
 
 fn command_roots<'a>(commands: impl Iterator<Item = &'a str>) -> BTreeSet<&'a str> {
@@ -2540,6 +2567,15 @@ fn suggested_fixes_patch() -> Result<(String, Vec<String>), String> {
         append_whole_file_patch(&mut patch, &path, &original, &sorted);
         files.push(normalize_path(&path));
     }
+    for path in deterministic_suggested_fix_command_catalog_files() {
+        let original = read_text_lossy(&path)?;
+        let sorted = sorted_command_catalog_content(&original);
+        if sorted == original {
+            continue;
+        }
+        append_whole_file_patch(&mut patch, &path, &original, &sorted);
+        files.push(normalize_path(&path));
+    }
     files.sort();
     Ok((patch, files))
 }
@@ -2579,6 +2615,13 @@ fn deterministic_suggested_fix_traceability_files() -> Vec<PathBuf> {
 
 fn deterministic_suggested_fix_capability_files() -> Vec<PathBuf> {
     [PathBuf::from("metrics/capabilities.toml")]
+        .into_iter()
+        .filter(|path| path.exists())
+        .collect()
+}
+
+fn deterministic_suggested_fix_command_catalog_files() -> Vec<PathBuf> {
+    [PathBuf::from("xtask/src/command.rs")]
         .into_iter()
         .filter(|path| path.exists())
         .collect()
@@ -2756,6 +2799,94 @@ fn sorted_capability_blocks_content(text: &str) -> String {
     output
 }
 
+fn sorted_command_catalog_content(text: &str) -> String {
+    let start_marker = "pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {\n    vec![\n";
+    let Some(start) = text.find(start_marker) else {
+        return text.to_string();
+    };
+    let entries_start = start + start_marker.len();
+    let Some(end_relative) = text[entries_start..].find("\n    ]\n}") else {
+        return text.to_string();
+    };
+    let entries_end = entries_start + end_relative;
+    let body = &text[entries_start..entries_end];
+    let Some(sorted_body) = sorted_command_catalog_entry_blocks(body) else {
+        return text.to_string();
+    };
+    if sorted_body == body {
+        return text.to_string();
+    }
+
+    let mut output = String::with_capacity(text.len());
+    output.push_str(&text[..entries_start]);
+    output.push_str(&sorted_body);
+    output.push_str(&text[entries_end..]);
+    output
+}
+
+fn sorted_command_catalog_entry_blocks(body: &str) -> Option<String> {
+    let mut order = BTreeMap::new();
+    for (index, command) in known_commands().iter().enumerate() {
+        order.insert(command.to_string(), index);
+    }
+
+    let mut blocks = Vec::new();
+    let mut current = String::new();
+    let mut in_block = false;
+    for line in body.split_inclusive('\n') {
+        let trimmed = line.trim();
+        if !in_block {
+            if trimmed.is_empty() {
+                current.push_str(line);
+                continue;
+            }
+            if trimmed != "command_entry(" {
+                return None;
+            }
+            in_block = true;
+            current.push_str(line);
+            continue;
+        }
+
+        current.push_str(line);
+        if trimmed == ")," {
+            let command = command_catalog_entry_block_command(&current)?;
+            let index = *order.get(&command)?;
+            blocks.push((index, blocks.len(), std::mem::take(&mut current)));
+            in_block = false;
+        }
+    }
+    if in_block || !current.trim().is_empty() || blocks.len() <= 1 {
+        return None;
+    }
+
+    let original_order = blocks
+        .iter()
+        .map(|(order, original_index, _)| (*order, *original_index))
+        .collect::<Vec<_>>();
+    blocks.sort_by_key(|(order, original_index, _)| (*order, *original_index));
+    let sorted_order = blocks
+        .iter()
+        .map(|(order, original_index, _)| (*order, *original_index))
+        .collect::<Vec<_>>();
+    if original_order == sorted_order {
+        return Some(body.to_string());
+    }
+
+    Some(blocks.into_iter().map(|(_, _, block)| block).collect())
+}
+
+fn command_catalog_entry_block_command(block: &str) -> Option<String> {
+    for line in block.lines().skip(1) {
+        let trimmed = line.trim().trim_end_matches(',').trim();
+        if !trimmed.starts_with('"') {
+            continue;
+        }
+        return parse_quoted_value(trimmed).ok();
+    }
+    None
+}
+
 fn capability_sort_keys(capabilities: &[Capability]) -> Option<Vec<(String, String)>> {
     capabilities.iter().map(capability_sort_key).collect()
 }
@@ -2861,6 +2992,7 @@ fn suggested_fixes_report_body(files: &[String], patch_empty: bool) -> String {
     body.push_str("- deterministic docs index table ordering for specs and ADRs\n");
     body.push_str("- deterministic traceability behavior block ordering by spec id\n");
     body.push_str("- deterministic capability block ordering by spec ID and capability ID\n");
+    body.push_str("- deterministic command catalog ordering by xtask help order\n");
     body.push_str("- no badge value edits\n");
     body.push_str("- no golden blessings\n");
     body.push_str("- no baselines, suppressions, dependency exceptions, or schema changes\n\n");
@@ -3809,6 +3941,7 @@ fn pr_has_superseded_signal(pr: &PrTriagePullRequest) -> bool {
 
 fn pr_has_duplicate_signal(pr: &PrTriagePullRequest) -> bool {
     pr_triage_title_or_label_contains(pr, "duplicate")
+        || pr.body.to_ascii_lowercase().contains("duplicate of")
 }
 
 fn pr_triage_title_or_label_contains(pr: &PrTriagePullRequest, needle: &str) -> bool {
@@ -35047,7 +35180,7 @@ mod tests {
         ripr_command_literals_in_text, ripr_debug_binary, ripr_pre_commit_hook,
         run_ci_full_evidence_gates, sarif_policy_report_json, sarif_policy_report_markdown,
         semantic_selector_matches, should_scan_static_language_path, should_skip_path,
-        sorted_allowlist_content, sorted_capability_blocks_content,
+        sorted_allowlist_content, sorted_capability_blocks_content, sorted_command_catalog_content,
         sorted_markdown_index_table_content, sorted_traceability_behavior_blocks_content,
         spec_id_from_path, spec_ids_in_text, spec_numbering_violations, specs,
         static_language_allowlist_covers, status_for_report, suggested_fixes_patch,
@@ -39985,7 +40118,179 @@ jobs:
     }
 
     #[test]
-    fn suggested_fixes_patch_sorts_allowlists_doc_indexes_traceability_and_capabilities()
+    fn sorted_command_catalog_content_sorts_entries_by_help_order() {
+        let input = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        command_entry(
+            "check-pr",
+            "non_mutating_check",
+            "target/ripr/reports",
+            false,
+            "Review-ready gate.",
+        ),
+        command_entry(
+            "shape",
+            "mutating",
+            "source files",
+            false,
+            "Runs deterministic shaping.",
+        ),
+    ]
+}
+"#;
+        let sorted = sorted_command_catalog_content(input);
+
+        assert!(
+            sorted
+                .find("\"shape\"")
+                .zip(sorted.find("\"check-pr\""))
+                .is_some_and(|(shape, check_pr)| shape < check_pr)
+        );
+    }
+
+    #[test]
+    fn sorted_command_catalog_content_sorts_commands_with_shared_roots() {
+        let input = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        command_entry(
+            "goldens bless <name> --reason <reason>",
+            "mutating",
+            "fixtures/**/expected/**",
+            true,
+            "Updates golden expected outputs.",
+        ),
+        command_entry(
+            "goldens check",
+            "non_mutating_check",
+            "target/ripr/reports/goldens.md",
+            false,
+            "Checks golden drift.",
+        ),
+    ]
+}
+"#;
+        let sorted = sorted_command_catalog_content(input);
+
+        assert!(
+            sorted
+                .find("\"goldens check\"")
+                .zip(sorted.find("\"goldens bless <name> --reason <reason>\""))
+                .is_some_and(|(check, bless)| check < bless)
+        );
+    }
+
+    #[test]
+    fn sorted_command_catalog_content_skips_unknown_or_malformed_catalogs() {
+        let unknown = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        command_entry(
+            "not-a-real-command",
+            "report_only",
+            "target/ripr/reports",
+            false,
+            "Unknown command.",
+        ),
+        command_entry(
+            "shape",
+            "mutating",
+            "source files",
+            false,
+            "Runs deterministic shaping.",
+        ),
+    ]
+}
+"#;
+        let malformed = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        command_entry(
+            "check-pr",
+            "non_mutating_check",
+            "target/ripr/reports",
+            false,
+            "Review-ready gate.",
+        )
+    ]
+}
+"#;
+
+        assert_eq!(sorted_command_catalog_content(unknown), unknown);
+        assert_eq!(sorted_command_catalog_content(malformed), malformed);
+    }
+
+    #[test]
+    fn sorted_command_catalog_content_skips_non_catalog_or_incomplete_catalogs() {
+        let no_catalog = "pub(crate) fn unrelated() {}\n";
+        let incomplete = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        command_entry(
+            "shape",
+            "mutating",
+            "source files",
+            false,
+            "Runs deterministic shaping.",
+        ),
+"#;
+        let non_entry_body = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        CommandCatalogEntry {
+            command: "shape",
+            mutability: "mutating",
+            writes: "source files",
+            judgment_required: false,
+            notes: "Runs deterministic shaping.",
+        },
+    ]
+}
+"#;
+        let single_entry = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        command_entry(
+            "shape",
+            "mutating",
+            "source files",
+            false,
+            "Runs deterministic shaping.",
+        ),
+    ]
+}
+"#;
+
+        assert_eq!(sorted_command_catalog_content(no_catalog), no_catalog);
+        assert_eq!(sorted_command_catalog_content(incomplete), incomplete);
+        assert_eq!(
+            sorted_command_catalog_content(non_entry_body),
+            non_entry_body
+        );
+        assert_eq!(sorted_command_catalog_content(single_entry), single_entry);
+    }
+
+    #[test]
+    fn sorted_command_catalog_content_skips_entries_without_quoted_command() {
+        let input = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        command_entry(
+            SHAPE_COMMAND,
+            "mutating",
+            "source files",
+            false,
+            "Runs deterministic shaping.",
+        ),
+        command_entry(
+            "check-pr",
+            "non_mutating_check",
+            "target/ripr/reports",
+            false,
+            "Review-ready gate.",
+        ),
+    ]
+}
+"#;
+
+        assert_eq!(sorted_command_catalog_content(input), input);
+    }
+
+    #[test]
+    fn suggested_fixes_patch_sorts_allowlists_doc_indexes_traceability_capabilities_and_catalog()
     -> Result<(), String> {
         with_temp_cwd("suggested-fixes-allowlist", |root| {
             write(
@@ -40006,6 +40311,28 @@ jobs:
                 "# Specs\n\n## Index\n\n| Spec | Status | Topic |\n| --- | --- | --- |\n| [RIPR-SPEC-0002](RIPR-SPEC-0002-b.md) | proposed | B |\n| [RIPR-SPEC-0001](RIPR-SPEC-0001-a.md) | accepted | A |\n",
             );
             write(
+                &root.join("xtask/src/command.rs"),
+                r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        command_entry(
+            "check-pr",
+            "non_mutating_check",
+            "target/ripr/reports",
+            false,
+            "Review-ready gate.",
+        ),
+        command_entry(
+            "shape",
+            "mutating",
+            "source files",
+            false,
+            "Runs deterministic shaping.",
+        ),
+    ]
+}
+"#,
+            );
+            write(
                 &root.join("badges/ripr.json"),
                 r#"{"schemaVersion":1,"label":"ripr","message":"999","color":"red"}"#,
             );
@@ -40019,7 +40346,8 @@ jobs:
                     ".ripr/traceability.toml".to_string(),
                     "docs/specs/README.md".to_string(),
                     "metrics/capabilities.toml".to_string(),
-                    "policy/process.txt".to_string()
+                    "policy/process.txt".to_string(),
+                    "xtask/src/command.rs".to_string()
                 ]
             );
             assert!(patch.contains("diff --git a/.ripr/generated.txt b/.ripr/generated.txt"));
@@ -40047,6 +40375,12 @@ jobs:
             assert!(patch.contains("diff --git a/policy/process.txt b/policy/process.txt"));
             assert!(!patch.contains("badges/ripr.json"));
             assert!(!patch.contains("999"));
+            assert!(
+                patch
+                    .find("+            \"shape\"")
+                    .zip(patch.find("+            \"check-pr\""))
+                    .is_some_and(|(shape, check_pr)| shape < check_pr)
+            );
             Ok(())
         })
     }
@@ -46496,8 +46830,17 @@ jobs:
         duplicate.labels = vec!["duplicate".to_string()];
         let mut superseded = triage_pr(5, "devex: old approach", &["docs/OLD.md"]);
         superseded.body.push_str("\nSuperseded by #6.\n");
+        let mut duplicate_body = triage_pr(6, "devex: refresh", &["docs/REFRESH.md"]);
+        duplicate_body.body.push_str("\nDuplicate of #4.\n");
 
-        let prs = vec![mergeable, behind, pending, duplicate, superseded];
+        let prs = vec![
+            mergeable,
+            behind,
+            pending,
+            duplicate,
+            superseded,
+            duplicate_body,
+        ];
         let findings = pr_triage_findings(&prs, days_from_civil(2026, 5, 14));
         let dispositions = pr_triage_queue_dispositions(&prs, &findings)
             .into_iter()
@@ -46521,6 +46864,10 @@ jobs:
             Some("close_duplicate")
         );
         assert_eq!(dispositions.get(&5).map(String::as_str), Some("superseded"));
+        assert_eq!(
+            dispositions.get(&6).map(String::as_str),
+            Some("close_duplicate")
+        );
     }
 
     #[test]
@@ -47215,6 +47562,56 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(report.contains("command `shape` must document writes"));
         assert!(report.contains("must be judgment-required"));
         assert!(report.contains("must explain when it writes"));
+    }
+
+    #[test]
+    fn command_catalog_check_reports_order_drift() {
+        let commands = vec!["shape", "check-pr"];
+        let catalog = vec![
+            CommandCatalogEntry {
+                command: "check-pr",
+                mutability: "non_mutating_check",
+                writes: "target/ripr/reports",
+                judgment_required: false,
+                notes: "Review-ready gate.",
+            },
+            CommandCatalogEntry {
+                command: "shape",
+                mutability: "mutating",
+                writes: "source files",
+                judgment_required: false,
+                notes: "Runs deterministic shaping.",
+            },
+        ];
+
+        let report = command_catalog_violations(&commands, &catalog).join("\n");
+
+        assert!(report.contains("must follow the xtask help catalog order"));
+    }
+
+    #[test]
+    fn command_catalog_check_reports_order_drift_for_commands_with_shared_roots() {
+        let commands = vec!["goldens check", "goldens bless <name> --reason <reason>"];
+        let catalog = vec![
+            CommandCatalogEntry {
+                command: "goldens bless <name> --reason <reason>",
+                mutability: "mutating",
+                writes: "fixtures/**/expected/**",
+                judgment_required: true,
+                notes: "Updates golden expected outputs.",
+            },
+            CommandCatalogEntry {
+                command: "goldens check",
+                mutability: "non_mutating_check",
+                writes: "target/ripr/reports/goldens.md",
+                judgment_required: false,
+                notes: "Checks golden drift.",
+            },
+        ];
+
+        let report = command_catalog_violations(&commands, &catalog).join("\n");
+
+        assert!(report.contains("must follow the xtask help catalog order"));
     }
 
     #[test]
