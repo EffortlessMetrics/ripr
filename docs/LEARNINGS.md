@@ -443,3 +443,132 @@ loop.
 - The exit-early signals above are GitHub-specific. The general
   principle - wake, check, exit on a small set of terminal states, and
   back off otherwise - transfers to other coordination targets.
+
+## 2026-05-12: Agent-Readiness Emerges From Doctrine And Gates
+
+Most repositories that call themselves agent-ready import a Python
+orchestration framework, an LLM client, or a prompt-templating library
+and call the job done. This repo deliberately does not. There is no
+agent SDK, no orchestration runtime, no retry-with-backoff helper, no
+prompt template, and no LLM-coupling crate in `Cargo.toml`. The
+production surface is plain Rust, the automation surface is
+`cargo xtask`, and the merge surface is GitHub primitives.
+
+### What we have instead
+
+The agent-readable layer is doctrine plus checks that fail fast:
+
+- `cargo xtask check-*` gates such as `check-architecture`,
+  `check-static-language`, `check-no-panic-family`, `check-file-policy`,
+  `check-public-api`, `check-workspace-shape`, `check-dependencies`,
+  `check-output-contracts`, `check-traceability`, `check-network-policy`,
+  `check-capabilities`, and `check-fixture-contracts`.
+- ADRs that supersede their own prior versions with hash references.
+  `docs/adr/0009-python-parser-substrate.md`, for example, cites the
+  original decision in commit `d70f1802`.
+- `.ripr/traceability.toml` mapping spec to tests to code to outputs
+  to metrics for every behavior, enforced by `check-traceability`.
+- `.ripr/goals/active.toml` as a single-file machine-readable
+  campaign state, drivable by `cargo xtask goals next`.
+- Per-fixture `SPEC.md` files turning fixtures into compiled
+  documentation, enforced by `check-fixture-contracts`.
+- Squash-merge with descriptive commit titles, making `git log
+  --oneline` a searchable campaign history.
+- Symmetric durable preference stores: an agent-side cross-session
+  store for habits and operator preferences, and repo-side
+  `docs/LEARNINGS.md` for repo knowledge worth surviving sessions.
+
+### Why this works
+
+Three reasons.
+
+First, agent-readiness is an emergent property of engineering
+practice, not a dependency to import. The same artifacts that make a
+human reviewer effective - specs, fixtures, ADRs, gates, and
+traceability - also make an agent effective. The repo does not need a
+separate agent layer because the doctrine layer is already there.
+
+Second, the right abstraction layer is doctrine that humans and agents
+both consume, enforced by checks that fail fast. Doctrine written down
+but not enforced rots quietly; doctrine enforced by a gate fails
+loudly the first time it is violated. The `check-*` gates turn taste
+into CI signal.
+
+Third, the investment compounds. Every campaign deposits more
+traceability, more fixtures, more ADRs, and more repo learnings. The
+next campaign - for the next agent, the same agent in a fresh session,
+or a human contributor - starts from a richer base. Agent-specific
+tooling ages out fast: the SDK gets deprecated, the prompt format
+shifts, or the orchestration framework forks. Doctrine in Markdown
+plus gates in Rust does not.
+
+### How to keep this working
+
+When tempted to add an agent-specific dependency or a hand-rolled
+orchestration helper, write the doctrine artifact first:
+
+- If the new behavior changes a public contract, add a spec under
+  `docs/specs/` and an entry in `.ripr/traceability.toml`.
+- If it constrains future contributors, add an ADR under `docs/adr/`.
+- If it can be expressed as "this thing must never appear in output,"
+  add a `cargo xtask check-*` gate and a row in the relevant `policy/*`
+  or `.ripr/*` allowlist.
+- If it changes how an agent should behave across sessions, add an
+  entry here in `docs/LEARNINGS.md`.
+
+Only reach for a tool, agent-specific or otherwise, when doctrine
+alone cannot express the constraint and a gate alone cannot enforce
+it. This ordering keeps the repo's durable conversation in the repo.
+
+### Concrete example: Campaign 27 substrate recovery
+
+Campaign 27 (Language Adapter Preview) initially picked
+`ruff_python_parser` as the Python substrate in ADR 0009, original
+version in commit `d70f1802`. That choice rested on an assumption that
+the parser was published; in fact `ruff_python_parser` is a workspace
+crate inside the Ruff monorepo and is marked `publish = false`. The
+original ADR even named `rustpython-parser` as the documented fallback
+under Revisit Criteria.
+
+The recovery - switching the substrate from `ruff_python_parser` to
+`rustpython-parser` mid-campaign, then landing the Python preview
+adapter scaffold in #804 - required no agent-specific tooling. It
+required:
+
+- ADR 0008, the TypeScript parser substrate template, as the
+  structural precedent for ADR 0009.
+- Fixture-with-`SPEC.md` examples already in the repo as the contract
+  for what the new adapter must extract.
+- The `check-dependencies` gate forcing the substrate switch to be
+  documented in `policy/dependency_allowlist.txt` before the new
+  dependency could land.
+- An ADR supersession arc visible from `git log --oneline`:
+  `d70f180 adr: Python parser substrate ADR (#770) (#794)` to
+  `d871d05 adr(py): switch Python parser substrate to rustpython-parser (#801)`
+  to `463b0b9 analysis(py): Python preview adapter scaffold (#804)`.
+- A short agent-side preference entry that "proceed" means
+  act on the obvious next thing.
+
+Eight PRs shipped in one session, from an agent that had not seen this
+codebase before, with the recovery executed cleanly. The agent did not
+need to remember the original substrate failure; the ADR text recorded
+it, and the gate would have caught any quiet regression.
+
+### Evidence the gates are not theater
+
+The static-language gate (`cargo xtask check-static-language`) has, on
+at least one occasion, flagged its own author for writing one of the
+banned-vocabulary words in a code comment. A gate that catches its
+author is doing real work. The same gate is the reason this learning
+describes those terms as "the banned-vocabulary list" rather than
+emitting them in plain prose: doctrine constrains the doctrine
+document itself, and that is the point.
+
+### Posture for future readers
+
+- Resist adding an agent SDK or LLM-coupling crate to `Cargo.toml`.
+- When adding a new behavior, add the gate that enforces it.
+- When making a one-off architectural decision, write the ADR before
+  the code.
+- Treat the conversation as latency; treat the repo as the durable
+  conversation.
