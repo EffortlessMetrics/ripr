@@ -6154,6 +6154,39 @@ Report packet index field contract:
   no-generated-test, no-provider-call, no-runtime-mutation-execution,
   no-inline-comment, and advisory-default boundaries.
 
+`target/ripr/reports/pr-triage.json` is the open-board hygiene packet emitted by
+`cargo xtask pr-triage-report`:
+
+```json
+{
+  "schema_version": "0.1",
+  "mode": "advisory",
+  "status": "warn",
+  "open_prs": [],
+  "queue_disposition": [
+    {
+      "pr_number": 819,
+      "disposition": "needs_owner_decision",
+      "reason": "duplicate or stale work needs canonical owner selection",
+      "recommended_action": "Choose the canonical branch, refresh the stale draft, or close superseded variants."
+    }
+  ],
+  "findings": [],
+  "recommended_actions": []
+}
+```
+
+Field contract:
+
+- `queue_disposition[].disposition` is advisory. It may be
+  `merge_candidate`, `needs_rebase`, `needs_review`, `close_duplicate`,
+  `superseded`, `needs_fresh_validation`, `needs_owner_decision`, or
+  `do_not_touch_wrong_lane`.
+- `queue_disposition[]` never closes, updates, merges, comments on, or mutates
+  PRs. It translates triage findings into operator next-action vocabulary.
+- `findings[]` remains the detailed evidence; `recommended_actions[]` keeps the
+  grouped repair guidance for agents and maintainers.
+
 `target/ripr/reports/pr-ready.json` is the local PR readiness cockpit emitted by
 `cargo xtask pr-ready`:
 
