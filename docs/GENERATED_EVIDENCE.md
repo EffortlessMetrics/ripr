@@ -143,7 +143,7 @@ cargo xtask suggested-fixes
 
 Current deterministic repair includes formatting, allowlist ordering, report
 directory setup, PR summary generation, and narrow suggested patches for
-allowlist ordering.
+allowlist ordering plus docs index table ordering for specs and ADRs.
 
 Suggested patches must never include:
 
