@@ -2076,15 +2076,12 @@ mod tests {
         // ParsedSources – zero warnings, zero read_errors.
         let mut parsed = ParsedSources::default();
         let result = parse_optional_json("label", None, &Some(Ok("{}".to_string())), &mut parsed);
-        if result.is_some() {
-            return Err("expected None when path is None".to_string());
-        }
-        if !parsed.warnings.is_empty() {
-            return Err(format!(
-                "expected no warnings but got {:?}",
-                parsed.warnings
-            ));
-        }
+        assert!(result.is_none(), "expected None when path is None");
+        assert!(
+            parsed.warnings.is_empty(),
+            "expected no warnings but got {:?}",
+            parsed.warnings
+        );
         Ok(())
     }
 
@@ -2093,21 +2090,21 @@ mod tests {
         // path is Some, but text (Option<Result>) is None → warning + read_error
         let mut parsed = ParsedSources::default();
         let result = parse_optional_json("my-label", Some("some/path.json"), &None, &mut parsed);
-        if result.is_some() {
-            return Err("expected None when text is absent".to_string());
-        }
-        if parsed.warnings.is_empty() {
-            return Err("expected a warning when text is absent".to_string());
-        }
-        if parsed.warnings[0].contains("some/path.json") && parsed.warnings[0].contains("my-label")
-        {
-            // correct
-        } else {
-            return Err(format!("unexpected warning text: {}", parsed.warnings[0]));
-        }
-        if parsed.read_errors.is_empty() {
-            return Err("expected a read_error entry".to_string());
-        }
+        assert!(result.is_none(), "expected None when text is absent");
+        assert!(
+            !(parsed.warnings.is_empty()),
+            "expected a warning when text is absent"
+        );
+        assert!(
+            parsed.warnings[0].contains("some/path.json")
+                && parsed.warnings[0].contains("my-label"),
+            "unexpected warning text: {}",
+            parsed.warnings[0]
+        );
+        assert!(
+            !(parsed.read_errors.is_empty()),
+            "expected a read_error entry"
+        );
         Ok(())
     }
 
@@ -2121,13 +2118,12 @@ mod tests {
             &Some(Err("permission denied".to_string())),
             &mut parsed,
         );
-        if result.is_some() {
-            return Err("expected None on Err text".to_string());
-        }
+        assert!(result.is_none(), "expected None on Err text");
         let warning = parsed.warnings.first().ok_or("expected a warning")?.clone();
-        if !warning.contains("permission denied") {
-            return Err(format!("expected error text in warning, got: {warning}"));
-        }
+        assert!(
+            warning.contains("permission denied"),
+            "expected error text in warning, got: {warning}"
+        );
         Ok(())
     }
 
@@ -2141,15 +2137,15 @@ mod tests {
             &Some(Ok("not json {{{".to_string())),
             &mut parsed,
         );
-        if result.is_some() {
-            return Err("expected None on invalid JSON".to_string());
-        }
-        if parsed.warnings.is_empty() {
-            return Err("expected warning on invalid JSON".to_string());
-        }
-        if parsed.read_errors.is_empty() {
-            return Err("expected read_error on invalid JSON".to_string());
-        }
+        assert!(result.is_none(), "expected None on invalid JSON");
+        assert!(
+            !(parsed.warnings.is_empty()),
+            "expected warning on invalid JSON"
+        );
+        assert!(
+            !(parsed.read_errors.is_empty()),
+            "expected read_error on invalid JSON"
+        );
         Ok(())
     }
 
@@ -2163,12 +2159,14 @@ mod tests {
             &mut parsed,
         );
         let val = result.ok_or("expected Some(Value) on valid JSON")?;
-        if val.get("key").and_then(|v| v.as_str()) != Some("value") {
-            return Err("unexpected parsed value".to_string());
-        }
-        if !parsed.warnings.is_empty() {
-            return Err("expected no warnings on valid JSON".to_string());
-        }
+        assert!(
+            !(val.get("key").and_then(|v| v.as_str()) != Some("value")),
+            "unexpected parsed value"
+        );
+        assert!(
+            parsed.warnings.is_empty(),
+            "expected no warnings on valid JSON"
+        );
         Ok(())
     }
 
@@ -2180,11 +2178,10 @@ mod tests {
         input.generated_at = "  ".to_string();
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(&format!(r#""generated_at": "{DEFAULT_GENERATED_AT}""#)) {
-            return Err(format!(
-                "expected generated_at to be '{DEFAULT_GENERATED_AT}' in: {rendered}"
-            ));
-        }
+        assert!(
+            rendered.contains(&format!(r#""generated_at": "{DEFAULT_GENERATED_AT}""#)),
+            "expected generated_at to be '{DEFAULT_GENERATED_AT}' in: {rendered}"
+        );
         Ok(())
     }
 
@@ -2195,14 +2192,14 @@ mod tests {
         // All inputs None → warning injected
         let report = build_first_useful_action_report(bare_input());
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(r#""status": "no_actionable_seam""#) {
-            return Err(format!(
-                "expected no_actionable_seam status but got: {rendered}"
-            ));
-        }
-        if !rendered.contains("no explicit first-action artifact input was supplied") {
-            return Err("expected warning about no inputs".to_string());
-        }
+        assert!(
+            rendered.contains(r#""status": "no_actionable_seam""#),
+            "expected no_actionable_seam status but got: {rendered}"
+        );
+        assert!(
+            rendered.contains("no explicit first-action artifact input was supplied"),
+            "expected warning about no inputs"
+        );
         Ok(())
     }
 
@@ -2214,12 +2211,14 @@ mod tests {
         input.pr_guidance_json = Some(Ok(r#"{"comments":[]}"#.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(r#""status": "no_actionable_seam""#) {
-            return Err("expected no_actionable_seam".to_string());
-        }
-        if rendered.contains("no explicit first-action artifact input was supplied") {
-            return Err("should not warn when inputs are present".to_string());
-        }
+        assert!(
+            rendered.contains(r#""status": "no_actionable_seam""#),
+            "expected no_actionable_seam"
+        );
+        assert!(
+            !(rendered.contains("no explicit first-action artifact input was supplied")),
+            "should not warn when inputs are present"
+        );
         Ok(())
     }
 
@@ -2233,14 +2232,14 @@ mod tests {
         input.pr_guidance_json = None; // path given but text not loaded
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(r#""status": "missing_required_artifact""#) {
-            return Err(format!(
-                "expected missing_required_artifact but got: {rendered}"
-            ));
-        }
-        if !rendered.contains("guidance.json") {
-            return Err("expected missing path in report".to_string());
-        }
+        assert!(
+            rendered.contains(r#""status": "missing_required_artifact""#),
+            "expected missing_required_artifact but got: {rendered}"
+        );
+        assert!(
+            rendered.contains("guidance.json"),
+            "expected missing path in report"
+        );
         Ok(())
     }
 
@@ -2256,11 +2255,10 @@ mod tests {
         input.receipt_json = Some(Ok(receipt_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(r#""status": "already_improved""#) {
-            return Err(format!(
-                "expected already_improved status but got: {rendered}"
-            ));
-        }
+        assert!(
+            rendered.contains(r#""status": "already_improved""#),
+            "expected already_improved status but got: {rendered}"
+        );
         Ok(())
     }
 
@@ -2274,9 +2272,10 @@ mod tests {
         input.receipt_json = Some(Ok(receipt_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(r#""status": "already_improved""#) {
-            return Err(format!("expected already_improved but got: {rendered}"));
-        }
+        assert!(
+            rendered.contains(r#""status": "already_improved""#),
+            "expected already_improved but got: {rendered}"
+        );
         Ok(())
     }
 
@@ -2290,11 +2289,10 @@ mod tests {
         input.receipt_json = Some(Ok(receipt_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(r#""status": "unchanged_after_attempt""#) {
-            return Err(format!(
-                "expected unchanged_after_attempt but got: {rendered}"
-            ));
-        }
+        assert!(
+            rendered.contains(r#""status": "unchanged_after_attempt""#),
+            "expected unchanged_after_attempt but got: {rendered}"
+        );
         Ok(())
     }
 
@@ -2307,13 +2305,11 @@ mod tests {
         input.receipt_json = Some(Ok(receipt_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if rendered.contains(r#""status": "already_improved""#)
-            || rendered.contains(r#""status": "unchanged_after_attempt""#)
-        {
-            return Err(format!(
-                "should not route as receipt for unknown movement: {rendered}"
-            ));
-        }
+        assert!(
+            !(rendered.contains(r#""status": "already_improved""#)
+                || rendered.contains(r#""status": "unchanged_after_attempt""#)),
+            "should not route as receipt for unknown movement: {rendered}"
+        );
         Ok(())
     }
 
@@ -2326,9 +2322,10 @@ mod tests {
         input.receipt_json = Some(Ok(receipt_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(r#""status": "already_improved""#) {
-            return Err(format!("expected already_improved but got: {rendered}"));
-        }
+        assert!(
+            rendered.contains(r#""status": "already_improved""#),
+            "expected already_improved but got: {rendered}"
+        );
         Ok(())
     }
 
@@ -2344,12 +2341,14 @@ mod tests {
         input.pr_guidance_json = Some(Ok(pr_guidance_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(r#""status": "suppressed""#) {
-            return Err(format!("expected suppressed status but got: {rendered}"));
-        }
-        if !rendered.contains(r#""action_kind": "no_action""#) {
-            return Err("expected no_action for suppressed".to_string());
-        }
+        assert!(
+            rendered.contains(r#""status": "suppressed""#),
+            "expected suppressed status but got: {rendered}"
+        );
+        assert!(
+            rendered.contains(r#""action_kind": "no_action""#),
+            "expected no_action for suppressed"
+        );
         Ok(())
     }
 
@@ -2364,11 +2363,10 @@ mod tests {
         input.pr_guidance_json = Some(Ok(pr_guidance_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(r#""status": "suppressed""#) {
-            return Err(format!(
-                "expected suppressed from warning text, got: {rendered}"
-            ));
-        }
+        assert!(
+            rendered.contains(r#""status": "suppressed""#),
+            "expected suppressed from warning text, got: {rendered}"
+        );
         Ok(())
     }
 
@@ -2382,11 +2380,10 @@ mod tests {
         input.pr_guidance_json = Some(Ok(pr_guidance_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(r#""status": "suppressed""#) {
-            return Err(format!(
-                "expected suppressed from warning text, got: {rendered}"
-            ));
-        }
+        assert!(
+            rendered.contains(r#""status": "suppressed""#),
+            "expected suppressed from warning text, got: {rendered}"
+        );
         Ok(())
     }
 
@@ -2404,9 +2401,10 @@ mod tests {
         input.baseline_delta_json = Some(Ok(delta_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(r#""status": "acknowledged""#) {
-            return Err(format!("expected acknowledged but got: {rendered}"));
-        }
+        assert!(
+            rendered.contains(r#""status": "acknowledged""#),
+            "expected acknowledged but got: {rendered}"
+        );
         Ok(())
     }
 
@@ -2422,11 +2420,10 @@ mod tests {
         input.ledger_json = Some(Ok(ledger_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(r#""status": "acknowledged""#) {
-            return Err(format!(
-                "expected acknowledged via ledger but got: {rendered}"
-            ));
-        }
+        assert!(
+            rendered.contains(r#""status": "acknowledged""#),
+            "expected acknowledged via ledger but got: {rendered}"
+        );
         Ok(())
     }
 
@@ -2438,9 +2435,10 @@ mod tests {
         input.ledger_json = Some(Ok(ledger_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if rendered.contains(r#""status": "acknowledged""#) {
-            return Err("should not route acknowledged when count is 0".to_string());
-        }
+        assert!(
+            !(rendered.contains(r#""status": "acknowledged""#)),
+            "should not route acknowledged when count is 0"
+        );
         Ok(())
     }
 
@@ -2459,9 +2457,10 @@ mod tests {
         input.gate_decision_json = Some(Ok(gate_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(r#""status": "waived""#) {
-            return Err(format!("expected waived status but got: {rendered}"));
-        }
+        assert!(
+            rendered.contains(r#""status": "waived""#),
+            "expected waived status but got: {rendered}"
+        );
         Ok(())
     }
 
@@ -2476,11 +2475,10 @@ mod tests {
         input.gate_decision_json = Some(Ok(gate_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(r#""status": "waived""#) {
-            return Err(format!(
-                "expected waived via waivers array but got: {rendered}"
-            ));
-        }
+        assert!(
+            rendered.contains(r#""status": "waived""#),
+            "expected waived via waivers array but got: {rendered}"
+        );
         Ok(())
     }
 
@@ -2492,11 +2490,10 @@ mod tests {
         input.gate_decision_json = Some(Ok(gate_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(r#""status": "waived""#) {
-            return Err(format!(
-                "expected waived for visible waiver but got: {rendered}"
-            ));
-        }
+        assert!(
+            rendered.contains(r#""status": "waived""#),
+            "expected waived for visible waiver but got: {rendered}"
+        );
         Ok(())
     }
 
@@ -2508,11 +2505,10 @@ mod tests {
         input.gate_decision_json = Some(Ok(gate_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if rendered.contains(r#""status": "waived""#) {
-            return Err(format!(
-                "visible status should not route waived: {rendered}"
-            ));
-        }
+        assert!(
+            !(rendered.contains(r#""status": "waived""#)),
+            "visible status should not route waived: {rendered}"
+        );
         Ok(())
     }
 
@@ -2524,9 +2520,10 @@ mod tests {
         input.gate_decision_json = Some(Ok(gate_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if rendered.contains(r#""status": "waived""#) {
-            return Err("should not route waived for non-waived gate".to_string());
-        }
+        assert!(
+            !(rendered.contains(r#""status": "waived""#)),
+            "should not route waived for non-waived gate"
+        );
         Ok(())
     }
 
@@ -2544,12 +2541,14 @@ mod tests {
         input.baseline_delta_json = Some(Ok(delta_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(r#""status": "baseline_only""#) {
-            return Err(format!("expected baseline_only status but got: {rendered}"));
-        }
-        if !rendered.contains(r#""action_kind": "acknowledge_baseline""#) {
-            return Err("expected acknowledge_baseline action".to_string());
-        }
+        assert!(
+            rendered.contains(r#""status": "baseline_only""#),
+            "expected baseline_only status but got: {rendered}"
+        );
+        assert!(
+            rendered.contains(r#""action_kind": "acknowledge_baseline""#),
+            "expected acknowledge_baseline action"
+        );
         Ok(())
     }
 
@@ -2565,9 +2564,10 @@ mod tests {
         input.baseline_delta_json = Some(Ok(delta_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(r#""status": "baseline_only""#) {
-            return Err(format!("expected baseline_only but got: {rendered}"));
-        }
+        assert!(
+            rendered.contains(r#""status": "baseline_only""#),
+            "expected baseline_only but got: {rendered}"
+        );
         Ok(())
     }
 
@@ -2581,11 +2581,10 @@ mod tests {
         input.editor_context_json = Some(Ok(ctx_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(r#""status": "stale""#) {
-            return Err(format!(
-                "expected stale for analysis_stale status but got: {rendered}"
-            ));
-        }
+        assert!(
+            rendered.contains(r#""status": "stale""#),
+            "expected stale for analysis_stale status but got: {rendered}"
+        );
         Ok(())
     }
 
@@ -2597,11 +2596,10 @@ mod tests {
         input.editor_context_json = Some(Ok(ctx_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(r#""status": "stale""#) {
-            return Err(format!(
-                "expected stale from state field but got: {rendered}"
-            ));
-        }
+        assert!(
+            rendered.contains(r#""status": "stale""#),
+            "expected stale from state field but got: {rendered}"
+        );
         Ok(())
     }
 
@@ -2613,11 +2611,10 @@ mod tests {
         input.editor_context_json = Some(Ok(ctx_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(r#""status": "stale""#) {
-            return Err(format!(
-                "expected stale from evidence_state but got: {rendered}"
-            ));
-        }
+        assert!(
+            rendered.contains(r#""status": "stale""#),
+            "expected stale from evidence_state but got: {rendered}"
+        );
         Ok(())
     }
 
@@ -2629,11 +2626,10 @@ mod tests {
         input.editor_context_json = Some(Ok(ctx_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(r#""status": "stale""#) {
-            return Err(format!(
-                "expected stale from bool stale field but got: {rendered}"
-            ));
-        }
+        assert!(
+            rendered.contains(r#""status": "stale""#),
+            "expected stale from bool stale field but got: {rendered}"
+        );
         Ok(())
     }
 
@@ -2646,11 +2642,10 @@ mod tests {
         input.editor_context_json = Some(Ok(ctx_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains("outdated cache") {
-            return Err(format!(
-                "expected stale reason in warnings but got: {rendered}"
-            ));
-        }
+        assert!(
+            rendered.contains("outdated cache"),
+            "expected stale reason in warnings but got: {rendered}"
+        );
         Ok(())
     }
 
@@ -2662,9 +2657,10 @@ mod tests {
         input.editor_context_json = Some(Ok(ctx_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains("file changed") {
-            return Err(format!("expected freshness_reason in warnings: {rendered}"));
-        }
+        assert!(
+            rendered.contains("file changed"),
+            "expected freshness_reason in warnings: {rendered}"
+        );
         Ok(())
     }
 
@@ -2676,9 +2672,10 @@ mod tests {
         input.editor_context_json = Some(Ok(ctx_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if rendered.contains(r#""status": "stale""#) {
-            return Err("should not route stale for current freshness".to_string());
-        }
+        assert!(
+            !(rendered.contains(r#""status": "stale""#)),
+            "should not route stale for current freshness"
+        );
         Ok(())
     }
 
@@ -2713,9 +2710,10 @@ mod tests {
         let md = render_first_useful_action_markdown(&report);
 
         // The actionable report has why_first bullets
-        if !md.contains("## Why First") {
-            return Err(format!("expected Why First section in markdown: {md}"));
-        }
+        assert!(
+            md.contains("## Why First"),
+            "expected Why First section in markdown: {md}"
+        );
         Ok(())
     }
 
@@ -2745,9 +2743,10 @@ mod tests {
         let report = build_first_useful_action_report(input);
         let md = render_first_useful_action_markdown(&report);
 
-        if !md.contains("## Where") {
-            return Err(format!("expected Where section in markdown: {md}"));
-        }
+        assert!(
+            md.contains("## Where"),
+            "expected Where section in markdown: {md}"
+        );
         Ok(())
     }
 
@@ -2759,12 +2758,14 @@ mod tests {
         input.pr_guidance_json = None; // forces read_error → missing_required_report
         let report = build_first_useful_action_report(input);
         let md = render_first_useful_action_markdown(&report);
-        if !md.contains("## Fallback") {
-            return Err(format!("expected Fallback section: {md}"));
-        }
-        if !md.contains("Missing required artifact") {
-            return Err(format!("expected 'Missing required artifact' text: {md}"));
-        }
+        assert!(
+            md.contains("## Fallback"),
+            "expected Fallback section: {md}"
+        );
+        assert!(
+            md.contains("Missing required artifact"),
+            "expected 'Missing required artifact' text: {md}"
+        );
         Ok(())
     }
 
@@ -2777,9 +2778,10 @@ mod tests {
         input.pr_guidance_json = Some(Ok(pr_guidance_json.to_string()));
         let report = build_first_useful_action_report(input);
         let md = render_first_useful_action_markdown(&report);
-        if !md.contains("## Fallback") {
-            return Err(format!("expected Fallback section in markdown: {md}"));
-        }
+        assert!(
+            md.contains("## Fallback"),
+            "expected Fallback section in markdown: {md}"
+        );
         Ok(())
     }
 
@@ -2799,11 +2801,10 @@ mod tests {
         let report = build_first_useful_action_report(input);
         let md = render_first_useful_action_markdown(&report);
         // actionable status → fallback section suppressed
-        if md.contains("## Fallback") {
-            return Err(format!(
-                "should not show Fallback for actionable status: {md}"
-            ));
-        }
+        assert!(
+            !(md.contains("## Fallback")),
+            "should not show Fallback for actionable status: {md}"
+        );
         Ok(())
     }
 
@@ -2812,9 +2813,10 @@ mod tests {
         // All routing branches produce limits; verify they appear in markdown
         let report = build_first_useful_action_report(bare_input());
         let md = render_first_useful_action_markdown(&report);
-        if !md.contains("## Limits") {
-            return Err(format!("expected Limits section in markdown: {md}"));
-        }
+        assert!(
+            md.contains("## Limits"),
+            "expected Limits section in markdown: {md}"
+        );
         Ok(())
     }
 
@@ -2823,54 +2825,51 @@ mod tests {
     #[test]
     fn with_period_appends_when_missing() -> Result<(), String> {
         let result = with_period("hello");
-        if result != "hello." {
-            return Err(format!("expected 'hello.' but got '{result}'"));
-        }
+        assert!(
+            !(result != "hello."),
+            "expected 'hello.' but got '{result}'"
+        );
         Ok(())
     }
 
     #[test]
     fn with_period_does_not_double_period() -> Result<(), String> {
         let result = with_period("done.");
-        if result != "done." {
-            return Err(format!("expected 'done.' but got '{result}'"));
-        }
+        assert!(!(result != "done."), "expected 'done.' but got '{result}'");
         Ok(())
     }
 
     #[test]
     fn trim_period_removes_trailing_dot() -> Result<(), String> {
         let result = trim_period("word.");
-        if result != "word" {
-            return Err(format!("expected 'word' but got '{result}'"));
-        }
+        assert!(!(result != "word"), "expected 'word' but got '{result}'");
         Ok(())
     }
 
     #[test]
     fn trim_period_leaves_no_dot_unchanged() -> Result<(), String> {
         let result = trim_period("word");
-        if result != "word" {
-            return Err(format!("expected 'word' but got '{result}'"));
-        }
+        assert!(!(result != "word"), "expected 'word' but got '{result}'");
         Ok(())
     }
 
     #[test]
     fn str_or_returns_value_when_some() -> Result<(), String> {
         let result = str_or(Some("actual"), "fallback");
-        if result != "actual" {
-            return Err(format!("expected 'actual' but got '{result}'"));
-        }
+        assert!(
+            !(result != "actual"),
+            "expected 'actual' but got '{result}'"
+        );
         Ok(())
     }
 
     #[test]
     fn str_or_returns_fallback_when_none() -> Result<(), String> {
         let result = str_or(None, "fallback");
-        if result != "fallback" {
-            return Err(format!("expected 'fallback' but got '{result}'"));
-        }
+        assert!(
+            !(result != "fallback"),
+            "expected 'fallback' but got '{result}'"
+        );
         Ok(())
     }
 
@@ -2880,14 +2879,14 @@ mod tests {
     fn normalize_suggested_assertion_reformats_add_focused_test_pattern() -> Result<(), String> {
         let input = "Add a focused test where x > 0 and assert the exact output is 1.";
         let result = normalize_suggested_assertion(input);
-        if !result.starts_with("Assert the exact") {
-            return Err(format!("expected reformatted assertion but got: {result}"));
-        }
-        if result.contains("Add a focused test where") {
-            return Err(format!(
-                "should not contain original prefix after normalization: {result}"
-            ));
-        }
+        assert!(
+            result.starts_with("Assert the exact"),
+            "expected reformatted assertion but got: {result}"
+        );
+        assert!(
+            !(result.contains("Add a focused test where")),
+            "should not contain original prefix after normalization: {result}"
+        );
         Ok(())
     }
 
@@ -2895,9 +2894,10 @@ mod tests {
     fn normalize_suggested_assertion_passes_through_unmatched() -> Result<(), String> {
         let input = "assert_eq!(f(x), 42)";
         let result = normalize_suggested_assertion(input);
-        if result != input {
-            return Err(format!("expected pass-through but got: {result}"));
-        }
+        assert!(
+            !(result != input),
+            "expected pass-through but got: {result}"
+        );
         Ok(())
     }
 
@@ -2908,9 +2908,10 @@ mod tests {
         let value: Value = serde_json::from_str(r#"{"grip_class": "weakly_gripped"}"#)
             .map_err(|e| e.to_string())?;
         let result = classification_from_sources(&[(Some(&value), &["grip_class"])]);
-        if result.as_deref() != Some("weakly_exposed") {
-            return Err(format!("expected weakly_exposed but got: {result:?}"));
-        }
+        assert!(
+            !(result.as_deref() != Some("weakly_exposed")),
+            "expected weakly_exposed but got: {result:?}"
+        );
         Ok(())
     }
 
@@ -2919,9 +2920,10 @@ mod tests {
         let value: Value = serde_json::from_str(r#"{"grip_class": "strongly_gripped"}"#)
             .map_err(|e| e.to_string())?;
         let result = classification_from_sources(&[(Some(&value), &["grip_class"])]);
-        if result.as_deref() != Some("exposed") {
-            return Err(format!("expected exposed but got: {result:?}"));
-        }
+        assert!(
+            !(result.as_deref() != Some("exposed")),
+            "expected exposed but got: {result:?}"
+        );
         Ok(())
     }
 
@@ -2930,9 +2932,10 @@ mod tests {
         let value: Value = serde_json::from_str(r#"{"classification": "static_unknown"}"#)
             .map_err(|e| e.to_string())?;
         let result = classification_from_sources(&[(Some(&value), &["classification"])]);
-        if result.as_deref() != Some("static_unknown") {
-            return Err(format!("expected static_unknown but got: {result:?}"));
-        }
+        assert!(
+            !(result.as_deref() != Some("static_unknown")),
+            "expected static_unknown but got: {result:?}"
+        );
         Ok(())
     }
 
@@ -2943,9 +2946,10 @@ mod tests {
         let value: Value =
             serde_json::from_str(r#"{"items": ["a", "b", "c"]}"#).map_err(|e| e.to_string())?;
         let result = path_value(&value, &["items", "1"]);
-        if result.and_then(Value::as_str) != Some("b") {
-            return Err(format!("expected 'b' at index 1 but got: {result:?}"));
-        }
+        assert!(
+            !(result.and_then(Value::as_str) != Some("b")),
+            "expected 'b' at index 1 but got: {result:?}"
+        );
         Ok(())
     }
 
@@ -2953,9 +2957,7 @@ mod tests {
     fn path_value_returns_none_for_missing_key() -> Result<(), String> {
         let value: Value = serde_json::from_str(r#"{"a": 1}"#).map_err(|e| e.to_string())?;
         let result = path_value(&value, &["b", "c"]);
-        if result.is_some() {
-            return Err("expected None for missing key".to_string());
-        }
+        assert!(result.is_none(), "expected None for missing key");
         Ok(())
     }
 
@@ -2965,9 +2967,10 @@ mod tests {
     fn value_as_string_coerces_i64() -> Result<(), String> {
         let value: Value = serde_json::from_str(r#"-42"#).map_err(|e| e.to_string())?;
         let result = value_as_string(&value);
-        if result.as_deref() != Some("-42") {
-            return Err(format!("expected '-42' but got: {result:?}"));
-        }
+        assert!(
+            !(result.as_deref() != Some("-42")),
+            "expected '-42' but got: {result:?}"
+        );
         Ok(())
     }
 
@@ -2976,9 +2979,7 @@ mod tests {
         let value: Value =
             serde_json::from_str(r#"18446744073709551615"#).map_err(|e| e.to_string())?;
         let result = value_as_string(&value);
-        if result.is_none() {
-            return Err("expected Some for large u64".to_string());
-        }
+        assert!(result.is_some(), "expected Some for large u64");
         Ok(())
     }
 
@@ -2986,9 +2987,7 @@ mod tests {
     fn value_as_string_returns_none_for_object() -> Result<(), String> {
         let value: Value = serde_json::from_str(r#"{"k": 1}"#).map_err(|e| e.to_string())?;
         let result = value_as_string(&value);
-        if result.is_some() {
-            return Err("expected None for object value".to_string());
-        }
+        assert!(result.is_none(), "expected None for object value");
         Ok(())
     }
 
@@ -2998,9 +2997,10 @@ mod tests {
     fn bool_path_extracts_true_value() -> Result<(), String> {
         let value: Value = serde_json::from_str(r#"{"stale": true}"#).map_err(|e| e.to_string())?;
         let result = bool_path(&value, &["stale"]);
-        if result != Some(true) {
-            return Err(format!("expected Some(true) but got: {result:?}"));
-        }
+        assert!(
+            !(result != Some(true)),
+            "expected Some(true) but got: {result:?}"
+        );
         Ok(())
     }
 
@@ -3009,9 +3009,10 @@ mod tests {
         let value: Value =
             serde_json::from_str(r#"{"stale": false}"#).map_err(|e| e.to_string())?;
         let result = bool_path(&value, &["stale"]);
-        if result != Some(false) {
-            return Err(format!("expected Some(false) but got: {result:?}"));
-        }
+        assert!(
+            !(result != Some(false)),
+            "expected Some(false) but got: {result:?}"
+        );
         Ok(())
     }
 
@@ -3019,9 +3020,7 @@ mod tests {
     fn bool_path_returns_none_for_missing_key() -> Result<(), String> {
         let value: Value = serde_json::from_str(r#"{}"#).map_err(|e| e.to_string())?;
         let result = bool_path(&value, &["stale"]);
-        if result.is_some() {
-            return Err("expected None for missing key".to_string());
-        }
+        assert!(result.is_none(), "expected None for missing key");
         Ok(())
     }
 
@@ -3030,9 +3029,10 @@ mod tests {
     #[test]
     fn has_any_input_false_when_all_none() -> Result<(), String> {
         let input = bare_input();
-        if has_any_input(&input) {
-            return Err("expected has_any_input to be false with all Nones".to_string());
-        }
+        assert!(
+            !(has_any_input(&input)),
+            "expected has_any_input to be false with all Nones"
+        );
         Ok(())
     }
 
@@ -3040,18 +3040,17 @@ mod tests {
     fn has_any_input_true_when_one_path_set() -> Result<(), String> {
         let mut input = bare_input();
         input.coverage_frontier_path = Some("frontier.json".to_string());
-        if !has_any_input(&input) {
-            return Err("expected has_any_input to be true".to_string());
-        }
+        assert!(has_any_input(&input), "expected has_any_input to be true");
         Ok(())
     }
 
     #[test]
     fn has_any_parsed_false_when_all_none() -> Result<(), String> {
         let parsed = ParsedSources::default();
-        if has_any_parsed(&parsed) {
-            return Err("expected has_any_parsed to be false".to_string());
-        }
+        assert!(
+            !(has_any_parsed(&parsed)),
+            "expected has_any_parsed to be false"
+        );
         Ok(())
     }
 
@@ -3061,9 +3060,10 @@ mod tests {
             coverage_frontier: Some(serde_json::Value::Bool(true)),
             ..ParsedSources::default()
         };
-        if !has_any_parsed(&parsed) {
-            return Err("expected has_any_parsed to be true".to_string());
-        }
+        assert!(
+            has_any_parsed(&parsed),
+            "expected has_any_parsed to be true"
+        );
         Ok(())
     }
 
@@ -3076,9 +3076,10 @@ mod tests {
                 .map_err(|e| e.to_string())?;
         let item = first_guidance_item(Some(&guidance));
         let seam_id = item.and_then(|v| v.get("seam_id")).and_then(|v| v.as_str());
-        if seam_id != Some("s1") {
-            return Err(format!("expected 's1' but got: {seam_id:?}"));
-        }
+        assert!(
+            !(seam_id != Some("s1")),
+            "expected 's1' but got: {seam_id:?}"
+        );
         Ok(())
     }
 
@@ -3086,9 +3087,10 @@ mod tests {
     fn first_guidance_item_returns_none_when_empty() -> Result<(), String> {
         let guidance: Value =
             serde_json::from_str(r#"{"comments":[]}"#).map_err(|e| e.to_string())?;
-        if first_guidance_item(Some(&guidance)).is_some() {
-            return Err("expected None for empty comments".to_string());
-        }
+        assert!(
+            first_guidance_item(Some(&guidance)).is_none(),
+            "expected None for empty comments"
+        );
         Ok(())
     }
 
@@ -3097,9 +3099,7 @@ mod tests {
         let guidance: Value = serde_json::from_str(r#"{"summary_only":[{"seam_id":"so1"}]}"#)
             .map_err(|e| e.to_string())?;
         let item = first_summary_only_item(Some(&guidance));
-        if item.is_none() {
-            return Err("expected Some for summary_only item".to_string());
-        }
+        assert!(item.is_some(), "expected Some for summary_only item");
         Ok(())
     }
 
@@ -3108,9 +3108,7 @@ mod tests {
         let guidance: Value = serde_json::from_str(r#"{"suppressed":[{"seam_id":"sup1"}]}"#)
             .map_err(|e| e.to_string())?;
         let item = first_suppressed_item(Some(&guidance));
-        if item.is_none() {
-            return Err("expected Some for suppressed item".to_string());
-        }
+        assert!(item.is_some(), "expected Some for suppressed item");
         Ok(())
     }
 
@@ -3120,9 +3118,10 @@ mod tests {
     fn has_actionable_guidance_true_for_comments() -> Result<(), String> {
         let guidance: Value = serde_json::from_str(r#"{"comments":[{"seam_id":"s1"}]}"#)
             .map_err(|e| e.to_string())?;
-        if !has_actionable_guidance(Some(&guidance)) {
-            return Err("expected actionable guidance for comments".to_string());
-        }
+        assert!(
+            has_actionable_guidance(Some(&guidance)),
+            "expected actionable guidance for comments"
+        );
         Ok(())
     }
 
@@ -3130,17 +3129,19 @@ mod tests {
     fn has_actionable_guidance_true_for_summary_only() -> Result<(), String> {
         let guidance: Value = serde_json::from_str(r#"{"summary_only":[{"seam_id":"s2"}]}"#)
             .map_err(|e| e.to_string())?;
-        if !has_actionable_guidance(Some(&guidance)) {
-            return Err("expected actionable guidance for summary_only".to_string());
-        }
+        assert!(
+            has_actionable_guidance(Some(&guidance)),
+            "expected actionable guidance for summary_only"
+        );
         Ok(())
     }
 
     #[test]
     fn has_actionable_guidance_false_when_none() -> Result<(), String> {
-        if has_actionable_guidance(None) {
-            return Err("expected false when guidance is None".to_string());
-        }
+        assert!(
+            !(has_actionable_guidance(None)),
+            "expected false when guidance is None"
+        );
         Ok(())
     }
 
@@ -3148,9 +3149,10 @@ mod tests {
 
     #[test]
     fn has_suppressed_guidance_false_when_none() -> Result<(), String> {
-        if has_suppressed_guidance(None) {
-            return Err("expected false when guidance is None".to_string());
-        }
+        assert!(
+            !(has_suppressed_guidance(None)),
+            "expected false when guidance is None"
+        );
         Ok(())
     }
 
@@ -3158,9 +3160,10 @@ mod tests {
     fn has_suppressed_guidance_true_for_suppressed_array() -> Result<(), String> {
         let guidance: Value = serde_json::from_str(r#"{"suppressed":[{"seam_id":"s"}]}"#)
             .map_err(|e| e.to_string())?;
-        if !has_suppressed_guidance(Some(&guidance)) {
-            return Err("expected suppressed guidance".to_string());
-        }
+        assert!(
+            has_suppressed_guidance(Some(&guidance)),
+            "expected suppressed guidance"
+        );
         Ok(())
     }
 
@@ -3179,9 +3182,7 @@ mod tests {
         .map_err(|e| e.to_string())?;
         let item = first_item_with_bucket(&report, &["still_present"]);
         let path = item.and_then(|v| v.get("path")).and_then(|v| v.as_str());
-        if path != Some("b.rs") {
-            return Err(format!("expected b.rs but got: {path:?}"));
-        }
+        assert!(!(path != Some("b.rs")), "expected b.rs but got: {path:?}");
         Ok(())
     }
 
@@ -3189,18 +3190,20 @@ mod tests {
     fn first_item_with_bucket_returns_none_when_no_match() -> Result<(), String> {
         let report: Value = serde_json::from_str(r#"{"items": [{"bucket": "resolved"}]}"#)
             .map_err(|e| e.to_string())?;
-        if first_item_with_bucket(&report, &["still_present"]).is_some() {
-            return Err("expected None when no bucket matches".to_string());
-        }
+        assert!(
+            first_item_with_bucket(&report, &["still_present"]).is_none(),
+            "expected None when no bucket matches"
+        );
         Ok(())
     }
 
     #[test]
     fn first_item_with_bucket_returns_none_when_no_items() -> Result<(), String> {
         let report: Value = serde_json::from_str(r#"{}"#).map_err(|e| e.to_string())?;
-        if first_item_with_bucket(&report, &["still_present"]).is_some() {
-            return Err("expected None when no items key".to_string());
-        }
+        assert!(
+            first_item_with_bucket(&report, &["still_present"]).is_none(),
+            "expected None when no items key"
+        );
         Ok(())
     }
 
@@ -3210,18 +3213,20 @@ mod tests {
     fn gate_has_waiver_detects_decision_waived() -> Result<(), String> {
         let gate: Value =
             serde_json::from_str(r#"{"decision": "waived"}"#).map_err(|e| e.to_string())?;
-        if !gate_has_waiver(&gate) {
-            return Err("expected waiver for decision=waived".to_string());
-        }
+        assert!(
+            gate_has_waiver(&gate),
+            "expected waiver for decision=waived"
+        );
         Ok(())
     }
 
     #[test]
     fn gate_has_waiver_false_for_empty_waivers_array() -> Result<(), String> {
         let gate: Value = serde_json::from_str(r#"{"waivers": []}"#).map_err(|e| e.to_string())?;
-        if gate_has_waiver(&gate) {
-            return Err("expected no waiver for empty waivers array".to_string());
-        }
+        assert!(
+            !(gate_has_waiver(&gate)),
+            "expected no waiver for empty waivers array"
+        );
         Ok(())
     }
 
@@ -3232,9 +3237,10 @@ mod tests {
         let gate: Value =
             serde_json::from_str(r#"{"seam_id": "top-seam"}"#).map_err(|e| e.to_string())?;
         let result = first_gate_seam(&gate);
-        if result.as_deref() != Some("top-seam") {
-            return Err(format!("expected top-seam but got: {result:?}"));
-        }
+        assert!(
+            !(result.as_deref() != Some("top-seam")),
+            "expected top-seam but got: {result:?}"
+        );
         Ok(())
     }
 
@@ -3243,9 +3249,10 @@ mod tests {
         let gate: Value = serde_json::from_str(r#"{"items": [{"seam_id": "item-seam"}]}"#)
             .map_err(|e| e.to_string())?;
         let result = first_gate_seam(&gate);
-        if result.as_deref() != Some("item-seam") {
-            return Err(format!("expected item-seam but got: {result:?}"));
-        }
+        assert!(
+            !(result.as_deref() != Some("item-seam")),
+            "expected item-seam but got: {result:?}"
+        );
         Ok(())
     }
 
@@ -3254,9 +3261,10 @@ mod tests {
         let gate: Value =
             serde_json::from_str(r#"{"path": "src/gate.rs"}"#).map_err(|e| e.to_string())?;
         let result = first_gate_path(&gate);
-        if result.as_deref() != Some("src/gate.rs") {
-            return Err(format!("expected src/gate.rs but got: {result:?}"));
-        }
+        assert!(
+            !(result.as_deref() != Some("src/gate.rs")),
+            "expected src/gate.rs but got: {result:?}"
+        );
         Ok(())
     }
 
@@ -3264,9 +3272,10 @@ mod tests {
     fn first_gate_line_from_top_level() -> Result<(), String> {
         let gate: Value = serde_json::from_str(r#"{"line": 42}"#).map_err(|e| e.to_string())?;
         let result = first_gate_line(&gate);
-        if result != Some(42) {
-            return Err(format!("expected Some(42) but got: {result:?}"));
-        }
+        assert!(
+            !(result != Some(42)),
+            "expected Some(42) but got: {result:?}"
+        );
         Ok(())
     }
 
@@ -3275,9 +3284,10 @@ mod tests {
         let gate: Value = serde_json::from_str(r#"{"missing_discriminator": "assert x == 1"}"#)
             .map_err(|e| e.to_string())?;
         let result = first_gate_missing_discriminator(&gate);
-        if result.as_deref() != Some("assert x == 1") {
-            return Err(format!("expected 'assert x == 1' but got: {result:?}"));
-        }
+        assert!(
+            !(result.as_deref() != Some("assert x == 1")),
+            "expected 'assert x == 1' but got: {result:?}"
+        );
         Ok(())
     }
 
@@ -3292,9 +3302,10 @@ mod tests {
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
         // already_improved route → receipt command uses seam_id
-        if !rendered.contains("seam-rc") {
-            return Err(format!("expected seam-rc in rendered: {rendered}"));
-        }
+        assert!(
+            rendered.contains("seam-rc"),
+            "expected seam-rc in rendered: {rendered}"
+        );
         Ok(())
     }
 
@@ -3307,9 +3318,10 @@ mod tests {
         input.ledger_json = Some(Ok(ledger_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains("seam-ledger") {
-            return Err(format!("expected seam-ledger in rendered: {rendered}"));
-        }
+        assert!(
+            rendered.contains("seam-ledger"),
+            "expected seam-ledger in rendered: {rendered}"
+        );
         Ok(())
     }
 
@@ -3320,9 +3332,11 @@ mod tests {
         let value: Value = serde_json::from_str(r#"{"records": [{"gap_id": "g1"}]}"#)
             .map_err(|e| e.to_string())?;
         let records = gap_records(&value);
-        if records.len() != 1 {
-            return Err(format!("expected 1 record but got {}", records.len()));
-        }
+        assert!(
+            !(records.len() != 1),
+            "expected 1 record but got {}",
+            records.len()
+        );
         Ok(())
     }
 
@@ -3334,12 +3348,11 @@ mod tests {
         .map_err(|e| e.to_string())?;
         let records = gap_records(&value);
         // Only the case with expected_gap_record is included
-        if records.len() != 1 {
-            return Err(format!(
-                "expected 1 record from cases but got {}",
-                records.len()
-            ));
-        }
+        assert!(
+            !(records.len() != 1),
+            "expected 1 record from cases but got {}",
+            records.len()
+        );
         Ok(())
     }
 
@@ -3347,9 +3360,11 @@ mod tests {
     fn gap_records_from_empty_object_returns_empty() -> Result<(), String> {
         let value: Value = serde_json::from_str(r#"{}"#).map_err(|e| e.to_string())?;
         let records = gap_records(&value);
-        if !records.is_empty() {
-            return Err(format!("expected empty records but got {}", records.len()));
-        }
+        assert!(
+            records.is_empty(),
+            "expected empty records but got {}",
+            records.len()
+        );
         Ok(())
     }
 
@@ -3370,9 +3385,10 @@ mod tests {
             "verification_commands": ["cargo test"]
         }]"#;
         let value: Value = serde_json::from_str(record_json).map_err(|e| e.to_string())?;
-        if first_actionable_gap_record(&value).is_none() {
-            return Err("expected reintroduced policy_state to be accepted".to_string());
-        }
+        assert!(
+            first_actionable_gap_record(&value).is_some(),
+            "expected reintroduced policy_state to be accepted"
+        );
         Ok(())
     }
 
@@ -3389,9 +3405,10 @@ mod tests {
             "verification_commands": ["cargo test"]
         }]"#;
         let value: Value = serde_json::from_str(record_json).map_err(|e| e.to_string())?;
-        if first_actionable_gap_record(&value).is_some() {
-            return Err("expected None when repair_route is absent".to_string());
-        }
+        assert!(
+            first_actionable_gap_record(&value).is_none(),
+            "expected None when repair_route is absent"
+        );
         Ok(())
     }
 
@@ -3409,9 +3426,10 @@ mod tests {
             "verification_commands": ["   "]
         }]"#;
         let value: Value = serde_json::from_str(record_json).map_err(|e| e.to_string())?;
-        if first_actionable_gap_record(&value).is_some() {
-            return Err("expected None for whitespace-only verification commands".to_string());
-        }
+        assert!(
+            first_actionable_gap_record(&value).is_none(),
+            "expected None for whitespace-only verification commands"
+        );
         Ok(())
     }
 
@@ -3420,31 +3438,30 @@ mod tests {
     #[test]
     fn action_kind_for_add_output_golden() -> Result<(), String> {
         let result = action_kind_for_gap_route("AddOutputGolden");
-        if result != "generate_missing_artifact" {
-            return Err(format!(
-                "expected generate_missing_artifact but got: {result}"
-            ));
-        }
+        assert!(
+            !(result != "generate_missing_artifact"),
+            "expected generate_missing_artifact but got: {result}"
+        );
         Ok(())
     }
 
     #[test]
     fn action_kind_for_regenerate_artifact() -> Result<(), String> {
         let result = action_kind_for_gap_route("RegenerateArtifact");
-        if result != "generate_missing_artifact" {
-            return Err(format!(
-                "expected generate_missing_artifact but got: {result}"
-            ));
-        }
+        assert!(
+            !(result != "generate_missing_artifact"),
+            "expected generate_missing_artifact but got: {result}"
+        );
         Ok(())
     }
 
     #[test]
     fn action_kind_for_other_route() -> Result<(), String> {
         let result = action_kind_for_gap_route("AddBoundaryAssertion");
-        if result != "write_focused_test" {
-            return Err(format!("expected write_focused_test but got: {result}"));
-        }
+        assert!(
+            !(result != "write_focused_test"),
+            "expected write_focused_test but got: {result}"
+        );
         Ok(())
     }
 
@@ -3457,9 +3474,7 @@ mod tests {
             serde_json::from_str(r#"{"repair_route": {"route_kind": "AddAssertion"}}"#)
                 .map_err(|e| e.to_string())?;
         let result = target_from_gap_record(&record);
-        if result.is_some() {
-            return Err("expected None when no target fields".to_string());
-        }
+        assert!(result.is_none(), "expected None when no target fields");
         Ok(())
     }
 
@@ -3470,9 +3485,7 @@ mod tests {
         )
         .map_err(|e| e.to_string())?;
         let result = target_from_gap_record(&record);
-        if result.is_none() {
-            return Err("expected Some when target_file is set".to_string());
-        }
+        assert!(result.is_some(), "expected Some when target_file is set");
         Ok(())
     }
 
@@ -3481,9 +3494,7 @@ mod tests {
         let record: Value =
             serde_json::from_str(r#"{"gap_id": "g1"}"#).map_err(|e| e.to_string())?;
         let result = target_from_gap_record(&record);
-        if result.is_some() {
-            return Err("expected None when repair_route missing".to_string());
-        }
+        assert!(result.is_none(), "expected None when repair_route missing");
         Ok(())
     }
 
@@ -3493,12 +3504,11 @@ mod tests {
     fn push_wrapped_paragraph_formats_text() -> Result<(), String> {
         let mut out = String::new();
         push_wrapped_paragraph(&mut out, "short text");
-        if !out.contains("short text") {
-            return Err(format!("expected 'short text' in output: {out}"));
-        }
-        if !out.ends_with('\n') {
-            return Err("expected trailing newline".to_string());
-        }
+        assert!(
+            out.contains("short text"),
+            "expected 'short text' in output: {out}"
+        );
+        assert!(out.ends_with('\n'), "expected trailing newline");
         Ok(())
     }
 
@@ -3508,11 +3518,10 @@ mod tests {
         let mut out = String::new();
         push_wrapped_paragraph(&mut out, &long_text);
         let lines: Vec<&str> = out.lines().collect();
-        if lines.len() < 2 {
-            return Err(format!(
-                "expected wrapped text to have multiple lines but got: {out}"
-            ));
-        }
+        assert!(
+            !(lines.len() < 2),
+            "expected wrapped text to have multiple lines but got: {out}"
+        );
         Ok(())
     }
 
@@ -3533,11 +3542,10 @@ mod tests {
         input.pr_guidance_json = Some(Ok(pr_guidance_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains("proof-seam-id") {
-            return Err(format!(
-                "expected proof-seam-id in receipt selected: {rendered}"
-            ));
-        }
+        assert!(
+            rendered.contains("proof-seam-id"),
+            "expected proof-seam-id in receipt selected: {rendered}"
+        );
         Ok(())
     }
 
@@ -3557,9 +3565,10 @@ mod tests {
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
         // suppressed route triggered by warning text
-        if !rendered.contains(r#""status": "suppressed""#) {
-            return Err(format!("expected suppressed but got: {rendered}"));
-        }
+        assert!(
+            rendered.contains(r#""status": "suppressed""#),
+            "expected suppressed but got: {rendered}"
+        );
         Ok(())
     }
 
@@ -3574,11 +3583,10 @@ mod tests {
         input.ledger_json = Some(Ok(ledger_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains("acknowledged-boundary-0001") {
-            return Err(format!(
-                "expected fallback seam_id in acknowledged: {rendered}"
-            ));
-        }
+        assert!(
+            rendered.contains("acknowledged-boundary-0001"),
+            "expected fallback seam_id in acknowledged: {rendered}"
+        );
         Ok(())
     }
 
@@ -3592,9 +3600,10 @@ mod tests {
         input.gate_decision_json = Some(Ok(gate_json.to_string()));
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains("waived-boundary-0001") {
-            return Err(format!("expected fallback seam_id for waived: {rendered}"));
-        }
+        assert!(
+            rendered.contains("waived-boundary-0001"),
+            "expected fallback seam_id for waived: {rendered}"
+        );
         Ok(())
     }
 
@@ -3604,12 +3613,14 @@ mod tests {
     fn display_path_converts_backslashes() -> Result<(), String> {
         let path = Path::new("some\\windows\\path.json");
         let result = display_path(path);
-        if result.contains('\\') {
-            return Err(format!("expected forward slashes but got: {result}"));
-        }
-        if !result.contains("some/windows/path.json") {
-            return Err(format!("unexpected path: {result}"));
-        }
+        assert!(
+            !(result.contains('\\')),
+            "expected forward slashes but got: {result}"
+        );
+        assert!(
+            result.contains("some/windows/path.json"),
+            "unexpected path: {result}"
+        );
         Ok(())
     }
 
@@ -3619,14 +3630,14 @@ mod tests {
     fn render_first_useful_action_json_includes_schema_version() -> Result<(), String> {
         let report = build_first_useful_action_report(bare_input());
         let rendered = render_first_useful_action_json(&report)?;
-        if !rendered.contains(r#""schema_version": "0.1""#) {
-            return Err(format!(
-                "expected schema_version in JSON output: {rendered}"
-            ));
-        }
-        if !rendered.contains(r#""kind": "first_useful_action""#) {
-            return Err(format!("expected kind field in JSON output: {rendered}"));
-        }
+        assert!(
+            rendered.contains(r#""schema_version": "0.1""#),
+            "expected schema_version in JSON output: {rendered}"
+        );
+        assert!(
+            rendered.contains(r#""kind": "first_useful_action""#),
+            "expected kind field in JSON output: {rendered}"
+        );
         Ok(())
     }
 
@@ -3640,11 +3651,10 @@ mod tests {
         let report = build_first_useful_action_report(input);
         let rendered = render_first_useful_action_json(&report)?;
         // coverage frontier alone doesn't trigger actionable routing
-        if !rendered.contains(r#""status": "no_actionable_seam""#) {
-            return Err(format!(
-                "expected no_actionable_seam with only frontier: {rendered}"
-            ));
-        }
+        assert!(
+            rendered.contains(r#""status": "no_actionable_seam""#),
+            "expected no_actionable_seam with only frontier: {rendered}"
+        );
         Ok(())
     }
 
@@ -3669,11 +3679,10 @@ mod tests {
         input.assistant_proof_json = Some(Ok(proof_json.to_string()));
         let report = build_first_useful_action_report(input);
         let md = render_first_useful_action_markdown(&report);
-        if !md.contains("## Verify") {
-            return Err(format!(
-                "expected Verify section in actionable markdown: {md}"
-            ));
-        }
+        assert!(
+            md.contains("## Verify"),
+            "expected Verify section in actionable markdown: {md}"
+        );
         Ok(())
     }
 }
