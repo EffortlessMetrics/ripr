@@ -2395,7 +2395,7 @@ mod tests {
             item.canonical_gap_id,
             "config_or_policy_constant::VALIDATION_SELECTOR"
         );
-        assert_eq!(item.group_reason, GROUP_REASON_CONFIG_POLICY);
+        assert_eq!(item.group_reason, GROUP_REASON_DECL_LITERAL);
         assert_eq!(item.raw_group_size, 2);
         assert_eq!(item.canonical_item_kind, "gap");
         assert_eq!(item.gap_state, "actionable");

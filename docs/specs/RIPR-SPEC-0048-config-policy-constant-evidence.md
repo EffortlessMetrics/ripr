@@ -129,7 +129,7 @@ canonical evidence item:
 ```text
 canonical_gap_id: config_or_policy_constant::<stable-owner>
 raw_group_size: <number of contributing raw findings>
-group_reason: same_config_policy_constant
+group_reason: declaration_and_literal_same_text_constant | same_config_policy_constant | constant_owner_identity
 ```
 
 Supported grouping includes:
@@ -212,7 +212,7 @@ The expected evidence-record subset for an internal-only policy constant is:
   "evidence_class": "config_or_policy_constant",
   "canonical_gap_id": "config_or_policy_constant::INTERNAL_POLICY_LABEL",
   "canonical_gap_group_size": 2,
-  "canonical_gap_reason": "same_config_policy_constant",
+  "canonical_gap_reason": "declaration_and_literal_same_text_constant",
   "gap_state": "internal_only",
   "actionability": "no_action_internal",
   "config_policy": {

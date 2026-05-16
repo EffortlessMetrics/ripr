@@ -858,7 +858,7 @@
           "seam_id": "bench-config-policy-internal",
           "canonical_gap_id": "config_or_policy_constant::INTERNAL_POLICY_LABEL",
           "canonical_gap_group_size": 2,
-          "canonical_gap_reason": "same_config_policy_constant",
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
           "owner": "INTERNAL_POLICY_LABEL",
           "location": {
             "file": "src/policy.rs",
@@ -933,7 +933,7 @@
           "seam_id": "bench-config-policy-rendered-unobserved",
           "canonical_gap_id": "config_or_policy_constant::REPORT_POLICY_LABEL",
           "canonical_gap_group_size": 2,
-          "canonical_gap_reason": "same_config_policy_constant",
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
           "owner": "REPORT_POLICY_LABEL",
           "location": {
             "file": "src/report_config.rs",
@@ -1008,7 +1008,7 @@
           "seam_id": "bench-config-policy-behavior-selector",
           "canonical_gap_id": "config_or_policy_constant::VALIDATION_SELECTOR",
           "canonical_gap_group_size": 2,
-          "canonical_gap_reason": "same_config_policy_constant",
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
           "owner": "VALIDATION_SELECTOR",
           "location": {
             "file": "src/validation_selector.rs",
@@ -1084,7 +1084,7 @@
           "seam_id": "bench-config-policy-behavior-selector-observed",
           "canonical_gap_id": "config_or_policy_constant::ROUTING_SELECTOR",
           "canonical_gap_group_size": 2,
-          "canonical_gap_reason": "same_config_policy_constant",
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
           "owner": "ROUTING_SELECTOR",
           "location": {
             "file": "src/validation_selector.rs",
@@ -1159,7 +1159,7 @@
           "seam_id": "bench-config-policy-schema-observed",
           "canonical_gap_id": "config_or_policy_constant::SCHEMA_POLICY_FIELD",
           "canonical_gap_group_size": 2,
-          "canonical_gap_reason": "same_config_policy_constant",
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
           "owner": "SCHEMA_POLICY_FIELD",
           "location": {
             "file": "src/schema.rs",
@@ -1234,7 +1234,7 @@
           "seam_id": "bench-config-policy-cross-file-flow",
           "canonical_gap_id": "config_or_policy_constant::CONFIG_TABLE_LABEL",
           "canonical_gap_group_size": 2,
-          "canonical_gap_reason": "same_config_policy_constant",
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
           "owner": "CONFIG_TABLE_LABEL",
           "location": {
             "file": "src/config_labels.rs",
@@ -1314,7 +1314,7 @@
           "seam_id": "bench-config-policy-opaque-lookup",
           "canonical_gap_id": "config_or_policy_constant::OPAQUE_CONFIG_LABEL",
           "canonical_gap_group_size": 2,
-          "canonical_gap_reason": "same_config_policy_constant",
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
           "owner": "OPAQUE_CONFIG_LABEL",
           "location": {
             "file": "src/config_registry.rs",
