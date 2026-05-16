@@ -1238,4 +1238,124 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         Ok(())
     }
+
+    #[test]
+    fn given_rich_production_source_when_inventory_runs_then_all_seam_kinds_are_represented()
+    -> Result<(), String> {
+        let path = PathBuf::from("src/quotes.rs");
+        let source = r#"
+pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
+    if amount >= 100 {
+        service.publish(
+            Event::Discounted,
+        );
+        return Ok(Quote {
+            total: 90,
+        });
+    }
+
+    match amount {
+        0 => Err(Error::Zero),
+        _ => Ok(Quote { total: amount }),
+    }
+}
+"#;
+        let index = index_from_files(&[(path.clone(), source)])?;
+        let seams = inventory_seams_from_index(&[path], &index);
+        let kinds: Vec<SeamKind> = seams.iter().map(|seam| seam.kind()).collect();
+
+        for required in [
+            SeamKind::PredicateBoundary,
+            SeamKind::ReturnValue,
+            SeamKind::ErrorVariant,
+            SeamKind::FieldConstruction,
+            SeamKind::SideEffect,
+            SeamKind::MatchArm,
+            SeamKind::CallPresence,
+        ] {
+            if !kinds.contains(&required) {
+                return Err(format!(
+                    "expected SeamKind::{:?} to be inventoried, got {:?}",
+                    required, kinds
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn given_call_site_in_production_owner_when_inventory_runs_then_call_presence_seam_is_emitted()
+    -> Result<(), String> {
+        let path = PathBuf::from("src/publisher.rs");
+        let source = r#"
+pub fn publish_event(service: &mut Service) {
+    service.publish(Event::Discounted);
+}
+"#;
+        let index = index_from_files(&[(path.clone(), source)])?;
+        let seams = inventory_seams_from_index(&[path], &index);
+
+        let call_seam = seams
+            .iter()
+            .find(|seam| seam.kind() == SeamKind::CallPresence)
+            .ok_or_else(|| {
+                format!(
+                    "expected a CallPresence seam, got kinds {:?}",
+                    seams.iter().map(|seam| seam.kind()).collect::<Vec<_>>()
+                )
+            })?;
+        if !call_seam.owner().contains("publish_event") {
+            return Err(format!(
+                "CallPresence owner should contain publish_event, got {}",
+                call_seam.owner()
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn given_inline_test_module_inside_production_file_when_inventory_runs_then_test_owner_seams_are_skipped()
+    -> Result<(), String> {
+        let path = PathBuf::from("src/with_inline_tests.rs");
+        let source = r#"
+pub fn classify(amount: i32) -> bool {
+    amount >= 100
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inline_test_with_predicate() {
+        let amount = 50;
+        if amount >= 100 {
+            assert!(false);
+        }
+    }
+}
+"#;
+        let index = index_from_files(&[(path.clone(), source)])?;
+        let seams = inventory_seams_from_index(&[path], &index);
+
+        for seam in &seams {
+            if seam.owner().contains("inline_test_with_predicate") {
+                return Err(format!(
+                    "seam emitted from inline #[test] owner: kind={} owner={}",
+                    seam.kind().as_str(),
+                    seam.owner()
+                ));
+            }
+        }
+        if !seams.iter().any(|seam| seam.owner().contains("classify")) {
+            return Err(format!(
+                "expected production owner `classify` to remain in the inventory, got owners {:?}",
+                seams
+                    .iter()
+                    .map(|seam| seam.owner().to_string())
+                    .collect::<Vec<_>>()
+            ));
+        }
+        Ok(())
+    }
 }
