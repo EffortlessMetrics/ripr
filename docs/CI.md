@@ -150,6 +150,9 @@ source-of-truth checks, generated-evidence rails, badge ownership, and command
 catalog coverage. `pr-ready` is the active-branch pre-review packet. Neither
 command changes badge endpoint JSON, branch protection, baseline state,
 suppressions, generated tests, or policy authority.
+Use [Merge freshness and watcher policy](MERGE_WATCH_POLICY.md) when watching a
+specific PR through hosted checks, branch freshness, Droid/advisory status, and
+merge execution.
 
 The `pr-plan-changes.txt` file is the current structural advisory artifact;
 the `target/ci/ci-plan.json` forecast remains planned. The `editor-agent-loop`
@@ -2109,6 +2112,9 @@ Planned CI work:
 A branch is ready to merge when:
 
 - required gates for touched areas pass on a committed tree
+- the branch is current enough for repository freshness policy, or the operator
+  has recorded an explicit refresh plan using
+  [Merge freshness and watcher policy](MERGE_WATCH_POLICY.md)
 - docs and changelog are updated for user-visible changes
 - static output language rules are preserved
 - spec-test-code traceability is present for behavior changes
