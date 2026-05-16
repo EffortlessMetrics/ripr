@@ -1,0 +1,56 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_mixed_language_no_cross_route/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_pricing.py:2:python_preview",
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_pricing.py:2:python_preview",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/pricing.py",
+        "line": 2,
+        "expression": "    return amount + 7"
+       },
+      "ripr": {
+        "reach": {"state":"no","confidence":"low","summary":"0 related Python test(s) found for owner `calculate_total`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "observe": {"state":"no","confidence":"low","summary":"Strongest extracted Python oracle kind: `unknown` (rank 0)"},
+        "discriminate": {"state":"no","confidence":"low","summary":"Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate."}
+       },
+      "evidence_path": ["reach no: 0 related Python test(s) found for owner `calculate_total`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation no: Strongest extracted Python oracle kind: `unknown` (rank 0)", "discriminator no: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate."],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: calculate_total", "owner_kind: function"],
+      "missing": ["No Python test references `calculate_total(`; add a pytest or unittest test that calls the changed owner."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "Python preview: no related test calls the changed owner; add a pytest or unittest test that exercises this behavior.",
+      "suggested_next_action": "Python preview: no related test calls the changed owner; add a pytest or unittest test that exercises this behavior.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function"
+    }
+  ]
+}

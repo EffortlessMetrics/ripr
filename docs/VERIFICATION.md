@@ -8,6 +8,11 @@
 
 Badges are the front panel. Generated evidence, CI receipts, and release artifacts remain the source of truth.
 
+For the current maturity boundary across Rust, preview languages, PR cockpit,
+agent packets, badges, and gates, see [Support tiers](status/SUPPORT_TIERS.md).
+For the portable contract that adopted Rust repos should share, see
+[Verification contracts](verification/README.md).
+
 ## README badges
 
 ### `ripr+`
@@ -28,10 +33,17 @@ Regenerate public badge endpoints:
 cargo xtask badges
 ```
 
+Regenerate them from an explicit policy-backed gap decision ledger:
+
+```bash
+cargo xtask badges --gap-ledger target/ripr/reports/gap-decision-ledger.json
+```
+
 Check committed endpoint drift:
 
 ```bash
 cargo xtask badges --check
+cargo xtask badges --check --gap-ledger target/ripr/reports/gap-decision-ledger.json
 ```
 
 Committed endpoint files live under `badges/`. Detailed reports stay under `target/` locally or in CI artifacts.

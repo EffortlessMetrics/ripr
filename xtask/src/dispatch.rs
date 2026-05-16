@@ -5,7 +5,13 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::Shape => super::shape(),
         XtaskCommand::FixPr => super::fix_pr(),
         XtaskCommand::InstallHooks(args) => super::install_hooks(&args),
+        XtaskCommand::Commands => super::commands_report(),
         XtaskCommand::PrSummary => super::reports::pr_summary(),
+        XtaskCommand::PrReady => super::pr_ready(),
+        XtaskCommand::Cockpit => super::cockpit(),
+        XtaskCommand::PrTriageReport => super::reports::pr_triage_report(),
+        XtaskCommand::GhPrStatus(args) => super::reports::gh_pr_status(&args),
+        XtaskCommand::SuggestedFixes => super::suggested_fixes(),
         XtaskCommand::Precommit => super::precommit(),
         XtaskCommand::CheckPr => super::check_pr(),
         XtaskCommand::Fixtures(name) => super::reports::fixtures(name.as_ref()),
@@ -14,7 +20,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::TestOracleReport => super::reports::test_oracle_report(),
         XtaskCommand::TestEfficiencyReport => super::reports::test_efficiency_report(),
         XtaskCommand::BadgeArtifacts => super::reports::badge_artifacts(),
-        XtaskCommand::RepoBadgeArtifacts => super::reports::repo_badge_artifacts(),
+        XtaskCommand::RepoBadgeArtifacts(args) => super::reports::repo_badge_artifacts(&args),
         XtaskCommand::RepoSeamInventory => super::reports::repo_seam_inventory(),
         XtaskCommand::RepoExposureReport => super::reports::repo_exposure_report(),
         XtaskCommand::RepoExposureLatencyReport => super::reports::repo_exposure_latency_report(),
@@ -22,6 +28,9 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::Lane1EvidenceAudit => super::reports::lane1_evidence_audit_report(),
         XtaskCommand::EvidenceQualityScorecard => {
             super::reports::evidence_quality_scorecard_report()
+        }
+        XtaskCommand::EvidenceQualityTrend(args) => {
+            super::reports::evidence_quality_trend_report(&args)
         }
         XtaskCommand::AgentSeamPackets(root) => {
             super::reports::agent_seam_packets_report(root.as_ref())
@@ -38,13 +47,21 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
             super::reports::recommendation_calibration(&args)
         }
         XtaskCommand::SarifPolicy(args) => super::reports::sarif_policy(&args),
-        XtaskCommand::UpdateBadgeEndpoints => super::reports::update_badge_endpoints(),
-        XtaskCommand::CheckBadgeEndpoints => super::reports::check_badge_endpoints(),
+        XtaskCommand::ImpactedEvidence(args) => super::reports::impacted_evidence(&args),
+        XtaskCommand::RiprPr(args) => super::reports::ripr_pr(&args),
+        XtaskCommand::FirstPr(args) => super::reports::first_pr(&args),
+        XtaskCommand::RiprReviewComments(args) => super::reports::ripr_review_comments(&args),
+        XtaskCommand::RiprPrSummary(args) => super::reports::ripr_pr_summary(&args),
+        XtaskCommand::RiprAnnotations(args) => super::reports::ripr_annotations(&args),
+        XtaskCommand::UpdateBadgeEndpoints(args) => super::reports::update_badge_endpoints(&args),
+        XtaskCommand::CheckBadgeEndpoints(args) => super::reports::check_badge_endpoints(&args),
         XtaskCommand::Dogfood => super::reports::dogfood(),
         XtaskCommand::Critic => super::reports::critic(),
         XtaskCommand::Goals(args) => super::goals(&args),
         XtaskCommand::Reports(args) => super::reports::reports(&args),
         XtaskCommand::Receipts(args) => super::reports::receipts(&args),
+        XtaskCommand::Worktree(args) => super::worktree(&args),
+        XtaskCommand::Specs(args) => super::specs(&args),
         XtaskCommand::GoldenDrift => super::reports::golden_drift(),
         XtaskCommand::CiFast => super::ci_fast(),
         XtaskCommand::CiFull => super::ci_full(),
@@ -57,6 +74,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckWorkflows => super::check_workflows(),
         XtaskCommand::CheckDroidReviewConfig => super::check_droid_review_config(),
         XtaskCommand::CheckSpecFormat => super::check_spec_format(),
+        XtaskCommand::CheckSpecNumbering => super::check_spec_numbering(),
         XtaskCommand::CheckFixtureContracts => super::check_fixture_contracts(),
         XtaskCommand::CheckTraceability => super::check_traceability(),
         XtaskCommand::CheckCapabilities => super::check_capabilities(),
@@ -70,6 +88,12 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckCampaign => super::check_campaign(),
         XtaskCommand::CheckPrShape => super::check_pr_shape(),
         XtaskCommand::CheckGenerated => super::check_generated(),
+        XtaskCommand::CheckCommandCatalog => super::check_command_catalog(),
+        XtaskCommand::CheckBadgeDiffPolicy => super::check_badge_diff_policy(),
+        XtaskCommand::CheckGeneratedClean => super::check_generated_clean(),
+        XtaskCommand::CheckVerificationContracts(args) => {
+            super::verification_contracts::check_verification_contracts(&args)
+        }
         XtaskCommand::CheckDependencies => super::check_dependencies(),
         XtaskCommand::CheckSupplyChain => super::check_supply_chain(),
         XtaskCommand::CheckProcessPolicy => super::check_process_policy(),

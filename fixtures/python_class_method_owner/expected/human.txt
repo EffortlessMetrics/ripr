@@ -1,0 +1,36 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_class_method_owner/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING src/factory.py:4
+
+Changed
+  after:          return cls(config["discount"] + 1)
+
+Probe
+  family: return_value
+  delta:  value
+
+Language
+  language: python
+  status: preview
+  owner kind: class_method
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `from_config`
+  - infection unknown: Python preview adapter does not yet model infection.
+  - propagation unknown: Python preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted Python oracle kind: `relational_check` (rank 3)
+  - discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.
+  - related test tests/test_factory.py:4 test_price_rule_from_config uses weak relational check oracle: assert PriceRule.from_config({"discount": 4}) is not None
+
+Weakness
+  - Related Python test reaches `from_config` but the strongest extracted oracle is `relational_check`; add or verify an exact-value assertion to make the preview finding stronger.
+
+Next step
+  Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.

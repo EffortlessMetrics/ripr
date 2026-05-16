@@ -1,0 +1,64 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_pytest_raises/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_quantity.py:2:python_preview",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_quantity.py:2:python_preview",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/quantity.py",
+        "line": 2,
+        "expression": "    if value <= 0:"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `normalize_quantity`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `broad_error` (rank 3)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `normalize_quantity`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation weak: Strongest extracted Python oracle kind: `broad_error` (rank 3)", "discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.", "related test tests/test_quantity.py:6 test_rejects_zero_quantity uses weak broad error oracle: pytest.raises(ValueError)"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: normalize_quantity", "owner_kind: function", "test_framework: pytest (test_rejects_zero_quantity)", "related_test_relation: syntactic_call (test_rejects_zero_quantity)", "test_oracle: broad_error weak (test_rejects_zero_quantity)"],
+      "missing": ["Related Python test reaches `normalize_quantity` but the strongest extracted oracle is `broad_error`; add or verify an exact-value assertion to make the preview finding stronger."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "test_rejects_zero_quantity",
+          "file": "tests/test_quantity.py",
+          "line": 6,
+          "oracle_strength": "weak",
+          "oracle_kind": "broad_error",
+          "oracle": "pytest.raises(ValueError)"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "broad_error",
+      "oracle_strength": "weak",
+      "recommended_next_step": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
+      "suggested_next_action": "Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function"
+    }
+  ]
+}

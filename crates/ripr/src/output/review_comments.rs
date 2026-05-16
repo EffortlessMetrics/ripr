@@ -9,8 +9,10 @@ use crate::app::agent_brief::{
 };
 use crate::config::RiprConfig;
 use crate::output::agent_seam_packets;
+use crate::output::gap_decision_ledger::{GapRecord, GapRepairRoute};
 use serde_json::{Value, json};
 use std::cmp::Ordering;
+use std::collections::BTreeSet;
 use std::path::Path;
 
 pub(crate) const REVIEW_COMMENTS_SCHEMA_VERSION: &str = "0.1";
@@ -117,7 +119,7 @@ pub(crate) fn render_review_comments_json(
         "base": base,
         "head": head,
         "mode": mode.as_str(),
-        "limits": {
+        "rendering_limits": {
             "max_inline_comments": DEFAULT_REVIEW_MAX_INLINE_COMMENTS,
             "max_summary_items": DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
         },
@@ -138,6 +140,71 @@ pub(crate) fn render_review_comments_json(
         .map_err(|err| format!("failed to render review comments JSON: {err}"))
 }
 
+pub(crate) fn render_gap_record_review_comments_json(
+    root: &Path,
+    base: &str,
+    head: &str,
+    mode: &Mode,
+    gap_ledger_path: &str,
+    records: &[GapRecord],
+) -> Result<String, String> {
+    let mut comments = Vec::new();
+    let mut summary_only = Vec::new();
+    let mut suppressed = Vec::new();
+    let mut seen_dedupe = BTreeSet::new();
+
+    for record in records {
+        let comment = match gap_record_comment_json(root, gap_ledger_path, record, &mut seen_dedupe)
+        {
+            Ok(comment) => comment,
+            Err(suppressed_item) => {
+                suppressed.push(suppressed_item);
+                continue;
+            }
+        };
+        if comments.len() < DEFAULT_REVIEW_MAX_INLINE_COMMENTS {
+            comments.push(comment);
+        } else if summary_only.len() < DEFAULT_REVIEW_MAX_SUMMARY_ITEMS {
+            let mut item = comment;
+            item["summary_reason"] = json!("inline comment cap reached");
+            summary_only.push(item);
+        } else {
+            suppressed.push(gap_record_cap_suppressed_json(record));
+        }
+    }
+
+    let value = json!({
+        "schema_version": REVIEW_COMMENTS_SCHEMA_VERSION,
+        "tool": "ripr",
+        "status": "advisory",
+        "root": display_path(root),
+        "base": base,
+        "head": head,
+        "mode": mode.as_str(),
+        "inputs": {
+            "gap_ledger": gap_ledger_path
+        },
+        "rendering_limits": {
+            "max_inline_comments": DEFAULT_REVIEW_MAX_INLINE_COMMENTS,
+            "max_summary_items": DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
+        },
+        "summary": {
+            "comments": comments.len(),
+            "summary_only": summary_only.len(),
+            "suppressed": suppressed.len(),
+            "unchanged_tests": true,
+        },
+        "comments": comments,
+        "summary_only": summary_only,
+        "suppressed": suppressed,
+        "warnings": [],
+        "limits_note": "Advisory static evidence only; gap-ledger repair cards do not edit source, generate tests, run mutation testing, or change CI/gate authority.",
+    });
+
+    serde_json::to_string_pretty(&value)
+        .map_err(|err| format!("failed to render gap-ledger review comments JSON: {err}"))
+}
+
 pub(crate) fn render_review_comments_markdown(
     root: &Path,
     base: &str,
@@ -156,6 +223,36 @@ pub(crate) fn render_review_comments_markdown(
         return "# RIPR PR Guidance\n\nUnable to parse rendered PR guidance.\n".to_string();
     };
 
+    render_review_comments_markdown_value(root, base, head, mode, &value)
+}
+
+pub(crate) fn render_gap_record_review_comments_markdown(
+    root: &Path,
+    base: &str,
+    head: &str,
+    mode: &Mode,
+    gap_ledger_path: &str,
+    records: &[GapRecord],
+) -> String {
+    let Ok(rendered) =
+        render_gap_record_review_comments_json(root, base, head, mode, gap_ledger_path, records)
+    else {
+        return "# RIPR PR Guidance\n\nUnable to render gap-ledger PR guidance.\n".to_string();
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&rendered) else {
+        return "# RIPR PR Guidance\n\nUnable to parse rendered gap-ledger PR guidance.\n"
+            .to_string();
+    };
+    render_review_comments_markdown_value(root, base, head, mode, &value)
+}
+
+fn render_review_comments_markdown_value(
+    root: &Path,
+    base: &str,
+    head: &str,
+    mode: &Mode,
+    value: &Value,
+) -> String {
     let summary = value.get("summary").and_then(Value::as_object);
     let comments = summary
         .and_then(|summary| summary.get("comments"))
@@ -194,6 +291,240 @@ pub(crate) fn render_review_comments_markdown(
     push_suppressed_items(&mut lines, value.get("suppressed"));
     lines.push(String::new());
     lines.join("\n")
+}
+
+fn gap_record_comment_json(
+    root: &Path,
+    gap_ledger_path: &str,
+    record: &GapRecord,
+    seen_dedupe: &mut BTreeSet<String>,
+) -> Result<Value, Value> {
+    let Some(projection) = record.projection_eligibility.get("pr_comment") else {
+        return Err(gap_record_suppressed_json(
+            record,
+            "not_pr_comment_eligible",
+            "missing_pr_comment_projection",
+        ));
+    };
+    if !projection.eligible {
+        return Err(gap_record_suppressed_json(
+            record,
+            "not_pr_comment_eligible",
+            &projection.reason,
+        ));
+    }
+    if record.scope != "pr_local" || record.repairability != "repairable" {
+        return Err(gap_record_suppressed_json(
+            record,
+            "not_pr_local_repairable",
+            "PR comments require a PR-local repairable gap.",
+        ));
+    }
+    if matches!(
+        record.policy_state.as_str(),
+        "suppressed" | "waived" | "resolved"
+    ) {
+        return Err(gap_record_suppressed_json(
+            record,
+            "policy_state_not_commentable",
+            "Suppressed, waived, or resolved gaps are not PR-comment repair cards.",
+        ));
+    }
+    let Some(anchor) = record.anchor.as_ref() else {
+        return Err(gap_record_suppressed_json(
+            record,
+            "missing_anchor",
+            "PR comments require a stable anchor.",
+        ));
+    };
+    let Some(file) = anchor
+        .file
+        .as_deref()
+        .map(str::trim)
+        .filter(|file| !file.is_empty())
+    else {
+        return Err(gap_record_suppressed_json(
+            record,
+            "missing_anchor",
+            "PR comments require an anchor file.",
+        ));
+    };
+    let Some(line) = anchor.line else {
+        return Err(gap_record_suppressed_json(
+            record,
+            "missing_anchor",
+            "PR comments require an anchor line.",
+        ));
+    };
+    let Some(dedupe) = anchor
+        .dedupe_fingerprint
+        .as_deref()
+        .map(str::trim)
+        .filter(|dedupe| !dedupe.is_empty())
+    else {
+        return Err(gap_record_suppressed_json(
+            record,
+            "missing_dedupe_fingerprint",
+            "PR comments require a dedupe fingerprint.",
+        ));
+    };
+    if file.is_empty() || dedupe.is_empty() {
+        return Err(gap_record_suppressed_json(
+            record,
+            "missing_anchor",
+            "PR comments require a non-empty anchor and dedupe fingerprint.",
+        ));
+    }
+    if !seen_dedupe.insert(dedupe.to_string()) {
+        return Err(gap_record_suppressed_json(
+            record,
+            "duplicate_dedupe_fingerprint",
+            "A previous GapRecord already emitted this PR comment dedupe key.",
+        ));
+    }
+    let Some(repair_route) = record.repair_route.as_ref() else {
+        return Err(gap_record_suppressed_json(
+            record,
+            "missing_repair_route",
+            "PR comments require a repair route.",
+        ));
+    };
+    if record.verification_commands.is_empty() {
+        return Err(gap_record_suppressed_json(
+            record,
+            "missing_verification_command",
+            "PR comments require a verification command.",
+        ));
+    }
+
+    let gap_id = gap_record_id(record);
+    let repair_text = repair_text(repair_route);
+    let why = repair_why(record, repair_route);
+    let verify_command = record.verification_commands[0].clone();
+
+    Ok(json!({
+        "id": format!("ripr-review-{gap_id}"),
+        "source": "gap_decision_ledger",
+        "gap_id": gap_id.as_str(),
+        "canonical_gap_id": non_empty(&record.canonical_gap_id),
+        "gap_kind": record.kind.as_str(),
+        "language": record.language.as_str(),
+        "language_status": record.language_status.as_str(),
+        "seam_id": gap_id.as_str(),
+        "dedupe_key": dedupe,
+        "placement": {
+            "path": file,
+            "line": line,
+            "side": "RIGHT",
+            "mode": "gap_record_anchor",
+        },
+        "kind": record.kind.as_str(),
+        "grip_class": record.evidence_class.as_str(),
+        "severity": "warning",
+        "reason": why,
+        "missing_discriminator": repair_route.changed_behavior.as_deref().or(repair_route.assertion_shape.as_deref()),
+        "suggested_test": {
+            "intent": repair_intent(&repair_route.route_kind),
+            "candidate_values": [],
+            "assertion_shape": repair_route.assertion_shape.as_deref(),
+            "assertion_kind": repair_route.route_kind.as_str(),
+            "recommended_file": repair_route.target_file.as_deref().or(repair_route.related_test.as_deref()),
+            "recommended_name": repair_route.related_test.as_deref(),
+            "near_test": repair_route.related_test.as_deref(),
+        },
+        "repair_card": {
+            "gap_kind": record.kind.as_str(),
+            "changed_behavior": repair_route.changed_behavior.as_deref(),
+            "why_this_matters": why,
+            "repair": repair_text,
+            "repair_route": repair_route,
+            "evidence_ids": &record.evidence_ids,
+            "verification_commands": &record.verification_commands,
+            "verify_command": verify_command,
+            "source_artifact": gap_ledger_path,
+            "authority_boundary": record.authority_boundary.as_str(),
+        },
+        "llm_guidance": {
+            "prompt": repair_prompt(repair_route, &verify_command),
+            "command": format!("ripr first-action --root {} --gap-ledger {}", display_path(root), gap_ledger_path),
+            "verify_command": verify_command,
+        },
+    }))
+}
+
+fn gap_record_suppressed_json(record: &GapRecord, reason: &str, message: &str) -> Value {
+    json!({
+        "gap_id": gap_record_id(record),
+        "file": record.anchor.as_ref().and_then(|anchor| anchor.file.clone()),
+        "line": record.anchor.as_ref().and_then(|anchor| anchor.line),
+        "reason": reason,
+        "message": message,
+    })
+}
+
+fn gap_record_cap_suppressed_json(record: &GapRecord) -> Value {
+    json!({
+        "gap_id": gap_record_id(record),
+        "file": record.anchor.as_ref().and_then(|anchor| anchor.file.clone()),
+        "line": record.anchor.as_ref().and_then(|anchor| anchor.line),
+        "reason": "summary_cap",
+        "message": "The PR guidance summary item cap was reached.",
+    })
+}
+
+fn gap_record_id(record: &GapRecord) -> String {
+    non_empty(&record.gap_id)
+        .or_else(|| non_empty(&record.canonical_gap_id))
+        .unwrap_or_else(|| "unknown-gap".to_string())
+}
+
+fn non_empty(value: &str) -> Option<String> {
+    (!value.trim().is_empty()).then(|| value.to_string())
+}
+
+fn repair_text(route: &GapRepairRoute) -> String {
+    route
+        .assertion_shape
+        .clone()
+        .or_else(|| route.changed_behavior.clone())
+        .unwrap_or_else(|| format!("Follow repair route `{}`.", route.route_kind))
+}
+
+fn repair_why(record: &GapRecord, route: &GapRepairRoute) -> String {
+    if let Some(changed) = route.changed_behavior.as_deref() {
+        return format!(
+            "Changed behavior `{changed}` has a repairable {} gap.",
+            record.kind
+        );
+    }
+    if let Some(assertion) = route.assertion_shape.as_deref() {
+        return format!(
+            "This PR-local {} gap needs a focused repair: {assertion}.",
+            record.kind
+        );
+    }
+    format!(
+        "This PR-local {} gap has a bounded repair route.",
+        record.kind
+    )
+}
+
+fn repair_intent(route_kind: &str) -> &'static str {
+    match route_kind {
+        "AddBoundaryAssertion" => "Add a boundary assertion.",
+        "AddErrorAssertion" => "Add an error-path assertion.",
+        "AddValueAssertion" => "Add an exact value assertion.",
+        "AddSideEffectObserver" => "Add a side-effect observer.",
+        "AddOutputGolden" => "Add or update output-contract golden evidence.",
+        _ => "Add the focused proof named by the repair route.",
+    }
+}
+
+fn repair_prompt(route: &GapRepairRoute, verify_command: &str) -> String {
+    let repair = repair_text(route);
+    format!(
+        "{repair} Do not change production behavior unless the existing tests prove it is necessary. Verify with `{verify_command}`."
+    )
 }
 
 fn review_recommendation_json(
@@ -571,6 +902,135 @@ mod tests {
         )
     }
 
+    fn gap_record_review_comments_fixture() -> &'static str {
+        r#"
+{
+  "records": [
+    {
+      "gap_id": "gap:pr:pricing:threshold-boundary",
+      "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+      "kind": "MissingBoundaryAssertion",
+      "language": "rust",
+      "language_status": "stable",
+      "scope": "pr_local",
+      "evidence_class": "predicate_boundary",
+      "gap_state": "actionable",
+      "policy_state": "new",
+      "repairability": "repairable",
+      "evidence_ids": [
+        "evidence:pricing-threshold-reached",
+        "evidence:related-test-no-boundary-assertion"
+      ],
+      "anchor": {
+        "file": "src/pricing.rs",
+        "line": 42,
+        "owner": "pricing::discount",
+        "dedupe_fingerprint": "gap:rust:pricing:discount:threshold-boundary"
+      },
+      "repair_route": {
+        "route_kind": "AddBoundaryAssertion",
+        "target_file": "tests/pricing.rs",
+        "related_test": "tests/pricing.rs::discount_above_threshold",
+        "assertion_shape": "assert_eq!(discount(100, 100), 90)",
+        "changed_behavior": "amount == discount_threshold"
+      },
+      "verification_commands": [
+        "cargo xtask fixtures boundary_gap",
+        "cargo xtask goldens check"
+      ],
+      "projection_eligibility": {
+        "pr_comment": {
+          "eligible": true,
+          "reason": "stable_anchor_and_repair_route"
+        }
+      },
+      "authority_boundary": "gate_decision_artifact_only"
+    },
+    {
+      "gap_id": "gap:duplicate",
+      "kind": "MissingBoundaryAssertion",
+      "language": "rust",
+      "language_status": "stable",
+      "scope": "pr_local",
+      "evidence_class": "predicate_boundary",
+      "gap_state": "actionable",
+      "policy_state": "new",
+      "repairability": "repairable",
+      "anchor": {
+        "file": "src/pricing.rs",
+        "line": 42,
+        "dedupe_fingerprint": "gap:rust:pricing:discount:threshold-boundary"
+      },
+      "repair_route": {
+        "route_kind": "AddBoundaryAssertion",
+        "assertion_shape": "assert_eq!(discount(100, 100), 90)"
+      },
+      "verification_commands": [
+        "cargo xtask fixtures boundary_gap"
+      ],
+      "projection_eligibility": {
+        "pr_comment": {
+          "eligible": true,
+          "reason": "stable_anchor_and_repair_route"
+        }
+      }
+    },
+    {
+      "gap_id": "gap:preview",
+      "kind": "StaticLimitation",
+      "language": "typescript",
+      "language_status": "preview",
+      "scope": "pr_local",
+      "evidence_class": "static_unknown",
+      "gap_state": "static_limit",
+      "policy_state": "not_policy_targeted",
+      "repairability": "analyzer_limitation",
+      "projection_eligibility": {
+        "pr_comment": {
+          "eligible": false,
+          "reason": "preview_static_limit_not_repair_card"
+        }
+      }
+    }
+  ]
+}
+"#
+    }
+
+    fn eligible_gap_record_json(gap_id: &str, dedupe: &str) -> Value {
+        serde_json::json!({
+            "gap_id": gap_id,
+            "kind": "MissingBoundaryAssertion",
+            "language": "rust",
+            "language_status": "stable",
+            "scope": "pr_local",
+            "evidence_class": "predicate_boundary",
+            "gap_state": "actionable",
+            "policy_state": "new",
+            "repairability": "repairable",
+            "anchor": {
+                "file": "src/pricing.rs",
+                "line": 42,
+                "dedupe_fingerprint": dedupe
+            },
+            "repair_route": {
+                "route_kind": "AddBoundaryAssertion",
+                "target_file": "tests/pricing.rs",
+                "assertion_shape": "assert_eq!(discount(100, 100), 90)",
+                "changed_behavior": "amount == threshold"
+            },
+            "verification_commands": [
+                "cargo xtask fixtures boundary_gap"
+            ],
+            "projection_eligibility": {
+                "pr_comment": {
+                    "eligible": true,
+                    "reason": "stable_anchor_and_repair_route"
+                }
+            }
+        })
+    }
+
     fn pr_guidance_fixture(case: &str, file: &str) -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../fixtures/boundary_gap/expected/pr-guidance")
@@ -795,6 +1255,208 @@ mod tests {
         assert!(rendered.contains("# RIPR PR Guidance"));
         assert!(rendered.contains("Advisory static evidence only"));
         assert!(rendered.contains("ripr agent brief"));
+    }
+
+    #[test]
+    fn review_comments_gap_ledger_renders_only_eligible_repair_cards() -> Result<(), String> {
+        let records = crate::output::gap_decision_ledger::parse_gap_records_json(
+            gap_record_review_comments_fixture(),
+        )?;
+
+        let rendered = render_gap_record_review_comments_json(
+            Path::new("."),
+            "main",
+            "HEAD",
+            &Mode::Draft,
+            "target/ripr/reports/gap-decision-ledger.json",
+            &records,
+        )?;
+        let value: Value =
+            serde_json::from_str(&rendered).map_err(|err| format!("parse JSON: {err}"))?;
+
+        assert_eq!(value["summary"]["comments"], 1);
+        assert_eq!(value["summary"]["suppressed"], 2);
+        assert_eq!(value["comments"][0]["source"], "gap_decision_ledger");
+        assert_eq!(
+            value["comments"][0]["placement"]["mode"],
+            "gap_record_anchor"
+        );
+        assert_eq!(
+            value["comments"][0]["repair_card"]["verify_command"],
+            "cargo xtask fixtures boundary_gap"
+        );
+        assert_eq!(
+            value["comments"][0]["suggested_test"]["candidate_values"],
+            Value::Array(Vec::new())
+        );
+        assert!(
+            value["comments"][0].get("confidence").is_none(),
+            "repair cards should not expose generic confidence optics"
+        );
+        assert_eq!(
+            value["suppressed"][0]["reason"],
+            "duplicate_dedupe_fingerprint"
+        );
+        assert_eq!(value["suppressed"][1]["reason"], "not_pr_comment_eligible");
+
+        let markdown = render_gap_record_review_comments_markdown(
+            Path::new("."),
+            "main",
+            "HEAD",
+            &Mode::Draft,
+            "target/ripr/reports/gap-decision-ledger.json",
+            &records,
+        );
+        assert!(markdown.contains("gap:pr:pricing:threshold-boundary"));
+        assert!(markdown.contains("command: `ripr first-action"));
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_gap_ledger_reports_ineligible_records_and_caps() -> Result<(), String> {
+        let mut record_values = Vec::new();
+        for index in 0..14 {
+            record_values.push(eligible_gap_record_json(
+                &format!("gap:eligible:{index}"),
+                &format!("dedupe:{index}"),
+            ));
+        }
+
+        let mut missing_projection =
+            eligible_gap_record_json("gap:missing-projection", "dedupe:missing-projection");
+        missing_projection
+            .as_object_mut()
+            .ok_or("missing_projection should be an object")?
+            .remove("projection_eligibility");
+        record_values.push(missing_projection);
+
+        let mut repo_scope = eligible_gap_record_json("gap:repo-scope", "dedupe:repo-scope");
+        repo_scope["scope"] = serde_json::json!("repo");
+        record_values.push(repo_scope);
+
+        let mut waived = eligible_gap_record_json("gap:waived", "dedupe:waived");
+        waived["policy_state"] = serde_json::json!("waived");
+        record_values.push(waived);
+
+        let mut missing_anchor =
+            eligible_gap_record_json("gap:missing-anchor", "dedupe:missing-anchor");
+        missing_anchor
+            .as_object_mut()
+            .ok_or("missing_anchor should be an object")?
+            .remove("anchor");
+        record_values.push(missing_anchor);
+
+        let mut missing_file = eligible_gap_record_json("gap:missing-file", "dedupe:missing-file");
+        missing_file["anchor"]["file"] = serde_json::json!(" ");
+        record_values.push(missing_file);
+
+        let mut missing_line = eligible_gap_record_json("gap:missing-line", "dedupe:missing-line");
+        missing_line["anchor"]
+            .as_object_mut()
+            .ok_or("missing_line anchor should be an object")?
+            .remove("line");
+        record_values.push(missing_line);
+
+        let mut missing_dedupe =
+            eligible_gap_record_json("gap:missing-dedupe", "dedupe:missing-dedupe");
+        missing_dedupe["anchor"]
+            .as_object_mut()
+            .ok_or("missing_dedupe anchor should be an object")?
+            .remove("dedupe_fingerprint");
+        record_values.push(missing_dedupe);
+
+        let mut missing_route =
+            eligible_gap_record_json("gap:missing-route", "dedupe:missing-route");
+        missing_route
+            .as_object_mut()
+            .ok_or("missing_route should be an object")?
+            .remove("repair_route");
+        record_values.push(missing_route);
+
+        let mut missing_verify =
+            eligible_gap_record_json("gap:missing-verify", "dedupe:missing-verify");
+        missing_verify["verification_commands"] = serde_json::json!([]);
+        record_values.push(missing_verify);
+
+        let records_json = serde_json::json!({ "records": record_values }).to_string();
+        let records = crate::output::gap_decision_ledger::parse_gap_records_json(&records_json)?;
+        let rendered = render_gap_record_review_comments_json(
+            Path::new("."),
+            "main",
+            "HEAD",
+            &Mode::Draft,
+            "target/ripr/reports/gap-decision-ledger.json",
+            &records,
+        )?;
+        let value: Value =
+            serde_json::from_str(&rendered).map_err(|err| format!("parse JSON: {err}"))?;
+
+        assert_eq!(value["summary"]["comments"], 3);
+        assert_eq!(value["summary"]["summary_only"], 10);
+        let suppressed = value["suppressed"]
+            .as_array()
+            .ok_or("suppressed should be an array")?;
+        let reasons: Vec<&str> = suppressed
+            .iter()
+            .filter_map(|item| item["reason"].as_str())
+            .collect();
+        for expected in [
+            "summary_cap",
+            "not_pr_comment_eligible",
+            "not_pr_local_repairable",
+            "policy_state_not_commentable",
+            "missing_anchor",
+            "missing_dedupe_fingerprint",
+            "missing_repair_route",
+            "missing_verification_command",
+        ] {
+            assert!(
+                reasons.contains(&expected),
+                "suppressed reasons should contain {expected}: {reasons:?}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_gap_ledger_repair_helpers_cover_route_language() {
+        let route = crate::output::gap_decision_ledger::GapRepairRoute {
+            route_kind: "AddOutputGolden".to_string(),
+            target_file: None,
+            target_line: None,
+            related_test: None,
+            assertion_shape: None,
+            changed_behavior: None,
+            stop_conditions: Vec::new(),
+        };
+        assert_eq!(
+            repair_text(&route),
+            "Follow repair route `AddOutputGolden`."
+        );
+        assert_eq!(
+            repair_intent("AddErrorAssertion"),
+            "Add an error-path assertion."
+        );
+        assert_eq!(
+            repair_intent("AddValueAssertion"),
+            "Add an exact value assertion."
+        );
+        assert_eq!(
+            repair_intent("AddSideEffectObserver"),
+            "Add a side-effect observer."
+        );
+        assert_eq!(
+            repair_intent("AddOutputGolden"),
+            "Add or update output-contract golden evidence."
+        );
+        assert_eq!(
+            repair_intent("UnsupportedRoute"),
+            "Add the focused proof named by the repair route."
+        );
+        assert!(
+            repair_prompt(&route, "cargo xtask goldens check")
+                .contains("cargo xtask goldens check")
+        );
     }
 
     #[test]

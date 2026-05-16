@@ -1,6 +1,6 @@
 # Lane 1: Evidence Quality Leadership
 
-Status: open
+Status: closed in documented scope
 
 Opened: 2026-05-13
 
@@ -90,6 +90,11 @@ Use one document for one job:
   boundaries, builder overrides, cross-file constants, snapshot field
   discriminators, mock expectation mismatches, ambiguous joins,
   runtime-only signal, and no-runtime-data guards.
+- The evidence-quality trend slice landed in #885, comparing current and
+  previous scorecard or audit snapshots while reporting missing history
+  explicitly.
+- The closeout handoff records the final evidence state, remaining unknowns,
+  and future Lane 1 boundary.
 
 ## Planned Slices
 
@@ -101,8 +106,8 @@ Use one document for one job:
 | `analysis/oracle-semantics-audit-fixes` | Fix audit-derived oracle-shape misses while keeping unsupported helpers as static limitations. | merged in #871 |
 | `analysis/static-limitation-taxonomy` | Normalize limitations into repairable categories and make them visible in scorecard/evidence-health without treating them as user test gaps. | merged in #861 |
 | `calibration/runtime-fixtures-v3` | Expand checked runtime fixture classes without creating static gaps from runtime-only signal or running mutation execution in CI. | merged in #881 |
-| `report/evidence-quality-trend` | Compare current and previous audit or scorecard snapshots to show whether evidence quality is improving. | next substantive planned slice |
-| `campaign/evidence-quality-leadership-closeout` | Close after scorecard, benchmark corpus, at least two audit-driven improvements, one calibration expansion, conservative capabilities, and a closeout handoff. | planned |
+| `report/evidence-quality-trend` | Compare current and previous audit or scorecard snapshots to show whether evidence quality is improving. | merged in #885 |
+| `campaign/evidence-quality-leadership-closeout` | Close after scorecard, benchmark corpus, at least two audit-driven improvements, one calibration expansion, conservative capabilities, and a closeout handoff. | open in #893 |
 
 ## Validation Gates
 
@@ -135,6 +140,17 @@ cargo xtask check-capabilities
 
 Analyzer or calibration slices should include focused tests, fixture or runtime
 proof, and an audit or scorecard delta.
+
+Trend implementation should also run:
+
+```bash
+cargo test -p xtask evidence_quality_trend
+cargo xtask evidence-quality-scorecard
+cargo xtask evidence-quality-trend
+cargo xtask check-output-contracts
+cargo xtask check-traceability
+cargo xtask check-capabilities
+```
 
 ## Non-Goals
 
@@ -180,10 +196,12 @@ evidence class, not by projection surface.
 | `analysis/oracle-semantics-audit-fixes` | #871 | merged | Tightened custom assertion helper and duplicative equality oracle semantics from audit/benchmark cases without changing gates, PR/CI projection, LSP/editor behavior, generated tests, provider calls, mutation execution, or score definitions. |
 | `docs/spec-static-runtime-confidence-expansion` | #878 | merged | Added RIPR-SPEC-0040 for runtime-fixtures-v3 confidence labels, imported-runtime sample expectations, ambiguous joins, runtime-only signals, static vocabulary boundaries, and no gate or mutation-execution changes. |
 | `calibration/runtime-fixtures-v3` | #881 | merged | Added checked runtime-fixtures-v3 corpus coverage for custom assertion helper outcomes, table-driven boundaries, builder overrides, cross-file constants, snapshot field discriminators, mock expectation mismatches, ambiguous joins, runtime-only signal, and no-runtime-data guards without analyzer, gate, PR/CI, LSP, provider, generated-test, mutation-execution, or score-definition changes. |
+| `report/evidence-quality-trend` | #885 | merged | Added repo-local trend reporting over current and previous scorecard or audit snapshots, including no-history unknowns, metric directions, and static-limitation category deltas without analyzer, gate, PR/CI, LSP, provider, generated-test, mutation-execution, or score-definition changes. |
+| `campaign/evidence-quality-leadership-closeout` | #893 | merged | Closed the tracker after scorecard, benchmark corpus, static limitation taxonomy, oracle semantics, runtime-fixtures-v3, trend reporting, capability metadata, traceability, and the closeout handoff were in place. |
 
 ## Closeout Conditions
 
-Close this lane only when:
+This lane is closed because:
 
 - the scorecard exists and reports maturity, risk, recommended repairs, and
   recent deltas;
@@ -195,5 +213,6 @@ Close this lane only when:
 - capability updates are class-scoped and proof-backed;
 - traceability links specs, fixtures, tests, code, outputs, metrics, and
   closeout artifacts;
-- a handoff records what improved, what remains unknown, and which evidence
-  class should be repaired next.
+- [the closeout handoff](../handoffs/2026-05-13-lane-1-evidence-quality-leadership-closeout.md)
+  records what improved, what remains unknown, and which evidence class should
+  be repaired next.

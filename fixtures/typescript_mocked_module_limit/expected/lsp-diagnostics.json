@@ -1,0 +1,38 @@
+{
+  "diagnostics": [
+    {
+      "code": "exposed",
+      "data": {
+        "classification": "exposed",
+        "confidence": 0.6,
+        "finding_id": "probe:src_discount.ts:2:typescript_preview",
+        "language": "typescript",
+        "language_status": "preview",
+        "probe_family": "predicate",
+        "probe_id": "probe:src_discount.ts:2:typescript_preview",
+        "schema_version": "0.1",
+        "source_range": {
+          "column": 1,
+          "file": "src/discount.ts",
+          "line": 2
+        },
+        "static_limit_kind": "mocked_module"
+      },
+      "message": "typescript preview evidence (syntax-first, advisory): TypeScript preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value. Static limit: mocked_module.",
+      "range": {
+        "end": {
+          "character": 32,
+          "line": 1
+        },
+        "start": {
+          "character": 0,
+          "line": 1
+        }
+      },
+      "severity": "info",
+      "source": "ripr",
+      "uri": "src/discount.ts"
+    }
+  ],
+  "fixture": "typescript_mocked_module_limit"
+}

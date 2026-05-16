@@ -32,38 +32,32 @@
 <!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-10 after the 0.5.0 publish: 4 installs. Refresh the count and date from publisher metrics whenever you check; do not use live VS Marketplace Shields routes. -->
 
 
-`ripr` is **static mutation-exposure analysis**. It catches the same class
-of signal mutation testing catches — weak test/oracle exposure on changed
-behavior — but earlier and cheaper, by reading the diff at draft time
-instead of running mutants. `ripr` does not find or run actual mutants;
-mutation testing remains the slower runtime backstop for what static
-analysis cannot predict.
+`ripr` finds changed behavior that your tests probably reach but do not
+actually check.
 
-It finds changed Rust code where the nearby tests may run but not
-actually check the changed behavior, and points reviewers and coding
-agents at the focused test most likely to matter.
+It reads a PR diff, looks at the changed branch, return value, error path,
+field, or side effect, then checks whether nearby tests have assertions strong
+enough to catch that change. When the test exists but the check is weak, `ripr`
+points at the gap and suggests the focused test to add next.
 
-The draft-time question `ripr` answers is:
+Use it while a PR is still moving:
+
+- in CI, as an advisory PR summary;
+- in VS Code, as diagnostics, hovers, and targeted-test actions;
+- from the CLI, as a before/after receipt for one improved seam.
+
+`ripr` is not coverage and does not run mutants. Coverage asks whether code
+executed. Mutation testing asks whether tests fail against a concrete mutant.
+`ripr` asks the cheaper draft-time question:
 
 ```text
-For the behavior changed in this diff, do the current tests include an
-assertion or check that would catch the changed behavior?
+Does this changed behavior appear exposed to a meaningful test assertion?
 ```
 
-It is alpha software. The current release is useful for fast feedback while a
-pull request is moving. It is not a proof system, and it does not replace real
-mutation testing.
-
-Under the hood, ripr is static mutation-exposure analysis using the RIPR
-model: **Reachability**, **Infection**, **Propagation**, and
-**Revealability**. It reads the diff, builds mutation-shaped probes from
-changed behavior, and asks whether existing tests appear to expose that
-behavior to a meaningful discriminator. Mutation testing answers the same
-question with execution; ripr shifts the signal left into draft time.
-JSON output, specs, and report artifacts keep this precise vocabulary;
-the editor and first-hour docs lead with plain language and use the
-internal terms only where they earn their keep.
-[Terminology](docs/TERMINOLOGY.md) is the bridge.
+The usable repair loop is Rust/Cargo: find one repairable gap, add one focused
+proof outside `ripr`, and keep the before/after receipt. TypeScript and Python
+are opt-in preview surfaces; see [Support tiers](docs/status/SUPPORT_TIERS.md)
+for what is usable, stable, preview, advisory, blocked, or unsupported.
 
 ## The Problem
 
@@ -162,6 +156,13 @@ or CI users.
 
 For the full first-hour path, including troubleshooting and known limits, read
 [Quickstart](docs/QUICKSTART.md).
+For a single real PR adoption proof, use the
+[first successful PR workflow](docs/FIRST_PR_WORKFLOW.md).
+
+Before rollout, check [Support tiers](docs/status/SUPPORT_TIERS.md) for the
+plain-language map of what is usable, usable alpha, preview, scaffold, blocked,
+or deferred. It also keeps the public-badge boundary separate from PR-local
+evidence and gate authority.
 
 ### VS Code
 
@@ -322,6 +323,7 @@ Current capabilities:
 | LSP | Experimental `tower-lsp-server` sidecar with evidence-aware Finding diagnostics, related-test links, hovers, server-side context packets, seam-native diagnostics + hover, and seam code actions for copying packets/assertions and opening related tests. Saved-workspace diagnostics remain advisory; unsaved-buffer overlays are not default behavior. | Editor contract maintenance. |
 | Agent context | Compact context packet plus per-seam `write_targeted_test` and `inspect_static_limitation` packets carrying recommended test placement, nearest tests to imitate, candidate values, missing discriminators, patterns to imitate/avoid, and assertion templates. `ripr agent start --root . --seam-id <id> --out target/ripr/workflow` writes a source-edit-free workflow packet, `ripr agent status --root . --json` reports local LLM loop artifact state and the next command without rerunning analysis, `ripr agent receipt` emits provenance plus bounded next-action guidance, and `ripr agent review-summary --root .` joins existing loop artifacts into compact review Markdown or schema `0.1` JSON. | Agent loop maintenance. |
 | First useful action | `ripr first-action` writes advisory `first-useful-action.{json,md}` from explicit PR guidance, assistant proof, PR evidence ledger, baseline delta, receipt, optional gate, optional coverage/grip frontier, and editor context inputs without hidden analysis, source edits, generated tests, provider calls, mutation execution, or default CI blocking; generated CI projects the report as advisory summary/artifact content, and VS Code status/Show Status can project an existing workspace-matched report without new diagnostics. | `docs/first-useful-action-workflow` |
+| Gap decision ledger | `ripr reports gap-ledger --records ...` renders explicit `GapRecord` input into advisory JSON and Markdown so repairability, projection eligibility, safe gate predicates, missing artifacts, preview ineligibility, and receipt movement share one decision vocabulary before downstream surfaces consume them. | `report/first-useful-action-gap-record` |
 | Repository config | Repo-root `ripr.toml` can set analysis mode, oracle policy, severity mapping, suppressions path, report related-test caps, and LSP seam-diagnostic defaults. Explicit CLI flags and LSP initialization options still win. | Policy feedback after adoption. |
 | SARIF and CI policy | `ripr check --format sarif` emits diff-scoped Finding SARIF and `--format repo-sarif` emits repo seam SARIF with configured severity, suppression metadata, stable rule IDs, and stable fingerprints. `ripr init --ci github` generates a non-blocking GitHub Actions report workflow with pilot/report artifacts, repo badge JSON, and optional SARIF rendering/upload; `cargo xtask sarif-policy` compares current SARIF to a baseline only when explicitly requested. | Advisory policy feedback after adoption. |
 | Calibration | Advisory `ripr calibrate cargo-mutants` and repo-local `cargo xtask mutation-calibration` join imported cargo-mutants runtime data to static seam evidence by `seam_id` or unambiguous file/line; ambiguous file/line candidates stay unassigned. `fixtures/CALIBRATION_CORPUS.md` maps current fixtures to controlled calibration scenarios, `fixtures/EXAMPLE_CORPUS.md` links the checked boundary-gap calibration sample into the operator loop, and `fixtures/boundary_gap/calibration/runtime-fixtures-v1/` pins the main static/runtime agreement buckets. | Maintenance; runtime mutation language stays inside calibration/runtime reports. |
@@ -395,6 +397,7 @@ cargo xtask dogfood
 cargo xtask reports index
 cargo xtask receipts
 cargo xtask receipts check
+cargo xtask suggested-fixes
 cargo xtask check-allow-attributes
 cargo xtask check-local-context
 cargo xtask metrics

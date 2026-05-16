@@ -80,3 +80,8 @@ Start new proposals from
 | [RIPR-PROP-0002](RIPR-PROP-0002-lane-1-evidence-quality-leadership.md) | proposed | Lane 1 evidence quality leadership |
 | [RIPR-PROP-0003](RIPR-PROP-0003-editor-preview-routing.md) | proposed | Editor preview routing |
 | [RIPR-PROP-0004](RIPR-PROP-0004-pr-ci-review-cockpit.md) | proposed | PR / CI review cockpit |
+| [RIPR-PROP-0005](RIPR-PROP-0005-user-visible-output-evidence.md) | proposed | User-visible output evidence |
+| [RIPR-PROP-0006](RIPR-PROP-0006-rust-usable-gap-projection.md) | accepted | Rust usable gap projection |
+| [RIPR-PROP-0007](RIPR-PROP-0007-editor-gap-cockpit.md) | accepted | Editor gap cockpit |
+| [RIPR-PROP-0008](RIPR-PROP-0008-editor-first-run-usability.md) | proposed | Editor first-run usability |
+| [RIPR-PROP-0009](RIPR-PROP-0009-first-run-ux-adoption-hardening.md) | proposed | First-run UX and adoption hardening |

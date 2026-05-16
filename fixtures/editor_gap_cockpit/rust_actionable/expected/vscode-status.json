@@ -1,0 +1,20 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_gap_cockpit/rust_actionable",
+  "states": [
+    {
+      "name": "actionable_gap",
+      "status_bar": "ripr: 1 actionable gap",
+      "show_status_contains": [
+        "Language: rust",
+        "Status: stable",
+        "Next safe action: open related test or copy repair packet"
+      ],
+      "must_not": [
+        "edit source",
+        "generate tests",
+        "run mutation testing"
+      ]
+    }
+  ]
+}

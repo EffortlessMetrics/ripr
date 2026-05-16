@@ -1,0 +1,46 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "pr_evidence",
+  "scope": "diff",
+  "status": "advisory",
+  "root": ".",
+  "base": "origin/main",
+  "head": "HEAD",
+  "generated_at": "2026-05-14T00:00:00Z",
+  "summary": {
+    "changed_files": 2,
+    "comments": 1,
+    "summary_only": 1,
+    "suppressed": 0,
+    "weakly_exposed": 1,
+    "reachable_unrevealed": 0,
+    "no_static_path": 0,
+    "severe_gaps": 1,
+    "requires_targeted_mutation": true,
+    "ripr_severe_gap": true,
+    "routing_reason": "ripr severe gap"
+  },
+  "artifacts": [
+    {
+      "label": "PR evidence JSON",
+      "path": "target/ripr/pr/repo-exposure.json",
+      "kind": "json",
+      "scope": "diff",
+      "available": true,
+      "required": true
+    },
+    {
+      "label": "PR evidence Markdown",
+      "path": "target/ripr/pr/repo-exposure.md",
+      "kind": "markdown",
+      "scope": "diff",
+      "available": true
+    }
+  ],
+  "warnings": [],
+  "advisory_limits": [
+    "RIPR evidence is static and advisory by default.",
+    "Mutation is routed separately and not executed by this packet."
+  ]
+}

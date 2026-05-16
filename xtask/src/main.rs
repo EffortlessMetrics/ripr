@@ -14,10 +14,13 @@ mod dispatch;
 mod policy;
 mod reports;
 mod run;
+mod verification_contracts;
 
 #[cfg(test)]
 use command::unknown_command_message;
-use command::{XtaskCommand, known_command_root, known_commands};
+use command::{
+    CommandCatalogEntry, XtaskCommand, command_catalog, known_command_root, known_commands,
+};
 use policy::{
     check_allow_attributes, check_ci_lane_whitelist, check_doc_roles, check_droid_review_config,
     check_executable_files, check_file_policy, check_local_context, check_network_policy,
@@ -25,8 +28,8 @@ use policy::{
     check_static_language, check_workflows,
 };
 use reports::{
-    dogfood, fixtures, metrics_report, pr_summary, receipts_write, repo_badge_artifacts,
-    reports_index, test_oracle_report,
+    dogfood, fixtures, metrics_report, pr_summary, receipts_write, reports_index,
+    test_oracle_report,
 };
 #[cfg(test)]
 use reports::{lsp_cockpit_report, targeted_test_outcome};
@@ -80,6 +83,93 @@ struct ChangedPath {
     statuses: BTreeSet<String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WorktreeDoctorSeverity {
+    Error,
+    Warning,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct WorktreeDoctorFinding {
+    severity: WorktreeDoctorSeverity,
+    message: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PrTriagePullRequest {
+    number: u64,
+    title: String,
+    body: String,
+    is_draft: bool,
+    created_at: String,
+    updated_at: String,
+    merge_state_status: String,
+    head_ref_name: String,
+    base_ref_name: String,
+    review_decision: String,
+    labels: Vec<String>,
+    files: Vec<String>,
+    checks: Vec<PrTriageCheck>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PrTriageCheck {
+    name: String,
+    status: String,
+    conclusion: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PrTriageFinding {
+    category: String,
+    severity: String,
+    message: String,
+    prs: Vec<u64>,
+    details: Vec<String>,
+    recommended_action: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct GhPrStatusPullRequest {
+    number: u64,
+    title: String,
+    is_draft: bool,
+    merge_state_status: String,
+    head_ref_name: String,
+    base_ref_name: String,
+    review_decision: String,
+    checks: Vec<PrTriageCheck>,
+    reviews: Vec<GhPrStatusReview>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct GhPrStatusReview {
+    author: String,
+    state: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct GhPrStatusReadiness {
+    behind_main: bool,
+    required_contexts_available: bool,
+    required_checks_outstanding: Vec<String>,
+    failed_checks: Vec<String>,
+    pending_checks: Vec<String>,
+    droid_checks: Vec<String>,
+    safe_next_action: String,
+    warnings: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PrReadyStep {
+    id: &'static str,
+    command: &'static str,
+    report: &'static str,
+    required: bool,
+    status: String,
+    summary: String,
+}
+
 #[derive(Debug, Default)]
 struct TraceBehavior {
     line: usize,
@@ -117,7 +207,11 @@ struct CampaignManifest {
     id: Option<String>,
     title: Option<String>,
     status: Option<String>,
+    issue: Option<String>,
+    lane: Option<String>,
     end_state: Vec<String>,
+    hard_rules: Vec<String>,
+    non_goals: Vec<String>,
     work_items: Vec<CampaignWorkItem>,
 }
 
@@ -128,6 +222,12 @@ struct CampaignWorkItem {
     status: Option<String>,
     branch: Option<String>,
     stackable: Option<bool>,
+    proposal: Option<String>,
+    plan: Option<String>,
+    spec: Option<String>,
+    specs: Vec<String>,
+    receipt: Option<String>,
+    closeout: Option<String>,
     acceptance: Option<String>,
     commands: Vec<String>,
     blocked_by: Vec<String>,
@@ -494,6 +594,99 @@ struct DogfoodGeneratedCiCockpitRun {
 }
 
 #[derive(Debug)]
+struct DogfoodLanguagePreviewScenario {
+    name: String,
+    language: String,
+    root: PathBuf,
+    diff: PathBuf,
+    expected_findings: usize,
+    expected_preview_findings: usize,
+    expected_missing_preview_status: usize,
+    expected_related_tests: usize,
+    expected_classifications: Vec<String>,
+    expected_static_limit_kinds: Vec<String>,
+    preview_enabled: bool,
+    reason: String,
+}
+
+#[derive(Debug)]
+struct DogfoodLanguagePreviewRun {
+    name: String,
+    language: String,
+    root: PathBuf,
+    diff: PathBuf,
+    actual_dir: PathBuf,
+    json_path: PathBuf,
+    human_path: PathBuf,
+    duration_ms: u128,
+    findings: usize,
+    language_findings: usize,
+    preview_findings: usize,
+    missing_preview_status: usize,
+    related_tests: usize,
+    classifications: Vec<String>,
+    static_limit_kinds: Vec<String>,
+    expected_findings: usize,
+    expected_preview_findings: usize,
+    expected_missing_preview_status: usize,
+    expected_related_tests: usize,
+    expected_classifications: Vec<String>,
+    expected_static_limit_kinds: Vec<String>,
+    preview_enabled: bool,
+    reason: String,
+    errors: Vec<String>,
+}
+
+#[derive(Debug)]
+struct DogfoodEditorGapCockpitScenario {
+    name: String,
+    expected_state: String,
+    expected_language: Option<String>,
+    expected_language_status: Option<String>,
+    expected_diagnostics: usize,
+    expected_fail_closed: bool,
+    expected_actions: Vec<String>,
+    expected_static_limit_kind: Option<String>,
+    reason: String,
+}
+
+#[derive(Debug)]
+struct DogfoodEditorGapCockpitRun {
+    name: String,
+    expected_dir: PathBuf,
+    projection_path: PathBuf,
+    diagnostics_path: PathBuf,
+    hover_path: PathBuf,
+    code_actions_path: PathBuf,
+    status_path: PathBuf,
+    state: String,
+    language: Option<String>,
+    language_status: Option<String>,
+    diagnostics_projected: usize,
+    actual_diagnostics: usize,
+    fail_closed: bool,
+    actions_projected: Vec<String>,
+    actual_actions: usize,
+    static_limit_kind: Option<String>,
+    hover_static_before_action: bool,
+    expected_state: String,
+    expected_language: Option<String>,
+    expected_language_status: Option<String>,
+    expected_diagnostics: usize,
+    expected_fail_closed: bool,
+    expected_actions: Vec<String>,
+    expected_static_limit_kind: Option<String>,
+    reason: String,
+    errors: Vec<String>,
+}
+
+struct DogfoodPreviewProjectionRuns<'a> {
+    generated_ci_cockpit: &'a [DogfoodGeneratedCiCockpitRun],
+    language_preview: &'a [DogfoodLanguagePreviewRun],
+    editor_gap_cockpit: &'a [DogfoodEditorGapCockpitRun],
+}
+
+#[derive(Debug)]
 struct DogfoodPrInlineCommentScenario {
     name: String,
     scenario: String,
@@ -546,6 +739,32 @@ struct ReportIndexEntry {
     file: String,
     path: String,
     status: String,
+}
+
+#[derive(Clone, Debug)]
+struct RepoOpsPacketSpec {
+    id: &'static str,
+    label: &'static str,
+    command: &'static str,
+    description: &'static str,
+    artifacts: &'static [&'static str],
+}
+
+#[derive(Clone, Debug)]
+struct ReportIndexRepoOpsPacket {
+    id: &'static str,
+    label: &'static str,
+    status: String,
+    command: &'static str,
+    description: &'static str,
+    artifacts: Vec<ReportIndexRepoOpsArtifact>,
+}
+
+#[derive(Clone, Debug)]
+struct ReportIndexRepoOpsArtifact {
+    path: String,
+    status: String,
+    available: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -798,6 +1017,7 @@ fn precommit() -> Result<(), String> {
     check_workflows()?;
     check_droid_review_config()?;
     check_spec_format()?;
+    check_spec_numbering()?;
     check_fixture_contracts()?;
     check_traceability()?;
     check_capabilities()?;
@@ -810,7 +1030,10 @@ fn precommit() -> Result<(), String> {
     markdown_links()?;
     check_campaign()?;
     check_pr_shape()?;
+    check_command_catalog()?;
     check_generated()?;
+    check_badge_diff_policy()?;
+    check_generated_clean()?;
     check_lint_policy()?;
     let body = precommit_report_body();
     write_report("precommit.md", &body)
@@ -834,6 +1057,7 @@ fn check_pr() -> Result<(), String> {
     pr_summary()?;
     let body = check_pr_report_body();
     write_report("check-pr.md", &body)?;
+    suggested_fixes()?;
     receipts_write()?;
     pr_summary()?;
     reports_index()
@@ -849,6 +1073,7 @@ fn run_policy_checks() -> Result<(), String> {
     check_workflows()?;
     check_droid_review_config()?;
     check_spec_format()?;
+    check_spec_numbering()?;
     check_fixture_contracts()?;
     check_traceability()?;
     check_capabilities()?;
@@ -861,7 +1086,10 @@ fn run_policy_checks() -> Result<(), String> {
     markdown_links()?;
     check_campaign()?;
     check_pr_shape()?;
+    check_command_catalog()?;
     check_generated()?;
+    check_badge_diff_policy()?;
+    check_generated_clean()?;
     check_dependencies()?;
     check_process_policy()?;
     check_network_policy()?;
@@ -1475,6 +1703,904 @@ fn fix_pr() -> Result<(), String> {
     write_report("fix-pr.md", body)
 }
 
+fn commands_report() -> Result<(), String> {
+    let entries = command_catalog();
+    write_report("commands.md", &commands_report_markdown(&entries))?;
+    write_report("commands.json", &commands_report_json(&entries))
+}
+
+fn pr_ready() -> Result<(), String> {
+    let steps = vec![
+        pr_ready_step(
+            "worktree_doctor",
+            "cargo xtask worktree doctor",
+            "target/ripr/reports/worktree-doctor.md",
+            true,
+            worktree_doctor,
+        ),
+        pr_ready_step(
+            "command_mutability_catalog",
+            "cargo xtask commands",
+            "target/ripr/reports/commands.md",
+            false,
+            commands_report,
+        ),
+        pr_ready_step(
+            "pr_summary",
+            "cargo xtask pr-summary",
+            "target/ripr/reports/pr-summary.md",
+            false,
+            pr_summary,
+        ),
+        pr_ready_step(
+            "critic",
+            "cargo xtask critic",
+            "target/ripr/reports/critic.md",
+            false,
+            critic_impl,
+        ),
+        pr_ready_step(
+            "receipts_check",
+            "cargo xtask receipts check",
+            "target/ripr/reports/receipts.md",
+            false,
+            receipts_check,
+        ),
+        pr_ready_step(
+            "suggested_fixes",
+            "cargo xtask suggested-fixes",
+            "target/ripr/reports/suggested-fixes.md",
+            false,
+            suggested_fixes,
+        ),
+        pr_ready_step(
+            "generated_clean",
+            "cargo xtask check-generated-clean",
+            "target/ripr/reports/generated-clean.md",
+            true,
+            check_generated_clean,
+        ),
+        pr_ready_step(
+            "badge_diff_policy",
+            "cargo xtask check-badge-diff-policy",
+            "target/ripr/reports/badge-diff-policy.md",
+            true,
+            check_badge_diff_policy,
+        ),
+    ];
+    let status = pr_ready_status(&steps);
+    write_report("pr-ready.md", &pr_ready_markdown(&steps))?;
+    write_report("pr-ready.json", &pr_ready_json(&steps))?;
+    let index_result = reports_index();
+
+    if status == "fail" {
+        let _ = index_result;
+        Err(
+            "pr-ready found blocking repo-ops issues; see target/ripr/reports/pr-ready.md"
+                .to_string(),
+        )
+    } else {
+        index_result
+    }
+}
+
+fn cockpit() -> Result<(), String> {
+    let steps = vec![
+        pr_ready_step(
+            "worktree_doctor",
+            "cargo xtask worktree doctor",
+            "target/ripr/reports/worktree-doctor.md",
+            true,
+            worktree_doctor,
+        ),
+        pr_ready_step(
+            "command_mutability_catalog",
+            "cargo xtask commands",
+            "target/ripr/reports/commands.md",
+            false,
+            commands_report,
+        ),
+        pr_ready_step(
+            "command_catalog_check",
+            "cargo xtask check-command-catalog",
+            "target/ripr/reports/command-catalog.md",
+            true,
+            check_command_catalog,
+        ),
+        pr_ready_step(
+            "spec_numbering",
+            "cargo xtask check-spec-numbering",
+            "target/ripr/reports/spec-numbering.md",
+            true,
+            check_spec_numbering,
+        ),
+        pr_ready_step(
+            "campaign_status",
+            "cargo xtask check-campaign",
+            "target/ripr/reports/campaign.md",
+            false,
+            check_campaign,
+        ),
+        pr_ready_step(
+            "pr_triage",
+            "cargo xtask pr-triage-report",
+            "target/ripr/reports/pr-triage.md",
+            false,
+            reports::pr_triage_report,
+        ),
+        pr_ready_step(
+            "generated_clean",
+            "cargo xtask check-generated-clean",
+            "target/ripr/reports/generated-clean.md",
+            true,
+            check_generated_clean,
+        ),
+        pr_ready_step(
+            "badge_diff_policy",
+            "cargo xtask check-badge-diff-policy",
+            "target/ripr/reports/badge-diff-policy.md",
+            true,
+            check_badge_diff_policy,
+        ),
+    ];
+
+    write_report("cockpit.md", &cockpit_markdown(&steps))?;
+    write_report("cockpit.json", &cockpit_json(&steps))?;
+    reports_index()?;
+
+    if steps
+        .iter()
+        .any(|step| step.required && step.status == "fail")
+    {
+        Err("repo cockpit found blocking repo-ops issues".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+fn pr_ready_step(
+    id: &'static str,
+    command: &'static str,
+    report: &'static str,
+    required: bool,
+    run_step: fn() -> Result<(), String>,
+) -> PrReadyStep {
+    match run_step() {
+        Ok(()) => {
+            let (status, summary) = pr_ready_report_outcome(report)
+                .unwrap_or_else(|| ("pass".to_string(), "completed".to_string()));
+            PrReadyStep {
+                id,
+                command,
+                report,
+                required,
+                status,
+                summary,
+            }
+        }
+        Err(err) => PrReadyStep {
+            id,
+            command,
+            report,
+            required,
+            status: if required { "fail" } else { "needs_attention" }.to_string(),
+            summary: first_error_line(&err),
+        },
+    }
+}
+
+fn pr_ready_report_outcome(report: &str) -> Option<(String, String)> {
+    let contents = fs::read_to_string(report).ok()?;
+    let status = markdown_status_value(&contents)?;
+    pr_ready_status_from_report_status(status).map(|step_status| {
+        (
+            step_status.to_string(),
+            format!("report status: {status}; see {report}"),
+        )
+    })
+}
+
+fn markdown_status_value(contents: &str) -> Option<&str> {
+    contents.lines().find_map(|line| {
+        line.strip_prefix("Status:")
+            .map(str::trim)
+            .filter(|status| !status.is_empty())
+    })
+}
+
+fn pr_ready_status_from_report_status(status: &str) -> Option<&'static str> {
+    match status {
+        "pass" => None,
+        "fail" | "error" => Some("fail"),
+        "warn" | "actionable" | "incomplete" | "blocked" | "needs_attention" => {
+            Some("needs_attention")
+        }
+        _ => None,
+    }
+}
+
+fn first_error_line(err: &str) -> String {
+    err.lines()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or(err)
+        .trim()
+        .to_string()
+}
+
+fn pr_ready_status(steps: &[PrReadyStep]) -> &'static str {
+    if steps.iter().any(|step| step.status == "fail") {
+        "fail"
+    } else if steps.iter().any(|step| step.status != "pass") {
+        "actionable"
+    } else {
+        "pass"
+    }
+}
+
+fn pr_ready_next_action(steps: &[PrReadyStep]) -> &'static str {
+    match pr_ready_status(steps) {
+        "fail" => {
+            "repair blocking generated-evidence or worktree hygiene issues before opening or updating a PR"
+        }
+        "actionable" => {
+            "review the attention items, then run cargo xtask check-pr for full gate receipts"
+        }
+        _ => "run cargo xtask check-pr",
+    }
+}
+
+fn pr_ready_markdown(steps: &[PrReadyStep]) -> String {
+    let status = pr_ready_status(steps);
+    let mut body = format!("# ripr PR Ready\n\nStatus: {status}\nMode: advisory\n\n");
+    body.push_str("## Next Action\n\n");
+    body.push_str("- ");
+    body.push_str(pr_ready_next_action(steps));
+    body.push_str("\n\n");
+
+    let attention = steps
+        .iter()
+        .filter(|step| step.status != "pass")
+        .collect::<Vec<_>>();
+    body.push_str("## Current Risks\n\n");
+    if attention.is_empty() {
+        body.push_str("- none detected\n\n");
+    } else {
+        for step in attention {
+            body.push_str(&format!(
+                "- `{}`: {} ({})\n",
+                step.id, step.summary, step.status
+            ));
+        }
+        body.push('\n');
+    }
+
+    body.push_str("## Step Summary\n\n");
+    body.push_str("| Step | Status | Required | Command | Report |\n");
+    body.push_str("| --- | --- | --- | --- | --- |\n");
+    for step in steps {
+        body.push_str(&format!(
+            "| `{}` | `{}` | `{}` | `{}` | `{}` |\n",
+            step.id, step.status, step.required, step.command, step.report
+        ));
+    }
+
+    body.push_str("\n## Safe Repairs\n\n");
+    for repair in pr_ready_safe_repairs() {
+        body.push_str("- ");
+        body.push_str(repair);
+        body.push('\n');
+    }
+
+    body.push_str("\n## Generated Only\n\n");
+    for artifact in pr_ready_generated_only() {
+        body.push_str("- `");
+        body.push_str(artifact);
+        body.push_str("`\n");
+    }
+
+    body.push_str("\n## Stop / Judgment Required\n\n");
+    for item in pr_ready_judgment_required() {
+        body.push_str("- ");
+        body.push_str(item);
+        body.push('\n');
+    }
+
+    body.push_str("\n## Next Commands\n\n```bash\ncargo xtask check-pr\n```\n");
+    body
+}
+
+fn pr_ready_json(steps: &[PrReadyStep]) -> String {
+    let mut body = "{\n".to_string();
+    body.push_str("  \"schema_version\": \"0.1\",\n");
+    body.push_str("  \"mode\": \"advisory\",\n");
+    body.push_str(&format!(
+        "  \"status\": \"{}\",\n",
+        json_escape(pr_ready_status(steps))
+    ));
+    body.push_str(&format!(
+        "  \"next_action\": \"{}\",\n",
+        json_escape(pr_ready_next_action(steps))
+    ));
+    body.push_str("  \"steps\": [\n");
+    for (index, step) in steps.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!("      \"id\": \"{}\",\n", json_escape(step.id)));
+        body.push_str(&format!(
+            "      \"command\": \"{}\",\n",
+            json_escape(step.command)
+        ));
+        body.push_str(&format!(
+            "      \"status\": \"{}\",\n",
+            json_escape(&step.status)
+        ));
+        body.push_str(&format!("      \"required\": {},\n", step.required));
+        body.push_str(&format!(
+            "      \"report\": \"{}\",\n",
+            json_escape(step.report)
+        ));
+        body.push_str(&format!(
+            "      \"summary\": \"{}\"\n",
+            json_escape(&step.summary)
+        ));
+        body.push_str("    }");
+    }
+    body.push_str("\n  ],\n");
+    body.push_str("  \"safe_repairs\": [");
+    write_json_string_array_from_strs(&mut body, pr_ready_safe_repairs());
+    body.push_str("],\n");
+    body.push_str("  \"generated_only\": [");
+    write_json_string_array_from_strs(&mut body, pr_ready_generated_only());
+    body.push_str("],\n");
+    body.push_str("  \"judgment_required\": [");
+    write_json_string_array_from_strs(&mut body, pr_ready_judgment_required());
+    body.push_str("],\n");
+    body.push_str("  \"next_commands\": [\"cargo xtask check-pr\"]\n");
+    body.push_str("}\n");
+    body
+}
+
+fn write_json_string_array_from_strs(body: &mut String, values: &[&str]) {
+    for (index, value) in values.iter().enumerate() {
+        if index > 0 {
+            body.push_str(", ");
+        }
+        body.push('"');
+        body.push_str(&json_escape(value));
+        body.push('"');
+    }
+}
+
+fn pr_ready_safe_repairs() -> &'static [&'static str] {
+    &[
+        "run cargo xtask fix-pr",
+        "restore generated badge endpoint residue in ordinary PRs",
+        "review target/ripr/reports/suggested-fixes.patch before applying deterministic fixes",
+    ]
+}
+
+fn pr_ready_generated_only() -> &'static [&'static str] {
+    &[
+        "badges/*.json",
+        "target/ripr/**",
+        "crates/ripr/examples/sample/target/**",
+        "target/ripr/receipts/**",
+    ]
+}
+
+fn pr_ready_judgment_required() -> &'static [&'static str] {
+    &[
+        "badge endpoint refresh",
+        "golden blessing",
+        "suppression",
+        "baseline adoption",
+        "dependency exception",
+        "branch protection",
+        "policy authority change",
+    ]
+}
+
+fn cockpit_next_action(steps: &[PrReadyStep]) -> &'static str {
+    match pr_ready_status(steps) {
+        "fail" => "repair blocking repo-ops issues before merging or opening more work",
+        "actionable" => {
+            "review the action queue, then run cargo xtask pr-ready or cargo xtask check-pr for the active PR"
+        }
+        _ => {
+            "use cargo xtask pr-ready for the active PR or cargo xtask gh-pr-status --pr <number> before merging"
+        }
+    }
+}
+
+fn cockpit_action_queue(steps: &[PrReadyStep]) -> Vec<String> {
+    let mut actions = Vec::new();
+    for step in steps.iter().filter(|step| step.status != "pass") {
+        let action = match step.id {
+            "worktree_doctor" => "repair or acknowledge local worktree hygiene findings",
+            "command_catalog_check" => {
+                "update the command mutability catalog before adding new xtask commands"
+            }
+            "spec_numbering" => "repair spec numbering or README/traceability references",
+            "campaign_status" => {
+                "review campaign/source-of-truth drift before continuing broad work"
+            }
+            "pr_triage" => {
+                "review stale, duplicate, behind, policy-sensitive, or generated-artifact PRs"
+            }
+            "generated_clean" => "remove generated residue before ordinary PR work",
+            "badge_diff_policy" => "move badge endpoint JSON changes to a badge refresh PR",
+            _ => "review the linked repo-ops report",
+        };
+        actions.push(action.to_string());
+    }
+    if actions.is_empty() {
+        actions.push("run cargo xtask pr-ready for the active PR".to_string());
+        actions.push("run cargo xtask gh-pr-status --pr <number> before merging".to_string());
+    }
+    actions
+}
+
+fn cockpit_markdown(steps: &[PrReadyStep]) -> String {
+    let status = pr_ready_status(steps);
+    let mut body = format!("# ripr Repo Cockpit\n\nStatus: {status}\nMode: advisory\n\n");
+    body.push_str("## Next Action\n\n");
+    body.push_str("- ");
+    body.push_str(cockpit_next_action(steps));
+    body.push_str("\n\n");
+
+    body.push_str("## Action Queue\n\n");
+    for action in cockpit_action_queue(steps) {
+        body.push_str(&format!("- {action}\n"));
+    }
+    body.push('\n');
+
+    let attention = steps
+        .iter()
+        .filter(|step| step.status != "pass")
+        .collect::<Vec<_>>();
+    body.push_str("## Current Risks\n\n");
+    if attention.is_empty() {
+        body.push_str("- none detected\n\n");
+    } else {
+        for step in attention {
+            body.push_str(&format!(
+                "- `{}`: {} ({})\n",
+                step.id, step.summary, step.status
+            ));
+        }
+        body.push('\n');
+    }
+
+    body.push_str("## Step Summary\n\n");
+    body.push_str("| Step | Status | Required | Report |\n");
+    body.push_str("| --- | --- | --- | --- |\n");
+    for step in steps {
+        body.push_str(&format!(
+            "| `{}` | `{}` | {} | `{}` |\n",
+            step.id, step.status, step.required, step.report
+        ));
+    }
+    body.push('\n');
+
+    body.push_str("## Safe Repairs\n\n");
+    for item in pr_ready_safe_repairs() {
+        body.push_str(&format!("- {item}\n"));
+    }
+    body.push('\n');
+
+    body.push_str("## Generated Only\n\n");
+    for item in pr_ready_generated_only() {
+        body.push_str(&format!("- `{item}`\n"));
+    }
+    body.push('\n');
+
+    body.push_str("## Stop / Judgment Required\n\n");
+    for item in pr_ready_judgment_required() {
+        body.push_str(&format!("- {item}\n"));
+    }
+    body.push('\n');
+
+    body.push_str("## Next Commands\n\n```bash\ncargo xtask pr-ready\ncargo xtask check-pr\n```\n");
+    body
+}
+
+fn cockpit_json(steps: &[PrReadyStep]) -> String {
+    let action_queue = cockpit_action_queue(steps);
+    let mut body = "{\n".to_string();
+    body.push_str("  \"schema_version\": \"0.1\",\n");
+    body.push_str("  \"mode\": \"advisory\",\n");
+    body.push_str(&format!(
+        "  \"status\": \"{}\",\n",
+        json_escape(pr_ready_status(steps))
+    ));
+    body.push_str(&format!(
+        "  \"next_action\": \"{}\",\n",
+        json_escape(cockpit_next_action(steps))
+    ));
+    body.push_str("  \"action_queue\": [");
+    write_json_string_array(&mut body, &action_queue);
+    body.push_str("],\n");
+    body.push_str("  \"steps\": [\n");
+    for (index, step) in steps.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!("      \"id\": \"{}\",\n", json_escape(step.id)));
+        body.push_str(&format!(
+            "      \"command\": \"{}\",\n",
+            json_escape(step.command)
+        ));
+        body.push_str(&format!(
+            "      \"status\": \"{}\",\n",
+            json_escape(&step.status)
+        ));
+        body.push_str(&format!("      \"required\": {},\n", step.required));
+        body.push_str(&format!(
+            "      \"report\": \"{}\",\n",
+            json_escape(step.report)
+        ));
+        body.push_str(&format!(
+            "      \"summary\": \"{}\"\n",
+            json_escape(&step.summary)
+        ));
+        body.push_str("    }");
+    }
+    body.push_str("\n  ],\n");
+    body.push_str("  \"safe_repairs\": [");
+    write_json_string_array_from_strs(&mut body, pr_ready_safe_repairs());
+    body.push_str("],\n");
+    body.push_str("  \"generated_only\": [");
+    write_json_string_array_from_strs(&mut body, pr_ready_generated_only());
+    body.push_str("],\n");
+    body.push_str("  \"judgment_required\": [");
+    write_json_string_array_from_strs(&mut body, pr_ready_judgment_required());
+    body.push_str("],\n");
+    body.push_str("  \"next_commands\": [\"cargo xtask pr-ready\", \"cargo xtask check-pr\"]\n");
+    body.push_str("}\n");
+    body
+}
+
+fn check_command_catalog() -> Result<(), String> {
+    let commands = known_commands();
+    let catalog = command_catalog();
+    let violations = command_catalog_violations(&commands, &catalog);
+
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "command-catalog.md",
+            check: "check-command-catalog",
+            why_it_matters: "The command mutability catalog is the repo-ops map for agents. Every xtask command must stay classified so workers know what is safe to run, what writes generated evidence, and what requires judgment.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Add a command catalog entry for every new xtask command.",
+                "Remove catalog entries for commands that no longer exist.",
+                "Document writes for mutating, external-state, and argument-dependent commands.",
+                "Mark external-state mutations as judgment-required.",
+            ],
+            rerun_command: "cargo xtask check-command-catalog",
+            exception_template: None,
+        },
+        &violations,
+    )
+}
+
+fn command_catalog_violations(
+    commands: &[&'static str],
+    catalog: &[CommandCatalogEntry],
+) -> Vec<String> {
+    let known_roots = command_roots(commands.iter().copied());
+    let catalog_roots = command_roots(catalog.iter().map(|entry| entry.command));
+    let mut violations = Vec::new();
+
+    for root in known_roots.difference(&catalog_roots) {
+        violations.push(format!(
+            "command `{root}` is listed in help but missing from the command mutability catalog"
+        ));
+    }
+    for root in catalog_roots.difference(&known_roots) {
+        violations.push(format!(
+            "command catalog entry `{root}` does not match any known xtask command"
+        ));
+    }
+
+    let mut seen = BTreeSet::<&str>::new();
+    for entry in catalog {
+        if !seen.insert(entry.command) {
+            violations.push(format!(
+                "command catalog has duplicate entry `{}`",
+                entry.command
+            ));
+        }
+        if !is_command_mutability(entry.mutability) {
+            violations.push(format!(
+                "command `{}` uses unknown mutability `{}`",
+                entry.command, entry.mutability
+            ));
+        }
+        if entry.writes.trim().is_empty() {
+            violations.push(format!("command `{}` must document writes", entry.command));
+        }
+        if entry.mutability == "external_state_mutating" && !entry.judgment_required {
+            violations.push(format!(
+                "external-state mutating command `{}` must be judgment-required",
+                entry.command
+            ));
+        }
+        if entry.mutability == "argument_dependent" {
+            let notes = entry.notes.to_ascii_lowercase();
+            if !(notes.contains("depending")
+                || notes.contains("--check")
+                || notes.contains("--propose")
+                || notes.contains("default"))
+            {
+                violations.push(format!(
+                    "argument-dependent command `{}` must explain when it writes",
+                    entry.command
+                ));
+            }
+        }
+    }
+
+    violations
+}
+
+fn command_roots<'a>(commands: impl Iterator<Item = &'a str>) -> BTreeSet<&'a str> {
+    commands.map(known_command_root).collect()
+}
+
+fn is_command_mutability(value: &str) -> bool {
+    matches!(
+        value,
+        "mutating"
+            | "non_mutating_check"
+            | "report_only"
+            | "external_state_read"
+            | "external_state_mutating"
+            | "argument_dependent"
+    )
+}
+
+fn commands_report_markdown(entries: &[CommandCatalogEntry]) -> String {
+    let mut body = "# ripr command mutability catalog\n\n".to_string();
+    body.push_str("Status: pass\n");
+    body.push_str("Mode: advisory\n\n");
+    body.push_str("Purpose:\n\n");
+    body.push_str(
+        "- distinguish commands that may edit the worktree from checks and generated reports\n",
+    );
+    body.push_str("- keep generated evidence separate from authored source-of-truth\n");
+    body.push_str("- make judgment-required operations visible before agents run them\n\n");
+    body.push_str("Boundaries:\n\n");
+    body.push_str("- `check-pr` is non-mutating for tracked files\n");
+    body.push_str("- `target/ripr/**` outputs are generated evidence\n");
+    body.push_str("- judgment-required commands need explicit review before use\n\n");
+    body.push_str("| Command | Mutability | Writes | Judgment required | Notes |\n");
+    body.push_str("| --- | --- | --- | --- | --- |\n");
+    for entry in entries {
+        body.push_str(&format!(
+            "| `{}` | `{}` | {} | {} | {} |\n",
+            markdown_cell(entry.command),
+            markdown_cell(entry.mutability),
+            markdown_cell(entry.writes),
+            if entry.judgment_required { "yes" } else { "no" },
+            markdown_cell(entry.notes)
+        ));
+    }
+    body
+}
+
+fn commands_report_json(entries: &[CommandCatalogEntry]) -> String {
+    let mut body = "{\n".to_string();
+    body.push_str("  \"schema_version\": \"0.1\",\n");
+    body.push_str("  \"mode\": \"advisory\",\n");
+    body.push_str("  \"commands\": [\n");
+    for (index, entry) in entries.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!(
+            "      \"command\": \"{}\",\n",
+            json_escape(entry.command)
+        ));
+        body.push_str(&format!(
+            "      \"mutability\": \"{}\",\n",
+            json_escape(entry.mutability)
+        ));
+        body.push_str(&format!(
+            "      \"writes\": \"{}\",\n",
+            json_escape(entry.writes)
+        ));
+        body.push_str(&format!(
+            "      \"judgment_required\": {},\n",
+            entry.judgment_required
+        ));
+        body.push_str(&format!(
+            "      \"notes\": \"{}\"\n",
+            json_escape(entry.notes)
+        ));
+        body.push_str("    }");
+    }
+    body.push_str("\n  ]\n");
+    body.push_str("}\n");
+    body
+}
+
+fn suggested_fixes() -> Result<(), String> {
+    ensure_reports_dir()?;
+    let (patch, files) = suggested_fixes_patch()?;
+    write_report("suggested-fixes.patch", &patch)?;
+    write_report(
+        "suggested-fixes.md",
+        &suggested_fixes_report_body(&files, patch.is_empty()),
+    )
+}
+
+fn suggested_fixes_patch() -> Result<(String, Vec<String>), String> {
+    let mut patch = String::new();
+    let mut files = Vec::new();
+    for path in deterministic_suggested_fix_allowlist_files()? {
+        let original = read_text_lossy(&path)?;
+        let sorted = sorted_allowlist_content(&original);
+        if sorted == original {
+            continue;
+        }
+        append_whole_file_patch(&mut patch, &path, &original, &sorted);
+        files.push(normalize_path(&path));
+    }
+    for path in deterministic_suggested_fix_docs_index_files() {
+        let original = read_text_lossy(&path)?;
+        let sorted = sorted_markdown_index_table_content(&original);
+        if sorted == original {
+            continue;
+        }
+        append_whole_file_patch(&mut patch, &path, &original, &sorted);
+        files.push(normalize_path(&path));
+    }
+    files.sort();
+    Ok((patch, files))
+}
+
+fn deterministic_suggested_fix_allowlist_files() -> Result<Vec<PathBuf>, String> {
+    let mut paths = Vec::new();
+    for root in [Path::new(".ripr"), Path::new("policy")] {
+        if !root.exists() {
+            continue;
+        }
+        for path in collect_files(root)? {
+            if path.extension().and_then(|value| value.to_str()) == Some("txt") {
+                paths.push(path);
+            }
+        }
+    }
+    paths.sort_by_key(|path| normalize_path(path));
+    Ok(paths)
+}
+
+fn deterministic_suggested_fix_docs_index_files() -> Vec<PathBuf> {
+    [
+        PathBuf::from("docs/adr/README.md"),
+        PathBuf::from("docs/specs/README.md"),
+    ]
+    .into_iter()
+    .filter(|path| path.exists())
+    .collect()
+}
+
+fn sorted_markdown_index_table_content(text: &str) -> String {
+    let mut lines = text.lines().map(str::to_string).collect::<Vec<_>>();
+    let Some(header_index) = lines
+        .iter()
+        .position(|line| is_markdown_index_table_header(line))
+    else {
+        return text.to_string();
+    };
+    let Some(separator) = lines.get(header_index + 1) else {
+        return text.to_string();
+    };
+    if !is_markdown_index_table_separator(separator) {
+        return text.to_string();
+    }
+
+    let rows_start = header_index + 2;
+    let mut rows_end = rows_start;
+    while rows_end < lines.len() && is_markdown_table_row(&lines[rows_end]) {
+        rows_end += 1;
+    }
+    if rows_end <= rows_start {
+        return text.to_string();
+    }
+
+    let mut sorted_rows = lines[rows_start..rows_end].to_vec();
+    sorted_rows.sort_by_key(|line| line.to_ascii_lowercase());
+    if sorted_rows == lines[rows_start..rows_end] {
+        return text.to_string();
+    }
+
+    lines.splice(rows_start..rows_end, sorted_rows);
+    let mut output = lines.join("\n");
+    if text.ends_with('\n') {
+        output.push('\n');
+    }
+    output
+}
+
+fn is_markdown_index_table_header(line: &str) -> bool {
+    matches!(
+        line.trim(),
+        "| ADR | Status | Decision |" | "| Spec | Status | Topic |"
+    )
+}
+
+fn is_markdown_index_table_separator(line: &str) -> bool {
+    line.trim() == "| --- | --- | --- |"
+}
+
+fn is_markdown_table_row(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.starts_with('|') && trimmed.ends_with('|')
+}
+
+fn append_whole_file_patch(body: &mut String, path: &Path, before: &str, after: &str) {
+    let normalized = normalize_path(path);
+    let before_count = patch_line_count(before);
+    let after_count = patch_line_count(after);
+    body.push_str(&format!("diff --git a/{normalized} b/{normalized}\n"));
+    body.push_str(&format!("--- a/{normalized}\n"));
+    body.push_str(&format!("+++ b/{normalized}\n"));
+    body.push_str(&format!(
+        "@@ {} {} @@\n",
+        patch_hunk_range(false, before_count),
+        patch_hunk_range(true, after_count)
+    ));
+    for line in before.lines() {
+        body.push('-');
+        body.push_str(line);
+        body.push('\n');
+    }
+    for line in after.lines() {
+        body.push('+');
+        body.push_str(line);
+        body.push('\n');
+    }
+}
+
+fn patch_line_count(text: &str) -> usize {
+    text.lines().count()
+}
+
+fn patch_hunk_range(addition: bool, count: usize) -> String {
+    let sign = if addition { '+' } else { '-' };
+    if count == 0 {
+        format!("{sign}0,0")
+    } else {
+        format!("{sign}1,{count}")
+    }
+}
+
+fn suggested_fixes_report_body(files: &[String], patch_empty: bool) -> String {
+    let mut body = "# ripr suggested fixes\n\nStatus: pass\n\n".to_string();
+    body.push_str("Patch: `target/ripr/reports/suggested-fixes.patch`\n\n");
+    body.push_str("Scope:\n\n");
+    body.push_str("- deterministic allowlist ordering under `.ripr/*.txt` and `policy/*.txt`\n");
+    body.push_str("- deterministic docs index table ordering for specs and ADRs\n");
+    body.push_str("- no badge value edits\n");
+    body.push_str("- no golden blessings\n");
+    body.push_str("- no baselines, suppressions, dependency exceptions, or schema changes\n\n");
+    if patch_empty {
+        body.push_str("No deterministic patch suggestions were found.\n");
+    } else {
+        body.push_str("Suggested patch files:\n\n");
+        for file in files {
+            body.push_str(&format!("- `{file}`\n"));
+        }
+    }
+    body
+}
+
 pub(crate) fn pr_summary_impl() -> Result<(), String> {
     let changes = collect_pr_changes()?;
     let body = pr_summary_body(&changes);
@@ -1485,6 +2611,1191 @@ fn check_pr_shape() -> Result<(), String> {
     let changes = collect_pr_changes()?;
     let warnings = pr_shape_warnings(&changes);
     write_report("pr-shape.md", &pr_shape_report_body(&warnings))
+}
+
+pub(crate) fn pr_triage_report_impl() -> Result<(), String> {
+    let prs = collect_open_prs_for_triage()?;
+    let today = current_epoch_day()?;
+    let generated_at = generated_at_unix_ms()?;
+    let findings = pr_triage_findings(&prs, today);
+    write_report("pr-triage.md", &pr_triage_markdown(&prs, &findings, today))?;
+    write_report(
+        "pr-triage.json",
+        &pr_triage_json(&prs, &findings, today, &generated_at),
+    )
+}
+
+pub(crate) fn gh_pr_status_impl(args: &[String]) -> Result<(), String> {
+    let number = parse_gh_pr_status_args(args)?;
+    let pr = collect_gh_pr_status(number)?;
+    let mut warnings = Vec::new();
+    let (required_contexts, required_contexts_available) =
+        match collect_required_status_contexts(&pr.base_ref_name) {
+            Ok(contexts) => (contexts, true),
+            Err(err) => {
+                warnings.push(format!(
+                    "required status context lookup failed; using status rollup only: {err}"
+                ));
+                (Vec::new(), false)
+            }
+        };
+    let readiness = gh_pr_status_readiness(
+        &pr,
+        &required_contexts,
+        required_contexts_available,
+        warnings,
+    );
+    let body = gh_pr_status_markdown(&pr, &required_contexts, &readiness);
+    write_report("gh-pr-status.md", &body)?;
+    write_report(
+        "gh-pr-status.json",
+        &gh_pr_status_json(&pr, &required_contexts, &readiness),
+    )?;
+    println!(
+        "PR #{} safe next action: {}",
+        pr.number, readiness.safe_next_action
+    );
+    Ok(())
+}
+
+fn parse_gh_pr_status_args(args: &[String]) -> Result<u64, String> {
+    if args.is_empty() {
+        return Err("cargo xtask gh-pr-status requires `--pr <number>`".to_string());
+    }
+    let mut pr_number = None;
+    let mut index = 0;
+    while index < args.len() {
+        let arg = &args[index];
+        if arg == "--pr" {
+            let Some(value) = args.get(index + 1) else {
+                return Err("cargo xtask gh-pr-status requires a number after `--pr`".to_string());
+            };
+            pr_number = Some(parse_positive_u64(value, "--pr")?);
+            index += 2;
+            continue;
+        }
+        if pr_number.is_none() && !arg.starts_with('-') {
+            pr_number = Some(parse_positive_u64(arg, "PR number")?);
+            index += 1;
+            continue;
+        }
+        return Err(format!(
+            "unknown gh-pr-status argument `{arg}`; use `cargo xtask gh-pr-status --pr <number>`"
+        ));
+    }
+    pr_number.ok_or_else(|| "cargo xtask gh-pr-status requires `--pr <number>`".to_string())
+}
+
+fn parse_positive_u64(value: &str, label: &str) -> Result<u64, String> {
+    let parsed = value
+        .parse::<u64>()
+        .map_err(|err| format!("{label} must be a positive integer: {err}"))?;
+    if parsed == 0 {
+        return Err(format!("{label} must be greater than zero"));
+    }
+    Ok(parsed)
+}
+
+fn collect_gh_pr_status(number: u64) -> Result<GhPrStatusPullRequest, String> {
+    let fields = [
+        "number",
+        "title",
+        "isDraft",
+        "mergeStateStatus",
+        "headRefName",
+        "baseRefName",
+        "reviewDecision",
+        "latestReviews",
+        "statusCheckRollup",
+    ]
+    .join(",");
+    let output = run_output_owned(
+        "gh",
+        &[
+            "pr".to_string(),
+            "view".to_string(),
+            number.to_string(),
+            "--json".to_string(),
+            fields,
+        ],
+    )?;
+    parse_gh_pr_status_pull_request(&output)
+}
+
+fn collect_required_status_contexts(base_ref_name: &str) -> Result<Vec<String>, String> {
+    let repo_output = run_output("gh", &["repo", "view", "--json", "owner,name"])?;
+    let repo_value: Value = serde_json::from_str(&repo_output)
+        .map_err(|err| format!("failed to parse gh repo JSON: {err}"))?;
+    let owner = repo_value
+        .get("owner")
+        .and_then(|owner| owner.get("login"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("gh repo JSON is missing owner.login: {repo_value}"))?;
+    let name = repo_value
+        .get("name")
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("gh repo JSON is missing name: {repo_value}"))?;
+    let branch = if base_ref_name.trim().is_empty() {
+        "main"
+    } else {
+        base_ref_name.trim()
+    };
+    let endpoint = format!(
+        "repos/{owner}/{name}/branches/{branch}/protection/required_status_checks/contexts"
+    );
+    let output = run_output_owned("gh", &["api".to_string(), endpoint])?;
+    parse_required_status_contexts(&output)
+}
+
+fn parse_gh_pr_status_pull_request(text: &str) -> Result<GhPrStatusPullRequest, String> {
+    let item: Value =
+        serde_json::from_str(text).map_err(|err| format!("failed to parse gh PR JSON: {err}"))?;
+    let number = item
+        .get("number")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| format!("gh PR JSON is missing numeric `number`: {item}"))?;
+    let checks = item
+        .get("statusCheckRollup")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(parse_pr_triage_check)
+        .collect::<Vec<_>>();
+    let reviews = item
+        .get("latestReviews")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(parse_gh_pr_status_review)
+        .collect::<Vec<_>>();
+    Ok(GhPrStatusPullRequest {
+        number,
+        title: json_value_string(&item, "title"),
+        is_draft: item
+            .get("isDraft")
+            .and_then(Value::as_bool)
+            .is_some_and(|value| value),
+        merge_state_status: json_value_string(&item, "mergeStateStatus"),
+        head_ref_name: json_value_string(&item, "headRefName"),
+        base_ref_name: json_value_string(&item, "baseRefName"),
+        review_decision: json_value_string(&item, "reviewDecision"),
+        checks,
+        reviews,
+    })
+}
+
+fn parse_gh_pr_status_review(value: &Value) -> GhPrStatusReview {
+    let author = match value
+        .get("author")
+        .and_then(|author| author.get("login"))
+        .and_then(Value::as_str)
+    {
+        Some(login) => login.to_string(),
+        None => String::new(),
+    };
+    GhPrStatusReview {
+        author,
+        state: json_value_string(value, "state"),
+    }
+}
+
+fn parse_required_status_contexts(text: &str) -> Result<Vec<String>, String> {
+    let value: Value = serde_json::from_str(text)
+        .map_err(|err| format!("failed to parse required status contexts JSON: {err}"))?;
+    let Some(items) = value.as_array() else {
+        return Err("required status contexts JSON must be an array".to_string());
+    };
+    let mut contexts = items
+        .iter()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    contexts.sort();
+    contexts.dedup();
+    Ok(contexts)
+}
+
+fn gh_pr_status_readiness(
+    pr: &GhPrStatusPullRequest,
+    required_contexts: &[String],
+    required_contexts_available: bool,
+    warnings: Vec<String>,
+) -> GhPrStatusReadiness {
+    let failed_checks = pr
+        .checks
+        .iter()
+        .filter(|check| pr_check_failed(check))
+        .map(format_gh_pr_check_status)
+        .collect::<Vec<_>>();
+    let pending_checks = pr
+        .checks
+        .iter()
+        .filter(|check| pr_check_pending(check))
+        .map(format_gh_pr_check_status)
+        .collect::<Vec<_>>();
+    let required_checks_outstanding = pr
+        .checks
+        .iter()
+        .filter(|check| pr_check_pending(check))
+        .filter(|check| {
+            !required_contexts_available
+                || required_contexts
+                    .iter()
+                    .any(|context| context.eq_ignore_ascii_case(&check.name))
+        })
+        .map(format_gh_pr_check_status)
+        .collect::<Vec<_>>();
+    let droid_checks = pr
+        .checks
+        .iter()
+        .filter(|check| check.name.to_ascii_lowercase().contains("droid"))
+        .map(format_gh_pr_check_status)
+        .collect::<Vec<_>>();
+    let behind_main = pr.merge_state_status.eq_ignore_ascii_case("BEHIND");
+    let mut readiness = GhPrStatusReadiness {
+        behind_main,
+        required_contexts_available,
+        required_checks_outstanding,
+        failed_checks,
+        pending_checks,
+        droid_checks,
+        safe_next_action: String::new(),
+        warnings,
+    };
+    readiness.safe_next_action = gh_pr_safe_next_action(pr, &readiness).to_string();
+    readiness
+}
+
+fn gh_pr_safe_next_action(
+    pr: &GhPrStatusPullRequest,
+    readiness: &GhPrStatusReadiness,
+) -> &'static str {
+    if !readiness.failed_checks.is_empty()
+        || pr.review_decision.eq_ignore_ascii_case("CHANGES_REQUESTED")
+    {
+        return "inspect failure";
+    }
+    if readiness.behind_main {
+        return "rebase";
+    }
+    if pr.is_draft
+        || pr.review_decision.eq_ignore_ascii_case("REVIEW_REQUIRED")
+        || !readiness.required_checks_outstanding.is_empty()
+        || !readiness.pending_checks.is_empty()
+    {
+        return "wait";
+    }
+    let merge_state = pr.merge_state_status.to_ascii_uppercase();
+    match merge_state.as_str() {
+        "CLEAN" => "merge",
+        "BLOCKED" | "DRAFT" | "HAS_HOOKS" | "UNKNOWN" | "UNSTABLE" => "wait",
+        "DIRTY" => "inspect failure",
+        _ => "inspect failure",
+    }
+}
+
+fn format_gh_pr_check_status(check: &PrTriageCheck) -> String {
+    let status = if check.status.trim().is_empty() {
+        "unknown"
+    } else {
+        check.status.trim()
+    };
+    let conclusion = if check.conclusion.trim().is_empty() {
+        "unknown"
+    } else {
+        check.conclusion.trim()
+    };
+    format!("{} (status={status}, conclusion={conclusion})", check.name)
+}
+
+fn gh_pr_status_markdown(
+    pr: &GhPrStatusPullRequest,
+    required_contexts: &[String],
+    readiness: &GhPrStatusReadiness,
+) -> String {
+    let mut body = String::new();
+    body.push_str("# GitHub PR Status\n\n");
+    body.push_str(&format!("- PR: #{} {}\n", pr.number, pr.title));
+    body.push_str(&format!(
+        "- Branch: `{}` -> `{}`\n",
+        pr.head_ref_name, pr.base_ref_name
+    ));
+    body.push_str(&format!(
+        "- mergeable_state: `{}`\n",
+        value_or_unknown(&pr.merge_state_status)
+    ));
+    body.push_str(&format!(
+        "- review_decision: `{}`\n",
+        value_or_unknown(&pr.review_decision)
+    ));
+    body.push_str(&format!("- draft: `{}`\n", pr.is_draft));
+    body.push_str(&format!("- behind main: `{}`\n", readiness.behind_main));
+    body.push_str(&format!(
+        "- safe next action: `{}`\n\n",
+        readiness.safe_next_action
+    ));
+
+    body.push_str("## Required Checks Outstanding\n\n");
+    if readiness.required_contexts_available {
+        body.push_str(&format!(
+            "- Required context lookup: available ({} context(s))\n",
+            required_contexts.len()
+        ));
+    } else {
+        body.push_str("- Required context lookup: unavailable; using status rollup only\n");
+    }
+    append_markdown_list(&mut body, &readiness.required_checks_outstanding, "None");
+
+    body.push_str("\n## Failed Checks\n\n");
+    append_markdown_list(&mut body, &readiness.failed_checks, "None");
+
+    body.push_str("\n## Pending Checks\n\n");
+    append_markdown_list(&mut body, &readiness.pending_checks, "None");
+
+    body.push_str("\n## Reviews\n\n");
+    body.push_str(&format!(
+        "- Review decision: `{}`\n",
+        value_or_unknown(&pr.review_decision)
+    ));
+    if pr.reviews.is_empty() {
+        body.push_str("- No latest reviews returned\n");
+    } else {
+        for review in &pr.reviews {
+            body.push_str(&format!(
+                "- {}: `{}`\n",
+                value_or_unknown(&review.author),
+                value_or_unknown(&review.state)
+            ));
+        }
+    }
+
+    body.push_str("\n## Droid Status\n\n");
+    append_markdown_list(
+        &mut body,
+        &readiness.droid_checks,
+        "No droid check entries returned",
+    );
+
+    body.push_str("\n## Warnings\n\n");
+    append_markdown_list(&mut body, &readiness.warnings, "None");
+    body
+}
+
+fn gh_pr_status_json(
+    pr: &GhPrStatusPullRequest,
+    required_contexts: &[String],
+    readiness: &GhPrStatusReadiness,
+) -> String {
+    let advisory_checks = gh_pr_advisory_checks(pr, required_contexts, readiness);
+    let mut body = "{\n".to_string();
+    body.push_str("  \"schema_version\": \"0.1\",\n");
+    body.push_str("  \"mode\": \"advisory\",\n");
+    body.push_str(&format!("  \"pr_number\": {},\n", pr.number));
+    body.push_str(&format!("  \"title\": \"{}\",\n", json_escape(&pr.title)));
+    body.push_str("  \"branch\": {\n");
+    body.push_str(&format!(
+        "    \"head\": \"{}\",\n",
+        json_escape(&pr.head_ref_name)
+    ));
+    body.push_str(&format!(
+        "    \"base\": \"{}\"\n",
+        json_escape(&pr.base_ref_name)
+    ));
+    body.push_str("  },\n");
+    body.push_str(&format!(
+        "  \"merge_state\": \"{}\",\n",
+        json_escape(&pr.merge_state_status)
+    ));
+    body.push_str(&format!("  \"behind_main\": {},\n", readiness.behind_main));
+    body.push_str(&format!("  \"draft\": {},\n", pr.is_draft));
+    body.push_str(&format!(
+        "  \"required_contexts_available\": {},\n",
+        readiness.required_contexts_available
+    ));
+    body.push_str("  \"required_checks_outstanding\": [");
+    write_json_string_array(&mut body, &readiness.required_checks_outstanding);
+    body.push_str("],\n");
+    body.push_str("  \"failed_checks\": [");
+    write_json_string_array(&mut body, &readiness.failed_checks);
+    body.push_str("],\n");
+    body.push_str("  \"pending_checks\": [");
+    write_json_string_array(&mut body, &readiness.pending_checks);
+    body.push_str("],\n");
+    body.push_str("  \"advisory_checks\": [");
+    write_json_string_array(&mut body, &advisory_checks);
+    body.push_str("],\n");
+    body.push_str("  \"droid_status\": [");
+    write_json_string_array(&mut body, &readiness.droid_checks);
+    body.push_str("],\n");
+    body.push_str(&format!(
+        "  \"review_decision\": \"{}\",\n",
+        json_escape(&pr.review_decision)
+    ));
+    body.push_str("  \"reviews\": [\n");
+    for (index, review) in pr.reviews.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!(
+            "      \"author\": \"{}\",\n",
+            json_escape(&review.author)
+        ));
+        body.push_str(&format!(
+            "      \"state\": \"{}\"\n",
+            json_escape(&review.state)
+        ));
+        body.push_str("    }");
+    }
+    body.push_str("\n  ],\n");
+    body.push_str(&format!(
+        "  \"safe_next_action\": \"{}\",\n",
+        json_escape(&readiness.safe_next_action)
+    ));
+    body.push_str("  \"warnings\": [");
+    write_json_string_array(&mut body, &readiness.warnings);
+    body.push_str("]\n");
+    body.push_str("}\n");
+    body
+}
+
+fn gh_pr_advisory_checks(
+    pr: &GhPrStatusPullRequest,
+    required_contexts: &[String],
+    readiness: &GhPrStatusReadiness,
+) -> Vec<String> {
+    if !readiness.required_contexts_available {
+        return Vec::new();
+    }
+    pr.checks
+        .iter()
+        .filter(|check| {
+            !required_contexts
+                .iter()
+                .any(|context| context.eq_ignore_ascii_case(&check.name))
+        })
+        .map(format_gh_pr_check_status)
+        .collect()
+}
+
+fn value_or_unknown(value: &str) -> &str {
+    if value.trim().is_empty() {
+        "unknown"
+    } else {
+        value.trim()
+    }
+}
+
+fn append_markdown_list(body: &mut String, items: &[String], empty: &str) {
+    if items.is_empty() {
+        body.push_str(&format!("- {empty}\n"));
+        return;
+    }
+    for item in items {
+        body.push_str(&format!("- {item}\n"));
+    }
+}
+
+fn collect_open_prs_for_triage() -> Result<Vec<PrTriagePullRequest>, String> {
+    let fields = [
+        "number",
+        "title",
+        "body",
+        "isDraft",
+        "createdAt",
+        "updatedAt",
+        "mergeStateStatus",
+        "headRefName",
+        "baseRefName",
+        "reviewDecision",
+        "labels",
+        "files",
+        "statusCheckRollup",
+    ]
+    .join(",");
+    let output = run_output(
+        "gh",
+        &[
+            "pr", "list", "--limit", "100", "--state", "open", "--json", &fields,
+        ],
+    )?;
+    parse_pr_triage_pull_requests(&output)
+}
+
+fn parse_pr_triage_pull_requests(text: &str) -> Result<Vec<PrTriagePullRequest>, String> {
+    let value: Value =
+        serde_json::from_str(text).map_err(|err| format!("failed to parse gh PR JSON: {err}"))?;
+    let Some(items) = value.as_array() else {
+        return Err("gh PR JSON must be an array".to_string());
+    };
+    let mut prs = Vec::new();
+    for item in items {
+        let number = item
+            .get("number")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| format!("gh PR JSON item is missing numeric `number`: {item}"))?;
+        let title = json_value_string(item, "title");
+        let body = json_value_string(item, "body");
+        let mut files = item
+            .get("files")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|file| file.get("path").and_then(Value::as_str).map(str::to_string))
+            .collect::<Vec<_>>();
+        files.sort();
+        files.dedup();
+        let mut labels = item
+            .get("labels")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|label| {
+                label
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .collect::<Vec<_>>();
+        labels.sort();
+        labels.dedup();
+        let checks = item
+            .get("statusCheckRollup")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .map(parse_pr_triage_check)
+            .collect::<Vec<_>>();
+        prs.push(PrTriagePullRequest {
+            number,
+            title,
+            body,
+            is_draft: item
+                .get("isDraft")
+                .and_then(Value::as_bool)
+                .is_some_and(|value| value),
+            created_at: json_value_string(item, "createdAt"),
+            updated_at: json_value_string(item, "updatedAt"),
+            merge_state_status: json_value_string(item, "mergeStateStatus"),
+            head_ref_name: json_value_string(item, "headRefName"),
+            base_ref_name: json_value_string(item, "baseRefName"),
+            review_decision: json_value_string(item, "reviewDecision"),
+            labels,
+            files,
+            checks,
+        });
+    }
+    prs.sort_by_key(|pr| pr.number);
+    Ok(prs)
+}
+
+fn parse_pr_triage_check(value: &Value) -> PrTriageCheck {
+    let name = match value
+        .get("name")
+        .or_else(|| value.get("context"))
+        .and_then(Value::as_str)
+    {
+        Some(name) => name.to_string(),
+        None => String::new(),
+    };
+    let status = match value
+        .get("status")
+        .and_then(Value::as_str)
+        .or_else(|| value.get("state").and_then(Value::as_str))
+    {
+        Some(status) => status.to_string(),
+        None => String::new(),
+    };
+    let conclusion = match value
+        .get("conclusion")
+        .and_then(Value::as_str)
+        .or_else(|| value.get("state").and_then(Value::as_str))
+    {
+        Some(conclusion) => conclusion.to_string(),
+        None => String::new(),
+    };
+    PrTriageCheck {
+        name,
+        status,
+        conclusion,
+    }
+}
+
+fn json_value_string(value: &Value, key: &str) -> String {
+    match value.get(key).and_then(Value::as_str) {
+        Some(item) => item.to_string(),
+        None => String::new(),
+    }
+}
+
+fn current_epoch_day() -> Result<i64, String> {
+    let duration = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| format!("system clock is before UNIX_EPOCH: {err}"))?;
+    Ok((duration.as_secs() / 86_400) as i64)
+}
+
+fn pr_triage_findings(prs: &[PrTriagePullRequest], today: i64) -> Vec<PrTriageFinding> {
+    let mut findings = Vec::new();
+    findings.extend(pr_triage_title_family_findings(prs));
+    findings.extend(pr_triage_file_set_findings(prs));
+    findings.extend(pr_triage_stale_draft_findings(prs, today));
+    findings.extend(pr_triage_behind_findings(prs));
+    findings.extend(pr_triage_validation_findings(prs));
+    findings.extend(pr_triage_sensitive_surface_findings(prs));
+    findings.sort_by(|left, right| {
+        left.category
+            .cmp(&right.category)
+            .then_with(|| left.prs.cmp(&right.prs))
+            .then_with(|| left.message.cmp(&right.message))
+    });
+    findings
+}
+
+fn pr_triage_title_family_findings(prs: &[PrTriagePullRequest]) -> Vec<PrTriageFinding> {
+    let mut families = BTreeMap::<String, Vec<&PrTriagePullRequest>>::new();
+    for pr in prs {
+        let family = pr_title_family(&pr.title);
+        if !family.is_empty() {
+            families.entry(family).or_default().push(pr);
+        }
+    }
+    families
+        .into_iter()
+        .filter_map(|(family, prs)| {
+            if prs.len() < 2 {
+                return None;
+            }
+            Some(PrTriageFinding {
+                category: "same title family".to_string(),
+                severity: "warn".to_string(),
+                message: format!("{} open PRs share title family `{family}`", prs.len()),
+                prs: prs.iter().map(|pr| pr.number).collect(),
+                details: prs.iter().map(|pr| format_pr_triage_ref(pr)).collect(),
+                recommended_action:
+                    "Choose the canonical PR and close, retitle, or restack the duplicate variants."
+                        .to_string(),
+            })
+        })
+        .collect()
+}
+
+fn pr_triage_file_set_findings(prs: &[PrTriagePullRequest]) -> Vec<PrTriageFinding> {
+    let mut file_sets = BTreeMap::<String, Vec<&PrTriagePullRequest>>::new();
+    for pr in prs {
+        if pr.files.is_empty() {
+            continue;
+        }
+        file_sets.entry(pr.files.join("\n")).or_default().push(pr);
+    }
+    file_sets
+        .into_iter()
+        .filter_map(|(file_set, prs)| {
+            if prs.len() < 2 {
+                return None;
+            }
+            let preview = file_set
+                .lines()
+                .take(8)
+                .map(|path| format!("`{path}`"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            Some(PrTriageFinding {
+                category: "same changed file set".to_string(),
+                severity: "warn".to_string(),
+                message: format!("{} open PRs touch the same changed file set", prs.len()),
+                prs: prs.iter().map(|pr| pr.number).collect(),
+                details: vec![
+                    format!(
+                        "PRs: {}",
+                        prs.iter()
+                            .map(|pr| format_pr_triage_ref(pr))
+                            .collect::<Vec<_>>()
+                            .join("; ")
+                    ),
+                    format!("Files: {preview}"),
+                ],
+                recommended_action:
+                    "Pick the canonical branch before review work drifts across equivalent diffs."
+                        .to_string(),
+            })
+        })
+        .collect()
+}
+
+fn pr_triage_stale_draft_findings(prs: &[PrTriagePullRequest], today: i64) -> Vec<PrTriageFinding> {
+    const STALE_DRAFT_DAYS: i64 = 7;
+    prs.iter()
+        .filter_map(|pr| {
+            if !pr.is_draft {
+                return None;
+            }
+            let created_day = pr_created_day(&pr.created_at)?;
+            let age_days = today - created_day;
+            if age_days < STALE_DRAFT_DAYS {
+                return None;
+            }
+            Some(PrTriageFinding {
+                category: "stale draft".to_string(),
+                severity: "warn".to_string(),
+                message: format!("#{} has been draft for {age_days} day(s)", pr.number),
+                prs: vec![pr.number],
+                details: vec![format_pr_triage_ref(pr)],
+                recommended_action:
+                    "Refresh the draft, mark it ready for review, or close it if superseded."
+                        .to_string(),
+            })
+        })
+        .collect()
+}
+
+fn pr_triage_behind_findings(prs: &[PrTriagePullRequest]) -> Vec<PrTriageFinding> {
+    prs.iter()
+        .filter(|pr| pr.merge_state_status.eq_ignore_ascii_case("BEHIND"))
+        .map(|pr| PrTriageFinding {
+            category: "behind main".to_string(),
+            severity: "warn".to_string(),
+            message: format!("#{} is behind {}", pr.number, pr.base_ref_name),
+            prs: vec![pr.number],
+            details: vec![format!(
+                "{} merge_state_status={}",
+                format_pr_triage_ref(pr),
+                pr.merge_state_status
+            )],
+            recommended_action: "Update the branch before relying on CI or merge-readiness state."
+                .to_string(),
+        })
+        .collect()
+}
+
+fn pr_triage_validation_findings(prs: &[PrTriagePullRequest]) -> Vec<PrTriageFinding> {
+    let mut findings = Vec::new();
+    for pr in prs {
+        let mut details = Vec::new();
+        let failed = pr
+            .checks
+            .iter()
+            .filter(|check| pr_check_failed(check))
+            .map(|check| format!("{}={}", check.name, check.conclusion))
+            .collect::<Vec<_>>();
+        if !failed.is_empty() {
+            details.push(format!("failed checks: {}", failed.join(", ")));
+        }
+        let pending = pr
+            .checks
+            .iter()
+            .filter(|check| pr_check_pending(check))
+            .map(|check| check.name.clone())
+            .collect::<Vec<_>>();
+        if !pending.is_empty() {
+            details.push(format!("pending checks: {}", pending.join(", ")));
+        }
+        if pr.checks.is_empty() {
+            details.push("no check rollup entries returned".to_string());
+        }
+        if let Some(body_warning) = pr_body_validation_warning(&pr.body) {
+            details.push(body_warning);
+        }
+        if details.is_empty() {
+            continue;
+        }
+        findings.push(PrTriageFinding {
+            category: "incomplete validation".to_string(),
+            severity: "warn".to_string(),
+            message: format!("#{} needs validation follow-up", pr.number),
+            prs: vec![pr.number],
+            details,
+            recommended_action: "Inspect the failing or missing validation before merge; update the PR body with the actual commands run.".to_string(),
+        });
+    }
+    findings
+}
+
+fn pr_triage_sensitive_surface_findings(prs: &[PrTriagePullRequest]) -> Vec<PrTriageFinding> {
+    let mut findings = Vec::new();
+    for pr in prs {
+        let mut details = Vec::new();
+        for file in &pr.files {
+            if let Some(reason) = pr_sensitive_file_reason(file) {
+                details.push(format!("`{file}`: {reason}"));
+            }
+        }
+        if details.is_empty() {
+            continue;
+        }
+        findings.push(PrTriageFinding {
+            category: "policy-sensitive surface".to_string(),
+            severity: "warn".to_string(),
+            message: format!(
+                "#{} touches policy, gate, or generated workflow surfaces",
+                pr.number
+            ),
+            prs: vec![pr.number],
+            details,
+            recommended_action:
+                "Route review through the owning lane and check for policy authority drift."
+                    .to_string(),
+        });
+    }
+    findings
+}
+
+fn pr_check_failed(check: &PrTriageCheck) -> bool {
+    matches!(
+        check.conclusion.to_ascii_uppercase().as_str(),
+        "FAILURE" | "ERROR" | "CANCELLED" | "TIMED_OUT" | "ACTION_REQUIRED" | "STARTUP_FAILURE"
+    )
+}
+
+fn pr_check_pending(check: &PrTriageCheck) -> bool {
+    matches!(
+        check.status.to_ascii_uppercase().as_str(),
+        "PENDING" | "EXPECTED" | "IN_PROGRESS" | "QUEUED" | "WAITING" | "REQUESTED"
+    )
+}
+
+fn pr_body_validation_warning(body: &str) -> Option<String> {
+    let lower = body.to_ascii_lowercase();
+    if !lower.contains("validation") {
+        return Some("PR body has no validation section".to_string());
+    }
+    if lower.contains("pre-existing failure") || lower.contains("preexisting failure") {
+        return Some("PR body mentions pre-existing validation failures".to_string());
+    }
+    if lower.contains("not run") || lower.contains("not_run") {
+        return Some("PR body lists validation that was not run".to_string());
+    }
+    if !lower.contains("cargo xtask check-pr") {
+        return Some("PR body validation does not list cargo xtask check-pr".to_string());
+    }
+    None
+}
+
+fn pr_sensitive_file_reason(path: &str) -> Option<&'static str> {
+    let lower = path.to_ascii_lowercase();
+    if path.starts_with(".github/workflows/") {
+        return Some("workflow behavior can alter generated CI or branch checks");
+    }
+    if path.starts_with("policy/") || path.starts_with(".ripr/") || path.starts_with("docs/policy/")
+    {
+        return Some("policy ledger or policy documentation");
+    }
+    if lower.starts_with("badges/") {
+        return Some("generated public badge endpoint surface");
+    }
+    if lower.contains("gate") || lower.contains("baseline") || lower.contains("suppression") {
+        return Some("policy authority, gate, baseline, or suppression semantics");
+    }
+    if lower.contains("generated") && (lower.contains("ci") || lower.contains("workflow")) {
+        return Some("generated CI workflow surface");
+    }
+    None
+}
+
+fn pr_title_family(title: &str) -> String {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    for ch in title.chars() {
+        if ch.is_ascii_alphanumeric() {
+            current.push(ch.to_ascii_lowercase());
+        } else if !current.is_empty() {
+            push_title_family_token(&mut tokens, &current);
+            current.clear();
+        }
+    }
+    if !current.is_empty() {
+        push_title_family_token(&mut tokens, &current);
+    }
+    tokens.join(" ")
+}
+
+fn push_title_family_token(tokens: &mut Vec<String>, token: &str) {
+    if matches!(token, "wip" | "draft" | "v2" | "v3" | "variant") {
+        return;
+    }
+    tokens.push(token.to_string());
+}
+
+fn pr_created_day(created_at: &str) -> Option<i64> {
+    let date = created_at.get(0..10)?;
+    let mut parts = date.split('-');
+    let year = parts.next()?.parse::<i32>().ok()?;
+    let month = parts.next()?.parse::<u32>().ok()?;
+    let day = parts.next()?.parse::<u32>().ok()?;
+    Some(days_from_civil(year, month, day))
+}
+
+fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
+    let mut y = i64::from(year);
+    let m = i64::from(month);
+    let d = i64::from(day);
+    if m <= 2 {
+        y -= 1;
+    }
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let month_for_formula = if m > 2 { m - 3 } else { m + 9 };
+    let doy = (153 * month_for_formula + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+fn pr_triage_markdown(
+    prs: &[PrTriagePullRequest],
+    findings: &[PrTriageFinding],
+    today: i64,
+) -> String {
+    let status = if findings.is_empty() { "pass" } else { "warn" };
+    let mut body = format!("# ripr PR triage report\n\nStatus: {status}\n\n");
+    body.push_str("Mode: advisory\n\n");
+    body.push_str("This report summarizes open PR queue risks for agents. It does not close, merge, update, or mutate PRs.\n\n");
+    body.push_str(&format!("Open PRs scanned: {}\n\n", prs.len()));
+
+    body.push_str("## Findings\n\n");
+    if findings.is_empty() {
+        body.push_str("None detected.\n\n");
+    } else {
+        for finding in findings {
+            body.push_str(&format!(
+                "### {} ({})\n\n{}\n\n",
+                finding.category, finding.severity, finding.message
+            ));
+            if !finding.prs.is_empty() {
+                body.push_str("PRs:\n\n");
+                for number in &finding.prs {
+                    body.push_str(&format!("- #{}\n", number));
+                }
+                body.push('\n');
+            }
+            body.push_str("Details:\n\n");
+            write_path_list(&mut body, &finding.details);
+            body.push_str("\nRecommended action:\n\n```text\n");
+            body.push_str(&finding.recommended_action);
+            body.push_str("\n```\n\n");
+        }
+    }
+
+    body.push_str("## Open PRs\n\n");
+    if prs.is_empty() {
+        body.push_str("- None detected.\n");
+    } else {
+        body.push_str("| PR | Draft | Age | Merge state | Checks | Files |\n");
+        body.push_str("| --- | --- | ---: | --- | --- | ---: |\n");
+        for pr in prs {
+            let age = pr_age_label(pr, today);
+            body.push_str(&format!(
+                "| #{} {} | {} | {} | {} | {} | {} |\n",
+                pr.number,
+                markdown_escape_table(&pr.title),
+                pr.is_draft,
+                age,
+                markdown_escape_table(&pr.merge_state_status),
+                markdown_escape_table(&pr_checks_summary(&pr.checks)),
+                pr.files.len()
+            ));
+        }
+    }
+    body.push_str("\n## Next Commands\n\n```bash\n");
+    body.push_str("cargo xtask pr-triage-report\n");
+    body.push_str("gh pr view <number> --json mergeStateStatus,statusCheckRollup,files\n");
+    body.push_str("```\n");
+    body
+}
+
+fn pr_triage_json(
+    prs: &[PrTriagePullRequest],
+    findings: &[PrTriageFinding],
+    today: i64,
+    generated_at: &str,
+) -> String {
+    let status = if findings.is_empty() { "pass" } else { "warn" };
+    let mut body = "{\n".to_string();
+    body.push_str("  \"schema_version\": \"0.1\",\n");
+    body.push_str("  \"mode\": \"advisory\",\n");
+    body.push_str(&format!("  \"status\": \"{}\",\n", json_escape(status)));
+    body.push_str(&format!(
+        "  \"generated_at\": \"{}\",\n",
+        json_escape(generated_at)
+    ));
+    body.push_str("  \"open_prs\": [\n");
+    for (index, pr) in prs.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        write_pr_triage_pull_request_json(&mut body, pr, today);
+    }
+    body.push_str("\n  ],\n");
+    body.push_str("  \"findings\": [\n");
+    for (index, finding) in findings.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        write_pr_triage_finding_json(&mut body, finding, 4);
+    }
+    body.push_str("\n  ],\n");
+    body.push_str("  \"recommended_actions\": [\n");
+    for (index, finding) in findings.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!(
+            "      \"category\": \"{}\",\n",
+            json_escape(&finding.category)
+        ));
+        body.push_str("      \"prs\": ");
+        write_json_u64_array(&mut body, &finding.prs);
+        body.push_str(",\n");
+        body.push_str(&format!(
+            "      \"action\": \"{}\"\n",
+            json_escape(&finding.recommended_action)
+        ));
+        body.push_str("    }");
+    }
+    body.push_str("\n  ]\n");
+    body.push_str("}\n");
+    body
+}
+
+fn write_pr_triage_pull_request_json(body: &mut String, pr: &PrTriagePullRequest, today: i64) {
+    body.push_str("    {\n");
+    body.push_str(&format!("      \"number\": {},\n", pr.number));
+    body.push_str(&format!(
+        "      \"title\": \"{}\",\n",
+        json_escape(&pr.title)
+    ));
+    body.push_str(&format!("      \"is_draft\": {},\n", pr.is_draft));
+    body.push_str(&format!(
+        "      \"created_at\": \"{}\",\n",
+        json_escape(&pr.created_at)
+    ));
+    body.push_str(&format!(
+        "      \"updated_at\": \"{}\",\n",
+        json_escape(&pr.updated_at)
+    ));
+    body.push_str("      \"age_days\": ");
+    match pr_created_day(&pr.created_at) {
+        Some(created_day) => body.push_str(&(today - created_day).to_string()),
+        None => body.push_str("null"),
+    }
+    body.push_str(",\n");
+    body.push_str(&format!(
+        "      \"merge_state_status\": \"{}\",\n",
+        json_escape(&pr.merge_state_status)
+    ));
+    body.push_str(&format!(
+        "      \"head_ref_name\": \"{}\",\n",
+        json_escape(&pr.head_ref_name)
+    ));
+    body.push_str(&format!(
+        "      \"base_ref_name\": \"{}\",\n",
+        json_escape(&pr.base_ref_name)
+    ));
+    body.push_str(&format!(
+        "      \"review_decision\": \"{}\",\n",
+        json_escape(&pr.review_decision)
+    ));
+    body.push_str(&format!(
+        "      \"checks_summary\": \"{}\",\n",
+        json_escape(&pr_checks_summary(&pr.checks))
+    ));
+    body.push_str("      \"labels\": [");
+    write_json_string_array(body, &pr.labels);
+    body.push_str("],\n      \"files\": [");
+    write_json_string_array(body, &pr.files);
+    body.push_str("],\n      \"checks\": [\n");
+    for (index, check) in pr.checks.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("        {\n");
+        body.push_str(&format!(
+            "          \"name\": \"{}\",\n",
+            json_escape(&check.name)
+        ));
+        body.push_str(&format!(
+            "          \"status\": \"{}\",\n",
+            json_escape(&check.status)
+        ));
+        body.push_str(&format!(
+            "          \"conclusion\": \"{}\"\n",
+            json_escape(&check.conclusion)
+        ));
+        body.push_str("        }");
+    }
+    body.push_str("\n      ]\n");
+    body.push_str("    }");
+}
+
+fn write_pr_triage_finding_json(body: &mut String, finding: &PrTriageFinding, indent: usize) {
+    let pad = " ".repeat(indent);
+    let inner = " ".repeat(indent + 2);
+    body.push_str(&format!("{pad}{{\n"));
+    body.push_str(&format!(
+        "{inner}\"category\": \"{}\",\n",
+        json_escape(&finding.category)
+    ));
+    body.push_str(&format!(
+        "{inner}\"severity\": \"{}\",\n",
+        json_escape(&finding.severity)
+    ));
+    body.push_str(&format!(
+        "{inner}\"message\": \"{}\",\n",
+        json_escape(&finding.message)
+    ));
+    body.push_str(&format!("{inner}\"prs\": "));
+    write_json_u64_array(body, &finding.prs);
+    body.push_str(&format!(",\n{inner}\"details\": ["));
+    write_json_string_array(body, &finding.details);
+    body.push_str(&format!(
+        "],\n{inner}\"recommended_action\": \"{}\"\n",
+        json_escape(&finding.recommended_action)
+    ));
+    body.push_str(&format!("{pad}}}"));
+}
+
+fn write_json_u64_array(body: &mut String, values: &[u64]) {
+    body.push('[');
+    for (index, value) in values.iter().enumerate() {
+        if index > 0 {
+            body.push_str(", ");
+        }
+        body.push_str(&value.to_string());
+    }
+    body.push(']');
+}
+
+fn pr_age_label(pr: &PrTriagePullRequest, today: i64) -> String {
+    match pr_created_day(&pr.created_at) {
+        Some(created) => format!("{}d", today - created),
+        None => "unknown".to_string(),
+    }
+}
+
+fn pr_checks_summary(checks: &[PrTriageCheck]) -> String {
+    if checks.is_empty() {
+        return "none".to_string();
+    }
+    let failed = checks.iter().filter(|check| pr_check_failed(check)).count();
+    let pending = checks
+        .iter()
+        .filter(|check| pr_check_pending(check))
+        .count();
+    if failed > 0 {
+        format!("{failed} failed, {pending} pending")
+    } else if pending > 0 {
+        format!("{pending} pending")
+    } else {
+        format!("{} passed", checks.len())
+    }
+}
+
+fn format_pr_triage_ref(pr: &PrTriagePullRequest) -> String {
+    format!("#{} {}", pr.number, pr.title)
+}
+
+fn markdown_escape_table(value: &str) -> String {
+    value.replace('|', "\\|").replace('\n', " ")
 }
 
 pub(crate) fn critic_impl() -> Result<(), String> {
@@ -1868,7 +4179,7 @@ fn receipts_report_markdown(
 }
 
 fn precommit_report_body() -> String {
-    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-allow-attributes`\n- `cargo xtask check-local-context`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-droid-review-config`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-readme-state`\n- `cargo xtask markdown-links`\n- `cargo xtask check-campaign`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
+    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-allow-attributes`\n- `cargo xtask check-local-context`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-droid-review-config`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-spec-numbering`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-readme-state`\n- `cargo xtask markdown-links`\n- `cargo xtask check-campaign`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-generated`\n- `cargo xtask check-badge-diff-policy`\n- `cargo xtask check-generated-clean`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
 }
 
 fn check_pr_report_body() -> String {
@@ -2074,7 +4385,15 @@ fn fixture_dirs() -> Result<Vec<PathBuf>, String> {
 fn is_manifest_only_fixture_dir(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
-        .is_some_and(|name| name == "evidence-quality-benchmark")
+        .is_some_and(|name| {
+            matches!(
+                name,
+                "editor_gap_cockpit"
+                    | "editor_first_run_usability"
+                    | "evidence-quality-benchmark"
+                    | "gap-decision-ledger"
+            )
+        })
 }
 
 fn fixture_dir_for_name(name: &str) -> Result<PathBuf, String> {
@@ -3740,6 +6059,218 @@ fn check_spec_format() -> Result<(), String> {
     )
 }
 
+fn specs(args: &[String]) -> Result<(), String> {
+    match args.first().map(String::as_str) {
+        Some("next") => {
+            println!("{}", next_spec_id(Path::new("."))?);
+            Ok(())
+        }
+        Some(other) => Err(format!(
+            "unknown specs command `{other}`\nusage: cargo xtask specs next"
+        )),
+        None => Err("missing specs command\nusage: cargo xtask specs next".to_string()),
+    }
+}
+
+fn check_spec_numbering() -> Result<(), String> {
+    let violations = spec_numbering_violations(Path::new("."))?;
+    finish_spec_numbering_report(&violations)
+}
+
+fn finish_spec_numbering_report(violations: &[String]) -> Result<(), String> {
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "spec-numbering.md",
+            check: "check-spec-numbering",
+            why_it_matters: "Spec IDs are source-of-truth identifiers; current numbering and references should be mechanical instead of agent memory.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Run `cargo xtask specs next` before creating a new docs/specs/RIPR-SPEC-NNNN file.",
+                "Add every spec file to docs/specs/README.md.",
+                "Use only existing RIPR-SPEC-NNNN IDs in traceability and capability surfaces.",
+            ],
+            rerun_command: "cargo xtask check-spec-numbering",
+            exception_template: None,
+        },
+        violations,
+    )
+}
+
+fn next_spec_id(root: &Path) -> Result<String, String> {
+    let specs = collect_spec_files_for_root(root)?;
+    Ok(next_spec_id_from_ids(
+        specs.iter().map(|spec| spec.id.as_str()),
+    ))
+}
+
+fn next_spec_id_from_ids<'a>(ids: impl Iterator<Item = &'a str>) -> String {
+    let next = match ids.filter_map(spec_number_from_id).max() {
+        Some(max) => max + 1,
+        None => 1,
+    };
+    format!("RIPR-SPEC-{next:04}")
+}
+
+fn spec_numbering_violations(root: &Path) -> Result<Vec<String>, String> {
+    let specs = collect_spec_files_for_root(root)?;
+    let mut violations = Vec::new();
+    let mut ids = BTreeMap::<String, Vec<String>>::new();
+    for spec in &specs {
+        ids.entry(spec.id.clone())
+            .or_default()
+            .push(spec.relative_path.clone());
+    }
+    for (id, paths) in &ids {
+        if paths.len() > 1 {
+            violations.push(format!(
+                "{id} is used by multiple spec files: {}",
+                paths.join(", ")
+            ));
+        }
+    }
+
+    validate_specs_readme_index(root, &specs, &ids, &mut violations)?;
+    validate_spec_references(root, &ids, &mut violations)?;
+
+    violations.sort();
+    violations.dedup();
+    Ok(violations)
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct SpecFile {
+    id: String,
+    file_name: String,
+    relative_path: String,
+}
+
+fn collect_spec_files_for_root(root: &Path) -> Result<Vec<SpecFile>, String> {
+    let spec_dir = root.join("docs/specs");
+    let mut specs = Vec::new();
+    if !spec_dir.exists() {
+        return Ok(specs);
+    }
+    for path in collect_files(&spec_dir)? {
+        if path.extension().and_then(|value| value.to_str()) != Some("md") {
+            continue;
+        }
+        let Some(file_name) = path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        if !file_name.starts_with("RIPR-SPEC-") {
+            continue;
+        }
+        let Some(id) = spec_id_from_path(&path) else {
+            continue;
+        };
+        specs.push(SpecFile {
+            id,
+            file_name: file_name.to_string(),
+            relative_path: root_relative_path(root, &path),
+        });
+    }
+    specs.sort_by(|left, right| {
+        left.id
+            .cmp(&right.id)
+            .then_with(|| left.relative_path.cmp(&right.relative_path))
+    });
+    Ok(specs)
+}
+
+fn validate_specs_readme_index(
+    root: &Path,
+    specs: &[SpecFile],
+    ids: &BTreeMap<String, Vec<String>>,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let readme = root.join("docs/specs/README.md");
+    if !readme.exists() {
+        violations.push("docs/specs/README.md is missing".to_string());
+        return Ok(());
+    }
+    let text = read_text_lossy(&readme)?;
+    for spec in specs {
+        let link = format!("[{}]({})", spec.id, spec.file_name);
+        if !text.contains(&link) {
+            violations.push(format!(
+                "docs/specs/README.md is missing index link `{link}` for {}",
+                spec.relative_path
+            ));
+        }
+    }
+    for id in spec_ids_in_text(&text) {
+        if !ids.contains_key(&id) {
+            violations.push(format!(
+                "docs/specs/README.md references missing spec `{id}`"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_spec_references(
+    root: &Path,
+    ids: &BTreeMap<String, Vec<String>>,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    for relative in [
+        ".ripr/traceability.toml",
+        "metrics/capabilities.toml",
+        "docs/CAPABILITY_MATRIX.md",
+    ] {
+        let path = root.join(relative);
+        if !path.exists() {
+            continue;
+        }
+        let text = read_text_lossy(&path)?;
+        for id in spec_ids_in_text(&text) {
+            if !ids.contains_key(&id) {
+                violations.push(format!("{relative} references missing spec `{id}`"));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn spec_ids_in_text(text: &str) -> BTreeSet<String> {
+    let mut ids = BTreeSet::new();
+    let id_len = "RIPR-SPEC-0000".len();
+    for (offset, _) in text.match_indices("RIPR-SPEC-") {
+        let Some(candidate) = text.get(offset..offset + id_len) else {
+            continue;
+        };
+        if text
+            .as_bytes()
+            .get(offset + id_len)
+            .is_some_and(u8::is_ascii_digit)
+        {
+            continue;
+        }
+        if is_spec_id(candidate) {
+            ids.insert(candidate.to_string());
+        }
+    }
+    ids
+}
+
+fn spec_number_from_id(id: &str) -> Option<u32> {
+    let suffix = id.strip_prefix("RIPR-SPEC-")?;
+    if suffix.len() == 4 && is_ascii_digits(suffix) {
+        suffix.parse::<u32>().ok()
+    } else {
+        None
+    }
+}
+
+fn root_relative_path(root: &Path, path: &Path) -> String {
+    match path.strip_prefix(root) {
+        Ok(relative) => relative,
+        Err(_) => path,
+    }
+    .to_string_lossy()
+    .replace('\\', "/")
+}
+
 fn check_fixture_contracts() -> Result<(), String> {
     let fixtures_dir = Path::new("fixtures");
     if !fixtures_dir.exists() {
@@ -3765,6 +6296,9 @@ fn check_fixture_contracts() -> Result<(), String> {
     validate_evidence_record_contract_fixture_corpus(&mut violations)?;
     validate_lane1_evidence_quality_failure_fixture_corpus(&mut violations)?;
     validate_evidence_quality_benchmark_fixture_corpus(&mut violations)?;
+    validate_editor_gap_cockpit_fixture_corpus(&mut violations)?;
+    validate_editor_first_run_usability_fixture_corpus(&mut violations)?;
+    validate_gap_decision_ledger_fixture_corpus(&mut violations)?;
     validate_pr_review_front_panel_fixture_corpus(&mut violations)?;
     validate_report_packet_index_fixture_corpus(&mut violations)?;
     validate_pr_inline_comment_publisher_fixture_corpus(&mut violations)?;
@@ -3869,6 +6403,8 @@ const EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CLASSES: &[&str] = &[
     "self_computed_expected_value",
     "opaque_helper_static_limitation",
     "cross_file_constant_limitation",
+    "presentation_text",
+    "config_or_policy_constant",
     "side_effect_observer",
     "snapshot_discriminator",
     "mock_expectation",
@@ -3883,6 +6419,48 @@ const EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CASE_KINDS: &[&str] = &[
     "equivalent_code",
     "static_limitation",
     "calibration",
+];
+
+const GAP_DECISION_LEDGER_CORPUS: &str = "fixtures/gap-decision-ledger/corpus.json";
+
+const GAP_DECISION_REQUIRED_KINDS: &[&str] = &[
+    "MissingBoundaryAssertion",
+    "MissingErrorDiscriminator",
+    "MissingValueAssertion",
+    "MissingSideEffectObserver",
+    "MissingOutputContract",
+    "StaticLimitation",
+    "NoActionAlreadyObserved",
+    "NoActionInternal",
+    "Unknown",
+];
+
+const GAP_DECISION_REQUIRED_SCOPES: &[&str] = &[
+    "pr_local",
+    "repo_scoped",
+    "baseline_debt",
+    "artifact_missing",
+];
+
+const GAP_DECISION_REQUIRED_POLICY_STATES: &[&str] = &[
+    "new",
+    "baseline_known",
+    "waived",
+    "suppressed",
+    "acknowledged",
+    "resolved",
+    "reintroduced",
+    "blocked",
+    "not_policy_targeted",
+    "unknown",
+];
+
+const GAP_DECISION_REQUIRED_REPAIRABILITY: &[&str] = &[
+    "repairable",
+    "needs_human_design",
+    "analyzer_limitation",
+    "no_action",
+    "unknown",
 ];
 
 fn validate_evidence_record_contract_fixture_corpus(
@@ -4481,6 +7059,29 @@ fn validate_evidence_quality_benchmark_case(
         ));
     }
 
+    if case_kind.as_deref() == Some("static_limitation") {
+        if json_string_field(case, "static_limitation_category").is_none() {
+            violations.push(format!(
+                "Lane 1 evidence-quality benchmark static-limitation case {case_id} is missing static_limitation_category"
+            ));
+        }
+        if audit_string(
+            case,
+            &[
+                "expected_repo_exposure",
+                "evidence_record",
+                "static_limitation",
+                "category",
+            ],
+        )
+        .is_some()
+        {
+            violations.push(format!(
+                "Lane 1 evidence-quality benchmark static-limitation case {case_id} must keep static_limitation_category at the case level"
+            ));
+        }
+    }
+
     if evidence_class.as_deref() == Some("runtime_only_signal") {
         match case.get("calibration") {
             Some(calibration @ Value::Object(_)) => {
@@ -4544,6 +7145,1101 @@ fn validate_benchmark_line_movement(
         ));
     }
     *has_line_movement_guard = true;
+}
+
+const EDITOR_GAP_COCKPIT_FIXTURE_ROOT: &str = "fixtures/editor_gap_cockpit";
+const EDITOR_GAP_COCKPIT_CASES: &[&str] = &[
+    "rust_actionable",
+    "typescript_preview_static_limit",
+    "python_preview_static_limit",
+    "disabled_language",
+    "wrong_root",
+    "stale_artifact",
+    "no_actionable_gap",
+];
+const EDITOR_GAP_COCKPIT_EXPECTED_FILES: &[&str] = &[
+    "lsp-diagnostics.json",
+    "lsp-hover.md",
+    "lsp-code-actions.json",
+    "vscode-status.json",
+    "gap-projection.json",
+];
+
+fn validate_editor_gap_cockpit_fixture_corpus(violations: &mut Vec<String>) -> Result<(), String> {
+    let root = Path::new(EDITOR_GAP_COCKPIT_FIXTURE_ROOT);
+    if !root.exists() {
+        violations.push(format!(
+            "editor gap cockpit fixture corpus is missing {}",
+            normalize_path(root)
+        ));
+        return Ok(());
+    }
+    let spec = root.join("SPEC.md");
+    if !spec.exists() {
+        violations.push(format!(
+            "editor gap cockpit fixture corpus is missing {}",
+            normalize_path(&spec)
+        ));
+    } else {
+        let spec_text = read_text_lossy(&spec)?;
+        if !spec_text
+            .lines()
+            .any(|line| line.starts_with("Spec: RIPR-SPEC-0047"))
+        {
+            violations.push(format!(
+                "{} is missing `Spec: RIPR-SPEC-0047`",
+                normalize_path(&spec)
+            ));
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !has_markdown_heading(&spec_text, heading) {
+                violations.push(format!("{} is missing `{heading}`", normalize_path(&spec)));
+            }
+        }
+    }
+
+    for case in EDITOR_GAP_COCKPIT_CASES {
+        validate_editor_gap_cockpit_fixture_case(root, case, violations)?;
+    }
+    Ok(())
+}
+
+fn validate_editor_gap_cockpit_fixture_case(
+    root: &Path,
+    case: &str,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let expected = root.join(case).join("expected");
+    for file in EDITOR_GAP_COCKPIT_EXPECTED_FILES {
+        let path = expected.join(file);
+        if !path.exists() {
+            violations.push(format!(
+                "editor gap cockpit case {case} is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    let projection_path = expected.join("gap-projection.json");
+    if projection_path.exists() {
+        let projection = read_json_value(&projection_path)?;
+        if json_string_field(&projection, "schema_version").as_deref() != Some("0.1") {
+            violations.push(format!(
+                "{} schema_version must be 0.1",
+                normalize_path(&projection_path)
+            ));
+        }
+        if json_string_field(&projection, "case").as_deref() != Some(case) {
+            violations.push(format!(
+                "{} case must be {case}",
+                normalize_path(&projection_path)
+            ));
+        }
+    }
+    let diagnostics_path = expected.join("lsp-diagnostics.json");
+    let actions_path = expected.join("lsp-code-actions.json");
+    if diagnostics_path.exists() && actions_path.exists() {
+        let diagnostics = read_json_value(&diagnostics_path)?;
+        let actions = read_json_value(&actions_path)?;
+        validate_editor_gap_case_semantics(case, &diagnostics, &actions, violations);
+    }
+    let hover_path = expected.join("lsp-hover.md");
+    if hover_path.exists() {
+        let hover = read_text_lossy(&hover_path)?;
+        validate_editor_gap_hover(case, &hover, violations);
+    }
+    Ok(())
+}
+
+fn validate_editor_gap_case_semantics(
+    case: &str,
+    diagnostics: &Value,
+    actions: &Value,
+    violations: &mut Vec<String>,
+) {
+    let diagnostics_array = diagnostics
+        .get("diagnostics")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let action_titles = actions
+        .get("actions")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| json_str_field(item, "title").map(str::to_string))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    match case {
+        "rust_actionable" => {
+            require_gap_case_diagnostic(case, &diagnostics_array, "rust", "stable", violations);
+            for title in [
+                "Inspect gap: copy repair packet",
+                "Write targeted test: open best related test",
+                "Verify after test: copy verify command",
+                "Review result: copy receipt command",
+                "Refresh Analysis - Saved Workspace Check",
+            ] {
+                if !action_titles.iter().any(|value| value == title) {
+                    violations.push(format!(
+                        "editor gap cockpit case {case} is missing action `{title}`"
+                    ));
+                }
+            }
+        }
+        "typescript_preview_static_limit" => {
+            require_gap_case_diagnostic(
+                case,
+                &diagnostics_array,
+                "typescript",
+                "preview",
+                violations,
+            );
+            require_action_title(
+                case,
+                &action_titles,
+                "Inspect gap: copy static-limit note",
+                violations,
+            );
+        }
+        "python_preview_static_limit" => {
+            require_gap_case_diagnostic(case, &diagnostics_array, "python", "preview", violations);
+            require_action_title(
+                case,
+                &action_titles,
+                "Inspect gap: copy static-limit note",
+                violations,
+            );
+        }
+        "disabled_language" | "wrong_root" | "stale_artifact" | "no_actionable_gap" => {
+            if !diagnostics_array.is_empty() {
+                violations.push(format!(
+                    "editor gap cockpit case {case} must not project diagnostics"
+                ));
+            }
+            if !(action_titles.len() == 1
+                && action_titles[0] == "Refresh Analysis - Saved Workspace Check")
+            {
+                violations.push(format!(
+                    "editor gap cockpit case {case} must fail closed to refresh-only actions"
+                ));
+            }
+        }
+        _ => {}
+    }
+}
+
+fn require_gap_case_diagnostic(
+    case: &str,
+    diagnostics: &[Value],
+    language: &str,
+    language_status: &str,
+    violations: &mut Vec<String>,
+) {
+    if diagnostics.len() != 1 {
+        violations.push(format!(
+            "editor gap cockpit case {case} must project exactly one diagnostic"
+        ));
+    }
+    let Some(diagnostic) = diagnostics.first() else {
+        return;
+    };
+    let data = diagnostic.get("data").unwrap_or(&Value::Null);
+    if json_str_field(data, "language") != Some(language) {
+        violations.push(format!(
+            "editor gap cockpit case {case} diagnostic language must be {language}"
+        ));
+    }
+    if json_str_field(data, "language_status") != Some(language_status) {
+        violations.push(format!(
+            "editor gap cockpit case {case} diagnostic language_status must be {language_status}"
+        ));
+    }
+    if json_str_field(data, "canonical_gap_id").is_none() {
+        violations.push(format!(
+            "editor gap cockpit case {case} diagnostic must carry canonical_gap_id"
+        ));
+    }
+}
+
+fn require_action_title(
+    case: &str,
+    action_titles: &[String],
+    title: &str,
+    violations: &mut Vec<String>,
+) {
+    if !action_titles.iter().any(|value| value == title) {
+        violations.push(format!(
+            "editor gap cockpit case {case} is missing action `{title}`"
+        ));
+    }
+}
+
+fn validate_editor_gap_hover(case: &str, hover: &str, violations: &mut Vec<String>) {
+    for heading in ["## Evidence boundary", "## Gap state", "## Limits"] {
+        if !hover.contains(heading) {
+            violations.push(format!(
+                "editor gap cockpit case {case} hover is missing `{heading}`"
+            ));
+        }
+    }
+    if case.contains("preview") {
+        let static_limit = hover.find("Static limit:");
+        let action = hover.find("Suggested action:");
+        if static_limit.is_none() || action.is_none() || static_limit > action {
+            violations.push(format!(
+                "editor gap cockpit case {case} hover must show static limits before action language"
+            ));
+        }
+    }
+}
+
+const EDITOR_FIRST_RUN_USABILITY_FIXTURE_ROOT: &str = "fixtures/editor_first_run_usability";
+const EDITOR_FIRST_RUN_USABILITY_CASES: &[&str] = &[
+    "setup_ok",
+    "server_missing",
+    "config_missing",
+    "language_disabled",
+    "adapter_unavailable",
+    "artifact_missing",
+    "artifact_stale",
+    "receipt_improved",
+    "receipt_unchanged",
+];
+const EDITOR_FIRST_RUN_USABILITY_EXPECTED_FILES: &[&str] = &[
+    "vscode-status.json",
+    "setup-diagnosis.md",
+    "lsp-code-actions.json",
+    "receipt-status.json",
+];
+
+fn validate_editor_first_run_usability_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new(EDITOR_FIRST_RUN_USABILITY_FIXTURE_ROOT);
+    if !root.exists() {
+        violations.push(format!(
+            "editor first-run usability fixture corpus is missing {}",
+            normalize_path(root)
+        ));
+        return Ok(());
+    }
+    let spec = root.join("SPEC.md");
+    if !spec.exists() {
+        violations.push(format!(
+            "editor first-run usability fixture corpus is missing {}",
+            normalize_path(&spec)
+        ));
+    } else {
+        let spec_text = read_text_lossy(&spec)?;
+        for spec_id in ["RIPR-SPEC-0049", "RIPR-SPEC-0050"] {
+            if !spec_text.lines().any(|line| line.contains(spec_id)) {
+                violations.push(format!("{} is missing `{spec_id}`", normalize_path(&spec)));
+            }
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !has_markdown_heading(&spec_text, heading) {
+                violations.push(format!("{} is missing `{heading}`", normalize_path(&spec)));
+            }
+        }
+    }
+
+    for case in EDITOR_FIRST_RUN_USABILITY_CASES {
+        validate_editor_first_run_usability_case(root, case, violations)?;
+    }
+    Ok(())
+}
+
+fn validate_editor_first_run_usability_case(
+    root: &Path,
+    case: &str,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let expected = root.join(case).join("expected");
+    for file in EDITOR_FIRST_RUN_USABILITY_EXPECTED_FILES {
+        let path = expected.join(file);
+        if !path.exists() {
+            violations.push(format!(
+                "editor first-run usability case {case} is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    let status_path = expected.join("vscode-status.json");
+    if status_path.exists() {
+        let status = read_json_value(&status_path)?;
+        validate_editor_first_run_status(case, &status, violations);
+    }
+    let actions_path = expected.join("lsp-code-actions.json");
+    if actions_path.exists() {
+        let actions = read_json_value(&actions_path)?;
+        validate_editor_first_run_actions(case, &actions, violations);
+    }
+    let receipt_path = expected.join("receipt-status.json");
+    if receipt_path.exists() {
+        let receipt = read_json_value(&receipt_path)?;
+        validate_editor_first_run_receipt(case, &receipt, violations);
+    }
+    let diagnosis_path = expected.join("setup-diagnosis.md");
+    if diagnosis_path.exists() {
+        let diagnosis = read_text_lossy(&diagnosis_path)?;
+        for required in [
+            "RIPR setup diagnosis",
+            "Next safe action",
+            "Limits",
+            "no source edits",
+        ] {
+            if !diagnosis.contains(required) {
+                violations.push(format!(
+                    "editor first-run usability case {case} setup diagnosis is missing `{required}`"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_editor_first_run_status(case: &str, status: &Value, violations: &mut Vec<String>) {
+    if json_string_field(status, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "editor first-run usability case {case} vscode-status schema_version must be 0.1"
+        ));
+    }
+    let expected_fixture = format!("editor_first_run_usability/{case}");
+    if json_string_field(status, "fixture").as_deref() != Some(expected_fixture.as_str()) {
+        violations.push(format!(
+            "editor first-run usability case {case} vscode-status fixture must be {expected_fixture}"
+        ));
+    }
+    if matches!(case, "setup_ok" | "receipt_improved" | "receipt_unchanged")
+        && json_string_field(status, "next_safe_action").is_none()
+    {
+        violations.push(format!(
+            "editor first-run usability case {case} must name a next_safe_action"
+        ));
+    }
+    if matches!(
+        case,
+        "server_missing" | "language_disabled" | "adapter_unavailable" | "artifact_stale"
+    ) && json_string_field(status, "projection").as_deref() != Some("fail_closed")
+    {
+        violations.push(format!(
+            "editor first-run usability case {case} must fail closed"
+        ));
+    }
+}
+
+fn validate_editor_first_run_actions(case: &str, actions: &Value, violations: &mut Vec<String>) {
+    if json_string_field(actions, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "editor first-run usability case {case} lsp-code-actions schema_version must be 0.1"
+        ));
+    }
+    let items = actions
+        .get("actions")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let first_repair_actions = items
+        .iter()
+        .filter(|item| {
+            json_string_field(item, "title").as_deref() == Some("Copy first repair packet")
+                || json_string_field(item, "command").as_deref() == Some("ripr.copyContext")
+        })
+        .collect::<Vec<_>>();
+    let has_first_repair_packet = !first_repair_actions.is_empty();
+    if matches!(case, "setup_ok" | "receipt_improved" | "receipt_unchanged")
+        && !has_first_repair_packet
+    {
+        violations.push(format!(
+            "editor first-run usability case {case} must include Copy first repair packet"
+        ));
+    }
+    if matches!(
+        case,
+        "server_missing"
+            | "config_missing"
+            | "language_disabled"
+            | "adapter_unavailable"
+            | "artifact_missing"
+            | "artifact_stale"
+    ) && has_first_repair_packet
+    {
+        violations.push(format!(
+            "editor first-run usability case {case} must not expose first repair packet"
+        ));
+    }
+    for action in first_repair_actions {
+        validate_editor_first_run_repair_action(case, action, violations);
+    }
+}
+
+fn validate_editor_first_run_repair_action(
+    case: &str,
+    action: &Value,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(action, "title").as_deref() != Some("Copy first repair packet") {
+        violations.push(format!(
+            "editor first-run usability case {case} first repair action must use the Copy first repair packet title"
+        ));
+    }
+    if json_string_field(action, "command").as_deref() != Some("ripr.copyContext") {
+        violations.push(format!(
+            "editor first-run usability case {case} first repair action must use ripr.copyContext"
+        ));
+    }
+    let packet = action
+        .get("arguments")
+        .and_then(Value::as_array)
+        .and_then(|args| args.iter().find_map(|arg| json_string_field(arg, "packet")));
+    let Some(packet) = packet else {
+        violations.push(format!(
+            "editor first-run usability case {case} first repair action must carry a packet argument"
+        ));
+        return;
+    };
+    for required in [
+        "RIPR first repair packet",
+        "Gap identity:",
+        "Suggested action:",
+        "Verify command:",
+        "Receipt command:",
+        "Limits and non-claims:",
+    ] {
+        if !packet.contains(required) {
+            violations.push(format!(
+                "editor first-run usability case {case} first repair packet is missing `{required}`"
+            ));
+        }
+    }
+}
+
+fn validate_editor_first_run_receipt(case: &str, receipt: &Value, violations: &mut Vec<String>) {
+    if json_string_field(receipt, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "editor first-run usability case {case} receipt-status schema_version must be 0.1"
+        ));
+    }
+    let state = json_string_field(receipt, "receipt_state");
+    let expected_state = match case {
+        "receipt_improved" => Some("receipt_movement_improved"),
+        "receipt_unchanged" => Some("receipt_movement_unchanged"),
+        "artifact_stale" => Some("receipt_stale"),
+        _ => None,
+    };
+    if let Some(expected_state) =
+        expected_state.filter(|expected| state.as_deref() != Some(*expected))
+    {
+        violations.push(format!(
+            "editor first-run usability {case} must record {expected_state}"
+        ));
+    }
+    if json_bool_field(receipt, "runtime_adequacy_claim") != Some(false) {
+        violations.push(format!(
+            "editor first-run usability case {case} receipt-status must deny runtime_adequacy_claim"
+        ));
+    }
+    if json_bool_field(receipt, "gate_eligibility_claim") != Some(false) {
+        violations.push(format!(
+            "editor first-run usability case {case} receipt-status must deny gate_eligibility_claim"
+        ));
+    }
+}
+
+fn validate_gap_decision_ledger_fixture_corpus(violations: &mut Vec<String>) -> Result<(), String> {
+    validate_gap_decision_ledger_fixture_corpus_at(
+        Path::new(GAP_DECISION_LEDGER_CORPUS),
+        violations,
+    )
+}
+
+fn validate_gap_decision_ledger_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let Some(base) = path.parent() else {
+        violations.push(format!(
+            "gap-decision ledger corpus path has no parent: {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    };
+    for required in ["README.md", "corpus.json"] {
+        let required_path = base.join(required);
+        if !required_path.exists() {
+            violations.push(format!(
+                "gap-decision ledger corpus is missing {}",
+                normalize_path(&required_path)
+            ));
+        }
+    }
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let corpus = match read_json_value(path) {
+        Ok(value) => value,
+        Err(err) => {
+            violations.push(err);
+            return Ok(());
+        }
+    };
+    validate_gap_decision_ledger_corpus_value(path, &corpus, violations);
+    Ok(())
+}
+
+fn validate_gap_decision_ledger_corpus_value(
+    path: &Path,
+    corpus: &Value,
+    violations: &mut Vec<String>,
+) {
+    let normalized = normalize_path(path);
+    if json_string_field(corpus, "kind").as_deref() != Some("gap_decision_ledger_corpus") {
+        violations.push(format!(
+            "{normalized} kind must be gap_decision_ledger_corpus"
+        ));
+    }
+    if json_string_field(corpus, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!("{normalized} schema_version must be 0.1"));
+    }
+    if json_string_field(corpus, "spec").as_deref() != Some("RIPR-SPEC-0046") {
+        violations.push(format!("{normalized} spec must be RIPR-SPEC-0046"));
+    }
+    if json_string_field(corpus, "proposal").as_deref() != Some("RIPR-PROP-0006") {
+        violations.push(format!("{normalized} proposal must be RIPR-PROP-0006"));
+    }
+
+    require_string_array_contains_all(
+        corpus,
+        "required_gap_kinds",
+        GAP_DECISION_REQUIRED_KINDS,
+        "Gap decision ledger",
+        violations,
+    );
+    require_string_array_contains_all(
+        corpus,
+        "required_scopes",
+        GAP_DECISION_REQUIRED_SCOPES,
+        "Gap decision ledger",
+        violations,
+    );
+    require_string_array_contains_all(
+        corpus,
+        "required_policy_states",
+        GAP_DECISION_REQUIRED_POLICY_STATES,
+        "Gap decision ledger",
+        violations,
+    );
+    require_string_array_contains_all(
+        corpus,
+        "required_repairability",
+        GAP_DECISION_REQUIRED_REPAIRABILITY,
+        "Gap decision ledger",
+        violations,
+    );
+
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        violations.push(format!("{normalized} is missing cases array"));
+        return;
+    };
+
+    let mut seen_ids = BTreeSet::new();
+    let mut seen_kinds = BTreeSet::new();
+    let mut seen_scopes = BTreeSet::new();
+    let mut seen_policy_states = BTreeSet::new();
+    let mut seen_repairability = BTreeSet::new();
+    let mut has_pr_comment_eligible = false;
+    let mut has_gate_candidate = false;
+    let mut has_ripr_zero_target = false;
+    let mut has_output_contract_gap = false;
+    let mut has_preview_ineligible = false;
+    let mut has_missing_artifact = false;
+    let mut has_receipt_improved = false;
+    let mut has_receipt_unchanged = false;
+
+    for case in cases {
+        let case_id = json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string());
+        if !seen_ids.insert(case_id.clone()) {
+            violations.push(format!("gap-decision ledger case {case_id} is duplicated"));
+        }
+        validate_gap_decision_ledger_case(
+            &case_id,
+            case,
+            &mut seen_kinds,
+            &mut seen_scopes,
+            &mut seen_policy_states,
+            &mut seen_repairability,
+            &mut has_pr_comment_eligible,
+            &mut has_gate_candidate,
+            &mut has_ripr_zero_target,
+            &mut has_output_contract_gap,
+            &mut has_preview_ineligible,
+            &mut has_missing_artifact,
+            &mut has_receipt_improved,
+            &mut has_receipt_unchanged,
+            violations,
+        );
+    }
+
+    for required in GAP_DECISION_REQUIRED_KINDS {
+        if !seen_kinds.contains(*required) {
+            violations.push(format!(
+                "gap-decision ledger is missing gap kind {required}"
+            ));
+        }
+    }
+    for required in GAP_DECISION_REQUIRED_SCOPES {
+        if !seen_scopes.contains(*required) {
+            violations.push(format!("gap-decision ledger is missing scope {required}"));
+        }
+    }
+    for required in GAP_DECISION_REQUIRED_POLICY_STATES {
+        if !seen_policy_states.contains(*required) {
+            violations.push(format!(
+                "gap-decision ledger is missing policy_state {required}"
+            ));
+        }
+    }
+    for required in GAP_DECISION_REQUIRED_REPAIRABILITY {
+        if !seen_repairability.contains(*required) {
+            violations.push(format!(
+                "gap-decision ledger is missing repairability {required}"
+            ));
+        }
+    }
+    if !has_pr_comment_eligible {
+        violations.push(
+            "gap-decision ledger must include a PR-comment-eligible repair card case".to_string(),
+        );
+    }
+    if !has_gate_candidate {
+        violations.push("gap-decision ledger must include a safe gate-candidate case".to_string());
+    }
+    if !has_ripr_zero_target {
+        violations.push("gap-decision ledger must include a RIPR Zero target case".to_string());
+    }
+    if !has_output_contract_gap {
+        violations
+            .push("gap-decision ledger must include a MissingOutputContract case".to_string());
+    }
+    if !has_preview_ineligible {
+        violations.push("gap-decision ledger must include a preview-ineligible case".to_string());
+    }
+    if !has_missing_artifact {
+        violations.push("gap-decision ledger must include a missing-artifact case".to_string());
+    }
+    if !has_receipt_improved {
+        violations.push("gap-decision ledger must include an improved receipt case".to_string());
+    }
+    if !has_receipt_unchanged {
+        violations.push(
+            "gap-decision ledger must include an unchanged-after-attempt receipt case".to_string(),
+        );
+    }
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "fixture corpus guard tracks independent coverage flags explicitly"
+)]
+fn validate_gap_decision_ledger_case(
+    case_id: &str,
+    case: &Value,
+    seen_kinds: &mut BTreeSet<String>,
+    seen_scopes: &mut BTreeSet<String>,
+    seen_policy_states: &mut BTreeSet<String>,
+    seen_repairability: &mut BTreeSet<String>,
+    has_pr_comment_eligible: &mut bool,
+    has_gate_candidate: &mut bool,
+    has_ripr_zero_target: &mut bool,
+    has_output_contract_gap: &mut bool,
+    has_preview_ineligible: &mut bool,
+    has_missing_artifact: &mut bool,
+    has_receipt_improved: &mut bool,
+    has_receipt_unchanged: &mut bool,
+    violations: &mut Vec<String>,
+) {
+    for field in ["id", "description", "expected_claim"] {
+        require_gap_decision_json_string_at(case, field, case_id, violations);
+    }
+    require_gap_decision_non_empty_string_array_at(case, "source_artifacts", case_id, violations);
+    require_gap_decision_non_empty_string_array_at(case, "must_not_claim", case_id, violations);
+
+    let Some(record @ Value::Object(_)) = case.get("expected_gap_record") else {
+        violations.push(format!(
+            "gap-decision ledger case {case_id} is missing expected_gap_record object"
+        ));
+        return;
+    };
+
+    for field in [
+        "gap_id",
+        "canonical_gap_id",
+        "kind",
+        "language",
+        "language_status",
+        "scope",
+        "evidence_class",
+        "gap_state",
+        "policy_state",
+        "repairability",
+    ] {
+        require_gap_decision_json_string_at(record, field, case_id, violations);
+    }
+    require_gap_decision_non_empty_string_array_at(record, "evidence_ids", case_id, violations);
+    require_gap_decision_non_empty_string_array_at(
+        record,
+        "verification_commands",
+        case_id,
+        violations,
+    );
+
+    let kind = json_string_field(record, "kind");
+    let language = json_string_field(record, "language");
+    let language_status = json_string_field(record, "language_status");
+    let scope = json_string_field(record, "scope");
+    let evidence_class = json_string_field(record, "evidence_class");
+    let policy_state = json_string_field(record, "policy_state");
+    let repairability = json_string_field(record, "repairability");
+    let route_kind = audit_string(record, &["repair_route", "route_kind"]);
+
+    gap_decision_track_allowed(
+        case_id,
+        "kind",
+        kind.as_deref(),
+        GAP_DECISION_REQUIRED_KINDS,
+        seen_kinds,
+        violations,
+    );
+    gap_decision_track_allowed(
+        case_id,
+        "scope",
+        scope.as_deref(),
+        GAP_DECISION_REQUIRED_SCOPES,
+        seen_scopes,
+        violations,
+    );
+    gap_decision_track_allowed(
+        case_id,
+        "policy_state",
+        policy_state.as_deref(),
+        GAP_DECISION_REQUIRED_POLICY_STATES,
+        seen_policy_states,
+        violations,
+    );
+    gap_decision_track_allowed(
+        case_id,
+        "repairability",
+        repairability.as_deref(),
+        GAP_DECISION_REQUIRED_REPAIRABILITY,
+        seen_repairability,
+        violations,
+    );
+
+    if !matches!(record.get("projection_eligibility"), Some(Value::Object(_))) {
+        violations.push(format!(
+            "gap-decision ledger case {case_id} is missing projection_eligibility object"
+        ));
+    }
+    for projection in [
+        "ci_summary",
+        "report_packet",
+        "pr_comment",
+        "lsp_diagnostic",
+        "agent_packet",
+        "gate_candidate",
+        "ripr_zero_count",
+        "ripr_plus_count",
+    ] {
+        validate_gap_projection(case_id, record, projection, violations);
+    }
+
+    if repairability.as_deref() == Some("repairable") {
+        if !matches!(record.get("repair_route"), Some(Value::Object(_))) {
+            violations.push(format!(
+                "gap-decision ledger repairable case {case_id} is missing repair_route object"
+            ));
+        }
+        if route_kind.is_none() {
+            violations.push(format!(
+                "gap-decision ledger repairable case {case_id} is missing repair_route.route_kind"
+            ));
+        }
+    }
+
+    if projection_eligible(record, "pr_comment") == Some(true) {
+        *has_pr_comment_eligible = true;
+        if language.as_deref() != Some("rust") || language_status.as_deref() != Some("stable") {
+            violations.push(format!(
+                "gap-decision ledger PR-comment case {case_id} must be stable Rust"
+            ));
+        }
+        if scope.as_deref() != Some("pr_local") || repairability.as_deref() != Some("repairable") {
+            violations.push(format!(
+                "gap-decision ledger PR-comment case {case_id} must be PR-local and repairable"
+            ));
+        }
+        if audit_string(record, &["anchor", "dedupe_fingerprint"]).is_none() {
+            violations.push(format!(
+                "gap-decision ledger PR-comment case {case_id} is missing anchor.dedupe_fingerprint"
+            ));
+        }
+        if route_kind.is_none() {
+            violations.push(format!(
+                "gap-decision ledger PR-comment case {case_id} is missing repair route"
+            ));
+        }
+    }
+
+    if projection_eligible(record, "gate_candidate") == Some(true) {
+        *has_gate_candidate = true;
+        validate_gap_decision_safe_gate_candidate(
+            case_id,
+            record,
+            language.as_deref(),
+            language_status.as_deref(),
+            scope.as_deref(),
+            policy_state.as_deref(),
+            repairability.as_deref(),
+            route_kind.as_deref(),
+            violations,
+        );
+    }
+
+    if projection_eligible(record, "ripr_zero_count") == Some(true) {
+        *has_ripr_zero_target = true;
+        if language.as_deref() != Some("rust")
+            || scope.as_deref() != Some("repo_scoped")
+            || matches!(policy_state.as_deref(), Some("waived" | "suppressed"))
+        {
+            violations.push(format!(
+                "gap-decision ledger RIPR Zero case {case_id} must be repo-scoped unresolved Rust policy debt"
+            ));
+        }
+    }
+
+    if kind.as_deref() == Some("MissingOutputContract") {
+        *has_output_contract_gap = true;
+        if evidence_class.as_deref() != Some("presentation_text") {
+            violations.push(format!(
+                "gap-decision ledger MissingOutputContract case {case_id} must use presentation_text evidence"
+            ));
+        }
+        if !matches!(
+            route_kind.as_deref(),
+            Some("AddOutputGolden" | "AddHelpOutputSnapshot" | "AddReportRenderGolden")
+        ) {
+            violations.push(format!(
+                "gap-decision ledger MissingOutputContract case {case_id} must route to output/golden repair"
+            ));
+        }
+    }
+
+    if language_status.as_deref() == Some("preview") {
+        *has_preview_ineligible = true;
+        for projection in ["gate_candidate", "ripr_zero_count", "ripr_plus_count"] {
+            if projection_eligible(record, projection) == Some(true) {
+                violations.push(format!(
+                    "gap-decision ledger preview case {case_id} must not be eligible for {projection}"
+                ));
+            }
+        }
+    }
+
+    if case.get("static_unknown_only").and_then(Value::as_bool) == Some(true)
+        && (repairability.as_deref() == Some("repairable")
+            || projection_eligible(record, "pr_comment") == Some(true)
+            || projection_eligible(record, "gate_candidate") == Some(true))
+    {
+        violations.push(format!(
+            "gap-decision ledger static-unknown-only case {case_id} must stay report-only unless a repair route exists"
+        ));
+    }
+
+    if matches!(
+        policy_state.as_deref(),
+        Some("baseline_known" | "waived" | "suppressed" | "acknowledged")
+    ) && projection_eligible(record, "gate_candidate") == Some(true)
+    {
+        violations.push(format!(
+            "gap-decision ledger policy-overlay case {case_id} must not be gate-candidate eligible"
+        ));
+    }
+    if matches!(policy_state.as_deref(), Some("waived" | "suppressed"))
+        && projection_eligible(record, "ripr_zero_count") == Some(true)
+    {
+        violations.push(format!(
+            "gap-decision ledger waived/suppressed case {case_id} must not count toward RIPR Zero"
+        ));
+    }
+
+    if scope.as_deref() == Some("artifact_missing") {
+        *has_missing_artifact = true;
+        require_gap_decision_non_empty_string_array_at(
+            record,
+            "regeneration_commands",
+            case_id,
+            violations,
+        );
+        if projection_eligible(record, "pr_comment") == Some(true)
+            || projection_eligible(record, "gate_candidate") == Some(true)
+        {
+            violations.push(format!(
+                "gap-decision ledger missing-artifact case {case_id} must not be PR-comment or gate eligible"
+            ));
+        }
+    }
+
+    if let Some(movement) = audit_string(record, &["receipt", "movement"]) {
+        match movement.as_str() {
+            "improved" => *has_receipt_improved = true,
+            "unchanged_after_attempt" => *has_receipt_unchanged = true,
+            "resolved" | "worsened" | "missing_receipt" | "not_applicable" => {}
+            other => violations.push(format!(
+                "gap-decision ledger case {case_id} has unsupported receipt movement {other}"
+            )),
+        }
+    }
+}
+
+fn gap_decision_track_allowed(
+    case_id: &str,
+    field: &str,
+    value: Option<&str>,
+    allowed: &[&str],
+    seen: &mut BTreeSet<String>,
+    violations: &mut Vec<String>,
+) {
+    match value {
+        Some(value) if allowed.contains(&value) => {
+            seen.insert(value.to_string());
+        }
+        Some(value) => violations.push(format!(
+            "gap-decision ledger case {case_id} has unsupported {field} {value}"
+        )),
+        None => violations.push(format!(
+            "gap-decision ledger case {case_id} is missing {field}"
+        )),
+    }
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "safe gate predicate guard receives normalized case fields"
+)]
+fn validate_gap_decision_safe_gate_candidate(
+    case_id: &str,
+    record: &Value,
+    language: Option<&str>,
+    language_status: Option<&str>,
+    scope: Option<&str>,
+    policy_state: Option<&str>,
+    repairability: Option<&str>,
+    route_kind: Option<&str>,
+    violations: &mut Vec<String>,
+) {
+    if language != Some("rust") || language_status != Some("stable") {
+        violations.push(format!(
+            "gap-decision ledger gate candidate {case_id} must be stable Rust"
+        ));
+    }
+    if scope != Some("pr_local") {
+        violations.push(format!(
+            "gap-decision ledger gate candidate {case_id} must be PR-local"
+        ));
+    }
+    if !matches!(policy_state, Some("new" | "blocked")) {
+        violations.push(format!(
+            "gap-decision ledger gate candidate {case_id} must be new or blocked policy state"
+        ));
+    }
+    if repairability != Some("repairable") || route_kind.is_none() {
+        violations.push(format!(
+            "gap-decision ledger gate candidate {case_id} must have repairable route"
+        ));
+    }
+    if audit_get(record, &["safe_gate_predicate", "policy_target_enabled"]).and_then(Value::as_bool)
+        != Some(true)
+    {
+        violations.push(format!(
+            "gap-decision ledger gate candidate {case_id} must set safe_gate_predicate.policy_target_enabled=true"
+        ));
+    }
+    for forbidden in [
+        "suppressed",
+        "waived",
+        "acknowledged_only",
+        "baseline_known",
+        "preview_language",
+        "static_unknown_only",
+    ] {
+        if audit_get(record, &["safe_gate_predicate", forbidden]).and_then(Value::as_bool)
+            != Some(false)
+        {
+            violations.push(format!(
+                "gap-decision ledger gate candidate {case_id} must set safe_gate_predicate.{forbidden}=false"
+            ));
+        }
+    }
+}
+
+fn validate_gap_projection(
+    case_id: &str,
+    record: &Value,
+    projection: &str,
+    violations: &mut Vec<String>,
+) {
+    let Some(value @ Value::Object(_)) = audit_get(record, &["projection_eligibility", projection])
+    else {
+        violations.push(format!(
+            "gap-decision ledger case {case_id} is missing projection_eligibility.{projection}"
+        ));
+        return;
+    };
+    if value.get("eligible").and_then(Value::as_bool).is_none() {
+        violations.push(format!(
+            "gap-decision ledger case {case_id} projection {projection} is missing eligible boolean"
+        ));
+    }
+    if json_string_field(value, "reason").is_none() {
+        violations.push(format!(
+            "gap-decision ledger case {case_id} projection {projection} is missing reason"
+        ));
+    }
+}
+
+fn projection_eligible(record: &Value, projection: &str) -> Option<bool> {
+    audit_get(record, &["projection_eligibility", projection, "eligible"]).and_then(Value::as_bool)
+}
+
+fn require_gap_decision_json_string_at(
+    value: &Value,
+    field: &str,
+    case_id: &str,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(value, field).is_none() {
+        violations.push(format!(
+            "gap-decision ledger case {case_id} is missing string field {field}"
+        ));
+    }
+}
+
+fn require_gap_decision_non_empty_string_array_at(
+    value: &Value,
+    field: &str,
+    case_id: &str,
+    violations: &mut Vec<String>,
+) {
+    match value.get(field) {
+        Some(Value::Array(items))
+            if !items.is_empty() && items.iter().all(|item| item.as_str().is_some()) => {}
+        _ => violations.push(format!(
+            "gap-decision ledger case {case_id} {field} must be a non-empty string array"
+        )),
+    }
 }
 
 fn validate_lane1_evidence_quality_record(
@@ -8937,6 +12633,14 @@ struct Lane1EvidenceAuditReport {
     root: String,
     repo_exposure_schema_version: Option<String>,
     summary: Lane1EvidenceAuditSummary,
+    finding_alignment: Lane1EvidenceAuditFindingAlignmentSummary,
+    alignment_coverage_by_class: Vec<Lane1EvidenceAuditAlignmentClassCoverage>,
+    unaligned_raw_findings_by_class: BTreeMap<String, usize>,
+    top_unaligned_examples: Vec<Lane1EvidenceAuditUnalignedExample>,
+    same_line_duplicate_groups: Vec<Lane1EvidenceAuditSameLineDuplicateGroup>,
+    static_unknown_without_named_limitation: usize,
+    canonical_items_without_repair_route: usize,
+    canonical_items_without_verify_command: usize,
     largest_canonical_groups: Vec<Lane1EvidenceAuditGroup>,
     duplicate_looking_groups: Vec<Lane1EvidenceAuditGroup>,
     missing_discriminator_reason_counts: BTreeMap<String, usize>,
@@ -8976,6 +12680,82 @@ struct Lane1EvidenceAuditSummary {
     low_or_opaque_top_related_tests: usize,
     calibrated_records: usize,
     uncalibrated_records: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct Lane1EvidenceAuditFindingAlignmentSummary {
+    raw_findings_total: usize,
+    raw_signals_total: usize,
+    canonical_items_total: usize,
+    aligned_raw_findings_total: usize,
+    unaligned_raw_findings_total: usize,
+    duplicate_groups_total: usize,
+    actionable_items_total: usize,
+    actionable_unresolved_canonical_gaps: usize,
+    already_observed_total: usize,
+    internal_only_total: usize,
+    internal_no_action_total: usize,
+    static_limitation_total: usize,
+    unknown_total: usize,
+    calibrated_supported_total: usize,
+    uncalibrated_total: usize,
+    visibility_unknown_total: usize,
+    presentation_text_actionable_total: usize,
+    presentation_text_total: usize,
+    presentation_text_user_visible: usize,
+    presentation_text_observed: usize,
+    presentation_text_unobserved: usize,
+    presentation_text_internal_only: usize,
+    presentation_text_visibility_unknown: usize,
+    presentation_text_observer_unknown: usize,
+    presentation_text_duplicate_groups: usize,
+    presentation_text_actionable_snapshot: usize,
+    presentation_text_no_action: usize,
+    presentation_text_static_limitations: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct Lane1EvidenceAuditAlignmentClassCoverage {
+    evidence_class: String,
+    raw_findings: usize,
+    canonical_items: usize,
+    aligned_raw_findings: usize,
+    unaligned_raw_findings: usize,
+    actionable_items: usize,
+    already_observed_items: usize,
+    internal_no_action_items: usize,
+    static_limitation_items: usize,
+    unknown_items: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Lane1EvidenceAuditUnalignedExample {
+    evidence_class: String,
+    file: String,
+    line: Option<usize>,
+    kind: String,
+    expression: String,
+    reason: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Lane1EvidenceAuditSameLineDuplicateGroup {
+    file: String,
+    line: usize,
+    raw_findings: usize,
+    evidence_classes: Vec<String>,
+    kinds: Vec<String>,
+    example_expression: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Lane1EvidenceAuditSameLineDuplicateBuilder {
+    file: String,
+    line: usize,
+    raw_findings: usize,
+    evidence_classes: BTreeSet<String>,
+    kinds: BTreeSet<String>,
+    example_expression: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -9136,7 +12916,15 @@ fn lane1_evidence_audit_from_repo_exposure(
 #[derive(Default)]
 struct Lane1EvidenceAuditBuilder {
     summary: Lane1EvidenceAuditSummary,
+    finding_alignment: Lane1EvidenceAuditFindingAlignmentSummary,
     movement: Lane1EvidenceAuditMovement,
+    alignment_class_coverage: BTreeMap<String, Lane1EvidenceAuditAlignmentClassCoverage>,
+    unaligned_raw_findings_by_class: BTreeMap<String, usize>,
+    unaligned_examples: Vec<Lane1EvidenceAuditUnalignedExample>,
+    same_line_raw_findings: BTreeMap<String, Lane1EvidenceAuditSameLineDuplicateBuilder>,
+    static_unknown_without_named_limitation: usize,
+    canonical_items_without_repair_route: usize,
+    canonical_items_without_verify_command: usize,
     canonical_groups: BTreeMap<String, Lane1EvidenceAuditGroup>,
     duplicate_groups: BTreeMap<String, Lane1EvidenceAuditGroup>,
     field_health: BTreeMap<String, Lane1EvidenceAuditFieldHealth>,
@@ -9188,6 +12976,8 @@ impl Lane1EvidenceAuditBuilder {
 
         self.summary.evidence_records_total += 1;
         audit_evidence_record_field_health(record, &mut self.field_health);
+        audit_ingest_finding_alignment(record, &mut self.finding_alignment);
+        self.ingest_alignment_coverage(record);
 
         let seam_id = audit_string(record, &["seam_id"]);
         let canonical_gap_id = audit_string(record, &["canonical_gap_id"]);
@@ -9374,6 +13164,118 @@ impl Lane1EvidenceAuditBuilder {
         }
     }
 
+    fn ingest_alignment_coverage(&mut self, record: &Value) {
+        let raw_findings = audit_array(record, &["raw_findings"]);
+        let canonical_item =
+            audit_get(record, &["canonical_item"]).filter(|value| value.is_object());
+        let evidence_class = audit_alignment_evidence_class(record, canonical_item);
+        let raw_signal_count = canonical_item
+            .and_then(|item| audit_usize(item, &["raw_group_size"]))
+            .unwrap_or(raw_findings.len())
+            .max(raw_findings.len())
+            .max(1);
+        for raw in raw_findings {
+            self.ingest_same_line_raw_finding(record, raw, &evidence_class);
+        }
+
+        let Some(canonical_item) = canonical_item else {
+            {
+                let coverage = self
+                    .alignment_class_coverage
+                    .entry(evidence_class.clone())
+                    .or_insert_with(|| Lane1EvidenceAuditAlignmentClassCoverage {
+                        evidence_class: evidence_class.clone(),
+                        ..Lane1EvidenceAuditAlignmentClassCoverage::default()
+                    });
+                coverage.raw_findings += raw_signal_count;
+                coverage.unaligned_raw_findings += raw_signal_count;
+            }
+            *self
+                .unaligned_raw_findings_by_class
+                .entry(evidence_class.clone())
+                .or_insert(0) += raw_signal_count;
+            let example = audit_unaligned_example(record, raw_findings, &evidence_class);
+            if self.unaligned_examples.len() < LANE1_EVIDENCE_AUDIT_TOP_LIMIT {
+                self.unaligned_examples.push(example);
+            }
+            return;
+        };
+
+        let item_kind = audit_string(canonical_item, &["canonical_item_kind"]).unwrap_or_default();
+        let gap_state = audit_string(canonical_item, &["gap_state"]).unwrap_or_default();
+        let actionability = audit_string(canonical_item, &["actionability"]).unwrap_or_default();
+        {
+            let coverage = self
+                .alignment_class_coverage
+                .entry(evidence_class.clone())
+                .or_insert_with(|| Lane1EvidenceAuditAlignmentClassCoverage {
+                    evidence_class: evidence_class.clone(),
+                    ..Lane1EvidenceAuditAlignmentClassCoverage::default()
+                });
+            coverage.raw_findings += raw_signal_count;
+            coverage.canonical_items += 1;
+            coverage.aligned_raw_findings += raw_signal_count;
+            if item_kind == "gap" || gap_state == "actionable" {
+                coverage.actionable_items += 1;
+            }
+            if item_kind == "observed" || gap_state == "already_observed" {
+                coverage.already_observed_items += 1;
+            }
+            if item_kind == "no_action" || gap_state == "internal_only" {
+                coverage.internal_no_action_items += 1;
+            }
+            if item_kind == "limitation" || gap_state == "static_limitation" {
+                coverage.static_limitation_items += 1;
+            }
+            if gap_state == "unknown" {
+                coverage.unknown_items += 1;
+            }
+        }
+        if audit_non_empty_string(canonical_item, &["recommended_repair"]).is_none() {
+            self.canonical_items_without_repair_route += 1;
+        }
+        if audit_non_empty_string(canonical_item, &["verify_command"]).is_none() {
+            self.canonical_items_without_verify_command += 1;
+        }
+        if audit_has_static_unknown_signal(record, canonical_item, &gap_state, &actionability)
+            && !audit_has_named_static_limitation(record, canonical_item)
+        {
+            self.static_unknown_without_named_limitation += 1;
+        }
+    }
+
+    fn ingest_same_line_raw_finding(&mut self, record: &Value, raw: &Value, evidence_class: &str) {
+        let Some(line) =
+            audit_usize(raw, &["line"]).or_else(|| audit_usize(record, &["location", "line"]))
+        else {
+            return;
+        };
+        let file = audit_string(raw, &["file"])
+            .or_else(|| audit_string(record, &["location", "file"]))
+            .unwrap_or_else(|| "unknown".to_string());
+        let key = format!("{file}:{line}");
+        let entry = self.same_line_raw_findings.entry(key).or_insert_with(|| {
+            Lane1EvidenceAuditSameLineDuplicateBuilder {
+                file,
+                line,
+                raw_findings: 0,
+                evidence_classes: BTreeSet::new(),
+                kinds: BTreeSet::new(),
+                example_expression: audit_string(raw, &["expression"]),
+            }
+        });
+        entry.raw_findings += 1;
+        entry.evidence_classes.insert(evidence_class.to_string());
+        entry.kinds.insert(
+            audit_string(raw, &["kind"])
+                .or_else(|| audit_string(raw, &["probe_kind"]))
+                .unwrap_or_else(|| "unknown".to_string()),
+        );
+        if entry.example_expression.is_none() {
+            entry.example_expression = audit_string(raw, &["expression"]);
+        }
+    }
+
     fn finish(
         mut self,
         root: String,
@@ -9407,10 +13309,54 @@ impl Lane1EvidenceAuditBuilder {
         });
         file_debt.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
 
+        let mut alignment_coverage_by_class = self
+            .alignment_class_coverage
+            .into_values()
+            .collect::<Vec<_>>();
+        alignment_coverage_by_class.sort_by(|left, right| {
+            right
+                .raw_findings
+                .cmp(&left.raw_findings)
+                .then_with(|| left.evidence_class.cmp(&right.evidence_class))
+        });
+
+        let mut top_unaligned_examples = self.unaligned_examples;
+        top_unaligned_examples.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
+
+        let mut same_line_duplicate_groups = self
+            .same_line_raw_findings
+            .into_values()
+            .filter(|group| group.raw_findings > 1)
+            .map(|group| Lane1EvidenceAuditSameLineDuplicateGroup {
+                file: group.file,
+                line: group.line,
+                raw_findings: group.raw_findings,
+                evidence_classes: group.evidence_classes.into_iter().collect(),
+                kinds: group.kinds.into_iter().collect(),
+                example_expression: group.example_expression,
+            })
+            .collect::<Vec<_>>();
+        same_line_duplicate_groups.sort_by(|left, right| {
+            right
+                .raw_findings
+                .cmp(&left.raw_findings)
+                .then_with(|| left.file.cmp(&right.file))
+                .then_with(|| left.line.cmp(&right.line))
+        });
+        same_line_duplicate_groups.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
+
         Lane1EvidenceAuditReport {
             root,
             repo_exposure_schema_version,
             summary: self.summary,
+            finding_alignment: self.finding_alignment,
+            alignment_coverage_by_class,
+            unaligned_raw_findings_by_class: self.unaligned_raw_findings_by_class,
+            top_unaligned_examples,
+            same_line_duplicate_groups,
+            static_unknown_without_named_limitation: self.static_unknown_without_named_limitation,
+            canonical_items_without_repair_route: self.canonical_items_without_repair_route,
+            canonical_items_without_verify_command: self.canonical_items_without_verify_command,
             largest_canonical_groups,
             duplicate_looking_groups,
             missing_discriminator_reason_counts: self.missing_reason_counts,
@@ -9481,6 +13427,31 @@ fn lane1_evidence_audit_json(report: &Lane1EvidenceAuditReport) -> Result<String
             "low_or_opaque_top_related_tests": report.summary.low_or_opaque_top_related_tests,
             "calibrated_records": report.summary.calibrated_records,
             "uncalibrated_records": report.summary.uncalibrated_records,
+        },
+        "finding_alignment": {
+            "source": "evidence_record.canonical_item",
+            "summary": audit_finding_alignment_summary_json(&report.finding_alignment),
+            "coverage": {
+                "alignment_coverage_by_class": report
+                    .alignment_coverage_by_class
+                    .iter()
+                    .map(audit_alignment_class_coverage_json)
+                    .collect::<Vec<_>>(),
+                "unaligned_raw_findings_by_class": report.unaligned_raw_findings_by_class,
+                "top_unaligned_examples": report
+                    .top_unaligned_examples
+                    .iter()
+                    .map(audit_unaligned_example_json)
+                    .collect::<Vec<_>>(),
+                "same_line_duplicate_groups": report
+                    .same_line_duplicate_groups
+                    .iter()
+                    .map(audit_same_line_duplicate_group_json)
+                    .collect::<Vec<_>>(),
+                "static_unknown_without_named_limitation": report.static_unknown_without_named_limitation,
+                "canonical_items_without_repair_route": report.canonical_items_without_repair_route,
+                "canonical_items_without_verify_command": report.canonical_items_without_verify_command,
+            },
         },
         "canonical_gap_groups": {
             "total": report.summary.canonical_gap_groups_total,
@@ -9595,6 +13566,95 @@ fn lane1_evidence_audit_markdown(report: &Lane1EvidenceAuditReport) -> String {
         report.summary.uncalibrated_records,
     );
     out.push('\n');
+
+    out.push_str("## Finding Alignment\n\n");
+    out.push_str("| Metric | Count |\n");
+    out.push_str("| --- | ---: |\n");
+    audit_push_count(
+        &mut out,
+        "Raw alignment signals",
+        report.finding_alignment.raw_signals_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Canonical alignment items",
+        report.finding_alignment.canonical_items_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Aligned raw findings",
+        report.finding_alignment.aligned_raw_findings_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Unaligned raw findings",
+        report.finding_alignment.unaligned_raw_findings_total,
+    );
+    if let Some(ratio) = audit_finding_alignment_raw_to_canonical_ratio(&report.finding_alignment) {
+        out.push_str(&format!("| Raw-to-canonical ratio | {ratio:.2} |\n"));
+    } else {
+        out.push_str("| Raw-to-canonical ratio | n/a |\n");
+    }
+    audit_push_count(
+        &mut out,
+        "Actionable canonical items",
+        report.finding_alignment.actionable_items_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Already observed items",
+        report.finding_alignment.already_observed_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Internal no-action items",
+        report.finding_alignment.internal_no_action_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Alignment static limitations",
+        report.finding_alignment.static_limitation_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Alignment uncalibrated items",
+        report.finding_alignment.uncalibrated_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Presentation text items",
+        report.finding_alignment.presentation_text_total,
+    );
+    out.push('\n');
+
+    out.push_str("## Finding Alignment Coverage\n\n");
+    out.push_str("| Metric | Count |\n");
+    out.push_str("| --- | ---: |\n");
+    audit_push_count(
+        &mut out,
+        "Static unknown without named limitation",
+        report.static_unknown_without_named_limitation,
+    );
+    audit_push_count(
+        &mut out,
+        "Canonical items without repair route",
+        report.canonical_items_without_repair_route,
+    );
+    audit_push_count(
+        &mut out,
+        "Canonical items without verify command",
+        report.canonical_items_without_verify_command,
+    );
+    out.push('\n');
+    audit_push_alignment_class_coverage_table(&mut out, &report.alignment_coverage_by_class);
+    audit_push_counts_table_limited(
+        &mut out,
+        "Unaligned raw finding class",
+        &report.unaligned_raw_findings_by_class,
+        LANE1_EVIDENCE_AUDIT_TOP_LIMIT,
+    );
+    audit_push_unaligned_examples_table(&mut out, &report.top_unaligned_examples);
+    audit_push_same_line_duplicate_table(&mut out, &report.same_line_duplicate_groups);
 
     out.push_str("## Largest Canonical Gap Groups\n\n");
     audit_push_group_table(&mut out, &report.largest_canonical_groups);
@@ -9801,6 +13861,263 @@ fn audit_file_debt_json(row: &Lane1EvidenceAuditFileDebt) -> Value {
     })
 }
 
+fn audit_finding_alignment_summary_json(
+    summary: &Lane1EvidenceAuditFindingAlignmentSummary,
+) -> Value {
+    let mut object = serde_json::Map::new();
+    audit_insert_usize(&mut object, "raw_findings", summary.raw_findings_total);
+    audit_insert_usize(&mut object, "raw_signals", summary.raw_signals_total);
+    audit_insert_usize(
+        &mut object,
+        "canonical_items",
+        summary.canonical_items_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "aligned_raw_findings",
+        summary.aligned_raw_findings_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "unaligned_raw_findings",
+        summary.unaligned_raw_findings_total,
+    );
+    object.insert(
+        "raw_to_canonical_ratio".to_string(),
+        audit_finding_alignment_raw_to_canonical_ratio(summary)
+            .map(Value::from)
+            .unwrap_or(Value::Null),
+    );
+    audit_insert_usize(
+        &mut object,
+        "duplicate_groups_total",
+        summary.duplicate_groups_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "actionable_gaps",
+        summary.actionable_items_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "already_observed",
+        summary.already_observed_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "internal_no_action",
+        summary.internal_no_action_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "static_limitations",
+        summary.static_limitation_total,
+    );
+    audit_insert_usize(&mut object, "unknown", summary.unknown_total);
+    audit_insert_usize(
+        &mut object,
+        "calibrated_supported",
+        summary.calibrated_supported_total,
+    );
+    audit_insert_usize(&mut object, "uncalibrated", summary.uncalibrated_total);
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_total",
+        summary.presentation_text_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_user_visible",
+        summary.presentation_text_user_visible,
+    );
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_observed",
+        summary.presentation_text_observed,
+    );
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_unobserved",
+        summary.presentation_text_unobserved,
+    );
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_internal_only",
+        summary.presentation_text_internal_only,
+    );
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_visibility_unknown",
+        summary.presentation_text_visibility_unknown,
+    );
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_observer_unknown",
+        summary.presentation_text_observer_unknown,
+    );
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_duplicate_groups",
+        summary.presentation_text_duplicate_groups,
+    );
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_actionable_snapshot",
+        summary.presentation_text_actionable_snapshot,
+    );
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_actionable_output_repairs",
+        summary.presentation_text_actionable_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_no_action",
+        summary.presentation_text_no_action,
+    );
+    audit_insert_usize(
+        &mut object,
+        "presentation_text_static_limitations",
+        summary.presentation_text_static_limitations,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_raw_findings_total",
+        summary.raw_findings_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_raw_signals_total",
+        summary.raw_signals_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_canonical_items_total",
+        summary.canonical_items_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_aligned_raw_findings_total",
+        summary.aligned_raw_findings_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_unaligned_raw_findings_total",
+        summary.unaligned_raw_findings_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_duplicate_groups_total",
+        summary.duplicate_groups_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_actionable_items_total",
+        summary.actionable_items_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_actionable_unresolved_canonical_gaps",
+        summary.actionable_unresolved_canonical_gaps,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_already_observed_total",
+        summary.already_observed_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_internal_only_total",
+        summary.internal_only_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_internal_no_action_total",
+        summary.internal_no_action_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_static_limitation_total",
+        summary.static_limitation_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_unknown_total",
+        summary.unknown_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_calibrated_supported_total",
+        summary.calibrated_supported_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_uncalibrated_total",
+        summary.uncalibrated_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_visibility_unknown_total",
+        summary.visibility_unknown_total,
+    );
+    audit_insert_usize(
+        &mut object,
+        "finding_alignment_presentation_text_actionable_total",
+        summary.presentation_text_actionable_total,
+    );
+    Value::Object(object)
+}
+
+fn audit_alignment_class_coverage_json(row: &Lane1EvidenceAuditAlignmentClassCoverage) -> Value {
+    serde_json::json!({
+        "evidence_class": row.evidence_class,
+        "raw_findings": row.raw_findings,
+        "canonical_items": row.canonical_items,
+        "aligned_raw_findings": row.aligned_raw_findings,
+        "unaligned_raw_findings": row.unaligned_raw_findings,
+        "actionable_items": row.actionable_items,
+        "already_observed_items": row.already_observed_items,
+        "internal_no_action_items": row.internal_no_action_items,
+        "static_limitation_items": row.static_limitation_items,
+        "unknown_items": row.unknown_items,
+    })
+}
+
+fn audit_unaligned_example_json(example: &Lane1EvidenceAuditUnalignedExample) -> Value {
+    serde_json::json!({
+        "evidence_class": example.evidence_class,
+        "file": example.file,
+        "line": example.line,
+        "kind": example.kind,
+        "expression": example.expression,
+        "reason": example.reason,
+    })
+}
+
+fn audit_same_line_duplicate_group_json(group: &Lane1EvidenceAuditSameLineDuplicateGroup) -> Value {
+    serde_json::json!({
+        "file": group.file,
+        "line": group.line,
+        "raw_findings": group.raw_findings,
+        "evidence_classes": group.evidence_classes,
+        "kinds": group.kinds,
+        "example_expression": group.example_expression,
+    })
+}
+
+fn audit_finding_alignment_raw_to_canonical_ratio(
+    summary: &Lane1EvidenceAuditFindingAlignmentSummary,
+) -> Option<f64> {
+    if summary.canonical_items_total == 0 {
+        return None;
+    }
+    Some(summary.raw_signals_total as f64 / summary.canonical_items_total as f64)
+}
+
+fn audit_insert_usize(object: &mut serde_json::Map<String, Value>, key: &str, value: usize) {
+    object.insert(key.to_string(), Value::from(value));
+}
+
 fn audit_get<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
     let mut current = value;
     for segment in path {
@@ -9813,6 +14130,10 @@ fn audit_string(value: &Value, path: &[&str]) -> Option<String> {
     audit_get(value, path)
         .and_then(Value::as_str)
         .map(ToString::to_string)
+}
+
+fn audit_non_empty_string(value: &Value, path: &[&str]) -> Option<String> {
+    audit_string(value, path).filter(|text| !text.trim().is_empty())
 }
 
 fn audit_bool(value: &Value, path: &[&str]) -> Option<bool> {
@@ -9837,6 +14158,218 @@ fn audit_increment(counts: &mut BTreeMap<String, usize>, key: &str) {
     *entry += 1;
 }
 
+fn audit_alignment_evidence_class(record: &Value, canonical_item: Option<&Value>) -> String {
+    canonical_item
+        .and_then(|item| audit_non_empty_string(item, &["evidence_class"]))
+        .or_else(|| {
+            audit_get(record, &["presentation_text"])
+                .filter(|value| value.is_object())
+                .map(|_| "presentation_text".to_string())
+        })
+        .or_else(|| audit_non_empty_string(record, &["seam_kind"]))
+        .or_else(|| {
+            audit_array(record, &["raw_findings"])
+                .first()
+                .and_then(|raw| {
+                    audit_non_empty_string(raw, &["probe_kind"])
+                        .or_else(|| audit_non_empty_string(raw, &["kind"]))
+                })
+        })
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn audit_unaligned_example(
+    record: &Value,
+    raw_findings: &[Value],
+    evidence_class: &str,
+) -> Lane1EvidenceAuditUnalignedExample {
+    let raw = raw_findings.first();
+    Lane1EvidenceAuditUnalignedExample {
+        evidence_class: evidence_class.to_string(),
+        file: raw
+            .and_then(|raw| audit_non_empty_string(raw, &["file"]))
+            .or_else(|| audit_non_empty_string(record, &["location", "file"]))
+            .unwrap_or_else(|| "unknown".to_string()),
+        line: raw
+            .and_then(|raw| audit_usize(raw, &["line"]))
+            .or_else(|| audit_usize(record, &["location", "line"])),
+        kind: raw
+            .and_then(|raw| audit_non_empty_string(raw, &["kind"]))
+            .or_else(|| raw.and_then(|raw| audit_non_empty_string(raw, &["probe_kind"])))
+            .unwrap_or_else(|| "unknown".to_string()),
+        expression: raw
+            .and_then(|raw| audit_non_empty_string(raw, &["expression"]))
+            .unwrap_or_else(|| "unknown".to_string()),
+        reason: "missing canonical_item".to_string(),
+    }
+}
+
+fn audit_has_static_unknown_signal(
+    record: &Value,
+    canonical_item: &Value,
+    gap_state: &str,
+    actionability: &str,
+) -> bool {
+    gap_state == "static_limitation"
+        || actionability.contains("static_limitation")
+        || audit_array(record, &["raw_findings"]).iter().any(|raw| {
+            audit_string(raw, &["kind"]).as_deref() == Some("static_unknown")
+                || audit_string(raw, &["probe_kind"]).as_deref() == Some("static_unknown")
+        })
+        || audit_string(canonical_item, &["evidence_class"]).as_deref() == Some("static_unknown")
+}
+
+fn audit_has_named_static_limitation(record: &Value, canonical_item: &Value) -> bool {
+    audit_array(record, &["static_limitations"])
+        .iter()
+        .chain(audit_array(canonical_item, &["static_limitations"]).iter())
+        .any(|limitation| {
+            audit_non_empty_string(limitation, &["category"]).is_some()
+                && audit_non_empty_string(limitation, &["repair_route"]).is_some()
+        })
+}
+
+fn audit_ingest_finding_alignment(
+    record: &Value,
+    summary: &mut Lane1EvidenceAuditFindingAlignmentSummary,
+) {
+    let raw_findings = audit_array(record, &["raw_findings"]);
+    let Some(canonical_item) =
+        audit_get(record, &["canonical_item"]).filter(|value| value.is_object())
+    else {
+        summary.raw_findings_total += raw_findings.len();
+        summary.raw_signals_total += raw_findings.len();
+        summary.unaligned_raw_findings_total += raw_findings.len();
+        return;
+    };
+
+    let raw_group_size = audit_usize(canonical_item, &["raw_group_size"]).unwrap_or(0);
+    let raw_signal_count = raw_group_size.max(raw_findings.len()).max(1);
+    summary.raw_findings_total += raw_signal_count;
+    summary.raw_signals_total += raw_signal_count;
+    summary.canonical_items_total += 1;
+    summary.aligned_raw_findings_total += raw_signal_count;
+    if raw_signal_count > 1 {
+        summary.duplicate_groups_total += 1;
+    }
+
+    let item_kind = audit_string(canonical_item, &["canonical_item_kind"]).unwrap_or_default();
+    let gap_state = audit_string(canonical_item, &["gap_state"]).unwrap_or_default();
+    let actionability = audit_string(canonical_item, &["actionability"]).unwrap_or_default();
+    let evidence_class = audit_string(canonical_item, &["evidence_class"]).unwrap_or_default();
+    let confidence_basis =
+        audit_string(canonical_item, &["confidence", "basis"]).unwrap_or_default();
+
+    if item_kind == "gap" || gap_state == "actionable" {
+        summary.actionable_items_total += 1;
+        summary.actionable_unresolved_canonical_gaps += 1;
+    }
+    if item_kind == "observed" || gap_state == "already_observed" {
+        summary.already_observed_total += 1;
+    }
+    if item_kind == "no_action" || gap_state == "internal_only" {
+        summary.internal_only_total += 1;
+    }
+    if item_kind == "no_action" || actionability == "no_action_internal" {
+        summary.internal_no_action_total += 1;
+    }
+    if item_kind == "limitation" || gap_state == "static_limitation" {
+        summary.static_limitation_total += 1;
+    }
+    if gap_state == "unknown" {
+        summary.unknown_total += 1;
+    }
+    if confidence_basis == "calibrated" || confidence_basis == "runtime_calibrated" {
+        summary.calibrated_supported_total += 1;
+    } else {
+        summary.uncalibrated_total += 1;
+    }
+
+    let alignment = AuditCanonicalAlignment {
+        evidence_class: &evidence_class,
+        item_kind: &item_kind,
+        gap_state: &gap_state,
+        actionability: &actionability,
+        raw_signal_count,
+    };
+    audit_ingest_presentation_text_alignment(record, canonical_item, &alignment, summary);
+}
+
+struct AuditCanonicalAlignment<'a> {
+    evidence_class: &'a str,
+    item_kind: &'a str,
+    gap_state: &'a str,
+    actionability: &'a str,
+    raw_signal_count: usize,
+}
+
+fn audit_ingest_presentation_text_alignment(
+    record: &Value,
+    canonical_item: &Value,
+    alignment: &AuditCanonicalAlignment<'_>,
+    summary: &mut Lane1EvidenceAuditFindingAlignmentSummary,
+) {
+    let presentation_text = audit_get(record, &["presentation_text"])
+        .filter(|value| value.is_object())
+        .or_else(|| {
+            audit_get(canonical_item, &["presentation_text"]).filter(|value| value.is_object())
+        });
+    if alignment.evidence_class != "presentation_text" && presentation_text.is_none() {
+        return;
+    }
+
+    summary.presentation_text_total += 1;
+    if alignment.raw_signal_count > 1 {
+        summary.presentation_text_duplicate_groups += 1;
+    }
+    if alignment.item_kind == "gap" || alignment.gap_state == "actionable" {
+        summary.presentation_text_unobserved += 1;
+    }
+    if alignment.item_kind == "observed" || alignment.gap_state == "already_observed" {
+        summary.presentation_text_observed += 1;
+    }
+    if alignment.item_kind == "no_action" || alignment.gap_state == "internal_only" {
+        summary.presentation_text_internal_only += 1;
+        summary.presentation_text_no_action += 1;
+    }
+    if alignment.item_kind == "limitation" || alignment.gap_state == "static_limitation" {
+        summary.presentation_text_static_limitations += 1;
+    }
+    if matches!(
+        alignment.actionability,
+        "add_output_observer" | "add_output_test" | "snapshot_or_help_output_test"
+    ) {
+        summary.presentation_text_actionable_total += 1;
+        summary.presentation_text_actionable_snapshot += 1;
+    }
+
+    let visibility = presentation_text
+        .and_then(|value| audit_string(value, &["visibility"]))
+        .unwrap_or_default();
+    let observer = presentation_text
+        .and_then(|value| {
+            audit_string(value, &["observer"]).or_else(|| audit_string(value, &["observer_kind"]))
+        })
+        .unwrap_or_default();
+
+    match visibility.as_str() {
+        "user_visible" => summary.presentation_text_user_visible += 1,
+        "internal_only"
+            if alignment.item_kind != "no_action" && alignment.gap_state != "internal_only" =>
+        {
+            summary.presentation_text_internal_only += 1;
+        }
+        "unknown" => {
+            summary.presentation_text_visibility_unknown += 1;
+            summary.visibility_unknown_total += 1;
+        }
+        _ => {}
+    }
+    if observer == "unknown" {
+        summary.presentation_text_observer_unknown += 1;
+    }
+}
+
 fn audit_evidence_record_field_health(
     record: &Value,
     health: &mut BTreeMap<String, Lane1EvidenceAuditFieldHealth>,
@@ -9847,6 +14380,41 @@ fn audit_evidence_record_field_health(
         ("canonical_gap_id", &["canonical_gap_id"]),
         ("canonical_gap_group_size", &["canonical_gap_group_size"]),
         ("canonical_gap_reason", &["canonical_gap_reason"]),
+        ("raw_findings", &["raw_findings"]),
+        (
+            "canonical_item.canonical_gap_id",
+            &["canonical_item", "canonical_gap_id"],
+        ),
+        (
+            "canonical_item.raw_group_size",
+            &["canonical_item", "raw_group_size"],
+        ),
+        (
+            "canonical_item.canonical_item_kind",
+            &["canonical_item", "canonical_item_kind"],
+        ),
+        (
+            "canonical_item.evidence_class",
+            &["canonical_item", "evidence_class"],
+        ),
+        ("canonical_item.gap_state", &["canonical_item", "gap_state"]),
+        (
+            "canonical_item.actionability",
+            &["canonical_item", "actionability"],
+        ),
+        ("canonical_item.why", &["canonical_item", "why"]),
+        (
+            "canonical_item.recommended_repair",
+            &["canonical_item", "recommended_repair"],
+        ),
+        (
+            "canonical_item.verify_command",
+            &["canonical_item", "verify_command"],
+        ),
+        (
+            "canonical_item.confidence.basis",
+            &["canonical_item", "confidence", "basis"],
+        ),
         ("owner", &["owner"]),
         ("location.file", &["location", "file"]),
         ("location.line", &["location", "line"]),
@@ -9875,6 +14443,7 @@ fn audit_evidence_record_field_health(
         ("calibration.confidence", &["calibration", "confidence"]),
         ("calibration.agreement", &["calibration", "agreement"]),
         ("static_limitations", &["static_limitations"]),
+        ("presentation_text", &["presentation_text"]),
     ] {
         let entry =
             health
@@ -10090,6 +14659,88 @@ fn audit_push_counts_table_limited(
     out.push('\n');
 }
 
+fn audit_push_alignment_class_coverage_table(
+    out: &mut String,
+    rows: &[Lane1EvidenceAuditAlignmentClassCoverage],
+) {
+    if rows.is_empty() {
+        out.push_str("No finding alignment coverage rows were reported.\n\n");
+        return;
+    }
+    out.push_str("| Evidence class | Raw | Canonical | Aligned raw | Unaligned raw | Actionable | Observed | No-action | Limitations | Unknown |\n");
+    out.push_str("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
+    for row in rows.iter().take(LANE1_EVIDENCE_AUDIT_TOP_LIMIT) {
+        out.push_str(&format!(
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
+            audit_markdown_cell(&row.evidence_class),
+            row.raw_findings,
+            row.canonical_items,
+            row.aligned_raw_findings,
+            row.unaligned_raw_findings,
+            row.actionable_items,
+            row.already_observed_items,
+            row.internal_no_action_items,
+            row.static_limitation_items,
+            row.unknown_items,
+        ));
+    }
+    out.push('\n');
+}
+
+fn audit_push_unaligned_examples_table(
+    out: &mut String,
+    rows: &[Lane1EvidenceAuditUnalignedExample],
+) {
+    if rows.is_empty() {
+        out.push_str("No unaligned raw finding examples were reported.\n\n");
+        return;
+    }
+    out.push_str("| Evidence class | File | Line | Kind | Reason | Expression |\n");
+    out.push_str("| --- | --- | ---: | --- | --- | --- |\n");
+    for row in rows {
+        let line = row
+            .line
+            .map(|line| line.to_string())
+            .unwrap_or_else(|| "n/a".to_string());
+        out.push_str(&format!(
+            "| {} | {} | {} | {} | {} | {} |\n",
+            audit_markdown_cell(&row.evidence_class),
+            audit_markdown_cell(&row.file),
+            line,
+            audit_markdown_cell(&row.kind),
+            audit_markdown_cell(&row.reason),
+            audit_markdown_cell(&row.expression),
+        ));
+    }
+    out.push('\n');
+}
+
+fn audit_push_same_line_duplicate_table(
+    out: &mut String,
+    rows: &[Lane1EvidenceAuditSameLineDuplicateGroup],
+) {
+    if rows.is_empty() {
+        out.push_str("No same-line duplicate raw finding groups were reported.\n\n");
+        return;
+    }
+    out.push_str(
+        "| File | Line | Raw findings | Evidence classes | Kinds | Example expression |\n",
+    );
+    out.push_str("| --- | ---: | ---: | --- | --- | --- |\n");
+    for row in rows {
+        out.push_str(&format!(
+            "| {} | {} | {} | {} | {} | {} |\n",
+            audit_markdown_cell(&row.file),
+            row.line,
+            row.raw_findings,
+            audit_markdown_cell(&row.evidence_classes.join(", ")),
+            audit_markdown_cell(&row.kinds.join(", ")),
+            audit_markdown_cell(row.example_expression.as_deref().unwrap_or("n/a")),
+        ));
+    }
+    out.push('\n');
+}
+
 fn audit_push_value_counts_table_limited(
     out: &mut String,
     heading: &str,
@@ -10184,6 +14835,34 @@ struct EvidenceQualityScorecardSummary {
     evidence_records_missing: usize,
     top_repair_count: usize,
     recent_delta_available: bool,
+    finding_alignment_raw_findings_total: usize,
+    finding_alignment_raw_signals_total: usize,
+    finding_alignment_canonical_items_total: usize,
+    finding_alignment_aligned_raw_findings_total: usize,
+    finding_alignment_unaligned_raw_findings_total: usize,
+    finding_alignment_duplicate_groups_total: usize,
+    finding_alignment_actionable_items_total: usize,
+    finding_alignment_actionable_unresolved_canonical_gaps: usize,
+    finding_alignment_already_observed_total: usize,
+    finding_alignment_internal_only_total: usize,
+    finding_alignment_internal_no_action_total: usize,
+    finding_alignment_static_limitation_total: usize,
+    finding_alignment_unknown_total: usize,
+    finding_alignment_calibrated_supported_total: usize,
+    finding_alignment_uncalibrated_total: usize,
+    finding_alignment_visibility_unknown_total: usize,
+    finding_alignment_presentation_text_actionable_total: usize,
+    presentation_text_total: usize,
+    presentation_text_user_visible: usize,
+    presentation_text_observed: usize,
+    presentation_text_unobserved: usize,
+    presentation_text_internal_only: usize,
+    presentation_text_visibility_unknown: usize,
+    presentation_text_observer_unknown: usize,
+    presentation_text_duplicate_groups: usize,
+    presentation_text_actionable_snapshot: usize,
+    presentation_text_no_action: usize,
+    presentation_text_static_limitations: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -10375,6 +15054,10 @@ fn scorecard_optional_json(path: &Path) -> Result<Option<Value>, String> {
 }
 
 fn evidence_quality_scorecard_generated_at() -> Result<String, String> {
+    generated_at_unix_ms()
+}
+
+fn generated_at_unix_ms() -> Result<String, String> {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|err| format!("system clock before unix epoch: {err}"))?
@@ -10486,7 +15169,205 @@ fn evidence_quality_scorecard_summary(audit: &Value) -> EvidenceQualityScorecard
             .unwrap_or(0),
         top_repair_count: 0,
         recent_delta_available: false,
+        finding_alignment_raw_findings_total: finding_alignment_summary_usize(
+            audit,
+            "raw_signals",
+            "finding_alignment_raw_findings_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_raw_signals_total: finding_alignment_summary_usize(
+            audit,
+            "raw_signals",
+            "finding_alignment_raw_signals_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_canonical_items_total: finding_alignment_summary_usize(
+            audit,
+            "canonical_items",
+            "finding_alignment_canonical_items_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_aligned_raw_findings_total: finding_alignment_summary_usize(
+            audit,
+            "aligned_raw_findings",
+            "finding_alignment_aligned_raw_findings_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_unaligned_raw_findings_total: finding_alignment_summary_usize(
+            audit,
+            "unaligned_raw_findings",
+            "finding_alignment_unaligned_raw_findings_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_duplicate_groups_total: finding_alignment_summary_usize(
+            audit,
+            "duplicate_groups_total",
+            "finding_alignment_duplicate_groups_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_actionable_items_total: finding_alignment_summary_usize(
+            audit,
+            "actionable_gaps",
+            "finding_alignment_actionable_items_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_actionable_unresolved_canonical_gaps: finding_alignment_summary_usize(
+            audit,
+            "actionable_gaps",
+            "finding_alignment_actionable_unresolved_canonical_gaps",
+        )
+        .unwrap_or(0),
+        finding_alignment_already_observed_total: finding_alignment_summary_usize(
+            audit,
+            "already_observed",
+            "finding_alignment_already_observed_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_internal_only_total: finding_alignment_summary_usize(
+            audit,
+            "internal_no_action",
+            "finding_alignment_internal_only_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_internal_no_action_total: finding_alignment_summary_usize(
+            audit,
+            "internal_no_action",
+            "finding_alignment_internal_no_action_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_static_limitation_total: finding_alignment_summary_usize(
+            audit,
+            "static_limitations",
+            "finding_alignment_static_limitation_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_unknown_total: finding_alignment_summary_usize(
+            audit,
+            "unknown",
+            "finding_alignment_unknown_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_calibrated_supported_total: finding_alignment_summary_usize(
+            audit,
+            "calibrated_supported",
+            "finding_alignment_calibrated_supported_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_uncalibrated_total: finding_alignment_summary_usize(
+            audit,
+            "uncalibrated",
+            "finding_alignment_uncalibrated_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_visibility_unknown_total: finding_alignment_summary_usize(
+            audit,
+            "presentation_text_visibility_unknown",
+            "finding_alignment_visibility_unknown_total",
+        )
+        .unwrap_or(0),
+        finding_alignment_presentation_text_actionable_total: finding_alignment_summary_usize(
+            audit,
+            "presentation_text_actionable_output_repairs",
+            "finding_alignment_presentation_text_actionable_total",
+        )
+        .unwrap_or_else(|| {
+            finding_alignment_summary_usize(
+                audit,
+                "presentation_text_actionable_snapshot",
+                "finding_alignment_presentation_text_actionable_total",
+            )
+            .unwrap_or(0)
+        }),
+        presentation_text_total: presentation_text_summary_usize(audit, "presentation_text_total")
+            .unwrap_or(0),
+        presentation_text_user_visible: presentation_text_summary_usize(
+            audit,
+            "presentation_text_user_visible",
+        )
+        .unwrap_or(0),
+        presentation_text_observed: presentation_text_summary_usize(
+            audit,
+            "presentation_text_observed",
+        )
+        .unwrap_or(0),
+        presentation_text_unobserved: presentation_text_summary_usize(
+            audit,
+            "presentation_text_unobserved",
+        )
+        .unwrap_or(0),
+        presentation_text_internal_only: presentation_text_summary_usize(
+            audit,
+            "presentation_text_internal_only",
+        )
+        .unwrap_or(0),
+        presentation_text_visibility_unknown: presentation_text_summary_usize(
+            audit,
+            "presentation_text_visibility_unknown",
+        )
+        .unwrap_or(0),
+        presentation_text_observer_unknown: presentation_text_summary_usize(
+            audit,
+            "presentation_text_observer_unknown",
+        )
+        .unwrap_or(0),
+        presentation_text_duplicate_groups: presentation_text_summary_usize(
+            audit,
+            "presentation_text_duplicate_groups",
+        )
+        .unwrap_or(0),
+        presentation_text_actionable_snapshot: presentation_text_summary_usize(
+            audit,
+            "presentation_text_actionable_snapshot",
+        )
+        .or_else(|| {
+            presentation_text_summary_usize(audit, "presentation_text_actionable_output_repairs")
+        })
+        .unwrap_or(0),
+        presentation_text_no_action: presentation_text_summary_usize(
+            audit,
+            "presentation_text_no_action",
+        )
+        .unwrap_or(0),
+        presentation_text_static_limitations: presentation_text_summary_usize(
+            audit,
+            "presentation_text_static_limitations",
+        )
+        .unwrap_or(0),
     }
+}
+
+fn finding_alignment_summary_usize(
+    value: &Value,
+    source_key: &str,
+    scorecard_key: &str,
+) -> Option<usize> {
+    audit_usize_dynamic(value, &["finding_alignment", "summary"], source_key)
+        .or_else(|| audit_usize_dynamic(value, &["summary"], scorecard_key))
+}
+
+fn presentation_text_summary_usize(value: &Value, key: &str) -> Option<usize> {
+    audit_usize_dynamic(value, &["finding_alignment", "summary"], key)
+        .or_else(|| audit_usize_dynamic(value, &["summary"], key))
+}
+
+fn audit_usize_dynamic(value: &Value, path: &[&str], key: &str) -> Option<usize> {
+    let mut current = value;
+    for segment in path {
+        current = current.get(*segment)?;
+    }
+    current.get(key)?.as_u64().map(|count| count as usize)
+}
+
+fn finding_alignment_raw_to_canonical_ratio(
+    summary: &EvidenceQualityScorecardSummary,
+) -> Option<f64> {
+    if summary.finding_alignment_canonical_items_total == 0 {
+        return None;
+    }
+    Some(
+        summary.finding_alignment_raw_signals_total as f64
+            / summary.finding_alignment_canonical_items_total as f64,
+    )
 }
 
 fn evidence_quality_maturity_rows(
@@ -10791,6 +15672,38 @@ fn evidence_quality_recent_deltas(
         ),
         ("uncalibrated_records", current.uncalibrated_records),
         ("calibrated_records", current.calibrated_records),
+        (
+            "finding_alignment_duplicate_groups_total",
+            current.finding_alignment_duplicate_groups_total,
+        ),
+        (
+            "finding_alignment_actionable_items_total",
+            current.finding_alignment_actionable_items_total,
+        ),
+        (
+            "finding_alignment_static_limitation_total",
+            current.finding_alignment_static_limitation_total,
+        ),
+        (
+            "finding_alignment_calibrated_supported_total",
+            current.finding_alignment_calibrated_supported_total,
+        ),
+        (
+            "finding_alignment_uncalibrated_total",
+            current.finding_alignment_uncalibrated_total,
+        ),
+        (
+            "presentation_text_visibility_unknown",
+            current.presentation_text_visibility_unknown,
+        ),
+        (
+            "presentation_text_actionable_snapshot",
+            current.presentation_text_actionable_snapshot,
+        ),
+        (
+            "presentation_text_static_limitations",
+            current.presentation_text_static_limitations,
+        ),
     ] {
         let Some(before) = audit_usize(previous, &["summary", metric]) else {
             continue;
@@ -10826,7 +15739,9 @@ fn scorecard_delta_direction(metric: &str, before: usize, after: usize) -> Strin
     if before == after {
         return "unchanged".to_string();
     }
-    let improved = if metric == "calibrated_records" {
+    let improved = if metric == "calibrated_records"
+        || metric == "finding_alignment_calibrated_supported_total"
+    {
         after > before
     } else {
         after < before
@@ -10916,7 +15831,22 @@ fn evidence_quality_unknowns(
             Some("fixtures/evidence-quality-benchmark-corpus"),
         );
     }
+    if !finding_alignment_summary_available(audit) {
+        scorecard_push_unknown(
+            &mut unknowns,
+            "finding_alignment_unavailable",
+            "No finding_alignment summary was available in the scorecard input, so raw-to-canonical and presentation-text counts are reported as zero instead of inferred from raw gaps.",
+            Some("report/presentation-text-scorecard-trend-fields"),
+        );
+    }
     unknowns
+}
+
+fn finding_alignment_summary_available(value: &Value) -> bool {
+    audit_get(value, &["finding_alignment", "summary"]).is_some()
+        || audit_get(value, &["summary"])
+            .and_then(|summary| summary.get("finding_alignment_raw_signals_total"))
+            .is_some()
 }
 
 fn scorecard_push_unknown(
@@ -10991,21 +15921,8 @@ fn evidence_quality_scorecard_json(
             "capabilities": scorecard_input_json(&report.inputs.capabilities),
             "traceability": scorecard_input_json(&report.inputs.traceability),
         },
-        "summary": {
-            "raw_headline_gaps": report.summary.raw_headline_gaps,
-            "canonical_gap_groups_total": report.summary.canonical_gap_groups_total,
-            "duplicate_looking_groups_total": report.summary.duplicate_looking_groups_total,
-            "missing_discriminators_total": report.summary.missing_discriminators_total,
-            "static_limitations_total": report.summary.static_limitations_total,
-            "related_tests_total": report.summary.related_tests_total,
-            "low_or_opaque_top_related_tests": report.summary.low_or_opaque_top_related_tests,
-            "calibrated_records": report.summary.calibrated_records,
-            "uncalibrated_records": report.summary.uncalibrated_records,
-            "evidence_records_total": report.summary.evidence_records_total,
-            "evidence_records_missing": report.summary.evidence_records_missing,
-            "top_repair_count": report.summary.top_repair_count,
-            "recent_delta_available": report.summary.recent_delta_available,
-        },
+        "headline": evidence_quality_scorecard_headline_json(&report.summary),
+        "summary": evidence_quality_scorecard_summary_json(&report.summary),
         "maturity_by_class": report.maturity_by_class.iter().map(|row| {
             serde_json::json!({
                 "class": row.class,
@@ -11061,6 +15978,236 @@ fn evidence_quality_scorecard_json(
         .map_err(|err| format!("failed to render evidence quality scorecard JSON: {err}"))
 }
 
+fn evidence_quality_scorecard_headline_json(summary: &EvidenceQualityScorecardSummary) -> Value {
+    serde_json::json!({
+        "primary_metric": "finding_alignment_actionable_unresolved_canonical_gaps",
+        "primary_count": summary.finding_alignment_actionable_unresolved_canonical_gaps,
+        "counting_model": "actionable_canonical_gaps",
+        "raw_signals": summary.finding_alignment_raw_signals_total,
+        "canonical_items": summary.finding_alignment_canonical_items_total,
+        "already_observed": summary.finding_alignment_already_observed_total,
+        "internal_no_action": summary.finding_alignment_internal_no_action_total,
+        "static_limitations": summary.finding_alignment_static_limitation_total,
+        "unknown": summary.finding_alignment_unknown_total,
+        "raw_to_canonical_ratio": finding_alignment_raw_to_canonical_ratio(summary),
+        "note": "Raw findings are diagnostic; actionable canonical gaps are the user-facing repair count."
+    })
+}
+
+fn evidence_quality_scorecard_summary_json(summary: &EvidenceQualityScorecardSummary) -> Value {
+    let mut object = serde_json::Map::new();
+    scorecard_summary_insert_usize(&mut object, "raw_headline_gaps", summary.raw_headline_gaps);
+    scorecard_summary_insert_usize(
+        &mut object,
+        "canonical_gap_groups_total",
+        summary.canonical_gap_groups_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "duplicate_looking_groups_total",
+        summary.duplicate_looking_groups_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "missing_discriminators_total",
+        summary.missing_discriminators_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "static_limitations_total",
+        summary.static_limitations_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "related_tests_total",
+        summary.related_tests_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "low_or_opaque_top_related_tests",
+        summary.low_or_opaque_top_related_tests,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "calibrated_records",
+        summary.calibrated_records,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "uncalibrated_records",
+        summary.uncalibrated_records,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "evidence_records_total",
+        summary.evidence_records_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "evidence_records_missing",
+        summary.evidence_records_missing,
+    );
+    scorecard_summary_insert_usize(&mut object, "top_repair_count", summary.top_repair_count);
+    object.insert(
+        "recent_delta_available".to_string(),
+        serde_json::json!(summary.recent_delta_available),
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_raw_findings_total",
+        summary.finding_alignment_raw_findings_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_raw_signals_total",
+        summary.finding_alignment_raw_signals_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_canonical_items_total",
+        summary.finding_alignment_canonical_items_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_aligned_raw_findings_total",
+        summary.finding_alignment_aligned_raw_findings_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_unaligned_raw_findings_total",
+        summary.finding_alignment_unaligned_raw_findings_total,
+    );
+    object.insert(
+        "finding_alignment_raw_to_canonical_ratio".to_string(),
+        finding_alignment_raw_to_canonical_ratio(summary)
+            .map_or(serde_json::Value::Null, serde_json::Value::from),
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_duplicate_groups_total",
+        summary.finding_alignment_duplicate_groups_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_actionable_items_total",
+        summary.finding_alignment_actionable_items_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_actionable_unresolved_canonical_gaps",
+        summary.finding_alignment_actionable_unresolved_canonical_gaps,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_already_observed_total",
+        summary.finding_alignment_already_observed_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_internal_only_total",
+        summary.finding_alignment_internal_only_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_internal_no_action_total",
+        summary.finding_alignment_internal_no_action_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_static_limitation_total",
+        summary.finding_alignment_static_limitation_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_unknown_total",
+        summary.finding_alignment_unknown_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_calibrated_supported_total",
+        summary.finding_alignment_calibrated_supported_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_uncalibrated_total",
+        summary.finding_alignment_uncalibrated_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_visibility_unknown_total",
+        summary.finding_alignment_visibility_unknown_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_presentation_text_actionable_total",
+        summary.finding_alignment_presentation_text_actionable_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "presentation_text_total",
+        summary.presentation_text_total,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "presentation_text_user_visible",
+        summary.presentation_text_user_visible,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "presentation_text_observed",
+        summary.presentation_text_observed,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "presentation_text_unobserved",
+        summary.presentation_text_unobserved,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "presentation_text_internal_only",
+        summary.presentation_text_internal_only,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "presentation_text_visibility_unknown",
+        summary.presentation_text_visibility_unknown,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "presentation_text_observer_unknown",
+        summary.presentation_text_observer_unknown,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "presentation_text_duplicate_groups",
+        summary.presentation_text_duplicate_groups,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "presentation_text_actionable_snapshot",
+        summary.presentation_text_actionable_snapshot,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "presentation_text_no_action",
+        summary.presentation_text_no_action,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "presentation_text_static_limitations",
+        summary.presentation_text_static_limitations,
+    );
+    Value::Object(object)
+}
+
+fn scorecard_summary_insert_usize(
+    object: &mut serde_json::Map<String, Value>,
+    key: &str,
+    value: usize,
+) {
+    object.insert(key.to_string(), serde_json::json!(value));
+}
+
 fn scorecard_input_json(input: &EvidenceQualityScorecardInput) -> Value {
     serde_json::json!({
         "path": input.path,
@@ -11080,6 +16227,23 @@ fn evidence_quality_scorecard_markdown(report: &EvidenceQualityScorecardReport) 
     out.push_str("## Summary\n\n");
     out.push_str("| Metric | Count |\n");
     out.push_str("| --- | ---: |\n");
+    audit_push_count(
+        &mut out,
+        "Actionable canonical gaps",
+        report
+            .summary
+            .finding_alignment_actionable_unresolved_canonical_gaps,
+    );
+    audit_push_count(
+        &mut out,
+        "Canonical evidence items",
+        report.summary.finding_alignment_canonical_items_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Raw alignment signals",
+        report.summary.finding_alignment_raw_signals_total,
+    );
     audit_push_count(
         &mut out,
         "Raw headline gaps",
@@ -11115,6 +16279,108 @@ fn evidence_quality_scorecard_markdown(report: &EvidenceQualityScorecardReport) 
         "Uncalibrated records",
         report.summary.uncalibrated_records,
     );
+    out.push('\n');
+
+    out.push_str("## Finding Alignment And Presentation Text\n\n");
+    out.push_str("| Metric | Count |\n");
+    out.push_str("| --- | ---: |\n");
+    audit_push_count(
+        &mut out,
+        "Raw alignment signals",
+        report.summary.finding_alignment_raw_signals_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Canonical alignment items",
+        report.summary.finding_alignment_canonical_items_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Aligned raw findings",
+        report.summary.finding_alignment_aligned_raw_findings_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Unaligned raw findings",
+        report
+            .summary
+            .finding_alignment_unaligned_raw_findings_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Alignment duplicate groups",
+        report.summary.finding_alignment_duplicate_groups_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Actionable canonical items",
+        report.summary.finding_alignment_actionable_items_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Already observed items",
+        report.summary.finding_alignment_already_observed_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Internal no-action items",
+        report.summary.finding_alignment_internal_no_action_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Alignment static limitations",
+        report.summary.finding_alignment_static_limitation_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Alignment calibrated-supported items",
+        report.summary.finding_alignment_calibrated_supported_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Alignment uncalibrated items",
+        report.summary.finding_alignment_uncalibrated_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Presentation text items",
+        report.summary.presentation_text_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Presentation text user-visible",
+        report.summary.presentation_text_user_visible,
+    );
+    audit_push_count(
+        &mut out,
+        "Presentation text observed",
+        report.summary.presentation_text_observed,
+    );
+    audit_push_count(
+        &mut out,
+        "Presentation text unobserved",
+        report.summary.presentation_text_unobserved,
+    );
+    audit_push_count(
+        &mut out,
+        "Presentation text internal-only",
+        report.summary.presentation_text_internal_only,
+    );
+    audit_push_count(
+        &mut out,
+        "Presentation text visibility unknown",
+        report.summary.presentation_text_visibility_unknown,
+    );
+    audit_push_count(
+        &mut out,
+        "Presentation text static limitations",
+        report.summary.presentation_text_static_limitations,
+    );
+    if let Some(ratio) = finding_alignment_raw_to_canonical_ratio(&report.summary) {
+        out.push_str(&format!("| Raw-to-canonical ratio | {:.2} |\n", ratio));
+    } else {
+        out.push_str("| Raw-to-canonical ratio | n/a |\n");
+    }
     out.push('\n');
 
     out.push_str("## Maturity By Class\n\n");
@@ -11274,6 +16540,865 @@ fn evidence_quality_scorecard_markdown(report: &EvidenceQualityScorecardReport) 
         }
     }
     out
+}
+
+const EVIDENCE_QUALITY_TREND_SCHEMA_VERSION: &str = "0.1";
+const EVIDENCE_QUALITY_TREND_CATEGORY_LIMIT: usize = 8;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct EvidenceQualityTrendArgs {
+    current: Option<PathBuf>,
+    previous: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct EvidenceQualityTrendInputs {
+    current_scorecard: EvidenceQualityScorecardInput,
+    previous_artifact: EvidenceQualityScorecardInput,
+    capability_matrix: EvidenceQualityScorecardInput,
+    traceability: EvidenceQualityScorecardInput,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct EvidenceQualityTrendSummary {
+    status: String,
+    compared_metrics: usize,
+    improved_metrics: usize,
+    regressed_metrics: usize,
+    unchanged_metrics: usize,
+    unknown_metrics: usize,
+    no_history: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct EvidenceQualityTrendMetric {
+    metric: String,
+    label: String,
+    before: Option<usize>,
+    after: Option<usize>,
+    delta: Option<isize>,
+    direction: String,
+    interpretation: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct EvidenceQualityTrendUnknown {
+    kind: String,
+    summary: String,
+    next_repair: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct EvidenceQualityTrendReport {
+    generated_at: String,
+    root: String,
+    inputs: EvidenceQualityTrendInputs,
+    summary: EvidenceQualityTrendSummary,
+    metric_trends: Vec<EvidenceQualityTrendMetric>,
+    static_limitation_category_trends: Vec<EvidenceQualityTrendMetric>,
+    unknowns: Vec<EvidenceQualityTrendUnknown>,
+}
+
+struct EvidenceQualityTrendMetricSpec<'a> {
+    metric: &'a str,
+    label: &'a str,
+    lower_is_better: bool,
+    current_path: &'a [&'a str],
+    previous_path: &'a [&'a str],
+}
+
+/// Build a repo-local Lane 1 evidence-quality trend report.
+/// The trend is advisory and compares existing scorecard or audit snapshots;
+/// it does not change analyzer behavior, gate policy, CI projection, editor
+/// output, source files, generated tests, provider calls, or runtime execution.
+pub(crate) fn evidence_quality_trend_report_impl(args: &[String]) -> Result<(), String> {
+    ensure_reports_dir()?;
+    let args = parse_evidence_quality_trend_args(args)?;
+    let explicit_current = args.current.is_some();
+    let current_path = args
+        .current
+        .unwrap_or_else(|| reports_dir().join("evidence-quality-scorecard.json"));
+    if !current_path.exists() {
+        if explicit_current {
+            return Err(format!(
+                "current evidence-quality scorecard not found: {}",
+                current_path.display()
+            ));
+        }
+        evidence_quality_scorecard_report_impl()?;
+    }
+    let current = read_json_value(&current_path).map_err(|err| {
+        format!(
+            "evidence-quality-trend requires a current scorecard at {}; {err}",
+            current_path.display()
+        )
+    })?;
+
+    let explicit_previous = args.previous.is_some();
+    let previous_path = args
+        .previous
+        .or_else(evidence_quality_trend_default_previous_path)
+        .unwrap_or_else(|| reports_dir().join("evidence-quality-scorecard.previous.json"));
+    let previous = if previous_path.exists() {
+        Some(read_json_value(&previous_path).map_err(|err| {
+            format!(
+                "failed to read previous evidence-quality artifact at {}; {err}",
+                previous_path.display()
+            )
+        })?)
+    } else if explicit_previous {
+        return Err(format!(
+            "previous evidence-quality artifact not found: {}",
+            previous_path.display()
+        ));
+    } else {
+        None
+    };
+
+    let inputs =
+        evidence_quality_trend_inputs(&current_path, &current, &previous_path, previous.as_ref())?;
+    let report = evidence_quality_trend_from_values(
+        evidence_quality_scorecard_generated_at()?,
+        inputs,
+        &current,
+        previous.as_ref(),
+    )?;
+
+    write_report(
+        "evidence-quality-trend.json",
+        &evidence_quality_trend_json(&report)?,
+    )?;
+    write_report(
+        "evidence-quality-trend.md",
+        &evidence_quality_trend_markdown(&report),
+    )
+}
+
+fn parse_evidence_quality_trend_args(args: &[String]) -> Result<EvidenceQualityTrendArgs, String> {
+    let mut parsed = EvidenceQualityTrendArgs::default();
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--current" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err("evidence-quality-trend --current requires a path".to_string());
+                };
+                parsed.current = Some(PathBuf::from(value));
+                index += 2;
+            }
+            "--previous" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err("evidence-quality-trend --previous requires a path".to_string());
+                };
+                parsed.previous = Some(PathBuf::from(value));
+                index += 2;
+            }
+            "--help" | "-h" => {
+                return Err(
+                    "usage: cargo xtask evidence-quality-trend [--current <path>] [--previous <path>]"
+                        .to_string(),
+                );
+            }
+            other => {
+                return Err(format!(
+                    "unknown evidence-quality-trend argument `{other}`; expected --current or --previous"
+                ));
+            }
+        }
+    }
+    Ok(parsed)
+}
+
+fn evidence_quality_trend_default_previous_path() -> Option<PathBuf> {
+    [
+        reports_dir().join("evidence-quality-scorecard.previous.json"),
+        reports_dir().join("lane1-evidence-audit.previous.json"),
+    ]
+    .into_iter()
+    .find(|path| path.exists())
+}
+
+fn evidence_quality_trend_inputs(
+    current_path: &Path,
+    current: &Value,
+    previous_path: &Path,
+    previous: Option<&Value>,
+) -> Result<EvidenceQualityTrendInputs, String> {
+    Ok(EvidenceQualityTrendInputs {
+        current_scorecard: scorecard_input_artifact(
+            current_path,
+            "loaded",
+            Some(current),
+            "current evidence-quality scorecard",
+        )?,
+        previous_artifact: scorecard_input_artifact(
+            previous_path,
+            if previous.is_some() {
+                "loaded"
+            } else {
+                "missing"
+            },
+            previous,
+            "optional previous scorecard or audit snapshot for trend comparison",
+        )?,
+        capability_matrix: scorecard_input_artifact(
+            Path::new("docs/CAPABILITY_MATRIX.md"),
+            "loaded",
+            None,
+            "class-scoped capability maturity vocabulary",
+        )?,
+        traceability: scorecard_input_artifact(
+            Path::new(".ripr/traceability.toml"),
+            "loaded",
+            None,
+            "spec/test/code/output/metric linkage",
+        )?,
+    })
+}
+
+fn evidence_quality_trend_from_values(
+    generated_at: String,
+    inputs: EvidenceQualityTrendInputs,
+    current: &Value,
+    previous: Option<&Value>,
+) -> Result<EvidenceQualityTrendReport, String> {
+    let root = audit_string(current, &["scope", "root"])
+        .or_else(|| audit_string(current, &["inputs", "root"]))
+        .unwrap_or_else(|| ".".to_string());
+    let metric_trends = evidence_quality_metric_trends(current, previous);
+    let static_limitation_category_trends =
+        evidence_quality_static_limitation_category_trends(current, previous);
+    let summary = evidence_quality_trend_summary(previous, &metric_trends);
+    let unknowns = evidence_quality_trend_unknowns(previous, &metric_trends);
+
+    Ok(EvidenceQualityTrendReport {
+        generated_at,
+        root,
+        inputs,
+        summary,
+        metric_trends,
+        static_limitation_category_trends,
+        unknowns,
+    })
+}
+
+fn evidence_quality_metric_trends(
+    current: &Value,
+    previous: Option<&Value>,
+) -> Vec<EvidenceQualityTrendMetric> {
+    let mut trends = [
+        EvidenceQualityTrendMetricSpec {
+            metric: "raw_headline_gaps",
+            label: "Raw headline gaps",
+            lower_is_better: true,
+            current_path: &["summary", "raw_headline_gaps"],
+            previous_path: &["summary", "raw_headline_gaps"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "duplicate_looking_groups_total",
+            label: "Duplicate-looking groups",
+            lower_is_better: true,
+            current_path: &["summary", "duplicate_looking_groups_total"],
+            previous_path: &["summary", "duplicate_looking_groups_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "missing_discriminators_total",
+            label: "Missing discriminators",
+            lower_is_better: true,
+            current_path: &["summary", "missing_discriminators_total"],
+            previous_path: &["summary", "missing_discriminators_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "static_limitations_total",
+            label: "Static limitations",
+            lower_is_better: true,
+            current_path: &["summary", "static_limitations_total"],
+            previous_path: &["summary", "static_limitations_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "low_or_opaque_top_related_tests",
+            label: "Low or opaque top related tests",
+            lower_is_better: true,
+            current_path: &["summary", "low_or_opaque_top_related_tests"],
+            previous_path: &["summary", "low_or_opaque_top_related_tests"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "oracle_unknown_count",
+            label: "Unknown oracle classifications",
+            lower_is_better: true,
+            current_path: &[],
+            previous_path: &[],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "uncalibrated_records",
+            label: "Uncalibrated records",
+            lower_is_better: true,
+            current_path: &["summary", "uncalibrated_records"],
+            previous_path: &["summary", "uncalibrated_records"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "calibrated_records",
+            label: "Calibrated records",
+            lower_is_better: false,
+            current_path: &["summary", "calibrated_records"],
+            previous_path: &["summary", "calibrated_records"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "evidence_records_missing",
+            label: "Evidence records missing",
+            lower_is_better: true,
+            current_path: &["summary", "evidence_records_missing"],
+            previous_path: &["summary", "evidence_records_missing"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_raw_signals_total",
+            label: "Finding-alignment raw signals",
+            lower_is_better: true,
+            current_path: &["summary", "finding_alignment_raw_signals_total"],
+            previous_path: &["summary", "finding_alignment_raw_signals_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_canonical_items_total",
+            label: "Finding-alignment canonical items",
+            lower_is_better: true,
+            current_path: &["summary", "finding_alignment_canonical_items_total"],
+            previous_path: &["summary", "finding_alignment_canonical_items_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_duplicate_groups_total",
+            label: "Finding-alignment duplicate groups",
+            lower_is_better: true,
+            current_path: &["summary", "finding_alignment_duplicate_groups_total"],
+            previous_path: &["summary", "finding_alignment_duplicate_groups_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_actionable_items_total",
+            label: "Finding-alignment actionable items",
+            lower_is_better: true,
+            current_path: &["summary", "finding_alignment_actionable_items_total"],
+            previous_path: &["summary", "finding_alignment_actionable_items_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_already_observed_total",
+            label: "Finding-alignment already observed items",
+            lower_is_better: false,
+            current_path: &["summary", "finding_alignment_already_observed_total"],
+            previous_path: &["summary", "finding_alignment_already_observed_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_internal_no_action_total",
+            label: "Finding-alignment internal no-action items",
+            lower_is_better: false,
+            current_path: &["summary", "finding_alignment_internal_no_action_total"],
+            previous_path: &["summary", "finding_alignment_internal_no_action_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_static_limitation_total",
+            label: "Finding-alignment static limitations",
+            lower_is_better: true,
+            current_path: &["summary", "finding_alignment_static_limitation_total"],
+            previous_path: &["summary", "finding_alignment_static_limitation_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_calibrated_supported_total",
+            label: "Finding-alignment calibrated-supported items",
+            lower_is_better: false,
+            current_path: &["summary", "finding_alignment_calibrated_supported_total"],
+            previous_path: &["summary", "finding_alignment_calibrated_supported_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_uncalibrated_total",
+            label: "Finding-alignment uncalibrated items",
+            lower_is_better: true,
+            current_path: &["summary", "finding_alignment_uncalibrated_total"],
+            previous_path: &["summary", "finding_alignment_uncalibrated_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_visibility_unknown_total",
+            label: "Finding-alignment visibility unknown",
+            lower_is_better: true,
+            current_path: &["summary", "finding_alignment_visibility_unknown_total"],
+            previous_path: &["summary", "finding_alignment_visibility_unknown_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_presentation_text_actionable_total",
+            label: "Presentation text actionable items",
+            lower_is_better: true,
+            current_path: &[
+                "summary",
+                "finding_alignment_presentation_text_actionable_total",
+            ],
+            previous_path: &[
+                "summary",
+                "finding_alignment_presentation_text_actionable_total",
+            ],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "presentation_text_visibility_unknown",
+            label: "Presentation text visibility unknown",
+            lower_is_better: true,
+            current_path: &["summary", "presentation_text_visibility_unknown"],
+            previous_path: &["summary", "presentation_text_visibility_unknown"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "presentation_text_static_limitations",
+            label: "Presentation text static limitations",
+            lower_is_better: true,
+            current_path: &["summary", "presentation_text_static_limitations"],
+            previous_path: &["summary", "presentation_text_static_limitations"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "presentation_text_observed",
+            label: "Presentation text observed",
+            lower_is_better: false,
+            current_path: &["summary", "presentation_text_observed"],
+            previous_path: &["summary", "presentation_text_observed"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "presentation_text_no_action",
+            label: "Presentation text no-action",
+            lower_is_better: false,
+            current_path: &["summary", "presentation_text_no_action"],
+            previous_path: &["summary", "presentation_text_no_action"],
+        },
+    ]
+    .into_iter()
+    .map(|spec| evidence_quality_metric_trend(current, previous, spec))
+    .collect::<Vec<_>>();
+    trends.sort_by(|left, right| left.metric.cmp(&right.metric));
+    trends
+}
+
+fn evidence_quality_metric_trend(
+    current: &Value,
+    previous: Option<&Value>,
+    spec: EvidenceQualityTrendMetricSpec<'_>,
+) -> EvidenceQualityTrendMetric {
+    let after = if spec.metric == "oracle_unknown_count" {
+        Some(evidence_quality_oracle_unknown_count(current))
+    } else {
+        audit_usize(current, spec.current_path)
+    };
+    let before = previous.and_then(|previous| {
+        if spec.metric == "oracle_unknown_count" {
+            Some(evidence_quality_oracle_unknown_count(previous))
+        } else {
+            audit_usize(previous, spec.previous_path)
+        }
+    });
+    let (delta, direction) = evidence_quality_trend_direction(before, after, spec.lower_is_better);
+    let interpretation = evidence_quality_metric_interpretation(spec.metric, &direction);
+    EvidenceQualityTrendMetric {
+        metric: spec.metric.to_string(),
+        label: spec.label.to_string(),
+        before,
+        after,
+        delta,
+        direction,
+        interpretation,
+    }
+}
+
+fn evidence_quality_trend_direction(
+    before: Option<usize>,
+    after: Option<usize>,
+    lower_is_better: bool,
+) -> (Option<isize>, String) {
+    let (Some(before), Some(after)) = (before, after) else {
+        return (None, "unknown".to_string());
+    };
+    let delta = after as isize - before as isize;
+    if delta == 0 {
+        return (Some(delta), "unchanged".to_string());
+    }
+    let improved = if lower_is_better {
+        after < before
+    } else {
+        after > before
+    };
+    if improved {
+        (Some(delta), "improvement".to_string())
+    } else {
+        (Some(delta), "regression".to_string())
+    }
+}
+
+fn evidence_quality_metric_interpretation(metric: &str, direction: &str) -> String {
+    if direction == "unknown" {
+        return "No comparable previous value was available.".to_string();
+    }
+    match metric {
+        "calibrated_records" => {
+            "Higher calibrated record counts show broader checked imported-runtime coverage."
+        }
+        "oracle_unknown_count" => {
+            "Lower unknown oracle counts show sharper fixture-backed oracle semantics."
+        }
+        "low_or_opaque_top_related_tests" => {
+            "Lower low or opaque top related-test counts improve first-useful-action reliability."
+        }
+        "duplicate_looking_groups_total" => {
+            "Lower duplicate-looking group counts reduce canonical-gap overcount risk."
+        }
+        "uncalibrated_records" => {
+            "Lower uncalibrated record counts indicate more evidence classes have runtime context."
+        }
+        "static_limitations_total" => {
+            "Lower static limitation counts indicate fewer analyzer limits in the current evidence."
+        }
+        "evidence_records_missing" => {
+            "Lower missing evidence_record counts protect the shared evidence spine."
+        }
+        "raw_headline_gaps" | "missing_discriminators_total" => {
+            "Lower counts may be useful but require class-scoped fixture context before promotion."
+        }
+        "finding_alignment_raw_signals_total" | "finding_alignment_canonical_items_total" => {
+            "Alignment volume is diagnostic; interpret direction with the raw-to-canonical ratio and class mix."
+        }
+        "finding_alignment_duplicate_groups_total" => {
+            "Lower duplicate group counts mean fewer raw findings are surfacing as duplicate actions."
+        }
+        "finding_alignment_actionable_items_total"
+        | "finding_alignment_presentation_text_actionable_total" => {
+            "Lower unresolved actionable item counts are useful only when already-observed, internal-only, or limitation counts explain the movement."
+        }
+        "finding_alignment_already_observed_total" | "presentation_text_observed" => {
+            "Higher observed counts mean more canonical items are recognized as already gripped."
+        }
+        "finding_alignment_calibrated_supported_total" => {
+            "Higher calibrated-supported counts show more canonical items have checked runtime context."
+        }
+        "finding_alignment_uncalibrated_total" => {
+            "Lower uncalibrated counts indicate more canonical items have class-scoped runtime context."
+        }
+        "finding_alignment_internal_no_action_total" | "presentation_text_no_action" => {
+            "Higher no-action counts mean more raw signals are classified as non-user debt."
+        }
+        "finding_alignment_static_limitation_total"
+        | "finding_alignment_visibility_unknown_total"
+        | "presentation_text_visibility_unknown"
+        | "presentation_text_static_limitations" => {
+            "Lower limitation counts mean fewer analyzer-unknown items remain for this evidence class."
+        }
+        _ => "Trend is advisory and does not redefine RIPR scores.",
+    }
+    .to_string()
+}
+
+fn evidence_quality_oracle_unknown_count(value: &Value) -> usize {
+    scorecard_count_at(
+        value,
+        &[
+            "oracle_semantics_distribution",
+            "oracle_kind_counts",
+            "unknown",
+        ],
+    ) + scorecard_count_at(
+        value,
+        &[
+            "oracle_semantics_distribution",
+            "oracle_strength_counts",
+            "unknown",
+        ],
+    )
+}
+
+fn evidence_quality_static_limitation_category_trends(
+    current: &Value,
+    previous: Option<&Value>,
+) -> Vec<EvidenceQualityTrendMetric> {
+    let current_counts = evidence_quality_static_category_counts(current);
+    let previous_counts = previous
+        .map(evidence_quality_static_category_counts)
+        .unwrap_or_default();
+    let categories = current_counts
+        .keys()
+        .chain(previous_counts.keys())
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let mut rows = categories
+        .iter()
+        .map(|category| {
+            let after = current_counts.get(category).copied();
+            let before = previous_counts.get(category).copied();
+            let (delta, direction) = evidence_quality_trend_direction(before, after, true);
+            EvidenceQualityTrendMetric {
+                metric: format!("static_limitation_category:{category}"),
+                label: category.clone(),
+                before,
+                after,
+                delta,
+                direction,
+                interpretation:
+                    "Lower category counts indicate fewer analyzer limitations of this class."
+                        .to_string(),
+            }
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        right
+            .after
+            .unwrap_or(0)
+            .cmp(&left.after.unwrap_or(0))
+            .then_with(|| left.label.cmp(&right.label))
+    });
+    rows.truncate(EVIDENCE_QUALITY_TREND_CATEGORY_LIMIT);
+    rows
+}
+
+fn evidence_quality_static_category_counts(value: &Value) -> BTreeMap<String, usize> {
+    [
+        &["static_limitation_categories", "by_category"][..],
+        &["static_limitations", "by_category"][..],
+    ]
+    .into_iter()
+    .find_map(|path| audit_get(value, path).and_then(Value::as_object))
+    .map(|object| {
+        object
+            .iter()
+            .filter_map(|(key, value)| value.as_u64().map(|count| (key.clone(), count as usize)))
+            .collect::<BTreeMap<_, _>>()
+    })
+    .unwrap_or_default()
+}
+
+fn evidence_quality_trend_summary(
+    previous: Option<&Value>,
+    metric_trends: &[EvidenceQualityTrendMetric],
+) -> EvidenceQualityTrendSummary {
+    if previous.is_none() {
+        return EvidenceQualityTrendSummary {
+            status: "unknown".to_string(),
+            unknown_metrics: metric_trends.len(),
+            no_history: true,
+            ..EvidenceQualityTrendSummary::default()
+        };
+    }
+    let improved_metrics = metric_trends
+        .iter()
+        .filter(|trend| trend.direction == "improvement")
+        .count();
+    let regressed_metrics = metric_trends
+        .iter()
+        .filter(|trend| trend.direction == "regression")
+        .count();
+    let unchanged_metrics = metric_trends
+        .iter()
+        .filter(|trend| trend.direction == "unchanged")
+        .count();
+    let unknown_metrics = metric_trends
+        .iter()
+        .filter(|trend| trend.direction == "unknown")
+        .count();
+    let compared_metrics = metric_trends.len().saturating_sub(unknown_metrics);
+    let status = if compared_metrics == 0 {
+        "unknown"
+    } else if regressed_metrics > 0 && improved_metrics > 0 {
+        "mixed"
+    } else if regressed_metrics > 0 {
+        "regression"
+    } else if improved_metrics > 0 {
+        "improvement"
+    } else {
+        "unchanged"
+    };
+    EvidenceQualityTrendSummary {
+        status: status.to_string(),
+        compared_metrics,
+        improved_metrics,
+        regressed_metrics,
+        unchanged_metrics,
+        unknown_metrics,
+        no_history: false,
+    }
+}
+
+fn evidence_quality_trend_unknowns(
+    previous: Option<&Value>,
+    metric_trends: &[EvidenceQualityTrendMetric],
+) -> Vec<EvidenceQualityTrendUnknown> {
+    let mut unknowns = Vec::new();
+    if previous.is_none() {
+        trend_push_unknown(
+            &mut unknowns,
+            "trend_history_unavailable",
+            "No previous scorecard or audit snapshot was available, so the report cannot claim improvement or regression.",
+            Some("report/evidence-quality-trend"),
+        );
+    }
+    for trend in metric_trends
+        .iter()
+        .filter(|trend| trend.direction == "unknown" && trend.after.is_none())
+    {
+        trend_push_unknown(
+            &mut unknowns,
+            "current_metric_missing",
+            &format!("Current scorecard is missing metric `{}`.", trend.metric),
+            Some("report/evidence-quality-scorecard"),
+        );
+    }
+    unknowns
+}
+
+fn trend_push_unknown(
+    unknowns: &mut Vec<EvidenceQualityTrendUnknown>,
+    kind: &str,
+    summary: &str,
+    next_repair: Option<&str>,
+) {
+    unknowns.push(EvidenceQualityTrendUnknown {
+        kind: kind.to_string(),
+        summary: summary.to_string(),
+        next_repair: next_repair.map(str::to_string),
+    });
+}
+
+fn evidence_quality_trend_json(report: &EvidenceQualityTrendReport) -> Result<String, String> {
+    let value = serde_json::json!({
+        "schema_version": EVIDENCE_QUALITY_TREND_SCHEMA_VERSION,
+        "tool": "ripr",
+        "report": "evidence-quality-trend",
+        "generated_at": report.generated_at,
+        "scope": {
+            "kind": "repo",
+            "root": report.root,
+        },
+        "inputs": {
+            "current_scorecard": scorecard_input_json(&report.inputs.current_scorecard),
+            "previous_artifact": scorecard_input_json(&report.inputs.previous_artifact),
+            "capability_matrix": scorecard_input_json(&report.inputs.capability_matrix),
+            "traceability": scorecard_input_json(&report.inputs.traceability),
+        },
+        "summary": {
+            "status": report.summary.status,
+            "compared_metrics": report.summary.compared_metrics,
+            "improved_metrics": report.summary.improved_metrics,
+            "regressed_metrics": report.summary.regressed_metrics,
+            "unchanged_metrics": report.summary.unchanged_metrics,
+            "unknown_metrics": report.summary.unknown_metrics,
+            "no_history": report.summary.no_history,
+        },
+        "metric_trends": evidence_quality_trend_metrics_json(&report.metric_trends),
+        "static_limitation_category_trends": evidence_quality_trend_metrics_json(&report.static_limitation_category_trends),
+        "unknowns": report.unknowns.iter().map(|unknown| {
+            serde_json::json!({
+                "kind": unknown.kind,
+                "summary": unknown.summary,
+                "next_repair": unknown.next_repair,
+            })
+        }).collect::<Vec<_>>(),
+    });
+    serde_json::to_string_pretty(&value)
+        .map(|json| format!("{json}\n"))
+        .map_err(|err| format!("failed to render evidence quality trend JSON: {err}"))
+}
+
+fn evidence_quality_trend_metrics_json(metrics: &[EvidenceQualityTrendMetric]) -> Vec<Value> {
+    metrics
+        .iter()
+        .map(|trend| {
+            serde_json::json!({
+                "metric": trend.metric,
+                "label": trend.label,
+                "before": trend.before,
+                "after": trend.after,
+                "delta": trend.delta,
+                "direction": trend.direction,
+                "interpretation": trend.interpretation,
+            })
+        })
+        .collect()
+}
+
+fn evidence_quality_trend_markdown(report: &EvidenceQualityTrendReport) -> String {
+    let mut out = String::new();
+    out.push_str("# Lane 1 evidence quality trend\n\n");
+    out.push_str("Status: advisory\n\n");
+    out.push_str("This repo-local trend compares existing Lane 1 scorecard or audit snapshots. It does not change analyzer behavior, gate policy, PR or CI projection, editor output, source files, generated tests, provider calls, score definitions, or runtime execution.\n\n");
+
+    out.push_str("## Summary\n\n");
+    out.push_str("| Metric | Value |\n");
+    out.push_str("| --- | ---: |\n");
+    out.push_str(&format!("| Status | {} |\n", report.summary.status));
+    audit_push_count(
+        &mut out,
+        "Compared metrics",
+        report.summary.compared_metrics,
+    );
+    audit_push_count(
+        &mut out,
+        "Improved metrics",
+        report.summary.improved_metrics,
+    );
+    audit_push_count(
+        &mut out,
+        "Regressed metrics",
+        report.summary.regressed_metrics,
+    );
+    audit_push_count(
+        &mut out,
+        "Unchanged metrics",
+        report.summary.unchanged_metrics,
+    );
+    audit_push_count(&mut out, "Unknown metrics", report.summary.unknown_metrics);
+    out.push('\n');
+
+    out.push_str("## Metric Trends\n\n");
+    trend_push_metric_table(&mut out, &report.metric_trends);
+
+    out.push_str("## Static Limitation Category Trends\n\n");
+    if report.static_limitation_category_trends.is_empty() {
+        out.push_str("No static limitation category trend rows were reported.\n\n");
+    } else {
+        trend_push_metric_table(&mut out, &report.static_limitation_category_trends);
+    }
+
+    out.push_str("## Unknowns\n\n");
+    if report.unknowns.is_empty() {
+        out.push_str("No trend unknowns were reported.\n");
+    } else {
+        out.push_str("| Kind | Summary | Next repair |\n");
+        out.push_str("| --- | --- | --- |\n");
+        for unknown in &report.unknowns {
+            out.push_str(&format!(
+                "| {} | {} | {} |\n",
+                audit_markdown_cell(&unknown.kind),
+                audit_markdown_cell(&unknown.summary),
+                audit_markdown_cell(unknown.next_repair.as_deref().unwrap_or("n/a")),
+            ));
+        }
+    }
+    out
+}
+
+fn trend_push_metric_table(out: &mut String, metrics: &[EvidenceQualityTrendMetric]) {
+    if metrics.is_empty() {
+        out.push_str("No metric trends were reported.\n\n");
+        return;
+    }
+    out.push_str("| Metric | Before | After | Delta | Direction | Interpretation |\n");
+    out.push_str("| --- | ---: | ---: | ---: | --- | --- |\n");
+    for trend in metrics {
+        out.push_str(&format!(
+            "| {} | {} | {} | {} | {} | {} |\n",
+            audit_markdown_cell(&trend.label),
+            trend
+                .before
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "n/a".to_string()),
+            trend
+                .after
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "n/a".to_string()),
+            trend
+                .delta
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "n/a".to_string()),
+            audit_markdown_cell(&trend.direction),
+            audit_markdown_cell(&trend.interpretation),
+        ));
+    }
+    out.push('\n');
 }
 
 const REPO_EXPOSURE_LATENCY_TRACE_ENV: &str = "RIPR_REPO_EXPOSURE_LATENCY_TRACE";
@@ -11651,8 +17776,8 @@ pub(crate) fn lsp_cockpit_report_impl() -> Result<(), String> {
 
 fn build_lsp_cockpit_report() -> Result<LspCockpitReport, String> {
     let mut fixtures = Vec::new();
-    for fixture in fixture_dirs()? {
-        if let Some(report) = lsp_cockpit_fixture_report(&fixture)? {
+    for (name, fixture) in lsp_cockpit_fixture_dirs()? {
+        if let Some(report) = lsp_cockpit_fixture_report(&name, &fixture)? {
             fixtures.push(report);
         }
     }
@@ -11676,7 +17801,42 @@ fn build_lsp_cockpit_report() -> Result<LspCockpitReport, String> {
     })
 }
 
-fn lsp_cockpit_fixture_report(fixture: &Path) -> Result<Option<LspCockpitFixture>, String> {
+fn lsp_cockpit_fixture_dirs() -> Result<Vec<(String, PathBuf)>, String> {
+    let mut fixtures = Vec::new();
+    for fixture in fixture_dirs()? {
+        let name = fixture
+            .file_name()
+            .and_then(|value| value.to_str())
+            .ok_or_else(|| format!("invalid fixture path {}", fixture.display()))?
+            .to_string();
+        fixtures.push((name, fixture));
+    }
+    let editor_gap_cockpit = Path::new("fixtures/editor_gap_cockpit");
+    if editor_gap_cockpit.exists() {
+        for entry in fs::read_dir(editor_gap_cockpit)
+            .map_err(|err| format!("failed to read fixtures/editor_gap_cockpit: {err}"))?
+        {
+            let entry = entry
+                .map_err(|err| format!("failed to read fixtures/editor_gap_cockpit: {err}"))?;
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let name = path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .ok_or_else(|| format!("invalid fixture path {}", path.display()))?;
+            fixtures.push((format!("editor_gap_cockpit/{name}"), path));
+        }
+    }
+    fixtures.sort_by(|left, right| left.0.cmp(&right.0));
+    Ok(fixtures)
+}
+
+fn lsp_cockpit_fixture_report(
+    fixture_name: &str,
+    fixture: &Path,
+) -> Result<Option<LspCockpitFixture>, String> {
     let expected = fixture.join("expected");
     let diagnostics_path = expected.join("lsp-diagnostics.json");
     let code_actions_path = expected.join("lsp-code-actions.json");
@@ -11711,11 +17871,6 @@ fn lsp_cockpit_fixture_report(fixture: &Path) -> Result<Option<LspCockpitFixture
             )
         })?;
 
-    let fixture_name = fixture
-        .file_name()
-        .and_then(|value| value.to_str())
-        .ok_or_else(|| format!("invalid fixture path {}", fixture.display()))?
-        .to_string();
     let mut seam_ids = BTreeSet::new();
     let mut grip_classes = BTreeSet::new();
     let mut seam_diagnostic_count = 0;
@@ -11795,7 +17950,7 @@ fn lsp_cockpit_fixture_report(fixture: &Path) -> Result<Option<LspCockpitFixture
     }
 
     Ok(Some(LspCockpitFixture {
-        fixture: fixture_name,
+        fixture: fixture_name.to_string(),
         diagnostics_path: normalize_path(&diagnostics_path),
         code_actions_path: normalize_path(&code_actions_path),
         diagnostic_count: diagnostics.len(),
@@ -14304,55 +20459,98 @@ fn normalize_report_path(path: &str) -> String {
         .to_string()
 }
 
-pub(crate) fn repo_badge_artifacts_impl() -> Result<(), String> {
-    run_with_repo_root_cwd(|| {
-        test_efficiency_report_impl()?;
-
-        let badge_dir = Path::new("target").join("ripr");
-        fs::create_dir_all(&badge_dir).map_err(|err| {
-            format!(
-                "failed to create badge directory {}: {err}",
-                normalize_path(&badge_dir)
-            )
-        })?;
-
-        // Repo scope is intentionally diff-free: the badge formats render from
-        // classified repo seams rather than `git diff origin/main...HEAD`.
-        // Capturing a diff would silently make the artifact dependent on branch
-        // state.
-        let mut ripr_native_json = String::new();
-        let mut ripr_plus_native_json = String::new();
-
-        for job in repo_badge_artifact_jobs() {
-            let output = run_repo_badge_artifact_job(job.format)?;
-            write_report(job.output_file, &output)?;
-            match badge_artifact_native_slot(job.format) {
-                Some(BadgeNativeSlot::Ripr) => ripr_native_json = output,
-                Some(BadgeNativeSlot::RiprPlus) => ripr_plus_native_json = output,
-                None => {}
-            }
-        }
-
-        let summary =
-            repo_badge_artifacts_summary_markdown(&ripr_native_json, &ripr_plus_native_json);
-        write_report("repo-ripr-badges.md", &summary)
-    })
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct RepoBadgeArtifactOptions {
+    gap_ledger: Option<PathBuf>,
 }
 
-fn run_repo_badge_artifact_job(format: &str) -> Result<String, String> {
+pub(crate) fn repo_badge_artifacts_impl(args: &[String]) -> Result<(), String> {
+    let options = parse_repo_badge_artifact_options(args, "repo-badge-artifacts")?;
+    run_with_repo_root_cwd(|| write_repo_badge_artifacts(&options))
+}
+
+fn write_repo_badge_artifacts(options: &RepoBadgeArtifactOptions) -> Result<(), String> {
+    test_efficiency_report_impl()?;
+
+    let badge_dir = Path::new("target").join("ripr");
+    fs::create_dir_all(&badge_dir).map_err(|err| {
+        format!(
+            "failed to create badge directory {}: {err}",
+            normalize_path(&badge_dir)
+        )
+    })?;
+
+    // Repo scope is intentionally diff-free: the badge formats render from
+    // classified repo seams or from an explicit gap decision ledger rather
+    // than `git diff origin/main...HEAD`. Capturing a diff would silently make
+    // the artifact dependent on branch state.
+    let mut ripr_native_json = String::new();
+    let mut ripr_plus_native_json = String::new();
+
+    for job in repo_badge_artifact_jobs() {
+        let output = run_repo_badge_artifact_job(job.format, options.gap_ledger.as_deref())?;
+        write_report(job.output_file, &output)?;
+        match badge_artifact_native_slot(job.format) {
+            Some(BadgeNativeSlot::Ripr) => ripr_native_json = output,
+            Some(BadgeNativeSlot::RiprPlus) => ripr_plus_native_json = output,
+            None => {}
+        }
+    }
+
+    let summary = repo_badge_artifacts_summary_markdown(
+        &ripr_native_json,
+        &ripr_plus_native_json,
+        options.gap_ledger.as_deref(),
+    );
+    write_report("repo-ripr-badges.md", &summary)
+}
+
+fn parse_repo_badge_artifact_options(
+    args: &[String],
+    command_name: &str,
+) -> Result<RepoBadgeArtifactOptions, String> {
+    let mut options = RepoBadgeArtifactOptions::default();
+    let mut index = 0usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--check" => {}
+            "--gap-ledger" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err(format!("{command_name} --gap-ledger requires a path"));
+                };
+                if value.trim().is_empty() {
+                    return Err(format!(
+                        "{command_name} --gap-ledger requires a non-empty path"
+                    ));
+                }
+                options.gap_ledger = Some(PathBuf::from(value));
+            }
+            other => return Err(format!("unknown {command_name} argument {other:?}")),
+        }
+        index += 1;
+    }
+    Ok(options)
+}
+
+fn run_repo_badge_artifact_job(format: &str, gap_ledger: Option<&Path>) -> Result<String, String> {
     if let Ok(ripr_bin) = std::env::var("RIPR_BIN") {
         let repo_root = repo_root()?;
-        let args = vec![
+        let mut args = vec![
             "check".to_string(),
             "--root".to_string(),
             normalize_path(&repo_root),
             "--format".to_string(),
             format.to_string(),
         ];
+        if let Some(gap_ledger) = gap_ledger {
+            args.push("--gap-ledger".to_string());
+            args.push(normalize_path(gap_ledger));
+        }
         return run_output_owned(&ripr_bin, &args);
     }
 
-    let args = repo_badge_artifact_command_args(format);
+    let args = repo_badge_artifact_command_args(format, gap_ledger);
     run_output_owned("cargo", &args)
 }
 
@@ -14389,12 +20587,12 @@ fn repo_badge_artifact_jobs() -> Vec<BadgeArtifactJob> {
     ]
 }
 
-fn repo_badge_artifact_command_args(format: &str) -> Vec<String> {
+fn repo_badge_artifact_command_args(format: &str, gap_ledger: Option<&Path>) -> Vec<String> {
     // Intentionally omits any `--diff` / `--base` argument: repo scope must
     // not consult `git diff origin/main...HEAD`. The regression test
     // `repo_badge_artifact_command_args_does_not_use_git_diff` pins this
     // contract.
-    vec![
+    let mut args = vec![
         "run".to_string(),
         "-p".to_string(),
         "ripr".to_string(),
@@ -14405,20 +20603,35 @@ fn repo_badge_artifact_command_args(format: &str) -> Vec<String> {
         ".".to_string(),
         "--format".to_string(),
         format.to_string(),
-    ]
+    ];
+    if let Some(gap_ledger) = gap_ledger {
+        args.push("--gap-ledger".to_string());
+        args.push(normalize_path(gap_ledger));
+    }
+    args
 }
 
 fn repo_badge_artifacts_summary_markdown(
     ripr_native_json: &str,
     ripr_plus_native_json: &str,
+    gap_ledger: Option<&Path>,
 ) -> String {
     let mut markdown = String::from("# ripr repo badges\n\n");
-    markdown.push_str(
-        "Repo-scoped artifacts: rendered against classified repo seams, not \
+    if let Some(gap_ledger) = gap_ledger {
+        markdown.push_str(&format!(
+            "Repo-scoped artifacts: rendered from explicit gap decision ledger \
+`{}`. Counts reflect policy-targeted `GapRecord` projection eligibility, not \
+`git diff origin/main...HEAD`. They are not runtime mutation confirmation.\n\n",
+            normalize_path(gap_ledger)
+        ));
+    } else {
+        markdown.push_str(
+            "Repo-scoped artifacts: rendered against classified repo seams, not \
 against `git diff origin/main...HEAD`. Counts reflect seam-native unresolved \
 exposure gaps and unsuppressed actionable test-efficiency findings under the \
 configured policy. They are not runtime mutation confirmation.\n\n",
-    );
+        );
+    }
     append_badge_section(&mut markdown, "ripr", ripr_native_json);
     append_badge_section(&mut markdown, "ripr+", ripr_plus_native_json);
     markdown.push_str("## Artifacts\n\n");
@@ -14448,9 +20661,10 @@ const BADGE_ENDPOINT_FILES: &[(&str, &str)] = &[
 /// via `repo_badge_artifacts()` and copies the two Shields projections
 /// into the committed `badges/` directory so the README endpoint URLs
 /// reflect the latest repo-scoped state.
-pub(crate) fn update_badge_endpoints_impl() -> Result<(), String> {
+pub(crate) fn update_badge_endpoints_impl(args: &[String]) -> Result<(), String> {
+    let options = parse_repo_badge_artifact_options(args, "badges")?;
     run_with_repo_root_cwd(|| {
-        repo_badge_artifacts()?;
+        write_repo_badge_artifacts(&options)?;
         copy_badge_endpoints_from_reports(Path::new("target/ripr/reports"), Path::new("."))
     })
 }
@@ -14538,9 +20752,10 @@ fn badge_endpoint_violation(
 /// requiring every PR to also update `badges/` is too much friction
 /// before the headline stabilizes. Use locally before campaign
 /// closeouts and after material analyzer changes.
-pub(crate) fn check_badge_endpoints_impl() -> Result<(), String> {
+pub(crate) fn check_badge_endpoints_impl(args: &[String]) -> Result<(), String> {
+    let options = parse_repo_badge_artifact_options(args, "badges")?;
     run_with_repo_root_cwd(|| {
-        repo_badge_artifacts()?;
+        write_repo_badge_artifacts(&options)?;
         let violations =
             compute_badge_endpoint_violations(Path::new("target/ripr/reports"), Path::new("."))?;
         finish_policy_report(
@@ -14754,6 +20969,19 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         .map(|scenario| dogfood_report_packet_index_run(&scenario))
         .collect::<Result<Vec<_>, _>>()?;
     let generated_ci_cockpit_runs = vec![dogfood_generated_ci_cockpit_run()?];
+    let language_preview_runs = dogfood_language_preview_scenarios()
+        .into_iter()
+        .map(|scenario| dogfood_language_preview_run(&scenario))
+        .collect::<Vec<_>>();
+    let editor_gap_cockpit_runs = dogfood_editor_gap_cockpit_scenarios()
+        .into_iter()
+        .map(|scenario| dogfood_editor_gap_cockpit_run(&scenario))
+        .collect::<Vec<_>>();
+    let preview_projection_runs = DogfoodPreviewProjectionRuns {
+        generated_ci_cockpit: &generated_ci_cockpit_runs,
+        language_preview: &language_preview_runs,
+        editor_gap_cockpit: &editor_gap_cockpit_runs,
+    };
     let pr_inline_comment_runs = dogfood_pr_inline_comment_scenarios()
         .into_iter()
         .map(|scenario| dogfood_pr_inline_comment_run(&scenario))
@@ -14766,7 +20994,7 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
             &first_action_runs,
             &front_panel_runs,
             &report_packet_index_runs,
-            &generated_ci_cockpit_runs,
+            &preview_projection_runs,
             &pr_inline_comment_runs,
         ),
     )?;
@@ -14778,7 +21006,7 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
             &first_action_runs,
             &front_panel_runs,
             &report_packet_index_runs,
-            &generated_ci_cockpit_runs,
+            &preview_projection_runs,
             &pr_inline_comment_runs,
         ),
     )
@@ -15906,7 +22134,18 @@ fn dogfood_generated_ci_cockpit_run_from_workflow(
     ) && workflow.contains("RIPR is advisory static evidence");
     let artifact_upload =
         workflow.contains("actions/upload-artifact@v7") && workflow.contains("target/ripr/reports");
-    let language_grouping_status = "deferred".to_string();
+    let language_grouping_checked = workflow.contains("if [ -n \"$preview_languages\" ]; then")
+        && workflow.contains("### Language preview grouping")
+        && workflow.contains("preview-language groups are advisory presentation only")
+        && workflow.contains("ripr gate evaluate")
+        && workflow.contains("missing_preview_status")
+        && workflow.contains("static_limit_kinds");
+    let language_grouping_status = if language_grouping_checked {
+        "checked"
+    } else {
+        "missing"
+    }
+    .to_string();
     let mut errors = Vec::new();
 
     if !start_here {
@@ -15926,6 +22165,12 @@ fn dogfood_generated_ci_cockpit_run_from_workflow(
     if !artifact_upload {
         errors.push("generated CI must upload the report artifact packet".to_string());
     }
+    if !language_grouping_checked {
+        errors.push(
+            "generated CI must keep configured preview-language grouping advisory and opt-in"
+                .to_string(),
+        );
+    }
 
     DogfoodGeneratedCiCockpitRun {
         name: name.to_string(),
@@ -15938,6 +22183,685 @@ fn dogfood_generated_ci_cockpit_run_from_workflow(
         default_advisory,
         artifact_upload,
         language_grouping_status,
+        errors,
+    }
+}
+
+fn dogfood_language_preview_scenarios() -> Vec<DogfoodLanguagePreviewScenario> {
+    [
+        (
+            "typescript_mocked_module_limit",
+            "typescript",
+            1usize,
+            1usize,
+            0usize,
+            1usize,
+            vec!["exposed"],
+            vec!["mocked_module"],
+            true,
+            "TypeScript preview finding keeps preview metadata and mocked-module static limit.",
+        ),
+        (
+            "python_missing_import_graph_limit",
+            "python",
+            1usize,
+            1usize,
+            0usize,
+            1usize,
+            vec!["exposed"],
+            vec!["missing_import_graph"],
+            true,
+            "Python preview finding keeps preview metadata and missing-import-graph static limit.",
+        ),
+        (
+            "python_mixed_language_no_cross_route",
+            "python",
+            1usize,
+            1usize,
+            0usize,
+            0usize,
+            vec!["no_static_path"],
+            Vec::new(),
+            true,
+            "Mixed-language fixture must not use a TypeScript test as Python related-test evidence.",
+        ),
+        (
+            "python_disabled",
+            "python",
+            0usize,
+            0usize,
+            0usize,
+            0usize,
+            Vec::new(),
+            Vec::new(),
+            false,
+            "Rust-default language config must not emit disabled Python preview findings.",
+        ),
+    ]
+    .into_iter()
+    .map(
+        |(
+            name,
+            language,
+            expected_findings,
+            expected_preview_findings,
+            expected_missing_preview_status,
+            expected_related_tests,
+            expected_classifications,
+            expected_static_limit_kinds,
+            preview_enabled,
+            reason,
+        )| {
+            let base = Path::new("fixtures").join(name);
+            DogfoodLanguagePreviewScenario {
+                name: name.to_string(),
+                language: language.to_string(),
+                root: base.join("input"),
+                diff: base.join("diff.patch"),
+                expected_findings,
+                expected_preview_findings,
+                expected_missing_preview_status,
+                expected_related_tests,
+                expected_classifications: expected_classifications
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+                expected_static_limit_kinds: expected_static_limit_kinds
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+                preview_enabled,
+                reason: reason.to_string(),
+            }
+        },
+    )
+    .collect()
+}
+
+fn dogfood_language_preview_run(
+    scenario: &DogfoodLanguagePreviewScenario,
+) -> DogfoodLanguagePreviewRun {
+    let started = Instant::now();
+    let actual_dir = Path::new("target")
+        .join("ripr")
+        .join("dogfood")
+        .join("language-preview")
+        .join(&scenario.name);
+    let json_path = actual_dir.join("check.json");
+    let human_path = actual_dir.join("human.txt");
+    let mut errors = Vec::new();
+    let mut findings = 0usize;
+    let mut language_findings = 0usize;
+    let mut preview_findings = 0usize;
+    let mut missing_preview_status = 0usize;
+    let mut related_tests = 0usize;
+    let mut classifications = Vec::<String>::new();
+    let mut static_limit_kinds = Vec::<String>::new();
+
+    if !scenario.root.exists() {
+        errors.push(format!(
+            "fixture root does not exist: {}",
+            normalize_path(&scenario.root)
+        ));
+    }
+    if !scenario.diff.exists() {
+        errors.push(format!(
+            "fixture diff does not exist: {}",
+            normalize_path(&scenario.diff)
+        ));
+    }
+    if let Err(err) = fs::create_dir_all(&actual_dir) {
+        errors.push(format!(
+            "failed to create language preview dogfood output directory {}: {err}",
+            normalize_path(&actual_dir)
+        ));
+    }
+
+    let mut human_output = String::new();
+    if errors.is_empty() {
+        let root = normalize_path(&scenario.root);
+        let diff = normalize_path(&scenario.diff);
+        match run_fixture_check(&root, &diff, true) {
+            Ok(json) => {
+                let normalized = normalize_fixture_json_output(&json);
+                if let Err(err) = fs::write(&json_path, &normalized) {
+                    errors.push(format!(
+                        "failed to write language preview dogfood JSON {}: {err}",
+                        normalize_path(&json_path)
+                    ));
+                }
+                match serde_json::from_str::<Value>(&normalized) {
+                    Ok(report) => {
+                        findings = json_summary_count(&report, "findings");
+                        if let Some(finding_values) =
+                            report.get("findings").and_then(Value::as_array)
+                        {
+                            for finding in finding_values {
+                                if json_string_field(finding, "language").as_deref()
+                                    != Some(scenario.language.as_str())
+                                {
+                                    continue;
+                                }
+                                language_findings += 1;
+                                if json_string_field(finding, "language_status").as_deref()
+                                    == Some("preview")
+                                {
+                                    preview_findings += 1;
+                                } else {
+                                    missing_preview_status += 1;
+                                }
+                                if let Some(classification) =
+                                    json_string_field(finding, "classification")
+                                {
+                                    classifications.push(classification);
+                                }
+                                if let Some(static_limit_kind) =
+                                    json_string_field(finding, "static_limit_kind")
+                                {
+                                    static_limit_kinds.push(static_limit_kind);
+                                }
+                                related_tests += finding
+                                    .get("related_tests")
+                                    .and_then(Value::as_array)
+                                    .map(Vec::len)
+                                    .unwrap_or(0);
+                            }
+                        } else {
+                            errors.push(
+                                "language preview JSON is missing findings array".to_string(),
+                            );
+                        }
+                    }
+                    Err(err) => errors.push(format!(
+                        "failed to parse language preview JSON for {}: {err}",
+                        scenario.name
+                    )),
+                }
+            }
+            Err(err) => errors.push(err),
+        }
+
+        match run_fixture_check(&root, &diff, false) {
+            Ok(human) => {
+                human_output = normalize_fixture_human_output(&human);
+                if let Err(err) = fs::write(&human_path, &human_output) {
+                    errors.push(format!(
+                        "failed to write language preview dogfood human output {}: {err}",
+                        normalize_path(&human_path)
+                    ));
+                }
+            }
+            Err(err) => errors.push(err),
+        }
+    }
+
+    classifications = sorted_unique_strings(classifications);
+    static_limit_kinds = sorted_unique_strings(static_limit_kinds);
+
+    if findings != scenario.expected_findings {
+        errors.push(format!(
+            "expected {} total finding(s), got {}",
+            scenario.expected_findings, findings
+        ));
+    }
+    if preview_findings != scenario.expected_preview_findings {
+        errors.push(format!(
+            "expected {} preview finding(s), got {}",
+            scenario.expected_preview_findings, preview_findings
+        ));
+    }
+    if missing_preview_status != scenario.expected_missing_preview_status {
+        errors.push(format!(
+            "expected {} finding(s) missing preview status, got {}",
+            scenario.expected_missing_preview_status, missing_preview_status
+        ));
+    }
+    if related_tests != scenario.expected_related_tests {
+        errors.push(format!(
+            "expected {} related test(s), got {}",
+            scenario.expected_related_tests, related_tests
+        ));
+    }
+    if classifications != scenario.expected_classifications {
+        errors.push(format!(
+            "expected classifications [{}], got [{}]",
+            scenario.expected_classifications.join(", "),
+            classifications.join(", ")
+        ));
+    }
+    if static_limit_kinds != scenario.expected_static_limit_kinds {
+        errors.push(format!(
+            "expected static limit kinds [{}], got [{}]",
+            scenario.expected_static_limit_kinds.join(", "),
+            static_limit_kinds.join(", ")
+        ));
+    }
+    if !scenario.preview_enabled && (language_findings > 0 || preview_findings > 0) {
+        errors.push(format!(
+            "{} preview should be disabled but emitted {} language finding(s)",
+            scenario.language, language_findings
+        ));
+    }
+    if scenario.preview_enabled
+        && scenario.expected_preview_findings > 0
+        && !human_output
+            .to_ascii_lowercase()
+            .contains(&format!("{} preview", scenario.language))
+    {
+        errors.push(format!(
+            "human output should label {} preview evidence",
+            scenario.language
+        ));
+    }
+    for static_limit_kind in &scenario.expected_static_limit_kinds {
+        if !human_output.contains(static_limit_kind) {
+            errors.push(format!(
+                "human output should include static limit kind `{static_limit_kind}`"
+            ));
+        }
+    }
+
+    DogfoodLanguagePreviewRun {
+        name: scenario.name.clone(),
+        language: scenario.language.clone(),
+        root: scenario.root.clone(),
+        diff: scenario.diff.clone(),
+        actual_dir,
+        json_path,
+        human_path,
+        duration_ms: started.elapsed().as_millis(),
+        findings,
+        language_findings,
+        preview_findings,
+        missing_preview_status,
+        related_tests,
+        classifications,
+        static_limit_kinds,
+        expected_findings: scenario.expected_findings,
+        expected_preview_findings: scenario.expected_preview_findings,
+        expected_missing_preview_status: scenario.expected_missing_preview_status,
+        expected_related_tests: scenario.expected_related_tests,
+        expected_classifications: scenario.expected_classifications.clone(),
+        expected_static_limit_kinds: scenario.expected_static_limit_kinds.clone(),
+        preview_enabled: scenario.preview_enabled,
+        reason: scenario.reason.clone(),
+        errors,
+    }
+}
+
+fn dogfood_editor_gap_cockpit_scenarios() -> Vec<DogfoodEditorGapCockpitScenario> {
+    let scenario = |name: &str,
+                    state: &str,
+                    language: Option<&str>,
+                    language_status: Option<&str>,
+                    diagnostics: usize,
+                    fail_closed: bool,
+                    actions: Vec<&str>,
+                    static_limit_kind: Option<&str>,
+                    reason: &str| {
+        DogfoodEditorGapCockpitScenario {
+            name: name.to_string(),
+            expected_state: state.to_string(),
+            expected_language: language.map(str::to_string),
+            expected_language_status: language_status.map(str::to_string),
+            expected_diagnostics: diagnostics,
+            expected_fail_closed: fail_closed,
+            expected_actions: actions.into_iter().map(str::to_string).collect(),
+            expected_static_limit_kind: static_limit_kind.map(str::to_string),
+            reason: reason.to_string(),
+        }
+    };
+
+    vec![
+        scenario(
+            "rust_actionable",
+            "actionable",
+            Some("rust"),
+            Some("stable"),
+            1,
+            false,
+            vec![
+                "copy_repair_packet",
+                "open_related_test",
+                "copy_verify_command",
+                "copy_receipt_command",
+                "refresh",
+            ],
+            None,
+            "Rust stable gap projects a related test, repair packet, verify command, and receipt command.",
+        ),
+        scenario(
+            "typescript_preview_static_limit",
+            "actionable",
+            Some("typescript"),
+            Some("preview"),
+            1,
+            false,
+            vec!["copy_repair_packet", "copy_static_limit_note", "refresh"],
+            Some("mocked_module"),
+            "TypeScript preview gap keeps static-limit evidence visible before action language.",
+        ),
+        scenario(
+            "python_preview_static_limit",
+            "actionable",
+            Some("python"),
+            Some("preview"),
+            1,
+            false,
+            vec!["copy_repair_packet", "copy_static_limit_note", "refresh"],
+            Some("missing_import_graph"),
+            "Python preview gap keeps missing-import-graph limits visible before action language.",
+        ),
+        scenario(
+            "disabled_language",
+            "disabled_language",
+            Some("python"),
+            Some("preview"),
+            0,
+            true,
+            vec!["refresh"],
+            None,
+            "Disabled preview language produces status and refresh only, not diagnostics or repair packets.",
+        ),
+        scenario(
+            "wrong_root",
+            "wrong_root",
+            None,
+            None,
+            0,
+            true,
+            vec!["refresh"],
+            None,
+            "Wrong-root artifacts fail closed and leave refresh as the only safe action.",
+        ),
+        scenario(
+            "stale_artifact",
+            "stale_artifact",
+            None,
+            None,
+            0,
+            true,
+            vec!["refresh"],
+            None,
+            "Stale artifacts suppress diagnostics and repair actions until refreshed.",
+        ),
+        scenario(
+            "no_actionable_gap",
+            "no_actionable_gap",
+            Some("rust"),
+            Some("stable"),
+            0,
+            true,
+            vec!["refresh"],
+            None,
+            "No-action state explains that no local repair packet should be projected.",
+        ),
+    ]
+}
+
+fn dogfood_editor_gap_cockpit_run(
+    scenario: &DogfoodEditorGapCockpitScenario,
+) -> DogfoodEditorGapCockpitRun {
+    let expected_dir = Path::new("fixtures")
+        .join("editor_gap_cockpit")
+        .join(&scenario.name)
+        .join("expected");
+    let projection_path = expected_dir.join("gap-projection.json");
+    let diagnostics_path = expected_dir.join("lsp-diagnostics.json");
+    let hover_path = expected_dir.join("lsp-hover.md");
+    let code_actions_path = expected_dir.join("lsp-code-actions.json");
+    let status_path = expected_dir.join("vscode-status.json");
+    let mut errors = Vec::new();
+
+    for (label, path) in [
+        ("gap projection", &projection_path),
+        ("diagnostics", &diagnostics_path),
+        ("hover", &hover_path),
+        ("code actions", &code_actions_path),
+        ("VS Code status", &status_path),
+    ] {
+        if !path.exists() {
+            errors.push(format!(
+                "{label} fixture is missing: {}",
+                normalize_path(path)
+            ));
+        }
+    }
+
+    let mut state = "missing".to_string();
+    let mut language = None;
+    let mut language_status = None;
+    let mut diagnostics_projected = 0usize;
+    let mut fail_closed = false;
+    let mut actions_projected = Vec::<String>::new();
+    let mut static_limit_kind = None;
+
+    match read_json_value(&projection_path) {
+        Ok(projection) => {
+            if json_string_field(&projection, "schema_version").as_deref() != Some("0.1") {
+                errors.push("gap projection schema_version must be 0.1".to_string());
+            }
+            if json_string_field(&projection, "case").as_deref() != Some(scenario.name.as_str()) {
+                errors.push(format!("gap projection case should be {}", scenario.name));
+            }
+            state =
+                json_string_field(&projection, "state").unwrap_or_else(|| "missing".to_string());
+            language = json_string_field(&projection, "language");
+            language_status = json_string_field(&projection, "language_status");
+            diagnostics_projected =
+                json_usize_field(&projection, "diagnostics_projected").unwrap_or(0);
+            fail_closed = json_bool_field(&projection, "fail_closed").unwrap_or(false);
+            actions_projected = json_string_array_field(&projection, "actions_projected");
+            static_limit_kind = json_string_field(&projection, "static_limit_kind");
+        }
+        Err(err) => errors.push(err),
+    }
+
+    let mut actual_diagnostics = 0usize;
+    match read_json_value(&diagnostics_path) {
+        Ok(diagnostics) => {
+            actual_diagnostics = diagnostics
+                .get("diagnostics")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len);
+            let expected_fixture = format!("editor_gap_cockpit/{}", scenario.name);
+            if json_string_field(&diagnostics, "fixture").as_deref()
+                != Some(expected_fixture.as_str())
+            {
+                errors.push("diagnostics fixture name does not match scenario".to_string());
+            }
+        }
+        Err(err) => errors.push(err),
+    }
+
+    let mut actual_actions = 0usize;
+    match read_json_value(&code_actions_path) {
+        Ok(actions) => {
+            let action_items = actions.get("actions").and_then(Value::as_array);
+            actual_actions = action_items.map_or(0, Vec::len);
+            if scenario
+                .expected_actions
+                .iter()
+                .any(|action| action == "refresh")
+            {
+                let has_refresh = action_items.is_some_and(|items| {
+                    items.iter().any(|item| {
+                        json_string_field(item, "command").as_deref() == Some("ripr.refresh")
+                    })
+                });
+                if !has_refresh {
+                    errors.push("code actions should include refresh".to_string());
+                }
+            }
+            if scenario
+                .expected_actions
+                .iter()
+                .any(|action| action == "open_related_test")
+            {
+                let has_open_related_test = action_items.is_some_and(|items| {
+                    items.iter().any(|item| {
+                        json_string_field(item, "command").as_deref()
+                            == Some("ripr.openRelatedTest")
+                    })
+                });
+                if !has_open_related_test {
+                    errors.push("code actions should include related-test opening".to_string());
+                }
+            }
+        }
+        Err(err) => errors.push(err),
+    }
+
+    let mut hover_static_before_action = false;
+    match fs::read_to_string(&hover_path) {
+        Ok(hover) => {
+            if let Some(kind) = &scenario.expected_static_limit_kind {
+                let static_needle = format!("Static limit: {kind}");
+                match (hover.find(&static_needle), hover.find("Suggested action")) {
+                    (Some(static_index), Some(action_index)) if static_index < action_index => {
+                        hover_static_before_action = true;
+                    }
+                    _ => errors.push(format!(
+                        "hover should show static limit `{kind}` before suggested action"
+                    )),
+                }
+            }
+            if !hover
+                .contains("no source edits, generated tests, provider calls, or mutation execution")
+            {
+                errors.push("hover should preserve projection-only editor limits".to_string());
+            }
+            if scenario.expected_language_status.as_deref() == Some("preview")
+                && !hover.to_ascii_lowercase().contains("preview")
+            {
+                errors.push("preview hover should label preview evidence".to_string());
+            }
+        }
+        Err(err) => errors.push(format!(
+            "failed to read editor gap cockpit hover {}: {err}",
+            normalize_path(&hover_path)
+        )),
+    }
+
+    match read_json_value(&status_path) {
+        Ok(status) => {
+            if json_string_field(&status, "schema_version").as_deref() != Some("0.1") {
+                errors.push("VS Code status schema_version must be 0.1".to_string());
+            }
+            let states = status.get("states").and_then(Value::as_array);
+            if states.is_none_or(|items| items.is_empty()) {
+                errors.push("VS Code status should contain at least one state".to_string());
+            }
+            if let Some(first) = states.and_then(|items| items.first()) {
+                if json_string_field(first, "status_bar")
+                    .is_none_or(|status_bar| status_bar.trim().is_empty())
+                {
+                    errors.push("VS Code status should include status_bar copy".to_string());
+                }
+                if first
+                    .get("show_status_contains")
+                    .and_then(Value::as_array)
+                    .is_none_or(|items| items.is_empty())
+                {
+                    errors
+                        .push("VS Code status should include Show Status expectations".to_string());
+                }
+            }
+        }
+        Err(err) => errors.push(err),
+    }
+
+    if state != scenario.expected_state {
+        errors.push(format!(
+            "expected state {}, got {}",
+            scenario.expected_state, state
+        ));
+    }
+    if language != scenario.expected_language {
+        errors.push(format!(
+            "expected language {:?}, got {:?}",
+            scenario.expected_language, language
+        ));
+    }
+    if language_status != scenario.expected_language_status {
+        errors.push(format!(
+            "expected language_status {:?}, got {:?}",
+            scenario.expected_language_status, language_status
+        ));
+    }
+    if diagnostics_projected != scenario.expected_diagnostics {
+        errors.push(format!(
+            "expected {} projected diagnostic(s), got {}",
+            scenario.expected_diagnostics, diagnostics_projected
+        ));
+    }
+    if actual_diagnostics != diagnostics_projected {
+        errors.push(format!(
+            "diagnostics file has {} diagnostic(s), projection says {}",
+            actual_diagnostics, diagnostics_projected
+        ));
+    }
+    if fail_closed != scenario.expected_fail_closed {
+        errors.push(format!(
+            "expected fail_closed {}, got {}",
+            scenario.expected_fail_closed, fail_closed
+        ));
+    }
+    if actions_projected != scenario.expected_actions {
+        errors.push(format!(
+            "expected actions {:?}, got {:?}",
+            scenario.expected_actions, actions_projected
+        ));
+    }
+    if actual_actions != actions_projected.len() {
+        errors.push(format!(
+            "code action file has {} action(s), projection says {}",
+            actual_actions,
+            actions_projected.len()
+        ));
+    }
+    if static_limit_kind != scenario.expected_static_limit_kind {
+        errors.push(format!(
+            "expected static_limit_kind {:?}, got {:?}",
+            scenario.expected_static_limit_kind, static_limit_kind
+        ));
+    }
+    if fail_closed
+        && (actions_projected.len() != 1
+            || actions_projected.first().map(String::as_str) != Some("refresh"))
+    {
+        errors.push("fail-closed cases should project refresh only".to_string());
+    }
+    if fail_closed && diagnostics_projected > 0 {
+        errors.push("fail-closed cases should not project diagnostics".to_string());
+    }
+
+    DogfoodEditorGapCockpitRun {
+        name: scenario.name.clone(),
+        expected_dir,
+        projection_path,
+        diagnostics_path,
+        hover_path,
+        code_actions_path,
+        status_path,
+        state,
+        language,
+        language_status,
+        diagnostics_projected,
+        actual_diagnostics,
+        fail_closed,
+        actions_projected,
+        actual_actions,
+        static_limit_kind,
+        hover_static_before_action,
+        expected_state: scenario.expected_state.clone(),
+        expected_language: scenario.expected_language.clone(),
+        expected_language_status: scenario.expected_language_status.clone(),
+        expected_diagnostics: scenario.expected_diagnostics,
+        expected_fail_closed: scenario.expected_fail_closed,
+        expected_actions: scenario.expected_actions.clone(),
+        expected_static_limit_kind: scenario.expected_static_limit_kind.clone(),
+        reason: scenario.reason.clone(),
         errors,
     }
 }
@@ -16307,7 +23231,7 @@ fn dogfood_report_status(
     first_action_runs: &[DogfoodFirstActionRun],
     front_panel_runs: &[DogfoodFrontPanelRun],
     report_packet_index_runs: &[DogfoodReportPacketIndexRun],
-    generated_ci_cockpit_runs: &[DogfoodGeneratedCiCockpitRun],
+    preview_projection_runs: &DogfoodPreviewProjectionRuns<'_>,
     pr_inline_comment_runs: &[DogfoodPrInlineCommentRun],
 ) -> &'static str {
     if runs.iter().any(|run| !run.errors.is_empty())
@@ -16317,7 +23241,16 @@ fn dogfood_report_status(
         || report_packet_index_runs
             .iter()
             .any(|run| !run.errors.is_empty())
-        || generated_ci_cockpit_runs
+        || preview_projection_runs
+            .generated_ci_cockpit
+            .iter()
+            .any(|run| !run.errors.is_empty())
+        || preview_projection_runs
+            .language_preview
+            .iter()
+            .any(|run| !run.errors.is_empty())
+        || preview_projection_runs
+            .editor_gap_cockpit
             .iter()
             .any(|run| !run.errors.is_empty())
         || pr_inline_comment_runs
@@ -16336,7 +23269,7 @@ fn dogfood_report_markdown(
     first_action_runs: &[DogfoodFirstActionRun],
     front_panel_runs: &[DogfoodFrontPanelRun],
     report_packet_index_runs: &[DogfoodReportPacketIndexRun],
-    generated_ci_cockpit_runs: &[DogfoodGeneratedCiCockpitRun],
+    preview_projection_runs: &DogfoodPreviewProjectionRuns<'_>,
     pr_inline_comment_runs: &[DogfoodPrInlineCommentRun],
 ) -> String {
     let mut body = format!(
@@ -16347,7 +23280,7 @@ fn dogfood_report_markdown(
             first_action_runs,
             front_panel_runs,
             report_packet_index_runs,
-            generated_ci_cockpit_runs,
+            preview_projection_runs,
             pr_inline_comment_runs
         )
     );
@@ -16655,10 +23588,10 @@ fn dogfood_report_markdown(
     body.push_str("These receipts validate the generated GitHub workflow cockpit surface. They check that the job summary starts with reviewer-first guidance, missing cockpit surfaces name regeneration commands, uploaded artifacts include the review packet, gate authority stays separate, and generated CI remains advisory by default.\n\n");
     body.push_str("- Default CI blocking: no\n");
     body.push_str("- Default inline comments: off\n");
-    body.push_str("- Language grouping: deferred until preview-language evidence is ready or explicitly deferred\n\n");
+    body.push_str("- Language grouping: checked for configured preview-language adapters; Rust-only config stays unchanged\n\n");
     body.push_str("| Case | Start here | Repair commands | Gate boundary | Advisory default | Artifact upload | Language grouping |\n");
     body.push_str("| --- | --- | ---: | --- | --- | --- | --- |\n");
-    for run in generated_ci_cockpit_runs {
+    for run in preview_projection_runs.generated_ci_cockpit {
         body.push_str(&format!(
             "| `{}` | {} | {}/{} | {} | {} | {} | `{}` |\n",
             markdown_cell(&run.name),
@@ -16676,7 +23609,7 @@ fn dogfood_report_markdown(
         ));
     }
     body.push('\n');
-    for run in generated_ci_cockpit_runs {
+    for run in preview_projection_runs.generated_ci_cockpit {
         body.push_str(&format!("### Generated CI `{}`\n\n", run.name));
         body.push_str(&format!("- Command: `{}`\n", markdown_cell(&run.command)));
         body.push_str(&format!("- Duration: {} ms\n", run.duration_ms));
@@ -16695,6 +23628,182 @@ fn dogfood_report_markdown(
             "- Language grouping: `{}`\n",
             markdown_cell(&run.language_grouping_status)
         ));
+        if run.errors.is_empty() {
+            body.push_str("- Errors: none\n\n");
+        } else {
+            body.push_str("- Errors:\n");
+            for error in &run.errors {
+                body.push_str(&format!("  - `{}`\n", markdown_cell(error)));
+            }
+            body.push('\n');
+        }
+    }
+    body.push_str("## Language Preview Receipts\n\n");
+    body.push_str("These receipts run checked TypeScript and Python preview fixtures through `ripr check --mode fast`. They prove preview labels, structured static limits, disabled-language behavior, and no cross-language related-test routing without changing analyzer truth, editor routing, CI blocking, provider calls, source edits, generated tests, or mutation execution.\n\n");
+    body.push_str("- Default CI blocking: no\n");
+    body.push_str("- Preview adapters: opt-in through `[languages]`\n");
+    body.push_str("- Receipt outputs: `target/ripr/dogfood/language-preview/<case>/check.json` and `human.txt`\n\n");
+    body.push_str("| Case | Language | Enabled | Findings | Preview | Missing preview status | Related tests | Classes | Static limits |\n");
+    body.push_str("| --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |\n");
+    for run in preview_projection_runs.language_preview {
+        body.push_str(&format!(
+            "| `{}` | `{}` | {} | {} | {} | {} | {} | `{}` | `{}` |\n",
+            markdown_cell(&run.name),
+            markdown_cell(&run.language),
+            if run.preview_enabled { "yes" } else { "no" },
+            run.findings,
+            run.preview_findings,
+            run.missing_preview_status,
+            run.related_tests,
+            markdown_cell(&run.classifications.join(", ")),
+            markdown_cell(&run.static_limit_kinds.join(", "))
+        ));
+    }
+    body.push('\n');
+    for run in preview_projection_runs.language_preview {
+        body.push_str(&format!("### Language Preview `{}`\n\n", run.name));
+        body.push_str(&format!("- Language: `{}`\n", markdown_cell(&run.language)));
+        body.push_str(&format!("- Preview enabled: {}\n", run.preview_enabled));
+        body.push_str(&format!("- Root: `{}`\n", normalize_path(&run.root)));
+        body.push_str(&format!("- Diff: `{}`\n", normalize_path(&run.diff)));
+        body.push_str(&format!(
+            "- Actual outputs: `{}`\n",
+            normalize_path(&run.actual_dir)
+        ));
+        body.push_str(&format!(
+            "- JSON receipt: `{}`\n",
+            normalize_path(&run.json_path)
+        ));
+        body.push_str(&format!(
+            "- Human receipt: `{}`\n",
+            normalize_path(&run.human_path)
+        ));
+        body.push_str(&format!("- Duration: {} ms\n", run.duration_ms));
+        body.push_str(&format!(
+            "- Findings: {} (expected {})\n",
+            run.findings, run.expected_findings
+        ));
+        body.push_str(&format!(
+            "- Preview findings: {} (expected {})\n",
+            run.preview_findings, run.expected_preview_findings
+        ));
+        body.push_str(&format!(
+            "- Missing preview status: {} (expected {})\n",
+            run.missing_preview_status, run.expected_missing_preview_status
+        ));
+        body.push_str(&format!(
+            "- Related tests: {} (expected {})\n",
+            run.related_tests, run.expected_related_tests
+        ));
+        body.push_str(&format!(
+            "- Classifications: `{}` (expected `{}`)\n",
+            markdown_cell(&run.classifications.join(", ")),
+            markdown_cell(&run.expected_classifications.join(", "))
+        ));
+        body.push_str(&format!(
+            "- Static limits: `{}` (expected `{}`)\n",
+            markdown_cell(&run.static_limit_kinds.join(", ")),
+            markdown_cell(&run.expected_static_limit_kinds.join(", "))
+        ));
+        body.push_str(&format!("- Reason: {}\n", markdown_cell(&run.reason)));
+        if run.errors.is_empty() {
+            body.push_str("- Errors: none\n\n");
+        } else {
+            body.push_str("- Errors:\n");
+            for error in &run.errors {
+                body.push_str(&format!("  - `{}`\n", markdown_cell(error)));
+            }
+            body.push('\n');
+        }
+    }
+    body.push_str("## Editor Gap Cockpit Receipts\n\n");
+    body.push_str("These receipts validate checked `fixtures/editor_gap_cockpit` projections for the local repair cockpit. They verify actionable Rust repair routing, preview static-limit ordering, disabled-language no-diagnostic state, wrong-root and stale fail-closed behavior, and no-action refresh-only behavior without changing analyzer truth, source files, generated tests, provider calls, mutation execution, policy, gates, or PR comments.\n\n");
+    body.push_str("- Default CI blocking: no\n");
+    body.push_str("- Editor behavior: saved-workspace and projection-only\n");
+    body.push_str("- Receipt outputs: `fixtures/editor_gap_cockpit/<case>/expected/*`\n\n");
+    body.push_str(
+        "| Case | State | Language | Diagnostics | Fail closed | Actions | Static limit |\n",
+    );
+    body.push_str("| --- | --- | --- | ---: | --- | --- | --- |\n");
+    for run in preview_projection_runs.editor_gap_cockpit {
+        body.push_str(&format!(
+            "| `{}` | `{}` | `{}` | {} | {} | `{}` | `{}` |\n",
+            markdown_cell(&run.name),
+            markdown_cell(&run.state),
+            markdown_cell(run.language.as_deref().unwrap_or("not_projected")),
+            run.diagnostics_projected,
+            if run.fail_closed { "yes" } else { "no" },
+            markdown_cell(&run.actions_projected.join(", ")),
+            markdown_cell(run.static_limit_kind.as_deref().unwrap_or(""))
+        ));
+    }
+    body.push('\n');
+    for run in preview_projection_runs.editor_gap_cockpit {
+        body.push_str(&format!("### Editor Gap Cockpit `{}`\n\n", run.name));
+        body.push_str(&format!("- State: `{}`\n", markdown_cell(&run.state)));
+        body.push_str(&format!(
+            "- Expected state: `{}`\n",
+            markdown_cell(&run.expected_state)
+        ));
+        body.push_str(&format!(
+            "- Language: `{}` (expected `{}`)\n",
+            markdown_cell(run.language.as_deref().unwrap_or("not_projected")),
+            markdown_cell(run.expected_language.as_deref().unwrap_or("not_projected"))
+        ));
+        body.push_str(&format!(
+            "- Language status: `{}` (expected `{}`)\n",
+            markdown_cell(run.language_status.as_deref().unwrap_or("not_projected")),
+            markdown_cell(
+                run.expected_language_status
+                    .as_deref()
+                    .unwrap_or("not_projected")
+            )
+        ));
+        body.push_str(&format!(
+            "- Diagnostics: {} projected, {} actual, expected {}\n",
+            run.diagnostics_projected, run.actual_diagnostics, run.expected_diagnostics
+        ));
+        body.push_str(&format!(
+            "- Fail closed: {} (expected {})\n",
+            run.fail_closed, run.expected_fail_closed
+        ));
+        body.push_str(&format!(
+            "- Actions: `{}` (expected `{}`; actual count {})\n",
+            markdown_cell(&run.actions_projected.join(", ")),
+            markdown_cell(&run.expected_actions.join(", ")),
+            run.actual_actions
+        ));
+        body.push_str(&format!(
+            "- Static limit: `{}` (expected `{}`)\n",
+            markdown_cell(run.static_limit_kind.as_deref().unwrap_or("")),
+            markdown_cell(run.expected_static_limit_kind.as_deref().unwrap_or(""))
+        ));
+        body.push_str(&format!(
+            "- Static limit before action: {}\n",
+            run.hover_static_before_action
+        ));
+        body.push_str(&format!(
+            "- Projection JSON: `{}`\n",
+            normalize_path(&run.projection_path)
+        ));
+        body.push_str(&format!(
+            "- Diagnostics JSON: `{}`\n",
+            normalize_path(&run.diagnostics_path)
+        ));
+        body.push_str(&format!("- Hover: `{}`\n", normalize_path(&run.hover_path)));
+        body.push_str(&format!(
+            "- Code actions JSON: `{}`\n",
+            normalize_path(&run.code_actions_path)
+        ));
+        body.push_str(&format!(
+            "- VS Code status JSON: `{}`\n",
+            normalize_path(&run.status_path)
+        ));
+        body.push_str(&format!(
+            "- Expected directory: `{}`\n",
+            normalize_path(&run.expected_dir)
+        ));
+        body.push_str(&format!("- Reason: {}\n", markdown_cell(&run.reason)));
         if run.errors.is_empty() {
             body.push_str("- Errors: none\n\n");
         } else {
@@ -16885,7 +23994,7 @@ fn dogfood_report_json(
     first_action_runs: &[DogfoodFirstActionRun],
     front_panel_runs: &[DogfoodFrontPanelRun],
     report_packet_index_runs: &[DogfoodReportPacketIndexRun],
-    generated_ci_cockpit_runs: &[DogfoodGeneratedCiCockpitRun],
+    preview_projection_runs: &DogfoodPreviewProjectionRuns<'_>,
     pr_inline_comment_runs: &[DogfoodPrInlineCommentRun],
 ) -> String {
     let mut body = format!(
@@ -16896,7 +24005,7 @@ fn dogfood_report_json(
             first_action_runs,
             front_panel_runs,
             report_packet_index_runs,
-            generated_ci_cockpit_runs,
+            preview_projection_runs,
             pr_inline_comment_runs
         )
     );
@@ -17206,8 +24315,12 @@ fn dogfood_report_json(
     body.push_str("\n    ]\n  },\n  \"generated_ci_cockpit\": {\n");
     body.push_str("    \"default_ci_blocking\": false,\n");
     body.push_str("    \"default_inline_comments\": \"off\",\n");
-    body.push_str("    \"language_grouping\": \"deferred\",\n    \"cases\": [\n");
-    for (index, run) in generated_ci_cockpit_runs.iter().enumerate() {
+    body.push_str("    \"language_grouping\": \"checked\",\n    \"cases\": [\n");
+    for (index, run) in preview_projection_runs
+        .generated_ci_cockpit
+        .iter()
+        .enumerate()
+    {
         if index > 0 {
             body.push_str(",\n");
         }
@@ -17245,6 +24358,215 @@ fn dogfood_report_json(
         body.push_str(&format!(
             "        \"language_grouping_status\": \"{}\",\n",
             json_escape(&run.language_grouping_status)
+        ));
+        body.push_str("        \"errors\": [");
+        write_json_string_array(&mut body, &run.errors);
+        body.push_str("]\n      }");
+    }
+    body.push_str("\n    ]\n  },\n  \"language_preview\": {\n");
+    body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str("    \"preview_adapters\": \"opt-in\",\n");
+    body.push_str(
+        "    \"receipt_dir\": \"target/ripr/dogfood/language-preview\",\n    \"cases\": [\n",
+    );
+    for (index, run) in preview_projection_runs.language_preview.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("      {\n");
+        body.push_str(&format!(
+            "        \"name\": \"{}\",\n",
+            json_escape(&run.name)
+        ));
+        body.push_str(&format!(
+            "        \"language\": \"{}\",\n",
+            json_escape(&run.language)
+        ));
+        body.push_str(&format!(
+            "        \"root\": \"{}\",\n",
+            json_escape(&normalize_path(&run.root))
+        ));
+        body.push_str(&format!(
+            "        \"diff\": \"{}\",\n",
+            json_escape(&normalize_path(&run.diff))
+        ));
+        body.push_str(&format!(
+            "        \"actual_dir\": \"{}\",\n",
+            json_escape(&normalize_path(&run.actual_dir))
+        ));
+        body.push_str(&format!(
+            "        \"json_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.json_path))
+        ));
+        body.push_str(&format!(
+            "        \"human_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.human_path))
+        ));
+        body.push_str(&format!("        \"duration_ms\": {},\n", run.duration_ms));
+        body.push_str(&format!(
+            "        \"preview_enabled\": {},\n",
+            run.preview_enabled
+        ));
+        body.push_str(&format!("        \"findings\": {},\n", run.findings));
+        body.push_str(&format!(
+            "        \"language_findings\": {},\n",
+            run.language_findings
+        ));
+        body.push_str(&format!(
+            "        \"preview_findings\": {},\n",
+            run.preview_findings
+        ));
+        body.push_str(&format!(
+            "        \"missing_preview_status\": {},\n",
+            run.missing_preview_status
+        ));
+        body.push_str(&format!(
+            "        \"related_tests\": {},\n",
+            run.related_tests
+        ));
+        body.push_str("        \"classifications\": [");
+        write_json_string_array(&mut body, &run.classifications);
+        body.push_str("],\n");
+        body.push_str("        \"static_limit_kinds\": [");
+        write_json_string_array(&mut body, &run.static_limit_kinds);
+        body.push_str("],\n");
+        body.push_str(&format!(
+            "        \"expected_findings\": {},\n",
+            run.expected_findings
+        ));
+        body.push_str(&format!(
+            "        \"expected_preview_findings\": {},\n",
+            run.expected_preview_findings
+        ));
+        body.push_str(&format!(
+            "        \"expected_missing_preview_status\": {},\n",
+            run.expected_missing_preview_status
+        ));
+        body.push_str(&format!(
+            "        \"expected_related_tests\": {},\n",
+            run.expected_related_tests
+        ));
+        body.push_str("        \"expected_classifications\": [");
+        write_json_string_array(&mut body, &run.expected_classifications);
+        body.push_str("],\n");
+        body.push_str("        \"expected_static_limit_kinds\": [");
+        write_json_string_array(&mut body, &run.expected_static_limit_kinds);
+        body.push_str("],\n");
+        body.push_str(&format!(
+            "        \"reason\": \"{}\",\n",
+            json_escape(&run.reason)
+        ));
+        body.push_str("        \"errors\": [");
+        write_json_string_array(&mut body, &run.errors);
+        body.push_str("]\n      }");
+    }
+    body.push_str("\n    ]\n  },\n  \"editor_gap_cockpit\": {\n");
+    body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str("    \"editor_behavior\": \"saved-workspace projection-only\",\n");
+    body.push_str("    \"receipt_dir\": \"fixtures/editor_gap_cockpit\",\n    \"cases\": [\n");
+    for (index, run) in preview_projection_runs
+        .editor_gap_cockpit
+        .iter()
+        .enumerate()
+    {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("      {\n");
+        body.push_str(&format!(
+            "        \"name\": \"{}\",\n",
+            json_escape(&run.name)
+        ));
+        body.push_str(&format!(
+            "        \"expected_dir\": \"{}\",\n",
+            json_escape(&normalize_path(&run.expected_dir))
+        ));
+        body.push_str(&format!(
+            "        \"projection_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.projection_path))
+        ));
+        body.push_str(&format!(
+            "        \"diagnostics_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.diagnostics_path))
+        ));
+        body.push_str(&format!(
+            "        \"hover_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.hover_path))
+        ));
+        body.push_str(&format!(
+            "        \"code_actions_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.code_actions_path))
+        ));
+        body.push_str(&format!(
+            "        \"status_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.status_path))
+        ));
+        body.push_str(&format!(
+            "        \"state\": \"{}\",\n",
+            json_escape(&run.state)
+        ));
+        body.push_str(&format!(
+            "        \"language\": {},\n",
+            json_optional_string(run.language.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"language_status\": {},\n",
+            json_optional_string(run.language_status.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"diagnostics_projected\": {},\n",
+            run.diagnostics_projected
+        ));
+        body.push_str(&format!(
+            "        \"actual_diagnostics\": {},\n",
+            run.actual_diagnostics
+        ));
+        body.push_str(&format!("        \"fail_closed\": {},\n", run.fail_closed));
+        body.push_str("        \"actions_projected\": [");
+        write_json_string_array(&mut body, &run.actions_projected);
+        body.push_str("],\n");
+        body.push_str(&format!(
+            "        \"actual_actions\": {},\n",
+            run.actual_actions
+        ));
+        body.push_str(&format!(
+            "        \"static_limit_kind\": {},\n",
+            json_optional_string(run.static_limit_kind.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"hover_static_before_action\": {},\n",
+            run.hover_static_before_action
+        ));
+        body.push_str(&format!(
+            "        \"expected_state\": \"{}\",\n",
+            json_escape(&run.expected_state)
+        ));
+        body.push_str(&format!(
+            "        \"expected_language\": {},\n",
+            json_optional_string(run.expected_language.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"expected_language_status\": {},\n",
+            json_optional_string(run.expected_language_status.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"expected_diagnostics\": {},\n",
+            run.expected_diagnostics
+        ));
+        body.push_str(&format!(
+            "        \"expected_fail_closed\": {},\n",
+            run.expected_fail_closed
+        ));
+        body.push_str("        \"expected_actions\": [");
+        write_json_string_array(&mut body, &run.expected_actions);
+        body.push_str("],\n");
+        body.push_str(&format!(
+            "        \"expected_static_limit_kind\": {},\n",
+            json_optional_string(run.expected_static_limit_kind.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"reason\": \"{}\",\n",
+            json_escape(&run.reason)
         ));
         body.push_str("        \"errors\": [");
         write_json_string_array(&mut body, &run.errors);
@@ -17757,6 +25079,12 @@ fn write_json_string_array(body: &mut String, values: &[String]) {
 
 fn markdown_cell(value: &str) -> String {
     value.replace('|', "\\|")
+}
+
+fn json_optional_string(value: Option<&str>) -> String {
+    value
+        .map(|value| format!("\"{}\"", json_escape(value)))
+        .unwrap_or_else(|| "null".to_string())
 }
 
 fn json_escape(value: &str) -> String {
@@ -18508,6 +25836,239 @@ fn resolve_markdown_link(source: &Path, target: &str) -> PathBuf {
     }
 }
 
+fn worktree(args: &[String]) -> Result<(), String> {
+    match args.first().map(String::as_str) {
+        Some("doctor") => worktree_doctor(),
+        Some(other) => Err(format!(
+            "unknown worktree command `{other}`\nusage: cargo xtask worktree doctor"
+        )),
+        None => Err("missing worktree command\nusage: cargo xtask worktree doctor".to_string()),
+    }
+}
+
+fn worktree_doctor() -> Result<(), String> {
+    let branch = git_value(&["rev-parse", "--abbrev-ref", "HEAD"]);
+    let status_changes = collect_worktree_status_changes()?;
+    let behind_origin_main = branch_behind_origin_main()?;
+    let target_ripr_exists = Path::new("target/ripr").exists();
+    let sample_target_exists = Path::new("crates/ripr/examples/sample/target").exists();
+    let badge_refresh_context = badge_refresh_context();
+    let findings = worktree_doctor_findings(
+        &branch,
+        behind_origin_main,
+        &status_changes,
+        target_ripr_exists,
+        sample_target_exists,
+        badge_refresh_context,
+    );
+    finish_worktree_doctor_report(&findings)
+}
+
+fn branch_behind_origin_main() -> Result<usize, String> {
+    let output = run_output_optional(
+        "git",
+        &["rev-list", "--left-right", "--count", "HEAD...origin/main"],
+    )?;
+    let trimmed = output.trim();
+    if trimmed.is_empty() {
+        return Ok(0);
+    }
+    let mut parts = trimmed.split_whitespace();
+    let _ahead = parts.next();
+    let Some(behind) = parts.next() else {
+        return Ok(0);
+    };
+    behind
+        .parse::<usize>()
+        .map_err(|err| format!("failed to parse origin/main behind count `{behind}`: {err}"))
+}
+
+fn worktree_doctor_findings(
+    branch: &str,
+    behind_origin_main: usize,
+    status_changes: &[ChangedPath],
+    target_ripr_exists: bool,
+    sample_target_exists: bool,
+    badge_refresh_context: bool,
+) -> Vec<WorktreeDoctorFinding> {
+    let mut findings = Vec::new();
+    let dirty = !status_changes.is_empty();
+
+    if branch == "main" && dirty {
+        findings.push(worktree_error(
+            "main branch has uncommitted changes; start PR work in a fresh worktree from origin/main",
+        ));
+    }
+
+    if behind_origin_main > 0 {
+        findings.push(worktree_error(&format!(
+            "branch is behind origin/main by {behind_origin_main} commit(s); refresh before opening or updating a PR",
+        )));
+    }
+
+    for change in status_changes {
+        let path = change.path.trim_end_matches('/');
+        if is_badge_endpoint_json(path) && !badge_refresh_context {
+            findings.push(worktree_error(&format!(
+                "generated badge endpoint is dirty outside a badge refresh context: {}",
+                format_changed_path(change)
+            )));
+            continue;
+        }
+        if is_ripr_target_artifact(path) && !is_deletion_only(change) {
+            findings.push(worktree_error(&format!(
+                "generated RIPR target artifact is dirty: {}",
+                format_changed_path(change)
+            )));
+            continue;
+        }
+        if is_sample_target_artifact(path) && !is_deletion_only(change) {
+            findings.push(worktree_error(&format!(
+                "sample workspace target artifact is dirty: {}",
+                format_changed_path(change)
+            )));
+        }
+    }
+
+    if target_ripr_exists {
+        findings.push(worktree_warning(
+            "target/ripr exists; remove local report artifacts before final worktree cleanup if this workspace is done",
+        ));
+    }
+    if sample_target_exists {
+        findings.push(worktree_warning(
+            "crates/ripr/examples/sample/target exists; run `cargo clean` in that sample workspace or remove the residue before handoff",
+        ));
+    }
+
+    let layers = changed_source_layers(status_changes);
+    if layers.len() > 3 && !has_work_item_marker(status_changes) {
+        findings.push(worktree_warning(&format!(
+            "changes span multiple source-of-truth layers without an obvious work item marker: {}",
+            layers.into_iter().collect::<Vec<_>>().join(", ")
+        )));
+    }
+
+    findings
+}
+
+fn worktree_error(message: &str) -> WorktreeDoctorFinding {
+    WorktreeDoctorFinding {
+        severity: WorktreeDoctorSeverity::Error,
+        message: message.to_string(),
+    }
+}
+
+fn worktree_warning(message: &str) -> WorktreeDoctorFinding {
+    WorktreeDoctorFinding {
+        severity: WorktreeDoctorSeverity::Warning,
+        message: message.to_string(),
+    }
+}
+
+fn changed_source_layers(changes: &[ChangedPath]) -> BTreeSet<&'static str> {
+    changes
+        .iter()
+        .filter_map(|change| source_layer_for_path(change.path.trim_end_matches('/')))
+        .collect()
+}
+
+fn source_layer_for_path(path: &str) -> Option<&'static str> {
+    if path.starts_with(".github/workflows/") {
+        Some("workflows")
+    } else if path == ".ripr/traceability.toml" {
+        Some("traceability")
+    } else if path.starts_with(".ripr/goals/") {
+        Some("goal-manifest")
+    } else if path.starts_with("metrics/") {
+        Some("metrics")
+    } else if path.starts_with("docs/specs/") {
+        Some("specs")
+    } else if path.starts_with("docs/policy/") {
+        Some("policy-docs")
+    } else if path.starts_with("docs/IMPLEMENTATION_") || path == "docs/ROADMAP.md" {
+        Some("planning-docs")
+    } else if path.starts_with("docs/") {
+        Some("docs")
+    } else if path.starts_with("crates/") || path.starts_with("xtask/") {
+        Some("code")
+    } else if path.starts_with("fixtures/") {
+        Some("fixtures")
+    } else if path.starts_with("badges/") {
+        Some("badge-endpoints")
+    } else if path.starts_with("schemas/") {
+        Some("schemas")
+    } else if path.starts_with("policy/") {
+        Some("policy")
+    } else {
+        None
+    }
+}
+
+fn has_work_item_marker(changes: &[ChangedPath]) -> bool {
+    changes.iter().any(|change| {
+        let path = change.path.trim_end_matches('/');
+        path.starts_with(".ripr/goals/")
+            || path == "docs/IMPLEMENTATION_PLAN.md"
+            || path == "docs/IMPLEMENTATION_CAMPAIGNS.md"
+            || path == "docs/ROADMAP.md"
+    })
+}
+
+fn finish_worktree_doctor_report(findings: &[WorktreeDoctorFinding]) -> Result<(), String> {
+    let errors = findings
+        .iter()
+        .filter(|finding| finding.severity == WorktreeDoctorSeverity::Error)
+        .collect::<Vec<_>>();
+    let warnings = findings
+        .iter()
+        .filter(|finding| finding.severity == WorktreeDoctorSeverity::Warning)
+        .collect::<Vec<_>>();
+    let status = if !errors.is_empty() {
+        "fail"
+    } else if !warnings.is_empty() {
+        "warn"
+    } else {
+        "pass"
+    };
+    let mut body = format!("# ripr worktree doctor\n\nStatus: {status}\n\n");
+    body.push_str("Checks:\n\n");
+    body.push_str("- branch is not dirty main\n");
+    body.push_str("- branch is current with origin/main\n");
+    body.push_str("- generated badge endpoints are not dirty in ordinary work\n");
+    body.push_str("- generated target/sample artifacts are not dirty\n");
+    body.push_str("- broad source-of-truth diffs have an obvious work item marker\n");
+    if !errors.is_empty() {
+        body.push_str("\nErrors:\n\n");
+        for finding in &errors {
+            body.push_str(&format!("- {}\n", finding.message));
+        }
+    }
+    if !warnings.is_empty() {
+        body.push_str("\nWarnings:\n\n");
+        for finding in &warnings {
+            body.push_str(&format!("- {}\n", finding.message));
+        }
+    }
+    if findings.is_empty() {
+        body.push_str("\nNo findings.\n");
+    }
+    write_report("worktree-doctor.md", &body)?;
+    println!("{body}");
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "worktree doctor found blocking issues; see target/ripr/reports/worktree-doctor.md\n{}",
+            errors
+                .iter()
+                .map(|finding| finding.message.as_str())
+                .collect::<Vec<_>>()
+                .join("\n")
+        ))
+    }
+}
+
 fn goals(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("status") | Some("report") | None => goals_status(),
@@ -18529,6 +26090,7 @@ fn check_campaign() -> Result<(), String> {
     let (manifest, parse_violations) = parse_campaign_manifest(manifest_path)?;
     violations.extend(parse_violations);
     validate_campaign_manifest(&manifest, &mut violations)?;
+    violations.extend(campaign_source_truth_violations()?);
     finish_campaign_report(&violations)
 }
 
@@ -18579,6 +26141,9 @@ fn finish_campaign_report(violations: &[String]) -> Result<(), String> {
             fix_kind: FixKind::AuthorDecisionRequired,
             recommended_fixes: &[
                 "Keep .ripr/goals/active.toml synchronized with docs/IMPLEMENTATION_CAMPAIGNS.md.",
+                "Keep focused tracker manifests referenced from docs and separate from .ripr/goals/active.toml.",
+                "Give done work items proof command entries.",
+                "Keep declared proposal, plan, spec, receipt, and closeout paths pointing at files that exist.",
                 "Use only done, active, ready, or blocked work item statuses.",
                 "Give every non-blocked work item a branch, acceptance claim, and valid command list.",
                 "Use blocked_by or blocked_reason when a work item is blocked.",
@@ -18668,9 +26233,12 @@ fn validate_campaign_manifest(
             "docs/IMPLEMENTATION_CAMPAIGNS.md does not mention active campaign id `{id}`"
         ));
     }
-    match manifest.status.as_deref() {
-        Some("active") => {}
-        Some(status) => violations.push(format!("campaign has unsupported status `{status}`")),
+    let campaign_status = manifest.status.as_deref();
+    match campaign_status {
+        Some("active" | "closed") => {}
+        Some(status) => violations.push(format!(
+            "campaign has unsupported status `{status}`; use active or closed"
+        )),
         None => violations.push("campaign is missing `status`".to_string()),
     }
     if manifest
@@ -18764,6 +26332,23 @@ fn validate_campaign_manifest(
         }
     }
 
+    if campaign_status == Some("closed") {
+        let unfinished = manifest
+            .work_items
+            .iter()
+            .filter_map(|item| {
+                let id = item.id.as_deref()?;
+                (item.status.as_deref() != Some("done")).then_some(id)
+            })
+            .collect::<Vec<_>>();
+        if !unfinished.is_empty() {
+            violations.push(format!(
+                "closed campaign has unfinished work items: {}",
+                unfinished.join(", ")
+            ));
+        }
+    }
+
     for item in &manifest.work_items {
         let Some(item_id) = item.id.as_ref() else {
             continue;
@@ -18796,6 +26381,332 @@ fn validate_campaign_manifest(
     }
 
     Ok(())
+}
+
+fn campaign_source_truth_violations() -> Result<Vec<String>, String> {
+    campaign_source_truth_violations_for_root(Path::new("."))
+}
+
+fn campaign_source_truth_violations_for_root(root: &Path) -> Result<Vec<String>, String> {
+    let mut violations = Vec::new();
+    let active_path = root.join(".ripr/goals/active.toml");
+    let (active_manifest, active_parse_violations) = parse_campaign_manifest(&active_path)?;
+    violations.extend(active_parse_violations);
+
+    let referenced = referenced_goal_manifest_paths(root)?;
+    for reference in &referenced {
+        if !root.join(reference).exists() {
+            violations.push(format!(
+                "campaign docs reference `{reference}`, but that manifest does not exist"
+            ));
+        }
+    }
+
+    for path in focused_goal_manifest_paths(root)? {
+        let normalized = normalize_repo_relative(root, &path);
+        let text = read_text_lossy(&path)?;
+        let (manifest, parse_violations) = parse_campaign_manifest(&path)?;
+        violations.extend(parse_violations);
+        validate_focused_campaign_source_truth(
+            root,
+            &normalized,
+            &text,
+            &manifest,
+            &active_manifest,
+            &mut violations,
+        )?;
+    }
+
+    Ok(violations)
+}
+
+fn referenced_goal_manifest_paths(root: &Path) -> Result<BTreeSet<String>, String> {
+    let mut paths = BTreeSet::new();
+    for relative in [
+        "docs/IMPLEMENTATION_CAMPAIGNS.md",
+        "docs/IMPLEMENTATION_PLAN.md",
+        "docs/ROADMAP.md",
+        "docs/REPO_TRACKING_MODEL.md",
+        "docs/CODEX_GOALS.md",
+    ] {
+        let path = root.join(relative);
+        if !path.exists() {
+            continue;
+        }
+        let text = read_text_lossy(&path)?;
+        paths.extend(extract_goal_manifest_paths(&text));
+    }
+    Ok(paths)
+}
+
+fn extract_goal_manifest_paths(text: &str) -> BTreeSet<String> {
+    let mut paths = BTreeSet::new();
+    for raw in text.split(|ch: char| {
+        ch.is_whitespace()
+            || matches!(
+                ch,
+                '`' | '"' | '\'' | '(' | ')' | '[' | ']' | '<' | '>' | ',' | ';'
+            )
+    }) {
+        let mut token = raw.trim_end_matches(|ch: char| {
+            matches!(ch, '.' | ':' | ',' | ';' | ')' | ']') && !raw.ends_with(".toml")
+        });
+        while let Some(stripped) = token.strip_prefix("../") {
+            token = stripped;
+        }
+        if let Some(index) = token.find(".ripr/goals/") {
+            let candidate = &token[index..];
+            if candidate.ends_with(".toml") {
+                paths.insert(
+                    normalize_slashes(candidate)
+                        .trim_start_matches("./")
+                        .to_string(),
+                );
+            }
+        }
+    }
+    paths
+}
+
+fn focused_goal_manifest_paths(root: &Path) -> Result<Vec<PathBuf>, String> {
+    let goals_dir = root.join(".ripr/goals");
+    let mut paths = Vec::new();
+    let entries = fs::read_dir(&goals_dir)
+        .map_err(|err| format!("read {}: {err}", normalize_path(&goals_dir)))?;
+    for entry in entries {
+        let entry =
+            entry.map_err(|err| format!("read {} entry: {err}", normalize_path(&goals_dir)))?;
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("toml") {
+            continue;
+        }
+        let normalized = normalize_repo_relative(root, &path);
+        if normalized == ".ripr/goals/active.toml" {
+            continue;
+        }
+        let text = read_text_lossy(&path)?;
+        let (manifest, _) = parse_campaign_manifest(&path)?;
+        if is_focused_campaign_manifest(&normalized, &text, &manifest) {
+            paths.push(path);
+        }
+    }
+    paths.sort();
+    Ok(paths)
+}
+
+fn is_focused_campaign_manifest(path: &str, text: &str, manifest: &CampaignManifest) -> bool {
+    path.starts_with(".ripr/goals/lane")
+        || text.contains("Focused")
+        || manifest.status.as_deref() == Some("tracker")
+        || manifest.issue.is_some()
+        || manifest.lane.is_some()
+}
+
+fn validate_focused_campaign_source_truth(
+    root: &Path,
+    manifest_path: &str,
+    text: &str,
+    manifest: &CampaignManifest,
+    active_manifest: &CampaignManifest,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !text.contains("not the active Codex Goals manifest") {
+        violations.push(format!(
+            "focused tracker manifest `{manifest_path}` must state that it is not the active Codex Goals manifest"
+        ));
+    }
+    if manifest.id.is_some() && manifest.id == active_manifest.id {
+        violations.push(format!(
+            "focused tracker manifest `{manifest_path}` reuses the active campaign id `{}`",
+            manifest.id.as_deref().unwrap_or("<missing>")
+        ));
+    }
+    if manifest.title.is_some() && manifest.title == active_manifest.title {
+        violations.push(format!(
+            "focused tracker manifest `{manifest_path}` reuses the active campaign title `{}`",
+            manifest.title.as_deref().unwrap_or("<missing>")
+        ));
+    }
+
+    for item in &manifest.work_items {
+        let item_id = item.id.as_deref().unwrap_or("<missing>");
+        if item.status.as_deref() == Some("done") && item.commands.is_empty() {
+            violations.push(format!(
+                "{manifest_path}:{item_id} is done but has no proof command entries"
+            ));
+        }
+        validate_manifest_artifact_path(
+            root,
+            manifest_path,
+            item_id,
+            "proposal",
+            item.proposal.as_deref(),
+            violations,
+        );
+        validate_manifest_artifact_path(
+            root,
+            manifest_path,
+            item_id,
+            "plan",
+            item.plan.as_deref(),
+            violations,
+        );
+        validate_manifest_artifact_path(
+            root,
+            manifest_path,
+            item_id,
+            "spec",
+            item.spec.as_deref(),
+            violations,
+        );
+        for spec in &item.specs {
+            validate_manifest_artifact_path(
+                root,
+                manifest_path,
+                item_id,
+                "specs",
+                Some(spec.as_str()),
+                violations,
+            );
+        }
+        validate_manifest_artifact_path(
+            root,
+            manifest_path,
+            item_id,
+            "receipt",
+            item.receipt.as_deref(),
+            violations,
+        );
+        validate_manifest_artifact_path(
+            root,
+            manifest_path,
+            item_id,
+            "closeout",
+            item.closeout.as_deref(),
+            violations,
+        );
+        if let Some(acceptance) = item.acceptance.as_ref() {
+            for spec_id in extract_spec_ids(acceptance) {
+                if !spec_id_has_file(root, &spec_id)? {
+                    violations.push(format!(
+                        "{manifest_path}:{item_id} references `{spec_id}` in acceptance, but docs/specs has no matching file"
+                    ));
+                }
+            }
+        }
+    }
+
+    if manifest.status.as_deref() == Some("closed") {
+        validate_closed_manifest_capability_next(root, manifest_path, violations)?;
+    }
+
+    Ok(())
+}
+
+fn validate_manifest_artifact_path(
+    root: &Path,
+    manifest_path: &str,
+    item_id: &str,
+    field: &str,
+    value: Option<&str>,
+    violations: &mut Vec<String>,
+) {
+    let Some(value) = value else {
+        return;
+    };
+    let relative = repo_relative_reference(value);
+    if relative.is_empty() {
+        violations.push(format!(
+            "{manifest_path}:{item_id} has empty `{field}` source-of-truth path"
+        ));
+        return;
+    }
+    if !root.join(&relative).exists() {
+        violations.push(format!(
+            "{manifest_path}:{item_id} `{field}` references missing `{relative}`"
+        ));
+    }
+}
+
+fn validate_closed_manifest_capability_next(
+    root: &Path,
+    manifest_path: &str,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let matrix_path = root.join("docs/CAPABILITY_MATRIX.md");
+    if !matrix_path.exists() {
+        return Ok(());
+    }
+    let matrix = read_text_lossy(&matrix_path)?;
+    for (index, line) in matrix.lines().enumerate() {
+        if !line.starts_with('|') || !line.contains(manifest_path) {
+            continue;
+        }
+        let columns = line
+            .trim_matches('|')
+            .split('|')
+            .map(|column| column.trim().trim_matches('`'))
+            .collect::<Vec<_>>();
+        if columns.len() < 5 {
+            continue;
+        }
+        if columns[4] != "maintenance" {
+            violations.push(format!(
+                "docs/CAPABILITY_MATRIX.md:{} references closed manifest `{manifest_path}` but next is `{}` instead of `maintenance`",
+                index + 1,
+                columns[4]
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn repo_relative_reference(value: &str) -> String {
+    let mut normalized = normalize_slashes(value)
+        .trim()
+        .trim_matches('`')
+        .trim_matches('"')
+        .to_string();
+    while let Some(stripped) = normalized.strip_prefix("../") {
+        normalized = stripped.to_string();
+    }
+    normalized.trim_start_matches("./").to_string()
+}
+
+fn normalize_repo_relative(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .map(normalize_path)
+        .unwrap_or_else(|_| normalize_path(path))
+}
+
+fn extract_spec_ids(text: &str) -> BTreeSet<String> {
+    text.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '-'))
+        .filter(|part| is_spec_id(part))
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn spec_id_has_file(root: &Path, spec_id: &str) -> Result<bool, String> {
+    let specs_dir = root.join("docs/specs");
+    if !specs_dir.exists() {
+        return Ok(false);
+    }
+    for entry in fs::read_dir(&specs_dir)
+        .map_err(|err| format!("read {}: {err}", normalize_path(&specs_dir)))?
+    {
+        let entry =
+            entry.map_err(|err| format!("read {} entry: {err}", normalize_path(&specs_dir)))?;
+        let Some(name) = entry.file_name().to_str().map(ToString::to_string) else {
+            continue;
+        };
+        if name
+            .strip_prefix(spec_id)
+            .is_some_and(|rest| rest.starts_with('-') && rest.ends_with(".md"))
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn campaign_status_report_body(manifest: &CampaignManifest, violations: &[String]) -> String {
@@ -19000,12 +26911,18 @@ fn assign_campaign_array(
 ) {
     if let Some(item) = current.as_mut() {
         match key {
+            "specs" => item.specs = values,
             "commands" => item.commands = values,
             "blocked_by" => item.blocked_by = values,
             _ => {}
         }
-    } else if key == "end_state" {
-        manifest.end_state = values;
+    } else {
+        match key {
+            "end_state" => manifest.end_state = values,
+            "hard_rules" => manifest.hard_rules = values,
+            "non_goals" => manifest.non_goals = values,
+            _ => {}
+        }
     }
 }
 
@@ -19027,6 +26944,21 @@ fn assign_campaign_scalar(
             }),
             "branch" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
                 item.branch = Some(parsed);
+            }),
+            "proposal" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
+                item.proposal = Some(parsed);
+            }),
+            "plan" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
+                item.plan = Some(parsed);
+            }),
+            "spec" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
+                item.spec = Some(parsed);
+            }),
+            "receipt" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
+                item.receipt = Some(parsed);
+            }),
+            "closeout" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
+                item.closeout = Some(parsed);
             }),
             "acceptance" => {
                 assign_quoted_campaign_value(value, line_number, violations, |parsed| {
@@ -19054,6 +26986,10 @@ fn assign_campaign_scalar(
             "status" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
                 manifest.status = Some(parsed);
             }),
+            "issue" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
+                manifest.issue = Some(parsed);
+            }),
+            "lane" => manifest.lane = Some(value.trim_matches('"').to_string()),
             _ => violations.push(format!(
                 "campaign manifest line {line_number} uses unsupported campaign field `{key}`"
             )),
@@ -19200,6 +27136,174 @@ fn check_generated() -> Result<(), String> {
         },
         &violations,
     )
+}
+
+fn check_generated_clean() -> Result<(), String> {
+    let changes = collect_pr_changes()?;
+    let badge_refresh_context = badge_refresh_context();
+    let violations = generated_clean_violations(&changes, badge_refresh_context);
+
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "generated-clean.md",
+            check: "check-generated-clean",
+            why_it_matters: "Generated evidence and build residue should not leak into ordinary PR diffs. Public badge endpoint counts are generated trust markers, and target artifacts are local/CI outputs.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Remove generated target artifacts from the PR diff.",
+                "Remove badges/*.json diffs unless this is the generated badge endpoint refresh PR.",
+                "For public badge count refreshes, use `cargo xtask badges` or the Badge Endpoints workflow on an explicit badge refresh branch.",
+            ],
+            rerun_command: "cargo xtask check-generated-clean",
+            exception_template: None,
+        },
+        &violations,
+    )
+}
+
+fn check_badge_diff_policy() -> Result<(), String> {
+    check_badge_diff_policy_with_context(badge_refresh_context())
+}
+
+fn check_badge_diff_policy_with_context(badge_refresh_context: bool) -> Result<(), String> {
+    let changes = collect_pr_changes()?;
+    let violations = badge_diff_policy_violations(&changes, badge_refresh_context);
+
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "badge-diff-policy.md",
+            check: "check-badge-diff-policy",
+            why_it_matters: "Public RIPR badge endpoint counts are generated trust markers. Ordinary docs, README, and implementation PRs may edit badge links or layout, but must not hand-author badges/*.json endpoint numbers.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Remove badges/*.json diffs from ordinary PRs.",
+                "For repo-scoped badge count refreshes, use `cargo xtask badges` or the Badge Endpoints workflow.",
+                "Carry generated endpoint JSON only in an explicit `badge: refresh public endpoints` PR or automation/badge-endpoints branch.",
+            ],
+            rerun_command: "cargo xtask check-badge-diff-policy",
+            exception_template: None,
+        },
+        &violations,
+    )
+}
+
+fn badge_refresh_context() -> bool {
+    let mut candidates = vec![git_value(&["rev-parse", "--abbrev-ref", "HEAD"])];
+    for key in [
+        "GITHUB_HEAD_REF",
+        "GITHUB_REF_NAME",
+        "GITHUB_REF",
+        "BRANCH_NAME",
+        "GITHUB_PR_TITLE",
+        "PR_TITLE",
+        "PULL_REQUEST_TITLE",
+        "RIPR_PR_TITLE",
+        "RIPR_WORK_ITEM",
+    ] {
+        if let Ok(value) = std::env::var(key) {
+            candidates.push(value);
+        }
+    }
+    if let Some(title) = github_event_pull_request_title() {
+        candidates.push(title);
+    }
+    candidates
+        .iter()
+        .any(|candidate| is_badge_refresh_context(candidate))
+}
+
+fn github_event_pull_request_title() -> Option<String> {
+    let event_path = std::env::var("GITHUB_EVENT_PATH").ok()?;
+    let text = read_text_lossy(&PathBuf::from(event_path)).ok()?;
+    github_event_pull_request_title_from_text(&text)
+}
+
+fn github_event_pull_request_title_from_text(text: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(text).ok()?;
+    value
+        .get("pull_request")
+        .and_then(|pull_request| pull_request.get("title"))
+        .or_else(|| value.get("issue").and_then(|issue| issue.get("title")))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
+fn is_badge_refresh_context(value: &str) -> bool {
+    let normalized = value
+        .trim()
+        .trim_start_matches("refs/heads/")
+        .to_ascii_lowercase();
+    normalized == "automation/badge-endpoints"
+        || normalized == "badge: refresh public endpoints"
+        || normalized.contains("badge-refresh")
+        || normalized.contains("badge/endpoints")
+        || normalized.contains("badge-endpoints")
+}
+
+fn generated_clean_violations(changes: &[ChangedPath], badge_refresh_context: bool) -> Vec<String> {
+    let mut violations = badge_diff_policy_violations(changes, badge_refresh_context);
+    for change in changes {
+        let path = change.path.trim_end_matches('/');
+        if is_badge_endpoint_json(path) {
+            continue;
+        }
+
+        if is_ripr_target_artifact(path) && !is_deletion_only(change) {
+            violations.push(format!(
+                "generated RIPR target artifact is present in the PR diff: {}\n  rule: keep PR-scoped RIPR evidence under ignored target/ripr artifacts, not committed source control",
+                format_changed_path(change)
+            ));
+            continue;
+        }
+
+        if is_sample_target_artifact(path) && !is_deletion_only(change) {
+            violations.push(format!(
+                "sample workspace build output is present in the PR diff: {}\n  rule: remove crates/ripr/examples/sample/target residue before review",
+                format_changed_path(change)
+            ));
+        }
+    }
+    violations
+}
+
+fn badge_diff_policy_violations(
+    changes: &[ChangedPath],
+    badge_refresh_context: bool,
+) -> Vec<String> {
+    let mut violations = Vec::new();
+    for change in changes {
+        let path = change.path.trim_end_matches('/');
+        if is_badge_endpoint_json(path) && !badge_refresh_context {
+            violations.push(format!(
+                "generated badge endpoint changed in an ordinary PR: {}\n  rule: do not manually edit RIPR badge numbers; remove this diff or move it to the generated `badge: refresh public endpoints` PR",
+                format_changed_path(change)
+            ));
+        }
+    }
+    violations
+}
+
+fn is_badge_endpoint_json(path: &str) -> bool {
+    path.starts_with("badges/")
+        && path.ends_with(".json")
+        && path["badges/".len()..].find('/').is_none()
+}
+
+fn is_ripr_target_artifact(path: &str) -> bool {
+    path == "target/ripr" || path.starts_with("target/ripr/")
+}
+
+fn is_sample_target_artifact(path: &str) -> bool {
+    path == "crates/ripr/examples/sample/target"
+        || path.starts_with("crates/ripr/examples/sample/target/")
+}
+
+fn is_deletion_only(change: &ChangedPath) -> bool {
+    !change.statuses.is_empty()
+        && change
+            .statuses
+            .iter()
+            .all(|status| status.chars().all(|character| character == 'D'))
 }
 
 /// Parse a `[workspace.lints.<section>]` block from `Cargo.toml`-shaped TOML.
@@ -20566,6 +28670,200 @@ fn receipt_index_entries() -> Result<Vec<ReportIndexEntry>, String> {
     file_index_entries(&receipts_dir(), &[])
 }
 
+fn report_index_repo_ops_packets(
+    reports: &[ReportIndexEntry],
+    receipts: &[ReportIndexEntry],
+) -> Vec<ReportIndexRepoOpsPacket> {
+    repo_ops_packet_specs()
+        .iter()
+        .map(|spec| {
+            let artifacts = spec
+                .artifacts
+                .iter()
+                .map(|path| report_index_repo_ops_artifact(path, reports, receipts))
+                .collect::<Vec<_>>();
+            ReportIndexRepoOpsPacket {
+                id: spec.id,
+                label: spec.label,
+                status: report_index_repo_ops_status(&artifacts),
+                command: spec.command,
+                description: spec.description,
+                artifacts,
+            }
+        })
+        .collect()
+}
+
+fn repo_ops_packet_specs() -> &'static [RepoOpsPacketSpec] {
+    &[
+        RepoOpsPacketSpec {
+            id: "command_mutability_catalog",
+            label: "Command mutability catalog",
+            command: "cargo xtask commands",
+            description: "Classifies xtask commands by mutability and judgment requirements.",
+            artifacts: &[
+                "target/ripr/reports/commands.md",
+                "target/ripr/reports/commands.json",
+            ],
+        },
+        RepoOpsPacketSpec {
+            id: "command_catalog_check",
+            label: "Command catalog check",
+            command: "cargo xtask check-command-catalog",
+            description: "Verifies every xtask command has a current mutability catalog entry.",
+            artifacts: &["target/ripr/reports/command-catalog.md"],
+        },
+        RepoOpsPacketSpec {
+            id: "pr_ready",
+            label: "PR ready cockpit",
+            command: "cargo xtask pr-ready",
+            description: "Composes local repo-ops checks into one advisory PR readiness packet.",
+            artifacts: &[
+                "target/ripr/reports/pr-ready.md",
+                "target/ripr/reports/pr-ready.json",
+            ],
+        },
+        RepoOpsPacketSpec {
+            id: "repo_cockpit",
+            label: "Repo cockpit",
+            command: "cargo xtask cockpit",
+            description: "Composes repo-level operating packets into one advisory maintainer front panel.",
+            artifacts: &[
+                "target/ripr/reports/cockpit.md",
+                "target/ripr/reports/cockpit.json",
+            ],
+        },
+        RepoOpsPacketSpec {
+            id: "worktree_doctor",
+            label: "Worktree doctor",
+            command: "cargo xtask worktree doctor",
+            description: "Reports local branch, generated-residue, and worktree hygiene.",
+            artifacts: &["target/ripr/reports/worktree-doctor.md"],
+        },
+        RepoOpsPacketSpec {
+            id: "pr_triage",
+            label: "Open PR triage",
+            command: "cargo xtask pr-triage-report",
+            description: "Summarizes stale, duplicate, behind, sensitive, and generated-artifact PRs.",
+            artifacts: &[
+                "target/ripr/reports/pr-triage.md",
+                "target/ripr/reports/pr-triage.json",
+            ],
+        },
+        RepoOpsPacketSpec {
+            id: "gh_pr_status",
+            label: "PR merge readiness",
+            command: "cargo xtask gh-pr-status --pr <number>",
+            description: "Summarizes one PR's merge state, checks, reviews, and safe next action.",
+            artifacts: &[
+                "target/ripr/reports/gh-pr-status.md",
+                "target/ripr/reports/gh-pr-status.json",
+            ],
+        },
+        RepoOpsPacketSpec {
+            id: "generated_clean",
+            label: "Generated-clean guard",
+            command: "cargo xtask check-generated-clean",
+            description: "Rejects generated residue and badge endpoint diffs in ordinary PRs.",
+            artifacts: &["target/ripr/reports/generated-clean.md"],
+        },
+        RepoOpsPacketSpec {
+            id: "badge_diff_policy",
+            label: "Badge diff policy",
+            command: "cargo xtask check-badge-diff-policy",
+            description: "Confirms public badge endpoint JSON is owned by badge-refresh automation.",
+            artifacts: &["target/ripr/reports/badge-diff-policy.md"],
+        },
+        RepoOpsPacketSpec {
+            id: "critic",
+            label: "Critic report",
+            command: "cargo xtask critic",
+            description: "Advisory adversarial review packet for missing evidence and risky drift.",
+            artifacts: &[
+                "target/ripr/reports/critic.md",
+                "target/ripr/reports/critic.json",
+            ],
+        },
+        RepoOpsPacketSpec {
+            id: "receipts",
+            label: "Gate receipts",
+            command: "cargo xtask receipts check",
+            description: "Machine-readable local gate evidence and receipt validation summary.",
+            artifacts: &[
+                "target/ripr/reports/receipts.md",
+                "target/ripr/receipts/check-pr.json",
+            ],
+        },
+        RepoOpsPacketSpec {
+            id: "suggested_fixes",
+            label: "Suggested fixes",
+            command: "cargo xtask suggested-fixes",
+            description: "Deterministic repair patch for safe repo-hygiene-only fixes.",
+            artifacts: &[
+                "target/ripr/reports/suggested-fixes.md",
+                "target/ripr/reports/suggested-fixes.patch",
+            ],
+        },
+        RepoOpsPacketSpec {
+            id: "check_pr",
+            label: "Review-ready gate",
+            command: "cargo xtask check-pr",
+            description: "Local review-ready gate packet and matching check-pr receipt.",
+            artifacts: &[
+                "target/ripr/reports/check-pr.md",
+                "target/ripr/receipts/check-pr.json",
+            ],
+        },
+    ]
+}
+
+fn report_index_repo_ops_artifact(
+    path: &str,
+    reports: &[ReportIndexEntry],
+    receipts: &[ReportIndexEntry],
+) -> ReportIndexRepoOpsArtifact {
+    let source = if let Some(file) = path.strip_prefix("target/ripr/reports/") {
+        reports.iter().find(|entry| entry.file == file)
+    } else if let Some(file) = path.strip_prefix("target/ripr/receipts/") {
+        receipts.iter().find(|entry| entry.file == file)
+    } else {
+        None
+    };
+    let status = source
+        .map(|entry| entry.status.clone())
+        .unwrap_or_else(|| "missing".to_string());
+    ReportIndexRepoOpsArtifact {
+        path: path.to_string(),
+        available: source.is_some(),
+        status,
+    }
+}
+
+fn report_index_repo_ops_status(artifacts: &[ReportIndexRepoOpsArtifact]) -> String {
+    if artifacts.iter().all(|artifact| !artifact.available) {
+        return "missing".to_string();
+    }
+    if artifacts.iter().any(|artifact| artifact.status == "fail") {
+        return "fail".to_string();
+    }
+    if artifacts.iter().any(|artifact| artifact.status == "warn") {
+        return "warn".to_string();
+    }
+    if artifacts
+        .iter()
+        .any(|artifact| artifact.status == "actionable")
+    {
+        return "actionable".to_string();
+    }
+    if artifacts.iter().any(|artifact| !artifact.available) {
+        return "incomplete".to_string();
+    }
+    if artifacts.iter().all(|artifact| artifact.status == "pass") {
+        return "pass".to_string();
+    }
+    "present".to_string()
+}
+
 fn file_index_entries(dir: &Path, exclude_names: &[&str]) -> Result<Vec<ReportIndexEntry>, String> {
     let mut entries = Vec::new();
     if !dir.exists() {
@@ -20842,6 +29140,15 @@ fn collect_pr_changes() -> Result<Vec<ChangedPath>, String> {
         .collect())
 }
 
+fn collect_worktree_status_changes() -> Result<Vec<ChangedPath>, String> {
+    let mut changes = BTreeMap::<String, BTreeSet<String>>::new();
+    add_short_status_output(&mut changes, &run_output("git", &["status", "--short"])?);
+    Ok(changes
+        .into_iter()
+        .map(|(path, statuses)| ChangedPath { path, statuses })
+        .collect())
+}
+
 fn add_name_status_output(changes: &mut BTreeMap<String, BTreeSet<String>>, output: &str) {
     for line in output.lines() {
         let parts = line.split('\t').collect::<Vec<_>>();
@@ -21021,6 +29328,19 @@ fn report_index_markdown(
         ));
     }
 
+    let repo_ops_packets = report_index_repo_ops_packets(reports, receipts);
+    body.push_str("\n## Repo-Ops Packets\n\n");
+    body.push_str("| Packet | Status | Artifacts | Next command |\n| --- | --- | --- | --- |\n");
+    for packet in &repo_ops_packets {
+        body.push_str(&format!(
+            "| {} | `{}` | {} | `{}` |\n",
+            markdown_cell(packet.label),
+            markdown_cell(&packet.status),
+            markdown_cell(&repo_ops_artifacts_markdown(&packet.artifacts)),
+            markdown_cell(packet.command)
+        ));
+    }
+
     body.push_str("\n## Available Reports\n\n");
     if reports.is_empty() {
         body.push_str("- None detected.\n");
@@ -21089,6 +29409,12 @@ fn report_index_json(
     body.push_str("  \"receipts\": [\n");
     write_report_index_entry_array(&mut body, receipts);
     body.push_str("  ],\n");
+    body.push_str("  \"repo_ops_packets\": [\n");
+    write_report_index_repo_ops_packet_array(
+        &mut body,
+        &report_index_repo_ops_packets(reports, receipts),
+    );
+    body.push_str("  ],\n");
     body.push_str("  \"missing_expected_reports\": [");
     write_json_string_array(&mut body, missing);
     body.push_str("],\n");
@@ -21097,6 +29423,14 @@ fn report_index_json(
     body.push_str("]\n");
     body.push_str("}\n");
     body
+}
+
+fn repo_ops_artifacts_markdown(artifacts: &[ReportIndexRepoOpsArtifact]) -> String {
+    artifacts
+        .iter()
+        .map(|artifact| format!("{} ({})", artifact.path, artifact.status))
+        .collect::<Vec<_>>()
+        .join("<br>")
 }
 
 fn write_report_index_entry_array(body: &mut String, entries: &[ReportIndexEntry]) {
@@ -21120,6 +29454,63 @@ fn write_report_index_entry_array(body: &mut String, entries: &[ReportIndexEntry
         body.push_str("    }");
     }
     if !entries.is_empty() {
+        body.push('\n');
+    }
+}
+
+fn write_report_index_repo_ops_packet_array(
+    body: &mut String,
+    packets: &[ReportIndexRepoOpsPacket],
+) {
+    for (index, packet) in packets.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!("      \"id\": \"{}\",\n", json_escape(packet.id)));
+        body.push_str(&format!(
+            "      \"label\": \"{}\",\n",
+            json_escape(packet.label)
+        ));
+        body.push_str(&format!(
+            "      \"status\": \"{}\",\n",
+            json_escape(&packet.status)
+        ));
+        body.push_str(&format!(
+            "      \"next_command\": \"{}\",\n",
+            json_escape(packet.command)
+        ));
+        body.push_str(&format!(
+            "      \"description\": \"{}\",\n",
+            json_escape(packet.description)
+        ));
+        body.push_str("      \"artifacts\": [\n");
+        for (artifact_index, artifact) in packet.artifacts.iter().enumerate() {
+            if artifact_index > 0 {
+                body.push_str(",\n");
+            }
+            body.push_str("        {\n");
+            body.push_str(&format!(
+                "          \"path\": \"{}\",\n",
+                json_escape(&artifact.path)
+            ));
+            body.push_str(&format!(
+                "          \"status\": \"{}\",\n",
+                json_escape(&artifact.status)
+            ));
+            body.push_str(&format!(
+                "          \"available\": {}\n",
+                artifact.available
+            ));
+            body.push_str("        }");
+        }
+        if !packet.artifacts.is_empty() {
+            body.push('\n');
+        }
+        body.push_str("      ]\n");
+        body.push_str("    }");
+    }
+    if !packets.is_empty() {
         body.push('\n');
     }
 }
@@ -25598,75 +33989,98 @@ mod tests {
     };
     use super::{
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
-        CheckStatus, CheckViolation, CiFullEvidenceGate, CwdCommand, DogfoodFirstActionRun,
-        DogfoodFrontPanelRun, DogfoodGateRun, DogfoodGeneratedCiCockpitRun,
-        DogfoodPrInlineCommentRun, DogfoodReportPacketIndexRun, DogfoodRun,
+        CheckStatus, CheckViolation, CiFullEvidenceGate, CommandCatalogEntry, CwdCommand,
+        DogfoodEditorGapCockpitRun, DogfoodFirstActionRun, DogfoodFrontPanelRun, DogfoodGateRun,
+        DogfoodGeneratedCiCockpitRun, DogfoodLanguagePreviewRun, DogfoodPrInlineCommentRun,
+        DogfoodPreviewProjectionRuns, DogfoodReportPacketIndexRun, DogfoodRun,
         EvidenceQualityScorecardInput, EvidenceQualityScorecardInputs,
-        EvidenceQualityScorecardReport, FixKind, GENERATED_CI_FIRST_ACTION_REPAIR,
-        GENERATED_CI_FRONT_PANEL_REPAIR, GENERATED_CI_PACKET_INDEX_REPAIR, LocalContextAllow,
-        MarkdownLink, ReceiptRecord, RepoExposureLatencyReport, RepoExposureLatencyRun,
-        RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode,
-        SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
-        TestOracleClass, badge_artifact_command_args, badge_artifact_jobs,
-        badge_artifact_native_slot, badge_artifacts_summary_markdown, build_lsp_cockpit_report,
-        build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
-        build_targeted_test_outcome_report, check_allow_attributes, check_droid_review_config,
-        check_executable_files, check_file_policy, check_local_context, check_network_policy,
-        check_no_panic_family, check_process_policy, check_static_language, check_workflows,
-        ci_full_evidence_gates, collect_panic_findings, collect_semantic_panic_findings,
-        critic_findings, dogfood_class_counts, dogfood_first_action_scenarios,
-        dogfood_gate_adoption_scenarios, dogfood_generated_ci_cockpit_run_from_workflow,
-        dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
-        dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
-        dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
-        dogfood_report_packet_index_scenarios, evaluate_semantic_no_panic_policy,
-        evidence_quality_scorecard_from_values, evidence_quality_scorecard_json,
-        evidence_quality_scorecard_markdown, extract_json_object_usize_map, extract_json_string,
-        extract_json_warnings, extract_workflow_run_blocks, first_line_difference,
-        forbidden_panic_patterns, glob_matches, golden_changes_without_blessing,
+        EvidenceQualityScorecardReport, EvidenceQualityTrendInputs, EvidenceQualityTrendReport,
+        FixKind, GENERATED_CI_FIRST_ACTION_REPAIR, GENERATED_CI_FRONT_PANEL_REPAIR,
+        GENERATED_CI_PACKET_INDEX_REPAIR, GhPrStatusPullRequest, GhPrStatusReview,
+        LocalContextAllow, LspCockpitFixture, LspCockpitReport, MarkdownLink, PrTriageCheck,
+        PrTriageFinding, PrTriagePullRequest, ReceiptRecord, RepoExposureLatencyReport,
+        RepoExposureLatencyRun, RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
+        ReportIndexRepoOpsArtifact, SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold,
+        StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass, WorktreeDoctorFinding,
+        WorktreeDoctorSeverity, badge_artifact_command_args, badge_artifact_jobs,
+        badge_artifact_native_slot, badge_artifacts_summary_markdown, badge_diff_policy_violations,
+        build_lsp_cockpit_report, build_no_panic_allowlist_proposals,
+        build_repo_exposure_latency_report, build_targeted_test_outcome_report,
+        campaign_source_truth_violations_for_root, check_allow_attributes,
+        check_badge_diff_policy_with_context, check_droid_review_config, check_executable_files,
+        check_file_policy, check_local_context, check_network_policy, check_no_panic_family,
+        check_process_policy, check_static_language, check_workflows, ci_full_evidence_gates,
+        cockpit_json, cockpit_markdown, collect_panic_findings, collect_semantic_panic_findings,
+        command_catalog, command_catalog_violations, commands_report_json,
+        commands_report_markdown, critic_findings, days_from_civil, dogfood_class_counts,
+        dogfood_editor_gap_cockpit_run, dogfood_editor_gap_cockpit_scenarios,
+        dogfood_first_action_scenarios, dogfood_gate_adoption_scenarios,
+        dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
+        dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
+        dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
+        dogfood_pr_review_front_panel_scenarios, dogfood_report_json, dogfood_report_markdown,
+        dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
+        evaluate_semantic_no_panic_policy, evidence_quality_scorecard_from_values,
+        evidence_quality_scorecard_json, evidence_quality_scorecard_markdown,
+        evidence_quality_trend_from_values, evidence_quality_trend_json,
+        evidence_quality_trend_markdown, extract_json_object_usize_map, extract_json_string,
+        extract_json_warnings, extract_workflow_run_blocks,
+        finding_alignment_raw_to_canonical_ratio, finish_worktree_doctor_report,
+        first_line_difference, forbidden_panic_patterns, generated_clean_violations,
+        gh_pr_safe_next_action, gh_pr_status_json, gh_pr_status_markdown, gh_pr_status_readiness,
+        github_event_pull_request_title_from_text, glob_matches, golden_changes_without_blessing,
         golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
-        install_hooks_in, is_bdd_test_name, is_campaign_path, is_dependency_surface_candidate,
-        is_docs_path, is_evidence_path, is_generated_candidate, is_known_campaign_command,
-        is_non_rust_programming_candidate, is_policy_path, is_production_path, is_receipt_status,
-        is_ripr_managed_hook, is_snake_case_id, is_spec_id, is_stale_agent_boundary_scan_target,
-        json_escape, json_number_after, json_string_values_for_key, json_summary_count,
-        known_commands, known_xtask_command, lane1_evidence_audit_from_repo_exposure,
-        lane1_evidence_audit_json, lane1_evidence_audit_markdown, local_context_line_findings,
-        local_markdown_target, lsp_cockpit_report, lsp_cockpit_report_json,
-        lsp_cockpit_report_markdown, markdown_links_in_text, mutation_calibration_report_json,
+        install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
+        is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
+        is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
+        is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
+        is_stale_agent_boundary_scan_target, json_escape, json_number_after,
+        json_string_values_for_key, json_summary_count, known_commands, known_xtask_command,
+        lane1_evidence_audit_from_repo_exposure, lane1_evidence_audit_json,
+        lane1_evidence_audit_markdown, local_context_line_findings, local_markdown_target,
+        lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
+        markdown_links_in_text, mutation_calibration_report_json,
         mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
-        no_panic_toml_string, non_rust_programming_retention_reason,
+        next_spec_id_from_ids, no_panic_toml_string, non_rust_programming_retention_reason,
         normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
         panic_family_from_pattern, parse_campaign_manifest, parse_file_policy_allowlist,
-        parse_inline_array, parse_mutation_calibration_args, parse_mutation_outcomes_json,
-        parse_no_panic_allowlist_toml, parse_no_panic_allowlist_toml_v2, parse_reason,
-        parse_repo_exposure_static_seams, parse_sarif_policy_args, parse_sarif_policy_results,
+        parse_gh_pr_status_args, parse_gh_pr_status_pull_request, parse_inline_array,
+        parse_mutation_calibration_args, parse_mutation_outcomes_json,
+        parse_no_panic_allowlist_toml, parse_no_panic_allowlist_toml_v2,
+        parse_pr_triage_pull_requests, parse_reason, parse_repo_exposure_static_seams,
+        parse_required_status_contexts, parse_sarif_policy_args, parse_sarif_policy_results,
         parse_static_language_allowlist, parse_string_value, parse_targeted_test_outcome_args,
-        pr_shape_warnings, pr_summary_body, precommit_report_body, public_contract_rows,
-        read_lsp_cockpit_json_value, read_mutation_input_json, receipt_json, receipt_specs,
-        receipt_status_from_reports, render_no_panic_allowlist_proposals_markdown,
+        pr_body_validation_warning, pr_checks_summary, pr_ready_json, pr_ready_markdown,
+        pr_ready_next_action, pr_ready_status, pr_ready_status_from_report_status,
+        pr_sensitive_file_reason, pr_shape_warnings, pr_summary_body, pr_title_family,
+        pr_triage_findings, pr_triage_json, pr_triage_markdown, precommit_report_body,
+        public_contract_rows, read_lsp_cockpit_json_value, read_mutation_input_json, receipt_json,
+        receipt_specs, receipt_status_from_reports, render_no_panic_allowlist_proposals_markdown,
         render_no_panic_allowlist_proposals_toml, repo_badge_artifact_command_args,
         repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
         repo_exposure_latency_json, repo_exposure_latency_markdown, repo_exposure_latency_run,
         repo_exposure_latency_run_from_output, repo_exposure_latency_status,
         repo_exposure_latency_trace, repo_root, repo_seam_inventory_command_args_for_root,
-        report_index_markdown, report_index_missing_expected, report_status_from_text,
+        report_index_json, report_index_markdown, report_index_missing_expected,
+        report_index_repo_ops_packets, report_index_repo_ops_status, report_status_from_text,
         ripr_command_literals_in_text, ripr_debug_binary, ripr_pre_commit_hook,
         run_ci_full_evidence_gates, sarif_policy_report_json, sarif_policy_report_markdown,
         semantic_selector_matches, should_scan_static_language_path, should_skip_path,
-        sorted_allowlist_content, spec_id_from_path, static_language_allowlist_covers,
-        status_for_report, suspicious_runtime_file_names, targeted_test_outcome,
-        targeted_test_outcome_report_json, targeted_test_outcome_report_markdown,
-        test_efficiency_entry, test_efficiency_report_json, test_efficiency_report_markdown,
-        test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
-        unknown_command_message, validate_local_context_allowlist, vscode_compile_command,
-        vscode_extension_dir, vscode_package_command, vscode_package_version,
-        vscode_test_e2e_command, windows_absolute_path_tokens, workflow_runtime_violations,
+        sorted_allowlist_content, sorted_markdown_index_table_content, spec_id_from_path,
+        spec_ids_in_text, spec_numbering_violations, specs, static_language_allowlist_covers,
+        status_for_report, suggested_fixes_patch, suspicious_runtime_file_names,
+        targeted_test_outcome, targeted_test_outcome_report_json,
+        targeted_test_outcome_report_markdown, test_efficiency_entry, test_efficiency_report_json,
+        test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
+        test_oracle_tests_in_text, unknown_command_message, validate_local_context_allowlist,
+        vscode_compile_command, vscode_extension_dir, vscode_package_command,
+        vscode_package_version, vscode_test_e2e_command, windows_absolute_path_tokens,
+        workflow_runtime_violations, worktree, worktree_doctor_findings,
         write_repo_exposure_latency_report,
     };
     use super::{
         DeclaredIntent, LocalContextFinding,
-        MUTATION_CALIBRATION_STATIC_WITHOUT_RUNTIME_SAMPLE_LIMIT, TestEfficiencyEntry,
+        MUTATION_CALIBRATION_STATIC_WITHOUT_RUNTIME_SAMPLE_LIMIT, PrReadyStep, TestEfficiencyEntry,
         TestEfficiencyValue, TestIntentDeclaration, TestIntentKind, TestIntentReportSummary,
         apply_duplicate_discriminator_groups, apply_test_intent_to_entries,
         build_mutation_calibration_report, parse_test_intent_manifest, test_efficiency_metrics,
@@ -25714,6 +34128,431 @@ mod tests {
             fs::create_dir_all(parent).unwrap();
         }
         fs::write(path, text).unwrap();
+    }
+
+    #[test]
+    fn editor_gap_cockpit_fixture_corpus_validator_accepts_complete_matrix() -> Result<(), String> {
+        with_temp_cwd("editor-gap-cockpit-fixtures", |root| {
+            write_editor_gap_cockpit_corpus(root, true);
+
+            let mut violations = Vec::new();
+            super::validate_editor_gap_cockpit_fixture_corpus(&mut violations)?;
+            assert_eq!(violations, Vec::<String>::new());
+
+            let fixture_dirs = super::lsp_cockpit_fixture_dirs()?;
+            let fixture_names = fixture_dirs
+                .iter()
+                .map(|(fixture, _)| fixture.as_str())
+                .collect::<BTreeSet<_>>();
+            assert!(fixture_names.contains("editor_gap_cockpit/rust_actionable"));
+            assert!(fixture_names.contains("editor_gap_cockpit/typescript_preview_static_limit"));
+            assert!(fixture_names.contains("editor_gap_cockpit/python_preview_static_limit"));
+            assert!(fixture_names.contains("editor_gap_cockpit/disabled_language"));
+            assert!(fixture_names.contains("editor_gap_cockpit/wrong_root"));
+            assert!(fixture_names.contains("editor_gap_cockpit/stale_artifact"));
+            assert!(fixture_names.contains("editor_gap_cockpit/no_actionable_gap"));
+            let (preview_name, preview_path) = fixture_dirs
+                .iter()
+                .find(|(fixture, _)| {
+                    fixture.as_str() == "editor_gap_cockpit/typescript_preview_static_limit"
+                })
+                .ok_or_else(|| "typescript preview fixture must exist".to_string())?;
+            let preview = super::lsp_cockpit_fixture_report(preview_name, preview_path).and_then(
+                |report| {
+                    report.ok_or_else(|| "typescript preview fixture report must exist".to_string())
+                },
+            )?;
+            assert_eq!(preview.diagnostic_count, 1);
+            assert!(preview.context.refresh_available);
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn editor_gap_cockpit_fixture_corpus_validator_reports_missing_and_misordered_cases()
+    -> Result<(), String> {
+        with_temp_cwd("editor-gap-cockpit-violations", |root| {
+            let mut violations = Vec::new();
+            super::validate_editor_gap_cockpit_fixture_corpus(&mut violations)?;
+            assert!(violations.iter().any(|violation| {
+                violation.contains("editor gap cockpit fixture corpus is missing")
+            }));
+
+            write_editor_gap_cockpit_corpus(root, false);
+            let mut violations = Vec::new();
+            super::validate_editor_gap_cockpit_fixture_corpus(&mut violations)?;
+            assert!(violations.iter().any(|violation| {
+                violation.contains(
+                    "editor gap cockpit case typescript_preview_static_limit hover must show static limits before action language",
+                )
+            }));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn editor_first_run_usability_fixture_corpus_validator_accepts_complete_matrix()
+    -> Result<(), String> {
+        with_temp_cwd("editor-first-run-usability-fixtures", |root| {
+            write_editor_first_run_usability_corpus(root);
+
+            let mut violations = Vec::new();
+            super::validate_editor_first_run_usability_fixture_corpus(&mut violations)?;
+            assert_eq!(violations, Vec::<String>::new());
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn editor_first_run_usability_fixture_corpus_validator_reports_unsafe_states()
+    -> Result<(), String> {
+        with_temp_cwd("editor-first-run-usability-violations", |root| {
+            let mut violations = Vec::new();
+            super::validate_editor_first_run_usability_fixture_corpus(&mut violations)?;
+            assert!(violations.iter().any(|violation| {
+                violation.contains("editor first-run usability fixture corpus is missing")
+            }));
+
+            write_editor_first_run_usability_corpus(root);
+            write_editor_first_run_status(root, "server_missing", "active", None);
+            write_editor_first_run_actions(root, "setup_ok", &[]);
+            write_editor_first_run_actions(root, "artifact_missing", &["Copy first repair packet"]);
+            write(
+                &root.join(
+                    "fixtures/editor_first_run_usability/artifact_stale/expected/receipt-status.json",
+                ),
+                &serde_json::json!({
+                    "schema_version": "0.1",
+                    "receipt_state": "receipt_missing",
+                    "runtime_adequacy_claim": true,
+                    "gate_eligibility_claim": true
+                })
+                .to_string(),
+            );
+
+            let mut violations = Vec::new();
+            super::validate_editor_first_run_usability_fixture_corpus(&mut violations)?;
+            assert!(violations.iter().any(|violation| {
+                violation
+                    .contains("editor first-run usability case server_missing must fail closed")
+            }));
+            assert!(violations.iter().any(|violation| {
+                violation
+                    .contains("editor first-run usability case setup_ok must include Copy first repair packet")
+            }));
+            assert!(violations.iter().any(|violation| {
+                violation.contains(
+                    "editor first-run usability case artifact_missing must not expose first repair packet",
+                )
+            }));
+            assert!(violations.iter().any(|violation| {
+                violation
+                    .contains("editor first-run usability artifact_stale must record receipt_stale")
+            }));
+            assert!(violations.iter().any(|violation| {
+                violation.contains(
+                    "editor first-run usability case artifact_stale receipt-status must deny runtime_adequacy_claim",
+                )
+            }));
+            assert!(violations.iter().any(|violation| {
+                violation.contains(
+                    "editor first-run usability case artifact_stale receipt-status must deny gate_eligibility_claim",
+                )
+            }));
+            Ok(())
+        })
+    }
+
+    fn write_editor_first_run_usability_corpus(root: &Path) {
+        let corpus = root.join("fixtures/editor_first_run_usability");
+        write(
+            &corpus.join("SPEC.md"),
+            "# Fixture Corpus: editor_first_run_usability\n\nSpec: RIPR-SPEC-0049\nSpec: RIPR-SPEC-0050\n\n## Given\n\nEditor setup artifacts exist.\n\n## When\n\nThe first-run usability contract is checked.\n\n## Then\n\nVisible states are pinned.\n\n## Must Not\n\n- Claim source edits.\n",
+        );
+        for case in super::EDITOR_FIRST_RUN_USABILITY_CASES {
+            write_editor_first_run_status(
+                root,
+                case,
+                editor_first_run_projection(case),
+                editor_first_run_next_action(case),
+            );
+            write_editor_first_run_actions(root, case, &editor_first_run_actions(case));
+            write_editor_first_run_receipt(
+                root,
+                case,
+                editor_first_run_receipt_state(case),
+                false,
+                false,
+            );
+            write(
+                &root.join(format!(
+                    "fixtures/editor_first_run_usability/{case}/expected/setup-diagnosis.md"
+                )),
+                "# RIPR setup diagnosis\n\nNext safe action: refresh or inspect.\n\nLimits: no source edits.\n",
+            );
+        }
+    }
+
+    fn editor_first_run_projection(case: &str) -> &'static str {
+        match case {
+            "server_missing" | "language_disabled" | "adapter_unavailable" | "artifact_stale" => {
+                "fail_closed"
+            }
+            _ => "active",
+        }
+    }
+
+    fn editor_first_run_next_action(case: &str) -> Option<&'static str> {
+        match case {
+            "setup_ok" | "receipt_improved" | "receipt_unchanged" => {
+                Some("copy first repair packet")
+            }
+            _ => None,
+        }
+    }
+
+    fn editor_first_run_actions(case: &str) -> Vec<&'static str> {
+        match case {
+            "setup_ok" | "receipt_improved" | "receipt_unchanged" => {
+                vec![
+                    "Copy first repair packet",
+                    "Refresh Analysis - Saved Workspace Check",
+                ]
+            }
+            _ => vec!["Refresh Analysis - Saved Workspace Check"],
+        }
+    }
+
+    fn editor_first_run_receipt_state(case: &str) -> &'static str {
+        match case {
+            "receipt_improved" => "receipt_movement_improved",
+            "receipt_unchanged" => "receipt_movement_unchanged",
+            "artifact_stale" => "receipt_stale",
+            _ => "receipt_missing",
+        }
+    }
+
+    fn write_editor_first_run_status(
+        root: &Path,
+        case: &str,
+        projection: &str,
+        next_safe_action: Option<&str>,
+    ) {
+        let mut status = serde_json::json!({
+            "schema_version": "0.1",
+            "fixture": format!("editor_first_run_usability/{case}"),
+            "projection": projection
+        });
+        if let Some(next_safe_action) = next_safe_action {
+            status["next_safe_action"] = serde_json::json!(next_safe_action);
+        }
+        write(
+            &root.join(format!(
+                "fixtures/editor_first_run_usability/{case}/expected/vscode-status.json"
+            )),
+            &status.to_string(),
+        );
+    }
+
+    fn write_editor_first_run_actions(root: &Path, case: &str, titles: &[&str]) {
+        let actions = titles
+            .iter()
+            .map(|title| {
+                serde_json::json!({
+                    "title": title,
+                    "command": if *title == "Copy first repair packet" {
+                        "ripr.copyContext"
+                    } else {
+                        "ripr.refresh"
+                    },
+                    "arguments": if *title == "Copy first repair packet" {
+                        serde_json::json!([{
+                            "packet": "RIPR first repair packet\nGap identity: gap:test\nSuggested action:\n- Add one focused assertion.\nVerify command:\nripr agent verify --root . --json\nReceipt command:\nripr agent receipt --root . --json\nLimits and non-claims:\n- Static editor evidence only."
+                        }])
+                    } else {
+                        serde_json::json!([])
+                    },
+                })
+            })
+            .collect::<Vec<_>>();
+        write(
+            &root.join(format!(
+                "fixtures/editor_first_run_usability/{case}/expected/lsp-code-actions.json"
+            )),
+            &serde_json::json!({
+                "schema_version": "0.1",
+                "actions": actions
+            })
+            .to_string(),
+        );
+    }
+
+    fn write_editor_first_run_receipt(
+        root: &Path,
+        case: &str,
+        receipt_state: &str,
+        runtime_adequacy_claim: bool,
+        gate_eligibility_claim: bool,
+    ) {
+        write(
+            &root.join(format!(
+                "fixtures/editor_first_run_usability/{case}/expected/receipt-status.json"
+            )),
+            &serde_json::json!({
+                "schema_version": "0.1",
+                "receipt_state": receipt_state,
+                "runtime_adequacy_claim": runtime_adequacy_claim,
+                "gate_eligibility_claim": gate_eligibility_claim
+            })
+            .to_string(),
+        );
+    }
+
+    fn write_editor_gap_cockpit_corpus(root: &Path, valid_preview_hover_order: bool) {
+        let corpus = root.join("fixtures/editor_gap_cockpit");
+        write(
+            &corpus.join("SPEC.md"),
+            "# Fixture Corpus: editor_gap_cockpit\n\nSpec: RIPR-SPEC-0047\n\n## Given\n\nArtifacts exist.\n\n## When\n\nThe LSP cockpit report runs.\n\n## Then\n\nCases are pinned.\n\n## Must Not\n\n- Edit source.\n",
+        );
+        for (case, language, language_status, diagnostics, actions, hover) in [
+            (
+                "rust_actionable",
+                "rust",
+                "stable",
+                true,
+                vec![
+                    "Inspect gap: copy repair packet",
+                    "Write targeted test: open best related test",
+                    "Verify after test: copy verify command",
+                    "Review result: copy receipt command",
+                    "Refresh Analysis - Saved Workspace Check",
+                ],
+                "## Evidence boundary\n\nLanguage: rust\n\n## Gap state\n\nactionable\n\n## Limits\n\nStatic evidence only.\n",
+            ),
+            (
+                "typescript_preview_static_limit",
+                "typescript",
+                "preview",
+                true,
+                vec![
+                    "Inspect gap: copy repair packet",
+                    "Inspect gap: copy static-limit note",
+                    "Refresh Analysis - Saved Workspace Check",
+                ],
+                if valid_preview_hover_order {
+                    "## Evidence boundary\n\nStatic limit: mocked_module\n\n## Gap state\n\nactionable\n\nSuggested action: add one assertion.\n\n## Limits\n\nStatic evidence only.\n"
+                } else {
+                    "## Evidence boundary\n\nSuggested action: add one assertion.\n\n## Gap state\n\nactionable\n\nStatic limit: mocked_module\n\n## Limits\n\nStatic evidence only.\n"
+                },
+            ),
+            (
+                "python_preview_static_limit",
+                "python",
+                "preview",
+                true,
+                vec![
+                    "Inspect gap: copy repair packet",
+                    "Inspect gap: copy static-limit note",
+                    "Refresh Analysis - Saved Workspace Check",
+                ],
+                "## Evidence boundary\n\nStatic limit: missing_import_graph\n\n## Gap state\n\nactionable\n\nSuggested action: add one assertion.\n\n## Limits\n\nStatic evidence only.\n",
+            ),
+            (
+                "disabled_language",
+                "python",
+                "preview",
+                false,
+                vec!["Refresh Analysis - Saved Workspace Check"],
+                "## Evidence boundary\n\nLanguage disabled.\n\n## Gap state\n\ndisabled\n\n## Limits\n\nStatic evidence only.\n",
+            ),
+            (
+                "wrong_root",
+                "rust",
+                "stable",
+                false,
+                vec!["Refresh Analysis - Saved Workspace Check"],
+                "## Evidence boundary\n\nWrong root.\n\n## Gap state\n\nwrong_root\n\n## Limits\n\nStatic evidence only.\n",
+            ),
+            (
+                "stale_artifact",
+                "rust",
+                "stable",
+                false,
+                vec!["Refresh Analysis - Saved Workspace Check"],
+                "## Evidence boundary\n\nStale.\n\n## Gap state\n\nstale\n\n## Limits\n\nStatic evidence only.\n",
+            ),
+            (
+                "no_actionable_gap",
+                "rust",
+                "stable",
+                false,
+                vec!["Refresh Analysis - Saved Workspace Check"],
+                "## Evidence boundary\n\nNo action.\n\n## Gap state\n\nno action\n\n## Limits\n\nStatic evidence only.\n",
+            ),
+        ] {
+            let expected = corpus.join(case).join("expected");
+            let diagnostic_items = if diagnostics {
+                vec![serde_json::json!({
+                    "uri": "src/lib.rs",
+                    "message": "gap",
+                    "data": {
+                        "canonical_gap_id": format!("gap:{case}"),
+                        "language": language,
+                        "language_status": language_status
+                    }
+                })]
+            } else {
+                Vec::new()
+            };
+            let action_items = actions
+                .iter()
+                .map(|title| {
+                    serde_json::json!({
+                        "title": title,
+                        "command": if *title == "Refresh Analysis - Saved Workspace Check" {
+                            "ripr.refresh"
+                        } else {
+                            "ripr.copyContext"
+                        },
+                        "arguments": []
+                    })
+                })
+                .collect::<Vec<_>>();
+            write(
+                &expected.join("lsp-diagnostics.json"),
+                &serde_json::json!({
+                    "fixture": format!("editor_gap_cockpit/{case}"),
+                    "diagnostics": diagnostic_items
+                })
+                .to_string(),
+            );
+            write(
+                &expected.join("lsp-code-actions.json"),
+                &serde_json::json!({
+                    "fixture": format!("editor_gap_cockpit/{case}"),
+                    "actions": action_items
+                })
+                .to_string(),
+            );
+            write(&expected.join("lsp-hover.md"), hover);
+            write(
+                &expected.join("vscode-status.json"),
+                &serde_json::json!({
+                    "schema_version": "0.1",
+                    "fixture": format!("editor_gap_cockpit/{case}"),
+                    "states": []
+                })
+                .to_string(),
+            );
+            write(
+                &expected.join("gap-projection.json"),
+                &serde_json::json!({
+                    "schema_version": "0.1",
+                    "case": case
+                })
+                .to_string(),
+            );
+        }
     }
 
     fn semantic_panic_finding(
@@ -26023,6 +34862,36 @@ mod tests {
         );
     }
 
+    fn write_editor_gap_case_expected(
+        root: &Path,
+        case: &str,
+        diagnostics: &str,
+        actions: &str,
+        hover: &str,
+    ) {
+        let expected = root.join(case).join("expected");
+        write(
+            &expected.join("gap-projection.json"),
+            &format!(
+                r#"{{
+  "schema_version": "0.1",
+  "case": "{case}"
+}}
+"#
+            ),
+        );
+        write(&expected.join("lsp-diagnostics.json"), diagnostics);
+        write(&expected.join("lsp-code-actions.json"), actions);
+        write(&expected.join("lsp-hover.md"), hover);
+        write(
+            &expected.join("vscode-status.json"),
+            r#"{
+  "status": "pass"
+}
+"#,
+        );
+    }
+
     #[cfg(unix)]
     fn success_exit_status() -> ExitStatus {
         use std::os::unix::process::ExitStatusExt;
@@ -26128,6 +34997,185 @@ mod tests {
         assert!(report.contains("report is missing static evidence limit"));
         assert!(report.contains("Markdown must pin status advisory"));
         assert!(report.contains("Markdown repair queue must include repair_kind"));
+        Ok(())
+    }
+
+    #[test]
+    fn editor_gap_cockpit_fixture_case_guard_accepts_actionable_contract() -> Result<(), String> {
+        let root = temp_dir("editor-gap-cockpit-valid");
+        write_editor_gap_case_expected(
+            &root,
+            "rust_actionable",
+            r#"{
+  "diagnostics": [
+    {
+      "data": {
+        "language": "rust",
+        "language_status": "stable",
+        "canonical_gap_id": "gap:rust:pricing"
+      }
+    }
+  ]
+}
+"#,
+            r#"{
+  "actions": [
+    {"title": "Inspect gap: copy repair packet", "command": "ripr.copyAgentPacketCommand", "arguments": [{"command": "ripr agent packet"}]},
+    {"title": "Write targeted test: open best related test", "command": "ripr.openRelatedTest", "arguments": [{"uri": "file:///repo/tests/pricing.rs"}]},
+    {"title": "Verify after test: copy verify command", "command": "ripr.copyAgentVerifyCommand", "arguments": [{"command": "ripr agent verify"}]},
+    {"title": "Review result: copy receipt command", "command": "ripr.copyAgentReceiptCommand", "arguments": [{"command": "ripr agent receipt"}]},
+    {"title": "Refresh Analysis - Saved Workspace Check", "command": "ripr.refresh"}
+  ]
+}
+"#,
+            "# Hover\n\n## Evidence boundary\n\n## Gap state\n\n## Limits\n",
+        );
+
+        let mut violations = Vec::new();
+        super::validate_editor_gap_cockpit_fixture_case(&root, "rust_actionable", &mut violations)?;
+
+        assert_eq!(violations, Vec::<String>::new());
+        Ok(())
+    }
+
+    #[test]
+    fn editor_gap_cockpit_fixture_case_guard_reports_projection_drift() -> Result<(), String> {
+        let root = temp_dir("editor-gap-cockpit-invalid-preview");
+        let expected = root
+            .join("typescript_preview_static_limit")
+            .join("expected");
+        write(
+            &expected.join("gap-projection.json"),
+            r#"{
+  "schema_version": "0.2",
+  "case": "wrong_case"
+}
+"#,
+        );
+        write(
+            &expected.join("lsp-diagnostics.json"),
+            r#"{
+  "diagnostics": [
+    {"data": {"language": "rust", "language_status": "stable"}},
+    {"data": {"language": "typescript", "language_status": "preview", "canonical_gap_id": "gap:ts:second"}}
+  ]
+}
+"#,
+        );
+        write(
+            &expected.join("lsp-code-actions.json"),
+            r#"{"actions": []}"#,
+        );
+        write(
+            &expected.join("lsp-hover.md"),
+            "## Evidence boundary\n\n## Gap state\n\n## Limits\n\nSuggested action: inspect\n\nStatic limit: missing import graph\n",
+        );
+        write(&expected.join("vscode-status.json"), r#"{"status":"warn"}"#);
+
+        let mut violations = Vec::new();
+        super::validate_editor_gap_cockpit_fixture_case(
+            &root,
+            "typescript_preview_static_limit",
+            &mut violations,
+        )?;
+        let report = violations.join("\n");
+
+        assert!(report.contains("schema_version must be 0.1"));
+        assert!(report.contains("case must be typescript_preview_static_limit"));
+        assert!(report.contains("must project exactly one diagnostic"));
+        assert!(report.contains("diagnostic language must be typescript"));
+        assert!(report.contains("diagnostic language_status must be preview"));
+        assert!(report.contains("diagnostic must carry canonical_gap_id"));
+        assert!(report.contains("is missing action `Inspect gap: copy static-limit note`"));
+        assert!(report.contains("hover must show static limits before action language"));
+        Ok(())
+    }
+
+    #[test]
+    fn editor_gap_cockpit_fixture_case_guard_requires_fail_closed_projection() -> Result<(), String>
+    {
+        let root = temp_dir("editor-gap-cockpit-disabled");
+        write_editor_gap_case_expected(
+            &root,
+            "disabled_language",
+            r#"{
+  "diagnostics": [
+    {"data": {"language": "python", "language_status": "preview", "canonical_gap_id": "gap:py"}}
+  ]
+}
+"#,
+            r#"{"actions": []}"#,
+            "# Hover\n\n## Evidence boundary\n\n## Gap state\n\n## Limits\n",
+        );
+
+        let mut violations = Vec::new();
+        super::validate_editor_gap_cockpit_fixture_case(
+            &root,
+            "disabled_language",
+            &mut violations,
+        )?;
+        let report = violations.join("\n");
+
+        assert!(report.contains("must not project diagnostics"));
+        assert!(report.contains("must fail closed to refresh-only actions"));
+        Ok(())
+    }
+
+    #[test]
+    fn lsp_cockpit_fixture_report_preserves_nested_fixture_name() -> Result<(), String> {
+        let root = temp_dir("lsp-cockpit-nested-fixture");
+        let fixture = root.join("editor_gap_cockpit").join("rust_actionable");
+        write(
+            &fixture.join("expected/lsp-diagnostics.json"),
+            r#"{
+  "diagnostics": [
+    {
+      "data": {
+        "seam_id": "seam:pricing",
+        "grip_class": "weakly_gripped"
+      }
+    },
+    {
+      "data": {
+        "finding_id": "finding:pricing"
+      }
+    }
+  ]
+}
+"#,
+        );
+        write(
+            &fixture.join("expected/lsp-code-actions.json"),
+            r#"{
+  "actions": [
+    {"title": "Inspect Test Gap - Copy Context", "command": "ripr.copyContext"},
+    {"title": "Copy agent packet", "command": "ripr.copyAgentPacketCommand", "arguments": [{"command": "ripr agent packet"}]},
+    {"title": "Open related test", "command": "ripr.openRelatedTest", "arguments": [{"uri": "file:///repo/tests/pricing.rs"}]},
+    {"title": "Refresh", "command": "ripr.refresh"}
+  ]
+}
+"#,
+        );
+
+        let report =
+            super::lsp_cockpit_fixture_report("editor_gap_cockpit/rust_actionable", &fixture)?
+                .ok_or_else(|| "expected nested fixture report".to_string())?;
+
+        assert_eq!(report.fixture, "editor_gap_cockpit/rust_actionable");
+        assert_eq!(report.diagnostic_count, 2);
+        assert_eq!(report.seam_diagnostic_count, 1);
+        assert_eq!(report.finding_diagnostic_count, 1);
+        assert!(report.seam_ids.iter().any(|id| id == "seam:pricing"));
+        assert!(
+            report
+                .grip_classes
+                .iter()
+                .any(|class| class == "weakly_gripped")
+        );
+        assert!(report.context.seam_packet_available);
+        assert!(report.context.agent_packet_command_available);
+        assert!(report.context.related_test_available);
+        assert!(report.context.refresh_available);
         Ok(())
     }
 
@@ -26864,6 +35912,29 @@ mod tests {
     }
 
     #[test]
+    fn evidence_quality_benchmark_requires_static_limitation_category_at_case_level()
+    -> Result<(), String> {
+        let mut corpus = evidence_quality_benchmark_corpus_value()?;
+        let case = evidence_quality_benchmark_case_mut(
+            &mut corpus,
+            "presentation_text_constant_visibility_unknown",
+        )?;
+        case["static_limitation_category"] = serde_json::Value::Null;
+        case["expected_repo_exposure"]["evidence_record"]["static_limitation"]["category"] =
+            serde_json::json!("presentation_text_visibility_unknown");
+
+        let report = evidence_quality_benchmark_violations(&corpus).join("\n");
+
+        assert!(report.contains(
+            "static-limitation case presentation_text_constant_visibility_unknown is missing static_limitation_category"
+        ));
+        assert!(report.contains(
+            "static-limitation case presentation_text_constant_visibility_unknown must keep static_limitation_category at the case level"
+        ));
+        Ok(())
+    }
+
+    #[test]
     fn evidence_quality_benchmark_keeps_runtime_only_signal_nonstatic() -> Result<(), String> {
         let mut corpus = evidence_quality_benchmark_corpus_value()?;
         let case =
@@ -26920,11 +35991,250 @@ mod tests {
         assert!(super::is_manifest_only_fixture_dir(Path::new(
             "fixtures/evidence-quality-benchmark"
         )));
+        assert!(super::is_manifest_only_fixture_dir(Path::new(
+            "fixtures/gap-decision-ledger"
+        )));
         assert!(!super::is_manifest_only_fixture_dir(Path::new(
             "fixtures/boundary_gap"
         )));
         let violations =
             super::fixture_contract_violations(Path::new("fixtures/evidence-quality-benchmark"))?;
+        assert_eq!(violations, Vec::<String>::new());
+        Ok(())
+    }
+
+    fn gap_decision_ledger_corpus_path() -> Result<PathBuf, String> {
+        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask manifest must have workspace parent".to_string())?;
+        Ok(repo_root.join("fixtures/gap-decision-ledger/corpus.json"))
+    }
+
+    fn gap_decision_ledger_corpus_value() -> Result<Value, String> {
+        let corpus = gap_decision_ledger_corpus_path()?;
+        super::read_json_value(&corpus)
+    }
+
+    fn gap_decision_ledger_violations(corpus: &Value) -> Vec<String> {
+        let mut violations = Vec::new();
+        super::validate_gap_decision_ledger_corpus_value(
+            Path::new("fixtures/gap-decision-ledger/corpus.json"),
+            corpus,
+            &mut violations,
+        );
+        violations
+    }
+
+    fn gap_decision_ledger_case_mut<'a>(
+        corpus: &'a mut Value,
+        case_id: &str,
+    ) -> Result<&'a mut Value, String> {
+        let cases = corpus
+            .get_mut("cases")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| "gap-decision ledger corpus must have cases array".to_string())?;
+        cases
+            .iter_mut()
+            .find(|case| case.get("id").and_then(Value::as_str) == Some(case_id))
+            .ok_or_else(|| format!("gap-decision ledger corpus is missing case {case_id}"))
+    }
+
+    #[test]
+    fn gap_decision_ledger_corpus_is_valid() -> Result<(), String> {
+        let corpus = gap_decision_ledger_corpus_path()?;
+        let mut violations = Vec::new();
+        super::validate_gap_decision_ledger_fixture_corpus_at(&corpus, &mut violations)?;
+
+        assert_eq!(violations, Vec::<String>::new());
+        Ok(())
+    }
+
+    #[test]
+    fn gap_decision_ledger_reports_contract_drift() {
+        let corpus = serde_json::json!({
+            "kind": "wrong",
+            "schema_version": "0.2",
+            "spec": "RIPR-SPEC-9999",
+            "proposal": "RIPR-PROP-9999",
+            "required_gap_kinds": ["MissingBoundaryAssertion"],
+            "required_scopes": ["pr_local"],
+            "required_policy_states": ["new"],
+            "required_repairability": ["repairable"],
+            "cases": [
+                {
+                    "id": "bad",
+                    "description": "bad case",
+                    "source_artifacts": [],
+                    "expected_claim": "claim",
+                    "must_not_claim": [],
+                    "expected_gap_record": {
+                        "gap_id": "gap:bad",
+                        "canonical_gap_id": "gap:bad",
+                        "kind": "surprise",
+                        "language": "rust",
+                        "language_status": "stable",
+                        "scope": "global",
+                        "evidence_class": "unknown",
+                        "gap_state": "actionable",
+                        "policy_state": "mystery",
+                        "repairability": "maybe",
+                        "evidence_ids": [],
+                        "verification_commands": [],
+                        "projection_eligibility": {
+                            "ci_summary": {"eligible": "yes", "reason": null}
+                        }
+                    }
+                },
+                {
+                    "id": "bad",
+                    "description": "duplicate case",
+                    "source_artifacts": ["artifact"],
+                    "expected_claim": "claim",
+                    "must_not_claim": ["guard"],
+                    "expected_gap_record": {
+                        "gap_id": "gap:dup",
+                        "canonical_gap_id": "gap:dup",
+                        "kind": "MissingBoundaryAssertion",
+                        "language": "rust",
+                        "language_status": "stable",
+                        "scope": "pr_local",
+                        "evidence_class": "predicate_boundary",
+                        "gap_state": "actionable",
+                        "policy_state": "new",
+                        "repairability": "repairable",
+                        "evidence_ids": ["evidence"],
+                        "verification_commands": ["cargo xtask check-pr"],
+                        "projection_eligibility": {}
+                    }
+                }
+            ]
+        });
+
+        let report = gap_decision_ledger_violations(&corpus).join("\n");
+
+        assert!(report.contains("kind must be gap_decision_ledger_corpus"));
+        assert!(report.contains("schema_version must be 0.1"));
+        assert!(report.contains("spec must be RIPR-SPEC-0046"));
+        assert!(report.contains("proposal must be RIPR-PROP-0006"));
+        assert!(report.contains("required_gap_kinds is missing MissingErrorDiscriminator"));
+        assert!(report.contains("required_scopes is missing repo_scoped"));
+        assert!(report.contains("required_policy_states is missing baseline_known"));
+        assert!(report.contains("required_repairability is missing needs_human_design"));
+        assert!(report.contains("case bad is duplicated"));
+        assert!(report.contains("source_artifacts must be a non-empty string array"));
+        assert!(report.contains("must_not_claim must be a non-empty string array"));
+        assert!(report.contains("has unsupported kind surprise"));
+        assert!(report.contains("has unsupported scope global"));
+        assert!(report.contains("has unsupported policy_state mystery"));
+        assert!(report.contains("has unsupported repairability maybe"));
+        assert!(report.contains("evidence_ids must be a non-empty string array"));
+        assert!(report.contains("verification_commands must be a non-empty string array"));
+        assert!(report.contains("projection ci_summary is missing eligible boolean"));
+        assert!(report.contains("projection ci_summary is missing reason"));
+        assert!(report.contains("is missing projection_eligibility.report_packet"));
+        assert!(report.contains("repairable case bad is missing repair_route object"));
+        assert!(report.contains("must include a safe gate-candidate case"));
+        assert!(report.contains("must include a MissingOutputContract case"));
+    }
+
+    #[test]
+    fn gap_decision_ledger_gate_candidate_requires_safe_predicate() -> Result<(), String> {
+        let mut corpus = gap_decision_ledger_corpus_value()?;
+        let case = gap_decision_ledger_case_mut(
+            &mut corpus,
+            "repairable_boundary_gap_pr_comment_gate_candidate",
+        )?;
+        let record = case
+            .get_mut("expected_gap_record")
+            .ok_or_else(|| "case must have expected_gap_record".to_string())?;
+        record["language_status"] = serde_json::json!("preview");
+        record["safe_gate_predicate"]["policy_target_enabled"] = serde_json::json!(false);
+        record["safe_gate_predicate"]["static_unknown_only"] = serde_json::json!(true);
+
+        let report = gap_decision_ledger_violations(&corpus).join("\n");
+
+        assert!(report.contains(
+            "PR-comment case repairable_boundary_gap_pr_comment_gate_candidate must be stable Rust"
+        ));
+        assert!(report.contains(
+            "gate candidate repairable_boundary_gap_pr_comment_gate_candidate must be stable Rust"
+        ));
+        assert!(report.contains("must set safe_gate_predicate.policy_target_enabled=true"));
+        assert!(report.contains("must set safe_gate_predicate.static_unknown_only=false"));
+        Ok(())
+    }
+
+    #[test]
+    fn gap_decision_ledger_missing_output_contract_requires_output_route() -> Result<(), String> {
+        let mut corpus = gap_decision_ledger_corpus_value()?;
+        let case = gap_decision_ledger_case_mut(
+            &mut corpus,
+            "missing_output_contract_routes_to_output_golden",
+        )?;
+        let record = case
+            .get_mut("expected_gap_record")
+            .ok_or_else(|| "case must have expected_gap_record".to_string())?;
+        record["evidence_class"] = serde_json::json!("return_value");
+        record["repair_route"]["route_kind"] = serde_json::json!("AddBoundaryAssertion");
+
+        let report = gap_decision_ledger_violations(&corpus).join("\n");
+
+        assert!(report.contains(
+            "MissingOutputContract case missing_output_contract_routes_to_output_golden must use presentation_text evidence"
+        ));
+        assert!(report.contains(
+            "MissingOutputContract case missing_output_contract_routes_to_output_golden must route to output/golden repair"
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn gap_decision_ledger_static_unknown_only_stays_report_only() -> Result<(), String> {
+        let mut corpus = gap_decision_ledger_corpus_value()?;
+        let case = gap_decision_ledger_case_mut(&mut corpus, "static_unknown_report_only")?;
+        let record = case
+            .get_mut("expected_gap_record")
+            .ok_or_else(|| "case must have expected_gap_record".to_string())?;
+        record["repairability"] = serde_json::json!("repairable");
+        record["repair_route"] = serde_json::json!({
+            "route_kind": "AddBoundaryAssertion",
+            "target_file": "tests/macros.rs",
+            "assertion_shape": "assert boundary"
+        });
+        record["projection_eligibility"]["pr_comment"]["eligible"] = serde_json::json!(true);
+
+        let report = gap_decision_ledger_violations(&corpus).join("\n");
+
+        assert!(report.contains(
+            "static-unknown-only case static_unknown_report_only must stay report-only unless a repair route exists"
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn gap_decision_ledger_missing_artifact_requires_regeneration() -> Result<(), String> {
+        let mut corpus = gap_decision_ledger_corpus_value()?;
+        let case =
+            gap_decision_ledger_case_mut(&mut corpus, "missing_artifact_warning_regeneration")?;
+        let record = case
+            .get_mut("expected_gap_record")
+            .ok_or_else(|| "case must have expected_gap_record".to_string())?;
+        record["regeneration_commands"] = serde_json::json!([]);
+        record["projection_eligibility"]["gate_candidate"]["eligible"] = serde_json::json!(true);
+
+        let report = gap_decision_ledger_violations(&corpus).join("\n");
+
+        assert!(report.contains("regeneration_commands must be a non-empty string array"));
+        assert!(report.contains(
+            "missing-artifact case missing_artifact_warning_regeneration must not be PR-comment or gate eligible"
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn gap_decision_ledger_is_manifest_only_fixture_dir() -> Result<(), String> {
+        let violations =
+            super::fixture_contract_violations(Path::new("fixtures/gap-decision-ledger"))?;
         assert_eq!(violations, Vec::<String>::new());
         Ok(())
     }
@@ -29572,6 +38882,81 @@ jobs:
     }
 
     #[test]
+    fn sorted_markdown_index_table_content_sorts_index_rows() {
+        let input = "# Specs\n\n## Index\n\n| Spec | Status | Topic |\n| --- | --- | --- |\n| [RIPR-SPEC-0002](RIPR-SPEC-0002-b.md) | proposed | B |\n| [RIPR-SPEC-0001](RIPR-SPEC-0001-a.md) | accepted | A |\n\nAfter.\n";
+        let sorted = sorted_markdown_index_table_content(input);
+
+        assert_eq!(
+            sorted,
+            "# Specs\n\n## Index\n\n| Spec | Status | Topic |\n| --- | --- | --- |\n| [RIPR-SPEC-0001](RIPR-SPEC-0001-a.md) | accepted | A |\n| [RIPR-SPEC-0002](RIPR-SPEC-0002-b.md) | proposed | B |\n\nAfter.\n"
+        );
+    }
+
+    #[test]
+    fn suggested_fixes_patch_sorts_allowlists_and_doc_indexes() -> Result<(), String> {
+        with_temp_cwd("suggested-fixes-allowlist", |root| {
+            write(
+                &root.join(".ripr/generated.txt"),
+                "# header\n\nzeta\nalpha\n",
+            );
+            write(&root.join("policy/process.txt"), "gamma\nbeta\n");
+            write(
+                &root.join("docs/specs/README.md"),
+                "# Specs\n\n## Index\n\n| Spec | Status | Topic |\n| --- | --- | --- |\n| [RIPR-SPEC-0002](RIPR-SPEC-0002-b.md) | proposed | B |\n| [RIPR-SPEC-0001](RIPR-SPEC-0001-a.md) | accepted | A |\n",
+            );
+            write(
+                &root.join("badges/ripr.json"),
+                r#"{"schemaVersion":1,"label":"ripr","message":"999","color":"red"}"#,
+            );
+
+            let (patch, files) = suggested_fixes_patch()?;
+
+            assert_eq!(
+                files,
+                vec![
+                    ".ripr/generated.txt".to_string(),
+                    "docs/specs/README.md".to_string(),
+                    "policy/process.txt".to_string()
+                ]
+            );
+            assert!(patch.contains("diff --git a/.ripr/generated.txt b/.ripr/generated.txt"));
+            assert!(patch.contains("+alpha"));
+            assert!(patch.contains("+zeta"));
+            assert!(patch.contains("diff --git a/docs/specs/README.md b/docs/specs/README.md"));
+            assert!(
+                patch
+                    .find("+| [RIPR-SPEC-0001](RIPR-SPEC-0001-a.md) | accepted | A |")
+                    .zip(patch.find("+| [RIPR-SPEC-0002](RIPR-SPEC-0002-b.md) | proposed | B |"))
+                    .is_some_and(|(first, second)| first < second)
+            );
+            assert!(patch.contains("diff --git a/policy/process.txt b/policy/process.txt"));
+            assert!(!patch.contains("badges/ripr.json"));
+            assert!(!patch.contains("999"));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn suggested_fixes_patch_is_empty_when_allowlists_are_sorted() -> Result<(), String> {
+        with_temp_cwd("suggested-fixes-empty", |root| {
+            write(
+                &root.join(".ripr/generated.txt"),
+                "# header\n\nalpha\nbeta\n",
+            );
+            write(
+                &root.join("docs/adr/README.md"),
+                "# Architecture Decision Records\n\n## Index\n\n| ADR | Status | Decision |\n| --- | --- | --- |\n| [0001](0001-a.md) | accepted | A. |\n| [0002](0002-b.md) | proposed | B. |\n",
+            );
+
+            let (patch, files) = suggested_fixes_patch()?;
+
+            assert!(patch.is_empty());
+            assert!(files.is_empty());
+            Ok(())
+        })
+    }
+
+    #[test]
     fn golden_text_comparison_normalizes_line_endings_and_final_newline() {
         assert_eq!(
             normalize_golden_text("one\r\ntwo\r\n"),
@@ -29929,8 +39314,124 @@ jobs:
         assert!(body.contains("# ripr report index"));
         assert!(body.contains("output/unknown-stop-reason-invariant"));
         assert!(body.contains("Suggested Reviewer Path"));
+        assert!(body.contains("Repo-Ops Packets"));
         assert_eq!(status_for_report(&reports, "pr-summary.md"), "pass");
         assert_eq!(status_for_report(&reports, "missing.md"), "missing");
+    }
+
+    #[test]
+    fn report_index_repo_ops_packets_are_structured_for_agents() {
+        let reports = [
+            ("commands.md", "present"),
+            ("commands.json", "present"),
+            ("cockpit.md", "actionable"),
+            ("cockpit.json", "actionable"),
+            ("generated-clean.md", "pass"),
+            ("gh-pr-status.md", "warn"),
+            ("gh-pr-status.json", "warn"),
+            ("pr-ready.md", "actionable"),
+            ("pr-ready.json", "actionable"),
+            ("suggested-fixes.md", "pass"),
+            ("suggested-fixes.patch", "present"),
+            ("check-pr.md", "pass"),
+        ]
+        .into_iter()
+        .map(|(file, status)| ReportIndexEntry {
+            file: file.to_string(),
+            path: format!("target/ripr/reports/{file}"),
+            status: status.to_string(),
+        })
+        .collect::<Vec<_>>();
+        let receipts = vec![ReportIndexEntry {
+            file: "check-pr.json".to_string(),
+            path: "target/ripr/receipts/check-pr.json".to_string(),
+            status: "pass".to_string(),
+        }];
+
+        let packets = report_index_repo_ops_packets(&reports, &receipts);
+
+        assert_eq!(
+            packets
+                .iter()
+                .find(|packet| packet.id == "command_mutability_catalog")
+                .map(|packet| packet.status.as_str()),
+            Some("present")
+        );
+        assert_eq!(
+            packets
+                .iter()
+                .find(|packet| packet.id == "gh_pr_status")
+                .map(|packet| packet.status.as_str()),
+            Some("warn")
+        );
+        assert_eq!(
+            packets
+                .iter()
+                .find(|packet| packet.id == "worktree_doctor")
+                .map(|packet| packet.status.as_str()),
+            Some("missing")
+        );
+        assert_eq!(
+            packets
+                .iter()
+                .find(|packet| packet.id == "repo_cockpit")
+                .map(|packet| packet.status.as_str()),
+            Some("actionable")
+        );
+        assert_eq!(
+            packets
+                .iter()
+                .find(|packet| packet.id == "pr_ready")
+                .map(|packet| packet.status.as_str()),
+            Some("actionable")
+        );
+        assert_eq!(
+            packets
+                .iter()
+                .find(|packet| packet.id == "check_pr")
+                .map(|packet| packet.status.as_str()),
+            Some("pass")
+        );
+    }
+
+    #[test]
+    fn report_index_json_includes_repo_ops_packet_queue() -> Result<(), String> {
+        let campaign = ReportIndexCampaign {
+            id: "repo-ops-ux".to_string(),
+            title: "Repo-Ops UX".to_string(),
+            status: "active".to_string(),
+            ready_work_items: Vec::new(),
+            issues: Vec::new(),
+        };
+        let reports = vec![ReportIndexEntry {
+            file: "commands.json".to_string(),
+            path: "target/ripr/reports/commands.json".to_string(),
+            status: "present".to_string(),
+        }];
+
+        let body = report_index_json(
+            "warn",
+            &campaign,
+            &reports,
+            &[],
+            &["target/ripr/reports/check-pr.md".to_string()],
+            &["cargo xtask check-pr".to_string()],
+        );
+        let value: serde_json::Value =
+            serde_json::from_str(&body).map_err(|err| err.to_string())?;
+        let packets = value["repo_ops_packets"]
+            .as_array()
+            .ok_or_else(|| "repo_ops_packets must be an array".to_string())?;
+
+        assert!(packets.iter().any(|packet| {
+            packet["id"] == "command_mutability_catalog"
+                && packet["status"] == "incomplete"
+                && packet["next_command"] == "cargo xtask commands"
+        }));
+        assert!(packets.iter().any(|packet| packet["id"] == "pr_ready"));
+        assert!(packets.iter().any(|packet| packet["id"] == "repo_cockpit"));
+        assert!(packets.iter().any(|packet| packet["id"] == "pr_triage"));
+        Ok(())
     }
 
     #[test]
@@ -30450,7 +39951,7 @@ fn exact_owner_call_has_external_expected_value() {
     }
 
     #[test]
-    fn dogfood_reports_are_advisory() {
+    fn dogfood_reports_are_advisory() -> Result<(), String> {
         let run = DogfoodRun {
             name: "boundary_gap".to_string(),
             root: Path::new("fixtures/boundary_gap/input").to_path_buf(),
@@ -30598,7 +40099,97 @@ fn exact_owner_call_has_external_expected_value() {
             gate_authority_boundary: true,
             default_advisory: true,
             artifact_upload: true,
-            language_grouping_status: "deferred".to_string(),
+            language_grouping_status: "checked".to_string(),
+            errors: Vec::new(),
+        };
+        let language_preview_run = DogfoodLanguagePreviewRun {
+            name: "python_mixed_language_no_cross_route".to_string(),
+            language: "python".to_string(),
+            root: Path::new("fixtures/python_mixed_language_no_cross_route/input").to_path_buf(),
+            diff: Path::new("fixtures/python_mixed_language_no_cross_route/diff.patch")
+                .to_path_buf(),
+            actual_dir: Path::new(
+                "target/ripr/dogfood/language-preview/python_mixed_language_no_cross_route",
+            )
+            .to_path_buf(),
+            json_path: Path::new(
+                "target/ripr/dogfood/language-preview/python_mixed_language_no_cross_route/check.json",
+            )
+            .to_path_buf(),
+            human_path: Path::new(
+                "target/ripr/dogfood/language-preview/python_mixed_language_no_cross_route/human.txt",
+            )
+            .to_path_buf(),
+            duration_ms: 10,
+            findings: 1,
+            language_findings: 1,
+            preview_findings: 1,
+            missing_preview_status: 0,
+            related_tests: 0,
+            classifications: vec!["no_static_path".to_string()],
+            static_limit_kinds: Vec::new(),
+            expected_findings: 1,
+            expected_preview_findings: 1,
+            expected_missing_preview_status: 0,
+            expected_related_tests: 0,
+            expected_classifications: vec!["no_static_path".to_string()],
+            expected_static_limit_kinds: Vec::new(),
+            preview_enabled: true,
+            reason: "mixed-language fixture must not cross-route related tests".to_string(),
+            errors: Vec::new(),
+        };
+        let editor_gap_cockpit_run = DogfoodEditorGapCockpitRun {
+            name: "typescript_preview_static_limit".to_string(),
+            expected_dir: Path::new(
+                "fixtures/editor_gap_cockpit/typescript_preview_static_limit/expected",
+            )
+            .to_path_buf(),
+            projection_path: Path::new(
+                "fixtures/editor_gap_cockpit/typescript_preview_static_limit/expected/gap-projection.json",
+            )
+            .to_path_buf(),
+            diagnostics_path: Path::new(
+                "fixtures/editor_gap_cockpit/typescript_preview_static_limit/expected/lsp-diagnostics.json",
+            )
+            .to_path_buf(),
+            hover_path: Path::new(
+                "fixtures/editor_gap_cockpit/typescript_preview_static_limit/expected/lsp-hover.md",
+            )
+            .to_path_buf(),
+            code_actions_path: Path::new(
+                "fixtures/editor_gap_cockpit/typescript_preview_static_limit/expected/lsp-code-actions.json",
+            )
+            .to_path_buf(),
+            status_path: Path::new(
+                "fixtures/editor_gap_cockpit/typescript_preview_static_limit/expected/vscode-status.json",
+            )
+            .to_path_buf(),
+            state: "actionable".to_string(),
+            language: Some("typescript".to_string()),
+            language_status: Some("preview".to_string()),
+            diagnostics_projected: 1,
+            actual_diagnostics: 1,
+            fail_closed: false,
+            actions_projected: vec![
+                "copy_repair_packet".to_string(),
+                "copy_static_limit_note".to_string(),
+                "refresh".to_string(),
+            ],
+            actual_actions: 3,
+            static_limit_kind: Some("mocked_module".to_string()),
+            hover_static_before_action: true,
+            expected_state: "actionable".to_string(),
+            expected_language: Some("typescript".to_string()),
+            expected_language_status: Some("preview".to_string()),
+            expected_diagnostics: 1,
+            expected_fail_closed: false,
+            expected_actions: vec![
+                "copy_repair_packet".to_string(),
+                "copy_static_limit_note".to_string(),
+                "refresh".to_string(),
+            ],
+            expected_static_limit_kind: Some("mocked_module".to_string()),
+            reason: "preview static-limit fixture".to_string(),
             errors: Vec::new(),
         };
         let pr_inline_comment_run = DogfoodPrInlineCommentRun {
@@ -30644,17 +40235,24 @@ fn exact_owner_call_has_external_expected_value() {
             .to_path_buf(),
             errors: Vec::new(),
         };
-
+        let generated_ci_runs = [generated_ci_run];
+        let language_preview_runs = [language_preview_run];
+        let editor_gap_cockpit_runs = [editor_gap_cockpit_run];
+        let preview_projection_runs = DogfoodPreviewProjectionRuns {
+            generated_ci_cockpit: &generated_ci_runs,
+            language_preview: &language_preview_runs,
+            editor_gap_cockpit: &editor_gap_cockpit_runs,
+        };
         let markdown = dogfood_report_markdown(
             &[run],
             &[gate_run],
             &[first_action_run],
             &[front_panel_run],
             &[report_packet_index_run],
-            &[generated_ci_run],
+            &preview_projection_runs,
             &[pr_inline_comment_run],
         );
-        let json = dogfood_report_json(&[], &[], &[], &[], &[], &[], &[]);
+        let json = dogfood_report_json(&[], &[], &[], &[], &[], &preview_projection_runs, &[]);
 
         assert!(markdown.contains("Mode: advisory"));
         assert!(markdown.contains("boundary_gap"));
@@ -30662,6 +40260,8 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(markdown.contains("PR Review Front Panel Receipts"));
         assert!(markdown.contains("Report Packet Index Receipts"));
         assert!(markdown.contains("Generated CI Cockpit Receipts"));
+        assert!(markdown.contains("Language Preview Receipts"));
+        assert!(markdown.contains("Editor Gap Cockpit Receipts"));
         assert!(markdown.contains("PR Inline Comment Publisher Receipts"));
         assert!(markdown.contains("Gate Adoption Receipts"));
         assert!(markdown.contains("Default CI blocking: no"));
@@ -30673,7 +40273,68 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(json.contains("\"default_ci_blocking\": false"));
         assert!(json.contains("\"report_packet_index\""));
         assert!(json.contains("\"generated_ci_cockpit\""));
+        assert!(json.contains("\"language_preview\""));
+        let value: Value =
+            serde_json::from_str(&json).map_err(|err| format!("dogfood JSON invalid: {err}"))?;
+        let editor_gap_cockpit = value
+            .get("editor_gap_cockpit")
+            .ok_or_else(|| "editor_gap_cockpit section missing".to_string())?;
+        assert_eq!(
+            editor_gap_cockpit
+                .get("receipt_dir")
+                .and_then(Value::as_str),
+            Some("fixtures/editor_gap_cockpit")
+        );
+        let cases = editor_gap_cockpit
+            .get("cases")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "editor_gap_cockpit cases missing".to_string())?;
+        assert_eq!(cases.len(), 1);
+        let case = cases
+            .first()
+            .ok_or_else(|| "editor_gap_cockpit case missing".to_string())?;
+        assert_eq!(
+            case.get("name").and_then(Value::as_str),
+            Some("typescript_preview_static_limit")
+        );
+        assert_eq!(
+            case.get("state").and_then(Value::as_str),
+            Some("actionable")
+        );
+        assert_eq!(
+            case.get("language").and_then(Value::as_str),
+            Some("typescript")
+        );
+        assert_eq!(
+            case.get("language_status").and_then(Value::as_str),
+            Some("preview")
+        );
+        assert_eq!(
+            case.get("diagnostics_projected").and_then(Value::as_u64),
+            Some(1)
+        );
+        assert_eq!(
+            case.get("static_limit_kind").and_then(Value::as_str),
+            Some("mocked_module")
+        );
+        assert_eq!(
+            case.get("hover_static_before_action")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        let actions = case
+            .get("actions_projected")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "editor_gap_cockpit actions missing".to_string())?
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actions,
+            vec!["copy_repair_packet", "copy_static_limit_note", "refresh"]
+        );
         assert!(json.contains("\"pr_inline_comment_publisher\""));
+        Ok(())
     }
 
     #[test]
@@ -30694,6 +40355,11 @@ jobs:
           echo '{GENERATED_CI_FIRST_ACTION_REPAIR}'
           echo '{GENERATED_CI_FRONT_PANEL_REPAIR}'
           echo '{GENERATED_CI_PACKET_INDEX_REPAIR}'
+          echo '### Language preview grouping'
+          echo 'if [ -n \"$preview_languages\" ]; then'
+          echo 'preview-language groups are advisory presentation only; `ripr gate evaluate` remains pass/fail authority when explicitly configured.'
+          echo 'missing_preview_status'
+          echo 'static_limit_kinds'
           echo 'target/ripr/reports'
 "
         );
@@ -30710,7 +40376,7 @@ jobs:
         assert!(run.gate_authority_boundary);
         assert!(run.default_advisory);
         assert!(run.artifact_upload);
-        assert_eq!(run.language_grouping_status, "deferred");
+        assert_eq!(run.language_grouping_status, "checked");
 
         let missing = dogfood_generated_ci_cockpit_run_from_workflow(
             "missing",
@@ -30730,6 +40396,134 @@ jobs:
                 .iter()
                 .any(|error| error.contains("regeneration commands"))
         );
+    }
+
+    #[test]
+    fn dogfood_language_preview_scenarios_cover_projection_boundaries() {
+        let scenarios = dogfood_language_preview_scenarios();
+        let names = scenarios
+            .iter()
+            .map(|scenario| scenario.name.as_str())
+            .collect::<BTreeSet<_>>();
+
+        assert!(names.contains("typescript_mocked_module_limit"));
+        assert!(names.contains("python_missing_import_graph_limit"));
+        assert!(names.contains("python_mixed_language_no_cross_route"));
+        assert!(names.contains("python_disabled"));
+
+        let disabled = scenarios
+            .iter()
+            .find(|scenario| scenario.name == "python_disabled");
+        assert!(
+            disabled.is_some_and(|scenario| {
+                !scenario.preview_enabled
+                    && scenario.expected_findings == 0
+                    && scenario.expected_preview_findings == 0
+            }),
+            "python_disabled must pin the Rust-default/no-preview boundary"
+        );
+
+        let mixed = scenarios
+            .iter()
+            .find(|scenario| scenario.name == "python_mixed_language_no_cross_route");
+        assert!(
+            mixed.is_some_and(|scenario| {
+                scenario.preview_enabled
+                    && scenario.expected_related_tests == 0
+                    && scenario
+                        .expected_classifications
+                        .contains(&"no_static_path".to_string())
+            }),
+            "mixed-language receipt must pin no cross-language related-test routing"
+        );
+    }
+
+    #[test]
+    fn dogfood_language_preview_run_checks_static_limit_receipt() -> Result<(), String> {
+        with_repo_cwd(|| {
+            let scenario = dogfood_language_preview_scenarios()
+                .into_iter()
+                .find(|scenario| scenario.name == "typescript_mocked_module_limit")
+                .ok_or_else(|| {
+                    "typescript_mocked_module_limit dogfood scenario is missing".to_string()
+                })?;
+
+            let run = dogfood_language_preview_run(&scenario);
+
+            assert!(run.errors.is_empty(), "{:?}", run.errors);
+            assert_eq!(run.language, "typescript");
+            assert!(run.preview_enabled);
+            assert_eq!(run.findings, 1);
+            assert_eq!(run.language_findings, 1);
+            assert_eq!(run.preview_findings, 1);
+            assert_eq!(run.missing_preview_status, 0);
+            assert_eq!(run.related_tests, 1);
+            assert_eq!(run.classifications, vec!["exposed".to_string()]);
+            assert_eq!(run.static_limit_kinds, vec!["mocked_module".to_string()]);
+            assert!(run.json_path.exists());
+            assert!(run.human_path.exists());
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn dogfood_editor_gap_cockpit_scenarios_cover_fail_closed_states() {
+        let scenarios = dogfood_editor_gap_cockpit_scenarios();
+        let names = scenarios
+            .iter()
+            .map(|scenario| scenario.name.as_str())
+            .collect::<BTreeSet<_>>();
+
+        assert!(names.contains("rust_actionable"));
+        assert!(names.contains("typescript_preview_static_limit"));
+        assert!(names.contains("python_preview_static_limit"));
+        assert!(names.contains("disabled_language"));
+        assert!(names.contains("wrong_root"));
+        assert!(names.contains("stale_artifact"));
+        assert!(names.contains("no_actionable_gap"));
+
+        for name in [
+            "disabled_language",
+            "wrong_root",
+            "stale_artifact",
+            "no_actionable_gap",
+        ] {
+            let scenario = scenarios.iter().find(|scenario| scenario.name == name);
+            assert!(
+                scenario.is_some_and(|scenario| {
+                    scenario.expected_fail_closed
+                        && scenario.expected_diagnostics == 0
+                        && scenario.expected_actions == vec!["refresh".to_string()]
+                }),
+                "{name} should fail closed with refresh only"
+            );
+        }
+    }
+
+    #[test]
+    fn dogfood_editor_gap_cockpit_run_checks_static_limit_ordering() -> Result<(), String> {
+        with_repo_cwd(|| {
+            let scenario = dogfood_editor_gap_cockpit_scenarios()
+                .into_iter()
+                .find(|scenario| scenario.name == "typescript_preview_static_limit")
+                .ok_or_else(|| {
+                    "typescript_preview_static_limit editor gap scenario is missing".to_string()
+                })?;
+
+            let run = dogfood_editor_gap_cockpit_run(&scenario);
+
+            assert!(run.errors.is_empty(), "{:?}", run.errors);
+            assert_eq!(run.language.as_deref(), Some("typescript"));
+            assert_eq!(run.language_status.as_deref(), Some("preview"));
+            assert_eq!(run.diagnostics_projected, 1);
+            assert_eq!(run.actual_diagnostics, 1);
+            assert!(!run.fail_closed);
+            assert_eq!(run.static_limit_kind.as_deref(), Some("mocked_module"));
+            assert!(run.hover_static_before_action);
+            assert!(run.projection_path.exists());
+            assert!(run.hover_path.exists());
+            Ok(())
+        })
     }
 
     #[test]
@@ -33049,6 +42843,284 @@ stackable = true
     }
 
     #[test]
+    fn campaign_manifest_accepts_closed_when_all_work_items_are_done() {
+        with_temp_cwd("campaign-closed", |root| {
+            write(
+                &root.join("docs/IMPLEMENTATION_CAMPAIGNS.md"),
+                "closed-campaign\n\n| `docs/test` | done |\n",
+            );
+            let manifest_path = root.join("campaign.toml");
+            write(
+                &manifest_path,
+                r#"
+id = "closed-campaign"
+title = "Closed Campaign"
+status = "closed"
+end_state = ["Closed proof exists."]
+
+[[work_item]]
+id = "docs/test"
+status = "done"
+branch = "docs-test"
+stackable = false
+acceptance = "Closed proof exists."
+commands = ["cargo xtask check-pr"]
+"#,
+            );
+            let result = parse_campaign_manifest(&manifest_path);
+            assert!(result.is_ok(), "{result:?}");
+            let (manifest, parse_violations) = match result {
+                Ok(value) => value,
+                Err(_) => return,
+            };
+            assert!(parse_violations.is_empty(), "{parse_violations:?}");
+            let mut violations = Vec::new();
+
+            let validation = super::validate_campaign_manifest(&manifest, &mut violations);
+            assert!(validation.is_ok(), "{validation:?}");
+
+            assert!(violations.is_empty(), "{violations:?}");
+        });
+    }
+
+    #[test]
+    fn campaign_manifest_rejects_closed_with_unfinished_work_items() {
+        with_temp_cwd("campaign-closed-unfinished", |root| {
+            write(
+                &root.join("docs/IMPLEMENTATION_CAMPAIGNS.md"),
+                "closed-campaign\n\n| `docs/test` | ready |\n",
+            );
+            let manifest_path = root.join("campaign.toml");
+            write(
+                &manifest_path,
+                r#"
+id = "closed-campaign"
+title = "Closed Campaign"
+status = "closed"
+end_state = ["Closed proof exists."]
+
+[[work_item]]
+id = "docs/test"
+status = "ready"
+branch = "docs-test"
+stackable = false
+acceptance = "Closed proof exists."
+commands = ["cargo xtask check-pr"]
+"#,
+            );
+            let result = parse_campaign_manifest(&manifest_path);
+            assert!(result.is_ok(), "{result:?}");
+            let (manifest, parse_violations) = match result {
+                Ok(value) => value,
+                Err(_) => return,
+            };
+            assert!(parse_violations.is_empty(), "{parse_violations:?}");
+            let mut violations = Vec::new();
+
+            let validation = super::validate_campaign_manifest(&manifest, &mut violations);
+            assert!(validation.is_ok(), "{validation:?}");
+
+            assert!(
+                violations.iter().any(|violation| violation
+                    .contains("closed campaign has unfinished work items: docs/test")),
+                "{violations:?}"
+            );
+        });
+    }
+
+    #[test]
+    fn campaign_source_truth_accepts_focused_tracker_with_proof_links() -> Result<(), String> {
+        let violations = with_temp_cwd("campaign-source-truth-focused", |root| {
+            write(
+                &root.join("docs/IMPLEMENTATION_CAMPAIGNS.md"),
+                "Focused tracker: `.ripr/goals/lane9-focused.toml`\n",
+            );
+            write(&root.join("docs/IMPLEMENTATION_PLAN.md"), "");
+            write(&root.join("docs/ROADMAP.md"), "");
+            write(&root.join("docs/REPO_TRACKING_MODEL.md"), "");
+            write(&root.join("docs/CODEX_GOALS.md"), "");
+            write(
+                &root.join("docs/CAPABILITY_MATRIX.md"),
+                "| Capability | Status | Spec | Evidence | Next | Metrics |\n| --- | --- | --- | --- | --- | --- |\n| Focused proof | `alpha` | `RIPR-SPEC-0999` | `.ripr/goals/lane9-focused.toml` | `maintenance` | focused_metric |\n",
+            );
+            write(
+                &root.join("docs/specs/RIPR-SPEC-0999-focused.md"),
+                "# Spec\n",
+            );
+            write(
+                &root.join("docs/proposals/RIPR-PROP-0999-focused.md"),
+                "# Proposal\n",
+            );
+            write(
+                &root.join("docs/handoffs/focused-receipt.md"),
+                "# Receipt\n",
+            );
+            write(
+                &root.join("docs/handoffs/focused-closeout.md"),
+                "# Closeout\n",
+            );
+            write(
+                &root.join(".ripr/goals/active.toml"),
+                r#"
+id = "active-campaign"
+title = "Active Campaign"
+status = "closed"
+end_state = ["closed"]
+
+[[work_item]]
+id = "docs/active"
+status = "done"
+branch = "docs-active"
+stackable = false
+acceptance = "done"
+commands = ["cargo xtask check-pr"]
+"#,
+            );
+            write(
+                &root.join(".ripr/goals/lane9-focused.toml"),
+                r#"
+id = "focused-tracker"
+title = "Focused Tracker"
+status = "closed"
+lane = 9
+
+# Focused tracker. This is not the active Codex Goals manifest.
+
+end_state = ["focused tracker closed"]
+
+[[work_item]]
+id = "spec/focused-contract"
+status = "done"
+branch = "spec-focused-contract"
+stackable = false
+proposal = "docs/proposals/RIPR-PROP-0999-focused.md"
+spec = "docs/specs/RIPR-SPEC-0999-focused.md"
+receipt = "docs/handoffs/focused-receipt.md"
+closeout = "docs/handoffs/focused-closeout.md"
+acceptance = "RIPR-SPEC-0999 defines the focused contract."
+commands = ["cargo xtask check-spec-format"]
+"#,
+            );
+
+            campaign_source_truth_violations_for_root(root)
+        })?;
+
+        assert!(violations.is_empty(), "{violations:?}");
+        Ok(())
+    }
+
+    #[test]
+    fn campaign_source_truth_reports_focused_tracker_drift() -> Result<(), String> {
+        let violations = with_temp_cwd("campaign-source-truth-drift", |root| {
+            write(
+                &root.join("docs/IMPLEMENTATION_CAMPAIGNS.md"),
+                "Focused tracker: `.ripr/goals/lane9-focused.toml`\n",
+            );
+            write(&root.join("docs/IMPLEMENTATION_PLAN.md"), "");
+            write(&root.join("docs/ROADMAP.md"), "");
+            write(&root.join("docs/REPO_TRACKING_MODEL.md"), "");
+            write(&root.join("docs/CODEX_GOALS.md"), "");
+            write(
+                &root.join("docs/CAPABILITY_MATRIX.md"),
+                "| Capability | Status | Spec | Evidence | Next | Metrics |\n| --- | --- | --- | --- | --- | --- |\n| Focused proof | `alpha` | `RIPR-SPEC-0999` | `.ripr/goals/lane9-focused.toml` | `ready` | focused_metric |\n",
+            );
+            write(
+                &root.join(".ripr/goals/active.toml"),
+                r#"
+id = "active-campaign"
+title = "Active Campaign"
+status = "closed"
+end_state = ["closed"]
+
+[[work_item]]
+id = "docs/active"
+status = "done"
+branch = "docs-active"
+stackable = false
+acceptance = "done"
+commands = ["cargo xtask check-pr"]
+"#,
+            );
+            write(
+                &root.join(".ripr/goals/lane9-focused.toml"),
+                r#"
+id = "focused-tracker"
+title = "Focused Tracker"
+status = "closed"
+lane = 9
+
+# Focused tracker.
+
+end_state = ["focused tracker closed"]
+
+[[work_item]]
+id = "spec/focused-contract"
+status = "done"
+branch = "spec-focused-contract"
+stackable = false
+spec = "docs/specs/RIPR-SPEC-0999-focused.md"
+closeout = "docs/handoffs/focused-closeout.md"
+acceptance = "RIPR-SPEC-0999 defines the focused contract."
+"#,
+            );
+
+            campaign_source_truth_violations_for_root(root)
+        })?;
+
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("not the active Codex Goals manifest")),
+            "{violations:?}"
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("done but has no proof command entries")),
+            "{violations:?}"
+        );
+        assert!(
+            violations.iter().any(|violation| violation
+                .contains("references missing `docs/specs/RIPR-SPEC-0999-focused.md`")),
+            "{violations:?}"
+        );
+        assert!(
+            violations.iter().any(|violation| {
+                violation.contains("references `RIPR-SPEC-0999` in acceptance")
+            }),
+            "{violations:?}"
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("instead of `maintenance`")),
+            "{violations:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn spec_id_file_lookup_requires_filename_boundary() -> Result<(), String> {
+        with_temp_cwd("spec-id-file-boundary", |root| {
+            write(
+                &root.join("docs/specs/RIPR-SPEC-00010-larger.md"),
+                "# Larger spec\n",
+            );
+            if super::spec_id_has_file(root, "RIPR-SPEC-0001")? {
+                return Err("RIPR-SPEC-0001 must not match RIPR-SPEC-00010".to_string());
+            }
+            write(
+                &root.join("docs/specs/RIPR-SPEC-0001-example.md"),
+                "# Exact spec\n",
+            );
+            if !super::spec_id_has_file(root, "RIPR-SPEC-0001")? {
+                return Err("RIPR-SPEC-0001 should match its own spec file".to_string());
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
     fn local_context_findings_are_sorted_deterministically() {
         let mut findings = [
             LocalContextFinding {
@@ -33146,6 +43218,16 @@ stackable = true
         assert_eq!(entry.file, "shape.md");
         assert_eq!(entry.path, "target/ripr/reports/shape.md");
         assert_eq!(entry.status, "pass");
+    }
+
+    #[test]
+    fn report_index_repo_ops_status_preserves_actionable() {
+        let artifacts = vec![ReportIndexRepoOpsArtifact {
+            path: "target/ripr/reports/pr-ready.md".to_string(),
+            available: true,
+            status: "actionable".to_string(),
+        }];
+        assert_eq!(report_index_repo_ops_status(&artifacts), "actionable");
     }
 
     #[test]
@@ -33296,7 +43378,7 @@ stackable = true
             "repo-badge-plus-json",
             "repo-badge-plus-shields",
         ] {
-            let args = repo_badge_artifact_command_args(format);
+            let args = repo_badge_artifact_command_args(format, None);
             for arg in &args {
                 if arg == "--diff" || arg == "--base" {
                     return Err(format!(
@@ -33315,6 +43397,27 @@ stackable = true
                     args.last()
                 ));
             }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn repo_badge_artifact_command_args_can_use_gap_ledger_without_diff() -> Result<(), String> {
+        let args =
+            repo_badge_artifact_command_args("repo-badge-json", Some(Path::new("gap-ledger.json")));
+        if args.iter().any(|arg| arg == "--diff" || arg == "--base") {
+            return Err(format!(
+                "gap-ledger repo-scope command args must remain diff-free: {args:?}"
+            ));
+        }
+        let gap_arg = args
+            .windows(2)
+            .find(|window| window[0] == "--gap-ledger")
+            .map(|window| window[1].as_str());
+        if gap_arg != Some("gap-ledger.json") {
+            return Err(format!(
+                "expected --gap-ledger gap-ledger.json in repo args, got {args:?}"
+            ));
         }
         Ok(())
     }
@@ -33373,6 +43476,7 @@ stackable = true
         let markdown = repo_badge_artifacts_summary_markdown(
             STUB_RIPR_NATIVE_JSON,
             STUB_RIPR_PLUS_NATIVE_JSON,
+            None,
         );
 
         let must_contain = [
@@ -33385,6 +43489,28 @@ stackable = true
             "- `repo-ripr-plus-badge-shields.json`",
         ];
         for expected in must_contain {
+            if !markdown.contains(expected) {
+                return Err(format!(
+                    "expected '{expected}' in repo markdown, got:\n{markdown}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn repo_badge_artifacts_summary_markdown_names_gap_ledger_basis() -> Result<(), String> {
+        let markdown = repo_badge_artifacts_summary_markdown(
+            STUB_RIPR_NATIVE_JSON,
+            STUB_RIPR_PLUS_NATIVE_JSON,
+            Some(Path::new("target/ripr/reports/gap-decision-ledger.json")),
+        );
+
+        for expected in [
+            "explicit gap decision ledger",
+            "policy-targeted `GapRecord` projection eligibility",
+            "target/ripr/reports/gap-decision-ledger.json",
+        ] {
             if !markdown.contains(expected) {
                 return Err(format!(
                     "expected '{expected}' in repo markdown, got:\n{markdown}"
@@ -33741,6 +43867,7 @@ stackable = true
         let markdown = repo_badge_artifacts_summary_markdown(
             STUB_RIPR_NATIVE_JSON,
             STUB_RIPR_PLUS_NATIVE_JSON,
+            None,
         );
 
         // Repo badge output is public-facing: it must not borrow runtime
@@ -34342,6 +44469,775 @@ jobs:
         assert!(message.contains("cargo xtask help"));
     }
 
+    fn changed_path(path: &str, statuses: &[&str]) -> ChangedPath {
+        ChangedPath {
+            path: path.to_string(),
+            statuses: statuses
+                .iter()
+                .map(|status| (*status).to_string())
+                .collect::<BTreeSet<_>>(),
+        }
+    }
+
+    fn doctor_has_error(findings: &[WorktreeDoctorFinding], text: &str) -> bool {
+        findings.iter().any(|finding| {
+            finding.severity == WorktreeDoctorSeverity::Error && finding.message.contains(text)
+        })
+    }
+
+    fn doctor_has_warning(findings: &[WorktreeDoctorFinding], text: &str) -> bool {
+        findings.iter().any(|finding| {
+            finding.severity == WorktreeDoctorSeverity::Warning && finding.message.contains(text)
+        })
+    }
+
+    #[test]
+    fn generated_clean_rejects_badge_endpoint_diff_outside_refresh_context() {
+        let changes = vec![changed_path("badges/ripr.json", &["M"])];
+        let violations = generated_clean_violations(&changes, false);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("generated badge endpoint changed"));
+        assert!(violations[0].contains("do not manually edit RIPR badge numbers"));
+    }
+
+    #[test]
+    fn worktree_doctor_flags_dirty_main_and_behind_branch() {
+        let changes = vec![changed_path("docs/README.md", &["M"])];
+        let findings = worktree_doctor_findings("main", 2, &changes, false, false, false);
+
+        assert!(doctor_has_error(
+            &findings,
+            "main branch has uncommitted changes"
+        ));
+        assert!(doctor_has_error(
+            &findings,
+            "behind origin/main by 2 commit"
+        ));
+    }
+
+    #[test]
+    fn worktree_doctor_rejects_badge_endpoint_outside_refresh_context() {
+        let changes = vec![changed_path("badges/ripr.json", &["M"])];
+        let findings =
+            worktree_doctor_findings("badge/diff-policy", 0, &changes, false, false, false);
+
+        assert!(doctor_has_error(
+            &findings,
+            "generated badge endpoint is dirty"
+        ));
+
+        let refresh_findings =
+            worktree_doctor_findings("badge-refresh", 0, &changes, false, false, true);
+        assert!(
+            !doctor_has_error(&refresh_findings, "generated badge endpoint is dirty"),
+            "unexpected findings: {refresh_findings:?}"
+        );
+    }
+
+    #[test]
+    fn worktree_doctor_warns_about_ignored_target_residue() {
+        let findings = worktree_doctor_findings("feature/x", 0, &[], true, true, false);
+
+        assert!(doctor_has_warning(&findings, "target/ripr exists"));
+        assert!(doctor_has_warning(
+            &findings,
+            "crates/ripr/examples/sample/target exists"
+        ));
+    }
+
+    #[test]
+    fn worktree_doctor_rejects_dirty_generated_artifacts() {
+        let changes = vec![
+            changed_path("target/ripr/reports/policy-operations.json", &["A"]),
+            changed_path("crates/ripr/examples/sample/target/debug/sample", &["A"]),
+        ];
+        let findings =
+            worktree_doctor_findings("feature/generated", 0, &changes, false, false, false);
+
+        assert!(doctor_has_error(
+            &findings,
+            "generated RIPR target artifact is dirty"
+        ));
+        assert!(doctor_has_error(
+            &findings,
+            "sample workspace target artifact is dirty"
+        ));
+
+        let deletion = vec![changed_path("target/ripr/reports/old.json", &["D"])];
+        let deletion_findings =
+            worktree_doctor_findings("feature/generated", 0, &deletion, false, false, false);
+        assert!(
+            !doctor_has_error(
+                &deletion_findings,
+                "generated RIPR target artifact is dirty"
+            ),
+            "unexpected findings: {deletion_findings:?}"
+        );
+    }
+
+    #[test]
+    fn worktree_doctor_warns_about_broad_diff_without_work_item_marker() {
+        let changes = vec![
+            changed_path("docs/specs/RIPR-SPEC-9999-example.md", &["A"]),
+            changed_path(".ripr/traceability.toml", &["M"]),
+            changed_path("metrics/capabilities.toml", &["M"]),
+            changed_path("xtask/src/main.rs", &["M"]),
+        ];
+        let findings = worktree_doctor_findings("feature/broad", 0, &changes, false, false, false);
+        assert!(doctor_has_warning(
+            &findings,
+            "changes span multiple source-of-truth layers"
+        ));
+
+        let with_marker = vec![
+            changed_path("docs/specs/RIPR-SPEC-9999-example.md", &["A"]),
+            changed_path(".ripr/traceability.toml", &["M"]),
+            changed_path("metrics/capabilities.toml", &["M"]),
+            changed_path("xtask/src/main.rs", &["M"]),
+            changed_path(".ripr/goals/active.toml", &["M"]),
+        ];
+        let marker_findings =
+            worktree_doctor_findings("feature/broad", 0, &with_marker, false, false, false);
+        assert!(
+            !doctor_has_warning(
+                &marker_findings,
+                "changes span multiple source-of-truth layers"
+            ),
+            "unexpected findings: {marker_findings:?}"
+        );
+    }
+
+    #[test]
+    fn worktree_command_rejects_missing_and_unknown_subcommands() -> Result<(), String> {
+        let Err(missing) = worktree(&[]) else {
+            return Err("missing subcommand should fail".to_string());
+        };
+        assert!(missing.contains("missing worktree command"));
+        assert!(missing.contains("cargo xtask worktree doctor"));
+
+        let Err(unknown) = worktree(&["inspect".to_string()]) else {
+            return Err("unknown subcommand should fail".to_string());
+        };
+        assert!(unknown.contains("unknown worktree command"));
+        assert!(unknown.contains("cargo xtask worktree doctor"));
+        Ok(())
+    }
+
+    #[test]
+    fn worktree_doctor_command_writes_clean_report_in_git_worktree() -> Result<(), String> {
+        with_temp_cwd("worktree-doctor-command", |root| -> Result<(), String> {
+            run("git", &["init", "-b", "feature"])?;
+            worktree(&["doctor".to_string()])?;
+            let report_path = root.join("target/ripr/reports/worktree-doctor.md");
+            let report = fs::read_to_string(&report_path)
+                .map_err(|err| format!("failed to read {}: {err}", report_path.display()))?;
+
+            assert!(report.contains("Status: pass"));
+            assert!(report.contains("No findings."));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn worktree_doctor_report_renders_warnings_and_errors() -> Result<(), String> {
+        with_temp_cwd("worktree-doctor-report", |root| -> Result<(), String> {
+            let warnings = vec![WorktreeDoctorFinding {
+                severity: WorktreeDoctorSeverity::Warning,
+                message: "target/ripr exists".to_string(),
+            }];
+            finish_worktree_doctor_report(&warnings)?;
+            let report_path = root.join("target/ripr/reports/worktree-doctor.md");
+            let warning_report = fs::read_to_string(&report_path)
+                .map_err(|err| format!("failed to read {}: {err}", report_path.display()))?;
+            assert!(warning_report.contains("Status: warn"));
+            assert!(warning_report.contains("Warnings:"));
+
+            let errors = vec![WorktreeDoctorFinding {
+                severity: WorktreeDoctorSeverity::Error,
+                message: "branch is behind origin/main".to_string(),
+            }];
+            let Err(err) = finish_worktree_doctor_report(&errors) else {
+                return Err("error findings should fail the doctor report".to_string());
+            };
+            assert!(err.contains("worktree doctor found blocking issues"));
+            let error_report = fs::read_to_string(&report_path)
+                .map_err(|err| format!("failed to read {}: {err}", report_path.display()))?;
+            assert!(error_report.contains("Status: fail"));
+            assert!(error_report.contains("Errors:"));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn badge_diff_policy_rejects_badge_endpoint_diff_outside_refresh_context() {
+        let changes = vec![changed_path("badges/ripr-plus.json", &["M"])];
+        let violations = badge_diff_policy_violations(&changes, false);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("generated badge endpoint changed"));
+        assert!(violations[0].contains("badge: refresh public endpoints"));
+    }
+
+    #[test]
+    fn badge_diff_policy_allows_badge_endpoint_diff_in_refresh_context() {
+        let changes = vec![changed_path("badges/ripr.json", &["M"])];
+        let violations = badge_diff_policy_violations(&changes, true);
+        assert!(
+            violations.is_empty(),
+            "unexpected violations: {violations:?}"
+        );
+    }
+
+    #[test]
+    fn badge_diff_policy_allows_readme_badge_layout_without_endpoint_diff() {
+        let changes = vec![changed_path("README.md", &["M"])];
+        let violations = badge_diff_policy_violations(&changes, false);
+        assert!(
+            violations.is_empty(),
+            "unexpected violations: {violations:?}"
+        );
+    }
+
+    #[test]
+    fn badge_diff_policy_rejects_badge_endpoint_even_with_readme_change() {
+        let changes = vec![
+            changed_path("README.md", &["M"]),
+            changed_path("badges/ripr.json", &["M"]),
+        ];
+        let violations = badge_diff_policy_violations(&changes, false);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("badges/ripr.json"));
+    }
+
+    #[test]
+    fn check_badge_diff_policy_rejects_endpoint_diff_from_git_status() -> Result<(), String> {
+        with_temp_cwd("badge-diff-policy-rejects", |root| {
+            run("git", &["init"])?;
+            std::fs::create_dir_all(root.join("badges")).map_err(|err| err.to_string())?;
+            std::fs::write(root.join("badges/ripr.json"), "{\"message\":\"1\"}\n")
+                .map_err(|err| err.to_string())?;
+            run("git", &["add", "-N", "badges/ripr.json"])?;
+
+            let message = check_badge_diff_policy_with_context(false)
+                .expect_err("badge endpoint diff should fail");
+            assert!(message.contains("generated badge endpoint changed"));
+            assert!(message.contains("badges/ripr.json"));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn check_badge_diff_policy_allows_readme_only_git_status() -> Result<(), String> {
+        with_temp_cwd("badge-diff-policy-readme", |root| {
+            run("git", &["init"])?;
+            std::fs::write(root.join("README.md"), "[![ripr](badge)](link)\n")
+                .map_err(|err| err.to_string())?;
+
+            check_badge_diff_policy_with_context(false)
+        })
+    }
+
+    #[test]
+    fn github_event_title_reader_accepts_pull_request_title() {
+        let title = github_event_pull_request_title_from_text(
+            r#"{"pull_request":{"title":"badge: refresh public endpoints"}}"#,
+        );
+        assert_eq!(title.as_deref(), Some("badge: refresh public endpoints"));
+    }
+
+    #[test]
+    fn generated_clean_allows_badge_endpoint_diff_in_refresh_context() {
+        let changes = vec![
+            changed_path("badges/ripr.json", &["M"]),
+            changed_path("badges/ripr-plus.json", &["M"]),
+        ];
+        let violations = generated_clean_violations(&changes, true);
+        assert!(
+            violations.is_empty(),
+            "unexpected violations: {violations:?}"
+        );
+        assert!(is_badge_refresh_context("automation/badge-endpoints"));
+        assert!(is_badge_refresh_context("badge: refresh public endpoints"));
+        assert!(is_badge_refresh_context("refs/heads/badge-refresh-counts"));
+    }
+
+    #[test]
+    fn generated_clean_rejects_target_residue() {
+        let changes = vec![
+            changed_path("target/ripr/reports/check-pr.md", &["A"]),
+            changed_path(
+                "crates/ripr/examples/sample/target/debug/.fingerprint",
+                &["??"],
+            ),
+        ];
+        let violations = generated_clean_violations(&changes, false);
+        assert_eq!(violations.len(), 2);
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("generated RIPR target artifact"))
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("sample workspace build output"))
+        );
+    }
+
+    #[test]
+    fn generated_clean_allows_deleting_committed_target_residue() {
+        let changes = vec![changed_path("target/ripr/reports/old.md", &["D"])];
+        let violations = generated_clean_violations(&changes, false);
+        assert!(
+            violations.is_empty(),
+            "unexpected violations: {violations:?}"
+        );
+    }
+
+    fn triage_pr(number: u64, title: &str, files: &[&str]) -> PrTriagePullRequest {
+        PrTriagePullRequest {
+            number,
+            title: title.to_string(),
+            body: "Validation\n- cargo xtask check-pr\n".to_string(),
+            is_draft: false,
+            created_at: "2026-05-14T00:00:00Z".to_string(),
+            updated_at: "2026-05-14T00:00:00Z".to_string(),
+            merge_state_status: "CLEAN".to_string(),
+            head_ref_name: format!("branch-{number}"),
+            base_ref_name: "main".to_string(),
+            review_decision: String::new(),
+            labels: Vec::new(),
+            files: files.iter().map(|file| file.to_string()).collect(),
+            checks: vec![PrTriageCheck {
+                name: "rust".to_string(),
+                status: "COMPLETED".to_string(),
+                conclusion: "SUCCESS".to_string(),
+            }],
+        }
+    }
+
+    #[test]
+    fn parse_pr_triage_pull_requests_reads_gh_json() -> Result<(), String> {
+        let prs = parse_pr_triage_pull_requests(
+            r#"[
+              {
+                "number": 10,
+                "title": "devex: report",
+                "body": "Validation\n- cargo xtask check-pr",
+                "isDraft": false,
+                "createdAt": "2026-05-14T00:00:00Z",
+                "updatedAt": "2026-05-14T01:00:00Z",
+                "mergeStateStatus": "CLEAN",
+                "headRefName": "devex-report",
+                "baseRefName": "main",
+                "reviewDecision": "",
+                "labels": [{"name": "devex"}],
+                "files": [{"path": "xtask/src/main.rs"}, {"path": "docs/PR_AUTOMATION.md"}],
+                "statusCheckRollup": [
+                  {"__typename": "CheckRun", "name": "rust", "status": "COMPLETED", "conclusion": "SUCCESS"},
+                  {"__typename": "StatusContext", "context": "CodeRabbit", "state": "SUCCESS"}
+                ]
+              }
+            ]"#,
+        )?;
+        assert_eq!(prs.len(), 1);
+        assert_eq!(prs[0].number, 10);
+        assert_eq!(prs[0].labels, vec!["devex".to_string()]);
+        assert_eq!(
+            prs[0].files,
+            vec![
+                "docs/PR_AUTOMATION.md".to_string(),
+                "xtask/src/main.rs".to_string()
+            ]
+        );
+        assert_eq!(prs[0].checks.len(), 2);
+        Ok(())
+    }
+
+    fn gh_pr_status_pr(checks: Vec<PrTriageCheck>) -> GhPrStatusPullRequest {
+        GhPrStatusPullRequest {
+            number: 42,
+            title: "devex: merge readiness".to_string(),
+            is_draft: false,
+            merge_state_status: "CLEAN".to_string(),
+            head_ref_name: "devex-gh-pr-status".to_string(),
+            base_ref_name: "main".to_string(),
+            review_decision: "APPROVED".to_string(),
+            checks,
+            reviews: vec![GhPrStatusReview {
+                author: "droid".to_string(),
+                state: "APPROVED".to_string(),
+            }],
+        }
+    }
+
+    fn gh_pr_status_check(name: &str, status: &str, conclusion: &str) -> PrTriageCheck {
+        PrTriageCheck {
+            name: name.to_string(),
+            status: status.to_string(),
+            conclusion: conclusion.to_string(),
+        }
+    }
+
+    #[test]
+    fn gh_pr_status_args_parse_pr_number() -> Result<(), String> {
+        assert_eq!(
+            parse_gh_pr_status_args(&["--pr".to_string(), "905".to_string()])?,
+            905
+        );
+        assert_eq!(parse_gh_pr_status_args(&["905".to_string()])?, 905);
+        assert_gh_pr_status_arg_error(&[])?;
+        assert_gh_pr_status_arg_error(&["--pr".to_string()])?;
+        assert_gh_pr_status_arg_error(&["--pr".to_string(), "0".to_string()])?;
+        Ok(())
+    }
+
+    fn assert_gh_pr_status_arg_error(args: &[String]) -> Result<(), String> {
+        match parse_gh_pr_status_args(args) {
+            Ok(number) => Err(format!(
+                "expected gh-pr-status args to fail, parsed #{number}"
+            )),
+            Err(_) => Ok(()),
+        }
+    }
+
+    #[test]
+    fn parse_gh_pr_status_reads_view_json() -> Result<(), String> {
+        let pr = parse_gh_pr_status_pull_request(
+            r#"{
+              "number": 42,
+              "title": "devex: merge readiness",
+              "isDraft": false,
+              "mergeStateStatus": "CLEAN",
+              "headRefName": "devex-gh-pr-status",
+              "baseRefName": "main",
+              "reviewDecision": "APPROVED",
+              "latestReviews": [
+                {"author": {"login": "droid"}, "state": "APPROVED"}
+              ],
+              "statusCheckRollup": [
+                {"__typename": "CheckRun", "name": "rust", "status": "COMPLETED", "conclusion": "SUCCESS"},
+                {"__typename": "StatusContext", "context": "droid/review", "state": "SUCCESS"}
+              ]
+            }"#,
+        )?;
+        assert_eq!(pr.number, 42);
+        assert_eq!(pr.title, "devex: merge readiness");
+        assert_eq!(pr.checks.len(), 2);
+        assert_eq!(pr.reviews.len(), 1);
+        assert_eq!(pr.reviews[0].author, "droid");
+        assert_eq!(
+            parse_required_status_contexts(r#"["rust","msrv","rust"]"#)?,
+            vec!["msrv".to_string(), "rust".to_string()]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gh_pr_status_readiness_selects_safe_next_action() {
+        let contexts = vec!["rust".to_string()];
+        let clean = gh_pr_status_pr(vec![gh_pr_status_check("rust", "COMPLETED", "SUCCESS")]);
+        let clean_readiness = gh_pr_status_readiness(&clean, &contexts, true, Vec::new());
+        assert_eq!(clean_readiness.safe_next_action, "merge");
+
+        let pending = gh_pr_status_pr(vec![gh_pr_status_check("rust", "IN_PROGRESS", "")]);
+        let pending_readiness = gh_pr_status_readiness(&pending, &contexts, true, Vec::new());
+        assert_eq!(pending_readiness.safe_next_action, "wait");
+        assert!(
+            pending_readiness
+                .required_checks_outstanding
+                .iter()
+                .any(|check| check.contains("rust"))
+        );
+
+        let failed = gh_pr_status_pr(vec![gh_pr_status_check("rust", "COMPLETED", "FAILURE")]);
+        let failed_readiness = gh_pr_status_readiness(&failed, &contexts, true, Vec::new());
+        assert_eq!(failed_readiness.safe_next_action, "inspect failure");
+
+        let mut behind = gh_pr_status_pr(vec![gh_pr_status_check("rust", "COMPLETED", "SUCCESS")]);
+        behind.merge_state_status = "BEHIND".to_string();
+        let behind_readiness = gh_pr_status_readiness(&behind, &contexts, true, Vec::new());
+        assert_eq!(gh_pr_safe_next_action(&behind, &behind_readiness), "rebase");
+    }
+
+    #[test]
+    fn gh_pr_status_markdown_reports_reviews_checks_and_action() {
+        let pr = gh_pr_status_pr(vec![
+            gh_pr_status_check("rust", "COMPLETED", "SUCCESS"),
+            gh_pr_status_check("droid/review", "COMPLETED", "SUCCESS"),
+        ]);
+        let contexts = vec!["rust".to_string()];
+        let readiness = gh_pr_status_readiness(&pr, &contexts, true, Vec::new());
+        let markdown = gh_pr_status_markdown(&pr, &contexts, &readiness);
+        assert!(markdown.contains("# GitHub PR Status"));
+        assert!(markdown.contains("safe next action: `merge`"));
+        assert!(markdown.contains("## Required Checks Outstanding"));
+        assert!(markdown.contains("## Reviews"));
+        assert!(markdown.contains("droid/review"));
+    }
+
+    #[test]
+    fn gh_pr_status_json_reports_merge_readiness_packet() -> Result<(), String> {
+        let pr = gh_pr_status_pr(vec![
+            gh_pr_status_check("rust", "COMPLETED", "SUCCESS"),
+            gh_pr_status_check("droid/review", "COMPLETED", "SUCCESS"),
+        ]);
+        let contexts = vec!["rust".to_string()];
+        let readiness = gh_pr_status_readiness(&pr, &contexts, true, Vec::new());
+        let json: Value = serde_json::from_str(&gh_pr_status_json(&pr, &contexts, &readiness))
+            .map_err(|err| format!("gh-pr-status JSON should parse: {err}"))?;
+
+        assert_eq!(json["schema_version"], "0.1");
+        assert_eq!(json["mode"], "advisory");
+        assert_eq!(json["pr_number"], pr.number);
+        assert_eq!(json["merge_state"], "CLEAN");
+        assert_eq!(json["behind_main"], false);
+        assert_eq!(json["review_decision"], "APPROVED");
+        assert_eq!(json["safe_next_action"], "merge");
+        assert_eq!(
+            json["advisory_checks"][0],
+            "droid/review (status=COMPLETED, conclusion=SUCCESS)"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn pr_triage_findings_flag_queue_risks() {
+        let mut first = triage_pr(
+            1,
+            "devex: split workflow renderer",
+            &["xtask/src/main.rs", "docs/PR_AUTOMATION.md"],
+        );
+        first.merge_state_status = "BEHIND".to_string();
+
+        let second = triage_pr(
+            2,
+            "devex: split workflow renderer",
+            &["xtask/src/main.rs", "docs/PR_AUTOMATION.md"],
+        );
+
+        let mut stale = triage_pr(3, "docs: old draft", &["docs/ROADMAP.md"]);
+        stale.is_draft = true;
+        stale.created_at = "2026-05-01T00:00:00Z".to_string();
+
+        let mut policy = triage_pr(
+            4,
+            "ci(policy): generated workflow",
+            &[".github/workflows/ci.yml"],
+        );
+        policy.body = "Validation\n- not run: cargo xtask check-pr\n".to_string();
+        policy.checks = vec![PrTriageCheck {
+            name: "rust".to_string(),
+            status: "COMPLETED".to_string(),
+            conclusion: "FAILURE".to_string(),
+        }];
+
+        let today = days_from_civil(2026, 5, 14);
+        let findings = pr_triage_findings(&[first, second, stale, policy], today);
+        let categories = findings
+            .iter()
+            .map(|finding| finding.category.as_str())
+            .collect::<BTreeSet<_>>();
+        assert!(categories.contains("same title family"));
+        assert!(categories.contains("same changed file set"));
+        assert!(categories.contains("stale draft"));
+        assert!(categories.contains("behind main"));
+        assert!(categories.contains("incomplete validation"));
+        assert!(categories.contains("policy-sensitive surface"));
+    }
+
+    #[test]
+    fn pr_triage_helpers_classify_validation_and_sensitive_paths() {
+        assert_eq!(
+            pr_title_family("WIP devex: split workflow renderer v2"),
+            "devex split workflow renderer"
+        );
+        assert_eq!(
+            pr_body_validation_warning("Summary\n\nValidation\n- cargo xtask check-pr\n"),
+            None
+        );
+        assert!(
+            pr_body_validation_warning("Summary only")
+                .is_some_and(|warning| warning.contains("no validation"))
+        );
+        assert_eq!(
+            pr_sensitive_file_reason(".github/workflows/ci.yml"),
+            Some("workflow behavior can alter generated CI or branch checks")
+        );
+        assert_eq!(
+            pr_checks_summary(&[PrTriageCheck {
+                name: "rust".to_string(),
+                status: "IN_PROGRESS".to_string(),
+                conclusion: String::new(),
+            }]),
+            "1 pending"
+        );
+        assert_eq!(
+            pr_checks_summary(&[PrTriageCheck {
+                name: "CodeRabbit".to_string(),
+                status: "SUCCESS".to_string(),
+                conclusion: "SUCCESS".to_string(),
+            }]),
+            "1 passed"
+        );
+    }
+
+    #[test]
+    fn pr_triage_markdown_lists_findings_and_open_prs() {
+        let pr = triage_pr(9, "devex: report", &["xtask/src/main.rs"]);
+        let finding = PrTriageFinding {
+            category: "same title family".to_string(),
+            severity: "warn".to_string(),
+            message: "#9 shares a title family".to_string(),
+            prs: vec![9],
+            details: vec!["#9 devex: report".to_string()],
+            recommended_action: "Choose a canonical PR.".to_string(),
+        };
+        let markdown = pr_triage_markdown(&[pr], &[finding], days_from_civil(2026, 5, 14));
+        assert!(markdown.contains("# ripr PR triage report"));
+        assert!(markdown.contains("Status: warn"));
+        assert!(markdown.contains("## Open PRs"));
+        assert!(markdown.contains("cargo xtask pr-triage-report"));
+    }
+
+    #[test]
+    fn pr_triage_json_lists_prs_findings_and_actions() -> Result<(), String> {
+        let pr = triage_pr(9, "devex: report", &["xtask/src/main.rs"]);
+        let finding = PrTriageFinding {
+            category: "same title family".to_string(),
+            severity: "warn".to_string(),
+            message: "#9 shares a title family".to_string(),
+            prs: vec![9],
+            details: vec!["#9 devex: report".to_string()],
+            recommended_action: "Choose a canonical PR.".to_string(),
+        };
+        let json = pr_triage_json(&[pr], &[finding], days_from_civil(2026, 5, 14), "unix_ms:1");
+        let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+
+        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["mode"], "advisory");
+        assert_eq!(value["generated_at"], "unix_ms:1");
+        assert_eq!(value["open_prs"][0]["number"], 9);
+        assert_eq!(value["findings"][0]["category"], "same title family");
+        assert_eq!(
+            value["recommended_actions"][0]["action"],
+            "Choose a canonical PR."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn specs_next_id_is_mechanical() {
+        assert_eq!(
+            next_spec_id_from_ids(["RIPR-SPEC-0001", "RIPR-SPEC-0046"].into_iter()),
+            "RIPR-SPEC-0047"
+        );
+        assert_eq!(
+            next_spec_id_from_ids(std::iter::empty::<&str>()),
+            "RIPR-SPEC-0001"
+        );
+    }
+
+    #[test]
+    fn specs_command_rejects_missing_or_unknown_subcommand() {
+        let missing = match specs(&[]) {
+            Ok(()) => "unexpected pass".to_string(),
+            Err(err) => err,
+        };
+        assert!(missing.contains("cargo xtask specs next"));
+
+        let unknown = match specs(&["current".to_string()]) {
+            Ok(()) => "unexpected pass".to_string(),
+            Err(err) => err,
+        };
+        assert!(unknown.contains("unknown specs command"));
+        assert!(unknown.contains("cargo xtask specs next"));
+    }
+
+    #[test]
+    fn spec_ids_in_text_extracts_four_digit_ids_only() {
+        let ids = spec_ids_in_text(
+            "RIPR-SPEC-0001 RIPR-SPEC-001 RIPR-SPEC-9999 RIPR-SPEC-abcd RIPR-SPEC-12345",
+        );
+        assert!(ids.contains("RIPR-SPEC-0001"));
+        assert!(ids.contains("RIPR-SPEC-9999"));
+        assert!(!ids.contains("RIPR-SPEC-001"));
+        assert!(!ids.contains("RIPR-SPEC-1234"));
+    }
+
+    #[test]
+    fn spec_numbering_detects_missing_index_and_reference_drift() -> Result<(), String> {
+        let root = temp_dir("spec-numbering-drift");
+        write(
+            &root.join("docs/specs/RIPR-SPEC-0001-one.md"),
+            "# RIPR-SPEC-0001: One\n",
+        );
+        write(
+            &root.join("docs/specs/RIPR-SPEC-0002-two.md"),
+            "# RIPR-SPEC-0002: Two\n",
+        );
+        write(
+            &root.join("docs/specs/README.md"),
+            "| Spec | Status | Title |\n| --- | --- | --- |\n| [RIPR-SPEC-0001](RIPR-SPEC-0001-one.md) | proposed | One |\n| [RIPR-SPEC-9999](missing.md) | proposed | Missing |\n",
+        );
+        write(
+            &root.join(".ripr/traceability.toml"),
+            "spec = \"RIPR-SPEC-9998\"\n",
+        );
+        write(
+            &root.join("metrics/capabilities.toml"),
+            "spec = \"RIPR-SPEC-9997\"\n",
+        );
+        write(
+            &root.join("docs/CAPABILITY_MATRIX.md"),
+            "| Capability | RIPR-SPEC-9996 |\n",
+        );
+
+        let violations = spec_numbering_violations(&root)?;
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("missing index link `[RIPR-SPEC-0002]"))
+        );
+        assert!(violations.iter().any(|violation| {
+            violation.contains("README.md references missing spec `RIPR-SPEC-9999`")
+        }));
+        assert!(violations.iter().any(|violation| {
+            violation.contains(".ripr/traceability.toml references missing spec `RIPR-SPEC-9998`")
+        }));
+        assert!(violations.iter().any(|violation| {
+            violation.contains("metrics/capabilities.toml references missing spec `RIPR-SPEC-9997`")
+        }));
+        assert!(violations.iter().any(|violation| {
+            violation.contains("docs/CAPABILITY_MATRIX.md references missing spec `RIPR-SPEC-9996`")
+        }));
+        Ok(())
+    }
+
+    #[test]
+    fn spec_numbering_detects_duplicate_spec_ids() -> Result<(), String> {
+        let root = temp_dir("spec-numbering-duplicate");
+        write(
+            &root.join("docs/specs/RIPR-SPEC-0001-one.md"),
+            "# RIPR-SPEC-0001: One\n",
+        );
+        write(
+            &root.join("docs/specs/RIPR-SPEC-0001-two.md"),
+            "# RIPR-SPEC-0001: Two\n",
+        );
+        write(
+            &root.join("docs/specs/README.md"),
+            "| Spec | Status | Title |\n| --- | --- | --- |\n| [RIPR-SPEC-0001](RIPR-SPEC-0001-one.md) | proposed | One |\n",
+        );
+
+        let violations = spec_numbering_violations(&root)?;
+        assert!(
+            violations.iter().any(
+                |violation| violation.contains("RIPR-SPEC-0001 is used by multiple spec files")
+            )
+        );
+        Ok(())
+    }
+
     #[test]
     fn xtask_command_parse_preserves_subcommand_arguments() {
         assert_eq!(
@@ -34359,6 +45255,115 @@ jobs:
         assert_eq!(
             XtaskCommand::parse(["check-no-panic-family".to_string(), "--propose".to_string(),]),
             XtaskCommand::CheckNoPanicFamily(vec!["--propose".to_string()])
+        );
+        assert_eq!(
+            XtaskCommand::parse(["check-badge-diff-policy".to_string()]),
+            XtaskCommand::CheckBadgeDiffPolicy
+        );
+        assert_eq!(
+            XtaskCommand::parse(["pr-triage-report".to_string()]),
+            XtaskCommand::PrTriageReport
+        );
+        assert_eq!(
+            XtaskCommand::parse(["pr-ready".to_string()]),
+            XtaskCommand::PrReady
+        );
+        assert_eq!(
+            XtaskCommand::parse(["cockpit".to_string()]),
+            XtaskCommand::Cockpit
+        );
+        assert_eq!(
+            XtaskCommand::parse([
+                "impacted-evidence".to_string(),
+                "--label".to_string(),
+                "release-risk".to_string(),
+                "--check".to_string(),
+            ]),
+            XtaskCommand::ImpactedEvidence(vec![
+                "--label".to_string(),
+                "release-risk".to_string(),
+                "--check".to_string(),
+            ])
+        );
+        assert_eq!(
+            XtaskCommand::parse([
+                "ripr-pr".to_string(),
+                "--base".to_string(),
+                "origin/main".to_string(),
+                "--head".to_string(),
+                "HEAD".to_string(),
+                "--check".to_string(),
+            ]),
+            XtaskCommand::RiprPr(vec![
+                "--base".to_string(),
+                "origin/main".to_string(),
+                "--head".to_string(),
+                "HEAD".to_string(),
+                "--check".to_string(),
+            ])
+        );
+        assert_eq!(
+            XtaskCommand::parse([
+                "first-pr".to_string(),
+                "--gap-ledger".to_string(),
+                "target/ripr/reports/gap-decision-ledger.json".to_string(),
+                "--check".to_string(),
+            ]),
+            XtaskCommand::FirstPr(vec![
+                "--gap-ledger".to_string(),
+                "target/ripr/reports/gap-decision-ledger.json".to_string(),
+                "--check".to_string(),
+            ])
+        );
+        assert_eq!(
+            XtaskCommand::parse([
+                "ripr-review-comments".to_string(),
+                "--base".to_string(),
+                "origin/main".to_string(),
+                "--head".to_string(),
+                "HEAD".to_string(),
+                "--check".to_string(),
+            ]),
+            XtaskCommand::RiprReviewComments(vec![
+                "--base".to_string(),
+                "origin/main".to_string(),
+                "--head".to_string(),
+                "HEAD".to_string(),
+                "--check".to_string(),
+            ])
+        );
+        assert_eq!(
+            XtaskCommand::parse(["ripr-pr-summary".to_string(), "--check".to_string(),]),
+            XtaskCommand::RiprPrSummary(vec!["--check".to_string()])
+        );
+        assert_eq!(
+            XtaskCommand::parse([
+                "ripr-annotations".to_string(),
+                "--comments".to_string(),
+                "target/ripr/review/comments.json".to_string(),
+                "--check".to_string(),
+            ]),
+            XtaskCommand::RiprAnnotations(vec![
+                "--comments".to_string(),
+                "target/ripr/review/comments.json".to_string(),
+                "--check".to_string(),
+            ])
+        );
+        assert_eq!(
+            XtaskCommand::parse([
+                "gh-pr-status".to_string(),
+                "--pr".to_string(),
+                "905".to_string(),
+            ]),
+            XtaskCommand::GhPrStatus(vec!["--pr".to_string(), "905".to_string()])
+        );
+        assert_eq!(
+            XtaskCommand::parse(["specs".to_string(), "next".to_string()]),
+            XtaskCommand::Specs(vec!["next".to_string()])
+        );
+        assert_eq!(
+            XtaskCommand::parse(["check-spec-numbering".to_string()]),
+            XtaskCommand::CheckSpecNumbering
         );
     }
 
@@ -34393,6 +45398,17 @@ jobs:
             XtaskCommand::EvidenceQualityScorecard
         );
         assert_eq!(
+            XtaskCommand::parse([
+                "evidence-quality-trend".to_string(),
+                "--previous".to_string(),
+                "previous.json".to_string(),
+            ]),
+            XtaskCommand::EvidenceQualityTrend(vec![
+                "--previous".to_string(),
+                "previous.json".to_string(),
+            ])
+        );
+        assert_eq!(
             XtaskCommand::parse(["vscode-compile".to_string()]),
             XtaskCommand::VscodeCompile
         );
@@ -34402,11 +45418,28 @@ jobs:
         );
         assert_eq!(
             XtaskCommand::parse(["badges".to_string()]),
-            XtaskCommand::UpdateBadgeEndpoints
+            XtaskCommand::UpdateBadgeEndpoints(Vec::new())
         );
         assert_eq!(
             XtaskCommand::parse(["badges".to_string(), "--check".to_string()]),
-            XtaskCommand::CheckBadgeEndpoints
+            XtaskCommand::CheckBadgeEndpoints(vec!["--check".to_string()])
+        );
+        assert_eq!(
+            XtaskCommand::parse([
+                "badges".to_string(),
+                "--check".to_string(),
+                "--gap-ledger".to_string(),
+                "target/ripr/reports/gap-decision-ledger.json".to_string(),
+            ]),
+            XtaskCommand::CheckBadgeEndpoints(vec![
+                "--check".to_string(),
+                "--gap-ledger".to_string(),
+                "target/ripr/reports/gap-decision-ledger.json".to_string(),
+            ])
+        );
+        assert_eq!(
+            XtaskCommand::parse(["worktree".to_string(), "doctor".to_string()]),
+            XtaskCommand::Worktree(vec!["doctor".to_string()])
         );
         assert_eq!(
             XtaskCommand::parse(std::iter::empty::<String>()),
@@ -34425,13 +45458,14 @@ jobs:
                 XtaskCommand::TestOracleReport,
                 XtaskCommand::TestEfficiencyReport,
                 XtaskCommand::BadgeArtifacts,
-                XtaskCommand::RepoBadgeArtifacts,
+                XtaskCommand::RepoBadgeArtifacts(Vec::new()),
                 XtaskCommand::RepoSeamInventory,
                 XtaskCommand::RepoExposureReport,
                 XtaskCommand::RepoExposureLatencyReport,
                 XtaskCommand::EvidenceHealth,
                 XtaskCommand::Lane1EvidenceAudit,
                 XtaskCommand::EvidenceQualityScorecard,
+                XtaskCommand::EvidenceQualityTrend(Vec::new()),
                 XtaskCommand::AgentSeamPackets(Some(".".to_string())),
                 XtaskCommand::LspCockpitReport,
                 XtaskCommand::OperatorCockpitReport,
@@ -34439,8 +45473,7 @@ jobs:
                 XtaskCommand::TargetedTestOutcome(Vec::new()),
                 XtaskCommand::MutationCalibration(Vec::new()),
                 XtaskCommand::SarifPolicy(Vec::new()),
-                XtaskCommand::UpdateBadgeEndpoints,
-                XtaskCommand::CheckBadgeEndpoints,
+                XtaskCommand::CheckBadgeEndpoints(Vec::new()),
                 XtaskCommand::Dogfood,
                 XtaskCommand::Critic,
                 XtaskCommand::Reports(vec!["index".to_string()]),
@@ -34467,66 +45500,68 @@ jobs:
 
     #[test]
     fn xtask_run_helpers_report_success_failure_and_optional_output() -> Result<(), String> {
-        let program = "rustc";
-        let invalid_flag = "--definitely-not-a-real-rustc-flag";
+        with_repo_cwd(|| {
+            let program = "rustc";
+            let invalid_flag = "--definitely-not-a-real-rustc-flag";
 
-        let version = run_output(program, &["--version"])?;
-        if !version.contains("rustc") {
-            return Err(format!("expected rustc version output, got {version:?}"));
-        }
+            let version = run_output(program, &["--version"])?;
+            if !version.contains("rustc") {
+                return Err(format!("expected rustc version output, got {version:?}"));
+            }
 
-        let owned_version = run_output_owned(program, &["--version".to_string()])?;
-        if !owned_version.contains("rustc") {
-            return Err(format!(
-                "expected owned rustc version output, got {owned_version:?}"
-            ));
-        }
+            let owned_version = run_output_owned(program, &["--version".to_string()])?;
+            if !owned_version.contains("rustc") {
+                return Err(format!(
+                    "expected owned rustc version output, got {owned_version:?}"
+                ));
+            }
 
-        let status = run(program, &["--version"])?;
-        if !status.success() {
-            return Err(format!("expected rustc --version to succeed, got {status}"));
-        }
+            let status = run(program, &["--version"])?;
+            if !status.success() {
+                return Err(format!("expected rustc --version to succeed, got {status}"));
+            }
 
-        let captured = capture_output(program, &["--version"], "rustc version")?;
-        if !captured.status.success() || !captured.stdout.contains("rustc") {
-            return Err(format!(
-                "expected captured rustc version output, got status={} stdout={:?}",
-                captured.status, captured.stdout
-            ));
-        }
+            let captured = capture_output(program, &["--version"], "rustc version")?;
+            if !captured.status.success() || !captured.stdout.contains("rustc") {
+                return Err(format!(
+                    "expected captured rustc version output, got status={} stdout={:?}",
+                    captured.status, captured.stdout
+                ));
+            }
 
-        let failed_capture = capture_output(program, &[invalid_flag], "rustc invalid flag")?;
-        if failed_capture.status.success() {
-            return Err("expected invalid rustc flag to fail".to_string());
-        }
+            let failed_capture = capture_output(program, &[invalid_flag], "rustc invalid flag")?;
+            if failed_capture.status.success() {
+                return Err("expected invalid rustc flag to fail".to_string());
+            }
 
-        let optional = run_output_optional(program, &[invalid_flag])?;
-        if !optional.is_empty() {
-            return Err(format!(
-                "expected optional failure to return empty output, got {optional:?}"
-            ));
-        }
+            let optional = run_output_optional(program, &[invalid_flag])?;
+            if !optional.is_empty() {
+                return Err(format!(
+                    "expected optional failure to return empty output, got {optional:?}"
+                ));
+            }
 
-        let failure = run_output(program, &[invalid_flag]).is_err();
-        if !failure {
-            return Err("expected run_output to report non-zero exit".to_string());
-        }
+            let failure = run_output(program, &[invalid_flag]).is_err();
+            if !failure {
+                return Err("expected run_output to report non-zero exit".to_string());
+            }
 
-        let owned_failure = run_output_owned(program, &[invalid_flag.to_string()]).is_err();
-        if !owned_failure {
-            return Err("expected run_output_owned to report non-zero exit".to_string());
-        }
+            let owned_failure = run_output_owned(program, &[invalid_flag.to_string()]).is_err();
+            if !owned_failure {
+                return Err("expected run_output_owned to report non-zero exit".to_string());
+            }
 
-        let missing_program = capture_output(
-            "definitely-missing-ripr-test-binary",
-            &[],
-            "missing test binary",
-        );
-        if missing_program.is_ok() {
-            return Err("expected missing executable to report spawn error".to_string());
-        }
+            let missing_program = capture_output(
+                "definitely-missing-ripr-test-binary",
+                &[],
+                "missing test binary",
+            );
+            if missing_program.is_ok() {
+                return Err("expected missing executable to report spawn error".to_string());
+            }
 
-        Ok(())
+            Ok(())
+        })
     }
 
     #[test]
@@ -34620,8 +45655,292 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn command_catalog_covers_help_catalog_roots() {
+        let catalog = command_catalog();
+        let catalog_roots = catalog
+            .iter()
+            .map(|entry| {
+                entry
+                    .command
+                    .split_once(' ')
+                    .map_or(entry.command, |(root, _)| root)
+            })
+            .collect::<BTreeSet<_>>();
+
+        for command in known_commands() {
+            let root = command.split_once(' ').map_or(command, |(root, _)| root);
+            assert!(
+                catalog_roots.contains(root),
+                "command catalog missing help root `{root}`"
+            );
+        }
+    }
+
+    #[test]
+    fn command_catalog_has_no_duplicate_entries() {
+        let catalog = command_catalog();
+        let unique = catalog
+            .iter()
+            .map(|entry| entry.command)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(catalog.len(), unique.len());
+    }
+
+    #[test]
+    fn command_catalog_check_accepts_current_catalog() {
+        let commands = known_commands();
+        let catalog = command_catalog();
+
+        assert_eq!(
+            command_catalog_violations(&commands, &catalog),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn command_catalog_check_reports_drift_and_missing_classification() {
+        let commands = vec!["shape", "missing-command", "arg-command"];
+        let catalog = vec![
+            CommandCatalogEntry {
+                command: "shape",
+                mutability: "mutating",
+                writes: "",
+                judgment_required: false,
+                notes: "Writes local files.",
+            },
+            CommandCatalogEntry {
+                command: "removed-command",
+                mutability: "external_state_mutating",
+                writes: "GitHub",
+                judgment_required: false,
+                notes: "Uploads artifacts.",
+            },
+            CommandCatalogEntry {
+                command: "arg-command",
+                mutability: "argument_dependent",
+                writes: "target/ripr/reports",
+                judgment_required: false,
+                notes: "May write.",
+            },
+        ];
+
+        let report = command_catalog_violations(&commands, &catalog).join("\n");
+
+        assert!(report.contains("missing from the command mutability catalog"));
+        assert!(report.contains("does not match any known xtask command"));
+        assert!(report.contains("command `shape` must document writes"));
+        assert!(report.contains("must be judgment-required"));
+        assert!(report.contains("must explain when it writes"));
+    }
+
+    #[test]
+    fn command_catalog_classifies_core_workflow_commands() -> Result<(), String> {
+        let catalog = command_catalog();
+        let find = |command: &str| {
+            catalog
+                .iter()
+                .find(|entry| entry.command == command)
+                .ok_or_else(|| format!("missing command catalog entry `{command}`"))
+        };
+
+        assert_eq!(find("shape")?.mutability, "mutating");
+        assert_eq!(find("check-pr")?.mutability, "non_mutating_check");
+        assert_eq!(find("pr-ready")?.mutability, "report_only");
+        assert_eq!(find("cockpit")?.mutability, "external_state_read");
+        assert_eq!(
+            find("check-command-catalog")?.mutability,
+            "non_mutating_check"
+        );
+        assert_eq!(find("badges")?.mutability, "mutating");
+        assert_eq!(find("badges --check")?.mutability, "non_mutating_check");
+        assert!(find("goldens bless <name> --reason <reason>")?.judgment_required);
+        assert_eq!(
+            find("release-upload-assets --version <version>")?.mutability,
+            "external_state_mutating"
+        );
+        assert!(find("release-upload-assets --version <version>")?.judgment_required);
+        Ok(())
+    }
+
+    #[test]
+    fn commands_report_json_and_markdown_are_structured() -> Result<(), String> {
+        let catalog = command_catalog();
+        let json = commands_report_json(&catalog);
+        let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["mode"], "advisory");
+        assert!(
+            value["commands"]
+                .as_array()
+                .ok_or("commands must be an array")?
+                .iter()
+                .any(|entry| entry["command"] == "check-pr"
+                    && entry["mutability"] == "non_mutating_check")
+        );
+
+        let markdown = commands_report_markdown(&catalog);
+        assert!(markdown.contains("# ripr command mutability catalog"));
+        assert!(markdown.contains("Status: pass"));
+        assert!(markdown.contains("| `check-pr` | `non_mutating_check` |"));
+        Ok(())
+    }
+
+    #[test]
+    fn pr_ready_packet_marks_required_failure_as_fail() -> Result<(), String> {
+        let steps = vec![
+            PrReadyStep {
+                id: "worktree_doctor",
+                command: "cargo xtask worktree doctor",
+                report: "target/ripr/reports/worktree-doctor.md",
+                required: true,
+                status: "fail".to_string(),
+                summary: "branch is behind origin/main".to_string(),
+            },
+            PrReadyStep {
+                id: "receipts_check",
+                command: "cargo xtask receipts check",
+                report: "target/ripr/reports/receipts.md",
+                required: false,
+                status: "needs_attention".to_string(),
+                summary: "missing receipt".to_string(),
+            },
+        ];
+
+        assert_eq!(pr_ready_status(&steps), "fail");
+        let json = pr_ready_json(&steps);
+        let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["mode"], "advisory");
+        assert_eq!(value["status"], "fail");
+        assert_eq!(value["steps"][0]["id"], "worktree_doctor");
+        assert_eq!(value["steps"][0]["required"], true);
+        assert!(
+            value["judgment_required"]
+                .as_array()
+                .ok_or("judgment_required must be an array")?
+                .iter()
+                .any(|entry| entry == "golden blessing")
+        );
+
+        let markdown = pr_ready_markdown(&steps);
+        assert!(markdown.contains("# ripr PR Ready"));
+        assert!(markdown.contains("Status: fail"));
+        assert!(markdown.contains("## Stop / Judgment Required"));
+        Ok(())
+    }
+
+    #[test]
+    fn pr_ready_packet_keeps_nonblocking_items_actionable() {
+        let steps = vec![
+            PrReadyStep {
+                id: "worktree_doctor",
+                command: "cargo xtask worktree doctor",
+                report: "target/ripr/reports/worktree-doctor.md",
+                required: true,
+                status: "pass".to_string(),
+                summary: "completed".to_string(),
+            },
+            PrReadyStep {
+                id: "receipts_check",
+                command: "cargo xtask receipts check",
+                report: "target/ripr/reports/receipts.md",
+                required: false,
+                status: "needs_attention".to_string(),
+                summary: "missing receipt".to_string(),
+            },
+        ];
+
+        assert_eq!(pr_ready_status(&steps), "actionable");
+        assert_eq!(
+            pr_ready_next_action(&steps),
+            "review the attention items, then run cargo xtask check-pr for full gate receipts"
+        );
+    }
+
+    #[test]
+    fn pr_ready_report_status_maps_warnings_to_attention() {
+        assert_eq!(
+            pr_ready_status_from_report_status("warn"),
+            Some("needs_attention")
+        );
+        assert_eq!(
+            pr_ready_status_from_report_status("actionable"),
+            Some("needs_attention")
+        );
+        assert_eq!(pr_ready_status_from_report_status("fail"), Some("fail"));
+        assert_eq!(pr_ready_status_from_report_status("pass"), None);
+    }
+
+    #[test]
+    fn pr_ready_status_does_not_fail_required_warning() {
+        let steps = vec![PrReadyStep {
+            id: "worktree_doctor",
+            command: "cargo xtask worktree doctor",
+            report: "target/ripr/reports/worktree-doctor.md",
+            required: true,
+            status: "needs_attention".to_string(),
+            summary: "report status: warn; see target/ripr/reports/worktree-doctor.md".to_string(),
+        }];
+
+        assert_eq!(pr_ready_status(&steps), "actionable");
+    }
+
+    #[test]
+    fn cockpit_packet_reports_action_queue_and_boundaries() -> Result<(), String> {
+        let steps = vec![
+            PrReadyStep {
+                id: "command_catalog_check",
+                command: "cargo xtask check-command-catalog",
+                report: "target/ripr/reports/command-catalog.md",
+                required: true,
+                status: "pass".to_string(),
+                summary: "completed".to_string(),
+            },
+            PrReadyStep {
+                id: "pr_triage",
+                command: "cargo xtask pr-triage-report",
+                report: "target/ripr/reports/pr-triage.md",
+                required: false,
+                status: "needs_attention".to_string(),
+                summary: "stale duplicate PRs detected".to_string(),
+            },
+        ];
+
+        assert_eq!(pr_ready_status(&steps), "actionable");
+        let json = cockpit_json(&steps);
+        let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["mode"], "advisory");
+        assert_eq!(value["status"], "actionable");
+        assert!(
+            value["action_queue"]
+                .as_array()
+                .ok_or("action_queue must be an array")?
+                .iter()
+                .any(|entry| entry
+                    .as_str()
+                    .is_some_and(|text| text.contains("stale, duplicate")))
+        );
+        assert!(
+            value["judgment_required"]
+                .as_array()
+                .ok_or("judgment_required must be an array")?
+                .iter()
+                .any(|entry| entry == "baseline adoption")
+        );
+
+        let markdown = cockpit_markdown(&steps);
+        assert!(markdown.contains("# ripr Repo Cockpit"));
+        assert!(markdown.contains("Status: actionable"));
+        assert!(markdown.contains("## Action Queue"));
+        assert!(markdown.contains("## Generated Only"));
+        Ok(())
+    }
+
+    #[test]
     fn known_commands_include_current_report_and_policy_commands() {
         let commands = known_commands();
+        assert!(commands.contains(&"commands"));
         assert!(commands.contains(&"install-hooks"));
         assert!(commands.contains(&"repo-seam-inventory"));
         assert!(commands.contains(&"repo-exposure-report"));
@@ -34629,15 +45948,25 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(commands.contains(&"lane1-evidence-audit"));
         assert!(commands.contains(&"evidence-quality-audit"));
         assert!(commands.contains(&"evidence-quality-scorecard"));
+        assert!(
+            commands.contains(&"evidence-quality-trend [--current <path>] [--previous <path>]")
+        );
         assert!(commands.contains(&"agent-seam-packets [root]"));
         assert!(commands.contains(&"lsp-cockpit-report"));
         assert!(commands.contains(&"operator-cockpit"));
         assert!(commands.contains(&"operator-cockpit-report"));
+        assert!(commands.contains(&"pr-ready"));
+        assert!(commands.contains(&"cockpit"));
         assert!(commands.contains(&"release-readiness --version <version>"));
         assert!(commands.contains(&"targeted-test-outcome --before <path> --after <path>"));
         assert!(commands.contains(&"mutation-calibration [root] --mutants-json <path>"));
         assert!(commands.contains(&"sarif-policy --current <path> [--baseline <path>]"));
-        assert!(commands.contains(&"badges [--check]"));
+        assert!(commands.contains(&"badges [--check] [--gap-ledger <path>]"));
+        assert!(commands.contains(&"pr-triage-report"));
+        assert!(commands.contains(&"gh-pr-status --pr <number>"));
+        assert!(commands.contains(&"check-badge-diff-policy"));
+        assert!(commands.contains(&"check-command-catalog"));
+        assert!(commands.contains(&"worktree doctor"));
         assert!(commands.contains(&"check-droid-review-config"));
         assert!(commands.contains(&"check-ci-lane-whitelist"));
         assert!(commands.contains(&"vscode-compile"));
@@ -34693,6 +46022,58 @@ covered_by = ["cargo xtask check-file-policy"]
             value["related_test_ranking"]["top_confidence_counts"]["low"],
             serde_json::Value::from(1)
         );
+        let alignment = &value["finding_alignment"]["summary"];
+        assert_eq!(alignment["raw_signals"], serde_json::Value::from(3));
+        assert_eq!(alignment["canonical_items"], serde_json::Value::from(3));
+        assert_eq!(
+            alignment["aligned_raw_findings"],
+            serde_json::Value::from(3)
+        );
+        assert_eq!(alignment["actionable_gaps"], serde_json::Value::from(2));
+        assert_eq!(alignment["static_limitations"], serde_json::Value::from(1));
+        assert_eq!(
+            alignment["calibrated_supported"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(alignment["uncalibrated"], serde_json::Value::from(2));
+        assert_eq!(
+            alignment["presentation_text_total"],
+            serde_json::Value::from(0)
+        );
+        assert_eq!(
+            alignment["finding_alignment_raw_signals_total"],
+            serde_json::Value::from(3)
+        );
+        let coverage = &value["finding_alignment"]["coverage"];
+        assert_eq!(
+            coverage["static_unknown_without_named_limitation"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            coverage["canonical_items_without_repair_route"],
+            serde_json::Value::from(0)
+        );
+        assert_eq!(
+            coverage["canonical_items_without_verify_command"],
+            serde_json::Value::from(1)
+        );
+        let class_rows = coverage["alignment_coverage_by_class"]
+            .as_array()
+            .ok_or_else(|| "alignment coverage rows should be an array".to_string())?;
+        let predicate = class_rows
+            .iter()
+            .find(|row| row["evidence_class"] == "predicate_boundary")
+            .ok_or_else(|| "missing predicate_boundary coverage row".to_string())?;
+        assert_eq!(predicate["canonical_items"], serde_json::Value::from(2));
+        assert_eq!(predicate["actionable_items"], serde_json::Value::from(2));
+        let call_presence = class_rows
+            .iter()
+            .find(|row| row["evidence_class"] == "call_presence")
+            .ok_or_else(|| "missing call_presence coverage row".to_string())?;
+        assert_eq!(
+            call_presence["static_limitation_items"],
+            serde_json::Value::from(1)
+        );
 
         let fields = value["evidence_record_field_health"]
             .as_array()
@@ -34707,12 +46088,95 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn lane1_evidence_audit_reports_alignment_coverage_holes() -> Result<(), String> {
+        let report = lane1_evidence_audit_from_repo_exposure(
+            ".",
+            r#"{
+              "schema_version": "0.3",
+              "scope": "repo",
+              "seams": [
+                {
+                  "seam_id": "raw-config",
+                  "headline_eligible": true,
+                  "file": "src/policy.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "seam-config",
+                    "canonical_gap_id": null,
+                    "owner": "policy::labels",
+                    "location": {"file": "src/policy.rs", "line": 10},
+                    "seam_kind": "config_or_policy_constant",
+                    "grip_class": "static_unknown",
+                    "headline_eligible": true,
+                    "evidence_path": {},
+                    "observed_values": [],
+                    "missing_discriminators": [],
+                    "related_tests_total": 0,
+                    "related_tests": [],
+                    "recommendation": {"action": "inspect_static_limitation", "reason": "alignment missing", "verify_command": null},
+                    "actionability": {"class": "static_limitation"},
+                    "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+                    "static_limitations": [],
+                    "raw_findings": [
+                      {
+                        "file": "src/policy.rs",
+                        "line": 10,
+                        "kind": "exposed",
+                        "probe_kind": "config_or_policy_constant",
+                        "expression": "pub const POLICY_LABEL: &str ="
+                      },
+                      {
+                        "file": "src/policy.rs",
+                        "line": 10,
+                        "kind": "static_unknown",
+                        "probe_kind": "static_unknown",
+                        "expression": "pub const POLICY_LABEL: &str = \"internal\";"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }"#,
+        )?;
+        let json = lane1_evidence_audit_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        let coverage = &value["finding_alignment"]["coverage"];
+
+        assert_eq!(
+            coverage["unaligned_raw_findings_by_class"]["config_or_policy_constant"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(
+            coverage["alignment_coverage_by_class"][0]["unaligned_raw_findings"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(
+            coverage["top_unaligned_examples"][0]["evidence_class"],
+            "config_or_policy_constant"
+        );
+        assert_eq!(
+            coverage["same_line_duplicate_groups"][0]["raw_findings"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(
+            coverage["same_line_duplicate_groups"][0]["kinds"][1],
+            "static_unknown"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn lane1_evidence_audit_markdown_names_required_sections() -> Result<(), String> {
         let report = lane1_evidence_audit_from_repo_exposure(".", lane1_audit_sample_json())?;
         let markdown = lane1_evidence_audit_markdown(&report);
 
         assert!(markdown.contains("Lane 1 evidence quality audit"));
         assert!(markdown.contains("Largest Canonical Gap Groups"));
+        assert!(markdown.contains("Finding Alignment"));
+        assert!(markdown.contains("Finding Alignment Coverage"));
+        assert!(markdown.contains("Static unknown without named limitation"));
+        assert!(markdown.contains("Raw-to-canonical ratio"));
         assert!(markdown.contains("Duplicate-Looking Groups"));
         assert!(markdown.contains("Missing Discriminator Classes"));
         assert!(markdown.contains("opaque_helper_call"));
@@ -34917,6 +46381,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(value["schema_version"], "0.1");
         assert_eq!(value["report"], "evidence-quality-scorecard");
         assert!(value.get("inputs").is_some());
+        assert!(value.get("headline").is_some());
         assert!(value.get("summary").is_some());
         assert!(value.get("maturity_by_class").is_some());
         assert!(value.get("canonical_gap_groups").is_some());
@@ -34943,6 +46408,63 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(
             value["inputs"]["evidence_health"]["status"],
             serde_json::Value::from("missing")
+        );
+        assert_eq!(
+            value["headline"]["primary_metric"],
+            "finding_alignment_actionable_unresolved_canonical_gaps"
+        );
+        assert_eq!(
+            value["headline"]["counting_model"],
+            "actionable_canonical_gaps"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_scorecard_headline_prefers_actionable_canonical_gaps() -> Result<(), String>
+    {
+        let mut audit = scorecard_minimal_audit_value(0, 0, 0, 0, 0);
+        audit
+            .as_object_mut()
+            .ok_or_else(|| "sample audit must be an object".to_string())?
+            .insert(
+                "finding_alignment".to_string(),
+                serde_json::json!({
+                    "summary": {
+                        "raw_signals": 7,
+                        "canonical_items": 3,
+                        "aligned_raw_findings": 7,
+                        "unaligned_raw_findings": 0,
+                        "duplicate_groups_total": 2,
+                        "actionable_gaps": 2,
+                        "already_observed": 1,
+                        "internal_no_action": 0,
+                        "static_limitations": 0,
+                        "unknown": 0,
+                        "calibrated_supported": 0,
+                        "uncalibrated": 3
+                    }
+                }),
+            );
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(false),
+            &audit,
+            None,
+            None,
+        )?;
+        let json = evidence_quality_scorecard_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+
+        assert_eq!(value["headline"]["primary_count"], 2);
+        assert_eq!(value["headline"]["raw_signals"], 7);
+        assert_eq!(value["headline"]["canonical_items"], 3);
+        assert_eq!(value["headline"]["already_observed"], 1);
+        assert_eq!(value["headline"]["raw_to_canonical_ratio"], 7.0 / 3.0);
+        assert_eq!(
+            value["summary"]["finding_alignment_actionable_unresolved_canonical_gaps"],
+            2
         );
         Ok(())
     }
@@ -34988,6 +46510,7 @@ covered_by = ["cargo xtask check-file-policy"]
 
         for needle in [
             "Lane 1 evidence quality scorecard",
+            "Actionable canonical gaps",
             "Maturity By Class",
             "Top Evidence-Quality Risks",
             "Recommended Lane 1 Repairs",
@@ -35099,6 +46622,240 @@ covered_by = ["cargo xtask check-file-policy"]
         Ok(())
     }
 
+    #[test]
+    fn evidence_quality_scorecard_reports_finding_alignment_presentation_text_counts()
+    -> Result<(), String> {
+        let mut audit = scorecard_minimal_audit_value(0, 0, 0, 0, 0);
+        audit
+            .as_object_mut()
+            .ok_or_else(|| "audit should be an object".to_string())?
+            .insert(
+                "finding_alignment".to_string(),
+                serde_json::json!({
+                    "summary": {
+                        "raw_signals": 6,
+                        "canonical_items": 3,
+                        "aligned_raw_findings": 5,
+                        "unaligned_raw_findings": 1,
+                        "duplicate_groups_total": 2,
+                        "actionable_gaps": 1,
+                        "already_observed": 1,
+                        "internal_no_action": 1,
+                        "static_limitations": 1,
+                        "unknown": 0,
+                        "presentation_text_total": 3,
+                        "presentation_text_user_visible": 2,
+                        "presentation_text_observed": 1,
+                        "presentation_text_unobserved": 1,
+                        "presentation_text_internal_only": 1,
+                        "presentation_text_visibility_unknown": 1,
+                        "presentation_text_observer_unknown": 1,
+                        "presentation_text_duplicate_groups": 2,
+                        "presentation_text_actionable_snapshot": 1,
+                        "presentation_text_no_action": 2,
+                        "presentation_text_static_limitations": 1
+                    }
+                }),
+            );
+
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(false),
+            &audit,
+            None,
+            None,
+        )?;
+        assert_eq!(report.summary.finding_alignment_raw_signals_total, 6);
+        assert_eq!(report.summary.finding_alignment_canonical_items_total, 3);
+        assert_eq!(report.summary.finding_alignment_duplicate_groups_total, 2);
+        assert_eq!(report.summary.finding_alignment_actionable_items_total, 1);
+        assert_eq!(report.summary.finding_alignment_internal_no_action_total, 1);
+        assert_eq!(report.summary.presentation_text_user_visible, 2);
+        assert_eq!(report.summary.presentation_text_observed, 1);
+        assert_eq!(report.summary.presentation_text_no_action, 2);
+        assert_eq!(
+            finding_alignment_raw_to_canonical_ratio(&report.summary),
+            Some(2.0)
+        );
+
+        let json = evidence_quality_scorecard_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(
+            value["summary"]["finding_alignment_raw_to_canonical_ratio"],
+            serde_json::Value::from(2.0)
+        );
+        assert_eq!(
+            value["summary"]["presentation_text_static_limitations"],
+            serde_json::Value::from(1)
+        );
+
+        let markdown = evidence_quality_scorecard_markdown(&report);
+        assert!(markdown.contains("Finding Alignment And Presentation Text"));
+        assert!(markdown.contains("Raw-to-canonical ratio"));
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_scorecard_uses_audit_canonical_item_alignment_summary() -> Result<(), String>
+    {
+        let audit = lane1_scorecard_sample_audit_value()?;
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(false),
+            &audit,
+            None,
+            None,
+        )?;
+
+        assert_eq!(report.summary.finding_alignment_raw_signals_total, 3);
+        assert_eq!(report.summary.finding_alignment_canonical_items_total, 3);
+        assert_eq!(report.summary.finding_alignment_actionable_items_total, 2);
+        assert_eq!(report.summary.finding_alignment_static_limitation_total, 1);
+        assert_eq!(
+            report.summary.finding_alignment_calibrated_supported_total,
+            1
+        );
+        assert_eq!(report.summary.finding_alignment_uncalibrated_total, 2);
+        assert!(
+            !report
+                .unknowns
+                .iter()
+                .any(|unknown| unknown.kind == "finding_alignment_unavailable")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_trend_reports_no_history_explicitly() -> Result<(), String> {
+        let current = scorecard_minimal_audit_value(0, 0, 0, 2, 3);
+        let report = evidence_quality_trend_from_values(
+            "unix_ms:1".to_string(),
+            trend_inputs_for_test(false),
+            &current,
+            None,
+        )?;
+        let json = evidence_quality_trend_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+
+        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["report"], "evidence-quality-trend");
+        assert_eq!(value["summary"]["status"], "unknown");
+        assert_eq!(
+            value["summary"]["no_history"],
+            serde_json::Value::from(true)
+        );
+        assert!(value["unknowns"].as_array().is_some_and(|unknowns| {
+            unknowns
+                .iter()
+                .any(|unknown| unknown["kind"] == "trend_history_unavailable")
+        }));
+        let markdown = evidence_quality_trend_markdown(&report);
+        assert!(markdown.contains("Lane 1 evidence quality trend"));
+        assert!(markdown.contains("Metric Trends"));
+        assert!(markdown.contains("Unknowns"));
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_trend_distinguishes_improvement_regression_and_unchanged()
+    -> Result<(), String> {
+        let current = scorecard_minimal_audit_value(0, 3, 1, 5, 4);
+        let previous = scorecard_minimal_audit_value(2, 3, 3, 3, 6);
+        let report = evidence_quality_trend_from_values(
+            "unix_ms:1".to_string(),
+            trend_inputs_for_test(true),
+            &current,
+            Some(&previous),
+        )?;
+
+        assert_eq!(report.summary.status, "improvement");
+        assert_eq!(
+            trend_direction_for(&report, "duplicate_looking_groups_total")?,
+            "improvement"
+        );
+        assert_eq!(
+            trend_direction_for(&report, "calibrated_records")?,
+            "improvement"
+        );
+        assert_eq!(
+            trend_direction_for(&report, "static_limitations_total")?,
+            "unchanged"
+        );
+
+        let regressing_current = scorecard_minimal_audit_value(0, 5, 7, 3, 8);
+        let regressing_report = evidence_quality_trend_from_values(
+            "unix_ms:2".to_string(),
+            trend_inputs_for_test(true),
+            &regressing_current,
+            Some(&previous),
+        )?;
+        assert_eq!(
+            trend_direction_for(&regressing_report, "duplicate_looking_groups_total")?,
+            "regression"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_trend_reports_static_limitation_category_deltas() -> Result<(), String> {
+        let mut current = scorecard_minimal_audit_value(0, 2, 0, 1, 1);
+        let mut previous = scorecard_minimal_audit_value(0, 5, 0, 1, 1);
+        set_static_category_count(&mut current, "opaque_helper_call", 2)?;
+        set_static_category_count(&mut previous, "opaque_helper_call", 5)?;
+
+        let report = evidence_quality_trend_from_values(
+            "unix_ms:1".to_string(),
+            trend_inputs_for_test(true),
+            &current,
+            Some(&previous),
+        )?;
+        let row = report
+            .static_limitation_category_trends
+            .iter()
+            .find(|row| row.label == "opaque_helper_call")
+            .ok_or_else(|| "missing opaque_helper_call category trend".to_string())?;
+        assert_eq!(row.before, Some(5));
+        assert_eq!(row.after, Some(2));
+        assert_eq!(row.direction, "improvement");
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_trend_reports_finding_alignment_presentation_text_deltas()
+    -> Result<(), String> {
+        let mut current = scorecard_minimal_audit_value(0, 0, 0, 0, 0);
+        let mut previous = scorecard_minimal_audit_value(0, 0, 0, 0, 0);
+        set_summary_count(&mut current, "finding_alignment_duplicate_groups_total", 1)?;
+        set_summary_count(&mut previous, "finding_alignment_duplicate_groups_total", 3)?;
+        set_summary_count(&mut current, "presentation_text_observed", 4)?;
+        set_summary_count(&mut previous, "presentation_text_observed", 2)?;
+        set_summary_count(&mut current, "presentation_text_visibility_unknown", 1)?;
+        set_summary_count(&mut previous, "presentation_text_visibility_unknown", 5)?;
+
+        let report = evidence_quality_trend_from_values(
+            "unix_ms:1".to_string(),
+            trend_inputs_for_test(true),
+            &current,
+            Some(&previous),
+        )?;
+
+        assert_eq!(
+            trend_direction_for(&report, "finding_alignment_duplicate_groups_total")?,
+            "improvement"
+        );
+        assert_eq!(
+            trend_direction_for(&report, "presentation_text_observed")?,
+            "improvement"
+        );
+        assert_eq!(
+            trend_direction_for(&report, "presentation_text_visibility_unknown")?,
+            "improvement"
+        );
+        Ok(())
+    }
+
     fn lane1_scorecard_sample_audit_value() -> Result<serde_json::Value, String> {
         let report = lane1_evidence_audit_from_repo_exposure(".", lane1_audit_sample_json())?;
         let json = lane1_evidence_audit_json(&report)?;
@@ -35188,6 +46945,63 @@ covered_by = ["cargo xtask check-file-policy"]
         }
     }
 
+    fn trend_inputs_for_test(previous_loaded: bool) -> EvidenceQualityTrendInputs {
+        EvidenceQualityTrendInputs {
+            current_scorecard: scorecard_input_for_test(
+                "target/ripr/reports/evidence-quality-scorecard.json",
+                "loaded",
+            ),
+            previous_artifact: scorecard_input_for_test(
+                "target/ripr/reports/evidence-quality-scorecard.previous.json",
+                if previous_loaded { "loaded" } else { "missing" },
+            ),
+            capability_matrix: scorecard_input_for_test("docs/CAPABILITY_MATRIX.md", "loaded"),
+            traceability: scorecard_input_for_test(".ripr/traceability.toml", "loaded"),
+        }
+    }
+
+    fn trend_direction_for(
+        report: &EvidenceQualityTrendReport,
+        metric: &str,
+    ) -> Result<String, String> {
+        report
+            .metric_trends
+            .iter()
+            .find(|trend| trend.metric == metric)
+            .map(|trend| trend.direction.clone())
+            .ok_or_else(|| format!("missing trend metric {metric}"))
+    }
+
+    fn set_static_category_count(
+        value: &mut serde_json::Value,
+        category: &str,
+        count: usize,
+    ) -> Result<(), String> {
+        let static_limitations = value
+            .get_mut("static_limitations")
+            .and_then(serde_json::Value::as_object_mut)
+            .ok_or_else(|| "missing static_limitations object".to_string())?;
+        let by_category = static_limitations
+            .get_mut("by_category")
+            .and_then(serde_json::Value::as_object_mut)
+            .ok_or_else(|| "missing static_limitations.by_category object".to_string())?;
+        by_category.insert(category.to_string(), serde_json::json!(count));
+        Ok(())
+    }
+
+    fn set_summary_count(
+        value: &mut serde_json::Value,
+        metric: &str,
+        count: usize,
+    ) -> Result<(), String> {
+        let summary = value
+            .get_mut("summary")
+            .and_then(serde_json::Value::as_object_mut)
+            .ok_or_else(|| "missing summary object".to_string())?;
+        summary.insert(metric.to_string(), serde_json::json!(count));
+        Ok(())
+    }
+
     fn scorecard_status_for(
         report: &EvidenceQualityScorecardReport,
         class: &str,
@@ -35253,7 +47067,26 @@ covered_by = ["cargo xtask check-file-policy"]
                 },
                 "actionability": {"class": "actionable_assertion_upgrade"},
                 "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
-                "static_limitations": []
+                "static_limitations": [],
+                "raw_findings": [{
+                  "file": "src/lib.rs",
+                  "line": 12,
+                  "kind": "weakly_exposed",
+                  "expression": "discount(amount)"
+                }],
+                "canonical_item": {
+                  "canonical_gap_id": "gap:shared",
+                  "canonical_item_kind": "gap",
+                  "evidence_class": "predicate_boundary",
+                  "gap_state": "actionable",
+                  "actionability": "upgrade_assertion",
+                  "group_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+                  "raw_group_size": 1,
+                  "why": "related tests reach the seam but miss the boundary discriminator",
+                  "recommended_repair": "Add an equality-boundary assertion for the changed predicate.",
+                  "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+                  "confidence": {"basis": "static_only", "notes": []}
+                }
               }
             },
             {
@@ -35304,7 +47137,26 @@ covered_by = ["cargo xtask check-file-policy"]
                 },
                 "actionability": {"class": "actionable_assertion_upgrade"},
                 "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
-                "static_limitations": []
+                "static_limitations": [],
+                "raw_findings": [{
+                  "file": "src/lib.rs",
+                  "line": 18,
+                  "kind": "weakly_exposed",
+                  "expression": "discount(amount)"
+                }],
+                "canonical_item": {
+                  "canonical_gap_id": "gap:shared",
+                  "canonical_item_kind": "gap",
+                  "evidence_class": "predicate_boundary",
+                  "gap_state": "actionable",
+                  "actionability": "upgrade_assertion",
+                  "group_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+                  "raw_group_size": 1,
+                  "why": "related tests reach the seam but miss the boundary discriminator",
+                  "recommended_repair": "Add an equality-boundary assertion for the changed predicate.",
+                  "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+                  "confidence": {"basis": "static_only", "notes": []}
+                }
               }
             },
             {
@@ -35336,7 +47188,26 @@ covered_by = ["cargo xtask check-file-policy"]
                 "recommendation": {"action": "inspect_static_limitation", "reason": "opaque helper", "verify_command": null},
                 "actionability": {"class": "static_limitation"},
                 "calibration": {"availability": "imported", "confidence": "medium", "agreement": "static_runtime_agree"},
-                "static_limitations": [{"stage": "activate", "state": "unknown", "reason": "opaque helper value"}]
+                "static_limitations": [{"stage": "activate", "state": "unknown", "reason": "opaque helper value"}],
+                "raw_findings": [{
+                  "file": "src/opaque.rs",
+                  "line": 30,
+                  "kind": "static_unknown",
+                  "expression": "opaque_helper(value)"
+                }],
+                "canonical_item": {
+                  "canonical_gap_id": null,
+                  "canonical_item_kind": "limitation",
+                  "evidence_class": "call_presence",
+                  "gap_state": "static_limitation",
+                  "actionability": "static_limitation",
+                  "group_reason": null,
+                  "raw_group_size": 1,
+                  "why": "static evidence is opaque for this seam",
+                  "recommended_repair": "Inspect static limitation `opaque_helper_call` via `analysis/oracle-semantics-audit-fixes`.",
+                  "verify_command": null,
+                  "confidence": {"basis": "calibrated", "notes": ["sample imported runtime agreement"]}
+                }
               }
             },
             {
@@ -35518,6 +47389,52 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn preview_editor_workflow_fixtures_pin_preview_boundaries() -> Result<(), String> {
+        let report = with_repo_cwd(build_lsp_cockpit_report)?;
+        let python = lsp_fixture(&report, "python_missing_import_graph_limit")?;
+        assert_eq!(python.diagnostic_count, 1);
+        assert_eq!(python.finding_diagnostic_count, 1);
+        assert_eq!(python.seam_diagnostic_count, 0);
+        assert!(
+            python
+                .action_titles
+                .contains(&"Inspect finding: copy context packet".to_string())
+        );
+        assert!(python.context.refresh_available);
+        assert!(!python.context.agent_packet_command_available);
+        assert_preview_lsp_fixture(
+            "python_missing_import_graph_limit",
+            "python",
+            "missing_import_graph",
+        )?;
+
+        let typescript = lsp_fixture(&report, "typescript_mocked_module_limit")?;
+        assert_eq!(typescript.diagnostic_count, 1);
+        assert_eq!(typescript.finding_diagnostic_count, 1);
+        assert_eq!(typescript.seam_diagnostic_count, 0);
+        assert!(
+            typescript
+                .action_titles
+                .contains(&"Inspect finding: copy context packet".to_string())
+        );
+        assert!(typescript.context.refresh_available);
+        assert!(!typescript.context.agent_packet_command_available);
+        assert_preview_lsp_fixture(
+            "typescript_mocked_module_limit",
+            "typescript",
+            "mocked_module",
+        )?;
+
+        let disabled = lsp_fixture(&report, "python_disabled")?;
+        assert_eq!(disabled.diagnostic_count, 0);
+        assert_eq!(disabled.finding_diagnostic_count, 0);
+        assert_eq!(disabled.seam_diagnostic_count, 0);
+        assert!(disabled.context.refresh_available);
+        assert_preview_disabled_fixture()?;
+        Ok(())
+    }
+
+    #[test]
     fn lsp_cockpit_report_json_and_markdown_are_structured() -> Result<(), String> {
         let report = with_repo_cwd(build_lsp_cockpit_report)?;
         let json = lsp_cockpit_report_json(&report)?;
@@ -35531,10 +47448,89 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("# ripr LSP cockpit report"));
         assert!(markdown.contains("## Fixture: boundary_gap"));
         assert!(markdown.contains("## Fixture: editor_lsp_workflow"));
+        assert!(markdown.contains("## Fixture: python_missing_import_graph_limit"));
+        assert!(markdown.contains("## Fixture: typescript_mocked_module_limit"));
         assert!(markdown.contains("seam packet available: yes"));
+        assert!(markdown.contains("finding diagnostics: 1"));
         assert!(markdown.contains("agent verify command available: yes"));
         assert!(markdown.contains("agent receipt command available: yes"));
         assert!(markdown.contains("ripr.collectContext"));
+        Ok(())
+    }
+
+    fn lsp_fixture<'a>(
+        report: &'a LspCockpitReport,
+        name: &str,
+    ) -> Result<&'a LspCockpitFixture, String> {
+        report
+            .fixtures
+            .iter()
+            .find(|fixture| fixture.fixture == name)
+            .ok_or_else(|| format!("expected `{name}` LSP cockpit fixture"))
+    }
+
+    fn assert_preview_lsp_fixture(
+        fixture: &str,
+        language: &str,
+        static_limit_kind: &str,
+    ) -> Result<(), String> {
+        let expected = repo_root()?.join("fixtures").join(fixture).join("expected");
+        let diagnostics = read_lsp_cockpit_json_value(&expected.join("lsp-diagnostics.json"))?;
+        let data = &diagnostics["diagnostics"][0]["data"];
+        assert_eq!(data["language"], language);
+        assert_eq!(data["language_status"], "preview");
+        assert_eq!(data["static_limit_kind"], static_limit_kind);
+
+        let actions = read_lsp_cockpit_json_value(&expected.join("lsp-code-actions.json"))?;
+        assert_eq!(actions["actions"][0]["command"], "ripr.copyContext");
+        assert_eq!(actions["actions"][1]["command"], "ripr.refresh");
+
+        let hover = fs::read_to_string(expected.join("lsp-hover.md"))
+            .map_err(|err| format!("failed to read preview hover fixture: {err}"))?;
+        let boundary = hover
+            .find("## Preview Boundary")
+            .ok_or_else(|| format!("{fixture} hover missing preview boundary"))?;
+        let static_limit = hover
+            .find(&format!("Static limit: {static_limit_kind}"))
+            .ok_or_else(|| format!("{fixture} hover missing static limit"))?;
+        let evidence = hover
+            .find("## RIPR Evidence")
+            .ok_or_else(|| format!("{fixture} hover missing evidence section"))?;
+        let action = hover
+            .find("## Suggested Action")
+            .ok_or_else(|| format!("{fixture} hover missing suggested action section"))?;
+        if !(boundary < static_limit && static_limit < evidence && evidence < action) {
+            return Err(format!(
+                "{fixture} hover must show preview/static-limit text before evidence and action"
+            ));
+        }
+        let static_limits = fs::read_to_string(expected.join("static-limits.md"))
+            .map_err(|err| format!("failed to read preview static-limits fixture: {err}"))?;
+        if !static_limits.contains(static_limit_kind) {
+            return Err(format!(
+                "{fixture} static-limits fixture missing `{static_limit_kind}`"
+            ));
+        }
+        Ok(())
+    }
+
+    fn assert_preview_disabled_fixture() -> Result<(), String> {
+        let expected = repo_root()?.join("fixtures/python_disabled/expected");
+        let diagnostics = read_lsp_cockpit_json_value(&expected.join("lsp-diagnostics.json"))?;
+        let diagnostics_array = diagnostics["diagnostics"]
+            .as_array()
+            .ok_or_else(|| "python_disabled diagnostics should be an array".to_string())?;
+        assert!(
+            diagnostics_array.is_empty(),
+            "disabled Python fixture must not project preview diagnostics"
+        );
+        let status = read_lsp_cockpit_json_value(&expected.join("vscode-status.json"))?;
+        assert_eq!(status["states"][0]["name"], "preview_disabled");
+        let static_limits = fs::read_to_string(expected.join("static-limits.md"))
+            .map_err(|err| format!("failed to read disabled static-limits fixture: {err}"))?;
+        if !static_limits.contains("no Python preview diagnostics") {
+            return Err("disabled fixture must explain no preview diagnostics".to_string());
+        }
         Ok(())
     }
 

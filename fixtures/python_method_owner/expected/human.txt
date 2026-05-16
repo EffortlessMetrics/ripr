@@ -1,0 +1,36 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_method_owner/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING src/policy.py:3
+
+Changed
+  after:          if amount >= threshold:
+
+Probe
+  family: predicate
+  delta:  control
+
+Language
+  language: python
+  status: preview
+  owner kind: method
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `apply`
+  - infection unknown: Python preview adapter does not yet model infection.
+  - propagation unknown: Python preview adapter does not yet model propagation.
+  - observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)
+  - discriminator weak: Python preview adapter found no strong discriminator; use `assert ... == ...` or `self.assertEqual(...)` to escalate.
+  - related test tests/test_policy.py:4 test_discount_policy_apply uses unknown unknown oracle
+
+Weakness
+  - Related Python test reaches `apply` but the strongest extracted oracle is `unknown`; add or verify an exact-value assertion to make the preview finding stronger.
+
+Next step
+  Python preview: add or verify a focused exact-value assertion (`assert ... == ...` or `self.assertEqual(...)`) for the changed behavior.
