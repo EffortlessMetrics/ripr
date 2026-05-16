@@ -1062,22 +1062,28 @@ mod gap_record_context_tests {
     }
 
     #[test]
-    fn absolute_context_path_keeps_absolute_paths_and_joins_relative_paths() {
-        let root = Path::new("/workspace/root");
-        let already_absolute = if cfg!(windows) {
-            PathBuf::from(r"C:\already\absolute.json")
-        } else {
-            PathBuf::from("/already/absolute.json")
-        };
+    fn absolute_context_path_keeps_absolute_paths_and_joins_relative_paths() -> Result<(), String> {
+        // Use the host platform's temp_dir to produce an absolute path
+        // without embedding a platform-specific literal — the policy gate
+        // rejects literal Windows-drive paths committed to repository docs.
+        let root = std::env::temp_dir();
+        let already_absolute = root.join("already-absolute.json");
+        if !already_absolute.is_absolute() {
+            return Err(format!(
+                "expected temp_dir-derived path to be absolute, got {}",
+                already_absolute.display()
+            ));
+        }
 
         assert_eq!(
-            absolute_context_path(root, &already_absolute),
+            absolute_context_path(&root, &already_absolute),
             already_absolute
         );
         assert_eq!(
-            absolute_context_path(root, Path::new("nested/file.json")),
+            absolute_context_path(&root, Path::new("nested/file.json")),
             root.join("nested/file.json")
         );
+        Ok(())
     }
 
     #[test]
