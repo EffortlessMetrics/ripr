@@ -125,6 +125,11 @@ Planned scope:
   opaque lookup limitations. Raw findings remain supporting evidence; no
   PR/CI rendering, gate, score, generated-test, provider, source-edit, or
   mutation-execution behavior changed.
+- Added explicit config/policy behavior-selector proof for canonical
+  `add_behavior_discriminator` repairs and already-observed
+  `validation_behavior` discriminators, including benchmark cases, dogfood
+  receipts, and unit assertions that declaration plus literal findings become
+  one canonical item without recommending mutation execution first.
 - Actionable finding-alignment items now expose a normalized top-level
   `repair_route` with `repair_kind`, `target_test_type`, and
   `suggested_assertion`, plus route-coverage counts, so downstream consumers
