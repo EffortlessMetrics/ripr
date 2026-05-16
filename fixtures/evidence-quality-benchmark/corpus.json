@@ -1044,7 +1044,7 @@
             "actionability": "add_behavior_discriminator",
             "repair_kind": "behavior_discriminator",
             "target_test_type": "validation_behavior",
-            "suggested_assertion": "Assert the selected validation or routing behavior changes with VALIDATION_SELECTOR."
+            "suggested_assertion": "Assert the selected behavior includes the VALIDATION_SELECTOR value or selected behavior."
           }
         }
       },
