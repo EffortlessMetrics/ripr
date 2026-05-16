@@ -83,8 +83,10 @@ The extension owns normal first-run server provisioning. A separate
 `cargo install ripr` remains a fallback for offline, pinned, or controlled
 environments.
 
-For the local repair loop from diagnostic to gap state, bounded action,
-verify, receipt, and refresh, see
+For a first install-to-receipt walkthrough, see
+[Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md). For
+the local repair loop from diagnostic to gap state, bounded action, verify,
+receipt, and refresh, see
 [Editor gap cockpit workflow](EDITOR_GAP_COCKPIT_WORKFLOW.md). For the older
 saved-workspace seam walkthrough, see
 [Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md). For the plain-language
