@@ -909,4 +909,217 @@ mod gap_record_context_tests {
   ]
 }"#
     }
+
+    // -- coverage-gap tests --
+    //
+    // These pin the previously-uncovered None branches of
+    // `collect_gap_record_context_packet`, `context_arguments`,
+    // `gap_record_matches`, and the missing match arms of
+    // `evidence_stage_status`. Region coverage on this file was 85.35%
+    // before; the branches below are pure-function paths with no
+    // production-code change.
+
+    #[test]
+    fn collect_gap_record_context_packet_with_blank_gap_id_returns_none() -> Result<(), String> {
+        let root = temp_root()?;
+        write_gap_ledger(&root)?;
+        let args_value = serde_json::json!({
+            "gap_id": "   ",
+            "gap_ledger": DEFAULT_GAP_DECISION_LEDGER_OUT,
+        });
+        let args = args_value
+            .as_object()
+            .ok_or_else(|| "expected object args".to_string())?;
+
+        assert!(collect_gap_record_context_packet(&root, args, "   ").is_none());
+
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn collect_gap_record_context_packet_with_missing_ledger_file_returns_none()
+    -> Result<(), String> {
+        let root = temp_root()?;
+        let args_value = serde_json::json!({
+            "gap_id": "gap:pr:pricing:threshold-boundary",
+            "gap_ledger": DEFAULT_GAP_DECISION_LEDGER_OUT,
+        });
+        let args = args_value
+            .as_object()
+            .ok_or_else(|| "expected object args".to_string())?;
+
+        assert!(
+            collect_gap_record_context_packet(&root, args, "gap:pr:pricing:threshold-boundary")
+                .is_none()
+        );
+
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn collect_gap_record_context_packet_with_malformed_ledger_returns_none() -> Result<(), String>
+    {
+        let root = temp_root()?;
+        let path = root.join(DEFAULT_GAP_DECISION_LEDGER_OUT);
+        fs::write(path, "{ not valid json")
+            .map_err(|err| format!("write malformed ledger in {} failed: {err}", root.display()))?;
+        let args_value = serde_json::json!({
+            "gap_id": "gap:pr:pricing:threshold-boundary",
+            "gap_ledger": DEFAULT_GAP_DECISION_LEDGER_OUT,
+        });
+        let args = args_value
+            .as_object()
+            .ok_or_else(|| "expected object args".to_string())?;
+
+        assert!(
+            collect_gap_record_context_packet(&root, args, "gap:pr:pricing:threshold-boundary")
+                .is_none()
+        );
+
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn collect_gap_record_context_packet_with_unknown_gap_id_returns_none() -> Result<(), String> {
+        let root = temp_root()?;
+        write_gap_ledger(&root)?;
+        let args_value = serde_json::json!({
+            "gap_id": "gap:pr:unknown:missing",
+            "gap_ledger": DEFAULT_GAP_DECISION_LEDGER_OUT,
+        });
+        let args = args_value
+            .as_object()
+            .ok_or_else(|| "expected object args".to_string())?;
+
+        assert!(collect_gap_record_context_packet(&root, args, "gap:pr:unknown:missing").is_none());
+
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn collect_gap_record_context_packet_with_blank_ledger_arg_falls_back_to_default()
+    -> Result<(), String> {
+        let root = temp_root()?;
+        write_gap_ledger(&root)?;
+        let args_value = serde_json::json!({
+            "gap_id": "gap:pr:pricing:threshold-boundary",
+            "gap_ledger": "   ",
+        });
+        let args = args_value
+            .as_object()
+            .ok_or_else(|| "expected object args".to_string())?;
+
+        let packet =
+            collect_gap_record_context_packet(&root, args, "gap:pr:pricing:threshold-boundary")
+                .ok_or_else(|| "expected gap packet".to_string())?;
+        assert_eq!(
+            packet["packets"][0]["repair_card"]["source_artifact"],
+            display_lsp_path(&root.join(DEFAULT_GAP_DECISION_LEDGER_OUT))
+        );
+
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn context_arguments_returns_none_for_empty_argument_list() {
+        assert!(context_arguments(&[]).is_none());
+    }
+
+    #[test]
+    fn context_arguments_returns_none_when_first_argument_is_not_an_object() {
+        let arg = serde_json::Value::String("not-an-object".to_string());
+        assert!(context_arguments(std::slice::from_ref(&arg)).is_none());
+    }
+
+    #[test]
+    fn gap_record_matches_compares_pr_local_and_canonical_ids() -> Result<(), String> {
+        let records = parse_gap_records_json(gap_ledger_json())
+            .map_err(|err| format!("parse fixture ledger failed: {err}"))?;
+        let record = records
+            .first()
+            .ok_or_else(|| "expected fixture to contain one record".to_string())?;
+
+        assert!(gap_record_matches(
+            record,
+            "gap:pr:pricing:threshold-boundary"
+        ));
+        assert!(gap_record_matches(
+            record,
+            "gap:rust:pricing:threshold-boundary"
+        ));
+        assert!(!gap_record_matches(record, "gap:pr:other:missing"));
+        Ok(())
+    }
+
+    #[test]
+    fn absolute_context_path_keeps_absolute_paths_and_joins_relative_paths() {
+        let root = Path::new("/workspace/root");
+        let already_absolute = if cfg!(windows) {
+            PathBuf::from(r"C:\already\absolute.json")
+        } else {
+            PathBuf::from("/already/absolute.json")
+        };
+
+        assert_eq!(
+            absolute_context_path(root, &already_absolute),
+            already_absolute
+        );
+        assert_eq!(
+            absolute_context_path(root, Path::new("nested/file.json")),
+            root.join("nested/file.json")
+        );
+    }
+
+    #[test]
+    fn evidence_stage_status_maps_every_stage_state_variant() {
+        use crate::domain::Confidence;
+
+        let cases = [
+            (StageState::Yes, "present"),
+            (StageState::Weak, "weak"),
+            (StageState::No, "missing"),
+            (StageState::Unknown, "unknown"),
+            (StageState::Opaque, "opaque"),
+            (StageState::NotApplicable, "not_applicable"),
+        ];
+        for (state, expected) in cases {
+            let label = format!("{state:?}");
+            let evidence = StageEvidence::new(state, Confidence::Medium, "");
+            assert_eq!(
+                evidence_stage_status(&evidence),
+                expected,
+                "unexpected status for stage state {label}"
+            );
+        }
+    }
+
+    #[test]
+    fn display_lsp_path_normalizes_backslashes_to_forward_slashes() {
+        let path = std::path::PathBuf::from(r"a\b\c.rs");
+        assert_eq!(display_lsp_path(&path), "a/b/c.rs");
+    }
+
+    #[test]
+    fn refresh_failed_log_message_formats_actionable_duration_and_message() {
+        let formatted =
+            refresh_failed_log_message("analysis crashed", std::time::Duration::from_millis(420));
+        assert!(
+            formatted.starts_with("ripr analysis refresh failed after "),
+            "missing prefix in {formatted}"
+        );
+        assert!(
+            formatted.ends_with(": analysis crashed"),
+            "missing message suffix in {formatted}"
+        );
+    }
 }
