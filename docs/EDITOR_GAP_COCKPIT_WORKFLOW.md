@@ -202,8 +202,9 @@ The gap cockpit deliberately stays local and read-only:
 - no CodeLens, inlay hints, semantic tokens, inline patches, or unsaved-buffer
   overlays.
 
-For command inventory and server behavior, see
-[Editor extension](EDITOR_EXTENSION.md). For the older seam-oriented walkthrough,
-see [Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md). For the typed
-projection contract, see
+For a first install-to-receipt walkthrough, see
+[Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md). For
+command inventory and server behavior, see [Editor extension](EDITOR_EXTENSION.md).
+For the older seam-oriented walkthrough, see [Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md).
+For the typed projection contract, see
 [RIPR-SPEC-0047: Editor Gap Projection](specs/RIPR-SPEC-0047-editor-gap-projection.md).
