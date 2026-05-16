@@ -24,6 +24,14 @@ Planned scope:
 - Evidence lane tuning: mutation stays targeted/nightly/release, not a default PR tax.
 - Targeted Rust 1.95 API cleanup in evidence and report builders.
 - Release readiness workflow and 0.5.1 dry-run proof.
+- Closed the First-Run UX and Adoption Hardening campaign. The closeout ties
+  the first successful PR command path, `start-here` reports, recovery states,
+  fixtures, receipts, PR repair cards, editor start-current-repair action,
+  pasteable agent packets, advisory generated-CI summary, gate adoption
+  checklist, README, and Quickstart into one adopter-facing Rust repair loop
+  while preserving advisory defaults and avoiding analyzer, gate, preview
+  language, source-edit, generated-test, provider, and mutation-execution
+  changes.
 - Public product-copy cleanup: VS Code marketplace title restored to
   `ripr: Static Mutation Exposure`, plain-language first-hour copy in
   `README.md`, `editors/vscode/README.md`, `docs/QUICKSTART.md`, and

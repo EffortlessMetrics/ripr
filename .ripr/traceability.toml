@@ -3242,7 +3242,12 @@ outputs = [
   "docs/proposals/RIPR-PROP-0009-first-run-ux-adoption-hardening.md",
   "docs/OUTPUT_SCHEMA.md",
   "docs/FIRST_PR_WORKFLOW.md",
+  "docs/BLOCKING_READINESS.md",
+  "docs/QUICKSTART.md",
+  "README.md",
   "docs/handoffs/2026-05-16-first-successful-pr-receipts.md",
+  "docs/handoffs/2026-05-16-first-run-ux-adoption-hardening-closeout.md",
+  "docs/handoffs/README.md",
   ".ripr/traceability.toml",
 ]
 metrics = [
