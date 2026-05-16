@@ -13,6 +13,8 @@ Current and planned tutorial docs:
   agent or reviewer handoff
 - [First successful PR workflow](FIRST_PR_WORKFLOW.md) - one Rust PR,
   one repairable gap, one focused proof, one receipt
+- [Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md) -
+  install/open, diagnose setup, repair one Rust gap, verify, receipt, refresh
 - README quick start
 - future first-extension-install walkthrough
 - future first-fixture walkthrough
@@ -72,6 +74,7 @@ Current how-to docs:
 - [First successful PR workflow](FIRST_PR_WORKFLOW.md)
 - [Publishing](PUBLISHING.md)
 - [Editor extension](EDITOR_EXTENSION.md)
+- [Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md)
 - [Editor gap cockpit workflow](EDITOR_GAP_COCKPIT_WORKFLOW.md)
 - [Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md)
 - [Editor evidence UX](EDITOR_EVIDENCE_UX.md)
