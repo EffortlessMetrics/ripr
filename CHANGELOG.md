@@ -108,6 +108,9 @@ Planned scope:
 - `cargo xtask suggested-fixes` now suggests deterministic
   `metrics/capabilities.toml` `[[capability]]` block ordering by spec ID and
   capability ID without re-rendering TOML or changing block bodies.
+- `cargo xtask suggested-fixes` now suggests deterministic command mutability
+  catalog ordering by xtask help order, and `check-command-catalog` reports
+  help/catalog order drift before agents rely on stale command sequencing.
 - `cargo xtask pr-triage-report` now emits advisory queue dispositions so
   agents can distinguish merge candidates, stale/duplicate owner decisions,
   rebase needs, validation gaps, and wrong-lane PRs without mutating GitHub.
