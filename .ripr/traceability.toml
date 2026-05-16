@@ -2119,6 +2119,7 @@ spec = "docs/specs/RIPR-SPEC-0031-lane1-evidence-quality-audit.md"
 tests = [
   "xtask::tests::lane1_evidence_audit_counts_quality_gaps_from_evidence_record",
   "xtask::tests::lane1_evidence_audit_reports_alignment_coverage_holes",
+  "xtask::tests::lane1_evidence_audit_rejects_generic_static_unknown_limitation_category",
   "xtask::tests::lane1_evidence_audit_markdown_names_required_sections",
   "xtask::tests::lane1_evidence_audit_rejects_repo_exposure_without_seams",
   "xtask::tests::lane1_repo_exposure_file_completion_check_requires_seams_and_closing_brace",

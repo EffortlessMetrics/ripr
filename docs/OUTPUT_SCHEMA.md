@@ -1754,7 +1754,8 @@ Field contract:
   duplicate user-action risks.
 - `finding_alignment.coverage.static_unknown_without_named_limitation` -
   count of static-unknown or limitation-shaped canonical items without a named
-  static limitation category plus repair route.
+  static limitation category plus repair route. Generic `static_unknown` or
+  `unknown` categories do not satisfy the named-limitation requirement.
 - `finding_alignment.coverage.canonical_items_without_repair_route` and
   `canonical_items_without_verify_command` - coverage counts for canonical
   items missing repair or verification guidance.

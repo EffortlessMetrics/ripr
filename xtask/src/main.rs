@@ -14816,9 +14816,23 @@ fn audit_has_named_static_limitation(record: &Value, canonical_item: &Value) -> 
         .iter()
         .chain(audit_array(canonical_item, &["static_limitations"]).iter())
         .any(|limitation| {
-            audit_non_empty_string(limitation, &["category"]).is_some()
-                && audit_non_empty_string(limitation, &["repair_route"]).is_some()
+            let Some(category) = audit_non_empty_string(limitation, &["category"]) else {
+                return false;
+            };
+            let Some(repair_route) = audit_non_empty_string(limitation, &["repair_route"]) else {
+                return false;
+            };
+            audit_static_limitation_category_is_named(&category)
+                && audit_static_limitation_repair_route_is_named(&repair_route)
         })
+}
+
+fn audit_static_limitation_category_is_named(category: &str) -> bool {
+    !matches!(category.trim(), "" | "static_unknown" | "unknown")
+}
+
+fn audit_static_limitation_repair_route_is_named(repair_route: &str) -> bool {
+    !matches!(repair_route.trim(), "" | "unknown")
 }
 
 fn audit_ingest_finding_alignment(
@@ -15152,7 +15166,7 @@ fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'stati
             "propagate" => "propagation_static_unknown",
             "observe" => "observation_static_unknown",
             "discriminate" => "discrimination_static_unknown",
-            _ => "static_unknown",
+            _ => "static_limitation_unclassified",
         }
     }
 }
@@ -15173,6 +15187,7 @@ fn static_limitation_repair_route(category: &str) -> &'static str {
         "propagation_static_unknown" => "analysis/static-limitation-taxonomy",
         "observation_static_unknown" => "analysis/oracle-semantics-audit-fixes",
         "discrimination_static_unknown" => "analysis/oracle-semantics-audit-fixes",
+        "static_limitation_unclassified" => "analysis/static-limitation-taxonomy",
         _ => "analysis/static-limitation-taxonomy",
     }
 }
@@ -47575,7 +47590,7 @@ covered_by = ["cargo xtask check-file-policy"]
         let coverage = &value["finding_alignment"]["coverage"];
         assert_eq!(
             coverage["static_unknown_without_named_limitation"],
-            serde_json::Value::from(1)
+            serde_json::Value::from(0)
         );
         assert_eq!(
             coverage["canonical_items_without_repair_route"],
@@ -47695,6 +47710,118 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn lane1_evidence_audit_rejects_generic_static_unknown_limitation_category()
+    -> Result<(), String> {
+        let report = lane1_evidence_audit_from_repo_exposure(
+            ".",
+            r#"{
+              "schema_version": "0.3",
+              "scope": "repo",
+              "seams": [
+                {
+                  "seam_id": "generic-static-unknown",
+                  "headline_eligible": true,
+                  "file": "src/opaque.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "generic-static-unknown",
+                    "canonical_gap_id": "gap:generic-static-unknown",
+                    "owner": "opaque::generic",
+                    "location": {"file": "src/opaque.rs", "line": 10},
+                    "seam_kind": "call_presence",
+                    "grip_class": "static_unknown",
+                    "headline_eligible": true,
+                    "evidence_path": {},
+                    "observed_values": [],
+                    "missing_discriminators": [],
+                    "related_tests_total": 0,
+                    "related_tests": [],
+                    "recommendation": {"action": "inspect_static_limitation", "reason": "generic limitation", "verify_command": null},
+                    "actionability": {"class": "static_limitation"},
+                    "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+                    "static_limitations": [
+                      {"category": "static_unknown", "repair_route": "analysis/static-limitation-taxonomy"}
+                    ],
+                    "raw_findings": [
+                      {"file": "src/opaque.rs", "line": 10, "kind": "static_unknown", "expression": "opaque(value)"}
+                    ],
+                    "canonical_item": {
+                      "canonical_gap_id": "gap:generic-static-unknown",
+                      "canonical_item_kind": "limitation",
+                      "evidence_class": "call_presence",
+                      "gap_state": "static_limitation",
+                      "actionability": "static_limitation",
+                      "raw_findings": [
+                        {"file": "src/opaque.rs", "line": 10, "kind": "static_unknown", "expression": "opaque(value)"}
+                      ],
+                      "static_limitations": [
+                        {"category": "static_unknown", "repair_route": "analysis/static-limitation-taxonomy"}
+                      ],
+                      "recommended_repair": "Inspect static limitation",
+                      "verify_command": null
+                    }
+                  }
+                },
+                {
+                  "seam_id": "named-static-limitation",
+                  "headline_eligible": true,
+                  "file": "src/helper.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "named-static-limitation",
+                    "canonical_gap_id": "gap:named-static-limitation",
+                    "owner": "helper::named",
+                    "location": {"file": "src/helper.rs", "line": 12},
+                    "seam_kind": "call_presence",
+                    "grip_class": "static_unknown",
+                    "headline_eligible": true,
+                    "evidence_path": {},
+                    "observed_values": [],
+                    "missing_discriminators": [],
+                    "related_tests_total": 0,
+                    "related_tests": [],
+                    "recommendation": {"action": "inspect_static_limitation", "reason": "opaque helper", "verify_command": null},
+                    "actionability": {"class": "static_limitation"},
+                    "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+                    "static_limitations": [
+                      {"category": "opaque_helper_call", "repair_route": "analysis/oracle-semantics-audit-fixes"}
+                    ],
+                    "raw_findings": [
+                      {"file": "src/helper.rs", "line": 12, "kind": "static_unknown", "expression": "helper(value)"}
+                    ],
+                    "canonical_item": {
+                      "canonical_gap_id": "gap:named-static-limitation",
+                      "canonical_item_kind": "limitation",
+                      "evidence_class": "call_presence",
+                      "gap_state": "static_limitation",
+                      "actionability": "static_limitation",
+                      "raw_findings": [
+                        {"file": "src/helper.rs", "line": 12, "kind": "static_unknown", "expression": "helper(value)"}
+                      ],
+                      "static_limitations": [
+                        {"category": "opaque_helper_call", "repair_route": "analysis/oracle-semantics-audit-fixes"}
+                      ],
+                      "recommended_repair": "Inspect opaque helper assertion path",
+                      "verify_command": null
+                    }
+                  }
+                }
+              ]
+            }"#,
+        )?;
+        let json = lane1_evidence_audit_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        let coverage = &value["finding_alignment"]["coverage"];
+
+        assert_eq!(
+            coverage["static_unknown_without_named_limitation"],
+            serde_json::Value::from(1)
+        );
+        Ok(())
+    }
+
+    #[test]
     fn lane1_evidence_audit_markdown_names_required_sections() -> Result<(), String> {
         let report = lane1_evidence_audit_from_repo_exposure(".", lane1_audit_sample_json())?;
         let markdown = lane1_evidence_audit_markdown(&report);
@@ -47802,7 +47929,12 @@ covered_by = ["cargo xtask check-file-policy"]
                 "missing exact assertion",
                 "discrimination_static_unknown",
             ),
-            ("unknown", "unknown", "missing stage", "static_unknown"),
+            (
+                "unknown",
+                "unknown",
+                "missing stage",
+                "static_limitation_unclassified",
+            ),
         ] {
             assert_eq!(
                 static_limitation_category(stage, state, reason),
@@ -47864,6 +47996,10 @@ covered_by = ["cargo xtask check-file-policy"]
             (
                 "discrimination_static_unknown",
                 "analysis/oracle-semantics-audit-fixes",
+            ),
+            (
+                "static_limitation_unclassified",
+                "analysis/static-limitation-taxonomy",
             ),
             ("unknown", "analysis/static-limitation-taxonomy"),
         ] {
@@ -48716,7 +48852,13 @@ covered_by = ["cargo xtask check-file-policy"]
                 "recommendation": {"action": "inspect_static_limitation", "reason": "opaque helper", "verify_command": null},
                 "actionability": {"class": "static_limitation"},
                 "calibration": {"availability": "imported", "confidence": "medium", "agreement": "static_runtime_agree"},
-                "static_limitations": [{"stage": "activate", "state": "unknown", "reason": "opaque helper value"}],
+                "static_limitations": [{
+                  "stage": "activate",
+                  "state": "unknown",
+                  "reason": "opaque helper value",
+                  "category": "opaque_helper_call",
+                  "repair_route": "analysis/oracle-semantics-audit-fixes"
+                }],
                 "raw_findings": [{
                   "file": "src/opaque.rs",
                   "line": 30,
