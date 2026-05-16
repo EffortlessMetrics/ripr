@@ -1544,4 +1544,1455 @@ mod tests {
         assert!(warnings.contains("gate-candidate eligible but safe_gate_predicate is incomplete"));
         assert!(warnings.contains("preview evidence but eligible for gate or badge authority"));
     }
+
+    // ── repairability_from_evidence ──────────────────────────────────────────
+
+    #[test]
+    fn repairability_from_evidence_covers_all_branches() {
+        // actionable + supported actionability values → repairable
+        for actionability in &[
+            "add_focused_test",
+            "upgrade_assertion",
+            "extend_related_test",
+            "add_output_observer",
+        ] {
+            assert_eq!(
+                repairability_from_evidence("actionable", actionability),
+                "repairable",
+                "expected repairable for actionability={actionability}"
+            );
+        }
+        // actionable + unsupported actionability → unknown
+        assert_eq!(
+            repairability_from_evidence("actionable", "some_other_kind"),
+            "unknown"
+        );
+        // already_observed / internal_only → no_action
+        assert_eq!(
+            repairability_from_evidence("already_observed", "anything"),
+            "no_action"
+        );
+        assert_eq!(
+            repairability_from_evidence("internal_only", "anything"),
+            "no_action"
+        );
+        // static_limitation → analyzer_limitation
+        assert_eq!(
+            repairability_from_evidence("static_limitation", "anything"),
+            "analyzer_limitation"
+        );
+        // unknown gap_state → unknown
+        assert_eq!(
+            repairability_from_evidence("unrecognized_state", "x"),
+            "unknown"
+        );
+    }
+
+    // ── gap_kind_from_evidence ───────────────────────────────────────────────
+
+    #[test]
+    fn gap_kind_from_evidence_covers_all_branches() {
+        assert_eq!(
+            gap_kind_from_evidence("already_observed", "anything"),
+            "NoActionAlreadyObserved"
+        );
+        assert_eq!(
+            gap_kind_from_evidence("internal_only", "anything"),
+            "NoActionInternal"
+        );
+        assert_eq!(
+            gap_kind_from_evidence("static_limitation", "anything"),
+            "StaticLimitation"
+        );
+        assert_eq!(
+            gap_kind_from_evidence("actionable", "presentation_text"),
+            "MissingOutputContract"
+        );
+        for seam_kind in &["predicate_boundary", "match_arm"] {
+            assert_eq!(
+                gap_kind_from_evidence("actionable", seam_kind),
+                "MissingBoundaryAssertion",
+                "expected MissingBoundaryAssertion for seam_kind={seam_kind}"
+            );
+        }
+        assert_eq!(
+            gap_kind_from_evidence("actionable", "error_variant"),
+            "MissingErrorDiscriminator"
+        );
+        for seam_kind in &["field_construction", "return_value"] {
+            assert_eq!(
+                gap_kind_from_evidence("actionable", seam_kind),
+                "MissingValueAssertion",
+                "expected MissingValueAssertion for seam_kind={seam_kind}"
+            );
+        }
+        for seam_kind in &["call_presence", "side_effect"] {
+            assert_eq!(
+                gap_kind_from_evidence("actionable", seam_kind),
+                "MissingSideEffectObserver",
+                "expected MissingSideEffectObserver for seam_kind={seam_kind}"
+            );
+        }
+        assert_eq!(
+            gap_kind_from_evidence("actionable", "unrecognized"),
+            "Unknown"
+        );
+        assert_eq!(gap_kind_from_evidence("unknown_state", "x"), "Unknown");
+    }
+
+    // ── md_inline ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn md_inline_escapes_special_characters() {
+        assert_eq!(md_inline("plain"), "plain");
+        assert_eq!(md_inline("a|b"), "a\\|b");
+        assert_eq!(md_inline("a`b"), "a'b");
+        assert_eq!(md_inline("a\nb"), "a b");
+        assert_eq!(md_inline("a\rb"), "a b");
+        assert_eq!(md_inline("a`b|c\nd"), "a'b\\|c d");
+        assert_eq!(md_inline(""), "");
+    }
+
+    // ── fallback_gap_id ──────────────────────────────────────────────────────
+
+    #[test]
+    fn fallback_gap_id_returns_unknown_for_blank_gap_id() {
+        let blank = GapRecord {
+            gap_id: "   ".to_string(),
+            ..GapRecord::default()
+        };
+        assert_eq!(fallback_gap_id(&blank), "unknown-gap");
+
+        let empty = GapRecord {
+            gap_id: String::new(),
+            ..GapRecord::default()
+        };
+        assert_eq!(fallback_gap_id(&empty), "unknown-gap");
+
+        let with_id = GapRecord {
+            gap_id: "gap:real".to_string(),
+            ..GapRecord::default()
+        };
+        assert_eq!(fallback_gap_id(&with_id), "gap:real");
+    }
+
+    // ── GapDecisionLedgerSourceKind::as_str ─────────────────────────────────
+
+    #[test]
+    fn source_kind_as_str_returns_correct_values() {
+        assert_eq!(GapDecisionLedgerSourceKind::Records.as_str(), "records");
+        assert_eq!(
+            GapDecisionLedgerSourceKind::RepoExposure.as_str(),
+            "repo_exposure"
+        );
+        assert_eq!(
+            GapDecisionLedgerSourceKind::CheckOutput.as_str(),
+            "check_output"
+        );
+    }
+
+    // ── gap_records_from_repo_exposure_json ──────────────────────────────────
+
+    fn make_repo_exposure_seam(
+        gap_state: &str,
+        actionability: &str,
+        seam_kind: &str,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "seam_id": "seam:test",
+            "evidence_record": {
+                "seam_id": "seam:test",
+                "seam_kind": seam_kind,
+                "canonical_gap_id": "gap:rust:seam:test",
+                "location": {"file": "src/lib.rs", "line": 10},
+                "owner": "my_crate",
+                "raw_findings": [
+                    {"source_id": "finding-001", "expression": "fn foo()"}
+                ],
+                "recommendation": {
+                    "assertion_shape": {"example": "assert_eq!(foo(), expected)"},
+                    "recommended_test": {"file": "tests/lib_test.rs"},
+                    "verify_command": "cargo test foo"
+                },
+                "canonical_item": {
+                    "gap_state": gap_state,
+                    "actionability": actionability,
+                    "evidence_class": seam_kind,
+                    "related_test": {"name": "test_foo", "file": "tests/lib_test.rs", "line": 5},
+                    "verify_command": "cargo test"
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn repo_exposure_json_parses_seam_to_record() -> Result<(), String> {
+        let payload = serde_json::json!({
+            "seams": [make_repo_exposure_seam("actionable", "add_focused_test", "predicate_boundary")]
+        });
+        let records = gap_records_from_repo_exposure_json(&payload.to_string())
+            .map_err(|e| format!("parse failed: {e}"))?;
+        assert_eq!(records.len(), 1);
+        let r = &records[0];
+        assert_eq!(r.repairability, "repairable");
+        assert_eq!(r.kind, "MissingBoundaryAssertion");
+        assert_eq!(r.language, "rust");
+        assert_eq!(r.scope, "repo_scoped");
+        assert_eq!(r.policy_state, "new");
+        let Some(route) = &r.repair_route else {
+            return Err("expected repair_route".to_string());
+        };
+        assert_eq!(route.route_kind, "AddBoundaryAssertion");
+        assert!(r.evidence_ids.contains(&"seam:test".to_string()));
+        assert!(r.evidence_ids.contains(&"finding-001".to_string()));
+        let anchor = r.anchor.as_ref().ok_or("expected anchor")?;
+        assert_eq!(anchor.file.as_deref(), Some("src/lib.rs"));
+        assert_eq!(anchor.line, Some(10));
+        Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_json_error_paths() -> Result<(), String> {
+        // invalid JSON
+        let err_msg = gap_records_from_repo_exposure_json("not-json")
+            .err()
+            .ok_or("expected error for invalid JSON")?;
+        assert!(
+            err_msg.contains("invalid JSON"),
+            "unexpected error: {err_msg}"
+        );
+
+        // missing seams array
+        let err_msg = gap_records_from_repo_exposure_json(r#"{"other": []}"#)
+            .err()
+            .ok_or("expected error for missing seams")?;
+        assert!(
+            err_msg.contains("seams array"),
+            "unexpected error: {err_msg}"
+        );
+
+        // seam with no evidence_record → skipped (not an error)
+        let payload = serde_json::json!({"seams": [{"seam_id": "bare"}]});
+        let records = gap_records_from_repo_exposure_json(&payload.to_string())
+            .map_err(|e| format!("unexpected error: {e}"))?;
+        assert!(records.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_json_all_seam_kinds_produce_correct_routes() -> Result<(), String> {
+        let cases = [
+            ("match_arm", "AddBoundaryAssertion"),
+            ("error_variant", "AddErrorAssertion"),
+            ("return_value", "AddValueAssertion"),
+            ("field_construction", "AddValueAssertion"),
+            ("call_presence", "AddSideEffectObserver"),
+            ("side_effect", "AddSideEffectObserver"),
+            ("unknown_kind", "AddValueAssertion"),
+        ];
+        for (seam_kind, expected_route) in &cases {
+            let payload = serde_json::json!({
+                "seams": [make_repo_exposure_seam("actionable", "add_focused_test", seam_kind)]
+            });
+            let records = gap_records_from_repo_exposure_json(&payload.to_string())
+                .map_err(|e| format!("parse failed for {seam_kind}: {e}"))?;
+            let route_kind = records
+                .first()
+                .and_then(|r| r.repair_route.as_ref())
+                .map(|r| r.route_kind.as_str())
+                .ok_or_else(|| format!("missing repair_route for {seam_kind}"))?;
+            assert_eq!(
+                route_kind, *expected_route,
+                "wrong route kind for seam_kind={seam_kind}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_seam_non_actionable_states_produce_no_repair_route() -> Result<(), String> {
+        for gap_state in &["already_observed", "internal_only", "static_limitation"] {
+            let payload = serde_json::json!({
+                "seams": [make_repo_exposure_seam(gap_state, "add_focused_test", "predicate_boundary")]
+            });
+            let records = gap_records_from_repo_exposure_json(&payload.to_string())
+                .map_err(|e| format!("parse failed for {gap_state}: {e}"))?;
+            let r = records.first().ok_or("expected record")?;
+            assert!(
+                r.repair_route.is_none(),
+                "expected no repair_route for gap_state={gap_state}"
+            );
+            assert_eq!(
+                r.policy_state, "not_policy_targeted",
+                "wrong policy_state for gap_state={gap_state}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_seam_static_limits_populated_from_canonical_item() -> Result<(), String> {
+        let payload = serde_json::json!({
+            "seams": [{
+                "evidence_record": {
+                    "seam_id": "s1",
+                    "seam_kind": "predicate_boundary",
+                    "canonical_item": {
+                        "gap_state": "static_limitation",
+                        "actionability": "none",
+                        "static_limit_kind": "cfg_gate",
+                        "static_limit_detail": "hidden behind #[cfg(test)]",
+                        "static_limits": [
+                            {"kind": "cfg_gate", "detail": "hidden behind #[cfg(test)]"}
+                        ]
+                    }
+                }
+            }]
+        });
+        let records = gap_records_from_repo_exposure_json(&payload.to_string())
+            .map_err(|e| format!("parse failed: {e}"))?;
+        let r = records.first().ok_or("expected record")?;
+        assert_eq!(r.static_limit_kind.as_deref(), Some("cfg_gate"));
+        assert!(
+            r.static_limit_detail
+                .as_deref()
+                .unwrap_or("")
+                .contains("cfg(test)")
+        );
+        assert!(!r.static_limits.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_seam_static_limits_fallback_from_evidence_limits() -> Result<(), String> {
+        let payload = serde_json::json!({
+            "seams": [{
+                "evidence_record": {
+                    "seam_id": "s2",
+                    "seam_kind": "predicate_boundary",
+                    "static_limits": [
+                        {"kind": "opaque_body", "reason": "body not available"}
+                    ],
+                    "canonical_item": {
+                        "gap_state": "static_limitation",
+                        "actionability": "none"
+                    }
+                }
+            }]
+        });
+        let records = gap_records_from_repo_exposure_json(&payload.to_string())
+            .map_err(|e| format!("parse failed: {e}"))?;
+        let r = records.first().ok_or("expected record")?;
+        assert_eq!(r.static_limit_kind.as_deref(), Some("opaque_body"));
+        assert_eq!(r.static_limit_detail.as_deref(), Some("body not available"));
+        Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_seam_fallback_canonical_gap_id_when_missing() -> Result<(), String> {
+        let payload = serde_json::json!({
+            "seams": [{
+                "seam_id": "outer-seam",
+                "evidence_record": {
+                    "canonical_item": {
+                        "gap_state": "already_observed",
+                        "actionability": "none"
+                    }
+                }
+            }]
+        });
+        let records = gap_records_from_repo_exposure_json(&payload.to_string())
+            .map_err(|e| format!("parse failed: {e}"))?;
+        let r = records.first().ok_or("expected record")?;
+        // seam_id falls back to "unknown-seam" since both evidence.seam_id and seam.seam_id
+        // require the field in the right place; gap_id should still be formed
+        assert!(r.gap_id.starts_with("gap:repo:"));
+        Ok(())
+    }
+
+    // ── gap_records_from_check_output_json additional error paths ────────────
+
+    #[test]
+    fn check_output_json_error_paths() -> Result<(), String> {
+        // invalid JSON
+        let err_msg = gap_records_from_check_output_json("bad json")
+            .err()
+            .ok_or("expected error for invalid JSON")?;
+        assert!(
+            err_msg.contains("invalid JSON"),
+            "unexpected error: {err_msg}"
+        );
+
+        // missing finding_alignment
+        let err_msg = gap_records_from_check_output_json(r#"{"other": {}}"#)
+            .err()
+            .ok_or("expected error for missing finding_alignment")?;
+        assert!(
+            err_msg.contains("finding_alignment.items array"),
+            "unexpected error: {err_msg}"
+        );
+
+        // non-presentation_text items are skipped
+        let payload = serde_json::json!({
+            "finding_alignment": {
+                "items": [
+                    {"evidence_class": "predicate_boundary", "canonical_gap_id": "g1"}
+                ]
+            }
+        });
+        let records = gap_records_from_check_output_json(&payload.to_string())
+            .map_err(|e| format!("unexpected error: {e}"))?;
+        assert!(records.is_empty());
+
+        // presentation_text item produces a valid record
+        let payload = serde_json::json!({
+            "finding_alignment": {
+                "items": [
+                    {
+                        "evidence_class": "presentation_text",
+                        "gap_state": "actionable",
+                        "actionability": "add_output_observer",
+                        "canonical_gap_id": "pt::MY_CONST",
+                        "raw_findings": [{"file": "src/lib.rs", "line": 1}],
+                        "presentation_text": {
+                            "constant_name": "MY_CONST",
+                            "text_literal": "hello",
+                            "suggested_assertion": "assert output includes MY_CONST"
+                        },
+                        "related_test": {"name": "test_help", "file": "tests/help.rs", "line": 10}
+                    }
+                ]
+            }
+        });
+        let records = gap_records_from_check_output_json(&payload.to_string())
+            .map_err(|e| format!("unexpected error: {e}"))?;
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].kind, "MissingOutputContract");
+        Ok(())
+    }
+
+    #[test]
+    fn check_output_non_actionable_item_produces_record_without_repair_route() -> Result<(), String>
+    {
+        let payload = serde_json::json!({
+            "finding_alignment": {
+                "items": [
+                    {
+                        "evidence_class": "presentation_text",
+                        "gap_state": "already_observed",
+                        "actionability": "none",
+                        "canonical_gap_id": "pt::OBSERVED"
+                    }
+                ]
+            }
+        });
+        let records = gap_records_from_check_output_json(&payload.to_string())
+            .map_err(|e| format!("parse failed: {e}"))?;
+        let r = records.first().ok_or("expected record")?;
+        assert_eq!(r.repairability, "no_action");
+        assert!(r.repair_route.is_none());
+        assert!(r.verification_commands.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn check_output_item_with_static_limitations() -> Result<(), String> {
+        let payload = serde_json::json!({
+            "finding_alignment": {
+                "items": [
+                    {
+                        "evidence_class": "presentation_text",
+                        "gap_state": "static_limitation",
+                        "actionability": "none",
+                        "canonical_gap_id": "pt::STATIC",
+                        "static_limitations": [
+                            {"category": "dynamic_text", "repair_route": "needs_runtime"}
+                        ]
+                    }
+                ]
+            }
+        });
+        let records = gap_records_from_check_output_json(&payload.to_string())
+            .map_err(|e| format!("parse failed: {e}"))?;
+        let r = records.first().ok_or("expected record")?;
+        assert_eq!(r.repairability, "analyzer_limitation");
+        assert_eq!(r.static_limit_kind.as_deref(), Some("dynamic_text"));
+        assert_eq!(r.static_limit_detail.as_deref(), Some("needs_runtime"));
+        Ok(())
+    }
+
+    #[test]
+    fn check_output_item_static_limit_kind_fallback_to_kind_field() -> Result<(), String> {
+        let payload = serde_json::json!({
+            "finding_alignment": {
+                "items": [
+                    {
+                        "evidence_class": "presentation_text",
+                        "gap_state": "static_limitation",
+                        "actionability": "none",
+                        "canonical_gap_id": "pt::STATIC2",
+                        "static_limitations": [
+                            {"kind": "opaque_body", "reason": "body not visible"}
+                        ]
+                    }
+                ]
+            }
+        });
+        let records = gap_records_from_check_output_json(&payload.to_string())
+            .map_err(|e| format!("parse failed: {e}"))?;
+        let r = records.first().ok_or("expected record")?;
+        assert_eq!(r.static_limit_kind.as_deref(), Some("opaque_body"));
+        assert_eq!(r.static_limit_detail.as_deref(), Some("body not visible"));
+        Ok(())
+    }
+
+    // ── evidence_ids_from_alignment_item ────────────────────────────────────
+
+    #[test]
+    fn evidence_ids_from_alignment_item_deduplicates_and_falls_back() {
+        // With evidence_record_ref in multiple raw_findings, only unique ones kept
+        let item = serde_json::json!({
+            "raw_findings": [
+                {"evidence_record_ref": "id-1"},
+                {"evidence_record_ref": "id-1"},
+                {"source_id": "id-2", "evidence_record_ref": "id-1"},
+                {"source_id": "id-3"}
+            ]
+        });
+        let ids = evidence_ids_from_alignment_item(&item, "fallback-id");
+        assert!(ids.contains(&"id-1".to_string()));
+        assert!(ids.contains(&"id-2".to_string()) || ids.contains(&"id-3".to_string()));
+        // "id-1" should not appear twice
+        assert_eq!(ids.iter().filter(|id| *id == "id-1").count(), 1);
+
+        // No raw_findings → fallback to canonical_gap_id
+        let item_no_findings = serde_json::json!({});
+        let ids = evidence_ids_from_alignment_item(&item_no_findings, "gap:fallback");
+        assert_eq!(ids, vec!["gap:fallback".to_string()]);
+
+        // Raw_findings but none with evidence_record_ref or source_id → fallback
+        let item_empty_findings = serde_json::json!({"raw_findings": [{"kind": "exposed"}]});
+        let ids = evidence_ids_from_alignment_item(&item_empty_findings, "gap:fallback2");
+        assert_eq!(ids, vec!["gap:fallback2".to_string()]);
+    }
+
+    // ── evidence_ids_from_repo_evidence ─────────────────────────────────────
+
+    #[test]
+    fn evidence_ids_from_repo_evidence_deduplicates_source_ids() {
+        let evidence = serde_json::json!({
+            "raw_findings": [
+                {"source_id": "s1"},
+                {"source_id": "s2"},
+                {"source_id": "s1"}
+            ]
+        });
+        let ids = evidence_ids_from_repo_evidence(&evidence, "seam-id");
+        assert_eq!(ids[0], "seam-id");
+        assert!(ids.contains(&"s1".to_string()));
+        assert!(ids.contains(&"s2".to_string()));
+        assert_eq!(ids.iter().filter(|id| *id == "s1").count(), 1);
+
+        // No raw_findings
+        let evidence_empty = serde_json::json!({});
+        let ids = evidence_ids_from_repo_evidence(&evidence_empty, "seam-only");
+        assert_eq!(ids, vec!["seam-only".to_string()]);
+    }
+
+    // ── first_raw_finding_expression ────────────────────────────────────────
+
+    #[test]
+    fn first_raw_finding_expression_returns_first_expression() {
+        let evidence = serde_json::json!({
+            "raw_findings": [
+                {"expression": "fn foo()"},
+                {"expression": "fn bar()"}
+            ]
+        });
+        assert_eq!(first_raw_finding_expression(&evidence), Some("fn foo()"));
+
+        // No raw_findings
+        let no_findings = serde_json::json!({});
+        assert_eq!(first_raw_finding_expression(&no_findings), None);
+
+        // Empty array
+        let empty = serde_json::json!({"raw_findings": []});
+        assert_eq!(first_raw_finding_expression(&empty), None);
+
+        // Finding without expression
+        let no_expr = serde_json::json!({"raw_findings": [{"kind": "exposed"}]});
+        assert_eq!(first_raw_finding_expression(&no_expr), None);
+    }
+
+    // ── projection_eligibility_from_repo_evidence ───────────────────────────
+
+    #[test]
+    fn repo_projection_eligibility_eligible_when_fully_repairable() {
+        let projections = projection_eligibility_from_repo_evidence(
+            "repairable",
+            true, // has_repair_route
+            true, // has_verify_command
+            true, // has_local_anchor
+            "actionable",
+        );
+        assert!(projections["agent_packet"].eligible);
+        assert!(projections["lsp_diagnostic"].eligible);
+        assert!(projections["ripr_zero_count"].eligible);
+        assert!(projections["ripr_plus_count"].eligible);
+        assert!(projections["ci_summary"].eligible);
+        assert!(projections["report_packet"].eligible);
+        // repo-scoped never gets pr_comment or gate_candidate
+        assert!(!projections["pr_comment"].eligible);
+        assert!(!projections["gate_candidate"].eligible);
+    }
+
+    #[test]
+    fn repo_projection_eligibility_ineligible_without_repair_route() {
+        let projections = projection_eligibility_from_repo_evidence(
+            "repairable",
+            false, // no repair route
+            true,
+            true,
+            "actionable",
+        );
+        assert!(!projections["agent_packet"].eligible);
+        assert!(!projections["lsp_diagnostic"].eligible);
+        assert!(!projections["ripr_zero_count"].eligible);
+        assert!(!projections["ripr_plus_count"].eligible);
+    }
+
+    #[test]
+    fn repo_projection_eligibility_lsp_ineligible_without_anchor() {
+        let projections = projection_eligibility_from_repo_evidence(
+            "repairable",
+            true,
+            true,
+            false, // no local anchor
+            "actionable",
+        );
+        assert!(projections["agent_packet"].eligible);
+        assert!(!projections["lsp_diagnostic"].eligible);
+    }
+
+    #[test]
+    fn repo_projection_eligibility_ripr_counts_ineligible_when_not_actionable() {
+        let projections = projection_eligibility_from_repo_evidence(
+            "repairable",
+            true,
+            true,
+            true,
+            "already_observed",
+        );
+        assert!(projections["agent_packet"].eligible);
+        assert!(!projections["ripr_zero_count"].eligible);
+        assert!(!projections["ripr_plus_count"].eligible);
+    }
+
+    // ── projection_eligibility_from_pr_evidence ──────────────────────────────
+
+    #[test]
+    fn pr_projection_eligibility_eligible_when_fully_repairable() {
+        let projections =
+            projection_eligibility_from_pr_evidence("repairable", true, true, true, "actionable");
+        assert!(projections["pr_comment"].eligible);
+        assert!(projections["agent_packet"].eligible);
+        assert!(projections["lsp_diagnostic"].eligible);
+        assert!(projections["ci_summary"].eligible);
+        assert!(projections["report_packet"].eligible);
+        // pr-local never gets gate_candidate or ripr counts
+        assert!(!projections["gate_candidate"].eligible);
+        assert!(!projections["ripr_zero_count"].eligible);
+        assert!(!projections["ripr_plus_count"].eligible);
+    }
+
+    #[test]
+    fn pr_projection_eligibility_pr_comment_ineligible_when_not_actionable() {
+        let projections = projection_eligibility_from_pr_evidence(
+            "repairable",
+            true,
+            true,
+            true,
+            "already_observed",
+        );
+        // non-actionable gap_state overrides pr_comment to false
+        assert!(!projections["pr_comment"].eligible);
+    }
+
+    #[test]
+    fn pr_projection_eligibility_ineligible_without_anchor() {
+        let projections = projection_eligibility_from_pr_evidence(
+            "repairable",
+            true,
+            true,
+            false, // no anchor
+            "actionable",
+        );
+        assert!(!projections["pr_comment"].eligible);
+        assert!(!projections["lsp_diagnostic"].eligible);
+        assert!(projections["agent_packet"].eligible);
+    }
+
+    #[test]
+    fn pr_projection_eligibility_not_repairable_disables_all_action_projections() {
+        let projections = projection_eligibility_from_pr_evidence(
+            "analyzer_limitation",
+            false,
+            false,
+            false,
+            "static_limitation",
+        );
+        assert!(!projections["pr_comment"].eligible);
+        assert!(!projections["agent_packet"].eligible);
+        assert!(!projections["lsp_diagnostic"].eligible);
+    }
+
+    // ── safe_gate_predicate_satisfied ───────────────────────────────────────
+
+    #[test]
+    fn safe_gate_predicate_satisfied_requires_all_conditions() {
+        let good_predicate = SafeGatePredicate {
+            policy_target_enabled: true,
+            suppressed: false,
+            waived: false,
+            acknowledged_only: false,
+            baseline_known: false,
+            preview_language: false,
+            static_unknown_only: false,
+        };
+        let good_record = GapRecord {
+            gap_id: "gap:test".to_string(),
+            language: "rust".to_string(),
+            language_status: "stable".to_string(),
+            scope: "pr_local".to_string(),
+            policy_state: "new".to_string(),
+            repairability: "repairable".to_string(),
+            repair_route: Some(GapRepairRoute {
+                route_kind: "AddBoundaryAssertion".to_string(),
+                ..GapRepairRoute::default()
+            }),
+            verification_commands: vec!["cargo test".to_string()],
+            safe_gate_predicate: Some(good_predicate.clone()),
+            ..GapRecord::default()
+        };
+        assert!(safe_gate_predicate_satisfied(&good_record));
+
+        // Missing predicate → false
+        let no_predicate = GapRecord {
+            safe_gate_predicate: None,
+            ..good_record.clone()
+        };
+        assert!(!safe_gate_predicate_satisfied(&no_predicate));
+
+        // Wrong language
+        let wrong_lang = GapRecord {
+            language: "typescript".to_string(),
+            safe_gate_predicate: Some(good_predicate.clone()),
+            ..good_record.clone()
+        };
+        assert!(!safe_gate_predicate_satisfied(&wrong_lang));
+
+        // Preview language_status
+        let preview = GapRecord {
+            language_status: "preview".to_string(),
+            safe_gate_predicate: Some(good_predicate.clone()),
+            ..good_record.clone()
+        };
+        assert!(!safe_gate_predicate_satisfied(&preview));
+
+        // Suppressed
+        let suppressed = GapRecord {
+            safe_gate_predicate: Some(SafeGatePredicate {
+                suppressed: true,
+                ..good_predicate.clone()
+            }),
+            ..good_record.clone()
+        };
+        assert!(!safe_gate_predicate_satisfied(&suppressed));
+
+        // policy_target_enabled = false
+        let not_enabled = GapRecord {
+            safe_gate_predicate: Some(SafeGatePredicate {
+                policy_target_enabled: false,
+                ..good_predicate.clone()
+            }),
+            ..good_record.clone()
+        };
+        assert!(!safe_gate_predicate_satisfied(&not_enabled));
+
+        // waived
+        let waived = GapRecord {
+            safe_gate_predicate: Some(SafeGatePredicate {
+                waived: true,
+                ..good_predicate.clone()
+            }),
+            ..good_record.clone()
+        };
+        assert!(!safe_gate_predicate_satisfied(&waived));
+
+        // acknowledged_only
+        let ack_only = GapRecord {
+            safe_gate_predicate: Some(SafeGatePredicate {
+                acknowledged_only: true,
+                ..good_predicate.clone()
+            }),
+            ..good_record.clone()
+        };
+        assert!(!safe_gate_predicate_satisfied(&ack_only));
+
+        // baseline_known
+        let baseline = GapRecord {
+            safe_gate_predicate: Some(SafeGatePredicate {
+                baseline_known: true,
+                ..good_predicate.clone()
+            }),
+            ..good_record.clone()
+        };
+        assert!(!safe_gate_predicate_satisfied(&baseline));
+
+        // static_unknown_only
+        let static_only = GapRecord {
+            safe_gate_predicate: Some(SafeGatePredicate {
+                static_unknown_only: true,
+                ..good_predicate
+            }),
+            ..good_record.clone()
+        };
+        assert!(!safe_gate_predicate_satisfied(&static_only));
+
+        // Wrong scope
+        let wrong_scope = GapRecord {
+            scope: "repo_scoped".to_string(),
+            ..good_record.clone()
+        };
+        assert!(!safe_gate_predicate_satisfied(&wrong_scope));
+
+        // blocked policy_state is accepted
+        let blocked_policy = GapRecord {
+            policy_state: "blocked".to_string(),
+            ..good_record.clone()
+        };
+        assert!(safe_gate_predicate_satisfied(&blocked_policy));
+
+        // Wrong policy_state
+        let wrong_policy = GapRecord {
+            policy_state: "not_policy_targeted".to_string(),
+            ..good_record.clone()
+        };
+        assert!(!safe_gate_predicate_satisfied(&wrong_policy));
+
+        // No repair_route
+        let no_route = GapRecord {
+            repair_route: None,
+            ..good_record.clone()
+        };
+        assert!(!safe_gate_predicate_satisfied(&no_route));
+
+        // No verification_commands
+        let no_cmds = GapRecord {
+            verification_commands: vec![],
+            ..good_record
+        };
+        assert!(!safe_gate_predicate_satisfied(&no_cmds));
+    }
+
+    // ── validate_record warning paths ───────────────────────────────────────
+
+    #[test]
+    fn validate_record_warns_on_blank_gap_id() {
+        let record = GapRecord {
+            gap_id: "".to_string(),
+            ..GapRecord::default()
+        };
+        let mut warnings = Vec::new();
+        validate_record(&record, &mut warnings);
+        assert!(warnings.iter().any(|w| w.contains("missing gap_id")));
+    }
+
+    #[test]
+    fn validate_record_warns_on_blank_kind() {
+        let record = GapRecord {
+            gap_id: "gap:test".to_string(),
+            kind: "".to_string(),
+            ..GapRecord::default()
+        };
+        let mut warnings = Vec::new();
+        validate_record(&record, &mut warnings);
+        assert!(warnings.iter().any(|w| w.contains("missing kind")));
+    }
+
+    #[test]
+    fn validate_record_warns_pr_comment_eligible_without_dedupe_fingerprint() {
+        let mut projections = BTreeMap::new();
+        insert_projection(&mut projections, "pr_comment", true, "test");
+        let record = GapRecord {
+            gap_id: "gap:test".to_string(),
+            kind: "SomeKind".to_string(),
+            projection_eligibility: projections,
+            anchor: Some(GapAnchor {
+                dedupe_fingerprint: None,
+                ..GapAnchor::default()
+            }),
+            ..GapRecord::default()
+        };
+        let mut warnings = Vec::new();
+        validate_record(&record, &mut warnings);
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("missing anchor.dedupe_fingerprint"))
+        );
+    }
+
+    #[test]
+    fn validate_record_warns_artifact_missing_without_regeneration_commands() {
+        let record = GapRecord {
+            gap_id: "gap:test".to_string(),
+            kind: "MissingArtifact".to_string(),
+            scope: "artifact_missing".to_string(),
+            regeneration_commands: vec![],
+            ..GapRecord::default()
+        };
+        let mut warnings = Vec::new();
+        validate_record(&record, &mut warnings);
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("no regeneration_commands"))
+        );
+    }
+
+    #[test]
+    fn validate_record_no_warnings_for_clean_record() {
+        let record = GapRecord {
+            gap_id: "gap:clean".to_string(),
+            kind: "NoActionAlreadyObserved".to_string(),
+            repairability: "no_action".to_string(),
+            ..GapRecord::default()
+        };
+        let mut warnings = Vec::new();
+        validate_record(&record, &mut warnings);
+        assert!(warnings.is_empty());
+    }
+
+    // ── summarize_records counters ───────────────────────────────────────────
+
+    #[test]
+    fn summarize_records_counts_all_categories() {
+        let mut projections_gate = BTreeMap::new();
+        insert_projection(&mut projections_gate, "gate_candidate", true, "test");
+        insert_projection(&mut projections_gate, "ripr_zero_count", true, "test");
+        insert_projection(&mut projections_gate, "ripr_plus_count", true, "test");
+        insert_projection(&mut projections_gate, "pr_comment", true, "test");
+        insert_projection(&mut projections_gate, "agent_packet", true, "test");
+
+        let records = vec![
+            GapRecord {
+                gap_id: "gap:r1".to_string(),
+                kind: "MissingValueAssertion".to_string(),
+                repairability: "repairable".to_string(),
+                ..GapRecord::default()
+            },
+            GapRecord {
+                gap_id: "gap:r2".to_string(),
+                kind: "StaticLimitation".to_string(),
+                repairability: "analyzer_limitation".to_string(),
+                ..GapRecord::default()
+            },
+            GapRecord {
+                gap_id: "gap:r3".to_string(),
+                kind: "NoActionAlreadyObserved".to_string(),
+                repairability: "no_action".to_string(),
+                ..GapRecord::default()
+            },
+            GapRecord {
+                gap_id: "gap:r4".to_string(),
+                kind: "NoActionInternal".to_string(),
+                repairability: "no_action".to_string(),
+                ..GapRecord::default()
+            },
+            GapRecord {
+                gap_id: "gap:r5".to_string(),
+                kind: "MissingArtifact".to_string(),
+                scope: "artifact_missing".to_string(),
+                repairability: "unknown".to_string(),
+                ..GapRecord::default()
+            },
+            GapRecord {
+                gap_id: "gap:r6".to_string(),
+                kind: "MissingOutputContract".to_string(),
+                projection_eligibility: projections_gate.clone(),
+                repairability: "no_action".to_string(),
+                ..GapRecord::default()
+            },
+            GapRecord {
+                gap_id: "gap:r7".to_string(),
+                kind: "MissingValueAssertion".to_string(),
+                language_status: "preview".to_string(),
+                repairability: "no_action".to_string(),
+                ..GapRecord::default()
+            },
+            GapRecord {
+                gap_id: "gap:r8".to_string(),
+                kind: "MissingValueAssertion".to_string(),
+                repairability: "no_action".to_string(),
+                receipt: Some(GapReceipt {
+                    movement: Some("improved".to_string()),
+                    ..GapReceipt::default()
+                }),
+                ..GapRecord::default()
+            },
+            GapRecord {
+                gap_id: "gap:r9".to_string(),
+                kind: "MissingValueAssertion".to_string(),
+                repairability: "no_action".to_string(),
+                receipt: Some(GapReceipt {
+                    movement: Some("unchanged_after_attempt".to_string()),
+                    ..GapReceipt::default()
+                }),
+                ..GapRecord::default()
+            },
+        ];
+        let summary = summarize_records(&records);
+        assert_eq!(summary.records_total, 9);
+        assert_eq!(summary.repairable_total, 1);
+        assert_eq!(summary.static_limitation_total, 1);
+        assert_eq!(summary.no_action_total, 6); // r3, r4, r6, r7, r8, r9 (repairability=no_action or kind NoAction*)
+        assert_eq!(summary.missing_artifact_total, 1);
+        assert_eq!(summary.projection_gate_candidate, 1);
+        assert_eq!(summary.ripr_zero_target_count, 1);
+        assert_eq!(summary.ripr_plus_target_count, 1);
+        assert_eq!(summary.projection_pr_comment_eligible, 1);
+        assert_eq!(summary.projection_agent_packet_eligible, 1);
+        assert_eq!(summary.missing_output_contract_total, 1);
+        assert_eq!(summary.receipt_improved_total, 1);
+        assert_eq!(summary.receipt_unchanged_after_attempt_total, 1);
+        // r7: preview language_status, not eligible for gate/ripr counts → preview_ineligible
+        assert_eq!(summary.preview_ineligible_total, 1);
+    }
+
+    // ── render_record_markdown covers no-anchor, no-repair, no-projections ──
+
+    #[test]
+    fn render_record_markdown_without_optional_fields() {
+        let record = GapRecord {
+            gap_id: "gap:bare".to_string(),
+            kind: "NoActionAlreadyObserved".to_string(),
+            scope: "repo_scoped".to_string(),
+            policy_state: "baseline".to_string(),
+            repairability: "no_action".to_string(),
+            evidence_class: "already_observed".to_string(),
+            gap_state: "already_observed".to_string(),
+            language: "rust".to_string(),
+            language_status: "stable".to_string(),
+            anchor: None,
+            repair_route: None,
+            projection_eligibility: BTreeMap::new(),
+            verification_commands: vec![],
+            regeneration_commands: vec![],
+            receipt: None,
+            ..GapRecord::default()
+        };
+        let mut out = String::new();
+        render_record_markdown(&record, &mut out);
+        assert!(out.contains("### `gap:bare`"));
+        assert!(!out.contains("Anchor:"));
+        assert!(!out.contains("Repair:"));
+        assert!(!out.contains("Eligible projections:"));
+        assert!(!out.contains("Verify:"));
+        assert!(!out.contains("Regenerate:"));
+        assert!(!out.contains("Receipt movement:"));
+    }
+
+    #[test]
+    fn render_record_markdown_with_anchor_no_line_no_owner() {
+        let record = GapRecord {
+            gap_id: "gap:anchor".to_string(),
+            kind: "MissingBoundaryAssertion".to_string(),
+            anchor: Some(GapAnchor {
+                file: Some("src/lib.rs".to_string()),
+                line: None,
+                owner: None,
+                dedupe_fingerprint: None,
+            }),
+            ..GapRecord::default()
+        };
+        let mut out = String::new();
+        render_record_markdown(&record, &mut out);
+        assert!(out.contains("Anchor: `src/lib.rs`"));
+        assert!(!out.contains("owner"));
+    }
+
+    #[test]
+    fn render_record_markdown_repair_route_with_no_target_file_no_assertion() {
+        let record = GapRecord {
+            gap_id: "gap:nofile".to_string(),
+            kind: "MissingValueAssertion".to_string(),
+            repair_route: Some(GapRepairRoute {
+                route_kind: "AddValueAssertion".to_string(),
+                target_file: None,
+                assertion_shape: None,
+                ..GapRepairRoute::default()
+            }),
+            ..GapRecord::default()
+        };
+        let mut out = String::new();
+        render_record_markdown(&record, &mut out);
+        assert!(out.contains("Repair: `AddValueAssertion`"));
+        assert!(!out.contains("in `"));
+        assert!(!out.contains("Assertion or observer:"));
+    }
+
+    // ── eligible_projection_names ───────────────────────────────────────────
+
+    #[test]
+    fn eligible_projection_names_returns_only_eligible() {
+        let mut projections = BTreeMap::new();
+        insert_projection(&mut projections, "ci_summary", true, "test");
+        insert_projection(&mut projections, "agent_packet", false, "not_repairable");
+        insert_projection(&mut projections, "report_packet", true, "test");
+        let record = GapRecord {
+            projection_eligibility: projections,
+            ..GapRecord::default()
+        };
+        let names = eligible_projection_names(&record);
+        assert!(names.contains(&"ci_summary".to_string()));
+        assert!(names.contains(&"report_packet".to_string()));
+        assert!(!names.contains(&"agent_packet".to_string()));
+        assert_eq!(names.len(), 2);
+    }
+
+    // ── parse_gap_records_json / gap_records_from_value ─────────────────────
+
+    #[test]
+    fn parse_gap_records_json_invalid_json_returns_error() -> Result<(), String> {
+        let err_msg = parse_gap_records_json("{invalid")
+            .err()
+            .ok_or("expected error for invalid JSON")?;
+        assert!(
+            err_msg.contains("invalid JSON"),
+            "unexpected error: {err_msg}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gap_records_from_value_cases_key_parses_expected_gap_record() -> Result<(), String> {
+        let value = serde_json::json!({
+            "cases": [
+                {
+                    "id": "case1",
+                    "expected_gap_record": {
+                        "gap_id": "gap:case1",
+                        "kind": "MissingBoundaryAssertion",
+                        "language": "rust",
+                        "language_status": "stable",
+                        "scope": "pr_local",
+                        "repairability": "repairable",
+                        "authority_boundary": "gate_decision_artifact_only"
+                    }
+                }
+            ]
+        });
+        let records =
+            parse_gap_records_json(&value.to_string()).map_err(|e| format!("failed: {e}"))?;
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].gap_id, "gap:case1");
+        Ok(())
+    }
+
+    #[test]
+    fn gap_records_from_value_cases_key_missing_expected_gap_record_returns_error()
+    -> Result<(), String> {
+        let value = serde_json::json!({
+            "cases": [{"id": "case-bad"}]
+        });
+        let err_msg = parse_gap_records_json(&value.to_string())
+            .err()
+            .ok_or("expected error for missing expected_gap_record")?;
+        assert!(
+            err_msg.contains("missing expected_gap_record"),
+            "unexpected error: {err_msg}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gap_records_from_value_no_known_key_returns_error() -> Result<(), String> {
+        let value = serde_json::json!({"unknown_key": []});
+        let err_msg = parse_gap_records_json(&value.to_string())
+            .err()
+            .ok_or("expected error for unknown key")?;
+        assert!(
+            err_msg.contains("expected records"),
+            "unexpected error: {err_msg}"
+        );
+        Ok(())
+    }
+
+    // ── repo_exposure source kind via build_gap_decision_ledger_report ───────
+
+    #[test]
+    fn build_report_with_repo_exposure_source_kind() -> Result<(), String> {
+        let payload = serde_json::json!({
+            "seams": [
+                make_repo_exposure_seam("actionable", "add_focused_test", "error_variant")
+            ]
+        });
+        let report = build_gap_decision_ledger_report(GapDecisionLedgerInput {
+            root: ".".to_string(),
+            generated_at: "test".to_string(),
+            source_kind: GapDecisionLedgerSourceKind::RepoExposure,
+            records_path: "exposure.json".to_string(),
+            records_json: Ok(payload.to_string()),
+        });
+        assert_eq!(report.summary.records_total, 1);
+        assert_eq!(report.records[0].kind, "MissingErrorDiscriminator");
+        Ok(())
+    }
+
+    #[test]
+    fn build_report_with_repo_exposure_parse_error_is_blocked() {
+        let report = build_gap_decision_ledger_report(GapDecisionLedgerInput {
+            root: ".".to_string(),
+            generated_at: "test".to_string(),
+            source_kind: GapDecisionLedgerSourceKind::RepoExposure,
+            records_path: "exposure.json".to_string(),
+            records_json: Ok("not-json".to_string()),
+        });
+        assert_eq!(report.status, "blocked");
+        assert!(report.warnings[0].contains("parse exposure.json failed"));
+    }
+
+    #[test]
+    fn build_report_with_check_output_parse_error_is_blocked() {
+        let report = build_gap_decision_ledger_report(GapDecisionLedgerInput {
+            root: ".".to_string(),
+            generated_at: "test".to_string(),
+            source_kind: GapDecisionLedgerSourceKind::CheckOutput,
+            records_path: "check.json".to_string(),
+            records_json: Ok("not-json".to_string()),
+        });
+        assert_eq!(report.status, "blocked");
+        assert!(report.warnings[0].contains("parse check.json failed"));
+    }
+
+    // ── presentation_text_repair_route uses related_test fields ─────────────
+
+    #[test]
+    fn check_output_repair_route_uses_related_test_and_suggested_assertion() -> Result<(), String> {
+        let payload = serde_json::json!({
+            "finding_alignment": {
+                "items": [{
+                    "evidence_class": "presentation_text",
+                    "gap_state": "actionable",
+                    "actionability": "add_focused_test",
+                    "canonical_gap_id": "pt::LABEL",
+                    "related_test": {
+                        "name": "test_label_output",
+                        "file": "tests/output_test.rs",
+                        "line": 42
+                    },
+                    "presentation_text": {
+                        "constant_name": "LABEL",
+                        "text_literal": "some label",
+                        "suggested_assertion": "assert_eq!(output, \"some label\")"
+                    },
+                    "raw_findings": []
+                }]
+            }
+        });
+        let records = gap_records_from_check_output_json(&payload.to_string())
+            .map_err(|e| format!("parse failed: {e}"))?;
+        let route = records[0]
+            .repair_route
+            .as_ref()
+            .ok_or("expected repair_route")?;
+        assert_eq!(route.related_test.as_deref(), Some("test_label_output"));
+        assert_eq!(route.target_file.as_deref(), Some("tests/output_test.rs"));
+        assert_eq!(route.target_line, Some(42));
+        assert_eq!(
+            route.assertion_shape.as_deref(),
+            Some("assert_eq!(output, \"some label\")")
+        );
+        assert_eq!(route.changed_behavior.as_deref(), Some("some label"));
+        assert_eq!(route.stop_conditions.len(), 2);
+        Ok(())
+    }
+
+    #[test]
+    fn check_output_repair_route_changed_behavior_falls_back_to_constant_name() -> Result<(), String>
+    {
+        let payload = serde_json::json!({
+            "finding_alignment": {
+                "items": [{
+                    "evidence_class": "presentation_text",
+                    "gap_state": "actionable",
+                    "actionability": "add_focused_test",
+                    "canonical_gap_id": "pt::LABEL2",
+                    "presentation_text": {
+                        "constant_name": "MY_CONST"
+                    },
+                    "raw_findings": []
+                }]
+            }
+        });
+        let records = gap_records_from_check_output_json(&payload.to_string())
+            .map_err(|e| format!("parse failed: {e}"))?;
+        let route = records[0]
+            .repair_route
+            .as_ref()
+            .ok_or("expected repair_route")?;
+        // text_literal absent → falls back to constant_name
+        assert_eq!(route.changed_behavior.as_deref(), Some("MY_CONST"));
+        Ok(())
+    }
+
+    #[test]
+    fn check_output_verify_command_fallback_when_not_presentation_text_repairable()
+    -> Result<(), String> {
+        let payload = serde_json::json!({
+            "finding_alignment": {
+                "items": [{
+                    "evidence_class": "presentation_text",
+                    "gap_state": "static_limitation",
+                    "actionability": "none",
+                    "canonical_gap_id": "pt::SL",
+                    "verify_command": "cargo xtask check-output-contracts"
+                }]
+            }
+        });
+        let records = gap_records_from_check_output_json(&payload.to_string())
+            .map_err(|e| format!("parse failed: {e}"))?;
+        // not repairable, so falls through to verify_command from item
+        assert_eq!(
+            records[0].verification_commands,
+            vec!["cargo xtask check-output-contracts".to_string()]
+        );
+        Ok(())
+    }
+
+    // ── repair_route_from_evidence uses assertion_shape example fallback ─────
+
+    #[test]
+    fn repo_repair_route_uses_assertion_example_and_recommended_repair_fallback()
+    -> Result<(), String> {
+        // With assertion_shape.example
+        let seam_with_example = serde_json::json!({
+            "seams": [{
+                "evidence_record": {
+                    "seam_id": "s-example",
+                    "seam_kind": "predicate_boundary",
+                    "recommendation": {
+                        "assertion_shape": {"example": "assert!(result.is_ok())"},
+                        "recommended_test": {"file": "tests/foo.rs"}
+                    },
+                    "raw_findings": [
+                        {"expression": "fn example()"}
+                    ],
+                    "canonical_item": {
+                        "gap_state": "actionable",
+                        "actionability": "add_focused_test",
+                        "related_test": {
+                            "name": "test_example",
+                            "file": "tests/foo.rs",
+                            "line": 5
+                        }
+                    }
+                }
+            }]
+        });
+        let records = gap_records_from_repo_exposure_json(&seam_with_example.to_string())
+            .map_err(|e| format!("parse failed: {e}"))?;
+        let route = records[0]
+            .repair_route
+            .as_ref()
+            .ok_or("expected repair_route")?;
+        assert_eq!(
+            route.assertion_shape.as_deref(),
+            Some("assert!(result.is_ok())")
+        );
+        assert_eq!(route.changed_behavior.as_deref(), Some("fn example()"));
+        assert_eq!(route.related_test.as_deref(), Some("test_example"));
+        assert_eq!(route.target_line, Some(5));
+
+        // Fallback: recommended_repair in canonical_item (no assertion_shape.example)
+        let seam_recommended = serde_json::json!({
+            "seams": [{
+                "evidence_record": {
+                    "seam_id": "s-rec",
+                    "seam_kind": "match_arm",
+                    "canonical_item": {
+                        "gap_state": "actionable",
+                        "actionability": "add_focused_test",
+                        "recommended_repair": "Add a branch assertion for arm."
+                    }
+                }
+            }]
+        });
+        let records = gap_records_from_repo_exposure_json(&seam_recommended.to_string())
+            .map_err(|e| format!("parse failed: {e}"))?;
+        let route = records[0]
+            .repair_route
+            .as_ref()
+            .ok_or("expected repair_route for recommended")?;
+        assert_eq!(
+            route.assertion_shape.as_deref(),
+            Some("Add a branch assertion for arm.")
+        );
+        Ok(())
+    }
+
+    // ── render_gap_decision_ledger_markdown with no records ──────────────────
+
+    #[test]
+    fn render_gap_decision_ledger_markdown_no_records_shows_placeholder() {
+        let report = build_gap_decision_ledger_report(GapDecisionLedgerInput {
+            root: ".".to_string(),
+            generated_at: "test".to_string(),
+            source_kind: GapDecisionLedgerSourceKind::Records,
+            records_path: "empty.json".to_string(),
+            records_json: Ok("[]".to_string()),
+        });
+        let markdown = render_gap_decision_ledger_markdown(&report);
+        assert!(markdown.contains("No gap records were supplied."));
+        // Blocked status produces "blocked"
+        assert!(markdown.contains("Status: `blocked`"));
+    }
+
+    #[test]
+    fn render_gap_decision_ledger_markdown_with_warnings() {
+        let report = build_gap_decision_ledger_report(GapDecisionLedgerInput {
+            root: "/repo".to_string(),
+            generated_at: "test".to_string(),
+            source_kind: GapDecisionLedgerSourceKind::Records,
+            records_path: "bad.json".to_string(),
+            records_json: Ok("not-json".to_string()),
+        });
+        let markdown = render_gap_decision_ledger_markdown(&report);
+        assert!(markdown.contains("## Warnings"));
+        assert!(markdown.contains("invalid JSON"));
+    }
+
+    // ── parse_record_array error formatting ──────────────────────────────────
+
+    #[test]
+    fn parse_record_array_reports_index_on_invalid_record() -> Result<(), String> {
+        let value = serde_json::json!([
+            {
+                "gap_id": "gap:valid",
+                "kind": "NoActionAlreadyObserved",
+                "authority_boundary": "gate_decision_artifact_only"
+            },
+            "not-a-record"
+        ]);
+        let msg = parse_gap_records_json(&value.to_string())
+            .err()
+            .ok_or("expected error for invalid record at index 1")?;
+        assert!(msg.contains("record 1"), "expected 'record 1' in: {msg}");
+        assert!(
+            msg.contains("invalid GapRecord"),
+            "expected 'invalid GapRecord' in: {msg}"
+        );
+        Ok(())
+    }
 }
