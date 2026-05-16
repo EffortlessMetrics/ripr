@@ -6282,6 +6282,116 @@ See [Report packet index workflow](REPORT_PACKET_INDEX_WORKFLOW.md) for
 reviewer, maintainer, developer, and coding-agent use of the generated packet
 map.
 
+## First PR Start Here Packet
+
+`cargo xtask first-pr` writes the first successful PR front-door packet from
+explicit existing RIPR artifacts. The packet selects one top repairable
+PR-local Rust gap when the gap decision ledger supplies one, or emits a bounded
+no-action or blocked recovery state. It does not rerun hidden analysis, edit
+source, generate tests, call providers, run mutation testing, change gate
+policy, or change CI blocking.
+
+Command shape:
+
+```text
+cargo xtask first-pr \
+  --root . \
+  --gap-ledger target/ripr/reports/gap-decision-ledger.json \
+  --first-action target/ripr/reports/first-useful-action.json \
+  --review-comments target/ripr/review/comments.json \
+  --agent-packet target/ripr/agent/gap-packet.md \
+  --gate-decision target/ripr/reports/gate-decision.json \
+  --receipts-dir target/ripr/receipts \
+  --out-dir target/ripr/reports
+```
+
+The command writes:
+
+```text
+target/ripr/reports/start-here.json
+target/ripr/reports/start-here.md
+```
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "first_pr_start_here",
+  "status": "blocked",
+  "posture": "advisory",
+  "root": ".",
+  "selected": {
+    "state": "stale_artifact",
+    "message": "The gap decision ledger is stale; refresh the first-run evidence before assigning repair work.",
+    "next_command": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json --out-md target/ripr/reports/gap-decision-ledger.md"
+  },
+  "commands": {
+    "regenerate_gap_ledger": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json --out-md target/ripr/reports/gap-decision-ledger.md",
+    "next": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json --out-md target/ripr/reports/gap-decision-ledger.md"
+  },
+  "artifacts": [
+    {
+      "id": "gap_ledger",
+      "label": "Gap decision ledger",
+      "path": "target/ripr/reports/gap-decision-ledger.json",
+      "status": "available",
+      "available": true
+    }
+  ],
+  "authority": {
+    "status": "advisory",
+    "gate_decision": "target/ripr/reports/gate-decision.json",
+    "boundary": "Pass/fail authority remains with explicit gate-decision artifacts when configured; this first-run packet does not gate."
+  },
+  "warnings": [
+    "The gap decision ledger is stale; refresh the first-run evidence before assigning repair work."
+  ],
+  "limits": [
+    "Composes explicit RIPR artifacts only.",
+    "Does not run hidden analysis.",
+    "Does not edit source or generate tests.",
+    "Does not run mutation testing.",
+    "Does not change CI blocking or gate policy."
+  ]
+}
+```
+
+Field contract:
+
+- `schema_version` is `0.1` until the packet shape changes.
+- `kind` is always `first_pr_start_here`.
+- `status` is `actionable`, `blocked`, or `no_action`. It is reviewer context
+  only, not gate authority.
+- `posture` is always `advisory`.
+- `selected.state` is `top_gap` for a selected repairable gap,
+  `missing_artifact`, `malformed_artifact`, `stale_artifact`, `wrong_root`, or
+  `timeout` for blocked recovery states, and `empty_diff` or `no_action` for
+  no-action states.
+- `top_gap` requires `status = "actionable"`.
+- `missing_artifact`, `malformed_artifact`, `stale_artifact`, `wrong_root`,
+  and `timeout` require `status = "blocked"` and a bounded next command when
+  one is known.
+- `empty_diff` and `no_action` require `status = "no_action"` and must not
+  produce a repair interruption.
+- `commands.regenerate_gap_ledger` is always present so missing, stale,
+  wrong-root, malformed, and timeout states can point to a known refresh path.
+- `artifacts[]` records the explicit artifact paths the packet inspected and
+  whether each one was available.
+- `authority.boundary` preserves the gate boundary. This packet never becomes
+  pass/fail authority.
+- `warnings[]` carries blocked-state context without converting it to waiver,
+  suppression, improvement, clean, or gate-passing state.
+- `limits` preserves explicit-input, no-source-edit, no-generated-test,
+  no-provider-call, no-runtime-mutation-execution, and advisory-default
+  boundaries.
+
+Markdown should fit in a PR summary, local handoff, or generated CI summary. It
+should show the selected top gap, no-action state, or blocked recovery state
+first, followed by artifacts, authority, and limits. `empty_diff` must render
+as a no-action state, not a blocked repair.
+
 ### Review Guidance Outcome Receipt
 
 Review guidance outcome receipts are optional repo-local inputs to the
