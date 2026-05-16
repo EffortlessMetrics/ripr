@@ -43,3 +43,22 @@ observable behavior.
 | [RIPR-SPEC-0030](RIPR-SPEC-0030-preview-evidence-policy-boundary.md) | proposed | Preview evidence policy boundary |
 | [RIPR-SPEC-0031](RIPR-SPEC-0031-lane1-evidence-quality-audit.md) | proposed | Lane 1 evidence quality audit |
 | [RIPR-SPEC-0032](RIPR-SPEC-0032-lane1-evidence-quality-fixtures.md) | proposed | Lane 1 evidence quality failure fixtures |
+| [RIPR-SPEC-0033](RIPR-SPEC-0033-match-arm-canonical-gap-discriminators.md) | proposed | Match-arm canonical gap discriminators |
+| [RIPR-SPEC-0034](RIPR-SPEC-0034-evidence-quality-scorecard.md) | proposed | Evidence quality scorecard |
+| [RIPR-SPEC-0035](RIPR-SPEC-0035-evidence-quality-benchmark-corpus.md) | proposed | Evidence quality benchmark corpus |
+| [RIPR-SPEC-0036](RIPR-SPEC-0036-editor-preview-routing.md) | proposed | Editor preview routing |
+| [RIPR-SPEC-0037](RIPR-SPEC-0037-editor-preview-static-limit-projection.md) | proposed | Editor preview static-limit projection |
+| [RIPR-SPEC-0038](RIPR-SPEC-0038-generated-pr-ci-review-workflow.md) | proposed | Generated PR CI review workflow |
+| [RIPR-SPEC-0039](RIPR-SPEC-0039-policy-operations-report.md) | proposed | Policy operations report |
+| [RIPR-SPEC-0040](RIPR-SPEC-0040-static-runtime-confidence-expansion.md) | proposed | Static/runtime confidence expansion |
+| [RIPR-SPEC-0041](RIPR-SPEC-0041-policy-history-ledger.md) | proposed | Policy history ledger |
+| [RIPR-SPEC-0042](RIPR-SPEC-0042-policy-promotion-packets.md) | proposed | Policy promotion packets |
+| [RIPR-SPEC-0043](RIPR-SPEC-0043-presentation-text-evidence.md) | proposed | Presentation text evidence |
+| [RIPR-SPEC-0044](RIPR-SPEC-0044-preview-evidence-promotion-packet.md) | proposed | Preview evidence promotion packet |
+| [RIPR-SPEC-0045](RIPR-SPEC-0045-finding-to-gap-alignment.md) | proposed | Finding-to-gap alignment |
+| [RIPR-SPEC-0046](RIPR-SPEC-0046-gap-decision-ledger.md) | proposed | Gap decision ledger |
+| [RIPR-SPEC-0047](RIPR-SPEC-0047-editor-gap-projection.md) | accepted | Editor gap projection |
+| [RIPR-SPEC-0048](RIPR-SPEC-0048-config-policy-constant-evidence.md) | proposed | Config and policy constant evidence |
+| [RIPR-SPEC-0049](RIPR-SPEC-0049-editor-setup-status.md) | proposed | Editor setup status |
+| [RIPR-SPEC-0050](RIPR-SPEC-0050-editor-first-repair-loop.md) | proposed | Editor first repair loop |
+| [RIPR-SPEC-0051](RIPR-SPEC-0051-first-successful-pr-ux.md) | proposed | First successful PR UX |

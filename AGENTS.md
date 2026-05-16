@@ -90,6 +90,7 @@ Run these before claiming the branch is ready:
 cargo xtask shape
 cargo xtask fix-pr
 cargo xtask pr-summary
+cargo xtask pr-triage-report
 cargo xtask precommit
 cargo xtask check-pr
 cargo xtask fixtures
@@ -111,6 +112,7 @@ cargo xtask check-executable-files
 cargo xtask check-workflows
 cargo xtask check-droid-review-config
 cargo xtask check-spec-format
+cargo xtask check-spec-numbering
 cargo xtask check-fixture-contracts
 cargo xtask check-traceability
 cargo xtask check-capabilities
@@ -121,6 +123,8 @@ cargo xtask check-output-contracts
 cargo xtask check-doc-index
 cargo xtask check-pr-shape
 cargo xtask check-generated
+cargo xtask check-badge-diff-policy
+cargo xtask check-generated-clean
 cargo xtask check-dependencies
 cargo xtask check-process-policy
 cargo xtask check-network-policy
@@ -129,8 +133,13 @@ cargo xtask check-network-policy
 `cargo xtask shape` is allowed to make safe local edits: run `cargo fmt`, sort
 policy allowlists, ensure `target/ripr/reports`, and write a shape report.
 `cargo xtask pr-summary` writes a local reviewer packet from git diff/status.
+`cargo xtask pr-triage-report` writes an advisory open-PR board hygiene report.
+`cargo xtask gh-pr-status --pr <number>` writes a read-only merge-readiness
+packet for one PR after it exists.
 `cargo xtask fix-pr` runs safe shaping and then refreshes the PR summary.
 `cargo xtask precommit` is the cheap non-mutating guardrail.
+`cargo xtask worktree doctor` reports dirty main, branches behind main,
+generated residue, and broad untracked scope before PR work proceeds.
 `cargo xtask check-pr` is the review-ready non-release gate.
 
 See `docs/PR_AUTOMATION.md` for the shape/check/guide model and the planned

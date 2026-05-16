@@ -34,6 +34,24 @@ target/ripr/review/comments.md
 The command reads the pull request diff and existing RIPR evidence, then writes
 bounded JSON and Markdown. It does not post to GitHub.
 
+When a gap decision ledger already exists, the same command can render from the
+explicit repair-card layer instead of rerunning analysis:
+
+```bash
+ripr review-comments \
+  --root . \
+  --base origin/main \
+  --head HEAD \
+  --gap-ledger target/ripr/reports/gap-decision-ledger.json \
+  --out target/ripr/review/comments.json
+```
+
+In this mode, `comments[]` is limited to `GapRecord` entries that are
+`projection_eligibility.pr_comment` eligible, PR-local, repairable, anchored,
+deduped, and carrying verification commands. Non-eligible, duplicate, waived,
+suppressed, resolved, or incomplete records stay visible in `suppressed[]`
+rather than becoming line comments.
+
 ## What Reviewers See
 
 The JSON separates recommendations by review placement:
@@ -44,10 +62,12 @@ The JSON separates recommendations by review placement:
   configured severity, suppression policy, or missing guidance.
 - `warnings[]` carries bounded selection warnings from the agent brief path.
 
-Each line-placeable item carries the seam ID, grip class, severity, static
-reason, missing discriminator when known, suggested test shape, and bounded LLM
-handoff command. The command is the same existing agent loop command surface,
-not a new review-specific workflow.
+Each line-placeable item carries the seam ID or gap ID, severity, static reason,
+missing discriminator when known, suggested test shape, and bounded LLM handoff
+command. Gap-ledger items also carry `repair_card`, which names the gap kind,
+repair route, evidence IDs, verification command, source artifact, and authority
+boundary. Downstream inline-comment publishers should use `repair_card` text
+when present instead of exposing raw static classes.
 
 ## Placement Rules
 
@@ -94,6 +114,8 @@ publish-plan contract:
 - target only changed lines;
 - cap comments to three by default;
 - deduplicate by `dedupe_key`;
+- render `repair_card` entries as repair instructions, not raw classification
+  labels or confidence scores;
 - replace or upsert existing RIPR comments instead of adding duplicates;
 - keep comments advisory and non-blocking.
 

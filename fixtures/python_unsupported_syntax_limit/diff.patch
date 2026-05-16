@@ -1,0 +1,8 @@
+diff --git a/src/mapper.py b/src/mapper.py
+index 0000000..1111111 100644
+--- a/src/mapper.py
++++ b/src/mapper.py
+@@ -1,2 +1,2 @@
+ def make_mapper():
+-    return lambda value: value + 1
++    return lambda value: value + 2

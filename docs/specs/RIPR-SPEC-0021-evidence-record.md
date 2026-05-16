@@ -93,6 +93,14 @@ Each `seams[].evidence_record` must include:
 - `canonical_gap_group_size`: number of raw seams in the current repo-exposure
   snapshot that share the same canonical gap identity, or `null`.
 - `canonical_gap_reason`: the deterministic grouping reason, or `null`.
+- `raw_findings`: supporting raw analyzer signals for this record. The current
+  seam-native projection emits one raw finding per seam and preserves file,
+  line, static class, expression, probe kind, source ID, and evidence-record
+  reference.
+- `canonical_item`: additive finding-alignment projection with canonical item
+  identity, evidence class, `gap_state`, class-scoped actionability, why,
+  recommended repair, related test, verification command, confidence basis, and
+  raw group size.
 - `owner`: owner symbol copied from the seam.
 - `location.file` and `location.line`: source locator fields.
 - `seam_kind`: seam kind copied from the seam.
@@ -112,7 +120,13 @@ Each `seams[].evidence_record` must include:
   evidence.
 - `actionability`: advisory actionability class and available guidance signals.
 - `calibration`: static/runtime confidence placeholder.
-- `static_limitations`: unknown or opaque static evidence stages.
+- `static_limitations`: unknown or opaque static evidence stages. Each entry
+  keeps the original reason and adds a normalized analyzer limitation
+  `category` plus `repair_route` so Lane 1 can group repair work without
+  converting analyzer limits into user test gaps.
+- `presentation_text`: nullable presentation-text evidence-class projection.
+  It remains `null` until a fixture-backed presentation-text slice classifies
+  visibility, observer shape, source kind, and output actionability.
 
 ## Actionability Vocabulary
 
@@ -308,6 +322,55 @@ Additional examples:
   not enter the shared record until a future schema revision explicitly adds
   runtime-backed calibration context.
 
+## Finding Alignment
+
+The record also carries the first additive finding-to-gap alignment fields from
+RIPR-SPEC-0045:
+
+```json
+{
+  "raw_findings": [
+    {
+      "file": "src/pricing.rs",
+      "line": 88,
+      "kind": "weakly_gripped",
+      "expression": "amount >= discount_threshold",
+      "probe_kind": "predicate_boundary",
+      "source_id": "f3c9e4d21a0b7c88",
+      "evidence_record_ref": "f3c9e4d21a0b7c88"
+    }
+  ],
+  "canonical_item": {
+    "canonical_gap_id": "gap:67fc764ba37d77bd",
+    "raw_group_size": 1,
+    "canonical_item_kind": "gap",
+    "evidence_class": "predicate_boundary",
+    "gap_state": "actionable",
+    "actionability": "extend_related_test",
+    "group_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+    "why": "extend the nearest related test with the missing discriminator",
+    "recommended_repair": "extend the nearest related test with the missing discriminator",
+    "related_test": {
+      "name": "below_threshold_has_no_discount",
+      "file": "tests/pricing_tests.rs",
+      "line": 12,
+      "reason": "direct_owner_call"
+    },
+    "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json",
+    "confidence": {
+      "basis": "static_only",
+      "notes": ["no imported runtime calibration data"]
+    }
+  },
+  "presentation_text": null
+}
+```
+
+The existing `actionability` object remains the backward-compatible advisory
+class and signal set. `canonical_item.actionability` is the class-scoped
+alignment label used by downstream surfaces that need one canonical item rather
+than one action per raw line signal.
+
 ## Test Mapping
 
 | Behavior | Test |
@@ -317,6 +380,8 @@ Additional examples:
 | Opaque classification is static limitation work | `evidence_record_marks_opaque_seams_as_static_limitation_work` |
 | Repo exposure schema and metrics remain present | `json_carries_schema_version_scope_and_metrics` |
 | Repo exposure carries existing seam fields plus the new record | `json_carries_full_classified_record` |
+| Evidence record carries raw findings and canonical item alignment fields | `evidence_record_carries_identity_path_guidance_and_calibration_placeholder` |
+| Canonical item mirrors supplied canonical gap group identity and size | `evidence_record_carries_supplied_canonical_gap_identity` |
 | Agent seam packets carry the shared record while preserving legacy fields | `packet_carries_shared_evidence_record_projection` |
 | RIPR Zero status repair routes prefer supplied record guidance | `ripr_zero_status_prefers_evidence_record_repair_context` |
 | Targeted-test outcome prefers record-level before/after movement | `targeted_test_outcome_prefers_evidence_record_movement` |
@@ -339,6 +404,8 @@ Additional examples:
 | Smoke-only oracle semantics explain the missing boundary discriminator | `oracle_semantics_explains_smoke_only_boundary_gap` |
 | Exact-value oracle semantics do not invent an upgrade suggestion | `oracle_semantics_keeps_exact_value_without_extra_upgrade` |
 | Oracle semantics cover the supported oracle families | `oracle_semantics_covers_supported_oracle_families` |
+| Opaque custom assertion helpers stay unknown instead of overclaiming exact-value grip | `opaque_custom_assertion_helper_stays_unknown_oracle` |
+| Duplicative equality assertions stay weak instead of overclaiming exact-value grip | `duplicative_equality_assertion_stays_weak_oracle` |
 | Evidence records carry oracle semantics on related tests | `evidence_record_carries_identity_path_guidance_and_calibration_placeholder` |
 
 ## Implementation Mapping

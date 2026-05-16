@@ -1,0 +1,152 @@
+id = "rust-usable-gap-projection"
+title = "Rust Usable Gap Projection"
+status = "closed"
+
+objective = """
+Make ripr's Rust user-facing surfaces gap-driven and repair-driven. Raw
+analyzer findings remain supporting evidence; user interruptions consume
+canonical GapRecord records with scope, repair route, anchor, projection
+eligibility, verification command, and authority boundary.
+"""
+
+end_state = [
+  "Finding-to-gap alignment separates raw evidence from user-facing grouping.",
+  "Gap decision ledger is the shared decision layer for projectable Rust gaps.",
+  "PR repair comments require explicit GapRecord projection eligibility, stable anchors, dedupe, repair route, and verification command.",
+  "RIPR Zero, repo badges, and optional gates can consume policy-backed gap records without changing default blocking.",
+  "Agent packets and LSP gap diagnostics consume the same GapRecord fields.",
+  "Presentation/output text can route to MissingOutputContract and AddOutputGolden when supported evidence identifies output proof as the repair route.",
+  "Static-unknown-only evidence remains report-only unless a configured repair route exists.",
+  "Preview-language evidence remains opt-in, visibly preview/advisory, and outside Rust gap-repair authority.",
+  "Rust gap repair loop is documented as usable, not stable or runtime-confirmed.",
+]
+
+non_goals = [
+  "No default CI blocking change.",
+  "No branch-protection change.",
+  "No mutation execution.",
+  "No runtime test execution by the gap ledger.",
+  "No generated tests.",
+  "No automatic source edits.",
+  "No provider calls.",
+  "No preview-language promotion into RIPR Zero, badges, or gates.",
+  "No public crate split.",
+]
+
+[[work_item]]
+id = "docs/finding-to-gap-alignment"
+status = "done"
+spec = "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md"
+acceptance = "Raw findings remain supporting evidence and canonical evidence items become the grouping unit for downstream projection."
+commands = [
+  "cargo xtask check-spec-format",
+  "cargo xtask check-doc-index",
+  "cargo xtask check-traceability",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "docs/rust-usable-gap-projection-proposal"
+status = "done"
+proposal = "docs/proposals/RIPR-PROP-0006-rust-usable-gap-projection.md"
+acceptance = "Proposal explains evidence class versus gap decision versus projection, target surfaces, non-goals, and support-tier boundaries."
+commands = [
+  "cargo xtask check-doc-roles",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "docs/gap-decision-ledger-spec"
+status = "done"
+spec = "docs/specs/RIPR-SPEC-0046-gap-decision-ledger.md"
+acceptance = "Spec defines GapRecord fields, projection eligibility, safe gate predicate, badge target semantics, presentation/output repair, receipts, and non-goals."
+commands = [
+  "cargo xtask check-spec-format",
+  "cargo xtask check-doc-index",
+  "cargo xtask check-traceability",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "fixtures/gap-decision-ledger-corpus"
+status = "done"
+fixture = "fixtures/gap-decision-ledger/corpus.json"
+acceptance = "Corpus pins gap kinds, scopes, policy states, repairability, projection surfaces, static-unknown report-only behavior, output-golden repair, preview ineligibility, missing artifact regeneration, and receipt movement."
+commands = [
+  "cargo test -p xtask gap_decision_ledger",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "output/gap-decision-ledger"
+status = "done"
+spec = "docs/specs/RIPR-SPEC-0046-gap-decision-ledger.md"
+acceptance = "ripr reports gap-ledger renders advisory JSON and Markdown from explicit GapRecord input without rerunning analysis or changing gate authority."
+commands = [
+  "cargo test -p ripr gap_decision_ledger --lib",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "report/gap-ledger-derived-inputs"
+status = "done"
+spec = "docs/specs/RIPR-SPEC-0046-gap-decision-ledger.md"
+acceptance = "repo-exposure and check-output inputs derive conservative GapRecords from explicit artifacts, including MissingOutputContract/AddOutputGolden for supported presentation/output evidence."
+commands = [
+  "cargo test -p ripr reports_gap_ledger --lib",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "projection/gap-consumers"
+status = "done"
+spec = "docs/specs/RIPR-SPEC-0046-gap-decision-ledger.md"
+acceptance = "first-action, PR ledger, RIPR Zero, badges, gates, review comments, agent packets, and LSP surfaces consume explicit gap records where supplied."
+commands = [
+  "cargo test -p ripr gap_decision_ledger --lib",
+  "cargo test -p ripr gate --lib",
+  "cargo test -p ripr review_comments --lib",
+  "cargo test -p ripr lsp --lib",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "docs/rust-gap-repair-adoption"
+status = "done"
+docs = [
+  "docs/FIRST_PR_WORKFLOW.md",
+  "docs/status/SUPPORT_TIERS.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+]
+acceptance = "Rust gap repair loop is buyer-readable and marked usable with explicit advisory/static/runtime boundaries."
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "campaign/rust-usable-gap-projection-closeout"
+status = "done"
+closeout = "docs/handoffs/2026-05-15-rust-usable-gap-projection-closeout.md"
+acceptance = "Closeout records shipped proof, non-changes, remaining limits, shipped surfaces, validation commands, and future-lane boundaries."
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-doc-roles",
+  "cargo xtask check-pr",
+  "git diff --check",
+]

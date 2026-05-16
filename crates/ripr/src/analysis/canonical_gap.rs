@@ -195,6 +195,37 @@ mod tests {
         }
     }
 
+    fn classified_match_arm_gap(owner: &str, line: usize, arm: &str) -> ClassifiedSeam {
+        let seam = RepoSeam::new(
+            "src/parser.rs",
+            owner,
+            SeamKind::MatchArm,
+            line * 10,
+            line,
+            arm,
+            RequiredDiscriminator::MatchArmTaken {
+                arm: arm.to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        let evidence = TestGripEvidence {
+            seam_id: seam.id().clone(),
+            related_tests: Vec::new(),
+            reach: stage(StageState::Yes),
+            activate: stage(StageState::Unknown),
+            propagate: stage(StageState::Yes),
+            observe: stage(StageState::Yes),
+            discriminate: stage(StageState::Yes),
+            observed_values: Vec::<ValueFact>::new(),
+            missing_discriminators: Vec::new(),
+        };
+        ClassifiedSeam {
+            seam,
+            evidence,
+            class: SeamGripClass::ActivationUnknown,
+        }
+    }
+
     #[test]
     fn canonical_gap_id_is_stable_across_line_movement() -> Result<(), String> {
         let before = classified_gap("pricing::discounted_total", 88, "amount == threshold");
@@ -312,6 +343,40 @@ mod tests {
         let billing_gap =
             canonical_gap_identity(&billing).ok_or_else(|| "missing billing gap".to_string())?;
         assert_ne!(pricing_gap.id, billing_gap.id);
+        Ok(())
+    }
+
+    #[test]
+    fn canonical_gap_id_distinguishes_different_match_arm_discriminators() -> Result<(), String> {
+        let zero = classified_match_arm_gap("parser::parse_format", 42, "OutputFormat::Json =>");
+        let markdown = classified_match_arm_gap("parser::parse_format", 43, "OutputFormat::Md =>");
+
+        let zero_gap =
+            canonical_gap_identity(&zero).ok_or_else(|| "missing zero gap".to_string())?;
+        let markdown_gap =
+            canonical_gap_identity(&markdown).ok_or_else(|| "missing markdown gap".to_string())?;
+
+        assert_ne!(zero_gap.id, markdown_gap.id);
+        assert_eq!(zero_gap.missing_discriminator, "OutputFormat::Json =>");
+        assert_eq!(markdown_gap.missing_discriminator, "OutputFormat::Md =>");
+        assert_eq!(zero_gap.assertion_shape, "match_result");
+        Ok(())
+    }
+
+    #[test]
+    fn canonical_gap_id_groups_same_match_arm_across_line_movement() -> Result<(), String> {
+        let before = classified_match_arm_gap("parser::parse_format", 42, "OutputFormat::Json =>");
+        let after = classified_match_arm_gap("parser::parse_format", 88, "OutputFormat::Json =>");
+
+        assert_ne!(before.seam.id(), after.seam.id());
+        let before_gap =
+            canonical_gap_identity(&before).ok_or_else(|| "missing before gap".to_string())?;
+        let after_gap =
+            canonical_gap_identity(&after).ok_or_else(|| "missing after gap".to_string())?;
+
+        assert_eq!(before_gap.id, after_gap.id);
+        assert_eq!(before_gap.seam_kind, "match_arm");
+        assert_eq!(before_gap.flow_sink, "return_value");
         Ok(())
     }
 

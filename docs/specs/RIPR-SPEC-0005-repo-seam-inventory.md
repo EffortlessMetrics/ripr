@@ -228,6 +228,10 @@ ordering remains deterministic.
 - `analysis/oracle-semantics-v3-stabilization`: tests that broad error,
 smoke-only, exact-value, and record-projected related-test oracles explain what
 they observe, what they miss, and when an assertion upgrade is available.
+- `analysis/oracle-semantics-audit-fixes`: tests that clear custom assertion
+helpers keep exact-value semantics, opaque custom helpers stay unknown, and
+duplicative equality assertions remain weak instead of overclaiming exact
+value grip.
 - `analysis/repo-ripr-classification-v1`: tests for `SeamGripClass`
 classification rules and headline mapping.
 

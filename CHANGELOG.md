@@ -41,6 +41,187 @@ Planned scope:
   "X was not generated" messages stay aligned. Artifact filenames, JSON
   fields, command names, status IDs, workflow step `name:` values, and
   schemas are unchanged.
+- Generated CI now surfaces the Lane 2 policy operations stack as advisory
+  packets: `policy-operations`, `policy-history`, `policy-promotion-*`, and
+  configured preview-language `preview-promotion-*` artifacts are rendered,
+  uploaded, indexed, and summarized without changing pass/fail authority,
+  default blocking, comments, config, baselines, suppressions, history ledgers,
+  workflows, branch protection, or preview eligibility.
+- Closed the Lane 2 Policy Operations and Promotion Readiness tracker. The
+  closeout records policy operations, policy history, promotion packets,
+  preview-promotion packets, operator workflow docs, advisory generated-CI
+  projection, capability metadata, traceability, and the boundary that stricter
+  policy or preview-language promotion still requires explicit later review.
+- Closed Campaign 27 Language Adapter Preview. TypeScript/JavaScript and Python
+  preview adapters now have fixture-backed syntax-first facts, visible
+  preview/advisory labels, editor projection, generated-CI language grouping,
+  dogfood receipts, capability metadata, traceability, and a closeout boundary
+  that keeps Rust defaults, gate authority, generated tests, provider calls,
+  source edits, and mutation execution unchanged.
+- Campaign manifests now accept top-level `status = "closed"` only when every
+  work item is `done`, letting `.ripr/goals/active.toml` honestly record a
+  closed campaign until the next campaign is selected. Campaign 26 and Campaign
+  27 archived manifests were normalized to that closed state.
+- Closed the generated-evidence discipline lane. Ordinary PRs now have
+  generated-clean and badge endpoint ownership checks, worktree and PR-status
+  operator reports, spec-numbering and campaign/source-of-truth guards,
+  target-local receipts, critic reports, deterministic suggested-fixes patches,
+  and contributor docs that separate authored truth from generated evidence and
+  judgment-required decisions.
+- Added `cargo xtask commands`, a target-local command mutability catalog that
+  classifies xtask commands as mutating, non-mutating checks, report-only,
+  external-state reads, external-state mutations, or argument-dependent, and
+  flags commands that require explicit judgment before use.
+- `cargo xtask pr-triage-report` now writes agent-readable JSON next to the
+  Markdown queue report so open-board risks can be consumed without scraping
+  prose.
+- `cargo xtask gh-pr-status --pr <number>` now writes agent-readable JSON next
+  to the Markdown merge-readiness packet so agents can consume merge state,
+  outstanding checks, Droid status, reviews, and the safe next action without
+  scraping prose.
+- `cargo xtask reports index` now includes repo-ops packet status in Markdown
+  and JSON for command mutability, the repo cockpit, PR-ready, worktree doctor,
+  PR triage, per-PR merge readiness, generated-clean, badge ownership, critic,
+  receipts, suggested fixes, and `check-pr` artifacts.
+- Added `cargo xtask pr-ready`, a target-local advisory cockpit that composes
+  worktree doctor, command mutability, PR summary, critic, receipts check,
+  suggested fixes, generated-clean, and badge ownership into
+  `target/ripr/reports/pr-ready.md` and `.json`.
+- Added `cargo xtask cockpit`, a repo-level advisory front panel that composes
+  worktree doctor, command mutability, command-catalog coverage, spec
+  numbering, campaign/source-of-truth checks, open PR triage, generated-clean,
+  and badge ownership into `target/ripr/reports/cockpit.md` and `.json`.
+- Added [docs/MERGE_WATCH_POLICY.md](docs/MERGE_WATCH_POLICY.md), documenting
+  PR watcher cadence, branch freshness decisions, REST status fallback,
+  Droid/advisory-check handling, merge execution limits, and task-worktree
+  cleanup without changing branch protection or auto-merge behavior.
+- `cargo xtask suggested-fixes` now suggests deterministic docs index table
+  ordering for specs and ADRs in addition to allowlist ordering, while keeping
+  badge values, goldens, baselines, suppressions, dependency exceptions, and
+  schema changes out of generated repair patches.
+- `cargo xtask suggested-fixes` now suggests deterministic
+  `.ripr/traceability.toml` `[[behavior]]` block ordering by spec ID without
+  re-rendering TOML or changing block bodies.
+- `cargo xtask suggested-fixes` now suggests deterministic
+  `metrics/capabilities.toml` `[[capability]]` block ordering by spec ID and
+  capability ID without re-rendering TOML or changing block bodies.
+- Added `cargo xtask check-command-catalog`, a non-mutating guard that fails
+  when xtask help entries and the command mutability catalog drift apart or
+  omit write/judgment metadata.
+- Added `RIPR-SPEC-0048` for Lane 1 config/policy constant evidence, defining
+  how internal policy metadata, rendered config/report labels, behavior
+  selectors, named limitations, repair routes, and must-not-claim guards should
+  fit the raw-finding to canonical-item alignment model before analyzer work.
+- Added config/policy constant cases to the Lane 1 evidence-quality benchmark,
+  pinning internal no-action metadata, rendered output-observer repairs,
+  observed schema labels, cross-file flow unknowns, and opaque lookup
+  limitations before analyzer work.
+- Config/policy constants now align into `ripr check --json` canonical
+  evidence items for fixture-backed internal metadata, visible unobserved
+  report/config labels, observed schema labels, cross-file flow unknowns, and
+  opaque lookup limitations. Raw findings remain supporting evidence; no
+  PR/CI rendering, gate, score, generated-test, provider, source-edit, or
+  mutation-execution behavior changed.
+- Added explicit config/policy behavior-selector proof for canonical
+  `add_behavior_discriminator` repairs and already-observed
+  `validation_behavior` discriminators, including benchmark cases, dogfood
+  receipts, and unit assertions that declaration plus literal findings become
+  one canonical item without recommending mutation execution first.
+- Actionable finding-alignment items now expose a normalized top-level
+  `repair_route` with `repair_kind`, `target_test_type`, and
+  `suggested_assertion`, plus route-coverage counts, so downstream consumers
+  can use one canonical repair contract instead of inferring actionability from
+  raw static classes or class-specific fields.
+- Finding-alignment summaries now include actionable verify-command coverage
+  and missing-verify counts, keeping repair routes and verification routes
+  explicit for canonical gaps without changing PR/CI rendering, gate policy,
+  scores, generated tests, provider calls, source edits, or mutation execution.
+- Evidence-quality scorecards now lead with actionable canonical gaps while
+  keeping raw signals and canonical item counts as diagnostic context. This
+  keeps the Lane 1 counting model visible without changing badges, gates,
+  scores, PR/CI rendering, generated tests, provider calls, source edits, or
+  mutation execution.
+- `cargo xtask dogfood` now checks finding-alignment receipts for real RIPR PR
+  examples, pinning actionable, already-observed, internal no-action, and named
+  static-limitation outcomes without changing PR/CI rendering, gates, public
+  scores, generated tests, provider calls, source edits, or mutation execution.
+- Documented the canonical finding-alignment consumer contract v2 so downstream
+  PR/CI, editor, report, and agent lanes render canonical evidence items first,
+  keep raw findings as supporting evidence, and avoid inferring actionability
+  from raw static classes.
+- VS Code `ripr: Show Status` now includes first-run/no-output context:
+  workspace root, resolved server source and command, editor selectors,
+  enabled languages from the last server refresh, and the next safe action for
+  disabled, no-workspace, unavailable-server, stale, language-off, no-seam,
+  preview, and diagnostic states. LSP refresh logs now include enabled language
+  names alongside the existing count.
+- VS Code related-test opening now fails closed unless the target is a file in
+  the current workspace with a current Rust or preview-language route, so stale,
+  disabled, malformed, unsupported, or out-of-workspace command payloads cannot
+  open arbitrary files.
+- Added `docs/STATIC_LIMITS.md` so preview-language static-limit labels have a
+  user-facing interpretation guide and downstream tools know not to parse
+  prose into action semantics.
+- Added Cargo feature gates for preview language adapters. Default builds still
+  include TypeScript/JavaScript and Python preview support, Rust-only binaries
+  can be built with `--no-default-features --features lang-rust`, and repo
+  config now fails closed when it enables a language missing from the current
+  binary.
+- Presentation-text finding alignment now classifies fixture-backed help/report
+  output text, supported golden/snapshot observers, internal-only labels, and
+  visibility-unknown routes in `ripr check --json` canonical items while
+  preserving raw findings and avoiding PR/CI rendering, gates, scores,
+  generated tests, provider calls, or mutation execution.
+- Presentation-text canonical items now include concrete repair guidance:
+  `repair_kind`, `target_test_type`, and `suggested_assertion` fields distinguish
+  output-observer repairs, already-observed no-action states, internal no-action
+  labels, and visibility-inspection limitations without recommending mutation
+  execution as the first action.
+- Evidence-quality scorecard and trend reports now carry finding-alignment and
+  presentation-text counts, including raw signals, canonical items,
+  raw-to-canonical ratio, duplicate groups, actionable items, no-action items,
+  static limitations, calibrated-support context, visibility unknowns, observed
+  text, and output-observer repair counts. This keeps the Lane 1 quality loop
+  repo-local and advisory without changing PR/CI rendering, gates, scores,
+  generated tests, provider calls, or mutation execution.
+- Lane 1 evidence audit now derives a `finding_alignment.summary` from
+  `evidence_record.canonical_item`, so the scorecard can report
+  raw-to-canonical, actionable, observed, static-limitation, and calibration
+  counts even when there is no separate top-level finding-alignment projection.
+  The reports remain repo-local and advisory.
+- Lane 1 evidence audit now includes finding-alignment coverage by evidence
+  class: aligned versus unaligned raw findings, top unaligned examples,
+  same-line duplicate raw signals, static-unknown items missing named
+  limitations, and canonical items missing repair or verification guidance.
+  This remains repo-local and does not change PR/CI rendering, gates, scores,
+  generated tests, provider calls, source edits, or mutation execution.
+- Clarified the finding-to-gap alignment contract with explicit
+  `primary_anchor` and `raw_spans[]` semantics plus class-scoped action,
+  observed, no-action, limitation, and must-not-infer rules. This is a
+  docs-only contract refinement for later projection/evidence-field work.
+- Added the Lane 1 presentation-text consumer handoff. It tells downstream
+  PR/CI, editor, agent, and report lanes to render canonical evidence items
+  before raw findings, keep raw findings as supporting evidence, preserve the
+  Lane 1 evidence-state versus policy-overlay boundary, and avoid inferring
+  actionability, user test debt, or mutation-first repairs from raw
+  `exposed`/`static_unknown` labels.
+- Closed the Lane 1 User-Visible Output Evidence tracker in documented
+  presentation-text scope. The closeout records the spec, benchmark,
+  evidence-record, grouping, visibility, actionability, scorecard/trend, and
+  consumer-handoff proof, adds the final observer-unknown benchmark guard, and
+  keeps PR/CI rendering, LSP/editor behavior, gates, scores, generated tests,
+  provider calls, source edits, and mutation execution out of scope.
+- Python preview related-test matching now treats free-function calls more
+  conservatively: module import aliases such as `pricing.apply_discount(...)`
+  still relate to the owner, but unrelated object method calls no longer make a
+  top-level function look related.
+- Python preview static limits now treat common pytest `monkeypatch` runtime
+  substitution calls as `mocked_module`, keeping related-test evidence advisory
+  when the test changes module or attribute behavior at runtime.
+- TypeScript preview related-test matching now uses the same conservative
+  token-aware owner-call boundary, so string/comment mentions and arbitrary
+  object method calls no longer make a top-level function look related or
+  trigger mocked-module static limits.
 - `ripr --help` and every `ripr <subcommand> --help` now lead with an
   action-oriented one-liner before the `Usage:` block (e.g.,
   `ripr pilot --help` opens with "Find the top test gap in this repo and
@@ -80,6 +261,19 @@ Planned scope:
   closeout, keeps `.ripr/goals/active.toml` unchanged, and routes next work
   through a repo-local evidence-quality audit before analyzer or calibration
   changes.
+- Closed the Lane 2 Policy Readiness and Preview Evidence Governance tracker.
+  The closeout leaves Campaign 27 active while documenting the policy-readiness
+  report, preview evidence boundary, waiver-aging report, suppression-health
+  report, shrink-only baseline refresh guardrails, exception-ledger alignment,
+  blocking readiness guide, and advisory generated CI projection. Preview
+  TypeScript/Python evidence remains visible and advisory by default, with no
+  gate eligibility, RIPR Zero blocking debt, calibrated-confidence authority,
+  automatic baseline adoption, generated tests, mutation execution, or default
+  CI blocking without later explicit promotion policy.
+- Added additive `static_limit_kind` finding metadata for known preview static
+  limits. The TypeScript mocked-module limit now emits
+  `static_limit_kind = "mocked_module"` in JSON while keeping existing human
+  evidence text advisory and leaving Rust/default behavior unchanged.
 - Added `cargo xtask lane1-evidence-audit` with
   `cargo xtask evidence-quality-audit` as an alias. The repo-local report writes
   `target/ripr/reports/lane1-evidence-audit.{json,md}` from generated
@@ -93,6 +287,104 @@ Planned scope:
   equality-boundary misses, activation static limitations, mock-expectation
   observer semantics, and no-runtime-data calibration gaps before analyzer
   tuning begins.
+- Reduced the first audit-pinned Lane 1 canonical overcount by emitting
+  parser-backed match-arm discriminators such as `"kind" =>` instead of generic
+  `=>` / `match` text. The repo-local audit now splits the suppressions
+  match-arm case to group size `1` and reduces duplicate-looking groups from
+  `1287` to `926` without changing gates, schemas, or public command surfaces.
+- Folded durable Lane 1 audit fields into `ripr evidence-health`: canonical
+  gap group totals, largest groups, duplicate-looking groups, actionability
+  classes, static limitation distributions, evidence-record calibration
+  coverage, movement availability, and top evidence-quality risks. The report
+  remains advisory and does not change analyzer classifications, gate policy,
+  CI behavior, mutation execution, or score definitions.
+- Added checked `runtime-fixtures-v2` calibration reports for the Lane 1
+  side-effect observer, mock expectation, snapshot oracle, and opaque dispatch
+  runtime classes. The fixture maps imported outcomes to existing static seams
+  where possible, keeps an ambiguous opaque dispatch file-line signal
+  ambiguous, and keeps a runtime-only signal from creating a static gap. No
+  CI mutation execution, gate behavior, schema, or score definition changes.
+- Closed the Lane 1 Evidence Accuracy Evaluation campaign in documented scope.
+  The closeout records the audit, fixture corpus, first analyzer improvement,
+  evidence-health dashboard fields, runtime-fixtures-v2 calibration expansion,
+  and future evidence-class boundary without changing `.ripr/goals/active.toml`.
+- Added the first Lane 1 Evidence Quality Leadership repair: static
+  limitations now carry normalized analyzer categories and suggested repair
+  routes through `evidence_record`, evidence-health, the Lane 1 audit, and the
+  evidence-quality scorecard. This keeps unknowns repairable for maintainers
+  without changing grip classes, gates, CI behavior, mutation execution, or
+  score definitions.
+- Tightened the first Lane 1 oracle-semantics audit fix: clear custom
+  assertion helpers such as `assert_total_matches(actual, expected)` remain
+  strong exact-value evidence, while opaque custom helpers and duplicative
+  equality assertions no longer overclaim exact-value grip. Benchmark guards
+  now pin those must-not-claim cases without changing gates, CI behavior,
+  mutation execution, generated tests, provider calls, or score definitions.
+- Added checked `runtime-fixtures-v3` calibration reports for Lane 1
+  static/runtime confidence expansion classes: custom assertion helper
+  outcomes, table-driven boundaries, builder overrides, cross-file constants,
+  snapshot field discriminators, and mock expectation mismatches. The fixture
+  pins matched joins, ambiguous joins, runtime-only signal, and no-runtime-data
+  guards without changing analyzer behavior, gates, CI behavior, mutation
+  execution, generated tests, provider calls, or score definitions.
+- Added `cargo xtask evidence-quality-trend`, a repo-local Lane 1 trend report
+  over the current evidence-quality scorecard and optional previous scorecard
+  or audit snapshot. It writes `evidence-quality-trend.{json,md}`, distinguishes
+  improvement, regression, unchanged, mixed, and unknown trend states, and
+  reports missing history explicitly without redefining RIPR scores or changing
+  analyzer behavior, gates, CI behavior, mutation execution, generated tests,
+  provider calls, or editor surfaces.
+- Closed the Lane 1 Evidence Quality Leadership tracker in documented scope.
+  The closeout records the scorecard, benchmark corpus, static limitation
+  taxonomy, oracle-semantics audit fix, runtime-fixtures-v3, evidence-quality
+  trend reporting, class-scoped capability metadata, traceability links, and
+  future evidence-class boundary without changing `.ripr/goals/active.toml`.
+- Opened the Lane 1 User-Visible Output Evidence tracker and proposal for
+  presentation/help/report/table text evidence. The new lane keeps PR/CI
+  rendering, LSP/editor polish, gates, generated tests, provider calls,
+  mutation execution, and score definitions out of scope while defining the
+  path toward visibility, observer, actionability, canonical grouping, and
+  static-limitation evidence for changed presentation text.
+- Added RIPR-SPEC-0043 for presentation text evidence. The spec defines planned
+  Lane 1 behavior for visibility, observer shape, actionability, declaration
+  plus literal grouping, static limitation categories, and must-not-claim guards
+  before analyzer behavior changes begin.
+- Added RIPR-SPEC-0045 for finding-to-gap alignment. The spec defines how raw
+  line-local findings remain supporting evidence while rolling up into
+  canonical evidence items with explicit state, actionability, reason, repair,
+  verification, static limitations, confidence, counting rules, and downstream
+  consumption boundaries.
+- Expanded the Lane 1 evidence-quality benchmark with finding-alignment cases
+  for presentation text: actionable visible-unobserved output, already-observed
+  output, internal no-action labels, declaration/literal line movement, and
+  different constants that must not collapse into one item.
+- Added the first implemented finding-alignment fields to `evidence_record`.
+  Repo exposure now carries supporting `raw_findings[]`, a canonical item with
+  gap state, class-scoped actionability, repair, related test, verification, and
+  confidence context, plus a nullable presentation-text projection reserved for
+  the class-specific Lane 1 slices. This is additive and does not change
+  rendering, gates, generated tests, provider calls, mutation execution, or
+  score definitions.
+- Added the first check-output finding-alignment projection for presentation
+  text constants. `ripr check --json` now groups supported presentation-like
+  `&str` constant declarations and adjacent string-literal raw findings into
+  one visibility-unknown canonical limitation item, preserving the raw
+  `findings[]` array as supporting evidence and avoiding mutation-first repair
+  language for this class. The section is omitted when no supported alignment
+  item exists, and PR/CI rendering, LSP/editor polish, gates, generated tests,
+  provider calls, mutation execution, and score definitions are unchanged.
+- Added a Lane 1 evidence-quality benchmark case for presentation text
+  constants, pinning the claim boundary for changed help/label text: visibility
+  and actionability must be explicit, declaration and literal lines should
+  become one canonical evidence item, text alone must not become user test debt,
+  and mutation testing must not be the first recommended action. The benchmark
+  validator now also requires static limitation categories at the case level.
+- Extended the Python preview fixture matrix with edge goldens for async owners,
+  classmethod owners, no-projectable-owner changes, disabled Python config, and
+  mixed-language no-cross-route related-test safety. This adds projection
+  readiness evidence without adding editor selectors, LSP routing, source edits,
+  generated tests, provider calls, mutation execution, policy gates, or default
+  CI behavior.
 
 See `docs/ci/rust-1.95-quality-rollout.md` for the full PR ladder and acceptance gates.
 
@@ -237,6 +529,10 @@ tests, edit source, or make default CI blocking decisions.
   missing-input, and no-actionable-seam transitions.
 - Added the `fixtures/editor_lsp_workflow` canonical Lane 3 fixture and
   extended VS Code e2e + framed LSP smoke coverage.
+- Pinned preview editor projection artifacts for TypeScript and Python
+  preview diagnostics, bounded finding actions, hover/static-limit/status
+  evidence, and disabled-preview no-diagnostic behavior without analyzer,
+  schema, selector, or policy changes.
 - Added `docs/EDITOR_EVIDENCE_WORKFLOW.md`, the saved-workspace editor
   guide from install and status through diagnostic, hover, related test,
   context packet, focused test, after snapshot, verify, receipt, and

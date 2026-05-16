@@ -267,41 +267,215 @@ Observed inventory during PR 0:
 analyzed user code and are not panic-family call sites.
 ```
 
+## 2026-05-12: Evidence Text Now, Structured Field When Second Consumer Appears
+
+### Context
+
+A recurring situation while extending analyzers: a new evidence kind
+needs to flow from an adapter to the rest of `ripr`, and a spec
+already documents a structured shape for it. The textbook move is to
+add the typed field today. In practice, doing that for a single
+producer with no consumer balloons the diff and pulls in renderer,
+fixture, and golden churn that defends nothing observable.
+
+Surfaced concretely during Campaign 27 work on TypeScript preview
+facts, where `mocked_module` static-limit detection had a choice
+between adding a structured `Finding.static_limit_kind` enum field
+and emitting a stable-prefix string in the existing
+`Finding.evidence` array.
+
+### The pattern
+
+For a new evidence kind, ship as a stable-prefix string in the
+existing `evidence` array first:
+
+```text
+static_limit mocked_module: `./api`
+```
+
+The prefix is grep-friendly (`starts_with("static_limit ")` is a
+stable contract). The renderer, JSON shape, SARIF emitter, badge
+output, and the LSP all keep working without changes. Fixture
+re-bless touches the one file that actually gained evidence.
+
+Promote to a structured field on `Finding` (or wherever the spec
+places it) when a real second consumer appears. Until that trigger
+exists, the text-with-prefix carries the information forward without
+paying for schema ceremony that nothing reads.
+
+### When text-with-prefix is the right call
+
+- At the time of the scoped text-prefix ship, a single adapter is the
+  only producer of the signal.
+- At that same decision point, no live consumer reads the typed shape:
+  no scanner aggregating by kind, no LSP code-action keyed on the
+  variant, no policy aggregator counting cases.
+- The scoped-PR contract is pushing for one production delta in
+  this PR; promoting to a schema field would expand the diff several
+  times over (constructor sites, every renderer, every TS fixture
+  re-blessed to confirm field absence, serialization tests).
+- The signal is straightforward enough that one stable prefix
+  encodes it cleanly.
+
+### When to promote to the structured field
+
+- A second adapter wants to emit the same kind of signal, and the
+  text prefix is starting to feel like a small parallel protocol.
+- A real consumer materializes: a policy-readiness scanner that
+  needs to aggregate by kind, an LSP code-action that branches on
+  the variant, a metric over the typed vocabulary.
+- The prefix family has grown past two or three forms and the
+  string-parser at the consumer side is becoming non-trivial.
+- The spec's structured vocabulary needs to be enforced — at that
+  point, the typed enum carries the closure over the variant set
+  and the text prefix cannot.
+
+### Hazard
+
+A structured field that exists on paper in a spec but is not yet
+emitted by any adapter is an attractive nuisance. The next reader
+sees the spec, sees the absence, and reads the text-only ship as
+under-delivery rather than as a deliberate deferral.
+
+Mitigation: file the follow-up issue at the same time as the
+text-only ship. Name the second-consumer trigger explicitly in the
+issue, link the spec line that documents the structured shape, and
+link the analyzer site that emits the text form today. The deferral
+is then recorded, not hidden.
+
+### Concrete example
+
+- PR #791 (`analysis(ts): TypeScript preview facts — mocked-module
+  static-limit reporting`) chose the text-with-prefix form before a
+  live typed consumer existed.
+- Issue #807 (`domain: emit structured static_limit_kind field on
+  Finding`) records the follow-up after the consumer pressure became
+  real.
+- The scanner that aggregates by kind once the typed field is emitted:
+  `crates/ripr/src/output/policy_readiness.rs:800-810`.
+- The spec defining the structured vocabulary:
+  `docs/specs/RIPR-SPEC-0026-language-adapter-contract.md`
+  (`static_limit_kind`).
+
+## 2026-05-12: Cache-TTL-Aware CI Watcher Economics
+
+### Context
+
+Agent loops that poll external state during a long-running task - CI
+watchers, deploy waiters, queue drainers, anything that sleeps and
+then checks - have a non-obvious cost dimension beyond API rate
+limits: the LLM prompt-cache TTL shapes the optimal polling interval.
+Surfaced concretely during Campaign 27 PR watcher work on PRs #794,
+#801, and #804.
+
+### The math
+
+The Anthropic prompt cache TTL is roughly five minutes. Around that
+window, three regions emerge:
+
+```text
+warm zone:        sleep <  ~5 min   conversation stays cached
+danger zone:      sleep ~= 5 min    cache miss, no amortization
+committed sleep:  sleep >> ~5 min   one cache miss across a long wait
+```
+
+- A watcher that sleeps under the TTL wakes up against a warm cache
+  and reads only the new tool output.
+- A watcher that sleeps exactly through the TTL pays a full re-read
+  of the conversation context every cycle. This is the worst-case
+  region: highest token cost per useful poll.
+- A watcher that commits to a long sleep, such as twenty-plus minutes,
+  pays one cache miss but spreads that cost across many minutes of
+  external progress.
+
+This is a general coordination protocol for agentic systems that poll
+external state. The specific TTL is an Anthropic prompt-cache fact
+today; other providers have their own cache windows, but the
+three-region structure is the same.
+
+### What works
+
+- Active CI watch: 180-270 s backoff. This stays inside the warm zone,
+  with enough headroom that one slow tool call does not push the cycle
+  over the TTL.
+- Genuinely idle ticks, such as no active PR or waiting for an
+  unrelated trigger: 1200-1800 s. This commits to one cache miss per
+  long wait instead of churning.
+- Exit-early signals on every wake: a CI state of `CLEAN`, `UNSTABLE`,
+  or `HAS_HOOKS` means ready to merge; a failure conclusion means stop
+  and report; a `BEHIND` mergeable state means rebase, then re-watch.
+
+### What does not work
+
+- `gh pr watch` default cadence, which polls every three seconds. It
+  burns the authenticated GitHub API rate limit quickly and re-enters
+  the agent loop too often to amortize cache cost meaningfully.
+- Roughly 300 s polling. This lands in the danger zone: each wake pays
+  a full cache miss without buying much external progress.
+- Tight infinite loops with no backoff. They have the same failure mode
+  as the default `gh pr watch`, plus the agent has no chance to
+  terminate on the exit-early signals above.
+
+### Operational signals to watch for
+
+For GitHub PR watchers, handle these merge-readiness signals
+explicitly:
+
+```text
+CLEAN       ready
+UNSTABLE    ready (non-required check failing)
+HAS_HOOKS   ready (waiting on optional hook)
+BEHIND      needs rebase, then re-watch
+DIRTY       conflict, stop and report
+```
+
+Without GitHub merge queue or auto-merge enabled, concurrent merges on
+a busy repo produce repeated `BEHIND` transitions. Campaign 27 saw
+five to six rebase cycles per PR. Merge queue removes that class of
+loop.
+
+### Limitations
+
+- The five-minute number is the current Anthropic prompt-cache TTL. If
+  that window changes, or if the watcher runs on a different provider,
+  the warm, danger, and committed boundaries shift but the three-region
+  structure does not.
+- The exit-early signals above are GitHub-specific. The general
+  principle - wake, check, exit on a small set of terminal states, and
+  back off otherwise - transfers to other coordination targets.
+
 ## 2026-05-12: Agent-Readiness Emerges From Doctrine And Gates
 
-Most repositories that call themselves "agent-ready" import a Python
+Most repositories that call themselves agent-ready import a Python
 orchestration framework, an LLM client, or a prompt-templating library
 and call the job done. This repo deliberately does not. There is no
 agent SDK, no orchestration runtime, no retry-with-backoff helper, no
-prompt template, no LLM-coupling crate in `Cargo.toml`. The
-production surface is plain Rust; the automation surface is
-`cargo xtask`; the merge surface is GitHub primitives.
+prompt template, and no LLM-coupling crate in `Cargo.toml`. The
+production surface is plain Rust, the automation surface is
+`cargo xtask`, and the merge surface is GitHub primitives.
 
 ### What we have instead
 
 The agent-readable layer is doctrine plus checks that fail fast:
 
-- ~20 `cargo xtask check-*` gates: `check-architecture`,
+- `cargo xtask check-*` gates such as `check-architecture`,
   `check-static-language`, `check-no-panic-family`, `check-file-policy`,
   `check-public-api`, `check-workspace-shape`, `check-dependencies`,
   `check-output-contracts`, `check-traceability`, `check-network-policy`,
-  `check-capabilities`, `check-fixture-contracts`, and the rest of the
-  list in `AGENTS.md` § "Required Gates".
-- ADRs that supersede their own prior versions with hash references —
-  see `docs/adr/0009-python-parser-substrate.md`, whose status line
-  cites the original decision in commit `d70f1802`. A reviewer (or a
-  future agent) can reconstruct the entire decision arc from
-  `git log --oneline` plus the ADR text.
-- `.ripr/traceability.toml` mapping spec → tests → code → outputs →
-  metrics for every behavior, enforced by `check-traceability`.
+  `check-capabilities`, and `check-fixture-contracts`.
+- ADRs that supersede their own prior versions with hash references.
+  `docs/adr/0009-python-parser-substrate.md`, for example, cites the
+  original decision in commit `d70f1802`.
+- `.ripr/traceability.toml` mapping spec to tests to code to outputs
+  to metrics for every behavior, enforced by `check-traceability`.
 - `.ripr/goals/active.toml` as a single-file machine-readable
   campaign state, drivable by `cargo xtask goals next`.
 - Per-fixture `SPEC.md` files turning fixtures into compiled
   documentation, enforced by `check-fixture-contracts`.
-- Squash-merge with descriptive commit titles, making
-  `git log --oneline` a searchable campaign history.
+- Squash-merge with descriptive commit titles, making `git log
+  --oneline` a searchable campaign history.
 - Symmetric durable preference stores: an agent-side cross-session
-  memory store for habits and operator preferences, repo-side
+  store for habits and operator preferences, and repo-side
   `docs/LEARNINGS.md` for repo knowledge worth surviving sessions.
 
 ### Why this works
@@ -310,92 +484,91 @@ Three reasons.
 
 First, agent-readiness is an emergent property of engineering
 practice, not a dependency to import. The same artifacts that make a
-human reviewer effective (specs, fixtures, ADRs, gates, traceability)
-also make an agent effective. The repo does not need a separate
-"agent layer" because the doctrine layer is already there.
+human reviewer effective - specs, fixtures, ADRs, gates, and
+traceability - also make an agent effective. The repo does not need a
+separate agent layer because the doctrine layer is already there.
 
-Second, the right abstraction layer is doctrine that humans and
-agents both consume, enforced by checks that fail fast. Doctrine
-written down but not enforced rots quietly; doctrine enforced by a
-gate fails loudly the first time it is violated. The `check-*` gates
-turn taste into CI signal.
+Second, the right abstraction layer is doctrine that humans and agents
+both consume, enforced by checks that fail fast. Doctrine written down
+but not enforced rots quietly; doctrine enforced by a gate fails
+loudly the first time it is violated. The `check-*` gates turn taste
+into CI signal.
 
 Third, the investment compounds. Every campaign deposits more
-traceability, more fixtures, more ADRs, more memory entries into the
-repo. The next campaign — for the next agent, or the same agent in a
-fresh session, or a human contributor — starts from a richer base.
-Agent-specific tooling, by contrast, ages out fast: the SDK gets
-deprecated, the prompt format shifts, the orchestration framework
-forks. Doctrine in Markdown plus gates in Rust does not.
+traceability, more fixtures, more ADRs, and more repo learnings. The
+next campaign - for the next agent, the same agent in a fresh session,
+or a human contributor - starts from a richer base. Agent-specific
+tooling ages out fast: the SDK gets deprecated, the prompt format
+shifts, or the orchestration framework forks. Doctrine in Markdown
+plus gates in Rust does not.
 
 ### How to keep this working
 
 When tempted to add an agent-specific dependency or a hand-rolled
-orchestration helper, write the doctrine artifact first instead:
+orchestration helper, write the doctrine artifact first:
 
 - If the new behavior changes a public contract, add a spec under
   `docs/specs/` and an entry in `.ripr/traceability.toml`.
 - If it constrains future contributors, add an ADR under `docs/adr/`.
-- If it can be expressed as "this thing must never appear in
-  output," add a `cargo xtask check-*` gate and a row in the
-  relevant `policy/*` or `.ripr/*` allowlist.
+- If it can be expressed as "this thing must never appear in output,"
+  add a `cargo xtask check-*` gate and a row in the relevant `policy/*`
+  or `.ripr/*` allowlist.
 - If it changes how an agent should behave across sessions, add an
   entry here in `docs/LEARNINGS.md`.
 
-Only reach for a tool — agent-specific or otherwise — when doctrine
+Only reach for a tool, agent-specific or otherwise, when doctrine
 alone cannot express the constraint and a gate alone cannot enforce
 it. This ordering keeps the repo's durable conversation in the repo.
 
 ### Concrete example: Campaign 27 substrate recovery
 
 Campaign 27 (Language Adapter Preview) initially picked
-`ruff_python_parser` as the Python substrate (ADR 0009, original
-version in commit `d70f1802`). That choice rested on an assumption
-that the parser was published; in fact `ruff_python_parser` is a
-workspace crate inside the ruff monorepo and is marked
-`publish = false`. The original ADR even named `rustpython-parser`
-as the documented fallback under Revisit Criteria.
+`ruff_python_parser` as the Python substrate in ADR 0009, original
+version in commit `d70f1802`. That choice rested on an assumption that
+the parser was published; in fact `ruff_python_parser` is a workspace
+crate inside the Ruff monorepo and is marked `publish = false`. The
+original ADR even named `rustpython-parser` as the documented fallback
+under Revisit Criteria.
 
-The recovery — switching the substrate from `ruff_python_parser` to
+The recovery - switching the substrate from `ruff_python_parser` to
 `rustpython-parser` mid-campaign, then landing the Python preview
-adapter scaffold in #804 — required no agent-specific tooling. It
+adapter scaffold in #804 - required no agent-specific tooling. It
 required:
 
-- ADR 0008 (TypeScript parser substrate template) as the structural
-  precedent for ADR 0009.
-- Fixture-with-`SPEC.md` examples already in the repo as the
-  contract for what the new adapter must extract.
+- ADR 0008, the TypeScript parser substrate template, as the
+  structural precedent for ADR 0009.
+- Fixture-with-`SPEC.md` examples already in the repo as the contract
+  for what the new adapter must extract.
 - The `check-dependencies` gate forcing the substrate switch to be
   documented in `policy/dependency_allowlist.txt` before the new
   dependency could land.
 - An ADR supersession arc visible from `git log --oneline`:
-  `d70f180 adr: Python parser substrate ADR (#770) (#794)` →
-  `d871d05 adr(py): switch Python parser substrate to rustpython-parser (#801)` →
-  `463b0b9 analysis(py): Python preview adapter scaffold (#804)`.
-- A short memory entry on the agent side that "proceed" means
-  act-on-the-obvious-next-thing.
+  `d70f180 adr: Python parser substrate ADR (#770) (#794)` to
+  `d871d05 adr(py): switch Python parser substrate to rustpython-parser (#801)`
+  to `463b0b9 analysis(py): Python preview adapter scaffold (#804)`.
+- A short agent-side preference entry that "proceed" means
+  act on the obvious next thing.
 
-Eight PRs shipped in one session, from an agent that had not seen
-this codebase before, with the recovery executed cleanly. The agent
-did not need to remember the original substrate failure; the ADR
-text recorded it, and the gate would have caught any quiet
-regression.
+Eight PRs shipped in one session, from an agent that had not seen this
+codebase before, with the recovery executed cleanly. The agent did not
+need to remember the original substrate failure; the ADR text recorded
+it, and the gate would have caught any quiet regression.
 
 ### Evidence the gates are not theater
 
-The static-language gate (`cargo xtask check-static-language`) has,
-on at least one occasion, flagged its own author for writing one of
-the banned-vocabulary words in a code comment. A gate that catches
-its author is doing real work. The same gate is the reason this
-learning describes the banned words as "the banned-vocabulary list"
-rather than emitting them in plain prose: the doctrine constrains
-the doctrine document itself, and that is the point.
+The static-language gate (`cargo xtask check-static-language`) has, on
+at least one occasion, flagged its own author for writing one of the
+banned-vocabulary words in a code comment. A gate that catches its
+author is doing real work. The same gate is the reason this learning
+describes those terms as "the banned-vocabulary list" rather than
+emitting them in plain prose: doctrine constrains the doctrine
+document itself, and that is the point.
 
 ### Posture for future readers
 
 - Resist adding an agent SDK or LLM-coupling crate to `Cargo.toml`.
 - When adding a new behavior, add the gate that enforces it.
-- When making a one-off architectural decision, write the ADR
-  before the code.
+- When making a one-off architectural decision, write the ADR before
+  the code.
 - Treat the conversation as latency; treat the repo as the durable
   conversation.

@@ -314,11 +314,16 @@ evidence = [
   "serialized refresh generations",
   "VS Code status bar and ripr: Show Status path for disabled config, server resolution, workspace detection, server unavailable, queued/running/complete/stale/failed refreshes, and no-actionable-seam states",
   "intent-titled diagnostic actions for inspect, write targeted test, agent handoff, verify after test, review receipt, and refresh analysis",
+  "target/ripr/reports/gap-decision-ledger.json can supply projection_eligibility.lsp_diagnostic GapRecord diagnostics with structured gap_id, repair route, anchor, and verification commands",
+  "gap-decision ledger diagnostics validate artifact schema, workspace root, freshness, enabled language, identity, path, static-limit, and command payloads before projection",
+  "fixtures/editor_gap_cockpit pins Rust actionable, preview static-limit, disabled-language, wrong-root, stale-artifact, and no-action gap diagnostic projection",
   "docs/QUICKSTART.md routes the VS Code first hour through status, Problems diagnostics, hover evidence, and intent-titled seam actions"
 ]
-fixtures = []
+fixtures = [
+  "fixtures/editor_gap_cockpit"
+]
 next = "maintenance"
-metric = "diagnostics carry finding/probe metadata, editor status names saved-workspace analysis state, and editor actions target the selected finding"
+metric = "diagnostics carry finding/probe metadata, explicit GapRecord repair payloads, editor status names saved-workspace analysis state, and editor actions target the selected finding or gap"
 
 [[capability]]
 id = "parser_backed_syntax_facts"
@@ -394,6 +399,7 @@ evidence = [
   "parser-backed return and tail-expression probe shape facts",
   "parser-backed error-path probe shape facts",
   "parser-backed call, side-effect, field, and match probe shape facts",
+  "parser-backed match probe shape facts carry normalized match heads and arm patterns so canonical gap identity can distinguish match-arm discriminators",
   "fixture/golden output stability",
   "probe-relative oracle kind and strength",
   "typed local flow sink facts",
@@ -514,7 +520,8 @@ evidence = [
   "value-extraction-v2 BDD coverage for bindings, constants, rstest cases, table rows, builder and fixture override methods, Option/Result constructors, and negative false-positive guards",
   "oracle-shape-v2 side-effect observer seam evidence",
   "related-test ranking v2 stabilizes relation confidence, relation reason, oracle strength, activation overlap, and file/name/line tie-breakers while preserving related_tests_total",
-  "oracle-semantics-v3 explains what related-test oracle shapes observe, what discriminator remains missing, and which assertion upgrade applies for broad, smoke-only, unknown, snapshot, and exact shapes"
+  "oracle-semantics-v3 explains what related-test oracle shapes observe, what discriminator remains missing, and which assertion upgrade applies for broad, smoke-only, unknown, snapshot, and exact shapes",
+  "oracle-semantics audit guards keep opaque custom helpers unknown and duplicative equality weak instead of overclaiming exact-value grip"
 ]
 fixtures = []
 next = "analysis/local-delta-flow-v2"
@@ -565,8 +572,9 @@ evidence = [
   "docs/specs/RIPR-SPEC-0021-evidence-record.md defines the additive seam-native evidence record contract",
   "docs/lanes/LANE_1_EVIDENCE_SPINE.md records Evidence Spine Stabilization as complete and names PR #697 gate canonical identity as the final consumer closeout without replacing the active Codex Goals manifest",
   "docs/lanes/LANE_1_EVIDENCE_ACCURACY.md defines the Evidence Accuracy Evaluation objective, audit-first next slices, fixture-first analyzer rule, calibration boundary, and non-goals",
-  "crates/ripr/src/output/evidence_record.rs projects existing ClassifiedSeam facts into identity, evidence path, observed values, missing discriminators, related tests, recommendation, actionability, calibration placeholder, and static limitations",
+  "crates/ripr/src/output/evidence_record.rs projects existing ClassifiedSeam facts into identity, raw findings, canonical item alignment state, evidence path, observed values, missing discriminators, related tests, recommendation, actionability, calibration placeholder, nullable presentation text projection, and static limitations with normalized category and repair-route fields",
   "crates/ripr/src/analysis/canonical_gap.rs generates deterministic canonical_gap_id values from owner, seam kind, flow sink, missing discriminator, and assertion shape while leaving line numbers as locators",
+  "crates/ripr/src/analysis/canonical_gap.rs tests pin match-arm discriminator splitting and same-arm line-movement grouping",
   "crates/ripr/src/output/repo_exposure.rs attaches seams[].evidence_record while preserving existing repo-exposure seam fields",
   "crates/ripr/src/output/agent_seam_packets.rs includes packets[].evidence_record while preserving existing packet work-order fields",
   "crates/ripr/src/output/ripr_zero_status.rs prefers evidence_record repair context when supplied by baseline debt delta items and keeps legacy fields as fallback",
@@ -576,17 +584,17 @@ evidence = [
   "crates/ripr/src/output/pr_evidence_ledger.rs carries canonical_gap_id through waiver, suppression, repair receipt, and top repair route records when supplied by source artifacts",
   "crates/ripr/src/output/gate.rs carries canonical_gap_id from PR guidance/evidence_record into gate decisions and baseline comparison before legacy identities",
   "docs/OUTPUT_SCHEMA.md documents evidence_record schema 0.1 under repo-exposure schema 0.3",
-  "unit tests pin identity, generated canonical gap identity, grip class, evidence path, recommendation/actionability, calibration placeholder, static limitations, oracle semantics, packet projection, RIPR Zero repair-route consumption, evidence-record movement consumption, assistant-proof evidence-record consumption, and canonical gap identity routing",
+  "unit tests pin identity, generated canonical gap identity, grip class, raw finding support, canonical item gap state/actionability/repair/confidence, evidence path, recommendation/actionability, calibration placeholder, nullable presentation text projection, static limitation category and repair-route normalization, oracle semantics including opaque custom-helper and duplicative-equality guards, packet projection, RIPR Zero repair-route consumption, evidence-record movement consumption, assistant-proof evidence-record consumption, and canonical gap identity routing",
   "fixtures/boundary_gap/expected/evidence-record-contract/corpus.json pins the v0.1 record contract matrix for predicate, error, strong value, broad error, field, whole-object, snapshot, side-effect, opaque limitation, canonical-gap, and calibration-placeholder cases with related-test oracle_semantics",
-  "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json pins audit-derived expected evidence_record subsets for duplicate canonical groups, equality-boundary misses, activation static limitations, mock-expectation observer semantics, and no-runtime-data calibration gaps",
+  "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json pins audit-derived expected evidence_record subsets for duplicate canonical groups, match-arm overgrouping reduction, equality-boundary misses, activation static limitations, mock-expectation observer semantics, and no-runtime-data calibration gaps",
   "cargo xtask check-fixture-contracts validates the evidence-record contract corpus case matrix and field shape; cargo xtask check-output-contracts validates the evidence_record schema version"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/evidence-record-contract/corpus.json",
   "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json"
 ]
-next = "analysis/canonical-gap-overcount-reduction"
-metric = "evidence_record_projected_seams, evidence_record_actionable_guidance, evidence_record_static_limitations"
+next = "maintenance"
+metric = "evidence_record_projected_seams, evidence_record_actionable_guidance, evidence_record_static_limitations, evidence_record_static_limitation_categories, evidence_record_finding_alignment_fields"
 
 [[capability]]
 id = "evidence_health_report"
@@ -599,12 +607,13 @@ evidence = [
   "ripr evidence-health writes advisory JSON and Markdown",
   "cargo xtask evidence-health writes target/ripr/reports/evidence-health.json and evidence-health.md",
   "counts grip classes, stage states, missing discriminators, observed value contexts, related-test confidence, oracle strength, oracle kind, opaque oracles, and top static limitations",
+  "folds durable Lane 1 audit fields into evidence-health from the shared evidence_record: canonical gap group totals, largest groups, duplicate-looking groups, actionability classes, static limitation reason/stage/category distributions, evidence-record calibration coverage, movement availability, and top evidence-quality risks",
   "optional imported mutation-calibration JSON contributes calibration availability counts without changing static classification",
   "docs/OUTPUT_SCHEMA.md Evidence Health Report section"
 ]
 fixtures = []
-next = "report/evidence-health-audit-fields"
-metric = "Lane 1 evidence gaps summarized without analyzer behavior changes"
+next = "maintenance"
+metric = "evidence_health_seams_total, evidence_health_missing_discriminators_total, evidence_health_observed_values_total, evidence_health_related_tests_total, evidence_health_opaque_oracle_count, evidence_health_calibration_matched_total, evidence_health_canonical_gap_groups, evidence_health_duplicate_looking_groups, evidence_health_records_with_canonical_gap_id, evidence_health_static_limitation_reasons, evidence_health_static_limitation_categories, evidence_health_calibration_not_imported, evidence_health_top_evidence_quality_risks"
 
 [[capability]]
 id = "lane1_evidence_quality_audit"
@@ -615,16 +624,67 @@ evidence = [
   "docs/specs/RIPR-SPEC-0031-lane1-evidence-quality-audit.md defines the repo-local audit contract",
   "cargo xtask lane1-evidence-audit writes target/ripr/reports/lane1-evidence-audit.json and lane1-evidence-audit.md from generated instant-mode repo-exposure JSON",
   "cargo xtask evidence-quality-audit is a compatibility alias for the same report",
-  "xtask/src/main.rs summarizes raw headline gaps, canonical gap groups, duplicate-looking groups, missing discriminator classes, static limitations, oracle semantics, related-test ranking confidence, movement availability, calibration availability, evidence_record field health, and top files by unresolved evidence debt",
+  "xtask/src/main.rs summarizes raw headline gaps, canonical gap groups, duplicate-looking groups, missing discriminator classes, static limitations by reason, stage, normalized category, and repair route, oracle semantics, related-test ranking confidence, movement availability, calibration availability, evidence_record field health, top files by unresolved evidence debt, finding_alignment.summary derived from evidence_record.canonical_item, and finding_alignment.coverage rows for per-class coverage, unaligned examples, same-line duplicate raw findings, unnamed static-unknown limitations, and missing repair/verify guidance",
   "docs/OUTPUT_SCHEMA.md documents the Lane 1 Evidence Quality Audit JSON and Markdown contract",
-  "xtask unit tests pin audit counting, Markdown sections, malformed input handling, command alias parsing, and report facade routing",
-  "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json turns the first audit findings into expected evidence_record subsets before analyzer behavior changes"
+  "xtask unit tests pin audit counting, derived finding-alignment counts, alignment coverage holes, Markdown sections, malformed input handling, command alias parsing, and report facade routing",
+  "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json turns the first audit findings into expected evidence_record subsets before analyzer behavior changes",
+  "the first audit-driven analyzer improvement split parser-backed match-arm discriminators, reducing duplicate-looking groups from 1287 to 926 and removing the generic match-arm duplicate group from the top rows"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json"
 ]
-next = "analysis/canonical-gap-overcount-reduction"
-metric = "lane1_evidence_audit_raw_headline_gaps, lane1_evidence_audit_canonical_gap_groups, lane1_evidence_audit_duplicate_looking_groups, lane1_evidence_audit_missing_discriminators, lane1_evidence_audit_static_limitations, lane1_evidence_audit_uncalibrated_records"
+next = "maintenance"
+metric = "lane1_evidence_audit_raw_headline_gaps, lane1_evidence_audit_canonical_gap_groups, lane1_evidence_audit_duplicate_looking_groups, lane1_evidence_audit_missing_discriminators, lane1_evidence_audit_static_limitations, lane1_evidence_audit_static_limitation_categories, lane1_evidence_audit_uncalibrated_records, finding_alignment_raw_signals_total, finding_alignment_canonical_items_total, finding_alignment_actionable_items_total, finding_alignment_static_limitation_total, finding_alignment_coverage_by_class, finding_alignment_unaligned_raw_findings_by_class, finding_alignment_static_unknown_without_named_limitation, finding_alignment_canonical_items_without_repair_route, finding_alignment_canonical_items_without_verify_command"
+
+[[capability]]
+id = "evidence_quality_scorecard"
+name = "Evidence quality scorecard"
+status = "alpha"
+spec = "RIPR-SPEC-0034"
+evidence = [
+  "cargo xtask evidence-quality-scorecard writes target/ripr/reports/evidence-quality-scorecard.json and evidence-quality-scorecard.md",
+  "scorecard consumes the current Lane 1 evidence-quality audit, optional evidence-health JSON, previous scorecard when present, capability metadata, and traceability metadata",
+  "xtask/src/main.rs reports class-scoped maturity labels, raw headline gaps, canonical and duplicate-looking group signals, static limitation categories, missing discriminator classes, related-test confidence, oracle semantics distribution, movement availability, calibration coverage, recommended Lane 1 repair slices, recent deltas, explicit unknowns, and audit-derived raw-to-canonical/actionability counts",
+  "docs/OUTPUT_SCHEMA.md documents the Evidence Quality Scorecard JSON and Markdown contract",
+  "xtask unit tests pin required JSON sections, Markdown section coverage, class-scoped maturity labels, risk-prioritized repair ordering, recent delta reporting, and the audit canonical-item fallback"
+]
+fixtures = []
+next = "maintenance"
+metric = "lane1_evidence_scorecard_maturity_classes, lane1_evidence_scorecard_top_risks, lane1_evidence_scorecard_recommended_repairs, lane1_evidence_scorecard_static_only_classes, lane1_evidence_scorecard_calibrated_classes, lane1_evidence_scorecard_uncalibrated_classes, lane1_evidence_scorecard_recent_delta_available, finding_alignment_raw_signals_total, finding_alignment_canonical_items_total, finding_alignment_actionable_items_total, finding_alignment_static_limitation_total"
+
+[[capability]]
+id = "evidence_quality_trend"
+name = "Evidence quality trend"
+status = "alpha"
+spec = "RIPR-SPEC-0034"
+evidence = [
+  "cargo xtask evidence-quality-trend writes target/ripr/reports/evidence-quality-trend.json and evidence-quality-trend.md",
+  "trend consumes the current evidence-quality scorecard and optional previous scorecard or audit snapshot, reporting missing history as an explicit no-history unknown",
+  "xtask/src/main.rs distinguishes improvement, regression, unchanged, mixed, and unknown states for Lane 1 evidence-quality metrics and normalized static limitation categories",
+  "docs/OUTPUT_SCHEMA.md documents the Evidence Quality Trend JSON and Markdown contract",
+  "xtask unit tests pin no-history output, metric direction semantics, and static limitation category deltas"
+]
+fixtures = []
+next = "maintenance"
+metric = "lane1_evidence_trend_compared_metrics, lane1_evidence_trend_improved_metrics, lane1_evidence_trend_regressed_metrics, lane1_evidence_trend_unchanged_metrics, lane1_evidence_trend_unknown_metrics, lane1_evidence_trend_no_history, lane1_evidence_trend_static_limitation_category_rows"
+
+[[capability]]
+id = "evidence_quality_benchmark_corpus"
+name = "Evidence quality benchmark corpus"
+status = "alpha"
+spec = "RIPR-SPEC-0035"
+evidence = [
+  "fixtures/evidence-quality-benchmark/corpus.json defines a manifest-only Lane 1 benchmark corpus",
+  "the corpus covers duplicate canonical gap, match-arm discriminator split, wrong related-test top choice, broad versus exact error oracle, self-computed expected value and duplicative equality guards, opaque helper limitation, cross-file constant limitation, presentation text constants, config/policy constants including behavior selectors with and without discriminators, side-effect observer, snapshot discriminator, mock expectation, runtime-only signal, and ambiguous runtime join classes",
+  "each case records expected claims, must-not-claim guards, expected repo-exposure evidence_record subsets or runtime-only nonstatic calibration, audit signals, maturity scope, and repair route",
+  "cargo xtask check-fixture-contracts validates the corpus shape through xtask/src/main.rs",
+  "xtask unit tests pin required config/policy case IDs, required case kinds, missing guard detection, runtime-only nonstatic behavior, and line-movement canonical identity"
+]
+fixtures = [
+  "fixtures/evidence-quality-benchmark/corpus.json"
+]
+next = "maintenance"
+metric = "lane1_evidence_benchmark_cases, lane1_evidence_benchmark_positive_cases, lane1_evidence_benchmark_negative_guards, lane1_evidence_benchmark_line_movement_cases, lane1_evidence_benchmark_equivalent_code_cases, lane1_evidence_benchmark_static_limitation_cases, lane1_evidence_benchmark_calibration_cases, lane1_evidence_benchmark_must_not_claim_guards"
 
 [[capability]]
 id = "agent_seam_packets"
@@ -658,6 +718,7 @@ spec = "RIPR-SPEC-0011"
 evidence = [
   "ripr agent status --root . --json reports before snapshot, after snapshot, agent brief, agent packet, agent verify, and agent receipt artifact state without rerunning analysis",
   "ripr agent start --root . --seam-id <id> --out target/ripr/workflow writes workflow.json, commands.md, and agent-brief.json as a source-edit-free selected-seam workflow packet",
+  "ripr agent packet --root . --gap-ledger <path> --gap-id <id> --json renders one explicit agent-packet-eligible GapRecord as an advisory repair packet without rerunning analysis",
   "crates/ripr/src/agent/loop_commands.rs centralizes current workflow, pilot, and editor-agent artifact paths plus packet, brief, snapshot, verify, receipt, status, review-summary, outcome, and start command templates",
   "crates/ripr/src/app/agent_status.rs recovers seam_id from receipt, verify, packet, or brief JSON and emits missing-input commands",
   "crates/ripr/src/app/agent_workflow.rs builds selected-seam workflow manifests",
@@ -709,8 +770,10 @@ evidence = [
   "docs/OUTPUT_SCHEMA.md PR Test Guidance section defines the review-comments JSON shape",
   "docs/PR_REVIEW_GUIDANCE.md documents the command, generated CI behavior, placement-safe reviewer loop, fixture matrix, and inline-comment opt-in boundary",
   "ripr review-comments --root . --base <sha> --head <sha> --out target/ripr/review/comments.json writes JSON plus Markdown without posting to GitHub",
-  "crates/ripr/src/output/review_comments.rs renders bounded line annotations, summary-only fallbacks, cap suppression, nearby-test suppression, LLM guidance, and static limits",
-  "crates/ripr/src/cli/commands.rs exposes the command and parses required revisions",
+  "ripr review-comments --gap-ledger renders changed-line repair cards only from PR-comment-eligible GapRecord records without rerunning analysis",
+  "crates/ripr/src/output/review_comments.rs renders bounded line annotations, GapRecord repair cards, summary-only fallbacks, cap suppression, nearby-test suppression, LLM guidance, and static limits",
+  "crates/ripr/src/output/pr_inline_comment_publish_plan.rs renders repair_card bodies as repair instructions instead of raw classification labels or confidence scores",
+  "crates/ripr/src/cli/commands.rs exposes the command and parses required revisions plus optional gap-ledger input",
   "docs/CI.md PR Test Guidance Annotations section documents the default job-summary and check-annotation posture",
   "docs/IMPLEMENTATION_CAMPAIGNS.md Campaign 13 marks campaign/pr-review-guidance-closeout done after generated CI, fixtures, and docs aligned",
   "ripr init --ci github generates an advisory workflow that runs ripr review-comments on pull requests, writes a RIPR advisory summary, and emits non-blocking changed-line check annotations when target/ripr/review/comments.json exists",
@@ -721,7 +784,7 @@ evidence = [
   "docs/handoffs/2026-05-08-campaign-13-closeout.md records the closeout proof and non-goals"
 ]
 fixtures = ["fixtures/boundary_gap/expected/pr-guidance"]
-next = "maintenance"
+next = "editor/gap-work-packet-projection"
 metric = "PR guidance projects existing seam evidence into bounded changed-line annotations without blocking by default"
 
 [[capability]]
@@ -759,7 +822,8 @@ status = "alpha"
 spec = "RIPR-SPEC-0014"
 evidence = [
   "docs/specs/RIPR-SPEC-0014-calibrated-gate-policy.md defines optional visible-only, acknowledgeable, baseline-check, and calibrated-gate modes",
-  "ripr gate evaluate writes gate-decision JSON/Markdown from existing PR guidance and optional labels, baseline, recommendation calibration, and imported mutation calibration inputs",
+  "ripr gate evaluate writes gate-decision JSON/Markdown from existing PR guidance or explicit gap decision ledger records plus optional labels, baseline, recommendation calibration, and imported mutation calibration inputs",
+  "ripr gate evaluate --gap-ledger uses repairable stable Rust GapRecord gate candidates that satisfy the safe gate predicate instead of deriving blocking authority from raw static labels",
   "gate baseline comparison prefers supplied canonical_gap_id from direct, identity, or evidence_record fields before legacy seam, source, and path/line/static-class identities",
   "crates/ripr/src/output/gate.rs keeps the evaluator read-only and returns non-zero only after writing blocked or config_error reports",
   "fixtures/boundary_gap/expected/calibrated-gate pins advisory, acknowledged, baseline-check, fail-on-new-high-confidence-gap, suppression, missing-input, and calibration disagreement decisions",
@@ -807,8 +871,8 @@ name = "RIPR Zero status report"
 status = "alpha"
 spec = "RIPR-SPEC-0017"
 evidence = [
-  "ripr zero status --delta target/ripr/reports/baseline-debt-delta.json writes advisory ripr-zero-status JSON and Markdown over reviewed baselines, baseline debt deltas, optional gate decisions, PR guidance, and recommendation calibration without changing gate authority",
-  "crates/ripr/src/output/ripr_zero_status.rs renders RIPR 0 state, baseline metadata health, trend availability, top debt areas, and repair routes, preferring supplied evidence_record repair context with legacy fallback",
+  "ripr zero status --delta target/ripr/reports/baseline-debt-delta.json writes advisory ripr-zero-status JSON and Markdown over reviewed baselines, baseline debt deltas, optional gap decision ledgers, gate decisions, PR guidance, and recommendation calibration without changing gate authority",
+  "crates/ripr/src/output/ripr_zero_status.rs renders RIPR 0 state, baseline metadata health, trend availability, top debt areas, and repair routes, preferring supplied gap decision ledger targets or evidence_record repair context with legacy fallback",
   "crates/ripr/src/cli/commands.rs exposes the command, generated CI runs it when baseline-debt-delta.json exists, uploads ripr-zero-status JSON and Markdown, and appends an at-a-glance RIPR Zero summary while preserving advisory defaults and gate pass/fail authority",
   "docs/RIPR_ZERO_REPORTING_WORKFLOW.md explains how teams read RIPR Zero status, age and refresh baseline metadata, route repair packets, and interpret movement without treating RIPR 0 as perfect tests or 100 percent coverage",
   "docs/OUTPUT_SCHEMA.md documents the shape and advisory boundary",
@@ -825,8 +889,8 @@ status = "alpha"
 spec = "RIPR-SPEC-0018"
 evidence = [
   "docs/specs/RIPR-SPEC-0018-pr-evidence-ledger.md defines the PR evidence ledger contract",
-  "ripr pr-ledger record writes advisory pr-evidence-ledger JSON and Markdown from existing PR guidance, gate decision, baseline debt delta, RIPR Zero status, recommendation calibration, agent receipt, optional coverage, and optional history inputs",
-  "crates/ripr/src/output/pr_evidence_ledger.rs renders PR movement, visible waivers, suppressions, repair receipts, top repair route, coverage/grip frontier status, and history summaries without changing gate authority, carrying canonical_gap_id when supplied",
+  "ripr pr-ledger record writes advisory pr-evidence-ledger JSON and Markdown from existing PR guidance, gap decision ledger, gate decision, baseline debt delta, RIPR Zero status, recommendation calibration, agent receipt, optional coverage, and optional history inputs",
+  "crates/ripr/src/output/pr_evidence_ledger.rs renders PR movement, visible waivers, suppressions, repair receipts, top repair route, coverage/grip frontier status, and history summaries without changing gate authority, routing repairable stable Rust GapRecord inputs before legacy fallback artifacts and carrying gap_id/canonical_gap_id when supplied",
   "crates/ripr/src/cli/commands.rs generated GitHub workflow runs pr-ledger record on pull requests when PR guidance exists, uploads pr-evidence-ledger JSON/Markdown with the normal artifact packet, and appends a PR movement summary while keeping gate decisions as the pass/fail authority",
   "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed pins checked JSON and Markdown output for a mixed acknowledged/suppressed/resolved/new-debt case",
   "docs/OUTPUT_SCHEMA.md documents the pr-evidence-ledger JSON/Markdown shape",
@@ -834,7 +898,7 @@ evidence = [
 ]
 fixtures = ["fixtures/boundary_gap/expected/pr-evidence-ledger/mixed"]
 next = "maintenance"
-metric = "pr_evidence_ledger_records, pr_evidence_ledger_new_policy_eligible, pr_evidence_ledger_baseline_still_present, pr_evidence_ledger_baseline_resolved, pr_evidence_ledger_acknowledged, pr_evidence_ledger_suppressed, pr_evidence_ledger_blocking_candidates, pr_evidence_ledger_repair_receipts, pr_evidence_ledger_waiver_age_max_days, pr_evidence_ledger_coverage_grip_frontier_available, pr_evidence_ledger_flat_coverage_grip_improved"
+metric = "pr_evidence_ledger_records, pr_evidence_ledger_new_policy_eligible, pr_evidence_ledger_baseline_still_present, pr_evidence_ledger_baseline_resolved, pr_evidence_ledger_acknowledged, pr_evidence_ledger_suppressed, pr_evidence_ledger_blocking_candidates, pr_evidence_ledger_repair_receipts, pr_evidence_ledger_gap_record_routes, pr_evidence_ledger_waiver_age_max_days, pr_evidence_ledger_coverage_grip_frontier_available, pr_evidence_ledger_flat_coverage_grip_improved"
 
 [[capability]]
 id = "coverage_grip_frontier"
@@ -889,15 +953,15 @@ name = "First useful action report"
 status = "alpha"
 spec = "RIPR-SPEC-0020"
 evidence = [
-  "docs/specs/RIPR-SPEC-0020-first-useful-action-report.md defines the first-useful-action report contract over existing editor, PR guidance, ledger, baseline, assistant proof, receipt, optional gate, optional coverage/grip, and staleness evidence",
-  "crates/ripr/src/output/first_useful_action.rs implements the read-only first-action router and renders first-useful-action JSON/Markdown without rerunning analysis",
-  "crates/ripr/src/cli/commands.rs exposes ripr first-action over explicit artifact paths and writes target/ripr/reports/first-useful-action.{json,md}",
+  "docs/specs/RIPR-SPEC-0020-first-useful-action-report.md defines the first-useful-action report contract over existing editor, PR guidance, gap decision ledger, PR evidence ledger, baseline, assistant proof, receipt, optional gate, optional coverage/grip, and staleness evidence",
+  "crates/ripr/src/output/first_useful_action.rs implements the read-only first-action router, can route from explicit repairable stable Rust GapRecord inputs, and renders first-useful-action JSON/Markdown without rerunning analysis",
+  "crates/ripr/src/cli/commands.rs exposes ripr first-action over explicit artifact paths, including --gap-ledger, and writes target/ripr/reports/first-useful-action.{json,md}",
   "generated GitHub CI runs ripr first-action when explicit inputs are present, uploads target/ripr/reports/first-useful-action.{json,md} with the normal report packet, and appends the First Useful Action summary without changing pass/fail authority",
-  "docs/OUTPUT_SCHEMA.md documents the implemented first-useful-action JSON and Markdown shape, status vocabulary, action vocabulary, routing priorities, command fields, warnings, fallback states, and advisory limits",
+  "docs/OUTPUT_SCHEMA.md documents the implemented first-useful-action JSON and Markdown shape, gap decision fields, status vocabulary, action vocabulary, routing priorities, command fields, warnings, fallback states, and advisory limits",
   "docs/FIRST_USEFUL_ACTION_WORKFLOW.md documents GitHub and editor entry points, status meanings, developer/reviewer/agent actions, verification, receipts, fallback interpretation, and the advisory gate boundary",
-  "fixtures/boundary_gap/expected/first-useful-action pins actionable, stale, missing-required-artifact, baseline-only, acknowledged, waived, suppressed, no-actionable-seam, already-improved, and unchanged-after-attempt routing cases",
-  "crates/ripr/src/output/first_useful_action.rs::first_useful_action_matches_actionable_fixture and ::first_useful_action_matches_unchanged_after_attempt_fixture validate producer output against the pinned corpus",
-  "crates/ripr/tests/cli_smoke.rs::first_action_cli_writes_actionable_report validates the public CLI writes actionable JSON/Markdown",
+  "fixtures/boundary_gap/expected/first-useful-action pins actionable, stale, missing-required-artifact, baseline-only, acknowledged, waived, suppressed, no-actionable-seam, already-improved, unchanged-after-attempt, and explicit gap-record routing cases",
+  "crates/ripr/src/output/first_useful_action.rs::first_useful_action_matches_actionable_fixture, ::first_useful_action_matches_unchanged_after_attempt_fixture, and ::first_useful_action_routes_gap_record_without_assistant_proof validate producer output against pinned and inline gap-record routes",
+  "crates/ripr/tests/cli_smoke.rs::first_action_cli_writes_actionable_report and crates/ripr/src/cli/commands.rs::first_action_cli_writes_gap_record_report validate public CLI output for assistant-proof and gap-record paths",
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_uploads_reports_and_makes_sarif_optional and crates/ripr/tests/cli_smoke.rs::init_ci_github_writes_non_blocking_report_workflow validate generated CI projection",
   "editors/vscode/src/client.ts projects an existing workspace-matched target/ripr/reports/first-useful-action.json report through status and Show Status without invoking ripr first-action or adding diagnostics",
   "editors/vscode/test/suite/extension.test.ts::status bar projects existing first useful action report validates the editor projection and asserts it does not shell out to ripr",
@@ -910,8 +974,8 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap/expected/first-useful-action"
 ]
-next = "maintenance"
-metric = "first_useful_action_reports, first_useful_action_actionable, first_useful_action_stale, first_useful_action_missing_required_artifact, first_useful_action_baseline_only, first_useful_action_acknowledged, first_useful_action_waived, first_useful_action_suppressed, first_useful_action_no_actionable_seam, first_useful_action_already_improved, first_useful_action_unchanged_after_attempt"
+next = "editor/gap-work-packet-projection"
+metric = "first_useful_action_reports, first_useful_action_actionable, first_useful_action_gap_record_routes, first_useful_action_stale, first_useful_action_missing_required_artifact, first_useful_action_baseline_only, first_useful_action_acknowledged, first_useful_action_waived, first_useful_action_suppressed, first_useful_action_no_actionable_seam, first_useful_action_already_improved, first_useful_action_unchanged_after_attempt"
 
 [[capability]]
 id = "assistant_loop_health_report"
@@ -1140,11 +1204,13 @@ evidence = [
   "preserves pre-4B Finding hover fallback",
   "fixtures/boundary_gap/expected/lsp-diagnostics.json",
   "fixtures/editor_lsp_workflow/expected/lsp-hover.md",
+  "fixtures/editor_gap_cockpit/*/expected/lsp-hover.md",
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-brief.json"
 ]
 fixtures = [
   "fixtures/boundary_gap",
-  "fixtures/editor_lsp_workflow"
+  "fixtures/editor_lsp_workflow",
+  "fixtures/editor_gap_cockpit"
 ]
 next = "maintenance"
 metric = "hover renders evidence path from ClassifiedSeam, never parses diagnostic message"
@@ -1157,11 +1223,13 @@ spec = "RIPR-SPEC-0005"
 evidence = [
   "crates/ripr/src/lsp/actions.rs seam-aware code_action_response",
   "crates/ripr/src/lsp/backend.rs collectContext returns agent seam packets for seam_id",
+  "crates/ripr/src/lsp/backend.rs collectContext returns GapRecord-backed agent packets for gap_id plus gap_ledger without rerunning analysis",
   "crates/ripr/src/lsp/backend.rs collectEvidenceContext returns schema 0.1 editor handoff packets from ClassifiedSeam evidence",
   "framed LSP protocol smoke drives a published boundary-gap seam diagnostic through codeAction and collectEvidenceContext",
   "VS Code e2e drives the real boundary-gap server path through code actions, copied seam packet and verify payloads, and related-test opening",
   "editors/vscode/src/client.ts copySuggestedAssertion and openRelatedTest handlers",
   "diagnostics carrying seam_id surface intent-titled actions for inspecting the seam, writing the targeted test only when related-test or suggested-assertion context exists, copying agent handoff commands, verifying after the test, reviewing the receipt, opening the best related test only when a related-test location exists, and refreshing saved-workspace analysis",
+  "current validated diagnostics carrying gap_id surface bounded gap repair actions for copying a repair packet, opening a safe related test, copying safe verify/receipt commands, copying static-limit notes, and refreshing saved-workspace analysis",
   "copy suggested assertion uses agent seam packet v2 assertion shape when available",
   "stale seam diagnostics fail closed to refresh-only",
   "pre-4B Finding code actions remain available",
@@ -1172,15 +1240,61 @@ evidence = [
   "fixtures/editor_lsp_workflow/expected/lsp-code-actions.json",
   "fixtures/editor_lsp_workflow/expected/vscode-status.json",
   "fixtures/editor_lsp_workflow/expected/first-useful-action-status.json",
+  "fixtures/editor_gap_cockpit/*/expected/lsp-code-actions.json",
+  "fixtures/editor_gap_cockpit/*/expected/vscode-status.json",
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json",
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json"
 ]
 fixtures = [
   "fixtures/boundary_gap",
-  "fixtures/editor_lsp_workflow"
+  "fixtures/editor_lsp_workflow",
+  "fixtures/editor_gap_cockpit"
 ]
 next = "maintenance"
 metric = "seam diagnostics expose only supported packet/assertion/test actions without automatic edits"
+
+[[capability]]
+id = "editor_preview_language_routing"
+name = "Editor preview language routing"
+status = "alpha"
+spec = "RIPR-SPEC-0036"
+evidence = [
+  "editors/vscode/package.json registers Rust plus TypeScript, TypeScript React, JavaScript, JavaScript React, and Python activation events",
+  "editors/vscode/src/client.ts registers the same LSP document selectors",
+  "saved-workspace stale guards use the routed file-language set instead of Rust-only document checks",
+  "LSP diagnostics preserve preview language, language_status, owner_kind, and static_limit_kind metadata in diagnostic.data",
+  "LSP hover renders preview language/status, syntax-first advisory boundary, and static-limit kind before RIPR evidence",
+  "refresh logs and VS Code status surface preview finding and static-limit counts",
+  "LSP analysis remains gated by [languages] through the existing adapter layer",
+  "Rust default saved-workspace cockpit behavior remains covered by LSP and VS Code extension tests",
+  "docs/LANGUAGE_ADAPTER_PREVIEW.md documents the opt-in editor workflow and rollback",
+  "cargo xtask dogfood records TypeScript/Python preview receipt coverage for static-limit and disabled-language projection boundaries",
+  "docs/handoffs/2026-05-13-campaign-27-closeout.md records the preview/advisory boundary"
+]
+fixtures = []
+next = "maintenance"
+metric = "editor_preview_language_routing, editor_preview_static_limit_projection"
+
+[[capability]]
+id = "language_aware_generated_ci_grouping"
+name = "Language-aware generated CI grouping"
+status = "alpha"
+spec = "RIPR-SPEC-0038"
+evidence = [
+  "generated GitHub workflow summary reads enabled languages through public ripr doctor",
+  "language grouping section is hidden for Rust-only configuration",
+  "TypeScript and Python groups are emitted only when preview adapters are configured",
+  "language groups summarize advisory artifact entries, preview-status counts, classifications, and static-limit kinds",
+  "summary text keeps preview-language groups advisory and preserves ripr gate evaluate as configured pass/fail authority",
+  "generated workflow tests pin the opt-in grouping guard and Rust-default boundary",
+  "CLI smoke tests pin the generated workflow section",
+  "docs/LANGUAGE_ADAPTER_PREVIEW.md documents generated-CI grouping and the gate-authority boundary",
+  "cargo xtask dogfood checks generated-CI cockpit receipts with preview language grouping marked checked while preserving advisory defaults",
+  "docs/handoffs/2026-05-13-campaign-27-closeout.md records the Rust-default and gate-authority boundary"
+]
+fixtures = []
+next = "maintenance"
+metric = "generated_pr_ci_language_groups, generated_pr_ci_preview_language_groups, generated_pr_ci_rust_default_unchanged, generated_pr_ci_advisory_summaries"
 
 [[capability]]
 id = "repository_config"
@@ -1206,6 +1320,52 @@ next = "reports/operator-cockpit"
 metric = "configured analysis mode, oracle policy, severity, suppressions, and seam diagnostics apply across CLI, reports, and LSP"
 
 [[capability]]
+id = "python_preview_static_facts"
+name = "Python preview static facts"
+status = "alpha"
+spec = "RIPR-SPEC-0028"
+evidence = [
+  "Python preview adapter runs only when [languages] enables python",
+  "language = python and language_status = preview in JSON and human goldens",
+  "owner/test fixtures cover def, async def, methods, class/static methods, decorated functions, pytest, unittest, and parametrized pytest",
+  "assertion/oracle fixtures cover exact value, broad error, broad boolean/type checks, unittest assertions, and mock call assertions",
+  "probe fixtures cover predicate, return value, error path, field assignment, call arguments, and mock interaction shapes",
+  "related-test fixtures cover direct owner calls, import-alias calls, same-stem proximity, and unrelated mention negatives",
+  "static-limit fixtures cover dynamic_dispatch, decorator_indirection, mocked_module, missing_import_graph, metaprogramming, and unsupported_syntax",
+  "cargo xtask dogfood checks Python preview receipts for missing_import_graph, disabled-language behavior, and no cross-language related-test routing",
+  "docs/LANGUAGE_ADAPTER_PREVIEW.md documents how to enable, read, and roll back Python preview evidence",
+  "docs/handoffs/2026-05-13-campaign-27-closeout.md records Python as opt-in preview rather than Rust parity"
+]
+fixtures = [
+  "fixtures/python_boundary_gap",
+  "fixtures/python_unittest_basic",
+  "fixtures/python_method_owner",
+  "fixtures/python_parametrize_basic",
+  "fixtures/python_strong_oracle",
+  "fixtures/python_pytest_raises",
+  "fixtures/python_unittest_assertions",
+  "fixtures/python_mock_assert_called",
+  "fixtures/python_broad_boolean_assertion",
+  "fixtures/python_return_value_shape",
+  "fixtures/python_error_path_shape",
+  "fixtures/python_field_assignment_shape",
+  "fixtures/python_call_argument_shape",
+  "fixtures/python_mock_interaction_shape",
+  "fixtures/python_owner_file_match",
+  "fixtures/python_cross_file_import_reference",
+  "fixtures/python_same_stem_test",
+  "fixtures/python_unrelated_test_mention",
+  "fixtures/python_dynamic_dispatch_limit",
+  "fixtures/python_decorator_indirection_limit",
+  "fixtures/python_mocked_module_limit",
+  "fixtures/python_missing_import_graph_limit",
+  "fixtures/python_metaprogramming_limit",
+  "fixtures/python_unsupported_syntax_limit"
+]
+next = "maintenance"
+metric = "language_adapter_python_findings_preview, language_adapter_python_static_limit_*"
+
+[[capability]]
 id = "sarif_ci_policy"
 name = "SARIF and CI policy"
 status = "alpha"
@@ -1219,6 +1379,7 @@ evidence = [
   "ripr init --ci github generates an advisory GitHub workflow that runs ripr pilot, uploads pilot/report/agent/review artifacts, writes a RIPR advisory summary, writes repo badge JSON and Shields artifacts, optionally renders an operator cockpit when the repo-local xtask exists, and makes SARIF rendering/upload optional through RIPR_UPLOAD_SARIF",
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture pins the generated workflow artifact packet, optional SARIF gates, non-blocking posture, and badge outputs",
   "crates/ripr/src/cli/commands.rs init CI generation tests cover advisory workflow content, report upload, optional SARIF, and overwrite guards",
+  "cargo xtask dogfood validates generated-CI cockpit receipts for Start here guidance, known cockpit regeneration commands, report artifact upload, preview language grouping, advisory default posture, and gate-decision authority boundaries",
   "crates/ripr/tests/cli_smoke.rs init --ci github smoke tests cover dry-run, generated workflow, and existing workflow protection",
   "SARIF renderer tests cover stable rule IDs, configured severity, off severity omission, suppression metadata, valid JSON, and static language",
   "cargo xtask sarif-policy compares current SARIF against a baseline and only fails on new warning-level results when explicitly requested",
@@ -1234,17 +1395,17 @@ name = "Seam-native badge counts"
 status = "alpha"
 spec = "RIPR-SPEC-0005"
 evidence = [
-  "docs/BADGE_POLICY.md seam-native repo counting contract",
-  "docs/OUTPUT_SCHEMA.md Badge Output schema 0.3 with basis and analyzed_seams",
-  "crates/ripr/src/output/badge.rs ripr_seam_badge_summary",
-  "repo-badge native JSON uses basis seam_native and analyzed_seams",
+  "docs/BADGE_POLICY.md seam-native repo counting contract and optional gap-decision-ledger target path",
+  "docs/OUTPUT_SCHEMA.md Badge Output schema 0.4 with basis, analyzed_seams, and analyzed_gap_records",
+  "crates/ripr/src/output/badge.rs ripr_seam_badge_summary and gap-ledger badge target rendering",
+  "repo-badge native JSON uses basis seam_native by default and basis gap_decision_ledger when supplied",
   "diff badge native JSON remains basis finding_exposure for legacy finding counts",
-  "repo badge CLI smoke tests pin seam-native scope and no diff leakage",
+  "repo badge CLI smoke tests pin seam-native scope, gap-ledger target counts, and no diff leakage",
   "checked-in badges/ripr.json and badges/ripr-plus.json refreshed from repo-badge-artifacts"
 ]
 fixtures = []
 next = "campaign/modularization-stack-audit"
-metric = "repo badge headline counts configured-visible headline-eligible seam classes; native JSON distinguishes analyzed_seams from analyzed_findings"
+metric = "repo badge headline counts configured-visible headline-eligible seam classes or explicit gap targets; native JSON distinguishes analyzed_seams, analyzed_gap_records, and analyzed_findings"
 
 [[capability]]
 id = "suppression_policy_health"
@@ -1270,6 +1431,150 @@ next = "maintenance"
 metric = "suppression_health_missing_owner, suppression_health_missing_reason, suppression_health_stale, suppression_health_overbroad_scope, suppression_health_unknown_selector, suppression_health_preview_without_preview_label"
 
 [[capability]]
+id = "policy_operations_readiness"
+name = "Policy operations readiness"
+status = "alpha"
+spec = "RIPR-SPEC-0039"
+evidence = [
+  "docs/specs/RIPR-SPEC-0039-policy-operations-report.md defines the read-only policy operations report contract",
+  "crates/ripr/src/output/policy_operations.rs builds and renders policy_operations JSON and Markdown from explicit policy artifacts",
+  "crates/ripr/src/cli/commands.rs wires `ripr policy operations` with parser and write-path tests",
+  "generated GitHub CI writes, uploads, indexes, and summarizes policy-operations JSON and Markdown as advisory-only operator packets",
+  "docs/OUTPUT_SCHEMA.md documents the policy_operations JSON and Markdown shape",
+  "docs/POLICY_OPERATIONS_WORKFLOW.md documents maintainer use from readiness through operations, history, promotion packet review, manual config review, and post-change monitoring",
+  "docs/handoffs/2026-05-13-policy-operations-closeout.md records the closed Lane 2 policy operations audit and future-lane boundary",
+  "docs/policy/POLICY_OPERATIONS.md and .ripr/goals/lane2-policy-operations.toml keep the Lane 2 tracker scoped to policy operations"
+]
+fixtures = []
+next = "maintenance"
+metric = "policy_operations_reports, policy_operations_current_ceiling, policy_operations_recommended_next_action, policy_operations_safe_target_count, policy_operations_blocked_target_count, policy_operations_promotion_blocker_count, policy_operations_baseline_action_count, policy_operations_waiver_action_count, policy_operations_suppression_action_count, policy_operations_calibration_action_count, policy_operations_preview_boundary_action_count, policy_operations_warning_count, policy_operations_unknown_count, policy_operations_input_read_count, policy_operations_input_missing_count, policy_operations_input_malformed_count"
+
+[[capability]]
+id = "policy_history_trend"
+name = "Policy history trend"
+status = "alpha"
+spec = "RIPR-SPEC-0041"
+evidence = [
+  "docs/specs/RIPR-SPEC-0041-policy-history-ledger.md defines the read-only policy history report contract over current policy operations and optional history JSONL input",
+  "crates/ripr/src/output/policy_history.rs builds and renders the policy_history JSON and Markdown shape",
+  "crates/ripr/src/cli/commands.rs wires ripr policy history with parser and write-path tests",
+  "generated GitHub CI writes, uploads, indexes, and summarizes policy-history JSON and Markdown without appending .ripr/policy-history.jsonl automatically",
+  "docs/OUTPUT_SCHEMA.md documents the policy_history output contract",
+  "docs/POLICY_OPERATIONS_WORKFLOW.md documents how maintainers use history before promotion and after manual policy changes",
+  "docs/handoffs/2026-05-13-policy-operations-closeout.md records the closed Lane 2 policy operations audit and future-lane boundary"
+]
+fixtures = []
+next = "maintenance"
+metric = "policy_history_reports, policy_history_entries, policy_history_readiness_improved, policy_history_waiver_pressure_increased, policy_history_suppression_health_regressed, policy_history_baseline_shrank, policy_history_preview_remained_advisory, policy_history_calibration_changed_ceiling, policy_history_warning_count, policy_history_unknown_count"
+
+[[capability]]
+id = "policy_promotion_packets"
+name = "Policy promotion packets"
+status = "alpha"
+spec = "RIPR-SPEC-0042"
+evidence = [
+  "docs/specs/RIPR-SPEC-0042-policy-promotion-packets.md defines read-only manual-review promotion packet contracts for visible-only, acknowledgeable, baseline-check, and calibrated-gate",
+  "crates/ripr/src/output/policy_promotion.rs builds and renders policy_promotion_packet JSON and Markdown from explicit policy operations and optional policy history inputs",
+  "crates/ripr/src/cli/commands.rs wires `ripr policy promote --to ...` with target-mode parser and write-path tests",
+  "generated GitHub CI writes, uploads, indexes, and summarizes read-only policy-promotion packets for visible-only, acknowledgeable, baseline-check, and calibrated-gate",
+  "docs/OUTPUT_SCHEMA.md documents the implemented policy_promotion_packet JSON and Markdown shape",
+  "docs/POLICY_OPERATIONS_WORKFLOW.md documents promotion packet review before manual config changes",
+  "docs/handoffs/2026-05-13-policy-operations-closeout.md records the closed Lane 2 policy operations audit and future-lane boundary",
+  "docs/policy/POLICY_OPERATIONS.md and .ripr/goals/lane2-policy-operations.toml keep promotion packets split from implementation without config, baseline, suppression, workflow, history, or preview-eligibility mutation"
+]
+fixtures = []
+next = "maintenance"
+metric = "policy_promotion_packets, policy_promotion_allowed, policy_promotion_blocked, policy_promotion_required_repairs, policy_promotion_required_receipts, policy_promotion_missing_history, policy_promotion_warning_count, policy_promotion_unknown_count"
+
+[[capability]]
+id = "presentation_text_evidence"
+name = "Presentation text evidence"
+status = "stable"
+spec = "RIPR-SPEC-0043"
+evidence = [
+  "docs/specs/RIPR-SPEC-0043-presentation-text-evidence.md defines the planned Lane 1 evidence class for changed presentation/help/report/table text",
+  "docs/proposals/RIPR-PROP-0005-user-visible-output-evidence.md records the user-visible output evidence motivation and non-goals",
+  "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md records the PR-sized sequence and Lane 1 boundary",
+  "fixtures/evidence-quality-benchmark/corpus.json#presentation_text_constant_visibility_unknown pins the screenshot-derived declaration/literal grouping and visibility-unknown static limitation guard",
+  "fixtures/evidence-quality-benchmark/corpus.json#presentation_text_observer_unknown_alignment pins likely-visible text with unsupported observer topology as a named limitation",
+  "crates/ripr/src/output/json/finding_alignment.rs groups supported presentation-like &str constant declarations and adjacent string literals into one finding_alignment canonical item while preserving raw findings",
+  "crates/ripr/src/output/json/finding_alignment.rs classifies fixture-backed help/report sink patterns, golden/snapshot observers, internal-only labels, and visibility-unknown limitations",
+  "crates/ripr/src/output/json/finding_alignment.rs tests pin grouping, line-movement identity, non-collision, unsupported string guards, conservative visibility/observer states, concrete repair-kind/target-test-type/suggested-assertion fields, and no mutation-first repair language",
+  "xtask/src/main.rs carries presentation-text outcome counts into evidence-quality scorecard and trend reports",
+  "docs/handoffs/2026-05-14-presentation-text-consumer-handoff.md documents downstream consumer expectations for canonical items, supporting raw findings, evidence states, policy overlays, and must-not-infer boundaries",
+  "docs/handoffs/2026-05-14-user-visible-output-evidence-closeout.md records the documented stable scope and remaining unsupported routes"
+]
+fixtures = [
+  "fixtures/evidence-quality-benchmark/corpus.json"
+]
+next = "maintenance"
+metric = "presentation_text_total, presentation_text_user_visible, presentation_text_observed, presentation_text_unobserved, presentation_text_internal_only, presentation_text_visibility_unknown, presentation_text_observer_unknown, presentation_text_duplicate_groups, presentation_text_actionable_snapshot, presentation_text_no_action, presentation_text_static_limitations"
+
+[[capability]]
+id = "finding_to_gap_alignment"
+name = "Finding-to-gap alignment"
+status = "stable"
+spec = "RIPR-SPEC-0045"
+evidence = [
+  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md defines the Lane 1 contract for preserving raw findings as supporting evidence while rolling them up into canonical evidence items",
+  "canonical items carry gap_state, actionability, why, recommended repair, verification, static limitations, confidence, and raw_findings",
+  "fixtures/evidence-quality-benchmark/corpus.json pins manifest-only raw-to-canonical presentation-text and config/policy cases for actionable, already-observed, internal-only, static-limitation, observer-unknown, behavior-discriminator, line-movement, and non-collision states",
+  "crates/ripr/src/output/evidence_record.rs emits additive raw_findings, canonical_item, and nullable presentation_text fields from existing static seam facts",
+  "crates/ripr/src/output/repo_exposure.rs carries the additive alignment fields under seams[].evidence_record while preserving current seam fields",
+  "crates/ripr/src/output/json/finding_alignment.rs projects supported presentation-text and config/policy declaration/literal groups, including behavior selectors, into fixture-backed visible, observed, internal-only, visibility-unknown, and behavior-discriminator item states with concrete repair routes",
+  "xtask/src/main.rs reports raw-to-canonical ratio, duplicate groups, actionable, no-action, static-limitation, calibrated-support, presentation-text, and config/policy counts in evidence-quality scorecard and trend outputs",
+  "docs/OUTPUT_SCHEMA.md documents the additive evidence_record alignment fields",
+  "docs/handoffs/2026-05-14-presentation-text-consumer-handoff.md documents canonical evidence items as the downstream user-facing unit and raw findings as supporting evidence",
+  "docs/handoffs/2026-05-14-user-visible-output-evidence-closeout.md records the class-scoped closeout boundary"
+]
+fixtures = [
+  "fixtures/evidence-quality-benchmark/corpus.json"
+]
+next = "maintenance"
+metric = "finding_alignment_raw_findings_total, finding_alignment_raw_signals_total, finding_alignment_canonical_items_total, finding_alignment_raw_to_canonical_ratio, finding_alignment_duplicate_groups_total, finding_alignment_actionable_items_total, finding_alignment_actionable_unresolved_canonical_gaps, finding_alignment_already_observed_total, finding_alignment_internal_only_total, finding_alignment_internal_no_action_total, finding_alignment_static_limitation_total, finding_alignment_unknown_total, finding_alignment_calibrated_supported_total, finding_alignment_uncalibrated_total, finding_alignment_visibility_unknown_total, finding_alignment_presentation_text_actionable_total, config_policy_actionable_behavior_discriminator, config_policy_repair_route_coverage, config_policy_verify_command_coverage"
+
+[[capability]]
+id = "gap_decision_ledger"
+name = "Gap decision ledger"
+status = "alpha"
+spec = "RIPR-SPEC-0046"
+evidence = [
+  "docs/specs/RIPR-SPEC-0046-gap-decision-ledger.md defines the typed decision layer between evidence classes and projection surfaces",
+  "fixtures/gap-decision-ledger/corpus.json pins the planned GapRecord vocabulary, projection eligibility, safe gate predicate, output-contract repair route, missing-artifact regeneration, preview ineligibility, and receipt movement cases",
+  "crates/ripr/src/output/gap_decision_ledger.rs builds and renders the advisory gap_decision_ledger JSON and Markdown report from explicit GapRecord input",
+  "crates/ripr/src/cli/commands.rs wires `ripr reports gap-ledger --records ...` without rerunning analysis or changing downstream projection behavior",
+  "`ripr reports gap-ledger --repo-exposure ...` derives conservative repo-scoped Rust GapRecords from existing seams[].evidence_record.canonical_item data without making PR-local gate/comment claims",
+  "`ripr reports gap-ledger --check-output ...` derives PR-local MissingOutputContract records from presentation-text finding_alignment.items[] with AddOutputGolden repair guidance and cargo xtask goldens check verification",
+  "ripr first-action --gap-ledger, ripr pr-ledger record --gap-ledger, ripr zero status --gap-ledger, ripr gate evaluate --gap-ledger, ripr review-comments --gap-ledger, ripr agent packet --gap-ledger, LSP gap diagnostics, and repo-badge formats with --gap-ledger can consume explicit policy-backed gap records while preserving advisory/default-off behavior",
+  "docs/FIRST_PR_WORKFLOW.md documents the first successful Rust PR loop from one repairable gap to one focused proof and receipt",
+  "docs/OUTPUT_SCHEMA.md documents the implemented gap_decision_ledger JSON shape"
+]
+fixtures = [
+  "fixtures/gap-decision-ledger/corpus.json"
+]
+next = "maintenance"
+metric = "gap_decision_records_total, gap_decision_repairable_total, gap_decision_static_limitation_total, gap_decision_no_action_total, gap_decision_missing_artifact_total, gap_decision_projection_pr_comment_eligible, gap_decision_projection_gate_candidate, gap_decision_projection_agent_packet_eligible, gap_decision_ripr_zero_target_count, gap_decision_ripr_plus_target_count, gap_decision_preview_ineligible_total, gap_decision_receipt_improved_total, gap_decision_receipt_unchanged_after_attempt_total, gap_decision_missing_output_contract_total"
+
+[[capability]]
+id = "preview_evidence_promotion_packets"
+name = "Preview evidence promotion packets"
+status = "alpha"
+spec = "RIPR-SPEC-0044"
+evidence = [
+  "docs/specs/RIPR-SPEC-0044-preview-evidence-promotion-packet.md defines read-only preview-language promotion packets with default allowed_now = false",
+  "crates/ripr/src/output/policy_preview_promotion.rs builds and renders preview_evidence_promotion_packet JSON and Markdown with required, supplied, and missing evidence accounting",
+  "crates/ripr/src/cli/commands.rs wires ripr policy preview-promote with parser and write-path tests",
+  "generated GitHub CI writes, uploads, indexes, and summarizes preview-promotion packets only when TypeScript or Python preview adapters are configured",
+  "docs/OUTPUT_SCHEMA.md documents the implemented preview_evidence_promotion_packet JSON and Markdown shape",
+  "docs/POLICY_OPERATIONS_WORKFLOW.md documents preview promotion review while keeping TypeScript and Python evidence advisory by default",
+  "docs/handoffs/2026-05-13-policy-operations-closeout.md records the closed Lane 2 policy operations audit and future-lane boundary",
+  "docs/policy/POLICY_OPERATIONS.md and .ripr/goals/lane2-policy-operations.toml keep preview promotion split from later operator workflow and CI projection without actual promotion, gate eligibility, RIPR Zero inclusion, calibrated confidence, CI blocking, or preview-eligibility mutation"
+]
+fixtures = []
+next = "maintenance"
+metric = "preview_promotion_packets, preview_promotion_allowed, preview_promotion_blocked, preview_promotion_required_evidence, preview_promotion_supplied_evidence, preview_promotion_missing_evidence, preview_promotion_warning_count, preview_promotion_unknown_count"
+
+[[capability]]
 id = "cargo_mutants_calibration"
 name = "cargo-mutants calibration"
 status = "calibrated"
@@ -1280,6 +1585,8 @@ evidence = [
   "crates/ripr/src/output/mutation_calibration.rs",
   "crates/ripr/tests/cli_smoke.rs calibrate cargo-mutants smoke tests",
   "crates/ripr/tests/cli_smoke.rs calibration_runtime_fixture_matches_checked_reports",
+  "crates/ripr/tests/cli_smoke.rs calibration_runtime_fixture_v2_matches_checked_reports",
+  "crates/ripr/tests/cli_smoke.rs calibration_runtime_fixture_v3_matches_checked_reports",
   "cargo xtask mutation-calibration",
   "mutation calibration JSON/Markdown includes per-row static/runtime confidence labels",
   "target/ripr/reports/mutation-calibration.json",
@@ -1292,12 +1599,23 @@ evidence = [
   "fixtures/boundary_gap/calibration/runtime-fixtures-v1/runtime-mutants.json",
   "fixtures/boundary_gap/calibration/runtime-fixtures-v1/mutation-calibration.json",
   "fixtures/boundary_gap/calibration/runtime-fixtures-v1/mutation-calibration.md",
-  "fixtures/CALIBRATION_CORPUS.md documents covered imported-runtime calibration classes and planned runtime samples outside the calibrated scope",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v2/repo-exposure.json",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v2/runtime-mutants.json",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v2/mutation-calibration.json",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v2/mutation-calibration.md",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v3/README.md",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v3/repo-exposure.json",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v3/runtime-mutants.json",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v3/mutation-calibration.json",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v3/mutation-calibration.md",
+  "fixtures/CALIBRATION_CORPUS.md documents covered imported-runtime calibration classes, including the runtime-fixtures-v2 observer-class expansion and runtime-fixtures-v3 confidence expansion classes",
   "docs/lanes/LANE_1_EVIDENCE_SPINE.md documents calibrated static/runtime confidence labels for checked runtime-fixture classes without mutation execution or static classification changes"
 ]
 fixtures = [
   "fixtures/boundary_gap",
-  "fixtures/boundary_gap/calibration/runtime-fixtures-v1"
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v1",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v2",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v3"
 ]
 next = "maintenance"
-metric = "checked calibration fixtures cover static gap plus runtime signal, static gap plus runtime clean, runtime signal without static gap, runtime signal without a static seam, static clean plus runtime clean, inconclusive runtime labels, ambiguous file_line joins, unmatched runtime data, static seams without runtime data, confidence labels, and seam_id/file_line join methods"
+metric = "checked calibration fixtures cover static gap plus runtime signal, static gap plus runtime clean, runtime signal without static gap, runtime signal without a static seam, static clean plus runtime clean, inconclusive runtime labels, ambiguous file_line joins, unmatched runtime data, static seams without runtime data, confidence labels, seam_id/file_line join methods, side-effect observer seams, mock expectations, weak snapshot oracles, opaque dispatch, ambiguous opaque dispatch joins, runtime-only signals that do not create static gaps, custom assertion helper outcomes, table-driven boundary outcomes, builder override outcomes, cross-file constant boundary outcomes, snapshot field-discriminator outcomes, and mock expectation mismatch outcomes"

@@ -1,0 +1,35 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/typescript_owner_file_match/input
+
+Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+
+INFO src/b.ts:2
+
+Changed
+  after:      if (value >= 10) {
+
+Probe
+  family: predicate
+  delta:  control
+
+Language
+  language: typescript
+  status: preview
+
+Static exposure
+  exposed (info, confidence 0.60)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `betaScore`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)
+  - discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - related test tests/b.test.ts:3 beta keeps its threshold uses strong exact value oracle: expect(...).toBe(...)
+
+Weakness
+  - Related test reaches `betaScore` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
+
+Next step
+  TypeScript preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.

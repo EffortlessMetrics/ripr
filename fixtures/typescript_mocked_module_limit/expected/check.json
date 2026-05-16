@@ -57,7 +57,8 @@
       "recommended_next_step": "TypeScript preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
       "suggested_next_action": "TypeScript preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
       "language": "typescript",
-      "language_status": "preview"
+      "language_status": "preview",
+      "static_limit_kind": "mocked_module"
     }
   ]
 }

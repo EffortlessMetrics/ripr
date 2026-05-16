@@ -1,0 +1,1 @@
+BASE_DISCOUNT = 12

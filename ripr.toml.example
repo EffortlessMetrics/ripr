@@ -52,6 +52,7 @@ path = ".ripr/suppressions.toml"
 
 [languages]
 # Per RIPR-SPEC-0026, only `rust` is enabled by default. Add `typescript` or
-# `python` to opt into preview adapters once they land in Campaign 27.
+# `python` to opt into preview adapters when the ripr binary was built with
+# the matching Cargo feature (`lang-typescript` or `lang-python`).
 # Valid values: rust, typescript, python.
 enabled = ["rust"]
