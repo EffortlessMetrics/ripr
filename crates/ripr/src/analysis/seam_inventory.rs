@@ -875,18 +875,17 @@ mod tests {
 
         let result =
             inventory_classified_seams_uncached_with_config(&file_root, &RiprConfig::default());
-        if result.is_ok() {
-            return Err(
-                "uncached inventory should surface discover_rust_files error for non-directory root".to_string(),
-            );
-        }
+        assert!(
+            result.is_err(),
+            "uncached inventory should surface discover_rust_files error for non-directory root"
+        );
 
         let _ = std::fs::remove_dir_all(&root);
         Ok(())
     }
 
     #[test]
-    fn seam_walker_skips_paths_not_present_in_the_index() -> Result<(), String> {
+    fn seam_walker_skips_paths_not_present_in_the_index() {
         // The repo walker keeps its production-file list and the index
         // in lockstep, but in tests the two can diverge when a caller
         // passes a synthetic file list. The early-continue at the
@@ -894,17 +893,15 @@ mod tests {
         // crash-free in that case.
         let index = RustIndex::default();
         let seams = inventory_seams_from_index(&[PathBuf::from("missing.rs")], &index);
-        if !seams.is_empty() {
-            return Err(format!(
-                "expected no seams for paths absent from the index, got {}",
-                seams.len()
-            ));
-        }
-        Ok(())
+        assert!(
+            seams.is_empty(),
+            "expected no seams for paths absent from the index, got {}",
+            seams.len()
+        );
     }
 
     #[test]
-    fn seam_walker_skips_shapes_with_unrecognized_probe_kind() -> Result<(), String> {
+    fn seam_walker_skips_shapes_with_unrecognized_probe_kind() {
         // `seam_kind_from_probe_shape` is the single place where new
         // probe-shape strings become first-class seam kinds. Until a
         // string is mapped explicitly, the walker must drop the shape
@@ -942,17 +939,15 @@ mod tests {
         );
 
         let seams = inventory_seams_from_index(&[path], &index);
-        if !seams.is_empty() {
-            return Err(format!(
-                "expected no seams for unrecognized probe-shape kind, got kinds {:?}",
-                seams.iter().map(|s| s.kind().as_str()).collect::<Vec<_>>()
-            ));
-        }
-        Ok(())
+        let kinds = seams.iter().map(|s| s.kind().as_str()).collect::<Vec<_>>();
+        assert!(
+            seams.is_empty(),
+            "expected no seams for unrecognized probe-shape kind, got kinds {kinds:?}"
+        );
     }
 
     #[test]
-    fn seam_walker_skips_shapes_whose_owner_function_is_marked_test() -> Result<(), String> {
+    fn seam_walker_skips_shapes_whose_owner_function_is_marked_test() {
         // Inline `#[test]` modules inside production files share the
         // file with real production code. The walker drops shapes whose
         // owner is itself a test function so the seam inventory stays
@@ -991,16 +986,14 @@ mod tests {
         );
 
         let seams = inventory_seams_from_index(&[path], &index);
-        if !seams.is_empty() {
-            return Err(format!(
-                "expected no seams when the only owner is `is_test = true`, got owners {:?}",
-                seams
-                    .iter()
-                    .map(|s| s.owner().to_string())
-                    .collect::<Vec<_>>()
-            ));
-        }
-        Ok(())
+        let owners = seams
+            .iter()
+            .map(|s| s.owner().to_string())
+            .collect::<Vec<_>>();
+        assert!(
+            seams.is_empty(),
+            "expected no seams when the only owner is `is_test = true`, got owners {owners:?}"
+        );
     }
 
     #[test]
