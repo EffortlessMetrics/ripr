@@ -28242,7 +28242,7 @@ fn report_index_repo_ops_status(artifacts: &[ReportIndexRepoOpsArtifact]) -> Str
         .iter()
         .any(|artifact| artifact.status == "actionable")
     {
-        return "warn".to_string();
+        return "actionable".to_string();
     }
     if artifacts.iter().any(|artifact| !artifact.available) {
         return "incomplete".to_string();
@@ -33389,36 +33389,37 @@ mod tests {
         LocalContextAllow, LspCockpitFixture, LspCockpitReport, MarkdownLink, PrTriageCheck,
         PrTriageFinding, PrTriagePullRequest, ReceiptRecord, RepoExposureLatencyReport,
         RepoExposureLatencyRun, RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
-        SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry,
-        StaticLanguageMatcher, TestOracleClass, WorktreeDoctorFinding, WorktreeDoctorSeverity,
-        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
-        badge_artifacts_summary_markdown, badge_diff_policy_violations, build_lsp_cockpit_report,
-        build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
-        build_targeted_test_outcome_report, campaign_source_truth_violations_for_root,
-        check_allow_attributes, check_badge_diff_policy_with_context, check_droid_review_config,
-        check_executable_files, check_file_policy, check_local_context, check_network_policy,
-        check_no_panic_family, check_process_policy, check_static_language, check_workflows,
-        ci_full_evidence_gates, collect_panic_findings, collect_semantic_panic_findings,
-        command_catalog, command_catalog_violations, commands_report_json,
-        commands_report_markdown, critic_findings, days_from_civil, dogfood_class_counts,
-        dogfood_editor_gap_cockpit_run, dogfood_editor_gap_cockpit_scenarios,
-        dogfood_first_action_scenarios, dogfood_gate_adoption_scenarios,
-        dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
-        dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
-        dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
-        dogfood_pr_review_front_panel_scenarios, dogfood_report_json, dogfood_report_markdown,
-        dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
-        evaluate_semantic_no_panic_policy, evidence_quality_scorecard_from_values,
-        evidence_quality_scorecard_json, evidence_quality_scorecard_markdown,
-        evidence_quality_trend_from_values, evidence_quality_trend_json,
-        evidence_quality_trend_markdown, extract_json_object_usize_map, extract_json_string,
-        extract_json_warnings, extract_workflow_run_blocks,
-        finding_alignment_raw_to_canonical_ratio, finish_worktree_doctor_report,
-        first_line_difference, forbidden_panic_patterns, generated_clean_violations,
-        gh_pr_safe_next_action, gh_pr_status_json, gh_pr_status_markdown, gh_pr_status_readiness,
-        github_event_pull_request_title_from_text, glob_matches, golden_changes_without_blessing,
-        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
-        install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
+        ReportIndexRepoOpsArtifact, SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold,
+        StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass, WorktreeDoctorFinding,
+        WorktreeDoctorSeverity, badge_artifact_command_args, badge_artifact_jobs,
+        badge_artifact_native_slot, badge_artifacts_summary_markdown, badge_diff_policy_violations,
+        build_lsp_cockpit_report, build_no_panic_allowlist_proposals,
+        build_repo_exposure_latency_report, build_targeted_test_outcome_report,
+        campaign_source_truth_violations_for_root, check_allow_attributes,
+        check_badge_diff_policy_with_context, check_droid_review_config, check_executable_files,
+        check_file_policy, check_local_context, check_network_policy, check_no_panic_family,
+        check_process_policy, check_static_language, check_workflows, ci_full_evidence_gates,
+        collect_panic_findings, collect_semantic_panic_findings, command_catalog,
+        command_catalog_violations, commands_report_json, commands_report_markdown,
+        critic_findings, days_from_civil, dogfood_class_counts, dogfood_editor_gap_cockpit_run,
+        dogfood_editor_gap_cockpit_scenarios, dogfood_first_action_scenarios,
+        dogfood_gate_adoption_scenarios, dogfood_generated_ci_cockpit_run_from_workflow,
+        dogfood_language_preview_run, dogfood_language_preview_scenarios,
+        dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
+        dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
+        dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
+        dogfood_report_packet_index_scenarios, evaluate_semantic_no_panic_policy,
+        evidence_quality_scorecard_from_values, evidence_quality_scorecard_json,
+        evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
+        evidence_quality_trend_json, evidence_quality_trend_markdown,
+        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
+        extract_workflow_run_blocks, finding_alignment_raw_to_canonical_ratio,
+        finish_worktree_doctor_report, first_line_difference, forbidden_panic_patterns,
+        generated_clean_violations, gh_pr_safe_next_action, gh_pr_status_json,
+        gh_pr_status_markdown, gh_pr_status_readiness, github_event_pull_request_title_from_text,
+        glob_matches, golden_changes_without_blessing, golden_drift_semantics,
+        guarded_allow_attribute_lints, guarded_allow_attributes_in_text, install_hooks_in,
+        is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
         is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
         is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
         is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
@@ -33450,12 +33451,12 @@ mod tests {
         repo_exposure_latency_run_from_output, repo_exposure_latency_status,
         repo_exposure_latency_trace, repo_root, repo_seam_inventory_command_args_for_root,
         report_index_json, report_index_markdown, report_index_missing_expected,
-        report_index_repo_ops_packets, report_status_from_text, ripr_command_literals_in_text,
-        ripr_debug_binary, ripr_pre_commit_hook, run_ci_full_evidence_gates,
-        sarif_policy_report_json, sarif_policy_report_markdown, semantic_selector_matches,
-        should_scan_static_language_path, should_skip_path, sorted_allowlist_content,
-        spec_id_from_path, spec_ids_in_text, spec_numbering_violations, specs,
-        static_language_allowlist_covers, status_for_report, suggested_fixes_patch,
+        report_index_repo_ops_packets, report_index_repo_ops_status, report_status_from_text,
+        ripr_command_literals_in_text, ripr_debug_binary, ripr_pre_commit_hook,
+        run_ci_full_evidence_gates, sarif_policy_report_json, sarif_policy_report_markdown,
+        semantic_selector_matches, should_scan_static_language_path, should_skip_path,
+        sorted_allowlist_content, spec_id_from_path, spec_ids_in_text, spec_numbering_violations,
+        specs, static_language_allowlist_covers, status_for_report, suggested_fixes_patch,
         suspicious_runtime_file_names, targeted_test_outcome, targeted_test_outcome_report_json,
         targeted_test_outcome_report_markdown, test_efficiency_entry, test_efficiency_report_json,
         test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
@@ -38516,7 +38517,7 @@ jobs:
                 .iter()
                 .find(|packet| packet.id == "pr_ready")
                 .map(|packet| packet.status.as_str()),
-            Some("warn")
+            Some("actionable")
         );
         assert_eq!(
             packets
@@ -42350,6 +42351,16 @@ acceptance = "RIPR-SPEC-0999 defines the focused contract."
         assert_eq!(entry.file, "shape.md");
         assert_eq!(entry.path, "target/ripr/reports/shape.md");
         assert_eq!(entry.status, "pass");
+    }
+
+    #[test]
+    fn report_index_repo_ops_status_preserves_actionable() {
+        let artifacts = vec![ReportIndexRepoOpsArtifact {
+            path: "target/ripr/reports/pr-ready.md".to_string(),
+            available: true,
+            status: "actionable".to_string(),
+        }];
+        assert_eq!(report_index_repo_ops_status(&artifacts), "actionable");
     }
 
     #[test]

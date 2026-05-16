@@ -6112,11 +6112,27 @@ Field contract:
   next command.
 - `repo_ops_packets[]` is the repo-local operating packet index used by
   `cargo xtask reports index`. It records command mutability, worktree doctor,
-  PR-ready, PR triage, per-PR merge readiness, generated-clean, badge
-  ownership, command catalog coverage, critic, receipts, suggested-fixes, and
+  PR-ready, PR triage, per-PR merge readiness, generated-clean, badge diff
+  policy, command catalog coverage, critic, receipts, suggested-fixes, and
   `check-pr` artifacts with status, known output paths, and regeneration
   commands. It is advisory front-door metadata only and never becomes gate
   authority.
+
+Report packet index field contract:
+
+- `entries[].status` is `available`, `missing`, `pass`, `warn`, `fail`,
+  `actionable`, `blocked`, `acknowledged`, `suppressed`, `stale`, `incomplete`,
+  `unreadable`, or `not_applicable`.
+- `missing_expected[].reason` is `not_generated`, `input_not_available`,
+  `configured_off`, `missing_required_input`, `stale_upstream`, or `unknown`.
+- `missing_expected[]` keeps absent expected surfaces visible with a bounded
+  reason and, when known, a command to regenerate the missing surface.
+- `warnings[]` carries malformed, stale, unreadable, missing-input, and
+  incomplete packet context without converting it to waiver, suppression,
+  improvement, runtime confirmation, or pass/fail authority.
+- `limits` preserves read-only, explicit-input, no-source-edit,
+  no-generated-test, no-provider-call, no-runtime-mutation-execution,
+  no-inline-comment, and advisory-default boundaries.
 
 `target/ripr/reports/pr-ready.json` is the local PR readiness cockpit emitted by
 `cargo xtask pr-ready`:
@@ -6153,19 +6169,6 @@ Field contract:
 - `safe_repairs[]` lists deterministic repair paths; it must not include badge
   value edits, golden blessing, baselines, suppressions, dependency exceptions,
   schema version changes, or policy authority changes.
-- `entries[].status` is `available`, `missing`, `pass`, `warn`, `fail`,
-  `actionable`, `blocked`, `acknowledged`, `suppressed`, `stale`, `incomplete`,
-  `unreadable`, or `not_applicable`.
-- `missing_expected[].reason` is `not_generated`, `input_not_available`,
-  `configured_off`, `missing_required_input`, `stale_upstream`, or `unknown`.
-- `missing_expected[]` keeps absent expected surfaces visible with a bounded
-  reason and, when known, a command to regenerate the missing surface.
-- `warnings[]` carries malformed, stale, unreadable, missing-input, and
-  incomplete packet context without converting it to waiver, suppression,
-  improvement, runtime confirmation, or pass/fail authority.
-- `limits` preserves read-only, explicit-input, no-source-edit,
-  no-generated-test, no-provider-call, no-runtime-mutation-execution,
-  no-inline-comment, and advisory-default boundaries.
 
 Markdown should fit in a generated GitHub job summary and uploaded report
 packet. It should show status, start-here artifact, gate authority, packet

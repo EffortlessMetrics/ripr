@@ -228,7 +228,7 @@ It does not fail CI.
 active campaign, available reports, missing expected reports for the changed
 surface, advisory reports, and suggested next commands. The index also carries
 repo-ops packet status for command mutability, PR-ready, worktree doctor, PR
-triage, per-PR merge readiness, generated-clean, badge ownership, critic,
+triage, per-PR merge readiness, generated-clean, badge diff policy, critic,
 receipts, suggested fixes, and `check-pr` artifacts so agents can consume the
 operating packet as JSON instead of scraping prose. The command catalog check
 packet is included next to the catalog itself so catalog drift is visible in the
