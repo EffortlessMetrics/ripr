@@ -130,7 +130,8 @@ handling, and local worktree merge limitations.
 suggestions. The patch covers allowlist ordering under `.ripr/*.txt` and
 `policy/*.txt`, docs index table ordering for specs and ADRs, and traceability
 behavior block ordering by spec ID, plus capability block ordering by spec ID
-and capability ID. It never generates badge endpoint values,
+and capability ID, and command catalog ordering by xtask help order. It never
+generates badge endpoint values,
 golden blessings, baselines, suppressions, dependency exceptions, or
 schema-version changes.
 The generated-vs-authored boundary is documented in
