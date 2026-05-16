@@ -1904,9 +1904,8 @@ mod tests {
         let records = gap_records_from_repo_exposure_json(&payload.to_string())
             .map_err(|e| format!("parse failed: {e}"))?;
         let r = records.first().ok_or("expected record")?;
-        // seam_id falls back to "unknown-seam" since both evidence.seam_id and seam.seam_id
-        // require the field in the right place; gap_id should still be formed
-        assert!(r.gap_id.starts_with("gap:repo:"));
+        assert_eq!(r.canonical_gap_id, "gap:rust:outer-seam");
+        assert_eq!(r.gap_id, "gap:repo:gap:rust:outer-seam");
         Ok(())
     }
 
