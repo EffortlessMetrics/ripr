@@ -1,0 +1,22 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_run_usability/adapter_unavailable",
+  "status": "adapter_unavailable",
+  "projection": "fail_closed",
+  "workspace_root": "fixtures/editor_first_run_usability/adapter_unavailable/workspace",
+  "server": {
+    "state": "available",
+    "path": "ripr",
+    "version": "ripr 0.5.0"
+  },
+  "languages": {
+    "enabled": ["python"],
+    "available": ["rust"]
+  },
+  "artifacts": {
+    "first_useful_action": "not_projected",
+    "gap_decision_ledger": "unavailable_language",
+    "agent_receipt": "not_projected"
+  },
+  "next_safe_action": "Use a ripr build with the preview adapter or disable that language."
+}
