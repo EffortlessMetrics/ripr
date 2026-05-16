@@ -3078,7 +3078,7 @@ import unittest
 
 class Async(unittest.TestCase):
     async def test_async_path(self):
-        self.assertEqual(await fetch(), 1)
+        self.assertEqual(await compute(), 1)
 "#,
         );
         let async_test = tests
