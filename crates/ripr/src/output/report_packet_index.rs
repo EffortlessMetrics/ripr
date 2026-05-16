@@ -921,4 +921,912 @@ mod tests {
         }
         std::fs::write(path, text).map_err(|err| format!("write {} failed: {err}", path.display()))
     }
+
+    // ── gate_status variants ─────────────────────────────────────────────────
+
+    #[test]
+    fn gate_status_blocked_returns_blocked() -> Result<(), String> {
+        assert_eq!(gate_status("blocked"), "blocked");
+        Ok(())
+    }
+
+    #[test]
+    fn gate_status_config_error_and_fail_and_failure_return_fail() -> Result<(), String> {
+        assert_eq!(gate_status("config_error"), "fail");
+        assert_eq!(gate_status("fail"), "fail");
+        assert_eq!(gate_status("failure"), "fail");
+        Ok(())
+    }
+
+    #[test]
+    fn gate_status_acknowledged_suppressed_warn_incomplete() -> Result<(), String> {
+        assert_eq!(gate_status("acknowledged"), "acknowledged");
+        assert_eq!(gate_status("suppressed"), "suppressed");
+        assert_eq!(gate_status("warn"), "warn");
+        assert_eq!(gate_status("incomplete"), "incomplete");
+        Ok(())
+    }
+
+    #[test]
+    fn gate_status_unknown_falls_through_to_pass() -> Result<(), String> {
+        assert_eq!(gate_status("pass"), "pass");
+        assert_eq!(gate_status("anything_else"), "pass");
+        Ok(())
+    }
+
+    // ── front_panel_status variants ──────────────────────────────────────────
+
+    #[test]
+    fn front_panel_status_blocked_returns_blocked() -> Result<(), String> {
+        assert_eq!(front_panel_status("blocked"), "blocked");
+        Ok(())
+    }
+
+    #[test]
+    fn front_panel_status_fail_and_config_error_return_fail() -> Result<(), String> {
+        assert_eq!(front_panel_status("fail"), "fail");
+        assert_eq!(front_panel_status("config_error"), "fail");
+        Ok(())
+    }
+
+    #[test]
+    fn front_panel_status_warn_and_incomplete() -> Result<(), String> {
+        assert_eq!(front_panel_status("warn"), "warn");
+        assert_eq!(front_panel_status("incomplete"), "incomplete");
+        Ok(())
+    }
+
+    #[test]
+    fn front_panel_status_unknown_returns_available() -> Result<(), String> {
+        assert_eq!(front_panel_status("pass"), "available");
+        assert_eq!(front_panel_status("ok"), "available");
+        Ok(())
+    }
+
+    // ── read_json_status: decision vs status field ───────────────────────────
+
+    #[test]
+    fn read_json_status_reads_decision_field_first() -> Result<(), String> {
+        let root = temp_root("json-decision")?;
+        let path = root.join("target/ripr/reports/gate-decision.json");
+        write(&path, r#"{"decision":"blocked"}"#)?;
+        let spec = ArtifactSpec {
+            id: "gate_decision",
+            label: "Gate decision",
+            group: "policy_gates",
+            kind: "markdown",
+            path: root.join("target/ripr/reports/gate-decision.md"),
+            json_path: Some(path),
+            required: false,
+            authority: true,
+            description: "desc",
+            default_status: "pass",
+            next_command: None,
+        };
+        let status = read_json_status(&spec);
+        let Some(s) = status else {
+            return Err("expected Some status from read_json_status".to_string());
+        };
+        assert_eq!(s, "blocked");
+        Ok(())
+    }
+
+    #[test]
+    fn read_json_status_falls_back_to_status_field() -> Result<(), String> {
+        let root = temp_root("json-status-field")?;
+        let path = root.join("target/ripr/reports/front-panel.json");
+        write(&path, r#"{"status":"warn"}"#)?;
+        let spec = ArtifactSpec {
+            id: "pr_review_front_panel",
+            label: "PR review front panel",
+            group: "start_here",
+            kind: "markdown",
+            path: root.join("target/ripr/reports/pr-review-front-panel.md"),
+            json_path: Some(path),
+            required: true,
+            authority: false,
+            description: "desc",
+            default_status: "available",
+            next_command: None,
+        };
+        let status = read_json_status(&spec);
+        let Some(s) = status else {
+            return Err("expected Some status from status field".to_string());
+        };
+        assert_eq!(s, "warn");
+        Ok(())
+    }
+
+    #[test]
+    fn read_json_status_returns_none_for_missing_file() -> Result<(), String> {
+        let root = temp_root("json-missing")?;
+        let spec = ArtifactSpec {
+            id: "gate_decision",
+            label: "Gate decision",
+            group: "policy_gates",
+            kind: "markdown",
+            path: root.join("target/ripr/reports/gate-decision.md"),
+            json_path: Some(root.join("target/ripr/reports/nonexistent.json")),
+            required: false,
+            authority: true,
+            description: "desc",
+            default_status: "pass",
+            next_command: None,
+        };
+        assert_eq!(read_json_status(&spec), None);
+        Ok(())
+    }
+
+    #[test]
+    fn read_json_status_returns_none_when_no_json_path() -> Result<(), String> {
+        let root = temp_root("json-no-path")?;
+        let spec = ArtifactSpec {
+            id: "pr_summary",
+            label: "PR summary",
+            group: "validation_receipts",
+            kind: "markdown",
+            path: root.join("target/ripr/reports/pr-summary.md"),
+            json_path: None,
+            required: false,
+            authority: false,
+            description: "desc",
+            default_status: "available",
+            next_command: None,
+        };
+        assert_eq!(read_json_status(&spec), None);
+        Ok(())
+    }
+
+    // ── read_markdown_status ────────────────────────────────────────────────
+
+    #[test]
+    fn read_markdown_status_parses_status_line() -> Result<(), String> {
+        let root = temp_root("md-status")?;
+        let path = root.join("target/ripr/reports/check-pr.md");
+        write(&path, "# Check PR\n\nStatus: pass\n\nSome other text\n")?;
+        let status = read_markdown_status(&path);
+        let Some(s) = status else {
+            return Err("expected Some status from markdown".to_string());
+        };
+        assert_eq!(s, "pass");
+        Ok(())
+    }
+
+    #[test]
+    fn read_markdown_status_maps_fail_through_gate_status() -> Result<(), String> {
+        let root = temp_root("md-status-fail")?;
+        let path = root.join("target/ripr/reports/check-pr.md");
+        write(&path, "Status: fail\n")?;
+        let status = read_markdown_status(&path);
+        let Some(s) = status else {
+            return Err("expected Some from fail markdown".to_string());
+        };
+        assert_eq!(s, "fail");
+        Ok(())
+    }
+
+    #[test]
+    fn read_markdown_status_returns_none_for_missing_file() -> Result<(), String> {
+        let root = temp_root("md-missing")?;
+        let path = root.join("target/ripr/reports/nonexistent.md");
+        assert_eq!(read_markdown_status(&path), None);
+        Ok(())
+    }
+
+    #[test]
+    fn read_markdown_status_returns_none_when_no_status_line() -> Result<(), String> {
+        let root = temp_root("md-no-status")?;
+        let path = root.join("target/ripr/reports/check-pr.md");
+        write(&path, "# Check PR\n\nNo status line here.\n")?;
+        assert_eq!(read_markdown_status(&path), None);
+        Ok(())
+    }
+
+    // ── status_for_spec check_pr path ────────────────────────────────────────
+
+    #[test]
+    fn status_for_spec_check_pr_reads_markdown() -> Result<(), String> {
+        let root = temp_root("check-pr-status")?;
+        let md_path = root.join("target/ripr/reports/check-pr.md");
+        write(&md_path, "Status: pass\n")?;
+        let spec = ArtifactSpec {
+            id: "check_pr",
+            label: "Check PR",
+            group: "validation_receipts",
+            kind: "markdown",
+            path: md_path,
+            json_path: None,
+            required: false,
+            authority: false,
+            description: "desc",
+            default_status: "pass",
+            next_command: Some("cargo xtask check-pr"),
+        };
+        assert_eq!(status_for_spec(&spec), "pass");
+        Ok(())
+    }
+
+    #[test]
+    fn status_for_spec_check_pr_falls_back_to_default() -> Result<(), String> {
+        let root = temp_root("check-pr-default")?;
+        let spec = ArtifactSpec {
+            id: "check_pr",
+            label: "Check PR",
+            group: "validation_receipts",
+            kind: "markdown",
+            path: root.join("nonexistent.md"),
+            json_path: None,
+            required: false,
+            authority: false,
+            description: "desc",
+            default_status: "pass",
+            next_command: None,
+        };
+        assert_eq!(status_for_spec(&spec), "pass");
+        Ok(())
+    }
+
+    #[test]
+    fn status_for_spec_gate_decision_falls_back_to_default() -> Result<(), String> {
+        let root = temp_root("gate-default")?;
+        let spec = ArtifactSpec {
+            id: "gate_decision",
+            label: "Gate decision",
+            group: "policy_gates",
+            kind: "markdown",
+            path: root.join("nonexistent.md"),
+            json_path: Some(root.join("nonexistent.json")),
+            required: false,
+            authority: true,
+            description: "desc",
+            default_status: "pass",
+            next_command: None,
+        };
+        assert_eq!(status_for_spec(&spec), "pass");
+        Ok(())
+    }
+
+    #[test]
+    fn status_for_spec_other_id_returns_default_status() -> Result<(), String> {
+        let root = temp_root("spec-default")?;
+        let spec = ArtifactSpec {
+            id: "sarif",
+            label: "SARIF output",
+            group: "sarif_badges",
+            kind: "json",
+            path: root.join("ripr.sarif.json"),
+            json_path: Some(root.join("ripr.sarif.json")),
+            required: false,
+            authority: false,
+            description: "desc",
+            default_status: "available",
+            next_command: None,
+        };
+        assert_eq!(status_for_spec(&spec), "available");
+        Ok(())
+    }
+
+    // ── group_for_entry: all groups ──────────────────────────────────────────
+
+    #[test]
+    fn group_for_entry_covers_all_known_ids() -> Result<(), String> {
+        let cases: &[(&str, &str)] = &[
+            ("pr_review_front_panel", "start_here"),
+            ("first_useful_action", "pr_review_story"),
+            ("review_comments", "pr_review_story"),
+            ("assistant_proof", "repair_agent_handoff"),
+            ("assistant_loop_health", "repair_agent_handoff"),
+            ("pr_evidence_ledger", "evidence_movement"),
+            ("baseline_debt_delta", "evidence_movement"),
+            ("ripr_zero_status", "evidence_movement"),
+            ("gate_decision", "policy_gates"),
+            ("recommendation_calibration", "calibration"),
+            ("mutation_calibration", "calibration"),
+            ("coverage_grip_frontier", "calibration"),
+            ("agent_receipt", "validation_receipts"),
+            ("pr_summary", "validation_receipts"),
+            ("check_pr", "validation_receipts"),
+            ("sarif", "sarif_badges"),
+            ("badge", "sarif_badges"),
+            ("unknown_artifact", "local_context"),
+        ];
+        for (id, expected_group) in cases {
+            let actual = group_for_entry(id);
+            if actual != *expected_group {
+                return Err(format!(
+                    "group_for_entry({id:?}) = {actual:?}, want {expected_group:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    // ── group_label and group_summary: all variants ──────────────────────────
+
+    #[test]
+    fn group_label_covers_all_known_groups() -> Result<(), String> {
+        let cases: &[(&str, &str)] = &[
+            ("start_here", "Start here"),
+            ("pr_review_story", "PR review story"),
+            ("repair_agent_handoff", "Repair and agent handoff"),
+            ("evidence_movement", "Evidence movement"),
+            ("policy_gates", "Policy and gates"),
+            ("calibration", "Calibration"),
+            ("validation_receipts", "Validation receipts"),
+            ("sarif_badges", "SARIF and badges"),
+            ("local_context", "Local context"),
+            ("unknown", "Local context"),
+        ];
+        for (group, expected) in cases {
+            let actual = group_label(group);
+            if actual != *expected {
+                return Err(format!(
+                    "group_label({group:?}) = {actual:?}, want {expected:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn group_summary_covers_all_known_groups() -> Result<(), String> {
+        let cases: &[(&str, &str)] = &[
+            ("start_here", "Reviewer-first PR story."),
+            ("pr_review_story", "Guidance and first useful action."),
+            ("repair_agent_handoff", "Proof, health, and repair routing."),
+            ("evidence_movement", "Debt delta and PR movement."),
+            ("policy_gates", "Configured pass/fail authority."),
+            ("calibration", "Recommendation and coverage/grip context."),
+            (
+                "validation_receipts",
+                "Receipts and local readiness reports.",
+            ),
+            ("sarif_badges", "Code scanning and badge surfaces."),
+            ("local_context", "Repo-local context."),
+            ("unknown", "Repo-local context."),
+        ];
+        for (group, expected) in cases {
+            let actual = group_summary(group);
+            if actual != *expected {
+                return Err(format!(
+                    "group_summary({group:?}) = {actual:?}, want {expected:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    // ── display_path: target/ci/ marker ─────────────────────────────────────
+
+    #[test]
+    fn display_path_strips_ci_prefix() -> Result<(), String> {
+        let path = PathBuf::from("/some/absolute/path/target/ci/reports/foo.json");
+        assert_eq!(display_path(&path), "target/ci/reports/foo.json");
+        Ok(())
+    }
+
+    #[test]
+    fn display_path_strips_ripr_prefix() -> Result<(), String> {
+        let path = PathBuf::from("/project/target/ripr/reports/index.json");
+        assert_eq!(display_path(&path), "target/ripr/reports/index.json");
+        Ok(())
+    }
+
+    #[test]
+    fn display_path_returns_normalized_when_no_marker() -> Result<(), String> {
+        let path = PathBuf::from("/absolute/other/path/foo.json");
+        assert_eq!(display_path(&path), "/absolute/other/path/foo.json");
+        Ok(())
+    }
+
+    // ── entry_from_spec: available vs not-available (next_command) ───────────
+
+    #[test]
+    fn entry_from_spec_available_clears_next_command() -> Result<(), String> {
+        let root = temp_root("entry-available")?;
+        let spec = ArtifactSpec {
+            id: "agent_receipt",
+            label: "Agent receipt",
+            group: "validation_receipts",
+            kind: "json",
+            path: root.join("agent-receipt.json"),
+            json_path: Some(root.join("agent-receipt.json")),
+            required: false,
+            authority: false,
+            description: "desc",
+            default_status: "available",
+            next_command: Some("ripr agent receipt --out agent-receipt.json"),
+        };
+        let entry = entry_from_spec(&spec, true, "available".to_string());
+        assert_eq!(entry.next_command, None);
+        assert!(entry.available);
+        Ok(())
+    }
+
+    #[test]
+    fn entry_from_spec_not_available_preserves_next_command() -> Result<(), String> {
+        let root = temp_root("entry-missing")?;
+        let spec = ArtifactSpec {
+            id: "agent_receipt",
+            label: "Agent receipt",
+            group: "validation_receipts",
+            kind: "json",
+            path: root.join("agent-receipt.json"),
+            json_path: Some(root.join("agent-receipt.json")),
+            required: false,
+            authority: false,
+            description: "desc",
+            default_status: "available",
+            next_command: Some("ripr agent receipt --out agent-receipt.json"),
+        };
+        let entry = entry_from_spec(&spec, false, "missing".to_string());
+        let Some(cmd) = &entry.next_command else {
+            return Err("expected next_command to be Some when not available".to_string());
+        };
+        assert_eq!(cmd, "ripr agent receipt --out agent-receipt.json");
+        assert!(!entry.available);
+        Ok(())
+    }
+
+    // ── missing_expected_surfaces: various combos ────────────────────────────
+
+    #[test]
+    fn missing_expected_no_review_story_means_no_missing() -> Result<(), String> {
+        let root = temp_root("missing-no-review")?;
+        // Only sarif/badge artifacts present — no review story artifacts
+        write(&root.join("target/ripr/reports/ripr.sarif.json"), "{}")?;
+        let report = build_report_packet_index_report(input_for_root(&root));
+        assert_eq!(report.summary.missing_expected, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn missing_expected_first_useful_action_triggers_assistant_proof_missing() -> Result<(), String>
+    {
+        let root = temp_root("missing-assistant-proof")?;
+        // first_useful_action present but no assistant_proof
+        write(
+            &root.join("target/ripr/reports/first-useful-action.md"),
+            "content\n",
+        )?;
+        let report = build_report_packet_index_report(input_for_root(&root));
+        let has_assistant_proof_missing = report
+            .missing_expected
+            .iter()
+            .any(|m| m.id == "assistant_proof");
+        assert!(
+            has_assistant_proof_missing,
+            "expected assistant_proof in missing_expected"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn missing_expected_assistant_proof_and_health_trigger_agent_receipt_and_check_pr()
+    -> Result<(), String> {
+        let root = temp_root("missing-agent-receipt")?;
+        // assistant_proof + assistant_loop_health present but no agent_receipt or check_pr
+        write(
+            &root.join("target/ripr/reports/test-oracle-assistant-proof.md"),
+            "content\n",
+        )?;
+        write(
+            &root.join("target/ripr/reports/assistant-loop-health.md"),
+            "content\n",
+        )?;
+        let report = build_report_packet_index_report(input_for_root(&root));
+        let has_agent_receipt = report
+            .missing_expected
+            .iter()
+            .any(|m| m.id == "agent_receipt");
+        let has_check_pr = report.missing_expected.iter().any(|m| m.id == "check_pr");
+        assert!(
+            has_agent_receipt,
+            "expected agent_receipt in missing_expected"
+        );
+        assert!(has_check_pr, "expected check_pr in missing_expected");
+        Ok(())
+    }
+
+    #[test]
+    fn missing_expected_with_agent_receipt_suppresses_agent_receipt_missing() -> Result<(), String>
+    {
+        let root = temp_root("agent-receipt-present")?;
+        write(
+            &root.join("target/ripr/reports/test-oracle-assistant-proof.md"),
+            "content\n",
+        )?;
+        write(
+            &root.join("target/ripr/reports/assistant-loop-health.md"),
+            "content\n",
+        )?;
+        write(
+            &root.join("target/ripr/reports/agent-receipt.json"),
+            r#"{"status":"available"}"#,
+        )?;
+        write(
+            &root.join("target/ripr/reports/check-pr.md"),
+            "Status: pass\n",
+        )?;
+        let report = build_report_packet_index_report(input_for_root(&root));
+        let has_agent_receipt = report
+            .missing_expected
+            .iter()
+            .any(|m| m.id == "agent_receipt");
+        assert!(
+            !has_agent_receipt,
+            "agent_receipt should not appear in missing when present"
+        );
+        Ok(())
+    }
+
+    // ── build_report overall status variants ─────────────────────────────────
+
+    #[test]
+    fn build_report_status_incomplete_when_no_artifacts() -> Result<(), String> {
+        let root = temp_root("status-incomplete")?;
+        let report = build_report_packet_index_report(input_for_root(&root));
+        assert_eq!(report.status, "incomplete");
+        Ok(())
+    }
+
+    #[test]
+    fn build_report_status_pass_when_all_available_no_issues() -> Result<(), String> {
+        let root = temp_root("status-pass")?;
+        write(
+            &root.join("target/ripr/reports/pr-review-front-panel.md"),
+            "content\n",
+        )?;
+        write(
+            &root.join("target/ripr/reports/pr-review-front-panel.json"),
+            r#"{"status":"pass"}"#,
+        )?;
+        let report = build_report_packet_index_report(input_for_root(&root));
+        assert_eq!(report.status, "pass");
+        Ok(())
+    }
+
+    #[test]
+    fn build_report_status_fail_when_gate_is_failed() -> Result<(), String> {
+        let root = temp_root("status-fail")?;
+        write(
+            &root.join("target/ripr/reports/gate-decision.md"),
+            "content\n",
+        )?;
+        write(
+            &root.join("target/ripr/reports/gate-decision.json"),
+            r#"{"decision":"fail"}"#,
+        )?;
+        let report = build_report_packet_index_report(input_for_root(&root));
+        assert_eq!(report.status, "fail");
+        Ok(())
+    }
+
+    #[test]
+    fn build_report_warns_when_artifact_has_warn_status() -> Result<(), String> {
+        let root = temp_root("status-warn-entry")?;
+        write(
+            &root.join("target/ripr/reports/pr-review-front-panel.md"),
+            "content\n",
+        )?;
+        write(
+            &root.join("target/ripr/reports/pr-review-front-panel.json"),
+            r#"{"status":"warn"}"#,
+        )?;
+        let report = build_report_packet_index_report(input_for_root(&root));
+        assert_eq!(report.status, "warn");
+        Ok(())
+    }
+
+    // ── markdown rendering: start_here with gate_authority ───────────────────
+
+    #[test]
+    fn markdown_renders_start_here_with_gate_authority() -> Result<(), String> {
+        let root = temp_root("md-start-gate")?;
+        write(
+            &root.join("target/ripr/reports/pr-review-front-panel.md"),
+            "content\n",
+        )?;
+        write(
+            &root.join("target/ripr/reports/pr-review-front-panel.json"),
+            r#"{"status":"pass"}"#,
+        )?;
+        write(
+            &root.join("target/ripr/reports/gate-decision.md"),
+            "content\n",
+        )?;
+        write(
+            &root.join("target/ripr/reports/gate-decision.json"),
+            r#"{"decision":"pass"}"#,
+        )?;
+        let report = build_report_packet_index_report(input_for_root(&root));
+        let md = render_report_packet_index_markdown(&report);
+        assert!(
+            md.contains("Gate authority:"),
+            "expected gate authority line in markdown: {md}"
+        );
+        assert!(
+            md.contains("Start here:"),
+            "expected start here in markdown: {md}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn markdown_renders_authority_note_for_gate_entry() -> Result<(), String> {
+        let root = temp_root("md-authority-note")?;
+        write(
+            &root.join("target/ripr/reports/gate-decision.md"),
+            "content\n",
+        )?;
+        write(
+            &root.join("target/ripr/reports/gate-decision.json"),
+            r#"{"decision":"pass"}"#,
+        )?;
+        let report = build_report_packet_index_report(input_for_root(&root));
+        let md = render_report_packet_index_markdown(&report);
+        assert!(
+            md.contains("authority: gate decision controls"),
+            "expected authority note in markdown: {md}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn markdown_renders_next_command_for_missing_entry() -> Result<(), String> {
+        let root = temp_root("md-next-cmd")?;
+        // Make front_useful_action present but not pr_review_front_panel (triggers warning)
+        write(
+            &root.join("target/ripr/reports/first-useful-action.md"),
+            "content\n",
+        )?;
+        write(
+            &root.join("target/ripr/reports/review/comments.md"),
+            "comments\n",
+        )?;
+        let report = build_report_packet_index_report(input_for_root(&root));
+        let md = render_report_packet_index_markdown(&report);
+        // The missing entry for pr_review_front_panel should show a next: command
+        assert!(
+            md.contains("next: `ripr pr-review"),
+            "expected next command hint in markdown: {md}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn markdown_renders_missing_expected_section() -> Result<(), String> {
+        let root = temp_root("md-missing-expected")?;
+        write(
+            &root.join("target/ripr/reports/first-useful-action.md"),
+            "content\n",
+        )?;
+        let report = build_report_packet_index_report(input_for_root(&root));
+        let md = render_report_packet_index_markdown(&report);
+        assert!(
+            md.contains("Missing expected:"),
+            "expected Missing expected section in markdown: {md}"
+        );
+        Ok(())
+    }
+
+    // ── JSON render includes schema metadata ─────────────────────────────────
+
+    #[test]
+    fn json_render_includes_schema_version_and_kind() -> Result<(), String> {
+        let root = temp_root("json-schema")?;
+        write(
+            &root.join("target/ripr/reports/pr-review-front-panel.md"),
+            "content\n",
+        )?;
+        let report = build_report_packet_index_report(input_for_root(&root));
+        let json = render_report_packet_index_json(&report)?;
+        let value: Value =
+            serde_json::from_str(&json).map_err(|err| format!("parse json failed: {err}"))?;
+        let schema_version = value
+            .get("schema_version")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "schema_version missing".to_string())?;
+        assert_eq!(schema_version, "0.1");
+        let kind = value
+            .get("kind")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "kind missing".to_string())?;
+        assert_eq!(kind, "report_packet_index");
+        Ok(())
+    }
+
+    // ── artifact_available: json_path fallback ───────────────────────────────
+
+    #[test]
+    fn artifact_available_true_when_only_json_path_exists() -> Result<(), String> {
+        let root = temp_root("avail-json")?;
+        let json_path = root.join("target/ripr/reports/front-panel.json");
+        write(&json_path, r#"{"status":"pass"}"#)?;
+        let spec = ArtifactSpec {
+            id: "pr_review_front_panel",
+            label: "PR review front panel",
+            group: "start_here",
+            kind: "markdown",
+            path: root.join("target/ripr/reports/nonexistent.md"),
+            json_path: Some(json_path),
+            required: true,
+            authority: false,
+            description: "desc",
+            default_status: "available",
+            next_command: None,
+        };
+        assert!(artifact_available(&spec));
+        Ok(())
+    }
+
+    #[test]
+    fn artifact_available_false_when_neither_path_exists() -> Result<(), String> {
+        let root = temp_root("avail-none")?;
+        let spec = ArtifactSpec {
+            id: "pr_review_front_panel",
+            label: "PR review front panel",
+            group: "start_here",
+            kind: "markdown",
+            path: root.join("nonexistent.md"),
+            json_path: Some(root.join("nonexistent.json")),
+            required: true,
+            authority: false,
+            description: "desc",
+            default_status: "available",
+            next_command: None,
+        };
+        assert!(!artifact_available(&spec));
+        Ok(())
+    }
+
+    // ── warnings list populated from missing_expected ─────────────────────────
+
+    #[test]
+    fn warnings_list_populated_for_missing_front_panel() -> Result<(), String> {
+        let root = temp_root("warnings")?;
+        write(
+            &root.join("target/ripr/reports/first-useful-action.md"),
+            "content\n",
+        )?;
+        let report = build_report_packet_index_report(input_for_root(&root));
+        assert!(
+            !report.warnings.is_empty(),
+            "expected warnings to be non-empty"
+        );
+        let has_missing_kind = report.warnings.iter().any(|w| w.kind == "missing_expected");
+        assert!(has_missing_kind, "expected missing_expected warning kind");
+        Ok(())
+    }
+
+    // ── gate_decision: acknowledged and suppressed in full pipeline ──────────
+
+    #[test]
+    fn gate_decision_acknowledged_produces_pass_overall_status() -> Result<(), String> {
+        let root = temp_root("gate-acknowledged")?;
+        write(
+            &root.join("target/ripr/reports/gate-decision.md"),
+            "content\n",
+        )?;
+        write(
+            &root.join("target/ripr/reports/gate-decision.json"),
+            r#"{"decision":"acknowledged"}"#,
+        )?;
+        let report = build_report_packet_index_report(input_for_root(&root));
+        // acknowledged is not "fail" or "blocked", so overall status should not be fail
+        assert_ne!(report.status, "fail");
+        // The gate entry itself should have status "acknowledged"
+        let gate_entry = report
+            .groups
+            .iter()
+            .flat_map(|g| g.entries.iter())
+            .find(|e| e.id == "gate_decision");
+        let Some(entry) = gate_entry else {
+            return Err("expected gate_decision entry".to_string());
+        };
+        assert_eq!(entry.status, "acknowledged");
+        Ok(())
+    }
+
+    #[test]
+    fn gate_decision_suppressed_produces_pass_overall_status() -> Result<(), String> {
+        let root = temp_root("gate-suppressed")?;
+        write(
+            &root.join("target/ripr/reports/gate-decision.md"),
+            "content\n",
+        )?;
+        write(
+            &root.join("target/ripr/reports/gate-decision.json"),
+            r#"{"decision":"suppressed"}"#,
+        )?;
+        let report = build_report_packet_index_report(input_for_root(&root));
+        assert_ne!(report.status, "fail");
+        let gate_entry = report
+            .groups
+            .iter()
+            .flat_map(|g| g.entries.iter())
+            .find(|e| e.id == "gate_decision");
+        let Some(entry) = gate_entry else {
+            return Err("expected gate_decision entry".to_string());
+        };
+        assert_eq!(entry.status, "suppressed");
+        Ok(())
+    }
+
+    #[test]
+    fn gate_decision_incomplete_produces_warn_overall_status() -> Result<(), String> {
+        let root = temp_root("gate-incomplete")?;
+        write(
+            &root.join("target/ripr/reports/gate-decision.md"),
+            "content\n",
+        )?;
+        write(
+            &root.join("target/ripr/reports/gate-decision.json"),
+            r#"{"decision":"incomplete"}"#,
+        )?;
+        let report = build_report_packet_index_report(input_for_root(&root));
+        let gate_entry = report
+            .groups
+            .iter()
+            .flat_map(|g| g.entries.iter())
+            .find(|e| e.id == "gate_decision");
+        let Some(entry) = gate_entry else {
+            return Err("expected gate_decision entry".to_string());
+        };
+        assert_eq!(entry.status, "incomplete");
+        assert_eq!(report.status, "warn");
+        Ok(())
+    }
+
+    // ── front_panel: warn and incomplete in full pipeline ────────────────────
+
+    #[test]
+    fn front_panel_incomplete_json_status_produces_warn_overall() -> Result<(), String> {
+        let root = temp_root("front-panel-incomplete")?;
+        write(
+            &root.join("target/ripr/reports/pr-review-front-panel.md"),
+            "content\n",
+        )?;
+        write(
+            &root.join("target/ripr/reports/pr-review-front-panel.json"),
+            r#"{"status":"incomplete"}"#,
+        )?;
+        let report = build_report_packet_index_report(input_for_root(&root));
+        let entry = report
+            .groups
+            .iter()
+            .flat_map(|g| g.entries.iter())
+            .find(|e| e.id == "pr_review_front_panel");
+        let Some(e) = entry else {
+            return Err("expected pr_review_front_panel entry".to_string());
+        };
+        assert_eq!(e.status, "incomplete");
+        assert_eq!(report.status, "warn");
+        Ok(())
+    }
+
+    #[test]
+    fn front_panel_config_error_json_status_produces_fail_overall() -> Result<(), String> {
+        let root = temp_root("front-panel-config-error")?;
+        write(
+            &root.join("target/ripr/reports/pr-review-front-panel.md"),
+            "content\n",
+        )?;
+        write(
+            &root.join("target/ripr/reports/pr-review-front-panel.json"),
+            r#"{"status":"config_error"}"#,
+        )?;
+        let report = build_report_packet_index_report(input_for_root(&root));
+        let entry = report
+            .groups
+            .iter()
+            .flat_map(|g| g.entries.iter())
+            .find(|e| e.id == "pr_review_front_panel");
+        let Some(e) = entry else {
+            return Err("expected pr_review_front_panel entry".to_string());
+        };
+        assert_eq!(e.status, "fail");
+        assert_eq!(report.status, "fail");
+        Ok(())
+    }
 }
