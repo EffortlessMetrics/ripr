@@ -2633,6 +2633,9 @@ fn sorted_traceability_behavior_blocks_content(text: &str) -> String {
     for (index, start) in block_starts.iter().copied().enumerate() {
         let end = block_starts.get(index + 1).copied().unwrap_or(text.len());
         let block = &text[start..end];
+        if traceability_behavior_block_has_duplicate_keys(block) {
+            return text.to_string();
+        }
         let Some(id) = traceability_behavior_block_id(block) else {
             return text.to_string();
         };
@@ -2654,6 +2657,34 @@ fn sorted_traceability_behavior_blocks_content(text: &str) -> String {
         output.push_str(block);
     }
     output
+}
+
+fn traceability_behavior_block_has_duplicate_keys(block: &str) -> bool {
+    let mut seen = BTreeSet::new();
+    let mut active_array = false;
+    for line in block.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed == "[[behavior]]" {
+            continue;
+        }
+        if active_array {
+            if trimmed.starts_with(']') {
+                active_array = false;
+            }
+            continue;
+        }
+        let Some((key, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        if !seen.insert(key.to_string()) {
+            return true;
+        }
+        if value.trim() == "[" {
+            active_array = true;
+        }
+    }
+    false
 }
 
 fn traceability_behavior_block_id(block: &str) -> Option<String> {
@@ -39511,6 +39542,7 @@ jobs:
         let missing = "[[behavior]]\nname = \"A\"\n\n[[behavior]]\nid = \"RIPR-SPEC-0002\"\n";
         let invalid =
             "[[behavior]]\nid = \"not-a-spec\"\n\n[[behavior]]\nid = \"RIPR-SPEC-0002\"\n";
+        let duplicate_key = "[[behavior]]\nid = \"RIPR-SPEC-0002\"\ntests = []\ntests = [\n  \"example\",\n]\n\n[[behavior]]\nid = \"RIPR-SPEC-0001\"\n";
 
         assert_eq!(
             sorted_traceability_behavior_blocks_content(duplicate),
@@ -39523,6 +39555,10 @@ jobs:
         assert_eq!(
             sorted_traceability_behavior_blocks_content(invalid),
             invalid
+        );
+        assert_eq!(
+            sorted_traceability_behavior_blocks_content(duplicate_key),
+            duplicate_key
         );
     }
 
