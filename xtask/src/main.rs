@@ -40158,6 +40158,78 @@ jobs:
     }
 
     #[test]
+    fn sorted_command_catalog_content_skips_non_catalog_or_incomplete_catalogs() {
+        let no_catalog = "pub(crate) fn unrelated() {}\n";
+        let incomplete = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        command_entry(
+            "shape",
+            "mutating",
+            "source files",
+            false,
+            "Runs deterministic shaping.",
+        ),
+"#;
+        let non_entry_body = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        CommandCatalogEntry {
+            command: "shape",
+            mutability: "mutating",
+            writes: "source files",
+            judgment_required: false,
+            notes: "Runs deterministic shaping.",
+        },
+    ]
+}
+"#;
+        let single_entry = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        command_entry(
+            "shape",
+            "mutating",
+            "source files",
+            false,
+            "Runs deterministic shaping.",
+        ),
+    ]
+}
+"#;
+
+        assert_eq!(sorted_command_catalog_content(no_catalog), no_catalog);
+        assert_eq!(sorted_command_catalog_content(incomplete), incomplete);
+        assert_eq!(
+            sorted_command_catalog_content(non_entry_body),
+            non_entry_body
+        );
+        assert_eq!(sorted_command_catalog_content(single_entry), single_entry);
+    }
+
+    #[test]
+    fn sorted_command_catalog_content_skips_entries_without_quoted_command() {
+        let input = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        command_entry(
+            SHAPE_COMMAND,
+            "mutating",
+            "source files",
+            false,
+            "Runs deterministic shaping.",
+        ),
+        command_entry(
+            "check-pr",
+            "non_mutating_check",
+            "target/ripr/reports",
+            false,
+            "Review-ready gate.",
+        ),
+    ]
+}
+"#;
+
+        assert_eq!(sorted_command_catalog_content(input), input);
+    }
+
+    #[test]
     fn suggested_fixes_patch_sorts_allowlists_doc_indexes_traceability_capabilities_and_catalog()
     -> Result<(), String> {
         with_temp_cwd("suggested-fixes-allowlist", |root| {
