@@ -130,6 +130,10 @@ Planned scope:
   keeps the Lane 1 counting model visible without changing badges, gates,
   scores, PR/CI rendering, generated tests, provider calls, source edits, or
   mutation execution.
+- `cargo xtask dogfood` now checks finding-alignment receipts for real RIPR PR
+  examples, pinning actionable, already-observed, internal no-action, and named
+  static-limitation outcomes without changing PR/CI rendering, gates, public
+  scores, generated tests, provider calls, source edits, or mutation execution.
 - VS Code `ripr: Show Status` now includes first-run/no-output context:
   workspace root, resolved server source and command, editor selectors,
   enabled languages from the last server refresh, and the next safe action for
