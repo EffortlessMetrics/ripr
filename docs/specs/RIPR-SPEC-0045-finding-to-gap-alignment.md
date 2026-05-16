@@ -501,6 +501,8 @@ Follow-up implementation should include:
 - report tests proving raw findings remain supporting evidence;
 - consumer-handoff docs that identify canonical items as authoritative;
 - scorecard/trend tests for alignment metrics.
+- dogfood receipts that record real RIPR PR examples for actionable,
+  already-observed, internal/no-action, and named static-limitation outcomes.
 
 This spec PR does not add analyzer behavior or public output fields.
 
@@ -530,6 +532,9 @@ Planned Lane 1 slices:
   classes also expose the normalized top-level `repair_route` so downstream
   consumers do not parse class-specific fields to determine the user repair.
 - `report/finding-alignment-quality` adds scorecard and trend metrics.
+- `dogfood/finding-alignment-examples` checks repo-local receipts under
+  `fixtures/finding-alignment-dogfood/` so real RIPR PR examples preserve the
+  raw-finding -> canonical-item -> user-outcome split.
 - `docs/canonical-gap-action-consumer-handoff` documents downstream
   consumption.
 
