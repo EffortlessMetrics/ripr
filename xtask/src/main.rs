@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
+use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -13252,61 +13252,11 @@ fn lane1_repo_exposure_file_looks_complete(path: &Path) -> Result<bool, String> 
             path.display()
         )
     })?;
-    let metadata = file.metadata().map_err(|err| {
-        format!(
-            "failed to read captured repo exposure metadata {}: {err}",
-            path.display()
-        )
-    })?;
-    if metadata.len() == 0 {
-        return Ok(false);
-    }
-
-    let mut reader = BufReader::new(file);
-    let mut saw_seams_array = false;
-    let mut line = String::new();
-    for _ in 0..1024 {
-        line.clear();
-        let bytes = reader.read_line(&mut line).map_err(|err| {
-            format!(
-                "failed to inspect captured repo exposure header {}: {err}",
-                path.display()
-            )
-        })?;
-        if bytes == 0 {
-            break;
-        }
-        if line.trim_start().starts_with("\"seams\":") {
-            saw_seams_array = true;
-            break;
-        }
-    }
-    if !saw_seams_array {
-        return Ok(false);
-    }
-
-    let mut file = fs::File::open(path).map_err(|err| {
-        format!(
-            "failed to reopen captured repo exposure {}: {err}",
-            path.display()
-        )
-    })?;
-    let tail_len = metadata.len().min(4096) as usize;
-    file.seek(SeekFrom::End(-(tail_len as i64)))
-        .map_err(|err| {
-            format!(
-                "failed to inspect captured repo exposure tail {}: {err}",
-                path.display()
-            )
-        })?;
-    let mut tail = vec![0; tail_len];
-    file.read_exact(&mut tail).map_err(|err| {
-        format!(
-            "failed to read captured repo exposure tail {}: {err}",
-            path.display()
-        )
-    })?;
-    Ok(String::from_utf8_lossy(&tail).trim_end().ends_with('}'))
+    let value: Value = match serde_json::from_reader(BufReader::new(file)) {
+        Ok(value) => value,
+        Err(_) => return Ok(false),
+    };
+    Ok(value.get("seams").and_then(Value::as_array).is_some())
 }
 
 fn lane1_evidence_audit_from_repo_exposure_file(
