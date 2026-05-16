@@ -102,6 +102,9 @@ Planned scope:
 - `cargo xtask suggested-fixes` now suggests deterministic
   `.ripr/traceability.toml` `[[behavior]]` block ordering by spec ID without
   re-rendering TOML or changing block bodies.
+- `cargo xtask suggested-fixes` now suggests deterministic
+  `metrics/capabilities.toml` `[[capability]]` block ordering by spec ID and
+  capability ID without re-rendering TOML or changing block bodies.
 - Added `cargo xtask check-command-catalog`, a non-mutating guard that fails
   when xtask help entries and the command mutability catalog drift apart or
   omit write/judgment metadata.

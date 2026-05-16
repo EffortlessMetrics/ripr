@@ -2523,6 +2523,15 @@ fn suggested_fixes_patch() -> Result<(String, Vec<String>), String> {
         append_whole_file_patch(&mut patch, &path, &original, &sorted);
         files.push(normalize_path(&path));
     }
+    for path in deterministic_suggested_fix_capability_files() {
+        let original = read_text_lossy(&path)?;
+        let sorted = sorted_capability_blocks_content(&original);
+        if sorted == original {
+            continue;
+        }
+        append_whole_file_patch(&mut patch, &path, &original, &sorted);
+        files.push(normalize_path(&path));
+    }
     files.sort();
     Ok((patch, files))
 }
@@ -2555,6 +2564,13 @@ fn deterministic_suggested_fix_docs_index_files() -> Vec<PathBuf> {
 
 fn deterministic_suggested_fix_traceability_files() -> Vec<PathBuf> {
     [PathBuf::from(".ripr/traceability.toml")]
+        .into_iter()
+        .filter(|path| path.exists())
+        .collect()
+}
+
+fn deterministic_suggested_fix_capability_files() -> Vec<PathBuf> {
+    [PathBuf::from("metrics/capabilities.toml")]
         .into_iter()
         .filter(|path| path.exists())
         .collect()
@@ -2633,7 +2649,7 @@ fn sorted_traceability_behavior_blocks_content(text: &str) -> String {
     for (index, start) in block_starts.iter().copied().enumerate() {
         let end = block_starts.get(index + 1).copied().unwrap_or(text.len());
         let block = &text[start..end];
-        if traceability_behavior_block_is_unsafe_to_sort(block) {
+        if toml_array_table_block_is_unsafe_to_sort(block, "[[behavior]]") {
             return text.to_string();
         }
         let Some(id) = traceability_behavior_block_id(block) else {
@@ -2659,12 +2675,98 @@ fn sorted_traceability_behavior_blocks_content(text: &str) -> String {
     output
 }
 
-fn traceability_behavior_block_is_unsafe_to_sort(block: &str) -> bool {
+fn sorted_capability_blocks_content(text: &str) -> String {
+    let mut block_starts = Vec::new();
+    let mut offset = 0;
+    for line in text.split_inclusive('\n') {
+        if line.trim() == "[[capability]]" {
+            block_starts.push(offset);
+        }
+        offset += line.len();
+    }
+    if block_starts.len() <= 1 {
+        return text.to_string();
+    }
+
+    let (capabilities, parse_violations) =
+        parse_capabilities_manifest_text("metrics/capabilities.toml", text);
+    if !parse_violations.is_empty() || capabilities.len() != block_starts.len() {
+        return text.to_string();
+    }
+
+    let prefix = &text[..block_starts[0]];
+    let mut ids = BTreeSet::new();
+    let mut blocks = Vec::new();
+    for ((index, start), capability) in block_starts
+        .iter()
+        .copied()
+        .enumerate()
+        .zip(capabilities.iter())
+    {
+        let end = block_starts.get(index + 1).copied().unwrap_or(text.len());
+        let block = &text[start..end];
+        if toml_array_table_block_is_unsafe_to_sort(block, "[[capability]]") {
+            return text.to_string();
+        }
+        let Some((spec, id)) = capability_sort_key(capability) else {
+            return text.to_string();
+        };
+        if !ids.insert(id.clone()) {
+            return text.to_string();
+        }
+        blocks.push(((spec, id), block));
+    }
+
+    let original_order = blocks
+        .iter()
+        .map(|((spec, id), _)| (spec.clone(), id.clone()))
+        .collect::<Vec<_>>();
+    blocks.sort_by(|left, right| left.0.cmp(&right.0));
+    let sorted_order = blocks
+        .iter()
+        .map(|((spec, id), _)| (spec.clone(), id.clone()))
+        .collect::<Vec<_>>();
+    if original_order == sorted_order {
+        return text.to_string();
+    }
+
+    let mut output = prefix.to_string();
+    for (_, block) in blocks {
+        output.push_str(block);
+    }
+    let (sorted_capabilities, sorted_violations) =
+        parse_capabilities_manifest_text("metrics/capabilities.toml", &output);
+    let Some(sorted_capability_order) = capability_sort_keys(&sorted_capabilities) else {
+        return text.to_string();
+    };
+    if !sorted_violations.is_empty()
+        || sorted_capabilities.len() != block_starts.len()
+        || sorted_capability_order != sorted_order
+    {
+        return text.to_string();
+    }
+    output
+}
+
+fn capability_sort_keys(capabilities: &[Capability]) -> Option<Vec<(String, String)>> {
+    capabilities.iter().map(capability_sort_key).collect()
+}
+
+fn capability_sort_key(capability: &Capability) -> Option<(String, String)> {
+    let id = capability.id.as_ref()?;
+    let spec = capability.spec.as_ref()?;
+    if !is_snake_case_id(id) || !is_spec_id(spec) {
+        return None;
+    }
+    Some((spec.clone(), id.clone()))
+}
+
+fn toml_array_table_block_is_unsafe_to_sort(block: &str, table_header: &str) -> bool {
     let mut seen = BTreeSet::new();
     let mut active_array = false;
     for line in block.lines() {
         let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed == "[[behavior]]" {
+        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed == table_header {
             continue;
         }
         if active_array {
@@ -2750,6 +2852,7 @@ fn suggested_fixes_report_body(files: &[String], patch_empty: bool) -> String {
     body.push_str("- deterministic allowlist ordering under `.ripr/*.txt` and `policy/*.txt`\n");
     body.push_str("- deterministic docs index table ordering for specs and ADRs\n");
     body.push_str("- deterministic traceability behavior block ordering by spec id\n");
+    body.push_str("- deterministic capability block ordering by spec ID and capability ID\n");
     body.push_str("- no badge value edits\n");
     body.push_str("- no golden blessings\n");
     body.push_str("- no baselines, suppressions, dependency exceptions, or schema changes\n\n");
@@ -25512,6 +25615,16 @@ fn validate_capabilities(
 
 fn parse_capabilities_manifest(path: &Path) -> Result<(Vec<Capability>, Vec<String>), String> {
     let text = read_text_lossy(path)?;
+    Ok(parse_capabilities_manifest_text(
+        &normalize_path(path),
+        &text,
+    ))
+}
+
+fn parse_capabilities_manifest_text(
+    path_label: &str,
+    text: &str,
+) -> (Vec<Capability>, Vec<String>) {
     let mut capabilities = Vec::new();
     let mut violations = Vec::new();
     let mut current: Option<Capability> = None;
@@ -25527,9 +25640,7 @@ fn parse_capabilities_manifest(path: &Path) -> Result<(Vec<Capability>, Vec<Stri
             if trimmed.starts_with(']') {
                 let Some(mut capability) = current.take() else {
                     violations.push(format!(
-                        "{}:{} array `{key}` is outside a capability entry",
-                        normalize_path(path),
-                        start_line
+                        "{path_label}:{start_line} array `{key}` is outside a capability entry"
                     ));
                     active_array = None;
                     continue;
@@ -25548,9 +25659,7 @@ fn parse_capabilities_manifest(path: &Path) -> Result<(Vec<Capability>, Vec<Stri
             match parse_array_item(trimmed) {
                 Ok(Some(value)) => values.push(value),
                 Ok(None) => {}
-                Err(message) => {
-                    violations.push(format!("{}:{line_number} {message}", normalize_path(path)))
-                }
+                Err(message) => violations.push(format!("{path_label}:{line_number} {message}")),
             }
             continue;
         }
@@ -25565,18 +25674,14 @@ fn parse_capabilities_manifest(path: &Path) -> Result<(Vec<Capability>, Vec<Stri
             continue;
         }
         let Some((key, value)) = trimmed.split_once('=') else {
-            violations.push(format!(
-                "{}:{line_number} expected `key = value`",
-                normalize_path(path)
-            ));
+            violations.push(format!("{path_label}:{line_number} expected `key = value`"));
             continue;
         };
         let key = key.trim();
         let value = value.trim();
         let Some(capability) = current.as_mut() else {
             violations.push(format!(
-                "{}:{line_number} `{key}` appears outside a [[capability]] entry",
-                normalize_path(path)
+                "{path_label}:{line_number} `{key}` appears outside a [[capability]] entry"
             ));
             continue;
         };
@@ -25589,9 +25694,7 @@ fn parse_capabilities_manifest(path: &Path) -> Result<(Vec<Capability>, Vec<Stri
                 Ok(values) => {
                     assign_capability_array(capability, key, values, line_number, &mut violations);
                 }
-                Err(message) => {
-                    violations.push(format!("{}:{line_number} {message}", normalize_path(path)))
-                }
+                Err(message) => violations.push(format!("{path_label}:{line_number} {message}")),
             }
             continue;
         }
@@ -25599,22 +25702,19 @@ fn parse_capabilities_manifest(path: &Path) -> Result<(Vec<Capability>, Vec<Stri
             Ok(parsed) => {
                 assign_capability_string(capability, key, parsed, line_number, &mut violations);
             }
-            Err(message) => {
-                violations.push(format!("{}:{line_number} {message}", normalize_path(path)))
-            }
+            Err(message) => violations.push(format!("{path_label}:{line_number} {message}")),
         }
     }
 
     if let Some((key, _, start_line)) = active_array {
         violations.push(format!(
-            "{}:{start_line} array `{key}` is missing closing `]`",
-            normalize_path(path)
+            "{path_label}:{start_line} array `{key}` is missing closing `]`"
         ));
     }
     if let Some(capability) = current {
         capabilities.push(capability);
     }
-    Ok((capabilities, violations))
+    (capabilities, violations)
 }
 
 fn assign_capability_string(
@@ -34716,17 +34816,18 @@ mod tests {
         ripr_command_literals_in_text, ripr_debug_binary, ripr_pre_commit_hook,
         run_ci_full_evidence_gates, sarif_policy_report_json, sarif_policy_report_markdown,
         semantic_selector_matches, should_scan_static_language_path, should_skip_path,
-        sorted_allowlist_content, sorted_markdown_index_table_content,
-        sorted_traceability_behavior_blocks_content, spec_id_from_path, spec_ids_in_text,
-        spec_numbering_violations, specs, static_language_allowlist_covers, status_for_report,
-        suggested_fixes_patch, suspicious_runtime_file_names, targeted_test_outcome,
-        targeted_test_outcome_report_json, targeted_test_outcome_report_markdown,
-        test_efficiency_entry, test_efficiency_report_json, test_efficiency_report_markdown,
-        test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
-        unknown_command_message, validate_local_context_allowlist, vscode_compile_command,
-        vscode_extension_dir, vscode_package_command, vscode_package_version,
-        vscode_test_e2e_command, windows_absolute_path_tokens, workflow_runtime_violations,
-        worktree, worktree_doctor_findings, write_repo_exposure_latency_report,
+        sorted_allowlist_content, sorted_capability_blocks_content,
+        sorted_markdown_index_table_content, sorted_traceability_behavior_blocks_content,
+        spec_id_from_path, spec_ids_in_text, spec_numbering_violations, specs,
+        static_language_allowlist_covers, status_for_report, suggested_fixes_patch,
+        suspicious_runtime_file_names, targeted_test_outcome, targeted_test_outcome_report_json,
+        targeted_test_outcome_report_markdown, test_efficiency_entry, test_efficiency_report_json,
+        test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
+        test_oracle_tests_in_text, unknown_command_message, validate_local_context_allowlist,
+        vscode_compile_command, vscode_extension_dir, vscode_package_command,
+        vscode_package_version, vscode_test_e2e_command, windows_absolute_path_tokens,
+        workflow_runtime_violations, worktree, worktree_doctor_findings,
+        write_repo_exposure_latency_report,
     };
     use super::{
         DeclaredIntent, LocalContextFinding,
@@ -39601,7 +39702,60 @@ jobs:
     }
 
     #[test]
-    fn suggested_fixes_patch_sorts_allowlists_doc_indexes_and_traceability() -> Result<(), String> {
+    fn sorted_capability_blocks_content_sorts_blocks_by_spec_then_id() {
+        let prefix = "# Capabilities\n\n";
+        let block_c = "[[capability]]\n# keep c\nid = \"alpha_capability\"\nspec = \"RIPR-SPEC-0001\"\nname = \"Alpha\"\n\n";
+        let block_b = "[[capability]]\n# keep b\nid = \"zeta_capability\"\nspec = \"RIPR-SPEC-0001\"\nname = \"Zeta\"\n\n";
+        let block_a = "[[capability]]\n# keep a\nid = \"beta_capability\"\nspec = \"RIPR-SPEC-0002\"\nname = \"Beta\"\n\n";
+        let input = format!("{prefix}{block_a}{block_b}{block_c}");
+        let sorted = sorted_capability_blocks_content(&input);
+
+        assert_eq!(sorted, format!("{prefix}{block_c}{block_b}{block_a}"));
+    }
+
+    #[test]
+    fn sorted_capability_blocks_content_preserves_prefix_and_whole_blocks() {
+        let prefix = "# Capabilities\n\n# human notes stay above generated ordering\n\n";
+        let block_b = "[[capability]]\nid = \"beta_capability\"\nspec = \"RIPR-SPEC-0002\"\n# block comment stays with beta\nname = \"Beta\"\n\n";
+        let block_a = "[[capability]]\nid = \"alpha_capability\"\nspec = \"RIPR-SPEC-0001\"\nname = \"Alpha\"\nfixtures = [\n  \"fixtures/alpha\",\n]\n\n";
+        let input = format!("{prefix}{block_b}{block_a}");
+        let sorted = sorted_capability_blocks_content(&input);
+
+        assert!(sorted.starts_with(prefix));
+        assert_eq!(sorted, format!("{prefix}{block_a}{block_b}"));
+    }
+
+    #[test]
+    fn sorted_capability_blocks_content_skips_unsafe_manifests() {
+        let duplicate = "[[capability]]\nid = \"alpha\"\nspec = \"RIPR-SPEC-0001\"\n\n[[capability]]\nid = \"alpha\"\nspec = \"RIPR-SPEC-0002\"\n";
+        let missing = "[[capability]]\nname = \"A\"\nspec = \"RIPR-SPEC-0001\"\n\n[[capability]]\nid = \"beta\"\nspec = \"RIPR-SPEC-0002\"\n";
+        let invalid_id = "[[capability]]\nid = \"NotSnake\"\nspec = \"RIPR-SPEC-0001\"\n\n[[capability]]\nid = \"beta\"\nspec = \"RIPR-SPEC-0002\"\n";
+        let invalid_spec = "[[capability]]\nid = \"beta\"\nspec = \"not-a-spec\"\n\n[[capability]]\nid = \"alpha\"\nspec = \"RIPR-SPEC-0002\"\n";
+        let duplicate_key = "[[capability]]\nid = \"beta\"\nspec = \"RIPR-SPEC-0002\"\nevidence = []\nevidence = [\n  \"example\",\n]\n\n[[capability]]\nid = \"alpha\"\nspec = \"RIPR-SPEC-0001\"\n";
+        let unterminated_array = "[[capability]]\nid = \"beta\"\nspec = \"RIPR-SPEC-0002\"\nevidence = [\n  \"example\",\n\n[[capability]]\nid = \"alpha\"\nspec = \"RIPR-SPEC-0001\"\n";
+        let malformed_inline_array = "[[capability]]\nid = \"beta\"\nspec = \"RIPR-SPEC-0002\"\nevidence = [example]\n\n[[capability]]\nid = \"alpha\"\nspec = \"RIPR-SPEC-0001\"\n";
+
+        assert_eq!(sorted_capability_blocks_content(duplicate), duplicate);
+        assert_eq!(sorted_capability_blocks_content(missing), missing);
+        assert_eq!(sorted_capability_blocks_content(invalid_id), invalid_id);
+        assert_eq!(sorted_capability_blocks_content(invalid_spec), invalid_spec);
+        assert_eq!(
+            sorted_capability_blocks_content(duplicate_key),
+            duplicate_key
+        );
+        assert_eq!(
+            sorted_capability_blocks_content(unterminated_array),
+            unterminated_array
+        );
+        assert_eq!(
+            sorted_capability_blocks_content(malformed_inline_array),
+            malformed_inline_array
+        );
+    }
+
+    #[test]
+    fn suggested_fixes_patch_sorts_allowlists_doc_indexes_traceability_and_capabilities()
+    -> Result<(), String> {
         with_temp_cwd("suggested-fixes-allowlist", |root| {
             write(
                 &root.join(".ripr/generated.txt"),
@@ -39610,6 +39764,10 @@ jobs:
             write(
                 &root.join(".ripr/traceability.toml"),
                 "# Traceability\n\n[[behavior]]\nid = \"RIPR-SPEC-0002\"\nname = \"B\"\n\n[[behavior]]\nid = \"RIPR-SPEC-0001\"\nname = \"A\"\n",
+            );
+            write(
+                &root.join("metrics/capabilities.toml"),
+                "# Capabilities\n\n[[capability]]\nid = \"zeta_capability\"\nspec = \"RIPR-SPEC-0002\"\nname = \"Zeta\"\n\n[[capability]]\nid = \"alpha_capability\"\nspec = \"RIPR-SPEC-0001\"\nname = \"Alpha\"\n",
             );
             write(&root.join("policy/process.txt"), "gamma\nbeta\n");
             write(
@@ -39629,6 +39787,7 @@ jobs:
                     ".ripr/generated.txt".to_string(),
                     ".ripr/traceability.toml".to_string(),
                     "docs/specs/README.md".to_string(),
+                    "metrics/capabilities.toml".to_string(),
                     "policy/process.txt".to_string()
                 ]
             );
@@ -39639,6 +39798,12 @@ jobs:
                 patch
                     .find("+id = \"RIPR-SPEC-0001\"")
                     .zip(patch.find("+id = \"RIPR-SPEC-0002\""))
+                    .is_some_and(|(first, second)| first < second)
+            );
+            assert!(
+                patch
+                    .find("+id = \"alpha_capability\"")
+                    .zip(patch.find("+id = \"zeta_capability\""))
                     .is_some_and(|(first, second)| first < second)
             );
             assert!(patch.contains("diff --git a/docs/specs/README.md b/docs/specs/README.md"));
@@ -39665,6 +39830,10 @@ jobs:
             write(
                 &root.join("docs/adr/README.md"),
                 "# Architecture Decision Records\n\n## Index\n\n| ADR | Status | Decision |\n| --- | --- | --- |\n| [0001](0001-a.md) | accepted | A. |\n| [0002](0002-b.md) | proposed | B. |\n",
+            );
+            write(
+                &root.join("metrics/capabilities.toml"),
+                "# Capabilities\n\n[[capability]]\nid = \"alpha_capability\"\nspec = \"RIPR-SPEC-0001\"\nname = \"Alpha\"\n\n[[capability]]\nid = \"beta_capability\"\nspec = \"RIPR-SPEC-0002\"\nname = \"Beta\"\n",
             );
 
             let (patch, files) = suggested_fixes_patch()?;
