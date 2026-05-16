@@ -108,10 +108,10 @@ through GitHub CLI and writes `target/ripr/reports/pr-triage.md` plus
 `target/ripr/reports/pr-triage.json`. It flags same-title families, identical
 changed-file sets, stale drafts, branches behind main, incomplete validation
 signals, and policy/gate/generated workflow surfaces. It also emits an
-advisory queue disposition for each PR, such as `merge_candidate`,
-`needs_rebase`, `needs_fresh_validation`, `needs_owner_decision`, or
-`do_not_touch_wrong_lane`. It is advisory and never updates, closes, merges, or
-comments on PRs.
+advisory queue disposition for each PR — `merge_candidate`, `needs_rebase`,
+`needs_review`, `close_duplicate`, `superseded`, `needs_fresh_validation`,
+`needs_owner_decision`, or `do_not_touch_wrong_lane`. It is advisory and never
+updates, closes, merges, or comments on PRs.
 
 `gh-pr-status --pr <number>` is the per-PR merge-readiness packet. It reads
 GitHub CLI PR status, branch-protection required contexts when available,
