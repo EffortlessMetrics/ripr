@@ -40,6 +40,7 @@ ripr pr-ledger record \
   --gate target/ripr/reports/gate-decision.json \
   --baseline-delta target/ripr/reports/baseline-debt-delta.json \
   --zero-status target/ripr/reports/ripr-zero-status.json \
+  --gap-ledger target/ripr/reports/gap-decision-ledger.json \
   --recommendation-calibration target/ripr/reports/recommendation-calibration.json \
   --agent-receipt target/ripr/reports/agent-receipt.json \
   --coverage target/ripr/reports/coverage-summary.json \

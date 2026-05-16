@@ -1,0 +1,10 @@
+diff --git a/src/validation.py b/src/validation.py
+index 0000000..1111111 100644
+--- a/src/validation.py
++++ b/src/validation.py
+@@ -1,5 +1,5 @@
+ def require_positive(value):
+     if value <= 0:
+-        raise TypeError("positive required")
++        raise ValueError("positive required")
+     return value

@@ -1,0 +1,15 @@
+{
+  "schema_version": "0.1",
+  "fixture": "python_disabled",
+  "states": [
+    {
+      "name": "preview_disabled",
+      "text": "ripr: diagnostics",
+      "summary": "No Python preview diagnostics are published because Python is not enabled in ripr.toml.",
+      "tooltip_contains": [
+        "[languages] enabled = [\"rust\"]",
+        "Preview files remain projection-only and produce no diagnostics while disabled."
+      ]
+    }
+  ]
+}

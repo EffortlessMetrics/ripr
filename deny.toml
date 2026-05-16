@@ -16,12 +16,49 @@ targets = [
 
 [advisories]
 yanked = "deny"
-ignore = []
+ignore = [
+  # The `rust-unic` Unicode crate family is declared unmaintained
+  # (umbrella announcement: RUSTSEC-2025-0098). Each crate has its
+  # own RUSTSEC entry; cargo-deny treats them as separate errors so
+  # every transitive in the graph must be listed by ID. The crates
+  # reach our graph via `rustpython-parser` (the Python preview
+  # adapter substrate approved by the corrected ADR 0009 for
+  # Campaign 27); the advisory's own Solution line says "No safe
+  # upgrade is available" because the crates' upstream project
+  # (rust-unic) is no longer maintained.
+  #
+  # None of these crates are flagged for any known vulnerability —
+  # they ship Unicode character-database tables that ripr's adapter
+  # never touches directly. The recommended migration target
+  # (`icu_properties` / `unicode-ident`) requires `rustpython-parser`
+  # itself to migrate, which is outside our control. Suppression is
+  # bounded to these specific RUSTSEC IDs; any future advisory
+  # upgrade (e.g., a CVE) will produce a new ID that fails the
+  # check again. Revisit when `rustpython-parser` migrates off
+  # `rust-unic` or when ADR 0009 is itself superseded.
+  "RUSTSEC-2025-0075",  # unic-char-range
+  "RUSTSEC-2025-0080",  # unic-common
+  "RUSTSEC-2025-0081",  # unic-char-property
+  "RUSTSEC-2025-0090",  # unic-emoji-char
+  "RUSTSEC-2025-0098",  # rust-unic umbrella announcement
+  "RUSTSEC-2025-0100",  # unic-ucd-ident
+]
 
 [licenses]
 confidence-threshold = 0.8
 allow = [
     "Apache-2.0",
+    # Permissive Apache-2.0 variant with the LLVM compiler-runtime
+    # exception, OSI-approved and SPDX-tracked. Reached the dependency
+    # graph via `oxc_*` crates (the TypeScript/JavaScript parser approved
+    # by ADR 0008 for the Campaign 27 preview adapter); the underlying
+    # transitive crate dual-licenses as `Apache-2.0 WITH LLVM-exception
+    # OR BSL-1.0`, so allowing either satisfies cargo-deny.
+    "Apache-2.0 WITH LLVM-exception",
+    # OSI-approved and FSF Free/Libre. Permissive, universally accepted
+    # as compatible with MIT/Apache. Reached the dependency graph via the
+    # same `oxc_*` transitive that dual-licenses with LLVM-exception.
+    "BSL-1.0",
     "MIT",
     "MIT-0",
     "Unicode-3.0",
@@ -30,6 +67,20 @@ allow = [
     # `zlib-rs` (the pure-Rust zlib port pulled by `flate2` underneath the
     # `zip` crate used by `cargo xtask release-server-archive`).
     "Zlib",
+    # FSF-recognised public-domain dedication (CC0). Reached the dependency
+    # graph via `tiny-keccak`, a build-time hash helper pulled by
+    # `rustpython-parser` (the Python preview adapter substrate approved by
+    # the corrected ADR 0009 for Campaign 27). CC0 places the work in the
+    # public domain with no attribution requirement, so it is strictly
+    # weaker than MIT/Apache and adds no obligations to downstream consumers.
+    "CC0-1.0",
+    # OSI-approved. Reached the dependency graph via `unicode_names2` (a
+    # transitive of `rustpython-parser`); the underlying crate dual-licenses
+    # as `(MIT OR Apache-2.0) AND Unicode-DFS-2016`, so allowing the Unicode
+    # data-file clause satisfies cargo-deny. The clause covers the bundled
+    # Unicode character-name tables and is the standard companion license
+    # for crates that ship Unicode data.
+    "Unicode-DFS-2016",
 ]
 
 [licenses.private]

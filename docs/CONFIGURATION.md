@@ -405,6 +405,13 @@ finding_id = "probe:src/pricing.rs:88:predicate"
 reason = "Covered by integration test in tests/billing/integration.rs that ripr cannot statically inspect yet."
 owner = "billing"
 expires = "2026-09-01"
+scope = "seam:pricing::threshold"
+created_at = "2026-01-01"
+last_seen = "2026-05-01"
+review_by = "2026-12-01"
+expected_visibility = "suppressed_visible"
+static_class = "weakly_exposed"
+language = "rust"
 
 [[suppressions]]
 kind = "test_efficiency"
@@ -424,10 +431,31 @@ Supported `kind` values (closed set): `exposure_gap`, `test_efficiency`.
 | `kind = "test_efficiency"` requires `test` | And rejects `finding_id`; `path` is optional for disambiguation. |
 | `path` repo-relative, slash-separated | Absolute paths and backslash paths fail at parse time. |
 | `expires` ISO `YYYY-MM-DD` if present | Other formats fail at parse time. |
+| `created_at`, `last_seen`, `review_by` ISO `YYYY-MM-DD` if present | Other formats fail at parse time. |
 | Unknown fields rejected | Catches typos. |
 | Duplicate selectors rejected | Same `finding_id` (or `(test, path)`) twice fails. |
 | Unmatched selectors surface as warnings | Selector that matches no current finding is reported but does not fail the badge. |
 | Expired suppressions do **not** apply | They surface as warnings on the badge so silent green-forever debt is impossible. |
+
+Policy-health metadata:
+
+| Field | Meaning |
+| --- | --- |
+| `scope` | Reviewed scope for the durable exception. Avoid broad values such as `repo`, `workspace`, `global`, `all`, or `*`. |
+| `created_at` | Date the durable exception was created. |
+| `last_seen` | Date the suppressed finding was last reviewed or observed. |
+| `review_by` | Date by which the exception should be reviewed again. |
+| `expected_visibility` | Expected reporting treatment, usually `suppressed_visible`. |
+| `static_class` | Static evidence class covered by the suppression, such as `weakly_exposed` or `reachable_unrevealed`. |
+| `language` | Optional evidence language, such as `rust`, `typescript`, or `python`. |
+| `language_status` | Required as `preview` for preview-language suppressions until an explicit policy promotes them. |
+
+`ripr policy suppression-health` reads the same manifest and writes
+`target/ripr/reports/suppression-health.json` plus Markdown. It flags missing
+owner, missing reason, stale review windows, overbroad scope, unknown
+selectors, missing policy-health metadata, and preview-language suppressions
+without `language_status = "preview"`. The report is advisory and read-only;
+it does not create, delete, apply, or gate suppressions.
 
 Suppressions and `declared_intent` are distinct concerns: intent is a
 positive declaration about test purpose; a suppression is an accepted
@@ -583,7 +611,33 @@ Seam severities affect LSP seam diagnostics. Valid values are `off`, `info`,
 
 | Key | Type | Default | Effect |
 | --- | --- | --- | --- |
-| `enabled` | array of strings | `["rust"]` | Language adapters the analysis pipeline will dispatch to. Valid values: `rust`, `typescript`, `python`. Unknown values and duplicate entries are rejected. TypeScript and Python are preview adapters added in later Campaign 27 work items; including them now has no effect until those adapters ship. Per [RIPR-SPEC-0026](specs/RIPR-SPEC-0026-language-adapter-contract.md), Rust remains the reference adapter and the only adapter that may be `stable`. |
+| `enabled` | array of strings | `["rust"]` | Language adapters the analysis pipeline will dispatch to. Valid values: `rust`, `typescript`, `python`. Unknown values and duplicate entries are rejected. TypeScript covers `.ts`, `.tsx`, `.js`, and `.jsx`; Python covers `.py`. TypeScript and Python are opt-in preview adapters; Rust remains the reference adapter and the only adapter that may be `stable` per [RIPR-SPEC-0026](specs/RIPR-SPEC-0026-language-adapter-contract.md). |
+
+`[languages]` controls runtime routing for the selected repository. The `ripr`
+binary must also be built with the corresponding adapter feature. The default
+published build includes the preview adapter features, while a Rust-only build
+can omit them:
+
+```bash
+cargo build -p ripr --no-default-features --features lang-rust
+```
+
+If repo config enables a language that is not available in the current binary,
+configuration fails closed with a message naming the missing Cargo feature,
+for example `lang-python`. The editor reports that configuration problem
+instead of publishing phantom preview diagnostics.
+
+To evaluate preview languages, keep Rust enabled and add only the preview
+adapters the repo wants to inspect:
+
+```toml
+[languages]
+enabled = ["rust", "typescript", "python"]
+```
+
+See [Language adapter preview workflow](LANGUAGE_ADAPTER_PREVIEW.md) for how to
+read preview labels, static limits, generated-CI grouping, editor projection,
+and rollback.
 
 ### Worked example
 
@@ -641,6 +695,8 @@ LSP initializationOptions  >  ripr.toml  >  CheckInput::default()
 - [Editor extension](EDITOR_EXTENSION.md) and
   [Server provisioning](SERVER_PROVISIONING.md) — how VS Code launches and
   resolves the server.
+- [Language adapter preview workflow](LANGUAGE_ADAPTER_PREVIEW.md) — how to
+  enable and interpret opt-in TypeScript, JavaScript, and Python evidence.
 - [Roadmap](ROADMAP.md) and
   [Implementation plan](IMPLEMENTATION_PLAN.md) — when the `ripr.toml`
   loader and the bounded-graph keys are expected to land.

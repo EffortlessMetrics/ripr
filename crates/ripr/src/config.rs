@@ -69,7 +69,8 @@ path = ".ripr/suppressions.toml"
 
 [languages]
 # Per RIPR-SPEC-0026, only `rust` is enabled by default. Add `typescript` or
-# `python` to opt into preview adapters once they land in Campaign 27.
+# `python` to opt into preview adapters when the ripr binary was built with
+# the matching Cargo feature (`lang-typescript` or `lang-python`).
 # Valid values: rust, typescript, python.
 enabled = ["rust"]
 "#;
@@ -537,6 +538,12 @@ fn parse_languages_enabled(values: &[String]) -> Result<Vec<LanguageId>, String>
                 "languages.enabled lists `{value}` more than once; remove the duplicate"
             ));
         }
+        if !language.is_available() {
+            return Err(format!(
+                "languages.enabled lists `{value}`, but this ripr binary was built without Cargo feature `{}`",
+                language.required_feature()
+            ));
+        }
         parsed.push(language);
     }
     Ok(parsed)
@@ -900,6 +907,7 @@ enabled = ["rust"]
         Ok(())
     }
 
+    #[cfg(all(feature = "lang-typescript", feature = "lang-python"))]
     #[test]
     fn languages_section_accepts_preview_adapters_in_order() -> Result<(), String> {
         let config = parse_config(
@@ -913,6 +921,36 @@ enabled = ["rust", "typescript", "python"]
             vec![LanguageId::Rust, LanguageId::TypeScript, LanguageId::Python]
         );
         Ok(())
+    }
+
+    #[cfg(not(feature = "lang-python"))]
+    #[test]
+    fn languages_section_rejects_unavailable_python_adapter() {
+        let result = parse_config(
+            r#"
+[languages]
+enabled = ["rust", "python"]
+"#,
+        );
+        assert!(
+            matches!(result, Err(ref message) if message.contains("lang-python")),
+            "expected missing lang-python error, got {result:?}"
+        );
+    }
+
+    #[cfg(not(feature = "lang-typescript"))]
+    #[test]
+    fn languages_section_rejects_unavailable_typescript_adapter() {
+        let result = parse_config(
+            r#"
+[languages]
+enabled = ["rust", "typescript"]
+"#,
+        );
+        assert!(
+            matches!(result, Err(ref message) if message.contains("lang-typescript")),
+            "expected missing lang-typescript error, got {result:?}"
+        );
     }
 
     #[test]

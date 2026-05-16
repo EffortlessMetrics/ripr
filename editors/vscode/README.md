@@ -36,6 +36,9 @@ After opening a Rust/Cargo workspace:
    `target/ripr/reports/first-useful-action.json` report when one is present,
    without rerunning analysis. (Internal status IDs such as
    `no-actionable-seam` and `first-useful-action` remain stable in JSON.)
+   Run `ripr: Show Status` when no diagnostics appear; it prints the workspace
+   root, server source and command, editor selectors, enabled languages from
+   the last refresh, and the next safe action.
 2. Use the Problems panel to find changed code that ripr flagged as
    mutation-exposed in the saved workspace.
 3. Hover a flagged location to see why ripr thinks the current tests are

@@ -90,7 +90,10 @@ Assertions / oracles the adapter must recognise:
 
 Related-test heuristics mirror the Rust and TypeScript adapters: changed
 owner name match, import-reference match, file-path proximity, and
-syntactic call proximity.
+syntactic call proximity. Direct owner calls must be token-aware. Module
+import aliases may match attribute calls such as `pricing.apply_discount(...)`;
+arbitrary object method calls must not be treated as related to a top-level
+function owner unless the changed owner is itself a method or class method.
 
 ## Probe Facts
 
@@ -116,7 +119,8 @@ values defined in RIPR-SPEC-0026:
   adapter cannot resolve syntactically)
 - `decorator_indirection` (the decorator changes the call semantics in a
   way the syntax-first adapter cannot follow)
-- `mocked_module` (e.g., `@patch(...)` observed at the call site)
+- `mocked_module` (e.g., `@patch(...)` or `monkeypatch.setattr(...)`
+  observed at the related-test call site)
 - `unsupported_syntax`
 
 ## Required Evidence
@@ -244,5 +248,9 @@ adapter contributes:
 - `language_adapter_python_oracle_side_effect`
 - `language_adapter_python_oracle_smoke`
 - `language_adapter_python_oracle_broad_type`
+- `language_adapter_python_static_limit_dynamic_dispatch`
 - `language_adapter_python_static_limit_decorator_indirection`
+- `language_adapter_python_static_limit_missing_import_graph`
+- `language_adapter_python_static_limit_metaprogramming`
 - `language_adapter_python_static_limit_mocked_module`
+- `language_adapter_python_static_limit_unsupported_syntax`

@@ -1,0 +1,523 @@
+{
+  "kind": "lane1_evidence_quality_failure_corpus",
+  "schema_version": "0.1",
+  "spec": "RIPR-SPEC-0032",
+  "source_report": {
+    "command": "cargo xtask lane1-evidence-audit",
+    "report": "target/ripr/reports/lane1-evidence-audit.json",
+    "summary": {
+      "raw_headline_gaps": 20847,
+      "canonical_gap_groups": 17806,
+      "duplicate_looking_groups": 1287,
+      "missing_discriminators": 487,
+      "static_limitations": 20729,
+      "uncalibrated_records": 28539
+    }
+  },
+  "cases": [
+    {
+      "id": "duplicate_canonical_gap_overcount_suppressions_match_arm",
+      "case_kind": "failure_mode",
+      "description": "The first dogfood duplicate-looking match-arm group is split by concrete match-arm discriminator; the suppressions seam now pins the \"kind\" => arm instead of generic =>.",
+      "source": "target/ripr/reports/lane1-evidence-audit.json canonical_gap_groups.largest[0]",
+      "audit_signal": {
+        "category": "duplicate_canonical_gap",
+        "metric_path": "canonical_gap_groups.largest[0]",
+        "observed_count": 23,
+        "evidence": "pre-fix gap:7c0cc088029acaf8 grouped 23 parse_suppressions_manifest match arms; post-fix seam 205829e99ffbd3ca uses \"kind\" =>"
+      },
+      "expected_repo_exposure": {
+        "source": "repo-exposure-json seams[].evidence_record",
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "205829e99ffbd3ca",
+          "canonical_gap_id": "gap:5c2aa50e4b939ed2",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "crates/ripr/src/output/suppressions.rs::parse_suppressions_manifest",
+          "location": {
+            "file": "crates/ripr/src/output/suppressions.rs",
+            "line": 119
+          },
+          "seam_kind": "match_arm",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true,
+          "evidence_path": {
+            "reach": {
+              "state": "yes",
+              "confidence": "medium",
+              "summary": "Related tests reach parse_suppressions_manifest"
+            },
+            "activate": {
+              "state": "unknown",
+              "confidence": "low",
+              "summary": "No concrete activation values observed for seam `\"kind\" =>`"
+            },
+            "propagate": {
+              "state": "yes",
+              "confidence": "low",
+              "summary": "Static propagation to return_value sink is yes"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium",
+              "summary": "Observation evidence is yes"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium",
+              "summary": "Strongest oracle for match_arm is strong"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "missing_discriminators": 0,
+            "static_limitations": 1,
+            "related_tests_total": 403
+          },
+          "top_related_test": {
+            "name": "parse_accepts_well_formed_manifest_with_both_kinds",
+            "file": "crates/ripr/src/output/suppressions.rs",
+            "line": 687,
+            "oracle_kind": "exact_value",
+            "oracle_strength": "strong",
+            "relation_reason": "direct_owner_call",
+            "relation_confidence": "high"
+          },
+          "recommendation": {
+            "action": "inspect_static_limitation",
+            "reason": "static evidence is opaque or unknown for this seam",
+            "candidate_values_count": 1,
+            "verify_command": null
+          },
+          "actionability": {
+            "class": "static_limitation",
+            "has_concrete_guidance": false
+          },
+          "calibration": {
+            "availability": "not_imported",
+            "confidence": "unknown",
+            "agreement": "no_runtime_data"
+          },
+          "static_limitations": [
+            {
+              "stage": "activate",
+              "state": "unknown",
+              "reason": "No concrete activation values observed for seam `\"kind\" =>`",
+              "category": "activation_value_unresolved",
+              "repair_route": "analysis/value-resolution-audit-fixes"
+            }
+          ]
+        }
+      },
+      "expected_claims": [
+        "Split match-arm seams by concrete discriminator such as `\"kind\" =>`.",
+        "Keep the resulting canonical group size visible for downstream evidence-health work."
+      ],
+      "must_not_claim": [
+        "Do not group different match arms under a generic `=>` or `match` discriminator.",
+        "Do not claim a concrete activation value for the match arm."
+      ]
+    },
+    {
+      "id": "missing_equality_boundary_discriminator",
+      "case_kind": "failure_mode",
+      "description": "A dogfood predicate seam with nearby exact-value tests still lacks the equality-boundary discriminator.",
+      "source": "target/ripr/reports/lane1-evidence-audit.json missing_discriminator_classes.by_reason",
+      "audit_signal": {
+        "category": "missing_discriminator",
+        "metric_path": "missing_discriminator_classes.by_reason.observed values do not include the equality-boundary case for this predicate",
+        "observed_count": 118,
+        "evidence": "owner (equality boundary) in classify_probe"
+      },
+      "expected_repo_exposure": {
+        "source": "repo-exposure-json seams[].evidence_record",
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "91b363954602017b",
+          "canonical_gap_id": "gap:c61a40b41377d5bf",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "crates/ripr/src/analysis/classifier.rs::classify_probe",
+          "location": {
+            "file": "crates/ripr/src/analysis/classifier.rs",
+            "line": 14
+          },
+          "seam_kind": "predicate_boundary",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "reach": {
+              "state": "yes",
+              "confidence": "medium",
+              "summary": "Related tests reach classify_probe"
+            },
+            "activate": {
+              "state": "yes",
+              "confidence": "medium",
+              "summary": "Observed concrete activation values for &function.id == owner"
+            },
+            "propagate": {
+              "state": "yes",
+              "confidence": "low",
+              "summary": "Static propagation to return_value sink is yes"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium",
+              "summary": "Observation evidence is yes"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium",
+              "summary": "Strongest oracle for predicate_boundary is strong"
+            }
+          },
+          "counts": {
+            "observed_values": 8,
+            "missing_discriminators": 1,
+            "static_limitations": 0,
+            "related_tests_total": 365
+          },
+          "top_related_test": {
+            "name": "given_boundary_predicate_when_equal_value_exists_then_activation_has_no_missing_boundary",
+            "file": "crates/ripr/src/analysis/classifier.rs",
+            "line": 1206,
+            "oracle_kind": "exact_value",
+            "oracle_strength": "strong",
+            "relation_reason": "direct_owner_call",
+            "relation_confidence": "high"
+          },
+          "recommendation": {
+            "action": "write_targeted_test",
+            "reason": "related tests reach the seam but still miss a concrete discriminator",
+            "candidate_values_count": 2,
+            "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"
+          },
+          "actionability": {
+            "class": "actionable_assertion_upgrade",
+            "has_concrete_guidance": true
+          },
+          "calibration": {
+            "availability": "not_imported",
+            "confidence": "unknown",
+            "agreement": "no_runtime_data"
+          },
+          "static_limitations": []
+        }
+      },
+      "expected_claims": [
+        "Name the equality-boundary discriminator as the missing evidence.",
+        "Suggest extending a direct-owner exact-value test."
+      ],
+      "must_not_claim": [
+        "Do not treat nearby exact-value tests as covering the missing boundary.",
+        "Do not promote this seam to exposed until the boundary case is present."
+      ]
+    },
+    {
+      "id": "static_activation_limitation_without_candidate_values",
+      "case_kind": "failure_mode",
+      "description": "A dominant static limitation class stays explicit when no concrete activation values are observed.",
+      "source": "target/ripr/reports/lane1-evidence-audit.json static_limitations.by_reason",
+      "audit_signal": {
+        "category": "static_limitation",
+        "metric_path": "static_limitations.by_reason.No concrete activation values observed for seam `Vec::new()`",
+        "observed_count": 255,
+        "evidence": "Vec::new() activation unknown in canonical_gap_identities"
+      },
+      "expected_repo_exposure": {
+        "source": "repo-exposure-json seams[].evidence_record",
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "50966c549384125c",
+          "canonical_gap_id": "gap:6b42d927f79a09c5",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "crates/ripr/src/analysis/canonical_gap.rs::canonical_gap_identities",
+          "location": {
+            "file": "crates/ripr/src/analysis/canonical_gap.rs",
+            "line": 35
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true,
+          "evidence_path": {
+            "reach": {
+              "state": "yes",
+              "confidence": "medium",
+              "summary": "Related tests reach canonical_gap_identities"
+            },
+            "activate": {
+              "state": "unknown",
+              "confidence": "low",
+              "summary": "No concrete activation values observed for seam `Vec::new()`"
+            },
+            "propagate": {
+              "state": "yes",
+              "confidence": "low",
+              "summary": "Static propagation to side_effect sink is yes"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium",
+              "summary": "Observation evidence is yes"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium",
+              "summary": "Strongest oracle for call_presence is strong"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "missing_discriminators": 0,
+            "static_limitations": 1,
+            "related_tests_total": 396
+          },
+          "top_related_test": {
+            "name": "canonical_gap_identities_report_group_size_for_equivalent_gaps",
+            "file": "crates/ripr/src/analysis/canonical_gap.rs",
+            "line": 319,
+            "oracle_kind": "exact_value",
+            "oracle_strength": "strong",
+            "relation_reason": "direct_owner_call",
+            "relation_confidence": "high"
+          },
+          "recommendation": {
+            "action": "inspect_static_limitation",
+            "reason": "static evidence is opaque or unknown for this seam",
+            "candidate_values_count": 1,
+            "verify_command": null
+          },
+          "actionability": {
+            "class": "static_limitation",
+            "has_concrete_guidance": false
+          },
+          "calibration": {
+            "availability": "not_imported",
+            "confidence": "unknown",
+            "agreement": "no_runtime_data"
+          },
+          "static_limitations": [
+            {
+              "stage": "activate",
+              "state": "unknown",
+              "reason": "No concrete activation values observed for seam `Vec::new()`",
+              "category": "activation_value_unresolved",
+              "repair_route": "analysis/value-resolution-audit-fixes"
+            }
+          ]
+        }
+      },
+      "expected_claims": [
+        "Keep the activation stage unknown.",
+        "Surface the static limitation rather than inventing a discriminator."
+      ],
+      "must_not_claim": [
+        "Do not create observed values from the call expression itself.",
+        "Do not issue a verify command for an unresolved static limitation."
+      ]
+    },
+    {
+      "id": "side_effect_observer_not_static_limitation",
+      "case_kind": "negative_guard",
+      "description": "Mock-expectation semantics are recognized as observer evidence and must not be collapsed into unknown oracle evidence.",
+      "source": "target/ripr/reports/lane1-evidence-audit.json oracle_semantics_distribution.oracle_kind_counts.mock_expectation",
+      "audit_signal": {
+        "category": "oracle_semantics",
+        "metric_path": "oracle_semantics_distribution.oracle_kind_counts.mock_expectation",
+        "observed_count": 2799,
+        "evidence": "mock_expectation semantics with direct owner call in run_diff_pipeline_with_oracle_policy"
+      },
+      "expected_repo_exposure": {
+        "source": "repo-exposure-json seams[].evidence_record",
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "fefca478cfd99462",
+          "canonical_gap_id": "gap:d8625ea901031548",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "crates/ripr/src/analysis/pipeline.rs::run_diff_pipeline_with_oracle_policy",
+          "location": {
+            "file": "crates/ripr/src/analysis/pipeline.rs",
+            "line": 11
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true,
+          "evidence_path": {
+            "reach": {
+              "state": "yes",
+              "confidence": "medium",
+              "summary": "Related tests reach run_diff_pipeline_with_oracle_policy"
+            },
+            "activate": {
+              "state": "unknown",
+              "confidence": "low",
+              "summary": "No concrete activation values observed for seam `diff::load_diff(`"
+            },
+            "propagate": {
+              "state": "yes",
+              "confidence": "low",
+              "summary": "Static propagation to side_effect sink is yes"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium",
+              "summary": "Observation evidence is yes"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium",
+              "summary": "Strongest oracle for call_presence is strong"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "missing_discriminators": 0,
+            "static_limitations": 1,
+            "related_tests_total": 491
+          },
+          "top_related_test": {
+            "name": "diff_pipeline_is_callable",
+            "file": "crates/ripr/src/analysis/pipeline.rs",
+            "line": 82,
+            "oracle_kind": "mock_expectation",
+            "oracle_strength": "medium",
+            "relation_reason": "direct_owner_call",
+            "relation_confidence": "high"
+          },
+          "recommendation": {
+            "action": "inspect_static_limitation",
+            "reason": "static evidence is opaque or unknown for this seam",
+            "candidate_values_count": 1,
+            "verify_command": null
+          },
+          "actionability": {
+            "class": "static_limitation",
+            "has_concrete_guidance": false
+          },
+          "calibration": {
+            "availability": "not_imported",
+            "confidence": "unknown",
+            "agreement": "no_runtime_data"
+          },
+          "static_limitations": [
+            {
+              "stage": "activate",
+              "state": "unknown",
+              "reason": "No concrete activation values observed for seam `diff::load_diff(`",
+              "category": "activation_value_unresolved",
+              "repair_route": "analysis/value-resolution-audit-fixes"
+            }
+          ]
+        }
+      },
+      "expected_claims": [
+        "Preserve mock_expectation as the related-test oracle kind.",
+        "Keep the remaining activation limitation separate from oracle semantics."
+      ],
+      "must_not_claim": [
+        "Do not downgrade the mock expectation to unknown oracle evidence.",
+        "Do not treat observer recognition as runtime calibration."
+      ]
+    },
+    {
+      "id": "calibration_no_runtime_data_gap",
+      "case_kind": "negative_guard",
+      "description": "The first audit found every evidence record uncalibrated; fixture-pinned records must keep that explicit until runtime data is imported.",
+      "source": "target/ripr/reports/lane1-evidence-audit.json calibration_availability",
+      "audit_signal": {
+        "category": "calibration_gap",
+        "metric_path": "calibration_availability.uncalibrated_records",
+        "observed_count": 28539,
+        "evidence": "availability=not_imported, agreement=no_runtime_data"
+      },
+      "expected_repo_exposure": {
+        "source": "repo-exposure-json seams[].evidence_record",
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "91b363954602017b",
+          "canonical_gap_id": "gap:c61a40b41377d5bf",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "crates/ripr/src/analysis/classifier.rs::classify_probe",
+          "location": {
+            "file": "crates/ripr/src/analysis/classifier.rs",
+            "line": 14
+          },
+          "seam_kind": "predicate_boundary",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "reach": {
+              "state": "yes",
+              "confidence": "medium",
+              "summary": "Related tests reach classify_probe"
+            },
+            "activate": {
+              "state": "yes",
+              "confidence": "medium",
+              "summary": "Observed concrete activation values for &function.id == owner"
+            },
+            "propagate": {
+              "state": "yes",
+              "confidence": "low",
+              "summary": "Static propagation to return_value sink is yes"
+            },
+            "observe": {
+              "state": "yes",
+              "confidence": "medium",
+              "summary": "Observation evidence is yes"
+            },
+            "discriminate": {
+              "state": "yes",
+              "confidence": "medium",
+              "summary": "Strongest oracle for predicate_boundary is strong"
+            }
+          },
+          "counts": {
+            "observed_values": 8,
+            "missing_discriminators": 1,
+            "static_limitations": 0,
+            "related_tests_total": 365
+          },
+          "top_related_test": {
+            "name": "given_boundary_predicate_when_equal_value_exists_then_activation_has_no_missing_boundary",
+            "file": "crates/ripr/src/analysis/classifier.rs",
+            "line": 1206,
+            "oracle_kind": "exact_value",
+            "oracle_strength": "strong",
+            "relation_reason": "direct_owner_call",
+            "relation_confidence": "high"
+          },
+          "recommendation": {
+            "action": "write_targeted_test",
+            "reason": "related tests reach the seam but still miss a concrete discriminator",
+            "candidate_values_count": 2,
+            "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"
+          },
+          "actionability": {
+            "class": "actionable_assertion_upgrade",
+            "has_concrete_guidance": true
+          },
+          "calibration": {
+            "availability": "not_imported",
+            "confidence": "unknown",
+            "agreement": "no_runtime_data"
+          },
+          "static_limitations": []
+        }
+      },
+      "expected_claims": [
+        "Report calibration as not imported and no runtime data.",
+        "Keep static guidance advisory even when the static evidence is actionable."
+      ],
+      "must_not_claim": [
+        "Do not label the class calibrated from static evidence alone.",
+        "Do not imply cargo-mutants or runtime execution ran."
+      ]
+    }
+  ]
+}

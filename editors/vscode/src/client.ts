@@ -12,13 +12,54 @@ import {
 import { getConfig, RiprConfig } from './config';
 import { resolveServer, ResolveFailure, ResolvedServer } from './serverResolver';
 
+const RIPR_DOCUMENT_SELECTORS: Array<{ language: string; scheme: 'file' }> = [
+  { language: 'rust', scheme: 'file' },
+  { language: 'typescript', scheme: 'file' },
+  { language: 'typescriptreact', scheme: 'file' },
+  { language: 'javascript', scheme: 'file' },
+  { language: 'javascriptreact', scheme: 'file' },
+  { language: 'python', scheme: 'file' }
+];
+
+const RIPR_FILE_LANGUAGES = new Set(RIPR_DOCUMENT_SELECTORS.map((selector) => selector.language));
+const RIPR_RELATED_TEST_LANGUAGE_BY_EXTENSION = new Map<string, 'rust' | 'typescript' | 'python'>([
+  ['.rs', 'rust'],
+  ['.ts', 'typescript'],
+  ['.tsx', 'typescript'],
+  ['.js', 'typescript'],
+  ['.jsx', 'typescript'],
+  ['.py', 'python']
+]);
+const RIPR_CONFIG_RELATIVE_PATH = 'ripr.toml';
+const RIPR_SETUP_ARTIFACTS: RiprSetupArtifactDefinition[] = [
+  {
+    label: 'first useful action report',
+    relativePath: 'target/ripr/reports/first-useful-action.json'
+  },
+  {
+    label: 'gap decision ledger',
+    relativePath: 'target/ripr/reports/gap-decision-ledger.json'
+  },
+  {
+    label: 'editor agent receipt',
+    relativePath: 'target/ripr/agent/agent-receipt.json'
+  }
+];
+
 export interface RiprContextTarget {
   uri?: string;
   line?: number;
+  label?: string;
+  packet?: string;
+  note?: string;
   finding_id?: string;
   probe_id?: string;
   seam_id?: string;
   seam_kind?: string;
+  gap_id?: string;
+  canonical_gap_id?: string;
+  gap_kind?: string;
+  gap_ledger?: string;
 }
 
 export interface RiprSuggestedAssertionTarget {
@@ -83,6 +124,7 @@ const defaultRuntime: RiprClientRuntime = {
   runRipr,
   writeClipboard: async (text) => {
     await vscode.env.clipboard.writeText(text);
+    await writeTestClipboardCapture(text);
   },
   showInformationMessage: (message) => vscode.window.showInformationMessage(message),
   showWarningMessage: (message) => vscode.window.showWarningMessage(message),
@@ -93,12 +135,14 @@ export class RiprClientController {
   private client: RiprLanguageClient | undefined;
   private server: ResolvedServer | undefined;
   private readonly notificationDisposables: vscode.Disposable[] = [];
-  private readonly dirtyRustDocuments = new Set<string>();
+  private readonly dirtyRiprDocuments = new Set<string>();
   private firstUsefulAction: FirstUsefulActionStatus | undefined;
+  private setupStatus: RiprSetupStatus = setupStatusWithoutWorkspace();
   private status: RiprStatusState = {
     kind: 'stopped',
     summary: 'ripr server has not started.',
-    detail: 'Open a Rust/Cargo workspace or run ripr: Restart Server.'
+    detail: 'Open a workspace or run ripr: Restart Server.',
+    nextStep: 'Open a workspace folder, then run ripr: Restart Server.'
   };
   private workspaceRoot: string | undefined;
 
@@ -117,38 +161,44 @@ export class RiprClientController {
     }
 
     const config = this.runtime.getConfig();
+    this.workspaceRoot = this.runtime.workspaceRoot();
+    await this.refreshSetupStatusFiles();
+
     if (!config.enabled) {
       this.updateStatus({
         kind: 'disabled',
         summary: 'ripr editor analysis is disabled by configuration.',
-        detail: 'Set ripr.enabled to true to start saved-workspace diagnostics.'
+        detail: 'Set ripr.enabled to true to start saved-workspace diagnostics.',
+        nextStep: 'Set ripr.enabled to true, then run ripr: Restart Server.'
       });
       this.output.appendLine('ripr editor analysis is disabled by configuration.');
       return;
     }
 
-    this.workspaceRoot = this.runtime.workspaceRoot();
     if (!this.workspaceRoot) {
       this.updateStatus({
         kind: 'noWorkspace',
-        summary: 'Open a Rust/Cargo workspace for ripr diagnostics.',
-        detail: 'The extension needs a workspace folder before it can start the language server.'
+        summary: 'Open a workspace for ripr diagnostics.',
+        detail: 'The extension needs a workspace folder before it can start the language server.',
+        nextStep: 'Open a workspace folder, then run ripr: Restart Server.'
       });
-      this.output.appendLine('ripr workspace was not detected; open a Rust/Cargo workspace.');
+      this.output.appendLine('ripr workspace was not detected; open a workspace folder.');
       return;
     }
 
     this.updateStatus({
       kind: 'resolvingServer',
       summary: 'Resolving ripr server.',
-      detail: `Workspace: ${this.workspaceRoot}`
+      detail: `Workspace: ${this.workspaceRoot}`,
+      nextStep: 'Wait for server resolution, or use ripr: Show Output if it stalls.'
     });
     const server = await this.runtime.resolveServer(this.context, config, this.output);
     if (!('command' in server)) {
       this.updateStatus({
         kind: 'serverUnavailable',
         summary: 'ripr server is not available.',
-        detail: server.detail
+        detail: server.detail,
+        nextStep: 'Set ripr.server.path, enable ripr.server.autoDownload, install with cargo install ripr, then retry.'
       });
       await this.showMissingServerMessage(server.message, server.detail);
       return;
@@ -157,7 +207,8 @@ export class RiprClientController {
     this.updateStatus({
       kind: 'starting',
       summary: 'Starting ripr language server.',
-      detail: `Server: ${server.source} (${server.detail})\nWorkspace: ${this.workspaceRoot}`
+      detail: `Server: ${server.source} (${server.detail})\nWorkspace: ${this.workspaceRoot}`,
+      nextStep: 'Wait for server startup, or use ripr: Show Output if it stalls.'
     });
 
     const serverOptions: ServerOptions = {
@@ -169,7 +220,7 @@ export class RiprClientController {
     };
 
     const clientOptions: LanguageClientOptions = {
-      documentSelector: [{ language: 'rust', scheme: 'file' }],
+      documentSelector: RIPR_DOCUMENT_SELECTORS,
       initializationOptions: {
         baseRef: config.baseRef,
         checkMode: config.checkMode,
@@ -191,10 +242,12 @@ export class RiprClientController {
       this.client.onNotification('window/logMessage', (params) => this.handleServerLog(params))
     );
     await this.client.start();
+    await this.refreshSetupStatusFiles();
     this.updateStatus({
       kind: 'analysisQueued',
       summary: 'ripr saved-workspace analysis is queued.',
-      detail: `Server: ${server.source} (${server.detail})\nWorkspace: ${this.workspaceRoot}\nOpen or save a Rust file to refresh diagnostics.`
+      detail: `Server: ${server.source} (${server.detail})\nWorkspace: ${this.workspaceRoot}\nOpen or save a Rust or enabled preview-language file to refresh diagnostics.`,
+      nextStep: 'Open or save a Rust or enabled preview-language file, then wait for diagnostics.'
     });
     await this.refreshFirstUsefulActionStatus();
   }
@@ -209,7 +262,7 @@ export class RiprClientController {
     this.client = undefined;
     this.server = undefined;
     this.firstUsefulAction = undefined;
-    this.dirtyRustDocuments.clear();
+    this.dirtyRiprDocuments.clear();
     while (this.notificationDisposables.length > 0) {
       this.notificationDisposables.pop()?.dispose();
     }
@@ -219,51 +272,89 @@ export class RiprClientController {
     this.updateStatus({
       kind: 'stopped',
       summary: 'ripr server has stopped.',
-      detail: 'Run ripr: Restart Server to start analysis again.'
+      detail: 'Run ripr: Restart Server to start analysis again.',
+      nextStep: 'Run ripr: Restart Server.'
     });
   }
 
   markWorkspaceStale(document: vscode.TextDocument): void {
-    if (!this.client || !isRustFileDocument(document)) {
+    if (!this.client || !isRiprFileDocument(document)) {
       return;
     }
-    this.dirtyRustDocuments.add(document.uri.toString());
+    this.dirtyRiprDocuments.add(document.uri.toString());
     this.updateStatus({
       kind: 'stale',
-      summary: 'ripr analysis is stale until the Rust file is saved.',
-      detail: `Unsaved changes: ${document.uri.fsPath}`
+      summary: 'ripr analysis is stale until the file is saved.',
+      detail: `Unsaved changes: ${document.uri.fsPath}`,
+      nextStep: 'Save the file, then wait for ripr to refresh saved-workspace diagnostics.'
     });
   }
 
   markWorkspaceSaved(document: vscode.TextDocument): void {
-    if (!this.client || !isRustFileDocument(document)) {
+    if (!this.client || !isRiprFileDocument(document)) {
       return;
     }
-    this.dirtyRustDocuments.delete(document.uri.toString());
-    if (this.dirtyRustDocuments.size === 0 && this.status.kind === 'stale') {
+    this.dirtyRiprDocuments.delete(document.uri.toString());
+    if (this.dirtyRiprDocuments.size === 0 && this.status.kind === 'stale') {
       this.updateStatus({
         kind: 'analysisQueued',
         summary: 'ripr saved-workspace analysis is queued after save.',
-        detail: `Saved changes: ${document.uri.fsPath}`
+        detail: `Saved changes: ${document.uri.fsPath}`,
+        nextStep: 'Wait for ripr to refresh diagnostics.'
       });
     }
   }
 
   markWorkspaceClosed(document: vscode.TextDocument): void {
-    if (!isRustFileDocument(document)) {
+    if (!isRiprFileDocument(document)) {
       return;
     }
-    this.dirtyRustDocuments.delete(document.uri.toString());
-    if (this.client && this.dirtyRustDocuments.size === 0 && this.status.kind === 'stale') {
+    this.dirtyRiprDocuments.delete(document.uri.toString());
+    if (this.client && this.dirtyRiprDocuments.size === 0 && this.status.kind === 'stale') {
       this.updateStatus({
         kind: 'analysisQueued',
         summary: 'ripr saved-workspace analysis is queued after close.',
-        detail: `Closed unsaved Rust buffer: ${document.uri.fsPath}`
+        detail: `Closed unsaved ${document.languageId} buffer: ${document.uri.fsPath}`,
+        nextStep: 'Wait for ripr to refresh diagnostics.'
       });
     }
   }
 
   async copyContext(target?: RiprContextTarget): Promise<void> {
+    if (target?.label === 'first_repair_packet' && typeof target.packet === 'string') {
+      const packet = target.packet.trim();
+      if (!packet) {
+        this.runtime.showInformationMessage('No ripr first repair packet is available for this diagnostic.');
+        return;
+      }
+      try {
+        await this.runtime.writeClipboard(packet);
+        this.runtime.showInformationMessage('Copied ripr first repair packet to clipboard.');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.output.appendLine(`ripr copy first repair packet failed: ${message}`);
+        this.runtime.showWarningMessage('ripr could not copy the first repair packet. See ripr output for details.');
+      }
+      return;
+    }
+
+    if (target?.label === 'static_limit_note' && typeof target.note === 'string') {
+      const note = target.note.trim();
+      if (!note) {
+        this.runtime.showInformationMessage('No ripr static-limit note is available for this diagnostic.');
+        return;
+      }
+      try {
+        await this.runtime.writeClipboard(note);
+        this.runtime.showInformationMessage('Copied ripr static-limit note to clipboard.');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.output.appendLine(`ripr copy static-limit note failed: ${message}`);
+        this.runtime.showWarningMessage('ripr could not copy the static-limit note. See ripr output for details.');
+      }
+      return;
+    }
+
     const targetUri = uriFromTarget(target);
     const editor = vscode.window.activeTextEditor;
     const documentUri = targetUri ?? editor?.document.uri;
@@ -273,18 +364,25 @@ export class RiprClientController {
     }
 
     const client = this.client;
-    if (client && (target?.finding_id || target?.seam_id)) {
+    if (client && (target?.finding_id || target?.seam_id || target?.gap_id)) {
       try {
+        const collectContextTarget: RiprContextTarget = {
+          finding_id: target.finding_id,
+          probe_id: target.probe_id,
+          seam_id: target.seam_id,
+          seam_kind: target.seam_kind,
+          uri: target.uri,
+          line: target.line,
+        };
+        if (target.gap_id) {
+          collectContextTarget.gap_id = target.gap_id;
+          collectContextTarget.canonical_gap_id = target.canonical_gap_id;
+          collectContextTarget.gap_kind = target.gap_kind;
+          collectContextTarget.gap_ledger = target.gap_ledger;
+        }
         const packet = await client.sendRequest('workspace/executeCommand', {
           command: 'ripr.collectContext',
-          arguments: [{
-            finding_id: target.finding_id,
-            probe_id: target.probe_id,
-            seam_id: target.seam_id,
-            seam_kind: target.seam_kind,
-            uri: target.uri,
-            line: target.line,
-          }],
+          arguments: [collectContextTarget],
         });
         if (packet && typeof packet === 'object') {
           await this.runtime.writeClipboard(JSON.stringify(packet, null, 2));
@@ -388,6 +486,27 @@ export class RiprClientController {
       this.runtime.showInformationMessage('No ripr related test location is available for this diagnostic.');
       return;
     }
+    if (uri.scheme !== 'file') {
+      this.runtime.showInformationMessage('ripr related test navigation requires a file URI.');
+      return;
+    }
+    if (!vscode.workspace.getWorkspaceFolder(uri)) {
+      this.runtime.showInformationMessage('ripr related test must be inside the current workspace.');
+      return;
+    }
+    const language = riprRelatedTestLanguage(uri.fsPath);
+    if (!language) {
+      this.runtime.showInformationMessage('ripr related test must be a Rust, TypeScript/JavaScript, or Python file.');
+      return;
+    }
+    if (this.status.kind === 'stale') {
+      this.runtime.showInformationMessage('ripr related test navigation requires current saved-workspace analysis; save or refresh first.');
+      return;
+    }
+    if (this.status.enabledLanguages && !this.status.enabledLanguages.includes(language)) {
+      this.runtime.showInformationMessage(`ripr related test language is disabled by current analysis status: ${language}.`);
+      return;
+    }
     try {
       const document = await vscode.workspace.openTextDocument(uri);
       const editor = await vscode.window.showTextDocument(document);
@@ -410,6 +529,10 @@ export class RiprClientController {
     return this.showStatusAsync();
   }
 
+  diagnoseSetup(): Promise<void> {
+    return this.diagnoseSetupAsync();
+  }
+
   private handleServerLog(params: unknown): void {
     const message = serverLogMessage(params);
     if (!message) {
@@ -419,7 +542,8 @@ export class RiprClientController {
       this.updateStatus({
         kind: 'analysisQueued',
         summary: 'ripr saved-workspace analysis is queued.',
-        detail: message
+        detail: message,
+        nextStep: 'Wait for the current saved-workspace analysis refresh to finish.'
       });
       return;
     }
@@ -427,7 +551,8 @@ export class RiprClientController {
       this.updateStatus({
         kind: 'analysisRunning',
         summary: 'ripr saved-workspace analysis is running.',
-        detail: message
+        detail: message,
+        nextStep: 'Wait for the current saved-workspace analysis refresh to finish.'
       });
       return;
     }
@@ -440,22 +565,23 @@ export class RiprClientController {
       this.updateStatus({
         kind: 'analysisFailed',
         summary: 'ripr analysis refresh failed.',
-        detail: message
+        detail: message,
+        nextStep: 'Open ripr: Show Output, fix the reported issue, then run ripr: Restart Server.'
       });
     }
   }
 
   private statusAfterRefreshCompleted(message: string): RiprStatusState {
-    if (this.dirtyRustDocuments.size === 0) {
+    if (this.dirtyRiprDocuments.size === 0) {
       return statusFromRefreshCompletedMessage(message);
     }
     return {
       kind: 'stale',
-      summary: 'ripr analysis completed, but unsaved Rust changes remain.',
+      summary: 'ripr analysis completed, but unsaved routed-file changes remain.',
       detail: [
         message,
         'Current diagnostics describe the last saved workspace state.',
-        `Unsaved Rust files: ${Array.from(this.dirtyRustDocuments).join(', ')}`
+        `Unsaved routed files: ${Array.from(this.dirtyRiprDocuments).join(', ')}`
       ].join('\n')
     };
   }
@@ -470,20 +596,31 @@ export class RiprClientController {
       return;
     }
     this.statusBar.text = statusText(this.status.kind, this.firstUsefulAction);
-    this.statusBar.tooltip = statusTooltip(this.status, this.firstUsefulAction);
+    this.statusBar.tooltip = statusTooltip(this.status, this.firstUsefulAction, this.statusContext());
     this.statusBar.command = 'ripr.showStatus';
     this.statusBar.show();
   }
 
   private async showStatusAsync(): Promise<void> {
+    await this.refreshSetupStatusFiles();
     await this.refreshFirstUsefulActionStatus();
     this.output.appendLine(`ripr status: ${statusSummary(this.status, this.firstUsefulAction)}`);
-    const detail = statusTooltip(this.status, this.firstUsefulAction);
+    const detail = statusTooltip(this.status, this.firstUsefulAction, this.statusContext());
     if (detail) {
       this.output.appendLine(detail);
     }
     this.output.show();
     this.runtime.showInformationMessage(statusSummary(this.status, this.firstUsefulAction));
+  }
+
+  private async diagnoseSetupAsync(): Promise<void> {
+    await this.refreshSetupStatusFiles();
+    await this.refreshFirstUsefulActionStatus();
+    const report = setupDiagnosisReport(this.status, this.firstUsefulAction, this.statusContext());
+    this.output.appendLine('ripr setup diagnosis:');
+    this.output.appendLine(report);
+    this.output.show();
+    this.runtime.showInformationMessage('ripr setup diagnosis was written to the ripr output channel.');
   }
 
   private async refreshFirstUsefulActionStatus(): Promise<void> {
@@ -504,6 +641,11 @@ export class RiprClientController {
       this.firstUsefulAction = undefined;
       this.output.appendLine(`ripr first useful action status unavailable: ${message}`);
     }
+    this.renderStatusBar();
+  }
+
+  private async refreshSetupStatusFiles(): Promise<void> {
+    this.setupStatus = await readSetupStatusFiles(this.workspaceRoot, this.runtime.readFile);
     this.renderStatusBar();
   }
 
@@ -534,6 +676,20 @@ export class RiprClientController {
       await this.restart();
     }
   }
+
+  private statusContext(): RiprStatusContext {
+    return {
+      workspaceRoot: this.workspaceRoot,
+      server: this.server,
+      documentLanguages: RIPR_DOCUMENT_SELECTORS.map((selector) => selector.language),
+      setupStatus: this.setupStatus
+    };
+  }
+}
+
+interface RiprSetupArtifactDefinition {
+  label: string;
+  relativePath: string;
 }
 
 type RiprStatusKind =
@@ -546,7 +702,11 @@ type RiprStatusKind =
   | 'ready'
   | 'analysisRunning'
   | 'analysisReady'
+  | 'gapActionable'
+  | 'gapNoAction'
+  | 'gapArtifactWarning'
   | 'noActionableSeams'
+  | 'noEnabledLanguages'
   | 'stale'
   | 'analysisFailed'
   | 'stopped';
@@ -555,12 +715,39 @@ interface RiprStatusState {
   kind: RiprStatusKind;
   summary: string;
   detail?: string;
+  enabledLanguages?: string[];
+  nextStep?: string;
+}
+
+interface RiprStatusContext {
+  workspaceRoot?: string;
+  server?: ResolvedServer;
+  documentLanguages: string[];
+  setupStatus: RiprSetupStatus;
+}
+
+type RiprSetupFileState = 'found' | 'missing' | 'unreadable' | 'noWorkspace';
+
+interface RiprSetupFileStatus {
+  label: string;
+  relativePath: string;
+  path?: string;
+  state: RiprSetupFileState;
+  detail?: string;
+}
+
+interface RiprSetupStatus {
+  config: RiprSetupFileStatus;
+  artifacts: RiprSetupFileStatus[];
+  receipt: RiprReceiptArtifactStatus;
 }
 
 interface FirstUsefulActionStatus {
   status: string;
   actionKind: string;
   title: string;
+  generatedAt?: string;
+  seamId?: string;
   selectedLocation?: string;
   missingDiscriminator?: string;
   target?: string;
@@ -572,8 +759,28 @@ interface FirstUsefulActionStatus {
   warningCount: number;
 }
 
+type RiprReceiptArtifactState =
+  | 'found'
+  | 'missing'
+  | 'unreadable'
+  | 'malformed'
+  | 'unsupportedSchema'
+  | 'wrongRoot'
+  | 'noWorkspace';
+
+interface RiprReceiptArtifactStatus {
+  relativePath: string;
+  path?: string;
+  state: RiprReceiptArtifactState;
+  detail?: string;
+  seamId?: string;
+  movement?: string;
+  repoRoot?: string;
+  generatedAt?: string;
+}
+
 function statusText(kind: RiprStatusKind, firstAction?: FirstUsefulActionStatus): string {
-  if (firstAction && canProjectFirstUsefulAction(kind)) {
+  if (firstAction && shouldInlineFirstUsefulAction(kind)) {
     if (
       firstAction.status === 'stale' ||
       firstAction.status === 'missing_required_artifact' ||
@@ -612,8 +819,16 @@ function statusText(kind: RiprStatusKind, firstAction?: FirstUsefulActionStatus)
       return '$(sync~spin) ripr: analyzing';
     case 'analysisReady':
       return '$(check) ripr: diagnostics';
+    case 'gapActionable':
+      return '$(lightbulb) ripr: gap ready';
+    case 'gapNoAction':
+      return '$(pass) ripr: gap clear';
+    case 'gapArtifactWarning':
+      return '$(warning) ripr: gap blocked';
     case 'noActionableSeams':
       return '$(circle-slash) ripr: no seams';
+    case 'noEnabledLanguages':
+      return '$(circle-slash) ripr: languages off';
     case 'stale':
       return '$(warning) ripr: stale';
     case 'analysisFailed':
@@ -625,16 +840,26 @@ function statusText(kind: RiprStatusKind, firstAction?: FirstUsefulActionStatus)
 }
 
 function statusSummary(status: RiprStatusState, firstAction?: FirstUsefulActionStatus): string {
-  if (!firstAction || !canProjectFirstUsefulAction(status.kind)) {
+  if (!firstAction || !shouldInlineFirstUsefulAction(status.kind)) {
     return status.summary;
   }
   return `${status.summary} First useful action: ${firstAction.title}`;
 }
 
-function statusTooltip(status: RiprStatusState, firstAction?: FirstUsefulActionStatus): string {
+function statusTooltip(
+  status: RiprStatusState,
+  firstAction?: FirstUsefulActionStatus,
+  context?: RiprStatusContext
+): string {
   const lines = [status.summary];
   if (status.detail) {
     lines.push(status.detail);
+  }
+  if (context) {
+    lines.push('', ...statusContextLines(status, context));
+  }
+  if (status.nextStep) {
+    lines.push(`Next safe action: ${status.nextStep}`);
   }
   if (firstAction && canProjectFirstUsefulAction(status.kind)) {
     lines.push('', ...firstUsefulActionLines(firstAction));
@@ -642,11 +867,157 @@ function statusTooltip(status: RiprStatusState, firstAction?: FirstUsefulActionS
     lines.push(
       '',
       'First useful action report: available, but editor evidence is stale.',
-      'Save or refresh the Rust workspace before acting on this report.',
+      'Save or refresh the workspace before acting on this report.',
       `Report: ${firstAction.reportPath}`
     );
   }
+  if (context) {
+    const receiptLines = receiptStatusLines(status, firstAction, context);
+    if (receiptLines.length > 0) {
+      lines.push('', ...receiptLines);
+    }
+  }
   return lines.join('\n');
+}
+
+function setupDiagnosisReport(
+  status: RiprStatusState,
+  firstAction: FirstUsefulActionStatus | undefined,
+  context: RiprStatusContext
+): string {
+  const lines = [
+    `Status: ${status.summary}`,
+    ...statusContextLines(status, context)
+  ];
+  if (status.detail) {
+    lines.push('', 'Detail:', status.detail);
+  }
+  if (status.nextStep) {
+    lines.push('', `Next safe action: ${status.nextStep}`);
+  }
+  if (firstAction && canProjectFirstUsefulAction(status.kind)) {
+    lines.push('', ...firstUsefulActionLines(firstAction));
+  } else if (firstAction && status.kind === 'stale') {
+    lines.push(
+      '',
+      'First useful action report: available, but editor evidence is stale.',
+      'Save or refresh the workspace before acting on this report.',
+      `Report: ${firstAction.reportPath}`
+    );
+  }
+  const receiptLines = receiptStatusLines(status, firstAction, context);
+  if (receiptLines.length > 0) {
+    lines.push('', ...receiptLines);
+  }
+  lines.push(
+    '',
+    'Limits: read-only setup diagnosis only; no source edits, generated tests, provider calls, mutation execution, or gate decision.'
+  );
+  return lines.join('\n');
+}
+
+function statusContextLines(status: RiprStatusState, context: RiprStatusContext): string[] {
+  const lines = [`Workspace: ${context.workspaceRoot ?? 'not open'}`];
+  if (context.server) {
+    lines.push(`Server: ${context.server.source} (${context.server.detail})`);
+    lines.push(`Server command: ${context.server.command}`);
+    lines.push(`Server version: ${context.server.version ?? 'not reported'}`);
+  } else {
+    lines.push('Server: not resolved');
+    lines.push('Server version: not reported');
+  }
+  lines.push(`Server started: ${serverStartedSummary(status.kind)}`);
+  lines.push(setupFileLine('Config', context.setupStatus.config));
+  if (status.enabledLanguages) {
+    lines.push(`Enabled languages: ${status.enabledLanguages.length > 0 ? status.enabledLanguages.join(', ') : 'none'}`);
+  } else {
+    lines.push('Enabled languages: not reported yet; read from ripr.toml by the server refresh.');
+  }
+  lines.push('Available languages: not reported by server; editor selectors can route enabled stable and preview languages.');
+  lines.push(`Editor selectors: ${context.documentLanguages.join(', ')}`);
+  lines.push(`Evidence freshness: ${evidenceFreshnessSummary(status.kind)}`);
+  for (const artifact of context.setupStatus.artifacts) {
+    lines.push(setupFileLine(`Artifact ${artifact.label}`, artifact));
+  }
+  return lines;
+}
+
+function setupFileLine(prefix: string, file: RiprSetupFileStatus): string {
+  const detail = file.detail ? `; ${file.detail}` : '';
+  return `${prefix}: ${file.relativePath} (${setupFileStateLabel(file.state)}${detail})`;
+}
+
+function setupFileStateLabel(state: RiprSetupFileState): string {
+  switch (state) {
+    case 'found':
+      return 'found';
+    case 'missing':
+      return 'missing';
+    case 'unreadable':
+      return 'unreadable';
+    case 'noWorkspace':
+      return 'no workspace';
+  }
+}
+
+function serverStartedSummary(kind: RiprStatusKind): string {
+  switch (kind) {
+    case 'analysisQueued':
+    case 'analysisRunning':
+    case 'analysisReady':
+    case 'gapActionable':
+    case 'gapNoAction':
+    case 'gapArtifactWarning':
+    case 'noActionableSeams':
+    case 'noEnabledLanguages':
+    case 'stale':
+    case 'analysisFailed':
+    case 'ready':
+      return 'yes';
+    case 'starting':
+      return 'starting';
+    case 'resolvingServer':
+      return 'not yet; resolving server binary';
+    case 'serverUnavailable':
+      return 'no; server unavailable';
+    case 'disabled':
+      return 'no; extension disabled';
+    case 'noWorkspace':
+      return 'no; workspace unavailable';
+    case 'stopped':
+    default:
+      return 'no; server stopped';
+  }
+}
+
+function evidenceFreshnessSummary(kind: RiprStatusKind): string {
+  switch (kind) {
+    case 'stale':
+      return 'stale; save or refresh before acting';
+    case 'analysisQueued':
+    case 'analysisRunning':
+    case 'starting':
+    case 'resolvingServer':
+      return 'pending refresh';
+    case 'analysisReady':
+    case 'gapActionable':
+    case 'gapNoAction':
+    case 'gapArtifactWarning':
+    case 'noActionableSeams':
+      return 'current saved-workspace status reported by server refresh';
+    case 'noEnabledLanguages':
+      return 'not projected; languages are disabled';
+    case 'serverUnavailable':
+    case 'noWorkspace':
+    case 'disabled':
+    case 'stopped':
+      return 'unknown; analysis is not running';
+    case 'analysisFailed':
+      return 'unknown; last refresh failed';
+    case 'ready':
+    default:
+      return 'unknown until the next server refresh';
+  }
 }
 
 function firstUsefulActionLines(firstAction: FirstUsefulActionStatus): string[] {
@@ -655,6 +1026,9 @@ function firstUsefulActionLines(firstAction: FirstUsefulActionStatus): string[] 
     `Status: ${firstAction.status}`,
     `Action: ${firstAction.actionKind}`,
   ];
+  if (firstAction.seamId) {
+    lines.push(`Gap identity: ${firstAction.seamId}`);
+  }
   if (firstAction.selectedLocation) {
     lines.push(`Seam: ${firstAction.selectedLocation}`);
   }
@@ -682,13 +1056,139 @@ function firstUsefulActionLines(firstAction: FirstUsefulActionStatus): string[] 
   return lines;
 }
 
+function receiptStatusLines(
+  status: RiprStatusState,
+  firstAction: FirstUsefulActionStatus | undefined,
+  context: RiprStatusContext
+): string[] {
+  const receipt = context.setupStatus.receipt;
+  if (receipt.state === 'noWorkspace') {
+    return [];
+  }
+  const currentSeam = firstAction?.seamId;
+  if (status.kind === 'stale' && receipt.state === 'found') {
+    return [
+      'Receipt status: stale; refresh saved-workspace evidence before trusting receipt movement.',
+      `Receipt: ${receipt.relativePath}`,
+      'Receipt movement is not projected from stale editor evidence.'
+    ];
+  }
+  if (!currentSeam) {
+    if (receipt.state === 'missing') {
+      return [];
+    }
+    return [
+      `Receipt status: found; ${receipt.relativePath} exists, but no current gap identity is projected.`,
+      'Receipt movement is not projected without a matching gap identity.'
+    ];
+  }
+  switch (receipt.state) {
+    case 'missing': {
+      const lines = [
+        `Receipt status: missing; no matching receipt was found for seam ${currentSeam}.`
+      ];
+      if (firstAction?.receiptCommand) {
+        lines.push(`Receipt command: ${firstAction.receiptCommand}`);
+      }
+      lines.push('No receipt movement is claimed.');
+      return lines;
+    }
+    case 'unreadable':
+      return [
+        `Receipt status: unreadable; ${receipt.relativePath} could not be read.`,
+        receipt.detail ?? 'No reader detail was reported.',
+        'Receipt movement is not projected.'
+      ];
+    case 'malformed':
+      return [
+        `Receipt status: malformed; ${receipt.relativePath} could not be parsed as an agent receipt.`,
+        receipt.detail ?? 'No parser detail was reported.',
+        'Receipt movement is not projected.'
+      ];
+    case 'unsupportedSchema':
+      return [
+        `Receipt status: malformed; ${receipt.relativePath} uses an unsupported receipt schema.`,
+        receipt.detail ?? 'No schema detail was reported.',
+        'Receipt movement is not projected.'
+      ];
+    case 'wrongRoot':
+      return [
+        `Receipt status: wrong root; receipt root ${receipt.repoRoot ?? 'unknown'} does not match this workspace.`,
+        'Receipt movement is not projected.'
+      ];
+    case 'found':
+      break;
+  }
+  if (!receipt.seamId) {
+    return [
+      `Receipt status: malformed; ${receipt.relativePath} is missing a seam identity.`,
+      'Receipt movement is not projected.'
+    ];
+  }
+  if (receipt.seamId !== currentSeam) {
+    return [
+      `Receipt status: gap mismatch; receipt seam ${receipt.seamId} does not match current seam ${currentSeam}.`,
+      'Receipt movement is not projected.'
+    ];
+  }
+  if (receiptIsOlderThanFirstAction(receipt, firstAction)) {
+    return [
+      `Receipt status: stale; receipt for seam ${currentSeam} is older than the current first useful action report.`,
+      'Refresh saved-workspace evidence and rerun verify/receipt before trusting movement.'
+    ];
+  }
+  if (receipt.movement === 'improved' || receipt.movement === 'resolved') {
+    return [
+      `Receipt status: movement improved; matching receipt found for seam ${currentSeam}.`,
+      'Receipt records static movement only; it does not prove runtime adequacy or gate eligibility.'
+    ];
+  }
+  if (receipt.movement === 'unchanged') {
+    return [
+      `Receipt status: movement unchanged; matching receipt found for seam ${currentSeam}.`,
+      'Next safe action: inspect the focused test and missing discriminator before requesting another seam.'
+    ];
+  }
+  return [
+    `Receipt status: found; matching receipt exists for seam ${currentSeam}.`,
+    `Receipt movement: ${receipt.movement ?? 'not reported'}`,
+    'Receipt records static movement only; it does not prove runtime adequacy or gate eligibility.'
+  ];
+}
+
+function receiptIsOlderThanFirstAction(
+  receipt: RiprReceiptArtifactStatus,
+  firstAction: FirstUsefulActionStatus | undefined
+): boolean {
+  const receiptTime = parseTimestamp(receipt.generatedAt);
+  const firstActionTime = parseTimestamp(firstAction?.generatedAt);
+  return receiptTime !== undefined && firstActionTime !== undefined && receiptTime < firstActionTime;
+}
+
+function parseTimestamp(value: string | undefined): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function canProjectFirstUsefulAction(kind: RiprStatusKind): boolean {
   return kind === 'starting'
     || kind === 'analysisQueued'
     || kind === 'analysisRunning'
     || kind === 'analysisReady'
+    || kind === 'gapActionable'
+    || kind === 'gapNoAction'
     || kind === 'noActionableSeams'
+    || kind === 'noEnabledLanguages'
     || kind === 'ready';
+}
+
+function shouldInlineFirstUsefulAction(kind: RiprStatusKind): boolean {
+  return canProjectFirstUsefulAction(kind)
+    && kind !== 'gapActionable'
+    && kind !== 'gapNoAction';
 }
 
 function serverLogMessage(params: unknown): string | undefined {
@@ -701,17 +1201,136 @@ function serverLogMessage(params: unknown): string | undefined {
 
 function statusFromRefreshCompletedMessage(message: string): RiprStatusState {
   const diagnostics = numberField(message, 'diagnostics');
+  const enabledLanguages = numberField(message, 'enabled_languages');
+  const previewFindings = numberField(message, 'preview_findings') ?? 0;
+  const staticLimits = numberField(message, 'static_limits') ?? 0;
+  const gapArtifacts = numberField(message, 'gap_artifacts') ?? 0;
+  const actionableGapArtifacts = numberField(message, 'actionable_gap_artifacts') ?? 0;
+  const previewGapArtifacts = numberField(message, 'preview_gap_artifacts') ?? 0;
+  const noActionGapArtifacts = numberField(message, 'no_action_gap_artifacts') ?? 0;
+  const gapStaticLimits = numberField(message, 'gap_static_limits') ?? 0;
+  const gapArtifactRejections = numberField(message, 'gap_artifact_rejections') ?? 0;
+  const enabledLanguageNames = stringListField(message, 'enabled_language_names');
+  if (enabledLanguages === 0) {
+    return {
+      kind: 'noEnabledLanguages',
+      summary: 'ripr analysis completed with no enabled languages.',
+      enabledLanguages: [],
+      nextStep: 'Edit ripr.toml [languages] enabled to include rust or an available preview language, then run ripr: Restart Server.',
+      detail: [
+        message,
+        'No saved-workspace diagnostics are published because ripr.toml has [languages] enabled = [].',
+        'Enable rust or an available preview language to restore editor diagnostics.'
+      ].join('\n')
+    };
+  }
+  if (gapArtifactRejections > 0) {
+    const rejectionKinds = stringListField(message, 'gap_artifact_rejection_kinds') ?? [];
+    const details = [
+      message,
+      `Rejected gap artifact ${plural(gapArtifactRejections, 'input')} ${gapArtifactRejections === 1 ? 'was' : 'were'} not projected.`
+    ];
+    if (rejectionKinds.length > 0) {
+      details.push(`Rejected kind${rejectionKinds.length === 1 ? '' : 's'}: ${rejectionKinds.join(', ')}`);
+    }
+    details.push('Rejected gap artifacts never create diagnostics, hover repair routes, code actions, or receipts.');
+    return {
+      kind: 'gapArtifactWarning',
+      summary: `ripr ignored ${gapArtifactRejections} unsafe gap artifact ${plural(gapArtifactRejections, 'input')}.`,
+      enabledLanguages: enabledLanguageNames,
+      nextStep: 'Regenerate ripr reports for the current workspace, then refresh saved-workspace diagnostics.',
+      detail: details.join('\n')
+    };
+  }
+  if (actionableGapArtifacts > 0) {
+    const details = [message];
+    if (previewGapArtifacts > 0) {
+      details.push(
+        `${previewGapArtifacts} preview gap artifact ${plural(previewGapArtifacts, 'input')} ${previewGapArtifacts === 1 ? 'is' : 'are'} syntax-first and advisory.`
+      );
+    }
+    if (gapStaticLimits > 0) {
+      details.push(
+        `${gapStaticLimits} gap static limit ${plural(gapStaticLimits, 'entry', 'entries')} must be read before action language.`
+      );
+    }
+    details.push(
+      `${actionableGapArtifacts} actionable gap ${plural(actionableGapArtifacts, 'artifact')} validated for editor projection.`
+    );
+    return {
+      kind: 'gapActionable',
+      summary: gapStaticLimits > 0 || previewGapArtifacts > 0
+        ? 'ripr validated preview-limited gap projection input.'
+        : `ripr validated ${actionableGapArtifacts} actionable gap ${plural(actionableGapArtifacts, 'artifact')}.`,
+      enabledLanguages: enabledLanguageNames,
+      nextStep: gapStaticLimits > 0
+        ? 'Read static limits before opening a related test or copying a repair, verify, or receipt command.'
+        : 'Open the related test or copy a bounded repair packet, then verify and emit a receipt.',
+      detail: details.join('\n')
+    };
+  }
+  if (gapArtifacts > 0) {
+    const details = [message];
+    const noActionCount = noActionGapArtifacts > 0 ? noActionGapArtifacts : gapArtifacts;
+    if (previewGapArtifacts > 0) {
+      details.push(
+        `${previewGapArtifacts} preview gap artifact ${plural(previewGapArtifacts, 'input')} ${previewGapArtifacts === 1 ? 'is' : 'are'} syntax-first and advisory.`
+      );
+    }
+    if (gapStaticLimits > 0) {
+      details.push(
+        `${gapStaticLimits} gap static limit ${plural(gapStaticLimits, 'entry', 'entries')} must be read before any future action language.`
+      );
+    }
+    details.push(
+      `${noActionCount} gap ${plural(noActionCount, 'artifact')} reported no local repair action.`
+    );
+    return {
+      kind: 'gapNoAction',
+      summary: 'ripr validated gap artifacts with no actionable gap.',
+      enabledLanguages: enabledLanguageNames,
+      nextStep: 'No local repair action is projected; refresh after new saved changes or inspect ripr output if this is unexpected.',
+      detail: details.join('\n')
+    };
+  }
   const seamDiagnostics = numberField(message, 'seam_diagnostics');
+  if (previewFindings > 0) {
+    const details = [
+      message,
+      `${previewFindings} preview finding${previewFindings === 1 ? '' : 's'} are syntax-first and advisory.`
+    ];
+    if (staticLimits > 0) {
+      details.push(
+        `${staticLimits} preview static limit${staticLimits === 1 ? '' : 's'} must be read before action language.`
+      );
+    }
+    return {
+      kind: 'analysisReady',
+      summary: `ripr analysis completed with ${diagnostics ?? 0} diagnostics (${previewFindings} preview).`,
+      enabledLanguages: enabledLanguageNames,
+      nextStep: 'Read preview static limits before acting, then use only bounded ripr code actions.',
+      detail: details.join('\n')
+    };
+  }
   if (seamDiagnostics !== undefined && seamDiagnostics === 0) {
     return {
       kind: 'noActionableSeams',
       summary: 'ripr analysis completed with no actionable seam diagnostics.',
-      detail: message
+      enabledLanguages: enabledLanguageNames,
+      nextStep: 'If this is unexpected, save files, confirm the workspace root and enabled languages, then run ripr: Show Output.',
+      detail: [
+        message,
+        'No ripr seam diagnostics were published for the last saved workspace state.',
+        'Enabled languages determine which saved files can produce diagnostics; disabled or unavailable preview languages stay silent.',
+        'If you expected diagnostics, confirm the file is saved, the workspace root is correct, and the language is enabled and available in this ripr build.'
+      ].join('\n')
     };
   }
   return {
     kind: 'analysisReady',
     summary: `ripr analysis completed with ${diagnostics ?? 0} diagnostics.`,
+    enabledLanguages: enabledLanguageNames,
+    nextStep: 'Inspect diagnostics, then use bounded ripr hover and code actions for one focused test.',
     detail: message
   };
 }
@@ -719,6 +1338,21 @@ function statusFromRefreshCompletedMessage(message: string): RiprStatusState {
 function numberField(message: string, field: string): number | undefined {
   const match = message.match(new RegExp(`${field}=(\\d+)`));
   return match ? Number.parseInt(match[1], 10) : undefined;
+}
+
+function stringListField(message: string, field: string): string[] | undefined {
+  const match = message.match(new RegExp(`${field}=([^,\\s]*)`));
+  if (!match) {
+    return undefined;
+  }
+  if (match[1].trim().length === 0) {
+    return [];
+  }
+  return match[1].split('|').filter((entry) => entry.length > 0);
+}
+
+function plural(count: number, singular: string, pluralForm?: string): string {
+  return count === 1 ? singular : pluralForm ?? `${singular}s`;
 }
 
 function uriFromTarget(target: RiprContextTarget | undefined): vscode.Uri | undefined {
@@ -753,6 +1387,163 @@ function traceFromConfig(trace: RiprConfig['traceServer']): Trace {
 
 function firstUsefulActionReportPath(workspaceRoot: string): string {
   return path.join(workspaceRoot, 'target', 'ripr', 'reports', 'first-useful-action.json');
+}
+
+async function readSetupStatusFiles(
+  workspaceRoot: string | undefined,
+  readFile: RiprClientRuntime['readFile']
+): Promise<RiprSetupStatus> {
+  if (!workspaceRoot) {
+    return setupStatusWithoutWorkspace();
+  }
+  const config = await readSetupFileStatus(
+    'ripr config',
+    RIPR_CONFIG_RELATIVE_PATH,
+    workspaceRoot,
+    readFile,
+    'built-in defaults are active until ripr.toml is added'
+  );
+  const artifacts = await Promise.all(RIPR_SETUP_ARTIFACTS.map((artifact) =>
+    readSetupFileStatus(
+      artifact.label,
+      artifact.relativePath,
+      workspaceRoot,
+      readFile,
+      'artifact missing; run or refresh saved-workspace evidence when needed'
+    )
+  ));
+  const receipt = await readReceiptStatus(workspaceRoot, readFile);
+  return { config, artifacts, receipt };
+}
+
+async function readSetupFileStatus(
+  label: string,
+  relativePath: string,
+  workspaceRoot: string,
+  readFile: RiprClientRuntime['readFile'],
+  missingDetail: string
+): Promise<RiprSetupFileStatus> {
+  const filePath = setupFilePath(workspaceRoot, relativePath);
+  try {
+    const contents = await readFile(filePath);
+    return {
+      label,
+      relativePath,
+      path: filePath,
+      state: contents === undefined ? 'missing' : 'found',
+      detail: contents === undefined ? missingDetail : 'found in current workspace'
+    };
+  } catch (error) {
+    return {
+      label,
+      relativePath,
+      path: filePath,
+      state: 'unreadable',
+      detail: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+function setupStatusWithoutWorkspace(): RiprSetupStatus {
+  return {
+    config: setupNoWorkspaceFile('ripr config', RIPR_CONFIG_RELATIVE_PATH),
+    artifacts: RIPR_SETUP_ARTIFACTS.map((artifact) => setupNoWorkspaceFile(artifact.label, artifact.relativePath)),
+    receipt: {
+      relativePath: 'target/ripr/agent/agent-receipt.json',
+      state: 'noWorkspace',
+      detail: 'open a workspace before matching receipt artifacts'
+    }
+  };
+}
+
+function setupNoWorkspaceFile(label: string, relativePath: string): RiprSetupFileStatus {
+  return {
+    label,
+    relativePath,
+    state: 'noWorkspace',
+    detail: 'open a workspace before matching saved-workspace files'
+  };
+}
+
+function setupFilePath(workspaceRoot: string, relativePath: string): string {
+  return path.join(workspaceRoot, ...relativePath.split('/'));
+}
+
+async function readReceiptStatus(
+  workspaceRoot: string,
+  readFile: RiprClientRuntime['readFile']
+): Promise<RiprReceiptArtifactStatus> {
+  const relativePath = 'target/ripr/agent/agent-receipt.json';
+  const filePath = setupFilePath(workspaceRoot, relativePath);
+  let raw: string | undefined;
+  try {
+    raw = await readFile(filePath);
+  } catch (error) {
+    return {
+      relativePath,
+      path: filePath,
+      state: 'unreadable',
+      detail: error instanceof Error ? error.message : String(error)
+    };
+  }
+  if (raw === undefined) {
+    return {
+      relativePath,
+      path: filePath,
+      state: 'missing',
+      detail: 'receipt artifact missing; run verify and receipt after a focused repair'
+    };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    return {
+      relativePath,
+      path: filePath,
+      state: 'malformed',
+      detail: error instanceof Error ? error.message : String(error)
+    };
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return {
+      relativePath,
+      path: filePath,
+      state: 'malformed',
+      detail: 'receipt JSON root is not an object'
+    };
+  }
+  const receipt = parsed as Record<string, unknown>;
+  if (stringField(receipt, 'schema_version') !== '0.3' || stringField(receipt, 'tool') !== 'ripr') {
+    return {
+      relativePath,
+      path: filePath,
+      state: 'unsupportedSchema',
+      detail: 'expected ripr agent receipt schema_version 0.3'
+    };
+  }
+  const provenance = objectField(receipt, 'provenance');
+  const repoRoot = provenance ? stringField(provenance, 'repo_root') : undefined;
+  if (!rootMatchesWorkspace(repoRoot, workspaceRoot)) {
+    return {
+      relativePath,
+      path: filePath,
+      state: 'wrongRoot',
+      repoRoot,
+      detail: 'receipt repo_root does not match the active workspace'
+    };
+  }
+  const seam = objectField(receipt, 'seam');
+  return {
+    relativePath,
+    path: filePath,
+    state: 'found',
+    detail: 'receipt artifact found in current workspace',
+    seamId: seam ? stringField(seam, 'seam_id') : provenance ? stringField(provenance, 'seam_id') : undefined,
+    movement: provenance ? stringField(provenance, 'movement') : seam ? stringField(seam, 'change') : undefined,
+    repoRoot,
+    generatedAt: provenance ? stringField(provenance, 'generated_at') : undefined
+  };
 }
 
 async function readOptionalFile(filePath: string): Promise<string | undefined> {
@@ -812,6 +1603,8 @@ function parseFirstUsefulAction(
     status,
     actionKind,
     title,
+    generatedAt: stringField(report, 'generated_at'),
+    seamId: selected ? stringField(selected, 'seam_id') : undefined,
     selectedLocation: selectedLocation(selected),
     missingDiscriminator: selected ? stringField(selected, 'missing_discriminator') : undefined,
     target: target ? stringField(target, 'file') : undefined,
@@ -856,7 +1649,7 @@ const FIRST_USEFUL_ACTION_AUDIENCES = new Set([
 ]);
 
 interface AgentLoopCommandContract {
-  targetArtifact: string;
+  targetArtifact?: string;
   startsWith: string;
   includes: string[];
   requiresSeamId: boolean;
@@ -892,6 +1685,16 @@ const AGENT_LOOP_COMMAND_CONTRACTS: Record<string, AgentLoopCommandContract> = {
     startsWith: 'ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id ',
     includes: [' --json --out target/ripr/agent/agent-receipt.json'],
     requiresSeamId: true
+  },
+  gap_verify: {
+    startsWith: 'ripr agent verify --root .',
+    includes: ['--json'],
+    requiresSeamId: false
+  },
+  gap_receipt: {
+    startsWith: 'ripr agent receipt --root .',
+    includes: ['--json'],
+    requiresSeamId: false
   }
 };
 
@@ -912,8 +1715,9 @@ function validatedAgentLoopCommand(target?: RiprAgentLoopCommandTarget): string 
     return undefined;
   }
   if (
-    typeof target.target_artifact !== 'string' ||
-    target.target_artifact !== contract.targetArtifact
+    contract.targetArtifact !== undefined &&
+    (typeof target.target_artifact !== 'string' ||
+      target.target_artifact !== contract.targetArtifact)
   ) {
     return undefined;
   }
@@ -1038,8 +1842,24 @@ function firstWorkspaceFolder(): string | undefined {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 }
 
-function isRustFileDocument(document: vscode.TextDocument): boolean {
-  return document.languageId === 'rust' && document.uri.scheme === 'file';
+function isRiprFileDocument(document: vscode.TextDocument): boolean {
+  return document.uri.scheme === 'file' && RIPR_FILE_LANGUAGES.has(document.languageId);
+}
+
+function riprRelatedTestLanguage(filePath: string): 'rust' | 'typescript' | 'python' | undefined {
+  return RIPR_RELATED_TEST_LANGUAGE_BY_EXTENSION.get(path.extname(filePath).toLowerCase());
+}
+
+async function writeTestClipboardCapture(text: string): Promise<void> {
+  const capturePath = process.env.RIPR_TEST_CLIPBOARD_CAPTURE_PATH;
+  if (!capturePath) {
+    return;
+  }
+  try {
+    await fs.writeFile(capturePath, text, 'utf8');
+  } catch {
+    // Test capture must not make the user-facing clipboard command fail.
+  }
 }
 
 function runRipr(command: string, args: string[], cwd: string): Promise<string> {

@@ -3,6 +3,7 @@ mod backend;
 mod capabilities;
 mod config;
 mod diagnostics;
+mod gap_artifacts;
 mod hover;
 mod state;
 #[cfg(test)]

@@ -1,0 +1,10 @@
+{
+  "schema_version": "0.1",
+  "case": "stale_artifact",
+  "state": "stale_artifact",
+  "diagnostics_projected": 0,
+  "actions_projected": [
+    "refresh"
+  ],
+  "fail_closed": true
+}

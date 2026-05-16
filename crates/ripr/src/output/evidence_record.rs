@@ -27,6 +27,8 @@ pub(crate) struct EvidenceRecord {
     pub(crate) canonical_gap_id: Option<String>,
     pub(crate) canonical_gap_group_size: Option<usize>,
     pub(crate) canonical_gap_reason: Option<String>,
+    pub(crate) raw_findings: Vec<EvidenceRecordRawFinding>,
+    pub(crate) canonical_item: EvidenceRecordCanonicalItem,
     pub(crate) owner: String,
     pub(crate) location: EvidenceRecordLocation,
     pub(crate) seam_kind: String,
@@ -41,12 +43,54 @@ pub(crate) struct EvidenceRecord {
     pub(crate) actionability: EvidenceRecordActionability,
     pub(crate) calibration: EvidenceRecordCalibration,
     pub(crate) static_limitations: Vec<EvidenceRecordStaticLimitation>,
+    pub(crate) presentation_text: Option<EvidenceRecordPresentationText>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct EvidenceRecordLocation {
     pub(crate) file: String,
     pub(crate) line: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct EvidenceRecordRawFinding {
+    pub(crate) file: String,
+    pub(crate) line: usize,
+    pub(crate) kind: String,
+    pub(crate) expression: String,
+    pub(crate) probe_kind: String,
+    pub(crate) source_id: String,
+    pub(crate) evidence_record_ref: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct EvidenceRecordCanonicalItem {
+    pub(crate) canonical_gap_id: Option<String>,
+    pub(crate) raw_group_size: usize,
+    pub(crate) canonical_item_kind: String,
+    pub(crate) evidence_class: String,
+    pub(crate) gap_state: String,
+    pub(crate) actionability: String,
+    pub(crate) group_reason: Option<String>,
+    pub(crate) why: String,
+    pub(crate) recommended_repair: String,
+    pub(crate) related_test: Option<EvidenceRecordAlignmentRelatedTest>,
+    pub(crate) verify_command: Option<String>,
+    pub(crate) confidence: EvidenceRecordAlignmentConfidence,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct EvidenceRecordAlignmentRelatedTest {
+    pub(crate) name: String,
+    pub(crate) file: String,
+    pub(crate) line: usize,
+    pub(crate) reason: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct EvidenceRecordAlignmentConfidence {
+    pub(crate) basis: String,
+    pub(crate) notes: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -168,6 +212,18 @@ pub(crate) struct EvidenceRecordStaticLimitation {
     pub(crate) stage: String,
     pub(crate) state: String,
     pub(crate) reason: String,
+    pub(crate) category: String,
+    pub(crate) repair_route: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct EvidenceRecordPresentationText {
+    pub(crate) visibility: String,
+    pub(crate) observer: String,
+    pub(crate) actionability: String,
+    pub(crate) source_kind: String,
+    pub(crate) canonical_group_reason: Option<String>,
+    pub(crate) recommended_observer: String,
 }
 
 pub(crate) fn evidence_record_for(
@@ -178,12 +234,24 @@ pub(crate) fn evidence_record_for(
     let actionability = actionability_for(entry, &missing_records);
     let recommendation = recommendation_for(entry, &missing_records, &actionability);
     let related_tests_total = entry.evidence.related_tests.len();
+    let static_limitations = static_limitations_for(entry);
+    let raw_findings = raw_findings_for(entry);
+    let canonical_item = canonical_item_for(
+        entry,
+        canonical_gap,
+        &recommendation,
+        &actionability,
+        &static_limitations,
+        raw_findings.len(),
+    );
 
     EvidenceRecord {
         seam_id: entry.seam.id().as_str().to_string(),
         canonical_gap_id: canonical_gap.map(|gap| gap.id.clone()),
         canonical_gap_group_size: canonical_gap.map(|gap| gap.group_size),
         canonical_gap_reason: canonical_gap.map(|gap| gap.reason.to_string()),
+        raw_findings,
+        canonical_item,
         owner: entry.seam.owner().to_string(),
         location: EvidenceRecordLocation {
             file: display_path(entry.seam.file()),
@@ -243,7 +311,8 @@ pub(crate) fn evidence_record_for(
             confidence: "unknown".to_string(),
             agreement: "no_runtime_data".to_string(),
         },
-        static_limitations: static_limitations_for(entry),
+        static_limitations,
+        presentation_text: None,
     }
 }
 
@@ -254,6 +323,12 @@ pub(crate) fn evidence_record_json_value(record: &EvidenceRecord) -> Value {
         "canonical_gap_id": record.canonical_gap_id.as_deref(),
         "canonical_gap_group_size": record.canonical_gap_group_size,
         "canonical_gap_reason": record.canonical_gap_reason.as_deref(),
+        "raw_findings": record
+            .raw_findings
+            .iter()
+            .map(raw_finding_json)
+            .collect::<Vec<_>>(),
+        "canonical_item": canonical_item_json(&record.canonical_item),
         "owner": record.owner.as_str(),
         "location": {
             "file": record.location.file.as_str(),
@@ -297,6 +372,10 @@ pub(crate) fn evidence_record_json_value(record: &EvidenceRecord) -> Value {
             .iter()
             .map(static_limitation_json)
             .collect::<Vec<_>>(),
+        "presentation_text": record
+            .presentation_text
+            .as_ref()
+            .map_or(Value::Null, presentation_text_json),
     })
 }
 
@@ -373,6 +452,161 @@ fn actionability_for(
             recommended_test_target,
             verification_command,
         },
+    }
+}
+
+fn raw_findings_for(entry: &ClassifiedSeam) -> Vec<EvidenceRecordRawFinding> {
+    vec![EvidenceRecordRawFinding {
+        file: display_path(entry.seam.file()),
+        line: entry.seam.display_line(),
+        kind: entry.class.as_str().to_string(),
+        expression: entry.seam.expression().to_string(),
+        probe_kind: entry.seam.kind().as_str().to_string(),
+        source_id: entry.seam.id().as_str().to_string(),
+        evidence_record_ref: entry.seam.id().as_str().to_string(),
+    }]
+}
+
+fn canonical_item_for(
+    entry: &ClassifiedSeam,
+    canonical_gap: Option<&CanonicalGapIdentity>,
+    recommendation: &EvidenceRecordRecommendation,
+    actionability: &EvidenceRecordActionability,
+    static_limitations: &[EvidenceRecordStaticLimitation],
+    raw_findings_len: usize,
+) -> EvidenceRecordCanonicalItem {
+    let gap_state = gap_state_for(entry, actionability);
+    let canonical_item_kind = canonical_item_kind_for(gap_state);
+    let alignment_actionability = alignment_actionability_for(entry, actionability);
+    let raw_group_size = canonical_gap
+        .map(|gap| gap.group_size)
+        .unwrap_or(raw_findings_len);
+
+    EvidenceRecordCanonicalItem {
+        canonical_gap_id: canonical_gap.map(|gap| gap.id.clone()),
+        raw_group_size,
+        canonical_item_kind: canonical_item_kind.to_string(),
+        evidence_class: entry.seam.kind().as_str().to_string(),
+        gap_state: gap_state.to_string(),
+        actionability: alignment_actionability.to_string(),
+        group_reason: canonical_gap.map(|gap| gap.reason.to_string()),
+        why: actionability.reason.clone(),
+        recommended_repair: recommended_repair_for(
+            gap_state,
+            recommendation,
+            actionability,
+            static_limitations,
+        ),
+        related_test: recommendation
+            .nearest_test_to_imitate
+            .as_ref()
+            .map(alignment_related_test_for),
+        verify_command: recommendation.verify_command.clone(),
+        confidence: alignment_confidence_for(gap_state, static_limitations),
+    }
+}
+
+fn gap_state_for(
+    entry: &ClassifiedSeam,
+    actionability: &EvidenceRecordActionability,
+) -> &'static str {
+    if actionability.class == "static_limitation" {
+        "static_limitation"
+    } else if actionability.has_concrete_guidance {
+        "actionable"
+    } else if matches!(entry.class, SeamGripClass::StronglyGripped) {
+        "already_observed"
+    } else if matches!(entry.class, SeamGripClass::Intentional) {
+        "internal_only"
+    } else {
+        "unknown"
+    }
+}
+
+fn canonical_item_kind_for(gap_state: &str) -> &'static str {
+    match gap_state {
+        "actionable" => "gap",
+        "already_observed" => "observed",
+        "internal_only" => "no_action",
+        "static_limitation" => "limitation",
+        _ => "evidence",
+    }
+}
+
+fn alignment_actionability_for(
+    entry: &ClassifiedSeam,
+    actionability: &EvidenceRecordActionability,
+) -> &'static str {
+    match actionability.class.as_str() {
+        "actionable_focused_test" => "add_focused_test",
+        "actionable_assertion_upgrade" => "upgrade_assertion",
+        "actionable_related_test_extension" => "extend_related_test",
+        "static_limitation" => "static_limitation",
+        "not_policy_relevant" if matches!(entry.class, SeamGripClass::StronglyGripped) => {
+            "already_observed"
+        }
+        "not_policy_relevant" if matches!(entry.class, SeamGripClass::Intentional) => "no_action",
+        _ => "unknown",
+    }
+}
+
+fn recommended_repair_for(
+    gap_state: &str,
+    recommendation: &EvidenceRecordRecommendation,
+    actionability: &EvidenceRecordActionability,
+    static_limitations: &[EvidenceRecordStaticLimitation],
+) -> String {
+    if actionability.has_concrete_guidance {
+        return recommendation.reason.clone();
+    }
+
+    match gap_state {
+        "already_observed" => {
+            "No new RIPR action; current static evidence already observes this seam.".to_string()
+        }
+        "internal_only" => "No user test action in documented scope.".to_string(),
+        "static_limitation" => static_limitations.first().map_or_else(
+            || recommendation.reason.clone(),
+            |limitation| {
+                format!(
+                    "Inspect static limitation `{}` via `{}`.",
+                    limitation.category, limitation.repair_route
+                )
+            },
+        ),
+        _ => recommendation.reason.clone(),
+    }
+}
+
+fn alignment_related_test_for(
+    test: &EvidenceRecordRelatedTest,
+) -> EvidenceRecordAlignmentRelatedTest {
+    EvidenceRecordAlignmentRelatedTest {
+        name: test.name.clone(),
+        file: test.file.clone(),
+        line: test.line,
+        reason: test.relation_reason.clone(),
+    }
+}
+
+fn alignment_confidence_for(
+    gap_state: &str,
+    static_limitations: &[EvidenceRecordStaticLimitation],
+) -> EvidenceRecordAlignmentConfidence {
+    let mut notes = vec!["no imported runtime calibration data".to_string()];
+    notes.extend(
+        static_limitations
+            .iter()
+            .map(|limitation| format!("static limitation: {}", limitation.category)),
+    );
+
+    EvidenceRecordAlignmentConfidence {
+        basis: if gap_state == "unknown" {
+            "unknown".to_string()
+        } else {
+            "static_only".to_string()
+        },
+        notes,
     }
 }
 
@@ -509,12 +743,15 @@ fn static_limitations_for(entry: &ClassifiedSeam) -> Vec<EvidenceRecordStaticLim
     );
 
     if matches!(entry.class, SeamGripClass::Opaque) {
+        let reason =
+            "seam is classified opaque; inspect static evidence before writing a focused test";
+        let category = static_limitation_category("classification", "opaque", reason);
         limitations.push(EvidenceRecordStaticLimitation {
             stage: "classification".to_string(),
             state: "opaque".to_string(),
-            reason:
-                "seam is classified opaque; inspect static evidence before writing a focused test"
-                    .to_string(),
+            reason: reason.to_string(),
+            category: category.to_string(),
+            repair_route: static_limitation_repair_route(category).to_string(),
         });
     }
 
@@ -527,11 +764,76 @@ fn push_stage_limitation(
     evidence: &StageEvidence,
 ) {
     if matches!(evidence.state, StageState::Unknown | StageState::Opaque) {
+        let state = evidence.state.as_str();
+        let category = static_limitation_category(stage, state, &evidence.summary);
         limitations.push(EvidenceRecordStaticLimitation {
             stage: stage.to_string(),
-            state: evidence.state.as_str().to_string(),
+            state: state.to_string(),
             reason: evidence.summary.clone(),
+            category: category.to_string(),
+            repair_route: static_limitation_repair_route(category).to_string(),
         });
+    }
+}
+
+fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'static str {
+    let reason = reason.to_ascii_lowercase();
+    if reason.contains("cross-file")
+        || reason.contains("cross file")
+        || reason.contains("unresolved constant")
+        || reason.contains("constant boundary")
+    {
+        "cross_file_constant_unresolved"
+    } else if reason.contains("macro") || reason.contains("generated") {
+        "macro_generated_value"
+    } else if reason.contains("opaque helper") || reason.contains("opaque fixture") {
+        "opaque_helper_call"
+    } else if reason.contains("dynamic dispatch") || reason.contains("opaque dispatch") {
+        "dynamic_dispatch"
+    } else if reason.contains("mock") {
+        "unsupported_mock_shape"
+    } else if reason.contains("snapshot") {
+        "snapshot_field_unknown"
+    } else if reason.contains("side effect")
+        || reason.contains("side-effect")
+        || reason.contains("effect sink")
+    {
+        "side_effect_sink_unknown"
+    } else if reason.contains("no concrete activation values observed")
+        || reason.contains("no literal activation values")
+    {
+        "activation_value_unresolved"
+    } else if stage == "classification" || state == "opaque" {
+        "opaque_static_evidence"
+    } else {
+        match stage {
+            "reach" => "reachability_static_unknown",
+            "activate" => "activation_static_unknown",
+            "propagate" => "propagation_static_unknown",
+            "observe" => "observation_static_unknown",
+            "discriminate" => "discrimination_static_unknown",
+            _ => "static_unknown",
+        }
+    }
+}
+
+fn static_limitation_repair_route(category: &str) -> &'static str {
+    match category {
+        "activation_value_unresolved" => "analysis/value-resolution-audit-fixes",
+        "cross_file_constant_unresolved" => "analysis/cross-file-constant-resolution",
+        "macro_generated_value" => "analysis/macro-generated-value-fixtures",
+        "opaque_helper_call" => "analysis/oracle-semantics-audit-fixes",
+        "dynamic_dispatch" => "calibration/runtime-fixtures-v3",
+        "unsupported_mock_shape" => "analysis/oracle-semantics-audit-fixes",
+        "snapshot_field_unknown" => "analysis/oracle-semantics-audit-fixes",
+        "side_effect_sink_unknown" => "analysis/oracle-semantics-audit-fixes",
+        "opaque_static_evidence" => "analysis/static-limitation-taxonomy",
+        "reachability_static_unknown" => "analysis/related-test-ranking-audit-fixes",
+        "activation_static_unknown" => "analysis/static-limitation-taxonomy",
+        "propagation_static_unknown" => "analysis/static-limitation-taxonomy",
+        "observation_static_unknown" => "analysis/oracle-semantics-audit-fixes",
+        "discrimination_static_unknown" => "analysis/oracle-semantics-audit-fixes",
+        _ => "analysis/static-limitation-taxonomy",
     }
 }
 
@@ -566,6 +868,55 @@ fn flow_sink_json(sink: &EvidenceRecordFlowSink) -> Value {
         "text": sink.text.as_str(),
         "line": sink.line,
         "owner": sink.owner.as_deref(),
+    })
+}
+
+fn raw_finding_json(finding: &EvidenceRecordRawFinding) -> Value {
+    json!({
+        "file": finding.file.as_str(),
+        "line": finding.line,
+        "kind": finding.kind.as_str(),
+        "expression": finding.expression.as_str(),
+        "probe_kind": finding.probe_kind.as_str(),
+        "source_id": finding.source_id.as_str(),
+        "evidence_record_ref": finding.evidence_record_ref.as_str(),
+    })
+}
+
+fn canonical_item_json(item: &EvidenceRecordCanonicalItem) -> Value {
+    json!({
+        "canonical_gap_id": item.canonical_gap_id.as_deref(),
+        "raw_group_size": item.raw_group_size,
+        "canonical_item_kind": item.canonical_item_kind.as_str(),
+        "evidence_class": item.evidence_class.as_str(),
+        "gap_state": item.gap_state.as_str(),
+        "actionability": item.actionability.as_str(),
+        "group_reason": item.group_reason.as_deref(),
+        "why": item.why.as_str(),
+        "recommended_repair": item.recommended_repair.as_str(),
+        "related_test": item
+            .related_test
+            .as_ref()
+            .map_or(Value::Null, alignment_related_test_json),
+        "verify_command": item.verify_command.as_deref(),
+        "confidence": {
+            "basis": item.confidence.basis.as_str(),
+            "notes": item
+                .confidence
+                .notes
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+        },
+    })
+}
+
+fn alignment_related_test_json(test: &EvidenceRecordAlignmentRelatedTest) -> Value {
+    json!({
+        "name": test.name.as_str(),
+        "file": test.file.as_str(),
+        "line": test.line,
+        "reason": test.reason.as_str(),
     })
 }
 
@@ -659,6 +1010,19 @@ fn static_limitation_json(limitation: &EvidenceRecordStaticLimitation) -> Value 
         "stage": limitation.stage.as_str(),
         "state": limitation.state.as_str(),
         "reason": limitation.reason.as_str(),
+        "category": limitation.category.as_str(),
+        "repair_route": limitation.repair_route.as_str(),
+    })
+}
+
+fn presentation_text_json(presentation_text: &EvidenceRecordPresentationText) -> Value {
+    json!({
+        "visibility": presentation_text.visibility.as_str(),
+        "observer": presentation_text.observer.as_str(),
+        "actionability": presentation_text.actionability.as_str(),
+        "source_kind": presentation_text.source_kind.as_str(),
+        "canonical_group_reason": presentation_text.canonical_group_reason.as_deref(),
+        "recommended_observer": presentation_text.recommended_observer.as_str(),
     })
 }
 
@@ -732,6 +1096,51 @@ mod tests {
         }
     }
 
+    fn sample_actionability(
+        class: &str,
+        reason: &str,
+        has_concrete_guidance: bool,
+    ) -> EvidenceRecordActionability {
+        EvidenceRecordActionability {
+            class: class.to_string(),
+            reason: reason.to_string(),
+            has_concrete_guidance,
+            signals: EvidenceRecordActionabilitySignals {
+                missing_discriminator: has_concrete_guidance,
+                candidate_value: has_concrete_guidance,
+                assertion_shape: has_concrete_guidance,
+                related_test: has_concrete_guidance,
+                recommended_test_target: has_concrete_guidance,
+                verification_command: has_concrete_guidance,
+            },
+        }
+    }
+
+    fn sample_recommendation(reason: &str) -> EvidenceRecordRecommendation {
+        EvidenceRecordRecommendation {
+            action: "no_action".to_string(),
+            reason: reason.to_string(),
+            recommended_test: None,
+            nearest_test_to_imitate: None,
+            candidate_values: Vec::new(),
+            assertion_shape: None,
+            verify_command: None,
+        }
+    }
+
+    fn sample_static_limitation(
+        category: &str,
+        repair_route: &str,
+    ) -> EvidenceRecordStaticLimitation {
+        EvidenceRecordStaticLimitation {
+            stage: "observe".to_string(),
+            state: "unknown".to_string(),
+            reason: "helper hides assertion".to_string(),
+            category: category.to_string(),
+            repair_route: repair_route.to_string(),
+        }
+    }
+
     #[test]
     fn evidence_record_carries_identity_path_guidance_and_calibration_placeholder() {
         let entry = sample_classified(StageState::Yes, SeamGripClass::WeaklyGripped);
@@ -750,6 +1159,28 @@ mod tests {
         assert_eq!(json["seam_kind"], "predicate_boundary");
         assert_eq!(json["grip_class"], "weakly_gripped");
         assert_eq!(json["headline_eligible"], true);
+        assert_eq!(json["raw_findings"][0]["file"], "src/pricing.rs");
+        assert_eq!(json["raw_findings"][0]["line"], 88);
+        assert_eq!(json["raw_findings"][0]["kind"], "weakly_gripped");
+        assert_eq!(
+            json["raw_findings"][0]["expression"],
+            "amount >= discount_threshold"
+        );
+        assert_eq!(json["raw_findings"][0]["probe_kind"], "predicate_boundary");
+        assert_eq!(json["canonical_item"]["canonical_item_kind"], "gap");
+        assert_eq!(
+            json["canonical_item"]["evidence_class"],
+            "predicate_boundary"
+        );
+        assert_eq!(json["canonical_item"]["gap_state"], "actionable");
+        assert_eq!(json["canonical_item"]["actionability"], "upgrade_assertion");
+        assert_eq!(
+            json["canonical_item"]["related_test"]["name"],
+            "below_threshold_has_no_discount"
+        );
+        assert_eq!(json["canonical_item"]["confidence"]["basis"], "static_only");
+        assert_eq!(json["canonical_item"]["verify_command"], VERIFY_COMMAND);
+        assert!(json["presentation_text"].is_null());
         assert_eq!(json["evidence_path"]["activate"]["state"], "yes");
         assert_eq!(json["observed_values"][0]["context"], "function_argument");
         assert_eq!(
@@ -793,6 +1224,13 @@ mod tests {
         let json = evidence_record_json_value(&record);
 
         assert_eq!(json["actionability"]["class"], "static_limitation");
+        assert_eq!(json["canonical_item"]["canonical_item_kind"], "limitation");
+        assert_eq!(json["canonical_item"]["gap_state"], "static_limitation");
+        assert_eq!(json["canonical_item"]["actionability"], "static_limitation");
+        assert_eq!(
+            json["canonical_item"]["recommended_repair"],
+            "Inspect static limitation `activation_static_unknown` via `analysis/static-limitation-taxonomy`."
+        );
         assert_eq!(
             json["recommendation"]["action"],
             "inspect_static_limitation"
@@ -800,6 +1238,14 @@ mod tests {
         assert_eq!(json["recommendation"]["verify_command"], Value::Null);
         assert_eq!(json["static_limitations"][0]["stage"], "activate");
         assert_eq!(json["static_limitations"][0]["state"], "unknown");
+        assert_eq!(
+            json["static_limitations"][0]["category"],
+            "activation_static_unknown"
+        );
+        assert_eq!(
+            json["static_limitations"][0]["repair_route"],
+            "analysis/static-limitation-taxonomy"
+        );
     }
 
     #[test]
@@ -813,6 +1259,289 @@ mod tests {
         assert_eq!(json["actionability"]["class"], "static_limitation");
         assert_eq!(json["static_limitations"][0]["stage"], "activate");
         assert_eq!(json["static_limitations"][1]["stage"], "classification");
+        assert_eq!(
+            json["static_limitations"][1]["category"],
+            "opaque_static_evidence"
+        );
+        assert_eq!(
+            json["static_limitations"][1]["repair_route"],
+            "analysis/static-limitation-taxonomy"
+        );
+    }
+
+    #[test]
+    fn evidence_record_normalizes_static_limitation_categories() {
+        for (stage, state, reason, expected) in [
+            (
+                "activate",
+                "unknown",
+                "No concrete activation values observed for seam `threshold`",
+                "activation_value_unresolved",
+            ),
+            (
+                "activate",
+                "unknown",
+                "cross-file constant boundary is unresolved",
+                "cross_file_constant_unresolved",
+            ),
+            (
+                "activate",
+                "unknown",
+                "macro generated value hides literal",
+                "macro_generated_value",
+            ),
+            (
+                "observe",
+                "unknown",
+                "opaque helper hides field",
+                "opaque_helper_call",
+            ),
+            (
+                "propagate",
+                "unknown",
+                "dynamic dispatch target is opaque",
+                "dynamic_dispatch",
+            ),
+            (
+                "observe",
+                "unknown",
+                "mock expectation shape is unsupported",
+                "unsupported_mock_shape",
+            ),
+            (
+                "observe",
+                "unknown",
+                "snapshot field is unknown",
+                "snapshot_field_unknown",
+            ),
+            (
+                "propagate",
+                "unknown",
+                "side-effect sink is unknown",
+                "side_effect_sink_unknown",
+            ),
+            (
+                "classification",
+                "opaque",
+                "seam is classified opaque",
+                "opaque_static_evidence",
+            ),
+            (
+                "reach",
+                "unknown",
+                "no related tests",
+                "reachability_static_unknown",
+            ),
+            (
+                "activate",
+                "unknown",
+                "missing fact",
+                "activation_static_unknown",
+            ),
+            (
+                "propagate",
+                "unknown",
+                "missing sink",
+                "propagation_static_unknown",
+            ),
+            (
+                "observe",
+                "unknown",
+                "missing oracle",
+                "observation_static_unknown",
+            ),
+            (
+                "discriminate",
+                "unknown",
+                "missing exact assertion",
+                "discrimination_static_unknown",
+            ),
+            ("unknown", "unknown", "missing stage", "static_unknown"),
+        ] {
+            assert_eq!(
+                static_limitation_category(stage, state, reason),
+                expected,
+                "unexpected category for {stage}/{state}: {reason}"
+            );
+        }
+
+        for (category, expected) in [
+            (
+                "activation_value_unresolved",
+                "analysis/value-resolution-audit-fixes",
+            ),
+            (
+                "cross_file_constant_unresolved",
+                "analysis/cross-file-constant-resolution",
+            ),
+            (
+                "macro_generated_value",
+                "analysis/macro-generated-value-fixtures",
+            ),
+            (
+                "opaque_helper_call",
+                "analysis/oracle-semantics-audit-fixes",
+            ),
+            ("dynamic_dispatch", "calibration/runtime-fixtures-v3"),
+            (
+                "unsupported_mock_shape",
+                "analysis/oracle-semantics-audit-fixes",
+            ),
+            (
+                "snapshot_field_unknown",
+                "analysis/oracle-semantics-audit-fixes",
+            ),
+            (
+                "side_effect_sink_unknown",
+                "analysis/oracle-semantics-audit-fixes",
+            ),
+            (
+                "opaque_static_evidence",
+                "analysis/static-limitation-taxonomy",
+            ),
+            (
+                "reachability_static_unknown",
+                "analysis/related-test-ranking-audit-fixes",
+            ),
+            (
+                "activation_static_unknown",
+                "analysis/static-limitation-taxonomy",
+            ),
+            (
+                "propagation_static_unknown",
+                "analysis/static-limitation-taxonomy",
+            ),
+            (
+                "observation_static_unknown",
+                "analysis/oracle-semantics-audit-fixes",
+            ),
+            (
+                "discrimination_static_unknown",
+                "analysis/oracle-semantics-audit-fixes",
+            ),
+            ("unknown", "analysis/static-limitation-taxonomy"),
+        ] {
+            assert_eq!(
+                static_limitation_repair_route(category),
+                expected,
+                "unexpected repair route for {category}"
+            );
+        }
+    }
+
+    #[test]
+    fn evidence_record_alignment_helpers_cover_non_actionable_states() {
+        let not_policy_relevant =
+            sample_actionability("not_policy_relevant", "no user action", false);
+        let strong = sample_classified(StageState::Yes, SeamGripClass::StronglyGripped);
+        let intentional = sample_classified(StageState::Yes, SeamGripClass::Intentional);
+        let unknown = sample_classified(StageState::Yes, SeamGripClass::Suppressed);
+
+        assert_eq!(
+            gap_state_for(&strong, &not_policy_relevant),
+            "already_observed"
+        );
+        assert_eq!(
+            gap_state_for(&intentional, &not_policy_relevant),
+            "internal_only"
+        );
+        assert_eq!(gap_state_for(&unknown, &not_policy_relevant), "unknown");
+        assert_eq!(canonical_item_kind_for("already_observed"), "observed");
+        assert_eq!(canonical_item_kind_for("internal_only"), "no_action");
+        assert_eq!(canonical_item_kind_for("unknown"), "evidence");
+        assert_eq!(
+            alignment_actionability_for(&strong, &not_policy_relevant),
+            "already_observed"
+        );
+        assert_eq!(
+            alignment_actionability_for(&intentional, &not_policy_relevant),
+            "no_action"
+        );
+        assert_eq!(
+            alignment_actionability_for(
+                &unknown,
+                &sample_actionability("actionable_focused_test", "add focused test", true)
+            ),
+            "add_focused_test"
+        );
+        assert_eq!(
+            alignment_actionability_for(&unknown, &not_policy_relevant),
+            "unknown"
+        );
+
+        let recommendation = sample_recommendation("fallback repair");
+        assert_eq!(
+            recommended_repair_for(
+                "already_observed",
+                &recommendation,
+                &not_policy_relevant,
+                &[]
+            ),
+            "No new RIPR action; current static evidence already observes this seam."
+        );
+        assert_eq!(
+            recommended_repair_for("internal_only", &recommendation, &not_policy_relevant, &[]),
+            "No user test action in documented scope."
+        );
+        assert_eq!(
+            recommended_repair_for("unknown", &recommendation, &not_policy_relevant, &[]),
+            "fallback repair"
+        );
+        assert_eq!(
+            recommended_repair_for(
+                "static_limitation",
+                &recommendation,
+                &not_policy_relevant,
+                &[sample_static_limitation(
+                    "opaque_helper_call",
+                    "analysis/oracle-semantics-audit-fixes"
+                )],
+            ),
+            "Inspect static limitation `opaque_helper_call` via `analysis/oracle-semantics-audit-fixes`."
+        );
+
+        let unknown_confidence = alignment_confidence_for("unknown", &[]);
+        assert_eq!(unknown_confidence.basis, "unknown");
+        assert_eq!(
+            unknown_confidence.notes,
+            vec!["no imported runtime calibration data"]
+        );
+        let limited_confidence = alignment_confidence_for(
+            "static_limitation",
+            &[sample_static_limitation(
+                "opaque_helper_call",
+                "analysis/oracle-semantics-audit-fixes",
+            )],
+        );
+        assert_eq!(limited_confidence.basis, "static_only");
+        assert_eq!(
+            limited_confidence.notes[1],
+            "static limitation: opaque_helper_call"
+        );
+    }
+
+    #[test]
+    fn presentation_text_json_serializes_nullable_alignment_fields() {
+        let presentation_text = EvidenceRecordPresentationText {
+            visibility: "unknown".to_string(),
+            observer: "unknown".to_string(),
+            actionability: "inspect_visibility".to_string(),
+            source_kind: "const_decl".to_string(),
+            canonical_group_reason: Some("declaration_and_literal_same_text_constant".to_string()),
+            recommended_observer: "cli_help_output".to_string(),
+        };
+
+        let json = presentation_text_json(&presentation_text);
+
+        assert_eq!(json["visibility"], "unknown");
+        assert_eq!(json["observer"], "unknown");
+        assert_eq!(json["actionability"], "inspect_visibility");
+        assert_eq!(json["source_kind"], "const_decl");
+        assert_eq!(
+            json["canonical_group_reason"],
+            "declaration_and_literal_same_text_constant"
+        );
+        assert_eq!(json["recommended_observer"], "cli_help_output");
     }
 
     #[test]
@@ -836,6 +1565,12 @@ mod tests {
         assert_eq!(json["canonical_gap_group_size"], 3);
         assert_eq!(
             json["canonical_gap_reason"],
+            crate::analysis::canonical_gap::CANONICAL_GAP_REASON
+        );
+        assert_eq!(json["canonical_item"]["canonical_gap_id"], "gap:abc123");
+        assert_eq!(json["canonical_item"]["raw_group_size"], 3);
+        assert_eq!(
+            json["canonical_item"]["group_reason"],
             crate::analysis::canonical_gap::CANONICAL_GAP_REASON
         );
     }

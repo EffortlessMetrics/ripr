@@ -69,6 +69,7 @@ ripr first-action \
   --root . \
   --pr-guidance target/ripr/review/comments.json \
   --assistant-proof target/ripr/reports/test-oracle-assistant-proof.json \
+  --gap-ledger target/ripr/reports/gap-decision-ledger.json \
   --ledger target/ripr/reports/pr-evidence-ledger.json \
   --baseline-delta target/ripr/reports/baseline-debt-delta.json \
   --receipt target/ripr/reports/agent-receipt.json \
@@ -82,6 +83,11 @@ ripr first-action \
 Use the command fields in the generated report for follow-up work. Do not
 hand-roll a broader agent task when the report already names one seam, one
 target, and one verify path.
+
+When `--gap-ledger` is supplied, first-action can route from an explicit
+repairable stable Rust `GapRecord`. That path uses the record's gap ID, repair
+route, target, and verification command; it must not infer actionability from a
+raw classifier label or generic confidence value.
 
 ## Read The Status
 

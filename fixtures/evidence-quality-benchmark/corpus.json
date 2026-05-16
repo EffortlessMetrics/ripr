@@ -1,0 +1,1406 @@
+{
+  "kind": "lane1_evidence_quality_benchmark_corpus",
+  "schema_version": "0.1",
+  "spec": "RIPR-SPEC-0035",
+  "evidence_classes": [
+    "duplicate_canonical_gap",
+    "match_arm_discriminator_split",
+    "wrong_related_test_top_choice",
+    "broad_vs_exact_error_oracle",
+    "self_computed_expected_value",
+    "opaque_helper_static_limitation",
+    "cross_file_constant_limitation",
+    "presentation_text",
+    "config_or_policy_constant",
+    "side_effect_observer",
+    "snapshot_discriminator",
+    "mock_expectation",
+    "runtime_only_signal",
+    "ambiguous_runtime_join"
+  ],
+  "required_case_kinds": [
+    "positive",
+    "negative_guard",
+    "metamorphic_line_movement",
+    "equivalent_code",
+    "static_limitation",
+    "calibration"
+  ],
+  "capability_scope": {
+    "rule": "class_scoped",
+    "stable_requires": "fixture_backed documented scope",
+    "calibrated_requires": "checked imported runtime outcomes"
+  },
+  "calibration_scope": {
+    "runtime_only_static_gap_created": false,
+    "ambiguous_joins_remain": "ambiguous",
+    "mutation_execution": "not_run_by_fixture_contract"
+  },
+  "audit_expectations": {
+    "source_report": "target/ripr/reports/evidence-quality-scorecard.json",
+    "signals": [
+      "maturity_by_class",
+      "recommended_repairs",
+      "unknowns",
+      "recent_audit_deltas"
+    ]
+  },
+  "cases": [
+    {
+      "id": "duplicate_canonical_gap_fixture_backed_group",
+      "case_kind": "positive",
+      "evidence_class": "duplicate_canonical_gap",
+      "maturity_scope": "fixture_backed",
+      "description": "Equivalent raw seams with the same owner, seam kind, flow sink, discriminator, and assertion shape remain one canonical group.",
+      "fixture_reference": "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json#duplicate_canonical_gap_overcount_suppressions_match_arm",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-duplicate-1",
+          "canonical_gap_id": "gap:bench-duplicate",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pricing::discount",
+          "location": {
+            "file": "src/pricing.rs",
+            "line": 40
+          },
+          "seam_kind": "predicate_boundary",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "duplicate_looking_groups",
+        "metric": "canonical_gap_group_size",
+        "value": 2
+      },
+      "expected_claim": "Equivalent raw seams can share one canonical gap identity.",
+      "must_not_claim": [
+        "Do not collapse different missing discriminators into this group.",
+        "Do not use raw line number as the canonical identity."
+      ],
+      "repair_route": "fixtures/evidence-quality-benchmark-corpus"
+    },
+    {
+      "id": "match_arm_discriminator_line_movement",
+      "case_kind": "metamorphic_line_movement",
+      "evidence_class": "match_arm_discriminator_split",
+      "maturity_scope": "fixture_backed",
+      "description": "The same match arm keeps canonical identity across line movement while distinct arms stay separated.",
+      "fixture_reference": "docs/specs/RIPR-SPEC-0033-match-arm-canonical-gap-discriminators.md",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-match-arm-after",
+          "canonical_gap_id": "gap:bench-match-arm-json",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "parser::kind",
+          "location": {
+            "file": "src/parser.rs",
+            "line": 124
+          },
+          "seam_kind": "match_arm",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "canonical_gap_groups",
+        "metric": "line_movement_identity",
+        "value": 1
+      },
+      "metamorphic": {
+        "before": {
+          "canonical_gap_id": "gap:bench-match-arm-json",
+          "line": 104
+        },
+        "after": {
+          "canonical_gap_id": "gap:bench-match-arm-json",
+          "line": 124
+        }
+      },
+      "expected_claim": "Same match-arm discriminator keeps canonical identity across line movement.",
+      "must_not_claim": [
+        "Do not group a different match arm with this identity.",
+        "Do not use a generic match or => discriminator."
+      ],
+      "repair_route": "analysis/canonical-gap-overcount-regression"
+    },
+    {
+      "id": "wrong_related_test_top_choice_negative_guard",
+      "case_kind": "negative_guard",
+      "evidence_class": "wrong_related_test_top_choice",
+      "maturity_scope": "static_only",
+      "description": "A same-file lexical match must not outrank a direct owner call with activation overlap.",
+      "fixture_reference": "RIPR-SPEC-0029 related-test ranking v2 cases",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-related-1",
+          "canonical_gap_id": "gap:bench-related",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pricing::discount",
+          "location": {
+            "file": "src/pricing.rs",
+            "line": 55
+          },
+          "seam_kind": "predicate_boundary",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "related_test_confidence",
+        "metric": "top_confidence_counts.low",
+        "value": 1
+      },
+      "expected_claim": "Direct owner calls with activation overlap should be preferred over weak lexical affinity.",
+      "must_not_claim": [
+        "Do not call a same-file lexical hit high-confidence without direct evidence.",
+        "Do not let changed-test recency outrank owner-call evidence."
+      ],
+      "repair_route": "analysis/related-test-ranking-audit-fixes"
+    },
+    {
+      "id": "broad_vs_exact_error_oracle",
+      "case_kind": "positive",
+      "evidence_class": "broad_vs_exact_error_oracle",
+      "maturity_scope": "fixture_backed",
+      "description": "Exact error variant assertions are stronger than broad is_err style oracles.",
+      "fixture_reference": "crates/ripr/src/analysis/classifier.rs exact error variant tests",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-error-1",
+          "canonical_gap_id": "gap:bench-error",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "parser::load",
+          "location": {
+            "file": "src/parser.rs",
+            "line": 72
+          },
+          "seam_kind": "error_path",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "oracle_semantics_distribution",
+        "metric": "oracle_kind_counts.exact_error_variant",
+        "value": 1
+      },
+      "expected_claim": "Exact error variant evidence observes the changed variant more specifically than broad error checks.",
+      "must_not_claim": [
+        "Do not treat is_err as exact variant discrimination.",
+        "Do not upgrade broad error oracles without variant evidence."
+      ],
+      "repair_route": "analysis/oracle-semantics-audit-fixes"
+    },
+    {
+      "id": "self_computed_expected_value_guard",
+      "case_kind": "equivalent_code",
+      "evidence_class": "self_computed_expected_value",
+      "maturity_scope": "unsupported",
+      "description": "A test that computes expected output through the owner under test is not independent exact-value evidence.",
+      "fixture_reference": "future benchmark fixture: self-computed expected value",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-self-computed-1",
+          "canonical_gap_id": "gap:bench-self-computed",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pricing::total",
+          "location": {
+            "file": "src/pricing.rs",
+            "line": 88
+          },
+          "seam_kind": "return_value",
+          "grip_class": "reachable_unrevealed",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "oracle_semantics_distribution",
+        "metric": "self_computed_expected_value",
+        "value": 1
+      },
+      "expected_claim": "Self-computed expected values remain weak until expected data is independent.",
+      "must_not_claim": [
+        "Do not mark self-computed expected values as strong exact-value evidence.",
+        "Do not claim equivalent code proves discriminator coverage."
+      ],
+      "repair_route": "analysis/oracle-semantics-audit-fixes"
+    },
+    {
+      "id": "duplicative_equality_oracle_guard",
+      "case_kind": "negative_guard",
+      "evidence_class": "self_computed_expected_value",
+      "maturity_scope": "fixture_backed",
+      "description": "A duplicated equality assertion is not independent exact-value evidence.",
+      "fixture_reference": "crates/ripr/src/analysis/rust_index.rs::tests::classifies_duplicative_equality_as_weak_oracle",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-duplicative-equality-1",
+          "canonical_gap_id": "gap:bench-duplicative-equality",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pricing::total",
+          "location": {
+            "file": "src/pricing.rs",
+            "line": 89
+          },
+          "seam_kind": "return_value",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "oracle_semantics_distribution",
+        "metric": "oracle_kind_counts.relational_check",
+        "value": 1
+      },
+      "expected_claim": "Duplicated equality stays weak because it observes only a tautological relationship.",
+      "must_not_claim": [
+        "Do not mark assert_eq!(actual, actual) as strong exact-value evidence.",
+        "Do not remove the upgrade suggestion for an independent expected value."
+      ],
+      "repair_route": "analysis/oracle-semantics-audit-fixes"
+    },
+    {
+      "id": "opaque_helper_static_limitation",
+      "case_kind": "static_limitation",
+      "evidence_class": "opaque_helper_static_limitation",
+      "maturity_scope": "static_only",
+      "description": "Opaque assertion helpers remain static limitations until a supported helper pattern is added.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::opaque_custom_assertion_helper_stays_unknown_oracle",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-opaque-helper-1",
+          "canonical_gap_id": null,
+          "canonical_gap_group_size": null,
+          "canonical_gap_reason": null,
+          "owner": "helpers::assert_discount",
+          "location": {
+            "file": "tests/helpers.rs",
+            "line": 12
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "opaque_helper_call",
+        "value": 1
+      },
+      "static_limitation_category": "opaque_helper_call",
+      "expected_claim": "Opaque helpers are analyzer limitations, not focused user test gaps.",
+      "must_not_claim": [
+        "Do not infer exact-value semantics from an unsupported helper name.",
+        "Do not promote this class without positive and negative helper fixtures."
+      ],
+      "repair_route": "analysis/static-limitation-taxonomy"
+    },
+    {
+      "id": "cross_file_constant_limitation",
+      "case_kind": "static_limitation",
+      "evidence_class": "cross_file_constant_limitation",
+      "maturity_scope": "static_only",
+      "description": "Cross-file constants that cannot be resolved remain static limitations.",
+      "fixture_reference": "future benchmark fixture: cross-file constant boundary",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-cross-file-constant-1",
+          "canonical_gap_id": "gap:bench-cross-file-constant",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pricing::threshold",
+          "location": {
+            "file": "src/pricing.rs",
+            "line": 101
+          },
+          "seam_kind": "predicate_boundary",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "cross_file_constant_unresolved",
+        "value": 1
+      },
+      "static_limitation_category": "cross_file_constant_unresolved",
+      "expected_claim": "Unresolved cross-file constants stay visible as analyzer limits.",
+      "must_not_claim": [
+        "Do not invent candidate values from unresolved constants.",
+        "Do not treat unresolved constants as missing user assertions."
+      ],
+      "repair_route": "analysis/static-limitation-taxonomy"
+    },
+    {
+      "id": "presentation_text_constant_visibility_unknown",
+      "case_kind": "static_limitation",
+      "evidence_class": "presentation_text",
+      "maturity_scope": "unsupported",
+      "description": "A changed label/help-text constant should become one presentation-text evidence item with visibility and actionability, not two raw line-local actions.",
+      "fixture_reference": "screenshot-derived benchmark: APPLE_M3_AIR_DEVICE_LABELS_TEXT declaration plus string literal",
+      "sample": {
+        "file": "src/device_labels.rs",
+        "declaration_line": 46,
+        "literal_line": 47,
+        "source": "pub const APPLE_M3_AIR_DEVICE_LABELS_TEXT: &str =\n    \"apple-m3-air-cpu-neon = M3 MacBook Air Apple CPU/NEON lane\";"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-presentation-text-apple-m3-air",
+          "canonical_gap_id": "presentation_text::APPLE_M3_AIR_DEVICE_LABELS_TEXT",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "APPLE_M3_AIR_DEVICE_LABELS_TEXT",
+          "location": {
+            "file": "src/device_labels.rs",
+            "line": 46
+          },
+          "seam_kind": "presentation_text_constant",
+          "grip_class": "static_unknown",
+          "headline_eligible": false,
+          "evidence_class": "presentation_text",
+          "presentation_text": {
+            "constant_name": "APPLE_M3_AIR_DEVICE_LABELS_TEXT",
+            "text_literal": "apple-m3-air-cpu-neon = M3 MacBook Air Apple CPU/NEON lane",
+            "visibility": "unknown",
+            "actionability": "static_limitation_visibility_unknown",
+            "recommended_observer": "unknown",
+            "repair_kind": "inspect_visibility",
+            "target_test_type": "unknown",
+            "suggested_assertion": "Trace the constant to a supported output sink before adding or updating tests."
+          },
+          "static_limitation": {
+            "repair_route": "trace_string_constant_to_output_or_snapshot_test",
+            "user_actionability": "unknown_until_visibility_known"
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "presentation_text_visibility_unknown",
+        "value": 1
+      },
+      "static_limitation_category": "presentation_text_visibility_unknown",
+      "expected_claim": "Changed presentation text is only actionable when RIPR can identify a plausible observable output path or observer.",
+      "must_not_claim": [
+        "Do not create user test debt from text alone.",
+        "Do not recommend mutation testing as the first action for a visibility-unknown text label.",
+        "Do not produce independent actions for the declaration line and string literal line.",
+        "Do not treat internal labels as user-visible presentation text.",
+        "Do not infer user visibility through opaque helpers."
+      ],
+      "repair_route": "analysis/presentation-text-visibility"
+    },
+    {
+      "id": "presentation_text_user_visible_unobserved_alignment",
+      "case_kind": "positive",
+      "evidence_class": "presentation_text",
+      "maturity_scope": "fixture_backed",
+      "description": "User-visible output text with no supported observer becomes one actionable canonical item, not a raw finding count.",
+      "fixture_reference": "RIPR-SPEC-0045 user-visible unobserved presentation text",
+      "sample": {
+        "file": "src/help.rs",
+        "declaration_line": 18,
+        "literal_line": 19,
+        "sink": "cli_help_output"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-presentation-text-visible-unobserved",
+          "canonical_gap_id": "presentation_text::HELP_DEVICE_LABEL",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "HELP_DEVICE_LABEL",
+          "location": {
+            "file": "src/help.rs",
+            "line": 18
+          },
+          "seam_kind": "presentation_text_constant",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_class": "presentation_text",
+          "gap_state": "actionable",
+          "actionability": "add_output_observer",
+          "why": "Changed text flows to CLI help output and no supported output observer is found.",
+          "recommended_repair": "Add or update a help-output snapshot assertion for HELP_DEVICE_LABEL.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/help.rs",
+              "line": 18,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/help.rs",
+              "line": 19,
+              "kind": "weakly_exposed"
+            }
+          ],
+          "presentation_text": {
+            "constant_name": "HELP_DEVICE_LABEL",
+            "visibility": "user_visible",
+            "observer": "none",
+            "actionability": "add_output_observer",
+            "recommended_observer": "cli_help_output",
+            "repair_kind": "output_observer",
+            "target_test_type": "help_output_snapshot",
+            "suggested_assertion": "Assert CLI help output includes the HELP_DEVICE_LABEL text."
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "actionable_gaps",
+        "value": 1
+      },
+      "expected_claim": "A visible unobserved text change can become one actionable output-observer repair.",
+      "must_not_claim": [
+        "Do not count the declaration and literal as two user actions.",
+        "Do not recommend mutation testing before output-observer work.",
+        "Do not call lexical-only tests observers."
+      ],
+      "repair_route": "analysis/presentation-text-actionability"
+    },
+    {
+      "id": "presentation_text_user_visible_observed_alignment",
+      "case_kind": "positive",
+      "evidence_class": "presentation_text",
+      "maturity_scope": "fixture_backed",
+      "description": "User-visible output text with a supported snapshot or golden observer becomes an already-observed no-action item.",
+      "fixture_reference": "RIPR-SPEC-0045 user-visible observed presentation text",
+      "sample": {
+        "file": "src/report.rs",
+        "declaration_line": 27,
+        "literal_line": 28,
+        "sink": "report_render",
+        "observer": "golden"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-presentation-text-visible-observed",
+          "canonical_gap_id": "presentation_text::REPORT_DEVICE_LABEL",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "REPORT_DEVICE_LABEL",
+          "location": {
+            "file": "src/report.rs",
+            "line": 27
+          },
+          "seam_kind": "presentation_text_constant",
+          "grip_class": "strongly_gripped",
+          "headline_eligible": false,
+          "evidence_class": "presentation_text",
+          "gap_state": "already_observed",
+          "actionability": "already_observed",
+          "why": "Changed report text flows to rendered output and a golden observer covers it.",
+          "recommended_repair": "No new RIPR action.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/report.rs",
+              "line": 27,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/report.rs",
+              "line": 28,
+              "kind": "exposed"
+            }
+          ],
+          "presentation_text": {
+            "constant_name": "REPORT_DEVICE_LABEL",
+            "visibility": "user_visible",
+            "observer": "golden",
+            "actionability": "already_observed",
+            "recommended_observer": "golden",
+            "repair_kind": "no_action",
+            "target_test_type": "golden",
+            "suggested_assertion": "Existing golden observer already covers the rendered report output."
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "already_observed",
+        "value": 1
+      },
+      "expected_claim": "A visible observed text change remains visible as evidence but does not become a user repair.",
+      "must_not_claim": [
+        "Do not emit an actionable gap when a supported output observer exists.",
+        "Do not hide the raw findings.",
+        "Do not treat golden-observed text as unobserved snapshot debt."
+      ],
+      "repair_route": "analysis/presentation-text-actionability"
+    },
+    {
+      "id": "presentation_text_observer_unknown_alignment",
+      "case_kind": "static_limitation",
+      "evidence_class": "presentation_text",
+      "maturity_scope": "fixture_backed",
+      "description": "Likely user-visible presentation text with an unsupported observer topology remains an observer-unknown limitation instead of becoming user test debt.",
+      "fixture_reference": "RIPR-SPEC-0043 presentation_text_observer_unknown",
+      "sample": {
+        "file": "src/help_renderer.rs",
+        "declaration_line": 41,
+        "literal_line": 42,
+        "sink": "markdown_help",
+        "observer": "opaque_helper"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-presentation-text-observer-unknown",
+          "canonical_gap_id": "presentation_text::HELP_RENDERED_LABEL",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "HELP_RENDERED_LABEL",
+          "location": {
+            "file": "src/help_renderer.rs",
+            "line": 41
+          },
+          "seam_kind": "presentation_text_constant",
+          "grip_class": "static_unknown",
+          "headline_eligible": false,
+          "evidence_class": "presentation_text",
+          "gap_state": "static_limitation",
+          "actionability": "inspect_visibility",
+          "why": "Changed text appears to reach rendered help output, but the observer path is hidden behind an unsupported helper.",
+          "recommended_repair": "Trace the rendered help output to a supported snapshot, help-output, report, table, or golden observer before claiming a user repair.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/help_renderer.rs",
+              "line": 41,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/help_renderer.rs",
+              "line": 42,
+              "kind": "static_unknown"
+            }
+          ],
+          "presentation_text": {
+            "constant_name": "HELP_RENDERED_LABEL",
+            "visibility": "user_visible",
+            "observer": "unknown",
+            "actionability": "static_limitation_observer_unknown",
+            "recommended_observer": "unknown",
+            "repair_kind": "inspect_observer",
+            "target_test_type": "unknown",
+            "suggested_assertion": "Trace the rendered help output to a supported observer before adding or updating tests."
+          },
+          "static_limitation": {
+            "repair_route": "trace_visible_sink_to_snapshot_help_report_table_or_golden_observer",
+            "user_actionability": "unknown_until_observer_known"
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "presentation_text_observer_unknown",
+        "value": 1
+      },
+      "static_limitation_category": "presentation_text_observer_unknown",
+      "expected_claim": "Likely visible text with unsupported observer topology stays a named limitation until observer evidence is fixture-backed.",
+      "must_not_claim": [
+        "Do not call observer-unknown text an actionable output-observer gap.",
+        "Do not infer observer coverage from helper names alone.",
+        "Do not recommend mutation testing before tracing the output observer.",
+        "Do not suppress the raw declaration and literal findings."
+      ],
+      "repair_route": "analysis/presentation-text-actionability"
+    },
+    {
+      "id": "presentation_text_internal_only_alignment",
+      "case_kind": "negative_guard",
+      "evidence_class": "presentation_text",
+      "maturity_scope": "fixture_backed",
+      "description": "Internal-only labels become canonical no-action evidence items instead of user-visible test debt.",
+      "fixture_reference": "RIPR-SPEC-0045 internal-only presentation text",
+      "sample": {
+        "file": "src/proof_lanes.rs",
+        "declaration_line": 12,
+        "literal_line": 13,
+        "sink": "internal_policy_map"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-presentation-text-internal-only",
+          "canonical_gap_id": "presentation_text::INTERNAL_PROOF_LANE_LABEL",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "INTERNAL_PROOF_LANE_LABEL",
+          "location": {
+            "file": "src/proof_lanes.rs",
+            "line": 12
+          },
+          "seam_kind": "presentation_text_constant",
+          "grip_class": "static_unknown",
+          "headline_eligible": false,
+          "evidence_class": "presentation_text",
+          "gap_state": "internal_only",
+          "actionability": "no_action",
+          "why": "Changed label is confined to an internal proof-lane map in fixture-backed scope.",
+          "recommended_repair": "No user test action.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/proof_lanes.rs",
+              "line": 12,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/proof_lanes.rs",
+              "line": 13,
+              "kind": "static_unknown"
+            }
+          ],
+          "presentation_text": {
+            "constant_name": "INTERNAL_PROOF_LANE_LABEL",
+            "visibility": "internal_only",
+            "observer": "none",
+            "actionability": "no_action_internal",
+            "recommended_observer": "none",
+            "repair_kind": "no_action",
+            "target_test_type": "none",
+            "suggested_assertion": "No user-facing assertion is recommended for this internal label."
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "internal_no_action",
+        "value": 1
+      },
+      "expected_claim": "Internal-only text changes are explicit no-action items, not suppressed raw evidence.",
+      "must_not_claim": [
+        "Do not treat internal labels as user-visible behavior.",
+        "Do not recommend snapshot tests for internal-only labels.",
+        "Do not suppress raw findings without preserving supporting evidence."
+      ],
+      "repair_route": "analysis/presentation-text-visibility"
+    },
+    {
+      "id": "presentation_text_declaration_literal_line_movement_alignment",
+      "case_kind": "metamorphic_line_movement",
+      "evidence_class": "presentation_text",
+      "maturity_scope": "fixture_backed",
+      "description": "The same presentation-text constant keeps canonical identity when declaration and literal lines move together.",
+      "fixture_reference": "RIPR-SPEC-0045 presentation-text line movement",
+      "sample": {
+        "file": "src/help.rs",
+        "before_declaration_line": 42,
+        "before_literal_line": 43,
+        "after_declaration_line": 57,
+        "after_literal_line": 58
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-presentation-text-line-movement",
+          "canonical_gap_id": "presentation_text::HELP_MOVED_LABEL",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "HELP_MOVED_LABEL",
+          "location": {
+            "file": "src/help.rs",
+            "line": 57
+          },
+          "seam_kind": "presentation_text_constant",
+          "grip_class": "static_unknown",
+          "headline_eligible": false,
+          "evidence_class": "presentation_text",
+          "gap_state": "static_limitation",
+          "actionability": "inspect_visibility",
+          "raw_findings": [
+            {
+              "file": "src/help.rs",
+              "line": 57,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/help.rs",
+              "line": 58,
+              "kind": "static_unknown"
+            }
+          ]
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "duplicate_groups_total",
+        "value": 1
+      },
+      "metamorphic": {
+        "before": {
+          "canonical_gap_id": "presentation_text::HELP_MOVED_LABEL",
+          "line": 42
+        },
+        "after": {
+          "canonical_gap_id": "presentation_text::HELP_MOVED_LABEL",
+          "line": 57
+        }
+      },
+      "expected_claim": "Presentation-text canonical identity is stable across declaration/literal line movement.",
+      "must_not_claim": [
+        "Do not use raw line number as the presentation-text identity.",
+        "Do not split declaration and literal movement into separate user actions.",
+        "Do not collide with a different constant that has the same literal text."
+      ],
+      "repair_route": "analysis/presentation-text-canonical-grouping"
+    },
+    {
+      "id": "presentation_text_two_constants_do_not_group",
+      "case_kind": "negative_guard",
+      "evidence_class": "presentation_text",
+      "maturity_scope": "fixture_backed",
+      "description": "Two different presentation-text constants with similar text must remain separate canonical items.",
+      "fixture_reference": "RIPR-SPEC-0045 unrelated constants do not group",
+      "sample": {
+        "file": "src/help.rs",
+        "first_constant": "APPLE_DEVICE_LABEL",
+        "second_constant": "APPLE_REPORT_LABEL",
+        "shared_text_fragment": "Apple CPU/NEON lane"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-presentation-text-two-constants",
+          "canonical_gap_id": "presentation_text::APPLE_DEVICE_LABEL",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "constant_owner_identity",
+          "owner": "APPLE_DEVICE_LABEL",
+          "location": {
+            "file": "src/help.rs",
+            "line": 31
+          },
+          "seam_kind": "presentation_text_constant",
+          "grip_class": "static_unknown",
+          "headline_eligible": false,
+          "evidence_class": "presentation_text",
+          "gap_state": "static_limitation",
+          "actionability": "inspect_visibility",
+          "non_colliding_canonical_gap_id": "presentation_text::APPLE_REPORT_LABEL",
+          "raw_findings": [
+            {
+              "file": "src/help.rs",
+              "line": 31,
+              "kind": "exposed"
+            }
+          ]
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "canonical_items",
+        "value": 2
+      },
+      "expected_claim": "Grouping uses owner identity and evidence class, not similar literal text alone.",
+      "must_not_claim": [
+        "Do not merge different constants because their text is similar.",
+        "Do not let one constant's observer satisfy a different constant.",
+        "Do not treat a shared token as canonical identity."
+      ],
+      "repair_route": "analysis/presentation-text-canonical-grouping"
+    },
+    {
+      "id": "config_policy_internal_metadata_no_action",
+      "case_kind": "negative_guard",
+      "evidence_class": "config_or_policy_constant",
+      "maturity_scope": "fixture_backed",
+      "description": "Internal policy metadata aligns into one canonical no-action item instead of user-visible test debt.",
+      "fixture_reference": "RIPR-SPEC-0048 internal allowlist or policy metadata",
+      "sample": {
+        "file": "src/policy.rs",
+        "declaration_line": 14,
+        "literal_line": 15,
+        "constant": "INTERNAL_POLICY_LABEL",
+        "usage": "internal_allowlist"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-config-policy-internal",
+          "canonical_gap_id": "config_or_policy_constant::INTERNAL_POLICY_LABEL",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "same_config_policy_constant",
+          "owner": "INTERNAL_POLICY_LABEL",
+          "location": {
+            "file": "src/policy.rs",
+            "line": 14
+          },
+          "seam_kind": "config_policy_constant",
+          "grip_class": "static_unknown",
+          "headline_eligible": false,
+          "evidence_class": "config_or_policy_constant",
+          "gap_state": "internal_only",
+          "actionability": "no_action_internal",
+          "why": "Changed constant is confined to internal allowlist policy metadata in fixture-backed scope.",
+          "recommended_repair": "No user test action.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/policy.rs",
+              "line": 14,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/policy.rs",
+              "line": 15,
+              "kind": "static_unknown"
+            }
+          ],
+          "config_policy": {
+            "constant": "INTERNAL_POLICY_LABEL",
+            "role": "internal_policy_metadata",
+            "source_kind": "const_decl",
+            "visibility": "internal_only",
+            "observer": "none",
+            "actionability": "no_action_internal",
+            "repair_kind": "no_action",
+            "target_test_type": "none",
+            "suggested_assertion": "No user-facing assertion is recommended for this internal policy constant."
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "config_policy_internal_only",
+        "value": 1
+      },
+      "expected_claim": "Internal policy metadata remains countable evidence but does not become user repair work.",
+      "must_not_claim": [
+        "Do not create user test debt from internal policy metadata alone.",
+        "Do not recommend output observers for internal-only constants.",
+        "Do not hide the raw declaration and literal findings."
+      ],
+      "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
+    },
+    {
+      "id": "config_policy_rendered_label_unobserved",
+      "case_kind": "positive",
+      "evidence_class": "config_or_policy_constant",
+      "maturity_scope": "fixture_backed",
+      "description": "A rendered config or policy label with no supported observer becomes one actionable output-observer item.",
+      "fixture_reference": "RIPR-SPEC-0048 rendered report/config label without observer",
+      "sample": {
+        "file": "src/report_config.rs",
+        "declaration_line": 22,
+        "literal_line": 23,
+        "constant": "REPORT_POLICY_LABEL",
+        "sink": "report_render",
+        "observer": "none"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-config-policy-rendered-unobserved",
+          "canonical_gap_id": "config_or_policy_constant::REPORT_POLICY_LABEL",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "same_config_policy_constant",
+          "owner": "REPORT_POLICY_LABEL",
+          "location": {
+            "file": "src/report_config.rs",
+            "line": 22
+          },
+          "seam_kind": "config_policy_constant",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_class": "config_or_policy_constant",
+          "gap_state": "actionable",
+          "actionability": "add_output_observer",
+          "why": "Changed policy label flows to rendered report output and no supported observer is found.",
+          "recommended_repair": "Add or update a report-render, config-output, snapshot, or golden observer for REPORT_POLICY_LABEL.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/report_config.rs",
+              "line": 22,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/report_config.rs",
+              "line": 23,
+              "kind": "weakly_exposed"
+            }
+          ],
+          "config_policy": {
+            "constant": "REPORT_POLICY_LABEL",
+            "role": "rendered_policy_label",
+            "source_kind": "const_decl",
+            "visibility": "user_visible",
+            "observer": "none",
+            "actionability": "add_output_observer",
+            "repair_kind": "output_observer",
+            "target_test_type": "report_render_or_golden",
+            "suggested_assertion": "Assert rendered report output includes the REPORT_POLICY_LABEL text."
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "config_policy_actionable_output_observer",
+        "value": 1
+      },
+      "expected_claim": "A visible unobserved config or policy label can become one actionable output-observer repair.",
+      "must_not_claim": [
+        "Do not count declaration and literal findings as separate user actions.",
+        "Do not recommend mutation testing before output-observer work.",
+        "Do not call lexical-only tests observers."
+      ],
+      "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
+    },
+    {
+      "id": "config_policy_schema_label_observed",
+      "case_kind": "positive",
+      "evidence_class": "config_or_policy_constant",
+      "maturity_scope": "fixture_backed",
+      "description": "A schema field label observed by a supported schema-render or golden test becomes an already-observed no-action item.",
+      "fixture_reference": "RIPR-SPEC-0048 rendered label already observed",
+      "sample": {
+        "file": "src/schema.rs",
+        "declaration_line": 31,
+        "literal_line": 32,
+        "constant": "SCHEMA_POLICY_FIELD",
+        "sink": "schema_render",
+        "observer": "golden"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-config-policy-schema-observed",
+          "canonical_gap_id": "config_or_policy_constant::SCHEMA_POLICY_FIELD",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "same_config_policy_constant",
+          "owner": "SCHEMA_POLICY_FIELD",
+          "location": {
+            "file": "src/schema.rs",
+            "line": 31
+          },
+          "seam_kind": "config_policy_constant",
+          "grip_class": "strongly_gripped",
+          "headline_eligible": false,
+          "evidence_class": "config_or_policy_constant",
+          "gap_state": "already_observed",
+          "actionability": "already_observed",
+          "why": "Changed schema field label reaches rendered output and an existing golden observer covers it.",
+          "recommended_repair": "No new RIPR action.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/schema.rs",
+              "line": 31,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/schema.rs",
+              "line": 32,
+              "kind": "exposed"
+            }
+          ],
+          "config_policy": {
+            "constant": "SCHEMA_POLICY_FIELD",
+            "role": "schema_field_label",
+            "source_kind": "const_decl",
+            "visibility": "user_visible",
+            "observer": "golden",
+            "actionability": "already_observed",
+            "repair_kind": "no_action",
+            "target_test_type": "schema_render_golden",
+            "suggested_assertion": "Existing schema-render golden already covers the changed field label."
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "config_policy_observed",
+        "value": 1
+      },
+      "expected_claim": "Observed schema or report labels stay visible as evidence but do not become user repair work.",
+      "must_not_claim": [
+        "Do not emit an actionable gap when a supported schema or golden observer exists.",
+        "Do not hide the raw findings.",
+        "Do not let a different schema field's observer satisfy this label."
+      ],
+      "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
+    },
+    {
+      "id": "config_policy_cross_file_flow_unknown",
+      "case_kind": "static_limitation",
+      "evidence_class": "config_or_policy_constant",
+      "maturity_scope": "unsupported",
+      "description": "A config constant routed through untraceable cross-file formatting remains a named flow limitation instead of user test debt.",
+      "fixture_reference": "RIPR-SPEC-0048 untraceable config flow",
+      "sample": {
+        "file": "src/config_labels.rs",
+        "declaration_line": 44,
+        "literal_line": 45,
+        "constant": "CONFIG_TABLE_LABEL",
+        "sink": "cross_file_renderer",
+        "observer": "unknown"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-config-policy-cross-file-flow",
+          "canonical_gap_id": "config_or_policy_constant::CONFIG_TABLE_LABEL",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "same_config_policy_constant",
+          "owner": "CONFIG_TABLE_LABEL",
+          "location": {
+            "file": "src/config_labels.rs",
+            "line": 44
+          },
+          "seam_kind": "config_policy_constant",
+          "grip_class": "static_unknown",
+          "headline_eligible": false,
+          "evidence_class": "config_or_policy_constant",
+          "gap_state": "static_limitation",
+          "actionability": "inspect_config_flow",
+          "why": "Changed config label may flow through cross-file rendering, but RIPR cannot trace the output sink in supported scope.",
+          "recommended_repair": "Trace CONFIG_TABLE_LABEL to a supported output, schema, validation, or behavior sink before claiming user test debt.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/config_labels.rs",
+              "line": 44,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/config_labels.rs",
+              "line": 45,
+              "kind": "static_unknown"
+            }
+          ],
+          "config_policy": {
+            "constant": "CONFIG_TABLE_LABEL",
+            "role": "unknown",
+            "source_kind": "const_decl",
+            "visibility": "unknown",
+            "observer": "unknown",
+            "actionability": "inspect_config_flow",
+            "repair_kind": "inspect_config_flow",
+            "target_test_type": "unknown",
+            "suggested_assertion": "Trace the constant to a supported output or behavior sink before adding tests."
+          },
+          "static_limitation": {
+            "repair_route": "trace_constant_to_output_schema_validation_or_behavior_sink",
+            "user_actionability": "unknown_until_config_flow_known"
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "config_policy_flow_unknown",
+        "value": 1
+      },
+      "static_limitation_category": "config_policy_flow_unknown",
+      "expected_claim": "Untraceable config flow stays a named analyzer limitation until sink evidence is supported.",
+      "must_not_claim": [
+        "Do not create user test debt from untraceable config flow.",
+        "Do not infer user-visible output from cross-file formatting alone.",
+        "Do not recommend mutation testing as the first repair."
+      ],
+      "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
+    },
+    {
+      "id": "config_policy_opaque_lookup_unknown",
+      "case_kind": "static_limitation",
+      "evidence_class": "config_or_policy_constant",
+      "maturity_scope": "unsupported",
+      "description": "A config label hidden behind an opaque lookup remains a named limitation and does not become an actionable observer gap.",
+      "fixture_reference": "RIPR-SPEC-0048 opaque config lookup",
+      "sample": {
+        "file": "src/config_registry.rs",
+        "declaration_line": 58,
+        "literal_line": 59,
+        "constant": "OPAQUE_CONFIG_LABEL",
+        "sink": "opaque_helper",
+        "observer": "unknown"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-config-policy-opaque-lookup",
+          "canonical_gap_id": "config_or_policy_constant::OPAQUE_CONFIG_LABEL",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "same_config_policy_constant",
+          "owner": "OPAQUE_CONFIG_LABEL",
+          "location": {
+            "file": "src/config_registry.rs",
+            "line": 58
+          },
+          "seam_kind": "config_policy_constant",
+          "grip_class": "static_unknown",
+          "headline_eligible": false,
+          "evidence_class": "config_or_policy_constant",
+          "gap_state": "static_limitation",
+          "actionability": "inspect_config_flow",
+          "why": "Changed config label is routed through an unsupported lookup helper.",
+          "recommended_repair": "Add fixture-backed support for this lookup shape before claiming visibility or observer debt.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/config_registry.rs",
+              "line": 58,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/config_registry.rs",
+              "line": 59,
+              "kind": "static_unknown"
+            }
+          ],
+          "config_policy": {
+            "constant": "OPAQUE_CONFIG_LABEL",
+            "role": "unknown",
+            "source_kind": "const_decl",
+            "visibility": "unknown",
+            "observer": "unknown",
+            "actionability": "inspect_config_flow",
+            "repair_kind": "inspect_config_flow",
+            "target_test_type": "unknown",
+            "suggested_assertion": "Inspect the lookup path or add analyzer support before adding output-observer tests."
+          },
+          "static_limitation": {
+            "repair_route": "add_fixture_backed_support_for_opaque_config_lookup",
+            "user_actionability": "unknown_until_lookup_supported"
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "opaque_config_lookup",
+        "value": 1
+      },
+      "static_limitation_category": "opaque_config_lookup",
+      "expected_claim": "Opaque config lookup stays a named limitation until lookup evidence is fixture-backed.",
+      "must_not_claim": [
+        "Do not infer user-visible output from helper names alone.",
+        "Do not call an opaque lookup an actionable output-observer gap.",
+        "Do not suppress the raw findings."
+      ],
+      "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
+    },
+    {
+      "id": "side_effect_observer_positive",
+      "case_kind": "positive",
+      "evidence_class": "side_effect_observer",
+      "maturity_scope": "fixture_backed",
+      "description": "A state, event, persistence, or metric observer can support side-effect evidence in checked fixture scope.",
+      "fixture_reference": "fixtures/boundary_gap/expected/evidence-record-contract/corpus.json#side_effect_observer",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-side-effect-1",
+          "canonical_gap_id": "gap:bench-side-effect",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "publisher::emit",
+          "location": {
+            "file": "src/publisher.rs",
+            "line": 33
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "oracle_semantics_distribution",
+        "metric": "side_effect_observer",
+        "value": 1
+      },
+      "expected_claim": "Supported side-effect observers can make the observed side effect explicit.",
+      "must_not_claim": [
+        "Do not treat any side-effect call as observed without an observer.",
+        "Do not use mutation outcome words in static vocabulary."
+      ],
+      "repair_route": "analysis/oracle-semantics-audit-fixes"
+    },
+    {
+      "id": "snapshot_discriminator_field_specific",
+      "case_kind": "positive",
+      "evidence_class": "snapshot_discriminator",
+      "maturity_scope": "fixture_backed",
+      "description": "A snapshot oracle with a known discriminating field is stronger than broad snapshot output.",
+      "fixture_reference": "future benchmark fixture: snapshot field discriminator",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-snapshot-1",
+          "canonical_gap_id": "gap:bench-snapshot",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "render::summary",
+          "location": {
+            "file": "src/render.rs",
+            "line": 47
+          },
+          "seam_kind": "field_construction",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "oracle_semantics_distribution",
+        "metric": "snapshot_field_known",
+        "value": 1
+      },
+      "expected_claim": "Known snapshot fields can name what the oracle observes.",
+      "must_not_claim": [
+        "Do not treat broad snapshots as field-specific evidence.",
+        "Do not infer fields from opaque snapshot serializers."
+      ],
+      "repair_route": "analysis/oracle-semantics-audit-fixes"
+    },
+    {
+      "id": "mock_expectation_side_effect",
+      "case_kind": "positive",
+      "evidence_class": "mock_expectation",
+      "maturity_scope": "fixture_backed",
+      "description": "A mock expectation can observe a side-effect call when the expected target and argument are explicit.",
+      "fixture_reference": "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json#side_effect_observer_not_static_limitation",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-mock-1",
+          "canonical_gap_id": "gap:bench-mock",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "notifier::send",
+          "location": {
+            "file": "src/notifier.rs",
+            "line": 64
+          },
+          "seam_kind": "call_presence",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "oracle_semantics_distribution",
+        "metric": "oracle_kind_counts.mock_expectation",
+        "value": 1
+      },
+      "expected_claim": "Explicit mock expectations can observe supported side-effect calls.",
+      "must_not_claim": [
+        "Do not treat unsupported mock shapes as observed side effects.",
+        "Do not upgrade mocks without target or argument evidence."
+      ],
+      "repair_route": "analysis/oracle-semantics-audit-fixes"
+    },
+    {
+      "id": "runtime_only_signal_nonstatic",
+      "case_kind": "calibration",
+      "evidence_class": "runtime_only_signal",
+      "maturity_scope": "calibrated",
+      "description": "Runtime-only evidence appears in calibration and must not create a static gap.",
+      "fixture_reference": "runtime-fixtures-v3 planned runtime-only signal",
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": null
+      },
+      "expected_audit_signal": {
+        "section": "calibration_coverage",
+        "metric": "runtime_only_signal",
+        "value": 1
+      },
+      "calibration": {
+        "runtime_signal": true,
+        "join_status": "runtime_only",
+        "creates_static_gap": false
+      },
+      "expected_claim": "Runtime-only signal is calibration evidence, not a static gap.",
+      "must_not_claim": [
+        "Do not create seams from runtime-only calibration rows.",
+        "Do not change static vocabulary based on runtime-only data."
+      ],
+      "repair_route": "calibration/runtime-fixtures-v3"
+    },
+    {
+      "id": "ambiguous_runtime_join_stays_ambiguous",
+      "case_kind": "calibration",
+      "evidence_class": "ambiguous_runtime_join",
+      "maturity_scope": "ambiguous",
+      "description": "Runtime outcomes that join to more than one static seam remain ambiguous.",
+      "fixture_reference": "runtime-fixtures-v3 planned ambiguous join",
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-ambiguous-1",
+          "canonical_gap_id": "gap:bench-ambiguous",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "builder::finish",
+          "location": {
+            "file": "src/builder.rs",
+            "line": 77
+          },
+          "seam_kind": "return_value",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true
+        }
+      },
+      "expected_audit_signal": {
+        "section": "calibration_coverage",
+        "metric": "ambiguous_runtime_join",
+        "value": 1
+      },
+      "calibration": {
+        "runtime_signal": true,
+        "join_status": "ambiguous",
+        "candidate_static_seams": 2
+      },
+      "expected_claim": "Ambiguous runtime joins remain ambiguous until a precise static join exists.",
+      "must_not_claim": [
+        "Do not assign an ambiguous runtime outcome to one static seam.",
+        "Do not mark ambiguous joins as calibrated."
+      ],
+      "repair_route": "calibration/runtime-fixtures-v3"
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_mocked_module_limit/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_service.py:2:python_preview",
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 0.60,
+      "probe": {
+        "id": "probe:src_service.py:2:python_preview",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/service.py",
+        "line": 2,
+        "expression": "    return client.total_with_tax()"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `fetch_total`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Python preview adapter does not yet model propagation."},
+        "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"yes","confidence":"low","summary":"Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `fetch_total`", "infection unknown: Python preview adapter does not yet model infection.", "propagation unknown: Python preview adapter does not yet model propagation.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator yes: Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "related test tests/test_service.py:7 test_fetch_total_uses_client_total uses strong exact value oracle: assert fetch_total(client) == 10"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: fetch_total", "owner_kind: function", "static_limit mocked_module: related test uses patch/mock module syntax", "test_framework: pytest (test_fetch_total_uses_client_total)", "related_test_relation: syntactic_call (test_fetch_total_uses_client_total)", "test_oracle: exact_value strong (test_fetch_total_uses_client_total)"],
+      "missing": ["Related Python test reaches `fetch_total` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.", "Static limit `mocked_module`: a related Python test uses patch/mock-module syntax; the preview adapter does not resolve runtime substitution semantics."],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "test_fetch_total_uses_client_total",
+          "file": "tests/test_service.py",
+          "line": 7,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert fetch_total(client) == 10"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
+      "suggested_next_action": "Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "static_limit_kind": "mocked_module"
+    }
+  ]
+}

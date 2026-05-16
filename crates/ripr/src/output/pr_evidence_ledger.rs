@@ -22,6 +22,7 @@ pub(crate) struct PrEvidenceLedgerInput {
     pub(crate) baseline_delta_path: Option<String>,
     pub(crate) zero_status_path: Option<String>,
     pub(crate) pr_guidance_path: Option<String>,
+    pub(crate) gap_ledger_path: Option<String>,
     pub(crate) recommendation_calibration_path: Option<String>,
     pub(crate) agent_receipt_path: Option<String>,
     pub(crate) coverage_path: Option<String>,
@@ -30,6 +31,7 @@ pub(crate) struct PrEvidenceLedgerInput {
     pub(crate) baseline_delta_json: Option<Result<String, String>>,
     pub(crate) zero_status_json: Option<Result<String, String>>,
     pub(crate) pr_guidance_json: Option<Result<String, String>>,
+    pub(crate) gap_ledger_json: Option<Result<String, String>>,
     pub(crate) recommendation_calibration_json: Option<Result<String, String>>,
     pub(crate) agent_receipt_json: Option<Result<String, String>>,
     pub(crate) coverage_json: Option<Result<String, String>>,
@@ -68,6 +70,7 @@ struct LedgerInputs {
     baseline_debt_delta: Option<String>,
     ripr_zero_status: Option<String>,
     pr_guidance: Option<String>,
+    gap_decision_ledger: Option<String>,
     recommendation_calibration: Option<String>,
     agent_receipt: Option<String>,
     coverage: Option<String>,
@@ -154,6 +157,7 @@ struct CoverageQuadrants {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct RepairRoute {
     source: String,
+    gap_id: Option<String>,
     canonical_gap_id: Option<String>,
     seam_id: Option<String>,
     path: Option<String>,
@@ -183,6 +187,7 @@ struct ParsedSources {
     baseline_delta: Option<Value>,
     zero_status: Option<Value>,
     pr_guidance: Option<Value>,
+    gap_ledger: Option<Value>,
     recommendation_calibration: Option<Value>,
     agent_receipt: Option<Value>,
     coverage: Option<Value>,
@@ -220,6 +225,7 @@ pub(crate) fn build_pr_evidence_ledger_report(
         &movement,
     );
     let top_repair_route = top_repair_route(
+        parsed.gap_ledger.as_ref(),
         parsed.zero_status.as_ref(),
         parsed.pr_guidance.as_ref(),
         parsed.gate.as_ref(),
@@ -231,6 +237,7 @@ pub(crate) fn build_pr_evidence_ledger_report(
         parsed.baseline_delta.as_ref(),
         parsed.zero_status.as_ref(),
         parsed.pr_guidance.as_ref(),
+        parsed.gap_ledger.as_ref(),
     ]
     .iter()
     .filter(|value| value.is_some())
@@ -274,6 +281,7 @@ pub(crate) fn build_pr_evidence_ledger_report(
             baseline_debt_delta: input.baseline_delta_path,
             ripr_zero_status: input.zero_status_path,
             pr_guidance: input.pr_guidance_path,
+            gap_decision_ledger: input.gap_ledger_path,
             recommendation_calibration: input.recommendation_calibration_path,
             agent_receipt: input.agent_receipt_path,
             coverage: input.coverage_path,
@@ -363,6 +371,9 @@ pub(crate) fn render_pr_evidence_ledger_markdown(report: &PrEvidenceLedgerReport
         if let Some(missing) = route.missing_discriminator.as_deref() {
             out.push_str(&format!("  Missing discriminator: {missing}\n"));
         }
+        if let Some(gap_id) = route.gap_id.as_deref() {
+            out.push_str(&format!("  Gap: {gap_id}\n"));
+        }
         if let Some(test) = route.suggested_test.as_deref() {
             out.push_str(&format!("  Suggested test: {test}\n"));
         }
@@ -402,6 +413,9 @@ pub(crate) fn render_pr_evidence_ledger_markdown(report: &PrEvidenceLedgerReport
             .as_deref()
             .unwrap_or("not supplied")
     ));
+    if let Some(gap_decision_ledger) = report.inputs.gap_decision_ledger.as_deref() {
+        out.push_str(&format!("- Gap decision ledger: {gap_decision_ledger}\n"));
+    }
     out.push_str(&format!(
         "- Agent receipt: {}\n",
         report
@@ -488,6 +502,12 @@ fn parse_sources(input: &PrEvidenceLedgerInput) -> ParsedSources {
         "PR guidance",
         input.pr_guidance_path.as_deref(),
         &input.pr_guidance_json,
+        &mut parsed.warnings,
+    );
+    parsed.gap_ledger = parse_optional_json(
+        "gap decision ledger",
+        input.gap_ledger_path.as_deref(),
+        &input.gap_ledger_json,
         &mut parsed.warnings,
     );
     parsed.recommendation_calibration = parse_optional_json(
@@ -944,22 +964,104 @@ fn coverage_frontier(
 }
 
 fn top_repair_route(
+    gap_ledger: Option<&Value>,
     zero_status: Option<&Value>,
     pr_guidance: Option<&Value>,
     gate: Option<&Value>,
     baseline_delta: Option<&Value>,
 ) -> Option<RepairRoute> {
-    zero_status
-        .and_then(route_from_zero_status)
+    gap_ledger
+        .and_then(route_from_gap_ledger)
+        .or_else(|| zero_status.and_then(route_from_zero_status))
         .or_else(|| pr_guidance.and_then(route_from_pr_guidance))
         .or_else(|| gate.and_then(route_from_gate))
         .or_else(|| baseline_delta.and_then(route_from_baseline_delta))
+}
+
+fn route_from_gap_ledger(value: &Value) -> Option<RepairRoute> {
+    let record = first_repairable_gap_record(value)?;
+    let route = record.get("repair_route")?;
+    let anchor = record.get("anchor");
+    let gap_id = string_path(record, &["gap_id"]);
+    let seam_id = string_from_sources(&[
+        (Some(record), &["seam_id"]),
+        (anchor, &["seam_id"]),
+        (Some(route), &["seam_id"]),
+    ]);
+    Some(RepairRoute {
+        source: "gap_decision_ledger".to_string(),
+        gap_id,
+        canonical_gap_id: string_path(record, &["canonical_gap_id"]),
+        seam_id: seam_id.clone(),
+        path: string_from_sources(&[(anchor, &["file"]), (Some(route), &["target_file"])]),
+        line: u64_from_sources(&[(anchor, &["line"]), (Some(route), &["target_line"])]),
+        missing_discriminator: string_from_sources(&[
+            (Some(record), &["missing_discriminator"]),
+            (Some(record), &["evidence_class"]),
+            (Some(record), &["kind"]),
+        ]),
+        suggested_test: string_path(route, &["assertion_shape"])
+            .or_else(|| string_path(route, &["suggested_test"])),
+        related_test: string_path(route, &["related_test"])
+            .or_else(|| string_path(route, &["target_file"])),
+        verify_command: first_string_array_item(record, &["verification_commands"]),
+        agent_command: string_path(route, &["agent_command"]).or_else(|| {
+            seam_id.map(|id| {
+                format!("ripr agent start --root . --seam-id {id} --out target/ripr/workflow")
+            })
+        }),
+    })
+}
+
+fn first_repairable_gap_record(gap_ledger: &Value) -> Option<&Value> {
+    gap_records(gap_ledger).into_iter().find(|record| {
+        string_path(record, &["language"]).is_some_and(|value| value == "rust")
+            && string_path(record, &["language_status"]).is_some_and(|value| value == "stable")
+            && string_path(record, &["scope"]).is_some_and(|value| value == "pr_local")
+            && string_path(record, &["gap_state"]).is_some_and(|value| value == "actionable")
+            && string_path(record, &["repairability"]).is_some_and(|value| value == "repairable")
+            && string_path(record, &["policy_state"])
+                .is_some_and(|value| value == "new" || value == "reintroduced")
+            && record.get("repair_route").is_some()
+            && record
+                .get("verification_commands")
+                .and_then(Value::as_array)
+                .is_some_and(|commands| {
+                    commands
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .any(|command| !command.trim().is_empty())
+                })
+    })
+}
+
+fn gap_records(value: &Value) -> Vec<&Value> {
+    if let Some(records) = value.as_array() {
+        return records.iter().collect();
+    }
+    if let Some(records) = value.get("records").and_then(Value::as_array) {
+        return records.iter().collect();
+    }
+    if let Some(records) = value.get("gap_records").and_then(Value::as_array) {
+        return records.iter().collect();
+    }
+    value
+        .get("cases")
+        .and_then(Value::as_array)
+        .map(|cases| {
+            cases
+                .iter()
+                .filter_map(|case| case.get("expected_gap_record"))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn route_from_zero_status(value: &Value) -> Option<RepairRoute> {
     let route = array_path(value, &["repair_routes"]).first().copied()?;
     Some(RepairRoute {
         source: "ripr_zero_status".to_string(),
+        gap_id: string_path(route, &["gap_id"]),
         canonical_gap_id: canonical_gap_id_from_value(route),
         seam_id: string_path(route, &["seam_id"]),
         path: string_path(route, &["path"]),
@@ -980,6 +1082,7 @@ fn route_from_pr_guidance(value: &Value) -> Option<RepairRoute> {
     let seam_id = string_path(item, &["seam_id"]);
     Some(RepairRoute {
         source: "pr_guidance".to_string(),
+        gap_id: string_path(item, &["gap_id"]),
         canonical_gap_id: canonical_gap_id_from_value(item),
         seam_id: seam_id.clone(),
         path: string_path(item, &["placement", "path"])
@@ -1009,6 +1112,7 @@ fn route_from_gate(value: &Value) -> Option<RepairRoute> {
     let seam_id = string_path(item, &["seam_id"]);
     Some(RepairRoute {
         source: "gate_decision".to_string(),
+        gap_id: string_path(item, &["gap_id"]),
         canonical_gap_id: canonical_gap_id_from_value(item),
         seam_id: seam_id.clone(),
         path: string_path(item, &["placement", "path"]),
@@ -1036,6 +1140,8 @@ fn route_from_baseline_delta(value: &Value) -> Option<RepairRoute> {
     let seam_id = string_path(item, &["identity", "seam_id"]);
     Some(RepairRoute {
         source: "baseline_debt_delta".to_string(),
+        gap_id: string_path(item, &["gap_id"])
+            .or_else(|| string_path(item, &["identity", "gap_id"])),
         canonical_gap_id: canonical_gap_id_from_value(item),
         seam_id: seam_id.clone(),
         path: string_path(item, &["path"]),
@@ -1066,7 +1172,7 @@ fn pr_json(pr: &PrIdentity) -> Value {
 }
 
 fn inputs_json(inputs: &LedgerInputs) -> Value {
-    json!({
+    let mut value = json!({
         "gate_decision": inputs.gate_decision,
         "baseline_debt_delta": inputs.baseline_debt_delta,
         "ripr_zero_status": inputs.ripr_zero_status,
@@ -1075,7 +1181,16 @@ fn inputs_json(inputs: &LedgerInputs) -> Value {
         "agent_receipt": inputs.agent_receipt,
         "coverage": inputs.coverage,
         "history": inputs.history,
-    })
+    });
+    if let Some(gap_decision_ledger) = inputs.gap_decision_ledger.as_ref()
+        && let Some(fields) = value.as_object_mut()
+    {
+        fields.insert(
+            "gap_decision_ledger".to_string(),
+            Value::String(gap_decision_ledger.clone()),
+        );
+    }
+    value
 }
 
 fn movement_json(movement: &Movement) -> Value {
@@ -1156,7 +1271,7 @@ fn coverage_json(frontier: &CoverageGripFrontier) -> Value {
 }
 
 fn repair_route_json(route: &RepairRoute) -> Value {
-    json!({
+    let mut value = json!({
         "source": route.source,
         "canonical_gap_id": route.canonical_gap_id,
         "seam_id": route.seam_id,
@@ -1167,7 +1282,13 @@ fn repair_route_json(route: &RepairRoute) -> Value {
         "related_test": route.related_test,
         "verify_command": route.verify_command,
         "agent_command": route.agent_command,
-    })
+    });
+    if let Some(gap_id) = route.gap_id.as_ref()
+        && let Some(fields) = value.as_object_mut()
+    {
+        fields.insert("gap_id".to_string(), Value::String(gap_id.clone()));
+    }
+    value
 }
 
 fn history_json(history: &HistorySummary) -> Value {
@@ -1211,6 +1332,12 @@ fn string_path(value: &Value, path: &[&str]) -> Option<String> {
     path_value(value, path).and_then(string_value)
 }
 
+fn string_from_sources(sources: &[(Option<&Value>, &[&str])]) -> Option<String> {
+    sources
+        .iter()
+        .find_map(|(value, path)| value.and_then(|value| string_path(value, path)))
+}
+
 fn canonical_gap_id_from_value(value: &Value) -> Option<String> {
     string_path(value, &["canonical_gap_id"])
         .or_else(|| string_path(value, &["identity", "canonical_gap_id"]))
@@ -1235,6 +1362,21 @@ fn bool_path(value: &Value, path: &[&str]) -> bool {
 
 fn u64_path(value: &Value, path: &[&str]) -> Option<u64> {
     path_value(value, path).and_then(Value::as_u64)
+}
+
+fn u64_from_sources(sources: &[(Option<&Value>, &[&str])]) -> Option<u64> {
+    sources
+        .iter()
+        .find_map(|(value, path)| value.and_then(|value| u64_path(value, path)))
+}
+
+fn first_string_array_item(value: &Value, path: &[&str]) -> Option<String> {
+    path_value(value, path)
+        .and_then(Value::as_array)?
+        .iter()
+        .filter_map(Value::as_str)
+        .find(|item| !item.trim().is_empty())
+        .map(ToOwned::to_owned)
 }
 
 fn i64_path(value: &Value, path: &[&str]) -> Option<i64> {
@@ -1376,6 +1518,7 @@ mod tests {
             baseline_delta_path: Some("delta.json".to_string()),
             zero_status_path: Some("zero.json".to_string()),
             pr_guidance_path: None,
+            gap_ledger_path: None,
             recommendation_calibration_path: None,
             agent_receipt_path: Some("agent-receipt.json".to_string()),
             coverage_path: None,
@@ -1384,6 +1527,7 @@ mod tests {
             baseline_delta_json: Some(Ok(delta.to_string())),
             zero_status_json: Some(Ok(zero.to_string())),
             pr_guidance_json: None,
+            gap_ledger_json: None,
             recommendation_calibration_json: None,
             agent_receipt_json: Some(Ok(agent_receipt.to_string())),
             coverage_json: None,
@@ -1414,6 +1558,91 @@ mod tests {
     }
 
     #[test]
+    fn pr_evidence_ledger_routes_repairable_gap_records() -> Result<(), String> {
+        let gap_ledger = r#"{
+          "schema_version": "0.1",
+          "kind": "gap_decision_ledger",
+          "gap_records": [
+            {
+              "gap_id": "gap:pr:pricing:threshold-boundary",
+              "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+              "kind": "MissingBoundaryAssertion",
+              "language": "rust",
+              "language_status": "stable",
+              "scope": "pr_local",
+              "evidence_class": "predicate_boundary",
+              "gap_state": "actionable",
+              "policy_state": "new",
+              "repairability": "repairable",
+              "anchor": {
+                "file": "src/pricing.rs",
+                "line": 42,
+                "owner": "pricing::discount"
+              },
+              "repair_route": {
+                "route_kind": "AddBoundaryAssertion",
+                "target_file": "tests/pricing.rs",
+                "assertion_shape": "assert_eq!(discount(100, 100), 90)",
+                "related_test": "tests/pricing.rs::discount_threshold"
+              },
+              "verification_commands": [
+                "cargo xtask fixtures boundary_gap",
+                "cargo xtask goldens check"
+              ]
+            }
+          ]
+        }"#;
+
+        let report = build_pr_evidence_ledger_report(PrEvidenceLedgerInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:1000".to_string(),
+            pr_number: "123".to_string(),
+            base: "base".to_string(),
+            head: "head".to_string(),
+            labels: Vec::new(),
+            gate_path: None,
+            baseline_delta_path: None,
+            zero_status_path: None,
+            pr_guidance_path: None,
+            gap_ledger_path: Some("gap-ledger.json".to_string()),
+            recommendation_calibration_path: None,
+            agent_receipt_path: None,
+            coverage_path: None,
+            history_path: None,
+            gate_json: None,
+            baseline_delta_json: None,
+            zero_status_json: None,
+            pr_guidance_json: None,
+            gap_ledger_json: Some(Ok(gap_ledger.to_string())),
+            recommendation_calibration_json: None,
+            agent_receipt_json: None,
+            coverage_json: None,
+            history_json: None,
+        });
+        let rendered = render_pr_evidence_ledger_json(&report)?;
+        assert!(rendered.contains("\"status\": \"advisory\""));
+        assert!(rendered.contains("\"gap_decision_ledger\": \"gap-ledger.json\""));
+        assert!(rendered.contains("\"source\": \"gap_decision_ledger\""));
+        assert!(rendered.contains("\"gap_id\": \"gap:pr:pricing:threshold-boundary\""));
+        assert!(
+            rendered
+                .contains("\"canonical_gap_id\": \"gap:rust:pricing:discount:threshold-boundary\"")
+        );
+        assert!(rendered.contains("\"path\": \"src/pricing.rs\""));
+        assert!(rendered.contains("\"line\": 42"));
+        assert!(rendered.contains("\"suggested_test\": \"assert_eq!(discount(100, 100), 90)\""));
+        assert!(rendered.contains("\"related_test\": \"tests/pricing.rs::discount_threshold\""));
+        assert!(rendered.contains("\"verify_command\": \"cargo xtask fixtures boundary_gap\""));
+
+        let markdown = render_pr_evidence_ledger_markdown(&report);
+        assert!(markdown.contains("src/pricing.rs:42"));
+        assert!(markdown.contains("Gap: gap:pr:pricing:threshold-boundary"));
+        assert!(markdown.contains("Gap decision ledger: gap-ledger.json"));
+        assert!(markdown.contains("Verify: cargo xtask fixtures boundary_gap"));
+        Ok(())
+    }
+
+    #[test]
     fn pr_evidence_ledger_reports_incomplete_without_evidence() -> Result<(), String> {
         let report = build_pr_evidence_ledger_report(PrEvidenceLedgerInput {
             root: ".".to_string(),
@@ -1426,6 +1655,7 @@ mod tests {
             baseline_delta_path: None,
             zero_status_path: None,
             pr_guidance_path: None,
+            gap_ledger_path: None,
             recommendation_calibration_path: None,
             agent_receipt_path: None,
             coverage_path: None,
@@ -1434,6 +1664,7 @@ mod tests {
             baseline_delta_json: None,
             zero_status_json: None,
             pr_guidance_json: None,
+            gap_ledger_json: None,
             recommendation_calibration_json: None,
             agent_receipt_json: None,
             coverage_json: None,
@@ -1469,6 +1700,7 @@ mod tests {
             baseline_delta_path: Some(fixture_path(&repo_root, &delta_path)),
             zero_status_path: Some(fixture_path(&repo_root, &zero_path)),
             pr_guidance_path: Some(fixture_path(&repo_root, &guidance_path)),
+            gap_ledger_path: None,
             recommendation_calibration_path: None,
             agent_receipt_path: Some(fixture_path(&repo_root, &receipt_path)),
             coverage_path: None,
@@ -1477,6 +1709,7 @@ mod tests {
             baseline_delta_json: Some(Ok(read_file(&delta_path)?)),
             zero_status_json: Some(Ok(read_file(&zero_path)?)),
             pr_guidance_json: Some(Ok(read_file(&guidance_path)?)),
+            gap_ledger_json: None,
             recommendation_calibration_json: None,
             agent_receipt_json: Some(Ok(read_file(&receipt_path)?)),
             coverage_json: None,
@@ -1506,6 +1739,7 @@ mod tests {
             baseline_delta_path: Some("delta.json".to_string()),
             zero_status_path: Some("zero.json".to_string()),
             pr_guidance_path: Some("comments.json".to_string()),
+            gap_ledger_path: None,
             recommendation_calibration_path: None,
             agent_receipt_path: None,
             coverage_path: None,
@@ -1514,6 +1748,7 @@ mod tests {
             baseline_delta_json: Some(Err("missing fixture".to_string())),
             zero_status_json: Some(Ok("{".to_string())),
             pr_guidance_json: Some(Ok(r#"{"comments":[]}"#.to_string())),
+            gap_ledger_json: None,
             recommendation_calibration_json: None,
             agent_receipt_json: None,
             coverage_json: None,
@@ -1584,6 +1819,7 @@ mod tests {
             baseline_delta_path: None,
             zero_status_path: None,
             pr_guidance_path: Some("comments.json".to_string()),
+            gap_ledger_path: None,
             recommendation_calibration_path: Some("recommendation-calibration.json".to_string()),
             agent_receipt_path: None,
             coverage_path: Some("coverage.json".to_string()),
@@ -1592,6 +1828,7 @@ mod tests {
             baseline_delta_json: None,
             zero_status_json: None,
             pr_guidance_json: Some(Ok(guidance.to_string())),
+            gap_ledger_json: None,
             recommendation_calibration_json: Some(Ok(calibration.to_string())),
             agent_receipt_json: None,
             coverage_json: Some(Ok(coverage.to_string())),
@@ -1644,6 +1881,7 @@ mod tests {
             baseline_delta_path: None,
             zero_status_path: None,
             pr_guidance_path: None,
+            gap_ledger_path: None,
             recommendation_calibration_path: None,
             agent_receipt_path: None,
             coverage_path: Some("coverage.json".to_string()),
@@ -1652,6 +1890,7 @@ mod tests {
             baseline_delta_json: None,
             zero_status_json: None,
             pr_guidance_json: None,
+            gap_ledger_json: None,
             recommendation_calibration_json: None,
             agent_receipt_json: None,
             coverage_json: Some(Ok(coverage.to_string())),
@@ -1693,6 +1932,7 @@ mod tests {
             baseline_delta_path: Some("delta.json".to_string()),
             zero_status_path: None,
             pr_guidance_path: None,
+            gap_ledger_path: None,
             recommendation_calibration_path: None,
             agent_receipt_path: None,
             coverage_path: Some("coverage.json".to_string()),
@@ -1701,6 +1941,7 @@ mod tests {
             baseline_delta_json: Some(Ok(delta.to_string())),
             zero_status_json: None,
             pr_guidance_json: None,
+            gap_ledger_json: None,
             recommendation_calibration_json: None,
             agent_receipt_json: None,
             coverage_json: Some(Ok(unsupported_coverage.to_string())),
@@ -1745,6 +1986,7 @@ mod tests {
             baseline_delta_path: None,
             zero_status_path: None,
             pr_guidance_path: Some("comments.json".to_string()),
+            gap_ledger_path: None,
             recommendation_calibration_path: None,
             agent_receipt_path: None,
             coverage_path: None,
@@ -1753,6 +1995,7 @@ mod tests {
             baseline_delta_json: None,
             zero_status_json: None,
             pr_guidance_json: Some(Ok(r#"{"comments":[]}"#.to_string())),
+            gap_ledger_json: None,
             recommendation_calibration_json: None,
             agent_receipt_json: None,
             coverage_json: None,

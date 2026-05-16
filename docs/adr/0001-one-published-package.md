@@ -45,3 +45,13 @@ Negative:
 
 - internal boundaries require discipline rather than crate-level enforcement
 - future extraction may require cleanup if external consumers appear
+
+## Alternatives Considered
+
+- Split into `ripr-core` / `ripr-cli` / `ripr-lsp` / `ripr-engine` /
+  `ripr-schema` workspace crates. Rejected: premature public surface
+  before external consumers exist; raises versioning and refactor cost
+  without proven benefit.
+- Single-crate library only (no separate binary). Rejected: the CLI is
+  the primary integration surface today and needs first-class
+  packaging.

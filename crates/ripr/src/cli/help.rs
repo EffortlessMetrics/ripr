@@ -10,15 +10,23 @@ Usage:
   ripr baseline create --from target/ripr/reports/gate-decision.json [--out .ripr/gate-baseline.json] [--dry-run] [--force]
   ripr baseline diff --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json [--out target/ripr/reports/baseline-debt-delta.json] [--out-md target/ripr/reports/baseline-debt-delta.md]
   ripr baseline update --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json --remove-resolved [--out .ripr/gate-baseline.json]
-  ripr zero status --delta target/ripr/reports/baseline-debt-delta.json [--baseline .ripr/gate-baseline.json] [--gate target/ripr/reports/gate-decision.json] [--out target/ripr/reports/ripr-zero-status.json] [--out-md target/ripr/reports/ripr-zero-status.md]
+  ripr zero status --delta target/ripr/reports/baseline-debt-delta.json [--baseline .ripr/gate-baseline.json] [--gap-ledger target/ripr/reports/gap-decision-ledger.json] [--gate target/ripr/reports/gate-decision.json] [--out target/ripr/reports/ripr-zero-status.json] [--out-md target/ripr/reports/ripr-zero-status.md]
+  ripr policy readiness [--gate-decision target/ripr/reports/gate-decision.json] [--baseline-delta target/ripr/reports/baseline-debt-delta.json] [--out target/ripr/reports/policy-readiness.json] [--out-md target/ripr/reports/policy-readiness.md]
+  ripr policy operations --policy-readiness target/ripr/reports/policy-readiness.json [--waiver-aging target/ripr/reports/waiver-aging.json] [--suppression-health target/ripr/reports/suppression-health.json] [--out target/ripr/reports/policy-operations.json] [--out-md target/ripr/reports/policy-operations.md]
+  ripr policy history --current target/ripr/reports/policy-operations.json [--history .ripr/policy-history.jsonl] [--commit HEAD] [--pr-number 123] [--out target/ripr/reports/policy-history.json] [--out-md target/ripr/reports/policy-history.md]
+  ripr policy promote --to baseline-check --operations target/ripr/reports/policy-operations.json [--history target/ripr/reports/policy-history.json] [--out target/ripr/reports/policy-promotion-baseline-check.json] [--out-md target/ripr/reports/policy-promotion-baseline-check.md]
+  ripr policy preview-promote --language typescript --class boundary_gap [--evidence target/ripr/reports/preview-promotion-evidence.json] [--out target/ripr/reports/preview-promotion-typescript-boundary-gap.json] [--out-md target/ripr/reports/preview-promotion-typescript-boundary-gap.md]
+  ripr policy waiver-aging [--ledger target/ripr/reports/pr-evidence-ledger.json] [--history .ripr/pr-evidence-ledger.jsonl] [--out target/ripr/reports/waiver-aging.json] [--out-md target/ripr/reports/waiver-aging.md]
+  ripr policy suppression-health [--root .] [--manifest .ripr/suppressions.toml] [--out target/ripr/reports/suppression-health.json] [--out-md target/ripr/reports/suppression-health.md]
   ripr pr-ledger record --pr-number 123 --base SHA --head SHA [--gate target/ripr/reports/gate-decision.json] [--baseline-delta target/ripr/reports/baseline-debt-delta.json] [--zero-status target/ripr/reports/ripr-zero-status.json] [--out target/ripr/reports/pr-evidence-ledger.json]
   ripr pr-comments plan --pr-guidance target/ripr/review/comments.json [--existing-comments target/ripr/review/existing-comments.json] [--mode off|plan|inline] [--out target/ripr/review/comment-publish-plan.json]
   ripr pr-review front-panel [--pr-guidance target/ripr/review/comments.json] [--first-action target/ripr/reports/first-useful-action.json] [--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json] [--assistant-health target/ripr/reports/assistant-loop-health.json] [--ledger target/ripr/reports/pr-evidence-ledger.json] [--out target/ripr/reports/pr-review-front-panel.json]
   ripr coverage-grip frontier (--ledger target/ripr/reports/pr-evidence-ledger.json|--baseline-delta target/ripr/reports/baseline-debt-delta.json|--zero-status target/ripr/reports/ripr-zero-status.json) [--coverage target/ripr/reports/coverage-summary.json] [--out target/ripr/reports/coverage-grip-frontier.json]
   ripr assistant-loop proof --pr-guidance target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-brief.json --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --receipt target/ripr/reports/agent-receipt.json [--out target/ripr/reports/test-oracle-assistant-proof.json]
   ripr assistant-loop health --proof target/ripr/reports/test-oracle-assistant-proof.json [--out target/ripr/reports/assistant-loop-health.json]
-  ripr first-action [--root .] [--pr-guidance target/ripr/review/comments.json] [--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json] [--ledger target/ripr/reports/pr-evidence-ledger.json] [--out target/ripr/reports/first-useful-action.json]
+  ripr first-action [--root .] [--pr-guidance target/ripr/review/comments.json] [--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json] [--gap-ledger target/ripr/reports/gap-decision-ledger.json] [--ledger target/ripr/reports/pr-evidence-ledger.json] [--out target/ripr/reports/first-useful-action.json]
   ripr reports index [--reports-dir target/ripr/reports] [--review-dir target/ripr/review] [--out target/ripr/reports/index.json]
+  ripr reports gap-ledger --records fixtures/gap-decision-ledger/corpus.json [--out target/ripr/reports/gap-decision-ledger.json]
   ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
   ripr agent start --root . --seam-id ID [--out target/ripr/workflow]
   ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json
@@ -49,6 +57,13 @@ Quick start:
   ripr baseline diff --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json
   ripr baseline update --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json --remove-resolved
   ripr zero status --baseline .ripr/gate-baseline.json --delta target/ripr/reports/baseline-debt-delta.json --gate target/ripr/reports/gate-decision.json
+  ripr policy readiness --gate-decision target/ripr/reports/gate-decision.json --baseline-delta target/ripr/reports/baseline-debt-delta.json
+  ripr policy operations --policy-readiness target/ripr/reports/policy-readiness.json --waiver-aging target/ripr/reports/waiver-aging.json --suppression-health target/ripr/reports/suppression-health.json
+  ripr policy history --current target/ripr/reports/policy-operations.json --history .ripr/policy-history.jsonl
+  ripr policy promote --to baseline-check --operations target/ripr/reports/policy-operations.json --history target/ripr/reports/policy-history.json
+  ripr policy preview-promote --language typescript --class boundary_gap
+  ripr policy waiver-aging --ledger target/ripr/reports/pr-evidence-ledger.json --history .ripr/pr-evidence-ledger.jsonl
+  ripr policy suppression-health
   ripr pr-ledger record --pr-number 123 --base origin/main --head HEAD --baseline-delta target/ripr/reports/baseline-debt-delta.json --zero-status target/ripr/reports/ripr-zero-status.json
   ripr pr-comments plan --pr-guidance target/ripr/review/comments.json --mode plan
   ripr pr-review front-panel --pr-guidance target/ripr/review/comments.json --first-action target/ripr/reports/first-useful-action.json --ledger target/ripr/reports/pr-evidence-ledger.json
@@ -57,6 +72,7 @@ Quick start:
   ripr assistant-loop health --proof target/ripr/reports/test-oracle-assistant-proof.json
   ripr first-action --pr-guidance target/ripr/review/comments.json --assistant-proof target/ripr/reports/test-oracle-assistant-proof.json --ledger target/ripr/reports/pr-evidence-ledger.json
   ripr reports index
+  ripr reports gap-ledger --records fixtures/gap-decision-ledger/corpus.json
   ripr calibrate cargo-mutants --mutants-json target/mutants/outcomes.json --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
   ripr agent start --root . --seam-id f3c9e4d21a0b7c88
   ripr agent brief --root . --diff change.diff --json
@@ -158,29 +174,36 @@ testing, edit source files, configure CI policy, or make gate decisions.
 
 const REVIEW_COMMENTS_HELP: &str = r#"Write advisory PR test guidance on changed lines (does not post to GitHub).
 
-Usage: ripr review-comments [--root PATH] --base SHA --head SHA [--out PATH]
+Usage: ripr review-comments [--root PATH] --base SHA --head SHA [--gap-ledger PATH] [--out PATH]
 
 Options:
   --root PATH    Workspace root. Defaults to current directory.
   --base SHA     Pull-request base revision.
   --head SHA     Pull-request head revision.
+  --gap-ledger PATH
+                 Optional gap decision ledger JSON; when supplied, changed-line
+                 repair cards come only from `projection_eligibility.pr_comment`
+                 GapRecord targets.
   --out PATH     JSON output path. Defaults to target/ripr/review/comments.json.
 
 The review-comments command writes a bounded advisory PR guidance report as
 JSON plus a sibling Markdown file. It joins existing static seam evidence with
-the changed-line diff and only places line guidance on changed lines. It does
+the changed-line diff by default and only places line guidance on changed
+lines. When `--gap-ledger` is supplied, it does not rerun analysis; it renders
+only eligible PR-local repair cards from explicit GapRecord records. It does
 not post to GitHub, edit source, generate tests, run mutation testing, or make
 CI blocking by default.
 "#;
 
 const GATE_HELP: &str = r#"Evaluate the optional pass/fail gate against existing PR guidance (advisory unless explicitly enabled).
 
-Usage: ripr gate evaluate --pr-guidance PATH [--mode MODE] [--out PATH] [--out-md PATH]
+Usage: ripr gate evaluate [--pr-guidance PATH | --gap-ledger PATH] [--mode MODE] [--out PATH] [--out-md PATH]
 
 Options:
   --root PATH                         Workspace root. Defaults to current directory.
   --repo-exposure PATH                Optional repo-exposure JSON input.
-  --pr-guidance PATH                  Required PR guidance JSON from `ripr review-comments`.
+  --pr-guidance PATH                  Optional PR guidance JSON from `ripr review-comments`.
+  --gap-ledger PATH                   Optional gap decision ledger JSON; when supplied, gate candidates come from repairable GapRecord projection targets.
   --sarif-policy PATH                 Optional SARIF policy JSON input.
   --labels-json PATH                  Optional JSON array or object with labels.
   --label LABEL                       Repeatable current PR label input.
@@ -249,11 +272,12 @@ this command to rewrite checked-in baselines automatically.
 
 const ZERO_HELP: &str = r#"Summarize current RIPR Zero progress over existing baselines and gate decisions.
 
-Usage: ripr zero status --delta PATH [--baseline PATH] [--gate PATH] [--pr-guidance PATH] [--recommendation-calibration PATH] [--out PATH] [--out-md PATH]
+Usage: ripr zero status --delta PATH [--baseline PATH] [--gap-ledger PATH] [--gate PATH] [--pr-guidance PATH] [--recommendation-calibration PATH] [--out PATH] [--out-md PATH]
 
 Status options:
   --baseline PATH                       Optional reviewed gate baseline ledger.
   --delta PATH                          Required baseline-debt-delta JSON from `ripr baseline diff`.
+  --gap-ledger PATH                     Optional gap decision ledger JSON whose ripr_zero_count targets define the visible target count.
   --gate PATH                           Optional gate-decision JSON from `ripr gate evaluate`.
   --pr-guidance PATH                    Optional PR guidance JSON from `ripr review-comments`.
   --recommendation-calibration PATH     Optional recommendation calibration JSON.
@@ -261,16 +285,112 @@ Status options:
   --out-md PATH                         Markdown output path. Defaults to target/ripr/reports/ripr-zero-status.md.
 
 The RIPR Zero status report is read-only advisory progress evidence over
-existing baselines, baseline debt deltas, gate decisions, PR guidance, and
+existing baselines, baseline debt deltas, gap decision ledgers, gate decisions, PR guidance, and
 optional calibration artifacts. It reports visible unresolved debt, baseline
 movement, metadata health, top debt areas, and bounded repair routes. It does
 not run analysis, mutate baselines, edit source, generate tests, call an LLM,
 run mutation testing, change gate policy, or make CI blocking by default.
 "#;
 
+const POLICY_HELP: &str = r#"Summarize which RIPR policy posture is safe for the current repo.
+
+Usage: ripr policy readiness [--root PATH] [--gate-decision PATH] [--baseline-delta PATH] [--recommendation-calibration PATH] [--mutation-calibration PATH] [--waiver-aging PATH] [--suppression-health PATH] [--repo-config PATH] [--previous-readiness PATH] [--out PATH] [--out-md PATH]
+       ripr policy operations [--root PATH] --policy-readiness PATH [--waiver-aging PATH] [--suppression-health PATH] [--baseline-delta PATH] [--gate-decision PATH] [--recommendation-calibration PATH] [--mutation-calibration PATH] [--preview-boundary PATH] [--out PATH] [--out-md PATH]
+       ripr policy history [--root PATH] --current PATH [--history PATH] [--commit REV] [--pr-number NUMBER] [--out PATH] [--out-md PATH]
+       ripr policy promote [--root PATH] --to MODE --operations PATH [--history PATH] [--out PATH] [--out-md PATH]
+       ripr policy preview-promote [--root PATH] --language LANGUAGE --class CLASS [--evidence PATH] [--out PATH] [--out-md PATH]
+       ripr policy waiver-aging [--root PATH] [--ledger PATH] [--history PATH] [--out PATH] [--out-md PATH]
+       ripr policy suppression-health [--root PATH] [--manifest PATH] [--out PATH] [--out-md PATH]
+
+Readiness options:
+  --root PATH                           Display root for the report. Defaults to current directory.
+  --gate-decision PATH                  Optional gate-decision JSON from `ripr gate evaluate`.
+  --baseline-delta PATH                 Optional baseline-debt-delta JSON from `ripr baseline diff`.
+  --recommendation-calibration PATH     Optional recommendation calibration JSON.
+  --mutation-calibration PATH           Optional imported mutation calibration JSON.
+  --waiver-aging PATH                   Optional waiver-aging JSON.
+  --suppression-health PATH             Optional suppression-health JSON.
+  --repo-config PATH                    Optional repo config summary JSON.
+  --previous-readiness PATH             Optional prior policy-readiness JSON.
+  --out PATH                            JSON output path. Defaults to target/ripr/reports/policy-readiness.json.
+  --out-md PATH                         Markdown output path. Defaults to target/ripr/reports/policy-readiness.md.
+
+Operations options:
+  --root PATH                           Display root for the report. Defaults to current directory.
+  --policy-readiness PATH               Policy-readiness JSON from `ripr policy readiness`.
+  --waiver-aging PATH                   Optional waiver-aging JSON.
+  --suppression-health PATH             Optional suppression-health JSON.
+  --baseline-delta PATH                 Optional baseline-debt-delta JSON.
+  --gate-decision PATH                  Optional gate-decision JSON.
+  --recommendation-calibration PATH     Optional recommendation calibration JSON.
+  --mutation-calibration PATH           Optional imported mutation calibration JSON.
+  --preview-boundary PATH               Optional preview-boundary JSON.
+  --out PATH                            JSON output path. Defaults to target/ripr/reports/policy-operations.json.
+  --out-md PATH                         Markdown output path. Defaults to target/ripr/reports/policy-operations.md.
+
+History options:
+  --root PATH                           Display root for the report. Defaults to current directory.
+  --current PATH                        Policy-operations JSON from `ripr policy operations`.
+  --history PATH                        Optional policy history JSONL.
+  --commit REV                          Optional current snapshot commit identity.
+  --pr-number NUMBER                    Optional current snapshot PR number.
+  --out PATH                            JSON output path. Defaults to target/ripr/reports/policy-history.json.
+  --out-md PATH                         Markdown output path. Defaults to target/ripr/reports/policy-history.md.
+
+Promotion options:
+  --root PATH                           Display root for the report. Defaults to current directory.
+  --to MODE                             Target mode: visible-only, acknowledgeable, baseline-check, or calibrated-gate.
+  --operations PATH                     Policy-operations JSON from `ripr policy operations`.
+  --history PATH                        Optional policy-history JSON from `ripr policy history`.
+  --out PATH                            JSON output path. Defaults to target/ripr/reports/policy-promotion-<mode>.json.
+  --out-md PATH                         Markdown output path. Defaults to target/ripr/reports/policy-promotion-<mode>.md.
+
+Preview promotion options:
+  --root PATH                           Display root for the report. Defaults to current directory.
+  --language LANGUAGE                   Preview language under review: typescript or python.
+  --class CLASS                         Preview evidence class under review, for example boundary_gap.
+  --evidence PATH                       Optional explicit preview promotion evidence receipts JSON.
+  --out PATH                            JSON output path. Defaults to target/ripr/reports/preview-promotion-<language>-<class>.json.
+  --out-md PATH                         Markdown output path. Defaults to target/ripr/reports/preview-promotion-<language>-<class>.md.
+
+Waiver aging options:
+  --root PATH                           Display root for the report. Defaults to current directory.
+  --ledger PATH                         Optional current PR evidence ledger JSON.
+  --history PATH                        Optional PR evidence ledger JSONL history.
+  --out PATH                            JSON output path. Defaults to target/ripr/reports/waiver-aging.json.
+  --out-md PATH                         Markdown output path. Defaults to target/ripr/reports/waiver-aging.md.
+
+Suppression health options:
+  --root PATH                           Workspace root for reading the manifest. Defaults to current directory.
+  --manifest PATH                       Suppression manifest path. Defaults to .ripr/suppressions.toml.
+  --out PATH                            JSON output path. Defaults to target/ripr/reports/suppression-health.json.
+  --out-md PATH                         Markdown output path. Defaults to target/ripr/reports/suppression-health.md.
+
+The policy readiness report is read-only advisory governance over explicit
+existing artifacts. It recommends advisory-only, visible-only, acknowledgeable,
+baseline-check, or calibrated-gate posture without executing a gate. Preview
+language evidence stays visible and advisory by default. The policy operations
+report composes existing policy artifacts into current ceiling, next safe
+action, safe/not-safe promotion modes, blockers, and input health without
+promoting anything. The policy history report shows whether readiness, waivers,
+suppressions, baseline debt, calibration, and preview boundaries are improving
+or decaying without appending history. The policy promotion packet reads policy
+operations plus optional policy history and writes manual-review promotion
+evidence without changing config. The preview promotion packet writes default
+blocked evidence accounting for TypeScript and Python preview classes while
+keeping preview evidence visible, advisory, non-gating, outside RIPR Zero, and
+outside calibrated confidence until a later explicit policy is reviewed. The
+waiver-aging report keeps repeated waivers visible as repair or policy-review
+signals. The suppression-health report flags durable exception metadata gaps
+while keeping suppressed findings visible. These commands do not run analysis,
+mutate baselines or suppressions, post comments, edit source, generate tests,
+run mutation testing, change gate policy, promote preview evidence, or make CI
+blocking.
+"#;
+
 const PR_LEDGER_HELP: &str = r#"Record a read-only PR evidence ledger entry over existing reports.
 
-Usage: ripr pr-ledger record --pr-number VALUE --base REV --head REV [--gate PATH] [--baseline-delta PATH] [--zero-status PATH] [--pr-guidance PATH] [--recommendation-calibration PATH] [--agent-receipt PATH] [--coverage PATH] [--history PATH] [--out PATH] [--out-md PATH]
+Usage: ripr pr-ledger record --pr-number VALUE --base REV --head REV [--gate PATH] [--baseline-delta PATH] [--zero-status PATH] [--pr-guidance PATH] [--gap-ledger PATH] [--recommendation-calibration PATH] [--agent-receipt PATH] [--coverage PATH] [--history PATH] [--out PATH] [--out-md PATH]
 
 Record options:
   --pr-number VALUE                    Pull request number or local identifier.
@@ -281,6 +401,7 @@ Record options:
   --baseline-delta PATH                Optional baseline-debt-delta JSON from `ripr baseline diff`.
   --zero-status PATH                   Optional RIPR Zero status JSON from `ripr zero status`.
   --pr-guidance PATH                   Optional PR guidance JSON from `ripr review-comments`.
+  --gap-ledger PATH                    Optional gap decision ledger JSON with policy-targeted repairable gap records.
   --recommendation-calibration PATH    Optional recommendation calibration JSON.
   --agent-receipt PATH                 Optional agent receipt JSON.
   --coverage PATH                      Optional coverage summary JSON.
@@ -353,9 +474,12 @@ provider, run mutation testing, publish inline comments, or make CI blocking by
 default.
 "#;
 
-const REPORTS_HELP: &str = r#"Write a reviewer-first index of the uploaded review artifacts.
+const REPORTS_HELP: &str = r#"Write reviewer-first report projections from explicit artifacts.
 
-Usage: ripr reports index [--root PATH] [--reports-dir PATH] [--review-dir PATH] [--receipts-dir PATH] [--workflow-dir PATH] [--agent-dir PATH] [--pilot-dir PATH] [--ci-dir PATH] [--out PATH] [--out-md PATH]
+Usage:
+  ripr reports index [--root PATH] [--reports-dir PATH] [--review-dir PATH] [--receipts-dir PATH] [--workflow-dir PATH] [--agent-dir PATH] [--pilot-dir PATH] [--ci-dir PATH] [--out PATH] [--out-md PATH]
+  ripr reports gap-ledger --records PATH [--root PATH] [--out PATH] [--out-md PATH]
+  ripr reports gap-ledger --check-output PATH [--root PATH] [--out PATH] [--out-md PATH]
 
 Index options:
   --root PATH           Workspace root label. Defaults to current directory.
@@ -369,12 +493,28 @@ Index options:
   --out PATH            JSON output path. Defaults to target/ripr/reports/index.json.
   --out-md PATH         Markdown output path. Defaults to target/ripr/reports/index.md.
 
+Gap ledger options:
+  --records PATH        Explicit GapRecord JSON, gap_records JSON, or fixture corpus JSON.
+  --repo-exposure PATH  Derive repo-scoped Rust GapRecords from seams[].evidence_record.
+  --check-output PATH   Derive PR-local presentation/output contract gaps from finding_alignment.items.
+  --root PATH           Workspace root label. Defaults to current directory.
+  --out PATH            JSON output path. Defaults to target/ripr/reports/gap-decision-ledger.json.
+  --out-md PATH         Markdown output path. Defaults to target/ripr/reports/gap-decision-ledger.md.
+
 The report-packet index is a read-only advisory map over explicit existing
 RIPR artifacts. It groups reports by reviewer use, names the start-here
 artifact, preserves gate-decision as the configured pass/fail authority,
 lists missing expected surfaces with regeneration commands when known, and
 does not rerun analysis, edit source, generate tests, call providers, run
 mutation testing, publish inline comments, or make CI blocking by default.
+
+The gap decision ledger command is a read-only advisory renderer for explicit
+GapRecord input or existing repo-exposure evidence records. It normalizes
+supplied or derived gap records into JSON and Markdown,
+summarizes projection eligibility, preserves gate-decision as the configured
+pass/fail authority, and does not rerun hidden analysis, publish comments,
+edit source, generate tests, call providers, run mutation testing, or change
+default CI blocking.
 "#;
 
 const COVERAGE_GRIP_HELP: &str = r#"Report whether line coverage and behavior evidence moved together.
@@ -438,12 +578,13 @@ make CI blocking by default.
 
 const FIRST_ACTION_HELP: &str = r#"Recommend the next focused test to add from existing review artifacts.
 
-Usage: ripr first-action [--root PATH] [--pr-guidance PATH] [--assistant-proof PATH] [--ledger PATH] [--baseline-delta PATH] [--receipt PATH] [--gate-decision PATH] [--coverage-frontier PATH] [--editor-context PATH] [--out PATH] [--out-md PATH]
+Usage: ripr first-action [--root PATH] [--pr-guidance PATH] [--assistant-proof PATH] [--gap-ledger PATH] [--ledger PATH] [--baseline-delta PATH] [--receipt PATH] [--gate-decision PATH] [--coverage-frontier PATH] [--editor-context PATH] [--out PATH] [--out-md PATH]
 
 Options:
   --root PATH                Workspace root label. Defaults to current directory.
   --pr-guidance PATH         Optional PR guidance JSON from `ripr review-comments`.
   --assistant-proof PATH     Optional proof JSON from `ripr assistant-loop proof`.
+  --gap-ledger PATH          Optional gap decision ledger JSON from `ripr reports gap-ledger`.
   --ledger PATH              Optional PR evidence ledger JSON from `ripr pr-ledger record`.
   --baseline-delta PATH      Optional baseline-debt-delta JSON from `ripr baseline diff`.
   --receipt PATH             Optional agent receipt JSON from `ripr agent receipt`.
@@ -535,16 +676,21 @@ tests, edit files, change cache behavior, or touch LSP/MCP surfaces.
 const AGENT_PACKET_HELP: &str = r#"Write a per-change handoff packet for a coding agent.
 
 Usage: ripr agent packet [--root PATH] --seam-id ID --json
+       ripr agent packet [--root PATH] --gap-ledger PATH --gap-id ID --json
 
 Options:
-  --root PATH      Workspace root. Defaults to current directory.
-  --seam-id ID     Select one visible seam by ID.
-  --json           Required until a human packet surface exists.
+  --root PATH        Workspace root. Defaults to current directory.
+  --seam-id ID       Select one visible seam by ID.
+  --gap-ledger PATH  Explicit gap decision ledger JSON.
+  --gap-id ID        Select a GapRecord by gap_id or canonical_gap_id.
+  --json             Required until a human packet surface exists.
 
 The packet command expands a seam selected by `ripr agent brief` into the
-existing agent-seam-packets-json envelope with one packet. It remains advisory
-and static; it does not run mutation testing, generate tests, edit files, change
-cache behavior, or touch LSP/MCP surfaces.
+existing agent-seam-packets-json envelope with one packet. With `--gap-ledger`,
+it renders one agent packet from an explicit agent-packet-eligible GapRecord
+without rerunning analysis. It remains advisory and static; it does not run
+mutation testing, generate tests, edit files, change cache behavior, or touch
+LSP/MCP surfaces.
 "#;
 
 const AGENT_VERIFY_HELP: &str = r#"Verify static-evidence movement between a before and after snapshot.
@@ -637,6 +783,9 @@ Options:
                            repo-* and agent-seam-packets-json formats render
                            against the full repo baseline; the non-repo badge-*
                            formats remain diff-scoped.
+  --gap-ledger PATH        For repo-badge-* formats only, render badge counts
+                           from explicit gap-decision-ledger projection targets
+                           instead of seam-native/test-efficiency counts.
   --json                   Shortcut for --format json.
   --no-unchanged-tests     Limit the index to changed Rust files.
 
@@ -712,6 +861,10 @@ pub(super) fn print_baseline_help() {
 
 pub(super) fn print_zero_help() {
     println!("{ZERO_HELP}");
+}
+
+pub(super) fn print_policy_help() {
+    println!("{POLICY_HELP}");
 }
 
 pub(super) fn print_pr_ledger_help() {
@@ -801,8 +954,9 @@ mod tests {
         AGENT_REVIEW_SUMMARY_HELP, AGENT_START_HELP, AGENT_STATUS_HELP, AGENT_VERIFY_HELP,
         ASSISTANT_LOOP_HELP, BASELINE_HELP, CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP,
         COVERAGE_GRIP_HELP, DOCTOR_HELP, EVIDENCE_HEALTH_HELP, EXPLAIN_HELP, FIRST_ACTION_HELP,
-        GATE_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP, PR_COMMENTS_HELP,
-        PR_LEDGER_HELP, PR_REVIEW_HELP, REPORTS_HELP, REVIEW_COMMENTS_HELP, ZERO_HELP,
+        GATE_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP, POLICY_HELP,
+        PR_COMMENTS_HELP, PR_LEDGER_HELP, PR_REVIEW_HELP, REPORTS_HELP, REVIEW_COMMENTS_HELP,
+        ZERO_HELP,
     };
 
     #[test]
@@ -817,6 +971,12 @@ mod tests {
         assert!(HELP.contains("ripr baseline diff"));
         assert!(HELP.contains("ripr baseline update"));
         assert!(HELP.contains("ripr zero status"));
+        assert!(HELP.contains("ripr policy readiness"));
+        assert!(HELP.contains("ripr policy operations"));
+        assert!(HELP.contains("ripr policy history"));
+        assert!(HELP.contains("ripr policy promote"));
+        assert!(HELP.contains("ripr policy preview-promote"));
+        assert!(HELP.contains("ripr policy waiver-aging"));
         assert!(HELP.contains("ripr pr-ledger record"));
         assert!(HELP.contains("ripr pr-comments plan"));
         assert!(HELP.contains("ripr pr-review front-panel"));
@@ -825,6 +985,7 @@ mod tests {
         assert!(HELP.contains("ripr assistant-loop health"));
         assert!(HELP.contains("ripr first-action"));
         assert!(HELP.contains("ripr reports index"));
+        assert!(HELP.contains("ripr reports gap-ledger"));
         assert!(HELP.contains("ripr calibrate"));
         assert!(HELP.contains("ripr agent start"));
         assert!(HELP.contains("ripr agent brief"));
@@ -890,6 +1051,22 @@ mod tests {
         assert!(ZERO_HELP.contains("Usage: ripr zero status"));
         assert!(ZERO_HELP.contains("baseline-debt-delta JSON"));
         assert!(ZERO_HELP.contains("RIPR Zero status report"));
+        assert!(POLICY_HELP.starts_with("Summarize which RIPR policy posture"));
+        assert!(POLICY_HELP.contains("Usage: ripr policy readiness"));
+        assert!(POLICY_HELP.contains("ripr policy operations"));
+        assert!(POLICY_HELP.contains("ripr policy history"));
+        assert!(POLICY_HELP.contains("ripr policy promote"));
+        assert!(POLICY_HELP.contains("ripr policy preview-promote"));
+        assert!(POLICY_HELP.contains("ripr policy waiver-aging"));
+        assert!(POLICY_HELP.contains("ripr policy suppression-health"));
+        assert!(POLICY_HELP.contains("policy-readiness.json"));
+        assert!(POLICY_HELP.contains("policy-operations.json"));
+        assert!(POLICY_HELP.contains("policy-history.json"));
+        assert!(POLICY_HELP.contains("policy-promotion-<mode>.json"));
+        assert!(POLICY_HELP.contains("preview-promotion-<language>-<class>.json"));
+        assert!(POLICY_HELP.contains("waiver-aging.json"));
+        assert!(POLICY_HELP.contains("suppression-health.json"));
+        assert!(POLICY_HELP.contains("read-only advisory governance"));
         assert!(PR_LEDGER_HELP.starts_with("Record a read-only PR evidence ledger"));
         assert!(PR_LEDGER_HELP.contains("Usage: ripr pr-ledger record"));
         assert!(PR_LEDGER_HELP.contains("pr-evidence-ledger.json"));
@@ -917,11 +1094,15 @@ mod tests {
         assert!(ASSISTANT_LOOP_HELP.contains("Campaign 20 artifacts"));
         assert!(FIRST_ACTION_HELP.starts_with("Recommend the next focused test"));
         assert!(FIRST_ACTION_HELP.contains("Usage: ripr first-action"));
+        assert!(FIRST_ACTION_HELP.contains("--gap-ledger PATH"));
         assert!(FIRST_ACTION_HELP.contains("first-useful-action.json"));
         assert!(FIRST_ACTION_HELP.contains("read-only advisory router"));
-        assert!(REPORTS_HELP.starts_with("Write a reviewer-first index"));
-        assert!(REPORTS_HELP.contains("Usage: ripr reports index"));
+        assert!(REPORTS_HELP.starts_with("Write reviewer-first report projections"));
+        assert!(REPORTS_HELP.contains("Usage:"));
+        assert!(REPORTS_HELP.contains("ripr reports index"));
+        assert!(REPORTS_HELP.contains("ripr reports gap-ledger"));
         assert!(REPORTS_HELP.contains("target/ripr/reports/index.json"));
+        assert!(REPORTS_HELP.contains("gap-decision-ledger.json"));
         assert!(REPORTS_HELP.contains("read-only advisory map"));
         assert!(CALIBRATE_HELP.starts_with("Import cargo-mutants outcomes"));
         assert!(CALIBRATE_HELP.contains("Usage: ripr calibrate cargo-mutants"));

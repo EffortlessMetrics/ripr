@@ -22,13 +22,21 @@
 
 mod adapter;
 mod id;
+#[cfg(feature = "lang-python")]
+mod python;
 mod router;
 mod rust;
+#[cfg(feature = "lang-typescript")]
+mod typescript;
 
 pub(crate) use adapter::{LanguageAdapter, LanguageDiffResult, LanguageRepoResult};
 pub(crate) use id::LanguageId;
+#[cfg(feature = "lang-python")]
+pub(crate) use python::PythonAdapter;
 pub(crate) use router::route;
 pub(crate) use rust::RustAdapter;
+#[cfg(feature = "lang-typescript")]
+pub(crate) use typescript::TypeScriptAdapter;
 
 #[cfg(test)]
 mod tests {

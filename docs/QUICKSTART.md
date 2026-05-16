@@ -36,10 +36,15 @@ between plain wording and the internal model.
 | CI user | Run `ripr init --ci github` once or copy the workflow from [CI strategy](CI.md). | A non-blocking RIPR advisory summary plus uploaded pilot, workflow, agent, report, and review artifacts. |
 | CLI user | Run `ripr pilot --root .`. | The top actionable test gap, why it matters, and before/after commands under `target/ripr/pilot`. |
 | Agent or reviewer | Run `ripr agent status --root .`. | Existing artifact state, the selected change when recoverable, and the next command to run. |
+| Preview language evaluator | Enable TypeScript, JavaScript, or Python in `[languages]`, then run the normal CLI, editor, or CI path. | Preview-labeled, syntax-first advisory evidence with static limits kept visible. |
 
 `ripr.toml` is optional. `ripr init` materializes repo-local policy when a team
 wants to review, version, and tune it. It is not activation, and it is not
 required for first value.
+
+For opt-in TypeScript, JavaScript, and Python evidence, see
+[Language adapter preview workflow](LANGUAGE_ADAPTER_PREVIEW.md). Rust remains
+the default and preview languages stay advisory.
 
 ## VS Code First Hour
 
@@ -59,7 +64,7 @@ reviewing Rust.
    - `Verify after test: copy after-snapshot command`
    - `Verify after test: copy verify command`
    - `Review result: copy receipt command`
-   - `Refresh analysis: rerun saved-workspace check`
+   - `Refresh Analysis - Saved Workspace Check`
 
 Normal editor install should not require `cargo install ripr`. The extension
 resolves the server from `ripr.server.path`, bundled or cached assets, verified
@@ -233,7 +238,7 @@ See [LLM operator guide](LLM_OPERATOR_GUIDE.md).
 | --- | --- |
 | VS Code shows no RIPR state, or shows "no focused test gap found." | Run `ripr: Show Status`, then `ripr: Show Output`. Confirm a Rust/Cargo workspace is open and saved. The internal status ID for the empty case is `no-actionable-seam`. |
 | VS Code cannot start the server. | Check `ripr.server.path`, `ripr.server.autoDownload`, network access to GitHub Releases, and PATH fallback. |
-| Diagnostics look stale. | Save the workspace file or run `Refresh analysis: rerun saved-workspace check`. |
+| Diagnostics look stale. | Save the workspace file or run `Refresh Analysis - Saved Workspace Check`. |
 | CI has no top recommendation. | Open the `RIPR advisory summary`, then inspect `target/ripr/pilot/pilot-summary.md` in the uploaded artifact. |
 | CI did not upload SARIF. | Confirm `RIPR_UPLOAD_SARIF` is `"true"` and that GitHub code scanning permissions are available. |
 | Agent status says artifacts are missing. | Run the `next_command` printed by `ripr agent status`. |
@@ -275,6 +280,8 @@ RIPR findings.
 
 - [Terminology](TERMINOLOGY.md) for the bridge between plain wording and the
   internal model (seam, discriminator, grip, canonical gap, etc.).
+- [First successful PR workflow](FIRST_PR_WORKFLOW.md) for the one-PR path from
+  a repairable Rust gap to a focused proof and receipt.
 - [Editor extension](EDITOR_EXTENSION.md) for VS Code install, commands, and
   saved-workspace refresh behavior.
 - [CI strategy](CI.md) for the generated advisory workflow and artifact packet.
@@ -282,4 +289,6 @@ RIPR findings.
   loop.
 - [Configuration](CONFIGURATION.md) for `ripr.toml`, modes, severities, and
   editor settings.
+- [Language adapter preview workflow](LANGUAGE_ADAPTER_PREVIEW.md) for opt-in
+  TypeScript, JavaScript, and Python evidence.
 - [Output schema](OUTPUT_SCHEMA.md) for JSON contracts.

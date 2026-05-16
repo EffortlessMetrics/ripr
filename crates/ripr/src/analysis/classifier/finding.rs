@@ -40,5 +40,7 @@ pub(in crate::analysis) fn build_finding(
         // classification. The classifier itself stays language-neutral.
         language: None,
         language_status: None,
+        owner_kind: None,
+        static_limit_kind: None,
     }
 }

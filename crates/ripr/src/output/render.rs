@@ -465,6 +465,8 @@ mod tests {
             recommended_next_step: Some("add stronger assertion".to_string()),
             language: None,
             language_status: None,
+            owner_kind: None,
+            static_limit_kind: None,
         }
     }
 }

@@ -185,6 +185,15 @@ Do not add a new current finding to the baseline just to make a PR pass. A
 future `--adopt-new` path would need an explicit reviewed reason; the current
 safe workflow is shrink-only.
 
+Baseline refresh guardrails:
+
+- `ripr baseline update` only supports `--remove-resolved`.
+- `--adopt-new` is not a supported CLI argument.
+- generated CI may run `ripr baseline diff`, but it must not run
+  `ripr baseline update`;
+- generated CI must not write `.ripr/gate-baseline.json` or any configured
+  `RIPR_GATE_BASELINE` path.
+
 ## 6. Shrink The Baseline
 
 After focused tests move static evidence, regenerate the gate decision and

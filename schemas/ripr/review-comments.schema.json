@@ -1,0 +1,433 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.effortlessmetrics.dev/ripr/review-comments.schema.json",
+  "title": "RIPR Review Comments",
+  "description": "Diff-scoped RIPR review guidance. Only comments[] can feed non-blocking changed-line annotations.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tool",
+    "status",
+    "root",
+    "base",
+    "head",
+    "mode",
+    "rendering_limits",
+    "summary",
+    "comments",
+    "summary_only",
+    "suppressed",
+    "warnings",
+    "limits_note"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.1"
+    },
+    "tool": {
+      "const": "ripr"
+    },
+    "status": {
+      "enum": [
+        "advisory",
+        "incomplete",
+        "error"
+      ]
+    },
+    "root": {
+      "type": "string",
+      "minLength": 1
+    },
+    "base": {
+      "type": "string",
+      "minLength": 1
+    },
+    "head": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "mode": {
+      "description": "Public RIPR analysis mode label.",
+      "enum": [
+        "instant",
+        "draft",
+        "fast",
+        "deep",
+        "ready"
+      ]
+    },
+    "rendering_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_inline_comments",
+        "max_summary_items"
+      ],
+      "properties": {
+        "max_inline_comments": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_summary_items": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "comments",
+        "summary_only",
+        "suppressed",
+        "unchanged_tests"
+      ],
+      "properties": {
+        "comments": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "summary_only": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "suppressed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unchanged_tests": {
+          "type": "boolean"
+        }
+      }
+    },
+    "comments": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/recommendation"
+          },
+          {
+            "type": "object",
+            "required": [
+              "placement"
+            ],
+            "properties": {
+              "placement": {
+                "$ref": "#/$defs/placement"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "summary_only": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/recommendation"
+          },
+          {
+            "type": "object",
+            "required": [
+              "placement",
+              "summary_reason"
+            ],
+            "properties": {
+              "placement": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/placement"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "summary_reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        ]
+      }
+    },
+    "suppressed": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/suppressed"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/warning"
+      }
+    },
+    "limits_note": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "$defs": {
+    "recommendation": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "seam_id",
+        "dedupe_key",
+        "kind",
+        "grip_class",
+        "severity",
+        "owner",
+        "seam",
+        "reason",
+        "suggested_test",
+        "llm_guidance"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "seam_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dedupe_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "grip_class": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "seam": {
+          "$ref": "#/$defs/seam"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "missing_discriminator": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "suggested_test": {
+          "$ref": "#/$defs/suggested_test"
+        },
+        "llm_guidance": {
+          "$ref": "#/$defs/llm_guidance"
+        }
+      }
+    },
+    "seam": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "file",
+        "line",
+        "expression"
+      ],
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "expression": {
+          "type": "string"
+        }
+      }
+    },
+    "placement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "line",
+        "side",
+        "mode"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "side": {
+          "enum": [
+            "LEFT",
+            "RIGHT"
+          ]
+        },
+        "mode": {
+          "enum": [
+            "exact_seam_line",
+            "owner_function_changed_line",
+            "same_file_changed_line"
+          ]
+        }
+      }
+    },
+    "suggested_test": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "intent",
+        "candidate_values",
+        "assertion_shape",
+        "assertion_kind",
+        "recommended_file",
+        "recommended_name"
+      ],
+      "properties": {
+        "intent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidate_values": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "assertion_shape": {
+          "type": "string"
+        },
+        "assertion_kind": {
+          "type": "string"
+        },
+        "recommended_file": {
+          "type": "string"
+        },
+        "recommended_name": {
+          "type": "string"
+        },
+        "near_test": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "llm_guidance": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "prompt",
+        "command",
+        "verify_command"
+      ],
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verify_command": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "suppressed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "seam_id",
+        "file",
+        "line",
+        "reason",
+        "message"
+      ],
+      "properties": {
+        "seam_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "message"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "missing_artifact",
+            "invalid_json",
+            "schema_drift",
+            "bad_base_head",
+            "empty_evidence",
+            "tool_error",
+            "placement_warning",
+            "other"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

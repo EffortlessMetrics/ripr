@@ -306,18 +306,17 @@ without posting real comments. Campaign 26 is closed by
 `docs/handoffs/2026-05-10-campaign-26-closeout.md`.
 
 [Multi-Language Adapter Preview](proposals/RIPR-PROP-0001-multi-language-adapter-preview.md)
-is now open as Campaign 27 after PR Inline Comment Publisher. The campaign
-should introduce a language-neutral analysis adapter boundary inside the
-existing `crates/ripr` package, keep Rust as the reference adapter, and
-add syntax-first TypeScript and Python preview adapters that feed the same
-RIPR domain, output, LSP, agent, and Lane 4 review surfaces. The boundary
-stays explicit: one published package, one binary, one library, one LSP
-server, one editor extension; preview adapters are syntax-first, opt-in,
-and labeled `preview` in every public surface; Rust analyzer behavior,
-recommendation ranking, gate semantics, LSP/editor behavior for Rust seams,
-mutation execution, provider behavior, source files, generated tests,
-branch protection, `pull_request_target` defaults, and default CI blocking
-do not change.
+is closed as Campaign 27 after PR Inline Comment Publisher. The campaign
+introduced a language-neutral analysis adapter boundary inside the existing
+`crates/ripr` package, kept Rust as the reference adapter, and added
+syntax-first TypeScript and Python preview adapters that feed the same RIPR
+domain, output, LSP, agent, and Lane 4 review surfaces. The boundary stays
+explicit: one published package, one binary, one library, one LSP server, one
+editor extension; preview adapters are syntax-first, opt-in, and labeled
+`preview` in every public surface; Rust analyzer behavior, recommendation
+ranking, gate semantics, LSP/editor behavior for Rust seams, mutation
+execution, provider behavior, source files, generated tests, branch protection,
+`pull_request_target` defaults, and default CI blocking did not change.
 [RIPR-SPEC-0026](specs/RIPR-SPEC-0026-language-adapter-contract.md) pins
 the language-neutral adapter contract, additive optional `language` and
 `language_status` output fields, the `[languages]` repo-config opt-in, and
@@ -325,9 +324,44 @@ explicit preview static-limit vocabulary.
 [RIPR-SPEC-0027](specs/RIPR-SPEC-0027-typescript-preview-static-facts.md)
 pins the TypeScript preview static-fact contract, and
 [RIPR-SPEC-0028](specs/RIPR-SPEC-0028-python-preview-static-facts.md) pins
-the Python preview static-fact contract. This is also the first user of
-the repo's centralized
-[proposal -> spec -> campaign tracking model](REPO_TRACKING_MODEL.md).
+the Python preview static-fact contract. The closeout audit lives at
+[Campaign 27 Language Adapter Preview closeout](handoffs/2026-05-13-campaign-27-closeout.md).
+
+[Policy Readiness and Preview Evidence Governance](policy/POLICY_READINESS.md)
+is closed as a focused Lane 2 tracker alongside Campaign 27. It does not
+replace the active campaign manifest. It defines what stable Rust evidence and
+preview-language evidence are allowed to mean for acknowledgement, baseline,
+waiver, suppression, calibration, RIPR Zero, and gates. Preview TypeScript and
+Python findings remain visible and advisory by default; they do not become
+gate-eligible or RIPR Zero blocking debt without a later explicit policy
+promotion. Generated CI may surface waiver-aging, suppression-health, and
+policy-readiness artifacts, but those remain advisory projections with no
+default blocking or comment posting. The closeout audit is
+[Policy Readiness closeout](handoffs/2026-05-12-policy-readiness-closeout.md).
+
+[Policy Operations and Promotion Readiness](policy/POLICY_OPERATIONS.md) is
+closed as the next focused Lane 2 tracker. It turns readiness into advisory
+operator packets: current safe policy ceiling, next safe action, blockers to
+stricter modes, read-only promotion packets, preview-promotion packets, and
+history/trend surfaces. RIPR-SPEC-0039 defines the first policy operations
+report contract, `ripr policy operations` now writes that packet, and
+RIPR-SPEC-0041 defines the policy history trend contract, RIPR-SPEC-0042
+defines manual-review promotion packets, and RIPR-SPEC-0044 defines
+default-blocked preview evidence promotion packets. `ripr policy history` now
+writes the read-only trend packet over policy operations plus optional history
+JSONL, and `ripr policy promote --to ...` now writes read-only promotion
+packets from policy operations plus optional policy history. `ripr policy
+preview-promote` now writes default-blocked preview evidence promotion packets
+for TypeScript and Python classes. [Policy operations workflow](POLICY_OPERATIONS_WORKFLOW.md)
+documents how maintainers review the packets before manual config changes.
+Generated CI now renders, uploads, indexes, and summarizes operations, history,
+promotion, and configured preview-promotion packets as advisory-only artifacts
+with no new gate authority. The closeout audit is
+[Policy Operations closeout](handoffs/2026-05-13-policy-operations-closeout.md).
+This tracker preserves the same boundaries: no analyzer truth changes, no
+editor changes, no generated tests, no mutation execution, no default CI
+blocking, no automatic config or baseline mutation, and no preview evidence
+promotion.
 
 ## Strategic Sequence
 
@@ -386,6 +420,8 @@ quality rails
 -> report packet index
 -> PR inline comment publisher
 -> language adapter preview
+-> policy readiness and preview evidence governance
+-> policy operations and promotion readiness
 ```
 
 The analyzer path is:
@@ -520,6 +556,7 @@ Nice later, not blocking:
 | done | `repo-seam-facts-cache` | Cache seam fact layers after the fact model became stable enough. | Campaign 5A |
 | done | `cargo-mutants-calibration-scaffold` | Import real mutation results for offline calibration. | Campaign 5A |
 | 36 | `language-adapter-preview` | Introduce a language-neutral adapter boundary, keep Rust as the reference adapter, and add TypeScript and Python preview adapters that feed the existing RIPR domain, output, LSP, agent, and Lane 4 surfaces without changing Rust behavior or default CI blocking. | `0.9.0` |
+| 37 | `policy-readiness-preview-evidence-governance` | Define when stable Rust and preview-language evidence can be shown, acknowledged, suppressed, baselined, calibrated, counted toward RIPR Zero, or gated without changing advisory defaults. | Lane 2 |
 
 ## Release Frames
 

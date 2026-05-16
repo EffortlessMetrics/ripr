@@ -8,8 +8,12 @@ use super::diagnostics::{
     DiagnosticBatch, WorkspaceDiagnostics, diagnostic_for_classified_seam, diagnostic_for_finding,
     diagnostic_refresh_plan, diagnostic_severity_for_class, take_all_uris,
     workspace_diagnostic_batches, workspace_diagnostic_batches_with_config,
+    workspace_diagnostics_with_config,
 };
-use super::hover::{hover_response, hover_with_snapshot_status};
+use super::gap_artifacts::{
+    GapArtifactIdentity, GapArtifactKind, GapArtifactRejection, ValidatedGapArtifact,
+};
+use super::hover::{classified_seam_hover_response, hover_response, hover_with_snapshot_status};
 use super::state::{AnalysisSnapshot, DocumentStore, RefreshMetadata, format_duration};
 use super::uri::{encode_uri_path, file_uri_for_path, file_uris_match, path_from_file_uri};
 use super::{
@@ -20,12 +24,13 @@ use super::{
 };
 use crate::app::Mode;
 use crate::domain::{
-    Confidence, DeltaKind, ExposureClass, Finding, OracleKind, OracleStrength, Probe, ProbeFamily,
-    ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
+    Confidence, DeltaKind, ExposureClass, Finding, LanguageId, LanguageStatus, OracleKind,
+    OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
+    RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tower_lsp_server::LanguageServer;
 use tower_lsp_server::ls_types::{
@@ -211,7 +216,7 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
         let actions = read_lsp_response(&mut client_read, 4).await?;
         assert_eq!(
             actions["result"][0]["title"],
-            "Refresh analysis: rerun saved-workspace check"
+            "Refresh Analysis - Saved Workspace Check"
         );
         assert_eq!(actions["result"][0]["command"]["command"], REFRESH_COMMAND);
 
@@ -393,7 +398,7 @@ fn framed_lsp_protocol_smoke_logs_successful_refresh_completion() -> Result<(), 
             .filter_map(|action| action.get("title").and_then(serde_json::Value::as_str))
             .collect::<Vec<_>>();
         for expected in [
-            "Inspect seam: copy packet",
+            "Inspect Test Gap - Copy Context",
             "Write targeted test: copy brief",
             "Verify after test: copy verify command",
             "Review result: copy receipt command",
@@ -1142,9 +1147,89 @@ fn refresh_completion_log_message_includes_duration_and_counts() -> Result<(), S
     assert!(message.contains("diagnostics=1"));
     assert!(message.contains("files=1"));
     assert!(message.contains("findings=0"));
+    assert!(message.contains("preview_findings=0"));
+    assert!(message.contains("static_limits=0"));
     assert!(message.contains("seam_diagnostics=1"));
+    assert!(message.contains("gap_artifacts=0"));
+    assert!(message.contains("actionable_gap_artifacts=0"));
+    assert!(message.contains("preview_gap_artifacts=0"));
+    assert!(message.contains("no_action_gap_artifacts=0"));
+    assert!(message.contains("gap_static_limits=0"));
+    assert!(message.contains("gap_artifact_rejections=0"));
+    assert!(message.contains("gap_artifact_rejection_kinds="));
+    assert!(message.contains("enabled_languages=1"));
+    assert!(message.contains("enabled_language_names=rust"));
     assert!(message.contains("published_files=1"));
     assert!(message.contains("cleared_files=2"));
+    Ok(())
+}
+
+#[test]
+fn refresh_completion_log_message_counts_preview_findings_and_limits() -> Result<(), String> {
+    let mut finding = sample_finding();
+    finding.language = Some(LanguageId::Python);
+    finding.language_status = Some(LanguageStatus::Preview);
+    finding.static_limit_kind = Some(StaticLimitKind::MissingImportGraph);
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let uri = test_uri("file:///workspace/src/pricing.py")?;
+    let snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![diagnostic],
+        vec![finding],
+    );
+
+    let summary = RefreshLogSummary::from_snapshot(8, &snapshot);
+    let message = refresh_completed_log_message(&summary, 1, 0);
+
+    assert!(message.contains("preview_findings=1"));
+    assert!(message.contains("static_limits=1"));
+    Ok(())
+}
+
+#[test]
+fn refresh_completion_log_message_counts_gap_artifact_state() -> Result<(), String> {
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &sample_finding());
+    let uri = test_uri("file:///workspace/src/pricing.py")?;
+    let mut snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![diagnostic],
+        Vec::new(),
+    );
+    snapshot.gap_artifacts.push(ValidatedGapArtifact {
+        kind: GapArtifactKind::GapDecisionLedger,
+        root: Some(".".to_string()),
+        identities: vec![GapArtifactIdentity {
+            canonical_gap_id: Some("gap:py:pricing".to_string()),
+            seam_id: None,
+            finding_id: None,
+        }],
+        language: Some(LanguageId::Python),
+        language_status: Some(LanguageStatus::Preview),
+        gap_state: Some("actionable".to_string()),
+        related_paths: vec!["tests/test_pricing.py".to_string()],
+        verify_commands: vec!["ripr agent verify --root . --json".to_string()],
+        receipt_commands: vec!["ripr agent receipt --root . --json".to_string()],
+        static_limit_kinds: vec!["missing_import_graph".to_string()],
+        has_text_static_limit: false,
+    });
+    snapshot
+        .gap_artifact_rejections
+        .push(GapArtifactRejection::WrongRoot(
+            "/other/workspace".to_string(),
+        ));
+
+    let summary = RefreshLogSummary::from_snapshot(9, &snapshot);
+    let message = refresh_completed_log_message(&summary, 1, 0);
+
+    assert!(message.contains("gap_artifacts=1"));
+    assert!(message.contains("actionable_gap_artifacts=1"));
+    assert!(message.contains("preview_gap_artifacts=1"));
+    assert!(message.contains("no_action_gap_artifacts=0"));
+    assert!(message.contains("gap_static_limits=1"));
+    assert!(message.contains("gap_artifact_rejections=1"));
+    assert!(message.contains("gap_artifact_rejection_kinds=wrong_root"));
     Ok(())
 }
 
@@ -1318,9 +1403,9 @@ fn code_action_response_keeps_current_commands() -> Result<(), String> {
                 COPY_CONTEXT_COMMAND,
             ),
             (
-                "Refresh analysis: rerun saved-workspace check",
+                "Refresh Analysis - Saved Workspace Check",
                 "source",
-                "Refresh analysis: rerun saved-workspace check",
+                "Refresh Analysis - Saved Workspace Check",
                 REFRESH_COMMAND,
             ),
         ]
@@ -1347,6 +1432,249 @@ fn code_action_response_omits_context_action_without_ripr_diagnostic() -> Result
         return Err("expected refresh command".to_string());
     };
     assert_eq!(command.command, REFRESH_COMMAND);
+    Ok(())
+}
+
+#[test]
+fn gap_code_actions_surface_bounded_repair_actions_when_artifact_is_valid() -> Result<(), String> {
+    let root = unique_lsp_test_root("gap-actions")?;
+    std::fs::create_dir_all(root.path().join("src"))
+        .map_err(|err| format!("create src failed: {err}"))?;
+    std::fs::create_dir_all(root.path().join("tests"))
+        .map_err(|err| format!("create tests failed: {err}"))?;
+    std::fs::write(
+        root.path().join("tests/test_pricing.py"),
+        "def test_discount_boundary():\n    assert price(10) == 9\n",
+    )
+    .map_err(|err| format!("write related test failed: {err}"))?;
+    let uri = file_uri_for_path(&root.path().join("src/pricing.py"))?;
+    let diagnostic = gap_action_diagnostic();
+    let mut snapshot = sample_analysis_snapshot(
+        root.path().to_path_buf(),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.gap_artifacts = vec![validated_gap_artifact()];
+
+    let actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
+        Some(&snapshot),
+    );
+    let commands = code_action_commands(&actions)?;
+
+    assert_eq!(
+        commands
+            .iter()
+            .map(|(title, command, _)| (title.as_str(), command.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("Copy first repair packet", COPY_CONTEXT_COMMAND),
+            ("Inspect gap: copy repair packet", COPY_CONTEXT_COMMAND),
+            (
+                "Write targeted test: open best related test",
+                OPEN_RELATED_TEST_COMMAND
+            ),
+            (
+                "Verify after test: copy verify command",
+                COPY_AGENT_VERIFY_COMMAND
+            ),
+            (
+                "Review result: copy receipt command",
+                COPY_AGENT_RECEIPT_COMMAND
+            ),
+            ("Inspect gap: copy static-limit note", COPY_CONTEXT_COMMAND),
+            ("Refresh Analysis - Saved Workspace Check", REFRESH_COMMAND),
+        ]
+    );
+    assert_eq!(commands[0].2[0]["label"], "first_repair_packet");
+    assert_eq!(commands[0].2[0]["gap_identity"], "gap:py:pricing");
+    assert_eq!(commands[0].2[0]["canonical_gap_id"], "gap:py:pricing");
+    assert_eq!(
+        commands[0].2[0]["verify_command"],
+        "ripr agent verify --root . --json"
+    );
+    assert_eq!(
+        commands[0].2[0]["receipt_command"],
+        "ripr agent receipt --root . --json"
+    );
+    let packet = commands[0].2[0]["packet"]
+        .as_str()
+        .ok_or_else(|| "missing first repair packet text".to_string())?;
+    assert!(
+        packet.contains("RIPR first repair packet")
+            && packet.contains("Language status: preview")
+            && packet.contains("Static limit: missing_import_graph")
+            && packet.contains("Suggested action:")
+            && packet.contains("Verify command:")
+            && packet.contains("Receipt command:")
+            && packet
+                .contains("Do not edit production code unless the packet explicitly scopes it."),
+        "unexpected first repair packet:\n{packet}"
+    );
+    let static_limit_position = packet
+        .find("Static limit: missing_import_graph")
+        .ok_or_else(|| format!("missing static limit in first repair packet:\n{packet}"))?;
+    let suggested_action_position = packet
+        .find("Suggested action:")
+        .ok_or_else(|| format!("missing suggested action in first repair packet:\n{packet}"))?;
+    assert!(
+        static_limit_position < suggested_action_position,
+        "static limits must appear before action language:\n{packet}"
+    );
+    assert_eq!(commands[1].2[0]["label"], "gap_repair_packet");
+    assert_eq!(commands[1].2[0]["canonical_gap_id"], "gap:py:pricing");
+    assert_eq!(
+        commands[1].2[0]["repair_route"]["related_test"],
+        "tests/test_pricing.py::test_discount_boundary"
+    );
+    assert_eq!(
+        commands[2].2[0]["uri"],
+        file_uri_for_path(&root.path().join("tests/test_pricing.py"))?.as_str()
+    );
+    assert_eq!(commands[2].2[0]["line"], 2);
+    assert_eq!(commands[2].2[0]["test_name"], "test_discount_boundary");
+    assert_eq!(commands[3].2[0]["label"], "gap_verify");
+    assert_eq!(
+        commands[3].2[0]["command"],
+        "ripr agent verify --root . --json"
+    );
+    assert_eq!(commands[4].2[0]["label"], "gap_receipt");
+    assert_eq!(
+        commands[4].2[0]["command"],
+        "ripr agent receipt --root . --json"
+    );
+    assert!(
+        commands[5].2[0]["note"]
+            .as_str()
+            .is_some_and(|note| note.contains("Static limit: missing_import_graph")),
+        "expected static-limit note, got {:?}",
+        commands[5].2[0]
+    );
+    Ok(())
+}
+
+#[test]
+fn gap_code_actions_suppress_first_repair_packet_without_verify_or_receipt_command()
+-> Result<(), String> {
+    let root = unique_lsp_test_root("gap-first-repair-requires-commands")?;
+    std::fs::create_dir_all(root.path().join("tests"))
+        .map_err(|err| format!("create tests failed: {err}"))?;
+    std::fs::write(
+        root.path().join("tests/test_pricing.py"),
+        "def test_discount_boundary():\n    assert price(10) == 9\n",
+    )
+    .map_err(|err| format!("write related test failed: {err}"))?;
+    let uri = file_uri_for_path(&root.path().join("src/pricing.py"))?;
+    let mut diagnostic = gap_action_diagnostic();
+    let data = diagnostic
+        .data
+        .as_mut()
+        .ok_or_else(|| "missing diagnostic data".to_string())?;
+    data.as_object_mut()
+        .ok_or_else(|| "expected object data".to_string())?
+        .remove("receipt_command");
+    let mut snapshot = sample_analysis_snapshot(
+        root.path().to_path_buf(),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.gap_artifacts = vec![validated_gap_artifact()];
+
+    let actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
+        Some(&snapshot),
+    );
+    let commands = code_action_commands(&actions)?;
+
+    assert!(
+        commands
+            .iter()
+            .all(|(title, _, args)| title != "Copy first repair packet"
+                && args
+                    .first()
+                    .is_none_or(|arg| arg["label"] != "first_repair_packet")),
+        "first repair packet must be suppressed when receipt command is missing: {commands:?}"
+    );
+    assert!(
+        commands
+            .iter()
+            .any(|(title, _, _)| title == "Inspect gap: copy repair packet"),
+        "existing inspect action should remain available"
+    );
+    Ok(())
+}
+
+#[test]
+fn gap_code_actions_fail_closed_without_valid_current_artifact() -> Result<(), String> {
+    let diagnostic = gap_action_diagnostic();
+    let uri = test_uri("file:///workspace/src/pricing.py")?;
+    let snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+
+    let actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
+        Some(&snapshot),
+    );
+    let commands = code_action_commands(&actions)?;
+
+    assert_eq!(
+        commands
+            .iter()
+            .map(|(title, command, _)| (title.as_str(), command.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("Refresh Analysis - Saved Workspace Check", REFRESH_COMMAND)],
+        "stale or unvalidated gap diagnostics must not expose repair actions"
+    );
+    Ok(())
+}
+
+#[test]
+fn gap_code_actions_omit_unsafe_related_paths_and_commands() -> Result<(), String> {
+    let root = unique_lsp_test_root("gap-unsafe-actions")?;
+    let uri = file_uri_for_path(&root.path().join("src/pricing.py"))?;
+    let mut diagnostic = gap_action_diagnostic();
+    let data = diagnostic
+        .data
+        .as_mut()
+        .ok_or_else(|| "missing diagnostic data".to_string())?;
+    data["repair_route"]["related_test"] = serde_json::json!("../outside.py::test_escape");
+    data["verification_commands"] =
+        serde_json::json!(["ripr agent verify --root ../outside --json"]);
+    data["receipt_command"] = serde_json::json!("ripr agent receipt --root ../outside --json");
+    data.as_object_mut()
+        .ok_or_else(|| "expected object data".to_string())?
+        .remove("static_limit_kind");
+    data.as_object_mut()
+        .ok_or_else(|| "expected object data".to_string())?
+        .remove("static_limit_detail");
+    let mut snapshot = sample_analysis_snapshot(
+        root.path().to_path_buf(),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.gap_artifacts = vec![validated_gap_artifact()];
+
+    let actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
+        Some(&snapshot),
+    );
+    let commands = code_action_commands(&actions)?;
+
+    assert_eq!(
+        commands
+            .iter()
+            .map(|(title, command, _)| (title.as_str(), command.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("Refresh Analysis - Saved Workspace Check", REFRESH_COMMAND)],
+        "unsafe gap paths or command roots must leave refresh as the only action"
+    );
     Ok(())
 }
 
@@ -1384,7 +1712,7 @@ fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Resu
             REFRESH_COMMAND,
         ]
     );
-    assert_eq!(commands[0].0, "Inspect seam: copy packet");
+    assert_eq!(commands[0].0, "Inspect Test Gap - Copy Context");
     assert_eq!(commands[0].2[0]["seam_id"], seam.seam.id().as_str());
     assert_eq!(commands[0].2[0]["seam_kind"], "predicate_boundary");
     assert_eq!(commands[0].2[0]["line"], 88);
@@ -1587,10 +1915,7 @@ fn seam_code_actions_fail_closed_for_stale_seam_diagnostic() -> Result<(), Strin
             .iter()
             .map(|(title, command, _)| (title.as_str(), command.as_str()))
             .collect::<Vec<_>>(),
-        vec![(
-            "Refresh analysis: rerun saved-workspace check",
-            REFRESH_COMMAND
-        )]
+        vec![("Refresh Analysis - Saved Workspace Check", REFRESH_COMMAND)]
     );
     Ok(())
 }
@@ -1622,7 +1947,7 @@ fn seam_code_actions_keep_legacy_finding_context_when_both_diagnostics_are_prese
             .map(|(title, _, _)| title.as_str())
             .collect::<Vec<_>>(),
         vec![
-            "Inspect seam: copy packet",
+            "Inspect Test Gap - Copy Context",
             "Write targeted test: copy brief",
             "Agent handoff: copy packet command",
             "Agent handoff: copy brief command",
@@ -1632,7 +1957,7 @@ fn seam_code_actions_keep_legacy_finding_context_when_both_diagnostics_are_prese
             "Write targeted test: copy suggested assertion",
             "Write targeted test: open best related test",
             "Inspect finding: copy context packet",
-            "Refresh analysis: rerun saved-workspace check",
+            "Refresh Analysis - Saved Workspace Check",
         ]
     );
     assert_eq!(commands[0].2[0]["seam_id"], seam.seam.id().as_str());
@@ -1808,7 +2133,7 @@ fn seam_code_actions_omit_assertion_and_related_test_when_evidence_is_missing() 
             REFRESH_COMMAND
         ]
     );
-    assert_eq!(commands[0].0, "Inspect seam: copy packet");
+    assert_eq!(commands[0].0, "Inspect Test Gap - Copy Context");
     assert_eq!(commands[1].0, "Agent handoff: copy packet command");
     assert_eq!(commands[5].0, "Review result: copy receipt command");
     Ok(())
@@ -2306,6 +2631,59 @@ fn initialize_stores_lsp_analysis_config() -> Result<(), String> {
 }
 
 #[test]
+fn initialize_with_invalid_languages_config_falls_back_to_rust_defaults() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = unique_lsp_test_root("invalid-languages-config")?;
+        std::fs::write(
+            root.path().join("ripr.toml"),
+            r#"
+[languages]
+enabled = ["ruby"]
+"#,
+        )
+        .map_err(|err| format!("write invalid config failed: {err}"))?;
+        let config_error = match crate::config::load_for_root(root.path()) {
+            Ok(_) => {
+                return Err(
+                    "invalid language config should stay owned by config parsing".to_string(),
+                );
+            }
+            Err(err) => err,
+        };
+        assert!(
+            config_error.contains("languages.enabled") && config_error.contains("ruby"),
+            "expected config-owned language error, got: {config_error}"
+        );
+
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        backend
+            .initialize(initialize_params(
+                None,
+                Some(file_uri_for_path(root.path())?),
+            ))
+            .await
+            .map_err(|err| format!("initialize failed: {err}"))?;
+        let Some(config) = backend.analysis_config() else {
+            return Err("expected backend analysis config".to_string());
+        };
+
+        assert_eq!(config.repo_config().source_path(), None);
+        assert_eq!(
+            config.repo_config().languages().enabled(),
+            &[LanguageId::Rust]
+        );
+        assert_eq!(config.mode, Mode::Draft);
+        assert!(config.enable_seam_diagnostics);
+        Ok(())
+    })
+}
+
+#[test]
 fn backend_starts_with_default_lsp_analysis_config() -> Result<(), String> {
     let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
     let backend = service.inner();
@@ -2330,13 +2708,8 @@ fn workspace_diagnostic_batches_uses_default_lsp_analysis_config() {
 
 #[test]
 fn boundary_gap_workspace_diagnostics_include_live_seam_diagnostic() -> Result<(), String> {
-    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let fixture_root = repo_root.join("fixtures/boundary_gap/input");
-    let config = LspAnalysisConfig {
-        base_ref: Some("HEAD".to_string()),
-        mode: Mode::Instant,
-        ..LspAnalysisConfig::default()
-    };
+    let fixture_root = boundary_gap_fixture_root();
+    let config = boundary_gap_lsp_config(crate::config::RiprConfig::default());
 
     let batches = workspace_diagnostic_batches_with_config(&fixture_root, &config)?;
     let seam_diagnostic = batches
@@ -2355,6 +2728,70 @@ fn boundary_gap_workspace_diagnostics_include_live_seam_diagnostic() -> Result<(
     assert!(
         seam_diagnostic,
         "expected boundary_gap live workspace diagnostics to include ripr-seam-weakly-gripped"
+    );
+    Ok(())
+}
+
+#[test]
+fn boundary_gap_lsp_explicit_rust_language_matches_default_projection() -> Result<(), String> {
+    let fixture_root = boundary_gap_fixture_root();
+    let default_config = boundary_gap_lsp_config(crate::config::RiprConfig::default());
+    let rust_only_config = boundary_gap_lsp_config(crate::config::tests_only_parse(
+        r#"
+[languages]
+enabled = ["rust"]
+"#,
+    )?);
+
+    let default_projection = workspace_projection_contract(&fixture_root, &default_config)?;
+    let rust_only_projection = workspace_projection_contract(&fixture_root, &rust_only_config)?;
+
+    assert_eq!(
+        rust_only_projection, default_projection,
+        "explicit [languages] enabled = [\"rust\"] must preserve the saved-workspace Rust editor diagnostics, hover, actions, and status projection"
+    );
+    Ok(())
+}
+
+#[test]
+fn boundary_gap_lsp_empty_languages_suppresses_saved_workspace_diagnostics() -> Result<(), String> {
+    let fixture_root = boundary_gap_fixture_root();
+    let config = boundary_gap_lsp_config(crate::config::tests_only_parse(
+        r#"
+[languages]
+enabled = []
+"#,
+    )?);
+
+    let diagnostics = workspace_diagnostics_with_config(&fixture_root, &config)?;
+    let diagnostic_count = diagnostics
+        .batches
+        .iter()
+        .map(|batch| batch.diagnostics.len())
+        .sum::<usize>();
+
+    assert_eq!(
+        diagnostic_count, 0,
+        "empty [languages] must publish no saved-workspace diagnostics"
+    );
+    assert!(
+        diagnostics.snapshot.findings.is_empty(),
+        "empty [languages] must not retain finding diagnostics in the LSP snapshot"
+    );
+    assert!(
+        diagnostics.snapshot.classified_seams.is_empty(),
+        "empty [languages] must not retain seam diagnostics in the LSP snapshot"
+    );
+    let summary = RefreshLogSummary::from_snapshot(1, &diagnostics.snapshot)
+        .with_enabled_languages(config.repo_config().languages().enabled());
+    let message = refresh_completed_log_message(&summary, 0, 1);
+    assert!(
+        message.contains("enabled_languages=0"),
+        "empty [languages] refresh message must explain the language-disabled projection state"
+    );
+    assert!(
+        message.contains("enabled_language_names="),
+        "empty [languages] refresh message must include an empty language-name field"
     );
     Ok(())
 }
@@ -2587,6 +3024,78 @@ where
     serde_json::from_slice(&body).map_err(|err| format!("failed to decode LSP message: {err}"))
 }
 
+fn gap_action_diagnostic() -> tower_lsp_server::ls_types::Diagnostic {
+    tower_lsp_server::ls_types::Diagnostic {
+        range: Range {
+            start: Position {
+                line: 11,
+                character: 0,
+            },
+            end: Position {
+                line: 11,
+                character: 120,
+            },
+        },
+        severity: Some(DiagnosticSeverity::WARNING),
+        code: Some(NumberOrString::String(
+            "ripr-gap-MissingBoundaryAssertion".to_string(),
+        )),
+        code_description: None,
+        source: Some("ripr".to_string()),
+        message: "ripr gap: MissingBoundaryAssertion; repair route: AddBoundaryAssertion"
+            .to_string(),
+        related_information: None,
+        tags: None,
+        data: Some(serde_json::json!({
+            "schema_version": "0.1",
+            "source": "gap_decision_ledger",
+            "gap_ledger": "target/ripr/reports/gap-decision-ledger.json",
+            "gap_id": "gap:py:pricing",
+            "canonical_gap_id": "gap:py:pricing",
+            "gap_kind": "MissingBoundaryAssertion",
+            "language": "python",
+            "language_status": "preview",
+            "gap_state": "actionable",
+            "policy_state": "advisory",
+            "repairability": "repairable",
+            "static_limit_kind": "missing_import_graph",
+            "static_limit_detail": "Imported owner targets were not resolved in preview mode.",
+            "repair_route": {
+                "route_kind": "AddBoundaryAssertion",
+                "target_file": "tests/test_pricing.py",
+                "target_line": 2,
+                "related_test": "tests/test_pricing.py::test_discount_boundary",
+                "assertion_shape": "assert price(threshold) == expected",
+                "changed_behavior": "amount >= threshold",
+                "stop_conditions": ["Stop if the related test belongs to another package."]
+            },
+            "verification_commands": ["ripr agent verify --root . --json"],
+            "receipt_command": "ripr agent receipt --root . --json",
+            "authority_boundary": "advisory"
+        })),
+    }
+}
+
+fn validated_gap_artifact() -> ValidatedGapArtifact {
+    ValidatedGapArtifact {
+        kind: GapArtifactKind::GapDecisionLedger,
+        root: Some(".".to_string()),
+        identities: vec![GapArtifactIdentity {
+            canonical_gap_id: Some("gap:py:pricing".to_string()),
+            seam_id: None,
+            finding_id: None,
+        }],
+        language: Some(LanguageId::Python),
+        language_status: Some(LanguageStatus::Preview),
+        gap_state: Some("actionable".to_string()),
+        related_paths: vec!["tests/test_pricing.py".to_string()],
+        verify_commands: vec!["ripr agent verify --root . --json".to_string()],
+        receipt_commands: vec!["ripr agent receipt --root . --json".to_string()],
+        static_limit_kinds: vec!["missing_import_graph".to_string()],
+        has_text_static_limit: false,
+    }
+}
+
 fn sample_analysis_snapshot(
     root: PathBuf,
     uri: tower_lsp_server::ls_types::Uri,
@@ -2602,6 +3111,8 @@ fn sample_analysis_snapshot(
         refresh: RefreshMetadata::generated_now(),
         findings,
         classified_seams: Vec::new(),
+        gap_artifacts: Vec::new(),
+        gap_artifact_rejections: Vec::new(),
         diagnostics_by_uri,
     }
 }
@@ -2664,9 +3175,136 @@ fn code_action_commands(
     Ok(commands)
 }
 
+fn boundary_gap_fixture_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("fixtures/boundary_gap/input")
+}
+
+struct TempLspRoot {
+    path: PathBuf,
+}
+
+impl TempLspRoot {
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TempLspRoot {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+fn unique_lsp_test_root(name: &str) -> Result<TempLspRoot, String> {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let root = std::env::temp_dir().join(format!("ripr-lsp-{name}-{}-{stamp}", std::process::id()));
+    std::fs::create_dir_all(&root).map_err(|err| format!("create temp root failed: {err}"))?;
+    Ok(TempLspRoot { path: root })
+}
+
+fn boundary_gap_lsp_config(repo_config: crate::config::RiprConfig) -> LspAnalysisConfig {
+    LspAnalysisConfig {
+        base_ref: Some("HEAD".to_string()),
+        mode: Mode::Instant,
+        repo_config,
+        ..LspAnalysisConfig::default()
+    }
+}
+
+fn workspace_projection_contract(
+    root: &Path,
+    config: &LspAnalysisConfig,
+) -> Result<serde_json::Value, String> {
+    let diagnostics = workspace_diagnostics_with_config(root, config)?;
+    let projected_diagnostics = diagnostics
+        .batches
+        .iter()
+        .flat_map(|batch| {
+            batch
+                .diagnostics
+                .iter()
+                .map(|diagnostic| project_diagnostic(root, &batch.uri, diagnostic))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let (uri, diagnostic) = first_seam_diagnostic(&diagnostics)?;
+    let seam = diagnostics
+        .snapshot
+        .classified_seam_for_diagnostic(&diagnostic)
+        .ok_or_else(|| "expected seam diagnostic to resolve to classified seam".to_string())?;
+    let hover = hover_with_snapshot_status(
+        classified_seam_hover_response(seam, &diagnostic, Some(&diagnostics.snapshot)),
+        &diagnostics.snapshot,
+    );
+    let hover_markdown = match hover.contents {
+        HoverContents::Markup(markup) => markup.value,
+        _ => return Err("expected markup hover".to_string()),
+    };
+    let actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic.clone()])?,
+        Some(&diagnostics.snapshot),
+    );
+    let summary = RefreshLogSummary::from_snapshot(1, &diagnostics.snapshot)
+        .with_enabled_languages(config.repo_config().languages().enabled());
+    let status = refresh_completed_log_message(&summary, diagnostics.batches.len(), 0);
+
+    Ok(serde_json::json!({
+        "diagnostics": projected_diagnostics,
+        "hover": normalize_snapshot_age(&hover_markdown),
+        "actions": project_code_actions(root, &actions)?,
+        "status": status,
+    }))
+}
+
+fn normalize_snapshot_age(markdown: &str) -> String {
+    markdown
+        .lines()
+        .map(|line| {
+            if line.starts_with("Analysis snapshot: generated ") {
+                "Analysis snapshot: generated <elapsed> ago.".to_string()
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn first_seam_diagnostic(
+    diagnostics: &WorkspaceDiagnostics,
+) -> Result<
+    (
+        tower_lsp_server::ls_types::Uri,
+        tower_lsp_server::ls_types::Diagnostic,
+    ),
+    String,
+> {
+    diagnostics
+        .batches
+        .iter()
+        .flat_map(|batch| {
+            batch
+                .diagnostics
+                .iter()
+                .map(move |diagnostic| (&batch.uri, diagnostic))
+        })
+        .find(|(_, diagnostic)| {
+            diagnostic
+                .code
+                .as_ref()
+                .map(diagnostic_code_value)
+                .is_some_and(|code| code.starts_with("ripr-seam-"))
+        })
+        .map(|(uri, diagnostic)| (uri.clone(), diagnostic.clone()))
+        .ok_or_else(|| "expected at least one seam diagnostic".to_string())
+}
+
 fn boundary_gap_lsp_fixture_outputs() -> Result<(serde_json::Value, serde_json::Value), String> {
-    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let fixture_root = repo_root.join("fixtures/boundary_gap/input");
+    let fixture_root = boundary_gap_fixture_root();
     let mut seams = crate::analysis::inventory_classified_seams_at_with_config(
         &fixture_root,
         &crate::config::RiprConfig::default(),
@@ -2962,6 +3600,8 @@ fn sample_finding() -> Finding {
         recommended_next_step: Some("Add an exact boundary assertion.".to_string()),
         language: None,
         language_status: None,
+        owner_kind: None,
+        static_limit_kind: None,
     }
 }
 
@@ -3167,6 +3807,135 @@ fn finding_hover_response_includes_evidence_details() -> Result<(), String> {
         }
         _ => Err("expected markup hover".to_string()),
     }
+}
+
+#[test]
+fn preview_finding_diagnostic_preserves_language_metadata() -> Result<(), String> {
+    let mut finding = sample_finding();
+    finding.language = Some(LanguageId::Python);
+    finding.language_status = Some(LanguageStatus::Preview);
+    finding.owner_kind = Some(OwnerKind::Function);
+    finding.static_limit_kind = Some(StaticLimitKind::MissingImportGraph);
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+
+    assert!(
+        diagnostic
+            .message
+            .contains("python preview evidence (syntax-first, advisory)")
+    );
+    assert!(
+        diagnostic
+            .message
+            .contains("Static limit: missing_import_graph")
+    );
+    let data = diagnostic
+        .data
+        .and_then(|value| value.as_object().cloned())
+        .ok_or_else(|| "expected diagnostic data".to_string())?;
+    assert_eq!(
+        data.get("language").and_then(|value| value.as_str()),
+        Some("python")
+    );
+    assert_eq!(
+        data.get("language_status").and_then(|value| value.as_str()),
+        Some("preview")
+    );
+    assert_eq!(
+        data.get("owner_kind").and_then(|value| value.as_str()),
+        Some("function")
+    );
+    assert_eq!(
+        data.get("static_limit_kind")
+            .and_then(|value| value.as_str()),
+        Some("missing_import_graph")
+    );
+    Ok(())
+}
+
+#[test]
+fn preview_finding_hover_shows_boundary_before_evidence() -> Result<(), String> {
+    use super::hover::finding_hover_response;
+
+    let mut finding = sample_finding();
+    finding.language = Some(LanguageId::Python);
+    finding.language_status = Some(LanguageStatus::Preview);
+    finding.static_limit_kind = Some(StaticLimitKind::MissingImportGraph);
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+
+    let hover = finding_hover_response(&finding, &diagnostic);
+
+    match hover.contents {
+        HoverContents::Markup(markup) => {
+            let preview_index = markup
+                .value
+                .find("## Preview Boundary")
+                .ok_or_else(|| "expected preview boundary".to_string())?;
+            let evidence_index = markup
+                .value
+                .find("## RIPR Evidence")
+                .ok_or_else(|| "expected evidence section".to_string())?;
+            let static_limit_index = markup
+                .value
+                .find("Static limit: missing_import_graph")
+                .ok_or_else(|| "expected static limit".to_string())?;
+            let action_index = markup
+                .value
+                .find("Add an exact boundary assertion.")
+                .ok_or_else(|| "expected suggested action text".to_string())?;
+            assert!(
+                preview_index < evidence_index,
+                "preview boundary must appear before evidence details"
+            );
+            assert!(
+                static_limit_index < action_index,
+                "static limits must appear before suggested action language"
+            );
+            assert!(markup.value.contains("Language: python"));
+            assert!(markup.value.contains("Status: preview"));
+            assert!(markup.value.contains("Evidence: syntax-first"));
+            assert!(markup.value.contains("Action: advisory only"));
+            assert!(markup.value.contains("Static limit: missing_import_graph"));
+            Ok(())
+        }
+        _ => Err("expected markup hover".to_string()),
+    }
+}
+
+#[test]
+fn preview_finding_code_actions_stay_bounded_to_context_and_refresh() -> Result<(), String> {
+    let mut finding = sample_finding();
+    finding.language = Some(LanguageId::Python);
+    finding.language_status = Some(LanguageStatus::Preview);
+    finding.owner_kind = Some(OwnerKind::Function);
+    finding.static_limit_kind = Some(StaticLimitKind::MissingImportGraph);
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let uri = test_uri("file:///workspace/src/pricing.py")?;
+    let snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        vec![finding],
+    );
+    let actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
+        Some(&snapshot),
+    );
+
+    let commands = code_action_commands(&actions)?;
+    assert_eq!(
+        commands
+            .iter()
+            .map(|(title, command, _)| (title.as_str(), command.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("Inspect finding: copy context packet", COPY_CONTEXT_COMMAND),
+            ("Refresh Analysis - Saved Workspace Check", REFRESH_COMMAND),
+        ],
+        "preview findings must not expose seam repair, related-test, verify, or receipt actions without validated seam/gap evidence"
+    );
+    assert_eq!(commands[0].2[0]["finding_id"], "probe:pricing:88:predicate");
+    assert_eq!(commands[0].2[0]["probe_id"], "probe:pricing:88:predicate");
+    Ok(())
 }
 
 #[test]

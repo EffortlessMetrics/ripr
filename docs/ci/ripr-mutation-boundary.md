@@ -1,8 +1,15 @@
 # ripr / Mutation Testing Boundary
 
-This document records the deliberate boundary between what `ripr` does and what mutation
-testing does. Both are verification tools. They answer different questions at different cost
-points and belong in different lanes.
+`ripr` is **static mutation-exposure analysis**. It catches the same class
+of signal mutation testing catches — weak test/oracle exposure on changed
+behavior — but earlier and cheaper, by reading the diff at draft time
+instead of running mutants.
+
+This document records the deliberate boundary between when each tool runs
+and what each can claim. `ripr` and mutation testing are not parallel
+evidence lanes targeting different signals; they are the same signal
+class at different cost/time points. Mutation testing remains the slower
+runtime backstop for what static analysis cannot predict.
 
 ## What ripr does
 
@@ -16,7 +23,8 @@ It does not run tests. It does not execute mutants. It does not report `killed` 
 It reads the diff and the test suite statically and asks whether the static structure of the
 tests suggests a discriminating oracle exists.
 
-This is mutation-testing-lite value at static-analysis prices.
+This is the mutation-exposure signal shifted left: same weak-oracle
+question, draft-time and static, no execution.
 
 ## What mutation testing does
 

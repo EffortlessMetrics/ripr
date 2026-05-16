@@ -628,6 +628,14 @@ weakly_gripped = "note"
             reason: "tracked in integration suite".to_string(),
             owner: "team-ripr".to_string(),
             expires: Some("2099-01-01".to_string()),
+            scope: None,
+            created_at: None,
+            last_seen: None,
+            review_by: None,
+            expected_visibility: None,
+            static_class: None,
+            language: None,
+            language_status: None,
             block_line: 4,
         };
         let rendered =
@@ -774,6 +782,8 @@ weakly_gripped = "note"
             recommended_next_step: Some("Add an equality-boundary assertion".to_string()),
             language: None,
             language_status: None,
+            owner_kind: None,
+            static_limit_kind: None,
         }
     }
 
