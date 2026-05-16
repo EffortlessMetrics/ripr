@@ -10,12 +10,12 @@ Summary:
 - default: inline comments are off
 
 Planned operations:
-- create src/pricing.rs:88 `ripr:8f7fa8644fd12280:src/pricing.rs:88`
+- create src/pricing.rs:88 `gap:rust:pricing:discount:threshold-boundary`
   - gap: missing boundary assertion
   - changed behavior: `amount == discount_threshold`
   - repair route: add boundary assertion
-  - repair: Add one focused boundary assertion for `amount == discount_threshold`.
-  - verify: `ripr agent verify`
+  - repair: Add an exact assertion for `amount == discount_threshold`.
+  - verify: `cargo xtask fixtures boundary_gap`
 
 Limits:
 - Advisory inline-comment publish plan only.
