@@ -1702,7 +1702,7 @@ mod tests {
     // ── gate_decision: acknowledged and suppressed in full pipeline ──────────
 
     #[test]
-    fn gate_decision_acknowledged_produces_pass_overall_status() -> Result<(), String> {
+    fn gate_decision_acknowledged_keeps_sparse_packet_warn_status() -> Result<(), String> {
         let root = temp_root("gate-acknowledged")?;
         write(
             &root.join("target/ripr/reports/gate-decision.md"),
@@ -1713,9 +1713,7 @@ mod tests {
             r#"{"decision":"acknowledged"}"#,
         )?;
         let report = build_report_packet_index_report(input_for_root(&root));
-        // acknowledged is not "fail" or "blocked", so overall status should not be fail
-        assert_ne!(report.status, "fail");
-        // The gate entry itself should have status "acknowledged"
+        assert_eq!(report.status, "warn");
         let gate_entry = report
             .groups
             .iter()
@@ -1729,7 +1727,7 @@ mod tests {
     }
 
     #[test]
-    fn gate_decision_suppressed_produces_pass_overall_status() -> Result<(), String> {
+    fn gate_decision_suppressed_keeps_sparse_packet_warn_status() -> Result<(), String> {
         let root = temp_root("gate-suppressed")?;
         write(
             &root.join("target/ripr/reports/gate-decision.md"),
@@ -1740,7 +1738,7 @@ mod tests {
             r#"{"decision":"suppressed"}"#,
         )?;
         let report = build_report_packet_index_report(input_for_root(&root));
-        assert_ne!(report.status, "fail");
+        assert_eq!(report.status, "warn");
         let gate_entry = report
             .groups
             .iter()
