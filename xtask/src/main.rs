@@ -130,6 +130,14 @@ struct PrTriageFinding {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+struct PrTriageQueueDisposition {
+    pr_number: u64,
+    disposition: String,
+    reason: String,
+    recommended_action: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct GhPrStatusPullRequest {
     number: u64,
     title: String,
@@ -3706,6 +3714,112 @@ fn pr_triage_sensitive_surface_findings(prs: &[PrTriagePullRequest]) -> Vec<PrTr
     findings
 }
 
+fn pr_triage_queue_dispositions(
+    prs: &[PrTriagePullRequest],
+    findings: &[PrTriageFinding],
+) -> Vec<PrTriageQueueDisposition> {
+    prs.iter()
+        .map(|pr| pr_triage_queue_disposition(pr, findings))
+        .collect()
+}
+
+fn pr_triage_queue_disposition(
+    pr: &PrTriagePullRequest,
+    findings: &[PrTriageFinding],
+) -> PrTriageQueueDisposition {
+    let (disposition, reason, recommended_action) = if pr_has_superseded_signal(pr) {
+        (
+            "superseded",
+            "PR title, body, or labels declare it superseded",
+            "Close or replace only after confirming the successor PR is current.",
+        )
+    } else if pr_has_duplicate_signal(pr) {
+        (
+            "close_duplicate",
+            "PR title, body, or labels declare it duplicate",
+            "Close only after confirming the canonical PR is selected.",
+        )
+    } else if pr_has_finding(findings, pr.number, "same title family")
+        || pr_has_finding(findings, pr.number, "same changed file set")
+        || pr_has_finding(findings, pr.number, "stale draft")
+    {
+        (
+            "needs_owner_decision",
+            "duplicate or stale work needs canonical owner selection",
+            "Choose the canonical branch, refresh the stale draft, or close superseded variants.",
+        )
+    } else if pr.merge_state_status.eq_ignore_ascii_case("BEHIND") {
+        (
+            "needs_rebase",
+            "branch is behind its base",
+            "Update the branch before relying on CI or merge-readiness state.",
+        )
+    } else if pr_has_finding(findings, pr.number, "policy-sensitive surface") {
+        (
+            "do_not_touch_wrong_lane",
+            "PR touches policy, generated badge, workflow, or gate-sensitive files",
+            "Leave ownership to the matching lane unless explicitly assigned.",
+        )
+    } else if pr_has_finding(findings, pr.number, "incomplete validation")
+        || pr.checks.iter().any(pr_check_failed)
+        || pr.checks.iter().any(pr_check_pending)
+    {
+        (
+            "needs_fresh_validation",
+            "validation is pending, failing, absent, or not fully recorded",
+            "Wait for checks, inspect failures, or update the PR body with actual commands run.",
+        )
+    } else if pr.is_draft || pr.review_decision.eq_ignore_ascii_case("REVIEW_REQUIRED") {
+        (
+            "needs_review",
+            "PR is draft or still requires review",
+            "Finish review before merge or further queue disposition.",
+        )
+    } else if pr.merge_state_status.eq_ignore_ascii_case("CLEAN") {
+        (
+            "merge_candidate",
+            "PR is current, non-draft, and has no detected validation or policy-sensitive queue risks",
+            "Review the diff and merge if the scope is still the canonical path.",
+        )
+    } else {
+        (
+            "needs_review",
+            "merge state is not clean enough for an automatic queue recommendation",
+            "Inspect the PR state before taking action.",
+        )
+    };
+    PrTriageQueueDisposition {
+        pr_number: pr.number,
+        disposition: disposition.to_string(),
+        reason: reason.to_string(),
+        recommended_action: recommended_action.to_string(),
+    }
+}
+
+fn pr_has_finding(findings: &[PrTriageFinding], number: u64, category: &str) -> bool {
+    findings
+        .iter()
+        .any(|finding| finding.category == category && finding.prs.contains(&number))
+}
+
+fn pr_has_superseded_signal(pr: &PrTriagePullRequest) -> bool {
+    pr_triage_title_or_label_contains(pr, "superseded")
+        || pr.body.to_ascii_lowercase().contains("superseded by")
+}
+
+fn pr_has_duplicate_signal(pr: &PrTriagePullRequest) -> bool {
+    pr_triage_title_or_label_contains(pr, "duplicate")
+}
+
+fn pr_triage_title_or_label_contains(pr: &PrTriagePullRequest, needle: &str) -> bool {
+    let needle = needle.to_ascii_lowercase();
+    pr.title.to_ascii_lowercase().contains(&needle)
+        || pr
+            .labels
+            .iter()
+            .any(|label| label.to_ascii_lowercase().contains(&needle))
+}
+
 fn pr_check_failed(check: &PrTriageCheck) -> bool {
     matches!(
         check.conclusion.to_ascii_uppercase().as_str(),
@@ -3812,6 +3926,11 @@ fn pr_triage_markdown(
     today: i64,
 ) -> String {
     let status = if findings.is_empty() { "pass" } else { "warn" };
+    let dispositions = pr_triage_queue_dispositions(prs, findings);
+    let disposition_by_pr = dispositions
+        .iter()
+        .map(|disposition| (disposition.pr_number, disposition))
+        .collect::<BTreeMap<_, _>>();
     let mut body = format!("# ripr PR triage report\n\nStatus: {status}\n\n");
     body.push_str("Mode: advisory\n\n");
     body.push_str("This report summarizes open PR queue risks for agents. It does not close, merge, update, or mutate PRs.\n\n");
@@ -3841,18 +3960,41 @@ fn pr_triage_markdown(
         }
     }
 
+    body.push_str("## Queue Disposition\n\n");
+    if dispositions.is_empty() {
+        body.push_str("- None detected.\n");
+    } else {
+        body.push_str("| PR | Disposition | Reason | Recommended action |\n");
+        body.push_str("| --- | --- | --- | --- |\n");
+        for disposition in &dispositions {
+            body.push_str(&format!(
+                "| #{} | `{}` | {} | {} |\n",
+                disposition.pr_number,
+                markdown_escape_table(&disposition.disposition),
+                markdown_escape_table(&disposition.reason),
+                markdown_escape_table(&disposition.recommended_action)
+            ));
+        }
+    }
+    body.push('\n');
+
     body.push_str("## Open PRs\n\n");
     if prs.is_empty() {
         body.push_str("- None detected.\n");
     } else {
-        body.push_str("| PR | Draft | Age | Merge state | Checks | Files |\n");
-        body.push_str("| --- | --- | ---: | --- | --- | ---: |\n");
+        body.push_str("| PR | Disposition | Draft | Age | Merge state | Checks | Files |\n");
+        body.push_str("| --- | --- | --- | ---: | --- | --- | ---: |\n");
         for pr in prs {
             let age = pr_age_label(pr, today);
+            let disposition = disposition_by_pr
+                .get(&pr.number)
+                .map(|item| item.disposition.as_str())
+                .unwrap_or("unknown");
             body.push_str(&format!(
-                "| #{} {} | {} | {} | {} | {} | {} |\n",
+                "| #{} {} | `{}` | {} | {} | {} | {} | {} |\n",
                 pr.number,
                 markdown_escape_table(&pr.title),
+                markdown_escape_table(disposition),
                 pr.is_draft,
                 age,
                 markdown_escape_table(&pr.merge_state_status),
@@ -3883,12 +4025,21 @@ fn pr_triage_json(
         "  \"generated_at\": \"{}\",\n",
         json_escape(generated_at)
     ));
+    let dispositions = pr_triage_queue_dispositions(prs, findings);
     body.push_str("  \"open_prs\": [\n");
     for (index, pr) in prs.iter().enumerate() {
         if index > 0 {
             body.push_str(",\n");
         }
         write_pr_triage_pull_request_json(&mut body, pr, today);
+    }
+    body.push_str("\n  ],\n");
+    body.push_str("  \"queue_disposition\": [\n");
+    for (index, disposition) in dispositions.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        write_pr_triage_queue_disposition_json(&mut body, disposition, 4);
     }
     body.push_str("\n  ],\n");
     body.push_str("  \"findings\": [\n");
@@ -3991,6 +4142,33 @@ fn write_pr_triage_pull_request_json(body: &mut String, pr: &PrTriagePullRequest
     }
     body.push_str("\n      ]\n");
     body.push_str("    }");
+}
+
+fn write_pr_triage_queue_disposition_json(
+    body: &mut String,
+    disposition: &PrTriageQueueDisposition,
+    indent: usize,
+) {
+    let pad = " ".repeat(indent);
+    let inner = " ".repeat(indent + 2);
+    body.push_str(&format!("{pad}{{\n"));
+    body.push_str(&format!(
+        "{inner}\"pr_number\": {},\n",
+        disposition.pr_number
+    ));
+    body.push_str(&format!(
+        "{inner}\"disposition\": \"{}\",\n",
+        json_escape(&disposition.disposition)
+    ));
+    body.push_str(&format!(
+        "{inner}\"reason\": \"{}\",\n",
+        json_escape(&disposition.reason)
+    ));
+    body.push_str(&format!(
+        "{inner}\"recommended_action\": \"{}\"\n",
+        json_escape(&disposition.recommended_action)
+    ));
+    body.push_str(&format!("{pad}}}"));
 }
 
 fn write_pr_triage_finding_json(body: &mut String, finding: &PrTriageFinding, indent: usize) {
@@ -34803,12 +34981,13 @@ mod tests {
         pr_body_validation_warning, pr_checks_summary, pr_ready_json, pr_ready_markdown,
         pr_ready_next_action, pr_ready_status, pr_ready_status_from_report_status,
         pr_sensitive_file_reason, pr_shape_warnings, pr_summary_body, pr_title_family,
-        pr_triage_findings, pr_triage_json, pr_triage_markdown, precommit_report_body,
-        public_contract_rows, read_lsp_cockpit_json_value, read_mutation_input_json, receipt_json,
-        receipt_specs, receipt_status_from_reports, render_no_panic_allowlist_proposals_markdown,
-        render_no_panic_allowlist_proposals_toml, repo_badge_artifact_command_args,
-        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
-        repo_exposure_latency_json, repo_exposure_latency_markdown, repo_exposure_latency_run,
+        pr_triage_findings, pr_triage_json, pr_triage_markdown, pr_triage_queue_dispositions,
+        precommit_report_body, public_contract_rows, read_lsp_cockpit_json_value,
+        read_mutation_input_json, receipt_json, receipt_specs, receipt_status_from_reports,
+        render_no_panic_allowlist_proposals_markdown, render_no_panic_allowlist_proposals_toml,
+        repo_badge_artifact_command_args, repo_badge_artifact_jobs,
+        repo_badge_artifacts_summary_markdown, repo_exposure_latency_json,
+        repo_exposure_latency_markdown, repo_exposure_latency_run,
         repo_exposure_latency_run_from_output, repo_exposure_latency_status,
         repo_exposure_latency_trace, repo_root, repo_seam_inventory_command_args_for_root,
         report_index_json, report_index_markdown, report_index_missing_expected,
@@ -46210,7 +46389,8 @@ jobs:
         }];
 
         let today = days_from_civil(2026, 5, 14);
-        let findings = pr_triage_findings(&[first, second, stale, policy], today);
+        let prs = vec![first, second, stale, policy];
+        let findings = pr_triage_findings(&prs, today);
         let categories = findings
             .iter()
             .map(|finding| finding.category.as_str())
@@ -46221,6 +46401,69 @@ jobs:
         assert!(categories.contains("behind main"));
         assert!(categories.contains("incomplete validation"));
         assert!(categories.contains("policy-sensitive surface"));
+
+        let dispositions = pr_triage_queue_dispositions(&prs, &findings)
+            .into_iter()
+            .map(|item| (item.pr_number, item.disposition))
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(
+            dispositions.get(&1).map(String::as_str),
+            Some("needs_owner_decision")
+        );
+        assert_eq!(
+            dispositions.get(&2).map(String::as_str),
+            Some("needs_owner_decision")
+        );
+        assert_eq!(
+            dispositions.get(&3).map(String::as_str),
+            Some("needs_owner_decision")
+        );
+        assert_eq!(
+            dispositions.get(&4).map(String::as_str),
+            Some("do_not_touch_wrong_lane")
+        );
+    }
+
+    #[test]
+    fn pr_triage_queue_dispositions_name_actionable_queue_state() {
+        let mergeable = triage_pr(1, "devex: ready", &["xtask/src/main.rs"]);
+        let mut behind = triage_pr(2, "devex: behind", &["docs/CI.md"]);
+        behind.merge_state_status = "BEHIND".to_string();
+        let mut pending = triage_pr(3, "devex: pending", &["docs/PR_AUTOMATION.md"]);
+        pending.checks = vec![PrTriageCheck {
+            name: "rust".to_string(),
+            status: "IN_PROGRESS".to_string(),
+            conclusion: String::new(),
+        }];
+        let mut duplicate = triage_pr(4, "devex: duplicate cleanup", &["docs/README.md"]);
+        duplicate.labels = vec!["duplicate".to_string()];
+        let mut superseded = triage_pr(5, "devex: old approach", &["docs/OLD.md"]);
+        superseded.body.push_str("\nSuperseded by #6.\n");
+
+        let prs = vec![mergeable, behind, pending, duplicate, superseded];
+        let findings = pr_triage_findings(&prs, days_from_civil(2026, 5, 14));
+        let dispositions = pr_triage_queue_dispositions(&prs, &findings)
+            .into_iter()
+            .map(|item| (item.pr_number, item.disposition))
+            .collect::<BTreeMap<_, _>>();
+
+        assert_eq!(
+            dispositions.get(&1).map(String::as_str),
+            Some("merge_candidate")
+        );
+        assert_eq!(
+            dispositions.get(&2).map(String::as_str),
+            Some("needs_rebase")
+        );
+        assert_eq!(
+            dispositions.get(&3).map(String::as_str),
+            Some("needs_fresh_validation")
+        );
+        assert_eq!(
+            dispositions.get(&4).map(String::as_str),
+            Some("close_duplicate")
+        );
+        assert_eq!(dispositions.get(&5).map(String::as_str), Some("superseded"));
     }
 
     #[test]
@@ -46273,6 +46516,8 @@ jobs:
         let markdown = pr_triage_markdown(&[pr], &[finding], days_from_civil(2026, 5, 14));
         assert!(markdown.contains("# ripr PR triage report"));
         assert!(markdown.contains("Status: warn"));
+        assert!(markdown.contains("## Queue Disposition"));
+        assert!(markdown.contains("needs_owner_decision"));
         assert!(markdown.contains("## Open PRs"));
         assert!(markdown.contains("cargo xtask pr-triage-report"));
     }
@@ -46295,6 +46540,10 @@ jobs:
         assert_eq!(value["mode"], "advisory");
         assert_eq!(value["generated_at"], "unix_ms:1");
         assert_eq!(value["open_prs"][0]["number"], 9);
+        assert_eq!(
+            value["queue_disposition"][0]["disposition"],
+            "needs_owner_decision"
+        );
         assert_eq!(value["findings"][0]["category"], "same title family");
         assert_eq!(
             value["recommended_actions"][0]["action"],
