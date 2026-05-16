@@ -1,0 +1,129 @@
+{
+  "schema_version": "0.1",
+  "kind": "finding_alignment_dogfood_corpus",
+  "description": "Repo-local dogfood examples for Lane 1 finding alignment. Raw findings are supporting evidence; canonical items are countable; actionable canonical gaps are user work.",
+  "limits": [
+    "advisory dogfood receipts only",
+    "no PR/CI rendering changes",
+    "no LSP/editor behavior changes",
+    "no gate or public score changes",
+    "no generated tests, provider calls, source edits, or mutation execution"
+  ],
+  "cases": [
+    {
+      "id": "presentation_text_actionable_output_observer",
+      "source_pr": "EffortlessMetrics/ripr#947",
+      "evidence_class": "presentation_text",
+      "raw_findings_total": 2,
+      "canonical_items_total": 1,
+      "gap_state": "actionable",
+      "actionability": "add_output_observer",
+      "user_outcome": "actionable_gap",
+      "repair_kind": "output_observer",
+      "target_test_type": "help_output_snapshot",
+      "verify_command": "cargo xtask evidence-quality-scorecard",
+      "static_limitation_category": null,
+      "static_limitation_repair_route": null,
+      "raw_findings_supporting_only": true,
+      "recommended_repair": "Add or update a help-output snapshot assertion for the changed presentation text.",
+      "must_not_claim": [
+        "Do not count the declaration and literal as two user actions.",
+        "Do not infer actionability from raw static class.",
+        "Do not recommend mutation testing before output-observer work."
+      ],
+      "reason": "A supported user-visible help label without an observer should become one actionable canonical output-observer repair."
+    },
+    {
+      "id": "presentation_text_already_observed_output",
+      "source_pr": "EffortlessMetrics/ripr#947",
+      "evidence_class": "presentation_text",
+      "raw_findings_total": 2,
+      "canonical_items_total": 1,
+      "gap_state": "already_observed",
+      "actionability": "already_observed",
+      "user_outcome": "no_action",
+      "repair_kind": "no_action",
+      "target_test_type": "golden",
+      "verify_command": "cargo xtask evidence-quality-scorecard",
+      "static_limitation_category": null,
+      "static_limitation_repair_route": null,
+      "raw_findings_supporting_only": true,
+      "recommended_repair": "No new RIPR action; the existing golden observer covers the rendered output.",
+      "must_not_claim": [
+        "Do not emit an actionable gap when a supported output observer exists.",
+        "Do not hide the raw findings.",
+        "Do not infer actionability from raw static class."
+      ],
+      "reason": "A supported rendered-output observer should keep the canonical item visible as already observed, not user repair work."
+    },
+    {
+      "id": "config_policy_internal_metadata_no_action",
+      "source_pr": "EffortlessMetrics/ripr#1016",
+      "evidence_class": "config_or_policy_constant",
+      "raw_findings_total": 2,
+      "canonical_items_total": 1,
+      "gap_state": "internal_only",
+      "actionability": "no_action_internal",
+      "user_outcome": "no_action",
+      "repair_kind": "no_action",
+      "target_test_type": "none",
+      "verify_command": "cargo xtask evidence-quality-scorecard",
+      "static_limitation_category": null,
+      "static_limitation_repair_route": null,
+      "raw_findings_supporting_only": true,
+      "recommended_repair": "No user test action; the constant is internal policy metadata in fixture-backed scope.",
+      "must_not_claim": [
+        "Do not create user test debt from internal policy metadata alone.",
+        "Do not hide the raw declaration and literal findings.",
+        "Do not infer actionability from raw static class."
+      ],
+      "reason": "Internal policy metadata should align into one canonical no-action item instead of a user-facing gap."
+    },
+    {
+      "id": "config_policy_rendered_label_unobserved",
+      "source_pr": "EffortlessMetrics/ripr#1016",
+      "evidence_class": "config_or_policy_constant",
+      "raw_findings_total": 2,
+      "canonical_items_total": 1,
+      "gap_state": "actionable",
+      "actionability": "add_output_observer",
+      "user_outcome": "actionable_gap",
+      "repair_kind": "output_observer",
+      "target_test_type": "report_render_or_golden",
+      "verify_command": "cargo xtask evidence-quality-scorecard",
+      "static_limitation_category": null,
+      "static_limitation_repair_route": null,
+      "raw_findings_supporting_only": true,
+      "recommended_repair": "Add or update a report-render, config-output, snapshot, or golden observer for the rendered policy label.",
+      "must_not_claim": [
+        "Do not count declaration and literal findings as separate user actions.",
+        "Do not infer actionability from raw static class.",
+        "Do not recommend mutation testing before output-observer work."
+      ],
+      "reason": "A rendered config or policy label with no supported observer should become one actionable output-observer item."
+    },
+    {
+      "id": "config_policy_flow_unknown_limitation",
+      "source_pr": "EffortlessMetrics/ripr#1016",
+      "evidence_class": "config_or_policy_constant",
+      "raw_findings_total": 2,
+      "canonical_items_total": 1,
+      "gap_state": "static_limitation",
+      "actionability": "inspect_config_flow",
+      "user_outcome": "static_limitation",
+      "repair_kind": "inspect_config_flow",
+      "target_test_type": "unknown",
+      "verify_command": "cargo xtask evidence-quality-scorecard",
+      "static_limitation_category": "config_policy_flow_unknown",
+      "static_limitation_repair_route": "trace_constant_to_output_schema_validation_or_behavior_sink",
+      "raw_findings_supporting_only": true,
+      "recommended_repair": "Trace the config constant to a supported output, schema, validation, or behavior sink before claiming user test debt.",
+      "must_not_claim": [
+        "Do not treat generic static_unknown as user test debt.",
+        "Do not hide the raw findings.",
+        "Do not recommend mutation testing before naming the static limitation."
+      ],
+      "reason": "Untraceable config flow should remain a named analyzer limitation with a repair route, not a user-facing test gap."
+    }
+  ]
+}
