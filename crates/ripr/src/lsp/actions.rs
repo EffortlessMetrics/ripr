@@ -270,6 +270,13 @@ fn push_gap_actions(
     params: &CodeActionParams,
     context: GapActionContext<'_>,
 ) {
+    if let Some(target) = first_repair_packet_target(context.snapshot, context.diagnostic) {
+        actions.push(copy_context_action(
+            COPY_FIRST_REPAIR_PACKET_TITLE,
+            COPY_FIRST_REPAIR_PACKET_TITLE,
+            target,
+        ));
+    }
     if let Some(target) = gap_repair_packet_target(params, context.snapshot, context.diagnostic) {
         actions.push(copy_context_action(
             INSPECT_GAP_PACKET_TITLE,
@@ -340,6 +347,7 @@ const AFTER_SNAPSHOT_COMMAND_TITLE: &str = "Verify after test: copy after-snapsh
 const AGENT_VERIFY_COMMAND_TITLE: &str = "Verify after test: copy verify command";
 const AGENT_RECEIPT_COMMAND_TITLE: &str = "Review result: copy receipt command";
 const COPY_STATIC_LIMIT_NOTE_TITLE: &str = "Inspect gap: copy static-limit note";
+const COPY_FIRST_REPAIR_PACKET_TITLE: &str = "Copy first repair packet";
 const REFRESH_ANALYSIS_TITLE: &str = "Refresh Analysis - Saved Workspace Check";
 
 fn copy_agent_loop_command_action(
@@ -470,6 +478,135 @@ fn gap_repair_packet_target(
         ),
     );
     Some(target)
+}
+
+fn first_repair_packet_target(
+    snapshot: &AnalysisSnapshot,
+    diagnostic: &Diagnostic,
+) -> Option<LSPAny> {
+    let data = diagnostic.data.as_ref()?;
+    let gap_identity = first_gap_identity(data)?;
+    let repair_route = data.get("repair_route")?;
+    repair_route.get("route_kind").and_then(non_empty_string)?;
+    for key in ["target_file", "related_test"] {
+        if let Some(path) = repair_route.get(key).and_then(non_empty_string)
+            && !workspace_path_is_safe(snapshot.root.as_path(), path)
+        {
+            return None;
+        }
+    }
+    let verify_command =
+        first_safe_command_at(snapshot.root.as_path(), data, &["verification_commands"])?;
+    let receipt_command = first_safe_receipt_command(snapshot.root.as_path(), data)?;
+    let packet = first_repair_packet_text(data, repair_route, &verify_command, &receipt_command)?;
+    let mut target = serde_json::Map::new();
+    target.insert(
+        "label".to_string(),
+        Value::String("first_repair_packet".to_string()),
+    );
+    target.insert("packet".to_string(), Value::String(packet));
+    target.insert(
+        "gap_identity".to_string(),
+        Value::String(gap_identity.to_string()),
+    );
+    copy_optional_string(&mut target, data, "gap_id");
+    copy_optional_string(&mut target, data, "canonical_gap_id");
+    copy_optional_string(&mut target, data, "seam_id");
+    copy_optional_string(&mut target, data, "finding_id");
+    copy_optional_string(&mut target, data, "language");
+    copy_optional_string(&mut target, data, "language_status");
+    copy_optional_string(&mut target, data, "gap_state");
+    copy_optional_value(&mut target, data, "repair_route");
+    target.insert("verify_command".to_string(), Value::String(verify_command));
+    target.insert(
+        "receipt_command".to_string(),
+        Value::String(receipt_command),
+    );
+    Some(Value::Object(target))
+}
+
+fn first_gap_identity(data: &Value) -> Option<&str> {
+    ["canonical_gap_id", "gap_id", "seam_id", "finding_id"]
+        .iter()
+        .find_map(|key| string_at(data, &[*key]))
+}
+
+fn first_repair_packet_text(
+    data: &Value,
+    repair_route: &Value,
+    verify_command: &str,
+    receipt_command: &str,
+) -> Option<String> {
+    let gap_identity = first_gap_identity(data)?;
+    let route_kind = repair_route.get("route_kind").and_then(non_empty_string)?;
+    let mut lines = vec![
+        "RIPR first repair packet".to_string(),
+        String::new(),
+        format!("Gap identity: {gap_identity}"),
+    ];
+    if let Some(language) = string_at(data, &["language"]) {
+        lines.push(format!("Language: {language}"));
+    }
+    if let Some(status) = string_at(data, &["language_status"]) {
+        lines.push(format!("Language status: {status}"));
+    }
+    if let Some(state) = string_at(data, &["gap_state"]) {
+        lines.push(format!("Gap state: {state}"));
+    }
+    if let Some(note) = static_limit_note(data) {
+        lines.push(String::new());
+        lines.push(note);
+    }
+    lines.push(String::new());
+    lines.push("Suggested action:".to_string());
+    lines.push(format!("- Route: {route_kind}"));
+    if let Some(changed_behavior) = repair_route
+        .get("changed_behavior")
+        .and_then(non_empty_string)
+    {
+        lines.push(format!("- Changed behavior: {changed_behavior}"));
+    }
+    if let Some(assertion_shape) = repair_route
+        .get("assertion_shape")
+        .and_then(non_empty_string)
+    {
+        lines.push(format!(
+            "- Add or strengthen one focused assertion: {assertion_shape}"
+        ));
+    }
+    if let Some(related_test) = repair_route.get("related_test").and_then(non_empty_string) {
+        lines.push(format!("- Related test: {related_test}"));
+    } else if let Some(target_file) = repair_route.get("target_file").and_then(non_empty_string) {
+        lines.push(format!("- Repair target: {target_file}"));
+    }
+    if let Some(items) = repair_route
+        .get("stop_conditions")
+        .and_then(Value::as_array)
+        .filter(|items| !items.is_empty())
+    {
+        lines.push("- Stop conditions:".to_string());
+        for item in items {
+            if let Some(text) = item.as_str().map(str::trim).filter(|text| !text.is_empty()) {
+                lines.push(format!("  - {text}"));
+            }
+        }
+    }
+    lines.push(String::new());
+    lines.push("Verify command:".to_string());
+    lines.push(verify_command.to_string());
+    lines.push(String::new());
+    lines.push("Receipt command:".to_string());
+    lines.push(receipt_command.to_string());
+    lines.push(String::new());
+    lines.push("Limits and non-claims:".to_string());
+    lines.push("- Static editor evidence only.".to_string());
+    lines.push("- Advisory by default; no gate eligibility or runtime adequacy claim.".to_string());
+    lines.push("- Do not edit production code unless the packet explicitly scopes it.".to_string());
+    lines.push(
+        "- Do not generate tests, call providers, or run mutation execution from the editor."
+            .to_string(),
+    );
+    Some(lines.join("\n"))
 }
 
 fn copy_optional_string(object: &mut serde_json::Map<String, Value>, data: &Value, key: &str) {
