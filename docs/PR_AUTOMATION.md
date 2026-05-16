@@ -124,9 +124,10 @@ handling, and local worktree merge limitations.
 
 `suggested-fixes` writes `target/ripr/reports/suggested-fixes.patch` and
 `target/ripr/reports/suggested-fixes.md` with safe deterministic repair
-suggestions. The v1 patch only covers allowlist ordering under `.ripr/*.txt`
-and `policy/*.txt`. It never generates badge endpoint values, golden blessings,
-baselines, suppressions, dependency exceptions, or schema-version changes.
+suggestions. The patch covers allowlist ordering under `.ripr/*.txt` and
+`policy/*.txt` plus docs index table ordering for specs and ADRs. It never
+generates badge endpoint values, golden blessings, baselines, suppressions,
+dependency exceptions, or schema-version changes.
 The generated-vs-authored boundary is documented in
 [Generated evidence discipline](GENERATED_EVIDENCE.md).
 

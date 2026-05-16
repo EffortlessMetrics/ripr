@@ -341,9 +341,9 @@ and JSON.
 PR as Markdown and JSON, including merge state, required check status when
 GitHub exposes it, reviews, Droid status, and the next safe action.
 `suggested-fixes` writes a deterministic repair patch and companion report
-under `target/ripr/reports/`; v1 only suggests allowlist ordering fixes and
-never writes badge values, baselines, suppressions, goldens, dependency
-exceptions, or schema changes.
+under `target/ripr/reports/`; it suggests allowlist ordering fixes and docs
+index table ordering for specs and ADRs, and never writes badge values,
+baselines, suppressions, goldens, dependency exceptions, or schema changes.
 `precommit` is the cheap non-mutating local guardrail. `check-pr` is the
 review-ready local gate and intentionally does not run package or publish
 dry-run checks. `check-badge-diff-policy` fails ordinary PRs that carry
