@@ -2353,6 +2353,129 @@ mod tests {
     }
 
     #[test]
+    fn behavior_selector_without_discriminator_is_actionable() -> Result<(), String> {
+        let findings = vec![
+            finding_in_file(
+                "src/validation_selector.rs",
+                "decl",
+                40,
+                ExposureClass::Exposed,
+                ProbeFamily::FieldConstruction,
+                "pub const VALIDATION_SELECTOR: &str =",
+            ),
+            finding_in_file(
+                "src/validation_selector.rs",
+                "literal",
+                41,
+                ExposureClass::WeaklyExposed,
+                ProbeFamily::StaticUnknown,
+                "\"strict\";",
+            ),
+        ];
+
+        let report = report_for_findings(&findings)
+            .ok_or_else(|| "behavior selector should align".to_string())?;
+        let item = &report.items[0];
+        let config_policy = config_policy_for(item)?;
+
+        assert_eq!(report.summary.raw_signals, 2);
+        assert_eq!(report.summary.canonical_items, 1);
+        assert_eq!(report.summary.actionable_gaps, 1);
+        assert_eq!(report.summary.config_policy_user_visible, 1);
+        assert_eq!(report.summary.config_policy_unobserved, 1);
+        assert_eq!(
+            report
+                .summary
+                .config_policy_actionable_behavior_discriminator,
+            1
+        );
+        assert_eq!(report.summary.config_policy_repair_route_coverage, 1);
+        assert_eq!(report.summary.config_policy_verify_command_coverage, 1);
+        assert_eq!(
+            item.canonical_gap_id,
+            "config_or_policy_constant::VALIDATION_SELECTOR"
+        );
+        assert_eq!(item.group_reason, GROUP_REASON_CONFIG_POLICY);
+        assert_eq!(item.raw_group_size, 2);
+        assert_eq!(item.canonical_item_kind, "gap");
+        assert_eq!(item.gap_state, "actionable");
+        assert_eq!(item.actionability, "add_behavior_discriminator");
+        let repair_route = repair_route_for_item(item)?;
+        assert_eq!(repair_route.repair_kind, "behavior_discriminator");
+        assert_eq!(repair_route.target_test_type, "validation_behavior");
+        assert_eq!(
+            repair_route.suggested_assertion,
+            "Assert the selected behavior includes the VALIDATION_SELECTOR value or selected behavior."
+        );
+        assert_eq!(config_policy.role, "behavior_selector");
+        assert_eq!(config_policy.visibility, "user_visible");
+        assert_eq!(config_policy.observer, "none");
+        assert_eq!(config_policy.actionability, "add_behavior_discriminator");
+        assert_eq!(config_policy.repair_kind, "behavior_discriminator");
+        assert_eq!(config_policy.target_test_type, "validation_behavior");
+        assert!(!item.recommended_repair.contains("mutation"));
+        Ok(())
+    }
+
+    #[test]
+    fn behavior_selector_with_discriminator_is_already_observed() -> Result<(), String> {
+        let validation_observer = related_test(
+            "validation_behavior_selects_strict_mode",
+            "tests/validation_behavior.rs",
+            28,
+            OracleKind::RelationalCheck,
+            OracleStrength::Strong,
+        );
+        let findings = vec![
+            finding_in_file_with_related(
+                "src/validation_selector.rs",
+                "decl",
+                52,
+                ExposureClass::Exposed,
+                ProbeFamily::FieldConstruction,
+                "pub const ROUTING_SELECTOR: &str =",
+                vec![validation_observer],
+            ),
+            finding_in_file(
+                "src/validation_selector.rs",
+                "literal",
+                53,
+                ExposureClass::Exposed,
+                ProbeFamily::StaticUnknown,
+                "\"strict\";",
+            ),
+        ];
+
+        let report = report_for_findings(&findings)
+            .ok_or_else(|| "observed behavior selector should align".to_string())?;
+        let item = &report.items[0];
+        let config_policy = config_policy_for(item)?;
+
+        assert_eq!(report.summary.raw_signals, 2);
+        assert_eq!(report.summary.canonical_items, 1);
+        assert_eq!(report.summary.actionable_gaps, 0);
+        assert_eq!(report.summary.already_observed, 1);
+        assert_eq!(report.summary.config_policy_user_visible, 1);
+        assert_eq!(report.summary.config_policy_observed, 1);
+        assert_eq!(report.summary.config_policy_no_action, 1);
+        assert_eq!(item.canonical_item_kind, "observed");
+        assert_eq!(item.gap_state, "already_observed");
+        assert_eq!(item.actionability, "already_observed");
+        assert!(item.repair_route.is_none());
+        assert_eq!(config_policy.role, "behavior_selector");
+        assert_eq!(config_policy.visibility, "user_visible");
+        assert_eq!(config_policy.observer, "validation_behavior");
+        assert_eq!(config_policy.actionability, "already_observed");
+        assert_eq!(config_policy.repair_kind, "no_action");
+        assert_eq!(config_policy.target_test_type, "validation_behavior");
+        assert_eq!(
+            item.related_test.as_ref().map(|test| test.name.as_str()),
+            Some("validation_behavior_selects_strict_mode")
+        );
+        Ok(())
+    }
+
+    #[test]
     fn actionable_canonical_items_require_repair_routes() -> Result<(), String> {
         let findings = vec![
             finding_in_file(

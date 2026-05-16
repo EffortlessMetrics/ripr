@@ -349,8 +349,9 @@ Follow-up implementation should include:
   repair routes, and verify command coverage;
 - scorecard and audit tests for `config_or_policy_constant` alignment coverage;
 - must-not-claim tests proving policy metadata alone is not user test debt;
-- dogfood receipts that record internal metadata, rendered label, observed
-  schema label, and flow-unknown examples from real RIPR PR work.
+- dogfood receipts that record internal metadata, rendered label, behavior
+  selector, observed schema or behavior, and flow-unknown examples from real
+  RIPR PR work.
 
 This spec PR does not add analyzer behavior, public output fields, or fixture
 data.

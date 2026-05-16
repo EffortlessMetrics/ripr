@@ -6586,6 +6586,16 @@ const EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CASE_KINDS: &[&str] = &[
     "calibration",
 ];
 
+const EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CONFIG_POLICY_CASES: &[&str] = &[
+    "config_policy_internal_metadata_no_action",
+    "config_policy_rendered_label_unobserved",
+    "config_policy_behavior_selector_unobserved",
+    "config_policy_behavior_selector_observed",
+    "config_policy_schema_label_observed",
+    "config_policy_cross_file_flow_unknown",
+    "config_policy_opaque_lookup_unknown",
+];
+
 const FINDING_ALIGNMENT_DOGFOOD_CORPUS: &str = "fixtures/finding-alignment-dogfood/corpus.json";
 
 const FINDING_ALIGNMENT_DOGFOOD_REQUIRED_CASES: &[(&str, &str)] = &[
@@ -6596,6 +6606,11 @@ const FINDING_ALIGNMENT_DOGFOOD_REQUIRED_CASES: &[(&str, &str)] = &[
     ),
     ("config_policy_internal_metadata_no_action", "internal_only"),
     ("config_policy_rendered_label_unobserved", "actionable"),
+    ("config_policy_behavior_selector_unobserved", "actionable"),
+    (
+        "config_policy_behavior_selector_observed",
+        "already_observed",
+    ),
     ("config_policy_flow_unknown_limitation", "static_limitation"),
 ];
 
@@ -7142,6 +7157,13 @@ fn validate_evidence_quality_benchmark_corpus_value(
         if !seen_kinds.contains(*required) {
             violations.push(format!(
                 "Lane 1 evidence-quality benchmark is missing case_kind {required}"
+            ));
+        }
+    }
+    for required in EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CONFIG_POLICY_CASES {
+        if !seen_ids.contains(*required) {
+            violations.push(format!(
+                "Lane 1 evidence-quality benchmark is missing config/policy case {required}"
             ));
         }
     }
@@ -41129,6 +41151,11 @@ fn exact_owner_call_has_external_expected_value() {
                 ),
                 ("config_policy_internal_metadata_no_action", "internal_only"),
                 ("config_policy_rendered_label_unobserved", "actionable"),
+                ("config_policy_behavior_selector_unobserved", "actionable"),
+                (
+                    "config_policy_behavior_selector_observed",
+                    "already_observed",
+                ),
                 ("config_policy_flow_unknown_limitation", "static_limitation"),
             ] {
                 assert!(

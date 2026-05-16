@@ -103,6 +103,53 @@
       "reason": "A rendered config or policy label with no supported observer should become one actionable output-observer item."
     },
     {
+      "id": "config_policy_behavior_selector_unobserved",
+      "source_pr": "EffortlessMetrics/ripr#1016",
+      "evidence_class": "config_or_policy_constant",
+      "raw_findings_total": 2,
+      "canonical_items_total": 1,
+      "gap_state": "actionable",
+      "actionability": "add_behavior_discriminator",
+      "user_outcome": "actionable_gap",
+      "repair_kind": "behavior_discriminator",
+      "target_test_type": "validation_behavior",
+      "verify_command": "cargo xtask evidence-quality-scorecard",
+      "static_limitation_category": null,
+      "static_limitation_repair_route": null,
+      "raw_findings_supporting_only": true,
+      "recommended_repair": "Add or update a validation or routing behavior discriminator for the changed selector.",
+      "must_not_claim": [
+        "Do not treat behavior selectors as output labels.",
+        "Do not count declaration and literal findings as separate user actions.",
+        "Do not accept lexical-only tests as behavior discriminators.",
+        "Do not recommend mutation testing before behavior-discriminator work."
+      ],
+      "reason": "A supported validation or routing selector without a discriminator should become one actionable canonical behavior-discriminator repair."
+    },
+    {
+      "id": "config_policy_behavior_selector_observed",
+      "source_pr": "EffortlessMetrics/ripr#1016",
+      "evidence_class": "config_or_policy_constant",
+      "raw_findings_total": 2,
+      "canonical_items_total": 1,
+      "gap_state": "already_observed",
+      "actionability": "already_observed",
+      "user_outcome": "no_action",
+      "repair_kind": "no_action",
+      "target_test_type": "validation_behavior",
+      "verify_command": "cargo xtask evidence-quality-scorecard",
+      "static_limitation_category": null,
+      "static_limitation_repair_route": null,
+      "raw_findings_supporting_only": true,
+      "recommended_repair": "No new RIPR action; the existing validation behavior test covers the selector.",
+      "must_not_claim": [
+        "Do not emit an actionable behavior-discriminator gap when a supported behavior observer exists.",
+        "Do not hide the raw selector findings.",
+        "Do not infer observation from lexical mentions alone."
+      ],
+      "reason": "A supported validation or routing discriminator should keep the selector visible as already observed, not user repair work."
+    },
+    {
       "id": "config_policy_flow_unknown_limitation",
       "source_pr": "EffortlessMetrics/ripr#1016",
       "evidence_class": "config_or_policy_constant",
