@@ -34440,8 +34440,8 @@ mod tests {
     use super::{
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
         CheckStatus, CheckViolation, CiFullEvidenceGate, CommandCatalogEntry, CwdCommand,
-        DogfoodEditorGapCockpitRun, DogfoodFindingAlignmentRun, DogfoodFirstActionRun,
-        DogfoodFrontPanelRun, DogfoodGateRun, DogfoodGeneratedCiCockpitRun,
+        DogfoodEditorGapCockpitRun, DogfoodFindingAlignmentRun, DogfoodFindingAlignmentScenario,
+        DogfoodFirstActionRun, DogfoodFrontPanelRun, DogfoodGateRun, DogfoodGeneratedCiCockpitRun,
         DogfoodLanguagePreviewRun, DogfoodPrInlineCommentRun, DogfoodPreviewProjectionRuns,
         DogfoodReportInputs, DogfoodReportPacketIndexRun, DogfoodRun,
         EvidenceQualityScorecardInput, EvidenceQualityScorecardInputs,
@@ -34477,12 +34477,13 @@ mod tests {
         evidence_quality_trend_from_values, evidence_quality_trend_json,
         evidence_quality_trend_markdown, extract_json_object_usize_map, extract_json_string,
         extract_json_warnings, extract_workflow_run_blocks,
-        finding_alignment_raw_to_canonical_ratio, finish_worktree_doctor_report,
-        first_line_difference, forbidden_panic_patterns, generated_clean_violations,
-        gh_pr_safe_next_action, gh_pr_status_json, gh_pr_status_markdown, gh_pr_status_readiness,
-        github_event_pull_request_title_from_text, glob_matches, golden_changes_without_blessing,
-        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
-        install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
+        finding_alignment_raw_to_canonical_ratio, finding_alignment_verify_command_is_missing,
+        finish_worktree_doctor_report, first_line_difference, forbidden_panic_patterns,
+        generated_clean_violations, gh_pr_safe_next_action, gh_pr_status_json,
+        gh_pr_status_markdown, gh_pr_status_readiness, github_event_pull_request_title_from_text,
+        glob_matches, golden_changes_without_blessing, golden_drift_semantics,
+        guarded_allow_attribute_lints, guarded_allow_attributes_in_text, install_hooks_in,
+        is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
         is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
         is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
         is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
@@ -40866,6 +40867,189 @@ fn exact_owner_call_has_external_expected_value() {
 
             Ok(())
         })
+    }
+
+    fn valid_finding_alignment_scenario(
+        name: &str,
+        gap_state: &str,
+    ) -> DogfoodFindingAlignmentScenario {
+        DogfoodFindingAlignmentScenario {
+            name: name.to_string(),
+            source_pr: "EffortlessMetrics/ripr#1016".to_string(),
+            evidence_class: "presentation_text".to_string(),
+            raw_findings_total: 2,
+            canonical_items_total: 1,
+            gap_state: gap_state.to_string(),
+            actionability: "add_output_observer".to_string(),
+            user_outcome: "actionable_gap".to_string(),
+            repair_kind: "output_observer".to_string(),
+            target_test_type: "help_output_snapshot".to_string(),
+            verify_command: "cargo xtask evidence-quality-scorecard".to_string(),
+            static_limitation_category: None,
+            static_limitation_repair_route: None,
+            raw_findings_supporting_only: true,
+            recommended_repair: "Add or update an output observer.".to_string(),
+            must_not_claim: vec![
+                "Do not infer actionability from raw static class.".to_string(),
+                "Do not recommend mutation testing first.".to_string(),
+            ],
+            reason: "fixture-backed dogfood receipt".to_string(),
+        }
+    }
+
+    #[test]
+    fn dogfood_finding_alignment_validation_reports_actionable_drift() {
+        let mut scenario = valid_finding_alignment_scenario("", "actionable");
+        scenario.source_pr = "ripr#1016".to_string();
+        scenario.evidence_class = "unknown".to_string();
+        scenario.raw_findings_total = 0;
+        scenario.canonical_items_total = 1;
+        scenario.user_outcome = "no_action".to_string();
+        scenario.repair_kind = "unknown".to_string();
+        scenario.target_test_type = "none".to_string();
+        scenario.verify_command = "unknown".to_string();
+        scenario.static_limitation_category =
+            Some("presentation_text_visibility_unknown".to_string());
+        scenario.raw_findings_supporting_only = false;
+        scenario.recommended_repair = "Escalate to mutation testing first.".to_string();
+        scenario.must_not_claim = vec!["Keep advisory.".to_string()];
+
+        let report = dogfood_finding_alignment_run(&scenario).errors.join("\n");
+
+        assert!(report.contains("case id must be present"));
+        assert!(report.contains("source_pr should name a real RIPR PR"));
+        assert!(report.contains("unsupported evidence class"));
+        assert!(report.contains("raw findings 0 must be >= canonical items 1"));
+        assert!(report.contains("raw findings must be marked supporting-only"));
+        assert!(report.contains("must not route first to mutation testing"));
+        assert!(report.contains("must_not_claim guards should preserve"));
+        assert!(report.contains("actionable case should have actionable_gap outcome"));
+        assert!(report.contains("actionable case must carry a concrete repair kind"));
+        assert!(report.contains("actionable case must carry a target test type"));
+        assert!(report.contains("actionable case must carry a verify command"));
+        assert!(report.contains("actionable case should not carry a static limitation category"));
+    }
+
+    #[test]
+    fn dogfood_finding_alignment_validation_reports_no_action_and_limitation_drift() {
+        let mut observed = valid_finding_alignment_scenario("observed", "already_observed");
+        observed.user_outcome = "actionable_gap".to_string();
+        observed.repair_kind = "output_observer".to_string();
+        let observed_report = dogfood_finding_alignment_run(&observed).errors.join("\n");
+        assert!(observed_report.contains("already_observed case should have no_action outcome"));
+        assert!(observed_report.contains("already_observed case should use no_action repair kind"));
+
+        let mut internal = valid_finding_alignment_scenario("internal", "internal_only");
+        internal.user_outcome = "actionable_gap".to_string();
+        internal.repair_kind = "inspect_visibility".to_string();
+        let internal_report = dogfood_finding_alignment_run(&internal).errors.join("\n");
+        assert!(internal_report.contains("internal_only case should have no_action outcome"));
+        assert!(internal_report.contains("internal_only case should use no_action repair kind"));
+
+        let mut limitation = valid_finding_alignment_scenario("limitation", "static_limitation");
+        limitation.user_outcome = "no_action".to_string();
+        limitation.static_limitation_category = None;
+        limitation.static_limitation_repair_route = None;
+        let limitation_report = dogfood_finding_alignment_run(&limitation).errors.join("\n");
+        assert!(
+            limitation_report
+                .contains("static_limitation case should have static_limitation outcome")
+        );
+        assert!(
+            limitation_report.contains("static limitation case must name a limitation category")
+        );
+        assert!(
+            limitation_report
+                .contains("static limitation case must name a limitation repair route")
+        );
+
+        let unknown = valid_finding_alignment_scenario("unknown", "mystery");
+        assert!(
+            dogfood_finding_alignment_run(&unknown)
+                .errors
+                .join("\n")
+                .contains("unsupported gap_state `mystery`")
+        );
+    }
+
+    #[test]
+    fn finding_alignment_verify_command_missing_recognizes_empty_unknown_and_none() {
+        assert!(finding_alignment_verify_command_is_missing(""));
+        assert!(finding_alignment_verify_command_is_missing("   "));
+        assert!(finding_alignment_verify_command_is_missing("unknown"));
+        assert!(finding_alignment_verify_command_is_missing("none"));
+        assert!(!finding_alignment_verify_command_is_missing(
+            "cargo xtask evidence-quality-scorecard"
+        ));
+    }
+
+    #[test]
+    fn finding_alignment_dogfood_fixture_corpus_validator_reports_contract_drift() {
+        with_temp_cwd("finding-alignment-dogfood-invalid", |_| {
+            write(
+                Path::new("fixtures/finding-alignment-dogfood/SPEC.md"),
+                "# Finding Alignment Dogfood\n",
+            );
+            write(
+                Path::new("fixtures/finding-alignment-dogfood/corpus.json"),
+                r#"{
+  "schema_version": "0.1",
+  "kind": "finding_alignment_dogfood_corpus",
+  "cases": [
+    {
+      "id": "presentation_text_actionable_output_observer",
+      "source_pr": "EffortlessMetrics/ripr#966",
+      "evidence_class": "presentation_text",
+      "raw_findings_total": 2,
+      "canonical_items_total": 1,
+      "gap_state": "already_observed",
+      "actionability": "already_observed",
+      "user_outcome": "no_action",
+      "repair_kind": "no_action",
+      "target_test_type": "none",
+      "verify_command": "none",
+      "raw_findings_supporting_only": true,
+      "recommended_repair": "No action.",
+      "must_not_claim": ["Do not infer actionability from raw static class."],
+      "reason": "duplicate id with wrong state"
+    },
+    {
+      "id": "presentation_text_actionable_output_observer",
+      "source_pr": "bad",
+      "evidence_class": "unknown",
+      "raw_findings_total": 0,
+      "canonical_items_total": 0,
+      "gap_state": "mystery",
+      "actionability": "unknown",
+      "user_outcome": "unknown",
+      "repair_kind": "unknown",
+      "target_test_type": "unknown",
+      "verify_command": "unknown",
+      "raw_findings_supporting_only": false,
+      "recommended_repair": "",
+      "must_not_claim": [],
+      "reason": ""
+    }
+  ]
+}"#,
+            );
+
+            let mut violations = Vec::new();
+            let validation_result =
+                super::validate_finding_alignment_dogfood_fixture_corpus(&mut violations);
+            assert!(
+                validation_result.is_ok(),
+                "fixture corpus validation should not hard-fail: {validation_result:?}"
+            );
+            let report = violations.join("\n");
+
+            assert!(report.contains("finding alignment dogfood case presentation_text_actionable_output_observer is duplicated"));
+            assert!(report.contains("must have gap_state actionable, got mystery"));
+            assert!(report.contains("finding alignment dogfood corpus is missing case presentation_text_already_observed_output"));
+            assert!(report.contains("unsupported evidence class for dogfood receipt"));
+            assert!(report.contains("canonical_items_total must be non-zero"));
+            assert!(report.contains("unsupported gap_state `mystery`"));
+        });
     }
 
     #[test]
