@@ -2633,7 +2633,7 @@ fn sorted_traceability_behavior_blocks_content(text: &str) -> String {
     for (index, start) in block_starts.iter().copied().enumerate() {
         let end = block_starts.get(index + 1).copied().unwrap_or(text.len());
         let block = &text[start..end];
-        if traceability_behavior_block_has_duplicate_keys(block) {
+        if traceability_behavior_block_is_unsafe_to_sort(block) {
             return text.to_string();
         }
         let Some(id) = traceability_behavior_block_id(block) else {
@@ -2659,7 +2659,7 @@ fn sorted_traceability_behavior_blocks_content(text: &str) -> String {
     output
 }
 
-fn traceability_behavior_block_has_duplicate_keys(block: &str) -> bool {
+fn traceability_behavior_block_is_unsafe_to_sort(block: &str) -> bool {
     let mut seen = BTreeSet::new();
     let mut active_array = false;
     for line in block.lines() {
@@ -2670,6 +2670,8 @@ fn traceability_behavior_block_has_duplicate_keys(block: &str) -> bool {
         if active_array {
             if trimmed.starts_with(']') {
                 active_array = false;
+            } else if parse_array_item(trimmed).is_err() {
+                return true;
             }
             continue;
         }
@@ -2680,11 +2682,14 @@ fn traceability_behavior_block_has_duplicate_keys(block: &str) -> bool {
         if !seen.insert(key.to_string()) {
             return true;
         }
-        if value.trim() == "[" {
+        let value = value.trim();
+        if value == "[" {
             active_array = true;
+        } else if value.starts_with('[') && parse_inline_array(value).is_err() {
+            return true;
         }
     }
-    false
+    active_array
 }
 
 fn traceability_behavior_block_id(block: &str) -> Option<String> {
@@ -39543,6 +39548,8 @@ jobs:
         let invalid =
             "[[behavior]]\nid = \"not-a-spec\"\n\n[[behavior]]\nid = \"RIPR-SPEC-0002\"\n";
         let duplicate_key = "[[behavior]]\nid = \"RIPR-SPEC-0002\"\ntests = []\ntests = [\n  \"example\",\n]\n\n[[behavior]]\nid = \"RIPR-SPEC-0001\"\n";
+        let unterminated_array = "[[behavior]]\nid = \"RIPR-SPEC-0002\"\ntests = [\n  \"example\",\n\n[[behavior]]\nid = \"RIPR-SPEC-0001\"\n";
+        let malformed_inline_array = "[[behavior]]\nid = \"RIPR-SPEC-0002\"\ntests = [\"example\"\n\n[[behavior]]\nid = \"RIPR-SPEC-0001\"\n";
 
         assert_eq!(
             sorted_traceability_behavior_blocks_content(duplicate),
@@ -39559,6 +39566,14 @@ jobs:
         assert_eq!(
             sorted_traceability_behavior_blocks_content(duplicate_key),
             duplicate_key
+        );
+        assert_eq!(
+            sorted_traceability_behavior_blocks_content(unterminated_array),
+            unterminated_array
+        );
+        assert_eq!(
+            sorted_traceability_behavior_blocks_content(malformed_inline_array),
+            malformed_inline_array
         );
     }
 
