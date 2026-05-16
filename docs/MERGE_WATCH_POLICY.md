@@ -109,10 +109,14 @@ not grant permission to change those settings.
 ## Cleanup
 
 After a PR branch is merged or abandoned, clean only the worktree created for
-that task:
+that task. If the task used a scoped `CARGO_TARGET_DIR`, remove that exact
+directory after verifying it is under the intended scratch root. If it used a
+task-local default `target/`, `cargo clean` is acceptable.
 
-```bash
-cargo clean
+PowerShell example:
+
+```powershell
+Remove-Item -LiteralPath <task-cargo-target-dir> -Recurse -Force
 git worktree remove <task-worktree>
 ```
 
