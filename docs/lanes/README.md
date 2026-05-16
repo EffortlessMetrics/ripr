@@ -44,6 +44,7 @@ Lane 1 owns evidence truth:
 - oracle semantics;
 - local flow and activation/value modeling;
 - static limitations;
+- user-visible output and presentation-text evidence classes;
 - imported static/runtime calibration confidence.
 
 Lane 1 should use these layers:
@@ -94,6 +95,8 @@ the source evidence class first and keep projection changes narrow.
 - [Lane 1 Evidence Quality Leadership](LANE_1_EVIDENCE_QUALITY_LEADERSHIP.md)
   records the scorecard, benchmark, calibration, and audit-delta leadership
   loop.
+- [Lane 1 User-Visible Output Evidence](LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md)
+  records the presentation/help/report/table text evidence-class expansion.
 
 ## Lane 4 Source Of Truth
 

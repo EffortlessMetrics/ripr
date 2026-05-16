@@ -1,0 +1,1521 @@
+{
+  "kind": "gap_decision_ledger_corpus",
+  "schema_version": "0.1",
+  "spec": "RIPR-SPEC-0046",
+  "proposal": "RIPR-PROP-0006",
+  "status": "planned_fixture_contract",
+  "required_gap_kinds": [
+    "MissingBoundaryAssertion",
+    "MissingErrorDiscriminator",
+    "MissingValueAssertion",
+    "MissingSideEffectObserver",
+    "MissingOutputContract",
+    "StaticLimitation",
+    "NoActionAlreadyObserved",
+    "NoActionInternal",
+    "Unknown"
+  ],
+  "required_scopes": [
+    "pr_local",
+    "repo_scoped",
+    "baseline_debt",
+    "artifact_missing"
+  ],
+  "required_policy_states": [
+    "new",
+    "baseline_known",
+    "waived",
+    "suppressed",
+    "acknowledged",
+    "resolved",
+    "reintroduced",
+    "blocked",
+    "not_policy_targeted",
+    "unknown"
+  ],
+  "required_repairability": [
+    "repairable",
+    "needs_human_design",
+    "analyzer_limitation",
+    "no_action",
+    "unknown"
+  ],
+  "projection_surfaces": [
+    "ci_summary",
+    "report_packet",
+    "pr_comment",
+    "lsp_diagnostic",
+    "agent_packet",
+    "gate_candidate",
+    "ripr_zero_count",
+    "ripr_plus_count"
+  ],
+  "rules": {
+    "default_ci_blocking_changed": false,
+    "preview_language_promoted": false,
+    "source_edits_or_generated_tests": false,
+    "provider_or_mutation_execution": false
+  },
+  "cases": [
+    {
+      "id": "repairable_boundary_gap_pr_comment_gate_candidate",
+      "description": "A new PR-local Rust boundary gap is repairable, commentable, and gate-candidate eligible under explicit policy.",
+      "source_artifacts": [
+        "target/ripr/reports/repo-exposure.json",
+        "target/ripr/review/comments.json",
+        "policy/gate.toml"
+      ],
+      "expected_claim": "New repairable Rust boundary gap with a stable anchor and explicit assertion repair route.",
+      "must_not_claim": [
+        "runtime mutation proof",
+        "coverage adequacy",
+        "generic confidence score"
+      ],
+      "static_unknown_only": false,
+      "expected_gap_record": {
+        "gap_id": "gap:pr:pricing:threshold-boundary",
+        "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+        "kind": "MissingBoundaryAssertion",
+        "language": "rust",
+        "language_status": "stable",
+        "scope": "pr_local",
+        "evidence_class": "predicate_boundary",
+        "gap_state": "actionable",
+        "policy_state": "new",
+        "repairability": "repairable",
+        "evidence_ids": [
+          "evidence:pricing-threshold-reached",
+          "evidence:related-test-no-boundary-assertion"
+        ],
+        "anchor": {
+          "file": "src/pricing.rs",
+          "line": 42,
+          "owner": "pricing::discount",
+          "dedupe_fingerprint": "gap:rust:pricing:discount:threshold-boundary"
+        },
+        "repair_route": {
+          "route_kind": "AddBoundaryAssertion",
+          "target_file": "tests/pricing.rs",
+          "assertion_shape": "assert_eq!(discount(100, 100), 90)"
+        },
+        "verification_commands": [
+          "cargo xtask fixtures boundary_gap",
+          "cargo xtask goldens check"
+        ],
+        "projection_eligibility": {
+          "ci_summary": {
+            "eligible": true,
+            "reason": "new_repairable_pr_local_gap"
+          },
+          "report_packet": {
+            "eligible": true,
+            "reason": "all_gap_records_are_reportable"
+          },
+          "pr_comment": {
+            "eligible": true,
+            "reason": "stable_anchor_and_repair_route"
+          },
+          "lsp_diagnostic": {
+            "eligible": true,
+            "reason": "local_file_scope"
+          },
+          "agent_packet": {
+            "eligible": true,
+            "reason": "bounded_repair_route"
+          },
+          "gate_candidate": {
+            "eligible": true,
+            "reason": "safe_gate_predicate_satisfied"
+          },
+          "ripr_zero_count": {
+            "eligible": false,
+            "reason": "pr_local_not_repo_scoped"
+          },
+          "ripr_plus_count": {
+            "eligible": false,
+            "reason": "pr_local_not_repo_scoped"
+          }
+        },
+        "safe_gate_predicate": {
+          "policy_target_enabled": true,
+          "suppressed": false,
+          "waived": false,
+          "acknowledged_only": false,
+          "baseline_known": false,
+          "preview_language": false,
+          "static_unknown_only": false
+        },
+        "receipt": {
+          "state": "missing_receipt",
+          "movement": "missing_receipt"
+        },
+        "authority_boundary": "gate_decision_artifact_only"
+      }
+    },
+    {
+      "id": "repairable_error_discriminator",
+      "description": "A changed Rust error path has a related test but no error discriminator.",
+      "source_artifacts": [
+        "target/ripr/reports/repo-exposure.json",
+        "target/ripr/reports/pr-evidence-ledger.json"
+      ],
+      "expected_claim": "Related test reaches the owner, but no error-path discriminator is visible.",
+      "must_not_claim": [
+        "test failed",
+        "runtime mutation status",
+        "runtime exception observed"
+      ],
+      "expected_gap_record": {
+        "gap_id": "gap:pr:parser:error-path",
+        "canonical_gap_id": "gap:rust:parser:parse:error-path",
+        "kind": "MissingErrorDiscriminator",
+        "language": "rust",
+        "language_status": "stable",
+        "scope": "pr_local",
+        "evidence_class": "error_path",
+        "gap_state": "actionable",
+        "policy_state": "new",
+        "repairability": "repairable",
+        "evidence_ids": [
+          "evidence:parse-error-path",
+          "evidence:test-reaches-parser"
+        ],
+        "anchor": {
+          "file": "src/parser.rs",
+          "line": 88,
+          "owner": "parser::parse",
+          "dedupe_fingerprint": "gap:rust:parser:parse:error-path"
+        },
+        "repair_route": {
+          "route_kind": "AddErrorAssertion",
+          "target_file": "tests/parser.rs",
+          "assertion_shape": "assert!(parse(input).is_err())"
+        },
+        "verification_commands": [
+          "cargo xtask fixtures strong_error_oracle",
+          "cargo xtask goldens check"
+        ],
+        "projection_eligibility": {
+          "ci_summary": {
+            "eligible": true,
+            "reason": "repairable_pr_local_gap"
+          },
+          "report_packet": {
+            "eligible": true,
+            "reason": "all_gap_records_are_reportable"
+          },
+          "pr_comment": {
+            "eligible": true,
+            "reason": "stable_anchor_and_repair_route"
+          },
+          "lsp_diagnostic": {
+            "eligible": true,
+            "reason": "local_file_scope"
+          },
+          "agent_packet": {
+            "eligible": true,
+            "reason": "bounded_repair_route"
+          },
+          "gate_candidate": {
+            "eligible": false,
+            "reason": "policy_target_not_enabled_for_error_path"
+          },
+          "ripr_zero_count": {
+            "eligible": false,
+            "reason": "pr_local_not_repo_scoped"
+          },
+          "ripr_plus_count": {
+            "eligible": false,
+            "reason": "pr_local_not_repo_scoped"
+          }
+        },
+        "receipt": {
+          "state": "missing_receipt",
+          "movement": "missing_receipt"
+        },
+        "authority_boundary": "gate_decision_artifact_only"
+      }
+    },
+    {
+      "id": "repairable_value_assertion",
+      "description": "A changed Rust return value reaches a related test without an exact value assertion.",
+      "source_artifacts": [
+        "target/ripr/reports/repo-exposure.json",
+        "target/ripr/reports/first-useful-action.json"
+      ],
+      "expected_claim": "A related test reaches the owner, but only smoke evidence is visible.",
+      "must_not_claim": [
+        "test proves behavior",
+        "general correctness",
+        "runtime mutation result"
+      ],
+      "expected_gap_record": {
+        "gap_id": "gap:pr:invoice:rounding-value",
+        "canonical_gap_id": "gap:rust:invoice:round:exact-value",
+        "kind": "MissingValueAssertion",
+        "language": "rust",
+        "language_status": "stable",
+        "scope": "pr_local",
+        "evidence_class": "return_value",
+        "gap_state": "actionable",
+        "policy_state": "new",
+        "repairability": "repairable",
+        "evidence_ids": [
+          "evidence:rounding-return-value",
+          "evidence:related-test-smoke-only"
+        ],
+        "anchor": {
+          "file": "src/invoice.rs",
+          "line": 31,
+          "owner": "invoice::round_total",
+          "dedupe_fingerprint": "gap:rust:invoice:round:exact-value"
+        },
+        "repair_route": {
+          "route_kind": "AddValueAssertion",
+          "target_file": "tests/invoice.rs",
+          "assertion_shape": "assert_eq!(round_total(10.125), 10.13)"
+        },
+        "verification_commands": [
+          "cargo xtask fixtures strong_boundary_oracle",
+          "cargo xtask goldens check"
+        ],
+        "projection_eligibility": {
+          "ci_summary": {
+            "eligible": true,
+            "reason": "repairable_pr_local_gap"
+          },
+          "report_packet": {
+            "eligible": true,
+            "reason": "all_gap_records_are_reportable"
+          },
+          "pr_comment": {
+            "eligible": true,
+            "reason": "stable_anchor_and_repair_route"
+          },
+          "lsp_diagnostic": {
+            "eligible": true,
+            "reason": "local_file_scope"
+          },
+          "agent_packet": {
+            "eligible": true,
+            "reason": "bounded_repair_route"
+          },
+          "gate_candidate": {
+            "eligible": false,
+            "reason": "not_enabled_for_this_policy_target"
+          },
+          "ripr_zero_count": {
+            "eligible": false,
+            "reason": "pr_local_not_repo_scoped"
+          },
+          "ripr_plus_count": {
+            "eligible": false,
+            "reason": "pr_local_not_repo_scoped"
+          }
+        },
+        "receipt": {
+          "state": "missing_receipt",
+          "movement": "missing_receipt"
+        },
+        "authority_boundary": "gate_decision_artifact_only"
+      }
+    },
+    {
+      "id": "repairable_side_effect_observer",
+      "description": "A changed side-effect call has no observable call or state assertion.",
+      "source_artifacts": [
+        "target/ripr/reports/repo-exposure.json",
+        "target/ripr/agent/repair-packet.json"
+      ],
+      "expected_claim": "A side effect is reached but not observed by a discriminator.",
+      "must_not_claim": [
+        "side effect executed",
+        "mock framework semantics known",
+        "runtime proof"
+      ],
+      "expected_gap_record": {
+        "gap_id": "gap:pr:notify:side-effect",
+        "canonical_gap_id": "gap:rust:notify:send:side-effect",
+        "kind": "MissingSideEffectObserver",
+        "language": "rust",
+        "language_status": "stable",
+        "scope": "pr_local",
+        "evidence_class": "side_effect_call",
+        "gap_state": "actionable",
+        "policy_state": "new",
+        "repairability": "repairable",
+        "evidence_ids": [
+          "evidence:notify-call",
+          "evidence:related-test-no-call-observer"
+        ],
+        "anchor": {
+          "file": "src/notify.rs",
+          "line": 56,
+          "owner": "notify::send",
+          "dedupe_fingerprint": "gap:rust:notify:send:side-effect"
+        },
+        "repair_route": {
+          "route_kind": "AddSideEffectObserver",
+          "target_file": "tests/notify.rs",
+          "assertion_shape": "assert_eq!(sink.sent_messages(), 1)"
+        },
+        "verification_commands": [
+          "cargo xtask fixtures",
+          "cargo xtask goldens check"
+        ],
+        "projection_eligibility": {
+          "ci_summary": {
+            "eligible": true,
+            "reason": "repairable_pr_local_gap"
+          },
+          "report_packet": {
+            "eligible": true,
+            "reason": "all_gap_records_are_reportable"
+          },
+          "pr_comment": {
+            "eligible": true,
+            "reason": "stable_anchor_and_repair_route"
+          },
+          "lsp_diagnostic": {
+            "eligible": true,
+            "reason": "local_file_scope"
+          },
+          "agent_packet": {
+            "eligible": true,
+            "reason": "bounded_repair_route"
+          },
+          "gate_candidate": {
+            "eligible": false,
+            "reason": "policy_target_not_enabled"
+          },
+          "ripr_zero_count": {
+            "eligible": false,
+            "reason": "pr_local_not_repo_scoped"
+          },
+          "ripr_plus_count": {
+            "eligible": false,
+            "reason": "pr_local_not_repo_scoped"
+          }
+        },
+        "receipt": {
+          "state": "missing_receipt",
+          "movement": "missing_receipt"
+        },
+        "authority_boundary": "gate_decision_artifact_only"
+      }
+    },
+    {
+      "id": "missing_output_contract_routes_to_output_golden",
+      "description": "Changed user-facing help text needs output-contract proof rather than generic static-unknown escalation.",
+      "source_artifacts": [
+        "target/ripr/reports/output-contract-audit.json",
+        "target/ripr/reports/repo-exposure.json"
+      ],
+      "expected_claim": "Presentation text changed without a checked output or golden artifact.",
+      "must_not_claim": [
+        "static_unknown instruction",
+        "mutation testing required",
+        "unit test required"
+      ],
+      "expected_gap_record": {
+        "gap_id": "gap:pr:help-text:missing-golden",
+        "canonical_gap_id": "gap:rust:cli:help:output-contract",
+        "kind": "MissingOutputContract",
+        "language": "rust",
+        "language_status": "stable",
+        "scope": "pr_local",
+        "evidence_class": "presentation_text",
+        "gap_state": "actionable",
+        "policy_state": "new",
+        "repairability": "repairable",
+        "evidence_ids": [
+          "evidence:help-text-changed",
+          "evidence:output-golden-missing"
+        ],
+        "anchor": {
+          "file": "crates/ripr/src/cli/help.rs",
+          "line": 19,
+          "owner": "cli::help",
+          "dedupe_fingerprint": "gap:rust:cli:help:output-contract"
+        },
+        "repair_route": {
+          "route_kind": "AddOutputGolden",
+          "target_file": "fixtures/help_output/expected/help.txt",
+          "assertion_shape": "refresh checked help output golden"
+        },
+        "verification_commands": [
+          "cargo xtask goldens check",
+          "cargo xtask check-output-contracts"
+        ],
+        "projection_eligibility": {
+          "ci_summary": {
+            "eligible": true,
+            "reason": "repairable_output_contract_gap"
+          },
+          "report_packet": {
+            "eligible": true,
+            "reason": "all_gap_records_are_reportable"
+          },
+          "pr_comment": {
+            "eligible": true,
+            "reason": "stable_anchor_and_output_repair_route"
+          },
+          "lsp_diagnostic": {
+            "eligible": false,
+            "reason": "output_contract_gap_is_not_editor_local"
+          },
+          "agent_packet": {
+            "eligible": true,
+            "reason": "bounded_output_golden_repair_route"
+          },
+          "gate_candidate": {
+            "eligible": false,
+            "reason": "output_contract_gate_not_enabled"
+          },
+          "ripr_zero_count": {
+            "eligible": false,
+            "reason": "pr_local_not_repo_scoped"
+          },
+          "ripr_plus_count": {
+            "eligible": false,
+            "reason": "pr_local_not_repo_scoped"
+          }
+        },
+        "receipt": {
+          "state": "missing_receipt",
+          "movement": "missing_receipt"
+        },
+        "authority_boundary": "gate_decision_artifact_only"
+      }
+    },
+    {
+      "id": "static_unknown_report_only",
+      "description": "Static-unknown-only evidence remains report-only unless a configured repair route exists.",
+      "source_artifacts": [
+        "target/ripr/reports/repo-exposure.json"
+      ],
+      "expected_claim": "Static analysis could not classify the shape and no configured repair route exists.",
+      "must_not_claim": [
+        "repairable gap",
+        "PR comment instruction",
+        "gate failure"
+      ],
+      "static_unknown_only": true,
+      "expected_gap_record": {
+        "gap_id": "gap:pr:macro:static-limit",
+        "canonical_gap_id": "gap:rust:macro:static-limit",
+        "kind": "StaticLimitation",
+        "language": "rust",
+        "language_status": "stable",
+        "scope": "pr_local",
+        "evidence_class": "unsupported_static_shape",
+        "gap_state": "report_only",
+        "policy_state": "not_policy_targeted",
+        "repairability": "analyzer_limitation",
+        "evidence_ids": [
+          "evidence:macro-expanded-shape-unsupported"
+        ],
+        "anchor": {
+          "file": "src/macros.rs",
+          "line": 12,
+          "owner": "macros",
+          "dedupe_fingerprint": "gap:rust:macro:static-limit"
+        },
+        "verification_commands": [
+          "cargo xtask check-output-contracts"
+        ],
+        "projection_eligibility": {
+          "ci_summary": {
+            "eligible": true,
+            "reason": "report_summary_limit"
+          },
+          "report_packet": {
+            "eligible": true,
+            "reason": "all_gap_records_are_reportable"
+          },
+          "pr_comment": {
+            "eligible": false,
+            "reason": "no_configured_repair_route"
+          },
+          "lsp_diagnostic": {
+            "eligible": false,
+            "reason": "static_limit_without_action"
+          },
+          "agent_packet": {
+            "eligible": false,
+            "reason": "no_bounded_repair_route"
+          },
+          "gate_candidate": {
+            "eligible": false,
+            "reason": "static_unknown_only"
+          },
+          "ripr_zero_count": {
+            "eligible": false,
+            "reason": "not_policy_targeted"
+          },
+          "ripr_plus_count": {
+            "eligible": false,
+            "reason": "not_policy_targeted"
+          }
+        },
+        "receipt": {
+          "state": "not_applicable",
+          "movement": "not_applicable"
+        },
+        "authority_boundary": "gate_decision_artifact_only"
+      }
+    },
+    {
+      "id": "baseline_known_not_gate",
+      "description": "Known baseline debt remains visible but does not become a new PR gate candidate.",
+      "source_artifacts": [
+        "target/ripr/reports/baseline-debt-delta.json",
+        "target/ripr/reports/repo-exposure.json"
+      ],
+      "expected_claim": "The gap is known baseline debt and should be shown separately from new PR-local risk.",
+      "must_not_claim": [
+        "new gap",
+        "gate candidate",
+        "PR-local repair required"
+      ],
+      "expected_gap_record": {
+        "gap_id": "gap:baseline:pricing:threshold-boundary",
+        "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+        "kind": "MissingBoundaryAssertion",
+        "language": "rust",
+        "language_status": "stable",
+        "scope": "baseline_debt",
+        "evidence_class": "predicate_boundary",
+        "gap_state": "known_baseline",
+        "policy_state": "baseline_known",
+        "repairability": "repairable",
+        "evidence_ids": [
+          "evidence:baseline-ledger-match"
+        ],
+        "anchor": {
+          "file": "src/pricing.rs",
+          "line": 42,
+          "owner": "pricing::discount",
+          "dedupe_fingerprint": "gap:rust:pricing:discount:threshold-boundary"
+        },
+        "repair_route": {
+          "route_kind": "AddBoundaryAssertion",
+          "target_file": "tests/pricing.rs",
+          "assertion_shape": "assert_eq!(discount(100, 100), 90)"
+        },
+        "verification_commands": [
+          "cargo xtask check-traceability"
+        ],
+        "projection_eligibility": {
+          "ci_summary": {
+            "eligible": true,
+            "reason": "baseline_debt_summary"
+          },
+          "report_packet": {
+            "eligible": true,
+            "reason": "all_gap_records_are_reportable"
+          },
+          "pr_comment": {
+            "eligible": false,
+            "reason": "not_new_pr_local_risk"
+          },
+          "lsp_diagnostic": {
+            "eligible": false,
+            "reason": "baseline_not_current_work"
+          },
+          "agent_packet": {
+            "eligible": true,
+            "reason": "repairable_baseline_work_packet"
+          },
+          "gate_candidate": {
+            "eligible": false,
+            "reason": "baseline_known"
+          },
+          "ripr_zero_count": {
+            "eligible": false,
+            "reason": "baseline_debt_not_repo_scoped_zero_target"
+          },
+          "ripr_plus_count": {
+            "eligible": true,
+            "reason": "broader_repo_advisory_gap"
+          }
+        },
+        "receipt": {
+          "state": "missing_receipt",
+          "movement": "missing_receipt"
+        },
+        "authority_boundary": "gate_decision_artifact_only"
+      }
+    },
+    {
+      "id": "waived_gap_not_zero",
+      "description": "A waived repo-scoped gap is visible in reports but does not count toward RIPR Zero.",
+      "source_artifacts": [
+        "policy/waivers.toml",
+        "target/ripr/reports/repo-exposure.json"
+      ],
+      "expected_claim": "The gap is waived by policy and excluded from zero targets while the waiver is active.",
+      "must_not_claim": [
+        "unresolved zero target",
+        "gate candidate",
+        "PR-local action"
+      ],
+      "expected_gap_record": {
+        "gap_id": "gap:repo:invoice:waived-value",
+        "canonical_gap_id": "gap:rust:invoice:round:exact-value",
+        "kind": "MissingValueAssertion",
+        "language": "rust",
+        "language_status": "stable",
+        "scope": "repo_scoped",
+        "evidence_class": "return_value",
+        "gap_state": "waived",
+        "policy_state": "waived",
+        "repairability": "no_action",
+        "evidence_ids": [
+          "evidence:waiver-active"
+        ],
+        "anchor": {
+          "file": "src/invoice.rs",
+          "line": 31,
+          "owner": "invoice::round_total",
+          "dedupe_fingerprint": "gap:rust:invoice:round:exact-value"
+        },
+        "verification_commands": [
+          "cargo xtask check-pr"
+        ],
+        "projection_eligibility": {
+          "ci_summary": {
+            "eligible": true,
+            "reason": "waiver_summary"
+          },
+          "report_packet": {
+            "eligible": true,
+            "reason": "all_gap_records_are_reportable"
+          },
+          "pr_comment": {
+            "eligible": false,
+            "reason": "waived"
+          },
+          "lsp_diagnostic": {
+            "eligible": false,
+            "reason": "waived"
+          },
+          "agent_packet": {
+            "eligible": false,
+            "reason": "waived_no_action"
+          },
+          "gate_candidate": {
+            "eligible": false,
+            "reason": "waived"
+          },
+          "ripr_zero_count": {
+            "eligible": false,
+            "reason": "waived"
+          },
+          "ripr_plus_count": {
+            "eligible": false,
+            "reason": "waived"
+          }
+        },
+        "receipt": {
+          "state": "not_applicable",
+          "movement": "not_applicable"
+        },
+        "authority_boundary": "gate_decision_artifact_only"
+      }
+    },
+    {
+      "id": "suppressed_gap_not_zero",
+      "description": "A suppressed repo-scoped gap remains auditable but excluded from zero targets and gates.",
+      "source_artifacts": [
+        "policy/suppressions.toml",
+        "target/ripr/reports/repo-exposure.json"
+      ],
+      "expected_claim": "The gap is suppressed by policy and must not be projected as active repair work.",
+      "must_not_claim": [
+        "zero target",
+        "gate candidate",
+        "repair card"
+      ],
+      "expected_gap_record": {
+        "gap_id": "gap:repo:parser:suppressed-error",
+        "canonical_gap_id": "gap:rust:parser:parse:error-path",
+        "kind": "MissingErrorDiscriminator",
+        "language": "rust",
+        "language_status": "stable",
+        "scope": "repo_scoped",
+        "evidence_class": "error_path",
+        "gap_state": "suppressed",
+        "policy_state": "suppressed",
+        "repairability": "no_action",
+        "evidence_ids": [
+          "evidence:suppression-active"
+        ],
+        "anchor": {
+          "file": "src/parser.rs",
+          "line": 88,
+          "owner": "parser::parse",
+          "dedupe_fingerprint": "gap:rust:parser:parse:error-path"
+        },
+        "verification_commands": [
+          "cargo xtask check-pr"
+        ],
+        "projection_eligibility": {
+          "ci_summary": {
+            "eligible": true,
+            "reason": "suppression_summary"
+          },
+          "report_packet": {
+            "eligible": true,
+            "reason": "all_gap_records_are_reportable"
+          },
+          "pr_comment": {
+            "eligible": false,
+            "reason": "suppressed"
+          },
+          "lsp_diagnostic": {
+            "eligible": false,
+            "reason": "suppressed"
+          },
+          "agent_packet": {
+            "eligible": false,
+            "reason": "suppressed_no_action"
+          },
+          "gate_candidate": {
+            "eligible": false,
+            "reason": "suppressed"
+          },
+          "ripr_zero_count": {
+            "eligible": false,
+            "reason": "suppressed"
+          },
+          "ripr_plus_count": {
+            "eligible": false,
+            "reason": "suppressed"
+          }
+        },
+        "receipt": {
+          "state": "not_applicable",
+          "movement": "not_applicable"
+        },
+        "authority_boundary": "gate_decision_artifact_only"
+      }
+    },
+    {
+      "id": "acknowledged_gap_not_gate",
+      "description": "An acknowledged PR-local gap is shown as known risk but is not a gate candidate.",
+      "source_artifacts": [
+        "target/ripr/reports/pr-evidence-ledger.json",
+        "policy/acknowledgements.toml"
+      ],
+      "expected_claim": "The gap is acknowledged and needs design follow-up rather than automatic repair.",
+      "must_not_claim": [
+        "safe to gate",
+        "automatic repair route",
+        "zero target"
+      ],
+      "expected_gap_record": {
+        "gap_id": "gap:pr:notify:acknowledged-side-effect",
+        "canonical_gap_id": "gap:rust:notify:send:side-effect",
+        "kind": "MissingSideEffectObserver",
+        "language": "rust",
+        "language_status": "stable",
+        "scope": "pr_local",
+        "evidence_class": "side_effect_call",
+        "gap_state": "acknowledged",
+        "policy_state": "acknowledged",
+        "repairability": "needs_human_design",
+        "evidence_ids": [
+          "evidence:acknowledgement-active"
+        ],
+        "anchor": {
+          "file": "src/notify.rs",
+          "line": 56,
+          "owner": "notify::send",
+          "dedupe_fingerprint": "gap:rust:notify:send:side-effect"
+        },
+        "verification_commands": [
+          "cargo xtask check-pr"
+        ],
+        "projection_eligibility": {
+          "ci_summary": {
+            "eligible": true,
+            "reason": "acknowledged_summary"
+          },
+          "report_packet": {
+            "eligible": true,
+            "reason": "all_gap_records_are_reportable"
+          },
+          "pr_comment": {
+            "eligible": false,
+            "reason": "acknowledged_not_repair_card"
+          },
+          "lsp_diagnostic": {
+            "eligible": false,
+            "reason": "acknowledged_not_current_action"
+          },
+          "agent_packet": {
+            "eligible": false,
+            "reason": "needs_human_design"
+          },
+          "gate_candidate": {
+            "eligible": false,
+            "reason": "acknowledged_only"
+          },
+          "ripr_zero_count": {
+            "eligible": false,
+            "reason": "pr_local_not_repo_scoped"
+          },
+          "ripr_plus_count": {
+            "eligible": false,
+            "reason": "pr_local_not_repo_scoped"
+          }
+        },
+        "receipt": {
+          "state": "not_applicable",
+          "movement": "not_applicable"
+        },
+        "authority_boundary": "gate_decision_artifact_only"
+      }
+    },
+    {
+      "id": "resolved_gap_no_action",
+      "description": "A previously visible repo-scoped gap has already improved and should not be projected as work.",
+      "source_artifacts": [
+        "target/ripr/receipts/after.json",
+        "target/ripr/reports/baseline-debt-delta.json"
+      ],
+      "expected_claim": "The gap has already improved or resolved and is retained only as movement proof.",
+      "must_not_claim": [
+        "current gap",
+        "repair needed",
+        "gate candidate"
+      ],
+      "expected_gap_record": {
+        "gap_id": "gap:repo:pricing:resolved-boundary",
+        "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+        "kind": "NoActionAlreadyObserved",
+        "language": "rust",
+        "language_status": "stable",
+        "scope": "repo_scoped",
+        "evidence_class": "receipt_movement",
+        "gap_state": "resolved",
+        "policy_state": "resolved",
+        "repairability": "no_action",
+        "evidence_ids": [
+          "evidence:receipt-resolved"
+        ],
+        "anchor": {
+          "file": "src/pricing.rs",
+          "line": 42,
+          "owner": "pricing::discount",
+          "dedupe_fingerprint": "gap:rust:pricing:discount:threshold-boundary"
+        },
+        "verification_commands": [
+          "cargo xtask agent receipt"
+        ],
+        "projection_eligibility": {
+          "ci_summary": {
+            "eligible": true,
+            "reason": "movement_summary"
+          },
+          "report_packet": {
+            "eligible": true,
+            "reason": "all_gap_records_are_reportable"
+          },
+          "pr_comment": {
+            "eligible": false,
+            "reason": "already_resolved"
+          },
+          "lsp_diagnostic": {
+            "eligible": false,
+            "reason": "already_resolved"
+          },
+          "agent_packet": {
+            "eligible": false,
+            "reason": "no_action"
+          },
+          "gate_candidate": {
+            "eligible": false,
+            "reason": "already_resolved"
+          },
+          "ripr_zero_count": {
+            "eligible": false,
+            "reason": "resolved"
+          },
+          "ripr_plus_count": {
+            "eligible": false,
+            "reason": "resolved"
+          }
+        },
+        "receipt": {
+          "state": "complete",
+          "movement": "resolved"
+        },
+        "authority_boundary": "gate_decision_artifact_only"
+      }
+    },
+    {
+      "id": "internal_gap_no_action",
+      "description": "An internal-only analyzer note is not projected as user repair work.",
+      "source_artifacts": [
+        "target/ripr/reports/repo-exposure.json"
+      ],
+      "expected_claim": "The evidence is internal context and not a user-facing gap.",
+      "must_not_claim": [
+        "repair route",
+        "gate candidate",
+        "badge count"
+      ],
+      "expected_gap_record": {
+        "gap_id": "gap:internal:index:note",
+        "canonical_gap_id": "gap:internal:index:note",
+        "kind": "NoActionInternal",
+        "language": "rust",
+        "language_status": "stable",
+        "scope": "repo_scoped",
+        "evidence_class": "internal_context",
+        "gap_state": "internal",
+        "policy_state": "not_policy_targeted",
+        "repairability": "no_action",
+        "evidence_ids": [
+          "evidence:index-internal-note"
+        ],
+        "anchor": {
+          "file": "src/lib.rs",
+          "line": 1,
+          "owner": "crate",
+          "dedupe_fingerprint": "gap:internal:index:note"
+        },
+        "verification_commands": [
+          "cargo xtask check-pr"
+        ],
+        "projection_eligibility": {
+          "ci_summary": {
+            "eligible": false,
+            "reason": "internal_only"
+          },
+          "report_packet": {
+            "eligible": true,
+            "reason": "audit_only"
+          },
+          "pr_comment": {
+            "eligible": false,
+            "reason": "internal_only"
+          },
+          "lsp_diagnostic": {
+            "eligible": false,
+            "reason": "internal_only"
+          },
+          "agent_packet": {
+            "eligible": false,
+            "reason": "internal_only"
+          },
+          "gate_candidate": {
+            "eligible": false,
+            "reason": "internal_only"
+          },
+          "ripr_zero_count": {
+            "eligible": false,
+            "reason": "not_policy_targeted"
+          },
+          "ripr_plus_count": {
+            "eligible": false,
+            "reason": "not_policy_targeted"
+          }
+        },
+        "receipt": {
+          "state": "not_applicable",
+          "movement": "not_applicable"
+        },
+        "authority_boundary": "gate_decision_artifact_only"
+      }
+    },
+    {
+      "id": "unknown_gap_needs_human_design",
+      "description": "An unknown gap shape is reported with bounded uncertainty and no automatic repair route.",
+      "source_artifacts": [
+        "target/ripr/reports/repo-exposure.json"
+      ],
+      "expected_claim": "The evidence is unresolved and needs human design before repair projection.",
+      "must_not_claim": [
+        "static_unknown repair card",
+        "gate candidate",
+        "specific assertion shape"
+      ],
+      "expected_gap_record": {
+        "gap_id": "gap:pr:unknown:human-design",
+        "canonical_gap_id": "gap:rust:unknown:human-design",
+        "kind": "Unknown",
+        "language": "rust",
+        "language_status": "stable",
+        "scope": "pr_local",
+        "evidence_class": "unknown_static_gap",
+        "gap_state": "needs_triage",
+        "policy_state": "unknown",
+        "repairability": "unknown",
+        "evidence_ids": [
+          "evidence:unknown-gap-shape"
+        ],
+        "anchor": {
+          "file": "src/opaque.rs",
+          "line": 77,
+          "owner": "opaque::handler",
+          "dedupe_fingerprint": "gap:rust:unknown:human-design"
+        },
+        "verification_commands": [
+          "cargo xtask check-pr"
+        ],
+        "projection_eligibility": {
+          "ci_summary": {
+            "eligible": true,
+            "reason": "triage_summary"
+          },
+          "report_packet": {
+            "eligible": true,
+            "reason": "all_gap_records_are_reportable"
+          },
+          "pr_comment": {
+            "eligible": false,
+            "reason": "no_repair_route"
+          },
+          "lsp_diagnostic": {
+            "eligible": false,
+            "reason": "no_repair_route"
+          },
+          "agent_packet": {
+            "eligible": false,
+            "reason": "needs_human_design"
+          },
+          "gate_candidate": {
+            "eligible": false,
+            "reason": "unknown_repairability"
+          },
+          "ripr_zero_count": {
+            "eligible": false,
+            "reason": "pr_local_not_repo_scoped"
+          },
+          "ripr_plus_count": {
+            "eligible": false,
+            "reason": "pr_local_not_repo_scoped"
+          }
+        },
+        "receipt": {
+          "state": "not_applicable",
+          "movement": "not_applicable"
+        },
+        "authority_boundary": "gate_decision_artifact_only"
+      }
+    },
+    {
+      "id": "reintroduced_gap_policy_state",
+      "description": "A reintroduced repo-scoped Rust gap counts toward zero targets but is not a PR-local comment.",
+      "source_artifacts": [
+        "target/ripr/reports/baseline-debt-delta.json",
+        "policy/gate.toml"
+      ],
+      "expected_claim": "A previously resolved repo-scoped policy target has reappeared.",
+      "must_not_claim": [
+        "PR-local line comment",
+        "preview evidence",
+        "resolved"
+      ],
+      "expected_gap_record": {
+        "gap_id": "gap:repo:pricing:reintroduced-boundary",
+        "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+        "kind": "MissingBoundaryAssertion",
+        "language": "rust",
+        "language_status": "stable",
+        "scope": "repo_scoped",
+        "evidence_class": "predicate_boundary",
+        "gap_state": "reintroduced",
+        "policy_state": "reintroduced",
+        "repairability": "repairable",
+        "evidence_ids": [
+          "evidence:baseline-reintroduced"
+        ],
+        "anchor": {
+          "file": "src/pricing.rs",
+          "line": 42,
+          "owner": "pricing::discount",
+          "dedupe_fingerprint": "gap:rust:pricing:discount:threshold-boundary"
+        },
+        "repair_route": {
+          "route_kind": "AddBoundaryAssertion",
+          "target_file": "tests/pricing.rs",
+          "assertion_shape": "assert_eq!(discount(100, 100), 90)"
+        },
+        "verification_commands": [
+          "cargo xtask fixtures boundary_gap",
+          "cargo xtask goldens check"
+        ],
+        "projection_eligibility": {
+          "ci_summary": {
+            "eligible": true,
+            "reason": "repo_scoped_policy_gap"
+          },
+          "report_packet": {
+            "eligible": true,
+            "reason": "all_gap_records_are_reportable"
+          },
+          "pr_comment": {
+            "eligible": false,
+            "reason": "repo_scoped_not_pr_local"
+          },
+          "lsp_diagnostic": {
+            "eligible": false,
+            "reason": "repo_scoped_not_current_editor_action"
+          },
+          "agent_packet": {
+            "eligible": true,
+            "reason": "bounded_repo_repair_route"
+          },
+          "gate_candidate": {
+            "eligible": false,
+            "reason": "repo_scoped_not_pr_local_gate"
+          },
+          "ripr_zero_count": {
+            "eligible": true,
+            "reason": "repo_policy_targeted_unresolved_gap"
+          },
+          "ripr_plus_count": {
+            "eligible": true,
+            "reason": "broader_repo_advisory_gap"
+          }
+        },
+        "receipt": {
+          "state": "missing_receipt",
+          "movement": "missing_receipt"
+        },
+        "authority_boundary": "gate_decision_artifact_only"
+      }
+    },
+    {
+      "id": "preview_language_report_only",
+      "description": "A TypeScript preview gap can be shown in advisory reports but cannot gate or count toward Rust badge targets.",
+      "source_artifacts": [
+        "target/ripr/reports/repo-exposure.json",
+        "target/ripr/reports/language-support-summary.json"
+      ],
+      "expected_claim": "Preview TypeScript evidence is advisory and syntax-first.",
+      "must_not_claim": [
+        "stable Rust gap",
+        "gate candidate",
+        "RIPR Zero target"
+      ],
+      "expected_gap_record": {
+        "gap_id": "gap:pr:ts:format-value",
+        "canonical_gap_id": "gap:typescript:format:value",
+        "kind": "MissingValueAssertion",
+        "language": "typescript",
+        "language_status": "preview",
+        "scope": "pr_local",
+        "evidence_class": "return_value",
+        "gap_state": "preview_advisory",
+        "policy_state": "not_policy_targeted",
+        "repairability": "repairable",
+        "evidence_ids": [
+          "evidence:typescript-preview-value"
+        ],
+        "anchor": {
+          "file": "src/format.ts",
+          "line": 14,
+          "owner": "formatAmount",
+          "dedupe_fingerprint": "gap:typescript:format:value"
+        },
+        "repair_route": {
+          "route_kind": "AddValueAssertion",
+          "target_file": "src/format.test.ts",
+          "assertion_shape": "expect(formatAmount(10)).toBe('$10.00')"
+        },
+        "verification_commands": [
+          "cargo xtask fixtures typescript_boundary_gap",
+          "cargo xtask goldens check"
+        ],
+        "projection_eligibility": {
+          "ci_summary": {
+            "eligible": true,
+            "reason": "preview_advisory_summary"
+          },
+          "report_packet": {
+            "eligible": true,
+            "reason": "all_gap_records_are_reportable"
+          },
+          "pr_comment": {
+            "eligible": false,
+            "reason": "preview_language_not_published_as_repair_comment"
+          },
+          "lsp_diagnostic": {
+            "eligible": true,
+            "reason": "preview_enabled_editor_surface"
+          },
+          "agent_packet": {
+            "eligible": true,
+            "reason": "preview_repair_packet_when_enabled"
+          },
+          "gate_candidate": {
+            "eligible": false,
+            "reason": "preview_language"
+          },
+          "ripr_zero_count": {
+            "eligible": false,
+            "reason": "preview_language"
+          },
+          "ripr_plus_count": {
+            "eligible": false,
+            "reason": "preview_language"
+          }
+        },
+        "receipt": {
+          "state": "missing_receipt",
+          "movement": "missing_receipt"
+        },
+        "authority_boundary": "gate_decision_artifact_only"
+      }
+    },
+    {
+      "id": "missing_artifact_warning_regeneration",
+      "description": "An expected artifact is missing, so the ledger records regeneration commands instead of a repair card.",
+      "source_artifacts": [
+        "target/ripr/reports/index.json"
+      ],
+      "expected_claim": "A required input artifact is missing and must be regenerated before gap projection can be trusted.",
+      "must_not_claim": [
+        "repairable code gap",
+        "gate candidate",
+        "line comment"
+      ],
+      "expected_gap_record": {
+        "gap_id": "gap:artifact:pr-guidance-missing",
+        "canonical_gap_id": "gap:artifact:pr-guidance-missing",
+        "kind": "Unknown",
+        "language": "rust",
+        "language_status": "stable",
+        "scope": "artifact_missing",
+        "evidence_class": "missing_required_artifact",
+        "gap_state": "blocked",
+        "policy_state": "unknown",
+        "repairability": "unknown",
+        "evidence_ids": [
+          "evidence:packet-index-missing-pr-guidance"
+        ],
+        "anchor": {
+          "file": "target/ripr/review/comments.json",
+          "line": 1,
+          "owner": "report-packet",
+          "dedupe_fingerprint": "gap:artifact:pr-guidance-missing"
+        },
+        "regeneration_commands": [
+          "ripr pr-review front-panel --root . --out target/ripr/reports/pr-review-front-panel.json",
+          "ripr reports index --root . --reports-dir target/ripr/reports"
+        ],
+        "verification_commands": [
+          "cargo xtask check-fixture-contracts",
+          "cargo xtask check-pr"
+        ],
+        "projection_eligibility": {
+          "ci_summary": {
+            "eligible": true,
+            "reason": "missing_artifact_warning"
+          },
+          "report_packet": {
+            "eligible": true,
+            "reason": "all_gap_records_are_reportable"
+          },
+          "pr_comment": {
+            "eligible": false,
+            "reason": "missing_artifact_not_code_gap"
+          },
+          "lsp_diagnostic": {
+            "eligible": false,
+            "reason": "missing_artifact_not_editor_local"
+          },
+          "agent_packet": {
+            "eligible": true,
+            "reason": "bounded_regeneration_route"
+          },
+          "gate_candidate": {
+            "eligible": false,
+            "reason": "cannot_gate_missing_input"
+          },
+          "ripr_zero_count": {
+            "eligible": false,
+            "reason": "not_repo_scoped_gap"
+          },
+          "ripr_plus_count": {
+            "eligible": false,
+            "reason": "not_repo_scoped_gap"
+          }
+        },
+        "receipt": {
+          "state": "missing_receipt",
+          "movement": "missing_receipt"
+        },
+        "authority_boundary": "gate_decision_artifact_only"
+      }
+    },
+    {
+      "id": "receipt_improved",
+      "description": "A repair attempt produced movement and the record should project proof, not more repair work.",
+      "source_artifacts": [
+        "target/ripr/receipts/before.json",
+        "target/ripr/receipts/after.json"
+      ],
+      "expected_claim": "The before/after receipt shows improved exposure for the canonical gap.",
+      "must_not_claim": [
+        "still repairable",
+        "runtime proof",
+        "new gap"
+      ],
+      "expected_gap_record": {
+        "gap_id": "gap:receipt:pricing:improved",
+        "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+        "kind": "NoActionAlreadyObserved",
+        "language": "rust",
+        "language_status": "stable",
+        "scope": "repo_scoped",
+        "evidence_class": "receipt_movement",
+        "gap_state": "improved",
+        "policy_state": "resolved",
+        "repairability": "no_action",
+        "evidence_ids": [
+          "evidence:receipt-before",
+          "evidence:receipt-after"
+        ],
+        "anchor": {
+          "file": "src/pricing.rs",
+          "line": 42,
+          "owner": "pricing::discount",
+          "dedupe_fingerprint": "gap:rust:pricing:discount:threshold-boundary"
+        },
+        "verification_commands": [
+          "cargo xtask agent receipt"
+        ],
+        "projection_eligibility": {
+          "ci_summary": {
+            "eligible": true,
+            "reason": "movement_proof"
+          },
+          "report_packet": {
+            "eligible": true,
+            "reason": "all_gap_records_are_reportable"
+          },
+          "pr_comment": {
+            "eligible": false,
+            "reason": "already_improved"
+          },
+          "lsp_diagnostic": {
+            "eligible": false,
+            "reason": "already_improved"
+          },
+          "agent_packet": {
+            "eligible": false,
+            "reason": "no_action"
+          },
+          "gate_candidate": {
+            "eligible": false,
+            "reason": "already_improved"
+          },
+          "ripr_zero_count": {
+            "eligible": false,
+            "reason": "resolved"
+          },
+          "ripr_plus_count": {
+            "eligible": false,
+            "reason": "resolved"
+          }
+        },
+        "receipt": {
+          "state": "complete",
+          "movement": "improved"
+        },
+        "authority_boundary": "gate_decision_artifact_only"
+      }
+    },
+    {
+      "id": "receipt_unchanged_after_attempt",
+      "description": "A repair attempt did not improve the gap, so follow-up remains bounded and explicit.",
+      "source_artifacts": [
+        "target/ripr/receipts/before.json",
+        "target/ripr/receipts/after.json",
+        "target/ripr/agent/repair-packet.json"
+      ],
+      "expected_claim": "The receipt shows no movement after an attempted repair, so the next packet must preserve the same canonical gap.",
+      "must_not_claim": [
+        "resolved",
+        "new unrelated gap",
+        "runtime mutation result"
+      ],
+      "expected_gap_record": {
+        "gap_id": "gap:receipt:invoice:unchanged",
+        "canonical_gap_id": "gap:rust:invoice:round:exact-value",
+        "kind": "MissingValueAssertion",
+        "language": "rust",
+        "language_status": "stable",
+        "scope": "pr_local",
+        "evidence_class": "return_value",
+        "gap_state": "unchanged_after_attempt",
+        "policy_state": "blocked",
+        "repairability": "repairable",
+        "evidence_ids": [
+          "evidence:receipt-before",
+          "evidence:receipt-after-unchanged"
+        ],
+        "anchor": {
+          "file": "src/invoice.rs",
+          "line": 31,
+          "owner": "invoice::round_total",
+          "dedupe_fingerprint": "gap:rust:invoice:round:exact-value"
+        },
+        "repair_route": {
+          "route_kind": "AddValueAssertion",
+          "target_file": "tests/invoice.rs",
+          "assertion_shape": "assert_eq!(round_total(10.125), 10.13)"
+        },
+        "verification_commands": [
+          "cargo xtask agent verify",
+          "cargo xtask agent receipt"
+        ],
+        "projection_eligibility": {
+          "ci_summary": {
+            "eligible": true,
+            "reason": "unchanged_after_attempt_summary"
+          },
+          "report_packet": {
+            "eligible": true,
+            "reason": "all_gap_records_are_reportable"
+          },
+          "pr_comment": {
+            "eligible": false,
+            "reason": "avoid_duplicate_comment_after_attempt"
+          },
+          "lsp_diagnostic": {
+            "eligible": true,
+            "reason": "local_file_scope"
+          },
+          "agent_packet": {
+            "eligible": true,
+            "reason": "bounded_follow_up_repair_route"
+          },
+          "gate_candidate": {
+            "eligible": false,
+            "reason": "blocked_until_receipt_review"
+          },
+          "ripr_zero_count": {
+            "eligible": false,
+            "reason": "pr_local_not_repo_scoped"
+          },
+          "ripr_plus_count": {
+            "eligible": false,
+            "reason": "pr_local_not_repo_scoped"
+          }
+        },
+        "receipt": {
+          "state": "complete",
+          "movement": "unchanged_after_attempt"
+        },
+        "authority_boundary": "gate_decision_artifact_only"
+      }
+    }
+  ]
+}

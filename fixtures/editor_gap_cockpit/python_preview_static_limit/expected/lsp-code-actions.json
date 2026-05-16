@@ -1,0 +1,53 @@
+{
+  "fixture": "editor_gap_cockpit/python_preview_static_limit",
+  "actions": [
+    {
+      "title": "Inspect gap: copy repair packet",
+      "command": "ripr.copyContext",
+      "arguments": [
+        {
+          "label": "gap_repair_packet",
+          "uri": "pricing.py",
+          "line": 29,
+          "gap_id": "gap:py:pricing:import-error-path",
+          "canonical_gap_id": "gap:py:pricing:import-error-path",
+          "gap_kind": "MissingImportPathAssertion",
+          "language": "python",
+          "language_status": "preview",
+          "gap_state": "actionable",
+          "repairability": "repairable",
+          "repair_route": {
+            "route_kind": "AddErrorPathAssertion",
+            "target_file": "tests/test_pricing.py",
+            "related_test": "tests/test_pricing.py::test_rejects_invalid_rate"
+          },
+          "verification_commands": [
+            "ripr agent verify --root . --json"
+          ],
+          "receipt_command": "ripr agent receipt --root . --json",
+          "limits_note": "Static limit: missing_import_graph. Static evidence only; no runtime adequacy claim."
+        }
+      ]
+    },
+    {
+      "title": "Inspect gap: copy static-limit note",
+      "command": "ripr.copyContext",
+      "arguments": [
+        {
+          "label": "static_limit_note",
+          "gap_id": "gap:py:pricing:import-error-path",
+          "canonical_gap_id": "gap:py:pricing:import-error-path",
+          "language": "python",
+          "language_status": "preview",
+          "note": "Static limit: missing_import_graph\nDetail: Imported symbol targets were not resolved in syntax-first preview mode.\nBoundary: static evidence only; advisory action.",
+          "limits_note": "Static evidence only; no runtime adequacy claim."
+        }
+      ]
+    },
+    {
+      "title": "Refresh Analysis - Saved Workspace Check",
+      "command": "ripr.refresh",
+      "arguments": []
+    }
+  ]
+}

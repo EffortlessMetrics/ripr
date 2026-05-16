@@ -1,4 +1,5 @@
 mod context_packet;
+mod finding_alignment;
 mod formatter;
 mod report;
 
@@ -16,9 +17,9 @@ mod tests {
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FlowSinkFact,
         FlowSinkKind, LanguageId, LanguageStatus, MissingDiscriminatorFact, OracleKind,
-        OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence, RiprEvidence,
-        SourceLocation, StageEvidence, StageState, StaticLimitKind, Summary, ValueContext,
-        ValueFact,
+        OracleStrength, OwnerKind, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
+        RiprEvidence, SourceLocation, StageEvidence, StageState, StaticLimitKind, Summary,
+        ValueContext, ValueFact,
     };
     use std::path::PathBuf;
 
@@ -98,6 +99,369 @@ mod tests {
         let rendered = render(&output);
 
         assert!(rendered.contains("\"base\": \"origin/main\""));
+    }
+
+    #[test]
+    fn render_adds_presentation_text_finding_alignment_when_supported() -> Result<(), String> {
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("."),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![
+                finding_with_expression(
+                    "decl",
+                    46,
+                    ExposureClass::Exposed,
+                    ProbeFamily::FieldConstruction,
+                    "pub const APPLE_M3_AIR_DEVICE_LABELS_TEXT: &str =",
+                ),
+                finding_with_expression(
+                    "literal",
+                    47,
+                    ExposureClass::StaticUnknown,
+                    ProbeFamily::StaticUnknown,
+                    "\"apple-m3-air-cpu-neon = M3 MacBook Air Apple CPU/NEON lane\";",
+                ),
+            ],
+        };
+
+        let rendered = render(&output);
+        let value: serde_json::Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("check JSON should parse: {err}"))?;
+        let alignment = &value["finding_alignment"];
+
+        assert_eq!(alignment["scope"], "supported_classes");
+        assert_eq!(alignment["summary"]["raw_signals"], 2);
+        assert_eq!(alignment["summary"]["canonical_items"], 1);
+        assert_eq!(alignment["summary"]["aligned_raw_findings"], 2);
+        assert_eq!(alignment["summary"]["static_limitations"], 1);
+        assert_eq!(alignment["summary"]["repair_route_coverage"], 0);
+        assert_eq!(
+            alignment["summary"]["actionable_items_without_repair_route"],
+            0
+        );
+        assert_eq!(alignment["summary"]["verify_command_coverage"], 0);
+        assert_eq!(
+            alignment["summary"]["actionable_items_without_verify_command"],
+            0
+        );
+        assert_eq!(
+            alignment["items"][0]["canonical_gap_id"],
+            "presentation_text::APPLE_M3_AIR_DEVICE_LABELS_TEXT"
+        );
+        assert_eq!(
+            alignment["items"][0]["group_reason"],
+            "declaration_and_literal_same_text_constant"
+        );
+        assert_eq!(alignment["items"][0]["raw_group_size"], 2);
+        assert_eq!(alignment["items"][0]["gap_state"], "static_limitation");
+        assert_eq!(alignment["items"][0]["actionability"], "inspect_visibility");
+        assert!(alignment["items"][0]["repair_route"].is_null());
+        assert_eq!(
+            alignment["items"][0]["static_limitations"][0]["category"],
+            "presentation_text_visibility_unknown"
+        );
+        assert_eq!(
+            alignment["items"][0]["presentation_text"]["text_literal"],
+            "apple-m3-air-cpu-neon = M3 MacBook Air Apple CPU/NEON lane"
+        );
+        assert!(
+            !alignment["items"][0]["recommended_repair"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("mutation")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn render_projects_presentation_text_visibility_and_observer_states() -> Result<(), String> {
+        let golden = RelatedTest {
+            name: "report_golden_observes_label".to_string(),
+            file: PathBuf::from("tests/golden/report_output.rs"),
+            line: 22,
+            oracle: None,
+            oracle_kind: OracleKind::Snapshot,
+            oracle_strength: OracleStrength::Strong,
+        };
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("."),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![
+                finding_with_expression_in_file(
+                    "src/help.rs",
+                    "help-decl",
+                    18,
+                    ExposureClass::Exposed,
+                    ProbeFamily::FieldConstruction,
+                    "pub const HELP_DEVICE_LABEL: &str =",
+                    vec![],
+                ),
+                finding_with_expression_in_file(
+                    "src/help.rs",
+                    "help-literal",
+                    19,
+                    ExposureClass::WeaklyExposed,
+                    ProbeFamily::StaticUnknown,
+                    "\"Device label\";",
+                    vec![],
+                ),
+                finding_with_expression_in_file(
+                    "src/report.rs",
+                    "report-decl",
+                    27,
+                    ExposureClass::Exposed,
+                    ProbeFamily::FieldConstruction,
+                    "pub const REPORT_DEVICE_LABEL: &str =",
+                    vec![golden],
+                ),
+                finding_with_expression_in_file(
+                    "src/report.rs",
+                    "report-literal",
+                    28,
+                    ExposureClass::Exposed,
+                    ProbeFamily::StaticUnknown,
+                    "\"Report label\";",
+                    vec![],
+                ),
+            ],
+        };
+
+        let rendered = render(&output);
+        let value: serde_json::Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("check JSON should parse: {err}"))?;
+        let alignment = &value["finding_alignment"];
+
+        assert_eq!(alignment["summary"]["canonical_items"], 2);
+        assert_eq!(alignment["summary"]["actionable_gaps"], 1);
+        assert_eq!(alignment["summary"]["repair_route_coverage"], 1);
+        assert_eq!(
+            alignment["summary"]["actionable_items_without_repair_route"],
+            0
+        );
+        assert_eq!(alignment["summary"]["verify_command_coverage"], 1);
+        assert_eq!(
+            alignment["summary"]["actionable_items_without_verify_command"],
+            0
+        );
+        assert_eq!(alignment["summary"]["already_observed"], 1);
+        assert_eq!(
+            alignment["summary"]["presentation_text_actionable_output_repairs"],
+            1
+        );
+        assert_eq!(alignment["items"][0]["gap_state"], "actionable");
+        assert_eq!(
+            alignment["items"][0]["presentation_text"]["recommended_observer"],
+            "cli_help_output"
+        );
+        assert_eq!(
+            alignment["items"][0]["presentation_text"]["repair_kind"],
+            "output_observer"
+        );
+        assert_eq!(
+            alignment["items"][0]["repair_route"]["repair_kind"],
+            "output_observer"
+        );
+        assert_eq!(
+            alignment["items"][0]["presentation_text"]["target_test_type"],
+            "help_output_snapshot"
+        );
+        assert_eq!(
+            alignment["items"][0]["repair_route"]["target_test_type"],
+            "help_output_snapshot"
+        );
+        assert_eq!(
+            alignment["items"][0]["presentation_text"]["suggested_assertion"],
+            "Assert CLI help output includes the HELP_DEVICE_LABEL text."
+        );
+        assert_eq!(
+            alignment["items"][0]["repair_route"]["suggested_assertion"],
+            "Assert CLI help output includes the HELP_DEVICE_LABEL text."
+        );
+        assert_eq!(alignment["items"][1]["gap_state"], "already_observed");
+        assert!(alignment["items"][1]["repair_route"].is_null());
+        assert_eq!(
+            alignment["items"][1]["presentation_text"]["observer"],
+            "golden"
+        );
+        assert_eq!(
+            alignment["items"][1]["presentation_text"]["repair_kind"],
+            "no_action"
+        );
+        assert_eq!(
+            alignment["items"][1]["related_test"]["name"],
+            "report_golden_observes_label"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn render_projects_config_policy_alignment_states() -> Result<(), String> {
+        let golden = RelatedTest {
+            name: "schema_render_golden_observes_field".to_string(),
+            file: PathBuf::from("tests/golden/schema_output.rs"),
+            line: 31,
+            oracle: None,
+            oracle_kind: OracleKind::Snapshot,
+            oracle_strength: OracleStrength::Strong,
+        };
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("."),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![
+                finding_with_expression_in_file(
+                    "src/policy.rs",
+                    "policy-decl",
+                    14,
+                    ExposureClass::Exposed,
+                    ProbeFamily::FieldConstruction,
+                    "pub const INTERNAL_POLICY_LABEL: &str =",
+                    vec![],
+                ),
+                finding_with_expression_in_file(
+                    "src/policy.rs",
+                    "policy-literal",
+                    15,
+                    ExposureClass::StaticUnknown,
+                    ProbeFamily::StaticUnknown,
+                    "\"internal policy label\";",
+                    vec![],
+                ),
+                finding_with_expression_in_file(
+                    "src/report_config.rs",
+                    "report-policy-decl",
+                    22,
+                    ExposureClass::Exposed,
+                    ProbeFamily::FieldConstruction,
+                    "pub const REPORT_POLICY_LABEL: &str =",
+                    vec![],
+                ),
+                finding_with_expression_in_file(
+                    "src/report_config.rs",
+                    "report-policy-literal",
+                    23,
+                    ExposureClass::WeaklyExposed,
+                    ProbeFamily::StaticUnknown,
+                    "\"Policy label\";",
+                    vec![],
+                ),
+                finding_with_expression_in_file(
+                    "src/schema.rs",
+                    "schema-decl",
+                    31,
+                    ExposureClass::Exposed,
+                    ProbeFamily::FieldConstruction,
+                    "pub const SCHEMA_POLICY_FIELD: &str =",
+                    vec![golden],
+                ),
+                finding_with_expression_in_file(
+                    "src/schema.rs",
+                    "schema-literal",
+                    32,
+                    ExposureClass::Exposed,
+                    ProbeFamily::StaticUnknown,
+                    "\"policy\";",
+                    vec![],
+                ),
+                finding_with_expression_in_file(
+                    "src/config_registry.rs",
+                    "opaque-decl",
+                    58,
+                    ExposureClass::Exposed,
+                    ProbeFamily::FieldConstruction,
+                    "pub const OPAQUE_CONFIG_LABEL: &str =",
+                    vec![],
+                ),
+                finding_with_expression_in_file(
+                    "src/config_registry.rs",
+                    "opaque-literal",
+                    59,
+                    ExposureClass::StaticUnknown,
+                    ProbeFamily::StaticUnknown,
+                    "\"Opaque label\";",
+                    vec![],
+                ),
+            ],
+        };
+
+        let rendered = render(&output);
+        let value: serde_json::Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("check JSON should parse: {err}"))?;
+        let alignment = &value["finding_alignment"];
+
+        assert_eq!(
+            alignment["supported_evidence_classes"][1],
+            "config_or_policy_constant"
+        );
+        assert_eq!(alignment["summary"]["canonical_items"], 4);
+        assert_eq!(alignment["summary"]["config_policy_constant_total"], 4);
+        assert_eq!(alignment["summary"]["config_policy_internal_only"], 1);
+        assert_eq!(
+            alignment["summary"]["config_policy_actionable_output_observer"],
+            1
+        );
+        assert_eq!(alignment["summary"]["repair_route_coverage"], 1);
+        assert_eq!(
+            alignment["summary"]["actionable_items_without_repair_route"],
+            0
+        );
+        assert_eq!(alignment["summary"]["verify_command_coverage"], 1);
+        assert_eq!(
+            alignment["summary"]["actionable_items_without_verify_command"],
+            0
+        );
+        assert_eq!(alignment["summary"]["config_policy_observed"], 1);
+        assert_eq!(alignment["summary"]["config_policy_static_limitations"], 1);
+        assert_eq!(alignment["items"][0]["gap_state"], "internal_only");
+        assert_eq!(
+            alignment["items"][0]["config_policy"]["role"],
+            "internal_policy_metadata"
+        );
+        assert_eq!(alignment["items"][1]["gap_state"], "actionable");
+        assert_eq!(
+            alignment["items"][1]["config_policy"]["target_test_type"],
+            "report_render_or_golden"
+        );
+        assert_eq!(
+            alignment["items"][1]["repair_route"]["repair_kind"],
+            "output_observer"
+        );
+        assert_eq!(
+            alignment["items"][1]["repair_route"]["target_test_type"],
+            "report_render_or_golden"
+        );
+        assert_eq!(alignment["items"][2]["gap_state"], "already_observed");
+        assert!(alignment["items"][2]["repair_route"].is_null());
+        assert_eq!(alignment["items"][2]["config_policy"]["observer"], "golden");
+        assert_eq!(alignment["items"][3]["gap_state"], "static_limitation");
+        assert_eq!(
+            alignment["items"][3]["static_limitations"][0]["category"],
+            "opaque_config_lookup"
+        );
+        assert!(alignment["items"][0]["presentation_text"].is_null());
+        Ok(())
+    }
+
+    #[test]
+    fn render_omits_finding_alignment_without_supported_items() -> Result<(), String> {
+        let output = sample_output(None);
+        let rendered = render(&output);
+        let value: serde_json::Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("check JSON should parse: {err}"))?;
+
+        assert!(value.get("finding_alignment").is_none());
+        Ok(())
     }
 
     #[test]
@@ -223,10 +587,27 @@ mod tests {
     }
 
     #[test]
+    fn finding_json_emits_owner_kind_only_when_present() {
+        let mut finding = unknown_finding();
+        let mut out = String::new();
+
+        finding_json(&mut out, &finding, 0);
+
+        assert!(!out.contains("\"owner_kind\""));
+
+        finding.owner_kind = Some(OwnerKind::Function);
+        out.clear();
+        finding_json(&mut out, &finding, 0);
+
+        assert!(out.contains("\"owner_kind\": \"function\""));
+    }
+
+    #[test]
     fn finding_json_preserves_language_metadata_order_with_static_limit_kind() {
         let mut finding = unknown_finding();
         finding.language = Some(LanguageId::TypeScript);
         finding.language_status = Some(LanguageStatus::Preview);
+        finding.owner_kind = Some(OwnerKind::Function);
         finding.static_limit_kind = Some(StaticLimitKind::MockedModule);
         let mut out = String::new();
 
@@ -236,6 +617,7 @@ mod tests {
             "\"suggested_next_action\": \"Escalate to real mutation testing.\",\n  \
              \"language\": \"typescript\",\n  \
              \"language_status\": \"preview\",\n  \
+             \"owner_kind\": \"function\",\n  \
              \"static_limit_kind\": \"mocked_module\""
         ));
     }
@@ -275,6 +657,7 @@ mod tests {
             recommended_next_step: Some("Escalate to real mutation testing.".to_string()),
             language: None,
             language_status: None,
+            owner_kind: None,
             static_limit_kind: None,
         }
     }
@@ -293,5 +676,45 @@ mod tests {
             summary: Summary::default(),
             findings: vec![unknown_finding()],
         }
+    }
+
+    fn finding_with_expression(
+        id_suffix: &str,
+        line: usize,
+        class: ExposureClass,
+        family: ProbeFamily,
+        expression: &str,
+    ) -> Finding {
+        finding_with_expression_in_file(
+            "src/device_labels.rs",
+            id_suffix,
+            line,
+            class,
+            family,
+            expression,
+            vec![],
+        )
+    }
+
+    fn finding_with_expression_in_file(
+        file: &str,
+        id_suffix: &str,
+        line: usize,
+        class: ExposureClass,
+        family: ProbeFamily,
+        expression: &str,
+        related_tests: Vec<RelatedTest>,
+    ) -> Finding {
+        let mut finding = unknown_finding();
+        let id = format!("probe:src_device_labels_rs:{line}:{id_suffix}");
+        finding.id = id.clone();
+        finding.probe.id = ProbeId(id);
+        finding.probe.location = SourceLocation::new(file, line, 1);
+        finding.probe.family = family;
+        finding.probe.expression = expression.to_string();
+        finding.class = class;
+        finding.related_tests = related_tests;
+        finding.recommended_next_step = None;
+        finding
     }
 }

@@ -68,6 +68,7 @@ The report can consume these inputs:
 | Input | Role | Required |
 | --- | --- | --- |
 | PR guidance comments JSON | Changed-line or summary-only recommendation source | Recommended |
+| Gap decision ledger | Policy-targeted gap IDs, repair routes, anchors, and verification commands | Recommended when available |
 | PR evidence ledger | PR-local debt, resolved debt, waivers, acknowledgements, and repair receipts | Recommended |
 | Baseline debt delta | Baseline-only, new, resolved, suppressed, stale, or invalid debt state | Recommended |
 | Test-oracle assistant proof | Joined recommendation, handoff, before/after evidence, receipt, and optional CI projection | Recommended |
@@ -78,7 +79,8 @@ The report can consume these inputs:
 | Status/staleness input | Optional freshness state for editor, artifact, or CI-produced evidence | Optional |
 
 Missing optional inputs must be reported as `null`, `unknown`,
-`not_available`, or warnings. Missing inputs must not be treated as
+`not_available`, omitted when the field is additive and unsupplied, or
+warnings. Missing inputs must not be treated as
 acknowledgement, waiver, suppression, improvement, or runtime confirmation.
 
 ## Report Contract
@@ -97,6 +99,7 @@ ripr first-action \
   --root . \
   --pr-guidance target/ripr/review/comments.json \
   --assistant-proof target/ripr/reports/test-oracle-assistant-proof.json \
+  --gap-ledger target/ripr/reports/gap-decision-ledger.json \
   --ledger target/ripr/reports/pr-evidence-ledger.json \
   --baseline-delta target/ripr/reports/baseline-debt-delta.json \
   --receipt target/ripr/reports/agent-receipt.json \
@@ -153,13 +156,16 @@ The first implementation should start with deterministic routing:
 
 1. Stale evidence routes to `refresh_evidence`.
 2. Missing required evidence routes to `generate_missing_artifact`.
-3. New PR-local actionable seams beat baseline-only debt.
-4. Complete test-oracle assistant proof beats a raw artifact chain for the same
+3. Explicit repairable stable Rust `GapRecord` inputs with PR-local new or
+   reintroduced policy state can route the first action without requiring a raw
+   assistant-proof chain.
+4. New PR-local actionable seams beat baseline-only debt.
+5. Complete test-oracle assistant proof beats a raw artifact chain for the same
    seam.
-5. Unchanged receipts route to `revise_focused_test`.
-6. Waived, acknowledged, or suppressed items remain visible but are not the top
+6. Unchanged receipts route to `revise_focused_test`.
+7. Waived, acknowledged, or suppressed items remain visible but are not the top
    action unless there is no unsuppressed PR-local work.
-7. No actionable seam returns `no_actionable_seam` and `no_action` rather than
+8. No actionable seam returns `no_actionable_seam` and `no_action` rather than
    silence.
 
 The producer must expose why the selected action came first. It must not hide
@@ -182,6 +188,7 @@ The JSON report uses schema version `0.1`:
   "inputs": {
     "pr_guidance": "target/ripr/review/comments.json",
     "assistant_proof": "target/ripr/reports/test-oracle-assistant-proof.json",
+    "gap_ledger": "target/ripr/reports/gap-decision-ledger.json",
     "ledger": "target/ripr/reports/pr-evidence-ledger.json",
     "baseline_delta": "target/ripr/reports/baseline-debt-delta.json",
     "receipt": "target/ripr/reports/agent-receipt.json",
@@ -197,7 +204,10 @@ The JSON report uses schema version `0.1`:
     "path": "src/pricing.rs",
     "line": 88,
     "classification": "weakly_exposed",
-    "missing_discriminator": "amount == discount_threshold"
+    "missing_discriminator": "amount == discount_threshold",
+    "gap_id": "gap:pr:pricing:threshold-boundary",
+    "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+    "repair_route": "AddBoundaryAssertion"
   },
   "title": "Add equality-boundary discriminator test",
   "why": "Changed predicate boundary is weakly exposed and lacks an equality-boundary discriminator.",
@@ -243,9 +253,9 @@ Field contract:
 - `kind` is always `first_useful_action`.
 - `status`, `action_kind`, and `audience` must use the bounded vocabularies in
   this spec.
-- `inputs.*` records explicit input paths. Missing optional paths are `null`;
-  missing required or invalid supplied paths produce warnings and an
-  appropriate fallback status.
+- `inputs.*` records explicit input paths. Missing optional paths are `null`
+  or omitted for additive unsupplied fields; missing required or invalid
+  supplied paths produce warnings and an appropriate fallback status.
 - `selected.*` is copied from existing RIPR artifacts. The producer must not
   mint a new seam identity or rerank with a model.
 - `classification` must use conservative static classification vocabulary
@@ -325,6 +335,9 @@ Next: refresh RIPR evidence before acting on this recommendation.
 - Missing assistant proof or PR guidance required for the selected route
   returns `status = "missing_required_artifact"` and
   `action_kind = "generate_missing_artifact"`.
+- A supplied repairable stable Rust `GapRecord` with a PR-local new policy state
+  returns `status = "actionable"` and uses the record's gap ID, repair route,
+  target, and verification command instead of raw classifier labels.
 - Baseline-only evidence returns `status = "baseline_only"` and keeps the debt
   visible without presenting it as PR-local first work.
 - Waived, acknowledged, and suppressed findings are visible but do not outrank
@@ -345,6 +358,8 @@ Follow-up tests should cover:
   baseline-only, acknowledged, waived, suppressed, already-improved,
   unchanged-after-attempt, and no-actionable-seam cases;
 - JSON and Markdown producer tests that pin the schema and fallback wording;
+- GapRecord routing tests that prove first-action can use explicit gap decisions
+  without assistant-proof inference and without projecting generic confidence;
 - generated-CI summary tests that keep the report advisory;
 - LSP projection tests that show the report in status without adding
   diagnostics or editor decorations;
@@ -356,6 +371,8 @@ Follow-up implementation belongs to Campaign 22:
 
 - `fixtures/first-useful-action-corpus` pins routing cases before code;
 - `report/first-useful-action` adds the read-only producer;
+- `report/first-useful-action-gap-record` adds optional gap decision ledger
+  routing for explicit repairable stable Rust `GapRecord` inputs;
 - `ci/first-useful-action-summary` surfaces the Markdown and JSON as advisory
   generated-CI artifacts;
 - `lsp/first-useful-action-status` projects the report through existing editor

@@ -53,6 +53,8 @@ The benchmark corpus must include fixture classes for:
 - self-computed expected value;
 - opaque helper static limitation;
 - cross-file constant limitation;
+- presentation text constant;
+- config and policy constant;
 - side-effect observer;
 - snapshot discriminator;
 - mock expectation;
@@ -144,6 +146,11 @@ Given a self-computed expected value, the benchmark prevents RIPR from treating
 that assertion as strong exact-value evidence unless the expected value is
 independent of the behavior under test.
 
+Given a changed presentation text constant, the benchmark expects one
+evidence-quality item for the declaration and literal, records visibility and
+actionability, and prevents RIPR from treating text alone as user test debt or
+mutation-testing work.
+
 Given a snapshot oracle with a known discriminating field, the benchmark
 distinguishes field-specific observation from broad snapshot output.
 
@@ -155,6 +162,8 @@ distinguishes field-specific observation from broad snapshot output.
   required fixture-class list.
 - `xtask::tests::evidence_quality_benchmark_reports_missing_must_not_claims`
   pins negative-guard enforcement.
+- `xtask::tests::evidence_quality_benchmark_requires_static_limitation_category_at_case_level`
+  pins static-limitation category placement.
 - `xtask::tests::evidence_quality_benchmark_keeps_runtime_only_signal_nonstatic`
   pins the runtime-only signal rule.
 - `xtask::tests::evidence_quality_benchmark_pins_line_movement_identity`

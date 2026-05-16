@@ -84,12 +84,17 @@ Before requesting review:
 - [ ] New non-Rust programming files are covered by the file policy allowlist.
 - [ ] New generated files, dependency surfaces, process spawning, and network
       behavior are covered by policy allowlists.
+- [ ] Generated evidence is not hand-authored: ordinary PRs do not carry
+      `badges/*.json`, `target/ripr/**`, or
+      `crates/ripr/examples/sample/target/**` residue.
 - [ ] `cargo xtask shape` or `cargo xtask fix-pr` was run before final checks.
 
 ## PR Shaping Commands
 
 The shape/check/guide model is documented in
 [PR automation](docs/PR_AUTOMATION.md).
+Generated artifact ownership is documented in
+[Generated evidence discipline](docs/GENERATED_EVIDENCE.md).
 
 Use `shape` when the tree needs safe normalization:
 

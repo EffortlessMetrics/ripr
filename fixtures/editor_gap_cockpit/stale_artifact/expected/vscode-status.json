@@ -1,0 +1,20 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_gap_cockpit/stale_artifact",
+  "states": [
+    {
+      "name": "stale_artifact",
+      "status_bar": "ripr: stale evidence; refresh before acting",
+      "show_status_contains": [
+        "State: stale evidence",
+        "Diagnostics: 0",
+        "Next safe action: refresh analysis before acting"
+      ],
+      "must_not": [
+        "diagnostic",
+        "repair packet",
+        "verify command"
+      ]
+    }
+  ]
+}

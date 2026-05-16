@@ -1,0 +1,51 @@
+{
+  "fixture": "editor_gap_cockpit/rust_actionable",
+  "diagnostics": [
+    {
+      "uri": "src/pricing.rs",
+      "range": {
+        "start": {
+          "line": 41,
+          "character": 0
+        },
+        "end": {
+          "line": 41,
+          "character": 120
+        }
+      },
+      "severity": "warning",
+      "code": "ripr-gap-MissingBoundaryAssertion",
+      "source": "ripr",
+      "message": "ripr gap: MissingBoundaryAssertion; repair route: AddBoundaryAssertion; changed behavior: amount >= threshold; suggested check: assert_eq!(discounted_total(threshold), expected)",
+      "data": {
+        "schema_version": "0.1",
+        "source": "gap_decision_ledger",
+        "gap_ledger": "target/ripr/reports/gap-decision-ledger.json",
+        "gap_id": "gap:rust:pricing:threshold-boundary",
+        "canonical_gap_id": "gap:rust:pricing:threshold-boundary",
+        "gap_kind": "MissingBoundaryAssertion",
+        "language": "rust",
+        "language_status": "stable",
+        "gap_state": "actionable",
+        "policy_state": "advisory",
+        "repairability": "repairable",
+        "repair_route": {
+          "route_kind": "AddBoundaryAssertion",
+          "target_file": "tests/pricing.rs",
+          "target_line": 33,
+          "related_test": "tests/pricing.rs::discount_threshold_boundary",
+          "assertion_shape": "assert_eq!(discounted_total(threshold), expected)",
+          "changed_behavior": "amount >= threshold",
+          "stop_conditions": [
+            "Stop if the related test no longer reaches discounted_total."
+          ]
+        },
+        "verification_commands": [
+          "ripr agent verify --root . --json"
+        ],
+        "receipt_command": "ripr agent receipt --root . --json",
+        "authority_boundary": "advisory"
+      }
+    }
+  ]
+}

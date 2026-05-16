@@ -3,8 +3,9 @@
 `ripr` exposes two badges. Both count **unresolved** static exposure gaps —
 inbox-zero, not coverage. Diff-scoped badges preserve the legacy Finding
 exposure basis; repo-scoped public badges use seam-native classified repo
-seams. This doc fixes the vocabulary, the counting rule, the JSON shape, and
-what the badge does and does not claim.
+seams by default and can use explicit gap-decision-ledger targets when supplied.
+This doc fixes the vocabulary, the counting rule, the JSON shape, and what the
+badge does and does not claim.
 
 This is the contract that `ripr check --format badge-json` and
 `--format badge-shields` will render against. It pairs with
@@ -86,6 +87,13 @@ extension store badge.
   `--format repo-badge-shields`, `--format repo-badge-plus-json`,
   and `--format repo-badge-plus-shields`; the xtask wrapper is
   `cargo xtask repo-badge-artifacts`.
+
+Committed `badges/*.json` files are generated endpoint snapshots, not
+hand-authored copy. Ordinary PRs should not carry badge endpoint diffs; use
+`cargo xtask badges` or the Badge Endpoints workflow and let the generated
+`badge: refresh public endpoints` PR carry the endpoint update.
+`cargo xtask check-badge-diff-policy` enforces that ownership boundary while
+leaving README badge link/layout edits to normal docs review.
 
 ### `ripr+` fact source vs aggregation scope
 
@@ -306,6 +314,13 @@ Repo-scoped badge artifacts use the `seam_native` basis. These counts come
 from `SeamGripClass` in RIPR-SPEC-0005 and consume the configured seam
 severity from `ripr.toml`.
 
+When `ripr check --format repo-badge-json --gap-ledger <path>` or another
+repo-badge format supplies a gap decision ledger, the native JSON uses
+`basis = "gap_decision_ledger"` and counts explicit
+`projection_eligibility.ripr_zero_count` or `ripr_plus_count` targets instead
+of recalculating from seam-native counts. That path is for policy-backed badge
+refreshes; the default repo badge behavior remains seam-native.
+
 | Seam grip class | Counts in repo `ripr` | Notes |
 | --- | :---: | --- |
 | `weakly_gripped` | yes, unless configured `off` | Headline-eligible seam gap. |
@@ -372,7 +387,7 @@ output boundary; it is never the source of truth.
 
 ```json
 {
-  "schema_version": "0.3",
+  "schema_version": "0.4",
   "kind": "ripr",
   "scope": "repo",
   "basis": "seam_native",
@@ -390,6 +405,7 @@ output boundary; it is never the source of truth.
     "unknowns_test_efficiency": 0,
     "analyzed_findings": 0,
     "analyzed_seams": 120,
+    "analyzed_gap_records": 0,
     "analyzed_tests": 0
   },
   "reason_counts": {
@@ -418,7 +434,8 @@ otherwise identical so consumers can parse one shape.
 
 `schema_version` is the badge-native schema. Bumping it is a public-contract
 change and must be called out in the PR. `0.3` adds `basis` and
-`counts.analyzed_seams`.
+`counts.analyzed_seams`; `0.4` adds `basis = "gap_decision_ledger"` and
+`counts.analyzed_gap_records`.
 
 ### Scope and basis metadata (native only)
 
@@ -427,7 +444,7 @@ field distinguishes legacy diff finding counts from seam-native repo counts:
 
 ```json
 {
-  "schema_version": "0.3",
+  "schema_version": "0.4",
   "kind": "ripr",
   "scope": "diff",
   "basis": "finding_exposure",
@@ -444,6 +461,8 @@ field distinguishes legacy diff finding counts from seam-native repo counts:
   aggregation, currently used by diff-scoped badge artifacts.
 - `"basis": "seam_native"` — `RepoSeam`/`SeamGripClass` aggregation,
   currently used by repo-scoped badge artifacts.
+- `"basis": "gap_decision_ledger"` — explicit GapRecord projection targets,
+  used only when repo badge formats are invoked with `--gap-ledger`.
 
 The Shields projection remains exactly four fields. Scope and basis metadata
 live only in native JSON, docs, and consumer tooling.
@@ -625,6 +644,18 @@ cargo xtask repo-badge-artifacts
 # writes target/ripr/reports/repo-ripr-badges.md
 ```
 
+When a policy-backed gap decision ledger is the desired badge source, pass it
+explicitly:
+
+```bash
+cargo xtask repo-badge-artifacts --gap-ledger target/ripr/reports/gap-decision-ledger.json
+```
+
+That renders the same repo badge artifact filenames with
+`basis = "gap_decision_ledger"` and counts only the ledger's explicit
+`projection_eligibility.ripr_zero_count` and `ripr_plus_count` targets.
+Without `--gap-ledger`, repo badge artifacts keep the seam-native basis.
+
 ### `ripr` badge product contract
 
 The `ripr` badge product contract is a single sentence:
@@ -697,11 +728,25 @@ That regenerates `target/ripr/reports/repo-ripr-{badge,plus-badge}-shields.json`
 via `repo_badge_artifacts()` and copies the two Shields projections
 into `badges/`. Commit the resulting diff.
 
+For a policy-backed endpoint refresh, provide the same explicit gap ledger:
+
+```bash
+cargo xtask badges --gap-ledger target/ripr/reports/gap-decision-ledger.json
+cargo xtask badges --check --gap-ledger target/ripr/reports/gap-decision-ledger.json
+```
+
+This keeps public endpoint updates tied to the same `GapRecord` projection
+targets used by RIPR Zero and avoids treating raw report counts as badge
+authority.
+
 #### Pinned contract for the endpoint
 
 - Only the two `badges/*.json` files are part of the public endpoint
   surface — no reports, no markdown, no diff-scoped artifacts, no
   `target/` snapshots.
+- `cargo xtask check-badge-diff-policy` rejects `badges/*.json` diffs outside
+  an explicit badge refresh branch, title, or work item. README badge link and
+  layout edits remain source docs and can move through ordinary docs PRs.
 - The endpoint URL points at the `main` branch via
   `raw.githubusercontent.com`. Shields/CDN cache layers can take
   minutes to refresh after a `main` push.

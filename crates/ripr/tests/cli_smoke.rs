@@ -1139,7 +1139,7 @@ fn check_badge_json_output_has_native_badge_shape() {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.3""#));
+    assert!(stdout.contains(r#""schema_version": "0.4""#));
     assert!(stdout.contains(r#""kind": "ripr""#));
     assert!(stdout.contains(r#""scope": "diff""#));
     assert!(stdout.contains(r#""basis": "finding_exposure""#));
@@ -1366,6 +1366,7 @@ fn init_ci_github_dry_run_prints_config_and_workflow_without_writing() -> Result
     assert!(stdout.contains("ripr agent review-summary"));
     assert!(stdout.contains("target/ripr/workflow/agent-status.md"));
     assert!(stdout.contains("target/ripr/workflow/agent-review-summary.md"));
+    assert!(stdout.contains("### Language preview grouping"));
     assert!(stdout.contains("github/codeql-action/upload-sarif@v4"));
     assert!(!workspace.join("ripr.toml").exists());
     assert!(!workspace.join(".github/workflows/ripr.yml").exists());
@@ -1450,6 +1451,7 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
     assert!(workflow.contains("Emit RIPR PR guidance annotations"));
     assert!(workflow.contains("Add RIPR advisory summary"));
     assert!(workflow.contains("## RIPR advisory summary"));
+    assert!(workflow.contains("### Language preview grouping"));
     assert!(workflow.contains("### SARIF and badge status"));
     assert!(workflow.contains("### PR guidance annotations"));
     assert!(workflow.contains("### Known limits"));
@@ -2281,7 +2283,7 @@ fn check_repo_badge_plus_json_emits_native_shape_with_fixture_report() -> Result
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.3""#));
+    assert!(stdout.contains(r#""schema_version": "0.4""#));
     assert!(stdout.contains(r#""kind": "ripr_plus""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "seam_native""#));
@@ -2380,7 +2382,7 @@ fn check_repo_badge_json_emits_repo_scope_metadata() -> Result<(), String> {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.3""#));
+    assert!(stdout.contains(r#""schema_version": "0.4""#));
     assert!(stdout.contains(r#""kind": "ripr""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "seam_native""#));
@@ -2390,6 +2392,70 @@ fn check_repo_badge_json_emits_repo_scope_metadata() -> Result<(), String> {
     );
     assert!(stdout.contains(r#""label": "ripr""#));
     assert!(stdout.contains(r#""counts""#));
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn check_repo_badge_json_can_use_gap_ledger_targets() -> Result<(), String> {
+    let workspace = make_temp_workspace(None)?;
+    let ledger = workspace.join("gap-decision-ledger.json");
+    std::fs::write(
+        &ledger,
+        r#"{
+          "gap_records": [
+            {
+              "gap_id": "gap:repo:pricing:reintroduced-boundary",
+              "kind": "MissingBoundaryAssertion",
+              "language": "rust",
+              "language_status": "stable",
+              "scope": "repo_scoped",
+              "gap_state": "reintroduced",
+              "policy_state": "reintroduced",
+              "repairability": "repairable",
+              "projection_eligibility": {
+                "ripr_zero_count": {"eligible": true, "reason": "repo_policy_targeted_unresolved_gap"},
+                "ripr_plus_count": {"eligible": true, "reason": "broader_repo_advisory_gap"}
+              }
+            },
+            {
+              "gap_id": "gap:repo:waived",
+              "kind": "MissingValueAssertion",
+              "language": "rust",
+              "language_status": "stable",
+              "scope": "repo_scoped",
+              "gap_state": "waived",
+              "policy_state": "waived",
+              "repairability": "no_action",
+              "projection_eligibility": {
+                "ripr_zero_count": {"eligible": false, "reason": "waived"},
+                "ripr_plus_count": {"eligible": false, "reason": "waived"}
+              }
+            }
+          ]
+        }"#,
+    )
+    .map_err(|e| format!("write gap ledger: {e}"))?;
+
+    let root = workspace.display().to_string();
+    let ledger_path = ledger.display().to_string();
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--format",
+        "repo-badge-json",
+        "--gap-ledger",
+        &ledger_path,
+    ]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains(r#""schema_version": "0.4""#));
+    assert!(stdout.contains(r#""basis": "gap_decision_ledger""#));
+    assert!(stdout.contains(r#""message": "1""#));
+    assert!(stdout.contains(r#""analyzed_gap_records": 2"#));
 
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())
@@ -2439,7 +2505,7 @@ fn check_repo_badge_plus_json_emits_repo_scope_metadata() -> Result<(), String> 
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.3""#));
+    assert!(stdout.contains(r#""schema_version": "0.4""#));
     assert!(stdout.contains(r#""kind": "ripr_plus""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "seam_native""#));

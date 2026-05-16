@@ -81,6 +81,9 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
         if let Some(status) = finding.language_status {
             out.push_str(&format!("  status: {}\n", status.as_str()));
         }
+        if let Some(owner_kind) = finding.owner_kind {
+            out.push_str(&format!("  owner kind: {}\n", owner_kind.as_str()));
+        }
     }
 
     out.push_str("\nStatic exposure\n");
@@ -127,6 +130,7 @@ fn should_render_language_metadata(finding: &Finding) -> bool {
         || finding
             .language_status
             .is_some_and(|status| status != LanguageStatus::Stable)
+        || finding.owner_kind.is_some()
 }
 
 fn evidence_path_lines(finding: &Finding) -> Vec<String> {
@@ -447,6 +451,7 @@ mod tests {
             recommended_next_step: Some("Add assertion for disabled path result.".to_string()),
             language: None,
             language_status: None,
+            owner_kind: None,
             static_limit_kind: None,
         }
     }
@@ -486,6 +491,7 @@ mod tests {
             recommended_next_step: Some("Escalate to real mutation testing.".to_string()),
             language: None,
             language_status: None,
+            owner_kind: None,
             static_limit_kind: None,
         }
     }

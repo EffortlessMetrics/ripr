@@ -399,10 +399,9 @@ fn expect_assertion_from_expression(
 }
 
 fn find_related_tests(owner: &TypeScriptOwner, all_tests: &[TypeScriptTest]) -> Vec<RelatedTest> {
-    let needle = format!("{}(", owner.name);
     all_tests
         .iter()
-        .filter(|test| test.body_text.contains(&needle))
+        .filter(|test| test_references_owner(test, owner))
         .map(|test| {
             let strongest = strongest_assertion(&test.assertions);
             let (oracle_kind, oracle_strength, oracle_text) = match strongest {
@@ -423,6 +422,68 @@ fn find_related_tests(owner: &TypeScriptOwner, all_tests: &[TypeScriptTest]) -> 
             }
         })
         .collect()
+}
+
+fn test_references_owner(test: &TypeScriptTest, owner: &TypeScriptOwner) -> bool {
+    contains_call_name(&test.body_text, &owner.name)
+}
+
+fn contains_call_name(body_text: &str, call_name: &str) -> bool {
+    let needle = format!("{call_name}(");
+    body_text.match_indices(&needle).any(|(idx, _)| {
+        has_call_boundary(body_text, idx)
+            && !line_prefix_looks_like_comment_or_string(body_text, idx)
+            && !inside_block_comment(body_text, idx)
+    })
+}
+
+fn has_call_boundary(body_text: &str, idx: usize) -> bool {
+    body_text[..idx]
+        .chars()
+        .next_back()
+        .is_none_or(|ch| !is_javascript_identifier_char(ch) && ch != '.')
+}
+
+fn line_prefix_looks_like_comment_or_string(body_text: &str, idx: usize) -> bool {
+    let line_start = body_text[..idx].rfind('\n').map_or(0, |offset| offset + 1);
+    let prefix = &body_text[line_start..idx];
+    prefix.trim_start().starts_with("//") || has_unclosed_quote_or_template(prefix)
+}
+
+fn inside_block_comment(body_text: &str, idx: usize) -> bool {
+    let prefix = &body_text[..idx];
+    let comment_start = prefix.rfind("/*");
+    let comment_end = prefix.rfind("*/");
+    comment_start.is_some_and(|start| comment_end.is_none_or(|end| start > end))
+}
+
+fn has_unclosed_quote_or_template(prefix: &str) -> bool {
+    let mut escaped = false;
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut in_template = false;
+    for ch in prefix.chars() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '\'' && !in_double && !in_template {
+            in_single = !in_single;
+        } else if ch == '"' && !in_single && !in_template {
+            in_double = !in_double;
+        } else if ch == '`' && !in_single && !in_double {
+            in_template = !in_template;
+        }
+    }
+    in_single || in_double || in_template
+}
+
+fn is_javascript_identifier_char(ch: char) -> bool {
+    ch == '_' || ch == '$' || ch.is_ascii_alphanumeric()
 }
 
 fn assertion_oracle_text(assertion: &TypeScriptAssertion) -> String {
@@ -455,11 +516,10 @@ fn collect_related_mock_paths(
     owner: &TypeScriptOwner,
     all_tests: &[TypeScriptTest],
 ) -> Vec<String> {
-    let needle = format!("{}(", owner.name);
     let mut paths: Vec<String> = Vec::new();
     for test in all_tests
         .iter()
-        .filter(|test| test.body_text.contains(&needle))
+        .filter(|test| test_references_owner(test, owner))
     {
         for path in &test.mocks_in_file {
             if !paths.iter().any(|existing| existing == path) {
@@ -755,6 +815,7 @@ fn classify_change(
         recommended_next_step: Some(recommended),
         language: Some(DomainLanguageId::TypeScript),
         language_status: Some(LanguageStatus::Preview),
+        owner_kind: None,
         static_limit_kind: (!mock_paths.is_empty()).then_some(StaticLimitKind::MockedModule),
     })
 }
@@ -999,6 +1060,82 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
         let related = find_related_tests(&owner, &tests);
         assert_eq!(related.len(), 1);
         assert_eq!(related[0].name, "alpha");
+    }
+
+    #[test]
+    fn find_related_tests_ignores_object_method_calls_for_function_owners() {
+        let owner = TypeScriptOwner {
+            name: "applyDiscount".to_string(),
+            file: PathBuf::from("src/lib.ts"),
+            start_line: 1,
+            end_line: 5,
+        };
+        let tests = vec![TypeScriptTest {
+            name: "method call on another object".to_string(),
+            file: PathBuf::from("tests/cart.test.ts"),
+            line: 1,
+            body_text: "expect(order.applyDiscount(50)).toBe(40);".to_string(),
+            assertions: Vec::new(),
+            mocks_in_file: Vec::new(),
+        }];
+
+        let related = find_related_tests(&owner, &tests);
+
+        assert!(related.is_empty());
+    }
+
+    #[test]
+    fn find_related_tests_ignores_call_shaped_string_mentions() {
+        let owner = TypeScriptOwner {
+            name: "applyDiscount".to_string(),
+            file: PathBuf::from("src/lib.ts"),
+            start_line: 1,
+            end_line: 5,
+        };
+        let tests = vec![TypeScriptTest {
+            name: "string mention".to_string(),
+            file: PathBuf::from("tests/docs.test.ts"),
+            line: 1,
+            body_text: r#"expect("applyDiscount(").toContain("applyDiscount(");"#.to_string(),
+            assertions: Vec::new(),
+            mocks_in_file: Vec::new(),
+        }];
+
+        let related = find_related_tests(&owner, &tests);
+
+        assert!(related.is_empty());
+    }
+
+    #[test]
+    fn find_related_tests_ignores_call_shaped_comment_mentions() {
+        let owner = TypeScriptOwner {
+            name: "applyDiscount".to_string(),
+            file: PathBuf::from("src/lib.ts"),
+            start_line: 1,
+            end_line: 5,
+        };
+        let tests = vec![
+            TypeScriptTest {
+                name: "line comment mention".to_string(),
+                file: PathBuf::from("tests/docs.test.ts"),
+                line: 1,
+                body_text: "// applyDiscount(\nexpect(total).toBe(40);".to_string(),
+                assertions: Vec::new(),
+                mocks_in_file: Vec::new(),
+            },
+            TypeScriptTest {
+                name: "block comment mention".to_string(),
+                file: PathBuf::from("tests/docs.test.ts"),
+                line: 4,
+                body_text: "/* applyDiscount(\n */\nexpect(total).toBe(40);".to_string(),
+                assertions: Vec::new(),
+                mocks_in_file: Vec::new(),
+            },
+        ];
+
+        let related = find_related_tests(&owner, &tests);
+
+        assert!(related.is_empty());
     }
 
     #[test]
@@ -1519,6 +1656,26 @@ test("alpha", () => {
             file: PathBuf::from("tests/other.test.ts"),
             line: 1,
             body_text: "otherHelper()".to_string(),
+            assertions: Vec::new(),
+            mocks_in_file: vec!["./api".to_string()],
+        }];
+        let paths = collect_related_mock_paths(&owner, &tests);
+        assert!(paths.is_empty());
+    }
+
+    #[test]
+    fn collect_related_mock_paths_ignores_object_method_mentions() {
+        let owner = TypeScriptOwner {
+            name: "applyDiscount".to_string(),
+            file: PathBuf::from("src/lib.ts"),
+            start_line: 1,
+            end_line: 5,
+        };
+        let tests = vec![TypeScriptTest {
+            name: "unrelated method".to_string(),
+            file: PathBuf::from("tests/cart.test.ts"),
+            line: 1,
+            body_text: "expect(order.applyDiscount(50)).toBe(40);".to_string(),
             assertions: Vec::new(),
             mocks_in_file: vec!["./api".to_string()],
         }];

@@ -36,9 +36,15 @@
   ],
   "activationEvents": [
     "onLanguage:rust",
+    "onLanguage:typescript",
+    "onLanguage:typescriptreact",
+    "onLanguage:javascript",
+    "onLanguage:javascriptreact",
+    "onLanguage:python",
     "workspaceContains:Cargo.toml",
     "onCommand:ripr.restartServer",
-    "onCommand:ripr.showStatus"
+    "onCommand:ripr.showStatus",
+    "onCommand:ripr.diagnoseSetup"
   ],
   "main": "./out/src/extension.js",
   "scripts": {
@@ -140,6 +146,10 @@
       {
         "command": "ripr.showStatus",
         "title": "ripr: Show Status"
+      },
+      {
+        "command": "ripr.diagnoseSetup",
+        "title": "ripr: Diagnose Setup"
       },
       {
         "command": "ripr.copyContext",

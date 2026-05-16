@@ -27,6 +27,18 @@ promote any capability globally.
 - Oracle cases must distinguish clear exact-value helpers from opaque helpers
   and must keep tautological equality assertions from claiming strong
   exact-value grip.
+- Presentation text constants must not become user test debt from text alone.
+  The benchmark requires visibility, actionability, recommended observer, and
+  declaration-plus-literal grouping evidence before downstream surfaces can
+  render one useful action.
+- Finding-alignment cases must preserve raw findings as supporting evidence
+  while pinning one canonical evidence item, explicit `gap_state`,
+  `actionability`, repair route, and count bucket for user-visible,
+  already-observed, internal-only, static-limitation, and non-collision states.
+- Config/policy constants must not become user test debt from metadata alone.
+  The benchmark requires role, visibility, observer/discriminator,
+  actionability, and named static-limitation evidence before downstream
+  surfaces can render repair guidance.
 
 Run:
 

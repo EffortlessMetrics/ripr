@@ -22,6 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -40,8 +42,11 @@ jobs:
       - run: cargo xtask check-workflows
       - run: cargo xtask check-droid-review-config
       - run: cargo xtask check-spec-format
+      - run: cargo xtask check-spec-numbering
       - run: cargo xtask check-fixture-contracts
       - run: cargo xtask check-generated
+      - run: cargo xtask check-badge-diff-policy
+      - run: cargo xtask check-generated-clean
       - run: cargo xtask check-dependencies
       - run: cargo xtask check-process-policy
       - run: cargo xtask check-network-policy
@@ -64,6 +69,35 @@ jobs:
       - name: Generate ripr PR summary
         if: always()
         run: cargo xtask pr-summary || true
+      - name: Generate RIPR PR evidence
+        if: github.event_name == 'pull_request'
+        run: |
+          cargo xtask ripr-pr --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}"
+          cargo xtask ripr-pr --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}" --check
+      - name: Generate RIPR review guidance
+        if: github.event_name == 'pull_request'
+        env:
+          RIPR_REVIEW_COMMENTS_TIMEOUT_SECS: "60"
+        run: |
+          cargo xtask ripr-review-comments --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}"
+          cargo xtask ripr-review-comments --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}" --check
+      - name: Generate impacted evidence
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          cargo xtask impacted-evidence
+          cargo xtask impacted-evidence --check
+      - name: Generate PR evidence summary
+        if: github.event_name == 'pull_request'
+        run: |
+          cargo xtask ripr-pr-summary
+          cargo xtask ripr-pr-summary --check
+      - name: Generate RIPR annotations
+        if: github.event_name == 'pull_request'
+        run: |
+          cargo xtask ripr-annotations
+          cargo xtask ripr-annotations --check
       - name: Generate ripr report index
         if: always()
         run: cargo xtask reports index || true
@@ -85,6 +119,24 @@ jobs:
           if [ -f target/ripr/reports/ripr-badges.md ]; then
             cat target/ripr/reports/ripr-badges.md >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Write PR evidence summary
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          if [ -f target/ripr/pr/summary.md ]; then
+            cat target/ripr/pr/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Write RIPR review guidance summary
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          if [ -f target/ripr/review/comments.md ]; then
+            printf "\n" >> "$GITHUB_STEP_SUMMARY" && cat target/ripr/review/comments.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Write impacted evidence summary
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          if [ -f target/xtask/impacted-evidence/latest.md ]; then
+            printf "\n" >> "$GITHUB_STEP_SUMMARY" && cat target/xtask/impacted-evidence/latest.md >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Upload ripr reports
         if: always()
         uses: actions/upload-artifact@v7
@@ -93,6 +145,9 @@ jobs:
           path: |
             target/ripr/reports/
             target/ripr/receipts/
+            target/ripr/pr/
+            target/ripr/review/
+            target/xtask/impacted-evidence/
           if-no-files-found: ignore
 
   msrv:

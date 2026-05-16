@@ -766,6 +766,27 @@ fn placement_from_comment(item: &Value) -> Option<PlanPlacement> {
 }
 
 fn comment_body(item: &Value) -> String {
+    if let Some(card) = item.get("repair_card").and_then(Value::as_object) {
+        let gap_kind = card
+            .get("gap_kind")
+            .and_then(Value::as_str)
+            .unwrap_or("repairable gap");
+        let why = card
+            .get("why_this_matters")
+            .and_then(Value::as_str)
+            .unwrap_or("This PR-local gap has a bounded repair route.");
+        let repair = card
+            .get("repair")
+            .and_then(Value::as_str)
+            .unwrap_or("Follow the repair route in the gap ledger.");
+        let verify = card
+            .get("verify_command")
+            .and_then(Value::as_str)
+            .unwrap_or("ripr first-action --root .");
+        return format!(
+            "ripr gap: {gap_kind}\n\nWhy this matters: {why}\n\nRepair: {repair}\n\nVerify: `{verify}`"
+        );
+    }
     if let Some(missing) = string_field(item, "missing_discriminator") {
         return format!(
             "RIPR advisory: static evidence says this seam misses `{}`. Add one focused boundary assertion and verify with `ripr agent verify`.",
@@ -868,6 +889,24 @@ fn lower_first(value: &str) -> String {
 mod tests {
     use super::*;
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn inline_comment_body_prefers_gap_repair_card() {
+        let body = comment_body(&serde_json::json!({
+            "repair_card": {
+                "gap_kind": "MissingBoundaryAssertion",
+                "why_this_matters": "Changed behavior `amount == threshold` has a repairable gap.",
+                "repair": "assert_eq!(discount(100, 100), 90)",
+                "verify_command": "cargo xtask fixtures boundary_gap"
+            },
+            "missing_discriminator": "amount == threshold"
+        }));
+
+        assert!(body.contains("ripr gap: MissingBoundaryAssertion"));
+        assert!(body.contains("Repair: assert_eq!(discount(100, 100), 90)"));
+        assert!(body.contains("Verify: `cargo xtask fixtures boundary_gap`"));
+        assert!(!body.contains("Confidence"));
+    }
 
     #[test]
     fn inline_comment_publish_plan_matches_fixture_corpus() -> Result<(), String> {

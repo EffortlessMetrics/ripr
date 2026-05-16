@@ -1,8 +1,8 @@
 # Lane 3 Editor Preview Routing Plan
 
-Status: blocked
+Status: implemented for Campaign 27 routing slice
 
-Blocked by: `analysis/python-preview-adapter`
+Blocked by: none
 
 Campaign: Campaign 27, Language Adapter Preview
 
@@ -29,13 +29,16 @@ Linked ADR:
 
 Lane 3's saved-workspace Rust editor cockpit is complete and maintenance-only.
 TypeScript editor readiness is complete for current Campaign 27 routing
-readiness. Python preview adapter work remains incomplete, so
-`lsp/editor-language-routing` must stay blocked until Python emits
-editor-projectable preview artifacts or the active manifest explicitly
-supersedes that blocker.
+readiness. Python preview adapter work is complete for current Campaign 27
+routing readiness, so `lsp/editor-language-routing` has landed as the editor
+projection slice.
 
-Do not add VS Code preview selectors, LSP preview routing, hover/static-limit
-preview behavior, or preview workflow fixtures while this plan is blocked.
+The routing slice registers VS Code preview selectors for TypeScript,
+TypeScript React, JavaScript, JavaScript React, and Python; keeps Rust default
+behavior unchanged; routes stale-buffer guards through the supported-language
+set; and surfaces preview language/status/static-limit metadata in diagnostic
+data, hover, and status. Generated CI grouping remains the next Campaign 27
+work item.
 
 ## Prompt-To-Artifact Audit
 
@@ -60,19 +63,21 @@ Objective restated as deliverables:
 | Saved-workspace only and projection-only editor architecture | [ADR-0011](../../docs/adr/0011-editor-preview-routing-is-projection-only.md), [RIPR-SPEC-0036](../../docs/specs/RIPR-SPEC-0036-editor-preview-routing.md), [RIPR-SPEC-0037](../../docs/specs/RIPR-SPEC-0037-editor-preview-static-limit-projection.md) | Covered as a planned architecture and behavior contract | Future implementation diffs must prove they only consume existing artifacts |
 | Fail-closed behavior for stale, malformed, missing, unsupported, and wrong-workspace evidence | [Lane 3 tracker](../../docs/lanes/LANE_3_EDITOR_LSP.md), `fixtures/editor_lsp_workflow`, `cargo xtask lsp-cockpit-report` | Covered for the current Rust saved-workspace cockpit | Preview fixtures and VS Code e2e must add matching preview-language cases |
 | TypeScript editor readiness is safe for projection | `.ripr/goals/active.toml`, Campaign 27 ledger, closed #779, #780, #782, #785, and #786 | Complete for current Campaign 27 routing readiness | Re-audit only if a new editor-facing TypeScript regression appears |
-| Python preview adapter emits editor-projectable preview facts | `.ripr/goals/active.toml`, #771, Campaign 27 ledger | Incomplete; `analysis/python-preview-adapter` is active | Wait for Python owner, test, assertion, probe, related-test, static-limit, and fixture/golden slices |
-| `lsp/editor-language-routing` is selected or ready | `.ripr/goals/active.toml`, #772, `cargo xtask goals next` | Blocked; `cargo xtask goals next` reports no ready work items | Do not add selectors or routing until Python completes or the manifest explicitly supersedes the blocker |
-| TypeScript, TSX, JavaScript, JSX, and Python selectors are opt-in and Rust defaults are preserved | [RIPR-SPEC-0036](../../docs/specs/RIPR-SPEC-0036-editor-preview-routing.md), this plan's routing work item | Specified, not implemented | Implement only in `lsp(language): add opt-in editor language routing` after readiness |
-| Preview diagnostics, hover, status, and actions label preview evidence | [RIPR-SPEC-0036](../../docs/specs/RIPR-SPEC-0036-editor-preview-routing.md), [RIPR-SPEC-0037](../../docs/specs/RIPR-SPEC-0037-editor-preview-static-limit-projection.md) | Specified, not implemented | Implement and fixture-pin in preview routing/static-limit slices |
-| Static limits appear before suggested action language | [RIPR-SPEC-0037](../../docs/specs/RIPR-SPEC-0037-editor-preview-static-limit-projection.md), #807, #814 | Specified; structured `static_limit_kind` is available after #857, but Python preview must still populate explicit limits | Prefer `static_limit_kind` for preview labels when present; otherwise display inspected stable text only and do not branch actions on parsed prose |
-| Proof path includes LSP tests, VS Code e2e, editor workflow fixtures, and `lsp-cockpit-report` | Work items and proof commands below | Planned for behavior slices | Not complete until preview routing fixtures, tests, e2e, and cockpit report pass after implementation |
+| Python preview adapter emits editor-projectable preview facts | `.ripr/goals/active.toml`, #771, Campaign 27 ledger | Complete for current Campaign 27 routing readiness | Re-audit only if a new editor-facing Python regression appears |
+| `lsp/editor-language-routing` is selected or ready | `.ripr/goals/active.toml`, #772, `cargo xtask goals next` | Selected and implemented | CI grouping is the next Campaign 27 work item |
+| TypeScript, TSX, JavaScript, JSX, and Python selectors are opt-in and Rust defaults are preserved | [RIPR-SPEC-0036](../../docs/specs/RIPR-SPEC-0036-editor-preview-routing.md), this plan's routing work item | Implemented in VS Code activation and document selector configuration | Recheck compile/e2e after selector changes |
+| Preview diagnostics, hover, status, and actions label preview evidence | [RIPR-SPEC-0036](../../docs/specs/RIPR-SPEC-0036-editor-preview-routing.md), [RIPR-SPEC-0037](../../docs/specs/RIPR-SPEC-0037-editor-preview-static-limit-projection.md) | Implemented for diagnostic metadata, hover boundary text, status refresh counts, and existing cockpit actions | Future fixture work may add richer mixed-language editor workflow packets |
+| Static limits appear before suggested action language | [RIPR-SPEC-0037](../../docs/specs/RIPR-SPEC-0037-editor-preview-static-limit-projection.md), #807, #814 | Implemented for structured `static_limit_kind` in hover before RIPR evidence and status counts before action-oriented text | Do not branch action semantics on parsed prose |
+| Proof path includes LSP tests, VS Code e2e, editor workflow fixtures, and `lsp-cockpit-report` | Work items and proof commands below | In progress for behavior slice validation | Remaining closeout/docs work can add dedicated preview workflow fixtures if needed |
 | No hidden analysis reruns, source edits, generated tests, provider calls, mutation execution, gate/default-blocking behavior, CodeLens, inlay hints, semantic tokens, inline patches, or unsaved-buffer overlays | [ADR-0011](../../docs/adr/0011-editor-preview-routing-is-projection-only.md), hard boundaries in this plan, [Lane 3 tracker](../../docs/lanes/LANE_3_EDITOR_LSP.md) | Covered as contract and tracker boundary | Future implementation review must inspect `editors/vscode/` and `crates/ripr/src/lsp/` diffs for scope drift |
 | Source-of-truth stack separates why, behavior, architecture, plan, active state, readiness, and closeout | [RIPR-PROP-0003](../../docs/proposals/RIPR-PROP-0003-editor-preview-routing.md), [RIPR-SPEC-0036](../../docs/specs/RIPR-SPEC-0036-editor-preview-routing.md), [RIPR-SPEC-0037](../../docs/specs/RIPR-SPEC-0037-editor-preview-static-limit-projection.md), [ADR-0011](../../docs/adr/0011-editor-preview-routing-is-projection-only.md), this plan, [Lane 3 tracker](../../docs/lanes/LANE_3_EDITOR_LSP.md), `.ripr/goals/active.toml` | Covered for the docs stack | Closeout handoff remains future work after behavior lands |
 
-Current completion decision: not achieved. The docs stack and current Rust
-cockpit evidence are in place, but Python preview artifacts and
-`lsp/editor-language-routing` are still blocked, and no preview editor
-routing, preview workflow fixtures, or preview VS Code e2e proof has landed.
+Current completion decision: routing behavior is implemented for Campaign 27.
+Python preview artifacts and TypeScript readiness are complete, preview editor
+selectors and projection metadata have landed, and CI language grouping is the
+next unblocked Campaign 27 work item. Dedicated preview editor workflow
+fixtures and docs remain available as follow-up evidence slices if the lane
+keeps them separate from CI grouping.
 
 Current-base compatibility: this stack was compatible with `origin/main` at
 `23df422` after resolving only the expected ADR/proposal/spec/traceability
@@ -107,8 +112,8 @@ validators while keeping the Lane 3 plan-path classifier in PR summary
 automation. The live readiness audit still found #771, #772, #807, and #814
 open at that time, and `cargo xtask goals next` still reported no ready work
 items. After #857, the structured `static_limit_kind` field is available and
-#807/#814 are closed; #771 and #772 remain open, so editor routing is still
-blocked.
+#807/#814 are closed; #771 is complete, and #772 is the current editor routing
+implementation slice.
 
 ## Completed Source-Of-Truth Stack
 
@@ -202,9 +207,9 @@ rtk git diff --cached --check
 
 ## Work Item: lane3-routing-readiness-audit
 
-Status: blocked
+Status: done
 
-Blocked by: `analysis/python-preview-adapter`
+Blocked by: none
 
 ### Goal
 
@@ -251,9 +256,9 @@ artifact or blocker.
 
 ## Work Item: test(lsp): preserve Rust routing contract
 
-Status: blocked
+Status: done
 
-Blocked by: `lane3-routing-readiness-audit`
+Blocked by: none
 
 ### Goal
 
@@ -299,9 +304,9 @@ Do not loosen Rust default behavior to make preview routing easier.
 
 ## Work Item: lsp(language): add opt-in editor language routing
 
-Status: blocked
+Status: done
 
-Blocked by: `test(lsp): preserve Rust routing contract`
+Blocked by: none
 
 ### Goal
 
@@ -347,9 +352,9 @@ tests. If activation events were added, remove only the preview-language events.
 
 ## Work Item: lsp(language): surface preview labels and static limits
 
-Status: blocked
+Status: done
 
-Blocked by: `lsp(language): add opt-in editor language routing`
+Blocked by: none
 
 ### Goal
 

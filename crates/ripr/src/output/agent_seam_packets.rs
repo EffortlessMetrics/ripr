@@ -22,7 +22,9 @@ use crate::analysis::canonical_gap::{CanonicalGapIdentity, canonical_gap_identit
 use crate::analysis::seams::{ExpectedSink, RequiredDiscriminator, SeamGripClass, SeamKind};
 use crate::analysis::test_grip_evidence::TestGripEvidence;
 use crate::output::evidence_record::{evidence_record_for, evidence_record_json_value};
+use crate::output::gap_decision_ledger::{GapRecord, GapRepairRoute, projection_eligible};
 use crate::output::json::escape as json_escape;
+use serde_json::json;
 
 pub(crate) const AGENT_SEAM_PACKET_SCHEMA_VERSION: &str = "0.3";
 
@@ -80,6 +82,107 @@ pub(crate) fn render_agent_seam_packets_json(classified: &[ClassifiedSeam]) -> S
 /// Render the existing agent seam packet JSON envelope for one seam.
 pub(crate) fn render_agent_seam_packet_json(entry: &ClassifiedSeam) -> String {
     render_agent_seam_packets_json(std::slice::from_ref(entry))
+}
+
+/// Render one explicit GapRecord as an agent packet. This is the same
+/// agent-packet envelope used by seam packets, but the source is the gap
+/// decision ledger, so callers do not rerun analysis or infer repairability
+/// from raw static classifications.
+pub(crate) fn render_agent_gap_record_packet_json(
+    gap_ledger_path: &str,
+    record: &GapRecord,
+) -> Result<String, String> {
+    validate_agent_gap_record_packet(record)?;
+    let Some(route) = record.repair_route.as_ref() else {
+        return Err("requires a repair_route".to_string());
+    };
+    let gap_id = gap_record_id(record);
+    let Some(verify_command) = record.verification_commands.first().cloned() else {
+        return Err("requires verification_commands".to_string());
+    };
+    let stop_conditions = stop_conditions_for(route);
+    let anchor = record.anchor.as_ref();
+    let file = anchor
+        .and_then(|anchor| anchor.file.as_deref())
+        .map(display_path_text);
+    let line = anchor.and_then(|anchor| anchor.line);
+    let owner = anchor.and_then(|anchor| anchor.owner.as_deref());
+    let recommended_file = route
+        .target_file
+        .as_deref()
+        .or(route.related_test.as_deref())
+        .map(display_path_text);
+    let authority_boundary = if record.authority_boundary.trim().is_empty() {
+        "Agent packets are advisory; configured gate-decision artifacts remain pass/fail authority."
+            .to_string()
+    } else {
+        record.authority_boundary.clone()
+    };
+    let packet = json!({
+        "task": task_for_gap_route(route),
+        "source": "gap_decision_ledger",
+        "gap_id": gap_id,
+        "canonical_gap_id": non_empty(&record.canonical_gap_id),
+        "gap_kind": record.kind.as_str(),
+        "language": record.language.as_str(),
+        "language_status": record.language_status.as_str(),
+        "policy_state": record.policy_state.as_str(),
+        "gap_state": record.gap_state.as_str(),
+        "evidence_class": record.evidence_class.as_str(),
+        "repairability": record.repairability.as_str(),
+        "file": file,
+        "line": line,
+        "owner": owner,
+        "anchor": {
+            "file": anchor.and_then(|anchor| anchor.file.as_deref()).map(display_path_text),
+            "line": line,
+            "owner": owner,
+            "dedupe_fingerprint": anchor.and_then(|anchor| anchor.dedupe_fingerprint.as_deref()),
+        },
+        "repair_route": route,
+        "repair_kind": route.route_kind.as_str(),
+        "changed_behavior": route.changed_behavior.as_deref(),
+        "recommended_test": {
+            "file": recommended_file,
+            "name": route.related_test.as_deref(),
+            "reason": recommended_test_reason(route),
+        },
+        "assertion_shape": route.assertion_shape.as_deref(),
+        "evidence_ids": &record.evidence_ids,
+        "verification_commands": &record.verification_commands,
+        "verify_command": verify_command,
+        "stop_conditions": stop_conditions,
+        "repair_card": {
+            "gap_kind": record.kind.as_str(),
+            "changed_behavior": route.changed_behavior.as_deref(),
+            "repair": repair_text_for_gap_route(route),
+            "repair_route": route,
+            "verification_commands": &record.verification_commands,
+            "verify_command": verify_command,
+            "source_artifact": gap_ledger_path,
+            "authority_boundary": authority_boundary,
+        },
+        "llm_guidance": {
+            "prompt": gap_record_prompt(route, &verify_command),
+            "verify_command": verify_command,
+            "stop_conditions": stop_conditions,
+        },
+        "runtime_confirmation": RUNTIME_CONFIRMATION_NOTE,
+    });
+    let envelope = json!({
+        "schema_version": AGENT_SEAM_PACKET_SCHEMA_VERSION,
+        "scope": "repo",
+        "source": "gap_decision_ledger",
+        "inputs": {
+            "gap_ledger": gap_ledger_path,
+        },
+        "packets_total": 1,
+        "packets": [packet],
+    });
+    let mut rendered = serde_json::to_string_pretty(&envelope)
+        .map_err(|err| format!("render agent gap packet JSON failed: {err}"))?;
+    rendered.push('\n');
+    Ok(rendered)
 }
 
 /// Return the first concrete assertion example carried by the agent
@@ -203,6 +306,90 @@ fn display_path(path: &std::path::Path) -> String {
 
 fn display_path_text(path: &str) -> String {
     path.replace('\\', "/")
+}
+
+fn validate_agent_gap_record_packet(record: &GapRecord) -> Result<(), String> {
+    let projection = record
+        .projection_eligibility
+        .get("agent_packet")
+        .ok_or_else(|| "is not agent-packet eligible: missing projection".to_string())?;
+    if !projection_eligible(record, "agent_packet") {
+        let reason = projection.reason.trim();
+        if reason.is_empty() {
+            return Err("is not agent-packet eligible".to_string());
+        }
+        return Err(format!("is not agent-packet eligible: {reason}"));
+    }
+    let Some(route) = record.repair_route.as_ref() else {
+        return Err("requires a repair_route".to_string());
+    };
+    if record.verification_commands.is_empty() {
+        return Err("requires verification_commands".to_string());
+    }
+    if record.repairability != "repairable" && route.route_kind != "InspectStaticLimit" {
+        return Err("requires a repairable gap or bounded inspection route".to_string());
+    }
+    Ok(())
+}
+
+fn gap_record_id(record: &GapRecord) -> String {
+    if let Some(gap_id) = non_empty(&record.gap_id) {
+        return gap_id;
+    }
+    if let Some(canonical_gap_id) = non_empty(&record.canonical_gap_id) {
+        return canonical_gap_id;
+    }
+    "unknown-gap".to_string()
+}
+
+fn non_empty(value: &str) -> Option<String> {
+    (!value.trim().is_empty()).then(|| value.to_string())
+}
+
+fn task_for_gap_route(route: &GapRepairRoute) -> &'static str {
+    match route.route_kind.as_str() {
+        "InspectStaticLimit" => "inspect_static_limitation",
+        "AddOutputGolden" => "add_output_golden",
+        _ => "write_targeted_test",
+    }
+}
+
+fn recommended_test_reason(route: &GapRepairRoute) -> &'static str {
+    match route.route_kind.as_str() {
+        "AddOutputGolden" => "add or update the output-contract proof named by the gap route",
+        "InspectStaticLimit" => "inspect the static limitation before changing tests",
+        _ => "place the focused repair where the gap route points",
+    }
+}
+
+fn repair_text_for_gap_route(route: &GapRepairRoute) -> String {
+    if let Some(assertion_shape) = route.assertion_shape.clone() {
+        return assertion_shape;
+    }
+    if let Some(changed_behavior) = route.changed_behavior.clone() {
+        return changed_behavior;
+    }
+    format!("Follow repair route `{}`.", route.route_kind)
+}
+
+fn stop_conditions_for(route: &GapRepairRoute) -> Vec<String> {
+    let mut conditions = route.stop_conditions.clone();
+    if conditions.is_empty() {
+        conditions.push(
+            "Stop if the gap record is no longer present or loses agent-packet eligibility."
+                .to_string(),
+        );
+        conditions
+            .push("Stop if the verification command cannot run from this workspace.".to_string());
+    }
+    conditions
+}
+
+fn gap_record_prompt(route: &GapRepairRoute, verify_command: &str) -> String {
+    let repair = repair_text_for_gap_route(route);
+    format!(
+        "{repair} Use the supplied GapRecord fields as the repair boundary. Verify with `{verify_command}`."
+    )
 }
 
 fn is_actionable(class: SeamGripClass) -> bool {
@@ -1322,6 +1509,119 @@ mod tests {
                 "\"recommended_test\": {\"name\": \"discounted_total_boundary_discriminator\"",
             ),
             "top-level packet fields should remain present: {json}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gap_record_packet_carries_shared_repair_route_and_stop_conditions() -> Result<(), String> {
+        let records = crate::output::gap_decision_ledger::parse_gap_records_json(
+            r#"{"records":[{
+              "gap_id":"gap:pr:pricing",
+              "canonical_gap_id":"gap:rust:pricing",
+              "kind":"MissingBoundaryAssertion",
+              "language":"rust",
+              "language_status":"stable",
+              "scope":"pr_local",
+              "evidence_class":"predicate_boundary",
+              "gap_state":"actionable",
+              "policy_state":"new",
+              "repairability":"repairable",
+              "anchor":{"file":"src/pricing.rs","line":42,"owner":"pricing::discount","dedupe_fingerprint":"gap:pricing"},
+              "evidence_ids":["evidence:pricing-boundary"],
+              "repair_route":{
+                "route_kind":"AddBoundaryAssertion",
+                "target_file":"tests/pricing.rs",
+                "related_test":"discount_threshold_boundary",
+                "assertion_shape":"assert_eq!(discount(100, 100), 90)",
+                "changed_behavior":"amount == threshold",
+                "stop_conditions":["Stop if this is baseline debt."]
+              },
+              "verification_commands":["cargo xtask fixtures boundary_gap"],
+              "projection_eligibility":{"agent_packet":{"eligible":true,"reason":"bounded repair route"}},
+              "authority_boundary":"Gate decision remains pass/fail authority."
+            }]}"#,
+        )?;
+        let record = records
+            .first()
+            .ok_or_else(|| "expected parsed gap record".to_string())?;
+        let json = render_agent_gap_record_packet_json(
+            "target/ripr/reports/gap-decision-ledger.json",
+            record,
+        )?;
+        let value = serde_json::from_str::<serde_json::Value>(&json)
+            .map_err(|err| format!("gap packet JSON should parse: {err}"))?;
+        let packet = value
+            .get("packets")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|packets| packets.first())
+            .ok_or_else(|| format!("missing gap packet in: {json}"))?;
+
+        assert_eq!(
+            value.get("source").and_then(serde_json::Value::as_str),
+            Some("gap_decision_ledger")
+        );
+        assert_eq!(
+            packet.get("gap_id").and_then(serde_json::Value::as_str),
+            Some("gap:pr:pricing")
+        );
+        assert_eq!(
+            packet.get("task").and_then(serde_json::Value::as_str),
+            Some("write_targeted_test")
+        );
+        assert_eq!(
+            packet
+                .get("repair_route")
+                .and_then(|route| route.get("route_kind"))
+                .and_then(serde_json::Value::as_str),
+            Some("AddBoundaryAssertion")
+        );
+        assert_eq!(
+            packet
+                .get("verify_command")
+                .and_then(serde_json::Value::as_str),
+            Some("cargo xtask fixtures boundary_gap")
+        );
+        assert_eq!(
+            packet
+                .get("repair_card")
+                .and_then(|card| card.get("source_artifact"))
+                .and_then(serde_json::Value::as_str),
+            Some("target/ripr/reports/gap-decision-ledger.json")
+        );
+        assert!(
+            packet.get("confidence").is_none(),
+            "gap packets must not carry generic confidence: {json}"
+        );
+        assert!(
+            json.contains("Stop if this is baseline debt."),
+            "expected stop condition from GapRecord: {json}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gap_record_packet_rejects_ineligible_no_action_records() -> Result<(), String> {
+        let records = crate::output::gap_decision_ledger::parse_gap_records_json(
+            r#"{"records":[{
+              "gap_id":"gap:already-observed",
+              "kind":"NoActionAlreadyObserved",
+              "language":"rust",
+              "language_status":"stable",
+              "scope":"pr_local",
+              "policy_state":"resolved",
+              "repairability":"no_action",
+              "repair_route":{"route_kind":"NoAction"},
+              "verification_commands":["cargo xtask fixtures"],
+              "projection_eligibility":{"agent_packet":{"eligible":false,"reason":"already_observed"}}
+            }]}"#,
+        )?;
+        let record = records
+            .first()
+            .ok_or_else(|| "expected parsed gap record".to_string())?;
+        assert_eq!(
+            render_agent_gap_record_packet_json("gap-ledger.json", record),
+            Err("is not agent-packet eligible: already_observed".to_string())
         );
         Ok(())
     }

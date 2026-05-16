@@ -1,12 +1,14 @@
 # Policy Operations and Promotion Readiness
 
-GitHub tracker: pending
+Status: closed focused Lane 2 tracker
 
-This is the focused Lane 2 tracker for policy operations after
+GitHub tracker: PR stack #859 through #922, closed by the campaign closeout.
+
+This was the focused Lane 2 tracker for policy operations after
 [Policy readiness](POLICY_READINESS.md). It is not the global active campaign
 manifest. `.ripr/goals/active.toml` remains on Campaign 27: Language Adapter
-Preview. This tracker records the policy-operations work that should follow
-without changing analyzer behavior, editor behavior, generated tests, mutation
+Preview. This tracker records the policy-operations work that landed without
+changing analyzer behavior, editor behavior, generated tests, mutation
 execution, default CI blocking, config files, baselines, suppressions, or
 preview-language gate eligibility.
 
@@ -98,22 +100,22 @@ available spec IDs.
 | ---: | --- | --- | --- |
 | 1 | `campaign/policy-operations-tracker` | Open this focused tracker, manifest, roadmap, and plan references without behavior changes. | done |
 | 2 | `spec/policy-operations-report` | Define the read-only policy operations report contract. | done |
-| 3 | `policy/operations-report` | Implement `ripr policy operations` over explicit existing artifacts. | planned |
-| 4 | `spec/policy-history-ledger` | Define the read-only policy history report and optional append-only input. | planned |
-| 5 | `policy/history-report` | Implement `ripr policy history` as advisory trend reporting. | planned |
-| 6 | `spec/policy-promotion-packets` | Define read-only promotion packets for stricter configured modes. | planned |
-| 7 | `policy/promotion-packet-report` | Implement `ripr policy promote --to ...` without mutating config. | planned |
-| 8 | `spec/preview-evidence-promotion-packet` | Define the future preview-language promotion packet contract. | planned |
-| 9 | `policy/preview-promotion-packet-report` | Implement `ripr policy preview-promote` with default `allowed_now = false`. | planned |
-| 10 | `docs/policy-operator-workflow` | Document the maintainer workflow from readiness through promotion review. | planned |
-| 11 | `ci/policy-operations-advisory-projection` | Surface policy operations artifacts in generated CI without pass/fail authority. | planned |
-| 12 | `campaign/policy-operations-closeout` | Close after operations, history, promotion, preview-promotion, workflow, CI projection, capability, metrics, traceability, and handoff surfaces exist. | planned |
+| 3 | `policy/operations-report` | Implement `ripr policy operations` over explicit existing artifacts. | done |
+| 4 | `spec/policy-history-ledger` | Define the read-only policy history report and optional append-only input. | done |
+| 5 | `policy/history-report` | Implement `ripr policy history` as advisory trend reporting. | done |
+| 6 | `spec/policy-promotion-packets` | Define read-only promotion packets for stricter configured modes. | done |
+| 7 | `policy/promotion-packet-report` | Implement `ripr policy promote --to ...` without mutating config. | done |
+| 8 | `spec/preview-evidence-promotion-packet` | Define the future preview-language promotion packet contract. | done |
+| 9 | `policy/preview-promotion-packet-report` | Implement `ripr policy preview-promote` with default `allowed_now = false`. | done |
+| 10 | `docs/policy-operator-workflow` | Document the maintainer workflow from readiness through promotion review. | done |
+| 11 | `ci/policy-operations-advisory-projection` | Surface policy operations artifacts in generated CI without pass/fail authority. | done |
+| 12 | `campaign/policy-operations-closeout` | Close after operations, history, promotion, preview-promotion, workflow, CI projection, capability, metrics, traceability, and handoff surfaces exist. | done |
 
 ## Planned Report Surface
 
 The policy operations report is defined by
 [RIPR-SPEC-0039](../specs/RIPR-SPEC-0039-policy-operations-report.md). The
-future implementation is read-only and explicit about input artifacts:
+implementation is read-only and explicit about input artifacts:
 
 ```bash
 ripr policy operations \
@@ -139,6 +141,46 @@ Expected output paths:
 - `target/ripr/reports/preview-promotion-*.json`;
 - `target/ripr/reports/preview-promotion-*.md`.
 
+The policy history report is defined by
+[RIPR-SPEC-0041](../specs/RIPR-SPEC-0041-policy-history-ledger.md). It remains
+read-only and turns the current operations packet plus optional history JSONL
+into trend context:
+
+```bash
+ripr policy history \
+  --current target/ripr/reports/policy-operations.json \
+  --history .ripr/policy-history.jsonl \
+  --commit HEAD \
+  --pr-number 123 \
+  --out target/ripr/reports/policy-history.json \
+  --out-md target/ripr/reports/policy-history.md
+```
+
+The implemented command does not append to `.ripr/policy-history.jsonl`, collect
+telemetry, create dashboards, execute gates, mutate policy files, or promote
+preview evidence.
+
+The policy promotion packet is defined by
+[RIPR-SPEC-0042](../specs/RIPR-SPEC-0042-policy-promotion-packets.md). It
+remains read-only and turns policy operations plus optional policy history into
+manual-review promotion evidence:
+
+```bash
+ripr policy promote \
+  --to baseline-check \
+  --operations target/ripr/reports/policy-operations.json \
+  --history target/ripr/reports/policy-history.json \
+  --out target/ripr/reports/policy-promotion-baseline-check.json \
+  --out-md target/ripr/reports/policy-promotion-baseline-check.md
+```
+
+The packet defines `allowed_now`, `why_or_why_not`, required repairs, required
+receipts, rollback path, and a manual-only example config change. It must not
+mutate `ripr.toml`, baselines, suppressions, workflows, branch protection,
+history ledgers, generated CI defaults, or preview-language eligibility.
+`ripr policy promote` now writes those JSON and Markdown packets from explicit
+policy operations and optional policy history inputs.
+
 ## Promotion Ceiling
 
 Promotion packets should use policy operations as the ceiling:
@@ -153,6 +195,74 @@ Promotion packets should use policy operations as the ceiling:
 
 Preview-language evidence remains advisory unless a later preview promotion
 packet justifies a narrow explicit promotion.
+
+The preview evidence promotion packet is defined by
+[RIPR-SPEC-0044](../specs/RIPR-SPEC-0044-preview-evidence-promotion-packet.md).
+`ripr policy preview-promote --language ... --class ...` writes the packet with
+default `allowed_now = false`, explicit required/supplied/missing evidence
+accounting, advisory generated-CI posture, rollback guidance, and no actual
+promotion, gate eligibility, RIPR Zero inclusion, calibrated confidence, CI
+blocking, or preview eligibility mutation.
+
+The maintainer workflow is documented in
+[Policy operations workflow](../POLICY_OPERATIONS_WORKFLOW.md). It explains how
+to run readiness, operations, history, promotion packets, and preview promotion
+packets before any manual config review, and how to monitor policy health after
+a reviewed change.
+
+## Generated CI Advisory Projection
+
+Generated CI may render, upload, index, and summarize:
+
+- `policy-operations.{json,md}`;
+- `policy-history.{json,md}`;
+- `policy-promotion-*.{json,md}`;
+- `preview-promotion-*.{json,md}` when TypeScript or Python preview adapters are
+  configured.
+
+These artifacts are advisory operator packets only. They must not decide
+pass/fail, create required checks, post comments, mutate config, mutate
+baselines, create suppressions, append history, change workflows or branch
+protection, enable default blocking, or promote preview-language evidence.
+
+## Closeout
+
+Lane 2 now supports policy operations in the planned scope:
+
+- current safe policy ceiling;
+- next safe action;
+- blockers to stricter modes;
+- policy history and trend;
+- read-only promotion packets;
+- read-only preview-promotion packets;
+- advisory generated-CI projection;
+- no automatic policy mutation.
+
+The closeout audit is recorded in
+[Policy Operations closeout](../handoffs/2026-05-13-policy-operations-closeout.md).
+No ready work item remains in this focused tracker. Future policy tightening or
+preview-language promotion work should open a new focused policy tracker or spec
+instead of extending this closed campaign.
+
+## Lane 2 Reopening Triggers
+
+This tracker is closed for policy operations. Do not reopen Lane 2 for UI
+polish, PR front-panel rendering, queue cleanup, generated-artifact hygiene, or
+documentation reshaping unless the work changes policy authority.
+
+Open a new focused policy tracker or spec before changing any of these policy
+surfaces:
+
+- a new evidence class;
+- a preview-language promotion request;
+- gate eligibility expansion;
+- baseline adoption policy;
+- suppression semantics;
+- calibration confidence promotion;
+- static/runtime vocabulary.
+
+Those changes can alter what evidence is allowed to mean. They need explicit
+Lane 2 review before implementation.
 
 ## Boundaries
 
@@ -199,6 +309,21 @@ cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
 cargo xtask check-campaign
+cargo xtask check-pr
+git diff --check
+```
+
+Closeout validation:
+
+```bash
+cargo xtask check-campaign
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-output-contracts
 cargo xtask check-pr
 git diff --check
 ```
