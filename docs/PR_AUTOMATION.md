@@ -30,6 +30,8 @@ The current repo automation surface is:
 cargo xtask shape
 cargo xtask fix-pr
 cargo xtask commands
+cargo xtask cockpit
+cargo xtask pr-ready
 cargo xtask pr-summary
 cargo xtask pr-triage-report
 cargo xtask gh-pr-status --pr <number>
@@ -116,6 +118,9 @@ latest reviews, and Droid-related checks, then writes
 checks, failed checks, behind-main state, review status, Droid status, and a
 safe next action: `wait`, `rebase`, `inspect failure`, or `merge`. It is
 advisory and never updates the branch, comments, approves, or merges.
+Use [Merge freshness and watcher policy](MERGE_WATCH_POLICY.md) for polling
+cadence, branch-refresh decisions, REST status fallback, Droid/advisory-check
+handling, and local worktree merge limitations.
 
 `suggested-fixes` writes `target/ripr/reports/suggested-fixes.patch` and
 `target/ripr/reports/suggested-fixes.md` with safe deterministic repair

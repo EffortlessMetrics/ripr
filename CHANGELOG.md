@@ -91,6 +91,10 @@ Planned scope:
   worktree doctor, command mutability, command-catalog coverage, spec
   numbering, campaign/source-of-truth checks, open PR triage, generated-clean,
   and badge ownership into `target/ripr/reports/cockpit.md` and `.json`.
+- Added [docs/MERGE_WATCH_POLICY.md](docs/MERGE_WATCH_POLICY.md), documenting
+  PR watcher cadence, branch freshness decisions, REST status fallback,
+  Droid/advisory-check handling, merge execution limits, and task-worktree
+  cleanup without changing branch protection or auto-merge behavior.
 - Added `cargo xtask check-command-catalog`, a non-mutating guard that fails
   when xtask help entries and the command mutability catalog drift apart or
   omit write/judgment metadata.
