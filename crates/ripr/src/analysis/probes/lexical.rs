@@ -61,7 +61,16 @@ fn has_error_shape(text: &str) -> bool {
         || text.contains("map_err")
         || text.contains("bail!")
         || text.contains("anyhow!")
-        || text.contains("?") && text.contains("Err")
+        || contains_question_operator(text)
+}
+
+fn contains_question_operator(text: &str) -> bool {
+    text.contains("?;")
+        || text.contains("?.")
+        || text.contains("?,")
+        || text.contains("?)")
+        || text.contains("? ")
+        || text.ends_with('?')
 }
 
 fn has_effect_shape(text: &str) -> bool {
@@ -153,6 +162,22 @@ mod tests {
         let families = classify_changed_line("let parsed = parse()?; ErrKind::Invalid");
 
         assert!(families.contains(&ProbeFamily::ErrorPath));
+    }
+
+    #[test]
+    fn classify_changed_line_detects_bare_question_operator() {
+        for text in [
+            "let x = func()?;",
+            "stream.read_to_end(&mut buf)?;",
+            "let value = parse()?.trim().to_string();",
+        ] {
+            let families = classify_changed_line(text);
+
+            assert!(
+                families.contains(&ProbeFamily::ErrorPath),
+                "{text} did not classify as error_path"
+            );
+        }
     }
 
     #[test]

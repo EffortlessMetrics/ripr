@@ -54,6 +54,7 @@ The benchmark corpus must include fixture classes for:
 - opaque helper static limitation;
 - cross-file constant limitation;
 - presentation text constant;
+- config and policy constant, including behavior selectors;
 - side-effect observer;
 - snapshot discriminator;
 - mock expectation;

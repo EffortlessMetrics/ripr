@@ -138,6 +138,16 @@ mod tests {
         assert_eq!(alignment["summary"]["canonical_items"], 1);
         assert_eq!(alignment["summary"]["aligned_raw_findings"], 2);
         assert_eq!(alignment["summary"]["static_limitations"], 1);
+        assert_eq!(alignment["summary"]["repair_route_coverage"], 0);
+        assert_eq!(
+            alignment["summary"]["actionable_items_without_repair_route"],
+            0
+        );
+        assert_eq!(alignment["summary"]["verify_command_coverage"], 0);
+        assert_eq!(
+            alignment["summary"]["actionable_items_without_verify_command"],
+            0
+        );
         assert_eq!(
             alignment["items"][0]["canonical_gap_id"],
             "presentation_text::APPLE_M3_AIR_DEVICE_LABELS_TEXT"
@@ -149,6 +159,7 @@ mod tests {
         assert_eq!(alignment["items"][0]["raw_group_size"], 2);
         assert_eq!(alignment["items"][0]["gap_state"], "static_limitation");
         assert_eq!(alignment["items"][0]["actionability"], "inspect_visibility");
+        assert!(alignment["items"][0]["repair_route"].is_null());
         assert_eq!(
             alignment["items"][0]["static_limitations"][0]["category"],
             "presentation_text_visibility_unknown"
@@ -230,6 +241,16 @@ mod tests {
 
         assert_eq!(alignment["summary"]["canonical_items"], 2);
         assert_eq!(alignment["summary"]["actionable_gaps"], 1);
+        assert_eq!(alignment["summary"]["repair_route_coverage"], 1);
+        assert_eq!(
+            alignment["summary"]["actionable_items_without_repair_route"],
+            0
+        );
+        assert_eq!(alignment["summary"]["verify_command_coverage"], 1);
+        assert_eq!(
+            alignment["summary"]["actionable_items_without_verify_command"],
+            0
+        );
         assert_eq!(alignment["summary"]["already_observed"], 1);
         assert_eq!(
             alignment["summary"]["presentation_text_actionable_output_repairs"],
@@ -245,14 +266,27 @@ mod tests {
             "output_observer"
         );
         assert_eq!(
+            alignment["items"][0]["repair_route"]["repair_kind"],
+            "output_observer"
+        );
+        assert_eq!(
             alignment["items"][0]["presentation_text"]["target_test_type"],
+            "help_output_snapshot"
+        );
+        assert_eq!(
+            alignment["items"][0]["repair_route"]["target_test_type"],
             "help_output_snapshot"
         );
         assert_eq!(
             alignment["items"][0]["presentation_text"]["suggested_assertion"],
             "Assert CLI help output includes the HELP_DEVICE_LABEL text."
         );
+        assert_eq!(
+            alignment["items"][0]["repair_route"]["suggested_assertion"],
+            "Assert CLI help output includes the HELP_DEVICE_LABEL text."
+        );
         assert_eq!(alignment["items"][1]["gap_state"], "already_observed");
+        assert!(alignment["items"][1]["repair_route"].is_null());
         assert_eq!(
             alignment["items"][1]["presentation_text"]["observer"],
             "golden"
@@ -265,6 +299,157 @@ mod tests {
             alignment["items"][1]["related_test"]["name"],
             "report_golden_observes_label"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn render_projects_config_policy_alignment_states() -> Result<(), String> {
+        let golden = RelatedTest {
+            name: "schema_render_golden_observes_field".to_string(),
+            file: PathBuf::from("tests/golden/schema_output.rs"),
+            line: 31,
+            oracle: None,
+            oracle_kind: OracleKind::Snapshot,
+            oracle_strength: OracleStrength::Strong,
+        };
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("."),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![
+                finding_with_expression_in_file(
+                    "src/policy.rs",
+                    "policy-decl",
+                    14,
+                    ExposureClass::Exposed,
+                    ProbeFamily::FieldConstruction,
+                    "pub const INTERNAL_POLICY_LABEL: &str =",
+                    vec![],
+                ),
+                finding_with_expression_in_file(
+                    "src/policy.rs",
+                    "policy-literal",
+                    15,
+                    ExposureClass::StaticUnknown,
+                    ProbeFamily::StaticUnknown,
+                    "\"internal policy label\";",
+                    vec![],
+                ),
+                finding_with_expression_in_file(
+                    "src/report_config.rs",
+                    "report-policy-decl",
+                    22,
+                    ExposureClass::Exposed,
+                    ProbeFamily::FieldConstruction,
+                    "pub const REPORT_POLICY_LABEL: &str =",
+                    vec![],
+                ),
+                finding_with_expression_in_file(
+                    "src/report_config.rs",
+                    "report-policy-literal",
+                    23,
+                    ExposureClass::WeaklyExposed,
+                    ProbeFamily::StaticUnknown,
+                    "\"Policy label\";",
+                    vec![],
+                ),
+                finding_with_expression_in_file(
+                    "src/schema.rs",
+                    "schema-decl",
+                    31,
+                    ExposureClass::Exposed,
+                    ProbeFamily::FieldConstruction,
+                    "pub const SCHEMA_POLICY_FIELD: &str =",
+                    vec![golden],
+                ),
+                finding_with_expression_in_file(
+                    "src/schema.rs",
+                    "schema-literal",
+                    32,
+                    ExposureClass::Exposed,
+                    ProbeFamily::StaticUnknown,
+                    "\"policy\";",
+                    vec![],
+                ),
+                finding_with_expression_in_file(
+                    "src/config_registry.rs",
+                    "opaque-decl",
+                    58,
+                    ExposureClass::Exposed,
+                    ProbeFamily::FieldConstruction,
+                    "pub const OPAQUE_CONFIG_LABEL: &str =",
+                    vec![],
+                ),
+                finding_with_expression_in_file(
+                    "src/config_registry.rs",
+                    "opaque-literal",
+                    59,
+                    ExposureClass::StaticUnknown,
+                    ProbeFamily::StaticUnknown,
+                    "\"Opaque label\";",
+                    vec![],
+                ),
+            ],
+        };
+
+        let rendered = render(&output);
+        let value: serde_json::Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("check JSON should parse: {err}"))?;
+        let alignment = &value["finding_alignment"];
+
+        assert_eq!(
+            alignment["supported_evidence_classes"][1],
+            "config_or_policy_constant"
+        );
+        assert_eq!(alignment["summary"]["canonical_items"], 4);
+        assert_eq!(alignment["summary"]["config_policy_constant_total"], 4);
+        assert_eq!(alignment["summary"]["config_policy_internal_only"], 1);
+        assert_eq!(
+            alignment["summary"]["config_policy_actionable_output_observer"],
+            1
+        );
+        assert_eq!(alignment["summary"]["repair_route_coverage"], 1);
+        assert_eq!(
+            alignment["summary"]["actionable_items_without_repair_route"],
+            0
+        );
+        assert_eq!(alignment["summary"]["verify_command_coverage"], 1);
+        assert_eq!(
+            alignment["summary"]["actionable_items_without_verify_command"],
+            0
+        );
+        assert_eq!(alignment["summary"]["config_policy_observed"], 1);
+        assert_eq!(alignment["summary"]["config_policy_static_limitations"], 1);
+        assert_eq!(alignment["items"][0]["gap_state"], "internal_only");
+        assert_eq!(
+            alignment["items"][0]["config_policy"]["role"],
+            "internal_policy_metadata"
+        );
+        assert_eq!(alignment["items"][1]["gap_state"], "actionable");
+        assert_eq!(
+            alignment["items"][1]["config_policy"]["target_test_type"],
+            "report_render_or_golden"
+        );
+        assert_eq!(
+            alignment["items"][1]["repair_route"]["repair_kind"],
+            "output_observer"
+        );
+        assert_eq!(
+            alignment["items"][1]["repair_route"]["target_test_type"],
+            "report_render_or_golden"
+        );
+        assert_eq!(alignment["items"][2]["gap_state"], "already_observed");
+        assert!(alignment["items"][2]["repair_route"].is_null());
+        assert_eq!(alignment["items"][2]["config_policy"]["observer"], "golden");
+        assert_eq!(alignment["items"][3]["gap_state"], "static_limitation");
+        assert_eq!(
+            alignment["items"][3]["static_limitations"][0]["category"],
+            "opaque_config_lookup"
+        );
+        assert!(alignment["items"][0]["presentation_text"].is_null());
         Ok(())
     }
 

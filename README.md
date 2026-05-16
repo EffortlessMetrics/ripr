@@ -54,9 +54,10 @@ executed. Mutation testing asks whether tests fail against a concrete mutant.
 Does this changed behavior appear exposed to a meaningful test assertion?
 ```
 
-The current stable path is Rust/Cargo. TypeScript and Python are opt-in preview
-surfaces as they land; see [Support tiers](docs/status/SUPPORT_TIERS.md) for
-what is stable, preview, advisory, blocked, or unsupported.
+The usable repair loop is Rust/Cargo: find one repairable gap, add one focused
+proof outside `ripr`, and keep the before/after receipt. TypeScript and Python
+are opt-in preview surfaces; see [Support tiers](docs/status/SUPPORT_TIERS.md)
+for what is usable, stable, preview, advisory, blocked, or unsupported.
 
 ## The Problem
 
@@ -155,10 +156,12 @@ or CI users.
 
 For the full first-hour path, including troubleshooting and known limits, read
 [Quickstart](docs/QUICKSTART.md).
+For a single real PR adoption proof, use the
+[first successful PR workflow](docs/FIRST_PR_WORKFLOW.md).
 
 Before rollout, check [Support tiers](docs/status/SUPPORT_TIERS.md) for the
-plain-language map of what is usable alpha, preview, scaffold, blocked, or
-deferred. It also keeps the public-badge boundary separate from PR-local
+plain-language map of what is usable, usable alpha, preview, scaffold, blocked,
+or deferred. It also keeps the public-badge boundary separate from PR-local
 evidence and gate authority.
 
 ### VS Code

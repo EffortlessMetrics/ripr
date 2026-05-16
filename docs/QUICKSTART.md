@@ -280,6 +280,8 @@ RIPR findings.
 
 - [Terminology](TERMINOLOGY.md) for the bridge between plain wording and the
   internal model (seam, discriminator, grip, canonical gap, etc.).
+- [First successful PR workflow](FIRST_PR_WORKFLOW.md) for the one-PR path from
+  a repairable Rust gap to a focused proof and receipt.
 - [Editor extension](EDITOR_EXTENSION.md) for VS Code install, commands, and
   saved-workspace refresh behavior.
 - [CI strategy](CI.md) for the generated advisory workflow and artifact packet.

@@ -16,6 +16,7 @@ the buyer-readable map over those artifacts.
 | Tier | Meaning |
 | --- | --- |
 | `stable building block` | Fixture-backed behavior that is expected to hold inside its documented static-analysis scope. |
+| `usable` | End-to-end product loop is proof-linked and ready for advisory adoption in its documented scope, but is not a stability or runtime-adequacy claim. |
 | `usable alpha` | Implemented and useful for advisory PR work, with known static limits and proof artifacts. |
 | `preview` | Opt-in surface that is fixture-backed enough to evaluate, but not a default promise or gate input. |
 | `scaffold` | Plumbing exists, but the product loop is not useful yet without the next fact-extraction slices. |
@@ -30,6 +31,7 @@ adequacy, coverage adequacy, or general correctness.
 | Capability | Tier | Surface | Proof | Known limits |
 | --- | --- | --- | --- | --- |
 | Rust static exposure loop | `usable alpha` | CLI, generated CI, editor, reports | [RIPR-SPEC-0001](../specs/RIPR-SPEC-0001-static-exposure-loop.md), [capability matrix](../CAPABILITY_MATRIX.md), fixture and golden checks | Static only; unknowns stay explicit; mutation testing remains the runtime backstop. |
+| Rust gap repair loop | `usable` | CLI, generated CI, PR repair cards, editor packets, agent packets, receipts | [First successful PR workflow](../FIRST_PR_WORKFLOW.md), [gap decision ledger spec](../specs/RIPR-SPEC-0046-gap-decision-ledger.md), [first useful action workflow](../FIRST_USEFUL_ACTION_WORKFLOW.md), [PR review guidance](../PR_REVIEW_GUIDANCE.md), [capability matrix](../CAPABILITY_MATRIX.md) | Advisory static loop only; interruptions require a repair route and verification command; runtime mutation and coverage remain separate signals. |
 | Local delta flow and activation/value modeling | `stable building block` | Rust analysis output and evidence records | [capability matrix](../CAPABILITY_MATRIX.md#capability-matrix), [Lane 1 tracker](../lanes/LANE_1_EVIDENCE_SPINE.md), [static exposure model](../STATIC_EXPOSURE_MODEL.md) | Stable inside documented syntax-first scope; unsupported propagation and value sources remain static limitations. |
 | First useful PR action | `usable alpha` | Generated CI summary, reports, editor projection | [First useful action workflow](../FIRST_USEFUL_ACTION_WORKFLOW.md), [RIPR-SPEC-0020](../specs/RIPR-SPEC-0020-first-useful-action-report.md), dogfood receipts in the capability matrix | Advisory routing only; missing or stale inputs must be refreshed before assigning work. |
 | PR review cockpit | `usable alpha` | Generated CI summary and uploaded report packet | [PR review front panel workflow](../PR_REVIEW_FRONT_PANEL_WORKFLOW.md), [Report packet index workflow](../REPORT_PACKET_INDEX_WORKFLOW.md), [Lane 4 closeout](../handoffs/2026-05-13-lane4-pr-ci-review-cockpit-closeout.md) | Composes explicit artifacts; summaries do not create analyzer truth or pass/fail authority. |
@@ -47,6 +49,10 @@ adequacy, coverage adequacy, or general correctness.
 Use the tier with the surface:
 
 ```text
+usable + Rust gap repair loop:
+  safe to try as the end-to-end advisory workflow: repair one named Rust gap,
+  verify movement, and keep the receipt.
+
 usable alpha + generated CI:
   safe to try in advisory PR workflows, but not a default merge gate.
 
@@ -76,8 +82,10 @@ preview + editor routing:
 
 ## Next Adoption Steps
 
-For first use, start with the [Quickstart](../QUICKSTART.md). The shortest
-proof loop is:
+For first use, start with the [Quickstart](../QUICKSTART.md). For a
+single-PR adoption proof, use the
+[first successful PR workflow](../FIRST_PR_WORKFLOW.md). The shortest proof
+loop is:
 
 ```text
 ripr pilot --root .

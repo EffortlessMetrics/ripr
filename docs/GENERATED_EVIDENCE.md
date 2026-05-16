@@ -83,6 +83,7 @@ Common generated reports:
 ```bash
 cargo xtask pr-summary
 cargo xtask commands
+cargo xtask pr-ready
 cargo xtask reports index
 cargo xtask receipts
 cargo xtask receipts check
@@ -110,6 +111,26 @@ should not be committed. It is the review-facing map for mutating commands,
 non-mutating checks, report-only commands, external-state reads, external-state
 mutations, and argument-dependent commands.
 
+`cargo xtask check-command-catalog` writes
+`target/ripr/reports/command-catalog.md` and fails when that map drifts from the
+help catalog or omits write/judgment details. The report is generated evidence
+and should not be committed.
+
+## PR Ready Packet
+
+Run this before opening or updating a PR when you want one local repo-ops
+packet instead of checking each hygiene report by hand:
+
+```bash
+cargo xtask pr-ready
+```
+
+The command writes `target/ripr/reports/pr-ready.md` and
+`target/ripr/reports/pr-ready.json`. It composes worktree doctor, command
+mutability, PR summary, critic, receipts check, suggested fixes,
+generated-clean, and badge diff policy. The packet is generated evidence and
+should not be committed. It does not replace `cargo xtask check-pr`.
+
 ## Deterministic Repair
 
 Safe deterministic repair can be automated or represented as a patch:
@@ -122,7 +143,9 @@ cargo xtask suggested-fixes
 
 Current deterministic repair includes formatting, allowlist ordering, report
 directory setup, PR summary generation, and narrow suggested patches for
-allowlist ordering.
+allowlist ordering, docs index table ordering for specs and ADRs, and
+traceability behavior block ordering by spec ID, plus capability block ordering
+by spec ID and capability ID.
 
 Suggested patches must never include:
 

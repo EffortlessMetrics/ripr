@@ -11,6 +11,7 @@
     "opaque_helper_static_limitation",
     "cross_file_constant_limitation",
     "presentation_text",
+    "config_or_policy_constant",
     "side_effect_observer",
     "snapshot_discriminator",
     "mock_expectation",
@@ -835,6 +836,541 @@
         "Do not treat a shared token as canonical identity."
       ],
       "repair_route": "analysis/presentation-text-canonical-grouping"
+    },
+    {
+      "id": "config_policy_internal_metadata_no_action",
+      "case_kind": "negative_guard",
+      "evidence_class": "config_or_policy_constant",
+      "maturity_scope": "fixture_backed",
+      "description": "Internal policy metadata aligns into one canonical no-action item instead of user-visible test debt.",
+      "fixture_reference": "RIPR-SPEC-0048 internal allowlist or policy metadata",
+      "sample": {
+        "file": "src/policy.rs",
+        "declaration_line": 14,
+        "literal_line": 15,
+        "constant": "INTERNAL_POLICY_LABEL",
+        "usage": "internal_allowlist"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-config-policy-internal",
+          "canonical_gap_id": "config_or_policy_constant::INTERNAL_POLICY_LABEL",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "INTERNAL_POLICY_LABEL",
+          "location": {
+            "file": "src/policy.rs",
+            "line": 14
+          },
+          "seam_kind": "config_policy_constant",
+          "grip_class": "static_unknown",
+          "headline_eligible": false,
+          "evidence_class": "config_or_policy_constant",
+          "gap_state": "internal_only",
+          "actionability": "no_action_internal",
+          "why": "Changed constant is confined to internal allowlist policy metadata in fixture-backed scope.",
+          "recommended_repair": "No user test action.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/policy.rs",
+              "line": 14,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/policy.rs",
+              "line": 15,
+              "kind": "static_unknown"
+            }
+          ],
+          "config_policy": {
+            "constant": "INTERNAL_POLICY_LABEL",
+            "role": "internal_policy_metadata",
+            "source_kind": "const_decl",
+            "visibility": "internal_only",
+            "observer": "none",
+            "actionability": "no_action_internal",
+            "repair_kind": "no_action",
+            "target_test_type": "none",
+            "suggested_assertion": "No user-facing assertion is recommended for this internal policy constant."
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "config_policy_internal_only",
+        "value": 1
+      },
+      "expected_claim": "Internal policy metadata remains countable evidence but does not become user repair work.",
+      "must_not_claim": [
+        "Do not create user test debt from internal policy metadata alone.",
+        "Do not recommend output observers for internal-only constants.",
+        "Do not hide the raw declaration and literal findings."
+      ],
+      "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
+    },
+    {
+      "id": "config_policy_rendered_label_unobserved",
+      "case_kind": "positive",
+      "evidence_class": "config_or_policy_constant",
+      "maturity_scope": "fixture_backed",
+      "description": "A rendered config or policy label with no supported observer becomes one actionable output-observer item.",
+      "fixture_reference": "RIPR-SPEC-0048 rendered report/config label without observer",
+      "sample": {
+        "file": "src/report_config.rs",
+        "declaration_line": 22,
+        "literal_line": 23,
+        "constant": "REPORT_POLICY_LABEL",
+        "sink": "report_render",
+        "observer": "none"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-config-policy-rendered-unobserved",
+          "canonical_gap_id": "config_or_policy_constant::REPORT_POLICY_LABEL",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "REPORT_POLICY_LABEL",
+          "location": {
+            "file": "src/report_config.rs",
+            "line": 22
+          },
+          "seam_kind": "config_policy_constant",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_class": "config_or_policy_constant",
+          "gap_state": "actionable",
+          "actionability": "add_output_observer",
+          "why": "Changed policy label flows to rendered report output and no supported observer is found.",
+          "recommended_repair": "Add or update a report-render, config-output, snapshot, or golden observer for REPORT_POLICY_LABEL.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/report_config.rs",
+              "line": 22,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/report_config.rs",
+              "line": 23,
+              "kind": "weakly_exposed"
+            }
+          ],
+          "config_policy": {
+            "constant": "REPORT_POLICY_LABEL",
+            "role": "rendered_policy_label",
+            "source_kind": "const_decl",
+            "visibility": "user_visible",
+            "observer": "none",
+            "actionability": "add_output_observer",
+            "repair_kind": "output_observer",
+            "target_test_type": "report_render_or_golden",
+            "suggested_assertion": "Assert rendered report output includes the REPORT_POLICY_LABEL text."
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "config_policy_actionable_output_observer",
+        "value": 1
+      },
+      "expected_claim": "A visible unobserved config or policy label can become one actionable output-observer repair.",
+      "must_not_claim": [
+        "Do not count declaration and literal findings as separate user actions.",
+        "Do not recommend mutation testing before output-observer work.",
+        "Do not call lexical-only tests observers."
+      ],
+      "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
+    },
+    {
+      "id": "config_policy_behavior_selector_unobserved",
+      "case_kind": "positive",
+      "evidence_class": "config_or_policy_constant",
+      "maturity_scope": "fixture_backed",
+      "description": "A validation or routing selector with no behavior discriminator becomes one actionable behavior-discriminator item.",
+      "fixture_reference": "RIPR-SPEC-0048 behavior selector without discriminator",
+      "sample": {
+        "file": "src/validation_selector.rs",
+        "declaration_line": 40,
+        "literal_line": 41,
+        "constant": "VALIDATION_SELECTOR",
+        "sink": "validation_behavior",
+        "observer": "none"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-config-policy-behavior-selector",
+          "canonical_gap_id": "config_or_policy_constant::VALIDATION_SELECTOR",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "VALIDATION_SELECTOR",
+          "location": {
+            "file": "src/validation_selector.rs",
+            "line": 40
+          },
+          "seam_kind": "config_policy_constant",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_class": "config_or_policy_constant",
+          "gap_state": "actionable",
+          "actionability": "add_behavior_discriminator",
+          "why": "Changed validation selector flows to observable validation behavior and no supported discriminator is found.",
+          "recommended_repair": "Add or update a behavior discriminator test for VALIDATION_SELECTOR.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/validation_selector.rs",
+              "line": 40,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/validation_selector.rs",
+              "line": 41,
+              "kind": "weakly_exposed"
+            }
+          ],
+          "config_policy": {
+            "constant": "VALIDATION_SELECTOR",
+            "role": "behavior_selector",
+            "source_kind": "const_decl",
+            "visibility": "user_visible",
+            "observer": "none",
+            "actionability": "add_behavior_discriminator",
+            "repair_kind": "behavior_discriminator",
+            "target_test_type": "validation_behavior",
+            "suggested_assertion": "Assert the selected behavior includes the VALIDATION_SELECTOR value or selected behavior."
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "config_policy_actionable_behavior_discriminator",
+        "value": 1
+      },
+      "expected_claim": "A supported validation or routing selector can become one actionable behavior-discriminator repair.",
+      "must_not_claim": [
+        "Do not treat behavior selectors as output labels.",
+        "Do not count declaration and literal findings as separate user actions.",
+        "Do not accept lexical-only tests as behavior discriminators.",
+        "Do not recommend mutation testing before behavior-discriminator work."
+      ],
+      "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
+    },
+    {
+      "id": "config_policy_behavior_selector_observed",
+      "case_kind": "positive",
+      "evidence_class": "config_or_policy_constant",
+      "maturity_scope": "fixture_backed",
+      "description": "A validation or routing selector with a supported behavior discriminator becomes an already-observed no-action item.",
+      "fixture_reference": "RIPR-SPEC-0048 behavior selector with discriminator",
+      "sample": {
+        "file": "src/validation_selector.rs",
+        "declaration_line": 52,
+        "literal_line": 53,
+        "constant": "ROUTING_SELECTOR",
+        "sink": "validation_behavior",
+        "observer": "validation_behavior"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-config-policy-behavior-selector-observed",
+          "canonical_gap_id": "config_or_policy_constant::ROUTING_SELECTOR",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "ROUTING_SELECTOR",
+          "location": {
+            "file": "src/validation_selector.rs",
+            "line": 52
+          },
+          "seam_kind": "config_policy_constant",
+          "grip_class": "strongly_gripped",
+          "headline_eligible": false,
+          "evidence_class": "config_or_policy_constant",
+          "gap_state": "already_observed",
+          "actionability": "already_observed",
+          "why": "Changed validation selector reaches observable behavior and an existing behavior discriminator covers it.",
+          "recommended_repair": "No new RIPR action.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/validation_selector.rs",
+              "line": 52,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/validation_selector.rs",
+              "line": 53,
+              "kind": "exposed"
+            }
+          ],
+          "config_policy": {
+            "constant": "ROUTING_SELECTOR",
+            "role": "behavior_selector",
+            "source_kind": "const_decl",
+            "visibility": "user_visible",
+            "observer": "validation_behavior",
+            "actionability": "already_observed",
+            "repair_kind": "no_action",
+            "target_test_type": "validation_behavior",
+            "suggested_assertion": "Existing validation behavior test already covers the selected behavior."
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "config_policy_observed",
+        "value": 1
+      },
+      "expected_claim": "A supported validation or routing discriminator keeps the behavior selector visible as already observed, not user repair work.",
+      "must_not_claim": [
+        "Do not emit an actionable behavior-discriminator gap when a supported behavior observer exists.",
+        "Do not hide the raw selector findings.",
+        "Do not let an unrelated validation test satisfy the selector."
+      ],
+      "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
+    },
+    {
+      "id": "config_policy_schema_label_observed",
+      "case_kind": "positive",
+      "evidence_class": "config_or_policy_constant",
+      "maturity_scope": "fixture_backed",
+      "description": "A schema field label observed by a supported schema-render or golden test becomes an already-observed no-action item.",
+      "fixture_reference": "RIPR-SPEC-0048 rendered label already observed",
+      "sample": {
+        "file": "src/schema.rs",
+        "declaration_line": 31,
+        "literal_line": 32,
+        "constant": "SCHEMA_POLICY_FIELD",
+        "sink": "schema_render",
+        "observer": "golden"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-config-policy-schema-observed",
+          "canonical_gap_id": "config_or_policy_constant::SCHEMA_POLICY_FIELD",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "SCHEMA_POLICY_FIELD",
+          "location": {
+            "file": "src/schema.rs",
+            "line": 31
+          },
+          "seam_kind": "config_policy_constant",
+          "grip_class": "strongly_gripped",
+          "headline_eligible": false,
+          "evidence_class": "config_or_policy_constant",
+          "gap_state": "already_observed",
+          "actionability": "already_observed",
+          "why": "Changed schema field label reaches rendered output and an existing golden observer covers it.",
+          "recommended_repair": "No new RIPR action.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/schema.rs",
+              "line": 31,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/schema.rs",
+              "line": 32,
+              "kind": "exposed"
+            }
+          ],
+          "config_policy": {
+            "constant": "SCHEMA_POLICY_FIELD",
+            "role": "schema_field_label",
+            "source_kind": "const_decl",
+            "visibility": "user_visible",
+            "observer": "golden",
+            "actionability": "already_observed",
+            "repair_kind": "no_action",
+            "target_test_type": "schema_render_golden",
+            "suggested_assertion": "Existing schema-render golden already covers the changed field label."
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "config_policy_observed",
+        "value": 1
+      },
+      "expected_claim": "Observed schema or report labels stay visible as evidence but do not become user repair work.",
+      "must_not_claim": [
+        "Do not emit an actionable gap when a supported schema or golden observer exists.",
+        "Do not hide the raw findings.",
+        "Do not let a different schema field's observer satisfy this label."
+      ],
+      "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
+    },
+    {
+      "id": "config_policy_cross_file_flow_unknown",
+      "case_kind": "static_limitation",
+      "evidence_class": "config_or_policy_constant",
+      "maturity_scope": "unsupported",
+      "description": "A config constant routed through untraceable cross-file formatting remains a named flow limitation instead of user test debt.",
+      "fixture_reference": "RIPR-SPEC-0048 untraceable config flow",
+      "sample": {
+        "file": "src/config_labels.rs",
+        "declaration_line": 44,
+        "literal_line": 45,
+        "constant": "CONFIG_TABLE_LABEL",
+        "sink": "cross_file_renderer",
+        "observer": "unknown"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-config-policy-cross-file-flow",
+          "canonical_gap_id": "config_or_policy_constant::CONFIG_TABLE_LABEL",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "CONFIG_TABLE_LABEL",
+          "location": {
+            "file": "src/config_labels.rs",
+            "line": 44
+          },
+          "seam_kind": "config_policy_constant",
+          "grip_class": "static_unknown",
+          "headline_eligible": false,
+          "evidence_class": "config_or_policy_constant",
+          "gap_state": "static_limitation",
+          "actionability": "inspect_config_flow",
+          "why": "Changed config label may flow through cross-file rendering, but RIPR cannot trace the output sink in supported scope.",
+          "recommended_repair": "Trace CONFIG_TABLE_LABEL to a supported output, schema, validation, or behavior sink before claiming user test debt.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/config_labels.rs",
+              "line": 44,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/config_labels.rs",
+              "line": 45,
+              "kind": "static_unknown"
+            }
+          ],
+          "config_policy": {
+            "constant": "CONFIG_TABLE_LABEL",
+            "role": "unknown",
+            "source_kind": "const_decl",
+            "visibility": "unknown",
+            "observer": "unknown",
+            "actionability": "inspect_config_flow",
+            "repair_kind": "inspect_config_flow",
+            "target_test_type": "unknown",
+            "suggested_assertion": "Trace the constant to a supported output or behavior sink before adding tests."
+          },
+          "static_limitation": {
+            "repair_route": "trace_constant_to_output_schema_validation_or_behavior_sink",
+            "user_actionability": "unknown_until_config_flow_known"
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "config_policy_flow_unknown",
+        "value": 1
+      },
+      "static_limitation_category": "config_policy_flow_unknown",
+      "expected_claim": "Untraceable config flow stays a named analyzer limitation until sink evidence is supported.",
+      "must_not_claim": [
+        "Do not create user test debt from untraceable config flow.",
+        "Do not infer user-visible output from cross-file formatting alone.",
+        "Do not recommend mutation testing as the first repair."
+      ],
+      "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
+    },
+    {
+      "id": "config_policy_opaque_lookup_unknown",
+      "case_kind": "static_limitation",
+      "evidence_class": "config_or_policy_constant",
+      "maturity_scope": "unsupported",
+      "description": "A config label hidden behind an opaque lookup remains a named limitation and does not become an actionable observer gap.",
+      "fixture_reference": "RIPR-SPEC-0048 opaque config lookup",
+      "sample": {
+        "file": "src/config_registry.rs",
+        "declaration_line": 58,
+        "literal_line": 59,
+        "constant": "OPAQUE_CONFIG_LABEL",
+        "sink": "opaque_helper",
+        "observer": "unknown"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-config-policy-opaque-lookup",
+          "canonical_gap_id": "config_or_policy_constant::OPAQUE_CONFIG_LABEL",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "OPAQUE_CONFIG_LABEL",
+          "location": {
+            "file": "src/config_registry.rs",
+            "line": 58
+          },
+          "seam_kind": "config_policy_constant",
+          "grip_class": "static_unknown",
+          "headline_eligible": false,
+          "evidence_class": "config_or_policy_constant",
+          "gap_state": "static_limitation",
+          "actionability": "inspect_config_flow",
+          "why": "Changed config label is routed through an unsupported lookup helper.",
+          "recommended_repair": "Add fixture-backed support for this lookup shape before claiming visibility or observer debt.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/config_registry.rs",
+              "line": 58,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/config_registry.rs",
+              "line": 59,
+              "kind": "static_unknown"
+            }
+          ],
+          "config_policy": {
+            "constant": "OPAQUE_CONFIG_LABEL",
+            "role": "unknown",
+            "source_kind": "const_decl",
+            "visibility": "unknown",
+            "observer": "unknown",
+            "actionability": "inspect_config_flow",
+            "repair_kind": "inspect_config_flow",
+            "target_test_type": "unknown",
+            "suggested_assertion": "Inspect the lookup path or add analyzer support before adding output-observer tests."
+          },
+          "static_limitation": {
+            "repair_route": "add_fixture_backed_support_for_opaque_config_lookup",
+            "user_actionability": "unknown_until_lookup_supported"
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "opaque_config_lookup",
+        "value": 1
+      },
+      "static_limitation_category": "opaque_config_lookup",
+      "expected_claim": "Opaque config lookup stays a named limitation until lookup evidence is fixture-backed.",
+      "must_not_claim": [
+        "Do not infer user-visible output from helper names alone.",
+        "Do not call an opaque lookup an actionable output-observer gap.",
+        "Do not suppress the raw findings."
+      ],
+      "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
     },
     {
       "id": "side_effect_observer_positive",

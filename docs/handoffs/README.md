@@ -55,8 +55,14 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [Finding Alignment Consumer Contract v2](2026-05-16-finding-alignment-consumer-contract-v2.md)
+- [Editor First-Run Usability closeout](2026-05-16-editor-first-run-usability-closeout.md)
+- [Lane 3 First-Run Repair dogfood receipts](2026-05-16-lane3-first-run-repair-receipts.md)
+- [Rust Usable Gap Projection closeout](2026-05-15-rust-usable-gap-projection-closeout.md)
+- [Editor Gap Cockpit closeout](2026-05-15-editor-gap-cockpit-closeout.md)
 - [Generated evidence discipline closeout](2026-05-14-generated-evidence-discipline-closeout.md)
 - [Lane 1 User-Visible Output Evidence closeout](2026-05-14-user-visible-output-evidence-closeout.md)
+- [Editor Gap Cockpit dogfood receipts](2026-05-14-editor-gap-cockpit-receipts.md)
 - [Presentation text consumer contract](2026-05-14-presentation-text-consumer-handoff.md)
 - [Policy Operations closeout](2026-05-13-policy-operations-closeout.md)
 - [Lane 1 Evidence Quality Leadership closeout](2026-05-13-lane-1-evidence-quality-leadership-closeout.md)

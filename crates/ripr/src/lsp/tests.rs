@@ -1469,6 +1469,7 @@ fn gap_code_actions_surface_bounded_repair_actions_when_artifact_is_valid() -> R
             .map(|(title, command, _)| (title.as_str(), command.as_str()))
             .collect::<Vec<_>>(),
         vec![
+            ("Copy first repair packet", COPY_CONTEXT_COMMAND),
             ("Inspect gap: copy repair packet", COPY_CONTEXT_COMMAND),
             (
                 "Write targeted test: open best related test",
@@ -1486,34 +1487,121 @@ fn gap_code_actions_surface_bounded_repair_actions_when_artifact_is_valid() -> R
             ("Refresh Analysis - Saved Workspace Check", REFRESH_COMMAND),
         ]
     );
-    assert_eq!(commands[0].2[0]["label"], "gap_repair_packet");
+    assert_eq!(commands[0].2[0]["label"], "first_repair_packet");
+    assert_eq!(commands[0].2[0]["gap_identity"], "gap:py:pricing");
     assert_eq!(commands[0].2[0]["canonical_gap_id"], "gap:py:pricing");
     assert_eq!(
-        commands[0].2[0]["repair_route"]["related_test"],
+        commands[0].2[0]["verify_command"],
+        "ripr agent verify --root . --json"
+    );
+    assert_eq!(
+        commands[0].2[0]["receipt_command"],
+        "ripr agent receipt --root . --json"
+    );
+    let packet = commands[0].2[0]["packet"]
+        .as_str()
+        .ok_or_else(|| "missing first repair packet text".to_string())?;
+    assert!(
+        packet.contains("RIPR first repair packet")
+            && packet.contains("Language status: preview")
+            && packet.contains("Static limit: missing_import_graph")
+            && packet.contains("Suggested action:")
+            && packet.contains("Verify command:")
+            && packet.contains("Receipt command:")
+            && packet
+                .contains("Do not edit production code unless the packet explicitly scopes it."),
+        "unexpected first repair packet:\n{packet}"
+    );
+    let static_limit_position = packet
+        .find("Static limit: missing_import_graph")
+        .ok_or_else(|| format!("missing static limit in first repair packet:\n{packet}"))?;
+    let suggested_action_position = packet
+        .find("Suggested action:")
+        .ok_or_else(|| format!("missing suggested action in first repair packet:\n{packet}"))?;
+    assert!(
+        static_limit_position < suggested_action_position,
+        "static limits must appear before action language:\n{packet}"
+    );
+    assert_eq!(commands[1].2[0]["label"], "gap_repair_packet");
+    assert_eq!(commands[1].2[0]["canonical_gap_id"], "gap:py:pricing");
+    assert_eq!(
+        commands[1].2[0]["repair_route"]["related_test"],
         "tests/test_pricing.py::test_discount_boundary"
     );
     assert_eq!(
-        commands[1].2[0]["uri"],
+        commands[2].2[0]["uri"],
         file_uri_for_path(&root.path().join("tests/test_pricing.py"))?.as_str()
     );
-    assert_eq!(commands[1].2[0]["line"], 2);
-    assert_eq!(commands[1].2[0]["test_name"], "test_discount_boundary");
-    assert_eq!(commands[2].2[0]["label"], "gap_verify");
-    assert_eq!(
-        commands[2].2[0]["command"],
-        "ripr agent verify --root . --json"
-    );
-    assert_eq!(commands[3].2[0]["label"], "gap_receipt");
+    assert_eq!(commands[2].2[0]["line"], 2);
+    assert_eq!(commands[2].2[0]["test_name"], "test_discount_boundary");
+    assert_eq!(commands[3].2[0]["label"], "gap_verify");
     assert_eq!(
         commands[3].2[0]["command"],
+        "ripr agent verify --root . --json"
+    );
+    assert_eq!(commands[4].2[0]["label"], "gap_receipt");
+    assert_eq!(
+        commands[4].2[0]["command"],
         "ripr agent receipt --root . --json"
     );
     assert!(
-        commands[4].2[0]["note"]
+        commands[5].2[0]["note"]
             .as_str()
             .is_some_and(|note| note.contains("Static limit: missing_import_graph")),
         "expected static-limit note, got {:?}",
-        commands[4].2[0]
+        commands[5].2[0]
+    );
+    Ok(())
+}
+
+#[test]
+fn gap_code_actions_suppress_first_repair_packet_without_verify_or_receipt_command()
+-> Result<(), String> {
+    let root = unique_lsp_test_root("gap-first-repair-requires-commands")?;
+    std::fs::create_dir_all(root.path().join("tests"))
+        .map_err(|err| format!("create tests failed: {err}"))?;
+    std::fs::write(
+        root.path().join("tests/test_pricing.py"),
+        "def test_discount_boundary():\n    assert price(10) == 9\n",
+    )
+    .map_err(|err| format!("write related test failed: {err}"))?;
+    let uri = file_uri_for_path(&root.path().join("src/pricing.py"))?;
+    let mut diagnostic = gap_action_diagnostic();
+    let data = diagnostic
+        .data
+        .as_mut()
+        .ok_or_else(|| "missing diagnostic data".to_string())?;
+    data.as_object_mut()
+        .ok_or_else(|| "expected object data".to_string())?
+        .remove("receipt_command");
+    let mut snapshot = sample_analysis_snapshot(
+        root.path().to_path_buf(),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.gap_artifacts = vec![validated_gap_artifact()];
+
+    let actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
+        Some(&snapshot),
+    );
+    let commands = code_action_commands(&actions)?;
+
+    assert!(
+        commands
+            .iter()
+            .all(|(title, _, args)| title != "Copy first repair packet"
+                && args
+                    .first()
+                    .is_none_or(|arg| arg["label"] != "first_repair_packet")),
+        "first repair packet must be suppressed when receipt command is missing: {commands:?}"
+    );
+    assert!(
+        commands
+            .iter()
+            .any(|(title, _, _)| title == "Inspect gap: copy repair packet"),
+        "existing inspect action should remain available"
     );
     Ok(())
 }

@@ -675,10 +675,10 @@ status = "alpha"
 spec = "RIPR-SPEC-0035"
 evidence = [
   "fixtures/evidence-quality-benchmark/corpus.json defines a manifest-only Lane 1 benchmark corpus",
-  "the corpus covers duplicate canonical gap, match-arm discriminator split, wrong related-test top choice, broad versus exact error oracle, self-computed expected value and duplicative equality guards, opaque helper limitation, cross-file constant limitation, presentation text constants, side-effect observer, snapshot discriminator, mock expectation, runtime-only signal, and ambiguous runtime join classes",
+  "the corpus covers duplicate canonical gap, match-arm discriminator split, wrong related-test top choice, broad versus exact error oracle, self-computed expected value and duplicative equality guards, opaque helper limitation, cross-file constant limitation, presentation text constants, config/policy constants including behavior selectors with and without discriminators, side-effect observer, snapshot discriminator, mock expectation, runtime-only signal, and ambiguous runtime join classes",
   "each case records expected claims, must-not-claim guards, expected repo-exposure evidence_record subsets or runtime-only nonstatic calibration, audit signals, maturity scope, and repair route",
   "cargo xtask check-fixture-contracts validates the corpus shape through xtask/src/main.rs",
-  "xtask unit tests pin required case kinds, missing guard detection, runtime-only nonstatic behavior, and line-movement canonical identity"
+  "xtask unit tests pin required config/policy case IDs, required case kinds, missing guard detection, runtime-only nonstatic behavior, and line-movement canonical identity"
 ]
 fixtures = [
   "fixtures/evidence-quality-benchmark/corpus.json"
@@ -1518,11 +1518,11 @@ spec = "RIPR-SPEC-0045"
 evidence = [
   "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md defines the Lane 1 contract for preserving raw findings as supporting evidence while rolling them up into canonical evidence items",
   "canonical items carry gap_state, actionability, why, recommended repair, verification, static limitations, confidence, and raw_findings",
-  "fixtures/evidence-quality-benchmark/corpus.json pins manifest-only raw-to-canonical presentation-text cases for actionable, already-observed, internal-only, static-limitation, observer-unknown, line-movement, and non-collision states",
+  "fixtures/evidence-quality-benchmark/corpus.json pins manifest-only raw-to-canonical presentation-text and config/policy cases for actionable, already-observed, internal-only, static-limitation, observer-unknown, behavior-discriminator, line-movement, and non-collision states",
   "crates/ripr/src/output/evidence_record.rs emits additive raw_findings, canonical_item, and nullable presentation_text fields from existing static seam facts",
   "crates/ripr/src/output/repo_exposure.rs carries the additive alignment fields under seams[].evidence_record while preserving current seam fields",
-  "crates/ripr/src/output/json/finding_alignment.rs adds the first check-output alignment projection for supported presentation-text declaration/literal groups and classifies fixture-backed visible, observed, internal-only, and visibility-unknown item states with concrete repair routes",
-  "xtask/src/main.rs reports raw-to-canonical ratio, duplicate groups, actionable, no-action, static-limitation, calibrated-support, and presentation-text counts in evidence-quality scorecard and trend outputs",
+  "crates/ripr/src/output/json/finding_alignment.rs projects supported presentation-text and config/policy declaration/literal groups, including behavior selectors, into fixture-backed visible, observed, internal-only, visibility-unknown, and behavior-discriminator item states with concrete repair routes",
+  "xtask/src/main.rs reports raw-to-canonical ratio, duplicate groups, actionable, no-action, static-limitation, calibrated-support, presentation-text, and config/policy counts in evidence-quality scorecard and trend outputs",
   "docs/OUTPUT_SCHEMA.md documents the additive evidence_record alignment fields",
   "docs/handoffs/2026-05-14-presentation-text-consumer-handoff.md documents canonical evidence items as the downstream user-facing unit and raw findings as supporting evidence",
   "docs/handoffs/2026-05-14-user-visible-output-evidence-closeout.md records the class-scoped closeout boundary"
@@ -1531,7 +1531,7 @@ fixtures = [
   "fixtures/evidence-quality-benchmark/corpus.json"
 ]
 next = "maintenance"
-metric = "finding_alignment_raw_findings_total, finding_alignment_raw_signals_total, finding_alignment_canonical_items_total, finding_alignment_raw_to_canonical_ratio, finding_alignment_duplicate_groups_total, finding_alignment_actionable_items_total, finding_alignment_actionable_unresolved_canonical_gaps, finding_alignment_already_observed_total, finding_alignment_internal_only_total, finding_alignment_internal_no_action_total, finding_alignment_static_limitation_total, finding_alignment_unknown_total, finding_alignment_calibrated_supported_total, finding_alignment_uncalibrated_total, finding_alignment_visibility_unknown_total, finding_alignment_presentation_text_actionable_total"
+metric = "finding_alignment_raw_findings_total, finding_alignment_raw_signals_total, finding_alignment_canonical_items_total, finding_alignment_raw_to_canonical_ratio, finding_alignment_duplicate_groups_total, finding_alignment_actionable_items_total, finding_alignment_actionable_unresolved_canonical_gaps, finding_alignment_already_observed_total, finding_alignment_internal_only_total, finding_alignment_internal_no_action_total, finding_alignment_static_limitation_total, finding_alignment_unknown_total, finding_alignment_calibrated_supported_total, finding_alignment_uncalibrated_total, finding_alignment_visibility_unknown_total, finding_alignment_presentation_text_actionable_total, config_policy_actionable_behavior_discriminator, config_policy_repair_route_coverage, config_policy_verify_command_coverage"
 
 [[capability]]
 id = "gap_decision_ledger"
@@ -1543,13 +1543,16 @@ evidence = [
   "fixtures/gap-decision-ledger/corpus.json pins the planned GapRecord vocabulary, projection eligibility, safe gate predicate, output-contract repair route, missing-artifact regeneration, preview ineligibility, and receipt movement cases",
   "crates/ripr/src/output/gap_decision_ledger.rs builds and renders the advisory gap_decision_ledger JSON and Markdown report from explicit GapRecord input",
   "crates/ripr/src/cli/commands.rs wires `ripr reports gap-ledger --records ...` without rerunning analysis or changing downstream projection behavior",
+  "`ripr reports gap-ledger --repo-exposure ...` derives conservative repo-scoped Rust GapRecords from existing seams[].evidence_record.canonical_item data without making PR-local gate/comment claims",
+  "`ripr reports gap-ledger --check-output ...` derives PR-local MissingOutputContract records from presentation-text finding_alignment.items[] with AddOutputGolden repair guidance and cargo xtask goldens check verification",
   "ripr first-action --gap-ledger, ripr pr-ledger record --gap-ledger, ripr zero status --gap-ledger, ripr gate evaluate --gap-ledger, ripr review-comments --gap-ledger, ripr agent packet --gap-ledger, LSP gap diagnostics, and repo-badge formats with --gap-ledger can consume explicit policy-backed gap records while preserving advisory/default-off behavior",
+  "docs/FIRST_PR_WORKFLOW.md documents the first successful Rust PR loop from one repairable gap to one focused proof and receipt",
   "docs/OUTPUT_SCHEMA.md documents the implemented gap_decision_ledger JSON shape"
 ]
 fixtures = [
   "fixtures/gap-decision-ledger/corpus.json"
 ]
-next = "editor/gap-work-packet-projection"
+next = "maintenance"
 metric = "gap_decision_records_total, gap_decision_repairable_total, gap_decision_static_limitation_total, gap_decision_no_action_total, gap_decision_missing_artifact_total, gap_decision_projection_pr_comment_eligible, gap_decision_projection_gate_candidate, gap_decision_projection_agent_packet_eligible, gap_decision_ripr_zero_target_count, gap_decision_ripr_plus_target_count, gap_decision_preview_ineligible_total, gap_decision_receipt_improved_total, gap_decision_receipt_unchanged_after_attempt_total, gap_decision_missing_output_contract_total"
 
 [[capability]]

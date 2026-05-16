@@ -60,7 +60,7 @@ repeated only as supporting evidence for the canonical item.
 {
   "finding_alignment": {
     "scope": "supported_classes",
-    "supported_evidence_classes": ["presentation_text"],
+    "supported_evidence_classes": ["presentation_text", "config_or_policy_constant"],
     "summary": {
       "raw_signals": 2,
       "canonical_items": 1,
@@ -75,6 +75,10 @@ repeated only as supporting evidence for the canonical item.
       "unknown": 0,
       "calibrated_supported": 0,
       "uncalibrated": 1,
+      "repair_route_coverage": 0,
+      "actionable_items_without_repair_route": 0,
+      "verify_command_coverage": 0,
+      "actionable_items_without_verify_command": 0,
       "presentation_text_total": 1,
       "presentation_text_user_visible": 0,
       "presentation_text_observed": 0,
@@ -86,7 +90,21 @@ repeated only as supporting evidence for the canonical item.
       "presentation_text_actionable_snapshot": 0,
       "presentation_text_actionable_output_repairs": 0,
       "presentation_text_no_action": 0,
-      "presentation_text_static_limitations": 1
+      "presentation_text_static_limitations": 1,
+      "config_policy_constant_total": 0,
+      "config_policy_user_visible": 0,
+      "config_policy_observed": 0,
+      "config_policy_unobserved": 0,
+      "config_policy_internal_only": 0,
+      "config_policy_flow_unknown": 0,
+      "config_policy_observer_unknown": 0,
+      "config_policy_duplicate_groups": 0,
+      "config_policy_actionable_output_observer": 0,
+      "config_policy_actionable_behavior_discriminator": 0,
+      "config_policy_no_action": 0,
+      "config_policy_static_limitations": 0,
+      "config_policy_repair_route_coverage": 0,
+      "config_policy_verify_command_coverage": 0
     },
     "items": [
       {
@@ -99,6 +117,7 @@ repeated only as supporting evidence for the canonical item.
         "group_reason": "declaration_and_literal_same_text_constant",
         "why": "Changed presentation text could not be traced to or away from a user-visible output sink.",
         "recommended_repair": "Trace the string constant to a rendered output path or confirm it is internal-only.",
+        "repair_route": null,
         "related_test": null,
         "verify_command": "cargo xtask evidence-quality-scorecard",
         "static_limitations": [
@@ -146,7 +165,8 @@ repeated only as supporting evidence for the canonical item.
           "repair_kind": "inspect_visibility",
           "target_test_type": "unknown",
           "suggested_assertion": "Trace the constant to a supported output sink before adding or updating tests."
-        }
+        },
+        "config_policy": null
       }
     ]
   }
@@ -158,7 +178,8 @@ Field contract:
 - `finding_alignment.scope` - currently `supported_classes`; Lane 1 reports
   only evidence classes whose grouping behavior is fixture-backed.
 - `finding_alignment.supported_evidence_classes` - evidence classes included
-  in this projection. The first supported class is `presentation_text`.
+  in this projection. The current fixture-backed classes are
+  `presentation_text` and `config_or_policy_constant`.
 - `finding_alignment.summary.raw_signals` - total raw findings emitted in the
   check output.
 - `finding_alignment.summary.canonical_items` - supported canonical evidence
@@ -178,9 +199,27 @@ Field contract:
   confidence-basis counts for canonical items. Current presentation-text items
   are fixture-backed static evidence unless a later checked runtime calibration
   class supplies calibrated support.
+- `finding_alignment.summary.repair_route_coverage` - count of actionable
+  canonical items that carry a concrete top-level `repair_route` with
+  `repair_kind`, `target_test_type`, and `suggested_assertion`.
+- `finding_alignment.summary.actionable_items_without_repair_route` - count of
+  actionable canonical items that are missing a concrete top-level repair
+  route. Supported fixture-backed classes should keep this at zero; no-action
+  and static-limitation items are not counted as missing user repair routes.
+- `finding_alignment.summary.verify_command_coverage` - count of actionable
+  canonical items that carry a concrete `verify_command`.
+- `finding_alignment.summary.actionable_items_without_verify_command` - count
+  of actionable canonical items missing a concrete verification route. Supported
+  fixture-backed classes should keep this at zero; no-action and
+  static-limitation items are not counted as missing user verification commands.
 - `finding_alignment.summary.presentation_text_*` - presentation-text class
   counts for visibility, observer status, duplicate grouping, no-action states,
   static limitations, and output-observer repairs.
+- `finding_alignment.summary.config_policy_*` - config/policy constant class
+  counts for visibility, observer or discriminator status, duplicate grouping,
+  no-action states, static limitations, output-observer repairs,
+  behavior-discriminator repairs, repair-route coverage, and verify-command
+  coverage.
 - `finding_alignment.items[]` - canonical evidence items. Downstream surfaces
   should prefer these items as the user-facing unit and show raw findings as
   supporting evidence.
@@ -194,6 +233,10 @@ Field contract:
   as `inspect_visibility`, `add_output_observer`, `already_observed`, or
   `no_action`. Presentation text does not produce user repair work from text
   alone.
+- `finding_alignment.items[].repair_route` - nullable normalized repair route
+  copied from class-specific evidence. It is required for
+  `gap_state = "actionable"` in supported classes and is `null` for
+  already-observed, internal-only, and static-limitation items.
 - `finding_alignment.items[].static_limitations[]` - analyzer limitation
   categories and repair routes. `presentation_text_visibility_unknown` means
   RIPR could not safely trace the text to or away from a user-visible output
@@ -204,6 +247,12 @@ Field contract:
   fixture-backed states include visibility unknown, user-visible unobserved
   help/report text, user-visible observed report text, and internal-only
   labels.
+- `finding_alignment.items[].config_policy` - class-specific constant role,
+  source-kind, visibility, observer/discriminator, actionability, repair kind,
+  target test type, and suggested assertion context. Implemented
+  fixture-backed states include internal-only policy metadata, visible
+  unobserved report/config labels, observed schema labels, cross-file flow
+  unknown limitations, and opaque lookup limitations.
 
 ## Finding
 
@@ -1780,6 +1829,19 @@ generated tests, provider calls, or runtime execution.
       "note": "optional durable evidence-health audit fields"
     }
   },
+  "headline": {
+    "primary_metric": "finding_alignment_actionable_unresolved_canonical_gaps",
+    "primary_count": 0,
+    "counting_model": "actionable_canonical_gaps",
+    "raw_signals": 2,
+    "canonical_items": 1,
+    "already_observed": 0,
+    "internal_no_action": 0,
+    "static_limitations": 1,
+    "unknown": 0,
+    "raw_to_canonical_ratio": 2.0,
+    "note": "Raw findings are diagnostic; actionable canonical gaps are the user-facing repair count."
+  },
   "summary": {
     "raw_headline_gaps": 6114,
     "canonical_gap_groups_total": 4800,
@@ -1912,6 +1974,13 @@ Field contract:
 - `inputs.*` - input artifact identity with path, load status, optional schema
   version, optional SHA-256, and a short note. Missing optional artifacts are
   reported instead of treated as failures.
+- `headline` - additive scorecard lead numbers for the finding-alignment
+  counting model. `primary_metric` is
+  `finding_alignment_actionable_unresolved_canonical_gaps`, `primary_count` is
+  the actionable canonical gap count, and raw signals remain diagnostic context
+  alongside canonical item, already-observed, no-action, limitation, unknown,
+  and raw-to-canonical counts. This does not redefine public badges or gate
+  policy.
 - `summary` - headline scorecard counts copied from the current Lane 1 audit
   plus scorecard-local repair, delta availability, finding-alignment, and
   presentation-text counts. Finding-alignment counts preserve raw signals,
@@ -5991,6 +6060,27 @@ JSON shape:
       ]
     }
   ],
+  "repo_ops_packets": [
+    {
+      "id": "gh_pr_status",
+      "label": "PR merge readiness",
+      "status": "warn",
+      "next_command": "cargo xtask gh-pr-status --pr <number>",
+      "description": "Summarizes one PR's merge state, checks, reviews, and safe next action.",
+      "artifacts": [
+        {
+          "path": "target/ripr/reports/gh-pr-status.md",
+          "status": "warn",
+          "available": true
+        },
+        {
+          "path": "target/ripr/reports/gh-pr-status.json",
+          "status": "warn",
+          "available": true
+        }
+      ]
+    }
+  ],
   "missing_expected": [
     {
       "id": "assistant_loop_health",
@@ -6040,8 +6130,18 @@ Field contract:
 - `groups[].entries[]` records artifact id, label, kind, path, optional JSON
   sibling, status, availability, requiredness, authority, description, and
   next command.
+- `repo_ops_packets[]` is the repo-local operating packet index used by
+  `cargo xtask reports index`. It records command mutability, the repo
+  cockpit, worktree doctor, PR-ready, PR triage, per-PR merge readiness,
+  generated-clean, badge diff policy, command catalog coverage, critic,
+  receipts, suggested-fixes, and `check-pr` artifacts with status, known output
+  paths, and regeneration commands. It is advisory front-door metadata only and
+  never becomes gate authority.
+
+Report packet index field contract:
+
 - `entries[].status` is `available`, `missing`, `pass`, `warn`, `fail`,
-  `blocked`, `acknowledged`, `suppressed`, `stale`, `incomplete`,
+  `actionable`, `blocked`, `acknowledged`, `suppressed`, `stale`, `incomplete`,
   `unreadable`, or `not_applicable`.
 - `missing_expected[].reason` is `not_generated`, `input_not_available`,
   `configured_off`, `missing_required_input`, `stale_upstream`, or `unknown`.
@@ -6053,6 +6153,84 @@ Field contract:
 - `limits` preserves read-only, explicit-input, no-source-edit,
   no-generated-test, no-provider-call, no-runtime-mutation-execution,
   no-inline-comment, and advisory-default boundaries.
+
+`target/ripr/reports/pr-ready.json` is the local PR readiness cockpit emitted by
+`cargo xtask pr-ready`:
+
+```json
+{
+  "schema_version": "0.1",
+  "mode": "advisory",
+  "status": "actionable",
+  "next_action": "review the attention items, then run cargo xtask check-pr for full gate receipts",
+  "steps": [
+    {
+      "id": "worktree_doctor",
+      "command": "cargo xtask worktree doctor",
+      "status": "pass",
+      "required": true,
+      "report": "target/ripr/reports/worktree-doctor.md",
+      "summary": "completed"
+    }
+  ],
+  "safe_repairs": ["run cargo xtask fix-pr"],
+  "generated_only": ["target/ripr/**"],
+  "judgment_required": ["golden blessing"],
+  "next_commands": ["cargo xtask check-pr"]
+}
+```
+
+Field contract:
+
+- `status` is `pass`, `actionable`, or `fail`. `fail` means a required local
+  hygiene step failed; `actionable` means a non-blocking packet needs attention.
+- `steps[].required` records whether a failed step makes `pr-ready` exit
+  nonzero.
+- `safe_repairs[]` lists deterministic repair paths; it must not include badge
+  value edits, golden blessing, baselines, suppressions, dependency exceptions,
+  schema version changes, or policy authority changes.
+
+`target/ripr/reports/cockpit.json` is the repo-level maintainer cockpit emitted
+by `cargo xtask cockpit`:
+
+```json
+{
+  "schema_version": "0.1",
+  "mode": "advisory",
+  "status": "actionable",
+  "next_action": "review the action queue, then run cargo xtask pr-ready or cargo xtask check-pr for the active PR",
+  "action_queue": ["review stale, duplicate, behind, policy-sensitive, or generated-artifact PRs"],
+  "steps": [
+    {
+      "id": "pr_triage",
+      "command": "cargo xtask pr-triage-report",
+      "status": "needs_attention",
+      "required": false,
+      "report": "target/ripr/reports/pr-triage.md",
+      "summary": "report status: warn; see target/ripr/reports/pr-triage.md"
+    }
+  ],
+  "safe_repairs": ["run cargo xtask fix-pr"],
+  "generated_only": ["target/ripr/**"],
+  "judgment_required": ["branch protection"],
+  "next_commands": ["cargo xtask pr-ready", "cargo xtask check-pr"]
+}
+```
+
+Field contract:
+
+- `status` is `pass`, `actionable`, or `fail`. `fail` means a required
+  repo-ops rail failed; `actionable` means the cockpit found advisory queue,
+  source-of-truth, generated-evidence, or command-catalog attention items.
+- `action_queue[]` is the maintainer-facing next-work queue derived from the
+  composed repo-ops packet statuses. It is advisory and must not close PRs,
+  update branches, edit badges, or mutate policy.
+- `steps[]` records each composed repo-ops command, whether it is required for
+  cockpit success, and the report path to inspect.
+- `safe_repairs[]`, `generated_only[]`, and `judgment_required[]` preserve the
+  generated-evidence discipline boundary: deterministic cleanup is allowed,
+  while badge refreshes, goldens, suppressions, baselines, dependency
+  exceptions, branch protection, and policy authority remain human decisions.
 
 Markdown should fit in a generated GitHub job summary and uploaded report
 packet. It should show status, start-here artifact, gate authority, packet
@@ -7819,6 +7997,7 @@ fixtures/boundary_gap/expected/pr-review-front-panel/<case>/pr-review-front-pane
 fixtures/boundary_gap/expected/pr-review-front-panel/<case>/pr-review-front-panel.md
 fixtures/boundary_gap/expected/report-packet-index/<case>/index.json
 fixtures/boundary_gap/expected/report-packet-index/<case>/index.md
+fixtures/finding-alignment-dogfood/corpus.json
 ```
 
 The report is advisory. It runs `ripr check --mode fast` against stable fixture
@@ -7838,7 +8017,11 @@ receipts are read from `fixtures/boundary_gap/expected/first-useful-action/`.
 The checked front-panel receipts are read from
 `fixtures/boundary_gap/expected/pr-review-front-panel/`. The checked
 report-packet index receipts are read from
-`fixtures/boundary_gap/expected/report-packet-index/`.
+`fixtures/boundary_gap/expected/report-packet-index/`. The checked finding
+alignment receipts are read from `fixtures/finding-alignment-dogfood/` and
+record real RIPR PR examples where raw findings remain supporting evidence,
+canonical items are the countable unit, actionable items have repair and
+verification routes, and static limitations name analyzer repair routes.
 The calibrated-gate dogfood case expects a non-zero evaluator exit only for the
 explicit blocking mode and treats that as healthy when the written decision
 report has the expected `blocked` status and count.
@@ -7991,6 +8174,36 @@ JSON shape:
         "default_advisory": true,
         "artifact_upload": true,
         "language_grouping_status": "deferred",
+        "errors": []
+      }
+    ]
+  },
+  "finding_alignment": {
+    "default_ci_blocking": false,
+    "receipt_dir": "fixtures/finding-alignment-dogfood",
+    "cases": [
+      {
+        "name": "config_policy_rendered_label_unobserved",
+        "source_pr": "EffortlessMetrics/ripr#1016",
+        "evidence_class": "config_or_policy_constant",
+        "raw_findings_total": 2,
+        "canonical_items_total": 1,
+        "gap_state": "actionable",
+        "actionability": "add_output_observer",
+        "user_outcome": "actionable_gap",
+        "repair_kind": "output_observer",
+        "target_test_type": "report_render_or_golden",
+        "verify_command": "cargo xtask evidence-quality-scorecard",
+        "static_limitation_category": null,
+        "static_limitation_repair_route": null,
+        "raw_findings_supporting_only": true,
+        "recommended_repair": "Add or update a report-render, config-output, snapshot, or golden observer for the rendered policy label.",
+        "must_not_claim": [
+          "Do not count declaration and literal findings as separate user actions.",
+          "Do not infer actionability from raw static class.",
+          "Do not recommend mutation testing before output-observer work."
+        ],
+        "reason": "A rendered config or policy label with no supported observer should become one actionable output-observer item.",
         "errors": []
       }
     ]
@@ -8242,6 +8455,23 @@ from explicit `GapRecord` input. The input may be a `records` array,
 `gap_records` array, raw record array, or the `fixtures/gap-decision-ledger`
 corpus shape where each case contains `expected_gap_record`.
 
+`ripr reports gap-ledger --repo-exposure <path>` derives conservative
+repo-scoped Rust `GapRecord` entries from existing
+`seams[].evidence_record.canonical_item` data in a repo-exposure report. This
+does not rerun analysis or make PR-local gate/comment claims; derived records
+are repo-scoped projection inputs for reports, badges, LSP diagnostics, and
+agent packets when the evidence record already supplies a repair route and
+verification command.
+
+`ripr reports gap-ledger --check-output <path>` derives PR-local
+presentation/output contract gap records from an existing check JSON
+`finding_alignment.items[]` section. Supported visible output text without a
+checked observer becomes `MissingOutputContract` with
+`repair_route.route_kind = "AddOutputGolden"` and
+`verification_commands = ["cargo xtask goldens check"]`. Visibility-unknown
+presentation text remains a static limitation and does not become a generic
+`static_unknown` repair instruction.
+
 The command writes JSON to `target/ripr/reports/gap-decision-ledger.json` and
 Markdown to `target/ripr/reports/gap-decision-ledger.md` by default. It does
 not rerun analysis, infer analyzer truth, publish comments, edit source,
@@ -8259,6 +8489,7 @@ JSON shape:
   "root": ".",
   "generated_at": "unix_ms:1778710000000",
   "inputs": {
+    "source_kind": "records",
     "records": "fixtures/gap-decision-ledger/corpus.json"
   },
   "summary": {

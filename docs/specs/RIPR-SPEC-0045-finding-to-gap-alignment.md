@@ -144,6 +144,7 @@ The planned additive evidence-record subset is:
   "group_reason": "declaration_and_literal_same_text_constant",
   "why": "Changed presentation text could not be traced to or away from a user-visible output sink.",
   "recommended_repair": "Trace the string constant to a rendered output path or confirm it is internal-only.",
+  "repair_route": null,
   "related_test": null,
   "verify_command": "cargo xtask evidence-quality-scorecard",
   "static_limitations": [
@@ -500,6 +501,8 @@ Follow-up implementation should include:
 - report tests proving raw findings remain supporting evidence;
 - consumer-handoff docs that identify canonical items as authoritative;
 - scorecard/trend tests for alignment metrics.
+- dogfood receipts that record real RIPR PR examples for actionable,
+  already-observed, internal/no-action, and named static-limitation outcomes.
 
 This spec PR does not add analyzer behavior or public output fields.
 
@@ -525,8 +528,13 @@ Planned Lane 1 slices:
   golden/snapshot-backed text, internal-only labels, and visibility-unknown
   limitations without treating text alone as user test debt.
 - `analysis/finding-alignment-repair-routes` adds concrete repairs, target test
-  types, suggested assertion shapes, and verify commands.
+  types, suggested assertion shapes, and verify commands. Actionable supported
+  classes also expose the normalized top-level `repair_route` so downstream
+  consumers do not parse class-specific fields to determine the user repair.
 - `report/finding-alignment-quality` adds scorecard and trend metrics.
+- `dogfood/finding-alignment-examples` checks repo-local receipts under
+  `fixtures/finding-alignment-dogfood/` so real RIPR PR examples preserve the
+  raw-finding -> canonical-item -> user-outcome split.
 - `docs/canonical-gap-action-consumer-handoff` documents downstream
   consumption.
 
@@ -552,4 +560,8 @@ Alignment scorecard and trend work should expose:
 - `finding_alignment_calibrated_supported_total`;
 - `finding_alignment_uncalibrated_total`;
 - `finding_alignment_visibility_unknown_total`;
-- `finding_alignment_presentation_text_actionable_total`.
+- `finding_alignment_presentation_text_actionable_total`;
+- `finding_alignment_repair_route_coverage`;
+- `finding_alignment_actionable_items_without_repair_route`;
+- `finding_alignment_verify_command_coverage`;
+- `finding_alignment_actionable_items_without_verify_command`.

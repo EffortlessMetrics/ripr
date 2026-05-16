@@ -461,11 +461,11 @@ or unsaved-buffer overlays.
 | Preview diagnostics, hover, status, and actions visibly label preview evidence and static limits | LSP diagnostic data, hover markdown, status refresh logs, existing cockpit actions, `fixtures/python_missing_import_graph_limit`, `fixtures/typescript_mocked_module_limit`, `fixtures/python_disabled`, `cargo xtask lsp-cockpit-report` | Implemented for diagnostic metadata, hover boundary text, status preview/static-limit counts, bounded finding actions, and disabled-preview no-diagnostic behavior; actions keep the existing cockpit model |
 | No editor hidden analysis reruns, source edits, generated tests, provider calls, mutation execution, gate semantics, default blocking, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays | Lane 3 Scope, Non-Goals, and Cross-Lane Rules in this tracker | Current tracker preserves the boundary; future routing must re-audit it |
 
-## Next Selected Slice: Editor Gap Cockpit
+## Closed Slice: Editor Gap Cockpit
 
-Campaign 27 closed language routing. The next Lane 3 end state is the Editor
-Gap Cockpit: make the editor consume existing RIPR evidence artifacts and
-project one safe local next action.
+Campaign 27 closed language routing. The next Lane 3 slice, Editor Gap
+Cockpit, is now closed. It made the editor consume existing RIPR evidence
+artifacts and project one safe local next action.
 
 Durable sources:
 
@@ -473,6 +473,7 @@ Durable sources:
 - [RIPR-SPEC-0047: Editor Gap Projection](../specs/RIPR-SPEC-0047-editor-gap-projection.md)
 - [ADR-0012: Editor Gap Projection Is Read-Only](../adr/0012-editor-gap-projection-is-read-only.md)
 - [Editor gap cockpit implementation plan](../../plans/editor-gap-cockpit/implementation-plan.md)
+- [Editor Gap Cockpit closeout](../handoffs/2026-05-15-editor-gap-cockpit-closeout.md)
 
 The target loop is:
 
@@ -487,7 +488,7 @@ diagnostic
 -> refresh
 ```
 
-Lane 3 should resolve editor surfaces through one identity path:
+Lane 3 resolves editor surfaces through one identity path:
 
 ```text
 diagnostic.data
@@ -503,40 +504,93 @@ does not create analyzer facts, decide policy, publish PR comments, compose
 generated CI summaries, edit source, generate tests, call providers, run
 mutation, or act as a gate authority.
 
-Planned PR path:
+Completed PR path:
 
-1. `docs(lane3): open editor gap cockpit source-of-truth stack`
-2. `test(lsp): pin post-campaign editor contract`
-3. `lsp(gap): add read-only gap artifact validation`
-4. `lsp(gap): project gap state in Show Status`
-5. `lsp(gap): enrich hover with repair route`
-6. `lsp(gap): add bounded repair packet actions`
-7. `fixtures(editor): add gap cockpit workflow fixtures`
-8. `test(vscode): smoke editor gap cockpit`
-9. `docs(editor): document gap cockpit workflow`
-10. `dogfood(lane3): record editor gap cockpit receipts`
-11. `campaign(lane3): close editor gap cockpit`
+1. #967 `docs(lane3): open editor gap cockpit source-of-truth stack`
+2. #970 `test(lsp): pin post-campaign editor contract`
+3. #973 `lsp(gap): add read-only gap artifact validation`
+4. #969 `lsp(gap): project gap records into editor diagnostics`
+5. #976 `lsp(gap): project gap state in Show Status`
+6. #981 `lsp(gap): enrich hover repair route`
+7. #983 `lsp(gap): add bounded repair actions`
+8. #985 `fixtures(editor): add gap cockpit workflow fixtures`
+9. #993 `test(vscode): smoke editor gap cockpit`
+10. #996 `docs(editor): document gap cockpit workflow`
+11. #998 `dogfood(lane3): record editor gap cockpit receipts`
+12. `campaign(lane3): close editor gap cockpit`
 
-Start with the docs-only source-of-truth PR. Do not add new diagnostics, hover,
-actions, status behavior, VS Code behavior, fixtures, or `.ripr/goals` manifest
-state in that PR.
+Post-closeout posture: there is no selected behavior-bearing Lane 3 PR open.
+Do not reopen this slice for speculative editor furniture. Future first-run,
+install, CodeLens, inlay, semantic-token, inline-patch, or unsaved-buffer work
+needs a new editor campaign.
+
+## Closed Slice: Editor First-Run and Repair Usability
+
+Editor First-Run and Repair Usability closed after making the existing cockpit
+self-orienting for a first-time or low-context user. It did not reopen Campaign
+27 language routing or the Editor Gap Cockpit:
+
+```text
+install / open workspace
+-> diagnose setup
+-> understand no-output state
+-> inspect one Rust gap
+-> open related test or copy first repair packet
+-> verify
+-> emit receipt
+-> refresh
+```
+
+Durable sources for the selected docs stack:
+
+- [RIPR-PROP-0008: Editor First-Run Usability](../proposals/RIPR-PROP-0008-editor-first-run-usability.md)
+- [RIPR-SPEC-0049: Editor Setup Status](../specs/RIPR-SPEC-0049-editor-setup-status.md)
+- [RIPR-SPEC-0050: Editor First Repair Loop](../specs/RIPR-SPEC-0050-editor-first-repair-loop.md)
+- [ADR-0013: Editor Setup Diagnostics Are Read-Only](../adr/0013-editor-setup-diagnostics-are-read-only.md)
+- [Editor first-run usability implementation plan](../../plans/editor-first-run-usability/implementation-plan.md)
+- [Editor First-Run Usability closeout](../handoffs/2026-05-16-editor-first-run-usability-closeout.md)
+
+Completed PR path:
+
+1. #1012 `docs(lane3): open editor first-run usability stack`
+2. #1017 `vscode: add setup diagnosis status model`
+3. #1023 `vscode: add ripr Diagnose Setup command`
+4. #1026 `test(vscode): smoke first-run and no-output states`
+5. #1028 `lsp: link receipts into Show Status`
+6. #1030 `lsp: add first-repair action packet`
+7. #1033 `fixtures(editor): add first-run usability fixtures`
+8. #1037 `docs(editor): write first-run-to-first-receipt guide`
+9. #1038 `dogfood(lane3): record first-run repair receipts`
+10. `campaign(lane3): close editor first-run usability`
+
+This campaign consumes existing server, workspace, config, language, artifact,
+gap, command, and receipt state. It may explain setup and no-output states,
+show existing receipt status, and expose bounded copy actions when typed fields
+support them. It must not install binaries, mutate config, run hidden analysis,
+create receipts, edit source, generate tests, call providers, run mutation,
+publish PR comments, decide gates, or add CodeLens, inlays, semantic tokens,
+inline patches, or unsaved-buffer overlays.
+
+Post-closeout posture: there is no selected behavior-bearing Lane 3 PR open.
+Future first-run/install polish, CodeLens, inlay, semantic-token, inline-patch,
+source-edit, generated-test, provider, mutation, policy, PR-comment, or
+unsaved-buffer work needs a new editor campaign.
 
 ## Lane 3 Document Model
 
-Lane 3 uses the repo tracking model in layers so future editor-preview work
-does not mix why, behavior contracts, architecture decisions, execution state,
-and proof in one file:
+Lane 3 uses the repo tracking model in layers so future editor work does not
+mix why, behavior contracts, architecture decisions, execution state, and
+validation in one file:
 
-- proposals in [`docs/proposals/`](../proposals/) explain why editor preview
-  routing exists, who benefits, alternatives, risks, and success criteria;
-- specs in [`docs/specs/`](../specs/) define what editor routing and
-  preview static-limit projection must do for users, tests, fixtures, and
-  future agents;
+- proposals in [`docs/proposals/`](../proposals/) explain why an editor slice
+  exists, who benefits, alternatives, risks, and success criteria;
+- specs in [`docs/specs/`](../specs/) define what the editor behavior must do
+  for users, tests, fixtures, and future agents;
 - ADRs in [`docs/adr/`](../adr/) record durable editor architecture decisions,
-  including the projection-only boundary;
-- campaign-specific plans in
-  [`plans/campaign-27/`](../../plans/campaign-27/) define the PR sequence,
-  acceptance, proof commands, and rollback notes for the Lane 3 slice;
+  including projection-only and read-only setup boundaries;
+- campaign-specific plans under [`plans/`](../../plans/) define the PR
+  sequence, acceptance, validation commands, and rollback notes for the Lane 3
+  slice;
 - `.ripr/goals/active.toml` records current machine-readable execution state
   only;
 - this lane tracker records Lane 3 scope, readiness, blocker state, and
@@ -558,6 +612,11 @@ Traceability for future editor-preview specs should list the docs outputs that
 define the contract and add tests, fixtures, code, and reports only as the
 behavior PRs land. Do not point future preview-routing specs at the existing
 Rust cockpit tests as if those tests prove a new preview-language behavior.
+
+Traceability for future first-run usability specs follows the same rule:
+source-of-truth PRs list the docs outputs that define the contract, while
+setup-status tests, receipt-status tests, VS Code smoke tests, fixtures, and
+metrics are added by the behavior PRs that implement them.
 
 ## Preview Routing Path
 
