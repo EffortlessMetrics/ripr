@@ -15025,6 +15025,7 @@ fn evidence_quality_scorecard_json(
             "capabilities": scorecard_input_json(&report.inputs.capabilities),
             "traceability": scorecard_input_json(&report.inputs.traceability),
         },
+        "headline": evidence_quality_scorecard_headline_json(&report.summary),
         "summary": evidence_quality_scorecard_summary_json(&report.summary),
         "maturity_by_class": report.maturity_by_class.iter().map(|row| {
             serde_json::json!({
@@ -15079,6 +15080,22 @@ fn evidence_quality_scorecard_json(
     serde_json::to_string_pretty(&value)
         .map(|json| format!("{json}\n"))
         .map_err(|err| format!("failed to render evidence quality scorecard JSON: {err}"))
+}
+
+fn evidence_quality_scorecard_headline_json(summary: &EvidenceQualityScorecardSummary) -> Value {
+    serde_json::json!({
+        "primary_metric": "finding_alignment_actionable_unresolved_canonical_gaps",
+        "primary_count": summary.finding_alignment_actionable_unresolved_canonical_gaps,
+        "counting_model": "actionable_canonical_gaps",
+        "raw_signals": summary.finding_alignment_raw_signals_total,
+        "canonical_items": summary.finding_alignment_canonical_items_total,
+        "already_observed": summary.finding_alignment_already_observed_total,
+        "internal_no_action": summary.finding_alignment_internal_no_action_total,
+        "static_limitations": summary.finding_alignment_static_limitation_total,
+        "unknown": summary.finding_alignment_unknown_total,
+        "raw_to_canonical_ratio": finding_alignment_raw_to_canonical_ratio(summary),
+        "note": "Raw findings are diagnostic; actionable canonical gaps are the user-facing repair count."
+    })
 }
 
 fn evidence_quality_scorecard_summary_json(summary: &EvidenceQualityScorecardSummary) -> Value {
@@ -15314,6 +15331,23 @@ fn evidence_quality_scorecard_markdown(report: &EvidenceQualityScorecardReport) 
     out.push_str("## Summary\n\n");
     out.push_str("| Metric | Count |\n");
     out.push_str("| --- | ---: |\n");
+    audit_push_count(
+        &mut out,
+        "Actionable canonical gaps",
+        report
+            .summary
+            .finding_alignment_actionable_unresolved_canonical_gaps,
+    );
+    audit_push_count(
+        &mut out,
+        "Canonical evidence items",
+        report.summary.finding_alignment_canonical_items_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Raw alignment signals",
+        report.summary.finding_alignment_raw_signals_total,
+    );
     audit_push_count(
         &mut out,
         "Raw headline gaps",
@@ -44983,6 +45017,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(value["schema_version"], "0.1");
         assert_eq!(value["report"], "evidence-quality-scorecard");
         assert!(value.get("inputs").is_some());
+        assert!(value.get("headline").is_some());
         assert!(value.get("summary").is_some());
         assert!(value.get("maturity_by_class").is_some());
         assert!(value.get("canonical_gap_groups").is_some());
@@ -45009,6 +45044,63 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(
             value["inputs"]["evidence_health"]["status"],
             serde_json::Value::from("missing")
+        );
+        assert_eq!(
+            value["headline"]["primary_metric"],
+            "finding_alignment_actionable_unresolved_canonical_gaps"
+        );
+        assert_eq!(
+            value["headline"]["counting_model"],
+            "actionable_canonical_gaps"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_scorecard_headline_prefers_actionable_canonical_gaps() -> Result<(), String>
+    {
+        let mut audit = scorecard_minimal_audit_value(0, 0, 0, 0, 0);
+        audit
+            .as_object_mut()
+            .ok_or_else(|| "sample audit must be an object".to_string())?
+            .insert(
+                "finding_alignment".to_string(),
+                serde_json::json!({
+                    "summary": {
+                        "raw_signals": 7,
+                        "canonical_items": 3,
+                        "aligned_raw_findings": 7,
+                        "unaligned_raw_findings": 0,
+                        "duplicate_groups_total": 2,
+                        "actionable_gaps": 2,
+                        "already_observed": 1,
+                        "internal_no_action": 0,
+                        "static_limitations": 0,
+                        "unknown": 0,
+                        "calibrated_supported": 0,
+                        "uncalibrated": 3
+                    }
+                }),
+            );
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(false),
+            &audit,
+            None,
+            None,
+        )?;
+        let json = evidence_quality_scorecard_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+
+        assert_eq!(value["headline"]["primary_count"], 2);
+        assert_eq!(value["headline"]["raw_signals"], 7);
+        assert_eq!(value["headline"]["canonical_items"], 3);
+        assert_eq!(value["headline"]["already_observed"], 1);
+        assert_eq!(value["headline"]["raw_to_canonical_ratio"], 7.0 / 3.0);
+        assert_eq!(
+            value["summary"]["finding_alignment_actionable_unresolved_canonical_gaps"],
+            2
         );
         Ok(())
     }
@@ -45054,6 +45146,7 @@ covered_by = ["cargo xtask check-file-policy"]
 
         for needle in [
             "Lane 1 evidence quality scorecard",
+            "Actionable canonical gaps",
             "Maturity By Class",
             "Top Evidence-Quality Risks",
             "Recommended Lane 1 Repairs",
