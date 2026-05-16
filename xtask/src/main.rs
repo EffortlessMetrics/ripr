@@ -7906,8 +7906,10 @@ fn validate_editor_first_run_actions(case: &str, actions: &Value, violations: &m
         })
         .collect::<Vec<_>>();
     let has_first_repair_packet = !first_repair_actions.is_empty();
-    if matches!(case, "setup_ok" | "receipt_improved" | "receipt_unchanged")
-        && !has_first_repair_packet
+    if matches!(
+        case,
+        "setup_ok" | "receipt_found" | "receipt_improved" | "receipt_unchanged"
+    ) && !has_first_repair_packet
     {
         violations.push(format!(
             "editor first-run usability case {case} must include Copy first repair packet"
@@ -34965,6 +34967,7 @@ mod tests {
             write_editor_first_run_usability_corpus(root);
             write_editor_first_run_status(root, "server_missing", "active", None);
             write_editor_first_run_actions(root, "setup_ok", &[]);
+            write_editor_first_run_actions(root, "receipt_found", &[]);
             write_editor_first_run_actions(root, "artifact_missing", &["Copy first repair packet"]);
             write(
                 &root.join(
@@ -34988,6 +34991,11 @@ mod tests {
             assert!(violations.iter().any(|violation| {
                 violation
                     .contains("editor first-run usability case setup_ok must include Copy first repair packet")
+            }));
+            assert!(violations.iter().any(|violation| {
+                violation.contains(
+                    "editor first-run usability case receipt_found must include Copy first repair packet",
+                )
             }));
             assert!(violations.iter().any(|violation| {
                 violation.contains(
@@ -35064,7 +35072,7 @@ mod tests {
 
     fn editor_first_run_actions(case: &str) -> Vec<&'static str> {
         match case {
-            "setup_ok" | "receipt_improved" | "receipt_unchanged" => {
+            "setup_ok" | "receipt_found" | "receipt_improved" | "receipt_unchanged" => {
                 vec![
                     "Copy first repair packet",
                     "Refresh Analysis - Saved Workspace Check",
