@@ -190,6 +190,7 @@ quieter.
 - `ripr: Restart Server`
 - `ripr: Show Status`
 - `ripr: Show Output`
+- `ripr: Start Current Repair`
 - `ripr: Inspect Test Gap - Copy Context`
 - `ripr: Write Targeted Test - Copy Suggested Assertion`
 - `ripr: Write Targeted Test - Copy Brief`
@@ -213,6 +214,21 @@ back to shelling out to the `ripr` CLI (`ripr context --at <selector> --json`).
 The code action `Inspect finding: copy context packet` includes `finding_id` and
 `probe_id` from the diagnostic data so the server can resolve the finding
 without re-running workspace analysis.
+
+### Start Current Repair
+
+The `ripr: Start Current Repair` command is editor-side orchestration over the
+current projected gap. It selects the current or nearest `ripr` gap diagnostic,
+asks the LSP for the existing code actions at that diagnostic range, and runs
+one of those already-bounded actions. It does not read report files, parse hover
+text, rerun hidden analysis, generate tests, edit source, or change gate
+authority.
+
+When a current repair is available, the command offers the same actions exposed
+on the diagnostic: copy the first repair packet, copy the gap repair packet,
+open the best related test, copy the verify command, copy the receipt command,
+or copy a static-limit note. If only refresh/setup actions are available, the
+command reports that no current bounded repair action is available.
 
 ### Seam Code Actions
 
@@ -271,6 +287,8 @@ Gap cockpit actions remain conditional:
 
 - `Write targeted test: open best related test` appears only for a
   workspace-local related test in the current language.
+- `ripr: Start Current Repair` only dispatches to the repair actions already
+  produced for the current or nearest gap diagnostic.
 - `Inspect Test Gap - Copy Context` and repair-packet actions appear only when
   gap identity and repair route exist.
 - `Write targeted test: copy brief` appears only when there is enough evidence

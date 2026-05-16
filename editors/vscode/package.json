@@ -44,7 +44,8 @@
     "workspaceContains:Cargo.toml",
     "onCommand:ripr.restartServer",
     "onCommand:ripr.showStatus",
-    "onCommand:ripr.diagnoseSetup"
+    "onCommand:ripr.diagnoseSetup",
+    "onCommand:ripr.startCurrentRepair"
   ],
   "main": "./out/src/extension.js",
   "scripts": {
@@ -150,6 +151,10 @@
       {
         "command": "ripr.diagnoseSetup",
         "title": "ripr: Diagnose Setup"
+      },
+      {
+        "command": "ripr.startCurrentRepair",
+        "title": "ripr: Start Current Repair"
       },
       {
         "command": "ripr.copyContext",
