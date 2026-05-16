@@ -2160,7 +2160,7 @@ mod tests {
         );
         let val = result.ok_or("expected Some(Value) on valid JSON")?;
         assert!(
-            !(val.get("key").and_then(|v| v.as_str()) != Some("value")),
+            (val.get("key").and_then(|v| v.as_str()) == Some("value")),
             "unexpected parsed value"
         );
         assert!(
@@ -2825,41 +2825,35 @@ mod tests {
     #[test]
     fn with_period_appends_when_missing() -> Result<(), String> {
         let result = with_period("hello");
-        assert!(
-            !(result != "hello."),
-            "expected 'hello.' but got '{result}'"
-        );
+        assert!((result == "hello."), "expected 'hello.' but got '{result}'");
         Ok(())
     }
 
     #[test]
     fn with_period_does_not_double_period() -> Result<(), String> {
         let result = with_period("done.");
-        assert!(!(result != "done."), "expected 'done.' but got '{result}'");
+        assert!((result == "done."), "expected 'done.' but got '{result}'");
         Ok(())
     }
 
     #[test]
     fn trim_period_removes_trailing_dot() -> Result<(), String> {
         let result = trim_period("word.");
-        assert!(!(result != "word"), "expected 'word' but got '{result}'");
+        assert!((result == "word"), "expected 'word' but got '{result}'");
         Ok(())
     }
 
     #[test]
     fn trim_period_leaves_no_dot_unchanged() -> Result<(), String> {
         let result = trim_period("word");
-        assert!(!(result != "word"), "expected 'word' but got '{result}'");
+        assert!((result == "word"), "expected 'word' but got '{result}'");
         Ok(())
     }
 
     #[test]
     fn str_or_returns_value_when_some() -> Result<(), String> {
         let result = str_or(Some("actual"), "fallback");
-        assert!(
-            !(result != "actual"),
-            "expected 'actual' but got '{result}'"
-        );
+        assert!((result == "actual"), "expected 'actual' but got '{result}'");
         Ok(())
     }
 
@@ -2867,7 +2861,7 @@ mod tests {
     fn str_or_returns_fallback_when_none() -> Result<(), String> {
         let result = str_or(None, "fallback");
         assert!(
-            !(result != "fallback"),
+            (result == "fallback"),
             "expected 'fallback' but got '{result}'"
         );
         Ok(())
@@ -2894,10 +2888,7 @@ mod tests {
     fn normalize_suggested_assertion_passes_through_unmatched() -> Result<(), String> {
         let input = "assert_eq!(f(x), 42)";
         let result = normalize_suggested_assertion(input);
-        assert!(
-            !(result != input),
-            "expected pass-through but got: {result}"
-        );
+        assert!((result == input), "expected pass-through but got: {result}");
         Ok(())
     }
 
@@ -2909,7 +2900,7 @@ mod tests {
             .map_err(|e| e.to_string())?;
         let result = classification_from_sources(&[(Some(&value), &["grip_class"])]);
         assert!(
-            !(result.as_deref() != Some("weakly_exposed")),
+            (result.as_deref() == Some("weakly_exposed")),
             "expected weakly_exposed but got: {result:?}"
         );
         Ok(())
@@ -2921,7 +2912,7 @@ mod tests {
             .map_err(|e| e.to_string())?;
         let result = classification_from_sources(&[(Some(&value), &["grip_class"])]);
         assert!(
-            !(result.as_deref() != Some("exposed")),
+            (result.as_deref() == Some("exposed")),
             "expected exposed but got: {result:?}"
         );
         Ok(())
@@ -2933,7 +2924,7 @@ mod tests {
             .map_err(|e| e.to_string())?;
         let result = classification_from_sources(&[(Some(&value), &["classification"])]);
         assert!(
-            !(result.as_deref() != Some("static_unknown")),
+            (result.as_deref() == Some("static_unknown")),
             "expected static_unknown but got: {result:?}"
         );
         Ok(())
@@ -2947,7 +2938,7 @@ mod tests {
             serde_json::from_str(r#"{"items": ["a", "b", "c"]}"#).map_err(|e| e.to_string())?;
         let result = path_value(&value, &["items", "1"]);
         assert!(
-            !(result.and_then(Value::as_str) != Some("b")),
+            (result.and_then(Value::as_str) == Some("b")),
             "expected 'b' at index 1 but got: {result:?}"
         );
         Ok(())
@@ -2968,7 +2959,7 @@ mod tests {
         let value: Value = serde_json::from_str(r#"-42"#).map_err(|e| e.to_string())?;
         let result = value_as_string(&value);
         assert!(
-            !(result.as_deref() != Some("-42")),
+            (result.as_deref() == Some("-42")),
             "expected '-42' but got: {result:?}"
         );
         Ok(())
@@ -2998,7 +2989,7 @@ mod tests {
         let value: Value = serde_json::from_str(r#"{"stale": true}"#).map_err(|e| e.to_string())?;
         let result = bool_path(&value, &["stale"]);
         assert!(
-            !(result != Some(true)),
+            (result == Some(true)),
             "expected Some(true) but got: {result:?}"
         );
         Ok(())
@@ -3010,7 +3001,7 @@ mod tests {
             serde_json::from_str(r#"{"stale": false}"#).map_err(|e| e.to_string())?;
         let result = bool_path(&value, &["stale"]);
         assert!(
-            !(result != Some(false)),
+            (result == Some(false)),
             "expected Some(false) but got: {result:?}"
         );
         Ok(())
@@ -3077,7 +3068,7 @@ mod tests {
         let item = first_guidance_item(Some(&guidance));
         let seam_id = item.and_then(|v| v.get("seam_id")).and_then(|v| v.as_str());
         assert!(
-            !(seam_id != Some("s1")),
+            (seam_id == Some("s1")),
             "expected 's1' but got: {seam_id:?}"
         );
         Ok(())
@@ -3182,7 +3173,7 @@ mod tests {
         .map_err(|e| e.to_string())?;
         let item = first_item_with_bucket(&report, &["still_present"]);
         let path = item.and_then(|v| v.get("path")).and_then(|v| v.as_str());
-        assert!(!(path != Some("b.rs")), "expected b.rs but got: {path:?}");
+        assert!((path == Some("b.rs")), "expected b.rs but got: {path:?}");
         Ok(())
     }
 
@@ -3238,7 +3229,7 @@ mod tests {
             serde_json::from_str(r#"{"seam_id": "top-seam"}"#).map_err(|e| e.to_string())?;
         let result = first_gate_seam(&gate);
         assert!(
-            !(result.as_deref() != Some("top-seam")),
+            (result.as_deref() == Some("top-seam")),
             "expected top-seam but got: {result:?}"
         );
         Ok(())
@@ -3250,7 +3241,7 @@ mod tests {
             .map_err(|e| e.to_string())?;
         let result = first_gate_seam(&gate);
         assert!(
-            !(result.as_deref() != Some("item-seam")),
+            (result.as_deref() == Some("item-seam")),
             "expected item-seam but got: {result:?}"
         );
         Ok(())
@@ -3262,7 +3253,7 @@ mod tests {
             serde_json::from_str(r#"{"path": "src/gate.rs"}"#).map_err(|e| e.to_string())?;
         let result = first_gate_path(&gate);
         assert!(
-            !(result.as_deref() != Some("src/gate.rs")),
+            (result.as_deref() == Some("src/gate.rs")),
             "expected src/gate.rs but got: {result:?}"
         );
         Ok(())
@@ -3273,7 +3264,7 @@ mod tests {
         let gate: Value = serde_json::from_str(r#"{"line": 42}"#).map_err(|e| e.to_string())?;
         let result = first_gate_line(&gate);
         assert!(
-            !(result != Some(42)),
+            (result == Some(42)),
             "expected Some(42) but got: {result:?}"
         );
         Ok(())
@@ -3285,7 +3276,7 @@ mod tests {
             .map_err(|e| e.to_string())?;
         let result = first_gate_missing_discriminator(&gate);
         assert!(
-            !(result.as_deref() != Some("assert x == 1")),
+            (result.as_deref() == Some("assert x == 1")),
             "expected 'assert x == 1' but got: {result:?}"
         );
         Ok(())
@@ -3333,7 +3324,7 @@ mod tests {
             .map_err(|e| e.to_string())?;
         let records = gap_records(&value);
         assert!(
-            !(records.len() != 1),
+            (records.len() == 1),
             "expected 1 record but got {}",
             records.len()
         );
@@ -3349,7 +3340,7 @@ mod tests {
         let records = gap_records(&value);
         // Only the case with expected_gap_record is included
         assert!(
-            !(records.len() != 1),
+            (records.len() == 1),
             "expected 1 record from cases but got {}",
             records.len()
         );
@@ -3439,7 +3430,7 @@ mod tests {
     fn action_kind_for_add_output_golden() -> Result<(), String> {
         let result = action_kind_for_gap_route("AddOutputGolden");
         assert!(
-            !(result != "generate_missing_artifact"),
+            (result == "generate_missing_artifact"),
             "expected generate_missing_artifact but got: {result}"
         );
         Ok(())
@@ -3449,7 +3440,7 @@ mod tests {
     fn action_kind_for_regenerate_artifact() -> Result<(), String> {
         let result = action_kind_for_gap_route("RegenerateArtifact");
         assert!(
-            !(result != "generate_missing_artifact"),
+            (result == "generate_missing_artifact"),
             "expected generate_missing_artifact but got: {result}"
         );
         Ok(())
@@ -3459,7 +3450,7 @@ mod tests {
     fn action_kind_for_other_route() -> Result<(), String> {
         let result = action_kind_for_gap_route("AddBoundaryAssertion");
         assert!(
-            !(result != "write_focused_test"),
+            (result == "write_focused_test"),
             "expected write_focused_test but got: {result}"
         );
         Ok(())
@@ -3519,7 +3510,7 @@ mod tests {
         push_wrapped_paragraph(&mut out, &long_text);
         let lines: Vec<&str> = out.lines().collect();
         assert!(
-            !(lines.len() < 2),
+            (lines.len() >= 2),
             "expected wrapped text to have multiple lines but got: {out}"
         );
         Ok(())
