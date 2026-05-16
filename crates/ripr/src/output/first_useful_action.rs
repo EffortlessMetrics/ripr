@@ -1509,10 +1509,10 @@ fn gate_has_waiver(gate: &Value) -> bool {
     string_from_sources(&[
         (Some(gate), &["waiver", "state"]),
         (Some(gate), &["waiver"]),
-        (Some(gate), &["status"]),
-        (Some(gate), &["decision"]),
     ])
     .is_some_and(|value| value == "waived" || value == "visible")
+        || string_from_sources(&[(Some(gate), &["status"]), (Some(gate), &["decision"])])
+            .is_some_and(|value| value == "waived")
         || gate
             .get("waivers")
             .and_then(Value::as_array)
@@ -2485,8 +2485,8 @@ mod tests {
     }
 
     #[test]
-    fn gate_decision_visible_status_routes_waived() -> Result<(), String> {
-        let gate_json = r#"{"status": "visible"}"#;
+    fn gate_decision_visible_waiver_routes_waived() -> Result<(), String> {
+        let gate_json = r#"{"waiver": "visible"}"#;
         let mut input = bare_input();
         input.gate_decision_path = Some("gate.json".to_string());
         input.gate_decision_json = Some(Ok(gate_json.to_string()));
@@ -2494,7 +2494,23 @@ mod tests {
         let rendered = render_first_useful_action_json(&report)?;
         if !rendered.contains(r#""status": "waived""#) {
             return Err(format!(
-                "expected waived for visible status but got: {rendered}"
+                "expected waived for visible waiver but got: {rendered}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn gate_decision_visible_status_does_not_route_waived() -> Result<(), String> {
+        let gate_json = r#"{"status": "visible"}"#;
+        let mut input = bare_input();
+        input.gate_decision_path = Some("gate.json".to_string());
+        input.gate_decision_json = Some(Ok(gate_json.to_string()));
+        let report = build_first_useful_action_report(input);
+        let rendered = render_first_useful_action_json(&report)?;
+        if rendered.contains(r#""status": "waived""#) {
+            return Err(format!(
+                "visible status should not route waived: {rendered}"
             ));
         }
         Ok(())
