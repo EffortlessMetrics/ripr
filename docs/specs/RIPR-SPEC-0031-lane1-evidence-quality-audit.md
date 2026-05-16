@@ -45,9 +45,12 @@ target/ripr/reports/lane1-evidence-audit.json
 target/ripr/reports/lane1-evidence-audit.md
 ```
 
-It exits successfully after both artifacts are written. If repo exposure cannot
-be generated or parsed, it returns an actionable error and does not claim an
-audit exists.
+It exits successfully after both artifacts are written. If repo exposure
+generation exits non-zero after writing a complete repo-exposure JSON document
+with a top-level `seams` array, the audit may continue from that captured
+artifact with a warning. If the captured artifact is missing, malformed, or does
+not contain `seams`, the command returns an actionable error and does not claim
+an audit exists.
 
 ## JSON Contract
 
@@ -161,6 +164,9 @@ audit report only; it does not change static classifications.
   Markdown section coverage.
 - `xtask::tests::lane1_evidence_audit_rejects_repo_exposure_without_seams` pins
   malformed input handling.
+- `xtask::tests::lane1_repo_exposure_file_completion_check_requires_seams_and_closing_brace`
+  pins captured repo-exposure fallback acceptance after a non-zero generator
+  exit.
 - `xtask::tests::xtask_command_parse_preserves_compatibility_aliases` pins the
   `evidence-quality-audit` alias.
 - `xtask::tests::report_commands_dispatch_through_report_facades` keeps the
