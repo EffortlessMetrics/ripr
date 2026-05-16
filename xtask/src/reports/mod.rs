@@ -1,6 +1,7 @@
 mod annotations;
 mod badges;
 mod dogfood;
+mod first_pr;
 mod fixtures;
 mod impacted_evidence;
 mod index;
@@ -25,6 +26,7 @@ pub(crate) use badges::{
     badge_artifacts, check_badge_endpoints, repo_badge_artifacts, update_badge_endpoints,
 };
 pub(crate) use dogfood::dogfood;
+pub(crate) use first_pr::first_pr;
 pub(crate) use fixtures::{fixtures, golden_drift, goldens};
 pub(crate) use impacted_evidence::impacted_evidence;
 pub(crate) use index::{reports, reports_index};

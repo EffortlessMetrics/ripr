@@ -30,6 +30,8 @@ The current repo automation surface is:
 cargo xtask shape
 cargo xtask fix-pr
 cargo xtask commands
+cargo xtask cockpit
+cargo xtask pr-ready
 cargo xtask pr-summary
 cargo xtask pr-triage-report
 cargo xtask gh-pr-status --pr <number>
@@ -54,6 +56,7 @@ cargo xtask check-local-context
 cargo xtask check-droid-review-config
 cargo xtask check-spec-format
 cargo xtask check-spec-numbering
+cargo xtask check-command-catalog
 cargo xtask check-supply-chain
 cargo xtask ci-fast
 ```
@@ -77,6 +80,12 @@ Current `shape` responsibilities:
 `mutating`, `non_mutating_check`, `report_only`, `external_state_read`,
 `external_state_mutating`, or `argument_dependent`, and flags commands that
 require judgment before use.
+
+`check-command-catalog` writes `target/ripr/reports/command-catalog.md` and
+fails when the help catalog and mutability catalog drift apart, when a command
+uses an unknown mutability class, when mutating commands omit their write
+surface, when external-state mutations are not judgment-required, or when an
+argument-dependent command does not explain when it writes.
 
 `pr-summary` writes `target/ripr/reports/pr-summary.md` from git diff and git
 status. It classifies changed paths into production, evidence, docs, policy,
@@ -109,12 +118,17 @@ latest reviews, and Droid-related checks, then writes
 checks, failed checks, behind-main state, review status, Droid status, and a
 safe next action: `wait`, `rebase`, `inspect failure`, or `merge`. It is
 advisory and never updates the branch, comments, approves, or merges.
+Use [Merge freshness and watcher policy](MERGE_WATCH_POLICY.md) for polling
+cadence, branch-refresh decisions, REST status fallback, Droid/advisory-check
+handling, and local worktree merge limitations.
 
 `suggested-fixes` writes `target/ripr/reports/suggested-fixes.patch` and
 `target/ripr/reports/suggested-fixes.md` with safe deterministic repair
-suggestions. The v1 patch only covers allowlist ordering under `.ripr/*.txt`
-and `policy/*.txt`. It never generates badge endpoint values, golden blessings,
-baselines, suppressions, dependency exceptions, or schema-version changes.
+suggestions. The patch covers allowlist ordering under `.ripr/*.txt` and
+`policy/*.txt`, docs index table ordering for specs and ADRs, and traceability
+behavior block ordering by spec ID. It never generates badge endpoint values,
+golden blessings, baselines, suppressions, dependency exceptions, or
+schema-version changes.
 The generated-vs-authored boundary is documented in
 [Generated evidence discipline](GENERATED_EVIDENCE.md).
 
@@ -220,10 +234,28 @@ It does not fail CI.
 `target/ripr/reports/index.json` as a reviewer front door. It summarizes the
 active campaign, available reports, missing expected reports for the changed
 surface, advisory reports, and suggested next commands. The index also carries
-repo-ops packet status for command mutability, worktree doctor, PR triage,
-per-PR merge readiness, generated-clean, badge ownership, critic, receipts,
-suggested fixes, and `check-pr` artifacts so agents can consume the operating
-packet as JSON instead of scraping prose.
+repo-ops packet status for command mutability, the repo cockpit, PR-ready,
+worktree doctor, PR triage, per-PR merge readiness, generated-clean, badge diff
+policy, critic, receipts, suggested fixes, and `check-pr` artifacts so agents
+can consume the operating packet as JSON instead of scraping prose. The command
+catalog check packet is included next to the catalog itself so catalog drift is
+visible in the same front-door index.
+
+`cockpit` writes `target/ripr/reports/cockpit.md` and
+`target/ripr/reports/cockpit.json`. It is the repo-level maintainer front door:
+it composes worktree doctor, command mutability, command-catalog coverage, spec
+numbering, campaign/source-of-truth checks, open PR triage, generated-clean, and
+badge diff policy into one advisory action queue. It reads GitHub PR metadata
+through `pr-triage-report`, writes local report packets, and does not close
+PRs, update branches, edit badge endpoint JSON, mutate source, or change
+policy authority.
+
+`pr-ready` writes `target/ripr/reports/pr-ready.md` and
+`target/ripr/reports/pr-ready.json`. It composes the local repo-ops checks that
+an agent should run before opening or updating a PR: worktree doctor, command
+mutability catalog, PR summary, critic, receipts check, suggested fixes,
+generated-clean, and badge diff policy. The command is advisory front-door
+metadata; it does not replace `check-pr`.
 
 `receipts` writes machine-readable gate receipts under `target/ripr/receipts/`
 for shape, fix-pr, ci-fast, check-pr, fixtures, goldens, test-oracle, dogfood,

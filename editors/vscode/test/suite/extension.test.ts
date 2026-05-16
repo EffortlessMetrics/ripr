@@ -31,6 +31,7 @@ suite('Extension Smoke', () => {
     assert.ok(commands.includes('ripr.restartServer'));
     assert.ok(commands.includes('ripr.showOutput'));
     assert.ok(commands.includes('ripr.showStatus'));
+    assert.ok(commands.includes('ripr.diagnoseSetup'));
     assert.ok(commands.includes('ripr.copyContext'));
     assert.ok(commands.includes('ripr.copySuggestedAssertion'));
     assert.ok(commands.includes('ripr.copyTargetedTestBrief'));
@@ -397,6 +398,37 @@ suite('Extension Smoke', () => {
     }
   });
 
+  test('copyContext copies first repair packets without LSP fallback', async () => {
+    const context = createControllerTestContext({});
+    const packet = [
+      'RIPR first repair packet',
+      '',
+      'Gap identity: gap:rust:pricing',
+      'Language: rust',
+      'Suggested action:',
+      '- Add one focused assertion.',
+      'Verify command:',
+      'ripr agent verify --root . --json',
+      'Receipt command:',
+      'ripr agent receipt --root . --json',
+      'Limits and non-claims:',
+      '- Static editor evidence only.'
+    ].join('\n');
+    try {
+      await context.controller.start();
+      await context.controller.copyContext({
+        label: 'first_repair_packet',
+        packet
+      });
+
+      assert.deepStrictEqual(context.client.requests, []);
+      assert.strictEqual(context.clipboardWrites[0], packet);
+      assert.ok(context.infoMessages.at(-1)?.includes('first repair packet'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
   test('status bar reports server readiness and refresh state', async () => {
     const context = createControllerTestContext({});
     try {
@@ -406,8 +438,16 @@ suite('Extension Smoke', () => {
       assert.ok(String(context.status.tooltip).includes('saved-workspace analysis is queued'));
       assert.ok(String(context.status.tooltip).includes('Workspace:'));
       assert.ok(String(context.status.tooltip).includes('Server command: ripr'));
+      assert.ok(String(context.status.tooltip).includes('Server version: ripr 0.5.0-test'));
+      assert.ok(String(context.status.tooltip).includes('Server started: yes'));
+      assert.ok(String(context.status.tooltip).includes('Config: ripr.toml (missing'));
       assert.ok(String(context.status.tooltip).includes('Editor selectors: rust, typescript'));
       assert.ok(String(context.status.tooltip).includes('Enabled languages: not reported yet'));
+      assert.ok(String(context.status.tooltip).includes('Available languages: not reported by server'));
+      assert.ok(String(context.status.tooltip).includes('Evidence freshness: pending refresh'));
+      assert.ok(String(context.status.tooltip).includes('Artifact first useful action report: target/ripr/reports/first-useful-action.json (missing'));
+      assert.ok(String(context.status.tooltip).includes('Artifact gap decision ledger: target/ripr/reports/gap-decision-ledger.json (missing'));
+      assert.ok(String(context.status.tooltip).includes('Artifact editor agent receipt: target/ripr/agent/agent-receipt.json (missing'));
       assert.ok(String(context.status.tooltip).includes('Next safe action:'));
 
       context.client.emitNotification('window/logMessage', {
@@ -429,6 +469,7 @@ suite('Extension Smoke', () => {
       assert.ok(String(context.status.tooltip).includes('last saved workspace state'));
       assert.ok(String(context.status.tooltip).includes('disabled or unavailable preview languages stay silent'));
       assert.ok(String(context.status.tooltip).includes('enabled and available in this ripr build'));
+      assert.ok(String(context.status.tooltip).includes('Evidence freshness: current saved-workspace status reported by server refresh'));
 
       context.client.emitNotification('window/logMessage', {
         message: 'ripr analysis refresh completed in 42 ms: generation=1, diagnostics=0, files=0, findings=0, seam_diagnostics=0, enabled_languages=0, enabled_language_names=, published_files=0, cleared_files=0'
@@ -555,6 +596,301 @@ suite('Extension Smoke', () => {
     } finally {
       await context.dispose();
     }
+  });
+
+  test('status model reports setup files found and missing', async () => {
+    const context = createControllerTestContext({
+      files: {
+        'ripr.toml': '[languages]\nenabled = ["rust"]\n',
+        'target/ripr/reports/first-useful-action.json': firstActionReport({}),
+        'target/ripr/reports/gap-decision-ledger.json': '{"schema_version":"0.1"}',
+        'target/ripr/agent/agent-receipt.json': '{"schema_version":"0.1"}'
+      }
+    });
+    try {
+      await context.controller.start();
+      await context.controller.showStatus();
+
+      const statusOutput = context.outputLines.join('\n');
+      assert.ok(statusOutput.includes('Config: ripr.toml (found; found in current workspace'));
+      assert.ok(statusOutput.includes('Artifact first useful action report: target/ripr/reports/first-useful-action.json (found; found in current workspace'));
+      assert.ok(statusOutput.includes('Artifact gap decision ledger: target/ripr/reports/gap-decision-ledger.json (found; found in current workspace'));
+      assert.ok(statusOutput.includes('Artifact editor agent receipt: target/ripr/agent/agent-receipt.json (found; found in current workspace'));
+      assert.ok(statusOutput.includes('First useful action: Add equality-boundary discriminator test'));
+      assert.ok(statusOutput.includes('Server version: ripr 0.5.0-test'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('status model projects existing receipt state without producing receipts', async () => {
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/first-useful-action.json': firstActionReport({}),
+      }
+    }, async (context) => {
+      await context.controller.start();
+      await context.controller.showStatus();
+      const statusOutput = context.outputLines.join('\n');
+      assert.ok(statusOutput.includes('Receipt status: missing; no matching receipt was found for seam 67fc764ba37d77bd'));
+      assert.ok(statusOutput.includes('Receipt command: ripr agent receipt --root . --json'));
+      assert.ok(statusOutput.includes('No receipt movement is claimed.'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/first-useful-action.json': firstActionReport({}),
+        'target/ripr/agent/agent-receipt.json': agentReceipt({ movement: 'improved' })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      await context.controller.showStatus();
+      const statusOutput = context.outputLines.join('\n');
+      assert.ok(statusOutput.includes('Receipt status: movement improved; matching receipt found for seam 67fc764ba37d77bd'));
+      assert.ok(statusOutput.includes('does not prove runtime adequacy or gate eligibility'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/first-useful-action.json': firstActionReport({}),
+        'target/ripr/agent/agent-receipt.json': agentReceipt({ movement: 'unchanged' })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      await context.controller.showStatus();
+      const statusOutput = context.outputLines.join('\n');
+      assert.ok(statusOutput.includes('Receipt status: movement unchanged; matching receipt found for seam 67fc764ba37d77bd'));
+      assert.ok(statusOutput.includes('inspect the focused test and missing discriminator'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/first-useful-action.json': firstActionReport({}),
+        'target/ripr/agent/agent-receipt.json': agentReceipt({ seamId: 'different-seam' })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      await context.controller.showStatus();
+      const statusOutput = context.outputLines.join('\n');
+      assert.ok(statusOutput.includes('Receipt status: gap mismatch; receipt seam different-seam does not match current seam 67fc764ba37d77bd'));
+      assert.ok(statusOutput.includes('Receipt movement is not projected.'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/first-useful-action.json': firstActionReport({
+          generated_at: '2026-05-15T12:00:00Z'
+        }),
+        'target/ripr/agent/agent-receipt.json': agentReceipt({
+          generatedAt: '2026-05-15T11:00:00Z',
+          movement: 'improved'
+        })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      await context.controller.showStatus();
+      const statusOutput = context.outputLines.join('\n');
+      assert.ok(statusOutput.includes('Receipt status: stale; receipt for seam 67fc764ba37d77bd is older than the current first useful action report.'));
+      assert.ok(statusOutput.includes('rerun verify/receipt before trusting movement'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/first-useful-action.json': firstActionReport({}),
+        'target/ripr/agent/agent-receipt.json': agentReceipt({ repoRoot: '/tmp/not-this-workspace' })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      await context.controller.showStatus();
+      const statusOutput = context.outputLines.join('\n');
+      assert.ok(statusOutput.includes('Receipt status: wrong root; receipt root /tmp/not-this-workspace does not match this workspace.'));
+      assert.ok(statusOutput.includes('Receipt movement is not projected.'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/first-useful-action.json': firstActionReport({}),
+        'target/ripr/agent/agent-receipt.json': '{not-json'
+      }
+    }, async (context) => {
+      await context.controller.start();
+      await context.controller.showStatus();
+      const statusOutput = context.outputLines.join('\n');
+      assert.ok(statusOutput.includes('Receipt status: malformed; target/ripr/agent/agent-receipt.json could not be parsed as an agent receipt.'));
+      assert.ok(statusOutput.includes('Receipt movement is not projected.'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+  });
+
+  test('diagnoseSetup writes read-only setup report', async () => {
+    const context = createControllerTestContext({
+      files: {
+        'ripr.toml': '[languages]\nenabled = ["rust"]\n',
+        'target/ripr/reports/first-useful-action.json': firstActionReport({}),
+        'target/ripr/reports/gap-decision-ledger.json': '{"schema_version":"0.1"}',
+        'target/ripr/agent/agent-receipt.json': '{"schema_version":"0.1"}'
+      }
+    });
+    try {
+      await context.controller.start();
+      await context.controller.diagnoseSetup();
+
+      const report = context.outputLines.join('\n');
+      assert.ok(report.includes('ripr setup diagnosis:'));
+      assert.ok(report.includes('Status: ripr saved-workspace analysis is queued.'));
+      assert.ok(report.includes('Server version: ripr 0.5.0-test'));
+      assert.ok(report.includes('Config: ripr.toml (found; found in current workspace'));
+      assert.ok(report.includes('Artifact gap decision ledger: target/ripr/reports/gap-decision-ledger.json (found'));
+      assert.ok(report.includes('First useful action: Add equality-boundary discriminator test'));
+      assert.ok(report.includes('Limits: read-only setup diagnosis only'));
+      assert.ok(context.infoMessages.at(-1)?.includes('setup diagnosis'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('diagnoseSetup distinguishes first-run and no-output states', async () => {
+    await withControllerTestContext({ workspaceRoot: null }, async (context) => {
+      await context.controller.start();
+      const report = await diagnoseSetupReport(context);
+      assertReportIncludes(report, [
+        'Status: Open a workspace for ripr diagnostics.',
+        'Workspace: not open',
+        'Server started: no; workspace unavailable',
+        'Config: ripr.toml (no workspace',
+        'Next safe action: Open a workspace folder'
+      ]);
+      assert.strictEqual(context.client.startCalls, 0);
+    });
+
+    await withControllerTestContext({
+      resolveFailure: {
+        message: 'Configured ripr.server.path does not exist.',
+        detail: 'Missing configured ripr server path for this test.'
+      }
+    }, async (context) => {
+      await context.controller.start();
+      const report = await diagnoseSetupReport(context);
+      assertReportIncludes(report, [
+        'Status: ripr server is not available.',
+        'Missing configured ripr server path for this test.',
+        'Server: not resolved',
+        'Server started: no; server unavailable',
+        'Next safe action: Set ripr.server.path'
+      ]);
+      assert.strictEqual(context.client.startCalls, 0);
+    });
+
+    await withControllerTestContext({}, async (context) => {
+      await context.controller.start();
+      const report = await diagnoseSetupReport(context);
+      assertReportIncludes(report, [
+        'Status: ripr saved-workspace analysis is queued.',
+        'Server command: ripr',
+        'Server version: ripr 0.5.0-test',
+        'Config: ripr.toml (missing',
+        'Artifact first useful action report: target/ripr/reports/first-useful-action.json (missing',
+        'Evidence freshness: pending refresh'
+      ]);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'ripr.toml': '[languages]\nenabled = ["rust"]\n'
+      }
+    }, async (context) => {
+      await context.controller.start();
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=1, diagnostics=0, files=0, findings=0, seam_diagnostics=0, enabled_languages=1, enabled_language_names=rust, published_files=0, cleared_files=0'
+      });
+      const report = await diagnoseSetupReport(context);
+      assertReportIncludes(report, [
+        'Status: ripr analysis completed with no actionable seam diagnostics.',
+        'Config: ripr.toml (found',
+        'Enabled languages: rust',
+        'No ripr seam diagnostics were published',
+        'disabled or unavailable preview languages stay silent'
+      ]);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'ripr.toml': '[languages]\nenabled = []\n'
+      }
+    }, async (context) => {
+      await context.controller.start();
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=2, diagnostics=0, files=0, findings=0, seam_diagnostics=0, enabled_languages=0, enabled_language_names=, published_files=0, cleared_files=0'
+      });
+      const report = await diagnoseSetupReport(context);
+      assertReportIncludes(report, [
+        'Status: ripr analysis completed with no enabled languages.',
+        'Enabled languages: none',
+        '[languages] enabled = []',
+        'Next safe action: Edit ripr.toml [languages] enabled'
+      ]);
+    });
+
+    await withControllerTestContext({}, async (context) => {
+      await context.controller.start();
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=3, diagnostics=0, files=0, findings=0, seam_diagnostics=0, gap_artifacts=0, actionable_gap_artifacts=0, preview_gap_artifacts=0, no_action_gap_artifacts=0, gap_static_limits=0, gap_artifact_rejections=1, gap_artifact_rejection_kinds=unavailable_language, enabled_languages=1, enabled_language_names=rust, published_files=0, cleared_files=0'
+      });
+      const report = await diagnoseSetupReport(context);
+      assertReportIncludes(report, [
+        'Status: ripr ignored 1 unsafe gap artifact input.',
+        'Rejected kind: unavailable_language',
+        'not projected',
+        'never create diagnostics'
+      ]);
+    });
+
+    await withControllerTestContext({
+      firstActionJson: firstActionReport({})
+    }, async (context) => {
+      await context.controller.start();
+      const document = await vscode.workspace.openTextDocument(workspaceFileUri('src/lib.rs'));
+      context.controller.markWorkspaceStale(document);
+      const report = await diagnoseSetupReport(context);
+      assertReportIncludes(report, [
+        'Status: ripr analysis is stale until the file is saved.',
+        'Evidence freshness: stale; save or refresh before acting',
+        'First useful action report: available, but editor evidence is stale.',
+        'Save or refresh the workspace before acting on this report.'
+      ]);
+    });
+
+    await withControllerTestContext({}, async (context) => {
+      await context.controller.start();
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=4, diagnostics=0, files=0, findings=0, preview_findings=0, static_limits=0, seam_diagnostics=0, gap_artifacts=1, actionable_gap_artifacts=0, preview_gap_artifacts=0, no_action_gap_artifacts=1, gap_static_limits=0, gap_artifact_rejections=0, gap_artifact_rejection_kinds=, enabled_languages=1, enabled_language_names=rust, published_files=0, cleared_files=0'
+      });
+      const report = await diagnoseSetupReport(context);
+      assertReportIncludes(report, [
+        'Status: ripr validated gap artifacts with no actionable gap.',
+        'no local repair action',
+        'Next safe action: No local repair action is projected'
+      ]);
+    });
+
+    await withControllerTestContext({}, async (context) => {
+      await context.controller.start();
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=5, diagnostics=2, files=1, findings=1, preview_findings=0, static_limits=0, seam_diagnostics=1, gap_artifacts=1, actionable_gap_artifacts=1, preview_gap_artifacts=0, no_action_gap_artifacts=0, gap_static_limits=0, gap_artifact_rejections=0, gap_artifact_rejection_kinds=, enabled_languages=1, enabled_language_names=rust, published_files=1, cleared_files=0'
+      });
+      const report = await diagnoseSetupReport(context);
+      assertReportIncludes(report, [
+        'Status: ripr validated 1 actionable gap artifact.',
+        '1 actionable gap artifact validated for editor projection.',
+        'Next safe action: Open the related test or copy a bounded repair packet'
+      ]);
+    });
   });
 
   test('status bar ignores first useful action report for another workspace', async () => {
@@ -761,8 +1097,10 @@ suite('Extension Smoke', () => {
 
       assert.ok(context.status.text.includes('ripr: disabled'));
       assert.ok(String(context.status.tooltip).includes('Set ripr.enabled to true'));
-      assert.ok(String(context.status.tooltip).includes('Workspace: not open'));
+      assert.ok(String(context.status.tooltip).includes('Workspace:'));
       assert.ok(String(context.status.tooltip).includes('Server: not resolved'));
+      assert.ok(String(context.status.tooltip).includes('Server started: no; extension disabled'));
+      assert.ok(String(context.status.tooltip).includes('Config: ripr.toml'));
       assert.ok(String(context.status.tooltip).includes('Next safe action: Set ripr.enabled to true'));
       assert.strictEqual(context.client.startCalls, 0);
     } finally {
@@ -778,6 +1116,8 @@ suite('Extension Smoke', () => {
       assert.ok(context.status.text.includes('ripr: open workspace'));
       assert.ok(String(context.status.tooltip).includes('needs a workspace folder'));
       assert.ok(String(context.status.tooltip).includes('Workspace: not open'));
+      assert.ok(String(context.status.tooltip).includes('Config: ripr.toml (no workspace'));
+      assert.ok(String(context.status.tooltip).includes('Server started: no; workspace unavailable'));
       assert.ok(String(context.status.tooltip).includes('Next safe action: Open a workspace folder'));
       assert.strictEqual(context.client.startCalls, 0);
     } finally {
@@ -799,6 +1139,8 @@ suite('Extension Smoke', () => {
       assert.ok(String(context.status.tooltip).includes('Missing configured ripr server path'));
       assert.ok(String(context.status.tooltip).includes('Workspace:'));
       assert.ok(String(context.status.tooltip).includes('Server: not resolved'));
+      assert.ok(String(context.status.tooltip).includes('Server started: no; server unavailable'));
+      assert.ok(String(context.status.tooltip).includes('Config: ripr.toml'));
       assert.ok(String(context.status.tooltip).includes('Next safe action: Set ripr.server.path'));
       assert.strictEqual(context.errorMessages.length, 1);
       assert.strictEqual(context.client.startCalls, 0);
@@ -1206,6 +1548,7 @@ interface ControllerTestOptions {
   lspError?: Error;
   cliResult?: string;
   firstActionJson?: string | null;
+  files?: Record<string, string | null>;
   workspaceRoot?: string | null;
   resolveFailure?: { message: string; detail: string };
 }
@@ -1233,11 +1576,13 @@ function firstActionReport(overrides: Record<string, unknown>): string {
     tool: 'ripr',
     kind: 'first_useful_action',
     root: '.',
+    generated_at: '2026-05-15T12:00:00Z',
     status: 'actionable',
     audience: 'developer',
     action_kind: 'write_focused_test',
     title: 'Add equality-boundary discriminator test',
     selected: {
+      seam_id: '67fc764ba37d77bd',
       path: 'src/lib.rs',
       line: 2,
       missing_discriminator: 'discount_threshold equality boundary'
@@ -1260,6 +1605,76 @@ function firstActionReport(overrides: Record<string, unknown>): string {
     }
   }
   return JSON.stringify(report);
+}
+
+function agentReceipt(overrides: {
+  seamId?: string;
+  movement?: string;
+  repoRoot?: string;
+  generatedAt?: string;
+}): string {
+  const seamId = overrides.seamId ?? '67fc764ba37d77bd';
+  const movement = overrides.movement ?? 'unchanged';
+  return JSON.stringify({
+    schema_version: '0.3',
+    tool: 'ripr',
+    status: 'advisory',
+    inputs: {
+      agent_verify_json: 'target/ripr/agent/agent-verify.json',
+      before: 'target/ripr/pilot/repo-exposure.json',
+      after: 'target/ripr/pilot/after.repo-exposure.json'
+    },
+    provenance: {
+      repo_root: overrides.repoRoot ?? '.',
+      generated_at: overrides.generatedAt ?? '2026-05-15T12:00:00Z',
+      seam_id: seamId,
+      movement,
+      limits: {
+        runtime_adequacy_claim: false,
+        runtime_mutation_execution: false,
+        static_artifact_relationship: true
+      }
+    },
+    seam: {
+      seam_id: seamId,
+      seam_kind: 'predicate_boundary',
+      file: 'src/lib.rs',
+      line: 2,
+      change: movement
+    },
+    summary: {
+      next_action: {
+        kind: movement,
+        summary: 'Static receipt movement for test.',
+        recommended_action: 'Inspect the focused test.',
+        safe_to_merge: false
+      }
+    }
+  });
+}
+
+async function withControllerTestContext(
+  options: ControllerTestOptions,
+  run: (context: ReturnType<typeof createControllerTestContext>) => Promise<void>
+): Promise<void> {
+  const context = createControllerTestContext(options);
+  try {
+    await run(context);
+  } finally {
+    await context.dispose();
+  }
+}
+
+async function diagnoseSetupReport(context: ReturnType<typeof createControllerTestContext>): Promise<string> {
+  context.outputLines.length = 0;
+  await context.controller.diagnoseSetup();
+  return context.outputLines.join('\n');
+}
+
+function assertReportIncludes(report: string, expectedLines: string[]): void {
+  for (const expected of expectedLines) {
+    assert.ok(report.includes(expected), `expected setup report to include ${expected}\n\n${report}`);
+  }
 }
 
 class FakeLanguageClient {
@@ -1332,13 +1747,14 @@ function createControllerTestContext(options: ControllerTestOptions) {
     resolveServer: async () => options.resolveFailure ?? ({
       command: 'ripr',
       source: 'path',
-      detail: 'test ripr on PATH'
+      detail: 'test ripr on PATH',
+      version: 'ripr 0.5.0-test'
     }),
     createLanguageClient: (_serverOptions, options) => {
       clientOptions = options;
       return client;
     },
-    readFile: async () => options.firstActionJson ?? undefined,
+    readFile: async (filePath) => testFileContents(filePath, options),
     runRipr: async (command, args, cwd) => {
       runRiprCalls.push({ command, args, cwd });
       return options.cliResult ?? '{}';
@@ -1377,6 +1793,24 @@ function createControllerTestContext(options: ControllerTestOptions) {
       status.dispose();
     }
   };
+}
+
+function testFileContents(filePath: string, options: ControllerTestOptions): string | undefined {
+  const normalizedPath = normalizeTestPath(filePath);
+  for (const [candidate, contents] of Object.entries(options.files ?? {})) {
+    const normalizedCandidate = normalizeTestPath(candidate);
+    if (normalizedPath === normalizedCandidate || normalizedPath.endsWith(`/${normalizedCandidate}`)) {
+      return contents ?? undefined;
+    }
+  }
+  if (normalizedPath.endsWith('target/ripr/reports/first-useful-action.json')) {
+    return options.firstActionJson ?? undefined;
+  }
+  return undefined;
+}
+
+function normalizeTestPath(filePath: string): string {
+  return filePath.replace(/\\/g, '/');
 }
 
 function fakeOutputChannel(lines: string[] = []): vscode.OutputChannel {
