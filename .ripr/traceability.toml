@@ -3225,6 +3225,7 @@ spec = "docs/specs/RIPR-SPEC-0051-first-successful-pr-ux.md"
 tests = [
   "xtask/src/reports/first_pr.rs",
   "xtask/src/main.rs",
+  "xtask/src/main.rs::tests::dogfood_first_pr_scenarios_have_checked_receipts",
 ]
 fixtures = [
   "fixtures/first_successful_pr",
@@ -3241,6 +3242,7 @@ outputs = [
   "docs/proposals/RIPR-PROP-0009-first-run-ux-adoption-hardening.md",
   "docs/OUTPUT_SCHEMA.md",
   "docs/FIRST_PR_WORKFLOW.md",
+  "docs/handoffs/2026-05-16-first-successful-pr-receipts.md",
   ".ripr/traceability.toml",
 ]
 metrics = [

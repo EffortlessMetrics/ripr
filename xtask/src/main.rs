@@ -498,6 +498,32 @@ struct DogfoodFirstActionRun {
 }
 
 #[derive(Debug)]
+struct DogfoodFirstPrScenario {
+    name: String,
+    expected_dir: PathBuf,
+    expected_status: String,
+    expected_state: String,
+    description: String,
+}
+
+#[derive(Debug)]
+struct DogfoodFirstPrRun {
+    name: String,
+    expected_dir: PathBuf,
+    json_path: PathBuf,
+    markdown_path: PathBuf,
+    status: String,
+    state: String,
+    top_gap_kind: String,
+    verify_command: Option<String>,
+    next_command: Option<String>,
+    expected_status: String,
+    expected_state: String,
+    description: String,
+    errors: Vec<String>,
+}
+
+#[derive(Debug)]
 struct DogfoodFrontPanelScenario {
     name: String,
     report_path: PathBuf,
@@ -741,6 +767,7 @@ struct DogfoodReportInputs<'a> {
     runs: &'a [DogfoodRun],
     gate_runs: &'a [DogfoodGateRun],
     first_action_runs: &'a [DogfoodFirstActionRun],
+    first_pr_runs: &'a [DogfoodFirstPrRun],
     front_panel_runs: &'a [DogfoodFrontPanelRun],
     report_packet_index_runs: &'a [DogfoodReportPacketIndexRun],
     preview_projection_runs: &'a DogfoodPreviewProjectionRuns<'a>,
@@ -21910,6 +21937,10 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         .into_iter()
         .map(|scenario| dogfood_first_action_run(&scenario))
         .collect::<Vec<_>>();
+    let first_pr_runs = dogfood_first_pr_scenarios()
+        .into_iter()
+        .map(|scenario| dogfood_first_pr_run(&scenario))
+        .collect::<Vec<_>>();
     let front_panel_runs = dogfood_pr_review_front_panel_scenarios()
         .into_iter()
         .map(|scenario| dogfood_pr_review_front_panel_run(&scenario))
@@ -21944,6 +21975,7 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         runs: &runs,
         gate_runs: &gate_runs,
         first_action_runs: &first_action_runs,
+        first_pr_runs: &first_pr_runs,
         front_panel_runs: &front_panel_runs,
         report_packet_index_runs: &report_packet_index_runs,
         preview_projection_runs: &preview_projection_runs,
@@ -22511,6 +22543,162 @@ fn dogfood_first_action_run(scenario: &DogfoodFirstActionScenario) -> DogfoodFir
         expected_audience: scenario.expected_audience.to_string(),
         expected_selected: scenario.expected_selected,
         expected_static_movement: scenario.expected_static_movement.to_string(),
+        errors,
+    }
+}
+
+fn dogfood_first_pr_scenarios() -> Vec<DogfoodFirstPrScenario> {
+    let corpus_path = Path::new("fixtures/first_successful_pr/corpus.json");
+    let corpus = match read_json_value(corpus_path) {
+        Ok(value) => value,
+        Err(err) => {
+            return vec![DogfoodFirstPrScenario {
+                name: "corpus".to_string(),
+                expected_dir: corpus_path.to_path_buf(),
+                expected_status: "missing".to_string(),
+                expected_state: "missing".to_string(),
+                description: err,
+            }];
+        }
+    };
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        return vec![DogfoodFirstPrScenario {
+            name: "corpus".to_string(),
+            expected_dir: corpus_path.to_path_buf(),
+            expected_status: "missing".to_string(),
+            expected_state: "missing".to_string(),
+            description: "first successful PR corpus is missing cases array".to_string(),
+        }];
+    };
+
+    cases
+        .iter()
+        .map(|case| {
+            let name = json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string());
+            let expected_dir = Path::new("fixtures/first_successful_pr")
+                .join(&name)
+                .join("expected");
+            DogfoodFirstPrScenario {
+                name,
+                expected_dir,
+                expected_status: json_string_field(case, "expected_status")
+                    .unwrap_or_else(|| "missing".to_string()),
+                expected_state: json_string_field(case, "expected_state")
+                    .unwrap_or_else(|| "missing".to_string()),
+                description: json_string_field(case, "description")
+                    .unwrap_or_else(|| "first-pr corpus case has no description".to_string()),
+            }
+        })
+        .collect()
+}
+
+fn dogfood_first_pr_run(scenario: &DogfoodFirstPrScenario) -> DogfoodFirstPrRun {
+    let json_path = scenario.expected_dir.join("start-here.json");
+    let markdown_path = scenario.expected_dir.join("start-here.md");
+    let mut errors = Vec::new();
+    let mut status = "missing".to_string();
+    let mut state = "missing".to_string();
+    let mut top_gap_kind = "none".to_string();
+    let mut verify_command = None;
+    let mut next_command = None;
+
+    match read_json_value(&json_path) {
+        Ok(packet) => {
+            if json_string_field(&packet, "kind").as_deref() != Some("first_pr_start_here") {
+                errors.push("start-here kind must be first_pr_start_here".to_string());
+            }
+            status = json_string_field(&packet, "status").unwrap_or_else(|| "missing".to_string());
+            state = audit_string(&packet, &["selected", "state"])
+                .unwrap_or_else(|| "missing".to_string());
+            top_gap_kind =
+                audit_string(&packet, &["selected", "kind"]).unwrap_or_else(|| "none".to_string());
+            verify_command = audit_string(&packet, &["selected", "verify_command"]);
+            next_command = audit_string(&packet, &["commands", "next"]);
+            if json_string_field(&packet, "posture").as_deref() != Some("advisory") {
+                errors.push("start-here posture must stay advisory".to_string());
+            }
+            let limits = packet
+                .get("limits")
+                .and_then(Value::as_array)
+                .map(|items| items.iter().filter_map(Value::as_str).collect::<Vec<_>>())
+                .unwrap_or_default();
+            for required in [
+                "Composes explicit RIPR artifacts only.",
+                "Does not run hidden analysis.",
+                "Does not edit source or generate tests.",
+                "Does not run mutation testing.",
+                "Does not change CI blocking or gate policy.",
+            ] {
+                if !limits.contains(&required) {
+                    errors.push(format!("start-here packet is missing limit `{required}`"));
+                }
+            }
+            if scenario.expected_status == "actionable" && verify_command.is_none() {
+                errors.push("actionable start-here receipt must name verify_command".to_string());
+            }
+            if scenario.expected_status == "blocked" && next_command.is_none() {
+                errors.push("blocked start-here receipt must name next command".to_string());
+            }
+        }
+        Err(err) => errors.push(err),
+    }
+
+    match fs::read_to_string(&markdown_path) {
+        Ok(markdown) => {
+            if !markdown.contains("# RIPR First PR Start Here") {
+                errors.push("Markdown must use the first PR start-here heading".to_string());
+            }
+            if !markdown.contains("Status: advisory") {
+                errors.push("Markdown must pin advisory status".to_string());
+            }
+            if !markdown.contains("## Authority") {
+                errors.push("Markdown must name authority boundary".to_string());
+            }
+            match scenario.expected_status.as_str() {
+                "actionable" if !markdown.contains("## Top Gap") => {
+                    errors.push("actionable Markdown must show Top Gap".to_string());
+                }
+                "no_action" if !markdown.contains("## No Action") => {
+                    errors.push("no-action Markdown must show No Action".to_string());
+                }
+                "blocked" if !markdown.contains("## Blocked") => {
+                    errors.push("blocked Markdown must show Blocked".to_string());
+                }
+                _ => {}
+            }
+        }
+        Err(err) => errors.push(format!(
+            "failed to read first PR start-here Markdown {}: {err}",
+            normalize_path(&markdown_path)
+        )),
+    }
+
+    if status != scenario.expected_status {
+        errors.push(format!(
+            "expected status {}, got {}",
+            scenario.expected_status, status
+        ));
+    }
+    if state != scenario.expected_state {
+        errors.push(format!(
+            "expected state {}, got {}",
+            scenario.expected_state, state
+        ));
+    }
+
+    DogfoodFirstPrRun {
+        name: scenario.name.clone(),
+        expected_dir: scenario.expected_dir.clone(),
+        json_path,
+        markdown_path,
+        status,
+        state,
+        top_gap_kind,
+        verify_command,
+        next_command,
+        expected_status: scenario.expected_status.clone(),
+        expected_state: scenario.expected_state.clone(),
+        description: scenario.description.clone(),
         errors,
     }
 }
@@ -24408,6 +24596,7 @@ fn dogfood_report_status(inputs: &DogfoodReportInputs<'_>) -> &'static str {
     let runs = inputs.runs;
     let gate_runs = inputs.gate_runs;
     let first_action_runs = inputs.first_action_runs;
+    let first_pr_runs = inputs.first_pr_runs;
     let front_panel_runs = inputs.front_panel_runs;
     let report_packet_index_runs = inputs.report_packet_index_runs;
     let preview_projection_runs = inputs.preview_projection_runs;
@@ -24417,6 +24606,7 @@ fn dogfood_report_status(inputs: &DogfoodReportInputs<'_>) -> &'static str {
     if runs.iter().any(|run| !run.errors.is_empty())
         || gate_runs.iter().any(|run| !run.errors.is_empty())
         || first_action_runs.iter().any(|run| !run.errors.is_empty())
+        || first_pr_runs.iter().any(|run| !run.errors.is_empty())
         || front_panel_runs.iter().any(|run| !run.errors.is_empty())
         || report_packet_index_runs
             .iter()
@@ -24450,6 +24640,7 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
     let runs = inputs.runs;
     let gate_runs = inputs.gate_runs;
     let first_action_runs = inputs.first_action_runs;
+    let first_pr_runs = inputs.first_pr_runs;
     let front_panel_runs = inputs.front_panel_runs;
     let report_packet_index_runs = inputs.report_packet_index_runs;
     let preview_projection_runs = inputs.preview_projection_runs;
@@ -24554,6 +24745,76 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
         body.push_str(&format!(
             "- Expected directory: `{}`\n",
             normalize_path(&run.expected_dir)
+        ));
+        if run.errors.is_empty() {
+            body.push_str("- Errors: none\n\n");
+        } else {
+            body.push_str("- Errors:\n");
+            for error in &run.errors {
+                body.push_str(&format!("  - `{}`\n", markdown_cell(error)));
+            }
+            body.push('\n');
+        }
+    }
+    body.push_str("## First Successful PR Receipts\n\n");
+    body.push_str("These receipts validate checked `start-here.{json,md}` fixture outputs for the first successful PR path. They record that the first screen selects a repairable Rust gap or a clear no-action/blocked state while preserving advisory limits and gate-authority separation.\n\n");
+    body.push_str("- Default CI blocking: no\n");
+    body.push_str(
+        "- Receipt outputs: `fixtures/first_successful_pr/<case>/expected/start-here.{json,md}`\n\n",
+    );
+    body.push_str("| Case | Status | State | Top gap | Verify | Next |\n");
+    body.push_str("| --- | --- | --- | --- | --- | --- |\n");
+    for run in first_pr_runs {
+        body.push_str(&format!(
+            "| `{}` | `{}` | `{}` | `{}` | {} | {} |\n",
+            markdown_cell(&run.name),
+            markdown_cell(&run.status),
+            markdown_cell(&run.state),
+            markdown_cell(&run.top_gap_kind),
+            run.verify_command
+                .as_deref()
+                .map(markdown_cell)
+                .map(|value| format!("`{value}`"))
+                .unwrap_or_else(|| "none".to_string()),
+            run.next_command
+                .as_deref()
+                .map(markdown_cell)
+                .map(|value| format!("`{value}`"))
+                .unwrap_or_else(|| "none".to_string())
+        ));
+    }
+    body.push('\n');
+    for run in first_pr_runs {
+        body.push_str(&format!("### First PR `{}`\n\n", run.name));
+        body.push_str(&format!("- Status: `{}`\n", markdown_cell(&run.status)));
+        body.push_str(&format!(
+            "- Expected status: `{}`\n",
+            markdown_cell(&run.expected_status)
+        ));
+        body.push_str(&format!("- State: `{}`\n", markdown_cell(&run.state)));
+        body.push_str(&format!(
+            "- Expected state: `{}`\n",
+            markdown_cell(&run.expected_state)
+        ));
+        body.push_str(&format!(
+            "- Top gap kind: `{}`\n",
+            markdown_cell(&run.top_gap_kind)
+        ));
+        body.push_str(&format!(
+            "- Receipt JSON: `{}`\n",
+            normalize_path(&run.json_path)
+        ));
+        body.push_str(&format!(
+            "- Receipt Markdown: `{}`\n",
+            normalize_path(&run.markdown_path)
+        ));
+        body.push_str(&format!(
+            "- Expected directory: `{}`\n",
+            normalize_path(&run.expected_dir)
+        ));
+        body.push_str(&format!(
+            "- Description: {}\n",
+            markdown_cell(&run.description)
         ));
         if run.errors.is_empty() {
             body.push_str("- Errors: none\n\n");
@@ -25257,6 +25518,7 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
     let runs = inputs.runs;
     let gate_runs = inputs.gate_runs;
     let first_action_runs = inputs.first_action_runs;
+    let first_pr_runs = inputs.first_pr_runs;
     let front_panel_runs = inputs.front_panel_runs;
     let report_packet_index_runs = inputs.report_packet_index_runs;
     let preview_projection_runs = inputs.preview_projection_runs;
@@ -25367,6 +25629,66 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
         body.push_str(&format!(
             "        \"expected_static_movement\": \"{}\",\n",
             json_escape(&run.expected_static_movement)
+        ));
+        body.push_str("        \"errors\": [");
+        write_json_string_array(&mut body, &run.errors);
+        body.push_str("]\n      }");
+    }
+    body.push_str("\n    ]\n  },\n  \"first_successful_pr\": {\n");
+    body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str("    \"receipt_dir\": \"fixtures/first_successful_pr\",\n    \"cases\": [\n");
+    for (index, run) in first_pr_runs.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("      {\n");
+        body.push_str(&format!(
+            "        \"name\": \"{}\",\n",
+            json_escape(&run.name)
+        ));
+        body.push_str(&format!(
+            "        \"expected_dir\": \"{}\",\n",
+            json_escape(&normalize_path(&run.expected_dir))
+        ));
+        body.push_str(&format!(
+            "        \"json_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.json_path))
+        ));
+        body.push_str(&format!(
+            "        \"markdown_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.markdown_path))
+        ));
+        body.push_str(&format!(
+            "        \"status\": \"{}\",\n",
+            json_escape(&run.status)
+        ));
+        body.push_str(&format!(
+            "        \"state\": \"{}\",\n",
+            json_escape(&run.state)
+        ));
+        body.push_str(&format!(
+            "        \"top_gap_kind\": \"{}\",\n",
+            json_escape(&run.top_gap_kind)
+        ));
+        body.push_str(&format!(
+            "        \"verify_command\": {},\n",
+            json_optional_string(run.verify_command.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"next_command\": {},\n",
+            json_optional_string(run.next_command.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"expected_status\": \"{}\",\n",
+            json_escape(&run.expected_status)
+        ));
+        body.push_str(&format!(
+            "        \"expected_state\": \"{}\",\n",
+            json_escape(&run.expected_state)
+        ));
+        body.push_str(&format!(
+            "        \"description\": \"{}\",\n",
+            json_escape(&run.description)
         ));
         body.push_str("        \"errors\": [");
         write_json_string_array(&mut body, &run.errors);
@@ -35326,9 +35648,9 @@ mod tests {
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
         CheckStatus, CheckViolation, CiFullEvidenceGate, CommandCatalogEntry, CwdCommand,
         DogfoodEditorGapCockpitRun, DogfoodFindingAlignmentRun, DogfoodFindingAlignmentScenario,
-        DogfoodFirstActionRun, DogfoodFrontPanelRun, DogfoodGateRun, DogfoodGeneratedCiCockpitRun,
-        DogfoodLanguagePreviewRun, DogfoodPrInlineCommentRun, DogfoodPreviewProjectionRuns,
-        DogfoodReportInputs, DogfoodReportPacketIndexRun, DogfoodRun,
+        DogfoodFirstActionRun, DogfoodFirstPrRun, DogfoodFrontPanelRun, DogfoodGateRun,
+        DogfoodGeneratedCiCockpitRun, DogfoodLanguagePreviewRun, DogfoodPrInlineCommentRun,
+        DogfoodPreviewProjectionRuns, DogfoodReportInputs, DogfoodReportPacketIndexRun, DogfoodRun,
         EvidenceQualityScorecardInput, EvidenceQualityScorecardInputs,
         EvidenceQualityScorecardReport, EvidenceQualityTrendInputs, EvidenceQualityTrendReport,
         FixKind, GENERATED_CI_FIRST_ACTION_REPAIR, GENERATED_CI_FRONT_PANEL_REPAIR,
@@ -35351,24 +35673,24 @@ mod tests {
         commands_report_markdown, critic_findings, days_from_civil, dogfood_class_counts,
         dogfood_editor_gap_cockpit_run, dogfood_editor_gap_cockpit_scenarios,
         dogfood_finding_alignment_run, dogfood_finding_alignment_scenarios,
-        dogfood_first_action_scenarios, dogfood_gate_adoption_scenarios,
-        dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
-        dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
-        dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
-        dogfood_pr_review_front_panel_scenarios, dogfood_report_json, dogfood_report_markdown,
-        dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
-        evaluate_semantic_no_panic_policy, evidence_quality_scorecard_from_values,
-        evidence_quality_scorecard_json, evidence_quality_scorecard_markdown,
-        evidence_quality_trend_from_values, evidence_quality_trend_json,
-        evidence_quality_trend_markdown, extract_json_object_usize_map, extract_json_string,
-        extract_json_warnings, extract_workflow_run_blocks,
-        finding_alignment_raw_to_canonical_ratio, finding_alignment_verify_command_is_missing,
-        finish_worktree_doctor_report, first_line_difference, forbidden_panic_patterns,
-        generated_clean_violations, gh_pr_safe_next_action, gh_pr_status_json,
-        gh_pr_status_markdown, gh_pr_status_readiness, github_event_pull_request_title_from_text,
-        glob_matches, golden_changes_without_blessing, golden_drift_semantics,
-        guarded_allow_attribute_lints, guarded_allow_attributes_in_text, install_hooks_in,
-        is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
+        dogfood_first_action_scenarios, dogfood_first_pr_run, dogfood_first_pr_scenarios,
+        dogfood_gate_adoption_scenarios, dogfood_generated_ci_cockpit_run_from_workflow,
+        dogfood_language_preview_run, dogfood_language_preview_scenarios,
+        dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
+        dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
+        dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
+        dogfood_report_packet_index_scenarios, evaluate_semantic_no_panic_policy,
+        evidence_quality_scorecard_from_values, evidence_quality_scorecard_json,
+        evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
+        evidence_quality_trend_json, evidence_quality_trend_markdown,
+        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
+        extract_workflow_run_blocks, finding_alignment_raw_to_canonical_ratio,
+        finding_alignment_verify_command_is_missing, finish_worktree_doctor_report,
+        first_line_difference, forbidden_panic_patterns, generated_clean_violations,
+        gh_pr_safe_next_action, gh_pr_status_json, gh_pr_status_markdown, gh_pr_status_readiness,
+        github_event_pull_request_title_from_text, glob_matches, golden_changes_without_blessing,
+        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
+        install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
         is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
         is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
         is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
@@ -41761,6 +42083,28 @@ fn exact_owner_call_has_external_expected_value() {
             expected_static_movement: "unknown".to_string(),
             errors: Vec::new(),
         };
+        let first_pr_run = DogfoodFirstPrRun {
+            name: "boundary-gap".to_string(),
+            expected_dir: Path::new("fixtures/first_successful_pr/boundary-gap/expected")
+                .to_path_buf(),
+            json_path: Path::new(
+                "fixtures/first_successful_pr/boundary-gap/expected/start-here.json",
+            )
+            .to_path_buf(),
+            markdown_path: Path::new(
+                "fixtures/first_successful_pr/boundary-gap/expected/start-here.md",
+            )
+            .to_path_buf(),
+            status: "actionable".to_string(),
+            state: "top_gap".to_string(),
+            top_gap_kind: "MissingBoundaryAssertion".to_string(),
+            verify_command: Some("cargo xtask fixtures boundary_gap".to_string()),
+            next_command: None,
+            expected_status: "actionable".to_string(),
+            expected_state: "top_gap".to_string(),
+            description: "boundary gap receipt".to_string(),
+            errors: Vec::new(),
+        };
         let front_panel_run = DogfoodFrontPanelRun {
             name: "actionable".to_string(),
             report_path: Path::new(
@@ -42014,6 +42358,7 @@ fn exact_owner_call_has_external_expected_value() {
         let markdown_runs = [run];
         let markdown_gate_runs = [gate_run];
         let markdown_first_action_runs = [first_action_run];
+        let markdown_first_pr_runs = [first_pr_run];
         let markdown_front_panel_runs = [front_panel_run];
         let markdown_report_packet_index_runs = [report_packet_index_run];
         let markdown_pr_inline_comment_runs = [pr_inline_comment_run];
@@ -42021,6 +42366,7 @@ fn exact_owner_call_has_external_expected_value() {
             runs: &markdown_runs,
             gate_runs: &markdown_gate_runs,
             first_action_runs: &markdown_first_action_runs,
+            first_pr_runs: &markdown_first_pr_runs,
             front_panel_runs: &markdown_front_panel_runs,
             report_packet_index_runs: &markdown_report_packet_index_runs,
             preview_projection_runs: &preview_projection_runs,
@@ -42030,6 +42376,7 @@ fn exact_owner_call_has_external_expected_value() {
         let empty_runs = [];
         let empty_gate_runs = [];
         let empty_first_action_runs = [];
+        let empty_first_pr_runs = [];
         let empty_front_panel_runs = [];
         let empty_report_packet_index_runs = [];
         let empty_pr_inline_comment_runs = [];
@@ -42037,6 +42384,7 @@ fn exact_owner_call_has_external_expected_value() {
             runs: &empty_runs,
             gate_runs: &empty_gate_runs,
             first_action_runs: &empty_first_action_runs,
+            first_pr_runs: &empty_first_pr_runs,
             front_panel_runs: &empty_front_panel_runs,
             report_packet_index_runs: &empty_report_packet_index_runs,
             preview_projection_runs: &preview_projection_runs,
@@ -42049,6 +42397,7 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(markdown.contains("Mode: advisory"));
         assert!(markdown.contains("boundary_gap"));
         assert!(markdown.contains("First Useful Action Receipts"));
+        assert!(markdown.contains("First Successful PR Receipts"));
         assert!(markdown.contains("PR Review Front Panel Receipts"));
         assert!(markdown.contains("Report Packet Index Receipts"));
         assert!(markdown.contains("Generated CI Cockpit Receipts"));
@@ -42064,6 +42413,7 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(markdown.contains("calibrated-high-confidence-new-gap"));
         assert!(json.contains("\"advisory\": true"));
         assert!(json.contains("\"default_ci_blocking\": false"));
+        assert!(json.contains("\"first_successful_pr\""));
         assert!(json.contains("\"report_packet_index\""));
         assert!(json.contains("\"generated_ci_cockpit\""));
         assert!(json.contains("\"language_preview\""));
@@ -42730,6 +43080,57 @@ jobs:
                     "{} Markdown should pin action",
                     scenario.name
                 );
+            }
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn dogfood_first_pr_scenarios_have_checked_receipts() -> Result<(), String> {
+        with_repo_cwd(|| {
+            let scenarios = dogfood_first_pr_scenarios();
+            for required in [
+                ("boundary-gap", "actionable", "top_gap"),
+                ("output-contract-gap", "actionable", "top_gap"),
+                ("empty-diff", "no_action", "empty_diff"),
+                ("blocked-ledger", "blocked", "blocked_artifact"),
+            ] {
+                assert!(
+                    scenarios.iter().any(|scenario| {
+                        scenario.name == required.0
+                            && scenario.expected_status == required.1
+                            && scenario.expected_state == required.2
+                    }),
+                    "{} first successful PR receipt should be checked as {}/{}",
+                    required.0,
+                    required.1,
+                    required.2
+                );
+            }
+
+            for scenario in scenarios {
+                let run = dogfood_first_pr_run(&scenario);
+                assert!(
+                    run.errors.is_empty(),
+                    "{} first successful PR receipt should validate: {:?}",
+                    run.name,
+                    run.errors
+                );
+                if run.expected_status == "actionable" {
+                    assert!(
+                        run.verify_command.is_some(),
+                        "{} actionable receipt should name a verify command",
+                        run.name
+                    );
+                }
+                if run.expected_status == "blocked" {
+                    assert!(
+                        run.next_command.is_some(),
+                        "{} blocked receipt should name a next command",
+                        run.name
+                    );
+                }
             }
 
             Ok(())
