@@ -2496,7 +2496,7 @@ fn suggested_fixes() -> Result<(), String> {
 fn suggested_fixes_patch() -> Result<(String, Vec<String>), String> {
     let mut patch = String::new();
     let mut files = Vec::new();
-    for path in deterministic_suggested_fix_files()? {
+    for path in deterministic_suggested_fix_allowlist_files()? {
         let original = read_text_lossy(&path)?;
         let sorted = sorted_allowlist_content(&original);
         if sorted == original {
@@ -2505,10 +2505,20 @@ fn suggested_fixes_patch() -> Result<(String, Vec<String>), String> {
         append_whole_file_patch(&mut patch, &path, &original, &sorted);
         files.push(normalize_path(&path));
     }
+    for path in deterministic_suggested_fix_docs_index_files() {
+        let original = read_text_lossy(&path)?;
+        let sorted = sorted_markdown_index_table_content(&original);
+        if sorted == original {
+            continue;
+        }
+        append_whole_file_patch(&mut patch, &path, &original, &sorted);
+        files.push(normalize_path(&path));
+    }
+    files.sort();
     Ok((patch, files))
 }
 
-fn deterministic_suggested_fix_files() -> Result<Vec<PathBuf>, String> {
+fn deterministic_suggested_fix_allowlist_files() -> Result<Vec<PathBuf>, String> {
     let mut paths = Vec::new();
     for root in [Path::new(".ripr"), Path::new("policy")] {
         if !root.exists() {
@@ -2522,6 +2532,70 @@ fn deterministic_suggested_fix_files() -> Result<Vec<PathBuf>, String> {
     }
     paths.sort_by_key(|path| normalize_path(path));
     Ok(paths)
+}
+
+fn deterministic_suggested_fix_docs_index_files() -> Vec<PathBuf> {
+    [
+        PathBuf::from("docs/adr/README.md"),
+        PathBuf::from("docs/specs/README.md"),
+    ]
+    .into_iter()
+    .filter(|path| path.exists())
+    .collect()
+}
+
+fn sorted_markdown_index_table_content(text: &str) -> String {
+    let mut lines = text.lines().map(str::to_string).collect::<Vec<_>>();
+    let Some(header_index) = lines
+        .iter()
+        .position(|line| is_markdown_index_table_header(line))
+    else {
+        return text.to_string();
+    };
+    let Some(separator) = lines.get(header_index + 1) else {
+        return text.to_string();
+    };
+    if !is_markdown_index_table_separator(separator) {
+        return text.to_string();
+    }
+
+    let rows_start = header_index + 2;
+    let mut rows_end = rows_start;
+    while rows_end < lines.len() && is_markdown_table_row(&lines[rows_end]) {
+        rows_end += 1;
+    }
+    if rows_end <= rows_start {
+        return text.to_string();
+    }
+
+    let mut sorted_rows = lines[rows_start..rows_end].to_vec();
+    sorted_rows.sort_by_key(|line| line.to_ascii_lowercase());
+    if sorted_rows == lines[rows_start..rows_end] {
+        return text.to_string();
+    }
+
+    lines.splice(rows_start..rows_end, sorted_rows);
+    let mut output = lines.join("\n");
+    if text.ends_with('\n') {
+        output.push('\n');
+    }
+    output
+}
+
+fn is_markdown_index_table_header(line: &str) -> bool {
+    matches!(
+        line.trim(),
+        "| ADR | Status | Decision |" | "| Spec | Status | Topic |"
+    )
+}
+
+fn is_markdown_index_table_separator(line: &str) -> bool {
+    line.trim() == "| --- | --- | --- |"
+}
+
+fn is_markdown_table_row(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.starts_with('|') && trimmed.ends_with('|')
 }
 
 fn append_whole_file_patch(body: &mut String, path: &Path, before: &str, after: &str) {
@@ -2566,6 +2640,7 @@ fn suggested_fixes_report_body(files: &[String], patch_empty: bool) -> String {
     body.push_str("Patch: `target/ripr/reports/suggested-fixes.patch`\n\n");
     body.push_str("Scope:\n\n");
     body.push_str("- deterministic allowlist ordering under `.ripr/*.txt` and `policy/*.txt`\n");
+    body.push_str("- deterministic docs index table ordering for specs and ADRs\n");
     body.push_str("- no badge value edits\n");
     body.push_str("- no golden blessings\n");
     body.push_str("- no baselines, suppressions, dependency exceptions, or schema changes\n\n");
@@ -34519,9 +34594,10 @@ mod tests {
         ripr_command_literals_in_text, ripr_debug_binary, ripr_pre_commit_hook,
         run_ci_full_evidence_gates, sarif_policy_report_json, sarif_policy_report_markdown,
         semantic_selector_matches, should_scan_static_language_path, should_skip_path,
-        sorted_allowlist_content, spec_id_from_path, spec_ids_in_text, spec_numbering_violations,
-        specs, static_language_allowlist_covers, status_for_report, suggested_fixes_patch,
-        suspicious_runtime_file_names, targeted_test_outcome, targeted_test_outcome_report_json,
+        sorted_allowlist_content, sorted_markdown_index_table_content, spec_id_from_path,
+        spec_ids_in_text, spec_numbering_violations, specs, static_language_allowlist_covers,
+        status_for_report, suggested_fixes_patch, suspicious_runtime_file_names,
+        targeted_test_outcome, targeted_test_outcome_report_json,
         targeted_test_outcome_report_markdown, test_efficiency_entry, test_efficiency_report_json,
         test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
         test_oracle_tests_in_text, unknown_command_message, validate_local_context_allowlist,
@@ -39334,13 +39410,28 @@ jobs:
     }
 
     #[test]
-    fn suggested_fixes_patch_sorts_allowlists_only() -> Result<(), String> {
+    fn sorted_markdown_index_table_content_sorts_index_rows() {
+        let input = "# Specs\n\n## Index\n\n| Spec | Status | Topic |\n| --- | --- | --- |\n| [RIPR-SPEC-0002](RIPR-SPEC-0002-b.md) | proposed | B |\n| [RIPR-SPEC-0001](RIPR-SPEC-0001-a.md) | accepted | A |\n\nAfter.\n";
+        let sorted = sorted_markdown_index_table_content(input);
+
+        assert_eq!(
+            sorted,
+            "# Specs\n\n## Index\n\n| Spec | Status | Topic |\n| --- | --- | --- |\n| [RIPR-SPEC-0001](RIPR-SPEC-0001-a.md) | accepted | A |\n| [RIPR-SPEC-0002](RIPR-SPEC-0002-b.md) | proposed | B |\n\nAfter.\n"
+        );
+    }
+
+    #[test]
+    fn suggested_fixes_patch_sorts_allowlists_and_doc_indexes() -> Result<(), String> {
         with_temp_cwd("suggested-fixes-allowlist", |root| {
             write(
                 &root.join(".ripr/generated.txt"),
                 "# header\n\nzeta\nalpha\n",
             );
             write(&root.join("policy/process.txt"), "gamma\nbeta\n");
+            write(
+                &root.join("docs/specs/README.md"),
+                "# Specs\n\n## Index\n\n| Spec | Status | Topic |\n| --- | --- | --- |\n| [RIPR-SPEC-0002](RIPR-SPEC-0002-b.md) | proposed | B |\n| [RIPR-SPEC-0001](RIPR-SPEC-0001-a.md) | accepted | A |\n",
+            );
             write(
                 &root.join("badges/ripr.json"),
                 r#"{"schemaVersion":1,"label":"ripr","message":"999","color":"red"}"#,
@@ -39352,12 +39443,20 @@ jobs:
                 files,
                 vec![
                     ".ripr/generated.txt".to_string(),
+                    "docs/specs/README.md".to_string(),
                     "policy/process.txt".to_string()
                 ]
             );
             assert!(patch.contains("diff --git a/.ripr/generated.txt b/.ripr/generated.txt"));
             assert!(patch.contains("+alpha"));
             assert!(patch.contains("+zeta"));
+            assert!(patch.contains("diff --git a/docs/specs/README.md b/docs/specs/README.md"));
+            assert!(
+                patch
+                    .find("+| [RIPR-SPEC-0001](RIPR-SPEC-0001-a.md) | accepted | A |")
+                    .zip(patch.find("+| [RIPR-SPEC-0002](RIPR-SPEC-0002-b.md) | proposed | B |"))
+                    .is_some_and(|(first, second)| first < second)
+            );
             assert!(patch.contains("diff --git a/policy/process.txt b/policy/process.txt"));
             assert!(!patch.contains("badges/ripr.json"));
             assert!(!patch.contains("999"));
@@ -39371,6 +39470,10 @@ jobs:
             write(
                 &root.join(".ripr/generated.txt"),
                 "# header\n\nalpha\nbeta\n",
+            );
+            write(
+                &root.join("docs/adr/README.md"),
+                "# Architecture Decision Records\n\n## Index\n\n| ADR | Status | Decision |\n| --- | --- | --- |\n| [0001](0001-a.md) | accepted | A. |\n| [0002](0002-b.md) | proposed | B. |\n",
             );
 
             let (patch, files) = suggested_fixes_patch()?;

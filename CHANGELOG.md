@@ -95,6 +95,10 @@ Planned scope:
   PR watcher cadence, branch freshness decisions, REST status fallback,
   Droid/advisory-check handling, merge execution limits, and task-worktree
   cleanup without changing branch protection or auto-merge behavior.
+- `cargo xtask suggested-fixes` now suggests deterministic docs index table
+  ordering for specs and ADRs in addition to allowlist ordering, while keeping
+  badge values, goldens, baselines, suppressions, dependency exceptions, and
+  schema changes out of generated repair patches.
 - Added `cargo xtask check-command-catalog`, a non-mutating guard that fails
   when xtask help entries and the command mutability catalog drift apart or
   omit write/judgment metadata.
