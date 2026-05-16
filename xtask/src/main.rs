@@ -33478,6 +33478,211 @@ mod tests {
         })
     }
 
+    #[test]
+    fn editor_first_run_usability_fixture_corpus_validator_accepts_complete_matrix()
+    -> Result<(), String> {
+        with_temp_cwd("editor-first-run-usability-fixtures", |root| {
+            write_editor_first_run_usability_corpus(root);
+
+            let mut violations = Vec::new();
+            super::validate_editor_first_run_usability_fixture_corpus(&mut violations)?;
+            assert_eq!(violations, Vec::<String>::new());
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn editor_first_run_usability_fixture_corpus_validator_reports_unsafe_states()
+    -> Result<(), String> {
+        with_temp_cwd("editor-first-run-usability-violations", |root| {
+            let mut violations = Vec::new();
+            super::validate_editor_first_run_usability_fixture_corpus(&mut violations)?;
+            assert!(violations.iter().any(|violation| {
+                violation.contains("editor first-run usability fixture corpus is missing")
+            }));
+
+            write_editor_first_run_usability_corpus(root);
+            write_editor_first_run_status(root, "server_missing", "active", None);
+            write_editor_first_run_actions(root, "setup_ok", &[]);
+            write(
+                &root.join(
+                    "fixtures/editor_first_run_usability/artifact_stale/expected/receipt-status.json",
+                ),
+                &serde_json::json!({
+                    "schema_version": "0.1",
+                    "receipt_state": "receipt_missing",
+                    "runtime_adequacy_claim": true,
+                    "gate_eligibility_claim": true
+                })
+                .to_string(),
+            );
+
+            let mut violations = Vec::new();
+            super::validate_editor_first_run_usability_fixture_corpus(&mut violations)?;
+            assert!(violations.iter().any(|violation| {
+                violation
+                    .contains("editor first-run usability case server_missing must fail closed")
+            }));
+            assert!(violations.iter().any(|violation| {
+                violation
+                    .contains("editor first-run usability case setup_ok must include Copy first repair packet")
+            }));
+            assert!(violations.iter().any(|violation| {
+                violation
+                    .contains("editor first-run usability artifact_stale must record receipt_stale")
+            }));
+            assert!(violations.iter().any(|violation| {
+                violation.contains(
+                    "editor first-run usability case artifact_stale receipt-status must deny runtime_adequacy_claim",
+                )
+            }));
+            assert!(violations.iter().any(|violation| {
+                violation.contains(
+                    "editor first-run usability case artifact_stale receipt-status must deny gate_eligibility_claim",
+                )
+            }));
+            Ok(())
+        })
+    }
+
+    fn write_editor_first_run_usability_corpus(root: &Path) {
+        let corpus = root.join("fixtures/editor_first_run_usability");
+        write(
+            &corpus.join("SPEC.md"),
+            "# Fixture Corpus: editor_first_run_usability\n\nSpec: RIPR-SPEC-0049\nSpec: RIPR-SPEC-0050\n\n## Given\n\nEditor setup artifacts exist.\n\n## When\n\nThe first-run usability contract is checked.\n\n## Then\n\nVisible states are pinned.\n\n## Must Not\n\n- Claim source edits.\n",
+        );
+        for case in super::EDITOR_FIRST_RUN_USABILITY_CASES {
+            write_editor_first_run_status(
+                root,
+                case,
+                editor_first_run_projection(case),
+                editor_first_run_next_action(case),
+            );
+            write_editor_first_run_actions(root, case, &editor_first_run_actions(case));
+            write_editor_first_run_receipt(
+                root,
+                case,
+                editor_first_run_receipt_state(case),
+                false,
+                false,
+            );
+            write(
+                &root.join(format!(
+                    "fixtures/editor_first_run_usability/{case}/expected/setup-diagnosis.md"
+                )),
+                "# RIPR setup diagnosis\n\nNext safe action: refresh or inspect.\n\nLimits: no source edits.\n",
+            );
+        }
+    }
+
+    fn editor_first_run_projection(case: &str) -> &'static str {
+        match case {
+            "server_missing" | "language_disabled" | "adapter_unavailable" | "artifact_stale" => {
+                "fail_closed"
+            }
+            _ => "active",
+        }
+    }
+
+    fn editor_first_run_next_action(case: &str) -> Option<&'static str> {
+        match case {
+            "setup_ok" | "receipt_improved" | "receipt_unchanged" => {
+                Some("copy first repair packet")
+            }
+            _ => None,
+        }
+    }
+
+    fn editor_first_run_actions(case: &str) -> Vec<&'static str> {
+        match case {
+            "setup_ok" | "receipt_improved" | "receipt_unchanged" => {
+                vec![
+                    "Copy first repair packet",
+                    "Refresh Analysis - Saved Workspace Check",
+                ]
+            }
+            _ => vec!["Refresh Analysis - Saved Workspace Check"],
+        }
+    }
+
+    fn editor_first_run_receipt_state(case: &str) -> &'static str {
+        match case {
+            "receipt_improved" => "receipt_movement_improved",
+            "receipt_unchanged" => "receipt_movement_unchanged",
+            "artifact_stale" => "receipt_stale",
+            _ => "receipt_missing",
+        }
+    }
+
+    fn write_editor_first_run_status(
+        root: &Path,
+        case: &str,
+        projection: &str,
+        next_safe_action: Option<&str>,
+    ) {
+        let mut status = serde_json::json!({
+            "schema_version": "0.1",
+            "fixture": format!("editor_first_run_usability/{case}"),
+            "projection": projection
+        });
+        if let Some(next_safe_action) = next_safe_action {
+            status["next_safe_action"] = serde_json::json!(next_safe_action);
+        }
+        write(
+            &root.join(format!(
+                "fixtures/editor_first_run_usability/{case}/expected/vscode-status.json"
+            )),
+            &status.to_string(),
+        );
+    }
+
+    fn write_editor_first_run_actions(root: &Path, case: &str, titles: &[&str]) {
+        let actions = titles
+            .iter()
+            .map(|title| {
+                serde_json::json!({
+                    "title": title,
+                    "command": if *title == "Copy first repair packet" {
+                        "ripr.copyFirstRepairPacket"
+                    } else {
+                        "ripr.refresh"
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        write(
+            &root.join(format!(
+                "fixtures/editor_first_run_usability/{case}/expected/lsp-code-actions.json"
+            )),
+            &serde_json::json!({
+                "schema_version": "0.1",
+                "actions": actions
+            })
+            .to_string(),
+        );
+    }
+
+    fn write_editor_first_run_receipt(
+        root: &Path,
+        case: &str,
+        receipt_state: &str,
+        runtime_adequacy_claim: bool,
+        gate_eligibility_claim: bool,
+    ) {
+        write(
+            &root.join(format!(
+                "fixtures/editor_first_run_usability/{case}/expected/receipt-status.json"
+            )),
+            &serde_json::json!({
+                "schema_version": "0.1",
+                "receipt_state": receipt_state,
+                "runtime_adequacy_claim": runtime_adequacy_claim,
+                "gate_eligibility_claim": gate_eligibility_claim
+            })
+            .to_string(),
+        );
+    }
+
     fn write_editor_gap_cockpit_corpus(root: &Path, valid_preview_hover_order: bool) {
         let corpus = root.join("fixtures/editor_gap_cockpit");
         write(
