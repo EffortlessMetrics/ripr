@@ -991,4 +991,89 @@ mod tests {
         assert!(json.contains("ripr pilot --root . --out target/ripr/pilot --mode draft"));
         assert!(json.contains("--timeout-ms 120000"));
     }
+
+    #[test]
+    fn pilot_summary_md_handles_no_actionable_recommendations() {
+        let artifacts = pilot_artifacts();
+        let md = render_pilot_summary_md(&[], pilot_context(&artifacts));
+        assert!(md.contains("## Top Recommendation"));
+        assert!(md.contains("No actionable seam was ranked"));
+        assert!(md.contains("## Next Commands"));
+    }
+
+    #[test]
+    fn pilot_terminal_handles_no_actionable_recommendations() {
+        let artifacts = pilot_artifacts();
+        let terminal = render_pilot_terminal(&[], pilot_context(&artifacts));
+        assert!(terminal.contains("Top recommendation:"));
+        assert!(terminal.contains("none ranked by the default pilot policy"));
+        assert!(terminal.contains("Run after adding the focused test:"));
+    }
+
+    #[test]
+    fn timeout_summary_json_records_loaded_config_path() {
+        let artifacts = pilot_artifacts();
+        let json = render_pilot_timeout_summary_json(pilot_context(&artifacts));
+        assert!(json.contains(r#""state": "loaded""#));
+        assert!(json.contains(r#""path": "ripr.toml""#));
+        assert!(json.contains(r#""status": "partial""#));
+        assert!(json.contains(r#""reason": "timeout""#));
+    }
+
+    #[test]
+    fn timeout_summary_md_reports_partial_status_with_loaded_config() {
+        let artifacts = pilot_artifacts();
+        let md = render_pilot_timeout_summary_md(pilot_context(&artifacts));
+        assert!(md.contains("# RIPR Pilot Summary"));
+        assert!(md.contains("- Status: `partial`"));
+        assert!(md.contains("- Reason: analysis timed out after 30000 ms"));
+        assert!(md.contains("- Config: loaded `ripr.toml`"));
+        assert!(md.contains("## Outputs"));
+        assert!(md.contains("Analysis did not finish within the pilot budget"));
+        assert!(md.contains("## Next Command"));
+        assert!(md.contains("Rerun with a larger explicit budget"));
+    }
+
+    #[test]
+    fn timeout_summary_md_reports_missing_config_when_unset() {
+        let artifacts = pilot_artifacts();
+        let context = PilotSummaryContext {
+            root: Path::new("."),
+            mode: &Mode::Draft,
+            config_path: None,
+            max_seams: 5,
+            timeout_ms: 100,
+            artifacts: &artifacts,
+        };
+        let md = render_pilot_timeout_summary_md(context);
+        assert!(md.contains("- Config: missing; using built-in defaults"));
+        assert!(md.contains("- Reason: analysis timed out after 100 ms"));
+    }
+
+    #[test]
+    fn timeout_terminal_reports_partial_status_with_loaded_config() {
+        let artifacts = pilot_artifacts();
+        let terminal = render_pilot_timeout_terminal(pilot_context(&artifacts));
+        assert!(terminal.contains("RIPR pilot partial."));
+        assert!(terminal.contains("analysis timed out after 30000 ms"));
+        assert!(terminal.contains("loaded: ripr.toml"));
+        assert!(terminal.contains("Written:"));
+        assert!(terminal.contains("Next:"));
+    }
+
+    #[test]
+    fn timeout_terminal_reports_missing_config_when_unset() {
+        let artifacts = pilot_artifacts();
+        let context = PilotSummaryContext {
+            root: Path::new("."),
+            mode: &Mode::Draft,
+            config_path: None,
+            max_seams: 5,
+            timeout_ms: 100,
+            artifacts: &artifacts,
+        };
+        let terminal = render_pilot_timeout_terminal(context);
+        assert!(terminal.contains("missing: using built-in defaults"));
+        assert!(terminal.contains("analysis timed out after 100 ms"));
+    }
 }
