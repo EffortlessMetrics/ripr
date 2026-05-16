@@ -2030,8 +2030,11 @@ blocking signal.
 Use [RIPR blocking readiness](BLOCKING_READINESS.md) before promoting a gate
 mode. The guide explains when to stay advisory, when to require `ripr-waive`,
 when a reviewed baseline is enough for `baseline-check`, and when
-`calibrated-gate` has enough local evidence to block. Default generated CI
-still stays non-blocking unless `RIPR_GATE_MODE` is explicitly configured.
+`calibrated-gate` has enough local evidence to block. Its
+[Gate Adoption Checklist](BLOCKING_READINESS.md#gate-adoption-checklist) should
+be complete before a repository moves from visible evidence to optional
+blocking. Default generated CI still stays non-blocking unless
+`RIPR_GATE_MODE` is explicitly configured.
 
 The security workflow currently runs:
 
