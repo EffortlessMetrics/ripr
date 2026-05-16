@@ -1829,6 +1829,19 @@ generated tests, provider calls, or runtime execution.
       "note": "optional durable evidence-health audit fields"
     }
   },
+  "headline": {
+    "primary_metric": "finding_alignment_actionable_unresolved_canonical_gaps",
+    "primary_count": 0,
+    "counting_model": "actionable_canonical_gaps",
+    "raw_signals": 2,
+    "canonical_items": 1,
+    "already_observed": 0,
+    "internal_no_action": 0,
+    "static_limitations": 1,
+    "unknown": 0,
+    "raw_to_canonical_ratio": 2.0,
+    "note": "Raw findings are diagnostic; actionable canonical gaps are the user-facing repair count."
+  },
   "summary": {
     "raw_headline_gaps": 6114,
     "canonical_gap_groups_total": 4800,
@@ -1961,6 +1974,13 @@ Field contract:
 - `inputs.*` - input artifact identity with path, load status, optional schema
   version, optional SHA-256, and a short note. Missing optional artifacts are
   reported instead of treated as failures.
+- `headline` - additive scorecard lead numbers for the finding-alignment
+  counting model. `primary_metric` is
+  `finding_alignment_actionable_unresolved_canonical_gaps`, `primary_count` is
+  the actionable canonical gap count, and raw signals remain diagnostic context
+  alongside canonical item, already-observed, no-action, limitation, unknown,
+  and raw-to-canonical counts. This does not redefine public badges or gate
+  policy.
 - `summary` - headline scorecard counts copied from the current Lane 1 audit
   plus scorecard-local repair, delta availability, finding-alignment, and
   presentation-text counts. Finding-alignment counts preserve raw signals,
