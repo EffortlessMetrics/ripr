@@ -80,9 +80,13 @@ Planned scope:
   outstanding checks, Droid status, reviews, and the safe next action without
   scraping prose.
 - `cargo xtask reports index` now includes repo-ops packet status in Markdown
-  and JSON for command mutability, worktree doctor, PR triage, per-PR merge
-  readiness, generated-clean, badge ownership, critic, receipts, suggested
-  fixes, and `check-pr` artifacts.
+  and JSON for command mutability, PR-ready, worktree doctor, PR triage,
+  per-PR merge readiness, generated-clean, badge ownership, critic, receipts,
+  suggested fixes, and `check-pr` artifacts.
+- Added `cargo xtask pr-ready`, a target-local advisory cockpit that composes
+  worktree doctor, command mutability, PR summary, critic, receipts check,
+  suggested fixes, generated-clean, and badge ownership into
+  `target/ripr/reports/pr-ready.md` and `.json`.
 - Added `cargo xtask check-command-catalog`, a non-mutating guard that fails
   when xtask help entries and the command mutability catalog drift apart or
   omit write/judgment metadata.
