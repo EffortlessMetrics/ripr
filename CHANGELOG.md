@@ -79,6 +79,9 @@ Planned scope:
   to the Markdown merge-readiness packet so agents can consume merge state,
   outstanding checks, Droid status, reviews, and the safe next action without
   scraping prose.
+- Lane 1 finding-alignment coverage now treats generic `static_unknown` and
+  `unknown` limitation categories as unnamed, so static-unknown canonical items
+  must carry a specific analyzer limitation category and repair route.
 - `cargo xtask reports index` now includes repo-ops packet status in Markdown
   and JSON for command mutability, the repo cockpit, PR-ready, worktree doctor,
   PR triage, per-PR merge readiness, generated-clean, badge ownership, critic,

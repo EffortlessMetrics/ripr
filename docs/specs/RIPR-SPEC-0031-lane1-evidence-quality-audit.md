@@ -138,6 +138,12 @@ aligned, which raw findings remain unaligned, whether duplicate raw findings
 share a file and line, and whether canonical items lack repair routes,
 verification commands, or named static-limitation categories.
 
+Given a static-unknown or limitation-shaped canonical item, a limitation is
+named only when it carries a non-generic category and repair route. Generic
+`static_unknown` or `unknown` categories remain counted under
+`static_unknown_without_named_limitation` so unknowns stay visible as analyzer
+work instead of becoming vague user test debt.
+
 Given a headline seam with no canonical gap ID, the audit counts it under
 `headline_without_canonical_gap_id`.
 
@@ -160,6 +166,9 @@ audit report only; it does not change static classifications.
   field health.
 - `xtask::tests::lane1_evidence_audit_reports_alignment_coverage_holes` pins
   unaligned raw finding examples and same-line duplicate grouping.
+- `xtask::tests::lane1_evidence_audit_rejects_generic_static_unknown_limitation_category`
+  pins that generic `static_unknown` does not satisfy the named-limitation
+  requirement.
 - `xtask::tests::lane1_evidence_audit_markdown_names_required_sections` pins
   Markdown section coverage.
 - `xtask::tests::lane1_evidence_audit_rejects_repo_exposure_without_seams` pins
