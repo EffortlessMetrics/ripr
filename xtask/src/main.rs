@@ -3941,6 +3941,7 @@ fn pr_has_superseded_signal(pr: &PrTriagePullRequest) -> bool {
 
 fn pr_has_duplicate_signal(pr: &PrTriagePullRequest) -> bool {
     pr_triage_title_or_label_contains(pr, "duplicate")
+        || pr.body.to_ascii_lowercase().contains("duplicate of")
 }
 
 fn pr_triage_title_or_label_contains(pr: &PrTriagePullRequest, needle: &str) -> bool {
@@ -46829,8 +46830,17 @@ jobs:
         duplicate.labels = vec!["duplicate".to_string()];
         let mut superseded = triage_pr(5, "devex: old approach", &["docs/OLD.md"]);
         superseded.body.push_str("\nSuperseded by #6.\n");
+        let mut duplicate_body = triage_pr(6, "devex: refresh", &["docs/REFRESH.md"]);
+        duplicate_body.body.push_str("\nDuplicate of #4.\n");
 
-        let prs = vec![mergeable, behind, pending, duplicate, superseded];
+        let prs = vec![
+            mergeable,
+            behind,
+            pending,
+            duplicate,
+            superseded,
+            duplicate_body,
+        ];
         let findings = pr_triage_findings(&prs, days_from_civil(2026, 5, 14));
         let dispositions = pr_triage_queue_dispositions(&prs, &findings)
             .into_iter()
@@ -46854,6 +46864,10 @@ jobs:
             Some("close_duplicate")
         );
         assert_eq!(dispositions.get(&5).map(String::as_str), Some("superseded"));
+        assert_eq!(
+            dispositions.get(&6).map(String::as_str),
+            Some("close_duplicate")
+        );
     }
 
     #[test]
