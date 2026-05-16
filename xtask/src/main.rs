@@ -1838,6 +1838,80 @@ fn pr_ready() -> Result<(), String> {
     }
 }
 
+fn cockpit() -> Result<(), String> {
+    let steps = vec![
+        pr_ready_step(
+            "worktree_doctor",
+            "cargo xtask worktree doctor",
+            "target/ripr/reports/worktree-doctor.md",
+            true,
+            worktree_doctor,
+        ),
+        pr_ready_step(
+            "command_mutability_catalog",
+            "cargo xtask commands",
+            "target/ripr/reports/commands.md",
+            false,
+            commands_report,
+        ),
+        pr_ready_step(
+            "command_catalog_check",
+            "cargo xtask check-command-catalog",
+            "target/ripr/reports/command-catalog.md",
+            true,
+            check_command_catalog,
+        ),
+        pr_ready_step(
+            "spec_numbering",
+            "cargo xtask check-spec-numbering",
+            "target/ripr/reports/spec-numbering.md",
+            true,
+            check_spec_numbering,
+        ),
+        pr_ready_step(
+            "campaign_status",
+            "cargo xtask check-campaign",
+            "target/ripr/reports/campaign.md",
+            false,
+            check_campaign,
+        ),
+        pr_ready_step(
+            "pr_triage",
+            "cargo xtask pr-triage-report",
+            "target/ripr/reports/pr-triage.md",
+            false,
+            reports::pr_triage_report,
+        ),
+        pr_ready_step(
+            "generated_clean",
+            "cargo xtask check-generated-clean",
+            "target/ripr/reports/generated-clean.md",
+            true,
+            check_generated_clean,
+        ),
+        pr_ready_step(
+            "badge_diff_policy",
+            "cargo xtask check-badge-diff-policy",
+            "target/ripr/reports/badge-diff-policy.md",
+            true,
+            check_badge_diff_policy,
+        ),
+    ];
+
+    write_report("cockpit.md", &cockpit_markdown(&steps))?;
+    write_report("cockpit.json", &cockpit_json(&steps))?;
+    reports_index()?;
+
+    if steps
+        .iter()
+        .any(|step| step.required && step.status == "fail")
+    {
+        Err("repo cockpit found blocking repo-ops issues".to_string())
+    } else {
+        Ok(())
+    }
+}
+
 fn pr_ready_step(
     id: &'static str,
     command: &'static str,
@@ -2080,6 +2154,167 @@ fn pr_ready_judgment_required() -> &'static [&'static str] {
         "branch protection",
         "policy authority change",
     ]
+}
+
+fn cockpit_next_action(steps: &[PrReadyStep]) -> &'static str {
+    match pr_ready_status(steps) {
+        "fail" => "repair blocking repo-ops issues before merging or opening more work",
+        "actionable" => {
+            "review the action queue, then run cargo xtask pr-ready or cargo xtask check-pr for the active PR"
+        }
+        _ => {
+            "use cargo xtask pr-ready for the active PR or cargo xtask gh-pr-status --pr <number> before merging"
+        }
+    }
+}
+
+fn cockpit_action_queue(steps: &[PrReadyStep]) -> Vec<String> {
+    let mut actions = Vec::new();
+    for step in steps.iter().filter(|step| step.status != "pass") {
+        let action = match step.id {
+            "worktree_doctor" => "repair or acknowledge local worktree hygiene findings",
+            "command_catalog_check" => {
+                "update the command mutability catalog before adding new xtask commands"
+            }
+            "spec_numbering" => "repair spec numbering or README/traceability references",
+            "campaign_status" => {
+                "review campaign/source-of-truth drift before continuing broad work"
+            }
+            "pr_triage" => {
+                "review stale, duplicate, behind, policy-sensitive, or generated-artifact PRs"
+            }
+            "generated_clean" => "remove generated residue before ordinary PR work",
+            "badge_diff_policy" => "move badge endpoint JSON changes to a badge refresh PR",
+            _ => "review the linked repo-ops report",
+        };
+        actions.push(action.to_string());
+    }
+    if actions.is_empty() {
+        actions.push("run cargo xtask pr-ready for the active PR".to_string());
+        actions.push("run cargo xtask gh-pr-status --pr <number> before merging".to_string());
+    }
+    actions
+}
+
+fn cockpit_markdown(steps: &[PrReadyStep]) -> String {
+    let status = pr_ready_status(steps);
+    let mut body = format!("# ripr Repo Cockpit\n\nStatus: {status}\nMode: advisory\n\n");
+    body.push_str("## Next Action\n\n");
+    body.push_str("- ");
+    body.push_str(cockpit_next_action(steps));
+    body.push_str("\n\n");
+
+    body.push_str("## Action Queue\n\n");
+    for action in cockpit_action_queue(steps) {
+        body.push_str(&format!("- {action}\n"));
+    }
+    body.push('\n');
+
+    let attention = steps
+        .iter()
+        .filter(|step| step.status != "pass")
+        .collect::<Vec<_>>();
+    body.push_str("## Current Risks\n\n");
+    if attention.is_empty() {
+        body.push_str("- none detected\n\n");
+    } else {
+        for step in attention {
+            body.push_str(&format!(
+                "- `{}`: {} ({})\n",
+                step.id, step.summary, step.status
+            ));
+        }
+        body.push('\n');
+    }
+
+    body.push_str("## Step Summary\n\n");
+    body.push_str("| Step | Status | Required | Report |\n");
+    body.push_str("| --- | --- | --- | --- |\n");
+    for step in steps {
+        body.push_str(&format!(
+            "| `{}` | `{}` | {} | `{}` |\n",
+            step.id, step.status, step.required, step.report
+        ));
+    }
+    body.push('\n');
+
+    body.push_str("## Safe Repairs\n\n");
+    for item in pr_ready_safe_repairs() {
+        body.push_str(&format!("- {item}\n"));
+    }
+    body.push('\n');
+
+    body.push_str("## Generated Only\n\n");
+    for item in pr_ready_generated_only() {
+        body.push_str(&format!("- `{item}`\n"));
+    }
+    body.push('\n');
+
+    body.push_str("## Stop / Judgment Required\n\n");
+    for item in pr_ready_judgment_required() {
+        body.push_str(&format!("- {item}\n"));
+    }
+    body.push('\n');
+
+    body.push_str("## Next Commands\n\n```bash\ncargo xtask pr-ready\ncargo xtask check-pr\n```\n");
+    body
+}
+
+fn cockpit_json(steps: &[PrReadyStep]) -> String {
+    let action_queue = cockpit_action_queue(steps);
+    let mut body = "{\n".to_string();
+    body.push_str("  \"schema_version\": \"0.1\",\n");
+    body.push_str("  \"mode\": \"advisory\",\n");
+    body.push_str(&format!(
+        "  \"status\": \"{}\",\n",
+        json_escape(pr_ready_status(steps))
+    ));
+    body.push_str(&format!(
+        "  \"next_action\": \"{}\",\n",
+        json_escape(cockpit_next_action(steps))
+    ));
+    body.push_str("  \"action_queue\": [");
+    write_json_string_array(&mut body, &action_queue);
+    body.push_str("],\n");
+    body.push_str("  \"steps\": [\n");
+    for (index, step) in steps.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!("      \"id\": \"{}\",\n", json_escape(step.id)));
+        body.push_str(&format!(
+            "      \"command\": \"{}\",\n",
+            json_escape(step.command)
+        ));
+        body.push_str(&format!(
+            "      \"status\": \"{}\",\n",
+            json_escape(&step.status)
+        ));
+        body.push_str(&format!("      \"required\": {},\n", step.required));
+        body.push_str(&format!(
+            "      \"report\": \"{}\",\n",
+            json_escape(step.report)
+        ));
+        body.push_str(&format!(
+            "      \"summary\": \"{}\"\n",
+            json_escape(&step.summary)
+        ));
+        body.push_str("    }");
+    }
+    body.push_str("\n  ],\n");
+    body.push_str("  \"safe_repairs\": [");
+    write_json_string_array_from_strs(&mut body, pr_ready_safe_repairs());
+    body.push_str("],\n");
+    body.push_str("  \"generated_only\": [");
+    write_json_string_array_from_strs(&mut body, pr_ready_generated_only());
+    body.push_str("],\n");
+    body.push_str("  \"judgment_required\": [");
+    write_json_string_array_from_strs(&mut body, pr_ready_judgment_required());
+    body.push_str("],\n");
+    body.push_str("  \"next_commands\": [\"cargo xtask pr-ready\", \"cargo xtask check-pr\"]\n");
+    body.push_str("}\n");
+    body
 }
 
 fn check_command_catalog() -> Result<(), String> {
@@ -28684,6 +28919,16 @@ fn repo_ops_packet_specs() -> &'static [RepoOpsPacketSpec] {
             ],
         },
         RepoOpsPacketSpec {
+            id: "repo_cockpit",
+            label: "Repo cockpit",
+            command: "cargo xtask cockpit",
+            description: "Composes repo-level operating packets into one advisory maintainer front panel.",
+            artifacts: &[
+                "target/ripr/reports/cockpit.md",
+                "target/ripr/reports/cockpit.json",
+            ],
+        },
+        RepoOpsPacketSpec {
             id: "worktree_doctor",
             label: "Worktree doctor",
             command: "cargo xtask worktree doctor",
@@ -33961,28 +34206,28 @@ mod tests {
         check_badge_diff_policy_with_context, check_droid_review_config, check_executable_files,
         check_file_policy, check_local_context, check_network_policy, check_no_panic_family,
         check_process_policy, check_static_language, check_workflows, ci_full_evidence_gates,
-        collect_panic_findings, collect_semantic_panic_findings, command_catalog,
-        command_catalog_violations, commands_report_json, commands_report_markdown,
-        critic_findings, days_from_civil, dogfood_class_counts, dogfood_editor_gap_cockpit_run,
-        dogfood_editor_gap_cockpit_scenarios, dogfood_finding_alignment_run,
-        dogfood_finding_alignment_scenarios, dogfood_first_action_scenarios,
-        dogfood_gate_adoption_scenarios, dogfood_generated_ci_cockpit_run_from_workflow,
-        dogfood_language_preview_run, dogfood_language_preview_scenarios,
-        dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
-        dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
-        dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
-        dogfood_report_packet_index_scenarios, evaluate_semantic_no_panic_policy,
-        evidence_quality_scorecard_from_values, evidence_quality_scorecard_json,
-        evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
-        evidence_quality_trend_json, evidence_quality_trend_markdown,
-        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
-        extract_workflow_run_blocks, finding_alignment_raw_to_canonical_ratio,
-        finish_worktree_doctor_report, first_line_difference, forbidden_panic_patterns,
-        generated_clean_violations, gh_pr_safe_next_action, gh_pr_status_json,
-        gh_pr_status_markdown, gh_pr_status_readiness, github_event_pull_request_title_from_text,
-        glob_matches, golden_changes_without_blessing, golden_drift_semantics,
-        guarded_allow_attribute_lints, guarded_allow_attributes_in_text, install_hooks_in,
-        is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
+        cockpit_json, cockpit_markdown, collect_panic_findings, collect_semantic_panic_findings,
+        command_catalog, command_catalog_violations, commands_report_json,
+        commands_report_markdown, critic_findings, days_from_civil, dogfood_class_counts,
+        dogfood_editor_gap_cockpit_run, dogfood_editor_gap_cockpit_scenarios,
+        dogfood_finding_alignment_run, dogfood_finding_alignment_scenarios,
+        dogfood_first_action_scenarios, dogfood_gate_adoption_scenarios,
+        dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
+        dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
+        dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
+        dogfood_pr_review_front_panel_scenarios, dogfood_report_json, dogfood_report_markdown,
+        dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
+        evaluate_semantic_no_panic_policy, evidence_quality_scorecard_from_values,
+        evidence_quality_scorecard_json, evidence_quality_scorecard_markdown,
+        evidence_quality_trend_from_values, evidence_quality_trend_json,
+        evidence_quality_trend_markdown, extract_json_object_usize_map, extract_json_string,
+        extract_json_warnings, extract_workflow_run_blocks,
+        finding_alignment_raw_to_canonical_ratio, finish_worktree_doctor_report,
+        first_line_difference, forbidden_panic_patterns, generated_clean_violations,
+        gh_pr_safe_next_action, gh_pr_status_json, gh_pr_status_markdown, gh_pr_status_readiness,
+        github_event_pull_request_title_from_text, glob_matches, golden_changes_without_blessing,
+        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
+        install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
         is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
         is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
         is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
@@ -39030,6 +39275,8 @@ jobs:
         let reports = [
             ("commands.md", "present"),
             ("commands.json", "present"),
+            ("cockpit.md", "actionable"),
+            ("cockpit.json", "actionable"),
             ("generated-clean.md", "pass"),
             ("gh-pr-status.md", "warn"),
             ("gh-pr-status.json", "warn"),
@@ -39074,6 +39321,13 @@ jobs:
                 .find(|packet| packet.id == "worktree_doctor")
                 .map(|packet| packet.status.as_str()),
             Some("missing")
+        );
+        assert_eq!(
+            packets
+                .iter()
+                .find(|packet| packet.id == "repo_cockpit")
+                .map(|packet| packet.status.as_str()),
+            Some("actionable")
         );
         assert_eq!(
             packets
@@ -39126,6 +39380,7 @@ jobs:
                 && packet["next_command"] == "cargo xtask commands"
         }));
         assert!(packets.iter().any(|packet| packet["id"] == "pr_ready"));
+        assert!(packets.iter().any(|packet| packet["id"] == "repo_cockpit"));
         assert!(packets.iter().any(|packet| packet["id"] == "pr_triage"));
         Ok(())
     }
@@ -45072,6 +45327,10 @@ jobs:
             XtaskCommand::PrReady
         );
         assert_eq!(
+            XtaskCommand::parse(["cockpit".to_string()]),
+            XtaskCommand::Cockpit
+        );
+        assert_eq!(
             XtaskCommand::parse([
                 "impacted-evidence".to_string(),
                 "--label".to_string(),
@@ -45545,6 +45804,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(find("shape")?.mutability, "mutating");
         assert_eq!(find("check-pr")?.mutability, "non_mutating_check");
         assert_eq!(find("pr-ready")?.mutability, "report_only");
+        assert_eq!(find("cockpit")?.mutability, "external_state_read");
         assert_eq!(
             find("check-command-catalog")?.mutability,
             "non_mutating_check"
@@ -45684,6 +45944,58 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn cockpit_packet_reports_action_queue_and_boundaries() -> Result<(), String> {
+        let steps = vec![
+            PrReadyStep {
+                id: "command_catalog_check",
+                command: "cargo xtask check-command-catalog",
+                report: "target/ripr/reports/command-catalog.md",
+                required: true,
+                status: "pass".to_string(),
+                summary: "completed".to_string(),
+            },
+            PrReadyStep {
+                id: "pr_triage",
+                command: "cargo xtask pr-triage-report",
+                report: "target/ripr/reports/pr-triage.md",
+                required: false,
+                status: "needs_attention".to_string(),
+                summary: "stale duplicate PRs detected".to_string(),
+            },
+        ];
+
+        assert_eq!(pr_ready_status(&steps), "actionable");
+        let json = cockpit_json(&steps);
+        let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["mode"], "advisory");
+        assert_eq!(value["status"], "actionable");
+        assert!(
+            value["action_queue"]
+                .as_array()
+                .ok_or("action_queue must be an array")?
+                .iter()
+                .any(|entry| entry
+                    .as_str()
+                    .is_some_and(|text| text.contains("stale, duplicate")))
+        );
+        assert!(
+            value["judgment_required"]
+                .as_array()
+                .ok_or("judgment_required must be an array")?
+                .iter()
+                .any(|entry| entry == "baseline adoption")
+        );
+
+        let markdown = cockpit_markdown(&steps);
+        assert!(markdown.contains("# ripr Repo Cockpit"));
+        assert!(markdown.contains("Status: actionable"));
+        assert!(markdown.contains("## Action Queue"));
+        assert!(markdown.contains("## Generated Only"));
+        Ok(())
+    }
+
+    #[test]
     fn known_commands_include_current_report_and_policy_commands() {
         let commands = known_commands();
         assert!(commands.contains(&"commands"));
@@ -45702,6 +46014,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(commands.contains(&"operator-cockpit"));
         assert!(commands.contains(&"operator-cockpit-report"));
         assert!(commands.contains(&"pr-ready"));
+        assert!(commands.contains(&"cockpit"));
         assert!(commands.contains(&"release-readiness --version <version>"));
         assert!(commands.contains(&"targeted-test-outcome --before <path> --after <path>"));
         assert!(commands.contains(&"mutation-calibration [root] --mutants-json <path>"));
