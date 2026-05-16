@@ -2532,7 +2532,7 @@ def test_bare_truthy():
         // the transparent one and report the non-transparent one.
         let owner = extract_owners(
             Path::new("src/service.py"),
-            "class S:\n    @staticmethod\n    @retry(times=3)\n    def total():\n        return 1\n",
+            "class Service:\n    @staticmethod\n    @retry(times=3)\n    def total():\n        return 1\n",
         )
         .into_iter()
         .next()
