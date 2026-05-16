@@ -2234,6 +2234,7 @@ spec = "docs/specs/RIPR-SPEC-0034-evidence-quality-scorecard.md"
 tests = [
   "xtask/src/main.rs",
   "xtask::tests::evidence_quality_scorecard_uses_audit_canonical_item_alignment_summary",
+  "xtask::tests::evidence_quality_scorecard_headline_prefers_actionable_canonical_gaps",
   "xtask::tests::evidence_quality_trend_reports_no_history_explicitly",
   "xtask::tests::evidence_quality_trend_distinguishes_improvement_regression_and_unchanged",
   "xtask::tests::evidence_quality_trend_reports_static_limitation_category_deltas",
@@ -2269,6 +2270,7 @@ metrics = [
   "finding_alignment_raw_signals_total",
   "finding_alignment_canonical_items_total",
   "finding_alignment_actionable_items_total",
+  "finding_alignment_actionable_unresolved_canonical_gaps",
   "finding_alignment_static_limitation_total",
   "lane1_evidence_trend_compared_metrics",
   "lane1_evidence_trend_improved_metrics",
@@ -2844,9 +2846,11 @@ tests = [
   "xtask/src/main.rs::tests::evidence_quality_scorecard_reports_finding_alignment_presentation_text_counts",
   "xtask/src/main.rs::tests::evidence_quality_trend_reports_finding_alignment_presentation_text_deltas",
   "xtask/src/main.rs::tests::evidence_quality_benchmark_corpus_is_valid",
+  "xtask/src/main.rs::tests::dogfood_finding_alignment_scenarios_have_checked_receipts",
 ]
 fixtures = [
   "fixtures/evidence-quality-benchmark/corpus.json",
+  "fixtures/finding-alignment-dogfood/corpus.json",
 ]
 code = [
   "crates/ripr/src/output/json/finding_alignment.rs",
@@ -2863,11 +2867,14 @@ outputs = [
   "docs/handoffs/2026-05-14-user-visible-output-evidence-closeout.md",
   "docs/specs/README.md",
   "docs/DOCUMENTATION.md",
+  "docs/DOGFOODING.md",
   "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "fixtures/evidence-quality-benchmark/README.md",
   "fixtures/evidence-quality-benchmark/corpus.json",
+  "fixtures/finding-alignment-dogfood/SPEC.md",
+  "fixtures/finding-alignment-dogfood/corpus.json",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
   ".ripr/traceability.toml",
@@ -3069,16 +3076,17 @@ metrics = [
 id = "RIPR-SPEC-0048"
 name = "Config and policy constant evidence"
 spec = "docs/specs/RIPR-SPEC-0048-config-policy-constant-evidence.md"
-tests = []
 tests = [
   "crates/ripr/src/output/json/finding_alignment.rs::tests::actionable_canonical_items_require_repair_routes",
   "crates/ripr/src/output/json/finding_alignment.rs::tests::rendered_policy_label_without_observer_is_actionable",
+  "xtask/src/main.rs::tests::dogfood_finding_alignment_scenarios_have_checked_receipts",
   "crates/ripr/src/output/json/finding_alignment.rs",
   "crates/ripr/src/output/json/mod.rs",
   "xtask/src/main.rs",
 ]
 fixtures = [
   "fixtures/evidence-quality-benchmark/corpus.json",
+  "fixtures/finding-alignment-dogfood/corpus.json",
 ]
 code = [
   "crates/ripr/src/output/json/finding_alignment.rs",
@@ -3091,6 +3099,9 @@ outputs = [
   "docs/OUTPUT_SCHEMA.md",
   "docs/specs/README.md",
   "fixtures/evidence-quality-benchmark/README.md",
+  "fixtures/finding-alignment-dogfood/SPEC.md",
+  "fixtures/finding-alignment-dogfood/corpus.json",
+  "docs/DOGFOODING.md",
   ".ripr/traceability.toml",
   "CHANGELOG.md",
 ]
@@ -3139,6 +3150,9 @@ outputs = [
   "docs/proposals/README.md",
   "docs/adr/0013-editor-setup-diagnostics-are-read-only.md",
   "docs/adr/README.md",
+  "docs/EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md",
+  "docs/handoffs/2026-05-16-editor-first-run-usability-closeout.md",
+  "docs/handoffs/2026-05-16-lane3-first-run-repair-receipts.md",
   "docs/lanes/LANE_3_EDITOR_LSP.md",
   "plans/editor-first-run-usability/implementation-plan.md",
   ".ripr/traceability.toml",
@@ -3160,10 +3174,14 @@ name = "Editor first repair loop"
 spec = "docs/specs/RIPR-SPEC-0050-editor-first-repair-loop.md"
 tests = [
   "editors/vscode/test/suite/extension.test.ts::status model projects existing receipt state without producing receipts",
+  "crates/ripr/src/lsp/tests.rs::gap_code_actions_surface_bounded_gap_actions",
+  "crates/ripr/src/lsp/tests.rs::gap_code_actions_suppress_first_repair_packet_without_verify_or_receipt_command",
+  "editors/vscode/test/suite/extension.test.ts::copyContext copies first repair packets without LSP fallback",
 ]
 fixtures = [
 ]
 code = [
+  "crates/ripr/src/lsp/actions.rs",
   "editors/vscode/src/client.ts",
 ]
 outputs = [
@@ -3174,6 +3192,9 @@ outputs = [
   "docs/proposals/README.md",
   "docs/adr/0013-editor-setup-diagnostics-are-read-only.md",
   "docs/adr/README.md",
+  "docs/EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md",
+  "docs/handoffs/2026-05-16-editor-first-run-usability-closeout.md",
+  "docs/handoffs/2026-05-16-lane3-first-run-repair-receipts.md",
   "docs/lanes/LANE_3_EDITOR_LSP.md",
   "plans/editor-first-run-usability/implementation-plan.md",
   ".ripr/traceability.toml",
@@ -3194,10 +3215,16 @@ id = "RIPR-SPEC-0051"
 name = "First successful PR UX"
 spec = "docs/specs/RIPR-SPEC-0051-first-successful-pr-ux.md"
 tests = [
+  "xtask/src/reports/first_pr.rs",
+  "xtask/src/main.rs",
 ]
 fixtures = [
 ]
 code = [
+  "xtask/src/reports/first_pr.rs",
+  "xtask/src/command.rs",
+  "xtask/src/dispatch.rs",
+  "xtask/src/reports/mod.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0051-first-successful-pr-ux.md",

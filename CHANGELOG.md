@@ -80,9 +80,28 @@ Planned scope:
   outstanding checks, Droid status, reviews, and the safe next action without
   scraping prose.
 - `cargo xtask reports index` now includes repo-ops packet status in Markdown
-  and JSON for command mutability, worktree doctor, PR triage, per-PR merge
-  readiness, generated-clean, badge ownership, critic, receipts, suggested
-  fixes, and `check-pr` artifacts.
+  and JSON for command mutability, the repo cockpit, PR-ready, worktree doctor,
+  PR triage, per-PR merge readiness, generated-clean, badge ownership, critic,
+  receipts, suggested fixes, and `check-pr` artifacts.
+- Added `cargo xtask pr-ready`, a target-local advisory cockpit that composes
+  worktree doctor, command mutability, PR summary, critic, receipts check,
+  suggested fixes, generated-clean, and badge ownership into
+  `target/ripr/reports/pr-ready.md` and `.json`.
+- Added `cargo xtask cockpit`, a repo-level advisory front panel that composes
+  worktree doctor, command mutability, command-catalog coverage, spec
+  numbering, campaign/source-of-truth checks, open PR triage, generated-clean,
+  and badge ownership into `target/ripr/reports/cockpit.md` and `.json`.
+- Added [docs/MERGE_WATCH_POLICY.md](docs/MERGE_WATCH_POLICY.md), documenting
+  PR watcher cadence, branch freshness decisions, REST status fallback,
+  Droid/advisory-check handling, merge execution limits, and task-worktree
+  cleanup without changing branch protection or auto-merge behavior.
+- `cargo xtask suggested-fixes` now suggests deterministic docs index table
+  ordering for specs and ADRs in addition to allowlist ordering, while keeping
+  badge values, goldens, baselines, suppressions, dependency exceptions, and
+  schema changes out of generated repair patches.
+- `cargo xtask suggested-fixes` now suggests deterministic
+  `.ripr/traceability.toml` `[[behavior]]` block ordering by spec ID without
+  re-rendering TOML or changing block bodies.
 - Added `cargo xtask check-command-catalog`, a non-mutating guard that fails
   when xtask help entries and the command mutability catalog drift apart or
   omit write/judgment metadata.
@@ -108,6 +127,15 @@ Planned scope:
 - Finding-alignment summaries now include actionable verify-command coverage
   and missing-verify counts, keeping repair routes and verification routes
   explicit for canonical gaps without changing PR/CI rendering, gate policy,
+  scores, generated tests, provider calls, source edits, or mutation execution.
+- Evidence-quality scorecards now lead with actionable canonical gaps while
+  keeping raw signals and canonical item counts as diagnostic context. This
+  keeps the Lane 1 counting model visible without changing badges, gates,
+  scores, PR/CI rendering, generated tests, provider calls, source edits, or
+  mutation execution.
+- `cargo xtask dogfood` now checks finding-alignment receipts for real RIPR PR
+  examples, pinning actionable, already-observed, internal no-action, and named
+  static-limitation outcomes without changing PR/CI rendering, gates, public
   scores, generated tests, provider calls, source edits, or mutation execution.
 - VS Code `ripr: Show Status` now includes first-run/no-output context:
   workspace root, resolved server source and command, editor selectors,
