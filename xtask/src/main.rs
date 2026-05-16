@@ -13405,7 +13405,37 @@ fn write_lane1_evidence_audit_repo_exposure(path: &Path) -> Result<(), String> {
         "--format".to_string(),
         "repo-exposure-json".to_string(),
     ];
-    run_output_to_file_owned("cargo", &args, path)
+    match run_output_to_file_owned("cargo", &args, path) {
+        Ok(()) => Ok(()),
+        Err(err) => match lane1_repo_exposure_file_looks_complete(path) {
+            Ok(true) => {
+                eprintln!(
+                    "warning: repo exposure generation returned non-zero status; continuing because {} contains a complete repo-exposure JSON document",
+                    path.display()
+                );
+                Ok(())
+            }
+            Ok(false) => Err(err),
+            Err(inspect_err) => Err(format!(
+                "{err}\nfailed to inspect captured repo exposure {}: {inspect_err}",
+                path.display()
+            )),
+        },
+    }
+}
+
+fn lane1_repo_exposure_file_looks_complete(path: &Path) -> Result<bool, String> {
+    let file = fs::File::open(path).map_err(|err| {
+        format!(
+            "failed to open captured repo exposure {}: {err}",
+            path.display()
+        )
+    })?;
+    let value: Value = match serde_json::from_reader(BufReader::new(file)) {
+        Ok(value) => value,
+        Err(_) => return Ok(false),
+    };
+    Ok(value.get("seams").and_then(Value::as_array).is_some())
 }
 
 fn lane1_evidence_audit_from_repo_exposure_file(
@@ -47441,6 +47471,50 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(commands.contains(&"vscode-package"));
         assert!(commands.contains(&"vscode-test"));
         assert!(commands.contains(&"vscode-test-e2e"));
+    }
+
+    #[test]
+    fn lane1_repo_exposure_file_completion_check_requires_seams_and_closing_brace()
+    -> Result<(), String> {
+        let root = temp_dir("lane1-repo-exposure-complete");
+        let complete = root.join("complete.json");
+        write(
+            &complete,
+            r#"{
+  "schema_version": "0.3",
+  "seams": []
+}
+"#,
+        );
+        if !super::lane1_repo_exposure_file_looks_complete(&complete)? {
+            return Err("complete repo-exposure JSON should be accepted".to_string());
+        }
+
+        let missing_seams = root.join("missing-seams.json");
+        write(
+            &missing_seams,
+            r#"{
+  "schema_version": "0.3"
+}
+"#,
+        );
+        if super::lane1_repo_exposure_file_looks_complete(&missing_seams)? {
+            return Err("repo-exposure JSON without seams should be rejected".to_string());
+        }
+
+        let truncated = root.join("truncated.json");
+        write(
+            &truncated,
+            r#"{
+  "schema_version": "0.3",
+  "seams": [
+"#,
+        );
+        if super::lane1_repo_exposure_file_looks_complete(&truncated)? {
+            return Err("truncated repo-exposure JSON should be rejected".to_string());
+        }
+
+        Ok(())
     }
 
     #[test]
