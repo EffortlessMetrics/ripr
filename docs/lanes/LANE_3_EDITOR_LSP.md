@@ -524,11 +524,11 @@ Do not reopen this slice for speculative editor furniture. Future first-run,
 install, CodeLens, inlay, semantic-token, inline-patch, or unsaved-buffer work
 needs a new editor campaign.
 
-## Selected Slice: Editor First-Run and Repair Usability
+## Closed Slice: Editor First-Run and Repair Usability
 
-The next Lane 3 campaign is Editor First-Run and Repair Usability. It does not
-reopen Campaign 27 language routing or the Editor Gap Cockpit. The goal is to
-make the existing cockpit self-orienting for a first-time or low-context user:
+Editor First-Run and Repair Usability closed after making the existing cockpit
+self-orienting for a first-time or low-context user. It did not reopen Campaign
+27 language routing or the Editor Gap Cockpit:
 
 ```text
 install / open workspace
@@ -548,18 +548,19 @@ Durable sources for the selected docs stack:
 - [RIPR-SPEC-0050: Editor First Repair Loop](../specs/RIPR-SPEC-0050-editor-first-repair-loop.md)
 - [ADR-0013: Editor Setup Diagnostics Are Read-Only](../adr/0013-editor-setup-diagnostics-are-read-only.md)
 - [Editor first-run usability implementation plan](../../plans/editor-first-run-usability/implementation-plan.md)
+- [Editor First-Run Usability closeout](../handoffs/2026-05-16-editor-first-run-usability-closeout.md)
 
-Planned PR path:
+Completed PR path:
 
-1. `docs(lane3): open editor first-run usability stack`
-2. `vscode: add setup diagnosis status model`
-3. `vscode: add ripr Diagnose Setup command`
-4. `test(vscode): smoke first-run and no-output states`
-5. `lsp: link receipts into Show Status`
-6. `lsp: add first-repair action packet`
-7. `fixtures(editor): add first-run usability fixtures`
-8. `docs(editor): write first-run-to-first-receipt guide`
-9. `dogfood(lane3): record first-run repair receipts`
+1. #1012 `docs(lane3): open editor first-run usability stack`
+2. #1017 `vscode: add setup diagnosis status model`
+3. #1023 `vscode: add ripr Diagnose Setup command`
+4. #1026 `test(vscode): smoke first-run and no-output states`
+5. #1028 `lsp: link receipts into Show Status`
+6. #1030 `lsp: add first-repair action packet`
+7. #1033 `fixtures(editor): add first-run usability fixtures`
+8. #1037 `docs(editor): write first-run-to-first-receipt guide`
+9. #1038 `dogfood(lane3): record first-run repair receipts`
 10. `campaign(lane3): close editor first-run usability`
 
 This campaign consumes existing server, workspace, config, language, artifact,
@@ -569,6 +570,11 @@ support them. It must not install binaries, mutate config, run hidden analysis,
 create receipts, edit source, generate tests, call providers, run mutation,
 publish PR comments, decide gates, or add CodeLens, inlays, semantic tokens,
 inline patches, or unsaved-buffer overlays.
+
+Post-closeout posture: there is no selected behavior-bearing Lane 3 PR open.
+Future first-run/install polish, CodeLens, inlay, semantic-token, inline-patch,
+source-edit, generated-test, provider, mutation, policy, PR-comment, or
+unsaved-buffer work needs a new editor campaign.
 
 ## Lane 3 Document Model
 
