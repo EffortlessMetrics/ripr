@@ -1416,7 +1416,7 @@ evidence = [
   ".ripr/suppressions.toml durable exception manifest with owner and reason required",
   "docs/CONFIGURATION.md documents policy-health metadata fields for suppressions",
   "docs/OUTPUT_SCHEMA.md Suppression Health Report section defines suppression-health JSON and Markdown",
-  "crates/ripr/src/output/suppressions.rs parses optional suppression policy metadata and rejects invalid dates",
+  "crates/ripr/src/output/suppressions/mod.rs parses optional suppression policy metadata and rejects invalid dates",
   "crates/ripr/src/output/suppression_health.rs renders advisory suppression-health JSON and Markdown",
   "crates/ripr/src/output/policy_readiness.rs treats suppression-health warnings and config errors as not acknowledgement-ready",
   "crates/ripr/src/cli/commands.rs exposes ripr policy suppression-health",

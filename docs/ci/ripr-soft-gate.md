@@ -77,7 +77,7 @@ reviewers can see when it has been used.
 
 Long-lived suppressions live in `.ripr/suppressions.toml` (canonical;
 loaded by `crates/ripr/src/config.rs`; parser in
-`crates/ripr/src/output/suppressions.rs`). The entries follow the schema
+`crates/ripr/src/output/suppressions/mod.rs`). The entries follow the schema
 documented in `docs/CONFIGURATION.md` and `docs/CI.md` (Verification
 Economics section). Each suppression must record:
 

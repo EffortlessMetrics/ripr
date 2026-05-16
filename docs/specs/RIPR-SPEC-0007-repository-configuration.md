@@ -165,7 +165,7 @@ Current implementation:
   options.
 - `crates/ripr/src/output/human.rs`, `crates/ripr/src/output/json/report.rs`,
   and `crates/ripr/src/output/github.rs` apply configured finding severity.
-- `crates/ripr/src/output/suppressions.rs` loads the configured suppressions
+- `crates/ripr/src/output/suppressions/mod.rs` loads the configured suppressions
   path for badge reports.
 - `ripr.toml.example` documents the supported v1 shape.
 
