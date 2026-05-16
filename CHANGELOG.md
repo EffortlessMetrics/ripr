@@ -99,6 +99,9 @@ Planned scope:
   ordering for specs and ADRs in addition to allowlist ordering, while keeping
   badge values, goldens, baselines, suppressions, dependency exceptions, and
   schema changes out of generated repair patches.
+- `cargo xtask suggested-fixes` now suggests deterministic
+  `.ripr/traceability.toml` `[[behavior]]` block ordering by spec ID without
+  re-rendering TOML or changing block bodies.
 - Added `cargo xtask check-command-catalog`, a non-mutating guard that fails
   when xtask help entries and the command mutability catalog drift apart or
   omit write/judgment metadata.

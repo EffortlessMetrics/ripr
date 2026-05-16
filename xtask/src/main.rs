@@ -2460,6 +2460,15 @@ fn suggested_fixes_patch() -> Result<(String, Vec<String>), String> {
         append_whole_file_patch(&mut patch, &path, &original, &sorted);
         files.push(normalize_path(&path));
     }
+    for path in deterministic_suggested_fix_traceability_files() {
+        let original = read_text_lossy(&path)?;
+        let sorted = sorted_traceability_behavior_blocks_content(&original);
+        if sorted == original {
+            continue;
+        }
+        append_whole_file_patch(&mut patch, &path, &original, &sorted);
+        files.push(normalize_path(&path));
+    }
     files.sort();
     Ok((patch, files))
 }
@@ -2488,6 +2497,13 @@ fn deterministic_suggested_fix_docs_index_files() -> Vec<PathBuf> {
     .into_iter()
     .filter(|path| path.exists())
     .collect()
+}
+
+fn deterministic_suggested_fix_traceability_files() -> Vec<PathBuf> {
+    [PathBuf::from(".ripr/traceability.toml")]
+        .into_iter()
+        .filter(|path| path.exists())
+        .collect()
 }
 
 fn sorted_markdown_index_table_content(text: &str) -> String {
@@ -2544,6 +2560,62 @@ fn is_markdown_table_row(line: &str) -> bool {
     trimmed.starts_with('|') && trimmed.ends_with('|')
 }
 
+fn sorted_traceability_behavior_blocks_content(text: &str) -> String {
+    let mut block_starts = Vec::new();
+    let mut offset = 0;
+    for line in text.split_inclusive('\n') {
+        if line.trim() == "[[behavior]]" {
+            block_starts.push(offset);
+        }
+        offset += line.len();
+    }
+    if block_starts.len() <= 1 {
+        return text.to_string();
+    }
+
+    let prefix = &text[..block_starts[0]];
+    let mut ids = BTreeSet::new();
+    let mut blocks = Vec::new();
+    for (index, start) in block_starts.iter().copied().enumerate() {
+        let end = block_starts.get(index + 1).copied().unwrap_or(text.len());
+        let block = &text[start..end];
+        let Some(id) = traceability_behavior_block_id(block) else {
+            return text.to_string();
+        };
+        if !is_spec_id(&id) || !ids.insert(id.clone()) {
+            return text.to_string();
+        }
+        blocks.push((id, block));
+    }
+
+    let original_order = blocks.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>();
+    blocks.sort_by(|left, right| left.0.cmp(&right.0));
+    let sorted_order = blocks.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>();
+    if original_order == sorted_order {
+        return text.to_string();
+    }
+
+    let mut output = prefix.to_string();
+    for (_, block) in blocks {
+        output.push_str(block);
+    }
+    output
+}
+
+fn traceability_behavior_block_id(block: &str) -> Option<String> {
+    for line in block.lines() {
+        let trimmed = line.trim();
+        let Some((key, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        if key.trim() != "id" {
+            continue;
+        }
+        return parse_quoted_value(value).ok();
+    }
+    None
+}
+
 fn append_whole_file_patch(body: &mut String, path: &Path, before: &str, after: &str) {
     let normalized = normalize_path(path);
     let before_count = patch_line_count(before);
@@ -2587,6 +2659,7 @@ fn suggested_fixes_report_body(files: &[String], patch_empty: bool) -> String {
     body.push_str("Scope:\n\n");
     body.push_str("- deterministic allowlist ordering under `.ripr/*.txt` and `policy/*.txt`\n");
     body.push_str("- deterministic docs index table ordering for specs and ADRs\n");
+    body.push_str("- deterministic traceability behavior block ordering by spec id\n");
     body.push_str("- no badge value edits\n");
     body.push_str("- no golden blessings\n");
     body.push_str("- no baselines, suppressions, dependency exceptions, or schema changes\n\n");
@@ -34066,17 +34139,17 @@ mod tests {
         ripr_command_literals_in_text, ripr_debug_binary, ripr_pre_commit_hook,
         run_ci_full_evidence_gates, sarif_policy_report_json, sarif_policy_report_markdown,
         semantic_selector_matches, should_scan_static_language_path, should_skip_path,
-        sorted_allowlist_content, sorted_markdown_index_table_content, spec_id_from_path,
-        spec_ids_in_text, spec_numbering_violations, specs, static_language_allowlist_covers,
-        status_for_report, suggested_fixes_patch, suspicious_runtime_file_names,
-        targeted_test_outcome, targeted_test_outcome_report_json,
-        targeted_test_outcome_report_markdown, test_efficiency_entry, test_efficiency_report_json,
-        test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
-        test_oracle_tests_in_text, unknown_command_message, validate_local_context_allowlist,
-        vscode_compile_command, vscode_extension_dir, vscode_package_command,
-        vscode_package_version, vscode_test_e2e_command, windows_absolute_path_tokens,
-        workflow_runtime_violations, worktree, worktree_doctor_findings,
-        write_repo_exposure_latency_report,
+        sorted_allowlist_content, sorted_markdown_index_table_content,
+        sorted_traceability_behavior_blocks_content, spec_id_from_path, spec_ids_in_text,
+        spec_numbering_violations, specs, static_language_allowlist_covers, status_for_report,
+        suggested_fixes_patch, suspicious_runtime_file_names, targeted_test_outcome,
+        targeted_test_outcome_report_json, targeted_test_outcome_report_markdown,
+        test_efficiency_entry, test_efficiency_report_json, test_efficiency_report_markdown,
+        test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
+        unknown_command_message, validate_local_context_allowlist, vscode_compile_command,
+        vscode_extension_dir, vscode_package_command, vscode_package_version,
+        vscode_test_e2e_command, windows_absolute_path_tokens, workflow_runtime_violations,
+        worktree, worktree_doctor_findings, write_repo_exposure_latency_report,
     };
     use super::{
         DeclaredIntent, LocalContextFinding,
@@ -38893,11 +38966,48 @@ jobs:
     }
 
     #[test]
-    fn suggested_fixes_patch_sorts_allowlists_and_doc_indexes() -> Result<(), String> {
+    fn sorted_traceability_behavior_blocks_content_sorts_blocks_by_id() {
+        let prefix = "# Traceability\n\n";
+        let block_b = "[[behavior]]\n# keep b\nid = \"RIPR-SPEC-0002\"\nname = \"B\"\n\n";
+        let block_a = "[[behavior]]\n# keep a\nid = \"RIPR-SPEC-0001\"\nname = \"A\"\n\n";
+        let input = format!("{prefix}{block_b}{block_a}");
+        let sorted = sorted_traceability_behavior_blocks_content(&input);
+
+        assert_eq!(sorted, format!("{prefix}{block_a}{block_b}"));
+    }
+
+    #[test]
+    fn sorted_traceability_behavior_blocks_content_skips_unsafe_manifests() {
+        let duplicate =
+            "[[behavior]]\nid = \"RIPR-SPEC-0001\"\n\n[[behavior]]\nid = \"RIPR-SPEC-0001\"\n";
+        let missing = "[[behavior]]\nname = \"A\"\n\n[[behavior]]\nid = \"RIPR-SPEC-0002\"\n";
+        let invalid =
+            "[[behavior]]\nid = \"not-a-spec\"\n\n[[behavior]]\nid = \"RIPR-SPEC-0002\"\n";
+
+        assert_eq!(
+            sorted_traceability_behavior_blocks_content(duplicate),
+            duplicate
+        );
+        assert_eq!(
+            sorted_traceability_behavior_blocks_content(missing),
+            missing
+        );
+        assert_eq!(
+            sorted_traceability_behavior_blocks_content(invalid),
+            invalid
+        );
+    }
+
+    #[test]
+    fn suggested_fixes_patch_sorts_allowlists_doc_indexes_and_traceability() -> Result<(), String> {
         with_temp_cwd("suggested-fixes-allowlist", |root| {
             write(
                 &root.join(".ripr/generated.txt"),
                 "# header\n\nzeta\nalpha\n",
+            );
+            write(
+                &root.join(".ripr/traceability.toml"),
+                "# Traceability\n\n[[behavior]]\nid = \"RIPR-SPEC-0002\"\nname = \"B\"\n\n[[behavior]]\nid = \"RIPR-SPEC-0001\"\nname = \"A\"\n",
             );
             write(&root.join("policy/process.txt"), "gamma\nbeta\n");
             write(
@@ -38915,6 +39025,7 @@ jobs:
                 files,
                 vec![
                     ".ripr/generated.txt".to_string(),
+                    ".ripr/traceability.toml".to_string(),
                     "docs/specs/README.md".to_string(),
                     "policy/process.txt".to_string()
                 ]
@@ -38922,6 +39033,12 @@ jobs:
             assert!(patch.contains("diff --git a/.ripr/generated.txt b/.ripr/generated.txt"));
             assert!(patch.contains("+alpha"));
             assert!(patch.contains("+zeta"));
+            assert!(
+                patch
+                    .find("+id = \"RIPR-SPEC-0001\"")
+                    .zip(patch.find("+id = \"RIPR-SPEC-0002\""))
+                    .is_some_and(|(first, second)| first < second)
+            );
             assert!(patch.contains("diff --git a/docs/specs/README.md b/docs/specs/README.md"));
             assert!(
                 patch
