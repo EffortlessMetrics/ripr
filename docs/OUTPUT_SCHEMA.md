@@ -6131,12 +6131,12 @@ Field contract:
   sibling, status, availability, requiredness, authority, description, and
   next command.
 - `repo_ops_packets[]` is the repo-local operating packet index used by
-  `cargo xtask reports index`. It records command mutability, worktree doctor,
-  PR-ready, PR triage, per-PR merge readiness, generated-clean, badge diff
-  policy, command catalog coverage, critic, receipts, suggested-fixes, and
-  `check-pr` artifacts with status, known output paths, and regeneration
-  commands. It is advisory front-door metadata only and never becomes gate
-  authority.
+  `cargo xtask reports index`. It records command mutability, the repo
+  cockpit, worktree doctor, PR-ready, PR triage, per-PR merge readiness,
+  generated-clean, badge diff policy, command catalog coverage, critic,
+  receipts, suggested-fixes, and `check-pr` artifacts with status, known output
+  paths, and regeneration commands. It is advisory front-door metadata only and
+  never becomes gate authority.
 
 Report packet index field contract:
 
@@ -6189,6 +6189,48 @@ Field contract:
 - `safe_repairs[]` lists deterministic repair paths; it must not include badge
   value edits, golden blessing, baselines, suppressions, dependency exceptions,
   schema version changes, or policy authority changes.
+
+`target/ripr/reports/cockpit.json` is the repo-level maintainer cockpit emitted
+by `cargo xtask cockpit`:
+
+```json
+{
+  "schema_version": "0.1",
+  "mode": "advisory",
+  "status": "actionable",
+  "next_action": "review the action queue, then run cargo xtask pr-ready or cargo xtask check-pr for the active PR",
+  "action_queue": ["review stale, duplicate, behind, policy-sensitive, or generated-artifact PRs"],
+  "steps": [
+    {
+      "id": "pr_triage",
+      "command": "cargo xtask pr-triage-report",
+      "status": "needs_attention",
+      "required": false,
+      "report": "target/ripr/reports/pr-triage.md",
+      "summary": "report status: warn; see target/ripr/reports/pr-triage.md"
+    }
+  ],
+  "safe_repairs": ["run cargo xtask fix-pr"],
+  "generated_only": ["target/ripr/**"],
+  "judgment_required": ["branch protection"],
+  "next_commands": ["cargo xtask pr-ready", "cargo xtask check-pr"]
+}
+```
+
+Field contract:
+
+- `status` is `pass`, `actionable`, or `fail`. `fail` means a required
+  repo-ops rail failed; `actionable` means the cockpit found advisory queue,
+  source-of-truth, generated-evidence, or command-catalog attention items.
+- `action_queue[]` is the maintainer-facing next-work queue derived from the
+  composed repo-ops packet statuses. It is advisory and must not close PRs,
+  update branches, edit badges, or mutate policy.
+- `steps[]` records each composed repo-ops command, whether it is required for
+  cockpit success, and the report path to inspect.
+- `safe_repairs[]`, `generated_only[]`, and `judgment_required[]` preserve the
+  generated-evidence discipline boundary: deterministic cleanup is allowed,
+  while badge refreshes, goldens, suppressions, baselines, dependency
+  exceptions, branch protection, and policy authority remain human decisions.
 
 Markdown should fit in a generated GitHub job summary and uploaded report
 packet. It should show status, start-here artifact, gate authority, packet

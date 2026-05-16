@@ -85,10 +85,14 @@ The index groups artifacts by reviewer use instead of filename order.
 Repo-local automation also projects repo-ops operating packets into
 `repo_ops_packets[]` in `target/ripr/reports/index.json` and the Repo-Ops
 Packets table in `target/ripr/reports/index.md`. These entries cover command
-mutability, PR-ready, worktree doctor, PR triage, per-PR merge readiness,
-generated-clean, badge diff policy, command catalog coverage, critic, receipts,
-suggested fixes, and `check-pr` artifacts.
+mutability, the repo cockpit, PR-ready, worktree doctor, PR triage, per-PR
+merge readiness, generated-clean, badge diff policy, command catalog coverage,
+critic, receipts, suggested fixes, and `check-pr` artifacts.
 They are advisory navigation metadata, not pass/fail authority.
+
+Use `cargo xtask cockpit` when you need a repo-level operating packet before
+choosing board or branch work. Use `cargo xtask pr-ready` when you already know
+the active PR branch and need the local pre-review packet.
 
 Treat the group order as the review path:
 
