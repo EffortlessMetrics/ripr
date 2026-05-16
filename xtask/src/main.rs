@@ -1792,14 +1792,18 @@ fn pr_ready_step(
     run_step: fn() -> Result<(), String>,
 ) -> PrReadyStep {
     match run_step() {
-        Ok(()) => PrReadyStep {
-            id,
-            command,
-            report,
-            required,
-            status: "pass".to_string(),
-            summary: "completed".to_string(),
-        },
+        Ok(()) => {
+            let (status, summary) = pr_ready_report_outcome(report)
+                .unwrap_or_else(|| ("pass".to_string(), "completed".to_string()));
+            PrReadyStep {
+                id,
+                command,
+                report,
+                required,
+                status,
+                summary,
+            }
+        }
         Err(err) => PrReadyStep {
             id,
             command,
@@ -1808,6 +1812,36 @@ fn pr_ready_step(
             status: if required { "fail" } else { "needs_attention" }.to_string(),
             summary: first_error_line(&err),
         },
+    }
+}
+
+fn pr_ready_report_outcome(report: &str) -> Option<(String, String)> {
+    let contents = fs::read_to_string(report).ok()?;
+    let status = markdown_status_value(&contents)?;
+    pr_ready_status_from_report_status(status).map(|step_status| {
+        (
+            step_status.to_string(),
+            format!("report status: {status}; see {report}"),
+        )
+    })
+}
+
+fn markdown_status_value(contents: &str) -> Option<&str> {
+    contents.lines().find_map(|line| {
+        line.strip_prefix("Status:")
+            .map(str::trim)
+            .filter(|status| !status.is_empty())
+    })
+}
+
+fn pr_ready_status_from_report_status(status: &str) -> Option<&'static str> {
+    match status {
+        "pass" => None,
+        "fail" | "error" => Some("fail"),
+        "warn" | "actionable" | "incomplete" | "blocked" | "needs_attention" => {
+            Some("needs_attention")
+        }
+        _ => None,
     }
 }
 
@@ -1820,10 +1854,7 @@ fn first_error_line(err: &str) -> String {
 }
 
 fn pr_ready_status(steps: &[PrReadyStep]) -> &'static str {
-    if steps
-        .iter()
-        .any(|step| step.required && step.status != "pass")
-    {
+    if steps.iter().any(|step| step.status == "fail") {
         "fail"
     } else if steps.iter().any(|step| step.status != "pass") {
         "actionable"
@@ -33408,14 +33439,14 @@ mod tests {
         parse_required_status_contexts, parse_sarif_policy_args, parse_sarif_policy_results,
         parse_static_language_allowlist, parse_string_value, parse_targeted_test_outcome_args,
         pr_body_validation_warning, pr_checks_summary, pr_ready_json, pr_ready_markdown,
-        pr_ready_next_action, pr_ready_status, pr_sensitive_file_reason, pr_shape_warnings,
-        pr_summary_body, pr_title_family, pr_triage_findings, pr_triage_json, pr_triage_markdown,
-        precommit_report_body, public_contract_rows, read_lsp_cockpit_json_value,
-        read_mutation_input_json, receipt_json, receipt_specs, receipt_status_from_reports,
-        render_no_panic_allowlist_proposals_markdown, render_no_panic_allowlist_proposals_toml,
-        repo_badge_artifact_command_args, repo_badge_artifact_jobs,
-        repo_badge_artifacts_summary_markdown, repo_exposure_latency_json,
-        repo_exposure_latency_markdown, repo_exposure_latency_run,
+        pr_ready_next_action, pr_ready_status, pr_ready_status_from_report_status,
+        pr_sensitive_file_reason, pr_shape_warnings, pr_summary_body, pr_title_family,
+        pr_triage_findings, pr_triage_json, pr_triage_markdown, precommit_report_body,
+        public_contract_rows, read_lsp_cockpit_json_value, read_mutation_input_json, receipt_json,
+        receipt_specs, receipt_status_from_reports, render_no_panic_allowlist_proposals_markdown,
+        render_no_panic_allowlist_proposals_toml, repo_badge_artifact_command_args,
+        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
+        repo_exposure_latency_json, repo_exposure_latency_markdown, repo_exposure_latency_run,
         repo_exposure_latency_run_from_output, repo_exposure_latency_status,
         repo_exposure_latency_trace, repo_root, repo_seam_inventory_command_args_for_root,
         report_index_json, report_index_markdown, report_index_missing_expected,
@@ -44941,6 +44972,34 @@ covered_by = ["cargo xtask check-file-policy"]
             pr_ready_next_action(&steps),
             "review the attention items, then run cargo xtask check-pr for full gate receipts"
         );
+    }
+
+    #[test]
+    fn pr_ready_report_status_maps_warnings_to_attention() {
+        assert_eq!(
+            pr_ready_status_from_report_status("warn"),
+            Some("needs_attention")
+        );
+        assert_eq!(
+            pr_ready_status_from_report_status("actionable"),
+            Some("needs_attention")
+        );
+        assert_eq!(pr_ready_status_from_report_status("fail"), Some("fail"));
+        assert_eq!(pr_ready_status_from_report_status("pass"), None);
+    }
+
+    #[test]
+    fn pr_ready_status_does_not_fail_required_warning() {
+        let steps = vec![PrReadyStep {
+            id: "worktree_doctor",
+            command: "cargo xtask worktree doctor",
+            report: "target/ripr/reports/worktree-doctor.md",
+            required: true,
+            status: "needs_attention".to_string(),
+            summary: "report status: warn; see target/ripr/reports/worktree-doctor.md".to_string(),
+        }];
+
+        assert_eq!(pr_ready_status(&steps), "actionable");
     }
 
     #[test]
