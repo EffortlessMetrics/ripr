@@ -956,7 +956,15 @@ mod tests {
         COVERAGE_GRIP_HELP, DOCTOR_HELP, EVIDENCE_HEALTH_HELP, EXPLAIN_HELP, FIRST_ACTION_HELP,
         GATE_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP, POLICY_HELP,
         PR_COMMENTS_HELP, PR_LEDGER_HELP, PR_REVIEW_HELP, REPORTS_HELP, REVIEW_COMMENTS_HELP,
-        ZERO_HELP,
+        ZERO_HELP, print_agent_brief_help, print_agent_help, print_agent_packet_help,
+        print_agent_receipt_help, print_agent_review_summary_help, print_agent_start_help,
+        print_agent_status_help, print_agent_verify_help, print_assistant_loop_help,
+        print_baseline_help, print_calibrate_help, print_check_help, print_context_help,
+        print_coverage_grip_help, print_doctor_help, print_evidence_health_help,
+        print_explain_help, print_first_action_help, print_gate_help, print_help, print_init_help,
+        print_lsp_help, print_outcome_help, print_pilot_help, print_policy_help,
+        print_pr_comments_help, print_pr_ledger_help, print_pr_review_help, print_reports_help,
+        print_review_comments_help, print_zero_help,
     };
 
     #[test]
@@ -1141,5 +1149,44 @@ mod tests {
         assert!(LSP_HELP.starts_with("Start the experimental ripr LSP server"));
         assert!(LSP_HELP.contains("--stdio"));
         assert!(LSP_HELP.contains("--version"));
+    }
+
+    #[test]
+    fn every_help_printer_executes_without_panic() {
+        // Each wrapper is a `println!("{CONST}")` over the help-text
+        // constants already asserted on above. Exercise them so the
+        // wrappers are coverage-attributed; stdout is captured by the
+        // cargo-test harness.
+        print_help();
+        print_init_help();
+        print_pilot_help();
+        print_outcome_help();
+        print_evidence_health_help();
+        print_review_comments_help();
+        print_gate_help();
+        print_baseline_help();
+        print_zero_help();
+        print_policy_help();
+        print_pr_ledger_help();
+        print_pr_comments_help();
+        print_pr_review_help();
+        print_coverage_grip_help();
+        print_assistant_loop_help();
+        print_first_action_help();
+        print_reports_help();
+        print_calibrate_help();
+        print_agent_help();
+        print_agent_start_help();
+        print_agent_brief_help();
+        print_agent_packet_help();
+        print_agent_verify_help();
+        print_agent_receipt_help();
+        print_agent_status_help();
+        print_agent_review_summary_help();
+        print_check_help();
+        print_explain_help();
+        print_context_help();
+        print_doctor_help();
+        print_lsp_help();
     }
 }
