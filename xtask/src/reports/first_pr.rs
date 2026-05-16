@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 const SCHEMA_VERSION: &str = "0.1";
 const DEFAULT_ROOT: &str = ".";
-const DEFAULT_OUT_DIR: &str = "target/ripr/first-pr";
+const DEFAULT_OUT_DIR: &str = "target/ripr/reports";
 const START_HERE_JSON: &str = "start-here.json";
 const START_HERE_MD: &str = "start-here.md";
 const DEFAULT_GAP_LEDGER: &str = "target/ripr/reports/gap-decision-ledger.json";
