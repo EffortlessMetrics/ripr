@@ -50,6 +50,7 @@ export interface RiprContextTarget {
   uri?: string;
   line?: number;
   label?: string;
+  packet?: string;
   note?: string;
   finding_id?: string;
   probe_id?: string;
@@ -320,6 +321,23 @@ export class RiprClientController {
   }
 
   async copyContext(target?: RiprContextTarget): Promise<void> {
+    if (target?.label === 'first_repair_packet' && typeof target.packet === 'string') {
+      const packet = target.packet.trim();
+      if (!packet) {
+        this.runtime.showInformationMessage('No ripr first repair packet is available for this diagnostic.');
+        return;
+      }
+      try {
+        await this.runtime.writeClipboard(packet);
+        this.runtime.showInformationMessage('Copied ripr first repair packet to clipboard.');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.output.appendLine(`ripr copy first repair packet failed: ${message}`);
+        this.runtime.showWarningMessage('ripr could not copy the first repair packet. See ripr output for details.');
+      }
+      return;
+    }
+
     if (target?.label === 'static_limit_note' && typeof target.note === 'string') {
       const note = target.note.trim();
       if (!note) {
