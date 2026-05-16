@@ -132,6 +132,9 @@ ripr agent start --root . --seam-id <seam_id> --out target/ripr/workflow
 Give a coding agent the bounded packet, not a broad instruction. It should know
 the owner, changed behavior, related test, missing discriminator or output
 proof, repair route, stop conditions, and verification command.
+When the packet comes from the gap ledger, `llm_guidance.copyable_packet`
+contains a pasteable Markdown work order with Task, Context, Repair,
+Verification, Stop Conditions, and Do Not Do sections.
 
 ## 6. Add One Focused Proof
 
