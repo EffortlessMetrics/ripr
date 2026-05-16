@@ -4968,6 +4968,7 @@ fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                 "editor_gap_cockpit"
                     | "editor_first_run_usability"
                     | "evidence-quality-benchmark"
+                    | "first_successful_pr"
                     | "finding-alignment-dogfood"
                     | "gap-decision-ledger"
             )
@@ -6876,6 +6877,7 @@ fn check_fixture_contracts() -> Result<(), String> {
     validate_evidence_quality_benchmark_fixture_corpus(&mut violations)?;
     validate_editor_gap_cockpit_fixture_corpus(&mut violations)?;
     validate_editor_first_run_usability_fixture_corpus(&mut violations)?;
+    validate_first_successful_pr_fixture_corpus(&mut violations)?;
     validate_finding_alignment_dogfood_fixture_corpus(&mut violations)?;
     validate_gap_decision_ledger_fixture_corpus(&mut violations)?;
     validate_pr_review_front_panel_fixture_corpus(&mut violations)?;
@@ -7026,6 +7028,15 @@ const FINDING_ALIGNMENT_DOGFOOD_REQUIRED_CASES: &[(&str, &str)] = &[
         "already_observed",
     ),
     ("config_policy_flow_unknown_limitation", "static_limitation"),
+];
+
+const FIRST_SUCCESSFUL_PR_CORPUS: &str = "fixtures/first_successful_pr/corpus.json";
+
+const FIRST_SUCCESSFUL_PR_REQUIRED_CASES: &[(&str, &str, &str)] = &[
+    ("boundary-gap", "actionable", "top_gap"),
+    ("output-contract-gap", "actionable", "top_gap"),
+    ("empty-diff", "no_action", "empty_diff"),
+    ("blocked-ledger", "blocked", "blocked_artifact"),
 ];
 
 const GAP_DECISION_LEDGER_CORPUS: &str = "fixtures/gap-decision-ledger/corpus.json";
@@ -7826,6 +7837,205 @@ fn validate_finding_alignment_dogfood_fixture_corpus_at(
         }
     }
 
+    Ok(())
+}
+
+fn validate_first_successful_pr_fixture_corpus(violations: &mut Vec<String>) -> Result<(), String> {
+    let root = Path::new("fixtures/first_successful_pr");
+    for required in ["README.md", "corpus.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "first successful PR fixture corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    validate_first_successful_pr_fixture_corpus_at(
+        Path::new(FIRST_SUCCESSFUL_PR_CORPUS),
+        violations,
+    )
+}
+
+fn validate_first_successful_pr_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let Some(root) = path.parent() else {
+        violations.push(format!(
+            "first successful PR corpus path has no parent: {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    };
+    if !path.exists() {
+        violations.push(format!(
+            "first successful PR corpus is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+
+    let corpus = match read_json_value(path) {
+        Ok(value) => value,
+        Err(err) => {
+            violations.push(err);
+            return Ok(());
+        }
+    };
+    if json_string_field(&corpus, "kind").as_deref() != Some("first_successful_pr_corpus") {
+        violations.push(format!(
+            "{} kind must be first_successful_pr_corpus",
+            normalize_path(path)
+        ));
+    }
+    if json_string_field(&corpus, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "{} schema_version must be 0.1",
+            normalize_path(path)
+        ));
+    }
+    if json_string_field(&corpus, "spec").as_deref() != Some("RIPR-SPEC-0051") {
+        violations.push(format!(
+            "{} spec must be RIPR-SPEC-0051",
+            normalize_path(path)
+        ));
+    }
+
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        violations.push(format!("{} is missing cases array", normalize_path(path)));
+        return Ok(());
+    };
+    let mut seen = BTreeMap::new();
+    for case in cases {
+        let case_id = json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string());
+        if seen
+            .insert(
+                case_id.clone(),
+                (
+                    json_string_field(case, "expected_status").unwrap_or_default(),
+                    json_string_field(case, "expected_state").unwrap_or_default(),
+                ),
+            )
+            .is_some()
+        {
+            violations.push(format!("first successful PR case {case_id} is duplicated"));
+        }
+        validate_first_successful_pr_case(root, case, &case_id, violations)?;
+    }
+    for (case_id, expected_status, expected_state) in FIRST_SUCCESSFUL_PR_REQUIRED_CASES {
+        match seen.get(*case_id) {
+            Some((status, state)) if status == expected_status && state == expected_state => {}
+            Some((status, state)) => violations.push(format!(
+                "first successful PR case {case_id} must be {expected_status}/{expected_state}, got {status}/{state}"
+            )),
+            None => violations.push(format!(
+                "first successful PR corpus is missing case {case_id}"
+            )),
+        }
+    }
+    Ok(())
+}
+
+fn validate_first_successful_pr_case(
+    root: &Path,
+    case: &Value,
+    case_id: &str,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    for field in ["description", "expected_status", "expected_state"] {
+        if json_string_field(case, field).is_none() {
+            violations.push(format!(
+                "first successful PR case {case_id} is missing {field}"
+            ));
+        }
+    }
+    let case_dir = root.join(case_id);
+    let input_ledger = case_dir.join("inputs/reports/gap-decision-ledger.json");
+    let expected_json = case_dir.join("expected/start-here.json");
+    let expected_md = case_dir.join("expected/start-here.md");
+    for required in [&input_ledger, &expected_json, &expected_md] {
+        if !required.exists() {
+            violations.push(format!(
+                "first successful PR case {case_id} is missing {}",
+                normalize_path(required)
+            ));
+        }
+    }
+    if input_ledger.exists() {
+        let ledger = read_json_value(&input_ledger)?;
+        if json_string_field(&ledger, "kind").as_deref() != Some("gap_decision_ledger") {
+            violations.push(format!(
+                "first successful PR case {case_id} input ledger kind must be gap_decision_ledger"
+            ));
+        }
+    }
+    if expected_json.exists() {
+        let packet = read_json_value(&expected_json)?;
+        let expected_status = json_string_field(case, "expected_status").unwrap_or_default();
+        let expected_state = json_string_field(case, "expected_state").unwrap_or_default();
+        if json_string_field(&packet, "schema_version").as_deref() != Some("0.1") {
+            violations.push(format!(
+                "first successful PR case {case_id} start-here schema_version must be 0.1"
+            ));
+        }
+        if json_string_field(&packet, "kind").as_deref() != Some("first_pr_start_here") {
+            violations.push(format!(
+                "first successful PR case {case_id} start-here kind must be first_pr_start_here"
+            ));
+        }
+        if json_string_field(&packet, "status").as_deref() != Some(expected_status.as_str()) {
+            violations.push(format!(
+                "first successful PR case {case_id} status must be {expected_status}"
+            ));
+        }
+        if json_string_field(&packet, "posture").as_deref() != Some("advisory") {
+            violations.push(format!(
+                "first successful PR case {case_id} posture must be advisory"
+            ));
+        }
+        if audit_string(&packet, &["selected", "state"]).as_deref() != Some(expected_state.as_str())
+        {
+            violations.push(format!(
+                "first successful PR case {case_id} selected.state must be {expected_state}"
+            ));
+        }
+        if expected_status == "actionable"
+            && audit_string(&packet, &["selected", "verify_command"]).is_none()
+        {
+            violations.push(format!(
+                "first successful PR case {case_id} actionable packet must name verify_command"
+            ));
+        }
+    }
+    if expected_md.exists() {
+        let markdown = read_text_lossy(&expected_md)?;
+        for required in [
+            "# RIPR First PR Start Here",
+            "Status: advisory",
+            "## Artifacts",
+            "## Authority",
+            "## Limits",
+        ] {
+            if !markdown.contains(required) {
+                violations.push(format!(
+                    "first successful PR case {case_id} Markdown is missing `{required}`"
+                ));
+            }
+        }
+        match json_string_field(case, "expected_status").as_deref() {
+            Some("actionable") if !markdown.contains("## Top Gap") => violations.push(format!(
+                "first successful PR case {case_id} Markdown must show Top Gap"
+            )),
+            Some("no_action") if !markdown.contains("## No Action") => violations.push(format!(
+                "first successful PR case {case_id} Markdown must show No Action"
+            )),
+            Some("blocked") if !markdown.contains("## Blocked") => violations.push(format!(
+                "first successful PR case {case_id} Markdown must show Blocked"
+            )),
+            _ => {}
+        }
+    }
     Ok(())
 }
 
