@@ -40226,9 +40226,9 @@ jobs:
             "shape",
             "mutating",
             "source files",
-            false,
-            "Runs deterministic shaping.",
         ),
+    ]
+}
 "#;
         let non_entry_body = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
     vec![
