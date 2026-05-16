@@ -7650,6 +7650,8 @@ const EDITOR_FIRST_RUN_USABILITY_CASES: &[&str] = &[
     "adapter_unavailable",
     "artifact_missing",
     "artifact_stale",
+    "receipt_found",
+    "receipt_gap_mismatch",
     "receipt_improved",
     "receipt_unchanged",
 ];
@@ -7758,8 +7760,10 @@ fn validate_editor_first_run_status(case: &str, status: &Value, violations: &mut
             "editor first-run usability case {case} vscode-status fixture must be {expected_fixture}"
         ));
     }
-    if matches!(case, "setup_ok" | "receipt_improved" | "receipt_unchanged")
-        && json_string_field(status, "next_safe_action").is_none()
+    if matches!(
+        case,
+        "setup_ok" | "receipt_found" | "receipt_improved" | "receipt_unchanged"
+    ) && json_string_field(status, "next_safe_action").is_none()
     {
         violations.push(format!(
             "editor first-run usability case {case} must name a next_safe_action"
@@ -7767,7 +7771,11 @@ fn validate_editor_first_run_status(case: &str, status: &Value, violations: &mut
     }
     if matches!(
         case,
-        "server_missing" | "language_disabled" | "adapter_unavailable" | "artifact_stale"
+        "server_missing"
+            | "language_disabled"
+            | "adapter_unavailable"
+            | "artifact_stale"
+            | "receipt_gap_mismatch"
     ) && json_string_field(status, "projection").as_deref() != Some("fail_closed")
     {
         violations.push(format!(
@@ -7810,6 +7818,7 @@ fn validate_editor_first_run_actions(case: &str, actions: &Value, violations: &m
             | "adapter_unavailable"
             | "artifact_missing"
             | "artifact_stale"
+            | "receipt_gap_mismatch"
     ) && has_first_repair_packet
     {
         violations.push(format!(
@@ -7870,6 +7879,8 @@ fn validate_editor_first_run_receipt(case: &str, receipt: &Value, violations: &m
     }
     let state = json_string_field(receipt, "receipt_state");
     let expected_state = match case {
+        "receipt_found" => Some("receipt_found"),
+        "receipt_gap_mismatch" => Some("receipt_gap_mismatch"),
         "receipt_improved" => Some("receipt_movement_improved"),
         "receipt_unchanged" => Some("receipt_movement_unchanged"),
         "artifact_stale" => Some("receipt_stale"),
@@ -34932,16 +34943,18 @@ mod tests {
 
     fn editor_first_run_projection(case: &str) -> &'static str {
         match case {
-            "server_missing" | "language_disabled" | "adapter_unavailable" | "artifact_stale" => {
-                "fail_closed"
-            }
+            "server_missing"
+            | "language_disabled"
+            | "adapter_unavailable"
+            | "artifact_stale"
+            | "receipt_gap_mismatch" => "fail_closed",
             _ => "active",
         }
     }
 
     fn editor_first_run_next_action(case: &str) -> Option<&'static str> {
         match case {
-            "setup_ok" | "receipt_improved" | "receipt_unchanged" => {
+            "setup_ok" | "receipt_found" | "receipt_improved" | "receipt_unchanged" => {
                 Some("copy first repair packet")
             }
             _ => None,
@@ -34964,6 +34977,8 @@ mod tests {
         match case {
             "receipt_improved" => "receipt_movement_improved",
             "receipt_unchanged" => "receipt_movement_unchanged",
+            "receipt_found" => "receipt_found",
+            "receipt_gap_mismatch" => "receipt_gap_mismatch",
             "artifact_stale" => "receipt_stale",
             _ => "receipt_missing",
         }
