@@ -1829,6 +1829,19 @@ generated tests, provider calls, or runtime execution.
       "note": "optional durable evidence-health audit fields"
     }
   },
+  "headline": {
+    "primary_metric": "finding_alignment_actionable_unresolved_canonical_gaps",
+    "primary_count": 0,
+    "counting_model": "actionable_canonical_gaps",
+    "raw_signals": 2,
+    "canonical_items": 1,
+    "already_observed": 0,
+    "internal_no_action": 0,
+    "static_limitations": 1,
+    "unknown": 0,
+    "raw_to_canonical_ratio": 2.0,
+    "note": "Raw findings are diagnostic; actionable canonical gaps are the user-facing repair count."
+  },
   "summary": {
     "raw_headline_gaps": 6114,
     "canonical_gap_groups_total": 4800,
@@ -1961,6 +1974,13 @@ Field contract:
 - `inputs.*` - input artifact identity with path, load status, optional schema
   version, optional SHA-256, and a short note. Missing optional artifacts are
   reported instead of treated as failures.
+- `headline` - additive scorecard lead numbers for the finding-alignment
+  counting model. `primary_metric` is
+  `finding_alignment_actionable_unresolved_canonical_gaps`, `primary_count` is
+  the actionable canonical gap count, and raw signals remain diagnostic context
+  alongside canonical item, already-observed, no-action, limitation, unknown,
+  and raw-to-canonical counts. This does not redefine public badges or gate
+  policy.
 - `summary` - headline scorecard counts copied from the current Lane 1 audit
   plus scorecard-local repair, delta availability, finding-alignment, and
   presentation-text counts. Finding-alignment counts preserve raw signals,
@@ -6111,13 +6131,17 @@ Field contract:
   sibling, status, availability, requiredness, authority, description, and
   next command.
 - `repo_ops_packets[]` is the repo-local operating packet index used by
-  `cargo xtask reports index`. It records command mutability, worktree doctor,
-  PR triage, per-PR merge readiness, generated-clean, badge ownership, command
-  catalog coverage, critic, receipts, suggested-fixes, and `check-pr` artifacts
-  with status, known output paths, and regeneration commands. It is advisory
-  front-door metadata only and never becomes gate authority.
+  `cargo xtask reports index`. It records command mutability, the repo
+  cockpit, worktree doctor, PR-ready, PR triage, per-PR merge readiness,
+  generated-clean, badge diff policy, command catalog coverage, critic,
+  receipts, suggested-fixes, and `check-pr` artifacts with status, known output
+  paths, and regeneration commands. It is advisory front-door metadata only and
+  never becomes gate authority.
+
+Report packet index field contract:
+
 - `entries[].status` is `available`, `missing`, `pass`, `warn`, `fail`,
-  `blocked`, `acknowledged`, `suppressed`, `stale`, `incomplete`,
+  `actionable`, `blocked`, `acknowledged`, `suppressed`, `stale`, `incomplete`,
   `unreadable`, or `not_applicable`.
 - `missing_expected[].reason` is `not_generated`, `input_not_available`,
   `configured_off`, `missing_required_input`, `stale_upstream`, or `unknown`.
@@ -6129,6 +6153,84 @@ Field contract:
 - `limits` preserves read-only, explicit-input, no-source-edit,
   no-generated-test, no-provider-call, no-runtime-mutation-execution,
   no-inline-comment, and advisory-default boundaries.
+
+`target/ripr/reports/pr-ready.json` is the local PR readiness cockpit emitted by
+`cargo xtask pr-ready`:
+
+```json
+{
+  "schema_version": "0.1",
+  "mode": "advisory",
+  "status": "actionable",
+  "next_action": "review the attention items, then run cargo xtask check-pr for full gate receipts",
+  "steps": [
+    {
+      "id": "worktree_doctor",
+      "command": "cargo xtask worktree doctor",
+      "status": "pass",
+      "required": true,
+      "report": "target/ripr/reports/worktree-doctor.md",
+      "summary": "completed"
+    }
+  ],
+  "safe_repairs": ["run cargo xtask fix-pr"],
+  "generated_only": ["target/ripr/**"],
+  "judgment_required": ["golden blessing"],
+  "next_commands": ["cargo xtask check-pr"]
+}
+```
+
+Field contract:
+
+- `status` is `pass`, `actionable`, or `fail`. `fail` means a required local
+  hygiene step failed; `actionable` means a non-blocking packet needs attention.
+- `steps[].required` records whether a failed step makes `pr-ready` exit
+  nonzero.
+- `safe_repairs[]` lists deterministic repair paths; it must not include badge
+  value edits, golden blessing, baselines, suppressions, dependency exceptions,
+  schema version changes, or policy authority changes.
+
+`target/ripr/reports/cockpit.json` is the repo-level maintainer cockpit emitted
+by `cargo xtask cockpit`:
+
+```json
+{
+  "schema_version": "0.1",
+  "mode": "advisory",
+  "status": "actionable",
+  "next_action": "review the action queue, then run cargo xtask pr-ready or cargo xtask check-pr for the active PR",
+  "action_queue": ["review stale, duplicate, behind, policy-sensitive, or generated-artifact PRs"],
+  "steps": [
+    {
+      "id": "pr_triage",
+      "command": "cargo xtask pr-triage-report",
+      "status": "needs_attention",
+      "required": false,
+      "report": "target/ripr/reports/pr-triage.md",
+      "summary": "report status: warn; see target/ripr/reports/pr-triage.md"
+    }
+  ],
+  "safe_repairs": ["run cargo xtask fix-pr"],
+  "generated_only": ["target/ripr/**"],
+  "judgment_required": ["branch protection"],
+  "next_commands": ["cargo xtask pr-ready", "cargo xtask check-pr"]
+}
+```
+
+Field contract:
+
+- `status` is `pass`, `actionable`, or `fail`. `fail` means a required
+  repo-ops rail failed; `actionable` means the cockpit found advisory queue,
+  source-of-truth, generated-evidence, or command-catalog attention items.
+- `action_queue[]` is the maintainer-facing next-work queue derived from the
+  composed repo-ops packet statuses. It is advisory and must not close PRs,
+  update branches, edit badges, or mutate policy.
+- `steps[]` records each composed repo-ops command, whether it is required for
+  cockpit success, and the report path to inspect.
+- `safe_repairs[]`, `generated_only[]`, and `judgment_required[]` preserve the
+  generated-evidence discipline boundary: deterministic cleanup is allowed,
+  while badge refreshes, goldens, suppressions, baselines, dependency
+  exceptions, branch protection, and policy authority remain human decisions.
 
 Markdown should fit in a generated GitHub job summary and uploaded report
 packet. It should show status, start-here artifact, gate authority, packet
@@ -7895,6 +7997,7 @@ fixtures/boundary_gap/expected/pr-review-front-panel/<case>/pr-review-front-pane
 fixtures/boundary_gap/expected/pr-review-front-panel/<case>/pr-review-front-panel.md
 fixtures/boundary_gap/expected/report-packet-index/<case>/index.json
 fixtures/boundary_gap/expected/report-packet-index/<case>/index.md
+fixtures/finding-alignment-dogfood/corpus.json
 ```
 
 The report is advisory. It runs `ripr check --mode fast` against stable fixture
@@ -7914,7 +8017,11 @@ receipts are read from `fixtures/boundary_gap/expected/first-useful-action/`.
 The checked front-panel receipts are read from
 `fixtures/boundary_gap/expected/pr-review-front-panel/`. The checked
 report-packet index receipts are read from
-`fixtures/boundary_gap/expected/report-packet-index/`.
+`fixtures/boundary_gap/expected/report-packet-index/`. The checked finding
+alignment receipts are read from `fixtures/finding-alignment-dogfood/` and
+record real RIPR PR examples where raw findings remain supporting evidence,
+canonical items are the countable unit, actionable items have repair and
+verification routes, and static limitations name analyzer repair routes.
 The calibrated-gate dogfood case expects a non-zero evaluator exit only for the
 explicit blocking mode and treats that as healthy when the written decision
 report has the expected `blocked` status and count.
@@ -8067,6 +8174,36 @@ JSON shape:
         "default_advisory": true,
         "artifact_upload": true,
         "language_grouping_status": "deferred",
+        "errors": []
+      }
+    ]
+  },
+  "finding_alignment": {
+    "default_ci_blocking": false,
+    "receipt_dir": "fixtures/finding-alignment-dogfood",
+    "cases": [
+      {
+        "name": "config_policy_rendered_label_unobserved",
+        "source_pr": "EffortlessMetrics/ripr#1016",
+        "evidence_class": "config_or_policy_constant",
+        "raw_findings_total": 2,
+        "canonical_items_total": 1,
+        "gap_state": "actionable",
+        "actionability": "add_output_observer",
+        "user_outcome": "actionable_gap",
+        "repair_kind": "output_observer",
+        "target_test_type": "report_render_or_golden",
+        "verify_command": "cargo xtask evidence-quality-scorecard",
+        "static_limitation_category": null,
+        "static_limitation_repair_route": null,
+        "raw_findings_supporting_only": true,
+        "recommended_repair": "Add or update a report-render, config-output, snapshot, or golden observer for the rendered policy label.",
+        "must_not_claim": [
+          "Do not count declaration and literal findings as separate user actions.",
+          "Do not infer actionability from raw static class.",
+          "Do not recommend mutation testing before output-observer work."
+        ],
+        "reason": "A rendered config or policy label with no supported observer should become one actionable output-observer item.",
         "errors": []
       }
     ]

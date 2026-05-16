@@ -7,6 +7,8 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::InstallHooks(args) => super::install_hooks(&args),
         XtaskCommand::Commands => super::commands_report(),
         XtaskCommand::PrSummary => super::reports::pr_summary(),
+        XtaskCommand::PrReady => super::pr_ready(),
+        XtaskCommand::Cockpit => super::cockpit(),
         XtaskCommand::PrTriageReport => super::reports::pr_triage_report(),
         XtaskCommand::GhPrStatus(args) => super::reports::gh_pr_status(&args),
         XtaskCommand::SuggestedFixes => super::suggested_fixes(),
