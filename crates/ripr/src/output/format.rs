@@ -69,14 +69,7 @@ pub enum OutputFormat {
 }
 
 impl OutputFormat {
-    /// Returns `true` when the format targets full-repo scope rather than
-    /// diff scope.
-    ///
-    /// Repo-scope formats use full-repo inputs. Native repo badge JSON carries
-    /// `scope: "repo"` and seam-native badge formats carry
-    /// `basis: "seam_native"`. The Shields projection stays four-field for
-    /// both scopes.
-    pub fn is_repo_scope(&self) -> bool {
+    fn is_repo_seam_format(&self) -> bool {
         matches!(
             self,
             OutputFormat::RepoBadgeJson
@@ -92,6 +85,17 @@ impl OutputFormat {
         )
     }
 
+    /// Returns `true` when the format targets full-repo scope rather than
+    /// diff scope.
+    ///
+    /// Repo-scope formats use full-repo inputs. Native repo badge JSON carries
+    /// `scope: "repo"` and seam-native badge formats carry
+    /// `basis: "seam_native"`. The Shields projection stays four-field for
+    /// both scopes.
+    pub fn is_repo_scope(&self) -> bool {
+        self.is_repo_seam_format()
+    }
+
     /// Returns `true` when the format renders repo seam-driven artifacts
     /// that do not consume legacy repo `Finding` output.
     ///
@@ -100,19 +104,7 @@ impl OutputFormat {
     /// classified seams. Running legacy repo Finding analysis first would add
     /// cost and then be discarded.
     pub fn is_repo_seam_inventory(&self) -> bool {
-        matches!(
-            self,
-            OutputFormat::RepoBadgeJson
-                | OutputFormat::RepoBadgeShields
-                | OutputFormat::RepoBadgePlusJson
-                | OutputFormat::RepoBadgePlusShields
-                | OutputFormat::RepoSeamsJson
-                | OutputFormat::RepoSeamsMd
-                | OutputFormat::RepoExposureJson
-                | OutputFormat::RepoExposureMd
-                | OutputFormat::RepoSarif
-                | OutputFormat::AgentSeamPacketsJson
-        )
+        self.is_repo_seam_format()
     }
 }
 

@@ -108,12 +108,7 @@ pub(crate) fn render_agent_receipt_json(
             }
         }
     });
-    serde_json::to_string_pretty(&value)
-        .map(|mut rendered| {
-            rendered.push('\n');
-            rendered
-        })
-        .map_err(|err| format!("failed to render agent receipt JSON: {err}"))
+    super::json::render_pretty_with_newline(&value, "agent receipt")
 }
 
 pub(crate) fn agent_receipt_input_paths(
