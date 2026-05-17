@@ -1,6 +1,6 @@
 # ADR 0014: Editor First-PR Projection Is Read-Only
 
-Status: proposed
+Status: accepted
 
 Date: 2026-05-17
 

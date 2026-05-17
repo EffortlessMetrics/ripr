@@ -1,6 +1,6 @@
 # Editor First-PR Bridge Implementation Plan
 
-Status: proposed
+Status: closed
 
 Owner: Lane 3 - Editor / LSP UX
 

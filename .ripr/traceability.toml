@@ -3317,6 +3317,7 @@ outputs = [
   "docs/adr/README.md",
   "docs/lanes/LANE_3_EDITOR_LSP.md",
   "docs/handoffs/2026-05-17-editor-first-pr-bridge-receipts.md",
+  "docs/handoffs/2026-05-17-editor-first-pr-bridge-closeout.md",
   "docs/DOCUMENTATION.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "fixtures/README.md",
