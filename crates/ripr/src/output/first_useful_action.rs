@@ -1,7 +1,6 @@
 use crate::agent::loop_commands;
 use serde::Serialize;
 use serde_json::Value;
-use std::path::Path;
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "first_useful_action";
@@ -321,9 +320,7 @@ pub(crate) fn render_first_useful_action_markdown(report: &FirstUsefulActionRepo
     out
 }
 
-pub(crate) fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
+pub(crate) use crate::output::path::display_path;
 
 fn parse_sources(input: &FirstUsefulActionInput) -> ParsedSources {
     let mut parsed = ParsedSources::default();

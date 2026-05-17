@@ -1,6 +1,5 @@
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
-use std::path::Path;
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "preview_evidence_promotion_packet";
@@ -373,9 +372,7 @@ pub(crate) fn preview_promotion_allowed_now(report: &PreviewPromotionReport) -> 
     report.allowed_now
 }
 
-pub(crate) fn display_path(path: &Path) -> String {
-    path.display().to_string().replace('\\', "/")
-}
+pub(crate) use crate::output::path::display_path;
 
 fn parse_optional_json(
     kind: &'static str,

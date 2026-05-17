@@ -1,6 +1,5 @@
 use serde::Serialize;
 use serde_json::Value;
-use std::path::Path;
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "test_oracle_assistant_loop";
@@ -347,9 +346,7 @@ pub(crate) fn render_test_oracle_assistant_proof_markdown(
     out
 }
 
-pub(crate) fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
+pub(crate) use crate::output::path::display_path;
 
 fn option_text<'a>(value: Option<&'a str>, fallback: &'a str) -> &'a str {
     match value {
