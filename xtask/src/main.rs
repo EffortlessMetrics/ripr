@@ -973,6 +973,15 @@ struct PolicyReportSpec<'a> {
     exception_template: Option<&'a str>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RustConversionFile {
+    path: String,
+    category: String,
+    action: String,
+    reason: String,
+    allowlisted: bool,
+}
+
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct LocalContextFinding {
     path: String,
@@ -5725,6 +5734,171 @@ fn check_file_policy_impl() -> Result<(), String> {
         },
         &violations,
     )
+}
+
+fn rust_conversion_candidates() -> Result<(), String> {
+    let allowlist = read_file_policy_allowlist("policy/non-rust-allowlist.toml")?;
+    let mut convert_first = Vec::new();
+    let mut retained = Vec::new();
+
+    for path in collect_files(Path::new("."))? {
+        let normalized = normalize_path(&path);
+        if !is_non_rust_programming_candidate(&normalized) {
+            continue;
+        }
+
+        let allowlisted = matches_any_glob(&allowlist, &normalized);
+        match non_rust_programming_retention_reason(&normalized) {
+            Some(reason) => retained.push(RustConversionFile {
+                category: rust_conversion_category(&normalized),
+                action: "retain_non_rust_runtime_surface".to_string(),
+                reason: reason.to_string(),
+                path: normalized,
+                allowlisted,
+            }),
+            None => convert_first.push(RustConversionFile {
+                category: rust_conversion_category(&normalized),
+                action: if allowlisted {
+                    "convert_to_rust_or_add_retention_rule".to_string()
+                } else {
+                    "convert_to_rust_before_allowlisting".to_string()
+                },
+                reason: "No approved non-Rust runtime-surface retention rule matches this file. Prefer moving implementation, automation, and test harness logic into Rust/xtask or the existing ripr module layout.".to_string(),
+                path: normalized,
+                allowlisted,
+            }),
+        }
+    }
+
+    convert_first.sort_by(|left, right| left.path.cmp(&right.path));
+    retained.sort_by(|left, right| left.path.cmp(&right.path));
+
+    write_report(
+        "rust-conversion-candidates.md",
+        &rust_conversion_candidates_markdown(&convert_first, &retained),
+    )?;
+    write_report(
+        "rust-conversion-candidates.json",
+        &rust_conversion_candidates_json(&convert_first, &retained),
+    )
+}
+
+fn rust_conversion_category(path: &str) -> String {
+    if path.starts_with("editors/vscode/") {
+        return "editor_extension".to_string();
+    }
+    if path.starts_with("fixtures/") {
+        return "fixture_input".to_string();
+    }
+    if path.starts_with("crates/ripr/") {
+        return "published_package_surface".to_string();
+    }
+    if path.starts_with("xtask/") {
+        return "repo_automation".to_string();
+    }
+    "unclassified_non_rust_programming".to_string()
+}
+
+fn rust_conversion_candidates_markdown(
+    convert_first: &[RustConversionFile],
+    retained: &[RustConversionFile],
+) -> String {
+    let mut body = String::from("# Rust conversion candidates\n\n");
+    body.push_str("Status: pass\n\n");
+    body.push_str("This report scans checked-in non-Rust programming files and separates files that should move to Rust/xtask from files retained by an approved runtime surface. Declarative docs, JSON/TOML/YAML policy, schemas, fixtures outputs, and assets are outside this report; `cargo xtask check-file-policy` remains the blocking policy gate.\n\n");
+    body.push_str("## Summary\n\n");
+    body.push_str(&format!(
+        "- Convert-first candidates: {}\n- Retained approved runtime surfaces: {}\n\n",
+        convert_first.len(),
+        retained.len()
+    ));
+    body.push_str("## Core design routing\n\n");
+    body.push_str("- Production analyzer behavior belongs in `crates/ripr/src/{domain,app,analysis,output,cli,lsp}` according to the current internal shape.\n");
+    body.push_str("- Repository automation, fixture runners, release checks, and policy checks belong in Rust under `xtask`.\n");
+    body.push_str("- VS Code client code remains TypeScript only where it is coupled to the VS Code Extension Host API.\n");
+    body.push_str("- Python / TypeScript files under `fixtures/` remain analyzed inputs for preview-language adapters, not implementation surfaces.\n\n");
+
+    body.push_str("## Convert-first candidates\n\n");
+    if convert_first.is_empty() {
+        body.push_str("No non-Rust programming files currently require conversion before policy approval.\n\n");
+    } else {
+        body.push_str("| Path | Category | Action | Allowlisted | Reason |\n");
+        body.push_str("| --- | --- | --- | --- | --- |\n");
+        for file in convert_first {
+            rust_conversion_row(&mut body, file);
+        }
+        body.push('\n');
+    }
+
+    body.push_str("## Retained non-Rust runtime surfaces\n\n");
+    if retained.is_empty() {
+        body.push_str("No retained non-Rust runtime surfaces were found.\n");
+    } else {
+        body.push_str("| Path | Category | Action | Allowlisted | Reason |\n");
+        body.push_str("| --- | --- | --- | --- | --- |\n");
+        for file in retained {
+            rust_conversion_row(&mut body, file);
+        }
+    }
+
+    body
+}
+
+fn rust_conversion_row(body: &mut String, file: &RustConversionFile) {
+    body.push_str(&format!(
+        "| `{}` | {} | {} | {} | {} |\n",
+        file.path,
+        markdown_cell(&file.category),
+        markdown_cell(&file.action),
+        file.allowlisted,
+        markdown_cell(&file.reason)
+    ));
+}
+
+fn rust_conversion_candidates_json(
+    convert_first: &[RustConversionFile],
+    retained: &[RustConversionFile],
+) -> String {
+    let mut body = String::from("{\n");
+    body.push_str("  \"schema_version\": \"1.0\",\n");
+    body.push_str("  \"kind\": \"rust_conversion_candidates\",\n");
+    body.push_str(&format!(
+        "  \"summary\": {{\n    \"convert_first\": {},\n    \"retained_non_rust_runtime_surfaces\": {}\n  }},\n",
+        convert_first.len(),
+        retained.len()
+    ));
+    body.push_str("  \"convert_first\": ");
+    rust_conversion_json_array(&mut body, convert_first, 2);
+    body.push_str(",\n  \"retained_non_rust_runtime_surfaces\": ");
+    rust_conversion_json_array(&mut body, retained, 2);
+    body.push_str("\n}\n");
+    body
+}
+
+fn rust_conversion_json_array(body: &mut String, files: &[RustConversionFile], indent: usize) {
+    if files.is_empty() {
+        body.push_str("[]");
+        return;
+    }
+    let pad = " ".repeat(indent);
+    let field_pad = " ".repeat(indent + 2);
+    body.push_str("[\n");
+    for (index, file) in files.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str(&format!(
+            "{pad}{{\n{field_pad}\"path\": \"{}\",\n{field_pad}\"category\": \"{}\",\n{field_pad}\"action\": \"{}\",\n{field_pad}\"allowlisted\": {},\n{field_pad}\"reason\": \"{}\"\n{pad}}}",
+            json_escape(&file.path),
+            json_escape(&file.category),
+            json_escape(&file.action),
+            file.allowlisted,
+            json_escape(&file.reason)
+        ));
+    }
+    body.push('\n');
+    body.push_str(&pad);
+    body.push(']');
 }
 
 fn check_executable_files_impl() -> Result<(), String> {
@@ -33989,18 +34163,18 @@ mod tests {
         report_index_json, report_index_markdown, report_index_missing_expected,
         report_index_repo_ops_packets, report_index_repo_ops_status, report_status_from_text,
         ripr_command_literals_in_text, ripr_debug_binary, ripr_pre_commit_hook,
-        run_ci_full_evidence_gates, sarif_policy_report_json, sarif_policy_report_markdown,
-        semantic_selector_matches, should_scan_static_language_path, should_skip_path,
-        sorted_allowlist_content, spec_id_from_path, spec_ids_in_text, spec_numbering_violations,
-        specs, static_language_allowlist_covers, status_for_report, suggested_fixes_patch,
-        suspicious_runtime_file_names, targeted_test_outcome, targeted_test_outcome_report_json,
-        targeted_test_outcome_report_markdown, test_efficiency_entry, test_efficiency_report_json,
-        test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
-        test_oracle_tests_in_text, unknown_command_message, validate_local_context_allowlist,
-        vscode_compile_command, vscode_extension_dir, vscode_package_command,
-        vscode_package_version, vscode_test_e2e_command, windows_absolute_path_tokens,
-        workflow_runtime_violations, worktree, worktree_doctor_findings,
-        write_repo_exposure_latency_report,
+        run_ci_full_evidence_gates, rust_conversion_category, sarif_policy_report_json,
+        sarif_policy_report_markdown, semantic_selector_matches, should_scan_static_language_path,
+        should_skip_path, sorted_allowlist_content, spec_id_from_path, spec_ids_in_text,
+        spec_numbering_violations, specs, static_language_allowlist_covers, status_for_report,
+        suggested_fixes_patch, suspicious_runtime_file_names, targeted_test_outcome,
+        targeted_test_outcome_report_json, targeted_test_outcome_report_markdown,
+        test_efficiency_entry, test_efficiency_report_json, test_efficiency_report_markdown,
+        test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
+        unknown_command_message, validate_local_context_allowlist, vscode_compile_command,
+        vscode_extension_dir, vscode_package_command, vscode_package_version,
+        vscode_test_e2e_command, windows_absolute_path_tokens, workflow_runtime_violations,
+        worktree, worktree_doctor_findings, write_repo_exposure_latency_report,
     };
     use super::{
         DeclaredIntent, LocalContextFinding,
@@ -38111,6 +38285,26 @@ fn has_unwrap_in_name() -> bool {
         assert!(should_skip_path("editors/vscode/out/src/extension.js"));
         assert!(should_skip_path("editors/vscode/dist/ripr-0.3.0.vsix"));
         assert!(!should_skip_path("editors/vscode/src/config.ts"));
+    }
+
+    #[test]
+    fn rust_conversion_category_routes_core_design_surfaces() {
+        assert_eq!(
+            rust_conversion_category("xtask/src/main.rs"),
+            "repo_automation"
+        );
+        assert_eq!(
+            rust_conversion_category("crates/ripr/src/analysis/pipeline.py"),
+            "published_package_surface"
+        );
+        assert_eq!(
+            rust_conversion_category("fixtures/python_boundary_gap/input/src/discount.py"),
+            "fixture_input"
+        );
+        assert_eq!(
+            rust_conversion_category("editors/vscode/src/extension.ts"),
+            "editor_extension"
+        );
     }
 
     #[test]
