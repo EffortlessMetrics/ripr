@@ -57,6 +57,14 @@ struct FilePolicyAllowEntry {
     covered_by: Option<Vec<String>>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RustConversionCandidate {
+    path: String,
+    action: &'static str,
+    core_design_target: &'static str,
+    reason: &'static str,
+}
+
 #[derive(Debug)]
 struct WorkflowBudget {
     path: String,
@@ -5725,6 +5733,133 @@ fn check_file_policy_impl() -> Result<(), String> {
         },
         &violations,
     )
+}
+
+fn rust_conversion_candidates() -> Result<(), String> {
+    let candidates = rust_conversion_candidate_inventory()?;
+    write_report(
+        "rust-conversion-candidates.md",
+        &rust_conversion_candidates_markdown(&candidates),
+    )?;
+    write_report(
+        "rust-conversion-candidates.json",
+        &rust_conversion_candidates_json(&candidates),
+    )
+}
+
+fn rust_conversion_candidate_inventory() -> Result<Vec<RustConversionCandidate>, String> {
+    let mut candidates = Vec::new();
+    for path in collect_files(Path::new("."))? {
+        let normalized = normalize_path(&path);
+        if !is_non_rust_programming_candidate(&normalized) {
+            continue;
+        }
+        candidates.push(classify_rust_conversion_candidate(&normalized));
+    }
+    candidates.sort_by(|left, right| left.path.cmp(&right.path));
+    Ok(candidates)
+}
+
+fn classify_rust_conversion_candidate(path: &str) -> RustConversionCandidate {
+    if path.starts_with("editors/vscode/") && path.ends_with(".ts") {
+        return RustConversionCandidate {
+            path: path.to_string(),
+            action: "retain_adapter",
+            core_design_target: "lsp adapter boundary",
+            reason: "VS Code Extension Host integration must stay TypeScript, but product analysis and output contracts belong in the ripr Rust binary/library and its LSP sidecar.",
+        };
+    }
+
+    if path.starts_with("fixtures/")
+        && (path.ends_with(".ts")
+            || path.ends_with(".tsx")
+            || path.ends_with(".js")
+            || path.ends_with(".jsx")
+            || path.ends_with(".py"))
+    {
+        return RustConversionCandidate {
+            path: path.to_string(),
+            action: "retain_fixture_input",
+            core_design_target: "analysis fixture input",
+            reason: "Preview-language fixture inputs are test data for Rust analyzers; converting them would remove the behavior being analyzed.",
+        };
+    }
+
+    RustConversionCandidate {
+        path: path.to_string(),
+        action: "convert_to_rust",
+        core_design_target: "xtask or ripr core module",
+        reason: "Non-Rust implementation or automation outside a retained runtime surface should move to Rust/xtask, or into the ripr core app/analysis/domain/output design when it is product logic.",
+    }
+}
+
+fn rust_conversion_candidates_markdown(candidates: &[RustConversionCandidate]) -> String {
+    let convert_count = candidates
+        .iter()
+        .filter(|candidate| candidate.action == "convert_to_rust")
+        .count();
+    let mut body = format!(
+        "# Rust Conversion Candidates\n\nMode: advisory\nImmediate conversion candidates: {convert_count}\nTotal non-Rust programming surfaces: {}\n\n",
+        candidates.len()
+    );
+    body.push_str("## Core Design Rule\n\n");
+    body.push_str("Product behavior belongs in the published `ripr` Rust package under the existing `domain`, `app`, `analysis`, `output`, `cli`, or experimental `lsp` adapters. Repository automation belongs in Rust `xtask`. Non-Rust files should remain only when they are runtime-bound adapter code or analyzer fixture inputs.\n\n");
+    body.push_str("## Inventory\n\n");
+    body.push_str("| Path | Action | Core design target | Reason |\n");
+    body.push_str("| --- | --- | --- | --- |\n");
+    for candidate in candidates {
+        body.push_str(&format!(
+            "| `{}` | `{}` | {} | {} |\n",
+            candidate.path,
+            candidate.action,
+            markdown_cell(candidate.core_design_target),
+            markdown_cell(candidate.reason)
+        ));
+    }
+    body.push('\n');
+    if convert_count == 0 {
+        body.push_str("No immediate non-Rust implementation or automation files were found outside the retained adapter/fixture surfaces.\n");
+    }
+    body
+}
+
+fn rust_conversion_candidates_json(candidates: &[RustConversionCandidate]) -> String {
+    let convert_count = candidates
+        .iter()
+        .filter(|candidate| candidate.action == "convert_to_rust")
+        .count();
+    let mut body = "{\n".to_string();
+    body.push_str("  \"schema_version\": \"0.1\",\n");
+    body.push_str("  \"mode\": \"advisory\",\n");
+    body.push_str(&format!(
+        "  \"immediate_conversion_candidates\": {convert_count},\n"
+    ));
+    body.push_str("  \"items\": [\n");
+    for (index, candidate) in candidates.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!(
+            "      \"path\": \"{}\",\n",
+            json_escape(&candidate.path)
+        ));
+        body.push_str(&format!(
+            "      \"action\": \"{}\",\n",
+            json_escape(candidate.action)
+        ));
+        body.push_str(&format!(
+            "      \"core_design_target\": \"{}\",\n",
+            json_escape(candidate.core_design_target)
+        ));
+        body.push_str(&format!(
+            "      \"reason\": \"{}\"\n",
+            json_escape(candidate.reason)
+        ));
+        body.push_str("    }");
+    }
+    body.push_str("\n  ]\n}\n");
+    body
 }
 
 fn check_executable_files_impl() -> Result<(), String> {
@@ -33935,10 +34070,10 @@ mod tests {
         check_badge_diff_policy_with_context, check_droid_review_config, check_executable_files,
         check_file_policy, check_local_context, check_network_policy, check_no_panic_family,
         check_process_policy, check_static_language, check_workflows, ci_full_evidence_gates,
-        cockpit_json, cockpit_markdown, collect_panic_findings, collect_semantic_panic_findings,
-        command_catalog, command_catalog_violations, commands_report_json,
-        commands_report_markdown, critic_findings, days_from_civil, dogfood_class_counts,
-        dogfood_editor_gap_cockpit_run, dogfood_editor_gap_cockpit_scenarios,
+        classify_rust_conversion_candidate, cockpit_json, cockpit_markdown, collect_panic_findings,
+        collect_semantic_panic_findings, command_catalog, command_catalog_violations,
+        commands_report_json, commands_report_markdown, critic_findings, days_from_civil,
+        dogfood_class_counts, dogfood_editor_gap_cockpit_run, dogfood_editor_gap_cockpit_scenarios,
         dogfood_first_action_scenarios, dogfood_gate_adoption_scenarios,
         dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
         dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
@@ -38130,6 +38265,23 @@ fn has_unwrap_in_name() -> bool {
                 .is_some()
         );
         assert!(non_rust_programming_retention_reason("scripts/check.py").is_none());
+    }
+
+    #[test]
+    fn rust_conversion_inventory_classifies_retained_and_convertible_surfaces() {
+        let editor = classify_rust_conversion_candidate("editors/vscode/src/extension.ts");
+        assert_eq!(editor.action, "retain_adapter");
+        assert_eq!(editor.core_design_target, "lsp adapter boundary");
+
+        let fixture = classify_rust_conversion_candidate(
+            "fixtures/python_boundary_gap/input/src/discount.py",
+        );
+        assert_eq!(fixture.action, "retain_fixture_input");
+        assert_eq!(fixture.core_design_target, "analysis fixture input");
+
+        let script = classify_rust_conversion_candidate("scripts/check.py");
+        assert_eq!(script.action, "convert_to_rust");
+        assert_eq!(script.core_design_target, "xtask or ripr core module");
     }
 
     #[test]

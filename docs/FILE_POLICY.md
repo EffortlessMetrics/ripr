@@ -49,6 +49,12 @@ If the file does not match the current allowlist, update the allowlist with an
 owner and reason in the same PR. If it is a programming-language file, also
 update the Rust retention classifier in `xtask` or convert it to Rust.
 
+To inspect the current inventory without failing the build, run
+`cargo xtask rust-conversion-candidates`. The advisory report lists every
+non-Rust programming surface, marks retained VS Code adapter code and analyzer
+fixture inputs, and calls out any immediate `convert_to_rust` candidates with
+the intended Rust/`xtask` or core `ripr` design target.
+
 ## Shell Scripts
 
 Shell scripts are denied by default.
