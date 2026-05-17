@@ -38397,9 +38397,11 @@ fn has_unwrap_in_name() -> bool {
     }
 
     #[test]
-    fn rust_conversion_candidates_classify_unretained_non_rust_source() {
-        let candidate = super::non_rust_source_conversion_candidate("scripts/check.py")
-            .expect("unretained non-Rust source should be a candidate");
+    fn rust_conversion_candidates_classify_unretained_non_rust_source() -> Result<(), String> {
+        let Some(candidate) = super::non_rust_source_conversion_candidate("scripts/check.py")
+        else {
+            return Err("unretained non-Rust source should be a candidate".to_string());
+        };
 
         assert_eq!(candidate.priority, "high");
         assert_eq!(
@@ -38407,25 +38409,31 @@ fn has_unwrap_in_name() -> bool {
             "non_rust_programming_without_retention_rule"
         );
         assert!(candidate.recommendation.contains("xtask"));
+        Ok(())
     }
 
     #[test]
-    fn rust_conversion_candidates_retains_fixture_and_editor_boundaries() {
-        let fixture = super::non_rust_source_conversion_candidate(
+    fn rust_conversion_candidates_retains_fixture_and_editor_boundaries() -> Result<(), String> {
+        let Some(fixture) = super::non_rust_source_conversion_candidate(
             "fixtures/python_boundary_gap/input/src/discount.py",
-        )
-        .expect("fixture input should be assessed");
-        let editor = super::non_rust_source_conversion_candidate("editors/vscode/src/extension.ts")
-            .expect("editor adapter should be assessed");
+        ) else {
+            return Err("fixture input should be assessed".to_string());
+        };
+        let Some(editor) =
+            super::non_rust_source_conversion_candidate("editors/vscode/src/extension.ts")
+        else {
+            return Err("editor adapter should be assessed".to_string());
+        };
 
         assert_eq!(fixture.priority, "retained");
         assert_eq!(fixture.kind, "retained_fixture_input");
         assert_eq!(editor.priority, "retained");
         assert_eq!(editor.kind, "retained_external_runtime");
+        Ok(())
     }
 
     #[test]
-    fn rust_conversion_candidates_identify_workflow_shell_logic() {
+    fn rust_conversion_candidates_identify_workflow_shell_logic() -> Result<(), String> {
         let block = super::RunBlock {
             line_number: 12,
             non_empty_lines: 1,
@@ -38433,13 +38441,16 @@ fn has_unwrap_in_name() -> bool {
                 .to_string(),
         };
 
-        let candidate =
+        let Some(candidate) =
             super::workflow_run_conversion_candidate(".github/workflows/pr-plan.yml", &block)
-                .expect("repo-owned workflow shell should be a migration candidate");
+        else {
+            return Err("repo-owned workflow shell should be a migration candidate".to_string());
+        };
 
         assert_eq!(candidate.priority, "medium");
         assert_eq!(candidate.line, Some(12));
         assert_eq!(candidate.kind, "workflow_shell_logic");
+        Ok(())
     }
 
     #[test]
