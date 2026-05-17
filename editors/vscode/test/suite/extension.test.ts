@@ -34,6 +34,12 @@ suite('Extension Smoke', () => {
     assert.ok(commands.includes('ripr.showStatus'));
     assert.ok(commands.includes('ripr.diagnoseSetup'));
     assert.ok(commands.includes('ripr.startCurrentRepair'));
+    assert.ok(commands.includes('ripr.openFirstPrPacket'));
+    assert.ok(commands.includes('ripr.copyFirstPrSummary'));
+    assert.ok(commands.includes('ripr.copyFirstPrRepairPacket'));
+    assert.ok(commands.includes('ripr.copyFirstPrVerifyCommand'));
+    assert.ok(commands.includes('ripr.copyFirstPrReceiptCommand'));
+    assert.ok(commands.includes('ripr.copyFirstPrRegenerationGuidance'));
     assert.ok(commands.includes('ripr.copyContext'));
     assert.ok(commands.includes('ripr.copySuggestedAssertion'));
     assert.ok(commands.includes('ripr.copyTargetedTestBrief'));
@@ -1026,6 +1032,22 @@ suite('Extension Smoke', () => {
       files: {
         'target/ripr/reports/start-here.json': firstPrPacket({
           commands: {
+            verify: 'powershell -NoProfile -Command Get-ChildItem'
+          }
+        })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      await context.controller.copyFirstPrVerifyCommand();
+      assert.strictEqual(context.clipboardWrites.length, 0);
+      assert.ok(context.infoMessages.at(-1)?.includes('unsafe command'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/start-here.json': firstPrPacket({
+          commands: {
             verify: 'cargo xtask fixtures boundary_gap; rm -rf target'
           }
         })
@@ -1036,6 +1058,153 @@ suite('Extension Smoke', () => {
       assert.ok(statusOutput.includes('First PR packet: unsafe command; target/ripr/reports/start-here.json contains a command payload outside the editor safety contract.'));
       assert.ok(statusOutput.includes('Copy-command first-pr packet actions are suppressed.'));
       assert.ok(!statusOutput.includes('top repairable gap available'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+  });
+
+  test('first-pr packet actions copy bounded payloads for matching diagnostics', async () => {
+    await withControllerTestContext({
+      files: {
+        'target/ripr/first-pr/start-here.json': firstPrPacket({}),
+        'target/ripr/first-pr/start-here.md': '# RIPR first-pr packet\n'
+      }
+    }, async (context) => {
+      await context.controller.start();
+
+      await context.controller.copyFirstPrSummary();
+      assert.ok(context.clipboardWrites.at(-1)?.includes('RIPR first-pr summary'));
+      assert.ok(context.clipboardWrites.at(-1)?.includes('Gap identity: gap:rust:pricing:discount:threshold-boundary'));
+      assert.ok(context.clipboardWrites.at(-1)?.includes('Does not prove runtime adequacy'));
+
+      await withCurrentFirstPrDiagnostic({
+        canonical_gap_id: 'gap:rust:pricing:discount:threshold-boundary',
+        gap_id: 'gap:pr:pricing:threshold-boundary'
+      }, async () => {
+        await context.controller.copyFirstPrRepairPacket();
+        const repairPacket = context.clipboardWrites.at(-1) ?? '';
+        assert.ok(repairPacket.includes('RIPR first-pr repair packet'), repairPacket);
+        assert.ok(repairPacket.includes('Repair route: AddBoundaryAssertion'), repairPacket);
+        assert.ok(repairPacket.includes('Related test: tests/pricing.rs::premium_customer_gets_discount'), repairPacket);
+        assert.ok(repairPacket.includes('Do not broaden scope.'), repairPacket);
+
+        await context.controller.copyFirstPrVerifyCommand();
+        assert.strictEqual(context.clipboardWrites.at(-1), 'cargo xtask fixtures boundary_gap');
+
+        await context.controller.copyFirstPrReceiptCommand();
+        assert.strictEqual(context.clipboardWrites.at(-1), 'ripr agent receipt --root . --json');
+      });
+
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+  });
+
+  test('first-pr packet actions open only safe workspace-local markdown packets', async () => {
+    await writeWorkspaceFile('target/ripr/first-pr/start-here.md', '# RIPR first-pr packet\n');
+    try {
+      await withControllerTestContext({
+        files: {
+          'target/ripr/first-pr/start-here.json': firstPrPacket({}),
+          'target/ripr/first-pr/start-here.md': '# RIPR first-pr packet\n'
+        }
+      }, async (context) => {
+        await context.controller.start();
+        await context.controller.openFirstPrPacket();
+
+        const activeEditor = vscode.window.activeTextEditor;
+        assert.ok(activeEditor, 'expected first-pr Markdown packet to open');
+        assert.ok(
+          activeEditor.document.uri.fsPath.replace(/\\/g, '/').endsWith('/target/ripr/first-pr/start-here.md'),
+          activeEditor.document.uri.fsPath
+        );
+        assert.ok(context.infoMessages.at(-1)?.includes('Opened ripr first-pr packet'));
+        assert.strictEqual(context.runRiprCalls.length, 0);
+      });
+    } finally {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await removeWorkspacePath('target/ripr/first-pr/start-here.md');
+    }
+  });
+
+  test('first-pr packet diagnostic actions fail closed on mismatched or stale evidence', async () => {
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/start-here.json': firstPrPacket({})
+      }
+    }, async (context) => {
+      await context.controller.start();
+
+      await withCurrentFirstPrDiagnostic({
+        canonical_gap_id: 'gap:rust:other',
+        gap_id: 'gap:pr:other'
+      }, async () => {
+        await context.controller.copyFirstPrRepairPacket();
+      });
+      assert.strictEqual(context.clipboardWrites.length, 0);
+      assert.ok(context.infoMessages.at(-1)?.includes('does not match the first-pr packet gap identity'));
+
+      const document = await vscode.workspace.openTextDocument(workspaceFileUri('src/lib.rs'));
+      await vscode.window.showTextDocument(document);
+      context.controller.markWorkspaceStale(document);
+      await context.controller.copyFirstPrSummary();
+      assert.strictEqual(context.clipboardWrites.length, 0);
+      assert.ok(context.infoMessages.at(-1)?.includes('current saved-workspace evidence'));
+
+      await context.controller.copyFirstPrRegenerationGuidance();
+      assert.ok(context.clipboardWrites.at(-1)?.includes('cargo xtask first-pr'));
+      assert.ok(context.clipboardWrites.at(-1)?.includes('editor does not run the command'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+  });
+
+  test('first-pr packet actions suppress unsafe, malformed, and missing packet states', async () => {
+    await withControllerTestContext({}, async (context) => {
+      await context.controller.start();
+      await context.controller.copyFirstPrSummary();
+      assert.strictEqual(context.clipboardWrites.length, 0);
+      assert.ok(context.infoMessages.at(-1)?.includes('first-pr packet is missing'));
+
+      await context.controller.copyFirstPrRegenerationGuidance();
+      assert.ok(context.clipboardWrites.at(-1)?.includes('cargo xtask first-pr'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/start-here.json': '{not-json'
+      }
+    }, async (context) => {
+      await context.controller.start();
+      await context.controller.copyFirstPrSummary();
+      assert.strictEqual(context.clipboardWrites.length, 0);
+      assert.ok(context.infoMessages.at(-1)?.includes('malformed or unsupported'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/start-here.json': firstPrPacket({ root: '../other-workspace' })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      await context.controller.openFirstPrPacket();
+      assert.strictEqual(context.clipboardWrites.length, 0);
+      assert.ok(context.infoMessages.at(-1)?.includes('belongs to another workspace'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/start-here.json': firstPrPacket({
+          commands: {
+            verify: 'cargo xtask fixtures boundary_gap; rm -rf target'
+          }
+        })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      await context.controller.copyFirstPrVerifyCommand();
+      assert.strictEqual(context.clipboardWrites.length, 0);
+      assert.ok(context.infoMessages.at(-1)?.includes('unsafe command'));
       assert.strictEqual(context.runRiprCalls.length, 0);
     });
   });
@@ -1975,6 +2144,44 @@ function firstPrReadFile(
     }
     return value;
   };
+}
+
+async function withCurrentFirstPrDiagnostic(
+  data: Record<string, string>,
+  run: () => Promise<void>
+): Promise<void> {
+  const relativePath = 'src/first-pr-actions.rs';
+  const uri = workspaceFileUri(relativePath);
+  const collection = vscode.languages.createDiagnosticCollection('ripr-first-pr-actions');
+  try {
+    await writeWorkspaceFile(relativePath, [
+      'pub fn discounted_total(amount: u32, threshold: u32) -> u32 {',
+      '    if amount >= threshold {',
+      '        amount - 10',
+      '    } else {',
+      '        amount',
+      '    }',
+      '}',
+      ''
+    ].join('\n'));
+    const document = await vscode.workspace.openTextDocument(uri);
+    const editor = await vscode.window.showTextDocument(document);
+    editor.selection = new vscode.Selection(new vscode.Position(1, 7), new vscode.Position(1, 7));
+    const diagnostic = new vscode.Diagnostic(
+      new vscode.Range(new vscode.Position(1, 4), new vscode.Position(1, 24)),
+      'ripr first-pr bridge test diagnostic',
+      vscode.DiagnosticSeverity.Warning
+    );
+    diagnostic.source = 'ripr';
+    diagnostic.code = 'ripr-gap-MissingBoundaryAssertion';
+    (diagnostic as unknown as { data?: unknown }).data = data;
+    collection.set(uri, [diagnostic]);
+    await run();
+  } finally {
+    collection.dispose();
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    await removeWorkspacePath(relativePath);
+  }
 }
 
 function agentReceipt(overrides: {
