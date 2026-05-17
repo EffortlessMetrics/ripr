@@ -155,7 +155,7 @@ Each slice follows the [scoped PR contract](../SCOPED_PR_CONTRACT.md).
 3. `lsp/first-pr-packet-validation`
 4. `lsp/first-pr-state-status`
 5. `lsp/first-pr-bounded-actions`
-6. `fixtures/editor-first-pr-bridge`
+6. `fixtures/editor_first_pr_bridge`
 7. `test/vscode-first-pr-bridge`
 8. `docs/editor-first-pr-bridge`
 9. `dogfood/lane3-first-pr-bridge-receipts`
