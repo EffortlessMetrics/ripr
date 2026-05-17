@@ -55,6 +55,7 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [0.6.0 release readiness](2026-05-17-0.6.0-release-readiness.md)
 - [First-Run UX and Adoption Hardening closeout](2026-05-16-first-run-ux-adoption-hardening-closeout.md)
 - [Repo-Ops UX Cockpit closeout](2026-05-16-repo-ops-ux-cockpit-closeout.md)
 - [Finding Alignment Consumer Contract v2](2026-05-16-finding-alignment-consumer-contract-v2.md)
