@@ -21,6 +21,9 @@ are scoped or reviewed.
 - Lane 1 evidence-quality scorecards and trends now surface finding-alignment
   coverage gaps for unnamed static unknowns, actionable canonical items missing
   repair routes, and actionable canonical items missing verify commands.
+- Actionable predicate-boundary evidence records now carry a structured
+  canonical repair route for adding an equality-boundary assertion, so Lane 1
+  can count them as concrete repair work instead of prose-only guidance.
 
 ## 0.6.0 - 2026-05-17
 
