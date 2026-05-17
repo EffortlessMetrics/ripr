@@ -1434,6 +1434,32 @@ fn release_upload_assets(args: &[String]) -> Result<(), String> {
     run_owned("gh", &upload_args)
 }
 
+fn vscode_marketplace_version() -> Result<(), String> {
+    let mut input = String::new();
+    std::io::stdin()
+        .read_to_string(&mut input)
+        .map_err(|err| format!("failed to read VS Code Marketplace JSON from stdin: {err}"))?;
+    if let Some(version) = vscode_marketplace_version_from_json(&input)? {
+        println!("{version}");
+    }
+    Ok(())
+}
+
+fn vscode_marketplace_version_from_json(input: &str) -> Result<Option<String>, String> {
+    let value: Value = serde_json::from_str(input)
+        .map_err(|err| format!("failed to parse VS Code Marketplace JSON: {err}"))?;
+    let Some(version) = value
+        .get("versions")
+        .and_then(Value::as_array)
+        .and_then(|versions| versions.first())
+        .and_then(|version| version.get("version"))
+        .and_then(Value::as_str)
+    else {
+        return Ok(None);
+    };
+    Ok(Some(version.to_string()))
+}
+
 #[derive(Debug, Eq, PartialEq)]
 struct ReleaseServerAsset {
     target: String,
@@ -36317,6 +36343,31 @@ mod tests {
             assert_eq!(binary_contents, "binary");
             Ok(())
         })
+    }
+
+    #[test]
+    fn vscode_marketplace_version_reads_latest_version() -> Result<(), String> {
+        let json = r#"{
+            "versions": [
+                { "version": "1.2.3" },
+                { "version": "1.2.2" }
+            ]
+        }"#;
+
+        assert_eq!(
+            super::vscode_marketplace_version_from_json(json)?,
+            Some("1.2.3".to_string())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn vscode_marketplace_version_allows_missing_versions() -> Result<(), String> {
+        assert_eq!(
+            super::vscode_marketplace_version_from_json(r#"{"versions": []}"#)?,
+            None
+        );
+        Ok(())
     }
 
     #[test]

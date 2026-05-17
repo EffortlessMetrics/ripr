@@ -85,6 +85,10 @@ jobs:
       RAW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
       VSCE_PAT: ${{ secrets.VSCE_PAT }}
     steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+
       - uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -107,7 +111,7 @@ jobs:
           vsix_file="dist/ripr-${version}.vsix"
           PUBLISHED_VERSION="$(
             npx -y @vscode/vsce show EffortlessMetrics.ripr --json 2>/dev/null \
-              | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['versions'][0]['version'])" \
+              | cargo xtask vscode-marketplace-version \
               2>/dev/null || echo ""
           )"
           if [ "$PUBLISHED_VERSION" = "$version" ]; then

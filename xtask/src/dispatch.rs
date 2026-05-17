@@ -41,6 +41,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::ReleaseServerArchive(args) => super::release_server_archive(&args),
         XtaskCommand::ReleaseServerManifest(args) => super::release_server_manifest(&args),
         XtaskCommand::ReleaseUploadAssets(args) => super::release_upload_assets(&args),
+        XtaskCommand::VscodeMarketplaceVersion => super::vscode_marketplace_version(),
         XtaskCommand::TargetedTestOutcome(args) => super::reports::targeted_test_outcome(&args),
         XtaskCommand::MutationCalibration(args) => super::reports::mutation_calibration(&args),
         XtaskCommand::RecommendationCalibration(args) => {
