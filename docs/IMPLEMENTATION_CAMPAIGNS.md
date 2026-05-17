@@ -3701,3 +3701,71 @@ Blocking conditions:
 - runtime adequacy, Rust-parity, or gate-eligibility claims for preview evidence
 - unsaved-buffer overlays, CodeLens, inlay hints, semantic tokens, or inline
   patch application in this campaign
+
+## Cross-Surface Campaign: Start-Here Surface Convergence
+
+Campaign ID: `start-here-surface-convergence`
+
+Status: proposed.
+
+The editor, CLI, generated CI, PR evidence, report packet index, receipts,
+preview-language reports, and install/release docs are useful independently.
+This campaign makes those surfaces lead with the same safe next-action unit so
+users do not need to understand RIPR's internal artifact graph before acting.
+
+Objective:
+
+```text
+Make every start-here surface answer: what is the one repairable gap, why does
+it matter, where should the focused test go, what verifies movement, what
+receipt proves it, and what remains limited or advisory?
+```
+
+End state:
+
+- PR/CI summaries and report packets lead with a canonical gap or no-action
+  state instead of raw finding counts.
+- CLI front-door commands use the same safe-next-action and recovery-state
+  vocabulary.
+- Receipt lifecycle state is consistent across CLI, PR/CI, editor projection,
+  first-pr packets, and docs.
+- No-output and fail-closed states are explicit outside the editor.
+- Preview-language promotion criteria are visible and policy-owned.
+- External-style dogfood proves the converged path on normal repo shapes and
+  failure states.
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `docs/start-here-surface-convergence-stack` | planned | Add proposal, spec, ADR, plan, indexes, traceability, and GitHub issues. |
+| `report/pr-ci-start-here-canonical-unit` | planned | Align generated CI and PR evidence first screens on the canonical repair unit. |
+| `cli/start-here-command-language` | planned | Align CLI front-door command language and recovery states. |
+| `receipt/lifecycle-state-convergence` | planned | Standardize receipt found/missing/stale/mismatch/improved/unchanged states. |
+| `output/no-output-fail-closed-states` | planned | Standardize clean, no-action, missing, stale, wrong-root, disabled, unavailable, malformed, partial, unsafe states outside the editor. |
+| `policy/preview-promotion-proof-criteria` | planned | Define proof criteria before preview evidence can claim a stronger tier. |
+| `dogfood/external-style-start-here-receipts` | planned | Record normal-repo and failure-state receipts for the converged path. |
+| `campaign/start-here-surface-convergence-closeout` | planned | Close only after the issue burn-down is closed or explicitly superseded. |
+
+Commands:
+
+```bash
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-traceability
+cargo xtask check-output-contracts
+cargo xtask check-pr
+git diff --check
+```
+
+Blocking conditions:
+
+- analyzer behavior changes in the docs/issue setup PR
+- output schema changes without a scoped behavior PR
+- generated CI blocking or default gate behavior changes
+- preview-language policy promotion without a promotion packet
+- PR comment publishing changes
+- source edits, generated tests, provider/model calls, mutation execution, or
+  editor UI-sprawl work
