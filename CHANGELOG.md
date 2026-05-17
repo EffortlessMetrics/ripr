@@ -9,6 +9,14 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Closed the Lane 1 shippable finding-alignment pass for 0.6.x. Current
+  repo-local audit evidence rolls 47,181 raw alignment signals into 38,027
+  canonical items and 149 actionable canonical gaps, with zero actionable
+  canonical items missing repair routes or verify commands and zero
+  `static_unknown` items missing named limitations. This is evidence-truth
+  closeout only: gates, badges, PR/CI rendering, LSP behavior, source edits,
+  generated tests, provider calls, preview-language authority, and mutation
+  execution remain unchanged.
 - Added public `ripr first-pr` / `ripr start-here` command routing for the
   first successful PR start-here packet. The existing `cargo xtask first-pr`
   path now delegates to the same public implementation, preserving explicit
