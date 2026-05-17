@@ -188,6 +188,18 @@ fn help_runs() {
 }
 
 #[test]
+fn unknown_command_typo_reports_nearest_known_command() {
+    let output = run_ripr(&["chekc"]);
+    assert_failure(&output);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown command \"chekc\". Did you mean `check`? Run `ripr --help`."),
+        "stderr should include a typo recovery hint, got:
+{stderr}"
+    );
+}
+
+#[test]
 fn check_human_output_reports_sample_findings() {
     let root = workspace_root().display().to_string();
     let diff = sample_diff();

@@ -55,9 +55,75 @@ impl CliCommand {
             Some("context") => Ok(Self::Context(command_args)),
             Some("doctor") => Ok(Self::Doctor(command_args)),
             Some("lsp") => Ok(Self::Lsp(command_args)),
-            Some(command) => Err(format!("unknown command {command:?}. Run `ripr --help`.")),
+            Some(command) => Err(unknown_command_error(command)),
         }
     }
+}
+
+const KNOWN_COMMANDS: &[&str] = &[
+    "init",
+    "pilot",
+    "outcome",
+    "evidence-health",
+    "review-comments",
+    "gate",
+    "baseline",
+    "zero",
+    "policy",
+    "pr-ledger",
+    "pr-comments",
+    "pr-review",
+    "coverage-grip",
+    "assistant-loop",
+    "first-action",
+    "reports",
+    "calibrate",
+    "agent",
+    "check",
+    "explain",
+    "context",
+    "doctor",
+    "lsp",
+];
+
+fn unknown_command_error(command: &str) -> String {
+    match closest_command(command) {
+        Some(suggestion) => {
+            format!("unknown command {command:?}. Did you mean `{suggestion}`? Run `ripr --help`.")
+        }
+        None => format!("unknown command {command:?}. Run `ripr --help`."),
+    }
+}
+
+fn closest_command(command: &str) -> Option<&'static str> {
+    let typo_budget = if command.len() <= 4 { 1 } else { 3 };
+    KNOWN_COMMANDS
+        .iter()
+        .copied()
+        .map(|known| (known, edit_distance(command, known)))
+        .filter(|(_, distance)| *distance <= typo_budget)
+        .min_by_key(|(known, distance)| (*distance, *known))
+        .map(|(known, _)| known)
+}
+
+fn edit_distance(left: &str, right: &str) -> usize {
+    let right_chars: Vec<char> = right.chars().collect();
+    let mut previous: Vec<usize> = (0..=right_chars.len()).collect();
+    let mut current = vec![0; right_chars.len() + 1];
+
+    for (left_idx, left_char) in left.chars().enumerate() {
+        current[0] = left_idx + 1;
+        for (right_idx, right_char) in right_chars.iter().enumerate() {
+            let substitution_cost = usize::from(left_char != *right_char);
+            let deletion = previous[right_idx + 1] + 1;
+            let insertion = current[right_idx] + 1;
+            let substitution = previous[right_idx] + substitution_cost;
+            current[right_idx + 1] = deletion.min(insertion).min(substitution);
+        }
+        std::mem::swap(&mut previous, &mut current);
+    }
+
+    previous[right_chars.len()]
 }
 
 #[cfg(test)]
@@ -126,6 +192,21 @@ mod tests {
         assert_eq!(
             CliCommand::from_parts(Some("unknown"), Vec::new()),
             Err("unknown command \"unknown\". Run `ripr --help`.".to_string())
+        );
+    }
+
+    #[test]
+    fn cli_command_from_parts_suggests_nearest_known_command_for_typos() {
+        assert_eq!(
+            CliCommand::from_parts(Some("chekc"), Vec::new()),
+            Err("unknown command \"chekc\". Did you mean `check`? Run `ripr --help`.".to_string())
+        );
+        assert_eq!(
+            CliCommand::from_parts(Some("review-comment"), Vec::new()),
+            Err(
+                "unknown command \"review-comment\". Did you mean `review-comments`? Run `ripr --help`."
+                    .to_string()
+            )
         );
     }
 }
