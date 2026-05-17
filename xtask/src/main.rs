@@ -27141,6 +27141,7 @@ fn finish_worktree_doctor_report(findings: &[WorktreeDoctorFinding]) -> Result<(
     } else {
         "pass"
     };
+    let next_actions = worktree_doctor_next_actions(findings);
     let mut body = format!("# ripr worktree doctor\n\nStatus: {status}\n\n");
     body.push_str("Checks:\n\n");
     body.push_str("- branch is not dirty main\n");
@@ -27163,6 +27164,10 @@ fn finish_worktree_doctor_report(findings: &[WorktreeDoctorFinding]) -> Result<(
     if findings.is_empty() {
         body.push_str("\nNo findings.\n");
     }
+    body.push_str("\nNext actions:\n\n");
+    for action in &next_actions {
+        body.push_str(&format!("- {action}\n"));
+    }
     write_report("worktree-doctor.md", &body)?;
     println!("{body}");
     if errors.is_empty() {
@@ -27177,6 +27182,54 @@ fn finish_worktree_doctor_report(findings: &[WorktreeDoctorFinding]) -> Result<(
                 .join("\n")
         ))
     }
+}
+
+fn worktree_doctor_next_actions(findings: &[WorktreeDoctorFinding]) -> Vec<String> {
+    if findings.is_empty() {
+        return vec!["continue with `cargo xtask precommit`".to_string()];
+    }
+
+    let mut actions = BTreeSet::new();
+    for finding in findings {
+        let message = finding.message.as_str();
+        if message.contains("main branch has uncommitted changes") {
+            actions.insert(
+                "move this work to a feature branch or fresh worktree before continuing"
+                    .to_string(),
+            );
+        }
+        if message.contains("behind origin/main") {
+            actions.insert(
+                "refresh the branch from `origin/main` before opening or updating a PR".to_string(),
+            );
+        }
+        if message.contains("generated badge endpoint") {
+            actions.insert(
+                "restore `badges/*.json` unless this is an intentional badge refresh".to_string(),
+            );
+        }
+        if message.contains("generated RIPR target artifact")
+            || message.contains("target/ripr exists")
+        {
+            actions.insert("remove local `target/ripr` report artifacts when the workspace is ready for handoff".to_string());
+        }
+        if message.contains("sample workspace target artifact")
+            || message.contains("crates/ripr/examples/sample/target exists")
+        {
+            actions.insert("remove `crates/ripr/examples/sample/target` or run `cargo clean` in that sample workspace".to_string());
+        }
+        if message.contains("changes span multiple source-of-truth layers") {
+            actions.insert("add or update an explicit work item marker before continuing broad source-of-truth work".to_string());
+        }
+    }
+    if actions.is_empty() {
+        actions.insert(
+            "inspect the findings above and rerun `cargo xtask worktree doctor`".to_string(),
+        );
+    } else {
+        actions.insert("rerun `cargo xtask worktree doctor` after cleanup".to_string());
+    }
+    actions.into_iter().collect()
 }
 
 fn goals(args: &[String]) -> Result<(), String> {
@@ -46399,6 +46452,9 @@ jobs:
                 .map_err(|err| format!("failed to read {}: {err}", report_path.display()))?;
             assert!(warning_report.contains("Status: warn"));
             assert!(warning_report.contains("Warnings:"));
+            assert!(warning_report.contains("Next actions:"));
+            assert!(warning_report.contains("remove local `target/ripr` report artifacts"));
+            assert!(warning_report.contains("rerun `cargo xtask worktree doctor`"));
 
             let errors = vec![WorktreeDoctorFinding {
                 severity: WorktreeDoctorSeverity::Error,
@@ -46412,8 +46468,26 @@ jobs:
                 .map_err(|err| format!("failed to read {}: {err}", report_path.display()))?;
             assert!(error_report.contains("Status: fail"));
             assert!(error_report.contains("Errors:"));
+            assert!(error_report.contains("refresh the branch from `origin/main`"));
             Ok(())
         })
+    }
+
+    #[test]
+    fn worktree_doctor_clean_report_names_next_gate() -> Result<(), String> {
+        with_temp_cwd(
+            "worktree-doctor-clean-next-action",
+            |root| -> Result<(), String> {
+                finish_worktree_doctor_report(&[])?;
+                let report_path = root.join("target/ripr/reports/worktree-doctor.md");
+                let report = fs::read_to_string(&report_path)
+                    .map_err(|err| format!("failed to read {}: {err}", report_path.display()))?;
+                assert!(report.contains("Status: pass"));
+                assert!(report.contains("Next actions:"));
+                assert!(report.contains("continue with `cargo xtask precommit`"));
+                Ok(())
+            },
+        )
     }
 
     #[test]
