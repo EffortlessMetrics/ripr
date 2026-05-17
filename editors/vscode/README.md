@@ -70,7 +70,7 @@ surface keeps that vocabulary out of the first-hour path. See the
 [Terminology bridge](https://github.com/EffortlessMetrics/ripr/blob/main/docs/TERMINOLOGY.md)
 to map between the two.
 
-The 0.5.x extension surfaces saved-workspace diagnostics, evidence-aware
+The 0.6.x extension surfaces saved-workspace diagnostics, evidence-aware
 hovers, intent-titled code actions for inspecting the flagged change /
 writing the targeted test / copying the agent handoff / verifying after the
 test / reviewing the receipt / refreshing analysis, an LSP
@@ -118,7 +118,7 @@ confirmation.
 
 ## Preview Limitations
 
-The `0.5.x` extension uses a universal VSIX and downloads native server
+The `0.6.x` extension uses a universal VSIX and downloads native server
 binaries from matching GitHub Releases when available. It does not auto-install
 Rust tooling, run mutation tests, make automatic edits, or analyze unsaved
 buffer overlays by default. Bundled platform-specific VSIXs are planned after
