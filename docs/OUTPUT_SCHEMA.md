@@ -115,6 +115,29 @@ repeated only as supporting evidence for the canonical item.
         "actionability": "inspect_visibility",
         "raw_group_size": 2,
         "group_reason": "declaration_and_literal_same_text_constant",
+        "primary_anchor": {
+          "file": "src/device_labels.rs",
+          "line": 46,
+          "kind": "exposed",
+          "source_id": "probe:src_device_labels_rs:46:decl",
+          "reason": "declaration_line_for_grouped_constant"
+        },
+        "raw_spans": [
+          {
+            "file": "src/device_labels.rs",
+            "start_line": 46,
+            "end_line": 46,
+            "kind": "exposed",
+            "source_id": "probe:src_device_labels_rs:46:decl"
+          },
+          {
+            "file": "src/device_labels.rs",
+            "start_line": 47,
+            "end_line": 47,
+            "kind": "static_unknown",
+            "source_id": "probe:src_device_labels_rs:47:literal"
+          }
+        ],
         "why": "Changed presentation text could not be traced to or away from a user-visible output sink.",
         "recommended_repair": "Trace the string constant to a rendered output path or confirm it is internal-only.",
         "repair_route": null,
@@ -233,6 +256,14 @@ Field contract:
   as `inspect_visibility`, `add_output_observer`, `already_observed`, or
   `no_action`. Presentation text does not produce user repair work from text
   alone.
+- `finding_alignment.items[].primary_anchor` - nullable preferred placement
+  hint for downstream surfaces that need one inline location. Supported
+  declaration-backed items point at the declaration or owner line and include
+  the source ID plus a placement reason.
+- `finding_alignment.items[].raw_spans[]` - source-span summary for every raw
+  finding attached to the canonical item. These spans preserve line-local
+  evidence for expansion/detail views; they do not become separate user
+  actions.
 - `finding_alignment.items[].repair_route` - nullable normalized repair route
   copied from class-specific evidence. It is required for
   `gap_state = "actionable"` in supported classes and is `null` for
@@ -964,8 +995,29 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
           "gap_state": "actionable",
           "actionability": "extend_related_test",
           "group_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "primary_anchor": {
+            "file": "src/pricing.rs",
+            "line": 88,
+            "kind": "weakly_gripped",
+            "source_id": "f3c9e4d21a0b7c88",
+            "reason": "canonical_group_primary_raw_finding"
+          },
+          "raw_spans": [
+            {
+              "file": "src/pricing.rs",
+              "start_line": 88,
+              "end_line": 88,
+              "kind": "weakly_gripped",
+              "source_id": "f3c9e4d21a0b7c88"
+            }
+          ],
           "why": "extend the nearest related test with the missing discriminator",
           "recommended_repair": "extend the nearest related test with the missing discriminator",
+          "repair_route": {
+            "repair_kind": "add_boundary_assertion",
+            "target_test_type": "boundary_discriminator",
+            "suggested_assertion": "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"
+          },
           "related_test": {
             "name": "below_threshold_has_no_discount",
             "file": "tests/pricing_tests.rs",
@@ -1175,9 +1227,19 @@ Field contract:
   raw findings to one canonical item.
 - `seams[].evidence_record.canonical_item` - additive finding-alignment
   projection with `gap_state`, class-scoped `actionability`, `why`,
-  `recommended_repair`, `related_test`, `verify_command`, `confidence`, and
-  raw group size. Downstream surfaces should render this canonical item before
-  treating raw findings as separate work.
+  `recommended_repair`, nullable structured `repair_route`, `related_test`,
+  `verify_command`, `confidence`, raw group size, nullable `primary_anchor`,
+  and `raw_spans`. Actionable canonical items carry
+  `repair_route.repair_kind`, `target_test_type`, and `suggested_assertion`;
+  no-action, observed, limitation, and unknown items keep
+  `repair_route: null`. Downstream surfaces should render this canonical item
+  before treating raw findings as separate work.
+- `seams[].evidence_record.canonical_item.primary_anchor` - preferred
+  placement hint for downstream surfaces when the canonical item has a safe
+  source location. It is `null` only when RIPR cannot safely name a placement.
+- `seams[].evidence_record.canonical_item.raw_spans[]` - source-span summary
+  for every raw finding contributing to the canonical item. These spans are
+  supporting evidence, not independent user-facing actions.
 - `seams[].evidence_record.evidence_path` - typed reach, activate,
   propagate, observe, and discriminate stages. Each stage carries `state`,
   `confidence`, and `summary`.
@@ -1754,7 +1816,8 @@ Field contract:
   duplicate user-action risks.
 - `finding_alignment.coverage.static_unknown_without_named_limitation` -
   count of static-unknown or limitation-shaped canonical items without a named
-  static limitation category plus repair route.
+  static limitation category plus repair route. Generic `static_unknown` or
+  `unknown` categories do not satisfy the named-limitation requirement.
 - `finding_alignment.coverage.canonical_items_without_repair_route` and
   `canonical_items_without_verify_command` - coverage counts for canonical
   items missing repair or verification guidance.
@@ -2463,7 +2526,7 @@ JSON shape:
     "after": "target/ripr/workflow/after.repo-exposure.json"
   },
   "provenance": {
-    "ripr_version": "0.5.0",
+    "ripr_version": "0.6.0",
     "repo_root": ".",
     "config_fingerprint": "fnv1a64:4c94a2f6cfaa5c21",
     "command_template_version": "0.1",
@@ -6034,7 +6097,7 @@ JSON shape:
     "missing_expected": 4,
     "warnings": 3,
     "failures": 0,
-    "start_here": "target/ripr/reports/pr-review-front-panel.md",
+    "start_here": "target/ripr/reports/start-here.md",
     "gate_authority": "target/ripr/reports/gate-decision.md",
     "advisory": true
   },
@@ -6044,6 +6107,19 @@ JSON shape:
       "label": "Start here",
       "summary": "Reviewer-first PR story.",
       "entries": [
+        {
+          "id": "first_pr_start_here",
+          "label": "First PR start here",
+          "kind": "markdown",
+          "path": "target/ripr/reports/start-here.md",
+          "json_path": "target/ripr/reports/start-here.json",
+          "status": "available",
+          "available": true,
+          "required": true,
+          "authority": false,
+          "description": "Canonical first-screen repair packet.",
+          "next_command": null
+        },
         {
           "id": "pr_review_front_panel",
           "label": "PR review front panel",
@@ -6154,6 +6230,39 @@ Report packet index field contract:
   no-generated-test, no-provider-call, no-runtime-mutation-execution,
   no-inline-comment, and advisory-default boundaries.
 
+`target/ripr/reports/pr-triage.json` is the open-board hygiene packet emitted by
+`cargo xtask pr-triage-report`:
+
+```json
+{
+  "schema_version": "0.1",
+  "mode": "advisory",
+  "status": "warn",
+  "open_prs": [],
+  "queue_disposition": [
+    {
+      "pr_number": 819,
+      "disposition": "needs_owner_decision",
+      "reason": "duplicate or stale work needs canonical owner selection",
+      "recommended_action": "Choose the canonical branch, refresh the stale draft, or close superseded variants."
+    }
+  ],
+  "findings": [],
+  "recommended_actions": []
+}
+```
+
+Field contract:
+
+- `queue_disposition[].disposition` is advisory. It may be
+  `merge_candidate`, `needs_rebase`, `needs_review`, `close_duplicate`,
+  `superseded`, `needs_fresh_validation`, `needs_owner_decision`, or
+  `do_not_touch_wrong_lane`.
+- `queue_disposition[]` never closes, updates, merges, comments on, or mutates
+  PRs. It translates triage findings into operator next-action vocabulary.
+- `findings[]` remains the detailed evidence; `recommended_actions[]` keeps the
+  grouped repair guidance for agents and maintainers.
+
 `target/ripr/reports/pr-ready.json` is the local PR readiness cockpit emitted by
 `cargo xtask pr-ready`:
 
@@ -6247,6 +6356,133 @@ unless the explicit gate decision already failed or reported `config_error`.
 See [Report packet index workflow](REPORT_PACKET_INDEX_WORKFLOW.md) for
 reviewer, maintainer, developer, and coding-agent use of the generated packet
 map.
+
+## First PR Start Here Packet
+
+`ripr first-pr` writes the first successful PR front-door packet from explicit
+existing RIPR artifacts. `cargo xtask first-pr` remains a repo-local wrapper
+over the same public command. The packet selects one top repairable
+PR-local Rust gap when the gap decision ledger supplies one, or emits a bounded
+no-action or blocked recovery state. It does not rerun hidden analysis, edit
+source, generate tests, call providers, run mutation testing, change gate
+policy, or change CI blocking.
+
+Command shape:
+
+```text
+ripr first-pr \
+  --root . \
+  --base origin/main \
+  --head HEAD \
+  --gap-ledger target/ripr/reports/gap-decision-ledger.json \
+  --first-action target/ripr/reports/first-useful-action.json \
+  --review-comments target/ripr/review/comments.json \
+  --agent-packet target/ripr/agent/gap-packet.md \
+  --gate-decision target/ripr/reports/gate-decision.json \
+  --receipts-dir target/ripr/receipts \
+  --out-dir target/ripr/reports
+```
+
+The command writes:
+
+```text
+target/ripr/reports/start-here.json
+target/ripr/reports/start-here.md
+```
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "first_pr_start_here",
+  "status": "blocked",
+  "posture": "advisory",
+  "root": ".",
+  "selected": {
+    "state": "stale_artifact",
+    "message": "The gap decision ledger is stale; refresh the first-run evidence before assigning repair work.",
+    "next_command": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json --out-md target/ripr/reports/gap-decision-ledger.md"
+  },
+  "commands": {
+    "regenerate_gap_ledger": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json --out-md target/ripr/reports/gap-decision-ledger.md",
+    "next": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json --out-md target/ripr/reports/gap-decision-ledger.md"
+  },
+  "artifacts": [
+    {
+      "id": "gap_ledger",
+      "label": "Gap decision ledger",
+      "path": "target/ripr/reports/gap-decision-ledger.json",
+      "status": "present",
+      "regeneration_command": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json --out-md target/ripr/reports/gap-decision-ledger.md"
+    }
+  ],
+  "authority": {
+    "status": "advisory",
+    "gate_decision": "target/ripr/reports/gate-decision.json",
+    "boundary": "Pass/fail authority remains with explicit gate-decision artifacts when configured; this first-run packet does not gate."
+  },
+  "warnings": [
+    "The gap decision ledger is stale; refresh the first-run evidence before assigning repair work."
+  ],
+  "limits": [
+    "Composes explicit RIPR artifacts only.",
+    "Does not run hidden analysis.",
+    "Does not edit source or generate tests.",
+    "Does not run mutation testing.",
+    "Does not change CI blocking or gate policy."
+  ]
+}
+```
+
+Field contract:
+
+- `schema_version` is `0.1` until the packet shape changes.
+- `kind` is always `first_pr_start_here`.
+- `status` is `actionable`, `blocked`, or `no_action`. It is reviewer context
+  only, not gate authority.
+- `posture` is always `advisory`.
+- `selected.state` is `top_gap` for a selected repairable gap,
+  `missing_artifact`, `malformed_artifact`, `stale_artifact`, `wrong_root`, or
+  `blocked_artifact` or `timeout` for blocked recovery states, and
+  `empty_diff` or `no_action` for no-action states.
+- `top_gap` requires `status = "actionable"`.
+- `selected.canonical_gap_id` and `selected.gap_id` identify the repair unit
+  when a top gap is selected. Generated CI and report indexes should prefer the
+  canonical gap id when present.
+- `selected.language` and `selected.language_status` keep Rust stable evidence
+  distinct from preview evidence when a top gap is selected.
+- `selected.repair.route`, `selected.repair.target_file`,
+  `selected.repair.related_test`, and `selected.repair.suggested_assertion`
+  describe the bounded repair route when present.
+- `selected.static_limit_kind` and `selected.static_limit_detail` are optional;
+  surfaces must show them before suggested action language when they are
+  present.
+- `selected.verify_command`, `selected.receipt_command`, and
+  `selected.receipt_state` are the static movement proof path. A missing
+  receipt is not failure, merge approval, mutation proof, or runtime adequacy.
+- `missing_artifact`, `malformed_artifact`, `stale_artifact`, `wrong_root`,
+  `blocked_artifact`, and `timeout` require `status = "blocked"` and a
+  bounded next command when one is known.
+- `empty_diff` and `no_action` require `status = "no_action"` and must not
+  produce a repair interruption.
+- `commands.regenerate_gap_ledger` is always present so missing, stale,
+  wrong-root, malformed, and timeout states can point to a known refresh path.
+- `artifacts[]` records artifact id, label, path, `present` or `missing`
+  status, and optional regeneration command.
+- `authority.boundary` preserves the gate boundary. This packet never becomes
+  pass/fail authority.
+- `warnings[]` carries blocked-state context without converting it to waiver,
+  suppression, improvement, clean, or gate-passing state.
+- `limits` preserves explicit-input, no-source-edit, no-generated-test,
+  no-provider-call, no-runtime-mutation-execution, and advisory-default
+  boundaries.
+
+Markdown should fit in a PR summary, local handoff, or generated CI summary. It
+should show the selected top gap, no-action state, or blocked recovery state
+first, followed by artifacts, authority, and limits. `empty_diff` must render
+as a no-action state, not a blocked repair.
 
 ### Review Guidance Outcome Receipt
 
@@ -6717,7 +6953,7 @@ JSON shape:
   "schema_version": "0.1",
   "tool": "ripr",
   "report": "release-readiness",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "status": "warn",
   "checks": [
     {
@@ -6725,7 +6961,7 @@ JSON shape:
       "status": "pass",
       "required": true,
       "command": "target/ripr/release-readiness/install/bin/ripr --help",
-      "summary": "installed binary exposes the 0.5 public loop commands",
+      "summary": "installed binary exposes the public release-loop commands",
       "artifacts": [
         "target/ripr/release-readiness/install/bin/ripr"
       ],
@@ -7277,6 +7513,13 @@ Field contract:
   repair text, route, source artifact, verification commands, and the
   authority boundary. It is the same repair vocabulary used by PR comment
   projection.
+- `packets[].llm_guidance.copyable_packet` - optional GapRecord-backed
+  pasteable repair packet for coding agents. It carries `task`, `context`,
+  `repair`, `verification`, `stop_conditions`, `do_not_do`,
+  `authority_boundary`, and a Markdown sibling with the same sections. It is
+  additive and derives only from the selected `GapRecord`; it does not rerun
+  analysis, edit source, generate tests, call providers, change gate
+  authority, or infer repairability from prose.
 - `packets[].current_grip` — one of the `SeamGripClass` strings the
   packet is emitted for (`weakly_gripped`, `ungripped`,
   `reachable_unrevealed`, the four `*_unknown` classes, or
@@ -7993,16 +8236,21 @@ fixtures/boundary_gap/expected/gate-adoption/<case>/gate-decision.json
 fixtures/boundary_gap/expected/gate-adoption/<case>/gate-decision.md
 fixtures/boundary_gap/expected/first-useful-action/<case>/first-useful-action.json
 fixtures/boundary_gap/expected/first-useful-action/<case>/first-useful-action.md
+fixtures/first_successful_pr/<case>/expected/start-here.json
+fixtures/first_successful_pr/<case>/expected/start-here.md
 fixtures/boundary_gap/expected/pr-review-front-panel/<case>/pr-review-front-panel.json
 fixtures/boundary_gap/expected/pr-review-front-panel/<case>/pr-review-front-panel.md
 fixtures/boundary_gap/expected/report-packet-index/<case>/index.json
 fixtures/boundary_gap/expected/report-packet-index/<case>/index.md
+fixtures/finding-alignment-dogfood/corpus.json
 ```
 
 The report is advisory. It runs `ripr check --mode fast` against stable fixture
 diffs and runs `ripr gate evaluate` against checked boundary-gap PR guidance
 and calibration evidence for the explicit gate adoption modes. It also checks
 repo-local first useful action receipts for the documented first-action routes.
+It records first successful PR receipts and first-run adoption counters for the
+checked `start-here.{json,md}` corpus.
 It checks repo-local PR review front-panel receipts for the documented Campaign
 24 reviewer routes. It checks repo-local report-packet index receipts for the
 documented Campaign 25 packet-index routes. It records
@@ -8013,10 +8261,16 @@ commands, artifact upload, advisory default posture, and gate-authority
 boundaries. The generated adoption receipts are compared with
 `fixtures/boundary_gap/expected/gate-adoption/`. The checked first-action
 receipts are read from `fixtures/boundary_gap/expected/first-useful-action/`.
+The checked first successful PR receipts are read from
+`fixtures/first_successful_pr/`.
 The checked front-panel receipts are read from
 `fixtures/boundary_gap/expected/pr-review-front-panel/`. The checked
 report-packet index receipts are read from
-`fixtures/boundary_gap/expected/report-packet-index/`.
+`fixtures/boundary_gap/expected/report-packet-index/`. The checked finding
+alignment receipts are read from `fixtures/finding-alignment-dogfood/` and
+record real RIPR PR examples where raw findings remain supporting evidence,
+canonical items are the countable unit, actionable items have repair and
+verification routes, and static limitations name analyzer repair routes.
 The calibrated-gate dogfood case expects a non-zero evaluator exit only for the
 explicit blocking mode and treats that as healthy when the written decision
 report has the expected `blocked` status and count.
@@ -8068,6 +8322,38 @@ JSON shape:
         "expected_audience": "developer",
         "expected_selected": true,
         "expected_static_movement": "unknown",
+        "errors": []
+      }
+    ]
+  },
+  "first_successful_pr": {
+    "default_ci_blocking": false,
+    "receipt_dir": "fixtures/first_successful_pr",
+    "metrics": {
+      "first_run_packets_total": 4,
+      "first_run_top_gap_selected_total": 2,
+      "first_run_no_action_total": 1,
+      "first_run_blocked_total": 1,
+      "first_run_missing_artifact_total": 0,
+      "first_run_stale_artifact_total": 0,
+      "first_run_wrong_root_total": 0,
+      "first_run_malformed_artifact_total": 0,
+      "first_run_timeout_total": 0
+    },
+    "cases": [
+      {
+        "name": "boundary-gap",
+        "expected_dir": "fixtures/first_successful_pr/boundary-gap/expected",
+        "json_path": "fixtures/first_successful_pr/boundary-gap/expected/start-here.json",
+        "markdown_path": "fixtures/first_successful_pr/boundary-gap/expected/start-here.md",
+        "status": "actionable",
+        "state": "top_gap",
+        "top_gap_kind": "MissingBoundaryAssertion",
+        "verify_command": "cargo xtask fixtures boundary_gap",
+        "next_command": null,
+        "expected_status": "actionable",
+        "expected_state": "top_gap",
+        "description": "A repairable Rust boundary gap becomes the top first-run repair.",
         "errors": []
       }
     ]
@@ -8163,12 +8449,42 @@ JSON shape:
         "command": "cargo run --quiet -p ripr -- init --ci github --dry-run",
         "duration_ms": 123,
         "start_here": true,
-        "repair_commands": 3,
-        "expected_repair_commands": 3,
+        "repair_commands": 4,
+        "expected_repair_commands": 4,
         "gate_authority_boundary": true,
         "default_advisory": true,
         "artifact_upload": true,
         "language_grouping_status": "deferred",
+        "errors": []
+      }
+    ]
+  },
+  "finding_alignment": {
+    "default_ci_blocking": false,
+    "receipt_dir": "fixtures/finding-alignment-dogfood",
+    "cases": [
+      {
+        "name": "config_policy_rendered_label_unobserved",
+        "source_pr": "EffortlessMetrics/ripr#1016",
+        "evidence_class": "config_or_policy_constant",
+        "raw_findings_total": 2,
+        "canonical_items_total": 1,
+        "gap_state": "actionable",
+        "actionability": "add_output_observer",
+        "user_outcome": "actionable_gap",
+        "repair_kind": "output_observer",
+        "target_test_type": "report_render_or_golden",
+        "verify_command": "cargo xtask evidence-quality-scorecard",
+        "static_limitation_category": null,
+        "static_limitation_repair_route": null,
+        "raw_findings_supporting_only": true,
+        "recommended_repair": "Add or update a report-render, config-output, snapshot, or golden observer for the rendered policy label.",
+        "must_not_claim": [
+          "Do not count declaration and literal findings as separate user actions.",
+          "Do not infer actionability from raw static class.",
+          "Do not recommend mutation testing before output-observer work."
+        ],
+        "reason": "A rendered config or policy label with no supported observer should become one actionable output-observer item.",
         "errors": []
       }
     ]

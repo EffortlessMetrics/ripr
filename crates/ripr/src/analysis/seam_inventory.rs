@@ -91,6 +91,11 @@ pub(crate) fn inventory_classified_seams_at_with_config(
     };
     let key = state.cache_key();
     let cache_started = Instant::now();
+    trace_latency_phase(
+        "cache_load",
+        &format!("start_files_{}", state.files.len()),
+        Duration::ZERO,
+    );
     match cache.load_classified_seams(&key) {
         CacheLoad::Hit(cached) => {
             trace_latency_phase("cache_load", "hit", cache_started.elapsed());
@@ -108,6 +113,7 @@ pub(crate) fn inventory_classified_seams_at_with_config(
         }
     }
     let compute_started = Instant::now();
+    trace_latency_phase("cold_compute", "start", Duration::ZERO);
     let classified = match inventory_classified_seams_from_state_with_config(&state, config) {
         Ok(classified) => {
             trace_latency_phase("cold_compute", "ok", compute_started.elapsed());
@@ -252,6 +258,15 @@ fn inventory_classified_seams_from_state_with_config(
 ) -> Result<Vec<ClassifiedSeam>, String> {
     let production_files = production_files_from_state(state);
     let build_started = Instant::now();
+    trace_latency_phase(
+        "file_fact_cache",
+        &format!(
+            "start_files_{}_production_{}",
+            state.files.len(),
+            production_files.len()
+        ),
+        Duration::ZERO,
+    );
     let mut cached =
         rust_index::build_index_from_loaded_files_with_cache(&state.workspace_root, &state.files)?;
     trace_latency_phase(
@@ -266,6 +281,11 @@ fn inventory_classified_seams_from_state_with_config(
     let seams = inventory_seams_from_index(&production_files, &cached.index);
     trace_latency_phase("inventory_seams", "ok", seams_started.elapsed());
     let evidence_started = Instant::now();
+    trace_latency_phase(
+        "evidence_for_seams",
+        &format!("start_seams_{}", seams.len()),
+        Duration::ZERO,
+    );
     let evidence = test_grip_evidence::evidence_for_seams(&seams, &cached.index);
     trace_latency_phase("evidence_for_seams", "ok", evidence_started.elapsed());
     let classify_started = Instant::now();
@@ -280,6 +300,15 @@ fn inventory_seam_grip_class_counts_from_state_with_config(
 ) -> Result<SeamGripClassCounts, String> {
     let production_files = production_files_from_state(state);
     let build_started = Instant::now();
+    trace_latency_phase(
+        "file_fact_cache",
+        &format!(
+            "start_files_{}_production_{}",
+            state.files.len(),
+            production_files.len()
+        ),
+        Duration::ZERO,
+    );
     let mut cached =
         rust_index::build_index_from_loaded_files_with_cache(&state.workspace_root, &state.files)?;
     trace_latency_phase(
@@ -846,6 +875,19 @@ mod tests {
         assert_eq!(
             line,
             "ripr_repo_exposure_latency phase=cache_load status=hit duration_ms=7"
+        );
+    }
+
+    #[test]
+    fn latency_trace_line_can_report_start_input_context() {
+        let line = latency_trace_line(
+            "file_fact_cache",
+            "start_files_42_production_7",
+            Duration::ZERO,
+        );
+        assert_eq!(
+            line,
+            "ripr_repo_exposure_latency phase=file_fact_cache status=start_files_42_production_7 duration_ms=0"
         );
     }
 

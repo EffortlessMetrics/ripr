@@ -45,9 +45,12 @@ target/ripr/reports/lane1-evidence-audit.json
 target/ripr/reports/lane1-evidence-audit.md
 ```
 
-It exits successfully after both artifacts are written. If repo exposure cannot
-be generated or parsed, it returns an actionable error and does not claim an
-audit exists.
+It exits successfully after both artifacts are written. If repo exposure
+generation exits non-zero after writing a complete repo-exposure JSON document
+with a top-level `seams` array, the audit may continue from that captured
+artifact with a warning. If the captured artifact is missing, malformed, or does
+not contain `seams`, the command returns an actionable error and does not claim
+an audit exists.
 
 ## JSON Contract
 
@@ -135,6 +138,12 @@ aligned, which raw findings remain unaligned, whether duplicate raw findings
 share a file and line, and whether canonical items lack repair routes,
 verification commands, or named static-limitation categories.
 
+Given a static-unknown or limitation-shaped canonical item, a limitation is
+named only when it carries a non-generic category and repair route. Generic
+`static_unknown` or `unknown` categories remain counted under
+`static_unknown_without_named_limitation` so unknowns stay visible as analyzer
+work instead of becoming vague user test debt.
+
 Given a headline seam with no canonical gap ID, the audit counts it under
 `headline_without_canonical_gap_id`.
 
@@ -157,10 +166,16 @@ audit report only; it does not change static classifications.
   field health.
 - `xtask::tests::lane1_evidence_audit_reports_alignment_coverage_holes` pins
   unaligned raw finding examples and same-line duplicate grouping.
+- `xtask::tests::lane1_evidence_audit_rejects_generic_static_unknown_limitation_category`
+  pins that generic `static_unknown` does not satisfy the named-limitation
+  requirement.
 - `xtask::tests::lane1_evidence_audit_markdown_names_required_sections` pins
   Markdown section coverage.
 - `xtask::tests::lane1_evidence_audit_rejects_repo_exposure_without_seams` pins
   malformed input handling.
+- `xtask::tests::lane1_repo_exposure_file_completion_check_requires_seams_and_closing_brace`
+  pins captured repo-exposure fallback acceptance after a non-zero generator
+  exit.
 - `xtask::tests::xtask_command_parse_preserves_compatibility_aliases` pins the
   `evidence-quality-audit` alias.
 - `xtask::tests::report_commands_dispatch_through_report_facades` keeps the
