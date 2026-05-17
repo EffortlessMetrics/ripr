@@ -104,9 +104,10 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckPositioningLanguage => super::check_positioning_language(),
         XtaskCommand::CheckDocRoles => super::check_doc_roles(),
         XtaskCommand::VscodeCompile => super::vscode_compile(),
-        XtaskCommand::VscodePackage => super::vscode_package(),
+        XtaskCommand::VscodePackage(args) => super::vscode_package(&args),
         XtaskCommand::VscodeTest => super::vscode_test(),
         XtaskCommand::VscodeTestE2e => super::vscode_test_e2e(),
+        XtaskCommand::VscodeMarketplaceVersion => super::vscode_marketplace_version(),
         XtaskCommand::Package => {
             super::run("cargo", &["package", "-p", "ripr", "--list"]).map(|_| ())
         }

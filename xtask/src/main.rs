@@ -1119,12 +1119,15 @@ fn vscode_compile() -> Result<(), String> {
     run_cwd_command(&vscode_compile_command())
 }
 
-fn vscode_package() -> Result<(), String> {
+fn vscode_package(args: &[String]) -> Result<(), String> {
     let extension_dir = vscode_extension_dir();
     let dist = extension_dir.join("dist");
     fs::create_dir_all(&dist)
         .map_err(|err| format!("failed to create {}: {err}", dist.display()))?;
-    let version = vscode_package_version(&extension_dir.join("package.json"))?;
+    let version = match parse_vscode_package_version_arg(args)? {
+        Some(version) => version,
+        None => vscode_package_version(&extension_dir.join("package.json"))?,
+    };
     run_cwd_command(&vscode_package_command(&version))
 }
 
@@ -1168,6 +1171,42 @@ fn vscode_package_command(version: &str) -> CwdCommand {
         ],
         cwd: vscode_extension_dir(),
     }
+}
+
+fn parse_vscode_package_version_arg(args: &[String]) -> Result<Option<String>, String> {
+    let mut version = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--version" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err("vscode-package --version requires a value".to_string());
+                };
+                let normalized = normalize_vscode_release_version(value)?;
+                version = Some(normalized);
+            }
+            other => {
+                return Err(format!(
+                    "unknown vscode-package argument `{other}`; expected --version <version>"
+                ));
+            }
+        }
+        index += 1;
+    }
+    Ok(version)
+}
+
+fn normalize_vscode_release_version(value: &str) -> Result<String, String> {
+    let normalized = value
+        .trim()
+        .strip_prefix('v')
+        .unwrap_or(value.trim())
+        .trim();
+    if normalized.is_empty() {
+        return Err("release version must not be empty".to_string());
+    }
+    Ok(normalized.to_string())
 }
 
 fn vscode_test_e2e_command() -> CwdCommand {
@@ -1243,6 +1282,30 @@ fn vscode_package_version(package_json: &Path) -> Result<String, String> {
         .filter(|version| !version.trim().is_empty())
         .map(str::to_string)
         .ok_or_else(|| format!("{} is missing a string version", package_json.display()))
+}
+
+fn vscode_marketplace_version() -> Result<(), String> {
+    let mut input = String::new();
+    std::io::stdin()
+        .read_to_string(&mut input)
+        .map_err(|err| format!("failed to read VS Code Marketplace JSON from stdin: {err}"))?;
+    let version = vscode_marketplace_version_from_json(&input)?;
+    println!("{version}");
+    Ok(())
+}
+
+fn vscode_marketplace_version_from_json(text: &str) -> Result<String, String> {
+    let value: Value = serde_json::from_str(text)
+        .map_err(|err| format!("failed to parse VS Code Marketplace JSON: {err}"))?;
+    value
+        .get("versions")
+        .and_then(Value::as_array)
+        .and_then(|versions| versions.first())
+        .and_then(|version| version.get("version"))
+        .and_then(Value::as_str)
+        .filter(|version| !version.trim().is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| "VS Code Marketplace JSON is missing versions[0].version".to_string())
 }
 
 fn ci_full_evidence_gates() -> [CiFullEvidenceGate; 5] {
@@ -33975,15 +34038,16 @@ mod tests {
         parse_pr_triage_pull_requests, parse_reason, parse_repo_exposure_static_seams,
         parse_required_status_contexts, parse_sarif_policy_args, parse_sarif_policy_results,
         parse_static_language_allowlist, parse_string_value, parse_targeted_test_outcome_args,
-        pr_body_validation_warning, pr_checks_summary, pr_ready_json, pr_ready_markdown,
-        pr_ready_next_action, pr_ready_status, pr_ready_status_from_report_status,
-        pr_sensitive_file_reason, pr_shape_warnings, pr_summary_body, pr_title_family,
-        pr_triage_findings, pr_triage_json, pr_triage_markdown, precommit_report_body,
-        public_contract_rows, read_lsp_cockpit_json_value, read_mutation_input_json, receipt_json,
-        receipt_specs, receipt_status_from_reports, render_no_panic_allowlist_proposals_markdown,
-        render_no_panic_allowlist_proposals_toml, repo_badge_artifact_command_args,
-        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
-        repo_exposure_latency_json, repo_exposure_latency_markdown, repo_exposure_latency_run,
+        parse_vscode_package_version_arg, pr_body_validation_warning, pr_checks_summary,
+        pr_ready_json, pr_ready_markdown, pr_ready_next_action, pr_ready_status,
+        pr_ready_status_from_report_status, pr_sensitive_file_reason, pr_shape_warnings,
+        pr_summary_body, pr_title_family, pr_triage_findings, pr_triage_json, pr_triage_markdown,
+        precommit_report_body, public_contract_rows, read_lsp_cockpit_json_value,
+        read_mutation_input_json, receipt_json, receipt_specs, receipt_status_from_reports,
+        render_no_panic_allowlist_proposals_markdown, render_no_panic_allowlist_proposals_toml,
+        repo_badge_artifact_command_args, repo_badge_artifact_jobs,
+        repo_badge_artifacts_summary_markdown, repo_exposure_latency_json,
+        repo_exposure_latency_markdown, repo_exposure_latency_run,
         repo_exposure_latency_run_from_output, repo_exposure_latency_status,
         repo_exposure_latency_trace, repo_root, repo_seam_inventory_command_args_for_root,
         report_index_json, report_index_markdown, report_index_missing_expected,
@@ -33997,10 +34061,10 @@ mod tests {
         targeted_test_outcome_report_markdown, test_efficiency_entry, test_efficiency_report_json,
         test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
         test_oracle_tests_in_text, unknown_command_message, validate_local_context_allowlist,
-        vscode_compile_command, vscode_extension_dir, vscode_package_command,
-        vscode_package_version, vscode_test_e2e_command, windows_absolute_path_tokens,
-        workflow_runtime_violations, worktree, worktree_doctor_findings,
-        write_repo_exposure_latency_report,
+        vscode_compile_command, vscode_extension_dir, vscode_marketplace_version_from_json,
+        vscode_package_command, vscode_package_version, vscode_test_e2e_command,
+        windows_absolute_path_tokens, workflow_runtime_violations, worktree,
+        worktree_doctor_findings, write_repo_exposure_latency_report,
     };
     use super::{
         DeclaredIntent, LocalContextFinding,
@@ -45311,7 +45375,7 @@ jobs:
         );
         assert_eq!(
             XtaskCommand::parse(["vscode-package".to_string()]),
-            XtaskCommand::VscodePackage
+            XtaskCommand::VscodePackage(Vec::new())
         );
         assert_eq!(
             XtaskCommand::parse(["badges".to_string()]),
@@ -45867,7 +45931,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(commands.contains(&"check-droid-review-config"));
         assert!(commands.contains(&"check-ci-lane-whitelist"));
         assert!(commands.contains(&"vscode-compile"));
-        assert!(commands.contains(&"vscode-package"));
+        assert!(commands.contains(&"vscode-package [--version <version>]"));
         assert!(commands.contains(&"vscode-test"));
         assert!(commands.contains(&"vscode-test-e2e"));
     }
@@ -47125,6 +47189,47 @@ covered_by = ["cargo xtask check-file-policy"]
             assert_eq!(vscode_package_version(&package_json)?, "0.4.0");
             Ok(())
         })
+    }
+
+    #[test]
+    fn vscode_package_version_arg_strips_tag_prefix() -> Result<(), String> {
+        let args = vec!["--version".to_string(), "v0.4.1".to_string()];
+
+        assert_eq!(
+            parse_vscode_package_version_arg(&args)?,
+            Some("0.4.1".to_string())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn vscode_package_version_arg_rejects_unknown_args() {
+        let args = vec!["--bad".to_string()];
+        let err = parse_vscode_package_version_arg(&args)
+            .expect_err("unknown vscode-package argument should fail");
+
+        assert!(err.contains("unknown vscode-package argument"));
+    }
+
+    #[test]
+    fn vscode_marketplace_version_reads_latest_version() -> Result<(), String> {
+        let text = r#"{
+          "versions": [
+            { "version": "0.4.1" },
+            { "version": "0.4.0" }
+          ]
+        }"#;
+
+        assert_eq!(vscode_marketplace_version_from_json(text)?, "0.4.1");
+        Ok(())
+    }
+
+    #[test]
+    fn vscode_marketplace_version_rejects_missing_version() {
+        let err = vscode_marketplace_version_from_json(r#"{ "versions": [{}] }"#)
+            .expect_err("missing marketplace version should fail");
+
+        assert!(err.contains("versions[0].version"));
     }
 
     #[test]
