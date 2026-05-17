@@ -71,6 +71,17 @@ struct RunBlock {
     text: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RustConversionCandidate {
+    path: String,
+    line: Option<usize>,
+    kind: String,
+    priority: String,
+    current_surface: String,
+    recommendation: String,
+    reason: String,
+}
+
 #[derive(Clone, Copy)]
 struct CiFullEvidenceGate {
     name: &'static str,
@@ -6406,6 +6417,259 @@ fn check_file_policy_impl() -> Result<(), String> {
         },
         &violations,
     )
+}
+
+pub(crate) fn rust_conversion_candidates() -> Result<(), String> {
+    let candidates = collect_rust_conversion_candidates()?;
+    write_report(
+        "rust-conversion-candidates.md",
+        &rust_conversion_candidates_markdown(&candidates),
+    )?;
+    write_report(
+        "rust-conversion-candidates.json",
+        &rust_conversion_candidates_json(&candidates)?,
+    )
+}
+
+fn collect_rust_conversion_candidates() -> Result<Vec<RustConversionCandidate>, String> {
+    let mut candidates = Vec::new();
+
+    for path in tracked_files()? {
+        if is_non_rust_programming_candidate(&path) {
+            candidates.extend(non_rust_source_conversion_candidate(&path));
+        }
+    }
+
+    for path in tracked_files()?
+        .into_iter()
+        .filter(|path| path.starts_with(".github/workflows/"))
+        .filter(|path| path.ends_with(".yml") || path.ends_with(".yaml"))
+    {
+        let text = read_text_lossy(Path::new(&path))?;
+        for block in extract_workflow_run_blocks(&text) {
+            if let Some(candidate) = workflow_run_conversion_candidate(&path, &block) {
+                candidates.push(candidate);
+            }
+        }
+    }
+
+    candidates.sort_by(|left, right| {
+        conversion_priority_rank(&left.priority)
+            .cmp(&conversion_priority_rank(&right.priority))
+            .then_with(|| left.path.cmp(&right.path))
+            .then_with(|| left.line.cmp(&right.line))
+            .then_with(|| left.kind.cmp(&right.kind))
+    });
+    Ok(candidates)
+}
+
+fn non_rust_source_conversion_candidate(path: &str) -> Option<RustConversionCandidate> {
+    if path.starts_with("editors/vscode/") && path.ends_with(".ts") {
+        return Some(RustConversionCandidate {
+            path: path.to_string(),
+            line: None,
+            kind: "retained_external_runtime".to_string(),
+            priority: "retained".to_string(),
+            current_surface: "VS Code extension TypeScript".to_string(),
+            recommendation: "Keep this code in the editor adapter; only move server behavior into ripr Rust modules or xtask.".to_string(),
+            reason: "The VS Code Extension Host API is TypeScript-native, so this is an approved adapter boundary rather than core automation.".to_string(),
+        });
+    }
+
+    if path.starts_with("fixtures/") {
+        return Some(RustConversionCandidate {
+            path: path.to_string(),
+            line: None,
+            kind: "retained_fixture_input".to_string(),
+            priority: "retained".to_string(),
+            current_surface: "fixture workspace input".to_string(),
+            recommendation: "Keep as fixture input unless the fixture no longer maps to a spec; move reusable fixture orchestration into Rust/xtask instead.".to_string(),
+            reason: "Fixture workspaces are analyzed inputs for preview language adapters, not repository automation.".to_string(),
+        });
+    }
+
+    Some(RustConversionCandidate {
+        path: path.to_string(),
+        line: None,
+        kind: "non_rust_programming_without_retention_rule".to_string(),
+        priority: "high".to_string(),
+        current_surface: "unapproved non-Rust implementation or automation".to_string(),
+        recommendation: "Move this behavior into Rust under crates/ripr for product logic or xtask for repository automation.".to_string(),
+        reason: "Rust is the default implementation surface, and this file has no approved external-runtime or fixture retention rule.".to_string(),
+    })
+}
+
+fn workflow_run_conversion_candidate(
+    path: &str,
+    block: &RunBlock,
+) -> Option<RustConversionCandidate> {
+    let text = block.text.trim();
+    if text.is_empty() || text.starts_with("cargo xtask ") {
+        return None;
+    }
+    if workflow_run_is_external_runtime(text) {
+        return Some(RustConversionCandidate {
+            path: path.to_string(),
+            line: Some(block.line_number),
+            kind: "retained_external_runtime".to_string(),
+            priority: "retained".to_string(),
+            current_surface: "workflow command for an external toolchain".to_string(),
+            recommendation: "Keep as a direct workflow call unless repo-owned report assembly grows around it; put repo-owned assembly into xtask.".to_string(),
+            reason: "The command delegates to Cargo, npm, Codecov, or another external tool rather than implementing repo policy in shell.".to_string(),
+        });
+    }
+
+    if workflow_run_contains_shell_logic(text) {
+        return Some(RustConversionCandidate {
+            path: path.to_string(),
+            line: Some(block.line_number),
+            kind: "workflow_shell_logic".to_string(),
+            priority: "medium".to_string(),
+            current_surface: "GitHub Actions shell run block".to_string(),
+            recommendation: "Move repo-owned file/report/summary assembly into a focused cargo xtask command, then leave this workflow step as a short cargo xtask invocation.".to_string(),
+            reason: "Workflow shell is harder to type-check and test than Rust/xtask, especially when it creates local reports or step summaries.".to_string(),
+        });
+    }
+
+    None
+}
+
+fn workflow_run_is_external_runtime(text: &str) -> bool {
+    let trimmed = text.trim();
+    trimmed.starts_with("cargo ")
+        || trimmed.starts_with("npm ")
+        || trimmed.starts_with("code ")
+        || trimmed.starts_with("npx ")
+        || trimmed.starts_with("codecov")
+}
+
+fn workflow_run_contains_shell_logic(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    let markers = [
+        "mkdir ",
+        "printf ",
+        "echo ",
+        "git diff",
+        "ls ",
+        "tee ",
+        "cat ",
+        "if ",
+        "fi",
+        "for ",
+        "while ",
+        "<<",
+        "&&",
+        "||",
+        "$github_step_summary",
+        "$github_env",
+    ];
+    text.lines().count() > 1 || markers.iter().any(|marker| lower.contains(marker))
+}
+
+fn conversion_priority_rank(priority: &str) -> u8 {
+    match priority {
+        "high" => 0,
+        "medium" => 1,
+        "low" => 2,
+        "retained" => 3,
+        _ => 4,
+    }
+}
+
+fn rust_conversion_candidates_markdown(candidates: &[RustConversionCandidate]) -> String {
+    let actionable = candidates
+        .iter()
+        .filter(|candidate| candidate.priority != "retained")
+        .count();
+    let retained = candidates.len().saturating_sub(actionable);
+    let mut body = format!(
+        "# ripr Rust conversion candidates\n\nStatus: advisory\n\nActionable candidates: {actionable}\nRetained boundaries inspected: {retained}\n\nThis report keeps the Rust-first policy actionable without treating fixture inputs or editor adapter code as core implementation debt.\n\n"
+    );
+
+    body.push_str("## Actionable candidates\n\n");
+    if actionable == 0 {
+        body.push_str("No unretained non-Rust source files or workflow shell migration candidates were found.\n");
+    } else {
+        body.push_str("| Priority | Path | Line | Kind | Recommendation | Reason |\n");
+        body.push_str("| --- | --- | --- | --- | --- | --- |\n");
+        for candidate in candidates
+            .iter()
+            .filter(|candidate| candidate.priority != "retained")
+        {
+            push_rust_conversion_candidate_row(&mut body, candidate);
+        }
+    }
+
+    body.push_str("\n## Retained boundaries\n\n");
+    if retained == 0 {
+        body.push_str("No retained non-Rust runtime or fixture boundaries were found.\n");
+    } else {
+        body.push_str("| Path | Line | Surface | Recommendation | Reason |\n");
+        body.push_str("| --- | --- | --- | --- | --- |\n");
+        for candidate in candidates
+            .iter()
+            .filter(|candidate| candidate.priority == "retained")
+        {
+            let line = candidate
+                .line
+                .map(|line| line.to_string())
+                .unwrap_or_else(|| "-".to_string());
+            body.push_str(&format!(
+                "| `{}` | {} | {} | {} | {} |\n",
+                markdown_cell(&candidate.path),
+                line,
+                markdown_cell(&candidate.current_surface),
+                markdown_cell(&candidate.recommendation),
+                markdown_cell(&candidate.reason)
+            ));
+        }
+    }
+
+    body.push_str("\nNext command:\n\n```bash\ncargo xtask check-file-policy\n```\n");
+    body
+}
+
+fn push_rust_conversion_candidate_row(body: &mut String, candidate: &RustConversionCandidate) {
+    let line = candidate
+        .line
+        .map(|line| line.to_string())
+        .unwrap_or_else(|| "-".to_string());
+    body.push_str(&format!(
+        "| {} | `{}` | {} | {} | {} | {} |\n",
+        markdown_cell(&candidate.priority),
+        markdown_cell(&candidate.path),
+        line,
+        markdown_cell(&candidate.kind),
+        markdown_cell(&candidate.recommendation),
+        markdown_cell(&candidate.reason)
+    ));
+}
+
+fn rust_conversion_candidates_json(
+    candidates: &[RustConversionCandidate],
+) -> Result<String, String> {
+    let items = candidates
+        .iter()
+        .map(|candidate| {
+            serde_json::json!({
+                "path": candidate.path,
+                "line": candidate.line,
+                "kind": candidate.kind,
+                "priority": candidate.priority,
+                "current_surface": candidate.current_surface,
+                "recommendation": candidate.recommendation,
+                "reason": candidate.reason,
+            })
+        })
+        .collect::<Vec<_>>();
+    let value = serde_json::json!({
+        "schema_version": 1,
+        "actionable_count": candidates.iter().filter(|candidate| candidate.priority != "retained").count(),
+        "retained_count": candidates.iter().filter(|candidate| candidate.priority == "retained").count(),
+        "candidates": items,
+    });
+    serde_json::to_string_pretty(&value)
+        .map_err(|err| format!("failed to serialize rust-conversion-candidates report: {err}"))
 }
 
 fn check_executable_files_impl() -> Result<(), String> {
@@ -39972,6 +40236,174 @@ fn has_unwrap_in_name() -> bool {
                 .is_some()
         );
         assert!(non_rust_programming_retention_reason("scripts/check.py").is_none());
+    }
+
+    #[test]
+    fn rust_conversion_candidates_classify_unretained_non_rust_source() -> Result<(), String> {
+        let Some(candidate) = super::non_rust_source_conversion_candidate("scripts/check.py")
+        else {
+            return Err("unretained non-Rust source should be a candidate".to_string());
+        };
+
+        assert_eq!(candidate.priority, "high");
+        assert_eq!(
+            candidate.kind,
+            "non_rust_programming_without_retention_rule"
+        );
+        assert!(candidate.recommendation.contains("xtask"));
+        Ok(())
+    }
+
+    #[test]
+    fn rust_conversion_candidates_retains_fixture_and_editor_boundaries() -> Result<(), String> {
+        let Some(fixture) = super::non_rust_source_conversion_candidate(
+            "fixtures/python_boundary_gap/input/src/discount.py",
+        ) else {
+            return Err("fixture input should be assessed".to_string());
+        };
+        let Some(editor) =
+            super::non_rust_source_conversion_candidate("editors/vscode/src/extension.ts")
+        else {
+            return Err("editor adapter should be assessed".to_string());
+        };
+
+        assert_eq!(fixture.priority, "retained");
+        assert_eq!(fixture.kind, "retained_fixture_input");
+        assert_eq!(editor.priority, "retained");
+        assert_eq!(editor.kind, "retained_external_runtime");
+        Ok(())
+    }
+
+    #[test]
+    fn rust_conversion_candidates_identify_workflow_shell_logic() -> Result<(), String> {
+        let block = super::RunBlock {
+            line_number: 12,
+            non_empty_lines: 1,
+            text: "mkdir -p target/ripr/reports && git diff --name-only > target/ripr/reports/changes.txt"
+                .to_string(),
+        };
+
+        let Some(candidate) =
+            super::workflow_run_conversion_candidate(".github/workflows/pr-plan.yml", &block)
+        else {
+            return Err("repo-owned workflow shell should be a migration candidate".to_string());
+        };
+
+        assert_eq!(candidate.priority, "medium");
+        assert_eq!(candidate.line, Some(12));
+        assert_eq!(candidate.kind, "workflow_shell_logic");
+        Ok(())
+    }
+
+    #[test]
+    fn rust_conversion_candidates_skip_xtask_workflow_calls() {
+        let block = super::RunBlock {
+            line_number: 34,
+            non_empty_lines: 1,
+            text: "cargo xtask reports index || true".to_string(),
+        };
+
+        assert!(
+            super::workflow_run_conversion_candidate(".github/workflows/ci.yml", &block).is_none()
+        );
+    }
+
+    #[test]
+    fn rust_conversion_candidates_retains_external_workflow_tooling() -> Result<(), String> {
+        let block = super::RunBlock {
+            line_number: 21,
+            non_empty_lines: 1,
+            text: "npm --prefix editors/vscode run compile".to_string(),
+        };
+
+        let Some(candidate) =
+            super::workflow_run_conversion_candidate(".github/workflows/ci.yml", &block)
+        else {
+            return Err("external workflow tooling should be retained".to_string());
+        };
+
+        assert_eq!(candidate.priority, "retained");
+        assert_eq!(candidate.kind, "retained_external_runtime");
+        assert_eq!(candidate.line, Some(21));
+        assert!(candidate.current_surface.contains("external toolchain"));
+        Ok(())
+    }
+
+    #[test]
+    fn rust_conversion_candidates_markdown_reports_actionable_and_retained_counts() {
+        let candidates = sample_rust_conversion_candidates();
+
+        let markdown = super::rust_conversion_candidates_markdown(&candidates);
+
+        assert!(markdown.contains("Status: advisory"));
+        assert!(markdown.contains("Actionable candidates: 2"));
+        assert!(markdown.contains("Retained boundaries inspected: 1"));
+        assert!(markdown.contains("workflow_shell_logic"));
+        assert!(markdown.contains("VS Code extension TypeScript"));
+        assert!(markdown.contains("cargo xtask check-file-policy"));
+    }
+
+    #[test]
+    fn rust_conversion_candidates_markdown_handles_empty_report() {
+        let markdown = super::rust_conversion_candidates_markdown(&[]);
+
+        assert!(markdown.contains("Actionable candidates: 0"));
+        assert!(markdown.contains("Retained boundaries inspected: 0"));
+        assert!(markdown.contains(
+            "No unretained non-Rust source files or workflow shell migration candidates were found."
+        ));
+        assert!(
+            markdown.contains("No retained non-Rust runtime or fixture boundaries were found.")
+        );
+    }
+
+    #[test]
+    fn rust_conversion_candidates_json_reports_counts_and_items() -> Result<(), String> {
+        let candidates = sample_rust_conversion_candidates();
+
+        let json = super::rust_conversion_candidates_json(&candidates)?;
+        let value: serde_json::Value = serde_json::from_str(&json)
+            .map_err(|err| format!("rust conversion JSON should parse: {err}"))?;
+
+        assert_eq!(value["schema_version"], 1);
+        assert_eq!(value["actionable_count"], 2);
+        assert_eq!(value["retained_count"], 1);
+        assert_eq!(value["candidates"][0]["path"], "scripts/check.py");
+        assert_eq!(value["candidates"][1]["line"], 42);
+        assert_eq!(value["candidates"][2]["priority"], "retained");
+        Ok(())
+    }
+
+    fn sample_rust_conversion_candidates() -> Vec<super::RustConversionCandidate> {
+        vec![
+            super::RustConversionCandidate {
+                path: "scripts/check.py".to_string(),
+                line: None,
+                kind: "non_rust_programming_without_retention_rule".to_string(),
+                priority: "high".to_string(),
+                current_surface: "unapproved non-Rust implementation or automation".to_string(),
+                recommendation: "Move this behavior into xtask.".to_string(),
+                reason: "Rust is the default implementation surface.".to_string(),
+            },
+            super::RustConversionCandidate {
+                path: ".github/workflows/pr-plan.yml".to_string(),
+                line: Some(42),
+                kind: "workflow_shell_logic".to_string(),
+                priority: "medium".to_string(),
+                current_surface: "GitHub Actions shell run block".to_string(),
+                recommendation: "Move report assembly into cargo xtask.".to_string(),
+                reason: "Workflow shell is harder to type-check and test.".to_string(),
+            },
+            super::RustConversionCandidate {
+                path: "editors/vscode/src/extension.ts".to_string(),
+                line: None,
+                kind: "retained_external_runtime".to_string(),
+                priority: "retained".to_string(),
+                current_surface: "VS Code extension TypeScript".to_string(),
+                recommendation: "Keep this code in the editor adapter.".to_string(),
+                reason: "The VS Code Extension Host API is TypeScript-native.".to_string(),
+            },
+        ]
     }
 
     #[test]
