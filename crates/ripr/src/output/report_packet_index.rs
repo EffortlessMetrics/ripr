@@ -559,7 +559,7 @@ fn artifact_specs(input: &ReportPacketIndexInput) -> Vec<ArtifactSpec> {
 }
 
 fn artifact_available(spec: &ArtifactSpec) -> bool {
-    spec.path.exists() || spec.json_path.as_ref().is_some_and(|path| path.exists())
+    spec.path.exists()
 }
 
 fn status_for_spec(spec: &ArtifactSpec) -> String {
@@ -818,6 +818,35 @@ mod tests {
             render_report_packet_index_markdown(&report)
                 .contains("PR review front panel: not_generated")
         );
+        Ok(())
+    }
+
+    #[test]
+    fn report_packet_index_does_not_treat_json_sibling_as_markdown_artifact() -> Result<(), String>
+    {
+        let root = temp_root("json-only-front-panel")?;
+        write(
+            &root.join("target/ripr/reports/first-useful-action.md"),
+            "Status: pass\n",
+        )?;
+        write(
+            &root.join("target/ripr/reports/pr-review-front-panel.json"),
+            r#"{"status":"pass"}"#,
+        )?;
+
+        let report = build_report_packet_index_report(input_for_root(&root));
+
+        assert_eq!(report.status, "warn");
+        assert_eq!(report.summary.start_here, None);
+        assert_eq!(report.summary.missing_expected, 2);
+        assert!(report.missing_expected.iter().any(|missing| {
+            missing.id == "pr_review_front_panel" && missing.reason == "not_generated"
+        }));
+        assert!(report.groups.iter().any(|group| {
+            group.entries.iter().any(|entry| {
+                entry.id == "pr_review_front_panel" && !entry.available && entry.status == "missing"
+            })
+        }));
         Ok(())
     }
 
@@ -1636,11 +1665,11 @@ mod tests {
         Ok(())
     }
 
-    // ── artifact_available: json_path fallback ───────────────────────────────
+    // ── artifact_available: primary artifact only ────────────────────────────
 
     #[test]
-    fn artifact_available_true_when_only_json_path_exists() -> Result<(), String> {
-        let root = temp_root("avail-json")?;
+    fn artifact_available_ignores_json_sibling_for_markdown_spec() -> Result<(), String> {
+        let root = temp_root("avail-json-sibling")?;
         let json_path = root.join("target/ripr/reports/front-panel.json");
         write(&json_path, r#"{"status":"pass"}"#)?;
         let spec = ArtifactSpec {
@@ -1656,7 +1685,7 @@ mod tests {
             default_status: "available",
             next_command: None,
         };
-        assert!(artifact_available(&spec));
+        assert!(!artifact_available(&spec));
         Ok(())
     }
 
