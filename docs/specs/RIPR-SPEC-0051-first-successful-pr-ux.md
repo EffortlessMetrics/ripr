@@ -385,17 +385,25 @@ Likely implementation surfaces:
 
 ## Metrics
 
-Future implementation may add metrics only when backed by code and traceable
-tests. Candidate metrics:
+The dogfood report emits first-run adoption counters for the checked
+`fixtures/first_successful_pr/` corpus. These counters measure whether the
+first screen selected a repairable gap, produced a no-action state, or produced
+a blocked recovery state; they are adoption evidence, not runtime mutation or
+coverage adequacy claims.
 
 - `first_run_packets_total`;
 - `first_run_top_gap_selected_total`;
 - `first_run_no_action_total`;
+- `first_run_blocked_total`;
 - `first_run_missing_artifact_total`;
 - `first_run_stale_artifact_total`;
 - `first_run_wrong_root_total`;
 - `first_run_malformed_artifact_total`;
-- `first_run_timeout_total`;
+- `first_run_timeout_total`.
+
+Future implementation may add repair and movement counters only when backed by
+code and traceable tests. Candidate follow-up metrics:
+
 - `first_run_repair_attempted_total`;
 - `first_run_receipt_present_total`;
 - `first_run_movement_improved_total`;
