@@ -154,6 +154,11 @@ It composes existing artifacts into `target/ripr/reports/start-here.{json,md}`
 and does not add analyzer truth. Inside this repo, `cargo xtask first-pr` is a
 compatibility wrapper over the same public command.
 
+When a surface boundary is unclear, use the ownership table in
+[First successful PR workflow](FIRST_PR_WORKFLOW.md#surface-ownership). It
+names which surface owns start-here, generated CI, editor handoff, agent
+packets, badges, PR evidence, and gate authority.
+
 ## Agent Or Reviewer First Hour
 
 Use this path when a human or external coding agent needs a deterministic work
