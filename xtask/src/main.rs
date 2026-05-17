@@ -24057,6 +24057,7 @@ fn dogfood_report_packet_index_run(
 }
 
 const GENERATED_CI_FIRST_ACTION_REPAIR: &str = "Regenerate command: `ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md`";
+const GENERATED_CI_FIRST_PR_REPAIR: &str = "ripr first-pr --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json --first-action target/ripr/reports/first-useful-action.json --review-comments target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-packet.json --gate-decision target/ripr/reports/gate-decision.json --receipts-dir target/ripr/receipts --out-dir target/ripr/reports";
 const GENERATED_CI_FRONT_PANEL_REPAIR: &str = "Regenerate command: `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md`";
 const GENERATED_CI_PACKET_INDEX_REPAIR: &str = "Regenerate command: `ripr reports index --root . --reports-dir target/ripr/reports --review-dir target/ripr/review --receipts-dir target/ripr/receipts --workflow-dir target/ripr/workflow --agent-dir target/ripr/agent --pilot-dir target/ripr/pilot --ci-dir target/ci --out target/ripr/reports/index.json --out-md target/ripr/reports/index.md`.";
 
@@ -24093,16 +24094,19 @@ fn dogfood_generated_ci_cockpit_run_from_workflow(
     workflow: &str,
 ) -> DogfoodGeneratedCiCockpitRun {
     let start_here = workflow.contains("### Start here")
-        && workflow.contains("Open `target/ripr/reports/pr-review-front-panel.md` first");
+        && workflow.contains("Open `target/ripr/reports/start-here.md` first")
+        && workflow.contains("name: Render RIPR first-pr start-here")
+        && workflow.contains("cat target/ripr/reports/start-here.md");
     let repair_commands = [
         GENERATED_CI_FIRST_ACTION_REPAIR,
+        GENERATED_CI_FIRST_PR_REPAIR,
         GENERATED_CI_FRONT_PANEL_REPAIR,
         GENERATED_CI_PACKET_INDEX_REPAIR,
     ]
     .iter()
     .filter(|command| workflow.contains(**command))
     .count();
-    let expected_repair_commands = 3usize;
+    let expected_repair_commands = 4usize;
     let gate_authority_boundary =
         workflow.contains("ripr gate evaluate") && workflow.contains("Gate authority:");
     let default_advisory = workflow.contains(
@@ -36602,25 +36606,25 @@ mod tests {
         DogfoodPreviewProjectionRuns, DogfoodReportInputs, DogfoodReportPacketIndexRun, DogfoodRun,
         EvidenceQualityScorecardInput, EvidenceQualityScorecardInputs,
         EvidenceQualityScorecardReport, EvidenceQualityTrendInputs, EvidenceQualityTrendReport,
-        FixKind, GENERATED_CI_FIRST_ACTION_REPAIR, GENERATED_CI_FRONT_PANEL_REPAIR,
-        GENERATED_CI_PACKET_INDEX_REPAIR, GhPrStatusPullRequest, GhPrStatusReview,
-        LocalContextAllow, LspCockpitFixture, LspCockpitReport, MarkdownLink, PrTriageCheck,
-        PrTriageFinding, PrTriagePullRequest, ReceiptRecord, RepoExposureLatencyReport,
-        RepoExposureLatencyRun, RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
-        ReportIndexRepoOpsArtifact, SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold,
-        StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass, WorktreeDoctorFinding,
-        WorktreeDoctorSeverity, badge_artifact_command_args, badge_artifact_jobs,
-        badge_artifact_native_slot, badge_artifacts_summary_markdown, badge_diff_policy_violations,
-        build_lsp_cockpit_report, build_no_panic_allowlist_proposals,
-        build_repo_exposure_latency_report, build_targeted_test_outcome_report,
-        campaign_source_truth_violations_for_root, check_allow_attributes,
-        check_badge_diff_policy_with_context, check_droid_review_config, check_executable_files,
-        check_file_policy, check_local_context, check_network_policy, check_no_panic_family,
-        check_process_policy, check_static_language, check_workflows, ci_full_evidence_gates,
-        cockpit_json, cockpit_markdown, collect_panic_findings, collect_semantic_panic_findings,
-        command_catalog, command_catalog_violations, commands_report_json,
-        commands_report_markdown, critic_findings, days_from_civil, dogfood_class_counts,
-        dogfood_editor_gap_cockpit_run, dogfood_editor_gap_cockpit_scenarios,
+        FixKind, GENERATED_CI_FIRST_ACTION_REPAIR, GENERATED_CI_FIRST_PR_REPAIR,
+        GENERATED_CI_FRONT_PANEL_REPAIR, GENERATED_CI_PACKET_INDEX_REPAIR, GhPrStatusPullRequest,
+        GhPrStatusReview, LocalContextAllow, LspCockpitFixture, LspCockpitReport, MarkdownLink,
+        PrTriageCheck, PrTriageFinding, PrTriagePullRequest, ReceiptRecord,
+        RepoExposureLatencyReport, RepoExposureLatencyRun, RepoExposureLatencyTrace,
+        ReportIndexCampaign, ReportIndexEntry, ReportIndexRepoOpsArtifact, SarifPolicyMode,
+        SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
+        TestOracleClass, WorktreeDoctorFinding, WorktreeDoctorSeverity,
+        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
+        badge_artifacts_summary_markdown, badge_diff_policy_violations, build_lsp_cockpit_report,
+        build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
+        build_targeted_test_outcome_report, campaign_source_truth_violations_for_root,
+        check_allow_attributes, check_badge_diff_policy_with_context, check_droid_review_config,
+        check_executable_files, check_file_policy, check_local_context, check_network_policy,
+        check_no_panic_family, check_process_policy, check_static_language, check_workflows,
+        ci_full_evidence_gates, cockpit_json, cockpit_markdown, collect_panic_findings,
+        collect_semantic_panic_findings, command_catalog, command_catalog_violations,
+        commands_report_json, commands_report_markdown, critic_findings, days_from_civil,
+        dogfood_class_counts, dogfood_editor_gap_cockpit_run, dogfood_editor_gap_cockpit_scenarios,
         dogfood_finding_alignment_run, dogfood_finding_alignment_scenarios,
         dogfood_first_action_scenarios, dogfood_first_pr_metrics, dogfood_first_pr_run,
         dogfood_first_pr_scenarios, dogfood_gate_adoption_scenarios,
@@ -43360,8 +43364,8 @@ fn exact_owner_call_has_external_expected_value() {
             command: "cargo run --quiet -p ripr -- init --ci github --dry-run".to_string(),
             duration_ms: 10,
             start_here: true,
-            repair_commands: 3,
-            expected_repair_commands: 3,
+            repair_commands: 4,
+            expected_repair_commands: 4,
             gate_authority_boundary: true,
             default_advisory: true,
             artifact_upload: true,
@@ -43923,10 +43927,13 @@ jobs:
       - uses: actions/upload-artifact@v7
       - run: |
           echo '### Start here'
-          echo '- Open `target/ripr/reports/pr-review-front-panel.md` first when it exists.'
+          echo '- Open `target/ripr/reports/start-here.md` first when it exists.'
+          echo 'name: Render RIPR first-pr start-here'
+          echo 'cat target/ripr/reports/start-here.md'
           echo 'RIPR is advisory static evidence.'
           echo 'Gate authority: `ripr gate evaluate` remains the pass/fail source.'
           echo '{GENERATED_CI_FIRST_ACTION_REPAIR}'
+          echo '{GENERATED_CI_FIRST_PR_REPAIR}'
           echo '{GENERATED_CI_FRONT_PANEL_REPAIR}'
           echo '{GENERATED_CI_PACKET_INDEX_REPAIR}'
           echo '### Language preview grouping'
@@ -43946,7 +43953,7 @@ jobs:
         );
         assert!(run.errors.is_empty(), "{:?}", run.errors);
         assert!(run.start_here);
-        assert_eq!(run.repair_commands, 3);
+        assert_eq!(run.repair_commands, 4);
         assert!(run.gate_authority_boundary);
         assert!(run.default_advisory);
         assert!(run.artifact_upload);
