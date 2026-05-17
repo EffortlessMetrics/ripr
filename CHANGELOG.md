@@ -13,6 +13,9 @@ are scoped or reviewed.
   input through a bounded direct `ripr` invocation with latency tracing, so a
   cold full-repo evidence pass reports a clear timeout with phase context
   instead of waiting indefinitely or leaving an orphaned analyzer process.
+- Lane 1 evidence-quality scorecards and trends now surface finding-alignment
+  coverage gaps for unnamed static unknowns, actionable canonical items missing
+  repair routes, and actionable canonical items missing verify commands.
 
 ## 0.6.0 - 2026-05-17
 
