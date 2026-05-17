@@ -8147,6 +8147,8 @@ fixtures/boundary_gap/expected/gate-adoption/<case>/gate-decision.json
 fixtures/boundary_gap/expected/gate-adoption/<case>/gate-decision.md
 fixtures/boundary_gap/expected/first-useful-action/<case>/first-useful-action.json
 fixtures/boundary_gap/expected/first-useful-action/<case>/first-useful-action.md
+fixtures/first_successful_pr/<case>/expected/start-here.json
+fixtures/first_successful_pr/<case>/expected/start-here.md
 fixtures/boundary_gap/expected/pr-review-front-panel/<case>/pr-review-front-panel.json
 fixtures/boundary_gap/expected/pr-review-front-panel/<case>/pr-review-front-panel.md
 fixtures/boundary_gap/expected/report-packet-index/<case>/index.json
@@ -8158,6 +8160,8 @@ The report is advisory. It runs `ripr check --mode fast` against stable fixture
 diffs and runs `ripr gate evaluate` against checked boundary-gap PR guidance
 and calibration evidence for the explicit gate adoption modes. It also checks
 repo-local first useful action receipts for the documented first-action routes.
+It records first successful PR receipts and first-run adoption counters for the
+checked `start-here.{json,md}` corpus.
 It checks repo-local PR review front-panel receipts for the documented Campaign
 24 reviewer routes. It checks repo-local report-packet index receipts for the
 documented Campaign 25 packet-index routes. It records
@@ -8168,6 +8172,8 @@ commands, artifact upload, advisory default posture, and gate-authority
 boundaries. The generated adoption receipts are compared with
 `fixtures/boundary_gap/expected/gate-adoption/`. The checked first-action
 receipts are read from `fixtures/boundary_gap/expected/first-useful-action/`.
+The checked first successful PR receipts are read from
+`fixtures/first_successful_pr/`.
 The checked front-panel receipts are read from
 `fixtures/boundary_gap/expected/pr-review-front-panel/`. The checked
 report-packet index receipts are read from
@@ -8227,6 +8233,38 @@ JSON shape:
         "expected_audience": "developer",
         "expected_selected": true,
         "expected_static_movement": "unknown",
+        "errors": []
+      }
+    ]
+  },
+  "first_successful_pr": {
+    "default_ci_blocking": false,
+    "receipt_dir": "fixtures/first_successful_pr",
+    "metrics": {
+      "first_run_packets_total": 4,
+      "first_run_top_gap_selected_total": 2,
+      "first_run_no_action_total": 1,
+      "first_run_blocked_total": 1,
+      "first_run_missing_artifact_total": 0,
+      "first_run_stale_artifact_total": 0,
+      "first_run_wrong_root_total": 0,
+      "first_run_malformed_artifact_total": 0,
+      "first_run_timeout_total": 0
+    },
+    "cases": [
+      {
+        "name": "boundary-gap",
+        "expected_dir": "fixtures/first_successful_pr/boundary-gap/expected",
+        "json_path": "fixtures/first_successful_pr/boundary-gap/expected/start-here.json",
+        "markdown_path": "fixtures/first_successful_pr/boundary-gap/expected/start-here.md",
+        "status": "actionable",
+        "state": "top_gap",
+        "top_gap_kind": "MissingBoundaryAssertion",
+        "verify_command": "cargo xtask fixtures boundary_gap",
+        "next_command": null,
+        "expected_status": "actionable",
+        "expected_state": "top_gap",
+        "description": "A repairable Rust boundary gap becomes the top first-run repair.",
         "errors": []
       }
     ]

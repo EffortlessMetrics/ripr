@@ -3269,6 +3269,7 @@ metrics = [
   "first_run_packets_total",
   "first_run_top_gap_selected_total",
   "first_run_no_action_total",
+  "first_run_blocked_total",
   "first_run_missing_artifact_total",
   "first_run_stale_artifact_total",
   "first_run_wrong_root_total",
