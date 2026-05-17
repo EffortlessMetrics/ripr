@@ -421,3 +421,115 @@ fn comparable_expression(expression: &str) -> String {
         .trim_start_matches('&')
         .to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::domain::{OracleKind, OracleStrength};
+
+    use super::{
+        classify_assertion, contains_macro_invocation, extract_assertions,
+        extract_line_scanned_oracles,
+    };
+
+    #[test]
+    fn exact_custom_assertion_helpers_are_strong_when_arguments_show_comparison() {
+        let free_function = classify_assertion("assert_quote_eq(actual, expected);");
+        assert_eq!(free_function.kind, OracleKind::ExactValue);
+        assert_eq!(free_function.strength, OracleStrength::Strong);
+
+        let namespaced = classify_assertion("helpers::assert_error_matches(actual, expected);");
+        assert_eq!(namespaced.kind, OracleKind::ExactValue);
+        assert_eq!(namespaced.strength, OracleStrength::Strong);
+
+        let receiver = classify_assertion("snapshot.assert_equal(expected);");
+        assert_eq!(receiver.kind, OracleKind::ExactValue);
+        assert_eq!(receiver.strength, OracleStrength::Strong);
+    }
+
+    #[test]
+    fn ambiguous_custom_assertion_helpers_remain_unknown() {
+        let classification = classify_assertion("assert_quote(actual);");
+
+        assert_eq!(classification.kind, OracleKind::Unknown);
+        assert_eq!(classification.strength, OracleStrength::Unknown);
+    }
+
+    #[test]
+    fn mock_and_side_effect_lines_are_detected_by_line_scanner() {
+        let body = r#"
+            mock_checkout.expect_charge(total);
+            event_log.assert_recorded("discount_applied");
+            let unrelated = assert_eq!(1, 1);
+        "#;
+
+        let facts = extract_line_scanned_oracles(body, 40);
+
+        assert_eq!(facts.len(), 2);
+        assert_eq!(facts[0].line, 41);
+        assert_eq!(facts[0].kind, OracleKind::MockExpectation);
+        assert_eq!(facts[0].strength, OracleStrength::Medium);
+        assert_eq!(facts[1].line, 42);
+        assert_eq!(facts[1].kind, OracleKind::MockExpectation);
+        assert_eq!(facts[1].strength, OracleStrength::Medium);
+    }
+
+    #[test]
+    fn assertion_extraction_preserves_line_numbers_and_observed_tokens() {
+        let body = r#"
+            let actual = quote_total(input);
+            assert_eq!(actual.discounted_total, expected_total);
+        "#;
+
+        let facts = extract_assertions(body, 10);
+
+        assert_eq!(facts.len(), 1);
+        assert_eq!(facts[0].line, 12);
+        assert_eq!(facts[0].kind, OracleKind::ExactValue);
+        assert_eq!(facts[0].strength, OracleStrength::Strong);
+        assert!(facts[0].observed_tokens.contains(&"actual".to_string()));
+        assert!(
+            facts[0]
+                .observed_tokens
+                .contains(&"expected_total".to_string())
+        );
+    }
+
+    #[test]
+    fn macro_detection_requires_macro_boundaries_and_delimiters() {
+        assert!(contains_macro_invocation(
+            "insta::assert_json_snapshot!({\"ok\": true});",
+            "assert_json_snapshot!",
+        ));
+        assert!(contains_macro_invocation(
+            "expect![[r#\"value\"#]].assert_eq(&actual);",
+            "expect!",
+        ));
+
+        assert!(!contains_macro_invocation(
+            "not_assert_json_snapshot!(actual);",
+            "assert_json_snapshot!",
+        ));
+        assert!(!contains_macro_invocation(
+            "assert_json_snapshot_value(actual);",
+            "assert_json_snapshot!",
+        ));
+    }
+
+    #[test]
+    fn duplicative_equality_is_weak_relational_evidence() {
+        let classification = classify_assertion("assert_eq!(&actual.total, actual.total);");
+
+        assert_eq!(classification.kind, OracleKind::RelationalCheck);
+        assert_eq!(classification.strength, OracleStrength::Weak);
+    }
+
+    #[test]
+    fn nested_commas_in_assertion_arguments_do_not_look_duplicative() {
+        let classification = classify_assertion(
+            "assert_eq!(quote.total(items, currency), expected_total(100, currency));",
+        );
+
+        assert_eq!(classification.kind, OracleKind::ExactValue);
+        assert_eq!(classification.strength, OracleStrength::Strong);
+    }
+}
