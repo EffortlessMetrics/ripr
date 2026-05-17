@@ -36977,6 +36977,18 @@ mod tests {
         ExitStatusExt::from_raw(0)
     }
 
+    #[cfg(unix)]
+    fn failure_exit_status() -> ExitStatus {
+        use std::os::unix::process::ExitStatusExt;
+        ExitStatusExt::from_raw(1 << 8)
+    }
+
+    #[cfg(windows)]
+    fn failure_exit_status() -> ExitStatus {
+        use std::os::windows::process::ExitStatusExt;
+        ExitStatusExt::from_raw(1)
+    }
+
     #[test]
     fn assistant_loop_health_fixture_corpus_guard_accepts_complete_contract() -> Result<(), String>
     {
@@ -49208,6 +49220,117 @@ covered_by = ["cargo xtask check-file-policy"]
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn lane1_evidence_audit_repo_exposure_generation_writes_success_json() -> Result<(), String> {
+        let root = temp_dir("lane1-repo-exposure-success");
+        let output_path = root.join("repo-exposure.json");
+        let timeout = Duration::from_millis(50);
+        let stdout = "{\n  \"schema_version\": \"0.3\",\n  \"seams\": []\n}\n";
+
+        write_lane1_evidence_audit_repo_exposure_with_runner(
+            &output_path,
+            Path::new("ripr"),
+            timeout,
+            |binary, args, timeout_seen| {
+                assert_eq!(binary, Path::new("ripr"));
+                assert_eq!(timeout_seen, timeout);
+                assert_eq!(args, lane1_evidence_audit_repo_exposure_args().as_slice());
+                Ok(TimedOutput {
+                    status: Some(success_exit_status()),
+                    stdout: stdout.to_string(),
+                    stderr: String::new(),
+                    duration: Duration::from_millis(1),
+                    timed_out: false,
+                })
+            },
+        )?;
+
+        assert_eq!(
+            fs::read_to_string(&output_path).map_err(|err| err.to_string())?,
+            stdout
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_evidence_audit_repo_exposure_generation_accepts_complete_json_from_nonzero_status()
+    -> Result<(), String> {
+        let root = temp_dir("lane1-repo-exposure-nonzero-complete");
+        let output_path = root.join("repo-exposure.json");
+        let stdout = "{\n  \"schema_version\": \"0.3\",\n  \"seams\": []\n}\n";
+
+        write_lane1_evidence_audit_repo_exposure_with_runner(
+            &output_path,
+            Path::new("ripr"),
+            Duration::from_millis(50),
+            |_binary, _args, _timeout_seen| {
+                Ok(TimedOutput {
+                    status: Some(failure_exit_status()),
+                    stdout: stdout.to_string(),
+                    stderr: "nonfatal stderr after full JSON".to_string(),
+                    duration: Duration::from_millis(1),
+                    timed_out: false,
+                })
+            },
+        )?;
+
+        assert_eq!(
+            fs::read_to_string(&output_path).map_err(|err| err.to_string())?,
+            stdout
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_evidence_audit_repo_exposure_generation_rejects_incomplete_nonzero_json() {
+        let root = temp_dir("lane1-repo-exposure-nonzero-incomplete");
+        let output_path = root.join("repo-exposure.json");
+        let err = write_lane1_evidence_audit_repo_exposure_with_runner(
+            &output_path,
+            Path::new("ripr"),
+            Duration::from_millis(50),
+            |_binary, _args, _timeout_seen| {
+                Ok(TimedOutput {
+                    status: Some(failure_exit_status()),
+                    stdout: "{\n  \"schema_version\": \"0.3\",\n  \"seams\": [\n".to_string(),
+                    stderr: "repo exposure failed".to_string(),
+                    duration: Duration::from_millis(1),
+                    timed_out: false,
+                })
+            },
+        )
+        .expect_err("incomplete repo-exposure JSON should fail on nonzero status");
+
+        assert!(err.contains("failed with"), "{err}");
+        assert!(err.contains("repo exposure failed"), "{err}");
+    }
+
+    #[test]
+    fn lane1_evidence_audit_repo_exposure_generation_reports_missing_exit_status() {
+        let root = temp_dir("lane1-repo-exposure-no-status");
+        let output_path = root.join("repo-exposure.json");
+        let err = write_lane1_evidence_audit_repo_exposure_with_runner(
+            &output_path,
+            Path::new("ripr"),
+            Duration::from_millis(50),
+            |_binary, _args, _timeout_seen| {
+                Ok(TimedOutput {
+                    status: None,
+                    stdout: "{\n  \"schema_version\": \"0.3\",\n  \"seams\": []\n}\n".to_string(),
+                    stderr: "missing status stderr".to_string(),
+                    duration: Duration::from_millis(1),
+                    timed_out: false,
+                })
+            },
+        )
+        .expect_err("missing exit status should be reported");
+
+        assert!(err.contains("did not report an exit status"), "{err}");
+        assert!(err.contains("missing status stderr"), "{err}");
     }
 
     #[test]
