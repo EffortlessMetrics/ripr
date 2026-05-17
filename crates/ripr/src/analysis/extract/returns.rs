@@ -21,3 +21,41 @@ pub(crate) fn extract_return_facts(body: &str, start_line: usize) -> Vec<ReturnF
     returns.dedup_by(|a, b| a.line == b.line && a.text == b.text);
     returns
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_return_facts_keeps_line_order_and_repeated_text_on_distinct_lines() {
+        let facts = extract_return_facts(
+            "if ok { return Ok(42); }\nlet value = Some(1);\nlet value = Some(1);\nNone",
+            20,
+        );
+
+        let actual = facts
+            .iter()
+            .map(|fact| (fact.line, fact.text.as_str()))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            actual,
+            vec![
+                (20, "if ok { return Ok(42); }"),
+                (21, "let value = Some(1);"),
+                (22, "let value = Some(1);"),
+                (23, "None"),
+            ]
+        );
+    }
+
+    #[test]
+    fn extract_return_facts_ignores_lines_without_return_shapes() {
+        let facts = extract_return_facts(
+            "let token = missing_value;\nlet error = no_error_here;\nlet option = something;",
+            1,
+        );
+
+        assert_eq!(facts, Vec::new());
+    }
+}

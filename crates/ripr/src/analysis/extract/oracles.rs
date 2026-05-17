@@ -421,3 +421,66 @@ fn comparable_expression(expression: &str) -> String {
         .trim_start_matches('&')
         .to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::{OracleKind, OracleStrength};
+
+    #[test]
+    fn extract_assertions_records_trimmed_text_lines_and_observed_tokens() {
+        let facts = extract_assertions(
+            "let result = calculate_total();\n    assert_eq!(result.total, 42);\nresult.unwrap();",
+            30,
+        );
+
+        assert_eq!(facts.len(), 2);
+        assert_eq!(facts[0].line, 31);
+        assert_eq!(facts[0].text, "assert_eq!(result.total, 42);");
+        assert_eq!(facts[0].kind, OracleKind::ExactValue);
+        assert_eq!(facts[0].strength, OracleStrength::Strong);
+        assert_eq!(facts[0].observed_tokens, vec!["result", "total"]);
+        assert_eq!(facts[1].line, 32);
+        assert_eq!(facts[1].kind, OracleKind::SmokeOnly);
+        assert_eq!(facts[1].strength, OracleStrength::Smoke);
+    }
+
+    #[test]
+    fn line_scanned_oracles_capture_only_non_macro_observer_shapes() {
+        let facts = extract_line_scanned_oracles(
+            "assert_eq!(total, 42);\nmock_service.expect_publish().times(1);\nassert_event_published(event);\nhelper();",
+            100,
+        );
+
+        let actual = facts
+            .iter()
+            .map(|fact| (fact.line, fact.text.as_str(), fact.kind.clone()))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            actual,
+            vec![
+                (
+                    101,
+                    "mock_service.expect_publish().times(1);",
+                    OracleKind::MockExpectation,
+                ),
+                (
+                    102,
+                    "assert_event_published(event);",
+                    OracleKind::MockExpectation,
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn equality_argument_split_ignores_nested_commas_and_strings() {
+        let oracle = classify_assertion(
+            r#"assert_eq!(render(vec![1, 2], "a,b"), render(vec![1, 2], "a,b"), "same");"#,
+        );
+
+        assert_eq!(oracle.kind, OracleKind::RelationalCheck);
+        assert_eq!(oracle.strength, OracleStrength::Weak);
+    }
+}

@@ -41,3 +41,24 @@ fn is_interesting_token(token: &str) -> bool {
                 | "is_err"
         )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_identifier_tokens_filters_rust_oracle_noise_and_sorts_unique_tokens() {
+        let tokens = extract_identifier_tokens(
+            "assert_eq!(quote.total, quote.discount_total); assert!(result.is_ok());",
+        );
+
+        assert_eq!(tokens, vec!["discount_total", "quote", "result", "total"]);
+    }
+
+    #[test]
+    fn extract_identifier_tokens_keeps_unicode_alphanumeric_tokens() {
+        let tokens = extract_identifier_tokens("assert_eq!(café_total, заказ_total);");
+
+        assert_eq!(tokens, vec!["café_total", "заказ_total"]);
+    }
+}
