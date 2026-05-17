@@ -3256,6 +3256,7 @@ outputs = [
   "docs/proposals/RIPR-PROP-0009-first-run-ux-adoption-hardening.md",
   "docs/OUTPUT_SCHEMA.md",
   "docs/FIRST_PR_WORKFLOW.md",
+  "docs/demo/first-successful-pr.md",
   "docs/BLOCKING_READINESS.md",
   "docs/QUICKSTART.md",
   "README.md",

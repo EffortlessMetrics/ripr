@@ -251,6 +251,8 @@ The result is advisory, and runtime mutation testing remains optional follow-up.
 
 - [Quickstart](QUICKSTART.md) covers first-hour paths for CLI, CI, editor, and
   agent users.
+- [First successful PR demo](demo/first-successful-pr.md) shows the checked
+  boundary-gap, output-contract, no-action, and blocked fixture cases.
 - [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) explains the
   artifact router that can pick the next bounded action.
 - [Targeted test workflow](TARGETED_TEST_WORKFLOW.md) is the deeper
