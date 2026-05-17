@@ -71,6 +71,25 @@ struct RunBlock {
     text: String,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct RustFirstMigrationFinding {
+    path: String,
+    line: Option<usize>,
+    category: String,
+    priority: String,
+    current_surface: String,
+    core_route: String,
+    reason: String,
+    recommended_move: String,
+}
+
+#[derive(Debug, Default)]
+struct RustFirstMigrationAudit {
+    findings: Vec<RustFirstMigrationFinding>,
+    retained_non_rust_programming_files: usize,
+    tracked_non_rust_policy_files: usize,
+}
+
 #[derive(Clone, Copy)]
 struct CiFullEvidenceGate {
     name: &'static str,
@@ -5725,6 +5744,239 @@ fn check_file_policy_impl() -> Result<(), String> {
         },
         &violations,
     )
+}
+
+pub(crate) fn rust_first_migration_audit() -> Result<(), String> {
+    let audit = build_rust_first_migration_audit()?;
+    write_report(
+        "rust-first-migration.json",
+        &rust_first_migration_audit_json(&audit),
+    )?;
+    write_report(
+        "rust-first-migration.md",
+        &rust_first_migration_audit_markdown(&audit),
+    )?;
+    println!(
+        "wrote {} Rust-first migration finding(s) to target/ripr/reports/rust-first-migration.md",
+        audit.findings.len()
+    );
+    Ok(())
+}
+
+fn build_rust_first_migration_audit() -> Result<RustFirstMigrationAudit, String> {
+    let allow_entries = parse_file_policy_allowlist("policy/non-rust-allowlist.toml")?;
+    let mut audit = RustFirstMigrationAudit::default();
+
+    for path in tracked_files()? {
+        if !is_file_policy_candidate(&path) || path.ends_with(".rs") {
+            continue;
+        }
+        audit.tracked_non_rust_policy_files += 1;
+        if is_non_rust_programming_candidate(&path)
+            && non_rust_programming_retention_reason(&path).is_some()
+        {
+            audit.retained_non_rust_programming_files += 1;
+        }
+        if is_non_rust_programming_candidate(&path)
+            && non_rust_programming_retention_reason(&path).is_none()
+        {
+            let entry = allow_entry_for_path(&allow_entries, &path);
+            audit.findings.push(RustFirstMigrationFinding {
+                path: path.clone(),
+                line: None,
+                category: "non_rust_programming_file".to_string(),
+                priority: "convert".to_string(),
+                current_surface: allow_entry_surface(entry),
+                core_route: "xtask_or_ripr_internal_module".to_string(),
+                reason: "Programming source is not tied to an approved non-Rust runtime surface.".to_string(),
+                recommended_move: "Move the behavior into Rust production code or cargo xtask, then delete or narrow the non-Rust allowlist entry.".to_string(),
+            });
+        }
+    }
+
+    for path in collect_files(Path::new(".github/workflows"))? {
+        let normalized = normalize_path(&path);
+        if !(normalized.ends_with(".yml") || normalized.ends_with(".yaml")) {
+            continue;
+        }
+        let text = read_text_lossy(&path)?;
+        for block in extract_workflow_run_blocks(&text) {
+            if let Some(reason) = workflow_run_block_migration_reason(&block) {
+                audit.findings.push(RustFirstMigrationFinding {
+                    path: normalized.clone(),
+                    line: Some(block.line_number),
+                    category: "workflow_embedded_script".to_string(),
+                    priority: workflow_run_block_priority(&block).to_string(),
+                    current_surface: "github_workflow_run_block".to_string(),
+                    core_route: "cargo_xtask".to_string(),
+                    reason,
+                    recommended_move: "Move parsing, branching, and report assembly into a focused xtask command so workflow YAML only orchestrates Cargo/npm commands.".to_string(),
+                });
+            }
+        }
+    }
+
+    audit.findings.sort_by(|left, right| {
+        left.path
+            .cmp(&right.path)
+            .then(left.line.cmp(&right.line))
+            .then(left.category.cmp(&right.category))
+    });
+    audit.findings.dedup();
+    Ok(audit)
+}
+
+fn allow_entry_for_path<'a>(
+    entries: &'a [FilePolicyAllowEntry],
+    path: &str,
+) -> Option<&'a FilePolicyAllowEntry> {
+    entries
+        .iter()
+        .find(|entry| glob_matches(entry.glob.as_deref().unwrap_or_default(), path))
+}
+
+fn allow_entry_surface(entry: Option<&FilePolicyAllowEntry>) -> String {
+    entry
+        .and_then(|entry| entry.surface.as_deref())
+        .unwrap_or("unknown")
+        .to_string()
+}
+
+fn workflow_run_block_migration_reason(block: &RunBlock) -> Option<String> {
+    let text = block.text.to_ascii_lowercase();
+    let mut reasons = Vec::new();
+    for token in [
+        "python3", "python -", "jq ", "jq -", "sed ", "awk ", "perl ",
+    ] {
+        if text.contains(token) {
+            reasons.push(format!("uses `{}`", token.trim()));
+        }
+    }
+    if block.non_empty_lines >= 8 {
+        reasons.push(format!(
+            "contains {} non-empty shell line(s)",
+            block.non_empty_lines
+        ));
+    }
+    if reasons.is_empty() {
+        None
+    } else {
+        Some(format!("Workflow run block {}.", reasons.join(" and ")))
+    }
+}
+
+fn workflow_run_block_priority(block: &RunBlock) -> &'static str {
+    let text = block.text.to_ascii_lowercase();
+    if text.contains("python") || text.contains("jq") || block.non_empty_lines >= 12 {
+        "convert"
+    } else {
+        "inspect"
+    }
+}
+
+fn rust_first_migration_audit_json(audit: &RustFirstMigrationAudit) -> String {
+    let mut body = String::new();
+    body.push_str("{\n");
+    body.push_str("  \"schema_version\": \"1.0\",\n");
+    body.push_str("  \"policy\": \"rust_first_migration_audit\",\n");
+    body.push_str(&format!(
+        "  \"tracked_non_rust_policy_files\": {},\n",
+        audit.tracked_non_rust_policy_files
+    ));
+    body.push_str(&format!(
+        "  \"retained_non_rust_programming_files\": {},\n",
+        audit.retained_non_rust_programming_files
+    ));
+    body.push_str(&format!(
+        "  \"findings_count\": {},\n",
+        audit.findings.len()
+    ));
+    body.push_str("  \"findings\": [\n");
+    for (index, finding) in audit.findings.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!(
+            "      \"path\": \"{}\",\n",
+            json_escape(&finding.path)
+        ));
+        match finding.line {
+            Some(line) => body.push_str(&format!("      \"line\": {line},\n")),
+            None => body.push_str("      \"line\": null,\n"),
+        }
+        body.push_str(&format!(
+            "      \"category\": \"{}\",\n",
+            json_escape(&finding.category)
+        ));
+        body.push_str(&format!(
+            "      \"priority\": \"{}\",\n",
+            json_escape(&finding.priority)
+        ));
+        body.push_str(&format!(
+            "      \"current_surface\": \"{}\",\n",
+            json_escape(&finding.current_surface)
+        ));
+        body.push_str(&format!(
+            "      \"core_route\": \"{}\",\n",
+            json_escape(&finding.core_route)
+        ));
+        body.push_str(&format!(
+            "      \"reason\": \"{}\",\n",
+            json_escape(&finding.reason)
+        ));
+        body.push_str(&format!(
+            "      \"recommended_move\": \"{}\"\n",
+            json_escape(&finding.recommended_move)
+        ));
+        body.push_str("    }");
+    }
+    body.push_str("\n  ]\n}\n");
+    body
+}
+
+fn rust_first_migration_audit_markdown(audit: &RustFirstMigrationAudit) -> String {
+    let mut body = String::new();
+    body.push_str("# Rust-first migration audit\n\n");
+    body.push_str("Status: advisory\n\n");
+    body.push_str("This report finds non-Rust implementation or automation seams that can move toward the Rust-first core design without changing `ripr` output contracts. Approved runtime-bound surfaces, such as VS Code TypeScript client code and analyzed fixture inputs, are counted as retained rather than flagged.\n\n");
+    body.push_str("## Summary\n\n");
+    body.push_str(&format!(
+        "- Tracked non-Rust policy files inspected: {}\n",
+        audit.tracked_non_rust_policy_files
+    ));
+    body.push_str(&format!(
+        "- Retained non-Rust programming files with runtime/fixture reasons: {}\n",
+        audit.retained_non_rust_programming_files
+    ));
+    body.push_str(&format!(
+        "- Migration findings: {}\n\n",
+        audit.findings.len()
+    ));
+    body.push_str("## Findings\n\n");
+    if audit.findings.is_empty() {
+        body.push_str("No Rust-first migration findings were detected.\n");
+        return body;
+    }
+    body.push_str("| Priority | Category | Location | Current surface | Core route | Why | Recommended move |\n");
+    body.push_str("| --- | --- | --- | --- | --- | --- | --- |\n");
+    for finding in &audit.findings {
+        let location = match finding.line {
+            Some(line) => format!("{}:{}", finding.path, line),
+            None => finding.path.clone(),
+        };
+        body.push_str(&format!(
+            "| {} | {} | `{}` | {} | {} | {} | {} |\n",
+            markdown_cell(&finding.priority),
+            markdown_cell(&finding.category),
+            markdown_cell(&location),
+            markdown_cell(&finding.current_surface),
+            markdown_cell(&finding.core_route),
+            markdown_cell(&finding.reason),
+            markdown_cell(&finding.recommended_move)
+        ));
+    }
+    body
 }
 
 fn check_executable_files_impl() -> Result<(), String> {
@@ -33925,20 +34177,20 @@ mod tests {
         LocalContextAllow, LspCockpitFixture, LspCockpitReport, MarkdownLink, PrTriageCheck,
         PrTriageFinding, PrTriagePullRequest, ReceiptRecord, RepoExposureLatencyReport,
         RepoExposureLatencyRun, RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
-        ReportIndexRepoOpsArtifact, SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold,
-        StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass, WorktreeDoctorFinding,
-        WorktreeDoctorSeverity, badge_artifact_command_args, badge_artifact_jobs,
-        badge_artifact_native_slot, badge_artifacts_summary_markdown, badge_diff_policy_violations,
-        build_lsp_cockpit_report, build_no_panic_allowlist_proposals,
-        build_repo_exposure_latency_report, build_targeted_test_outcome_report,
-        campaign_source_truth_violations_for_root, check_allow_attributes,
-        check_badge_diff_policy_with_context, check_droid_review_config, check_executable_files,
-        check_file_policy, check_local_context, check_network_policy, check_no_panic_family,
-        check_process_policy, check_static_language, check_workflows, ci_full_evidence_gates,
-        cockpit_json, cockpit_markdown, collect_panic_findings, collect_semantic_panic_findings,
-        command_catalog, command_catalog_violations, commands_report_json,
-        commands_report_markdown, critic_findings, days_from_civil, dogfood_class_counts,
-        dogfood_editor_gap_cockpit_run, dogfood_editor_gap_cockpit_scenarios,
+        ReportIndexRepoOpsArtifact, RunBlock, RustFirstMigrationAudit, RustFirstMigrationFinding,
+        SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry,
+        StaticLanguageMatcher, TestOracleClass, WorktreeDoctorFinding, WorktreeDoctorSeverity,
+        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
+        badge_artifacts_summary_markdown, badge_diff_policy_violations, build_lsp_cockpit_report,
+        build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
+        build_targeted_test_outcome_report, campaign_source_truth_violations_for_root,
+        check_allow_attributes, check_badge_diff_policy_with_context, check_droid_review_config,
+        check_executable_files, check_file_policy, check_local_context, check_network_policy,
+        check_no_panic_family, check_process_policy, check_static_language, check_workflows,
+        ci_full_evidence_gates, cockpit_json, cockpit_markdown, collect_panic_findings,
+        collect_semantic_panic_findings, command_catalog, command_catalog_violations,
+        commands_report_json, commands_report_markdown, critic_findings, days_from_civil,
+        dogfood_class_counts, dogfood_editor_gap_cockpit_run, dogfood_editor_gap_cockpit_scenarios,
         dogfood_first_action_scenarios, dogfood_gate_adoption_scenarios,
         dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
         dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
@@ -33989,18 +34241,20 @@ mod tests {
         report_index_json, report_index_markdown, report_index_missing_expected,
         report_index_repo_ops_packets, report_index_repo_ops_status, report_status_from_text,
         ripr_command_literals_in_text, ripr_debug_binary, ripr_pre_commit_hook,
-        run_ci_full_evidence_gates, sarif_policy_report_json, sarif_policy_report_markdown,
-        semantic_selector_matches, should_scan_static_language_path, should_skip_path,
-        sorted_allowlist_content, spec_id_from_path, spec_ids_in_text, spec_numbering_violations,
-        specs, static_language_allowlist_covers, status_for_report, suggested_fixes_patch,
-        suspicious_runtime_file_names, targeted_test_outcome, targeted_test_outcome_report_json,
-        targeted_test_outcome_report_markdown, test_efficiency_entry, test_efficiency_report_json,
-        test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
-        test_oracle_tests_in_text, unknown_command_message, validate_local_context_allowlist,
-        vscode_compile_command, vscode_extension_dir, vscode_package_command,
-        vscode_package_version, vscode_test_e2e_command, windows_absolute_path_tokens,
-        workflow_runtime_violations, worktree, worktree_doctor_findings,
-        write_repo_exposure_latency_report,
+        run_ci_full_evidence_gates, rust_first_migration_audit_json,
+        rust_first_migration_audit_markdown, sarif_policy_report_json,
+        sarif_policy_report_markdown, semantic_selector_matches, should_scan_static_language_path,
+        should_skip_path, sorted_allowlist_content, spec_id_from_path, spec_ids_in_text,
+        spec_numbering_violations, specs, static_language_allowlist_covers, status_for_report,
+        suggested_fixes_patch, suspicious_runtime_file_names, targeted_test_outcome,
+        targeted_test_outcome_report_json, targeted_test_outcome_report_markdown,
+        test_efficiency_entry, test_efficiency_report_json, test_efficiency_report_markdown,
+        test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
+        unknown_command_message, validate_local_context_allowlist, vscode_compile_command,
+        vscode_extension_dir, vscode_package_command, vscode_package_version,
+        vscode_test_e2e_command, windows_absolute_path_tokens, workflow_run_block_migration_reason,
+        workflow_run_block_priority, workflow_runtime_violations, worktree,
+        worktree_doctor_findings, write_repo_exposure_latency_report,
     };
     use super::{
         DeclaredIntent, LocalContextFinding,
@@ -38604,6 +38858,56 @@ jobs:
         assert_eq!(blocks[1].non_empty_lines, 2);
         assert!(blocks[1].text.contains("cargo check"));
         assert!(blocks[1].text.contains("cargo test"));
+    }
+
+    #[test]
+    fn rust_first_migration_audit_flags_python_and_large_workflow_blocks() {
+        let python_block = RunBlock {
+            line_number: 9,
+            non_empty_lines: 2,
+            text: "tool --json | python3 -c 'print(1)'".to_string(),
+        };
+        let large_block = RunBlock {
+            line_number: 12,
+            non_empty_lines: 8,
+            text: "echo one".to_string(),
+        };
+
+        let python_reason = workflow_run_block_migration_reason(&python_block)
+            .expect("python block should be a migration finding");
+        let large_reason = workflow_run_block_migration_reason(&large_block)
+            .expect("large shell block should be a migration finding");
+
+        assert!(python_reason.contains("`python3`"));
+        assert_eq!(workflow_run_block_priority(&python_block), "convert");
+        assert!(large_reason.contains("8 non-empty shell line"));
+        assert_eq!(workflow_run_block_priority(&large_block), "inspect");
+    }
+
+    #[test]
+    fn rust_first_migration_audit_markdown_routes_findings_to_xtask() {
+        let audit = RustFirstMigrationAudit {
+            findings: vec![RustFirstMigrationFinding {
+                path: ".github/workflows/example.yml".to_string(),
+                line: Some(42),
+                category: "workflow_embedded_script".to_string(),
+                priority: "convert".to_string(),
+                current_surface: "github_workflow_run_block".to_string(),
+                core_route: "cargo_xtask".to_string(),
+                reason: "Workflow run block uses `python3`.".to_string(),
+                recommended_move: "Move parsing into xtask.".to_string(),
+            }],
+            retained_non_rust_programming_files: 3,
+            tracked_non_rust_policy_files: 10,
+        };
+
+        let markdown = rust_first_migration_audit_markdown(&audit);
+        let json = rust_first_migration_audit_json(&audit);
+
+        assert!(markdown.contains(".github/workflows/example.yml:42"));
+        assert!(markdown.contains("cargo_xtask"));
+        assert!(json.contains("\"policy\": \"rust_first_migration_audit\""));
+        assert!(json.contains("workflow_embedded_script"));
     }
 
     #[test]
