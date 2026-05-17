@@ -72,12 +72,32 @@ pub(crate) struct EvidenceRecordCanonicalItem {
     pub(crate) gap_state: String,
     pub(crate) actionability: String,
     pub(crate) group_reason: Option<String>,
+    pub(crate) primary_anchor: Option<EvidenceRecordPrimaryAnchor>,
+    pub(crate) raw_spans: Vec<EvidenceRecordRawSpan>,
     pub(crate) why: String,
     pub(crate) recommended_repair: String,
     pub(crate) repair_route: Option<EvidenceRecordCanonicalRepairRoute>,
     pub(crate) related_test: Option<EvidenceRecordAlignmentRelatedTest>,
     pub(crate) verify_command: Option<String>,
     pub(crate) confidence: EvidenceRecordAlignmentConfidence,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct EvidenceRecordPrimaryAnchor {
+    pub(crate) file: String,
+    pub(crate) line: usize,
+    pub(crate) kind: String,
+    pub(crate) source_id: String,
+    pub(crate) reason: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct EvidenceRecordRawSpan {
+    pub(crate) file: String,
+    pub(crate) start_line: usize,
+    pub(crate) end_line: usize,
+    pub(crate) kind: String,
+    pub(crate) source_id: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -250,7 +270,7 @@ pub(crate) fn evidence_record_for(
         &recommendation,
         &actionability,
         &static_limitations,
-        raw_findings.len(),
+        &raw_findings,
     );
 
     EvidenceRecord {
@@ -481,14 +501,15 @@ fn canonical_item_for(
     recommendation: &EvidenceRecordRecommendation,
     actionability: &EvidenceRecordActionability,
     static_limitations: &[EvidenceRecordStaticLimitation],
-    raw_findings_len: usize,
+    raw_findings: &[EvidenceRecordRawFinding],
 ) -> EvidenceRecordCanonicalItem {
     let gap_state = gap_state_for(entry, actionability);
     let canonical_item_kind = canonical_item_kind_for(gap_state);
     let alignment_actionability = alignment_actionability_for(entry, actionability);
     let raw_group_size = canonical_gap
         .map(|gap| gap.group_size)
-        .unwrap_or(raw_findings_len);
+        .unwrap_or(raw_findings.len());
+    let group_reason = canonical_gap.map(|gap| gap.reason.to_string());
 
     EvidenceRecordCanonicalItem {
         canonical_gap_id: canonical_gap.map(|gap| gap.id.clone()),
@@ -497,7 +518,9 @@ fn canonical_item_for(
         evidence_class: entry.seam.kind().as_str().to_string(),
         gap_state: gap_state.to_string(),
         actionability: alignment_actionability.to_string(),
-        group_reason: canonical_gap.map(|gap| gap.reason.to_string()),
+        group_reason: group_reason.clone(),
+        primary_anchor: primary_anchor_for(raw_findings, group_reason.as_deref()),
+        raw_spans: raw_spans_for(raw_findings),
         why: actionability.reason.clone(),
         recommended_repair: recommended_repair_for(
             gap_state,
@@ -513,6 +536,42 @@ fn canonical_item_for(
         verify_command: recommendation.verify_command.clone(),
         confidence: alignment_confidence_for(gap_state, static_limitations),
     }
+}
+
+fn primary_anchor_for(
+    raw_findings: &[EvidenceRecordRawFinding],
+    group_reason: Option<&str>,
+) -> Option<EvidenceRecordPrimaryAnchor> {
+    raw_findings
+        .first()
+        .map(|finding| EvidenceRecordPrimaryAnchor {
+            file: finding.file.clone(),
+            line: finding.line,
+            kind: finding.kind.clone(),
+            source_id: finding.source_id.clone(),
+            reason: primary_anchor_reason(group_reason).to_string(),
+        })
+}
+
+fn primary_anchor_reason(group_reason: Option<&str>) -> &'static str {
+    if group_reason.is_some() {
+        "canonical_group_primary_raw_finding"
+    } else {
+        "record_location"
+    }
+}
+
+fn raw_spans_for(raw_findings: &[EvidenceRecordRawFinding]) -> Vec<EvidenceRecordRawSpan> {
+    raw_findings
+        .iter()
+        .map(|finding| EvidenceRecordRawSpan {
+            file: finding.file.clone(),
+            start_line: finding.line,
+            end_line: finding.line,
+            kind: finding.kind.clone(),
+            source_id: finding.source_id.clone(),
+        })
+        .collect()
 }
 
 fn gap_state_for(
@@ -943,6 +1002,15 @@ fn canonical_item_json(item: &EvidenceRecordCanonicalItem) -> Value {
         "gap_state": item.gap_state.as_str(),
         "actionability": item.actionability.as_str(),
         "group_reason": item.group_reason.as_deref(),
+        "primary_anchor": item
+            .primary_anchor
+            .as_ref()
+            .map_or(Value::Null, primary_anchor_json),
+        "raw_spans": item
+            .raw_spans
+            .iter()
+            .map(raw_span_json)
+            .collect::<Vec<_>>(),
         "why": item.why.as_str(),
         "recommended_repair": item.recommended_repair.as_str(),
         "repair_route": item
@@ -963,6 +1031,26 @@ fn canonical_item_json(item: &EvidenceRecordCanonicalItem) -> Value {
                 .map(String::as_str)
                 .collect::<Vec<_>>(),
         },
+    })
+}
+
+fn primary_anchor_json(anchor: &EvidenceRecordPrimaryAnchor) -> Value {
+    json!({
+        "file": anchor.file.as_str(),
+        "line": anchor.line,
+        "kind": anchor.kind.as_str(),
+        "source_id": anchor.source_id.as_str(),
+        "reason": anchor.reason.as_str(),
+    })
+}
+
+fn raw_span_json(span: &EvidenceRecordRawSpan) -> Value {
+    json!({
+        "file": span.file.as_str(),
+        "start_line": span.start_line,
+        "end_line": span.end_line,
+        "kind": span.kind.as_str(),
+        "source_id": span.source_id.as_str(),
     })
 }
 
@@ -1237,6 +1325,23 @@ mod tests {
         );
         assert_eq!(json["canonical_item"]["gap_state"], "actionable");
         assert_eq!(json["canonical_item"]["actionability"], "upgrade_assertion");
+        assert_eq!(
+            json["canonical_item"]["primary_anchor"]["file"],
+            "src/pricing.rs"
+        );
+        assert_eq!(json["canonical_item"]["primary_anchor"]["line"], 88);
+        assert_eq!(
+            json["canonical_item"]["primary_anchor"]["reason"],
+            "record_location"
+        );
+        assert_eq!(
+            json["canonical_item"]["raw_spans"][0]["start_line"],
+            json["raw_findings"][0]["line"]
+        );
+        assert_eq!(
+            json["canonical_item"]["raw_spans"][0]["end_line"],
+            json["raw_findings"][0]["line"]
+        );
         assert_eq!(
             json["canonical_item"]["repair_route"]["repair_kind"],
             "add_boundary_assertion"
@@ -1657,6 +1762,14 @@ mod tests {
         assert_eq!(
             json["canonical_item"]["group_reason"],
             crate::analysis::canonical_gap::CANONICAL_GAP_REASON
+        );
+        assert_eq!(
+            json["canonical_item"]["primary_anchor"]["reason"],
+            "canonical_group_primary_raw_finding"
+        );
+        assert_eq!(
+            json["canonical_item"]["raw_spans"][0]["file"],
+            "src/pricing.rs"
         );
     }
 }

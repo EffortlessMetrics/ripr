@@ -9,6 +9,11 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Added explicit `primary_anchor` and `raw_spans` fields to supported
+  `finding_alignment.items[]` and `evidence_record.canonical_item` canonical
+  evidence items. Downstream surfaces now have one preferred placement hint
+  plus all contributing raw spans without inferring actionability from
+  line-local raw findings.
 - Added the Lane 1 Finding Alignment Burn-Down rail and issue-backed
   implementation plan. The queue starts from current raw-to-canonical audit
   evidence and tracks class-by-class alignment coverage, primary-anchor/raw
