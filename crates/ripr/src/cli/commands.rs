@@ -3542,6 +3542,10 @@ pub(super) fn assistant_loop(args: &[String]) -> Result<(), String> {
     }
 }
 
+pub(super) fn first_pr(args: &[String]) -> Result<(), String> {
+    output::first_pr::first_pr(args)
+}
+
 pub(super) fn first_action(args: &[String]) -> Result<(), String> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         help::print_first_action_help();
