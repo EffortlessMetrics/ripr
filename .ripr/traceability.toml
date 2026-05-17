@@ -3280,3 +3280,39 @@ metrics = [
   "first_run_false_interruption_total",
   "first_run_time_to_first_useful_action_seconds",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0052"
+name = "Editor first-pr packet projection"
+spec = "docs/specs/RIPR-SPEC-0052-editor-first-pr-packet-projection.md"
+tests = [
+]
+fixtures = [
+]
+code = [
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0052-editor-first-pr-packet-projection.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0010-editor-first-pr-bridge.md",
+  "docs/proposals/README.md",
+  "docs/adr/0014-editor-first-pr-projection-is-read-only.md",
+  "docs/adr/README.md",
+  "docs/lanes/LANE_3_EDITOR_LSP.md",
+  "docs/DOCUMENTATION.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "plans/editor-first-pr-bridge/implementation-plan.md",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "editor_first_pr_packet_missing",
+  "editor_first_pr_packet_found",
+  "editor_first_pr_packet_stale",
+  "editor_first_pr_packet_wrong_root",
+  "editor_first_pr_packet_malformed",
+  "editor_first_pr_packet_no_action",
+  "editor_first_pr_top_gap_available",
+  "editor_first_pr_actions_suppressed_unsafe_state",
+  "editor_first_pr_open_packet_actions",
+  "editor_first_pr_copy_packet_actions",
+]
