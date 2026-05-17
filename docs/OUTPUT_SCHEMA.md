@@ -1754,7 +1754,8 @@ Field contract:
   duplicate user-action risks.
 - `finding_alignment.coverage.static_unknown_without_named_limitation` -
   count of static-unknown or limitation-shaped canonical items without a named
-  static limitation category plus repair route.
+  static limitation category plus repair route. Generic `static_unknown` or
+  `unknown` categories do not satisfy the named-limitation requirement.
 - `finding_alignment.coverage.canonical_items_without_repair_route` and
   `canonical_items_without_verify_command` - coverage counts for canonical
   items missing repair or verification guidance.
@@ -6154,6 +6155,39 @@ Report packet index field contract:
   no-generated-test, no-provider-call, no-runtime-mutation-execution,
   no-inline-comment, and advisory-default boundaries.
 
+`target/ripr/reports/pr-triage.json` is the open-board hygiene packet emitted by
+`cargo xtask pr-triage-report`:
+
+```json
+{
+  "schema_version": "0.1",
+  "mode": "advisory",
+  "status": "warn",
+  "open_prs": [],
+  "queue_disposition": [
+    {
+      "pr_number": 819,
+      "disposition": "needs_owner_decision",
+      "reason": "duplicate or stale work needs canonical owner selection",
+      "recommended_action": "Choose the canonical branch, refresh the stale draft, or close superseded variants."
+    }
+  ],
+  "findings": [],
+  "recommended_actions": []
+}
+```
+
+Field contract:
+
+- `queue_disposition[].disposition` is advisory. It may be
+  `merge_candidate`, `needs_rebase`, `needs_review`, `close_duplicate`,
+  `superseded`, `needs_fresh_validation`, `needs_owner_decision`, or
+  `do_not_touch_wrong_lane`.
+- `queue_disposition[]` never closes, updates, merges, comments on, or mutates
+  PRs. It translates triage findings into operator next-action vocabulary.
+- `findings[]` remains the detailed evidence; `recommended_actions[]` keeps the
+  grouped repair guidance for agents and maintainers.
+
 `target/ripr/reports/pr-ready.json` is the local PR readiness cockpit emitted by
 `cargo xtask pr-ready`:
 
@@ -6247,6 +6281,116 @@ unless the explicit gate decision already failed or reported `config_error`.
 See [Report packet index workflow](REPORT_PACKET_INDEX_WORKFLOW.md) for
 reviewer, maintainer, developer, and coding-agent use of the generated packet
 map.
+
+## First PR Start Here Packet
+
+`cargo xtask first-pr` writes the first successful PR front-door packet from
+explicit existing RIPR artifacts. The packet selects one top repairable
+PR-local Rust gap when the gap decision ledger supplies one, or emits a bounded
+no-action or blocked recovery state. It does not rerun hidden analysis, edit
+source, generate tests, call providers, run mutation testing, change gate
+policy, or change CI blocking.
+
+Command shape:
+
+```text
+cargo xtask first-pr \
+  --root . \
+  --gap-ledger target/ripr/reports/gap-decision-ledger.json \
+  --first-action target/ripr/reports/first-useful-action.json \
+  --review-comments target/ripr/review/comments.json \
+  --agent-packet target/ripr/agent/gap-packet.md \
+  --gate-decision target/ripr/reports/gate-decision.json \
+  --receipts-dir target/ripr/receipts \
+  --out-dir target/ripr/reports
+```
+
+The command writes:
+
+```text
+target/ripr/reports/start-here.json
+target/ripr/reports/start-here.md
+```
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "first_pr_start_here",
+  "status": "blocked",
+  "posture": "advisory",
+  "root": ".",
+  "selected": {
+    "state": "stale_artifact",
+    "message": "The gap decision ledger is stale; refresh the first-run evidence before assigning repair work.",
+    "next_command": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json --out-md target/ripr/reports/gap-decision-ledger.md"
+  },
+  "commands": {
+    "regenerate_gap_ledger": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json --out-md target/ripr/reports/gap-decision-ledger.md",
+    "next": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json --out-md target/ripr/reports/gap-decision-ledger.md"
+  },
+  "artifacts": [
+    {
+      "id": "gap_ledger",
+      "label": "Gap decision ledger",
+      "path": "target/ripr/reports/gap-decision-ledger.json",
+      "status": "present",
+      "regeneration_command": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json --out-md target/ripr/reports/gap-decision-ledger.md"
+    }
+  ],
+  "authority": {
+    "status": "advisory",
+    "gate_decision": "target/ripr/reports/gate-decision.json",
+    "boundary": "Pass/fail authority remains with explicit gate-decision artifacts when configured; this first-run packet does not gate."
+  },
+  "warnings": [
+    "The gap decision ledger is stale; refresh the first-run evidence before assigning repair work."
+  ],
+  "limits": [
+    "Composes explicit RIPR artifacts only.",
+    "Does not run hidden analysis.",
+    "Does not edit source or generate tests.",
+    "Does not run mutation testing.",
+    "Does not change CI blocking or gate policy."
+  ]
+}
+```
+
+Field contract:
+
+- `schema_version` is `0.1` until the packet shape changes.
+- `kind` is always `first_pr_start_here`.
+- `status` is `actionable`, `blocked`, or `no_action`. It is reviewer context
+  only, not gate authority.
+- `posture` is always `advisory`.
+- `selected.state` is `top_gap` for a selected repairable gap,
+  `missing_artifact`, `malformed_artifact`, `stale_artifact`, `wrong_root`, or
+  `blocked_artifact` or `timeout` for blocked recovery states, and
+  `empty_diff` or `no_action` for no-action states.
+- `top_gap` requires `status = "actionable"`.
+- `missing_artifact`, `malformed_artifact`, `stale_artifact`, `wrong_root`,
+  `blocked_artifact`, and `timeout` require `status = "blocked"` and a
+  bounded next command when one is known.
+- `empty_diff` and `no_action` require `status = "no_action"` and must not
+  produce a repair interruption.
+- `commands.regenerate_gap_ledger` is always present so missing, stale,
+  wrong-root, malformed, and timeout states can point to a known refresh path.
+- `artifacts[]` records artifact id, label, path, `present` or `missing`
+  status, and optional regeneration command.
+- `authority.boundary` preserves the gate boundary. This packet never becomes
+  pass/fail authority.
+- `warnings[]` carries blocked-state context without converting it to waiver,
+  suppression, improvement, clean, or gate-passing state.
+- `limits` preserves explicit-input, no-source-edit, no-generated-test,
+  no-provider-call, no-runtime-mutation-execution, and advisory-default
+  boundaries.
+
+Markdown should fit in a PR summary, local handoff, or generated CI summary. It
+should show the selected top gap, no-action state, or blocked recovery state
+first, followed by artifacts, authority, and limits. `empty_diff` must render
+as a no-action state, not a blocked repair.
 
 ### Review Guidance Outcome Receipt
 
@@ -7277,6 +7421,13 @@ Field contract:
   repair text, route, source artifact, verification commands, and the
   authority boundary. It is the same repair vocabulary used by PR comment
   projection.
+- `packets[].llm_guidance.copyable_packet` - optional GapRecord-backed
+  pasteable repair packet for coding agents. It carries `task`, `context`,
+  `repair`, `verification`, `stop_conditions`, `do_not_do`,
+  `authority_boundary`, and a Markdown sibling with the same sections. It is
+  additive and derives only from the selected `GapRecord`; it does not rerun
+  analysis, edit source, generate tests, call providers, change gate
+  authority, or infer repairability from prose.
 - `packets[].current_grip` — one of the `SeamGripClass` strings the
   packet is emitted for (`weakly_gripped`, `ungripped`,
   `reachable_unrevealed`, the four `*_unknown` classes, or
@@ -7997,6 +8148,7 @@ fixtures/boundary_gap/expected/pr-review-front-panel/<case>/pr-review-front-pane
 fixtures/boundary_gap/expected/pr-review-front-panel/<case>/pr-review-front-panel.md
 fixtures/boundary_gap/expected/report-packet-index/<case>/index.json
 fixtures/boundary_gap/expected/report-packet-index/<case>/index.md
+fixtures/finding-alignment-dogfood/corpus.json
 ```
 
 The report is advisory. It runs `ripr check --mode fast` against stable fixture
@@ -8016,7 +8168,11 @@ receipts are read from `fixtures/boundary_gap/expected/first-useful-action/`.
 The checked front-panel receipts are read from
 `fixtures/boundary_gap/expected/pr-review-front-panel/`. The checked
 report-packet index receipts are read from
-`fixtures/boundary_gap/expected/report-packet-index/`.
+`fixtures/boundary_gap/expected/report-packet-index/`. The checked finding
+alignment receipts are read from `fixtures/finding-alignment-dogfood/` and
+record real RIPR PR examples where raw findings remain supporting evidence,
+canonical items are the countable unit, actionable items have repair and
+verification routes, and static limitations name analyzer repair routes.
 The calibrated-gate dogfood case expects a non-zero evaluator exit only for the
 explicit blocking mode and treats that as healthy when the written decision
 report has the expected `blocked` status and count.
@@ -8169,6 +8325,36 @@ JSON shape:
         "default_advisory": true,
         "artifact_upload": true,
         "language_grouping_status": "deferred",
+        "errors": []
+      }
+    ]
+  },
+  "finding_alignment": {
+    "default_ci_blocking": false,
+    "receipt_dir": "fixtures/finding-alignment-dogfood",
+    "cases": [
+      {
+        "name": "config_policy_rendered_label_unobserved",
+        "source_pr": "EffortlessMetrics/ripr#1016",
+        "evidence_class": "config_or_policy_constant",
+        "raw_findings_total": 2,
+        "canonical_items_total": 1,
+        "gap_state": "actionable",
+        "actionability": "add_output_observer",
+        "user_outcome": "actionable_gap",
+        "repair_kind": "output_observer",
+        "target_test_type": "report_render_or_golden",
+        "verify_command": "cargo xtask evidence-quality-scorecard",
+        "static_limitation_category": null,
+        "static_limitation_repair_route": null,
+        "raw_findings_supporting_only": true,
+        "recommended_repair": "Add or update a report-render, config-output, snapshot, or golden observer for the rendered policy label.",
+        "must_not_claim": [
+          "Do not count declaration and literal findings as separate user actions.",
+          "Do not infer actionability from raw static class.",
+          "Do not recommend mutation testing before output-observer work."
+        ],
+        "reason": "A rendered config or policy label with no supported observer should become one actionable output-observer item.",
         "errors": []
       }
     ]

@@ -656,7 +656,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
         command_entry(
             "first-pr [--root <path>] [--gap-ledger <path>] [--out-dir <path>] [--check]",
             "argument_dependent",
-            "target/ripr/first-pr or check-only",
+            "target/ripr/reports or check-only",
             false,
             "Writes start-here packets when --check is absent; validates existing packets when --check is present.",
         ),
