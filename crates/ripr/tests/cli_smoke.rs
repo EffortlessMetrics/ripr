@@ -1431,7 +1431,8 @@ fn init_ci_github_dry_run_prints_config_and_workflow_without_writing() -> Result
     assert!(stdout.contains("target/ripr/workflow/agent-review-summary.md"));
     assert!(stdout.contains("#### First-run status"));
     assert!(stdout.contains("Start-here artifact:"));
-    assert!(stdout.contains("missing_first_useful_action"));
+    assert!(stdout.contains("missing_start_here"));
+    assert!(stdout.contains("cat target/ripr/reports/start-here.md"));
     assert!(stdout.contains("### Language preview grouping"));
     assert!(stdout.contains("github/codeql-action/upload-sarif@v4"));
     assert!(!workspace.join("ripr.toml").exists());
@@ -1520,7 +1521,8 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
     assert!(workflow.contains("### Start here"));
     assert!(workflow.contains("#### First-run status"));
     assert!(workflow.contains("Start-here artifact:"));
-    assert!(workflow.contains("missing_first_useful_action"));
+    assert!(workflow.contains("missing_start_here"));
+    assert!(workflow.contains("cat target/ripr/reports/start-here.md"));
     assert!(workflow.contains("### Language preview grouping"));
     assert!(workflow.contains("### SARIF and badge status"));
     assert!(workflow.contains("### PR guidance annotations"));
