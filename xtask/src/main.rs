@@ -57,6 +57,19 @@ struct FilePolicyAllowEntry {
     covered_by: Option<Vec<String>>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RustConversionCandidate {
+    path: String,
+    status: &'static str,
+    route: &'static str,
+    allowlist_glob: Option<String>,
+    owner: Option<String>,
+    surface: Option<String>,
+    classification: Option<String>,
+    reason: Option<String>,
+    retention_reason: Option<&'static str>,
+}
+
 #[derive(Debug)]
 struct WorkflowBudget {
     path: String,
@@ -5679,6 +5692,189 @@ fn check_local_context_impl() -> Result<(), String> {
         },
         &violations,
     )
+}
+
+pub(crate) fn rust_conversion_candidates() -> Result<(), String> {
+    let entries = collect_rust_conversion_candidates()?;
+    write_report(
+        "rust-conversion-candidates.md",
+        &rust_conversion_candidates_markdown(&entries),
+    )?;
+    write_report(
+        "rust-conversion-candidates.json",
+        &rust_conversion_candidates_json(&entries),
+    )
+}
+
+fn collect_rust_conversion_candidates() -> Result<Vec<RustConversionCandidate>, String> {
+    let allowlist = parse_file_policy_allowlist("policy/non-rust-allowlist.toml")?;
+    let mut candidates = Vec::new();
+    for path in collect_files(Path::new("."))? {
+        let normalized = normalize_path(&path);
+        if !is_non_rust_programming_candidate(&normalized) {
+            continue;
+        }
+        let allow = allowlist.iter().find(|entry| {
+            entry
+                .glob
+                .as_deref()
+                .is_some_and(|glob| glob_matches(glob, &normalized))
+        });
+        let retention_reason = non_rust_programming_retention_reason(&normalized);
+        let status = if retention_reason.is_some() {
+            "retained_non_rust"
+        } else {
+            "convert_to_rust"
+        };
+        candidates.push(RustConversionCandidate {
+            route: rust_conversion_route(&normalized, allow),
+            path: normalized,
+            status,
+            allowlist_glob: allow.and_then(|entry| entry.glob.clone()),
+            owner: allow.and_then(|entry| entry.owner.clone()),
+            surface: allow.and_then(|entry| entry.surface.clone()),
+            classification: allow.and_then(|entry| entry.classification.clone()),
+            reason: allow.and_then(|entry| entry.reason.clone()),
+            retention_reason,
+        });
+    }
+    candidates.sort_by(|left, right| left.path.cmp(&right.path));
+    Ok(candidates)
+}
+
+fn rust_conversion_route(path: &str, allow: Option<&FilePolicyAllowEntry>) -> &'static str {
+    if non_rust_programming_retention_reason(path).is_some() {
+        return "keep_on_approved_non_rust_surface";
+    }
+    match allow.and_then(|entry| entry.surface.as_deref()) {
+        Some("fixtures") => "fixture_input_or_rust_test_fixture",
+        Some("editor") => "editor_runtime_or_rust_lsp_core",
+        Some("ci") => "cargo_xtask_or_workflow_delegation",
+        Some("repo" | "security" | "config" | "rust") => "cargo_xtask_policy_or_core_rust",
+        _ => "cargo_xtask_or_ripr_core",
+    }
+}
+
+fn rust_conversion_candidates_markdown(entries: &[RustConversionCandidate]) -> String {
+    let convert_count = entries
+        .iter()
+        .filter(|entry| entry.status == "convert_to_rust")
+        .count();
+    let retained_count = entries.len().saturating_sub(convert_count);
+    let status = if convert_count == 0 { "pass" } else { "warn" };
+    let mut body =
+        format!("# ripr Rust conversion candidates\n\nStatus: {status}\nMode: advisory\n\n");
+    body.push_str("Purpose:\n\n");
+    body.push_str("- find non-Rust programming files that should move into Rust, `cargo xtask`, or the existing `ripr` core package before they become policy exceptions\n");
+    body.push_str("- preserve approved non-Rust runtime and fixture surfaces instead of forcing source fixtures or VS Code Extension Host code into Rust\n");
+    body.push_str("- keep the public design as one package (`ripr`), one binary (`ripr`), one library (`ripr`), and unpublished `xtask` automation\n\n");
+    body.push_str(&format!(
+        "Summary: {convert_count} conversion candidate(s), {retained_count} retained non-Rust programming file(s).\n\n"
+    ));
+
+    body.push_str("## Conversion candidates\n\n");
+    let candidates = entries
+        .iter()
+        .filter(|entry| entry.status == "convert_to_rust")
+        .collect::<Vec<_>>();
+    if candidates.is_empty() {
+        body.push_str("None detected. Current non-Rust programming files are retained by approved runtime or analyzer-fixture surfaces.\n\n");
+    } else {
+        body.push_str("| Path | Route | Allowlist surface | Owner | Reason |\n");
+        body.push_str("| --- | --- | --- | --- | --- |\n");
+        for entry in candidates {
+            body.push_str(&format!(
+                "| `{}` | `{}` | {} | {} | {} |\n",
+                markdown_cell(&entry.path),
+                markdown_cell(entry.route),
+                markdown_optional_cell(entry.surface.as_deref()),
+                markdown_optional_cell(entry.owner.as_deref()),
+                markdown_optional_cell(entry.reason.as_deref())
+            ));
+        }
+        body.push('\n');
+    }
+
+    body.push_str("## Retained non-Rust surfaces\n\n");
+    body.push_str("| Path | Surface | Owner | Retention reason |\n");
+    body.push_str("| --- | --- | --- | --- |\n");
+    for entry in entries
+        .iter()
+        .filter(|entry| entry.status == "retained_non_rust")
+    {
+        body.push_str(&format!(
+            "| `{}` | {} | {} | {} |\n",
+            markdown_cell(&entry.path),
+            markdown_optional_cell(entry.surface.as_deref()),
+            markdown_optional_cell(entry.owner.as_deref()),
+            markdown_optional_cell(entry.retention_reason)
+        ));
+    }
+    body.push_str("\n## Rerun\n\n```bash\ncargo xtask rust-conversion-candidates\n```\n");
+    body
+}
+
+fn markdown_optional_cell(value: Option<&str>) -> String {
+    value
+        .map(markdown_cell)
+        .unwrap_or_else(|| "`none`".to_string())
+}
+
+fn rust_conversion_candidates_json(entries: &[RustConversionCandidate]) -> String {
+    let convert_count = entries
+        .iter()
+        .filter(|entry| entry.status == "convert_to_rust")
+        .count();
+    let retained_count = entries.len().saturating_sub(convert_count);
+    let status = if convert_count == 0 { "pass" } else { "warn" };
+    let mut body = "{\n".to_string();
+    body.push_str("  \"schema_version\": \"0.1\",\n");
+    body.push_str("  \"mode\": \"advisory\",\n");
+    body.push_str(&format!("  \"status\": \"{status}\",\n"));
+    body.push_str(&format!(
+        "  \"conversion_candidate_count\": {convert_count},\n"
+    ));
+    body.push_str(&format!("  \"retained_count\": {retained_count},\n"));
+    body.push_str("  \"files\": [\n");
+    for (index, entry) in entries.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!(
+            "      \"path\": \"{}\",\n",
+            json_escape(&entry.path)
+        ));
+        body.push_str(&format!("      \"status\": \"{}\",\n", entry.status));
+        body.push_str(&format!("      \"route\": \"{}\",\n", entry.route));
+        body.push_str(&format!(
+            "      \"allowlist_glob\": {},\n",
+            json_optional_string(entry.allowlist_glob.as_deref())
+        ));
+        body.push_str(&format!(
+            "      \"owner\": {},\n",
+            json_optional_string(entry.owner.as_deref())
+        ));
+        body.push_str(&format!(
+            "      \"surface\": {},\n",
+            json_optional_string(entry.surface.as_deref())
+        ));
+        body.push_str(&format!(
+            "      \"classification\": {},\n",
+            json_optional_string(entry.classification.as_deref())
+        ));
+        body.push_str(&format!(
+            "      \"reason\": {},\n",
+            json_optional_string(entry.reason.as_deref())
+        ));
+        body.push_str(&format!(
+            "      \"retention_reason\": {}\n",
+            json_optional_string(entry.retention_reason)
+        ));
+        body.push_str("    }");
+    }
+    body.push_str("\n  ]\n}\n");
+    body
 }
 
 fn check_file_policy_impl() -> Result<(), String> {
@@ -38130,6 +38326,46 @@ fn has_unwrap_in_name() -> bool {
                 .is_some()
         );
         assert!(non_rust_programming_retention_reason("scripts/check.py").is_none());
+    }
+
+    #[test]
+    fn rust_conversion_report_separates_candidates_from_retained_surfaces() {
+        let retained = super::RustConversionCandidate {
+            path: "editors/vscode/src/extension.ts".to_string(),
+            status: "retained_non_rust",
+            route: "keep_on_approved_non_rust_surface",
+            allowlist_glob: Some("editors/vscode/**/*.ts".to_string()),
+            owner: Some("lsp/editor".to_string()),
+            surface: Some("editor".to_string()),
+            classification: Some("production".to_string()),
+            reason: Some("VS Code Extension Host binding.".to_string()),
+            retention_reason: Some(
+                "VS Code extension source and tests must run in the VS Code Extension Host TypeScript API.",
+            ),
+        };
+        let candidate = super::RustConversionCandidate {
+            path: "scripts/check.py".to_string(),
+            status: "convert_to_rust",
+            route: "cargo_xtask_or_ripr_core",
+            allowlist_glob: None,
+            owner: None,
+            surface: None,
+            classification: None,
+            reason: None,
+            retention_reason: None,
+        };
+        let entries = vec![retained, candidate];
+
+        let markdown = super::rust_conversion_candidates_markdown(&entries);
+        assert!(markdown.contains("Status: warn"));
+        assert!(markdown.contains("Summary: 1 conversion candidate(s), 1 retained"));
+        assert!(markdown.contains("`scripts/check.py`"));
+        assert!(markdown.contains("`editors/vscode/src/extension.ts`"));
+
+        let json = super::rust_conversion_candidates_json(&entries);
+        assert!(json.contains("\"conversion_candidate_count\": 1"));
+        assert!(json.contains("\"status\": \"convert_to_rust\""));
+        assert!(json.contains("\"route\": \"keep_on_approved_non_rust_surface\""));
     }
 
     #[test]

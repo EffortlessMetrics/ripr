@@ -69,6 +69,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckNoPanicFamily(args) => super::check_no_panic_family_with_args(&args),
         XtaskCommand::CheckAllowAttributes => super::check_allow_attributes(),
         XtaskCommand::CheckLocalContext => super::check_local_context(),
+        XtaskCommand::RustConversionCandidates => super::rust_conversion_candidates(),
         XtaskCommand::CheckFilePolicy => super::check_file_policy(),
         XtaskCommand::CheckExecutableFiles => super::check_executable_files(),
         XtaskCommand::CheckWorkflows => super::check_workflows(),

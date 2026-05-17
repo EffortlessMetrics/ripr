@@ -39,11 +39,20 @@ files such as `.ts`, `.js`, `.py`, and `.sh`:
 2. the file must match a Rust-coded retention rule for an approved runtime
    surface that cannot reasonably move to Rust.
 
-Today, the only retained programming surface is the VS Code extension
-TypeScript code and tests, because that client runs inside the VS Code
-Extension Host and binds directly to VS Code's TypeScript API. Other repo
-automation, release helpers, fixture runners, and policy checks should be
-converted to Rust/`xtask` rather than newly allowlisted.
+Today, the retained programming surfaces are:
+
+- VS Code extension TypeScript code and tests, because that client runs inside
+  the VS Code Extension Host and binds directly to VS Code's TypeScript API;
+- analyzer fixture inputs under `fixtures/**`, because Python and
+  TypeScript/JavaScript files there are source material consumed by the preview
+  language adapters.
+
+Other repo automation, release helpers, fixture runners, and policy checks
+should be converted to Rust/`xtask` rather than newly allowlisted. Use
+`cargo xtask rust-conversion-candidates` to inventory non-Rust programming
+files, separate retained runtime/fixture surfaces from conversion candidates,
+and route candidates toward `cargo xtask` or the existing `ripr` core package
+without changing the one-package architecture.
 
 If the file does not match the current allowlist, update the allowlist with an
 owner and reason in the same PR. If it is a programming-language file, also
@@ -156,6 +165,7 @@ exceptions or make policy decisions.
 Run:
 
 ```bash
+cargo xtask rust-conversion-candidates
 cargo xtask check-file-policy
 cargo xtask check-executable-files
 cargo xtask check-workflows
