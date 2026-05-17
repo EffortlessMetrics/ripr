@@ -1,9 +1,9 @@
 # Handoff: First-Run UX and Adoption Hardening Closeout
 
-Date: 2026-05-16
-Branch / PR: `codex/first-run-ux-closeout` / pending at authoring
-Latest merged PR: #1070 `docs(quickstart): compress first-hour paths`
-(commit `cf7a339c`)
+Date: 2026-05-17
+Branch / PR: `codex/first-run-adoption-closeout` / #1114
+Latest merged PR: #1112 `release(ux): verify first-run install surfaces`
+(commit `c08447eb`)
 
 ## Current Work Item
 
@@ -35,6 +35,8 @@ Durable restart context:
 - [first successful PR workflow](../FIRST_PR_WORKFLOW.md)
 - [quickstart](../QUICKSTART.md)
 - [support tiers](../status/SUPPORT_TIERS.md)
+- [installation verification](../INSTALLATION_VERIFICATION.md)
+- [release checklist](../RELEASE.md)
 
 ## What Shipped
 
@@ -42,7 +44,8 @@ Durable restart context:
 | --- | --- |
 | Product intent | `RIPR-PROP-0009` records why the first run needs one front door over existing artifacts. |
 | Behavior contract | `RIPR-SPEC-0051` defines `start-here.{json,md}`, no-action states, recovery states, repair packets, and authority boundaries. |
-| Local first-run packet | `cargo xtask first-pr --root .` composes explicit artifacts into the first-run packet. |
+| Public first-run packet | `ripr first-pr` / `ripr start-here` composes explicit artifacts into the first-run packet. |
+| Local first-run wrapper | `cargo xtask first-pr --root .` delegates to the same public implementation for repo-local adoption checks. |
 | Start-here report | `target/ripr/reports/start-here.{json,md}` is the reviewer-facing first screen. |
 | Recovery states | Empty, missing, stale, wrong-root, malformed, timeout, blocked, and no-action states produce packets instead of vague failure. |
 | Fixture corpus | `fixtures/first_successful_pr/` pins boundary-gap, output-contract, empty-diff, and blocked-ledger cases. |
@@ -50,9 +53,12 @@ Durable restart context:
 | PR repair-card copy | PR comment bodies now use bounded repair-card language over gap records. |
 | Editor orchestration | VS Code exposes `ripr: Start Current Repair` over existing diagnostics and repair actions. |
 | Agent packet copy | Gap-ledger agent packets include pasteable Task, Context, Repair, Verification, Stop Conditions, Do Not Do, and Authority sections. |
-| Generated CI summary | Generated GitHub CI shows first-run status, top gap or no-action state, repair route, verify command, artifacts, and advisory gate boundary. |
+| Generated CI summary | Generated GitHub CI renders the gap ledger and `start-here.{json,md}`, then opens the job summary with first-run status, top gap or no-action state, repair route, verify command, artifacts, and advisory gate boundary. |
 | Gate adoption checklist | Blocking readiness now requires repair-loop evidence before moving beyond advisory or `visible-only`. |
 | Public adoption copy | README leads with the repair loop, and Quickstart routes users through CLI, PR, and editor/agent first-hour paths. |
+| Product demo | `docs/demo/first-successful-pr.md` turns the fixture corpus into a visible before/gap/repair/receipt story. |
+| Adoption metrics | `cargo xtask dogfood` reports first-run packet, selected-gap, no-action, blocked, missing, stale, wrong-root, malformed, and timeout counters. |
+| Install verification | `cargo xtask release-readiness --version <version>` verifies installed `ripr first-pr --help`, generated-CI start-here markers, and the VS Code `ripr: Start Current Repair` command contribution. |
 
 ## PR Chain
 
@@ -70,7 +76,14 @@ Durable restart context:
 - #1068 `docs(policy): add gate adoption checklist`
 - #1069 `docs(readme): lead with repair loop`
 - #1070 `docs(quickstart): compress first-hour paths`
-- `campaign/first-run-ux-hardening-closeout`
+- #1099 `cli(ux): add public first-pr command`
+- #1105 `docs(demo): add first successful PR walkthrough`
+- #1107 `metrics(ux): add first-run adoption counters`
+- #1108 `lsp(first-pr): add bounded packet actions`
+- #1110 `fixtures(editor): add first-pr bridge fixtures`
+- #1111 `ci(ux): make first-run card the generated summary front door`
+- #1112 `release(ux): verify first-run install surfaces`
+- #1114 `campaign(ux): refresh first-run adoption closeout`
 
 ## Validation Run
 
@@ -86,13 +99,16 @@ cargo xtask check-output-contracts
 cargo xtask check-traceability
 cargo xtask check-workflows
 cargo xtask dogfood
+cargo test -p xtask release_readiness --bin xtask
+cargo test -p xtask dogfood_generated_ci --bin xtask
 cargo xtask check-pr
 git diff --check
 ```
 
-The final README and Quickstart PRs also passed hosted GitHub `rust`, `msrv`,
-`vscode`, `cargo-deny`, Dependency Review, CodeQL, coverage, Test Analytics,
-Droid review, Codecov patch, GitGuardian, and PR Plan checks before merge.
+The final public CLI, generated-CI, and release/install verification PRs also
+passed hosted GitHub `rust`, `msrv`, `vscode`, `cargo-deny`, Dependency Review,
+CodeQL, coverage, Test Analytics, Droid review, Codecov patch, GitGuardian, and
+PR Plan checks before merge.
 
 ## What Did Not Change
 
@@ -125,8 +141,8 @@ Droid review, Codecov patch, GitGuardian, and PR Plan checks before merge.
 
 No ready work item remains in First-Run UX and Adoption Hardening after this
 closeout. Future work should open a new proposal or scoped campaign if
-maintainers want a packaged demo repository, release framing for 0.6.0,
-stricter adoption metrics, or external adopter validation.
+maintainers want a packaged demo repository, stricter adoption thresholds,
+runtime-calibrated repair-success measurement, or external adopter validation.
 
 ## What Not To Do
 
