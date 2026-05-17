@@ -533,6 +533,19 @@ struct DogfoodFirstPrRun {
     errors: Vec<String>,
 }
 
+#[derive(Debug, Default, Clone, Copy)]
+struct DogfoodFirstPrMetrics {
+    packets_total: usize,
+    top_gap_selected_total: usize,
+    no_action_total: usize,
+    blocked_total: usize,
+    missing_artifact_total: usize,
+    stale_artifact_total: usize,
+    wrong_root_total: usize,
+    malformed_artifact_total: usize,
+    timeout_total: usize,
+}
+
 #[derive(Debug)]
 struct DogfoodFrontPanelScenario {
     name: String,
@@ -25036,6 +25049,31 @@ fn dogfood_report_status(inputs: &DogfoodReportInputs<'_>) -> &'static str {
     }
 }
 
+fn dogfood_first_pr_metrics(first_pr_runs: &[DogfoodFirstPrRun]) -> DogfoodFirstPrMetrics {
+    let mut metrics = DogfoodFirstPrMetrics {
+        packets_total: first_pr_runs.len(),
+        ..DogfoodFirstPrMetrics::default()
+    };
+
+    for run in first_pr_runs {
+        if run.status == "blocked" {
+            metrics.blocked_total += 1;
+        }
+        match run.state.as_str() {
+            "top_gap" => metrics.top_gap_selected_total += 1,
+            "empty_diff" | "no_action" | "already_observed" => metrics.no_action_total += 1,
+            "missing_artifact" => metrics.missing_artifact_total += 1,
+            "stale_artifact" => metrics.stale_artifact_total += 1,
+            "wrong_root" => metrics.wrong_root_total += 1,
+            "malformed_artifact" => metrics.malformed_artifact_total += 1,
+            "timeout" => metrics.timeout_total += 1,
+            _ => {}
+        }
+    }
+
+    metrics
+}
+
 fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
     let runs = inputs.runs;
     let gate_runs = inputs.gate_runs;
@@ -25046,6 +25084,7 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
     let preview_projection_runs = inputs.preview_projection_runs;
     let finding_alignment_runs = inputs.finding_alignment_runs;
     let pr_inline_comment_runs = inputs.pr_inline_comment_runs;
+    let first_pr_metrics = dogfood_first_pr_metrics(first_pr_runs);
     let mut body = format!(
         "# ripr dogfood report\n\nStatus: {}\n\nMode: advisory\n\nThis report runs `ripr check --mode fast` against stable in-repo fixture diffs. It records current product output for review without making dogfood a blocking gate yet.\n\n## Summary\n\n",
         dogfood_report_status(inputs)
@@ -25162,6 +25201,44 @@ fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
     body.push_str(
         "- Receipt outputs: `fixtures/first_successful_pr/<case>/expected/start-here.{json,md}`\n\n",
     );
+    body.push_str("| Metric | Value |\n");
+    body.push_str("| --- | ---: |\n");
+    body.push_str(&format!(
+        "| `first_run_packets_total` | {} |\n",
+        first_pr_metrics.packets_total
+    ));
+    body.push_str(&format!(
+        "| `first_run_top_gap_selected_total` | {} |\n",
+        first_pr_metrics.top_gap_selected_total
+    ));
+    body.push_str(&format!(
+        "| `first_run_no_action_total` | {} |\n",
+        first_pr_metrics.no_action_total
+    ));
+    body.push_str(&format!(
+        "| `first_run_blocked_total` | {} |\n",
+        first_pr_metrics.blocked_total
+    ));
+    body.push_str(&format!(
+        "| `first_run_missing_artifact_total` | {} |\n",
+        first_pr_metrics.missing_artifact_total
+    ));
+    body.push_str(&format!(
+        "| `first_run_stale_artifact_total` | {} |\n",
+        first_pr_metrics.stale_artifact_total
+    ));
+    body.push_str(&format!(
+        "| `first_run_wrong_root_total` | {} |\n",
+        first_pr_metrics.wrong_root_total
+    ));
+    body.push_str(&format!(
+        "| `first_run_malformed_artifact_total` | {} |\n",
+        first_pr_metrics.malformed_artifact_total
+    ));
+    body.push_str(&format!(
+        "| `first_run_timeout_total` | {} |\n\n",
+        first_pr_metrics.timeout_total
+    ));
     body.push_str("| Case | Status | State | Top gap | Verify | Next |\n");
     body.push_str("| --- | --- | --- | --- | --- | --- |\n");
     for run in first_pr_runs {
@@ -25924,6 +26001,7 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
     let preview_projection_runs = inputs.preview_projection_runs;
     let finding_alignment_runs = inputs.finding_alignment_runs;
     let pr_inline_comment_runs = inputs.pr_inline_comment_runs;
+    let first_pr_metrics = dogfood_first_pr_metrics(first_pr_runs);
     let mut body = format!(
         "{{\n  \"schema_version\": \"0.1\",\n  \"status\": \"{}\",\n  \"advisory\": true,\n  \"runs\": [\n",
         dogfood_report_status(inputs)
@@ -26036,7 +26114,45 @@ fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
     }
     body.push_str("\n    ]\n  },\n  \"first_successful_pr\": {\n");
     body.push_str("    \"default_ci_blocking\": false,\n");
-    body.push_str("    \"receipt_dir\": \"fixtures/first_successful_pr\",\n    \"cases\": [\n");
+    body.push_str("    \"receipt_dir\": \"fixtures/first_successful_pr\",\n");
+    body.push_str("    \"metrics\": {\n");
+    body.push_str(&format!(
+        "      \"first_run_packets_total\": {},\n",
+        first_pr_metrics.packets_total
+    ));
+    body.push_str(&format!(
+        "      \"first_run_top_gap_selected_total\": {},\n",
+        first_pr_metrics.top_gap_selected_total
+    ));
+    body.push_str(&format!(
+        "      \"first_run_no_action_total\": {},\n",
+        first_pr_metrics.no_action_total
+    ));
+    body.push_str(&format!(
+        "      \"first_run_blocked_total\": {},\n",
+        first_pr_metrics.blocked_total
+    ));
+    body.push_str(&format!(
+        "      \"first_run_missing_artifact_total\": {},\n",
+        first_pr_metrics.missing_artifact_total
+    ));
+    body.push_str(&format!(
+        "      \"first_run_stale_artifact_total\": {},\n",
+        first_pr_metrics.stale_artifact_total
+    ));
+    body.push_str(&format!(
+        "      \"first_run_wrong_root_total\": {},\n",
+        first_pr_metrics.wrong_root_total
+    ));
+    body.push_str(&format!(
+        "      \"first_run_malformed_artifact_total\": {},\n",
+        first_pr_metrics.malformed_artifact_total
+    ));
+    body.push_str(&format!(
+        "      \"first_run_timeout_total\": {}\n",
+        first_pr_metrics.timeout_total
+    ));
+    body.push_str("    },\n    \"cases\": [\n");
     for (index, run) in first_pr_runs.iter().enumerate() {
         if index > 0 {
             body.push_str(",\n");
@@ -36073,24 +36189,25 @@ mod tests {
         commands_report_markdown, critic_findings, days_from_civil, dogfood_class_counts,
         dogfood_editor_gap_cockpit_run, dogfood_editor_gap_cockpit_scenarios,
         dogfood_finding_alignment_run, dogfood_finding_alignment_scenarios,
-        dogfood_first_action_scenarios, dogfood_first_pr_run, dogfood_first_pr_scenarios,
-        dogfood_gate_adoption_scenarios, dogfood_generated_ci_cockpit_run_from_workflow,
-        dogfood_language_preview_run, dogfood_language_preview_scenarios,
-        dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
-        dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
-        dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
-        dogfood_report_packet_index_scenarios, evaluate_semantic_no_panic_policy,
-        evidence_quality_scorecard_from_values, evidence_quality_scorecard_json,
-        evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
-        evidence_quality_trend_json, evidence_quality_trend_markdown,
-        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
-        extract_workflow_run_blocks, finding_alignment_raw_to_canonical_ratio,
-        finding_alignment_verify_command_is_missing, finish_worktree_doctor_report,
-        first_line_difference, forbidden_panic_patterns, generated_clean_violations,
-        gh_pr_safe_next_action, gh_pr_status_json, gh_pr_status_markdown, gh_pr_status_readiness,
-        github_event_pull_request_title_from_text, glob_matches, golden_changes_without_blessing,
-        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
-        install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
+        dogfood_first_action_scenarios, dogfood_first_pr_metrics, dogfood_first_pr_run,
+        dogfood_first_pr_scenarios, dogfood_gate_adoption_scenarios,
+        dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
+        dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
+        dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
+        dogfood_pr_review_front_panel_scenarios, dogfood_report_json, dogfood_report_markdown,
+        dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
+        evaluate_semantic_no_panic_policy, evidence_quality_scorecard_from_values,
+        evidence_quality_scorecard_json, evidence_quality_scorecard_markdown,
+        evidence_quality_trend_from_values, evidence_quality_trend_json,
+        evidence_quality_trend_markdown, extract_json_object_usize_map, extract_json_string,
+        extract_json_warnings, extract_workflow_run_blocks,
+        finding_alignment_raw_to_canonical_ratio, finding_alignment_verify_command_is_missing,
+        finish_worktree_doctor_report, first_line_difference, forbidden_panic_patterns,
+        generated_clean_violations, gh_pr_safe_next_action, gh_pr_status_json,
+        gh_pr_status_markdown, gh_pr_status_readiness, github_event_pull_request_title_from_text,
+        glob_matches, golden_changes_without_blessing, golden_drift_semantics,
+        guarded_allow_attribute_lints, guarded_allow_attributes_in_text, install_hooks_in,
+        is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
         is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
         is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
         is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
@@ -42597,6 +42714,53 @@ fn exact_owner_call_has_external_expected_value() {
         assert_eq!(counts.get("static_unknown").copied(), Some(1));
     }
 
+    fn sample_first_pr_run(name: &str, status: &str, state: &str) -> DogfoodFirstPrRun {
+        let expected_dir = Path::new("fixtures/first_successful_pr")
+            .join(name)
+            .join("expected");
+        DogfoodFirstPrRun {
+            name: name.to_string(),
+            expected_dir: expected_dir.clone(),
+            json_path: expected_dir.join("start-here.json"),
+            markdown_path: expected_dir.join("start-here.md"),
+            status: status.to_string(),
+            state: state.to_string(),
+            top_gap_kind: "none".to_string(),
+            verify_command: None,
+            next_command: None,
+            expected_status: status.to_string(),
+            expected_state: state.to_string(),
+            description: "sample first-pr run".to_string(),
+            errors: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn dogfood_first_pr_metrics_count_adoption_states() {
+        let runs = [
+            sample_first_pr_run("boundary-gap", "actionable", "top_gap"),
+            sample_first_pr_run("output-contract-gap", "actionable", "top_gap"),
+            sample_first_pr_run("empty-diff", "no_action", "empty_diff"),
+            sample_first_pr_run("missing", "blocked", "missing_artifact"),
+            sample_first_pr_run("stale", "blocked", "stale_artifact"),
+            sample_first_pr_run("wrong-root", "blocked", "wrong_root"),
+            sample_first_pr_run("malformed", "blocked", "malformed_artifact"),
+            sample_first_pr_run("timeout", "blocked", "timeout"),
+        ];
+
+        let metrics = dogfood_first_pr_metrics(&runs);
+
+        assert_eq!(metrics.packets_total, 8);
+        assert_eq!(metrics.top_gap_selected_total, 2);
+        assert_eq!(metrics.no_action_total, 1);
+        assert_eq!(metrics.blocked_total, 5);
+        assert_eq!(metrics.missing_artifact_total, 1);
+        assert_eq!(metrics.stale_artifact_total, 1);
+        assert_eq!(metrics.wrong_root_total, 1);
+        assert_eq!(metrics.malformed_artifact_total, 1);
+        assert_eq!(metrics.timeout_total, 1);
+    }
+
     #[test]
     fn dogfood_reports_are_advisory() -> Result<(), String> {
         let run = DogfoodRun {
@@ -42957,7 +43121,6 @@ fn exact_owner_call_has_external_expected_value() {
         let empty_runs = [];
         let empty_gate_runs = [];
         let empty_first_action_runs = [];
-        let empty_first_pr_runs = [];
         let empty_front_panel_runs = [];
         let empty_report_packet_index_runs = [];
         let empty_pr_inline_comment_runs = [];
@@ -42965,7 +43128,7 @@ fn exact_owner_call_has_external_expected_value() {
             runs: &empty_runs,
             gate_runs: &empty_gate_runs,
             first_action_runs: &empty_first_action_runs,
-            first_pr_runs: &empty_first_pr_runs,
+            first_pr_runs: &markdown_first_pr_runs,
             front_panel_runs: &empty_front_panel_runs,
             report_packet_index_runs: &empty_report_packet_index_runs,
             preview_projection_runs: &preview_projection_runs,
@@ -42988,6 +43151,8 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(markdown.contains("PR Inline Comment Publisher Receipts"));
         assert!(markdown.contains("Gate Adoption Receipts"));
         assert!(markdown.contains("Default CI blocking: no"));
+        assert!(markdown.contains("first_run_packets_total"));
+        assert!(markdown.contains("first_run_top_gap_selected_total"));
         assert!(markdown.contains("actionable"));
         assert!(markdown.contains("complete_packet"));
         assert!(markdown.contains("publishable_changed_line"));
@@ -42995,6 +43160,8 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(json.contains("\"advisory\": true"));
         assert!(json.contains("\"default_ci_blocking\": false"));
         assert!(json.contains("\"first_successful_pr\""));
+        assert!(json.contains("\"first_run_packets_total\": 1"));
+        assert!(json.contains("\"first_run_top_gap_selected_total\": 1"));
         assert!(json.contains("\"report_packet_index\""));
         assert!(json.contains("\"generated_ci_cockpit\""));
         assert!(json.contains("\"language_preview\""));
