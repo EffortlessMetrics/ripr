@@ -85,6 +85,8 @@ jobs:
       RAW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
       VSCE_PAT: ${{ secrets.VSCE_PAT }}
     steps:
+      - uses: actions/checkout@v6
+
       - uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -104,17 +106,7 @@ jobs:
         if: ${{ env.VSCE_PAT != '' }}
         run: |
           version="${RAW_VERSION#v}"
-          vsix_file="dist/ripr-${version}.vsix"
-          PUBLISHED_VERSION="$(
-            npx -y @vscode/vsce show EffortlessMetrics.ripr --json 2>/dev/null \
-              | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['versions'][0]['version'])" \
-              2>/dev/null || echo ""
-          )"
-          if [ "$PUBLISHED_VERSION" = "$version" ]; then
-            echo "::warning::VS Code Marketplace already has version $version; skipping publish."
-            exit 0
-          fi
-          npx -y @vscode/vsce publish --packagePath "$vsix_file" --pat "$VSCE_PAT"
+          cargo xtask vscode-publish-marketplace --version "$version" --vsix "dist/ripr-${version}.vsix"
 
   publish-open-vsx:
     needs: [package, server-assets-ready]

@@ -1434,6 +1434,72 @@ fn release_upload_assets(args: &[String]) -> Result<(), String> {
     run_owned("gh", &upload_args)
 }
 
+fn vscode_publish_marketplace(args: &[String]) -> Result<(), String> {
+    let version = normalize_release_version(&required_release_arg(args, "version", "RAW_VERSION")?);
+    let vsix = required_release_arg(args, "vsix", "VSIX_FILE")?;
+    let publisher = release_arg_or_default(
+        args,
+        "publisher",
+        "VSCODE_MARKETPLACE_PUBLISHER",
+        "EffortlessMetrics",
+    );
+    let extension =
+        release_arg_or_default(args, "extension", "VSCODE_MARKETPLACE_EXTENSION", "ripr");
+    let pat = std::env::var("VSCE_PAT").map_err(|err| {
+        format!("VSCE_PAT is not configured; VS Code Marketplace publish cannot run: {err}")
+    })?;
+    if pat.trim().is_empty() {
+        return Err(
+            "VSCE_PAT is not configured; VS Code Marketplace publish cannot run".to_string(),
+        );
+    }
+
+    let extension_id = format!("{publisher}.{extension}");
+    if vscode_marketplace_published_version(&extension_id)?.as_deref() == Some(version.as_str()) {
+        println!("::warning::VS Code Marketplace already has version {version}; skipping publish.");
+        return Ok(());
+    }
+
+    run_owned(
+        "npx",
+        &[
+            "-y".to_string(),
+            "@vscode/vsce".to_string(),
+            "publish".to_string(),
+            "--packagePath".to_string(),
+            vsix,
+            "--pat".to_string(),
+            pat,
+        ],
+    )
+}
+
+fn vscode_marketplace_published_version(extension_id: &str) -> Result<Option<String>, String> {
+    let output = capture_output(
+        "npx",
+        &["-y", "@vscode/vsce", "show", extension_id, "--json"],
+        "VS Code Marketplace extension metadata",
+    )?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    vscode_marketplace_latest_version(&output.stdout).map(Some)
+}
+
+fn vscode_marketplace_latest_version(json: &str) -> Result<String, String> {
+    let value: Value = serde_json::from_str(json)
+        .map_err(|err| format!("failed to parse VS Code Marketplace metadata JSON: {err}"))?;
+    value
+        .get("versions")
+        .and_then(Value::as_array)
+        .and_then(|versions| versions.first())
+        .and_then(|latest| latest.get("version"))
+        .and_then(Value::as_str)
+        .filter(|version| !version.trim().is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| "VS Code Marketplace metadata is missing versions[0].version".to_string())
+}
+
 #[derive(Debug, Eq, PartialEq)]
 struct ReleaseServerAsset {
     target: String,
@@ -1481,6 +1547,10 @@ fn required_release_arg(args: &[String], flag: &str, env_name: &str) -> Result<S
         }
     }
     std::env::var(env_name).map_err(|err| format!("missing {flag_name} or {env_name}: {err}"))
+}
+
+fn release_arg_or_default(args: &[String], flag: &str, env_name: &str, default: &str) -> String {
+    required_release_arg(args, flag, env_name).unwrap_or_else(|_| default.to_string())
 }
 
 fn normalize_release_version(version: &str) -> String {
@@ -36223,6 +36293,41 @@ mod tests {
             "ripr server 1.2.3\n\nThis archive contains the ripr executable used by the VS Code/Open VSX\nextension. It is distributed under MIT OR Apache-2.0."
         );
         Ok(())
+    }
+
+    #[test]
+    fn vscode_marketplace_latest_version_reads_vsce_json() -> Result<(), String> {
+        let json = r#"{
+            "versions": [
+                {"version": "0.5.0"},
+                {"version": "0.4.0"}
+            ]
+        }"#;
+
+        assert_eq!(super::vscode_marketplace_latest_version(json)?, "0.5.0");
+        Ok(())
+    }
+
+    #[test]
+    fn vscode_marketplace_latest_version_requires_latest_version() {
+        let err = super::vscode_marketplace_latest_version(r#"{"versions": []}"#)
+            .expect_err("missing marketplace version should fail");
+
+        assert!(err.contains("versions[0].version"));
+    }
+
+    #[test]
+    fn release_arg_or_default_uses_flag_env_or_default() {
+        let args = vec!["--publisher".to_string(), "Custom".to_string()];
+
+        assert_eq!(
+            super::release_arg_or_default(&args, "publisher", "MISSING_ENV", "Default"),
+            "Custom"
+        );
+        assert_eq!(
+            super::release_arg_or_default(&[], "publisher", "MISSING_ENV", "Default"),
+            "Default"
+        );
     }
 
     #[test]
