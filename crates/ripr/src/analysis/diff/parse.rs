@@ -282,6 +282,26 @@ mod tests {
     }
 
     #[test]
+    fn parses_git_quoted_new_paths_with_octal_escapes() {
+        let diff = "diff --git \"a/src/price\\040rules.rs\" \"b/src/price\\040rules.rs\"\n--- \"a/src/price\\040rules.rs\"\n+++ \"b/src/price\\040rules.rs\"\n@@ -1,1 +1,1 @@\n-old\n+new\n";
+
+        let files = parse_unified_diff(diff);
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, PathBuf::from("src/price rules.rs"));
+        assert_eq!(files[0].added_lines[0].line, 1);
+    }
+
+    #[test]
+    fn ignores_unclosed_quoted_new_path_marker() {
+        let diff = "diff --git \"a/src/lib.rs\" \"b/src/lib.rs\"\n--- \"a/src/lib.rs\"\n+++ \"b/src/lib.rs\n@@ -1,1 +1,1 @@\n-old\n+new\n";
+
+        let files = parse_unified_diff(diff);
+
+        assert!(files.is_empty());
+    }
+
+    #[test]
     fn parses_unquoted_new_paths_with_tab_metadata() {
         let diff =
             "--- src/lib.rs\t2026-01-01\n+++ src/lib.rs\t2026-01-02\n@@ -2,1 +2,1 @@\n-old\n+new\n";
