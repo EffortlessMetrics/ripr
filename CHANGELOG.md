@@ -9,6 +9,11 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- `cargo xtask lane1-evidence-audit` now generates its temporary repo-exposure
+  input through a bounded direct `ripr` invocation with latency tracing, so a
+  cold full-repo evidence pass reports a clear timeout with phase context
+  instead of waiting indefinitely or leaving an orphaned analyzer process.
+
 ## 0.6.0 - 2026-05-17
 
 0.6.0 makes static test-gap review easier to trust and easier to operate. The
