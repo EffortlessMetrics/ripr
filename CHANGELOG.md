@@ -14,6 +14,11 @@ are scoped or reviewed.
   path now delegates to the same public implementation, preserving explicit
   artifact composition, advisory defaults, gate-authority separation, and the
   no-source-edit/no-generated-test/no-mutation-execution boundaries.
+- Generated GitHub CI now renders the gap decision ledger and first-run
+  `start-here` packet, then opens the advisory summary with that front door.
+  Release readiness now verifies installed `ripr first-pr --help`, generated-CI
+  start-here markers, and the VS Code `ripr: Start Current Repair` command
+  contribution.
 - `cargo xtask lane1-evidence-audit` now generates its temporary repo-exposure
   input through a bounded direct `ripr` invocation with latency tracing, so a
   cold full-repo evidence pass reports a clear timeout with phase context
