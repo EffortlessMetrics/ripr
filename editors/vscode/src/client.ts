@@ -2336,8 +2336,29 @@ function stringValues(value: Record<string, unknown> | undefined): string[] {
 }
 
 function firstPrCommandIsSafe(command: string): boolean {
-  return command.trim() !== '' && !hasUnsafeShellMetacharacter(command);
+  const normalized = command.trim().replace(/\s+/g, ' ');
+  return normalized !== ''
+    && !hasUnsafeShellMetacharacter(normalized)
+    && FIRST_PR_SAFE_COMMAND_PREFIXES.some((prefix) =>
+      normalized === prefix || normalized.startsWith(`${prefix} `)
+    );
 }
+
+const FIRST_PR_SAFE_COMMAND_PREFIXES = [
+  'cargo xtask first-pr',
+  'cargo xtask fixtures',
+  'cargo xtask goldens check',
+  'ripr first-pr',
+  'ripr start-here',
+  'ripr reports gap-ledger',
+  'ripr first-action',
+  'ripr review-comments',
+  'ripr agent packet',
+  'ripr agent verify',
+  'ripr agent receipt',
+  'ripr gate evaluate',
+  'ripr outcome'
+];
 
 function firstPrPathIsWorkspaceLocal(value: string): boolean {
   const pathPart = value.split('::')[0];

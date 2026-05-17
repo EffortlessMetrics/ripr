@@ -1032,6 +1032,22 @@ suite('Extension Smoke', () => {
       files: {
         'target/ripr/reports/start-here.json': firstPrPacket({
           commands: {
+            verify: 'powershell -NoProfile -Command Get-ChildItem'
+          }
+        })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      await context.controller.copyFirstPrVerifyCommand();
+      assert.strictEqual(context.clipboardWrites.length, 0);
+      assert.ok(context.infoMessages.at(-1)?.includes('unsafe command'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/start-here.json': firstPrPacket({
+          commands: {
             verify: 'cargo xtask fixtures boundary_gap; rm -rf target'
           }
         })
