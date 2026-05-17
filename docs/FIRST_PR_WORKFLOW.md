@@ -132,6 +132,9 @@ ripr agent start --root . --seam-id <seam_id> --out target/ripr/workflow
 Give a coding agent the bounded packet, not a broad instruction. It should know
 the owner, changed behavior, related test, missing discriminator or output
 proof, repair route, stop conditions, and verification command.
+When the packet comes from the gap ledger, `llm_guidance.copyable_packet`
+contains a pasteable Markdown work order with Task, Context, Repair,
+Verification, Stop Conditions, and Do Not Do sections.
 
 ## 6. Add One Focused Proof
 
@@ -208,6 +211,11 @@ ripr agent receipt \
 The receipt is the review trail. Without a receipt, do not infer improvement
 from the test diff alone.
 
+If you are working from VS Code, run `ripr: Show Status` after the receipt and
+refresh. The editor can point to the validated first-pr packet, open the
+Markdown packet, and copy the bounded summary or repair packet when the packet
+matches the current workspace and diagnostic identity.
+
 ## 9. Add Advisory CI After One Manual Win
 
 After one PR has a useful before/after receipt, add generated advisory CI:
@@ -248,6 +256,10 @@ The result is advisory, and runtime mutation testing remains optional follow-up.
 
 - [Quickstart](QUICKSTART.md) covers first-hour paths for CLI, CI, editor, and
   agent users.
+- [First successful PR demo](demo/first-successful-pr.md) shows the checked
+  boundary-gap, output-contract, no-action, and blocked fixture cases.
+- [Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md)
+  explains the VS Code handoff from local receipt to `start-here` packet.
 - [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) explains the
   artifact router that can pick the next bounded action.
 - [Targeted test workflow](TARGETED_TEST_WORKFLOW.md) is the deeper
