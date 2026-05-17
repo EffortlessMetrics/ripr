@@ -3302,6 +3302,11 @@ code = [
 outputs = [
   "docs/specs/RIPR-SPEC-0052-editor-first-pr-packet-projection.md",
   "docs/specs/README.md",
+  "docs/EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md",
+  "docs/EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md",
+  "docs/EDITOR_EXTENSION.md",
+  "docs/FIRST_PR_WORKFLOW.md",
+  "editors/vscode/README.md",
   "docs/proposals/RIPR-PROP-0010-editor-first-pr-bridge.md",
   "docs/proposals/README.md",
   "docs/adr/0014-editor-first-pr-projection-is-read-only.md",

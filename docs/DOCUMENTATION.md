@@ -17,7 +17,8 @@ Current and planned tutorial docs:
   boundary, output-contract, no-action, and blocked start-here cases
 - [Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md) -
   install/open, diagnose setup, repair one Rust gap, verify, receipt, refresh
-- future editor first-pr bridge workflow
+- [Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md) -
+  local handoff from receipt and refresh to first-pr `start-here` packet
 - README quick start
 - future first-extension-install walkthrough
 - future first-fixture walkthrough
@@ -80,6 +81,7 @@ Current how-to docs:
 - [Publishing](PUBLISHING.md)
 - [Editor extension](EDITOR_EXTENSION.md)
 - [Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md)
+- [Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md)
 - [Editor gap cockpit workflow](EDITOR_GAP_COCKPIT_WORKFLOW.md)
 - [Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md)
 - [Editor evidence UX](EDITOR_EVIDENCE_UX.md)
