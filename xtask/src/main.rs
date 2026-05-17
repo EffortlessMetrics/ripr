@@ -35,8 +35,7 @@ use reports::{
 use reports::{lsp_cockpit_report, targeted_test_outcome};
 use run::{
     TimedOutput, capture_output, capture_output_with_timeout, command_success_owned, run,
-    run_in_dir, run_in_dir_with_envs, run_output, run_output_optional, run_output_owned,
-    run_output_to_file_owned, run_owned,
+    run_in_dir, run_in_dir_with_envs, run_output, run_output_optional, run_output_owned, run_owned,
 };
 
 #[derive(Debug)]
@@ -13823,6 +13822,8 @@ pub(crate) fn evidence_health_report_impl() -> Result<(), String> {
 const LANE1_EVIDENCE_AUDIT_SCHEMA_VERSION: &str = "0.1";
 const LANE1_EVIDENCE_AUDIT_TOP_LIMIT: usize = 10;
 const LANE1_EVIDENCE_AUDIT_DUPLICATE_LIMIT: usize = 25;
+const LANE1_EVIDENCE_AUDIT_TIMEOUT_ENV: &str = "RIPR_LANE1_EVIDENCE_AUDIT_TIMEOUT_MS";
+const LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS: u64 = 1_200_000;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct Lane1EvidenceAuditReport {
@@ -14024,12 +14025,19 @@ pub(crate) fn lane1_evidence_audit_report_impl() -> Result<(), String> {
 }
 
 fn write_lane1_evidence_audit_repo_exposure(path: &Path) -> Result<(), String> {
-    let args = vec![
-        "run".to_string(),
-        "-p".to_string(),
-        "ripr".to_string(),
-        "--quiet".to_string(),
-        "--".to_string(),
+    run("cargo", &["build", "-p", "ripr"])?;
+    let binary = ripr_debug_binary();
+    let timeout = Duration::from_millis(lane1_evidence_audit_timeout_ms());
+    write_lane1_evidence_audit_repo_exposure_with_runner(
+        path,
+        &binary,
+        timeout,
+        lane1_evidence_audit_run_repo_exposure,
+    )
+}
+
+fn lane1_evidence_audit_repo_exposure_args() -> Vec<String> {
+    vec![
         "check".to_string(),
         "--root".to_string(),
         ".".to_string(),
@@ -14037,10 +14045,56 @@ fn write_lane1_evidence_audit_repo_exposure(path: &Path) -> Result<(), String> {
         "instant".to_string(),
         "--format".to_string(),
         "repo-exposure-json".to_string(),
-    ];
-    match run_output_to_file_owned("cargo", &args, path) {
-        Ok(()) => Ok(()),
-        Err(err) => match lane1_repo_exposure_file_looks_complete(path) {
+    ]
+}
+
+fn lane1_evidence_audit_timeout_ms() -> u64 {
+    std::env::var(LANE1_EVIDENCE_AUDIT_TIMEOUT_ENV)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS)
+}
+
+fn lane1_evidence_audit_run_repo_exposure(
+    binary: &Path,
+    args: &[String],
+    timeout: Duration,
+) -> Result<TimedOutput, String> {
+    let binary_text = binary.display().to_string();
+    let envs = [(REPO_EXPOSURE_LATENCY_TRACE_ENV, "1")];
+    capture_output_with_timeout(
+        &binary_text,
+        args,
+        &envs,
+        timeout,
+        "Lane 1 evidence audit repo exposure",
+    )
+}
+
+fn write_lane1_evidence_audit_repo_exposure_with_runner<F>(
+    path: &Path,
+    binary: &Path,
+    timeout: Duration,
+    mut run_repo_exposure: F,
+) -> Result<(), String>
+where
+    F: FnMut(&Path, &[String], Duration) -> Result<TimedOutput, String>,
+{
+    let args = lane1_evidence_audit_repo_exposure_args();
+    let output = run_repo_exposure(binary, &args, timeout)?;
+    if output.timed_out {
+        let _ = fs::remove_file(path);
+        return Err(lane1_evidence_audit_timeout_error(
+            binary, &args, timeout, &output,
+        ));
+    }
+
+    fs::write(path, &output.stdout)
+        .map_err(|err| format!("failed to write {}: {err}", path.display()))?;
+    match output.status {
+        Some(status) if status.success() => Ok(()),
+        Some(status) => match lane1_repo_exposure_file_looks_complete(path) {
             Ok(true) => {
                 eprintln!(
                     "warning: repo exposure generation returned non-zero status; continuing because {} contains a complete repo-exposure JSON document",
@@ -14048,13 +14102,67 @@ fn write_lane1_evidence_audit_repo_exposure(path: &Path) -> Result<(), String> {
                 );
                 Ok(())
             }
-            Ok(false) => Err(err),
+            Ok(false) => Err(format!(
+                "{} {} failed with {status}\nstderr:\n{}",
+                binary.display(),
+                args.join(" "),
+                output.stderr.trim()
+            )),
             Err(inspect_err) => Err(format!(
-                "{err}\nfailed to inspect captured repo exposure {}: {inspect_err}",
-                path.display()
+                "{} {} failed with {status}\nfailed to inspect captured repo exposure {}: {inspect_err}\nstderr:\n{}",
+                binary.display(),
+                args.join(" "),
+                path.display(),
+                output.stderr.trim()
             )),
         },
+        None => Err(format!(
+            "{} {} did not report an exit status\nstderr:\n{}",
+            binary.display(),
+            args.join(" "),
+            output.stderr.trim()
+        )),
     }
+}
+
+fn lane1_evidence_audit_timeout_error(
+    binary: &Path,
+    args: &[String],
+    timeout: Duration,
+    output: &TimedOutput,
+) -> String {
+    let timeout_ms = timeout.as_millis();
+    let mut message = format!(
+        "{} {} timed out after {timeout_ms} ms while generating Lane 1 repo exposure; no partial repo-exposure JSON was accepted.",
+        binary.display(),
+        args.join(" ")
+    );
+    let trace = repo_exposure_latency_trace(&output.stderr);
+    if !trace.is_empty() {
+        message.push_str("\nlast latency trace:");
+        let start = trace.len().saturating_sub(8);
+        for entry in &trace[start..] {
+            message.push_str(&format!(
+                "\n- phase={} status={} duration_ms={}",
+                entry.phase, entry.status, entry.duration_ms
+            ));
+        }
+    } else if !output.stderr.trim().is_empty() {
+        message.push_str("\nstderr tail:");
+        for line in output
+            .stderr
+            .lines()
+            .rev()
+            .take(8)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+        {
+            message.push('\n');
+            message.push_str(line);
+        }
+    }
+    message
 }
 
 fn lane1_repo_exposure_file_looks_complete(path: &Path) -> Result<bool, String> {
@@ -35989,7 +36097,8 @@ mod tests {
         is_stale_agent_boundary_scan_target, json_escape, json_number_after,
         json_string_values_for_key, json_summary_count, known_commands, known_xtask_command,
         lane1_evidence_audit_from_repo_exposure, lane1_evidence_audit_json,
-        lane1_evidence_audit_markdown, local_context_line_findings, local_markdown_target,
+        lane1_evidence_audit_markdown, lane1_evidence_audit_repo_exposure_args,
+        lane1_evidence_audit_timeout_error, local_context_line_findings, local_markdown_target,
         lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
         markdown_links_in_text, mutation_calibration_report_json,
         mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
@@ -36030,7 +36139,7 @@ mod tests {
         vscode_compile_command, vscode_extension_dir, vscode_package_command,
         vscode_package_version, vscode_test_e2e_command, windows_absolute_path_tokens,
         workflow_runtime_violations, worktree, worktree_doctor_findings,
-        write_repo_exposure_latency_report,
+        write_lane1_evidence_audit_repo_exposure_with_runner, write_repo_exposure_latency_report,
     };
     use super::{
         DeclaredIntent, LocalContextFinding,
@@ -36866,6 +36975,18 @@ mod tests {
     fn success_exit_status() -> ExitStatus {
         use std::os::windows::process::ExitStatusExt;
         ExitStatusExt::from_raw(0)
+    }
+
+    #[cfg(unix)]
+    fn failure_exit_status() -> ExitStatus {
+        use std::os::unix::process::ExitStatusExt;
+        ExitStatusExt::from_raw(1 << 8)
+    }
+
+    #[cfg(windows)]
+    fn failure_exit_status() -> ExitStatus {
+        use std::os::windows::process::ExitStatusExt;
+        ExitStatusExt::from_raw(1)
     }
 
     #[test]
@@ -49057,6 +49178,182 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn lane1_evidence_audit_repo_exposure_generation_times_out_with_trace() -> Result<(), String> {
+        let root = temp_dir("lane1-repo-exposure-timeout");
+        let output_path = root.join("repo-exposure.json");
+        write(&output_path, "stale");
+        let timeout = Duration::from_millis(5);
+        let err = write_lane1_evidence_audit_repo_exposure_with_runner(
+            &output_path,
+            Path::new("ripr"),
+            timeout,
+            |binary, args, timeout_seen| {
+                assert_eq!(binary, Path::new("ripr"));
+                assert_eq!(timeout_seen, timeout);
+                assert_eq!(args, lane1_evidence_audit_repo_exposure_args().as_slice());
+                Ok(TimedOutput {
+                    status: None,
+                    stdout: "{\"schema_version\":\"0.3\"".to_string(),
+                    stderr: "ripr_repo_exposure_latency phase=evidence_for_seams_progress status=processed_500_of_37361 duration_ms=9983\n".to_string(),
+                    duration: timeout,
+                    timed_out: true,
+                })
+            },
+        )
+        .expect_err("timeout should fail instead of accepting partial JSON");
+
+        assert!(
+            err.contains("timed out after 5 ms"),
+            "timeout error should name timeout: {err}"
+        );
+        assert!(
+            err.contains("phase=evidence_for_seams_progress"),
+            "timeout error should include latency phase: {err}"
+        );
+        assert!(
+            err.contains("processed_500_of_37361"),
+            "timeout error should include latency status: {err}"
+        );
+        assert!(
+            !output_path.exists(),
+            "timed-out repo exposure generation should remove stale or partial output"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_evidence_audit_repo_exposure_generation_writes_success_json() -> Result<(), String> {
+        let root = temp_dir("lane1-repo-exposure-success");
+        let output_path = root.join("repo-exposure.json");
+        let timeout = Duration::from_millis(50);
+        let stdout = "{\n  \"schema_version\": \"0.3\",\n  \"seams\": []\n}\n";
+
+        write_lane1_evidence_audit_repo_exposure_with_runner(
+            &output_path,
+            Path::new("ripr"),
+            timeout,
+            |binary, args, timeout_seen| {
+                assert_eq!(binary, Path::new("ripr"));
+                assert_eq!(timeout_seen, timeout);
+                assert_eq!(args, lane1_evidence_audit_repo_exposure_args().as_slice());
+                Ok(TimedOutput {
+                    status: Some(success_exit_status()),
+                    stdout: stdout.to_string(),
+                    stderr: String::new(),
+                    duration: Duration::from_millis(1),
+                    timed_out: false,
+                })
+            },
+        )?;
+
+        assert_eq!(
+            fs::read_to_string(&output_path).map_err(|err| err.to_string())?,
+            stdout
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_evidence_audit_repo_exposure_generation_accepts_complete_json_from_nonzero_status()
+    -> Result<(), String> {
+        let root = temp_dir("lane1-repo-exposure-nonzero-complete");
+        let output_path = root.join("repo-exposure.json");
+        let stdout = "{\n  \"schema_version\": \"0.3\",\n  \"seams\": []\n}\n";
+
+        write_lane1_evidence_audit_repo_exposure_with_runner(
+            &output_path,
+            Path::new("ripr"),
+            Duration::from_millis(50),
+            |_binary, _args, _timeout_seen| {
+                Ok(TimedOutput {
+                    status: Some(failure_exit_status()),
+                    stdout: stdout.to_string(),
+                    stderr: "nonfatal stderr after full JSON".to_string(),
+                    duration: Duration::from_millis(1),
+                    timed_out: false,
+                })
+            },
+        )?;
+
+        assert_eq!(
+            fs::read_to_string(&output_path).map_err(|err| err.to_string())?,
+            stdout
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_evidence_audit_repo_exposure_generation_rejects_incomplete_nonzero_json() {
+        let root = temp_dir("lane1-repo-exposure-nonzero-incomplete");
+        let output_path = root.join("repo-exposure.json");
+        let err = write_lane1_evidence_audit_repo_exposure_with_runner(
+            &output_path,
+            Path::new("ripr"),
+            Duration::from_millis(50),
+            |_binary, _args, _timeout_seen| {
+                Ok(TimedOutput {
+                    status: Some(failure_exit_status()),
+                    stdout: "{\n  \"schema_version\": \"0.3\",\n  \"seams\": [\n".to_string(),
+                    stderr: "repo exposure failed".to_string(),
+                    duration: Duration::from_millis(1),
+                    timed_out: false,
+                })
+            },
+        )
+        .expect_err("incomplete repo-exposure JSON should fail on nonzero status");
+
+        assert!(err.contains("failed with"), "{err}");
+        assert!(err.contains("repo exposure failed"), "{err}");
+    }
+
+    #[test]
+    fn lane1_evidence_audit_repo_exposure_generation_reports_missing_exit_status() {
+        let root = temp_dir("lane1-repo-exposure-no-status");
+        let output_path = root.join("repo-exposure.json");
+        let err = write_lane1_evidence_audit_repo_exposure_with_runner(
+            &output_path,
+            Path::new("ripr"),
+            Duration::from_millis(50),
+            |_binary, _args, _timeout_seen| {
+                Ok(TimedOutput {
+                    status: None,
+                    stdout: "{\n  \"schema_version\": \"0.3\",\n  \"seams\": []\n}\n".to_string(),
+                    stderr: "missing status stderr".to_string(),
+                    duration: Duration::from_millis(1),
+                    timed_out: false,
+                })
+            },
+        )
+        .expect_err("missing exit status should be reported");
+
+        assert!(err.contains("did not report an exit status"), "{err}");
+        assert!(err.contains("missing status stderr"), "{err}");
+    }
+
+    #[test]
+    fn lane1_evidence_audit_timeout_error_uses_stderr_tail_without_trace() {
+        let output = TimedOutput {
+            status: None,
+            stdout: String::new(),
+            stderr: "first\nsecond\nthird\n".to_string(),
+            duration: Duration::from_millis(10),
+            timed_out: true,
+        };
+        let err = lane1_evidence_audit_timeout_error(
+            Path::new("ripr"),
+            &lane1_evidence_audit_repo_exposure_args(),
+            Duration::from_millis(10),
+            &output,
+        );
+        assert!(err.contains("timed out after 10 ms"));
+        assert!(err.contains("stderr tail:"));
+        assert!(err.contains("first\nsecond\nthird"));
+    }
+
+    #[test]
     fn lane1_evidence_audit_counts_quality_gaps_from_evidence_record() -> Result<(), String> {
         let report = lane1_evidence_audit_from_repo_exposure(".", lane1_audit_sample_json())?;
         let json = lane1_evidence_audit_json(&report)?;
@@ -51165,7 +51462,7 @@ covered_by = ["cargo xtask check-file-policy"]
         let run = repo_exposure_latency_run(
             Path::new("rustc"),
             "repo-exposure-json",
-            Duration::from_secs(5),
+            Duration::from_secs(30),
         )?;
 
         assert_eq!(run.format, "repo-exposure-json");
