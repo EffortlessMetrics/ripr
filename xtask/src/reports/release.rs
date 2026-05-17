@@ -287,7 +287,9 @@ fn path_install_check() -> ReleaseReadinessCheck {
 }
 
 fn installed_command_surface_check(binary: &Path) -> ReleaseReadinessCheck {
-    let command = format!("{} --help", crate::normalize_path(binary));
+    let binary_path = crate::normalize_path(binary);
+    let command =
+        format!("{binary_path} --version && {binary_path} --help && {binary_path} first-pr --help");
     if !binary.exists() {
         return readiness_check(
             "installed-command-surface",
@@ -299,60 +301,122 @@ fn installed_command_surface_check(binary: &Path) -> ReleaseReadinessCheck {
             Vec::new(),
         );
     }
-    match run_command_path(binary, &["--help"]) {
-        Ok(result) if result.success => {
-            let required = [
-                "ripr pilot",
-                "ripr outcome",
-                "ripr calibrate cargo-mutants",
-                "ripr agent verify",
-                "ripr agent receipt",
-            ];
-            let missing = required
-                .iter()
-                .filter(|needle| !result.stdout.contains(**needle))
-                .map(|needle| (*needle).to_string())
-                .collect::<Vec<_>>();
-            if missing.is_empty() {
-                readiness_check(
-                    "installed-command-surface",
-                    "pass",
-                    true,
-                    &command,
-                    "installed binary exposes the public release-loop commands",
-                    vec![crate::normalize_path(binary)],
-                    Vec::new(),
-                )
-            } else {
-                readiness_check(
-                    "installed-command-surface",
-                    "fail",
-                    true,
-                    &command,
-                    "installed binary is missing expected public loop commands",
-                    vec![crate::normalize_path(binary)],
-                    vec![format!("missing: {}", missing.join(", "))],
-                )
-            }
+    let version = match run_command_path(binary, &["--version"]) {
+        Ok(result) if result.success => result,
+        Ok(result) => {
+            return readiness_check(
+                "installed-command-surface",
+                "fail",
+                true,
+                &command,
+                "installed ripr --version failed",
+                vec![crate::normalize_path(binary)],
+                command_details(&result),
+            );
         }
-        Ok(result) => readiness_check(
+        Err(err) => {
+            return readiness_check(
+                "installed-command-surface",
+                "fail",
+                true,
+                &command,
+                "installed ripr --version could not run",
+                vec![crate::normalize_path(binary)],
+                vec![err],
+            );
+        }
+    };
+    let help = match run_command_path(binary, &["--help"]) {
+        Ok(result) if result.success => result,
+        Ok(result) => {
+            return readiness_check(
+                "installed-command-surface",
+                "fail",
+                true,
+                &command,
+                "installed binary help failed",
+                vec![crate::normalize_path(binary)],
+                command_details(&result),
+            );
+        }
+        Err(err) => {
+            return readiness_check(
+                "installed-command-surface",
+                "fail",
+                true,
+                &command,
+                "installed binary help could not run",
+                vec![crate::normalize_path(binary)],
+                vec![err],
+            );
+        }
+    };
+    let first_pr_help = match run_command_path(binary, &["first-pr", "--help"]) {
+        Ok(result) if result.success => result,
+        Ok(result) => {
+            return readiness_check(
+                "installed-command-surface",
+                "fail",
+                true,
+                &command,
+                "installed ripr first-pr --help failed",
+                vec![crate::normalize_path(binary)],
+                command_details(&result),
+            );
+        }
+        Err(err) => {
+            return readiness_check(
+                "installed-command-surface",
+                "fail",
+                true,
+                &command,
+                "installed ripr first-pr --help could not run",
+                vec![crate::normalize_path(binary)],
+                vec![err],
+            );
+        }
+    };
+    let mut missing = missing_required_needles(
+        &help.stdout,
+        &[
+            "ripr pilot",
+            "ripr outcome",
+            "ripr first-pr",
+            "ripr calibrate cargo-mutants",
+            "ripr agent verify",
+            "ripr agent receipt",
+        ],
+    );
+    missing.extend(missing_required_needles(
+        &first_pr_help.stdout,
+        &[
+            "Create the start-here packet",
+            "usage: ripr first-pr",
+            "--gap-ledger",
+            "--receipts-dir",
+            "--out-dir",
+        ],
+    ));
+    if missing.is_empty() {
+        readiness_check(
+            "installed-command-surface",
+            "pass",
+            true,
+            &command,
+            "installed binary exposes public release-loop and first-run commands",
+            vec![crate::normalize_path(binary)],
+            command_details(&version),
+        )
+    } else {
+        readiness_check(
             "installed-command-surface",
             "fail",
             true,
             &command,
-            "installed binary help failed",
+            "installed binary is missing expected public loop or first-run commands",
             vec![crate::normalize_path(binary)],
-            command_details(&result),
-        ),
-        Err(err) => readiness_check(
-            "installed-command-surface",
-            "fail",
-            true,
-            &command,
-            "installed binary help could not run",
-            vec![crate::normalize_path(binary)],
-            vec![err],
-        ),
+            vec![format!("missing: {}", missing.join(", "))],
+        )
     }
 }
 
@@ -771,6 +835,13 @@ fn github_workflow_check(binary: &Path) -> ReleaseReadinessCheck {
                 "ripr agent start",
                 "ripr agent status",
                 "ripr agent review-summary",
+                "ripr reports gap-ledger",
+                "ripr first-pr",
+                "#### First-run status",
+                "missing_start_here",
+                "cat target/ripr/reports/start-here.md",
+                "target/ripr/reports/gap-decision-ledger.json",
+                "target/ripr/reports/start-here.md",
                 "target/ripr/pilot",
                 "target/ripr/workflow",
                 "target/ripr/reports",
@@ -791,7 +862,7 @@ fn github_workflow_check(binary: &Path) -> ReleaseReadinessCheck {
                     "pass",
                     true,
                     &command,
-                    "generated GitHub workflow is advisory and includes pilot/report artifacts",
+                    "generated GitHub workflow is advisory and starts with first-run repair guidance",
                     vec![".github/workflows/ripr.yml (dry-run)".to_string()],
                     Vec::new(),
                 )
@@ -801,7 +872,7 @@ fn github_workflow_check(binary: &Path) -> ReleaseReadinessCheck {
                     "fail",
                     true,
                     &command,
-                    "generated GitHub workflow is missing expected advisory artifacts",
+                    "generated GitHub workflow is missing expected advisory first-run artifacts",
                     vec![".github/workflows/ripr.yml (dry-run)".to_string()],
                     vec![format!("missing: {}", missing.join(", "))],
                 )
@@ -858,6 +929,11 @@ fn vsix_packaging_check() -> ReleaseReadinessCheck {
     if !doc_mentions_package {
         missing.push("docs/RELEASE_MARKETPLACE.md package instructions".to_string());
     }
+    if !vsix_start_current_repair_command_present(package_json) {
+        missing.push(
+            "editors/vscode/package.json contributes.commands ripr.startCurrentRepair".to_string(),
+        );
+    }
     if missing.is_empty() {
         readiness_check(
             "vsix-packaging-path",
@@ -883,6 +959,34 @@ fn vsix_packaging_check() -> ReleaseReadinessCheck {
             vec![format!("missing: {}", missing.join(", "))],
         )
     }
+}
+
+fn missing_required_needles(text: &str, required: &[&str]) -> Vec<String> {
+    required
+        .iter()
+        .filter(|needle| !text.contains(**needle))
+        .map(|needle| (*needle).to_string())
+        .collect()
+}
+
+fn vsix_start_current_repair_command_present(package_json: &Path) -> bool {
+    read_json_value(package_json)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("contributes")
+                .and_then(|contributes| contributes.get("commands"))
+                .and_then(Value::as_array)
+                .map(|commands| {
+                    commands.iter().any(|command| {
+                        command.get("command").and_then(Value::as_str)
+                            == Some("ripr.startCurrentRepair")
+                            && command.get("title").and_then(Value::as_str)
+                                == Some("ripr: Start Current Repair")
+                    })
+                })
+        })
+        .unwrap_or(false)
 }
 
 fn known_limits_docs_check() -> ReleaseReadinessCheck {
@@ -1050,7 +1154,7 @@ fn release_readiness_markdown(report: &ReleaseReadinessReport) -> String {
     for command in &report.next_commands {
         out.push_str(&format!("- `{}`\n", md_escape_inline(command)));
     }
-    out.push_str("\nThis report records the 0.5 release surface from repo artifacts. It does not run mutation testing, enable CI blocking, change analyzer classifications, or expand LSP behavior.\n");
+    out.push_str("\nThis report records the release surface from repo artifacts. It does not run mutation testing, enable CI blocking, change analyzer classifications, or expand LSP behavior.\n");
     out
 }
 
@@ -1152,11 +1256,14 @@ fn run_command_path(program: &Path, args: &[&str]) -> Result<CommandResult, Stri
 #[cfg(test)]
 mod tests {
     use super::{
-        ReleaseReadinessCheck, ReleaseReadinessReport, parse_release_readiness_args,
-        readiness_check, release_readiness_json, release_readiness_markdown,
-        release_readiness_status,
+        ReleaseReadinessCheck, ReleaseReadinessReport, missing_required_needles,
+        parse_release_readiness_args, readiness_check, release_readiness_json,
+        release_readiness_markdown, release_readiness_status,
+        vsix_start_current_repair_command_present,
     };
     use serde_json::Value;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn release_readiness_args_parse_version() -> Result<(), String> {
@@ -1199,6 +1306,60 @@ mod tests {
         let fail_status = release_readiness_status(&[pass, not_run, failure]);
         if fail_status != "fail" {
             return Err(format!("expected fail status, got {fail_status}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn release_readiness_command_surface_needles_include_first_run() -> Result<(), String> {
+        let help = "ripr pilot\nripr outcome\nripr first-pr\nripr agent verify";
+        let missing = missing_required_needles(
+            help,
+            &[
+                "ripr pilot",
+                "ripr outcome",
+                "ripr first-pr",
+                "ripr agent verify",
+            ],
+        );
+        if !missing.is_empty() {
+            return Err(format!(
+                "expected all first-run needles present: {missing:?}"
+            ));
+        }
+        let missing_first_pr = missing_required_needles(help, &["ripr first-pr", "--receipts-dir"]);
+        if missing_first_pr != ["--receipts-dir".to_string()] {
+            return Err(format!("unexpected missing needles: {missing_first_pr:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn vsix_manifest_declares_start_current_repair_command() -> Result<(), String> {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|err| format!("clock error: {err}"))?
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("ripr-vsix-command-{stamp}.json"));
+        fs::write(
+            &path,
+            r#"{
+              "contributes": {
+                "commands": [
+                  {
+                    "command": "ripr.startCurrentRepair",
+                    "title": "ripr: Start Current Repair"
+                  }
+                ]
+              }
+            }"#,
+        )
+        .map_err(|err| format!("failed to write {}: {err}", path.display()))?;
+        let present = vsix_start_current_repair_command_present(&path);
+        fs::remove_file(&path)
+            .map_err(|err| format!("failed to remove {}: {err}", path.display()))?;
+        if !present {
+            return Err("expected start current repair command to be detected".to_string());
         }
         Ok(())
     }

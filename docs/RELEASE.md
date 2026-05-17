@@ -62,6 +62,7 @@ cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 cargo install --path crates/ripr --locked --force --root target/ripr/install-smoke
 target/ripr/install-smoke/bin/ripr --version
+target/ripr/install-smoke/bin/ripr first-pr --help
 target/ripr/install-smoke/bin/ripr doctor
 target/ripr/install-smoke/bin/ripr pilot --root fixtures/boundary_gap/input --out target/ripr/install-smoke/pilot
 target/ripr/install-smoke/bin/ripr outcome --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json
@@ -69,6 +70,12 @@ npm --prefix editors/vscode ci
 npm --prefix editors/vscode run compile
 npm --prefix editors/vscode run package
 ```
+
+For first-run adoption releases, also confirm the generated GitHub workflow
+summary includes `#### First-run status`, the `missing_start_here` recovery
+state, and the `target/ripr/reports/start-here.md` front door. Confirm
+`editors/vscode/package.json` contributes `ripr: Start Current Repair` so the
+installed editor path exposes the same repair loop.
 
 For a published release, confirm that GitHub Releases contains the VSIX, server
 manifest, server archives, and checksums:
@@ -118,6 +125,7 @@ happens, check crates.io manually before retrying.
 ```bash
 cargo install ripr --version 0.6.0 --locked --root target/ripr/install-smoke-cratesio --force
 target/ripr/install-smoke-cratesio/bin/ripr --version
+target/ripr/install-smoke-cratesio/bin/ripr first-pr --help
 target/ripr/install-smoke-cratesio/bin/ripr doctor
 target/ripr/install-smoke-cratesio/bin/ripr pilot --root fixtures/boundary_gap/input --out target/ripr/install-smoke-cratesio/pilot
 target/ripr/install-smoke-cratesio/bin/ripr outcome --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json
