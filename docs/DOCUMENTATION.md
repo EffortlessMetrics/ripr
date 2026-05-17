@@ -19,6 +19,9 @@ Current and planned tutorial docs:
   install/open, diagnose setup, repair one Rust gap, verify, receipt, refresh
 - [Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md) -
   local handoff from receipt and refresh to first-pr `start-here` packet
+- [Start-here surface convergence proposal](proposals/RIPR-PROP-0011-start-here-surface-convergence.md) -
+  cross-surface plan for making editor, CLI, PR/CI, receipts, and preview
+  promotion use the same safe next-action unit
 - README quick start
 - future first-extension-install walkthrough
 - future first-fixture walkthrough
@@ -185,6 +188,8 @@ Current explanation docs:
 - [Lane 1 finding alignment burn-down plan](../plans/lane1-finding-alignment-burndown/implementation-plan.md)
 - [Adoption integration cleanup plan](../plans/adoption-integration-cleanup/implementation-plan.md)
 - [Editor first-pr bridge proposal](proposals/RIPR-PROP-0010-editor-first-pr-bridge.md)
+- [Start-here surface convergence proposal](proposals/RIPR-PROP-0011-start-here-surface-convergence.md)
+- [Start-here surface convergence plan](../plans/start-here-surface-convergence/implementation-plan.md)
 - [Codex Goals](CODEX_GOALS.md)
 - [Scoped PR contract](SCOPED_PR_CONTRACT.md)
 - [PR automation](PR_AUTOMATION.md)
