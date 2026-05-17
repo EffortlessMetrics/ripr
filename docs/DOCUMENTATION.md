@@ -13,6 +13,8 @@ Current and planned tutorial docs:
   agent or reviewer handoff
 - [First successful PR workflow](FIRST_PR_WORKFLOW.md) - one Rust PR,
   one repairable gap, one focused proof, one receipt
+- [First successful PR demo](demo/first-successful-pr.md) - fixture-backed
+  boundary, output-contract, no-action, and blocked start-here cases
 - [Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md) -
   install/open, diagnose setup, repair one Rust gap, verify, receipt, refresh
 - future editor first-pr bridge workflow
@@ -74,6 +76,7 @@ Current how-to docs:
 - [Release](RELEASE.md)
 - [Installation verification](INSTALLATION_VERIFICATION.md)
 - [First successful PR workflow](FIRST_PR_WORKFLOW.md)
+- [First successful PR demo](demo/first-successful-pr.md)
 - [Publishing](PUBLISHING.md)
 - [Editor extension](EDITOR_EXTENSION.md)
 - [Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md)
