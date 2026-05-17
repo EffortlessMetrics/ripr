@@ -79,7 +79,10 @@
     "changed_behavior": "APPLE_M3_AIR_DEVICE_LABELS_TEXT",
     "gap_id": "gap:pr:output:device-label",
     "kind": "MissingOutputContract",
+    "language": "rust",
+    "language_status": "stable",
     "receipt_command": null,
+    "receipt_state": null,
     "repair": {
       "related_test": "fixtures/device-labels",
       "route": "AddOutputGolden",
@@ -88,6 +91,8 @@
     },
     "source_artifact": "inputs/reports/gap-decision-ledger.json",
     "state": "top_gap",
+    "static_limit_detail": null,
+    "static_limit_kind": null,
     "verify_command": "cargo xtask goldens check",
     "why": "User-facing output changed, but the gap ledger did not find checked output or golden evidence for the changed text."
   },
