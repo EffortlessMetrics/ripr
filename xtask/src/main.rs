@@ -40281,6 +40281,104 @@ fn has_unwrap_in_name() -> bool {
     }
 
     #[test]
+    fn rust_conversion_candidates_retains_external_workflow_tooling() -> Result<(), String> {
+        let block = super::RunBlock {
+            line_number: 21,
+            non_empty_lines: 1,
+            text: "npm --prefix editors/vscode run compile".to_string(),
+        };
+
+        let Some(candidate) =
+            super::workflow_run_conversion_candidate(".github/workflows/ci.yml", &block)
+        else {
+            return Err("external workflow tooling should be retained".to_string());
+        };
+
+        assert_eq!(candidate.priority, "retained");
+        assert_eq!(candidate.kind, "retained_external_runtime");
+        assert_eq!(candidate.line, Some(21));
+        assert!(candidate.current_surface.contains("external toolchain"));
+        Ok(())
+    }
+
+    #[test]
+    fn rust_conversion_candidates_markdown_reports_actionable_and_retained_counts() {
+        let candidates = sample_rust_conversion_candidates();
+
+        let markdown = super::rust_conversion_candidates_markdown(&candidates);
+
+        assert!(markdown.contains("Status: advisory"));
+        assert!(markdown.contains("Actionable candidates: 2"));
+        assert!(markdown.contains("Retained boundaries inspected: 1"));
+        assert!(markdown.contains("workflow_shell_logic"));
+        assert!(markdown.contains("VS Code extension TypeScript"));
+        assert!(markdown.contains("cargo xtask check-file-policy"));
+    }
+
+    #[test]
+    fn rust_conversion_candidates_markdown_handles_empty_report() {
+        let markdown = super::rust_conversion_candidates_markdown(&[]);
+
+        assert!(markdown.contains("Actionable candidates: 0"));
+        assert!(markdown.contains("Retained boundaries inspected: 0"));
+        assert!(markdown.contains(
+            "No unretained non-Rust source files or workflow shell migration candidates were found."
+        ));
+        assert!(
+            markdown.contains("No retained non-Rust runtime or fixture boundaries were found.")
+        );
+    }
+
+    #[test]
+    fn rust_conversion_candidates_json_reports_counts_and_items() -> Result<(), String> {
+        let candidates = sample_rust_conversion_candidates();
+
+        let json = super::rust_conversion_candidates_json(&candidates)?;
+        let value: serde_json::Value = serde_json::from_str(&json)
+            .map_err(|err| format!("rust conversion JSON should parse: {err}"))?;
+
+        assert_eq!(value["schema_version"], 1);
+        assert_eq!(value["actionable_count"], 2);
+        assert_eq!(value["retained_count"], 1);
+        assert_eq!(value["candidates"][0]["path"], "scripts/check.py");
+        assert_eq!(value["candidates"][1]["line"], 42);
+        assert_eq!(value["candidates"][2]["priority"], "retained");
+        Ok(())
+    }
+
+    fn sample_rust_conversion_candidates() -> Vec<super::RustConversionCandidate> {
+        vec![
+            super::RustConversionCandidate {
+                path: "scripts/check.py".to_string(),
+                line: None,
+                kind: "non_rust_programming_without_retention_rule".to_string(),
+                priority: "high".to_string(),
+                current_surface: "unapproved non-Rust implementation or automation".to_string(),
+                recommendation: "Move this behavior into xtask.".to_string(),
+                reason: "Rust is the default implementation surface.".to_string(),
+            },
+            super::RustConversionCandidate {
+                path: ".github/workflows/pr-plan.yml".to_string(),
+                line: Some(42),
+                kind: "workflow_shell_logic".to_string(),
+                priority: "medium".to_string(),
+                current_surface: "GitHub Actions shell run block".to_string(),
+                recommendation: "Move report assembly into cargo xtask.".to_string(),
+                reason: "Workflow shell is harder to type-check and test.".to_string(),
+            },
+            super::RustConversionCandidate {
+                path: "editors/vscode/src/extension.ts".to_string(),
+                line: None,
+                kind: "retained_external_runtime".to_string(),
+                priority: "retained".to_string(),
+                current_surface: "VS Code extension TypeScript".to_string(),
+                recommendation: "Keep this code in the editor adapter.".to_string(),
+                reason: "The VS Code Extension Host API is TypeScript-native.".to_string(),
+            },
+        ]
+    }
+
+    #[test]
     fn glob_matches_distinguishes_single_star_from_double_star_segments() {
         // docs/*.md must NOT match a nested path: a single `*` cannot cross `/`.
         assert!(!glob_matches(
