@@ -113,7 +113,7 @@ Probes the adapter must generate (syntax-first):
 When the adapter cannot classify, it emits one of the `static_limit_kind`
 values defined in RIPR-SPEC-0026:
 
-- `dynamic_dispatch` (e.g., `getattr(obj, name)(...)` or `dict[key](...)`)
+- `dynamic_dispatch` (e.g., `getattr(obj, name)(...)` or `dict[key] call`)
 - `metaprogramming` (e.g., metaclass usage, `__getattr__` indirection)
 - `missing_import_graph` (the symbol is imported from a module the
   adapter cannot resolve syntactically)
