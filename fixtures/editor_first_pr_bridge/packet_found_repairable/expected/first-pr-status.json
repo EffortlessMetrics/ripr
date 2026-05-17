@@ -1,0 +1,25 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_pr_bridge/packet_found_repairable",
+  "packet_state": "top_repairable_gap",
+  "packet_path": "target/ripr/first-pr/start-here.json",
+  "markdown_path": "target/ripr/first-pr/start-here.md",
+  "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+  "gap_id": "gap:pr:pricing:threshold-boundary",
+  "related_test": "tests/pricing.rs::premium_customer_gets_discount",
+  "verify_command": "cargo xtask fixtures boundary_gap",
+  "receipt_command": "ripr agent receipt --root . --json",
+  "safe_actions": [
+    "open_packet",
+    "copy_summary",
+    "copy_repair_packet",
+    "copy_verify_command",
+    "copy_receipt_command",
+    "copy_regeneration_guidance"
+  ],
+  "suppressed_actions": [],
+  "runtime_adequacy_claim": false,
+  "mutation_proof_claim": false,
+  "policy_gate_claim": false,
+  "pr_ready_claim": false
+}
