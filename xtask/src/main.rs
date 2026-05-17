@@ -14193,10 +14193,11 @@ impl Lane1EvidenceAuditBuilder {
                 coverage.unknown_items += 1;
             }
         }
-        if audit_non_empty_string(canonical_item, &["recommended_repair"]).is_none() {
+        let actionable = audit_is_actionable_canonical_item(&item_kind, &gap_state);
+        if actionable && !audit_has_structured_repair_route(canonical_item) {
             self.canonical_items_without_repair_route += 1;
         }
-        if audit_non_empty_string(canonical_item, &["verify_command"]).is_none() {
+        if actionable && audit_verify_command_is_missing(canonical_item) {
             self.canonical_items_without_verify_command += 1;
         }
         if audit_has_static_unknown_signal(record, canonical_item, &gap_state, &actionability)
@@ -15096,6 +15097,33 @@ fn audit_string(value: &Value, path: &[&str]) -> Option<String> {
 
 fn audit_non_empty_string(value: &Value, path: &[&str]) -> Option<String> {
     audit_string(value, path).filter(|text| !text.trim().is_empty())
+}
+
+fn audit_is_actionable_canonical_item(item_kind: &str, gap_state: &str) -> bool {
+    item_kind == "gap" || gap_state == "actionable"
+}
+
+fn audit_has_structured_repair_route(canonical_item: &Value) -> bool {
+    let Some(repair_route) = audit_get(canonical_item, &["repair_route"]) else {
+        return false;
+    };
+    repair_route.is_object()
+        && audit_non_empty_string(repair_route, &["repair_kind"])
+            .is_some_and(|field| !audit_guidance_field_is_missing(&field))
+        && audit_non_empty_string(repair_route, &["target_test_type"])
+            .is_some_and(|field| !audit_guidance_field_is_missing(&field))
+        && audit_non_empty_string(repair_route, &["suggested_assertion"])
+            .is_some_and(|field| !audit_guidance_field_is_missing(&field))
+}
+
+fn audit_verify_command_is_missing(canonical_item: &Value) -> bool {
+    audit_non_empty_string(canonical_item, &["verify_command"]).is_none_or(|command| {
+        audit_guidance_field_is_missing(&command) || command.trim() == "verify_command_unknown"
+    })
+}
+
+fn audit_guidance_field_is_missing(value: &str) -> bool {
+    matches!(value.trim(), "" | "unknown" | "none" | "no_action")
 }
 
 fn audit_bool(value: &Value, path: &[&str]) -> Option<bool> {
@@ -42518,6 +42546,10 @@ fn exact_owner_call_has_external_expected_value() {
                     "already_observed",
                 ),
                 ("config_policy_flow_unknown_limitation", "static_limitation"),
+                (
+                    "config_policy_opaque_lookup_limitation",
+                    "static_limitation",
+                ),
             ] {
                 assert!(
                     scenarios.iter().any(|scenario| {
@@ -48672,7 +48704,7 @@ covered_by = ["cargo xtask check-file-policy"]
         );
         assert_eq!(
             coverage["canonical_items_without_verify_command"],
-            serde_json::Value::from(1)
+            serde_json::Value::from(0)
         );
         let class_rows = coverage["alignment_coverage_by_class"]
             .as_array()
@@ -48779,6 +48811,223 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(
             coverage["same_line_duplicate_groups"][0]["kinds"][1],
             "static_unknown"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_evidence_audit_reports_aligned_supported_class_coverage() -> Result<(), String> {
+        let report = lane1_evidence_audit_from_repo_exposure(
+            ".",
+            r#"{
+              "schema_version": "0.3",
+              "scope": "repo",
+              "seams": [
+                {
+                  "seam_id": "presentation-label",
+                  "headline_eligible": true,
+                  "file": "src/help.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "presentation-label",
+                    "canonical_gap_id": "presentation_text::HELP_LABEL",
+                    "owner": "HELP_LABEL",
+                    "location": {"file": "src/help.rs", "line": 8},
+                    "seam_kind": "presentation_text",
+                    "grip_class": "weakly_gripped",
+                    "headline_eligible": true,
+                    "evidence_path": {},
+                    "observed_values": [],
+                    "missing_discriminators": [],
+                    "related_tests_total": 0,
+                    "related_tests": [],
+                    "recommendation": {"action": "add_output_observer", "reason": "missing output observer", "verify_command": "cargo xtask evidence-quality-scorecard"},
+                    "actionability": {"class": "actionable_output_observer"},
+                    "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+                    "static_limitations": [],
+                    "raw_findings": [
+                      {"file": "src/help.rs", "line": 8, "kind": "exposed", "probe_kind": "presentation_text", "expression": "pub const HELP_LABEL: &str ="},
+                      {"file": "src/help.rs", "line": 9, "kind": "static_unknown", "probe_kind": "presentation_text", "expression": "\"help label\""}
+                    ],
+                    "canonical_item": {
+                      "canonical_gap_id": "presentation_text::HELP_LABEL",
+                      "canonical_item_kind": "gap",
+                      "evidence_class": "presentation_text",
+                      "gap_state": "actionable",
+                      "actionability": "add_output_observer",
+                      "raw_findings": [
+                        {"file": "src/help.rs", "line": 8, "kind": "exposed", "expression": "pub const HELP_LABEL: &str ="},
+                        {"file": "src/help.rs", "line": 9, "kind": "static_unknown", "expression": "\"help label\""}
+                      ],
+                      "raw_group_size": 2,
+                      "why": "changed user-visible help text has no output observer",
+                      "recommended_repair": "Add or update a help-output snapshot.",
+                      "repair_route": {
+                        "repair_kind": "output_observer",
+                        "target_test_type": "help_output_snapshot",
+                        "suggested_assertion": "Assert the rendered help output contains HELP_LABEL."
+                      },
+                      "verify_command": "cargo xtask evidence-quality-scorecard",
+                      "confidence": {"basis": "fixture_backed", "notes": []}
+                    }
+                  }
+                },
+                {
+                  "seam_id": "internal-policy-label",
+                  "headline_eligible": true,
+                  "file": "src/policy.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "internal-policy-label",
+                    "canonical_gap_id": "config_or_policy_constant::INTERNAL_POLICY_LABEL",
+                    "owner": "INTERNAL_POLICY_LABEL",
+                    "location": {"file": "src/policy.rs", "line": 22},
+                    "seam_kind": "config_or_policy_constant",
+                    "grip_class": "weakly_gripped",
+                    "headline_eligible": true,
+                    "evidence_path": {},
+                    "observed_values": [],
+                    "missing_discriminators": [],
+                    "related_tests_total": 0,
+                    "related_tests": [],
+                    "recommendation": {"action": "no_action", "reason": "internal policy metadata", "verify_command": null},
+                    "actionability": {"class": "no_action_internal"},
+                    "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+                    "static_limitations": [],
+                    "raw_findings": [
+                      {"file": "src/policy.rs", "line": 22, "kind": "exposed", "probe_kind": "config_or_policy_constant", "expression": "pub const INTERNAL_POLICY_LABEL: &str ="},
+                      {"file": "src/policy.rs", "line": 23, "kind": "weakly_exposed", "probe_kind": "config_or_policy_constant", "expression": "\"internal\""}
+                    ],
+                    "canonical_item": {
+                      "canonical_gap_id": "config_or_policy_constant::INTERNAL_POLICY_LABEL",
+                      "canonical_item_kind": "no_action",
+                      "evidence_class": "config_or_policy_constant",
+                      "gap_state": "internal_only",
+                      "actionability": "no_action_internal",
+                      "raw_findings": [
+                        {"file": "src/policy.rs", "line": 22, "kind": "exposed", "expression": "pub const INTERNAL_POLICY_LABEL: &str ="},
+                        {"file": "src/policy.rs", "line": 23, "kind": "weakly_exposed", "expression": "\"internal\""}
+                      ],
+                      "raw_group_size": 2,
+                      "why": "changed policy label is internal metadata",
+                      "recommended_repair": "No user test action; internal policy metadata is not user-visible behavior.",
+                      "verify_command": null,
+                      "confidence": {"basis": "fixture_backed", "notes": []}
+                    }
+                  }
+                }
+              ]
+            }"#,
+        )?;
+        let json = lane1_evidence_audit_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        let coverage = &value["finding_alignment"]["coverage"];
+        let class_rows = coverage["alignment_coverage_by_class"]
+            .as_array()
+            .ok_or_else(|| "alignment coverage rows should be an array".to_string())?;
+        let presentation = class_rows
+            .iter()
+            .find(|row| row["evidence_class"] == "presentation_text")
+            .ok_or_else(|| "missing presentation_text coverage row".to_string())?;
+        assert_eq!(presentation["raw_findings"], serde_json::Value::from(2));
+        assert_eq!(
+            presentation["aligned_raw_findings"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(presentation["canonical_items"], serde_json::Value::from(1));
+        assert_eq!(presentation["actionable_items"], serde_json::Value::from(1));
+        let config_policy = class_rows
+            .iter()
+            .find(|row| row["evidence_class"] == "config_or_policy_constant")
+            .ok_or_else(|| "missing config_or_policy_constant coverage row".to_string())?;
+        assert_eq!(config_policy["raw_findings"], serde_json::Value::from(2));
+        assert_eq!(
+            config_policy["aligned_raw_findings"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(config_policy["canonical_items"], serde_json::Value::from(1));
+        assert_eq!(
+            config_policy["internal_no_action_items"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            coverage["canonical_items_without_repair_route"],
+            serde_json::Value::from(0)
+        );
+        assert_eq!(
+            coverage["canonical_items_without_verify_command"],
+            serde_json::Value::from(0)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_evidence_audit_requires_structured_repair_route_for_actionable_items()
+    -> Result<(), String> {
+        let report = lane1_evidence_audit_from_repo_exposure(
+            ".",
+            r#"{
+              "schema_version": "0.3",
+              "scope": "repo",
+              "seams": [
+                {
+                  "seam_id": "prose-only-repair",
+                  "headline_eligible": true,
+                  "file": "src/lib.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "prose-only-repair",
+                    "canonical_gap_id": "gap:prose-only-repair",
+                    "owner": "pricing::discount",
+                    "location": {"file": "src/lib.rs", "line": 12},
+                    "seam_kind": "predicate_boundary",
+                    "grip_class": "weakly_gripped",
+                    "headline_eligible": true,
+                    "evidence_path": {},
+                    "observed_values": [],
+                    "missing_discriminators": [],
+                    "related_tests_total": 0,
+                    "related_tests": [],
+                    "recommendation": {"action": "write_targeted_test", "reason": "missing discriminator", "verify_command": "ripr agent verify --root . --before before.json --after after.json --json"},
+                    "actionability": {"class": "actionable_assertion_upgrade"},
+                    "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+                    "static_limitations": [],
+                    "raw_findings": [
+                      {"file": "src/lib.rs", "line": 12, "kind": "weakly_exposed", "expression": "discount(amount)"}
+                    ],
+                    "canonical_item": {
+                      "canonical_gap_id": "gap:prose-only-repair",
+                      "canonical_item_kind": "gap",
+                      "evidence_class": "predicate_boundary",
+                      "gap_state": "actionable",
+                      "actionability": "upgrade_assertion",
+                      "raw_findings": [
+                        {"file": "src/lib.rs", "line": 12, "kind": "weakly_exposed", "expression": "discount(amount)"}
+                      ],
+                      "raw_group_size": 1,
+                      "why": "related tests reach the seam but miss the boundary discriminator",
+                      "recommended_repair": "Add an equality-boundary assertion for the changed predicate.",
+                      "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+                      "confidence": {"basis": "static_only", "notes": []}
+                    }
+                  }
+                }
+              ]
+            }"#,
+        )?;
+        let json = lane1_evidence_audit_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        let coverage = &value["finding_alignment"]["coverage"];
+
+        assert_eq!(
+            coverage["canonical_items_without_repair_route"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            coverage["canonical_items_without_verify_command"],
+            serde_json::Value::from(0)
         );
         Ok(())
     }
@@ -49822,6 +50071,11 @@ covered_by = ["cargo xtask check-file-policy"]
                   "raw_group_size": 1,
                   "why": "related tests reach the seam but miss the boundary discriminator",
                   "recommended_repair": "Add an equality-boundary assertion for the changed predicate.",
+                  "repair_route": {
+                    "repair_kind": "add_boundary_assertion",
+                    "target_test_type": "boundary_behavior",
+                    "suggested_assertion": "assert_eq!(discount(threshold), expected_discount)"
+                  },
                   "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
                   "confidence": {"basis": "static_only", "notes": []}
                 }
@@ -49892,6 +50146,11 @@ covered_by = ["cargo xtask check-file-policy"]
                   "raw_group_size": 1,
                   "why": "related tests reach the seam but miss the boundary discriminator",
                   "recommended_repair": "Add an equality-boundary assertion for the changed predicate.",
+                  "repair_route": {
+                    "repair_kind": "add_boundary_assertion",
+                    "target_test_type": "boundary_behavior",
+                    "suggested_assertion": "assert_eq!(discount(threshold), expected_discount)"
+                  },
                   "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
                   "confidence": {"basis": "static_only", "notes": []}
                 }

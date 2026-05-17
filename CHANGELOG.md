@@ -90,6 +90,11 @@ Planned scope:
 - Lane 1 finding-alignment coverage now treats generic `static_unknown` and
   `unknown` limitation categories as unnamed, so static-unknown canonical items
   must carry a specific analyzer limitation category and repair route.
+- Lane 1 finding-alignment coverage now requires actionable canonical items to
+  carry a structured top-level `repair_route`, not just prose repair text, and
+  its audit tests directly cover aligned `presentation_text` and
+  `config_or_policy_constant` rows. The dogfood corpus also includes the opaque
+  config lookup named-limitation receipt.
 - `cargo xtask reports index` now includes repo-ops packet status in Markdown
   and JSON for command mutability, the repo cockpit, PR-ready, worktree doctor,
   PR triage, per-PR merge readiness, generated-clean, badge ownership, critic,
