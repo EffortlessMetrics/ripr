@@ -96,6 +96,14 @@ export interface RiprRelatedTestTarget {
   test_name?: string;
 }
 
+type FirstPrPacketActionKind =
+  | 'open'
+  | 'summary'
+  | 'repair'
+  | 'verify'
+  | 'receipt'
+  | 'regenerate';
+
 interface StartRepairAction {
   title: string;
   command: vscode.Command;
@@ -546,6 +554,71 @@ export class RiprClientController {
     }
   }
 
+  async openFirstPrPacket(): Promise<void> {
+    const packet = await this.firstPrPacketForAction('open');
+    if (!packet) {
+      return;
+    }
+    if (!packet.markdownPath) {
+      this.runtime.showInformationMessage('No ripr first-pr Markdown packet path is available.');
+      return;
+    }
+    try {
+      const markdown = await this.runtime.readFile(packet.markdownPath);
+      if (markdown === undefined) {
+        this.runtime.showInformationMessage(`ripr first-pr packet is missing: ${packet.markdownRelativePath ?? packet.relativePath}.`);
+        return;
+      }
+      const document = await vscode.workspace.openTextDocument(vscode.Uri.file(packet.markdownPath));
+      await vscode.window.showTextDocument(document);
+      this.runtime.showInformationMessage('Opened ripr first-pr packet.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr open first-pr packet failed: ${message}`);
+      this.runtime.showWarningMessage('ripr could not open the first-pr packet. See ripr output for details.');
+    }
+  }
+
+  async copyFirstPrSummary(): Promise<void> {
+    const packet = await this.firstPrPacketForAction('summary');
+    if (!packet) {
+      return;
+    }
+    await this.copyFirstPrText(firstPrSummaryPacket(packet), 'summary');
+  }
+
+  async copyFirstPrRepairPacket(): Promise<void> {
+    const packet = await this.firstPrPacketForAction('repair');
+    if (!packet || !this.currentDiagnosticMatchesFirstPrPacket(packet)) {
+      return;
+    }
+    await this.copyFirstPrText(firstPrRepairPacket(packet), 'repair packet');
+  }
+
+  async copyFirstPrVerifyCommand(): Promise<void> {
+    const packet = await this.firstPrPacketForAction('verify');
+    if (!packet || !this.currentDiagnosticMatchesFirstPrPacket(packet)) {
+      return;
+    }
+    await this.copyFirstPrText(packet.verifyCommand ?? '', 'verify command');
+  }
+
+  async copyFirstPrReceiptCommand(): Promise<void> {
+    const packet = await this.firstPrPacketForAction('receipt');
+    if (!packet || !this.currentDiagnosticMatchesFirstPrPacket(packet)) {
+      return;
+    }
+    await this.copyFirstPrText(packet.receiptCommand ?? '', 'receipt command');
+  }
+
+  async copyFirstPrRegenerationGuidance(): Promise<void> {
+    const packet = await this.firstPrPacketForAction('regenerate');
+    if (!packet) {
+      return;
+    }
+    await this.copyFirstPrText(firstPrRegenerationGuidance(packet), 'regeneration guidance');
+  }
+
   async openRelatedTest(target?: RiprRelatedTestTarget): Promise<void> {
     const uri = uriFromTarget(target);
     if (!uri) {
@@ -584,6 +657,83 @@ export class RiprClientController {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr open related test failed: ${message}`);
       this.runtime.showWarningMessage('ripr could not open the related test. See ripr output for details.');
+    }
+  }
+
+  private async firstPrPacketForAction(kind: FirstPrPacketActionKind): Promise<RiprFirstPrPacketStatus | undefined> {
+    await this.refreshSetupStatusFiles();
+    const packet = this.setupStatus.firstPr;
+    if (this.status.kind === 'stale' && firstPrPacketCanBecomeStale(packet.state)) {
+      this.runtime.showInformationMessage('ripr first-pr actions require current saved-workspace evidence; save or refresh first.');
+      return kind === 'regenerate' ? packet : undefined;
+    }
+    if (kind === 'regenerate') {
+      return packet.state === 'noWorkspace' ? undefined : packet;
+    }
+    if (kind === 'summary') {
+      if (firstPrPacketAllowsSummary(packet.state)) {
+        return packet;
+      }
+      this.runtime.showInformationMessage(firstPrSuppressedMessage(packet));
+      return undefined;
+    }
+    if (kind === 'open') {
+      if (firstPrPacketAllowsOpen(packet.state)) {
+        return packet;
+      }
+      this.runtime.showInformationMessage(firstPrSuppressedMessage(packet));
+      return undefined;
+    }
+    if (packet.state !== 'topRepairableGap') {
+      this.runtime.showInformationMessage(firstPrSuppressedMessage(packet));
+      return undefined;
+    }
+    if (kind === 'repair' && !firstPrHasRepairPacket(packet)) {
+      this.runtime.showInformationMessage('ripr first-pr repair packet is missing required typed repair fields.');
+      return undefined;
+    }
+    if (kind === 'verify' && !packet.verifyCommand) {
+      this.runtime.showInformationMessage('ripr first-pr verify command is not available.');
+      return undefined;
+    }
+    if (kind === 'receipt' && !packet.receiptCommand) {
+      this.runtime.showInformationMessage('ripr first-pr receipt command is not available.');
+      return undefined;
+    }
+    return packet;
+  }
+
+  private currentDiagnosticMatchesFirstPrPacket(packet: RiprFirstPrPacketStatus): boolean {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || !isRiprFileDocument(editor.document)) {
+      this.runtime.showInformationMessage('Open the diagnostic file before copying diagnostic-scoped first-pr packet actions.');
+      return false;
+    }
+    const diagnostic = nearestGapDiagnostic(editor);
+    if (!diagnostic) {
+      this.runtime.showInformationMessage('No current ripr gap diagnostic is available for this first-pr packet.');
+      return false;
+    }
+    if (!diagnosticMatchesFirstPrPacket(diagnostic, packet)) {
+      this.runtime.showInformationMessage('The current diagnostic does not match the first-pr packet gap identity.');
+      return false;
+    }
+    return true;
+  }
+
+  private async copyFirstPrText(text: string, label: string): Promise<void> {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      this.runtime.showInformationMessage(`No ripr first-pr ${label} is available.`);
+      return;
+    }
+    try {
+      await this.runtime.writeClipboard(trimmed);
+      this.runtime.showInformationMessage(`Copied ripr first-pr ${label} to clipboard.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr copy first-pr ${label} failed: ${message}`);
+      this.runtime.showWarningMessage(`ripr could not copy the first-pr ${label}. See ripr output for details.`);
     }
   }
 
@@ -832,8 +982,13 @@ export interface RiprFirstPrPacketStatus {
   detail?: string;
   status?: string;
   selectedState?: string;
+  selectedKind?: string;
+  changedBehavior?: string;
+  why?: string;
   gapId?: string;
   canonicalGapId?: string;
+  repairRoute?: string;
+  suggestedAssertion?: string;
   verifyCommand?: string;
   receiptCommand?: string;
   relatedTest?: string;
@@ -1244,6 +1399,198 @@ function firstPrPacketCanBecomeStale(state: RiprFirstPrPacketState): boolean {
     || state === 'topRepairableGap'
     || state === 'noAction'
     || state === 'blocked';
+}
+
+function firstPrPacketAllowsSummary(state: RiprFirstPrPacketState): boolean {
+  return state === 'found'
+    || state === 'topRepairableGap'
+    || state === 'noAction';
+}
+
+function firstPrPacketAllowsOpen(state: RiprFirstPrPacketState): boolean {
+  return state === 'found'
+    || state === 'topRepairableGap'
+    || state === 'noAction';
+}
+
+function firstPrHasRepairPacket(packet: RiprFirstPrPacketStatus): boolean {
+  return Boolean(
+    (packet.canonicalGapId ?? packet.gapId) &&
+    packet.repairRoute &&
+    (packet.relatedTest || packet.repairTarget) &&
+    packet.verifyCommand &&
+    packet.receiptCommand
+  );
+}
+
+function firstPrSuppressedMessage(packet: RiprFirstPrPacketStatus): string {
+  switch (packet.state) {
+    case 'missing':
+      return 'ripr first-pr packet is missing; run cargo xtask first-pr after verify/receipt artifacts exist.';
+    case 'unreadable':
+      return 'ripr first-pr packet is unreadable; bounded first-pr actions are suppressed.';
+    case 'malformed':
+    case 'unsupportedSchema':
+      return 'ripr first-pr packet is malformed or unsupported; bounded first-pr actions are suppressed.';
+    case 'wrongRoot':
+      return 'ripr first-pr packet belongs to another workspace; bounded first-pr actions are suppressed.';
+    case 'unsafePath':
+      return 'ripr first-pr packet references an unsafe path; bounded first-pr actions are suppressed.';
+    case 'unsafeCommand':
+      return 'ripr first-pr packet contains an unsafe command; copy-command actions are suppressed.';
+    case 'noAction':
+      return 'ripr first-pr packet has no actionable gap; no repair packet is projected.';
+    case 'blocked':
+      return 'ripr first-pr packet is blocked; copy regeneration guidance before acting.';
+    case 'noWorkspace':
+      return 'Open a workspace before using ripr first-pr packet actions.';
+    case 'found':
+    case 'topRepairableGap':
+      return 'ripr first-pr packet does not contain a bounded action for this command.';
+  }
+}
+
+function firstPrSummaryPacket(packet: RiprFirstPrPacketStatus): string {
+  const lines = [
+    'RIPR first-pr summary',
+    '',
+    `State: ${packet.state}`,
+    `Packet: ${packet.markdownRelativePath ?? packet.relativePath}`
+  ];
+  if (packet.selectedState) {
+    lines.push(`Selected state: ${packet.selectedState}`);
+  }
+  if (packet.canonicalGapId ?? packet.gapId) {
+    lines.push(`Gap identity: ${packet.canonicalGapId ?? packet.gapId}`);
+  }
+  if (packet.selectedKind) {
+    lines.push(`Gap kind: ${packet.selectedKind}`);
+  }
+  if (packet.changedBehavior) {
+    lines.push(`Changed behavior: ${packet.changedBehavior}`);
+  }
+  if (packet.why) {
+    lines.push(`Why this matters: ${packet.why}`);
+  }
+  if (packet.relatedTest) {
+    lines.push(`Related test: ${packet.relatedTest}`);
+  }
+  if (packet.repairTarget) {
+    lines.push(`Repair target: ${packet.repairTarget}`);
+  }
+  if (packet.verifyCommand) {
+    lines.push(`Verify command: ${packet.verifyCommand}`);
+  }
+  if (packet.receiptCommand) {
+    lines.push(`Receipt command: ${packet.receiptCommand}`);
+  }
+  lines.push(`Warnings: ${packet.warningCount ?? 0}`);
+  lines.push('');
+  lines.push('Limits and non-claims:');
+  lines.push('- Advisory static evidence only.');
+  lines.push('- Does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.');
+  lines.push('- Does not edit source, generate tests, publish PR comments, or run providers.');
+  return lines.join('\n');
+}
+
+function firstPrRepairPacket(packet: RiprFirstPrPacketStatus): string {
+  const lines = [
+    'RIPR first-pr repair packet',
+    '',
+    `First PR packet: ${packet.markdownRelativePath ?? packet.relativePath}`,
+    `Gap identity: ${packet.canonicalGapId ?? packet.gapId ?? 'unknown'}`
+  ];
+  if (packet.selectedKind) {
+    lines.push(`Gap kind: ${packet.selectedKind}`);
+  }
+  if (packet.changedBehavior) {
+    lines.push(`Changed behavior: ${packet.changedBehavior}`);
+  }
+  if (packet.why) {
+    lines.push(`Why this matters: ${packet.why}`);
+  }
+  if (packet.repairRoute) {
+    lines.push(`Repair route: ${packet.repairRoute}`);
+  }
+  if (packet.repairTarget) {
+    lines.push(`Repair target: ${packet.repairTarget}`);
+  }
+  if (packet.relatedTest) {
+    lines.push(`Related test: ${packet.relatedTest}`);
+  }
+  if (packet.suggestedAssertion) {
+    lines.push(`Suggested assertion: ${packet.suggestedAssertion}`);
+  }
+  lines.push('');
+  lines.push('Verify command:');
+  lines.push(packet.verifyCommand ?? 'not available');
+  lines.push('');
+  lines.push('Receipt command:');
+  lines.push(packet.receiptCommand ?? 'not available');
+  lines.push('');
+  lines.push('Instructions:');
+  lines.push('- Add one focused test for this gap.');
+  lines.push('- Do not broaden scope.');
+  lines.push('- Run the verify command, then emit the receipt.');
+  lines.push('- Return the receipt path and result.');
+  lines.push('');
+  lines.push('Limits and non-claims:');
+  lines.push('- Static editor evidence only.');
+  lines.push('- Does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.');
+  lines.push('- Does not edit source, generate tests, publish PR comments, or run providers.');
+  return lines.join('\n');
+}
+
+function firstPrRegenerationGuidance(packet: RiprFirstPrPacketStatus): string {
+  const lines = [
+    'RIPR first-pr regeneration guidance',
+    '',
+    `Current state: ${packet.state}`,
+    `Packet: ${packet.relativePath}`
+  ];
+  if (packet.detail) {
+    lines.push(`Detail: ${packet.detail}`);
+  }
+  if (packet.selectedState) {
+    lines.push(`Selected state: ${packet.selectedState}`);
+  }
+  lines.push('');
+  lines.push('Next safe action:');
+  lines.push('cargo xtask first-pr');
+  lines.push('');
+  lines.push('Limits and non-claims:');
+  lines.push('- This is copied guidance only; the editor does not run the command.');
+  lines.push('- Regenerate first-pr artifacts for the current workspace before carrying evidence into PR review.');
+  return lines.join('\n');
+}
+
+function diagnosticMatchesFirstPrPacket(
+  diagnostic: vscode.Diagnostic,
+  packet: RiprFirstPrPacketStatus
+): boolean {
+  const packetIds = [
+    packet.canonicalGapId,
+    packet.gapId
+  ].filter((value): value is string => value !== undefined);
+  if (packetIds.length === 0) {
+    return false;
+  }
+  const diagnosticIds = [
+    diagnosticDataString(diagnostic, 'canonical_gap_id'),
+    diagnosticDataString(diagnostic, 'gap_id'),
+    diagnosticDataString(diagnostic, 'seam_id'),
+    diagnosticDataString(diagnostic, 'finding_id')
+  ].filter((value): value is string => value !== undefined);
+  return packetIds.some((packetId) => diagnosticIds.includes(packetId));
+}
+
+function diagnosticDataString(diagnostic: vscode.Diagnostic, field: string): string | undefined {
+  const data = (diagnostic as unknown as { data?: unknown }).data;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return undefined;
+  }
+  const value = (data as Record<string, unknown>)[field];
+  return typeof value === 'string' && value.trim() !== '' ? value : undefined;
 }
 
 function firstPrTopRepairableGapLines(packet: RiprFirstPrPacketStatus): string[] {
@@ -1905,8 +2252,13 @@ function validateFirstPrPacket(
     ...base,
     status,
     selectedState,
+    selectedKind: stringField(selected, 'kind'),
+    changedBehavior: stringField(selected, 'changed_behavior'),
+    why: stringField(selected, 'why'),
     gapId: stringField(selected, 'gap_id'),
     canonicalGapId: stringField(selected, 'canonical_gap_id'),
+    repairRoute: repair ? stringField(repair, 'route') : undefined,
+    suggestedAssertion: repair ? stringField(repair, 'suggested_assertion') : undefined,
     verifyCommand: stringField(selected, 'verify_command'),
     receiptCommand: stringField(selected, 'receipt_command'),
     relatedTest,
