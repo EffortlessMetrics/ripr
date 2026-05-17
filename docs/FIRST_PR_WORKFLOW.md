@@ -211,6 +211,11 @@ ripr agent receipt \
 The receipt is the review trail. Without a receipt, do not infer improvement
 from the test diff alone.
 
+If you are working from VS Code, run `ripr: Show Status` after the receipt and
+refresh. The editor can point to the validated first-pr packet, open the
+Markdown packet, and copy the bounded summary or repair packet when the packet
+matches the current workspace and diagnostic identity.
+
 ## 9. Add Advisory CI After One Manual Win
 
 After one PR has a useful before/after receipt, add generated advisory CI:
@@ -253,6 +258,8 @@ The result is advisory, and runtime mutation testing remains optional follow-up.
   agent users.
 - [First successful PR demo](demo/first-successful-pr.md) shows the checked
   boundary-gap, output-contract, no-action, and blocked fixture cases.
+- [Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md)
+  explains the VS Code handoff from local receipt to `start-here` packet.
 - [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) explains the
   artifact router that can pick the next bounded action.
 - [Targeted test workflow](TARGETED_TEST_WORKFLOW.md) is the deeper

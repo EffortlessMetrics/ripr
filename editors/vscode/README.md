@@ -49,11 +49,15 @@ After opening a Rust/Cargo workspace:
 5. Open the best related test when ripr finds an imitation target.
 6. Add one focused test outside the editor.
 7. Verify with the copied command chain or the CI artifact packet.
+8. Emit the receipt, refresh saved-workspace analysis, then inspect the
+   first-pr `start-here` packet when the status reports that one is safe.
 
 Unsaved-buffer overlays are not enabled by default.
 
 For the full editor loop from diagnostic to receipt, see
-[`docs/EDITOR_EVIDENCE_WORKFLOW.md`](../../docs/EDITOR_EVIDENCE_WORKFLOW.md).
+[`docs/EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md`](../../docs/EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md).
+For the local handoff from receipt to first-pr packet, see
+[`docs/EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md`](../../docs/EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md).
 
 ## What ripr Does
 
@@ -76,7 +80,10 @@ writing the targeted test / copying the agent handoff / verifying after the
 test / reviewing the receipt / refreshing analysis, an LSP
 `collectEvidenceContext` seam handoff packet, and a first-useful-action
 projection in the status bar and hover when a workspace-matched report
-already exists.
+already exists. It also projects existing first-pr `start-here` packet state
+in Diagnose Setup and Show Status, and can open or copy bounded first-pr packet
+content only after the packet validates against the current workspace and
+diagnostic identity.
 
 It does not run mutation testing, report killed/survived, or prove test
 adequacy. Use real mutation testing, such as `cargo-mutants`, for ready-mode
@@ -103,8 +110,16 @@ confirmation.
 ## Commands
 
 - `ripr: Restart Server`
+- `ripr: Diagnose Setup`
 - `ripr: Show Status`
 - `ripr: Show Output`
+- `ripr: Start Current Repair`
+- `ripr: First PR - Open Packet`
+- `ripr: First PR - Copy Summary`
+- `ripr: First PR - Copy Repair Packet`
+- `ripr: First PR - Copy Verify Command`
+- `ripr: First PR - Copy Receipt Command`
+- `ripr: First PR - Copy Regeneration Guidance`
 - `ripr: Inspect Test Gap - Copy Context`
 - `ripr: Write Targeted Test - Copy Suggested Assertion`
 - `ripr: Write Targeted Test - Copy Brief`
