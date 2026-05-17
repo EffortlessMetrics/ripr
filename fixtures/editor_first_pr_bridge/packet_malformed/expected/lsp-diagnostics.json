@@ -1,0 +1,5 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_pr_bridge/packet_malformed",
+  "diagnostics": []
+}

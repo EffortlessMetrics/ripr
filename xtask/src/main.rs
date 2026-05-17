@@ -5017,6 +5017,7 @@ fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                 name,
                 "editor_gap_cockpit"
                     | "editor_first_run_usability"
+                    | "editor_first_pr_bridge"
                     | "evidence-quality-benchmark"
                     | "first_successful_pr"
                     | "finding-alignment-dogfood"
@@ -7180,6 +7181,7 @@ fn check_fixture_contracts() -> Result<(), String> {
     validate_evidence_quality_benchmark_fixture_corpus(&mut violations)?;
     validate_editor_gap_cockpit_fixture_corpus(&mut violations)?;
     validate_editor_first_run_usability_fixture_corpus(&mut violations)?;
+    validate_editor_first_pr_bridge_fixture_corpus(&mut violations)?;
     validate_first_successful_pr_fixture_corpus(&mut violations)?;
     validate_finding_alignment_dogfood_fixture_corpus(&mut violations)?;
     validate_gap_decision_ledger_fixture_corpus(&mut violations)?;
@@ -8852,6 +8854,300 @@ fn validate_editor_first_run_receipt(case: &str, receipt: &Value, violations: &m
     if json_bool_field(receipt, "gate_eligibility_claim") != Some(false) {
         violations.push(format!(
             "editor first-run usability case {case} receipt-status must deny gate_eligibility_claim"
+        ));
+    }
+}
+
+const EDITOR_FIRST_PR_BRIDGE_FIXTURE_ROOT: &str = "fixtures/editor_first_pr_bridge";
+const EDITOR_FIRST_PR_BRIDGE_CASES: &[&str] = &[
+    "setup_ok",
+    "packet_missing",
+    "packet_found_repairable",
+    "packet_no_action",
+    "packet_stale",
+    "packet_wrong_root",
+    "packet_malformed",
+    "receipt_improved_packet_ready",
+    "receipt_unchanged_packet_ready",
+];
+const EDITOR_FIRST_PR_BRIDGE_EXPECTED_FILES: &[&str] = &[
+    "vscode-status.json",
+    "setup-diagnosis.md",
+    "lsp-diagnostics.json",
+    "lsp-code-actions.json",
+    "first-pr-status.json",
+];
+
+fn validate_editor_first_pr_bridge_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new(EDITOR_FIRST_PR_BRIDGE_FIXTURE_ROOT);
+    if !root.exists() {
+        violations.push(format!(
+            "editor first-pr bridge fixture corpus is missing {}",
+            normalize_path(root)
+        ));
+        return Ok(());
+    }
+    let spec = root.join("SPEC.md");
+    if !spec.exists() {
+        violations.push(format!(
+            "editor first-pr bridge fixture corpus is missing {}",
+            normalize_path(&spec)
+        ));
+    } else {
+        let spec_text = read_text_lossy(&spec)?;
+        if !spec_text
+            .lines()
+            .any(|line| line.starts_with("Spec: RIPR-SPEC-0052"))
+        {
+            violations.push(format!(
+                "{} is missing `Spec: RIPR-SPEC-0052`",
+                normalize_path(&spec)
+            ));
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !has_markdown_heading(&spec_text, heading) {
+                violations.push(format!("{} is missing `{heading}`", normalize_path(&spec)));
+            }
+        }
+    }
+
+    for case in EDITOR_FIRST_PR_BRIDGE_CASES {
+        validate_editor_first_pr_bridge_case(root, case, violations)?;
+    }
+    Ok(())
+}
+
+fn validate_editor_first_pr_bridge_case(
+    root: &Path,
+    case: &str,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let expected = root.join(case).join("expected");
+    for file in EDITOR_FIRST_PR_BRIDGE_EXPECTED_FILES {
+        let path = expected.join(file);
+        if !path.exists() {
+            violations.push(format!(
+                "editor first-pr bridge case {case} is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+
+    let status_path = expected.join("vscode-status.json");
+    if status_path.exists() {
+        let status = read_json_value(&status_path)?;
+        validate_editor_first_pr_bridge_status(case, &status, violations);
+    }
+    let actions_path = expected.join("lsp-code-actions.json");
+    if actions_path.exists() {
+        let actions = read_json_value(&actions_path)?;
+        validate_editor_first_pr_bridge_actions(case, &actions, violations);
+    }
+    let packet_path = expected.join("first-pr-status.json");
+    if packet_path.exists() {
+        let packet = read_json_value(&packet_path)?;
+        validate_editor_first_pr_bridge_packet(case, &packet, violations);
+    }
+    let diagnostics_path = expected.join("lsp-diagnostics.json");
+    if diagnostics_path.exists() {
+        let diagnostics = read_json_value(&diagnostics_path)?;
+        validate_editor_first_pr_bridge_diagnostics(case, &diagnostics, violations);
+    }
+    let diagnosis_path = expected.join("setup-diagnosis.md");
+    if diagnosis_path.exists() {
+        let diagnosis = read_text_lossy(&diagnosis_path)?;
+        for required in [
+            "RIPR setup diagnosis",
+            "First PR packet",
+            "Next safe action",
+            "Limits",
+            "no source edits",
+        ] {
+            if !diagnosis.contains(required) {
+                violations.push(format!(
+                    "editor first-pr bridge case {case} setup diagnosis is missing `{required}`"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_editor_first_pr_bridge_status(
+    case: &str,
+    status: &Value,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(status, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "editor first-pr bridge case {case} vscode-status schema_version must be 0.1"
+        ));
+    }
+    let expected_fixture = format!("editor_first_pr_bridge/{case}");
+    if json_string_field(status, "fixture").as_deref() != Some(expected_fixture.as_str()) {
+        violations.push(format!(
+            "editor first-pr bridge case {case} vscode-status fixture must be {expected_fixture}"
+        ));
+    }
+    if matches!(
+        case,
+        "packet_missing" | "packet_stale" | "packet_wrong_root" | "packet_malformed"
+    ) && json_string_field(status, "projection").as_deref() != Some("fail_closed")
+    {
+        violations.push(format!(
+            "editor first-pr bridge case {case} must fail closed"
+        ));
+    }
+    if json_string_field(status, "next_safe_action").is_none() {
+        violations.push(format!(
+            "editor first-pr bridge case {case} must name a next_safe_action"
+        ));
+    }
+}
+
+fn validate_editor_first_pr_bridge_actions(
+    case: &str,
+    actions: &Value,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(actions, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "editor first-pr bridge case {case} lsp-code-actions schema_version must be 0.1"
+        ));
+    }
+    let items = actions
+        .get("actions")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let commands = items
+        .iter()
+        .filter_map(|item| json_string_field(item, "command"))
+        .collect::<BTreeSet<_>>();
+    let has_open_or_copy = commands.contains("ripr.openFirstPrPacket")
+        || commands.contains("ripr.copyFirstPrSummary")
+        || commands.contains("ripr.copyFirstPrRepairPacket")
+        || commands.contains("ripr.copyFirstPrVerifyCommand")
+        || commands.contains("ripr.copyFirstPrReceiptCommand");
+    let has_repair_scoped_actions = commands.contains("ripr.copyFirstPrRepairPacket")
+        || commands.contains("ripr.copyFirstPrVerifyCommand")
+        || commands.contains("ripr.copyFirstPrReceiptCommand");
+    if matches!(
+        case,
+        "packet_missing" | "packet_stale" | "packet_wrong_root" | "packet_malformed"
+    ) && has_open_or_copy
+    {
+        violations.push(format!(
+            "editor first-pr bridge case {case} must suppress first-pr open/copy actions"
+        ));
+    }
+    if matches!(
+        case,
+        "packet_found_repairable"
+            | "receipt_improved_packet_ready"
+            | "receipt_unchanged_packet_ready"
+    ) && !has_repair_scoped_actions
+    {
+        violations.push(format!(
+            "editor first-pr bridge case {case} must expose bounded repair, verify, and receipt actions"
+        ));
+    }
+    if matches!(case, "packet_no_action" | "setup_ok") && has_repair_scoped_actions {
+        violations.push(format!(
+            "editor first-pr bridge case {case} must not expose diagnostic-scoped repair actions"
+        ));
+    }
+    if !commands.contains("ripr.copyFirstPrRegenerationGuidance") {
+        violations.push(format!(
+            "editor first-pr bridge case {case} must include regeneration guidance"
+        ));
+    }
+}
+
+fn validate_editor_first_pr_bridge_packet(
+    case: &str,
+    packet: &Value,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(packet, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "editor first-pr bridge case {case} first-pr-status schema_version must be 0.1"
+        ));
+    }
+    let expected_fixture = format!("editor_first_pr_bridge/{case}");
+    if json_string_field(packet, "fixture").as_deref() != Some(expected_fixture.as_str()) {
+        violations.push(format!(
+            "editor first-pr bridge case {case} first-pr-status fixture must be {expected_fixture}"
+        ));
+    }
+    let expected_state = match case {
+        "setup_ok" => "found",
+        "packet_missing" => "missing",
+        "packet_found_repairable" => "top_repairable_gap",
+        "packet_no_action" => "no_action",
+        "packet_stale" => "stale",
+        "packet_wrong_root" => "wrong_root",
+        "packet_malformed" => "malformed",
+        "receipt_improved_packet_ready" | "receipt_unchanged_packet_ready" => "top_repairable_gap",
+        _ => "unknown",
+    };
+    if json_string_field(packet, "packet_state").as_deref() != Some(expected_state) {
+        violations.push(format!(
+            "editor first-pr bridge case {case} first-pr-status packet_state must be {expected_state}"
+        ));
+    }
+    let expected_receipt_movement = match case {
+        "receipt_improved_packet_ready" => Some("improved"),
+        "receipt_unchanged_packet_ready" => Some("unchanged"),
+        _ => None,
+    };
+    if let Some(expected_movement) = expected_receipt_movement
+        && json_string_field(packet, "receipt_movement").as_deref() != Some(expected_movement)
+    {
+        violations.push(format!(
+            "editor first-pr bridge case {case} receipt_movement must be {expected_movement}"
+        ));
+    }
+    for field in [
+        "runtime_adequacy_claim",
+        "mutation_proof_claim",
+        "policy_gate_claim",
+        "pr_ready_claim",
+    ] {
+        if json_bool_field(packet, field) != Some(false) {
+            violations.push(format!(
+                "editor first-pr bridge case {case} first-pr-status must deny {field}"
+            ));
+        }
+    }
+}
+
+fn validate_editor_first_pr_bridge_diagnostics(
+    case: &str,
+    diagnostics: &Value,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(diagnostics, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "editor first-pr bridge case {case} lsp-diagnostics schema_version must be 0.1"
+        ));
+    }
+    let items = diagnostics
+        .get("diagnostics")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    if matches!(
+        case,
+        "packet_found_repairable"
+            | "receipt_improved_packet_ready"
+            | "receipt_unchanged_packet_ready"
+    ) && items.is_empty()
+    {
+        violations.push(format!(
+            "editor first-pr bridge case {case} must include the matching diagnostic identity"
         ));
     }
 }
@@ -19336,6 +19632,24 @@ fn lsp_cockpit_fixture_dirs() -> Result<Vec<(String, PathBuf)>, String> {
                 .and_then(|value| value.to_str())
                 .ok_or_else(|| format!("invalid fixture path {}", path.display()))?;
             fixtures.push((format!("editor_gap_cockpit/{name}"), path));
+        }
+    }
+    let editor_first_pr_bridge = Path::new("fixtures/editor_first_pr_bridge");
+    if editor_first_pr_bridge.exists() {
+        for entry in fs::read_dir(editor_first_pr_bridge)
+            .map_err(|err| format!("failed to read fixtures/editor_first_pr_bridge: {err}"))?
+        {
+            let entry = entry
+                .map_err(|err| format!("failed to read fixtures/editor_first_pr_bridge: {err}"))?;
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let name = path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .ok_or_else(|| format!("invalid fixture path {}", path.display()))?;
+            fixtures.push((format!("editor_first_pr_bridge/{name}"), path));
         }
     }
     fixtures.sort_by(|left, right| left.0.cmp(&right.0));
