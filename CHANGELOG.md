@@ -24,7 +24,40 @@ are scoped or reviewed.
   planning and documentation only; PR/CI rendering, LSP/editor behavior, gates,
   badges, generated tests, source edits, provider calls, and mutation
   execution remain unchanged.
-- Closed the Lane 1 shippable finding-alignment pass for 0.6.x. Current
+
+## 0.6.0 - 2026-05-17
+
+0.6.0 makes static test-gap review easier to trust and easier to operate. The
+release keeps RIPR static and advisory by default while adding better evidence
+alignment, clearer editor and generated-CI guidance, preview TypeScript/Python
+visibility, policy operation packets, and repo-local cockpit tools for safe
+agentic PR work. Rust remains the stable evidence path. TypeScript and Python
+remain preview evidence paths: visible and useful, but not default gates, RIPR
+Zero blocking debt, calibrated confidence, or runtime proof.
+
+Release themes:
+
+- Evidence trust: raw findings now roll up into canonical evidence items,
+  actionability and repair routes are explicit, static limitations are named,
+  and raw findings remain supporting evidence instead of hidden truth.
+- Operator trust: policy operations, history, promotion packets, preview
+  promotion packets, generated-evidence discipline, command mutability,
+  PR-ready, repo cockpit, merge-watch policy, PR triage dispositions,
+  Rust-conversion candidate inventory, and deterministic suggested fixes make
+  high-throughput PR work reviewable.
+- Editor and CI trust: first-run status, related-test safety, release-copy
+  guardrails, generated-CI policy packets, report indexing, and user-facing
+  static-limit docs make advisory evidence easier to act on without source
+  edits or generated tests.
+- Preview-language honesty: TypeScript/JavaScript and Python preview adapters
+  are available by default, but remain syntax-first advisory evidence until a
+  later explicit policy promotion changes that.
+
+Detailed changes:
+- Changelog source range: the 0.6.0 notes were reconciled against merged PRs
+  and first-parent commits through #1168. Internal learning-doc polish after
+  the release-proof PRs is intentionally not part of the public release story.
+- Closed the Lane 1 shippable finding-alignment pass for 0.6.0. Current
   repo-local audit evidence rolls 47,181 raw alignment signals into 38,027
   canonical items and 149 actionable canonical gaps, with zero actionable
   canonical items missing repair routes or verify commands and zero
@@ -52,35 +85,23 @@ are scoped or reviewed.
 - Actionable predicate-boundary evidence records now carry a structured
   canonical repair route for adding an equality-boundary assertion, so Lane 1
   can count them as concrete repair work instead of prose-only guidance.
-
-## 0.6.0 - 2026-05-17
-
-0.6.0 makes static test-gap review easier to trust and easier to operate. The
-release keeps RIPR static and advisory by default while adding better evidence
-alignment, clearer editor and generated-CI guidance, preview TypeScript/Python
-visibility, policy operation packets, and repo-local cockpit tools for safe
-agentic PR work. Rust remains the stable evidence path. TypeScript and Python
-remain preview evidence paths: visible and useful, but not default gates, RIPR
-Zero blocking debt, calibrated confidence, or runtime proof.
-
-Release themes:
-
-- Evidence trust: raw findings now roll up into canonical evidence items,
-  actionability and repair routes are explicit, static limitations are named,
-  and raw findings remain supporting evidence instead of hidden truth.
-- Operator trust: policy operations, history, promotion packets, preview
-  promotion packets, generated-evidence discipline, command mutability,
-  PR-ready, repo cockpit, merge-watch policy, PR triage dispositions, and
-  deterministic suggested fixes make high-throughput PR work reviewable.
-- Editor and CI trust: first-run status, related-test safety, release-copy
-  guardrails, generated-CI policy packets, report indexing, and user-facing
-  static-limit docs make advisory evidence easier to act on without source
-  edits or generated tests.
-- Preview-language honesty: TypeScript/JavaScript and Python preview adapters
-  are available by default, but remain syntax-first advisory evidence until a
-  later explicit policy promotion changes that.
-
-Detailed changes:
+- The editor first-pr bridge now projects first-pr packet state in status,
+  validates bounded packet artifacts, ships first-pr bridge fixtures and smoke
+  tests, records dogfood receipts, documents the workflow, and closes the Lane
+  3 bridge with the generated-CI first-run card as the reviewer-facing front
+  door. VS Code packet actions can open the packet, copy summary/repair
+  guidance, copy verify and receipt commands, and show regeneration guidance
+  while suppressing stale, wrong-root, unsafe-path, unsafe-command, or malformed
+  packet payloads.
+- Added `cargo xtask rust-conversion-candidates`, a report-only Rust-first
+  policy aid that writes Markdown and JSON candidate reports for unretained
+  non-Rust automation and workflow shell logic while documenting retained
+  editor and fixture boundaries.
+- Release readiness now records the 0.6.0 dry-run proof, repository metadata
+  guidance, installed `ripr first-pr --help` verification, first-run install
+  surface checks, refreshed public server-asset proof copy for the verified
+  `v0.5.0` line, and the current pre-0.6.0 manual VS Marketplace install count
+  without refreshing generated badge endpoints.
 - Closed the First-Run UX and Adoption Hardening campaign. The closeout ties
   the first successful PR command path, `start-here` reports, recovery states,
   fixtures, receipts, PR repair cards, editor start-current-repair action,
@@ -94,15 +115,15 @@ Detailed changes:
   `README.md`, `editors/vscode/README.md`, `docs/QUICKSTART.md`, and
   `docs/EDITOR_EXTENSION.md`. Internal vocabulary (seams, discriminators,
   status IDs, schemas, commands) is unchanged.
-- Added [docs/TERMINOLOGY.md](docs/TERMINOLOGY.md): plain-language ↔ internal
+- Added [docs/TERMINOLOGY.md](docs/TERMINOLOGY.md): plain-language -> internal
   vocabulary bridge linked from `README.md`, `docs/QUICKSTART.md`,
   `docs/EDITOR_EXTENSION.md`, and `editors/vscode/README.md`. No schema, JSON,
   status ID, or command renames.
 - Generated CI advisory job summary now uses reviewer-friendly section
-  headings: `PR review front panel` → `PR review summary`, `First useful
-  action` → `Recommended next test`, `Report packet index` → `Uploaded review
-  artifacts`, `Assistant loop health` → `Agent proof status`. The matching
-  `… at a glance` subsection headings move with each section, and fallback
+  headings: `PR review front panel` -> `PR review summary`, `First useful
+  action` -> `Recommended next test`, `Report packet index` -> `Uploaded review
+  artifacts`, `Assistant loop health` -> `Agent proof status`. The matching
+  `... at a glance` subsection headings move with each section, and fallback
   "X was not generated" messages stay aligned. Artifact filenames, JSON
   fields, command names, status IDs, workflow step `name:` values, and
   schemas are unchanged.
@@ -310,7 +331,7 @@ Detailed changes:
 - VS Code command palette title for `ripr.copyContext` renamed from
   `ripr: Copy Finding Context` to `ripr: Inspect Test Gap - Copy Context` so
   it groups alongside the existing workflow-step categories ("Write Targeted
-  Test - …", "Agent Handoff - …", "Verify After Test - …", "Review Result - …").
+  Test - ...", "Agent Handoff - ...", "Verify After Test - ...", "Review Result - ...").
   Other command palette titles are already action-oriented and stay
   unchanged. Command IDs, settings IDs, LSP requests, JSON fields, schemas,
   status IDs, report names, artifact paths, and behavior are unchanged.
