@@ -16229,6 +16229,9 @@ struct EvidenceQualityScorecardSummary {
     finding_alignment_uncalibrated_total: usize,
     finding_alignment_visibility_unknown_total: usize,
     finding_alignment_presentation_text_actionable_total: usize,
+    finding_alignment_static_unknown_without_named_limitation: usize,
+    finding_alignment_canonical_items_without_repair_route: usize,
+    finding_alignment_canonical_items_without_verify_command: usize,
     presentation_text_total: usize,
     presentation_text_user_visible: usize,
     presentation_text_observed: usize,
@@ -16655,6 +16658,19 @@ fn evidence_quality_scorecard_summary(audit: &Value) -> EvidenceQualityScorecard
             )
             .unwrap_or(0)
         }),
+        finding_alignment_static_unknown_without_named_limitation:
+            finding_alignment_coverage_usize(audit, "static_unknown_without_named_limitation")
+                .unwrap_or(0),
+        finding_alignment_canonical_items_without_repair_route: finding_alignment_coverage_usize(
+            audit,
+            "canonical_items_without_repair_route",
+        )
+        .unwrap_or(0),
+        finding_alignment_canonical_items_without_verify_command: finding_alignment_coverage_usize(
+            audit,
+            "canonical_items_without_verify_command",
+        )
+        .unwrap_or(0),
         presentation_text_total: presentation_text_summary_usize(audit, "presentation_text_total")
             .unwrap_or(0),
         presentation_text_user_visible: presentation_text_summary_usize(
@@ -16720,6 +16736,10 @@ fn finding_alignment_summary_usize(
 ) -> Option<usize> {
     audit_usize_dynamic(value, &["finding_alignment", "summary"], source_key)
         .or_else(|| audit_usize_dynamic(value, &["summary"], scorecard_key))
+}
+
+fn finding_alignment_coverage_usize(value: &Value, key: &str) -> Option<usize> {
+    audit_usize_dynamic(value, &["finding_alignment", "coverage"], key)
 }
 
 fn presentation_text_summary_usize(value: &Value, key: &str) -> Option<usize> {
@@ -16913,6 +16933,18 @@ fn evidence_quality_recommended_repairs(
     scorecard_push_repair(
         &mut repairs,
         ScorecardRepairSpec {
+            slice: "analysis/predicate-boundary-repair-routes",
+            priority: 95,
+            evidence_class: "predicate_boundary",
+            risk_kind: "finding_alignment_canonical_items_without_repair_route",
+            signal_count: summary.finding_alignment_canonical_items_without_repair_route,
+            why: "Actionable canonical gaps must carry concrete repair routes before humans or agents can safely treat them as work.",
+            expected_impact: "Close the actionability loop for predicate-boundary gaps by naming the assertion repair route.",
+        },
+    );
+    scorecard_push_repair(
+        &mut repairs,
+        ScorecardRepairSpec {
             slice: "analysis/static-limitation-taxonomy",
             priority: 90,
             evidence_class: "static_limitations",
@@ -17056,6 +17088,18 @@ fn evidence_quality_recent_deltas(
         (
             "finding_alignment_actionable_items_total",
             current.finding_alignment_actionable_items_total,
+        ),
+        (
+            "finding_alignment_canonical_items_without_repair_route",
+            current.finding_alignment_canonical_items_without_repair_route,
+        ),
+        (
+            "finding_alignment_canonical_items_without_verify_command",
+            current.finding_alignment_canonical_items_without_verify_command,
+        ),
+        (
+            "finding_alignment_static_unknown_without_named_limitation",
+            current.finding_alignment_static_unknown_without_named_limitation,
         ),
         (
             "finding_alignment_static_limitation_total",
@@ -17521,6 +17565,21 @@ fn evidence_quality_scorecard_summary_json(summary: &EvidenceQualityScorecardSum
     );
     scorecard_summary_insert_usize(
         &mut object,
+        "finding_alignment_static_unknown_without_named_limitation",
+        summary.finding_alignment_static_unknown_without_named_limitation,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_canonical_items_without_repair_route",
+        summary.finding_alignment_canonical_items_without_repair_route,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_canonical_items_without_verify_command",
+        summary.finding_alignment_canonical_items_without_verify_command,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
         "presentation_text_total",
         summary.presentation_text_total,
     );
@@ -17717,6 +17776,27 @@ fn evidence_quality_scorecard_markdown(report: &EvidenceQualityScorecardReport) 
         &mut out,
         "Alignment uncalibrated items",
         report.summary.finding_alignment_uncalibrated_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Static unknown without named limitation",
+        report
+            .summary
+            .finding_alignment_static_unknown_without_named_limitation,
+    );
+    audit_push_count(
+        &mut out,
+        "Canonical items without repair route",
+        report
+            .summary
+            .finding_alignment_canonical_items_without_repair_route,
+    );
+    audit_push_count(
+        &mut out,
+        "Canonical items without verify command",
+        report
+            .summary
+            .finding_alignment_canonical_items_without_verify_command,
     );
     audit_push_count(
         &mut out,
@@ -18254,6 +18334,45 @@ fn evidence_quality_metric_trends(
             lower_is_better: true,
             current_path: &["summary", "finding_alignment_actionable_items_total"],
             previous_path: &["summary", "finding_alignment_actionable_items_total"],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_canonical_items_without_repair_route",
+            label: "Finding-alignment canonical items without repair route",
+            lower_is_better: true,
+            current_path: &[
+                "summary",
+                "finding_alignment_canonical_items_without_repair_route",
+            ],
+            previous_path: &[
+                "summary",
+                "finding_alignment_canonical_items_without_repair_route",
+            ],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_canonical_items_without_verify_command",
+            label: "Finding-alignment canonical items without verify command",
+            lower_is_better: true,
+            current_path: &[
+                "summary",
+                "finding_alignment_canonical_items_without_verify_command",
+            ],
+            previous_path: &[
+                "summary",
+                "finding_alignment_canonical_items_without_verify_command",
+            ],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_static_unknown_without_named_limitation",
+            label: "Finding-alignment static unknown without named limitation",
+            lower_is_better: true,
+            current_path: &[
+                "summary",
+                "finding_alignment_static_unknown_without_named_limitation",
+            ],
+            previous_path: &[
+                "summary",
+                "finding_alignment_static_unknown_without_named_limitation",
+            ],
         },
         EvidenceQualityTrendMetricSpec {
             metric: "finding_alignment_already_observed_total",
@@ -50370,6 +50489,11 @@ covered_by = ["cargo xtask check-file-policy"]
                         "presentation_text_actionable_snapshot": 1,
                         "presentation_text_no_action": 2,
                         "presentation_text_static_limitations": 1
+                    },
+                    "coverage": {
+                        "static_unknown_without_named_limitation": 0,
+                        "canonical_items_without_repair_route": 1,
+                        "canonical_items_without_verify_command": 2
                     }
                 }),
             );
@@ -50386,6 +50510,24 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(report.summary.finding_alignment_duplicate_groups_total, 2);
         assert_eq!(report.summary.finding_alignment_actionable_items_total, 1);
         assert_eq!(report.summary.finding_alignment_internal_no_action_total, 1);
+        assert_eq!(
+            report
+                .summary
+                .finding_alignment_canonical_items_without_repair_route,
+            1
+        );
+        assert_eq!(
+            report
+                .summary
+                .finding_alignment_canonical_items_without_verify_command,
+            2
+        );
+        assert_eq!(
+            report
+                .summary
+                .finding_alignment_static_unknown_without_named_limitation,
+            0
+        );
         assert_eq!(report.summary.presentation_text_user_visible, 2);
         assert_eq!(report.summary.presentation_text_observed, 1);
         assert_eq!(report.summary.presentation_text_no_action, 2);
@@ -50393,6 +50535,9 @@ covered_by = ["cargo xtask check-file-policy"]
             finding_alignment_raw_to_canonical_ratio(&report.summary),
             Some(2.0)
         );
+        assert!(report.recommended_repairs.iter().any(|repair| repair.slice
+            == "analysis/predicate-boundary-repair-routes"
+            && repair.signal_count == 1));
 
         let json = evidence_quality_scorecard_json(&report)?;
         let value: serde_json::Value =
@@ -50405,10 +50550,25 @@ covered_by = ["cargo xtask check-file-policy"]
             value["summary"]["presentation_text_static_limitations"],
             serde_json::Value::from(1)
         );
+        assert_eq!(
+            value["summary"]["finding_alignment_canonical_items_without_repair_route"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["summary"]["finding_alignment_canonical_items_without_verify_command"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(
+            value["summary"]["finding_alignment_static_unknown_without_named_limitation"],
+            serde_json::Value::from(0)
+        );
 
         let markdown = evidence_quality_scorecard_markdown(&report);
         assert!(markdown.contains("Finding Alignment And Presentation Text"));
         assert!(markdown.contains("Raw-to-canonical ratio"));
+        assert!(markdown.contains("Static unknown without named limitation"));
+        assert!(markdown.contains("Canonical items without repair route"));
+        assert!(markdown.contains("Canonical items without verify command"));
         Ok(())
     }
 
@@ -50549,6 +50709,36 @@ covered_by = ["cargo xtask check-file-policy"]
         set_summary_count(&mut previous, "presentation_text_observed", 2)?;
         set_summary_count(&mut current, "presentation_text_visibility_unknown", 1)?;
         set_summary_count(&mut previous, "presentation_text_visibility_unknown", 5)?;
+        set_summary_count(
+            &mut current,
+            "finding_alignment_canonical_items_without_repair_route",
+            1,
+        )?;
+        set_summary_count(
+            &mut previous,
+            "finding_alignment_canonical_items_without_repair_route",
+            4,
+        )?;
+        set_summary_count(
+            &mut current,
+            "finding_alignment_canonical_items_without_verify_command",
+            2,
+        )?;
+        set_summary_count(
+            &mut previous,
+            "finding_alignment_canonical_items_without_verify_command",
+            2,
+        )?;
+        set_summary_count(
+            &mut current,
+            "finding_alignment_static_unknown_without_named_limitation",
+            3,
+        )?;
+        set_summary_count(
+            &mut previous,
+            "finding_alignment_static_unknown_without_named_limitation",
+            1,
+        )?;
 
         let report = evidence_quality_trend_from_values(
             "unix_ms:1".to_string(),
@@ -50569,6 +50759,50 @@ covered_by = ["cargo xtask check-file-policy"]
             trend_direction_for(&report, "presentation_text_visibility_unknown")?,
             "improvement"
         );
+        assert_eq!(
+            trend_direction_for(
+                &report,
+                "finding_alignment_canonical_items_without_repair_route"
+            )?,
+            "improvement"
+        );
+        assert_eq!(
+            trend_direction_for(
+                &report,
+                "finding_alignment_canonical_items_without_verify_command"
+            )?,
+            "unchanged"
+        );
+        assert_eq!(
+            trend_direction_for(
+                &report,
+                "finding_alignment_static_unknown_without_named_limitation"
+            )?,
+            "regression"
+        );
+
+        let json = evidence_quality_trend_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        let metric_trends = value["metric_trends"]
+            .as_array()
+            .ok_or_else(|| "metric_trends should be an array".to_string())?;
+        assert!(metric_trends.iter().any(
+            |trend| trend["metric"] == "finding_alignment_canonical_items_without_repair_route"
+        ));
+        assert!(
+            metric_trends.iter().any(|trend| trend["metric"]
+                == "finding_alignment_canonical_items_without_verify_command")
+        );
+        assert!(
+            metric_trends.iter().any(|trend| trend["metric"]
+                == "finding_alignment_static_unknown_without_named_limitation")
+        );
+
+        let markdown = evidence_quality_trend_markdown(&report);
+        assert!(markdown.contains("Finding-alignment canonical items without repair route"));
+        assert!(markdown.contains("Finding-alignment canonical items without verify command"));
+        assert!(markdown.contains("Finding-alignment static unknown without named limitation"));
         Ok(())
     }
 
