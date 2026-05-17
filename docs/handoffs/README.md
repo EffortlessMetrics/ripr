@@ -55,6 +55,7 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [Lane 1 Shippable Finding Alignment closeout](2026-05-17-lane1-shippable-finding-alignment-closeout.md)
 - [0.6.0 dry-run proof](2026-05-17-0.6.0-dry-run-proof.md)
 - [0.6.0 release readiness](2026-05-17-0.6.0-release-readiness.md)
 - [Editor First-PR Bridge dogfood receipts](2026-05-17-editor-first-pr-bridge-receipts.md)
