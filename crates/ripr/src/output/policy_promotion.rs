@@ -1,3 +1,4 @@
+use crate::output::markdown::{markdown_text, render_string_section};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -661,17 +662,6 @@ fn notice_json(notice: &Notice) -> Value {
     })
 }
 
-fn render_string_section(out: &mut String, title: &str, values: &[String]) {
-    out.push_str(&format!("\n## {title}\n\n"));
-    if values.is_empty() {
-        out.push_str("- none\n");
-    } else {
-        for value in values {
-            out.push_str(&format!("- {}\n", markdown_text(value)));
-        }
-    }
-}
-
 fn push_unique(values: &mut Vec<String>, value: impl Into<String>) {
     let value = value.into();
     if value.trim().is_empty() || values.iter().any(|existing| existing == &value) {
@@ -707,10 +697,6 @@ fn path_value<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
         current = current.get(*key)?;
     }
     Some(current)
-}
-
-fn markdown_text(value: &str) -> String {
-    value.replace('\\', "\\\\")
 }
 
 #[cfg(test)]
@@ -1566,24 +1552,6 @@ mod tests {
         push_unique(&mut values, "");
         push_unique(&mut values, "   ");
         assert!(values.is_empty());
-    }
-
-    // --- render_string_section empty path ---
-
-    #[test]
-    fn render_string_section_empty_values_renders_none_bullet() {
-        let mut out = String::new();
-        render_string_section(&mut out, "Example", &[]);
-        assert!(out.contains("## Example"));
-        assert!(out.contains("- none"));
-    }
-
-    // --- markdown_text backslash escaping ---
-
-    #[test]
-    fn markdown_text_escapes_backslashes() {
-        assert_eq!(markdown_text("a\\b"), "a\\\\b");
-        assert_eq!(markdown_text("no backslash"), "no backslash");
     }
 
     // --- path_value and string_array_path helpers ---

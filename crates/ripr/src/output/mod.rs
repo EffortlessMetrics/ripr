@@ -17,6 +17,7 @@ pub(crate) mod gate;
 pub mod github;
 pub mod human;
 pub mod json;
+pub(crate) mod markdown;
 pub(crate) mod mutation_calibration;
 pub(crate) mod outcome;
 pub(crate) mod pilot;
