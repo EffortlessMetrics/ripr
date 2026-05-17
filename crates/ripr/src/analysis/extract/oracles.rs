@@ -421,3 +421,56 @@ fn comparable_expression(expression: &str) -> String {
         .trim_start_matches('&')
         .to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::{OracleKind, OracleStrength};
+
+    #[test]
+    fn classifies_duplicative_equality_as_weak_relational_check() {
+        let classification = classify_assertion("assert_eq!(actual.value(), actual . value())");
+
+        assert_eq!(classification.kind, OracleKind::RelationalCheck);
+        assert_eq!(classification.strength, OracleStrength::Weak);
+    }
+
+    #[test]
+    fn classifies_whole_object_equality_with_nested_commas_as_strong() {
+        let classification = classify_assertion(
+            r#"assert_eq!(actual, Expected { name: "a,b".to_string(), values: vec![1, 2] })"#,
+        );
+
+        assert_eq!(classification.kind, OracleKind::WholeObjectEquality);
+        assert_eq!(classification.strength, OracleStrength::Strong);
+    }
+
+    #[test]
+    fn macro_invocation_matching_rejects_identifier_substrings() {
+        assert!(!contains_macro_invocation(
+            "pre_assert_snapshot!(value)",
+            "assert_snapshot!"
+        ));
+        assert!(contains_macro_invocation(
+            "insta::assert_snapshot! { value }",
+            "assert_snapshot!"
+        ));
+    }
+
+    #[test]
+    fn line_scanned_oracles_include_mock_and_side_effect_observers() {
+        let body = r#"
+            mock_service.expect_publish().times(1);
+            recorder.assert_event_recorded("saved");
+            let value = compute();
+        "#;
+
+        let facts = extract_line_scanned_oracles(body, 41);
+
+        assert_eq!(facts.len(), 2);
+        assert_eq!(facts[0].line, 42);
+        assert_eq!(facts[0].kind, OracleKind::MockExpectation);
+        assert_eq!(facts[1].line, 43);
+        assert_eq!(facts[1].kind, OracleKind::MockExpectation);
+    }
+}
