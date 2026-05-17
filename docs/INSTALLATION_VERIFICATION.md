@@ -110,7 +110,7 @@ Use the version being verified so an older cached or latest crate cannot mask a
 release mistake:
 
 ```bash
-cargo install ripr --version 0.5.0 --locked --root target/ripr/install-smoke-cratesio --force
+cargo install ripr --version 0.6.0 --locked --root target/ripr/install-smoke-cratesio --force
 target/ripr/install-smoke-cratesio/bin/ripr --version
 target/ripr/install-smoke-cratesio/bin/ripr pilot \
   --root fixtures/boundary_gap/input \
