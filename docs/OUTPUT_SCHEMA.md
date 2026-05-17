@@ -115,6 +115,29 @@ repeated only as supporting evidence for the canonical item.
         "actionability": "inspect_visibility",
         "raw_group_size": 2,
         "group_reason": "declaration_and_literal_same_text_constant",
+        "primary_anchor": {
+          "file": "src/device_labels.rs",
+          "line": 46,
+          "kind": "exposed",
+          "source_id": "probe:src_device_labels_rs:46:decl",
+          "reason": "declaration_line_for_grouped_constant"
+        },
+        "raw_spans": [
+          {
+            "file": "src/device_labels.rs",
+            "start_line": 46,
+            "end_line": 46,
+            "kind": "exposed",
+            "source_id": "probe:src_device_labels_rs:46:decl"
+          },
+          {
+            "file": "src/device_labels.rs",
+            "start_line": 47,
+            "end_line": 47,
+            "kind": "static_unknown",
+            "source_id": "probe:src_device_labels_rs:47:literal"
+          }
+        ],
         "why": "Changed presentation text could not be traced to or away from a user-visible output sink.",
         "recommended_repair": "Trace the string constant to a rendered output path or confirm it is internal-only.",
         "repair_route": null,
@@ -233,6 +256,14 @@ Field contract:
   as `inspect_visibility`, `add_output_observer`, `already_observed`, or
   `no_action`. Presentation text does not produce user repair work from text
   alone.
+- `finding_alignment.items[].primary_anchor` - nullable preferred placement
+  hint for downstream surfaces that need one inline location. Supported
+  declaration-backed items point at the declaration or owner line and include
+  the source ID plus a placement reason.
+- `finding_alignment.items[].raw_spans[]` - source-span summary for every raw
+  finding attached to the canonical item. These spans preserve line-local
+  evidence for expansion/detail views; they do not become separate user
+  actions.
 - `finding_alignment.items[].repair_route` - nullable normalized repair route
   copied from class-specific evidence. It is required for
   `gap_state = "actionable"` in supported classes and is `null` for
@@ -964,6 +995,22 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
           "gap_state": "actionable",
           "actionability": "extend_related_test",
           "group_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "primary_anchor": {
+            "file": "src/pricing.rs",
+            "line": 88,
+            "kind": "weakly_gripped",
+            "source_id": "f3c9e4d21a0b7c88",
+            "reason": "canonical_group_primary_raw_finding"
+          },
+          "raw_spans": [
+            {
+              "file": "src/pricing.rs",
+              "start_line": 88,
+              "end_line": 88,
+              "kind": "weakly_gripped",
+              "source_id": "f3c9e4d21a0b7c88"
+            }
+          ],
           "why": "extend the nearest related test with the missing discriminator",
           "recommended_repair": "extend the nearest related test with the missing discriminator",
           "repair_route": {
@@ -1181,11 +1228,18 @@ Field contract:
 - `seams[].evidence_record.canonical_item` - additive finding-alignment
   projection with `gap_state`, class-scoped `actionability`, `why`,
   `recommended_repair`, nullable structured `repair_route`, `related_test`,
-  `verify_command`, `confidence`, and raw group size. Actionable canonical
-  items carry `repair_route.repair_kind`, `target_test_type`, and
-  `suggested_assertion`; no-action, observed, limitation, and unknown items
-  keep `repair_route: null`. Downstream surfaces should render this canonical
-  item before treating raw findings as separate work.
+  `verify_command`, `confidence`, raw group size, nullable `primary_anchor`,
+  and `raw_spans`. Actionable canonical items carry
+  `repair_route.repair_kind`, `target_test_type`, and `suggested_assertion`;
+  no-action, observed, limitation, and unknown items keep
+  `repair_route: null`. Downstream surfaces should render this canonical item
+  before treating raw findings as separate work.
+- `seams[].evidence_record.canonical_item.primary_anchor` - preferred
+  placement hint for downstream surfaces when the canonical item has a safe
+  source location. It is `null` only when RIPR cannot safely name a placement.
+- `seams[].evidence_record.canonical_item.raw_spans[]` - source-span summary
+  for every raw finding contributing to the canonical item. These spans are
+  supporting evidence, not independent user-facing actions.
 - `seams[].evidence_record.evidence_path` - typed reach, activate,
   propagate, observe, and discriminate stages. Each stage carries `state`,
   `confidence`, and `summary`.
