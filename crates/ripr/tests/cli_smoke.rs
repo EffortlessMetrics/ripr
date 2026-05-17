@@ -410,6 +410,69 @@ fn first_action_cli_writes_actionable_report() -> Result<(), Box<dyn std::error:
 }
 
 #[test]
+fn first_pr_cli_writes_start_here_packet() -> Result<(), Box<dyn std::error::Error>> {
+    let workspace = unique_temp_workspace("first-pr");
+    let reports = workspace.join("target/ripr/reports");
+    std::fs::create_dir_all(&reports)?;
+    let reports_arg = reports.display().to_string();
+    let output = run_ripr_in_workspace(&[
+        "first-pr",
+        "--root",
+        ".",
+        "--base",
+        "origin/main",
+        "--head",
+        "HEAD",
+        "--gap-ledger",
+        "fixtures/first_successful_pr/boundary-gap/inputs/reports/gap-decision-ledger.json",
+        "--out-dir",
+        &reports_arg,
+    ])?;
+    assert_success(&output);
+
+    let json_path = reports.join("start-here.json");
+    let md_path = reports.join("start-here.md");
+    let report: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&json_path)?)?;
+    assert_eq!(json_pointer_str(&report, "/schema_version")?, "0.1");
+    assert_eq!(json_pointer_str(&report, "/kind")?, "first_pr_start_here");
+    assert_eq!(json_pointer_str(&report, "/status")?, "actionable");
+    assert_eq!(json_pointer_str(&report, "/selected/state")?, "top_gap");
+    assert_eq!(
+        json_pointer_str(&report, "/selected/kind")?,
+        "MissingBoundaryAssertion"
+    );
+    assert_eq!(
+        json_pointer_str(&report, "/selected/repair/route")?,
+        "AddBoundaryAssertion"
+    );
+    assert_eq!(json_pointer_str(&report, "/inputs/base")?, "origin/main");
+    assert_eq!(json_pointer_str(&report, "/inputs/head")?, "HEAD");
+    assert_eq!(
+        json_pointer_str(&report, "/commands/verify")?,
+        "cargo xtask fixtures boundary_gap"
+    );
+
+    let markdown = std::fs::read_to_string(&md_path)?;
+    assert!(markdown.contains("# RIPR First PR Start Here"));
+    assert!(markdown.contains("Status: advisory"));
+    assert!(markdown.contains("ripr gap: missing boundary assertion"));
+    assert!(markdown.contains("Pass/fail authority remains with explicit gate-decision artifacts"));
+    let check_output = run_ripr_in_workspace(&[
+        "first-pr",
+        "--root",
+        ".",
+        "--gap-ledger",
+        "fixtures/first_successful_pr/boundary-gap/inputs/reports/gap-decision-ledger.json",
+        "--out-dir",
+        &reports_arg,
+        "--check",
+    ])?;
+    assert_success(&check_output);
+    std::fs::remove_dir_all(workspace)?;
+    Ok(())
+}
+
+#[test]
 fn report_packet_index_cli_writes_packet_index() -> Result<(), Box<dyn std::error::Error>> {
     let workspace = unique_temp_workspace("report-packet-index");
     let reports = workspace.join("target/ripr/reports");

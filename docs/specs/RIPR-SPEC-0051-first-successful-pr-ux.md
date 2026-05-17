@@ -29,9 +29,9 @@ manual pilot, coding-agent, and advisory-CI adoption.
 
 ## Behavior
 
-RIPR should provide one documented first-run path for a Rust PR. The path may
-be a public `ripr first-pr` command or an `xtask` wrapper in the first
-implementation slice, but it must produce the same first-run packet contract.
+RIPR should provide one documented first-run path for a Rust PR. The public
+path is `ripr first-pr`; the repo-local `cargo xtask first-pr` command remains
+a compatibility wrapper over the same first-run packet contract.
 
 The target flow is:
 
@@ -351,8 +351,8 @@ This spec PR does not add production code or output fields.
 Planned slices:
 
 1. `docs/spec-first-successful-pr-ux-contract` defines this behavior contract.
-2. `workflow/first-pr-packet` adds the first-run command path or documented
-   wrapper over existing artifacts.
+2. `workflow/first-pr-packet` adds the first-run command path and keeps the
+   repo-local wrapper aligned with existing artifacts.
 3. `report/start-here-pr-repair-summary` renders `start-here.{json,md}`.
 4. `ux/first-run-state-packets` standardizes empty, missing, stale,
    wrong-root, malformed, and timeout packet states.

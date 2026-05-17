@@ -49,6 +49,12 @@ one PR
 -> one before/after receipt
 ```
 
+Start with the front-door packet:
+
+```bash
+ripr first-pr --root . --base origin/main --head HEAD
+```
+
 Use it while a PR is still moving:
 
 - in generated CI, as an advisory first-screen summary and artifact packet;

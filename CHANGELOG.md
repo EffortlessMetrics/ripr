@@ -9,6 +9,12 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Added public `ripr first-pr` / `ripr start-here` command routing for the
+  first successful PR start-here packet. The existing `cargo xtask first-pr`
+  path now delegates to the same public implementation, preserving explicit
+  artifact composition, advisory defaults, gate-authority separation, and the
+  no-source-edit/no-generated-test/no-mutation-execution boundaries.
+
 ## 0.6.0 - 2026-05-17
 
 0.6.0 makes static test-gap review easier to trust and easier to operate. The
