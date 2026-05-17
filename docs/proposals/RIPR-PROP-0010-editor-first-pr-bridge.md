@@ -1,6 +1,6 @@
 # RIPR-PROP-0010: Editor First-PR Bridge
 
-Status: proposed
+Status: accepted
 
 Owner: Lane 3 - Editor / LSP UX
 

@@ -576,11 +576,11 @@ Future first-run/install polish, CodeLens, inlay, semantic-token, inline-patch,
 source-edit, generated-test, provider, mutation, policy, PR-comment, or
 unsaved-buffer work needs a new editor campaign.
 
-## Selected Slice: Editor First-PR Bridge
+## Closed Slice: Editor First-PR Bridge
 
-The next selected Lane 3 slice is Editor First-PR Bridge. It carries the user
-from the closed first-run repair loop into the existing first successful PR
-packet without making the editor a PR/CI producer:
+Editor First-PR Bridge is closed. It carries the user from the closed
+first-run repair loop into the existing first successful PR packet without
+making the editor a PR/CI producer:
 
 ```text
 Diagnose Setup
@@ -599,6 +599,7 @@ Durable sources for the selected docs stack:
 - [RIPR-SPEC-0052: Editor First-PR Packet Projection](../specs/RIPR-SPEC-0052-editor-first-pr-packet-projection.md)
 - [ADR-0014: Editor First-PR Projection Is Read-Only](../adr/0014-editor-first-pr-projection-is-read-only.md)
 - [Editor First-PR Bridge implementation plan](../../plans/editor-first-pr-bridge/implementation-plan.md)
+- [Editor First-PR Bridge closeout](../handoffs/2026-05-17-editor-first-pr-bridge-closeout.md)
 
 The slice consumes existing first-pr packet artifacts:
 
@@ -614,17 +615,17 @@ comments, decide policy or gates, claim merge readiness, edit source, generate
 tests, call providers, run mutation, or add CodeLens, inlays, semantic tokens,
 inline patches, or unsaved-buffer overlays.
 
-Planned PR path:
+Completed PR path:
 
-1. `docs(lane3): open editor first-pr bridge source-of-truth stack`
-2. `test(lsp): pin post-first-run editor contract`
-3. `lsp(first-pr): validate first-pr packet artifacts`
-4. `lsp(first-pr): project first-pr state in Show Status`
-5. `lsp(first-pr): add bounded first-pr packet actions`
-6. `fixtures(editor): add first-pr bridge fixtures`
-7. `test(vscode): smoke first-pr bridge`
-8. `docs(editor): document first successful PR bridge`
-9. `dogfood(lane3): record first-pr bridge receipts`
+1. #1098 `docs(lane3): open editor first-pr bridge source-of-truth stack`
+2. #1100 `test(lsp): pin post-first-run editor contract`
+3. #1103 `lsp(first-pr): validate first-pr packet artifacts`
+4. #1104 `lsp(first-pr): project first-pr state in status`
+5. #1108 `lsp(first-pr): add bounded packet actions`
+6. #1110 `fixtures(editor): add first-pr bridge fixtures`
+7. #1113 `test(vscode): smoke first-pr bridge`
+8. #1115 `docs(editor): document first-pr bridge workflow`
+9. #1116 `dogfood(lane3): record editor first-pr bridge receipts`
 10. `campaign(lane3): close editor first-pr bridge`
 
 Hard boundaries:
@@ -642,6 +643,12 @@ Hard boundaries:
 - no source edits, generated tests, provider/model calls, mutation execution,
   policy/gate/default-blocking behavior, CodeLens, inlay hints, semantic
   tokens, inline patches, or unsaved-buffer overlays.
+
+Post-closeout posture: there is no selected behavior-bearing Lane 3 PR open.
+Future install polish, PR/CI publishing, source edits, generated tests,
+provider/model calls, mutation execution, policy/gate changes, CodeLens,
+inlay hints, semantic tokens, inline patches, or unsaved-buffer overlays need a
+new editor campaign.
 
 ## Lane 3 Document Model
 

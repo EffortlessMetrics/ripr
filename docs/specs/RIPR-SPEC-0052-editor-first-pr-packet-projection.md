@@ -1,6 +1,6 @@
 # RIPR-SPEC-0052: Editor First-PR Packet Projection
 
-Status: proposed
+Status: accepted
 
 ## Problem
 
