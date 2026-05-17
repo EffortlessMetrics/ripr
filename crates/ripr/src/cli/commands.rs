@@ -2048,26 +2048,44 @@ jobs:
               start_json=target/ripr/reports/start-here.json
               start_status="$(jq -r '.status // "unknown"' "$start_json" 2>/dev/null || echo unknown)"
               start_state="$(jq -r '.selected.state // "unknown"' "$start_json" 2>/dev/null || echo unknown)"
+              start_gap="$(jq -r '.selected.canonical_gap_id // .selected.gap_id // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
+              start_language="$(jq -r 'if .selected.language then (.selected.language + " (" + (.selected.language_status // "unknown") + ")") else "not_available" end' "$start_json" 2>/dev/null || echo unknown)"
               start_kind="$(jq -r '.selected.kind // "none"' "$start_json" 2>/dev/null || echo unknown)"
               start_repair="$(jq -r '.selected.repair.route // .selected.repair.suggested_assertion // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
+              start_target="$(jq -r '.selected.repair.target_file // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
+              start_related="$(jq -r '.selected.repair.related_test // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
+              start_limit="$(jq -r 'if .selected.static_limit_kind then (.selected.static_limit_kind + (if .selected.static_limit_detail then ": " + .selected.static_limit_detail else "" end)) else "none" end' "$start_json" 2>/dev/null || echo unknown)"
               start_verify="$(jq -r '.selected.verify_command // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
               start_receipt="$(jq -r '.selected.receipt_command // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
+              start_receipt_state="$(jq -r '.selected.receipt_state // "receipt_missing"' "$start_json" 2>/dev/null || echo unknown)"
               start_next="$(jq -r '.selected.next_command // .selected.regeneration_command // "none"' "$start_json" 2>/dev/null || echo unknown)"
               start_warnings="$(jq -r '(.warnings // [] | length)' "$start_json" 2>/dev/null || echo 0)"
               start_status="$(markdown_inline "$start_status")"
               start_state="$(markdown_inline "$start_state")"
+              start_gap="$(markdown_inline "$start_gap")"
+              start_language="$(markdown_inline "$start_language")"
               start_kind="$(markdown_inline "$start_kind")"
               start_repair="$(markdown_inline "$start_repair")"
+              start_target="$(markdown_inline "$start_target")"
+              start_related="$(markdown_inline "$start_related")"
+              start_limit="$(markdown_inline "$start_limit")"
               start_verify="$(markdown_inline "$start_verify")"
               start_receipt="$(markdown_inline "$start_receipt")"
+              start_receipt_state="$(markdown_inline "$start_receipt_state")"
               start_next="$(markdown_inline "$start_next")"
               start_warnings="$(markdown_inline "$start_warnings")"
               echo "- Status: \`$start_status\`"
               echo "- Selected state: \`$start_state\`"
+              echo "- Canonical gap: \`$start_gap\`"
+              echo "- Language: \`$start_language\`"
               echo "- Top gap/no-action: \`$start_kind\`"
               echo "- Repair: \`$start_repair\`"
+              echo "- Repair target: \`$start_target\`"
+              echo "- Related test: \`$start_related\`"
+              echo "- Static limit: \`$start_limit\`"
               echo "- Verify: \`$start_verify\`"
               echo "- Receipt: \`$start_receipt\`"
+              echo "- Receipt state: \`$start_receipt_state\`"
               echo "- Next command: \`$start_next\`"
               echo "- Warnings: \`$start_warnings\`"
               echo "- Artifacts: \`target/ripr/reports/start-here.json\`, \`target/ripr/reports/start-here.md\`"
@@ -11534,6 +11552,18 @@ language = "rust"
         assert!(summary.contains("#### First-run status"));
         assert!(summary.contains(".status // \"unknown\""));
         assert!(summary.contains(".selected.state // \"unknown\""));
+        assert!(summary.contains(".selected.canonical_gap_id // .selected.gap_id"));
+        assert!(summary.contains(".selected.language + \" (\""));
+        assert!(summary.contains(".selected.repair.target_file // \"not_available\""));
+        assert!(summary.contains(".selected.repair.related_test // \"not_available\""));
+        assert!(summary.contains(".selected.static_limit_kind"));
+        assert!(summary.contains(".selected.receipt_state // \"receipt_missing\""));
+        assert!(summary.contains("Canonical gap: \\`$start_gap\\`"));
+        assert!(summary.contains("Language: \\`$start_language\\`"));
+        assert!(summary.contains("Repair target: \\`$start_target\\`"));
+        assert!(summary.contains("Related test: \\`$start_related\\`"));
+        assert!(summary.contains("Static limit: \\`$start_limit\\`"));
+        assert!(summary.contains("Receipt state: \\`$start_receipt_state\\`"));
         assert!(
             summary
                 .contains(".selected.next_command // .selected.regeneration_command // \"none\"")
