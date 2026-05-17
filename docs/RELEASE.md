@@ -39,6 +39,20 @@ cargo publish -p ripr --dry-run
 For the defaults-first install path, also run the local install proof from
 [Installation verification](INSTALLATION_VERIFICATION.md).
 
+For 0.6.x release claims about finding alignment or evidence accuracy, also
+run the Lane 1 evidence reports:
+
+```bash
+cargo xtask lane1-evidence-audit
+cargo xtask evidence-quality-scorecard
+```
+
+The release claim is supported only when the Lane 1 audit coverage section
+reports zero `static_unknown` items without named limitations, zero actionable
+canonical items without repair routes, and zero actionable canonical items
+without verify commands. Raw finding counts are diagnostic context; actionable
+aligned items are the user-facing work count.
+
 ## Runtime Smoke
 
 ```bash
