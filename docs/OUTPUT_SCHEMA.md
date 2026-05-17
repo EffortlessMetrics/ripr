@@ -966,6 +966,11 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
           "group_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
           "why": "extend the nearest related test with the missing discriminator",
           "recommended_repair": "extend the nearest related test with the missing discriminator",
+          "repair_route": {
+            "repair_kind": "add_boundary_assertion",
+            "target_test_type": "boundary_discriminator",
+            "suggested_assertion": "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"
+          },
           "related_test": {
             "name": "below_threshold_has_no_discount",
             "file": "tests/pricing_tests.rs",
@@ -1175,9 +1180,12 @@ Field contract:
   raw findings to one canonical item.
 - `seams[].evidence_record.canonical_item` - additive finding-alignment
   projection with `gap_state`, class-scoped `actionability`, `why`,
-  `recommended_repair`, `related_test`, `verify_command`, `confidence`, and
-  raw group size. Downstream surfaces should render this canonical item before
-  treating raw findings as separate work.
+  `recommended_repair`, nullable structured `repair_route`, `related_test`,
+  `verify_command`, `confidence`, and raw group size. Actionable canonical
+  items carry `repair_route.repair_kind`, `target_test_type`, and
+  `suggested_assertion`; no-action, observed, limitation, and unknown items
+  keep `repair_route: null`. Downstream surfaces should render this canonical
+  item before treating raw findings as separate work.
 - `seams[].evidence_record.evidence_path` - typed reach, activate,
   propagate, observe, and discriminate stages. Each stage carries `state`,
   `confidence`, and `summary`.

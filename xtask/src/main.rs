@@ -49763,6 +49763,54 @@ covered_by = ["cargo xtask check-file-policy"]
                       "confidence": {"basis": "fixture_backed", "notes": []}
                     }
                   }
+                },
+                {
+                  "seam_id": "predicate-boundary-repair-route",
+                  "headline_eligible": true,
+                  "file": "src/pricing.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "predicate-boundary-repair-route",
+                    "canonical_gap_id": "gap:predicate-boundary-repair-route",
+                    "owner": "pricing::discounted_total",
+                    "location": {"file": "src/pricing.rs", "line": 42},
+                    "seam_kind": "predicate_boundary",
+                    "grip_class": "weakly_gripped",
+                    "headline_eligible": true,
+                    "evidence_path": {},
+                    "observed_values": [],
+                    "missing_discriminators": [{"value": "discount_threshold (equality boundary)", "reason": "observed values do not include the equality-boundary case"}],
+                    "related_tests_total": 1,
+                    "related_tests": [],
+                    "recommendation": {"action": "write_targeted_test", "reason": "extend related test with boundary discriminator", "verify_command": "ripr agent verify --root . --before before.json --after after.json --json"},
+                    "actionability": {"class": "actionable_related_test_extension"},
+                    "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+                    "static_limitations": [],
+                    "raw_findings": [
+                      {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed", "probe_kind": "predicate_boundary", "expression": "amount >= discount_threshold"}
+                    ],
+                    "canonical_item": {
+                      "canonical_gap_id": "gap:predicate-boundary-repair-route",
+                      "canonical_item_kind": "gap",
+                      "evidence_class": "predicate_boundary",
+                      "gap_state": "actionable",
+                      "actionability": "extend_related_test",
+                      "raw_findings": [
+                        {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed", "expression": "amount >= discount_threshold"}
+                      ],
+                      "raw_group_size": 1,
+                      "why": "related tests reach the seam but miss the boundary discriminator",
+                      "recommended_repair": "Add an equality-boundary assertion for the changed predicate.",
+                      "repair_route": {
+                        "repair_kind": "add_boundary_assertion",
+                        "target_test_type": "boundary_discriminator",
+                        "suggested_assertion": "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"
+                      },
+                      "related_test": {"name": "below_threshold_has_no_discount", "file": "tests/pricing.rs", "line": 10, "reason": "direct_owner_call"},
+                      "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+                      "confidence": {"basis": "static_only", "notes": []}
+                    }
+                  }
                 }
               ]
             }"#,
@@ -49797,6 +49845,22 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(config_policy["canonical_items"], serde_json::Value::from(1));
         assert_eq!(
             config_policy["internal_no_action_items"],
+            serde_json::Value::from(1)
+        );
+        let predicate_boundary = class_rows
+            .iter()
+            .find(|row| row["evidence_class"] == "predicate_boundary")
+            .ok_or_else(|| "missing predicate_boundary coverage row".to_string())?;
+        assert_eq!(
+            predicate_boundary["raw_findings"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            predicate_boundary["canonical_items"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            predicate_boundary["actionable_items"],
             serde_json::Value::from(1)
         );
         assert_eq!(
