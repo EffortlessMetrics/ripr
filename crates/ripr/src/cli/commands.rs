@@ -1249,6 +1249,17 @@ jobs:
             --format json \
             --out target/ripr/reports/targeted-test-outcome.json
 
+      - name: Render RIPR gap decision ledger
+        if: always() && hashFiles('target/ripr/reports/repo-exposure.json') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          ripr reports gap-ledger \
+            --root . \
+            --repo-exposure target/ripr/reports/repo-exposure.json \
+            --out target/ripr/reports/gap-decision-ledger.json \
+            --out-md target/ripr/reports/gap-decision-ledger.md
+
       - name: Capture pull request diff
         if: github.event_name == 'pull_request'
         run: |
@@ -1870,6 +1881,21 @@ jobs:
             echo 'Regenerate command: `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md` (add other available inputs as needed).'
           fi
 
+      - name: Render RIPR first-pr start-here
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          ripr first-pr \
+            --root . \
+            --gap-ledger target/ripr/reports/gap-decision-ledger.json \
+            --first-action target/ripr/reports/first-useful-action.json \
+            --review-comments target/ripr/review/comments.json \
+            --agent-packet target/ripr/workflow/agent-packet.json \
+            --gate-decision target/ripr/reports/gate-decision.json \
+            --receipts-dir target/ripr/receipts \
+            --out-dir target/ripr/reports
+
       - name: Render RIPR report packet index
         if: always()
         continue-on-error: true
@@ -1877,6 +1903,7 @@ jobs:
           mkdir -p target/ripr/reports
           index_has_input=false
           for path in \
+            target/ripr/reports/start-here.md \
             target/ripr/reports/pr-review-front-panel.md \
             target/ripr/reports/first-useful-action.md \
             target/ripr/review/comments.md \
@@ -1998,10 +2025,100 @@ jobs:
             echo "RIPR is advisory static evidence. It does not edit source, generate tests, or run mutation testing."
             echo
             echo '### Start here'
-            echo '- Open `target/ripr/reports/pr-review-front-panel.md` first when it exists.'
-            echo '- Then open `target/ripr/reports/index.md` to navigate the uploaded artifact packet.'
-            echo '- Repair route: use the verify or agent command shown in the front panel or first useful action.'
+            echo '- Open `target/ripr/reports/start-here.md` first when it exists.'
+            echo '- Then open `target/ripr/reports/index.md` to navigate deeper evidence artifacts.'
+            echo '- Repair route: use the repair, verify, receipt, or regeneration command shown in the start-here packet.'
             echo '- Gate authority: `ripr gate evaluate` remains the pass/fail source only when `RIPR_GATE_MODE` is configured.'
+            if [ -f target/ripr/reports/start-here.md ]; then
+              echo '- Start-here artifact: `target/ripr/reports/start-here.md`'
+            elif [ -f target/ripr/reports/index.json ]; then
+              start_here_path="$(jq -r '.summary.start_here // "not_available"' target/ripr/reports/index.json 2>/dev/null || echo not_available)"
+              start_here_path="$(markdown_inline "$start_here_path")"
+              echo "- Start-here artifact: \`$start_here_path\`"
+            elif [ -f target/ripr/reports/pr-review-front-panel.md ]; then
+              echo '- Start-here artifact: `target/ripr/reports/pr-review-front-panel.md`'
+            elif [ -f target/ripr/pilot/pilot-summary.md ]; then
+              echo '- Start-here artifact: `target/ripr/pilot/pilot-summary.md`'
+            else
+              echo '- Start-here artifact: not generated yet; inspect uploaded artifacts and job logs.'
+            fi
+            echo
+            echo '#### First-run status'
+            if [ -f target/ripr/reports/start-here.json ]; then
+              start_json=target/ripr/reports/start-here.json
+              start_status="$(jq -r '.status // "unknown"' "$start_json" 2>/dev/null || echo unknown)"
+              start_state="$(jq -r '.selected.state // "unknown"' "$start_json" 2>/dev/null || echo unknown)"
+              start_kind="$(jq -r '.selected.kind // "none"' "$start_json" 2>/dev/null || echo unknown)"
+              start_repair="$(jq -r '.selected.repair.route // .selected.repair.suggested_assertion // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
+              start_verify="$(jq -r '.selected.verify_command // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
+              start_receipt="$(jq -r '.selected.receipt_command // "not_available"' "$start_json" 2>/dev/null || echo unknown)"
+              start_next="$(jq -r '.selected.next_command // .selected.regeneration_command // "none"' "$start_json" 2>/dev/null || echo unknown)"
+              start_warnings="$(jq -r '(.warnings // [] | length)' "$start_json" 2>/dev/null || echo 0)"
+              start_status="$(markdown_inline "$start_status")"
+              start_state="$(markdown_inline "$start_state")"
+              start_kind="$(markdown_inline "$start_kind")"
+              start_repair="$(markdown_inline "$start_repair")"
+              start_verify="$(markdown_inline "$start_verify")"
+              start_receipt="$(markdown_inline "$start_receipt")"
+              start_next="$(markdown_inline "$start_next")"
+              start_warnings="$(markdown_inline "$start_warnings")"
+              echo "- Status: \`$start_status\`"
+              echo "- Selected state: \`$start_state\`"
+              echo "- Top gap/no-action: \`$start_kind\`"
+              echo "- Repair: \`$start_repair\`"
+              echo "- Verify: \`$start_verify\`"
+              echo "- Receipt: \`$start_receipt\`"
+              echo "- Next command: \`$start_next\`"
+              echo "- Warnings: \`$start_warnings\`"
+              echo "- Artifacts: \`target/ripr/reports/start-here.json\`, \`target/ripr/reports/start-here.md\`"
+              echo "- Boundary: start-here is advisory first-run guidance only; gate decision remains separate pass/fail authority when configured."
+              if [ -f target/ripr/reports/start-here.md ]; then
+                echo
+                cat target/ripr/reports/start-here.md
+              fi
+            elif [ -f target/ripr/reports/first-useful-action.json ]; then
+              first_json=target/ripr/reports/first-useful-action.json
+              first_status="$(jq -r '.status // "unknown"' "$first_json" 2>/dev/null || echo unknown)"
+              first_action_kind="$(jq -r '.action_kind // "unknown"' "$first_json" 2>/dev/null || echo unknown)"
+              first_title="$(jq -r '.title // "not_available"' "$first_json" 2>/dev/null || echo unknown)"
+              first_why="$(jq -r '.why // "not_available"' "$first_json" 2>/dev/null || echo unknown)"
+              first_gap="$(jq -r 'if .selected == null then "none" else ((.selected.path // "unknown") + (if .selected.line then ":" + (.selected.line|tostring) else "" end) + " " + (.selected.missing_discriminator // .selected.classification // .selected.seam_id // "gap")) end' "$first_json" 2>/dev/null || echo unknown)"
+              first_target="$(jq -r 'if .target == null then "none" else ((.target.file // "not_available") + (if .target.related_test then " related_test=" + .target.related_test else "" end) + (if .target.suggested_test_name then " suggested=" + .target.suggested_test_name else "" end)) end' "$first_json" 2>/dev/null || echo unknown)"
+              first_packet="$(jq -r '.commands.context_packet // "not_available"' "$first_json" 2>/dev/null || echo unknown)"
+              first_verify="$(jq -r '.commands.verify // "not_available"' "$first_json" 2>/dev/null || echo unknown)"
+              first_receipt="$(jq -r '.commands.receipt // "not_available"' "$first_json" 2>/dev/null || echo unknown)"
+              first_fallback="$(jq -r '.fallback.summary // .fallback.kind // "none"' "$first_json" 2>/dev/null || echo unknown)"
+              first_warnings="$(jq -r '(.warnings // [] | length)' "$first_json" 2>/dev/null || echo 0)"
+              first_status="$(markdown_inline "$first_status")"
+              first_action_kind="$(markdown_inline "$first_action_kind")"
+              first_title="$(markdown_inline "$first_title")"
+              first_why="$(markdown_inline "$first_why")"
+              first_gap="$(markdown_inline "$first_gap")"
+              first_target="$(markdown_inline "$first_target")"
+              first_packet="$(markdown_inline "$first_packet")"
+              first_verify="$(markdown_inline "$first_verify")"
+              first_receipt="$(markdown_inline "$first_receipt")"
+              first_fallback="$(markdown_inline "$first_fallback")"
+              first_warnings="$(markdown_inline "$first_warnings")"
+              echo "- Status: \`$first_status\`"
+              echo "- Action: \`$first_action_kind\`"
+              echo "- Title: \`$first_title\`"
+              echo "- Why: \`$first_why\`"
+              echo "- Gap: \`$first_gap\`"
+              echo "- Repair target: \`$first_target\`"
+              echo "- Agent packet: \`$first_packet\`"
+              echo "- Verify: \`$first_verify\`"
+              echo "- Receipt: \`$first_receipt\`"
+              echo "- Fallback/no-action: \`$first_fallback\`"
+              echo "- Warnings: \`$first_warnings\`"
+              echo "- Artifacts: \`target/ripr/reports/first-useful-action.json\`, \`target/ripr/reports/first-useful-action.md\`, \`target/ripr/workflow/agent-packet.json\`"
+              echo "- Boundary: advisory first-run path only; gate decision remains separate pass/fail authority when configured."
+            else
+              echo "- Status: \`missing_start_here\`"
+              echo "- Next command: \`ripr first-pr --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json --first-action target/ripr/reports/first-useful-action.json --review-comments target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-packet.json --gate-decision target/ripr/reports/gate-decision.json --receipts-dir target/ripr/receipts --out-dir target/ripr/reports\`."
+              echo "- Fallback first-action command: \`ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md\` (add other available inputs as needed)."
+              echo "- Boundary: missing start-here packet does not fail generated CI or create gate authority."
+            fi
             echo
             configured_languages="$(
               ripr doctor --root . 2>/dev/null \
@@ -3485,6 +3602,10 @@ pub(super) fn assistant_loop(args: &[String]) -> Result<(), String> {
             "unknown assistant-loop subcommand {subcommand:?}; expected `proof` or `health`"
         )),
     }
+}
+
+pub(super) fn first_pr(args: &[String]) -> Result<(), String> {
+    output::first_pr::first_pr(args)
 }
 
 pub(super) fn first_action(args: &[String]) -> Result<(), String> {
@@ -7510,6 +7631,7 @@ mod tests {
                 "ripr agent verify",
                 "ripr agent receipt",
                 "ripr outcome",
+                "reports gap-ledger",
                 "ripr review-comments",
                 "gate evaluate",
                 "ripr baseline diff",
@@ -7526,6 +7648,7 @@ mod tests {
                 "assistant-loop health",
                 "first-action",
                 "pr-review front-panel",
+                "first-pr",
                 "reports index",
                 "pr-comments plan",
                 "ripr agent status",
@@ -7549,6 +7672,8 @@ mod tests {
                 "target/ripr/workflow/agent-review-summary.json",
                 "target/ripr/workflow/agent-review-summary.md",
                 "target/ripr/reports/targeted-test-outcome.json",
+                "target/ripr/reports/gap-decision-ledger.json",
+                "target/ripr/reports/gap-decision-ledger.md",
                 "target/ripr/reports/ripr-findings.sarif",
                 "target/ripr/reports/ripr-seams.sarif",
                 "target/ripr/reports/repo-ripr-badge.json",
@@ -7591,6 +7716,8 @@ mod tests {
                 "target/ripr/reports/first-useful-action.md",
                 "target/ripr/reports/pr-review-front-panel.json",
                 "target/ripr/reports/pr-review-front-panel.md",
+                "target/ripr/reports/start-here.json",
+                "target/ripr/reports/start-here.md",
                 "target/ripr/reports/index.json",
                 "target/ripr/reports/index.md",
                 "target/ripr/review/comments.json",
@@ -7602,6 +7729,7 @@ mod tests {
             summary_sections: &[
                 "## RIPR advisory summary",
                 "### Start here",
+                "#### First-run status",
                 "### Language preview grouping",
                 "### PR review summary",
                 "#### PR review at a glance",
@@ -11126,10 +11254,14 @@ language = "rust"
         assert!(workflow.contains("target/ripr/reports/test-oracle-assistant-proof.md"));
         assert!(workflow.contains("target/ripr/reports/assistant-loop-health.json"));
         assert!(workflow.contains("target/ripr/reports/assistant-loop-health.md"));
+        assert!(workflow.contains("target/ripr/reports/gap-decision-ledger.json"));
+        assert!(workflow.contains("target/ripr/reports/gap-decision-ledger.md"));
         assert!(workflow.contains("target/ripr/reports/first-useful-action.json"));
         assert!(workflow.contains("target/ripr/reports/first-useful-action.md"));
         assert!(workflow.contains("target/ripr/reports/pr-review-front-panel.json"));
         assert!(workflow.contains("target/ripr/reports/pr-review-front-panel.md"));
+        assert!(workflow.contains("target/ripr/reports/start-here.json"));
+        assert!(workflow.contains("target/ripr/reports/start-here.md"));
         assert!(workflow.contains("target/ripr/reports/index.json"));
         assert!(workflow.contains("target/ripr/reports/index.md"));
         assert!(workflow.contains("target/ci/labels.json"));
@@ -11157,6 +11289,7 @@ language = "rust"
         assert!(workflow.contains("name: Render RIPR assistant loop health"));
         assert!(workflow.contains("name: Render RIPR first useful action"));
         assert!(workflow.contains("name: Render RIPR PR review front panel"));
+        assert!(workflow.contains("name: Render RIPR first-pr start-here"));
         assert!(workflow.contains("name: Render RIPR report packet index"));
         assert!(workflow.contains("escape_github_property()"));
         assert!(workflow.contains("annotation_path=\"$(escape_github_property \"$path\")\""));
@@ -11165,6 +11298,7 @@ language = "rust"
         assert!(workflow.contains("name: Add RIPR advisory summary"));
         assert!(workflow.contains("## RIPR advisory summary"));
         assert!(workflow.contains("### Start here"));
+        assert!(workflow.contains("#### First-run status"));
         assert!(workflow.contains("### Language preview grouping"));
         assert!(workflow.contains("### PR review summary"));
         assert!(workflow.contains("#### PR review at a glance"));
@@ -11371,6 +11505,11 @@ language = "rust"
             "Regenerate command: `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md`"
         ));
 
+        let first_pr = workflow_step(&workflow, "Render RIPR first-pr start-here");
+        assert!(first_pr.contains("ripr first-pr"));
+        assert!(first_pr.contains("--gap-ledger target/ripr/reports/gap-decision-ledger.json"));
+        assert!(first_pr.contains("--out-dir target/ripr/reports"));
+
         let packet_index = workflow_step(&workflow, "Render RIPR report packet index");
         assert!(packet_index.contains(
             "Regenerate command: `ripr reports index --root . --reports-dir target/ripr/reports --review-dir target/ripr/review --receipts-dir target/ripr/receipts --workflow-dir target/ripr/workflow --agent-dir target/ripr/agent --pilot-dir target/ripr/pilot --ci-dir target/ci --out target/ripr/reports/index.json --out-md target/ripr/reports/index.md`."
@@ -11378,19 +11517,38 @@ language = "rust"
 
         let summary = workflow_step(&workflow, "Add RIPR advisory summary");
         assert!(summary.contains("### Start here"));
-        assert!(
-            summary.contains(
-                "Open `target/ripr/reports/pr-review-front-panel.md` first when it exists."
-            )
-        );
+        assert!(summary.contains("Open `target/ripr/reports/start-here.md` first when it exists."));
         assert!(summary.contains(
-            "Then open `target/ripr/reports/index.md` to navigate the uploaded artifact packet."
+            "Then open `target/ripr/reports/index.md` to navigate deeper evidence artifacts."
         ));
         assert!(summary.contains(
             "Gate authority: `ripr gate evaluate` remains the pass/fail source only when `RIPR_GATE_MODE` is configured."
         ));
+        assert!(summary.contains("Start-here artifact: `target/ripr/reports/start-here.md`"));
+        assert!(summary.contains(".summary.start_here // \"not_available\""));
+        assert!(summary.contains("Start-here artifact: \\`$start_here_path\\`"));
+        assert!(
+            summary.contains("Start-here artifact: `target/ripr/reports/pr-review-front-panel.md`")
+        );
+        assert!(summary.contains("Start-here artifact: `target/ripr/pilot/pilot-summary.md`"));
+        assert!(summary.contains("#### First-run status"));
+        assert!(summary.contains(".status // \"unknown\""));
+        assert!(summary.contains(".selected.state // \"unknown\""));
+        assert!(
+            summary
+                .contains(".selected.next_command // .selected.regeneration_command // \"none\"")
+        );
+        assert!(summary.contains(".action_kind // \"unknown\""));
+        assert!(summary.contains(".commands.context_packet // \"not_available\""));
+        assert!(summary.contains("missing_start_here"));
         assert!(summary.contains(
-            "Regenerate command: `ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md`"
+            "start-here is advisory first-run guidance only; gate decision remains separate pass/fail authority"
+        ));
+        assert!(summary.contains(
+            "ripr first-pr --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json"
+        ));
+        assert!(summary.contains(
+            "Fallback first-action command: \\`ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md\\`"
         ));
         assert!(summary.contains(
             "Regenerate command: `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md`"
@@ -11900,6 +12058,15 @@ language = "rust"
         assert!(assistant_health.contains("--out target/ripr/reports/assistant-loop-health.json"));
         assert!(assistant_health.contains("--out-md target/ripr/reports/assistant-loop-health.md"));
 
+        let gap_ledger = workflow_step(&workflow, "Render RIPR gap decision ledger");
+        assert!(gap_ledger.contains("hashFiles('target/ripr/reports/repo-exposure.json')"));
+        assert!(gap_ledger.contains("continue-on-error: true"));
+        assert!(gap_ledger.contains("reports gap-ledger"));
+        assert!(gap_ledger.contains("--root ."));
+        assert!(gap_ledger.contains("--repo-exposure target/ripr/reports/repo-exposure.json"));
+        assert!(gap_ledger.contains("--out target/ripr/reports/gap-decision-ledger.json"));
+        assert!(gap_ledger.contains("--out-md target/ripr/reports/gap-decision-ledger.md"));
+
         let first_action = workflow_step(&workflow, "Render RIPR first useful action");
         assert!(first_action.contains("continue-on-error: true"));
         assert!(first_action.contains("first-action"));
@@ -11967,6 +12134,18 @@ language = "rust"
         assert!(front_panel.contains("ripr \"${front_panel_args[@]}\""));
         assert!(front_panel.contains("No RIPR PR review front-panel inputs were available."));
 
+        let first_pr = workflow_step(&workflow, "Render RIPR first-pr start-here");
+        assert!(first_pr.contains("continue-on-error: true"));
+        assert!(first_pr.contains("ripr first-pr"));
+        assert!(first_pr.contains("--root ."));
+        assert!(first_pr.contains("--gap-ledger target/ripr/reports/gap-decision-ledger.json"));
+        assert!(first_pr.contains("--first-action target/ripr/reports/first-useful-action.json"));
+        assert!(first_pr.contains("--review-comments target/ripr/review/comments.json"));
+        assert!(first_pr.contains("--agent-packet target/ripr/workflow/agent-packet.json"));
+        assert!(first_pr.contains("--gate-decision target/ripr/reports/gate-decision.json"));
+        assert!(first_pr.contains("--receipts-dir target/ripr/receipts"));
+        assert!(first_pr.contains("--out-dir target/ripr/reports"));
+
         let packet_index = workflow_step(&workflow, "Render RIPR report packet index");
         assert!(packet_index.contains("continue-on-error: true"));
         assert!(packet_index.contains("reports index"));
@@ -11979,6 +12158,7 @@ language = "rust"
         assert!(packet_index.contains("--ci-dir target/ci"));
         assert!(packet_index.contains("--out target/ripr/reports/index.json"));
         assert!(packet_index.contains("--out-md target/ripr/reports/index.md"));
+        assert!(packet_index.contains("target/ripr/reports/start-here.md"));
         assert!(packet_index.contains("target/ripr/reports/pr-review-front-panel.md"));
         assert!(packet_index.contains("target/ripr/review/comments.json"));
         assert!(packet_index.contains("target/ripr/reports/policy-operations.md"));
@@ -12025,6 +12205,32 @@ language = "rust"
         assert!(summary.contains("PR review summary was not generated"));
         assert!(summary.contains("### Recommended next test"));
         assert!(summary.contains("#### Recommended next test at a glance"));
+        assert!(summary.contains("#### First-run status"));
+        assert!(summary.contains("Open `target/ripr/reports/start-here.md` first"));
+        assert!(summary.contains("Start-here artifact: `target/ripr/reports/start-here.md`"));
+        assert!(summary.contains("start_json=target/ripr/reports/start-here.json"));
+        assert!(summary.contains(".selected.state // \"unknown\""));
+        assert!(summary.contains(".selected.kind // \"none\""));
+        assert!(summary.contains(
+            ".selected.repair.route // .selected.repair.suggested_assertion // \"not_available\""
+        ));
+        assert!(summary.contains(".selected.verify_command // \"not_available\""));
+        assert!(summary.contains(".selected.receipt_command // \"not_available\""));
+        assert!(
+            summary
+                .contains(".selected.next_command // .selected.regeneration_command // \"none\"")
+        );
+        assert!(summary.contains("cat target/ripr/reports/start-here.md"));
+        assert!(summary.contains("missing_start_here"));
+        assert!(summary.contains(
+            "ripr first-pr --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json"
+        ));
+        assert!(summary.contains(".summary.start_here // \"not_available\""));
+        assert!(
+            summary.contains("Start-here artifact: `target/ripr/reports/pr-review-front-panel.md`")
+        );
+        assert!(summary.contains("Start-here artifact: `target/ripr/pilot/pilot-summary.md`"));
+        assert!(summary.contains("target/ripr/workflow/agent-packet.json"));
         assert!(summary.contains("target/ripr/reports/first-useful-action.json"));
         assert!(summary.contains("target/ripr/reports/first-useful-action.md"));
         assert!(summary.contains(".action_kind // \"unknown\""));

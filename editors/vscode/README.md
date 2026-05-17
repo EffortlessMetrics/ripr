@@ -1,9 +1,9 @@
 # ripr: Static Mutation Exposure
 
-[![VS Marketplace Installs (manual)](https://img.shields.io/badge/VS%20Marketplace-4%20installs-0078D4)](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr)
+[![VS Marketplace Installs (manual)](https://img.shields.io/badge/VS%20Marketplace-5%20installs-0078D4)](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr)
 [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/EffortlessMetrics/ripr?label=Open%20VSX%20downloads)](https://open-vsx.org/extension/EffortlessMetrics/ripr)
 
-<!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-10 after the 0.5.0 publish: 4 installs. Refresh the count and date from publisher metrics whenever you check; do not use live VS Marketplace Shields routes. -->
+<!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-17 before the 0.6.0 publish; Marketplace served 0.5.0 with 5 installs. Refresh the count and date from publisher metrics whenever you check; do not use live VS Marketplace Shields routes. -->
 
 Preview VS Code/Open VSX extension for `ripr`, a static Rust analysis tool that
 finds changed code where the nearby tests may run but not actually check the
@@ -49,11 +49,15 @@ After opening a Rust/Cargo workspace:
 5. Open the best related test when ripr finds an imitation target.
 6. Add one focused test outside the editor.
 7. Verify with the copied command chain or the CI artifact packet.
+8. Emit the receipt, refresh saved-workspace analysis, then inspect the
+   first-pr `start-here` packet when the status reports that one is safe.
 
 Unsaved-buffer overlays are not enabled by default.
 
 For the full editor loop from diagnostic to receipt, see
-[`docs/EDITOR_EVIDENCE_WORKFLOW.md`](../../docs/EDITOR_EVIDENCE_WORKFLOW.md).
+[`docs/EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md`](../../docs/EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md).
+For the local handoff from receipt to first-pr packet, see
+[`docs/EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md`](../../docs/EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md).
 
 ## What ripr Does
 
@@ -70,13 +74,16 @@ surface keeps that vocabulary out of the first-hour path. See the
 [Terminology bridge](https://github.com/EffortlessMetrics/ripr/blob/main/docs/TERMINOLOGY.md)
 to map between the two.
 
-The 0.5.x extension surfaces saved-workspace diagnostics, evidence-aware
+The 0.6.x extension surfaces saved-workspace diagnostics, evidence-aware
 hovers, intent-titled code actions for inspecting the flagged change /
 writing the targeted test / copying the agent handoff / verifying after the
 test / reviewing the receipt / refreshing analysis, an LSP
 `collectEvidenceContext` seam handoff packet, and a first-useful-action
 projection in the status bar and hover when a workspace-matched report
-already exists.
+already exists. It also projects existing first-pr `start-here` packet state
+in Diagnose Setup and Show Status, and can open or copy bounded first-pr packet
+content only after the packet validates against the current workspace and
+diagnostic identity.
 
 It does not run mutation testing, report killed/survived, or prove test
 adequacy. Use real mutation testing, such as `cargo-mutants`, for ready-mode
@@ -103,8 +110,16 @@ confirmation.
 ## Commands
 
 - `ripr: Restart Server`
+- `ripr: Diagnose Setup`
 - `ripr: Show Status`
 - `ripr: Show Output`
+- `ripr: Start Current Repair`
+- `ripr: First PR - Open Packet`
+- `ripr: First PR - Copy Summary`
+- `ripr: First PR - Copy Repair Packet`
+- `ripr: First PR - Copy Verify Command`
+- `ripr: First PR - Copy Receipt Command`
+- `ripr: First PR - Copy Regeneration Guidance`
 - `ripr: Inspect Test Gap - Copy Context`
 - `ripr: Write Targeted Test - Copy Suggested Assertion`
 - `ripr: Write Targeted Test - Copy Brief`
@@ -118,7 +133,7 @@ confirmation.
 
 ## Preview Limitations
 
-The `0.5.x` extension uses a universal VSIX and downloads native server
+The `0.6.x` extension uses a universal VSIX and downloads native server
 binaries from matching GitHub Releases when available. It does not auto-install
 Rust tooling, run mutation tests, make automatic edits, or analyze unsaved
 buffer overlays by default. Bundled platform-specific VSIXs are planned after

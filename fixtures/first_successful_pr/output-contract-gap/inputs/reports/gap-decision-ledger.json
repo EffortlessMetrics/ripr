@@ -1,0 +1,35 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "gap_decision_ledger",
+  "status": "advisory",
+  "records": [
+    {
+      "gap_id": "gap:pr:output:device-label",
+      "canonical_gap_id": "gap:rust:output:device-label",
+      "kind": "MissingOutputContract",
+      "language": "rust",
+      "language_status": "stable",
+      "scope": "pr_local",
+      "changed_behavior": "APPLE_M3_AIR_DEVICE_LABELS_TEXT",
+      "gap_state": "actionable",
+      "policy_state": "new",
+      "repairability": "repairable",
+      "anchor": {
+        "file": "src/output/device_labels.rs",
+        "line": 12,
+        "owner": "output::device_labels",
+        "dedupe_fingerprint": "gap:rust:output:device-label"
+      },
+      "repair_route": {
+        "route_kind": "AddOutputGolden",
+        "target_file": "fixtures/device-labels/expected/human.txt",
+        "related_test": "fixtures/device-labels",
+        "assertion_shape": "golden output contains APPLE_M3_AIR_DEVICE_LABELS_TEXT"
+      },
+      "verification_commands": [
+        "cargo xtask goldens check"
+      ]
+    }
+  ]
+}
