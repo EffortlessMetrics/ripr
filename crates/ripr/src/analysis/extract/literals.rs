@@ -38,3 +38,47 @@ pub(crate) fn extract_literal_facts(body: &str, start_line: usize) -> Vec<Litera
     literals.dedup_by(|a, b| a.line == b.line && a.value == b.value);
     literals
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn literal_values_are_sorted_and_deduplicated() {
+        let body = r#"
+let high = 20;
+let low = -5;
+let repeated = 20;
+"#;
+
+        assert_eq!(extract_literals(body), vec!["-5", "20"]);
+    }
+
+    #[test]
+    fn literal_facts_keep_source_lines_and_remove_same_line_duplicates() {
+        let body = "let pair = (7, 7);
+let next = 7;
+let negative = -3;
+let dash = left - right;";
+
+        let facts = extract_literal_facts(body, 40);
+
+        assert_eq!(
+            facts,
+            vec![
+                LiteralFact {
+                    line: 40,
+                    value: "7".to_string(),
+                },
+                LiteralFact {
+                    line: 41,
+                    value: "7".to_string(),
+                },
+                LiteralFact {
+                    line: 42,
+                    value: "-3".to_string(),
+                },
+            ]
+        );
+    }
+}
