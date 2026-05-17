@@ -141,6 +141,11 @@ Before publishing, run the
 [Release copy checklist](RELEASE_COPY_CHECKLIST.md). It covers the GitHub
 Release body, marketplace metadata, README install commands, badge freshness
 disclosure, public vocabulary, and asset/dependent-channel verification.
+For 0.6.0, also compare GitHub About and repository topics with the current
+release-readiness handoff before changing repository metadata. Repository
+metadata should describe static mutation-exposure analysis for test-gap review
+without implying runtime mutation execution, generated tests, provider-backed
+analysis, default blocking, or stable preview-language gate authority.
 
 ## Recovery
 
