@@ -130,7 +130,43 @@ fn has_field_shape(text: &str) -> bool {
 }
 
 fn is_function_signature(text: &str) -> bool {
-    text.starts_with("fn ") || text.starts_with("pub fn ")
+    let mut rest = text.trim_start();
+
+    if let Some(next) = rest.strip_prefix("pub ") {
+        rest = next.trim_start();
+    } else if let Some(next) = rest.strip_prefix("pub(") {
+        let Some((_, after_visibility)) = next.split_once(')') else {
+            return false;
+        };
+        rest = after_visibility.trim_start();
+    }
+
+    loop {
+        if let Some(next) = rest.strip_prefix("async ") {
+            rest = next.trim_start();
+        } else if let Some(next) = rest.strip_prefix("const ") {
+            rest = next.trim_start();
+        } else if let Some(next) = rest.strip_prefix("unsafe ") {
+            rest = next.trim_start();
+        } else if let Some(next) = rest.strip_prefix("extern ") {
+            rest = strip_extern_abi(next).trim_start();
+        } else {
+            break;
+        }
+    }
+
+    rest.starts_with("fn ")
+}
+
+fn strip_extern_abi(text: &str) -> &str {
+    let text = text.trim_start();
+    let Some(rest) = text.strip_prefix('"') else {
+        return text;
+    };
+    let Some((_abi, after_quote)) = rest.split_once('"') else {
+        return text;
+    };
+    after_quote
 }
 
 #[cfg(test)]
@@ -226,6 +262,10 @@ mod tests {
         for text in [
             "    fn helper(value: usize) -> usize {",
             "    pub fn helper(value: usize) -> usize {",
+            "    pub(crate) fn helper(value: usize) -> usize {",
+            "    async fn helper(value: usize) -> usize {",
+            "    pub async fn helper(value: usize) -> usize {",
+            "    pub(crate) unsafe extern \"C\" fn helper(value: usize) -> usize {",
         ] {
             let families = classify_changed_line(text);
 
