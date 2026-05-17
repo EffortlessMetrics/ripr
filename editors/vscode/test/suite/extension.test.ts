@@ -5,7 +5,8 @@ import * as vscode from 'vscode';
 import {
   RiprClientController,
   RiprClientRuntime,
-  RiprAgentLoopCommandTarget
+  RiprAgentLoopCommandTarget,
+  readFirstPrPacketStatus
 } from '../../src/client';
 
 suite('Extension Smoke', () => {
@@ -804,6 +805,237 @@ suite('Extension Smoke', () => {
       const statusOutput = context.outputLines.join('\n');
       assert.ok(statusOutput.includes('Receipt status: malformed; target/ripr/agent/agent-receipt.json could not be parsed as an agent receipt.'));
       assert.ok(statusOutput.includes('Receipt movement is not projected.'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+  });
+
+  test('first-pr packet validation is read-only and fail-closed', async () => {
+    const workspaceRoot = path.resolve('first-pr-workspace');
+
+    const missing = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {}));
+    assert.strictEqual(missing.state, 'missing');
+    assert.strictEqual(missing.relativePath, 'target/ripr/reports/start-here.json');
+
+    const repairable = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/first-pr/start-here.json': firstPrPacket({})
+    }));
+    assert.strictEqual(repairable.state, 'topRepairableGap');
+    assert.strictEqual(repairable.relativePath, 'target/ripr/first-pr/start-here.json');
+    assert.strictEqual(repairable.gapId, 'gap:pr:pricing:threshold-boundary');
+    assert.strictEqual(repairable.canonicalGapId, 'gap:rust:pricing:discount:threshold-boundary');
+    assert.strictEqual(repairable.verifyCommand, 'cargo xtask fixtures boundary_gap');
+    assert.strictEqual(repairable.relatedTest, 'tests/pricing.rs::premium_customer_gets_discount');
+
+    const noAction = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/start-here.json': firstPrPacket({
+        status: 'no_action',
+        selected: {
+          state: 'empty_diff',
+          reason: 'The PR diff is empty.'
+        },
+        commands: {}
+      })
+    }));
+    assert.strictEqual(noAction.state, 'noAction');
+    assert.strictEqual(noAction.selectedState, 'empty_diff');
+
+    const blocked = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/start-here.json': firstPrPacket({
+        status: 'blocked',
+        selected: {
+          state: 'blocked_artifact',
+          message: 'The gap decision ledger is blocked.',
+          next_command: 'ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json'
+        },
+        commands: {
+          next: 'ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json'
+        }
+      })
+    }));
+    assert.strictEqual(blocked.state, 'blocked');
+
+    const malformed = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/start-here.json': '{not-json'
+    }));
+    assert.strictEqual(malformed.state, 'malformed');
+
+    const unsupported = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/start-here.json': firstPrPacket({ kind: 'first_useful_action' })
+    }));
+    assert.strictEqual(unsupported.state, 'unsupportedSchema');
+
+    const unsupportedSelectedState = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/start-here.json': firstPrPacket({
+        selected: {
+          state: 'future_state'
+        }
+      })
+    }));
+    assert.strictEqual(unsupportedSelectedState.state, 'unsupportedSchema');
+
+    const wrongRoot = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/start-here.json': firstPrPacket({ root: '../other-workspace' })
+    }));
+    assert.strictEqual(wrongRoot.state, 'wrongRoot');
+
+    const unsafeCommand = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/start-here.json': firstPrPacket({
+        commands: {
+          verify: 'cargo xtask fixtures boundary_gap; rm -rf target'
+        }
+      })
+    }));
+    assert.strictEqual(unsafeCommand.state, 'unsafeCommand');
+
+    const unsafePathPacket = JSON.parse(firstPrPacket({})) as Record<string, unknown>;
+    unsafePathPacket.selected = {
+      ...(unsafePathPacket.selected as Record<string, unknown>),
+      repair: {
+        related_test: '../outside.rs::test_escape',
+        route: 'AddBoundaryAssertion',
+        target_file: 'tests/pricing.rs'
+      }
+    };
+    const unsafePath = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/start-here.json': JSON.stringify(unsafePathPacket)
+    }));
+    assert.strictEqual(unsafePath.state, 'unsafePath');
+
+    const unsafeInputPath = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/start-here.json': firstPrPacket({
+        inputs: {
+          gap_ledger: '../gap-decision-ledger.json'
+        }
+      })
+    }));
+    assert.strictEqual(unsafeInputPath.state, 'unsafePath');
+  });
+
+  test('status model projects first-pr packet state without producing packets', async () => {
+    await withControllerTestContext({}, async (context) => {
+      await context.controller.start();
+      const statusOutput = await showStatusReport(context);
+      assert.ok(statusOutput.includes('First PR packet: missing; target/ripr/reports/start-here.json was not found.'));
+      assert.ok(statusOutput.includes('Next safe first-pr action: run cargo xtask first-pr'));
+      const diagnosis = await diagnoseSetupReport(context);
+      assert.ok(diagnosis.includes('First PR packet: missing; target/ripr/reports/start-here.json was not found.'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/first-pr/start-here.json': firstPrPacket({})
+      }
+    }, async (context) => {
+      await context.controller.start();
+      const statusOutput = await showStatusReport(context);
+      assert.ok(statusOutput.includes('First PR packet: top repairable gap available; target/ripr/first-pr/start-here.json is advisory.'));
+      assert.ok(statusOutput.includes('Packet: target/ripr/first-pr/start-here.md'));
+      assert.ok(statusOutput.includes('Gap identity: gap:rust:pricing:discount:threshold-boundary'));
+      assert.ok(statusOutput.includes('Verify: cargo xtask fixtures boundary_gap'));
+      assert.ok(statusOutput.includes('Receipt: ripr agent receipt --root . --json'));
+      assert.ok(statusOutput.includes('does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status'));
+      const diagnosis = await diagnoseSetupReport(context);
+      assert.ok(diagnosis.includes('First PR packet: top repairable gap available; target/ripr/first-pr/start-here.json is advisory.'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/start-here.json': firstPrPacket({
+          status: 'no_action',
+          selected: {
+            state: 'empty_diff',
+            reason: 'The PR diff is empty.'
+          },
+          commands: {}
+        })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      const statusOutput = await showStatusReport(context);
+      assert.ok(statusOutput.includes('First PR packet: no actionable gap; target/ripr/reports/start-here.json reports empty_diff.'));
+      assert.ok(statusOutput.includes('No local first-pr repair action is projected from this packet.'));
+      assert.ok(statusOutput.includes('No-action first-pr state does not prove runtime adequacy'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/start-here.json': firstPrPacket({
+          status: 'blocked',
+          selected: {
+            state: 'stale_artifact',
+            message: 'The gap decision ledger is stale.',
+            next_command: 'cargo xtask first-pr'
+          },
+          commands: {
+            next: 'cargo xtask first-pr'
+          }
+        })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      const statusOutput = await showStatusReport(context);
+      assert.ok(statusOutput.includes('First PR packet: stale; target/ripr/reports/start-here.json reports stale upstream evidence.'));
+      assert.ok(statusOutput.includes('First PR packet repair claims are suppressed.'));
+      assert.ok(!statusOutput.includes('top repairable gap available'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/start-here.json': firstPrPacket({})
+      }
+    }, async (context) => {
+      await context.controller.start();
+      const document = await vscode.workspace.openTextDocument(workspaceFileUri('src/lib.rs'));
+      context.controller.markWorkspaceStale(document);
+      const statusOutput = await showStatusReport(context);
+      assert.ok(statusOutput.includes('First PR packet: stale; target/ripr/reports/start-here.json exists, but editor evidence is stale.'));
+      assert.ok(statusOutput.includes('Refresh saved-workspace evidence and rerun cargo xtask first-pr before inspecting or copying first-pr packet content.'));
+      assert.ok(!statusOutput.includes('top repairable gap available'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/start-here.json': firstPrPacket({ root: '../other-workspace' })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      const statusOutput = await showStatusReport(context);
+      assert.ok(statusOutput.includes('First PR packet: wrong root; packet root ../other-workspace does not match this workspace.'));
+      assert.ok(statusOutput.includes('First PR packet repair claims are suppressed.'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/start-here.json': '{not-json'
+      }
+    }, async (context) => {
+      await context.controller.start();
+      const statusOutput = await showStatusReport(context);
+      assert.ok(statusOutput.includes('First PR packet: malformed; target/ripr/reports/start-here.json could not be parsed as a first-pr packet.'));
+      assert.ok(statusOutput.includes('First PR packet repair claims are suppressed.'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/start-here.json': firstPrPacket({
+          commands: {
+            verify: 'cargo xtask fixtures boundary_gap; rm -rf target'
+          }
+        })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      const statusOutput = await showStatusReport(context);
+      assert.ok(statusOutput.includes('First PR packet: unsafe command; target/ripr/reports/start-here.json contains a command payload outside the editor safety contract.'));
+      assert.ok(statusOutput.includes('Copy-command first-pr packet actions are suppressed.'));
+      assert.ok(!statusOutput.includes('top repairable gap available'));
       assert.strictEqual(context.runRiprCalls.length, 0);
     });
   });
@@ -1685,6 +1917,64 @@ function firstActionReport(overrides: Record<string, unknown>): string {
     }
   }
   return JSON.stringify(report);
+}
+
+function firstPrPacket(overrides: Record<string, unknown>): string {
+  const packet: Record<string, unknown> = {
+    schema_version: '0.1',
+    tool: 'ripr',
+    kind: 'first_pr_start_here',
+    root: '.',
+    status: 'actionable',
+    posture: 'advisory',
+    selected: {
+      state: 'top_gap',
+      gap_id: 'gap:pr:pricing:threshold-boundary',
+      canonical_gap_id: 'gap:rust:pricing:discount:threshold-boundary',
+      kind: 'MissingBoundaryAssertion',
+      changed_behavior: 'amount >= threshold',
+      why: 'A related Rust test reaches this change, but no equality-boundary assertion was found.',
+      verify_command: 'cargo xtask fixtures boundary_gap',
+      receipt_command: 'ripr agent receipt --root . --json',
+      repair: {
+        related_test: 'tests/pricing.rs::premium_customer_gets_discount',
+        route: 'AddBoundaryAssertion',
+        target_file: 'tests/pricing.rs',
+        suggested_assertion: 'assert_eq!(discount(100, 100), 90)'
+      }
+    },
+    commands: {
+      verify: 'cargo xtask fixtures boundary_gap',
+      receipt: 'ripr agent receipt --root . --json'
+    },
+    limits: [
+      'Composes explicit RIPR artifacts only.',
+      'Does not edit source or generate tests.'
+    ],
+    warnings: []
+  };
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value === undefined) {
+      delete packet[key];
+    } else {
+      packet[key] = value;
+    }
+  }
+  return JSON.stringify(packet);
+}
+
+function firstPrReadFile(
+  workspaceRoot: string,
+  files: Record<string, string | null>
+): RiprClientRuntime['readFile'] {
+  return async (filePath: string) => {
+    const relativePath = path.relative(workspaceRoot, filePath).replace(/\\/g, '/');
+    const value = files[relativePath];
+    if (value === null) {
+      throw new Error(`cannot read ${relativePath}`);
+    }
+    return value;
+  };
 }
 
 function agentReceipt(overrides: {

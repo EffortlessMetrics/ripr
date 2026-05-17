@@ -9,6 +9,11 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Added public `ripr first-pr` / `ripr start-here` command routing for the
+  first successful PR start-here packet. The existing `cargo xtask first-pr`
+  path now delegates to the same public implementation, preserving explicit
+  artifact composition, advisory defaults, gate-authority separation, and the
+  no-source-edit/no-generated-test/no-mutation-execution boundaries.
 - `cargo xtask lane1-evidence-audit` now generates its temporary repo-exposure
   input through a bounded direct `ripr` invocation with latency tracing, so a
   cold full-repo evidence pass reports a clear timeout with phase context

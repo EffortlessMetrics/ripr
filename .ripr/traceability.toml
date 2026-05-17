@@ -3223,6 +3223,12 @@ id = "RIPR-SPEC-0051"
 name = "First successful PR UX"
 spec = "docs/specs/RIPR-SPEC-0051-first-successful-pr-ux.md"
 tests = [
+  "crates/ripr/src/output/first_pr.rs",
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/mod.rs",
+  "crates/ripr/src/cli/help.rs",
+  "crates/ripr/tests/cli_smoke.rs::first_pr_cli_writes_start_here_packet",
   "xtask/src/reports/first_pr.rs",
   "xtask/src/main.rs",
   "xtask/src/main.rs::tests::dogfood_first_pr_scenarios_have_checked_receipts",
@@ -3231,7 +3237,15 @@ fixtures = [
   "fixtures/first_successful_pr",
 ]
 code = [
+  "crates/ripr/src/output/first_pr.rs",
+  "crates/ripr/src/output/mod.rs",
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/mod.rs",
+  "crates/ripr/src/cli/help.rs",
   "xtask/src/reports/first_pr.rs",
+  "xtask/Cargo.toml",
   "xtask/src/command.rs",
   "xtask/src/dispatch.rs",
   "xtask/src/reports/mod.rs",
@@ -3242,6 +3256,7 @@ outputs = [
   "docs/proposals/RIPR-PROP-0009-first-run-ux-adoption-hardening.md",
   "docs/OUTPUT_SCHEMA.md",
   "docs/FIRST_PR_WORKFLOW.md",
+  "docs/demo/first-successful-pr.md",
   "docs/BLOCKING_READINESS.md",
   "docs/QUICKSTART.md",
   "README.md",

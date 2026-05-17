@@ -45,6 +45,16 @@ const RIPR_SETUP_ARTIFACTS: RiprSetupArtifactDefinition[] = [
     relativePath: 'target/ripr/agent/agent-receipt.json'
   }
 ];
+const RIPR_FIRST_PR_PACKET_ARTIFACTS = [
+  {
+    jsonRelativePath: 'target/ripr/reports/start-here.json',
+    markdownRelativePath: 'target/ripr/reports/start-here.md'
+  },
+  {
+    jsonRelativePath: 'target/ripr/first-pr/start-here.json',
+    markdownRelativePath: 'target/ripr/first-pr/start-here.md'
+  }
+];
 
 export interface RiprContextTarget {
   uri?: string;
@@ -796,6 +806,40 @@ interface RiprSetupStatus {
   config: RiprSetupFileStatus;
   artifacts: RiprSetupFileStatus[];
   receipt: RiprReceiptArtifactStatus;
+  firstPr: RiprFirstPrPacketStatus;
+}
+
+export type RiprFirstPrPacketState =
+  | 'found'
+  | 'topRepairableGap'
+  | 'noAction'
+  | 'blocked'
+  | 'missing'
+  | 'malformed'
+  | 'unsupportedSchema'
+  | 'wrongRoot'
+  | 'unsafePath'
+  | 'unsafeCommand'
+  | 'unreadable'
+  | 'noWorkspace';
+
+export interface RiprFirstPrPacketStatus {
+  relativePath: string;
+  markdownRelativePath?: string;
+  path?: string;
+  markdownPath?: string;
+  state: RiprFirstPrPacketState;
+  detail?: string;
+  status?: string;
+  selectedState?: string;
+  gapId?: string;
+  canonicalGapId?: string;
+  verifyCommand?: string;
+  receiptCommand?: string;
+  relatedTest?: string;
+  repairTarget?: string;
+  repoRoot?: string;
+  warningCount?: number;
 }
 
 interface FirstUsefulActionStatus {
@@ -932,6 +976,10 @@ function statusTooltip(
     if (receiptLines.length > 0) {
       lines.push('', ...receiptLines);
     }
+    const firstPrLines = firstPrPacketStatusLines(status, context);
+    if (firstPrLines.length > 0) {
+      lines.push('', ...firstPrLines);
+    }
   }
   return lines.join('\n');
 }
@@ -964,6 +1012,10 @@ function setupDiagnosisReport(
   const receiptLines = receiptStatusLines(status, firstAction, context);
   if (receiptLines.length > 0) {
     lines.push('', ...receiptLines);
+  }
+  const firstPrLines = firstPrPacketStatusLines(status, context);
+  if (firstPrLines.length > 0) {
+    lines.push('', ...firstPrLines);
   }
   lines.push(
     '',
@@ -1110,6 +1162,155 @@ function firstUsefulActionLines(firstAction: FirstUsefulActionStatus): string[] 
   lines.push(`Warnings: ${firstAction.warningCount}`);
   lines.push('Advisory static evidence only; gate evaluation remains the pass/fail authority.');
   return lines;
+}
+
+function firstPrPacketStatusLines(
+  status: RiprStatusState,
+  context: RiprStatusContext
+): string[] {
+  const packet = context.setupStatus.firstPr;
+  if (packet.state === 'noWorkspace') {
+    return [];
+  }
+  if (status.kind === 'stale' && firstPrPacketCanBecomeStale(packet.state)) {
+    return [
+      `First PR packet: stale; ${packet.relativePath} exists, but editor evidence is stale.`,
+      'Refresh saved-workspace evidence and rerun cargo xtask first-pr before inspecting or copying first-pr packet content.',
+      'First PR packet is advisory only; it does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.'
+    ];
+  }
+  switch (packet.state) {
+    case 'missing':
+      return [
+        `First PR packet: missing; ${packet.relativePath} was not found.`,
+        'Next safe first-pr action: run cargo xtask first-pr for the current workspace after verify/receipt artifacts exist.'
+      ];
+    case 'unreadable':
+      return [
+        `First PR packet: unreadable; ${packet.relativePath} could not be read.`,
+        packet.detail ?? 'No reader detail was reported.',
+        'First PR packet repair claims are suppressed.'
+      ];
+    case 'malformed':
+      return [
+        `First PR packet: malformed; ${packet.relativePath} could not be parsed as a first-pr packet.`,
+        packet.detail ?? 'No parser detail was reported.',
+        'First PR packet repair claims are suppressed.'
+      ];
+    case 'unsupportedSchema':
+      return [
+        `First PR packet: malformed; ${packet.relativePath} uses an unsupported first-pr packet schema.`,
+        packet.detail ?? 'No schema detail was reported.',
+        'First PR packet repair claims are suppressed.'
+      ];
+    case 'wrongRoot':
+      return [
+        `First PR packet: wrong root; packet root ${packet.repoRoot ?? 'unknown'} does not match this workspace.`,
+        'First PR packet repair claims are suppressed.'
+      ];
+    case 'unsafePath':
+      return [
+        `First PR packet: unsafe path; ${packet.relativePath} references a path outside this workspace.`,
+        packet.detail ?? 'No path detail was reported.',
+        'Open/copy first-pr packet actions are suppressed.'
+      ];
+    case 'unsafeCommand':
+      return [
+        `First PR packet: unsafe command; ${packet.relativePath} contains a command payload outside the editor safety contract.`,
+        packet.detail ?? 'No command detail was reported.',
+        'Copy-command first-pr packet actions are suppressed.'
+      ];
+    case 'topRepairableGap':
+      return firstPrTopRepairableGapLines(packet);
+    case 'noAction':
+      return [
+        `First PR packet: no actionable gap; ${packet.relativePath} reports ${packet.selectedState ?? 'no_action'}.`,
+        'No local first-pr repair action is projected from this packet.',
+        'No-action first-pr state does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.'
+      ];
+    case 'blocked':
+      return firstPrBlockedPacketLines(packet);
+    case 'found':
+      return [
+        `First PR packet: found; ${packet.relativePath} is advisory.`,
+        'Inspect the packet before carrying evidence into PR review.',
+        'First PR packet does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.'
+      ];
+  }
+}
+
+function firstPrPacketCanBecomeStale(state: RiprFirstPrPacketState): boolean {
+  return state === 'found'
+    || state === 'topRepairableGap'
+    || state === 'noAction'
+    || state === 'blocked';
+}
+
+function firstPrTopRepairableGapLines(packet: RiprFirstPrPacketStatus): string[] {
+  const lines = [
+    `First PR packet: top repairable gap available; ${packet.relativePath} is advisory.`,
+    `Packet: ${packet.markdownRelativePath ?? packet.relativePath}`
+  ];
+  if (packet.canonicalGapId ?? packet.gapId) {
+    lines.push(`Gap identity: ${packet.canonicalGapId ?? packet.gapId}`);
+  }
+  if (packet.relatedTest) {
+    lines.push(`Related test: ${packet.relatedTest}`);
+  }
+  if (packet.repairTarget) {
+    lines.push(`Repair target: ${packet.repairTarget}`);
+  }
+  if (packet.verifyCommand) {
+    lines.push(`Verify: ${packet.verifyCommand}`);
+  }
+  if (packet.receiptCommand) {
+    lines.push(`Receipt: ${packet.receiptCommand}`);
+  }
+  lines.push(`Warnings: ${packet.warningCount ?? 0}`);
+  lines.push('First PR packet does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.');
+  return lines;
+}
+
+function firstPrBlockedPacketLines(packet: RiprFirstPrPacketStatus): string[] {
+  switch (packet.selectedState) {
+    case 'missing_artifact':
+      return [
+        `First PR packet: missing; ${packet.relativePath} reports a missing upstream artifact.`,
+        'Regenerate the named artifact, then rerun cargo xtask first-pr.',
+        'First PR packet repair claims are suppressed.'
+      ];
+    case 'stale_artifact':
+      return [
+        `First PR packet: stale; ${packet.relativePath} reports stale upstream evidence.`,
+        'Refresh saved-workspace evidence and rerun cargo xtask first-pr before acting.',
+        'First PR packet repair claims are suppressed.'
+      ];
+    case 'wrong_root':
+      return [
+        `First PR packet: wrong root; ${packet.relativePath} reports an upstream artifact for another workspace.`,
+        'Regenerate first-pr inputs for the current workspace.',
+        'First PR packet repair claims are suppressed.'
+      ];
+    case 'malformed_artifact':
+      return [
+        `First PR packet: malformed; ${packet.relativePath} reports a malformed upstream artifact.`,
+        'Regenerate the malformed artifact, then rerun cargo xtask first-pr.',
+        'First PR packet repair claims are suppressed.'
+      ];
+    case 'timeout':
+      return [
+        `First PR packet: blocked; ${packet.relativePath} reports a timeout while composing first-pr evidence.`,
+        'Rerun cargo xtask first-pr or inspect the blocked artifact before acting.',
+        'First PR packet repair claims are suppressed.'
+      ];
+    case 'blocked_artifact':
+    default:
+      return [
+        `First PR packet: blocked; ${packet.relativePath} reports ${packet.selectedState ?? 'blocked_artifact'}.`,
+        'Inspect or regenerate first-pr inputs before carrying evidence into PR review.',
+        'First PR packet repair claims are suppressed.'
+      ];
+  }
 }
 
 function receiptStatusLines(
@@ -1469,7 +1670,8 @@ async function readSetupStatusFiles(
     )
   ));
   const receipt = await readReceiptStatus(workspaceRoot, readFile);
-  return { config, artifacts, receipt };
+  const firstPr = await readFirstPrPacketStatus(workspaceRoot, readFile);
+  return { config, artifacts, receipt, firstPr };
 }
 
 async function readSetupFileStatus(
@@ -1508,6 +1710,12 @@ function setupStatusWithoutWorkspace(): RiprSetupStatus {
       relativePath: 'target/ripr/agent/agent-receipt.json',
       state: 'noWorkspace',
       detail: 'open a workspace before matching receipt artifacts'
+    },
+    firstPr: {
+      relativePath: 'target/ripr/reports/start-here.json',
+      markdownRelativePath: 'target/ripr/reports/start-here.md',
+      state: 'noWorkspace',
+      detail: 'open a workspace before matching first-pr packet artifacts'
     }
   };
 }
@@ -1523,6 +1731,286 @@ function setupNoWorkspaceFile(label: string, relativePath: string): RiprSetupFil
 
 function setupFilePath(workspaceRoot: string, relativePath: string): string {
   return path.join(workspaceRoot, ...relativePath.split('/'));
+}
+
+export async function readFirstPrPacketStatus(
+  workspaceRoot: string,
+  readFile: RiprClientRuntime['readFile']
+): Promise<RiprFirstPrPacketStatus> {
+  for (const artifact of RIPR_FIRST_PR_PACKET_ARTIFACTS) {
+    const jsonPath = setupFilePath(workspaceRoot, artifact.jsonRelativePath);
+    let raw: string | undefined;
+    try {
+      raw = await readFile(jsonPath);
+    } catch (error) {
+      return {
+        relativePath: artifact.jsonRelativePath,
+        markdownRelativePath: artifact.markdownRelativePath,
+        path: jsonPath,
+        markdownPath: setupFilePath(workspaceRoot, artifact.markdownRelativePath),
+        state: 'unreadable',
+        detail: error instanceof Error ? error.message : String(error)
+      };
+    }
+    if (raw === undefined) {
+      continue;
+    }
+    return validateFirstPrPacket(
+      raw,
+      workspaceRoot,
+      artifact.jsonRelativePath,
+      artifact.markdownRelativePath,
+      jsonPath,
+      setupFilePath(workspaceRoot, artifact.markdownRelativePath)
+    );
+  }
+  return {
+    relativePath: RIPR_FIRST_PR_PACKET_ARTIFACTS[0].jsonRelativePath,
+    markdownRelativePath: RIPR_FIRST_PR_PACKET_ARTIFACTS[0].markdownRelativePath,
+    path: setupFilePath(workspaceRoot, RIPR_FIRST_PR_PACKET_ARTIFACTS[0].jsonRelativePath),
+    markdownPath: setupFilePath(workspaceRoot, RIPR_FIRST_PR_PACKET_ARTIFACTS[0].markdownRelativePath),
+    state: 'missing',
+    detail: 'first-pr start-here packet missing; run cargo xtask first-pr for the current workspace'
+  };
+}
+
+function validateFirstPrPacket(
+  raw: string,
+  workspaceRoot: string,
+  relativePath: string,
+  markdownRelativePath: string,
+  filePath: string,
+  markdownPath: string
+): RiprFirstPrPacketStatus {
+  const base = {
+    relativePath,
+    markdownRelativePath,
+    path: filePath,
+    markdownPath
+  };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    return {
+      ...base,
+      state: 'malformed',
+      detail: error instanceof Error ? error.message : String(error)
+    };
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return {
+      ...base,
+      state: 'malformed',
+      detail: 'first-pr packet JSON root is not an object'
+    };
+  }
+  const packet = parsed as Record<string, unknown>;
+  if (
+    stringField(packet, 'schema_version') !== '0.1' ||
+    stringField(packet, 'tool') !== 'ripr' ||
+    stringField(packet, 'kind') !== 'first_pr_start_here'
+  ) {
+    return {
+      ...base,
+      state: 'unsupportedSchema',
+      detail: 'expected ripr first_pr_start_here schema_version 0.1'
+    };
+  }
+  const repoRoot = stringField(packet, 'root');
+  if (!rootMatchesWorkspace(repoRoot, workspaceRoot)) {
+    return {
+      ...base,
+      state: 'wrongRoot',
+      repoRoot,
+      detail: 'first-pr packet root does not match the active workspace'
+    };
+  }
+  if (stringField(packet, 'posture') !== 'advisory') {
+    return {
+      ...base,
+      state: 'unsupportedSchema',
+      detail: 'first-pr packet must remain advisory'
+    };
+  }
+  const status = boundedStringField(packet, 'status', FIRST_PR_PACKET_STATUSES);
+  const selected = objectField(packet, 'selected');
+  if (!status || !selected) {
+    return {
+      ...base,
+      state: 'malformed',
+      detail: 'first-pr packet is missing status or selected state'
+    };
+  }
+  const selectedState = stringField(selected, 'state');
+  if (!selectedState) {
+    return {
+      ...base,
+      state: 'malformed',
+      detail: 'first-pr packet selected state is missing'
+    };
+  }
+  if (!FIRST_PR_PACKET_SELECTED_STATES.has(selectedState)) {
+    return {
+      ...base,
+      state: 'unsupportedSchema',
+      detail: 'first-pr packet selected state is not supported by this editor'
+    };
+  }
+  const commands = objectField(packet, 'commands');
+  for (const command of stringValues(commands)) {
+    if (!firstPrCommandIsSafe(command)) {
+      return {
+        ...base,
+        state: 'unsafeCommand',
+        detail: 'first-pr packet command payload is not safe for editor projection'
+      };
+    }
+  }
+  const selectedCommands = [
+    stringField(selected, 'agent_packet_command'),
+    stringField(selected, 'verify_command'),
+    stringField(selected, 'receipt_command'),
+    stringField(selected, 'next_command'),
+    stringField(selected, 'regeneration_command')
+  ].filter((value): value is string => value !== undefined);
+  if (selectedCommands.some((command) => !firstPrCommandIsSafe(command))) {
+    return {
+      ...base,
+      state: 'unsafeCommand',
+      detail: 'first-pr selected command payload is not safe for editor projection'
+    };
+  }
+  const repair = objectField(selected, 'repair');
+  const relatedTest = repair ? stringField(repair, 'related_test') : undefined;
+  const repairTarget = repair ? stringField(repair, 'target_file') : undefined;
+  const anchor = objectField(selected, 'anchor');
+  const selectedArtifact = objectField(selected, 'artifact');
+  const packetPaths = [
+    ...stringValues(objectField(packet, 'inputs')),
+    ...firstPrArtifactPaths(packet),
+    relatedTest,
+    repairTarget,
+    anchor ? stringField(anchor, 'file') : undefined,
+    selectedArtifact ? stringField(selectedArtifact, 'path') : undefined
+  ].filter((value): value is string => value !== undefined);
+  if (packetPaths.some((packetPath) => !firstPrPathIsWorkspaceLocal(packetPath))) {
+    return {
+      ...base,
+      state: 'unsafePath',
+      detail: 'first-pr packet repair path is outside the workspace'
+    };
+  }
+  const common = {
+    ...base,
+    status,
+    selectedState,
+    gapId: stringField(selected, 'gap_id'),
+    canonicalGapId: stringField(selected, 'canonical_gap_id'),
+    verifyCommand: stringField(selected, 'verify_command'),
+    receiptCommand: stringField(selected, 'receipt_command'),
+    relatedTest,
+    repairTarget,
+    repoRoot,
+    warningCount: arrayLength(packet, 'warnings')
+  };
+  if (status === 'actionable') {
+    if (
+      selectedState !== 'top_gap' ||
+      (!common.gapId && !common.canonicalGapId) ||
+      !common.verifyCommand
+    ) {
+      return {
+        ...base,
+        state: 'malformed',
+        detail: 'actionable first-pr packet is missing top-gap identity or verify command'
+      };
+    }
+    return { ...common, state: 'topRepairableGap' };
+  }
+  if (status === 'no_action') {
+    if (!FIRST_PR_PACKET_NO_ACTION_STATES.has(selectedState)) {
+      return {
+        ...base,
+        state: 'malformed',
+        detail: 'first-pr no-action packet has a non-no-action selected state'
+      };
+    }
+    return { ...common, state: 'noAction' };
+  }
+  if (status === 'blocked') {
+    if (!FIRST_PR_PACKET_BLOCKED_STATES.has(selectedState)) {
+      return {
+        ...base,
+        state: 'malformed',
+        detail: 'first-pr blocked packet has a non-blocked selected state'
+      };
+    }
+    return { ...common, state: 'blocked' };
+  }
+  return { ...common, state: 'found' };
+}
+
+const FIRST_PR_PACKET_STATUSES = new Set([
+  'actionable',
+  'no_action',
+  'blocked'
+]);
+const FIRST_PR_PACKET_BLOCKED_STATES = new Set([
+  'missing_artifact',
+  'malformed_artifact',
+  'stale_artifact',
+  'wrong_root',
+  'blocked_artifact',
+  'timeout'
+]);
+const FIRST_PR_PACKET_NO_ACTION_STATES = new Set([
+  'empty_diff',
+  'no_action'
+]);
+const FIRST_PR_PACKET_SELECTED_STATES = new Set([
+  'top_gap',
+  ...FIRST_PR_PACKET_BLOCKED_STATES,
+  ...FIRST_PR_PACKET_NO_ACTION_STATES
+]);
+
+function stringValues(value: Record<string, unknown> | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+  return Object.values(value).filter((child): child is string =>
+    typeof child === 'string' && child.trim() !== ''
+  );
+}
+
+function firstPrCommandIsSafe(command: string): boolean {
+  return command.trim() !== '' && !hasUnsafeShellMetacharacter(command);
+}
+
+function firstPrPathIsWorkspaceLocal(value: string): boolean {
+  const pathPart = value.split('::')[0];
+  if (!pathPart || path.isAbsolute(pathPart)) {
+    return false;
+  }
+  const normalized = path.normalize(pathPart);
+  return normalized !== '..' && !normalized.startsWith(`..${path.sep}`);
+}
+
+function firstPrArtifactPaths(packet: Record<string, unknown>): string[] {
+  const artifacts = packet['artifacts'];
+  if (!Array.isArray(artifacts)) {
+    return [];
+  }
+  const paths: string[] = [];
+  for (const artifact of artifacts) {
+    if (artifact && typeof artifact === 'object' && !Array.isArray(artifact)) {
+      const artifactPath = stringField(artifact as Record<string, unknown>, 'path');
+      if (artifactPath) {
+        paths.push(artifactPath);
+      }
+    }
+  }
+  return paths;
 }
 
 async function readReceiptStatus(
