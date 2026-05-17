@@ -235,6 +235,13 @@ If an implementation runs lower-level commands to create these artifacts, the
 start-here packet must show what was run or give the equivalent regeneration
 command.
 
+When the start-here packet selects a repairable gap, generated CI and report
+navigation should use its typed fields as the first-screen unit:
+`canonical_gap_id` or `gap_id`, `language`, `language_status`, repair route,
+repair target, related test, static limit when present, verify command, receipt
+command, receipt state, and advisory non-claims. Raw finding counts remain
+supporting evidence.
+
 ## Outputs
 
 The first-run path should output:

@@ -6043,7 +6043,7 @@ JSON shape:
     "missing_expected": 4,
     "warnings": 3,
     "failures": 0,
-    "start_here": "target/ripr/reports/pr-review-front-panel.md",
+    "start_here": "target/ripr/reports/start-here.md",
     "gate_authority": "target/ripr/reports/gate-decision.md",
     "advisory": true
   },
@@ -6053,6 +6053,19 @@ JSON shape:
       "label": "Start here",
       "summary": "Reviewer-first PR story.",
       "entries": [
+        {
+          "id": "first_pr_start_here",
+          "label": "First PR start here",
+          "kind": "markdown",
+          "path": "target/ripr/reports/start-here.md",
+          "json_path": "target/ripr/reports/start-here.json",
+          "status": "available",
+          "available": true,
+          "required": true,
+          "authority": false,
+          "description": "Canonical first-screen repair packet.",
+          "next_command": null
+        },
         {
           "id": "pr_review_front_panel",
           "label": "PR review front panel",
@@ -6381,6 +6394,20 @@ Field contract:
   `blocked_artifact` or `timeout` for blocked recovery states, and
   `empty_diff` or `no_action` for no-action states.
 - `top_gap` requires `status = "actionable"`.
+- `selected.canonical_gap_id` and `selected.gap_id` identify the repair unit
+  when a top gap is selected. Generated CI and report indexes should prefer the
+  canonical gap id when present.
+- `selected.language` and `selected.language_status` keep Rust stable evidence
+  distinct from preview evidence when a top gap is selected.
+- `selected.repair.route`, `selected.repair.target_file`,
+  `selected.repair.related_test`, and `selected.repair.suggested_assertion`
+  describe the bounded repair route when present.
+- `selected.static_limit_kind` and `selected.static_limit_detail` are optional;
+  surfaces must show them before suggested action language when they are
+  present.
+- `selected.verify_command`, `selected.receipt_command`, and
+  `selected.receipt_state` are the static movement proof path. A missing
+  receipt is not failure, merge approval, mutation proof, or runtime adequacy.
 - `missing_artifact`, `malformed_artifact`, `stale_artifact`, `wrong_root`,
   `blocked_artifact`, and `timeout` require `status = "blocked"` and a
   bounded next command when one is known.
