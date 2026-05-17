@@ -15,6 +15,7 @@ Current and planned tutorial docs:
   one repairable gap, one focused proof, one receipt
 - [Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md) -
   install/open, diagnose setup, repair one Rust gap, verify, receipt, refresh
+- future editor first-pr bridge workflow
 - README quick start
 - future first-extension-install walkthrough
 - future first-fixture walkthrough
@@ -175,6 +176,7 @@ Current explanation docs:
 - [Campaign 27 plans](../plans/campaign-27/README.md)
 - [Proposals](proposals/README.md)
 - [User-visible output evidence proposal](proposals/RIPR-PROP-0005-user-visible-output-evidence.md)
+- [Editor first-pr bridge proposal](proposals/RIPR-PROP-0010-editor-first-pr-bridge.md)
 - [Codex Goals](CODEX_GOALS.md)
 - [Scoped PR contract](SCOPED_PR_CONTRACT.md)
 - [PR automation](PR_AUTOMATION.md)
@@ -196,6 +198,7 @@ Current explanation docs:
 - [Editor gap cockpit workflow](EDITOR_GAP_COCKPIT_WORKFLOW.md)
 - [Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md)
 - [Editor evidence UX](EDITOR_EVIDENCE_UX.md)
+- [Editor first-pr bridge plan](../plans/editor-first-pr-bridge/implementation-plan.md)
 - [LLM operator guide](LLM_OPERATOR_GUIDE.md)
 - [Recommendation calibration](RECOMMENDATION_CALIBRATION.md)
 - [Calibrated gate policy](CALIBRATED_GATE_POLICY.md)

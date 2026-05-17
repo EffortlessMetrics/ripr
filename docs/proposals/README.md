@@ -85,3 +85,4 @@ Start new proposals from
 | [RIPR-PROP-0007](RIPR-PROP-0007-editor-gap-cockpit.md) | accepted | Editor gap cockpit |
 | [RIPR-PROP-0008](RIPR-PROP-0008-editor-first-run-usability.md) | accepted | Editor first-run usability |
 | [RIPR-PROP-0009](RIPR-PROP-0009-first-run-ux-adoption-hardening.md) | accepted | First-run UX and adoption hardening |
+| [RIPR-PROP-0010](RIPR-PROP-0010-editor-first-pr-bridge.md) | proposed | Editor first-pr bridge |
