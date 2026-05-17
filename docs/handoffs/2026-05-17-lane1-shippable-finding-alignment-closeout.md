@@ -1,7 +1,7 @@
 # Handoff: Lane 1 Shippable Finding Alignment Closeout
 
 Date: 2026-05-17
-Branch / PR: `codex/evidence-alignment-audit` / #1117
+Branch / PR: `codex/evidence-alignment-audit` / #1118
 Latest merged PR: #1109 `analysis: add predicate boundary repair routes`
 (commit `fb7a1c13`)
 
