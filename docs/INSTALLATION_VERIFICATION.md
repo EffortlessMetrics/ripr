@@ -81,6 +81,7 @@ checkout for normal use.
 ```bash
 cargo install --path crates/ripr --locked --root target/ripr/install-smoke-path --force
 target/ripr/install-smoke-path/bin/ripr --version
+target/ripr/install-smoke-path/bin/ripr first-pr --help
 target/ripr/install-smoke-path/bin/ripr pilot \
   --root fixtures/boundary_gap/input \
   --out target/ripr/install-smoke-path/pilot
@@ -103,6 +104,16 @@ target/ripr/install-smoke-path/bin/ripr agent receipt \
 
 On Windows, use `target\ripr\install-smoke-path\bin\ripr.exe`.
 
+Also confirm the generated CI and editor first-run front doors before release:
+
+```bash
+cargo xtask release-readiness --version 0.6.0
+```
+
+The readiness report must show that generated GitHub CI includes `#### First-run
+status`, `missing_start_here`, and `target/ripr/reports/start-here.md`; it must
+also verify that the VS Code manifest contributes `ripr: Start Current Repair`.
+
 ## Public Cargo Install Proof
 
 After publishing to crates.io, run the same smoke from an isolated install root.
@@ -112,6 +123,7 @@ release mistake:
 ```bash
 cargo install ripr --version 0.6.0 --locked --root target/ripr/install-smoke-cratesio --force
 target/ripr/install-smoke-cratesio/bin/ripr --version
+target/ripr/install-smoke-cratesio/bin/ripr first-pr --help
 target/ripr/install-smoke-cratesio/bin/ripr pilot \
   --root fixtures/boundary_gap/input \
   --out target/ripr/install-smoke-cratesio/pilot
