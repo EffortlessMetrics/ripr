@@ -1,6 +1,6 @@
 # RIPR-SPEC-0051: First Successful PR UX
 
-Status: proposed
+Status: accepted
 
 ## Problem
 
