@@ -5,7 +5,8 @@ import * as vscode from 'vscode';
 import {
   RiprClientController,
   RiprClientRuntime,
-  RiprAgentLoopCommandTarget
+  RiprAgentLoopCommandTarget,
+  readFirstPrPacketStatus
 } from '../../src/client';
 
 suite('Extension Smoke', () => {
@@ -806,6 +807,108 @@ suite('Extension Smoke', () => {
       assert.ok(statusOutput.includes('Receipt movement is not projected.'));
       assert.strictEqual(context.runRiprCalls.length, 0);
     });
+  });
+
+  test('first-pr packet validation is read-only and fail-closed', async () => {
+    const workspaceRoot = path.resolve('first-pr-workspace');
+
+    const missing = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {}));
+    assert.strictEqual(missing.state, 'missing');
+    assert.strictEqual(missing.relativePath, 'target/ripr/reports/start-here.json');
+
+    const repairable = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/first-pr/start-here.json': firstPrPacket({})
+    }));
+    assert.strictEqual(repairable.state, 'topRepairableGap');
+    assert.strictEqual(repairable.relativePath, 'target/ripr/first-pr/start-here.json');
+    assert.strictEqual(repairable.gapId, 'gap:pr:pricing:threshold-boundary');
+    assert.strictEqual(repairable.canonicalGapId, 'gap:rust:pricing:discount:threshold-boundary');
+    assert.strictEqual(repairable.verifyCommand, 'cargo xtask fixtures boundary_gap');
+    assert.strictEqual(repairable.relatedTest, 'tests/pricing.rs::premium_customer_gets_discount');
+
+    const noAction = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/start-here.json': firstPrPacket({
+        status: 'no_action',
+        selected: {
+          state: 'empty_diff',
+          reason: 'The PR diff is empty.'
+        },
+        commands: {}
+      })
+    }));
+    assert.strictEqual(noAction.state, 'noAction');
+    assert.strictEqual(noAction.selectedState, 'empty_diff');
+
+    const blocked = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/start-here.json': firstPrPacket({
+        status: 'blocked',
+        selected: {
+          state: 'blocked_artifact',
+          message: 'The gap decision ledger is blocked.',
+          next_command: 'ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json'
+        },
+        commands: {
+          next: 'ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json'
+        }
+      })
+    }));
+    assert.strictEqual(blocked.state, 'blocked');
+
+    const malformed = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/start-here.json': '{not-json'
+    }));
+    assert.strictEqual(malformed.state, 'malformed');
+
+    const unsupported = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/start-here.json': firstPrPacket({ kind: 'first_useful_action' })
+    }));
+    assert.strictEqual(unsupported.state, 'unsupportedSchema');
+
+    const unsupportedSelectedState = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/start-here.json': firstPrPacket({
+        selected: {
+          state: 'future_state'
+        }
+      })
+    }));
+    assert.strictEqual(unsupportedSelectedState.state, 'unsupportedSchema');
+
+    const wrongRoot = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/start-here.json': firstPrPacket({ root: '../other-workspace' })
+    }));
+    assert.strictEqual(wrongRoot.state, 'wrongRoot');
+
+    const unsafeCommand = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/start-here.json': firstPrPacket({
+        commands: {
+          verify: 'cargo xtask fixtures boundary_gap; rm -rf target'
+        }
+      })
+    }));
+    assert.strictEqual(unsafeCommand.state, 'unsafeCommand');
+
+    const unsafePathPacket = JSON.parse(firstPrPacket({})) as Record<string, unknown>;
+    unsafePathPacket.selected = {
+      ...(unsafePathPacket.selected as Record<string, unknown>),
+      repair: {
+        related_test: '../outside.rs::test_escape',
+        route: 'AddBoundaryAssertion',
+        target_file: 'tests/pricing.rs'
+      }
+    };
+    const unsafePath = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/start-here.json': JSON.stringify(unsafePathPacket)
+    }));
+    assert.strictEqual(unsafePath.state, 'unsafePath');
+
+    const unsafeInputPath = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/start-here.json': firstPrPacket({
+        inputs: {
+          gap_ledger: '../gap-decision-ledger.json'
+        }
+      })
+    }));
+    assert.strictEqual(unsafeInputPath.state, 'unsafePath');
   });
 
   test('diagnoseSetup writes read-only setup report', async () => {
@@ -1685,6 +1788,64 @@ function firstActionReport(overrides: Record<string, unknown>): string {
     }
   }
   return JSON.stringify(report);
+}
+
+function firstPrPacket(overrides: Record<string, unknown>): string {
+  const packet: Record<string, unknown> = {
+    schema_version: '0.1',
+    tool: 'ripr',
+    kind: 'first_pr_start_here',
+    root: '.',
+    status: 'actionable',
+    posture: 'advisory',
+    selected: {
+      state: 'top_gap',
+      gap_id: 'gap:pr:pricing:threshold-boundary',
+      canonical_gap_id: 'gap:rust:pricing:discount:threshold-boundary',
+      kind: 'MissingBoundaryAssertion',
+      changed_behavior: 'amount >= threshold',
+      why: 'A related Rust test reaches this change, but no equality-boundary assertion was found.',
+      verify_command: 'cargo xtask fixtures boundary_gap',
+      receipt_command: 'ripr agent receipt --root . --json',
+      repair: {
+        related_test: 'tests/pricing.rs::premium_customer_gets_discount',
+        route: 'AddBoundaryAssertion',
+        target_file: 'tests/pricing.rs',
+        suggested_assertion: 'assert_eq!(discount(100, 100), 90)'
+      }
+    },
+    commands: {
+      verify: 'cargo xtask fixtures boundary_gap',
+      receipt: 'ripr agent receipt --root . --json'
+    },
+    limits: [
+      'Composes explicit RIPR artifacts only.',
+      'Does not edit source or generate tests.'
+    ],
+    warnings: []
+  };
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value === undefined) {
+      delete packet[key];
+    } else {
+      packet[key] = value;
+    }
+  }
+  return JSON.stringify(packet);
+}
+
+function firstPrReadFile(
+  workspaceRoot: string,
+  files: Record<string, string | null>
+): RiprClientRuntime['readFile'] {
+  return async (filePath: string) => {
+    const relativePath = path.relative(workspaceRoot, filePath).replace(/\\/g, '/');
+    const value = files[relativePath];
+    if (value === null) {
+      throw new Error(`cannot read ${relativePath}`);
+    }
+    return value;
+  };
 }
 
 function agentReceipt(overrides: {
