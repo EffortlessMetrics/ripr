@@ -52,6 +52,90 @@ suite('Extension Smoke', () => {
     assert.ok(commands.includes('ripr.openSettings'));
   });
 
+  test('real extension first-pr bridge commands use safe packet artifacts', async function (this: Mocha.Context) {
+    this.timeout(30000);
+    await cleanupFirstPrBridgeSmokeFiles();
+    await writeWorkspaceFile('target/ripr/first-pr/start-here.json', firstPrPacket({}));
+    await writeWorkspaceFile('target/ripr/first-pr/start-here.md', '# RIPR first-pr packet\n');
+    try {
+      await vscode.commands.executeCommand('ripr.diagnoseSetup');
+      await vscode.commands.executeCommand('ripr.showStatus');
+
+      await vscode.commands.executeCommand('ripr.copyFirstPrSummary');
+      const summary = await waitForClipboardText((text) =>
+        text.includes('RIPR first-pr summary') &&
+        text.includes('gap:rust:pricing:discount:threshold-boundary')
+      );
+      assert.ok(summary.includes('Does not prove runtime adequacy'), summary);
+
+      await withCurrentFirstPrDiagnostic({
+        canonical_gap_id: 'gap:rust:pricing:discount:threshold-boundary',
+        gap_id: 'gap:pr:pricing:threshold-boundary'
+      }, async () => {
+        await vscode.commands.executeCommand('ripr.copyFirstPrRepairPacket');
+        const repairPacket = await waitForClipboardText((text) =>
+          text.includes('RIPR first-pr repair packet') &&
+          text.includes('Repair route: AddBoundaryAssertion')
+        );
+        assert.ok(repairPacket.includes('Do not broaden scope.'), repairPacket);
+
+        await vscode.commands.executeCommand('ripr.copyFirstPrVerifyCommand');
+        assert.strictEqual(
+          await waitForClipboardText((text) => text === 'cargo xtask fixtures boundary_gap'),
+          'cargo xtask fixtures boundary_gap'
+        );
+
+        await vscode.commands.executeCommand('ripr.copyFirstPrReceiptCommand');
+        assert.strictEqual(
+          await waitForClipboardText((text) => text === 'ripr agent receipt --root . --json'),
+          'ripr agent receipt --root . --json'
+        );
+      });
+
+      await vscode.commands.executeCommand('ripr.openFirstPrPacket');
+      const activeEditor = vscode.window.activeTextEditor;
+      assert.ok(activeEditor, 'expected first-pr packet to open');
+      assert.ok(
+        activeEditor.document.uri.fsPath.replace(/\\/g, '/').endsWith('/target/ripr/first-pr/start-here.md'),
+        activeEditor.document.uri.fsPath
+      );
+    } finally {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await cleanupFirstPrBridgeSmokeFiles();
+    }
+  });
+
+  test('real extension first-pr bridge commands fail closed for unsafe packet states', async function (this: Mocha.Context) {
+    this.timeout(30000);
+    await cleanupFirstPrBridgeSmokeFiles();
+    try {
+      await writeWorkspaceFile('target/ripr/reports/start-here.json', '{not-json');
+      await writeClipboardText('first-pr-sentinel');
+      await vscode.commands.executeCommand('ripr.copyFirstPrSummary');
+      assert.strictEqual(await currentClipboardText(), 'first-pr-sentinel');
+
+      await cleanupFirstPrBridgeSmokeFiles();
+      await writeWorkspaceFile(
+        'target/ripr/reports/start-here.json',
+        firstPrPacket({ root: '../other-workspace' })
+      );
+      await writeClipboardText('first-pr-sentinel');
+      await vscode.commands.executeCommand('ripr.copyFirstPrSummary');
+      assert.strictEqual(await currentClipboardText(), 'first-pr-sentinel');
+
+      await withCurrentFirstPrDiagnostic({
+        canonical_gap_id: 'gap:rust:pricing:discount:threshold-boundary',
+        gap_id: 'gap:pr:pricing:threshold-boundary'
+      }, async () => {
+        await vscode.commands.executeCommand('ripr.copyFirstPrVerifyCommand');
+      });
+      assert.strictEqual(await currentClipboardText(), 'first-pr-sentinel');
+    } finally {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await cleanupFirstPrBridgeSmokeFiles();
+    }
+  });
+
   test('defaults-first check mode is draft', () => {
     const config = vscode.workspace.getConfiguration('ripr');
     assert.strictEqual(config.inspect('check.mode')?.defaultValue, 'draft');
@@ -2466,6 +2550,15 @@ async function cleanupEditorGapSmokeFiles(): Promise<void> {
   ]);
 }
 
+async function cleanupFirstPrBridgeSmokeFiles(): Promise<void> {
+  await Promise.all([
+    removeWorkspacePath('target/ripr/first-pr/start-here.json'),
+    removeWorkspacePath('target/ripr/first-pr/start-here.md'),
+    removeWorkspacePath('target/ripr/reports/start-here.json'),
+    removeWorkspacePath('target/ripr/reports/start-here.md')
+  ]);
+}
+
 async function writeEditorGapSmokeFiles(): Promise<void> {
   await writeWorkspaceFile(
     'ripr.toml',
@@ -2665,6 +2758,14 @@ async function currentClipboardText(): Promise<string> {
     }
   }
   return vscode.env.clipboard.readText();
+}
+
+async function writeClipboardText(text: string): Promise<void> {
+  await vscode.env.clipboard.writeText(text);
+  const capturePath = process.env.RIPR_TEST_CLIPBOARD_CAPTURE_PATH;
+  if (capturePath) {
+    await fs.writeFile(capturePath, text, 'utf8');
+  }
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
