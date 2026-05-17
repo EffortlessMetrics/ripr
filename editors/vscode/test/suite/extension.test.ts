@@ -594,14 +594,20 @@ suite('Extension Smoke', () => {
           actionableGapTooltip.indexOf('1 actionable gap artifact'),
         actionableGapTooltip
       );
-      await context.controller.showStatus();
-      assert.ok(context.outputLines.join('\n').includes('ripr validated preview-limited gap projection input.'));
+      const previewGapStatus = await showStatusReport(context);
+      assert.ok(previewGapStatus.includes('ripr validated preview-limited gap projection input.'));
+      assert.ok(previewGapStatus.includes('preview gap artifact input is syntax-first and advisory'));
+      assert.ok(previewGapStatus.includes('gap static limit entry must be read before action language'));
 
       context.client.emitNotification('window/logMessage', {
         message: 'ripr analysis refresh completed in 42 ms: generation=6, diagnostics=0, files=0, findings=0, preview_findings=0, static_limits=0, seam_diagnostics=0, gap_artifacts=1, actionable_gap_artifacts=0, preview_gap_artifacts=0, no_action_gap_artifacts=1, gap_static_limits=0, gap_artifact_rejections=0, gap_artifact_rejection_kinds=, enabled_languages=1, enabled_language_names=rust, published_files=0, cleared_files=0'
       });
       assert.ok(context.status.text.includes('ripr: gap clear'));
       assert.ok(String(context.status.tooltip).includes('no local repair action'));
+      const noActionStatus = await showStatusReport(context);
+      assert.ok(noActionStatus.includes('ripr validated gap artifacts with no actionable gap.'));
+      assert.ok(noActionStatus.includes('no local repair action'));
+      assert.ok(noActionStatus.includes('Next safe action: No local repair action is projected'));
 
       context.client.emitNotification('window/logMessage', {
         message: 'ripr analysis refresh completed in 42 ms: generation=7, diagnostics=0, files=0, findings=0, preview_findings=0, static_limits=0, seam_diagnostics=0, gap_artifacts=0, actionable_gap_artifacts=0, preview_gap_artifacts=0, no_action_gap_artifacts=0, gap_static_limits=0, gap_artifact_rejections=1, gap_artifact_rejection_kinds=wrong_root, enabled_languages=1, enabled_language_names=rust, published_files=0, cleared_files=0'
@@ -610,6 +616,11 @@ suite('Extension Smoke', () => {
       assert.ok(String(context.status.tooltip).includes('wrong_root'));
       assert.ok(String(context.status.tooltip).includes('not projected'));
       assert.ok(String(context.status.tooltip).includes('never create diagnostics'));
+      const wrongRootStatus = await showStatusReport(context);
+      assert.ok(wrongRootStatus.includes('ripr ignored 1 unsafe gap artifact input.'));
+      assert.ok(wrongRootStatus.includes('Rejected kind: wrong_root'));
+      assert.ok(wrongRootStatus.includes('not projected'));
+      assert.ok(wrongRootStatus.includes('never create diagnostics'));
 
       context.client.emitNotification('window/logMessage', {
         message: 'ripr analysis refresh failed after 3 ms: workspace analysis failed'
@@ -1737,6 +1748,12 @@ async function withControllerTestContext(
 async function diagnoseSetupReport(context: ReturnType<typeof createControllerTestContext>): Promise<string> {
   context.outputLines.length = 0;
   await context.controller.diagnoseSetup();
+  return context.outputLines.join('\n');
+}
+
+async function showStatusReport(context: ReturnType<typeof createControllerTestContext>): Promise<string> {
+  context.outputLines.length = 0;
+  await context.controller.showStatus();
   return context.outputLines.join('\n');
 }
 
