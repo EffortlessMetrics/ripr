@@ -1,6 +1,7 @@
 use crate::domain::ProbeFamily;
 
 pub fn classify_changed_line(text: &str) -> Vec<ProbeFamily> {
+    let text = text.trim_start();
     let mut out = Vec::new();
     if has_predicate_shape(text) {
         out.push(ProbeFamily::Predicate);
@@ -111,13 +112,16 @@ fn has_effect_shape(text: &str) -> bool {
 fn has_call_shape(text: &str) -> bool {
     text.contains('(')
         && text.contains(')')
-        && !text.starts_with("fn ")
-        && !text.starts_with("pub fn ")
+        && !is_function_signature(text)
         && !text.contains("assert")
 }
 
 fn has_field_shape(text: &str) -> bool {
-    text.contains(':') && !text.contains("::") && !text.starts_with("fn ")
+    text.contains(':') && !text.contains("::") && !is_function_signature(text)
+}
+
+fn is_function_signature(text: &str) -> bool {
+    text.starts_with("fn ") || text.starts_with("pub fn ")
 }
 
 #[cfg(test)]
@@ -169,6 +173,41 @@ mod tests {
             assert!(
                 families.contains(&ProbeFamily::SideEffect),
                 "{text} did not classify as side_effect"
+            );
+        }
+    }
+
+    #[test]
+    fn classify_changed_line_handles_indented_rust_shapes() {
+        let cases = [
+            ("    while ready {", ProbeFamily::Predicate),
+            ("        return None;", ProbeFamily::ReturnValue),
+            ("        match status {", ProbeFamily::MatchArm),
+        ];
+
+        for (text, expected) in cases {
+            let families = classify_changed_line(text);
+
+            assert!(
+                families.contains(&expected),
+                "{text} did not classify as {}",
+                expected.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn classify_changed_line_does_not_treat_indented_function_signatures_as_probes() {
+        for text in [
+            "    fn helper(value: usize) -> usize {",
+            "    pub fn helper(value: usize) -> usize {",
+        ] {
+            let families = classify_changed_line(text);
+
+            assert_eq!(
+                families,
+                vec![ProbeFamily::StaticUnknown],
+                "{text} should stay static_unknown"
             );
         }
     }
