@@ -147,11 +147,12 @@ than guessing at cache or timeout settings.
 For the first-run front-door packet, use:
 
 ```bash
-cargo xtask first-pr --root .
+ripr first-pr --root . --base origin/main --head HEAD
 ```
 
 It composes existing artifacts into `target/ripr/reports/start-here.{json,md}`
-and does not add analyzer truth.
+and does not add analyzer truth. Inside this repo, `cargo xtask first-pr` is a
+compatibility wrapper over the same public command.
 
 ## Agent Or Reviewer First Hour
 

@@ -269,7 +269,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "sarif-policy --current <path> [--baseline <path>]",
         "impacted-evidence [--pr-evidence <path>] [--label <label>] [--labels <csv>] [--check]",
         "ripr-pr [--base <rev>] [--head <rev>] [--root <path>] [--check]",
-        "first-pr [--root <path>] [--gap-ledger <path>] [--out-dir <path>] [--check]",
+        "first-pr [--root <path>] [--base <rev>] [--head <rev>] [--gap-ledger <path>] [--out-dir <path>] [--check]",
         "ripr-review-comments [--base <rev>] [--head <rev>] [--root <path>] [--check]",
         "ripr-pr-summary [--check]",
         "ripr-annotations [--comments <path>] [--out <path>] [--check]",
@@ -654,7 +654,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "Writes or checks PR evidence packets depending on --check.",
         ),
         command_entry(
-            "first-pr [--root <path>] [--gap-ledger <path>] [--out-dir <path>] [--check]",
+            "first-pr [--root <path>] [--base <rev>] [--head <rev>] [--gap-ledger <path>] [--out-dir <path>] [--check]",
             "argument_dependent",
             "target/ripr/reports or check-only",
             false,

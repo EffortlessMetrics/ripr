@@ -1708,6 +1708,7 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "ra_ap_syntax",
+ "ripr",
  "serde_json",
  "sha2",
  "zip",

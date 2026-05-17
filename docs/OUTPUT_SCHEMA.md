@@ -6284,8 +6284,9 @@ map.
 
 ## First PR Start Here Packet
 
-`cargo xtask first-pr` writes the first successful PR front-door packet from
-explicit existing RIPR artifacts. The packet selects one top repairable
+`ripr first-pr` writes the first successful PR front-door packet from explicit
+existing RIPR artifacts. `cargo xtask first-pr` remains a repo-local wrapper
+over the same public command. The packet selects one top repairable
 PR-local Rust gap when the gap decision ledger supplies one, or emits a bounded
 no-action or blocked recovery state. It does not rerun hidden analysis, edit
 source, generate tests, call providers, run mutation testing, change gate
@@ -6294,8 +6295,10 @@ policy, or change CI blocking.
 Command shape:
 
 ```text
-cargo xtask first-pr \
+ripr first-pr \
   --root . \
+  --base origin/main \
+  --head HEAD \
   --gap-ledger target/ripr/reports/gap-decision-ledger.json \
   --first-action target/ripr/reports/first-useful-action.json \
   --review-comments target/ripr/review/comments.json \

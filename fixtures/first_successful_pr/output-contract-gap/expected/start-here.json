@@ -18,7 +18,7 @@
       "id": "review_comments",
       "label": "PR repair cards",
       "path": "target/ripr/review/comments.json",
-      "regeneration_command": "ripr review-comments --root fixtures/first_successful_pr/output-contract-gap --base <base> --head <head> --gap-ledger inputs/reports/gap-decision-ledger.json --out target/ripr/review/comments.json",
+      "regeneration_command": "ripr review-comments --root fixtures/first_successful_pr/output-contract-gap --base origin/main --head HEAD --gap-ledger inputs/reports/gap-decision-ledger.json --out target/ripr/review/comments.json",
       "status": "missing"
     },
     {
@@ -48,9 +48,11 @@
   },
   "inputs": {
     "agent_packet": "target/ripr/workflow/agent-packet.json",
+    "base": "origin/main",
     "first_action": "target/ripr/reports/first-useful-action.json",
     "gap_ledger": "inputs/reports/gap-decision-ledger.json",
     "gate_decision": "target/ripr/reports/gate-decision.json",
+    "head": "HEAD",
     "receipts_dir": "target/ripr/receipts",
     "review_comments": "target/ripr/review/comments.json"
   },
