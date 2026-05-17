@@ -9,21 +9,34 @@ are scoped or reviewed.
 
 ## Unreleased
 
-### 0.5.1 — quality rollout planned
+## 0.6.0 - 2026-05-17
 
-The 0.5.1 patch release carries policy hardening, CI economics, DevEx improvements, and
-targeted Rust 1.95 API cleanup on top of the 1.95 MSRV foundation that landed in 0.5.0.
-No new user-visible features. No public API changes. MSRV remains 1.95.
+0.6.0 makes static test-gap review easier to trust and easier to operate. The
+release keeps RIPR static and advisory by default while adding better evidence
+alignment, clearer editor and generated-CI guidance, preview TypeScript/Python
+visibility, policy operation packets, and repo-local cockpit tools for safe
+agentic PR work. Rust remains the stable evidence path. TypeScript and Python
+remain preview evidence paths: visible and useful, but not default gates, RIPR
+Zero blocking debt, calibrated confidence, or runtime proof.
 
-Planned scope:
+Release themes:
 
-- No-panic allowlist exact-identity hardening (path + family + selector + snippet + count).
-- Clippy ledger and checker alignment for all active and planned lints.
-- Companion file-policy ledgers for generated, executable, dependency, workflow, process, and
-  network surfaces.
-- Evidence lane tuning: mutation stays targeted/nightly/release, not a default PR tax.
-- Targeted Rust 1.95 API cleanup in evidence and report builders.
-- Release readiness workflow and 0.5.1 dry-run proof.
+- Evidence trust: raw findings now roll up into canonical evidence items,
+  actionability and repair routes are explicit, static limitations are named,
+  and raw findings remain supporting evidence instead of hidden truth.
+- Operator trust: policy operations, history, promotion packets, preview
+  promotion packets, generated-evidence discipline, command mutability,
+  PR-ready, repo cockpit, merge-watch policy, PR triage dispositions, and
+  deterministic suggested fixes make high-throughput PR work reviewable.
+- Editor and CI trust: first-run status, related-test safety, release-copy
+  guardrails, generated-CI policy packets, report indexing, and user-facing
+  static-limit docs make advisory evidence easier to act on without source
+  edits or generated tests.
+- Preview-language honesty: TypeScript/JavaScript and Python preview adapters
+  are available by default, but remain syntax-first advisory evidence until a
+  later explicit policy promotion changes that.
+
+Detailed changes:
 - Closed the First-Run UX and Adoption Hardening campaign. The closeout ties
   the first successful PR command path, `start-here` reports, recovery states,
   fixtures, receipts, PR repair cards, editor start-current-repair action,

@@ -2464,7 +2464,7 @@ JSON shape:
     "after": "target/ripr/workflow/after.repo-exposure.json"
   },
   "provenance": {
-    "ripr_version": "0.5.0",
+    "ripr_version": "0.6.0",
     "repo_root": ".",
     "config_fingerprint": "fnv1a64:4c94a2f6cfaa5c21",
     "command_template_version": "0.1",
@@ -6861,7 +6861,7 @@ JSON shape:
   "schema_version": "0.1",
   "tool": "ripr",
   "report": "release-readiness",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "status": "warn",
   "checks": [
     {
