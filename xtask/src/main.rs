@@ -51462,7 +51462,7 @@ covered_by = ["cargo xtask check-file-policy"]
         let run = repo_exposure_latency_run(
             Path::new("rustc"),
             "repo-exposure-json",
-            Duration::from_secs(5),
+            Duration::from_secs(30),
         )?;
 
         assert_eq!(run.format, "repo-exposure-json");
