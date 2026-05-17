@@ -319,7 +319,7 @@ fn installed_command_surface_check(binary: &Path) -> ReleaseReadinessCheck {
                     "pass",
                     true,
                     &command,
-                    "installed binary exposes the 0.5 public loop commands",
+                    "installed binary exposes the public release-loop commands",
                     vec![crate::normalize_path(binary)],
                     Vec::new(),
                 )
@@ -1215,7 +1215,7 @@ mod tests {
             Vec::new(),
         )];
         let report = ReleaseReadinessReport {
-            version: "0.5.0".to_string(),
+            version: "0.6.0".to_string(),
             status: "pass".to_string(),
             checks,
             next_commands: vec!["cargo xtask release-readiness --version 0.5.0".to_string()],

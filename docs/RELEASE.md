@@ -29,6 +29,8 @@ cargo check --workspace --all-targets
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo doc --workspace --no-deps
+cargo xtask check-product-copy
+cargo xtask check-generated-clean
 cargo xtask release-readiness --version 0.6.0
 cargo package -p ripr --list
 cargo publish -p ripr --dry-run
@@ -63,6 +65,8 @@ target/ripr/install-smoke/bin/ripr --version
 target/ripr/install-smoke/bin/ripr doctor
 target/ripr/install-smoke/bin/ripr pilot --root fixtures/boundary_gap/input --out target/ripr/install-smoke/pilot
 target/ripr/install-smoke/bin/ripr outcome --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json
+npm --prefix editors/vscode ci
+npm --prefix editors/vscode run compile
 npm --prefix editors/vscode run package
 ```
 
