@@ -74,9 +74,17 @@ pub(crate) struct EvidenceRecordCanonicalItem {
     pub(crate) group_reason: Option<String>,
     pub(crate) why: String,
     pub(crate) recommended_repair: String,
+    pub(crate) repair_route: Option<EvidenceRecordCanonicalRepairRoute>,
     pub(crate) related_test: Option<EvidenceRecordAlignmentRelatedTest>,
     pub(crate) verify_command: Option<String>,
     pub(crate) confidence: EvidenceRecordAlignmentConfidence,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct EvidenceRecordCanonicalRepairRoute {
+    pub(crate) repair_kind: String,
+    pub(crate) target_test_type: String,
+    pub(crate) suggested_assertion: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -497,6 +505,7 @@ fn canonical_item_for(
             actionability,
             static_limitations,
         ),
+        repair_route: canonical_repair_route_for(entry, recommendation, gap_state),
         related_test: recommendation
             .nearest_test_to_imitate
             .as_ref()
@@ -575,6 +584,47 @@ fn recommended_repair_for(
             },
         ),
         _ => recommendation.reason.clone(),
+    }
+}
+
+fn canonical_repair_route_for(
+    entry: &ClassifiedSeam,
+    recommendation: &EvidenceRecordRecommendation,
+    gap_state: &str,
+) -> Option<EvidenceRecordCanonicalRepairRoute> {
+    if gap_state != "actionable" {
+        return None;
+    }
+
+    let assertion_shape = recommendation.assertion_shape.as_ref()?;
+    Some(EvidenceRecordCanonicalRepairRoute {
+        repair_kind: canonical_repair_kind_for(entry.seam.kind()).to_string(),
+        target_test_type: canonical_target_test_type_for(entry.seam.kind()).to_string(),
+        suggested_assertion: assertion_shape.example.clone(),
+    })
+}
+
+fn canonical_repair_kind_for(kind: SeamKind) -> &'static str {
+    match kind {
+        SeamKind::PredicateBoundary => "add_boundary_assertion",
+        SeamKind::ErrorVariant => "add_exact_error_variant",
+        SeamKind::ReturnValue => "add_return_value_assertion",
+        SeamKind::FieldConstruction => "add_field_assertion",
+        SeamKind::SideEffect => "add_side_effect_observer",
+        SeamKind::MatchArm => "add_match_arm_assertion",
+        SeamKind::CallPresence => "add_call_observer",
+    }
+}
+
+fn canonical_target_test_type_for(kind: SeamKind) -> &'static str {
+    match kind {
+        SeamKind::PredicateBoundary => "boundary_discriminator",
+        SeamKind::ErrorVariant => "exact_error_variant",
+        SeamKind::ReturnValue => "return_value_discriminator",
+        SeamKind::FieldConstruction => "field_value_discriminator",
+        SeamKind::SideEffect => "side_effect_observer",
+        SeamKind::MatchArm => "match_arm_discriminator",
+        SeamKind::CallPresence => "call_presence_observer",
     }
 }
 
@@ -895,6 +945,10 @@ fn canonical_item_json(item: &EvidenceRecordCanonicalItem) -> Value {
         "group_reason": item.group_reason.as_deref(),
         "why": item.why.as_str(),
         "recommended_repair": item.recommended_repair.as_str(),
+        "repair_route": item
+            .repair_route
+            .as_ref()
+            .map_or(Value::Null, canonical_repair_route_json),
         "related_test": item
             .related_test
             .as_ref()
@@ -909,6 +963,14 @@ fn canonical_item_json(item: &EvidenceRecordCanonicalItem) -> Value {
                 .map(String::as_str)
                 .collect::<Vec<_>>(),
         },
+    })
+}
+
+fn canonical_repair_route_json(route: &EvidenceRecordCanonicalRepairRoute) -> Value {
+    json!({
+        "repair_kind": route.repair_kind.as_str(),
+        "target_test_type": route.target_test_type.as_str(),
+        "suggested_assertion": route.suggested_assertion.as_str(),
     })
 }
 
@@ -1176,6 +1238,18 @@ mod tests {
         assert_eq!(json["canonical_item"]["gap_state"], "actionable");
         assert_eq!(json["canonical_item"]["actionability"], "upgrade_assertion");
         assert_eq!(
+            json["canonical_item"]["repair_route"]["repair_kind"],
+            "add_boundary_assertion"
+        );
+        assert_eq!(
+            json["canonical_item"]["repair_route"]["target_test_type"],
+            "boundary_discriminator"
+        );
+        assert_eq!(
+            json["canonical_item"]["repair_route"]["suggested_assertion"],
+            "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"
+        );
+        assert_eq!(
             json["canonical_item"]["related_test"]["name"],
             "below_threshold_has_no_discount"
         );
@@ -1228,6 +1302,7 @@ mod tests {
         assert_eq!(json["canonical_item"]["canonical_item_kind"], "limitation");
         assert_eq!(json["canonical_item"]["gap_state"], "static_limitation");
         assert_eq!(json["canonical_item"]["actionability"], "static_limitation");
+        assert_eq!(json["canonical_item"]["repair_route"], Value::Null);
         assert_eq!(
             json["canonical_item"]["recommended_repair"],
             "Inspect static limitation `activation_static_unknown` via `analysis/static-limitation-taxonomy`."
