@@ -9,6 +9,16 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Added the Lane 1 Finding Alignment Burn-Down rail and issue-backed
+  implementation plan. The queue starts from current raw-to-canonical audit
+  evidence and tracks class-by-class alignment coverage, primary-anchor/raw
+  span completeness, top named static limitation buckets, config/policy
+  unsupported-flow expansion, repair-route and verify-command invariants,
+  scorecard-leading actionable canonical gaps, runtime confidence coverage,
+  dogfood refreshes, and downstream canonical-item handoff refreshes. This is
+  planning and documentation only; PR/CI rendering, LSP/editor behavior, gates,
+  badges, generated tests, source edits, provider calls, and mutation
+  execution remain unchanged.
 - Closed the Lane 1 shippable finding-alignment pass for 0.6.x. Current
   repo-local audit evidence rolls 47,181 raw alignment signals into 38,027
   canonical items and 149 actionable canonical gaps, with zero actionable
