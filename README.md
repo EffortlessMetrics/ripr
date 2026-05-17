@@ -374,8 +374,9 @@ The VS Code extension starts `ripr lsp --stdio` and can resolve the server from:
 
 Normal editor install should not require `cargo install ripr`. The Cargo install
 path remains available for offline, pinned, or controlled environments. The
-`v0.4.0` release line includes the server manifest, per-target server
-archives, checksums, and VSIX needed for this default path.
+`v0.5.0` public release line includes the server manifest, per-target server
+archives, checksums, and VSIX needed for this default path; 0.6.0 must refresh
+the same asset family before publication.
 
 See:
 

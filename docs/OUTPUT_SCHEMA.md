@@ -6869,7 +6869,7 @@ JSON shape:
       "status": "pass",
       "required": true,
       "command": "target/ripr/release-readiness/install/bin/ripr --help",
-      "summary": "installed binary exposes the 0.5 public loop commands",
+      "summary": "installed binary exposes the public release-loop commands",
       "artifacts": [
         "target/ripr/release-readiness/install/bin/ripr"
       ],
