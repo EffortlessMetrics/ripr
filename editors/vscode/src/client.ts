@@ -976,6 +976,10 @@ function statusTooltip(
     if (receiptLines.length > 0) {
       lines.push('', ...receiptLines);
     }
+    const firstPrLines = firstPrPacketStatusLines(status, context);
+    if (firstPrLines.length > 0) {
+      lines.push('', ...firstPrLines);
+    }
   }
   return lines.join('\n');
 }
@@ -1008,6 +1012,10 @@ function setupDiagnosisReport(
   const receiptLines = receiptStatusLines(status, firstAction, context);
   if (receiptLines.length > 0) {
     lines.push('', ...receiptLines);
+  }
+  const firstPrLines = firstPrPacketStatusLines(status, context);
+  if (firstPrLines.length > 0) {
+    lines.push('', ...firstPrLines);
   }
   lines.push(
     '',
@@ -1154,6 +1162,155 @@ function firstUsefulActionLines(firstAction: FirstUsefulActionStatus): string[] 
   lines.push(`Warnings: ${firstAction.warningCount}`);
   lines.push('Advisory static evidence only; gate evaluation remains the pass/fail authority.');
   return lines;
+}
+
+function firstPrPacketStatusLines(
+  status: RiprStatusState,
+  context: RiprStatusContext
+): string[] {
+  const packet = context.setupStatus.firstPr;
+  if (packet.state === 'noWorkspace') {
+    return [];
+  }
+  if (status.kind === 'stale' && firstPrPacketCanBecomeStale(packet.state)) {
+    return [
+      `First PR packet: stale; ${packet.relativePath} exists, but editor evidence is stale.`,
+      'Refresh saved-workspace evidence and rerun cargo xtask first-pr before inspecting or copying first-pr packet content.',
+      'First PR packet is advisory only; it does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.'
+    ];
+  }
+  switch (packet.state) {
+    case 'missing':
+      return [
+        `First PR packet: missing; ${packet.relativePath} was not found.`,
+        'Next safe first-pr action: run cargo xtask first-pr for the current workspace after verify/receipt artifacts exist.'
+      ];
+    case 'unreadable':
+      return [
+        `First PR packet: unreadable; ${packet.relativePath} could not be read.`,
+        packet.detail ?? 'No reader detail was reported.',
+        'First PR packet repair claims are suppressed.'
+      ];
+    case 'malformed':
+      return [
+        `First PR packet: malformed; ${packet.relativePath} could not be parsed as a first-pr packet.`,
+        packet.detail ?? 'No parser detail was reported.',
+        'First PR packet repair claims are suppressed.'
+      ];
+    case 'unsupportedSchema':
+      return [
+        `First PR packet: malformed; ${packet.relativePath} uses an unsupported first-pr packet schema.`,
+        packet.detail ?? 'No schema detail was reported.',
+        'First PR packet repair claims are suppressed.'
+      ];
+    case 'wrongRoot':
+      return [
+        `First PR packet: wrong root; packet root ${packet.repoRoot ?? 'unknown'} does not match this workspace.`,
+        'First PR packet repair claims are suppressed.'
+      ];
+    case 'unsafePath':
+      return [
+        `First PR packet: unsafe path; ${packet.relativePath} references a path outside this workspace.`,
+        packet.detail ?? 'No path detail was reported.',
+        'Open/copy first-pr packet actions are suppressed.'
+      ];
+    case 'unsafeCommand':
+      return [
+        `First PR packet: unsafe command; ${packet.relativePath} contains a command payload outside the editor safety contract.`,
+        packet.detail ?? 'No command detail was reported.',
+        'Copy-command first-pr packet actions are suppressed.'
+      ];
+    case 'topRepairableGap':
+      return firstPrTopRepairableGapLines(packet);
+    case 'noAction':
+      return [
+        `First PR packet: no actionable gap; ${packet.relativePath} reports ${packet.selectedState ?? 'no_action'}.`,
+        'No local first-pr repair action is projected from this packet.',
+        'No-action first-pr state does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.'
+      ];
+    case 'blocked':
+      return firstPrBlockedPacketLines(packet);
+    case 'found':
+      return [
+        `First PR packet: found; ${packet.relativePath} is advisory.`,
+        'Inspect the packet before carrying evidence into PR review.',
+        'First PR packet does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.'
+      ];
+  }
+}
+
+function firstPrPacketCanBecomeStale(state: RiprFirstPrPacketState): boolean {
+  return state === 'found'
+    || state === 'topRepairableGap'
+    || state === 'noAction'
+    || state === 'blocked';
+}
+
+function firstPrTopRepairableGapLines(packet: RiprFirstPrPacketStatus): string[] {
+  const lines = [
+    `First PR packet: top repairable gap available; ${packet.relativePath} is advisory.`,
+    `Packet: ${packet.markdownRelativePath ?? packet.relativePath}`
+  ];
+  if (packet.canonicalGapId ?? packet.gapId) {
+    lines.push(`Gap identity: ${packet.canonicalGapId ?? packet.gapId}`);
+  }
+  if (packet.relatedTest) {
+    lines.push(`Related test: ${packet.relatedTest}`);
+  }
+  if (packet.repairTarget) {
+    lines.push(`Repair target: ${packet.repairTarget}`);
+  }
+  if (packet.verifyCommand) {
+    lines.push(`Verify: ${packet.verifyCommand}`);
+  }
+  if (packet.receiptCommand) {
+    lines.push(`Receipt: ${packet.receiptCommand}`);
+  }
+  lines.push(`Warnings: ${packet.warningCount ?? 0}`);
+  lines.push('First PR packet does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.');
+  return lines;
+}
+
+function firstPrBlockedPacketLines(packet: RiprFirstPrPacketStatus): string[] {
+  switch (packet.selectedState) {
+    case 'missing_artifact':
+      return [
+        `First PR packet: missing; ${packet.relativePath} reports a missing upstream artifact.`,
+        'Regenerate the named artifact, then rerun cargo xtask first-pr.',
+        'First PR packet repair claims are suppressed.'
+      ];
+    case 'stale_artifact':
+      return [
+        `First PR packet: stale; ${packet.relativePath} reports stale upstream evidence.`,
+        'Refresh saved-workspace evidence and rerun cargo xtask first-pr before acting.',
+        'First PR packet repair claims are suppressed.'
+      ];
+    case 'wrong_root':
+      return [
+        `First PR packet: wrong root; ${packet.relativePath} reports an upstream artifact for another workspace.`,
+        'Regenerate first-pr inputs for the current workspace.',
+        'First PR packet repair claims are suppressed.'
+      ];
+    case 'malformed_artifact':
+      return [
+        `First PR packet: malformed; ${packet.relativePath} reports a malformed upstream artifact.`,
+        'Regenerate the malformed artifact, then rerun cargo xtask first-pr.',
+        'First PR packet repair claims are suppressed.'
+      ];
+    case 'timeout':
+      return [
+        `First PR packet: blocked; ${packet.relativePath} reports a timeout while composing first-pr evidence.`,
+        'Rerun cargo xtask first-pr or inspect the blocked artifact before acting.',
+        'First PR packet repair claims are suppressed.'
+      ];
+    case 'blocked_artifact':
+    default:
+      return [
+        `First PR packet: blocked; ${packet.relativePath} reports ${packet.selectedState ?? 'blocked_artifact'}.`,
+        'Inspect or regenerate first-pr inputs before carrying evidence into PR review.',
+        'First PR packet repair claims are suppressed.'
+      ];
+  }
 }
 
 function receiptStatusLines(
