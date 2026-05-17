@@ -421,3 +421,78 @@ fn comparable_expression(expression: &str) -> String {
         .trim_start_matches('&')
         .to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classify_assertion_distinguishes_exact_error_from_broad_error() {
+        let exact = classify_assertion("assert_matches!(result, Err(ConfigError::MissingKey(_)))");
+        assert_eq!(exact.kind, OracleKind::ExactErrorVariant);
+        assert_eq!(exact.strength, OracleStrength::Strong);
+
+        let broad = classify_assertion("assert!(result.is_err())");
+        assert_eq!(broad.kind, OracleKind::BroadError);
+        assert_eq!(broad.strength, OracleStrength::Weak);
+    }
+
+    #[test]
+    fn classify_assertion_downgrades_duplicative_equality() {
+        let classification = classify_assertion("assert_eq!(actual.total(), actual.total())");
+
+        assert_eq!(classification.kind, OracleKind::RelationalCheck);
+        assert_eq!(classification.strength, OracleStrength::Weak);
+    }
+
+    #[test]
+    fn classify_assertion_recognizes_exact_custom_helper_names() {
+        let free_function = classify_assertion("assert_price_eq(actual.total(), 42)");
+        assert_eq!(free_function.kind, OracleKind::ExactValue);
+        assert_eq!(free_function.strength, OracleStrength::Strong);
+
+        let method_helper = classify_assertion("response.assert_matches(Status::Accepted)");
+        assert_eq!(method_helper.kind, OracleKind::ExactValue);
+        assert_eq!(method_helper.strength, OracleStrength::Strong);
+    }
+
+    #[test]
+    fn extract_assertions_preserves_source_lines_and_observed_tokens() {
+        let body = r#"let result = apply_discount(order);
+assert_eq!(result.total_cents(), 4200);
+let smoke = result.receipt().expect("receipt should exist");
+"#;
+
+        let assertions = extract_assertions(body, 10);
+
+        assert_eq!(assertions.len(), 2);
+        assert_eq!(assertions[0].line, 11);
+        assert_eq!(assertions[0].kind, OracleKind::ExactValue);
+        assert_eq!(assertions[0].strength, OracleStrength::Strong);
+        assert!(
+            assertions[0]
+                .observed_tokens
+                .contains(&"result".to_string())
+        );
+        assert!(
+            assertions[0]
+                .observed_tokens
+                .contains(&"total_cents".to_string())
+        );
+        assert_eq!(assertions[1].line, 12);
+        assert_eq!(assertions[1].kind, OracleKind::SmokeOnly);
+        assert_eq!(assertions[1].strength, OracleStrength::Smoke);
+    }
+
+    #[test]
+    fn contains_macro_invocation_rejects_identifier_substrings() {
+        assert!(contains_macro_invocation(
+            "assert_snapshot!(value)",
+            "assert_snapshot!"
+        ));
+        assert!(!contains_macro_invocation(
+            "my_assert_snapshot!(value)",
+            "assert_snapshot!"
+        ));
+    }
+}
