@@ -24,6 +24,14 @@ Planned scope:
 - Evidence lane tuning: mutation stays targeted/nightly/release, not a default PR tax.
 - Targeted Rust 1.95 API cleanup in evidence and report builders.
 - Release readiness workflow and 0.5.1 dry-run proof.
+- Closed the First-Run UX and Adoption Hardening campaign. The closeout ties
+  the first successful PR command path, `start-here` reports, recovery states,
+  fixtures, receipts, PR repair cards, editor start-current-repair action,
+  pasteable agent packets, advisory generated-CI summary, gate adoption
+  checklist, README, and Quickstart into one adopter-facing Rust repair loop
+  while preserving advisory defaults and avoiding analyzer, gate, preview
+  language, source-edit, generated-test, provider, and mutation-execution
+  changes.
 - Public product-copy cleanup: VS Code marketplace title restored to
   `ripr: Static Mutation Exposure`, plain-language first-hour copy in
   `README.md`, `editors/vscode/README.md`, `docs/QUICKSTART.md`, and
@@ -79,6 +87,9 @@ Planned scope:
   to the Markdown merge-readiness packet so agents can consume merge state,
   outstanding checks, Droid status, reviews, and the safe next action without
   scraping prose.
+- Lane 1 finding-alignment coverage now treats generic `static_unknown` and
+  `unknown` limitation categories as unnamed, so static-unknown canonical items
+  must carry a specific analyzer limitation category and repair route.
 - `cargo xtask reports index` now includes repo-ops packet status in Markdown
   and JSON for command mutability, the repo cockpit, PR-ready, worktree doctor,
   PR triage, per-PR merge readiness, generated-clean, badge ownership, critic,
@@ -91,6 +102,26 @@ Planned scope:
   worktree doctor, command mutability, command-catalog coverage, spec
   numbering, campaign/source-of-truth checks, open PR triage, generated-clean,
   and badge ownership into `target/ripr/reports/cockpit.md` and `.json`.
+- Added [docs/MERGE_WATCH_POLICY.md](docs/MERGE_WATCH_POLICY.md), documenting
+  PR watcher cadence, branch freshness decisions, REST status fallback,
+  Droid/advisory-check handling, merge execution limits, and task-worktree
+  cleanup without changing branch protection or auto-merge behavior.
+- `cargo xtask suggested-fixes` now suggests deterministic docs index table
+  ordering for specs and ADRs in addition to allowlist ordering, while keeping
+  badge values, goldens, baselines, suppressions, dependency exceptions, and
+  schema changes out of generated repair patches.
+- `cargo xtask suggested-fixes` now suggests deterministic
+  `.ripr/traceability.toml` `[[behavior]]` block ordering by spec ID without
+  re-rendering TOML or changing block bodies.
+- `cargo xtask suggested-fixes` now suggests deterministic
+  `metrics/capabilities.toml` `[[capability]]` block ordering by spec ID and
+  capability ID without re-rendering TOML or changing block bodies.
+- `cargo xtask suggested-fixes` now suggests deterministic command mutability
+  catalog ordering by xtask help order, and `check-command-catalog` reports
+  help/catalog order drift before agents rely on stale command sequencing.
+- `cargo xtask pr-triage-report` now emits advisory queue dispositions so
+  agents can distinguish merge candidates, stale/duplicate owner decisions,
+  rebase needs, validation gaps, and wrong-lane PRs without mutating GitHub.
 - Added `cargo xtask check-command-catalog`, a non-mutating guard that fails
   when xtask help entries and the command mutability catalog drift apart or
   omit write/judgment metadata.
@@ -108,6 +139,11 @@ Planned scope:
   opaque lookup limitations. Raw findings remain supporting evidence; no
   PR/CI rendering, gate, score, generated-test, provider, source-edit, or
   mutation-execution behavior changed.
+- Added explicit config/policy behavior-selector proof for canonical
+  `add_behavior_discriminator` repairs and already-observed
+  `validation_behavior` discriminators, including benchmark cases, dogfood
+  receipts, and unit assertions that declaration plus literal findings become
+  one canonical item without recommending mutation execution first.
 - Actionable finding-alignment items now expose a normalized top-level
   `repair_route` with `repair_kind`, `target_test_type`, and
   `suggested_assertion`, plus route-coverage counts, so downstream consumers
@@ -122,6 +158,14 @@ Planned scope:
   keeps the Lane 1 counting model visible without changing badges, gates,
   scores, PR/CI rendering, generated tests, provider calls, source edits, or
   mutation execution.
+- `cargo xtask dogfood` now checks finding-alignment receipts for real RIPR PR
+  examples, pinning actionable, already-observed, internal no-action, and named
+  static-limitation outcomes without changing PR/CI rendering, gates, public
+  scores, generated tests, provider calls, source edits, or mutation execution.
+- Documented the canonical finding-alignment consumer contract v2 so downstream
+  PR/CI, editor, report, and agent lanes render canonical evidence items first,
+  keep raw findings as supporting evidence, and avoid inferring actionability
+  from raw static classes.
 - VS Code `ripr: Show Status` now includes first-run/no-output context:
   workspace root, resolved server source and command, editor selectors,
   enabled languages from the last server refresh, and the next safe action for

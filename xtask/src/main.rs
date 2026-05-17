@@ -141,6 +141,14 @@ struct PrTriageFinding {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+struct PrTriageQueueDisposition {
+    pr_number: u64,
+    disposition: String,
+    reason: String,
+    recommended_action: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct GhPrStatusPullRequest {
     number: u64,
     title: String,
@@ -501,6 +509,32 @@ struct DogfoodFirstActionRun {
 }
 
 #[derive(Debug)]
+struct DogfoodFirstPrScenario {
+    name: String,
+    expected_dir: PathBuf,
+    expected_status: String,
+    expected_state: String,
+    description: String,
+}
+
+#[derive(Debug)]
+struct DogfoodFirstPrRun {
+    name: String,
+    expected_dir: PathBuf,
+    json_path: PathBuf,
+    markdown_path: PathBuf,
+    status: String,
+    state: String,
+    top_gap_kind: String,
+    verify_command: Option<String>,
+    next_command: Option<String>,
+    expected_status: String,
+    expected_state: String,
+    description: String,
+    errors: Vec<String>,
+}
+
+#[derive(Debug)]
 struct DogfoodFrontPanelScenario {
     name: String,
     report_path: PathBuf,
@@ -691,10 +725,65 @@ struct DogfoodEditorGapCockpitRun {
     errors: Vec<String>,
 }
 
+#[derive(Debug)]
+struct DogfoodFindingAlignmentScenario {
+    name: String,
+    source_pr: String,
+    evidence_class: String,
+    raw_findings_total: usize,
+    canonical_items_total: usize,
+    gap_state: String,
+    actionability: String,
+    user_outcome: String,
+    repair_kind: String,
+    target_test_type: String,
+    verify_command: String,
+    static_limitation_category: Option<String>,
+    static_limitation_repair_route: Option<String>,
+    raw_findings_supporting_only: bool,
+    recommended_repair: String,
+    must_not_claim: Vec<String>,
+    reason: String,
+}
+
+#[derive(Debug)]
+struct DogfoodFindingAlignmentRun {
+    name: String,
+    source_pr: String,
+    evidence_class: String,
+    raw_findings_total: usize,
+    canonical_items_total: usize,
+    gap_state: String,
+    actionability: String,
+    user_outcome: String,
+    repair_kind: String,
+    target_test_type: String,
+    verify_command: String,
+    static_limitation_category: Option<String>,
+    static_limitation_repair_route: Option<String>,
+    raw_findings_supporting_only: bool,
+    recommended_repair: String,
+    must_not_claim: Vec<String>,
+    reason: String,
+    errors: Vec<String>,
+}
+
 struct DogfoodPreviewProjectionRuns<'a> {
     generated_ci_cockpit: &'a [DogfoodGeneratedCiCockpitRun],
     language_preview: &'a [DogfoodLanguagePreviewRun],
     editor_gap_cockpit: &'a [DogfoodEditorGapCockpitRun],
+}
+
+struct DogfoodReportInputs<'a> {
+    runs: &'a [DogfoodRun],
+    gate_runs: &'a [DogfoodGateRun],
+    first_action_runs: &'a [DogfoodFirstActionRun],
+    first_pr_runs: &'a [DogfoodFirstPrRun],
+    front_panel_runs: &'a [DogfoodFrontPanelRun],
+    report_packet_index_runs: &'a [DogfoodReportPacketIndexRun],
+    preview_projection_runs: &'a DogfoodPreviewProjectionRuns<'a>,
+    finding_alignment_runs: &'a [DogfoodFindingAlignmentRun],
+    pr_inline_comment_runs: &'a [DogfoodPrInlineCommentRun],
 }
 
 #[derive(Debug)]
@@ -2316,6 +2405,9 @@ fn command_catalog_violations(
             "command catalog entry `{root}` does not match any known xtask command"
         ));
     }
+    if let Some(order_violation) = command_catalog_order_violation(commands, catalog) {
+        violations.push(order_violation);
+    }
 
     let mut seen = BTreeSet::<&str>::new();
     for entry in catalog {
@@ -2356,6 +2448,30 @@ fn command_catalog_violations(
     }
 
     violations
+}
+
+fn command_catalog_order_violation(
+    commands: &[&'static str],
+    catalog: &[CommandCatalogEntry],
+) -> Option<String> {
+    let mut order = BTreeMap::new();
+    for (index, command) in commands.iter().enumerate() {
+        order.insert(*command, index);
+    }
+
+    let mut last = None;
+    for entry in catalog {
+        let Some(index) = order.get(entry.command).copied() else {
+            continue;
+        };
+        if last.is_some_and(|last| index < last) {
+            return Some(
+                "command catalog entries must follow the xtask help catalog order".to_string(),
+            );
+        }
+        last = Some(index);
+    }
+    None
 }
 
 fn command_roots<'a>(commands: impl Iterator<Item = &'a str>) -> BTreeSet<&'a str> {
@@ -2453,7 +2569,7 @@ fn suggested_fixes() -> Result<(), String> {
 fn suggested_fixes_patch() -> Result<(String, Vec<String>), String> {
     let mut patch = String::new();
     let mut files = Vec::new();
-    for path in deterministic_suggested_fix_files()? {
+    for path in deterministic_suggested_fix_allowlist_files()? {
         let original = read_text_lossy(&path)?;
         let sorted = sorted_allowlist_content(&original);
         if sorted == original {
@@ -2462,10 +2578,47 @@ fn suggested_fixes_patch() -> Result<(String, Vec<String>), String> {
         append_whole_file_patch(&mut patch, &path, &original, &sorted);
         files.push(normalize_path(&path));
     }
+    for path in deterministic_suggested_fix_docs_index_files() {
+        let original = read_text_lossy(&path)?;
+        let sorted = sorted_markdown_index_table_content(&original);
+        if sorted == original {
+            continue;
+        }
+        append_whole_file_patch(&mut patch, &path, &original, &sorted);
+        files.push(normalize_path(&path));
+    }
+    for path in deterministic_suggested_fix_traceability_files() {
+        let original = read_text_lossy(&path)?;
+        let sorted = sorted_traceability_behavior_blocks_content(&original);
+        if sorted == original {
+            continue;
+        }
+        append_whole_file_patch(&mut patch, &path, &original, &sorted);
+        files.push(normalize_path(&path));
+    }
+    for path in deterministic_suggested_fix_capability_files() {
+        let original = read_text_lossy(&path)?;
+        let sorted = sorted_capability_blocks_content(&original);
+        if sorted == original {
+            continue;
+        }
+        append_whole_file_patch(&mut patch, &path, &original, &sorted);
+        files.push(normalize_path(&path));
+    }
+    for path in deterministic_suggested_fix_command_catalog_files() {
+        let original = read_text_lossy(&path)?;
+        let sorted = sorted_command_catalog_content(&original);
+        if sorted == original {
+            continue;
+        }
+        append_whole_file_patch(&mut patch, &path, &original, &sorted);
+        files.push(normalize_path(&path));
+    }
+    files.sort();
     Ok((patch, files))
 }
 
-fn deterministic_suggested_fix_files() -> Result<Vec<PathBuf>, String> {
+fn deterministic_suggested_fix_allowlist_files() -> Result<Vec<PathBuf>, String> {
     let mut paths = Vec::new();
     for root in [Path::new(".ripr"), Path::new("policy")] {
         if !root.exists() {
@@ -2479,6 +2632,357 @@ fn deterministic_suggested_fix_files() -> Result<Vec<PathBuf>, String> {
     }
     paths.sort_by_key(|path| normalize_path(path));
     Ok(paths)
+}
+
+fn deterministic_suggested_fix_docs_index_files() -> Vec<PathBuf> {
+    [
+        PathBuf::from("docs/adr/README.md"),
+        PathBuf::from("docs/specs/README.md"),
+    ]
+    .into_iter()
+    .filter(|path| path.exists())
+    .collect()
+}
+
+fn deterministic_suggested_fix_traceability_files() -> Vec<PathBuf> {
+    [PathBuf::from(".ripr/traceability.toml")]
+        .into_iter()
+        .filter(|path| path.exists())
+        .collect()
+}
+
+fn deterministic_suggested_fix_capability_files() -> Vec<PathBuf> {
+    [PathBuf::from("metrics/capabilities.toml")]
+        .into_iter()
+        .filter(|path| path.exists())
+        .collect()
+}
+
+fn deterministic_suggested_fix_command_catalog_files() -> Vec<PathBuf> {
+    [PathBuf::from("xtask/src/command.rs")]
+        .into_iter()
+        .filter(|path| path.exists())
+        .collect()
+}
+
+fn sorted_markdown_index_table_content(text: &str) -> String {
+    let mut lines = text.lines().map(str::to_string).collect::<Vec<_>>();
+    let Some(header_index) = lines
+        .iter()
+        .position(|line| is_markdown_index_table_header(line))
+    else {
+        return text.to_string();
+    };
+    let Some(separator) = lines.get(header_index + 1) else {
+        return text.to_string();
+    };
+    if !is_markdown_index_table_separator(separator) {
+        return text.to_string();
+    }
+
+    let rows_start = header_index + 2;
+    let mut rows_end = rows_start;
+    while rows_end < lines.len() && is_markdown_table_row(&lines[rows_end]) {
+        rows_end += 1;
+    }
+    if rows_end <= rows_start {
+        return text.to_string();
+    }
+
+    let mut sorted_rows = lines[rows_start..rows_end].to_vec();
+    sorted_rows.sort_by_key(|line| line.to_ascii_lowercase());
+    if sorted_rows == lines[rows_start..rows_end] {
+        return text.to_string();
+    }
+
+    lines.splice(rows_start..rows_end, sorted_rows);
+    let mut output = lines.join("\n");
+    if text.ends_with('\n') {
+        output.push('\n');
+    }
+    output
+}
+
+fn is_markdown_index_table_header(line: &str) -> bool {
+    matches!(
+        line.trim(),
+        "| ADR | Status | Decision |" | "| Spec | Status | Topic |"
+    )
+}
+
+fn is_markdown_index_table_separator(line: &str) -> bool {
+    line.trim() == "| --- | --- | --- |"
+}
+
+fn is_markdown_table_row(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.starts_with('|') && trimmed.ends_with('|')
+}
+
+fn sorted_traceability_behavior_blocks_content(text: &str) -> String {
+    let mut block_starts = Vec::new();
+    let mut offset = 0;
+    for line in text.split_inclusive('\n') {
+        if line.trim() == "[[behavior]]" {
+            block_starts.push(offset);
+        }
+        offset += line.len();
+    }
+    if block_starts.len() <= 1 {
+        return text.to_string();
+    }
+
+    let prefix = &text[..block_starts[0]];
+    let mut ids = BTreeSet::new();
+    let mut blocks = Vec::new();
+    for (index, start) in block_starts.iter().copied().enumerate() {
+        let end = block_starts.get(index + 1).copied().unwrap_or(text.len());
+        let block = &text[start..end];
+        if toml_array_table_block_is_unsafe_to_sort(block, "[[behavior]]") {
+            return text.to_string();
+        }
+        let Some(id) = traceability_behavior_block_id(block) else {
+            return text.to_string();
+        };
+        if !is_spec_id(&id) || !ids.insert(id.clone()) {
+            return text.to_string();
+        }
+        blocks.push((id, block));
+    }
+
+    let original_order = blocks.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>();
+    blocks.sort_by(|left, right| left.0.cmp(&right.0));
+    let sorted_order = blocks.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>();
+    if original_order == sorted_order {
+        return text.to_string();
+    }
+
+    let mut output = prefix.to_string();
+    for (_, block) in blocks {
+        output.push_str(block);
+    }
+    output
+}
+
+fn sorted_capability_blocks_content(text: &str) -> String {
+    let mut block_starts = Vec::new();
+    let mut offset = 0;
+    for line in text.split_inclusive('\n') {
+        if line.trim() == "[[capability]]" {
+            block_starts.push(offset);
+        }
+        offset += line.len();
+    }
+    if block_starts.len() <= 1 {
+        return text.to_string();
+    }
+
+    let (capabilities, parse_violations) =
+        parse_capabilities_manifest_text("metrics/capabilities.toml", text);
+    if !parse_violations.is_empty() || capabilities.len() != block_starts.len() {
+        return text.to_string();
+    }
+
+    let prefix = &text[..block_starts[0]];
+    let mut ids = BTreeSet::new();
+    let mut blocks = Vec::new();
+    for ((index, start), capability) in block_starts
+        .iter()
+        .copied()
+        .enumerate()
+        .zip(capabilities.iter())
+    {
+        let end = block_starts.get(index + 1).copied().unwrap_or(text.len());
+        let block = &text[start..end];
+        if toml_array_table_block_is_unsafe_to_sort(block, "[[capability]]") {
+            return text.to_string();
+        }
+        let Some((spec, id)) = capability_sort_key(capability) else {
+            return text.to_string();
+        };
+        if !ids.insert(id.clone()) {
+            return text.to_string();
+        }
+        blocks.push(((spec, id), block));
+    }
+
+    let original_order = blocks
+        .iter()
+        .map(|((spec, id), _)| (spec.clone(), id.clone()))
+        .collect::<Vec<_>>();
+    blocks.sort_by(|left, right| left.0.cmp(&right.0));
+    let sorted_order = blocks
+        .iter()
+        .map(|((spec, id), _)| (spec.clone(), id.clone()))
+        .collect::<Vec<_>>();
+    if original_order == sorted_order {
+        return text.to_string();
+    }
+
+    let mut output = prefix.to_string();
+    for (_, block) in blocks {
+        output.push_str(block);
+    }
+    let (sorted_capabilities, sorted_violations) =
+        parse_capabilities_manifest_text("metrics/capabilities.toml", &output);
+    let Some(sorted_capability_order) = capability_sort_keys(&sorted_capabilities) else {
+        return text.to_string();
+    };
+    if !sorted_violations.is_empty()
+        || sorted_capabilities.len() != block_starts.len()
+        || sorted_capability_order != sorted_order
+    {
+        return text.to_string();
+    }
+    output
+}
+
+fn sorted_command_catalog_content(text: &str) -> String {
+    let start_marker = "pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {\n    vec![\n";
+    let Some(start) = text.find(start_marker) else {
+        return text.to_string();
+    };
+    let entries_start = start + start_marker.len();
+    let Some(end_relative) = text[entries_start..].find("\n    ]\n}") else {
+        return text.to_string();
+    };
+    let entries_end = entries_start + end_relative;
+    let body = &text[entries_start..entries_end];
+    let Some(sorted_body) = sorted_command_catalog_entry_blocks(body) else {
+        return text.to_string();
+    };
+    if sorted_body == body {
+        return text.to_string();
+    }
+
+    let mut output = String::with_capacity(text.len());
+    output.push_str(&text[..entries_start]);
+    output.push_str(&sorted_body);
+    output.push_str(&text[entries_end..]);
+    output
+}
+
+fn sorted_command_catalog_entry_blocks(body: &str) -> Option<String> {
+    let mut order = BTreeMap::new();
+    for (index, command) in known_commands().iter().enumerate() {
+        order.insert(command.to_string(), index);
+    }
+
+    let mut blocks = Vec::new();
+    let mut current = String::new();
+    let mut in_block = false;
+    for line in body.split_inclusive('\n') {
+        let trimmed = line.trim();
+        if !in_block {
+            if trimmed.is_empty() {
+                current.push_str(line);
+                continue;
+            }
+            if trimmed != "command_entry(" {
+                return None;
+            }
+            in_block = true;
+            current.push_str(line);
+            continue;
+        }
+
+        current.push_str(line);
+        if trimmed == ")," {
+            let command = command_catalog_entry_block_command(&current)?;
+            let index = *order.get(&command)?;
+            blocks.push((index, blocks.len(), std::mem::take(&mut current)));
+            in_block = false;
+        }
+    }
+    if in_block || !current.trim().is_empty() || blocks.len() <= 1 {
+        return None;
+    }
+
+    let original_order = blocks
+        .iter()
+        .map(|(order, original_index, _)| (*order, *original_index))
+        .collect::<Vec<_>>();
+    blocks.sort_by_key(|(order, original_index, _)| (*order, *original_index));
+    let sorted_order = blocks
+        .iter()
+        .map(|(order, original_index, _)| (*order, *original_index))
+        .collect::<Vec<_>>();
+    if original_order == sorted_order {
+        return Some(body.to_string());
+    }
+
+    Some(blocks.into_iter().map(|(_, _, block)| block).collect())
+}
+
+fn command_catalog_entry_block_command(block: &str) -> Option<String> {
+    for line in block.lines().skip(1) {
+        let trimmed = line.trim().trim_end_matches(',').trim();
+        if !trimmed.starts_with('"') {
+            continue;
+        }
+        return parse_quoted_value(trimmed).ok();
+    }
+    None
+}
+
+fn capability_sort_keys(capabilities: &[Capability]) -> Option<Vec<(String, String)>> {
+    capabilities.iter().map(capability_sort_key).collect()
+}
+
+fn capability_sort_key(capability: &Capability) -> Option<(String, String)> {
+    let id = capability.id.as_ref()?;
+    let spec = capability.spec.as_ref()?;
+    if !is_snake_case_id(id) || !is_spec_id(spec) {
+        return None;
+    }
+    Some((spec.clone(), id.clone()))
+}
+
+fn toml_array_table_block_is_unsafe_to_sort(block: &str, table_header: &str) -> bool {
+    let mut seen = BTreeSet::new();
+    let mut active_array = false;
+    for line in block.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed == table_header {
+            continue;
+        }
+        if active_array {
+            if trimmed.starts_with(']') {
+                active_array = false;
+            } else if parse_array_item(trimmed).is_err() {
+                return true;
+            }
+            continue;
+        }
+        let Some((key, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        if !seen.insert(key.to_string()) {
+            return true;
+        }
+        let value = value.trim();
+        if value == "[" {
+            active_array = true;
+        } else if value.starts_with('[') && parse_inline_array(value).is_err() {
+            return true;
+        }
+    }
+    active_array
+}
+
+fn traceability_behavior_block_id(block: &str) -> Option<String> {
+    for line in block.lines() {
+        let trimmed = line.trim();
+        let Some((key, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        if key.trim() != "id" {
+            continue;
+        }
+        return parse_quoted_value(value).ok();
+    }
+    None
 }
 
 fn append_whole_file_patch(body: &mut String, path: &Path, before: &str, after: &str) {
@@ -2523,6 +3027,10 @@ fn suggested_fixes_report_body(files: &[String], patch_empty: bool) -> String {
     body.push_str("Patch: `target/ripr/reports/suggested-fixes.patch`\n\n");
     body.push_str("Scope:\n\n");
     body.push_str("- deterministic allowlist ordering under `.ripr/*.txt` and `policy/*.txt`\n");
+    body.push_str("- deterministic docs index table ordering for specs and ADRs\n");
+    body.push_str("- deterministic traceability behavior block ordering by spec id\n");
+    body.push_str("- deterministic capability block ordering by spec ID and capability ID\n");
+    body.push_str("- deterministic command catalog ordering by xtask help order\n");
     body.push_str("- no badge value edits\n");
     body.push_str("- no golden blessings\n");
     body.push_str("- no baselines, suppressions, dependency exceptions, or schema changes\n\n");
@@ -3376,6 +3884,113 @@ fn pr_triage_sensitive_surface_findings(prs: &[PrTriagePullRequest]) -> Vec<PrTr
     findings
 }
 
+fn pr_triage_queue_dispositions(
+    prs: &[PrTriagePullRequest],
+    findings: &[PrTriageFinding],
+) -> Vec<PrTriageQueueDisposition> {
+    prs.iter()
+        .map(|pr| pr_triage_queue_disposition(pr, findings))
+        .collect()
+}
+
+fn pr_triage_queue_disposition(
+    pr: &PrTriagePullRequest,
+    findings: &[PrTriageFinding],
+) -> PrTriageQueueDisposition {
+    let (disposition, reason, recommended_action) = if pr_has_superseded_signal(pr) {
+        (
+            "superseded",
+            "PR title, body, or labels declare it superseded",
+            "Close or replace only after confirming the successor PR is current.",
+        )
+    } else if pr_has_duplicate_signal(pr) {
+        (
+            "close_duplicate",
+            "PR title, body, or labels declare it duplicate",
+            "Close only after confirming the canonical PR is selected.",
+        )
+    } else if pr_has_finding(findings, pr.number, "same title family")
+        || pr_has_finding(findings, pr.number, "same changed file set")
+        || pr_has_finding(findings, pr.number, "stale draft")
+    {
+        (
+            "needs_owner_decision",
+            "duplicate or stale work needs canonical owner selection",
+            "Choose the canonical branch, refresh the stale draft, or close superseded variants.",
+        )
+    } else if pr.merge_state_status.eq_ignore_ascii_case("BEHIND") {
+        (
+            "needs_rebase",
+            "branch is behind its base",
+            "Update the branch before relying on CI or merge-readiness state.",
+        )
+    } else if pr_has_finding(findings, pr.number, "policy-sensitive surface") {
+        (
+            "do_not_touch_wrong_lane",
+            "PR touches policy, generated badge, workflow, or gate-sensitive files",
+            "Leave ownership to the matching lane unless explicitly assigned.",
+        )
+    } else if pr_has_finding(findings, pr.number, "incomplete validation")
+        || pr.checks.iter().any(pr_check_failed)
+        || pr.checks.iter().any(pr_check_pending)
+    {
+        (
+            "needs_fresh_validation",
+            "validation is pending, failing, absent, or not fully recorded",
+            "Wait for checks, inspect failures, or update the PR body with actual commands run.",
+        )
+    } else if pr.is_draft || pr.review_decision.eq_ignore_ascii_case("REVIEW_REQUIRED") {
+        (
+            "needs_review",
+            "PR is draft or still requires review",
+            "Finish review before merge or further queue disposition.",
+        )
+    } else if pr.merge_state_status.eq_ignore_ascii_case("CLEAN") {
+        (
+            "merge_candidate",
+            "PR is current, non-draft, and has no detected validation or policy-sensitive queue risks",
+            "Review the diff and merge if the scope is still the canonical path.",
+        )
+    } else {
+        (
+            "needs_review",
+            "merge state is not clean enough for an automatic queue recommendation",
+            "Inspect the PR state before taking action.",
+        )
+    };
+    PrTriageQueueDisposition {
+        pr_number: pr.number,
+        disposition: disposition.to_string(),
+        reason: reason.to_string(),
+        recommended_action: recommended_action.to_string(),
+    }
+}
+
+fn pr_has_finding(findings: &[PrTriageFinding], number: u64, category: &str) -> bool {
+    findings
+        .iter()
+        .any(|finding| finding.category == category && finding.prs.contains(&number))
+}
+
+fn pr_has_superseded_signal(pr: &PrTriagePullRequest) -> bool {
+    pr_triage_title_or_label_contains(pr, "superseded")
+        || pr.body.to_ascii_lowercase().contains("superseded by")
+}
+
+fn pr_has_duplicate_signal(pr: &PrTriagePullRequest) -> bool {
+    pr_triage_title_or_label_contains(pr, "duplicate")
+        || pr.body.to_ascii_lowercase().contains("duplicate of")
+}
+
+fn pr_triage_title_or_label_contains(pr: &PrTriagePullRequest, needle: &str) -> bool {
+    let needle = needle.to_ascii_lowercase();
+    pr.title.to_ascii_lowercase().contains(&needle)
+        || pr
+            .labels
+            .iter()
+            .any(|label| label.to_ascii_lowercase().contains(&needle))
+}
+
 fn pr_check_failed(check: &PrTriageCheck) -> bool {
     matches!(
         check.conclusion.to_ascii_uppercase().as_str(),
@@ -3482,6 +4097,11 @@ fn pr_triage_markdown(
     today: i64,
 ) -> String {
     let status = if findings.is_empty() { "pass" } else { "warn" };
+    let dispositions = pr_triage_queue_dispositions(prs, findings);
+    let disposition_by_pr = dispositions
+        .iter()
+        .map(|disposition| (disposition.pr_number, disposition))
+        .collect::<BTreeMap<_, _>>();
     let mut body = format!("# ripr PR triage report\n\nStatus: {status}\n\n");
     body.push_str("Mode: advisory\n\n");
     body.push_str("This report summarizes open PR queue risks for agents. It does not close, merge, update, or mutate PRs.\n\n");
@@ -3511,18 +4131,41 @@ fn pr_triage_markdown(
         }
     }
 
+    body.push_str("## Queue Disposition\n\n");
+    if dispositions.is_empty() {
+        body.push_str("- None detected.\n");
+    } else {
+        body.push_str("| PR | Disposition | Reason | Recommended action |\n");
+        body.push_str("| --- | --- | --- | --- |\n");
+        for disposition in &dispositions {
+            body.push_str(&format!(
+                "| #{} | `{}` | {} | {} |\n",
+                disposition.pr_number,
+                markdown_escape_table(&disposition.disposition),
+                markdown_escape_table(&disposition.reason),
+                markdown_escape_table(&disposition.recommended_action)
+            ));
+        }
+    }
+    body.push('\n');
+
     body.push_str("## Open PRs\n\n");
     if prs.is_empty() {
         body.push_str("- None detected.\n");
     } else {
-        body.push_str("| PR | Draft | Age | Merge state | Checks | Files |\n");
-        body.push_str("| --- | --- | ---: | --- | --- | ---: |\n");
+        body.push_str("| PR | Disposition | Draft | Age | Merge state | Checks | Files |\n");
+        body.push_str("| --- | --- | --- | ---: | --- | --- | ---: |\n");
         for pr in prs {
             let age = pr_age_label(pr, today);
+            let disposition = disposition_by_pr
+                .get(&pr.number)
+                .map(|item| item.disposition.as_str())
+                .unwrap_or("unknown");
             body.push_str(&format!(
-                "| #{} {} | {} | {} | {} | {} | {} |\n",
+                "| #{} {} | `{}` | {} | {} | {} | {} | {} |\n",
                 pr.number,
                 markdown_escape_table(&pr.title),
+                markdown_escape_table(disposition),
                 pr.is_draft,
                 age,
                 markdown_escape_table(&pr.merge_state_status),
@@ -3553,12 +4196,21 @@ fn pr_triage_json(
         "  \"generated_at\": \"{}\",\n",
         json_escape(generated_at)
     ));
+    let dispositions = pr_triage_queue_dispositions(prs, findings);
     body.push_str("  \"open_prs\": [\n");
     for (index, pr) in prs.iter().enumerate() {
         if index > 0 {
             body.push_str(",\n");
         }
         write_pr_triage_pull_request_json(&mut body, pr, today);
+    }
+    body.push_str("\n  ],\n");
+    body.push_str("  \"queue_disposition\": [\n");
+    for (index, disposition) in dispositions.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        write_pr_triage_queue_disposition_json(&mut body, disposition, 4);
     }
     body.push_str("\n  ],\n");
     body.push_str("  \"findings\": [\n");
@@ -3661,6 +4313,33 @@ fn write_pr_triage_pull_request_json(body: &mut String, pr: &PrTriagePullRequest
     }
     body.push_str("\n      ]\n");
     body.push_str("    }");
+}
+
+fn write_pr_triage_queue_disposition_json(
+    body: &mut String,
+    disposition: &PrTriageQueueDisposition,
+    indent: usize,
+) {
+    let pad = " ".repeat(indent);
+    let inner = " ".repeat(indent + 2);
+    body.push_str(&format!("{pad}{{\n"));
+    body.push_str(&format!(
+        "{inner}\"pr_number\": {},\n",
+        disposition.pr_number
+    ));
+    body.push_str(&format!(
+        "{inner}\"disposition\": \"{}\",\n",
+        json_escape(&disposition.disposition)
+    ));
+    body.push_str(&format!(
+        "{inner}\"reason\": \"{}\",\n",
+        json_escape(&disposition.reason)
+    ));
+    body.push_str(&format!(
+        "{inner}\"recommended_action\": \"{}\"\n",
+        json_escape(&disposition.recommended_action)
+    ));
+    body.push_str(&format!("{pad}}}"));
 }
 
 fn write_pr_triage_finding_json(body: &mut String, finding: &PrTriageFinding, indent: usize) {
@@ -4327,6 +5006,8 @@ fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                 "editor_gap_cockpit"
                     | "editor_first_run_usability"
                     | "evidence-quality-benchmark"
+                    | "first_successful_pr"
+                    | "finding-alignment-dogfood"
                     | "gap-decision-ledger"
             )
         })
@@ -6487,6 +7168,8 @@ fn check_fixture_contracts() -> Result<(), String> {
     validate_evidence_quality_benchmark_fixture_corpus(&mut violations)?;
     validate_editor_gap_cockpit_fixture_corpus(&mut violations)?;
     validate_editor_first_run_usability_fixture_corpus(&mut violations)?;
+    validate_first_successful_pr_fixture_corpus(&mut violations)?;
+    validate_finding_alignment_dogfood_fixture_corpus(&mut violations)?;
     validate_gap_decision_ledger_fixture_corpus(&mut violations)?;
     validate_pr_review_front_panel_fixture_corpus(&mut violations)?;
     validate_report_packet_index_fixture_corpus(&mut violations)?;
@@ -6608,6 +7291,43 @@ const EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CASE_KINDS: &[&str] = &[
     "equivalent_code",
     "static_limitation",
     "calibration",
+];
+
+const EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CONFIG_POLICY_CASES: &[&str] = &[
+    "config_policy_internal_metadata_no_action",
+    "config_policy_rendered_label_unobserved",
+    "config_policy_behavior_selector_unobserved",
+    "config_policy_behavior_selector_observed",
+    "config_policy_schema_label_observed",
+    "config_policy_cross_file_flow_unknown",
+    "config_policy_opaque_lookup_unknown",
+];
+
+const FINDING_ALIGNMENT_DOGFOOD_CORPUS: &str = "fixtures/finding-alignment-dogfood/corpus.json";
+
+const FINDING_ALIGNMENT_DOGFOOD_REQUIRED_CASES: &[(&str, &str)] = &[
+    ("presentation_text_actionable_output_observer", "actionable"),
+    (
+        "presentation_text_already_observed_output",
+        "already_observed",
+    ),
+    ("config_policy_internal_metadata_no_action", "internal_only"),
+    ("config_policy_rendered_label_unobserved", "actionable"),
+    ("config_policy_behavior_selector_unobserved", "actionable"),
+    (
+        "config_policy_behavior_selector_observed",
+        "already_observed",
+    ),
+    ("config_policy_flow_unknown_limitation", "static_limitation"),
+];
+
+const FIRST_SUCCESSFUL_PR_CORPUS: &str = "fixtures/first_successful_pr/corpus.json";
+
+const FIRST_SUCCESSFUL_PR_REQUIRED_CASES: &[(&str, &str, &str)] = &[
+    ("boundary-gap", "actionable", "top_gap"),
+    ("output-contract-gap", "actionable", "top_gap"),
+    ("empty-diff", "no_action", "empty_diff"),
+    ("blocked-ledger", "blocked", "blocked_artifact"),
 ];
 
 const GAP_DECISION_LEDGER_CORPUS: &str = "fixtures/gap-decision-ledger/corpus.json";
@@ -7156,6 +7876,13 @@ fn validate_evidence_quality_benchmark_corpus_value(
             ));
         }
     }
+    for required in EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CONFIG_POLICY_CASES {
+        if !seen_ids.contains(*required) {
+            violations.push(format!(
+                "Lane 1 evidence-quality benchmark is missing config/policy case {required}"
+            ));
+        }
+    }
     if !has_runtime_only_guard {
         violations.push(
             "Lane 1 evidence-quality benchmark must include a runtime-only nonstatic guard"
@@ -7334,6 +8061,273 @@ fn validate_benchmark_line_movement(
         ));
     }
     *has_line_movement_guard = true;
+}
+
+fn validate_finding_alignment_dogfood_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new("fixtures/finding-alignment-dogfood");
+    for required in ["SPEC.md", "corpus.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "finding alignment dogfood fixture corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+
+    validate_finding_alignment_dogfood_fixture_corpus_at(
+        Path::new(FINDING_ALIGNMENT_DOGFOOD_CORPUS),
+        violations,
+    )
+}
+
+fn validate_finding_alignment_dogfood_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !path.exists() {
+        violations.push(format!(
+            "finding alignment dogfood corpus is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+
+    let scenarios = dogfood_finding_alignment_scenarios();
+    let mut seen = BTreeMap::new();
+    for scenario in &scenarios {
+        if seen
+            .insert(scenario.name.clone(), scenario.gap_state.clone())
+            .is_some()
+        {
+            violations.push(format!(
+                "finding alignment dogfood case {} is duplicated",
+                scenario.name
+            ));
+        }
+        let run = dogfood_finding_alignment_run(scenario);
+        for error in run.errors {
+            violations.push(format!(
+                "finding alignment dogfood case {}: {error}",
+                scenario.name
+            ));
+        }
+    }
+
+    for (case_id, gap_state) in FINDING_ALIGNMENT_DOGFOOD_REQUIRED_CASES {
+        match seen.get(*case_id) {
+            Some(actual) if actual == gap_state => {}
+            Some(actual) => violations.push(format!(
+                "finding alignment dogfood case {case_id} must have gap_state {gap_state}, got {actual}"
+            )),
+            None => violations.push(format!(
+                "finding alignment dogfood corpus is missing case {case_id}"
+            )),
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_first_successful_pr_fixture_corpus(violations: &mut Vec<String>) -> Result<(), String> {
+    let root = Path::new("fixtures/first_successful_pr");
+    for required in ["README.md", "corpus.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "first successful PR fixture corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    validate_first_successful_pr_fixture_corpus_at(
+        Path::new(FIRST_SUCCESSFUL_PR_CORPUS),
+        violations,
+    )
+}
+
+fn validate_first_successful_pr_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let Some(root) = path.parent() else {
+        violations.push(format!(
+            "first successful PR corpus path has no parent: {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    };
+    if !path.exists() {
+        violations.push(format!(
+            "first successful PR corpus is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+
+    let corpus = match read_json_value(path) {
+        Ok(value) => value,
+        Err(err) => {
+            violations.push(err);
+            return Ok(());
+        }
+    };
+    if json_string_field(&corpus, "kind").as_deref() != Some("first_successful_pr_corpus") {
+        violations.push(format!(
+            "{} kind must be first_successful_pr_corpus",
+            normalize_path(path)
+        ));
+    }
+    if json_string_field(&corpus, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "{} schema_version must be 0.1",
+            normalize_path(path)
+        ));
+    }
+    if json_string_field(&corpus, "spec").as_deref() != Some("RIPR-SPEC-0051") {
+        violations.push(format!(
+            "{} spec must be RIPR-SPEC-0051",
+            normalize_path(path)
+        ));
+    }
+
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        violations.push(format!("{} is missing cases array", normalize_path(path)));
+        return Ok(());
+    };
+    let mut seen = BTreeMap::new();
+    for case in cases {
+        let case_id = json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string());
+        if seen
+            .insert(
+                case_id.clone(),
+                (
+                    json_string_field(case, "expected_status").unwrap_or_default(),
+                    json_string_field(case, "expected_state").unwrap_or_default(),
+                ),
+            )
+            .is_some()
+        {
+            violations.push(format!("first successful PR case {case_id} is duplicated"));
+        }
+        validate_first_successful_pr_case(root, case, &case_id, violations)?;
+    }
+    for (case_id, expected_status, expected_state) in FIRST_SUCCESSFUL_PR_REQUIRED_CASES {
+        match seen.get(*case_id) {
+            Some((status, state)) if status == expected_status && state == expected_state => {}
+            Some((status, state)) => violations.push(format!(
+                "first successful PR case {case_id} must be {expected_status}/{expected_state}, got {status}/{state}"
+            )),
+            None => violations.push(format!(
+                "first successful PR corpus is missing case {case_id}"
+            )),
+        }
+    }
+    Ok(())
+}
+
+fn validate_first_successful_pr_case(
+    root: &Path,
+    case: &Value,
+    case_id: &str,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    for field in ["description", "expected_status", "expected_state"] {
+        if json_string_field(case, field).is_none() {
+            violations.push(format!(
+                "first successful PR case {case_id} is missing {field}"
+            ));
+        }
+    }
+    let case_dir = root.join(case_id);
+    let input_ledger = case_dir.join("inputs/reports/gap-decision-ledger.json");
+    let expected_json = case_dir.join("expected/start-here.json");
+    let expected_md = case_dir.join("expected/start-here.md");
+    for required in [&input_ledger, &expected_json, &expected_md] {
+        if !required.exists() {
+            violations.push(format!(
+                "first successful PR case {case_id} is missing {}",
+                normalize_path(required)
+            ));
+        }
+    }
+    if input_ledger.exists() {
+        let ledger = read_json_value(&input_ledger)?;
+        if json_string_field(&ledger, "kind").as_deref() != Some("gap_decision_ledger") {
+            violations.push(format!(
+                "first successful PR case {case_id} input ledger kind must be gap_decision_ledger"
+            ));
+        }
+    }
+    if expected_json.exists() {
+        let packet = read_json_value(&expected_json)?;
+        let expected_status = json_string_field(case, "expected_status").unwrap_or_default();
+        let expected_state = json_string_field(case, "expected_state").unwrap_or_default();
+        if json_string_field(&packet, "schema_version").as_deref() != Some("0.1") {
+            violations.push(format!(
+                "first successful PR case {case_id} start-here schema_version must be 0.1"
+            ));
+        }
+        if json_string_field(&packet, "kind").as_deref() != Some("first_pr_start_here") {
+            violations.push(format!(
+                "first successful PR case {case_id} start-here kind must be first_pr_start_here"
+            ));
+        }
+        if json_string_field(&packet, "status").as_deref() != Some(expected_status.as_str()) {
+            violations.push(format!(
+                "first successful PR case {case_id} status must be {expected_status}"
+            ));
+        }
+        if json_string_field(&packet, "posture").as_deref() != Some("advisory") {
+            violations.push(format!(
+                "first successful PR case {case_id} posture must be advisory"
+            ));
+        }
+        if audit_string(&packet, &["selected", "state"]).as_deref() != Some(expected_state.as_str())
+        {
+            violations.push(format!(
+                "first successful PR case {case_id} selected.state must be {expected_state}"
+            ));
+        }
+        if expected_status == "actionable"
+            && audit_string(&packet, &["selected", "verify_command"]).is_none()
+        {
+            violations.push(format!(
+                "first successful PR case {case_id} actionable packet must name verify_command"
+            ));
+        }
+    }
+    if expected_md.exists() {
+        let markdown = read_text_lossy(&expected_md)?;
+        for required in [
+            "# RIPR First PR Start Here",
+            "Status: advisory",
+            "## Artifacts",
+            "## Authority",
+            "## Limits",
+        ] {
+            if !markdown.contains(required) {
+                violations.push(format!(
+                    "first successful PR case {case_id} Markdown is missing `{required}`"
+                ));
+            }
+        }
+        match json_string_field(case, "expected_status").as_deref() {
+            Some("actionable") if !markdown.contains("## Top Gap") => violations.push(format!(
+                "first successful PR case {case_id} Markdown must show Top Gap"
+            )),
+            Some("no_action") if !markdown.contains("## No Action") => violations.push(format!(
+                "first successful PR case {case_id} Markdown must show No Action"
+            )),
+            Some("blocked") if !markdown.contains("## Blocked") => violations.push(format!(
+                "first successful PR case {case_id} Markdown must show Blocked"
+            )),
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 const EDITOR_GAP_COCKPIT_FIXTURE_ROOT: &str = "fixtures/editor_gap_cockpit";
@@ -7593,6 +8587,8 @@ const EDITOR_FIRST_RUN_USABILITY_CASES: &[&str] = &[
     "adapter_unavailable",
     "artifact_missing",
     "artifact_stale",
+    "receipt_found",
+    "receipt_gap_mismatch",
     "receipt_improved",
     "receipt_unchanged",
 ];
@@ -7701,8 +8697,10 @@ fn validate_editor_first_run_status(case: &str, status: &Value, violations: &mut
             "editor first-run usability case {case} vscode-status fixture must be {expected_fixture}"
         ));
     }
-    if matches!(case, "setup_ok" | "receipt_improved" | "receipt_unchanged")
-        && json_string_field(status, "next_safe_action").is_none()
+    if matches!(
+        case,
+        "setup_ok" | "receipt_found" | "receipt_improved" | "receipt_unchanged"
+    ) && json_string_field(status, "next_safe_action").is_none()
     {
         violations.push(format!(
             "editor first-run usability case {case} must name a next_safe_action"
@@ -7710,7 +8708,11 @@ fn validate_editor_first_run_status(case: &str, status: &Value, violations: &mut
     }
     if matches!(
         case,
-        "server_missing" | "language_disabled" | "adapter_unavailable" | "artifact_stale"
+        "server_missing"
+            | "language_disabled"
+            | "adapter_unavailable"
+            | "artifact_stale"
+            | "receipt_gap_mismatch"
     ) && json_string_field(status, "projection").as_deref() != Some("fail_closed")
     {
         violations.push(format!(
@@ -7738,8 +8740,10 @@ fn validate_editor_first_run_actions(case: &str, actions: &Value, violations: &m
         })
         .collect::<Vec<_>>();
     let has_first_repair_packet = !first_repair_actions.is_empty();
-    if matches!(case, "setup_ok" | "receipt_improved" | "receipt_unchanged")
-        && !has_first_repair_packet
+    if matches!(
+        case,
+        "setup_ok" | "receipt_found" | "receipt_improved" | "receipt_unchanged"
+    ) && !has_first_repair_packet
     {
         violations.push(format!(
             "editor first-run usability case {case} must include Copy first repair packet"
@@ -7753,6 +8757,7 @@ fn validate_editor_first_run_actions(case: &str, actions: &Value, violations: &m
             | "adapter_unavailable"
             | "artifact_missing"
             | "artifact_stale"
+            | "receipt_gap_mismatch"
     ) && has_first_repair_packet
     {
         violations.push(format!(
@@ -7813,6 +8818,8 @@ fn validate_editor_first_run_receipt(case: &str, receipt: &Value, violations: &m
     }
     let state = json_string_field(receipt, "receipt_state");
     let expected_state = match case {
+        "receipt_found" => Some("receipt_found"),
+        "receipt_gap_mismatch" => Some("receipt_gap_mismatch"),
         "receipt_improved" => Some("receipt_movement_improved"),
         "receipt_unchanged" => Some("receipt_movement_unchanged"),
         "artifact_stale" => Some("receipt_stale"),
@@ -13031,7 +14038,37 @@ fn write_lane1_evidence_audit_repo_exposure(path: &Path) -> Result<(), String> {
         "--format".to_string(),
         "repo-exposure-json".to_string(),
     ];
-    run_output_to_file_owned("cargo", &args, path)
+    match run_output_to_file_owned("cargo", &args, path) {
+        Ok(()) => Ok(()),
+        Err(err) => match lane1_repo_exposure_file_looks_complete(path) {
+            Ok(true) => {
+                eprintln!(
+                    "warning: repo exposure generation returned non-zero status; continuing because {} contains a complete repo-exposure JSON document",
+                    path.display()
+                );
+                Ok(())
+            }
+            Ok(false) => Err(err),
+            Err(inspect_err) => Err(format!(
+                "{err}\nfailed to inspect captured repo exposure {}: {inspect_err}",
+                path.display()
+            )),
+        },
+    }
+}
+
+fn lane1_repo_exposure_file_looks_complete(path: &Path) -> Result<bool, String> {
+    let file = fs::File::open(path).map_err(|err| {
+        format!(
+            "failed to open captured repo exposure {}: {err}",
+            path.display()
+        )
+    })?;
+    let value: Value = match serde_json::from_reader(BufReader::new(file)) {
+        Ok(value) => value,
+        Err(_) => return Ok(false),
+    };
+    Ok(value.get("seams").and_then(Value::as_array).is_some())
 }
 
 fn lane1_evidence_audit_from_repo_exposure_file(
@@ -14413,9 +15450,23 @@ fn audit_has_named_static_limitation(record: &Value, canonical_item: &Value) -> 
         .iter()
         .chain(audit_array(canonical_item, &["static_limitations"]).iter())
         .any(|limitation| {
-            audit_non_empty_string(limitation, &["category"]).is_some()
-                && audit_non_empty_string(limitation, &["repair_route"]).is_some()
+            let Some(category) = audit_non_empty_string(limitation, &["category"]) else {
+                return false;
+            };
+            let Some(repair_route) = audit_non_empty_string(limitation, &["repair_route"]) else {
+                return false;
+            };
+            audit_static_limitation_category_is_named(&category)
+                && audit_static_limitation_repair_route_is_named(&repair_route)
         })
+}
+
+fn audit_static_limitation_category_is_named(category: &str) -> bool {
+    !matches!(category.trim(), "" | "static_unknown" | "unknown")
+}
+
+fn audit_static_limitation_repair_route_is_named(repair_route: &str) -> bool {
+    !matches!(repair_route.trim(), "" | "unknown")
 }
 
 fn audit_ingest_finding_alignment(
@@ -14749,7 +15800,7 @@ fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'stati
             "propagate" => "propagation_static_unknown",
             "observe" => "observation_static_unknown",
             "discriminate" => "discrimination_static_unknown",
-            _ => "static_unknown",
+            _ => "static_limitation_unclassified",
         }
     }
 }
@@ -14770,6 +15821,7 @@ fn static_limitation_repair_route(category: &str) -> &'static str {
         "propagation_static_unknown" => "analysis/static-limitation-taxonomy",
         "observation_static_unknown" => "analysis/oracle-semantics-audit-fixes",
         "discrimination_static_unknown" => "analysis/oracle-semantics-audit-fixes",
+        "static_limitation_unclassified" => "analysis/static-limitation-taxonomy",
         _ => "analysis/static-limitation-taxonomy",
     }
 }
@@ -21149,6 +22201,10 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         .into_iter()
         .map(|scenario| dogfood_first_action_run(&scenario))
         .collect::<Vec<_>>();
+    let first_pr_runs = dogfood_first_pr_scenarios()
+        .into_iter()
+        .map(|scenario| dogfood_first_pr_run(&scenario))
+        .collect::<Vec<_>>();
     let front_panel_runs = dogfood_pr_review_front_panel_scenarios()
         .into_iter()
         .map(|scenario| dogfood_pr_review_front_panel_run(&scenario))
@@ -21166,6 +22222,10 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         .into_iter()
         .map(|scenario| dogfood_editor_gap_cockpit_run(&scenario))
         .collect::<Vec<_>>();
+    let finding_alignment_runs = dogfood_finding_alignment_scenarios()
+        .into_iter()
+        .map(|scenario| dogfood_finding_alignment_run(&scenario))
+        .collect::<Vec<_>>();
     let preview_projection_runs = DogfoodPreviewProjectionRuns {
         generated_ci_cockpit: &generated_ci_cockpit_runs,
         language_preview: &language_preview_runs,
@@ -21175,30 +22235,19 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         .into_iter()
         .map(|scenario| dogfood_pr_inline_comment_run(&scenario))
         .collect::<Result<Vec<_>, _>>()?;
-    write_report(
-        "dogfood.md",
-        &dogfood_report_markdown(
-            &runs,
-            &gate_runs,
-            &first_action_runs,
-            &front_panel_runs,
-            &report_packet_index_runs,
-            &preview_projection_runs,
-            &pr_inline_comment_runs,
-        ),
-    )?;
-    write_report(
-        "dogfood.json",
-        &dogfood_report_json(
-            &runs,
-            &gate_runs,
-            &first_action_runs,
-            &front_panel_runs,
-            &report_packet_index_runs,
-            &preview_projection_runs,
-            &pr_inline_comment_runs,
-        ),
-    )
+    let report_inputs = DogfoodReportInputs {
+        runs: &runs,
+        gate_runs: &gate_runs,
+        first_action_runs: &first_action_runs,
+        first_pr_runs: &first_pr_runs,
+        front_panel_runs: &front_panel_runs,
+        report_packet_index_runs: &report_packet_index_runs,
+        preview_projection_runs: &preview_projection_runs,
+        finding_alignment_runs: &finding_alignment_runs,
+        pr_inline_comment_runs: &pr_inline_comment_runs,
+    };
+    write_report("dogfood.md", &dogfood_report_markdown(&report_inputs))?;
+    write_report("dogfood.json", &dogfood_report_json(&report_inputs))
 }
 
 fn dogfood_scenarios() -> Vec<DogfoodScenario> {
@@ -21758,6 +22807,162 @@ fn dogfood_first_action_run(scenario: &DogfoodFirstActionScenario) -> DogfoodFir
         expected_audience: scenario.expected_audience.to_string(),
         expected_selected: scenario.expected_selected,
         expected_static_movement: scenario.expected_static_movement.to_string(),
+        errors,
+    }
+}
+
+fn dogfood_first_pr_scenarios() -> Vec<DogfoodFirstPrScenario> {
+    let corpus_path = Path::new("fixtures/first_successful_pr/corpus.json");
+    let corpus = match read_json_value(corpus_path) {
+        Ok(value) => value,
+        Err(err) => {
+            return vec![DogfoodFirstPrScenario {
+                name: "corpus".to_string(),
+                expected_dir: corpus_path.to_path_buf(),
+                expected_status: "missing".to_string(),
+                expected_state: "missing".to_string(),
+                description: err,
+            }];
+        }
+    };
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        return vec![DogfoodFirstPrScenario {
+            name: "corpus".to_string(),
+            expected_dir: corpus_path.to_path_buf(),
+            expected_status: "missing".to_string(),
+            expected_state: "missing".to_string(),
+            description: "first successful PR corpus is missing cases array".to_string(),
+        }];
+    };
+
+    cases
+        .iter()
+        .map(|case| {
+            let name = json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string());
+            let expected_dir = Path::new("fixtures/first_successful_pr")
+                .join(&name)
+                .join("expected");
+            DogfoodFirstPrScenario {
+                name,
+                expected_dir,
+                expected_status: json_string_field(case, "expected_status")
+                    .unwrap_or_else(|| "missing".to_string()),
+                expected_state: json_string_field(case, "expected_state")
+                    .unwrap_or_else(|| "missing".to_string()),
+                description: json_string_field(case, "description")
+                    .unwrap_or_else(|| "first-pr corpus case has no description".to_string()),
+            }
+        })
+        .collect()
+}
+
+fn dogfood_first_pr_run(scenario: &DogfoodFirstPrScenario) -> DogfoodFirstPrRun {
+    let json_path = scenario.expected_dir.join("start-here.json");
+    let markdown_path = scenario.expected_dir.join("start-here.md");
+    let mut errors = Vec::new();
+    let mut status = "missing".to_string();
+    let mut state = "missing".to_string();
+    let mut top_gap_kind = "none".to_string();
+    let mut verify_command = None;
+    let mut next_command = None;
+
+    match read_json_value(&json_path) {
+        Ok(packet) => {
+            if json_string_field(&packet, "kind").as_deref() != Some("first_pr_start_here") {
+                errors.push("start-here kind must be first_pr_start_here".to_string());
+            }
+            status = json_string_field(&packet, "status").unwrap_or_else(|| "missing".to_string());
+            state = audit_string(&packet, &["selected", "state"])
+                .unwrap_or_else(|| "missing".to_string());
+            top_gap_kind =
+                audit_string(&packet, &["selected", "kind"]).unwrap_or_else(|| "none".to_string());
+            verify_command = audit_string(&packet, &["selected", "verify_command"]);
+            next_command = audit_string(&packet, &["commands", "next"]);
+            if json_string_field(&packet, "posture").as_deref() != Some("advisory") {
+                errors.push("start-here posture must stay advisory".to_string());
+            }
+            let limits = packet
+                .get("limits")
+                .and_then(Value::as_array)
+                .map(|items| items.iter().filter_map(Value::as_str).collect::<Vec<_>>())
+                .unwrap_or_default();
+            for required in [
+                "Composes explicit RIPR artifacts only.",
+                "Does not run hidden analysis.",
+                "Does not edit source or generate tests.",
+                "Does not run mutation testing.",
+                "Does not change CI blocking or gate policy.",
+            ] {
+                if !limits.contains(&required) {
+                    errors.push(format!("start-here packet is missing limit `{required}`"));
+                }
+            }
+            if scenario.expected_status == "actionable" && verify_command.is_none() {
+                errors.push("actionable start-here receipt must name verify_command".to_string());
+            }
+            if scenario.expected_status == "blocked" && next_command.is_none() {
+                errors.push("blocked start-here receipt must name next command".to_string());
+            }
+        }
+        Err(err) => errors.push(err),
+    }
+
+    match fs::read_to_string(&markdown_path) {
+        Ok(markdown) => {
+            if !markdown.contains("# RIPR First PR Start Here") {
+                errors.push("Markdown must use the first PR start-here heading".to_string());
+            }
+            if !markdown.contains("Status: advisory") {
+                errors.push("Markdown must pin advisory status".to_string());
+            }
+            if !markdown.contains("## Authority") {
+                errors.push("Markdown must name authority boundary".to_string());
+            }
+            match scenario.expected_status.as_str() {
+                "actionable" if !markdown.contains("## Top Gap") => {
+                    errors.push("actionable Markdown must show Top Gap".to_string());
+                }
+                "no_action" if !markdown.contains("## No Action") => {
+                    errors.push("no-action Markdown must show No Action".to_string());
+                }
+                "blocked" if !markdown.contains("## Blocked") => {
+                    errors.push("blocked Markdown must show Blocked".to_string());
+                }
+                _ => {}
+            }
+        }
+        Err(err) => errors.push(format!(
+            "failed to read first PR start-here Markdown {}: {err}",
+            normalize_path(&markdown_path)
+        )),
+    }
+
+    if status != scenario.expected_status {
+        errors.push(format!(
+            "expected status {}, got {}",
+            scenario.expected_status, status
+        ));
+    }
+    if state != scenario.expected_state {
+        errors.push(format!(
+            "expected state {}, got {}",
+            scenario.expected_state, state
+        ));
+    }
+
+    DogfoodFirstPrRun {
+        name: scenario.name.clone(),
+        expected_dir: scenario.expected_dir.clone(),
+        json_path,
+        markdown_path,
+        status,
+        state,
+        top_gap_kind,
+        verify_command,
+        next_command,
+        expected_status: scenario.expected_status.clone(),
+        expected_state: scenario.expected_state.clone(),
+        description: scenario.description.clone(),
         errors,
     }
 }
@@ -23055,6 +24260,243 @@ fn dogfood_editor_gap_cockpit_run(
     }
 }
 
+fn dogfood_finding_alignment_scenarios() -> Vec<DogfoodFindingAlignmentScenario> {
+    let corpus_path = Path::new("fixtures/finding-alignment-dogfood/corpus.json");
+    let fallback = |reason: String| {
+        vec![DogfoodFindingAlignmentScenario {
+            name: "corpus".to_string(),
+            source_pr: "unknown".to_string(),
+            evidence_class: "unknown".to_string(),
+            raw_findings_total: 0,
+            canonical_items_total: 0,
+            gap_state: "missing".to_string(),
+            actionability: "missing".to_string(),
+            user_outcome: "missing".to_string(),
+            repair_kind: "unknown".to_string(),
+            target_test_type: "unknown".to_string(),
+            verify_command: "unknown".to_string(),
+            static_limitation_category: None,
+            static_limitation_repair_route: None,
+            raw_findings_supporting_only: false,
+            recommended_repair: reason.clone(),
+            must_not_claim: Vec::new(),
+            reason,
+        }]
+    };
+
+    let corpus = match read_json_value(corpus_path) {
+        Ok(value) => value,
+        Err(err) => return fallback(err),
+    };
+    if json_string_field(&corpus, "schema_version").as_deref() != Some("0.1") {
+        return fallback("finding alignment dogfood corpus schema_version must be 0.1".to_string());
+    }
+    if json_string_field(&corpus, "kind").as_deref() != Some("finding_alignment_dogfood_corpus") {
+        return fallback(
+            "finding alignment dogfood corpus kind must be finding_alignment_dogfood_corpus"
+                .to_string(),
+        );
+    }
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        return fallback("finding alignment dogfood corpus is missing cases array".to_string());
+    };
+
+    cases
+        .iter()
+        .map(|case| DogfoodFindingAlignmentScenario {
+            name: json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string()),
+            source_pr: json_string_field(case, "source_pr")
+                .unwrap_or_else(|| "unknown".to_string()),
+            evidence_class: json_string_field(case, "evidence_class")
+                .unwrap_or_else(|| "unknown".to_string()),
+            raw_findings_total: json_usize_field(case, "raw_findings_total").unwrap_or(0),
+            canonical_items_total: json_usize_field(case, "canonical_items_total").unwrap_or(0),
+            gap_state: json_string_field(case, "gap_state")
+                .unwrap_or_else(|| "unknown".to_string()),
+            actionability: json_string_field(case, "actionability")
+                .unwrap_or_else(|| "unknown".to_string()),
+            user_outcome: json_string_field(case, "user_outcome")
+                .unwrap_or_else(|| "unknown".to_string()),
+            repair_kind: json_string_field(case, "repair_kind")
+                .unwrap_or_else(|| "unknown".to_string()),
+            target_test_type: json_string_field(case, "target_test_type")
+                .unwrap_or_else(|| "unknown".to_string()),
+            verify_command: json_string_field(case, "verify_command")
+                .unwrap_or_else(|| "unknown".to_string()),
+            static_limitation_category: json_string_field(case, "static_limitation_category"),
+            static_limitation_repair_route: json_string_field(
+                case,
+                "static_limitation_repair_route",
+            ),
+            raw_findings_supporting_only: json_bool_field(case, "raw_findings_supporting_only")
+                .unwrap_or(false),
+            recommended_repair: json_string_field(case, "recommended_repair")
+                .unwrap_or_else(|| "missing recommended repair".to_string()),
+            must_not_claim: json_string_array_field(case, "must_not_claim"),
+            reason: json_string_field(case, "reason")
+                .unwrap_or_else(|| "missing finding-alignment dogfood reason".to_string()),
+        })
+        .collect()
+}
+
+fn dogfood_finding_alignment_run(
+    scenario: &DogfoodFindingAlignmentScenario,
+) -> DogfoodFindingAlignmentRun {
+    let mut errors = Vec::new();
+
+    if scenario.name.trim().is_empty() || scenario.name == "unknown" {
+        errors.push("case id must be present".to_string());
+    }
+    if !scenario.source_pr.starts_with("EffortlessMetrics/ripr#") {
+        errors.push(format!(
+            "source_pr should name a real RIPR PR, got {}",
+            scenario.source_pr
+        ));
+    }
+    if !matches!(
+        scenario.evidence_class.as_str(),
+        "presentation_text" | "config_or_policy_constant"
+    ) {
+        errors.push(format!(
+            "unsupported evidence class for dogfood receipt: {}",
+            scenario.evidence_class
+        ));
+    }
+    if scenario.raw_findings_total < scenario.canonical_items_total {
+        errors.push(format!(
+            "raw findings {} must be >= canonical items {}",
+            scenario.raw_findings_total, scenario.canonical_items_total
+        ));
+    }
+    if scenario.canonical_items_total == 0 {
+        errors.push("canonical_items_total must be non-zero".to_string());
+    }
+    if !scenario.raw_findings_supporting_only {
+        errors.push("raw findings must be marked supporting-only".to_string());
+    }
+    if scenario.recommended_repair.trim().is_empty()
+        || scenario.recommended_repair == "missing recommended repair"
+    {
+        errors.push("recommended_repair must be present".to_string());
+    }
+    if scenario
+        .recommended_repair
+        .to_ascii_lowercase()
+        .contains("mutation")
+    {
+        errors
+            .push("finding alignment dogfood must not route first to mutation testing".to_string());
+    }
+    if scenario.must_not_claim.is_empty() {
+        errors.push("must_not_claim guard list must not be empty".to_string());
+    }
+    if !scenario.must_not_claim.iter().any(|claim| {
+        let claim = claim.to_ascii_lowercase();
+        claim.contains("raw") || claim.contains("test debt") || claim.contains("mutation")
+    }) {
+        errors.push(
+            "must_not_claim guards should preserve raw-signal, test-debt, or mutation boundaries"
+                .to_string(),
+        );
+    }
+
+    match scenario.gap_state.as_str() {
+        "actionable" => {
+            if scenario.user_outcome != "actionable_gap" {
+                errors.push(format!(
+                    "actionable case should have actionable_gap outcome, got {}",
+                    scenario.user_outcome
+                ));
+            }
+            if matches!(scenario.repair_kind.as_str(), "" | "unknown" | "no_action") {
+                errors.push("actionable case must carry a concrete repair kind".to_string());
+            }
+            if matches!(scenario.target_test_type.as_str(), "" | "unknown" | "none") {
+                errors.push("actionable case must carry a target test type".to_string());
+            }
+            if finding_alignment_verify_command_is_missing(&scenario.verify_command) {
+                errors.push("actionable case must carry a verify command".to_string());
+            }
+            if scenario.static_limitation_category.is_some() {
+                errors.push(
+                    "actionable case should not carry a static limitation category".to_string(),
+                );
+            }
+        }
+        "already_observed" => {
+            if scenario.user_outcome != "no_action" {
+                errors.push(format!(
+                    "already_observed case should have no_action outcome, got {}",
+                    scenario.user_outcome
+                ));
+            }
+            if scenario.repair_kind != "no_action" {
+                errors.push("already_observed case should use no_action repair kind".to_string());
+            }
+        }
+        "internal_only" => {
+            if scenario.user_outcome != "no_action" {
+                errors.push(format!(
+                    "internal_only case should have no_action outcome, got {}",
+                    scenario.user_outcome
+                ));
+            }
+            if scenario.repair_kind != "no_action" {
+                errors.push("internal_only case should use no_action repair kind".to_string());
+            }
+        }
+        "static_limitation" => {
+            if scenario.user_outcome != "static_limitation" {
+                errors.push(format!(
+                    "static_limitation case should have static_limitation outcome, got {}",
+                    scenario.user_outcome
+                ));
+            }
+            if scenario
+                .static_limitation_category
+                .as_deref()
+                .is_none_or(str::is_empty)
+            {
+                errors.push("static limitation case must name a limitation category".to_string());
+            }
+            if scenario
+                .static_limitation_repair_route
+                .as_deref()
+                .is_none_or(str::is_empty)
+            {
+                errors
+                    .push("static limitation case must name a limitation repair route".to_string());
+            }
+        }
+        other => errors.push(format!("unsupported gap_state `{other}`")),
+    }
+
+    DogfoodFindingAlignmentRun {
+        name: scenario.name.clone(),
+        source_pr: scenario.source_pr.clone(),
+        evidence_class: scenario.evidence_class.clone(),
+        raw_findings_total: scenario.raw_findings_total,
+        canonical_items_total: scenario.canonical_items_total,
+        gap_state: scenario.gap_state.clone(),
+        actionability: scenario.actionability.clone(),
+        user_outcome: scenario.user_outcome.clone(),
+        repair_kind: scenario.repair_kind.clone(),
+        target_test_type: scenario.target_test_type.clone(),
+        verify_command: scenario.verify_command.clone(),
+        static_limitation_category: scenario.static_limitation_category.clone(),
+        static_limitation_repair_route: scenario.static_limitation_repair_route.clone(),
+        raw_findings_supporting_only: scenario.raw_findings_supporting_only,
+        recommended_repair: scenario.recommended_repair.clone(),
+        must_not_claim: scenario.must_not_claim.clone(),
+        reason: scenario.reason.clone(),
+        errors,
+    }
+}
+
+fn finding_alignment_verify_command_is_missing(value: &str) -> bool {
+    value.trim().is_empty() || value == "unknown" || value == "none"
+}
+
 fn dogfood_pr_inline_comment_scenarios() -> Vec<DogfoodPrInlineCommentScenario> {
     let corpus_path =
         Path::new("fixtures/boundary_gap/expected/pr-inline-comment-publisher/corpus.json");
@@ -23414,18 +24856,21 @@ fn json_number_after(text: &str, needle: &str) -> Option<usize> {
     }
 }
 
-fn dogfood_report_status(
-    runs: &[DogfoodRun],
-    gate_runs: &[DogfoodGateRun],
-    first_action_runs: &[DogfoodFirstActionRun],
-    front_panel_runs: &[DogfoodFrontPanelRun],
-    report_packet_index_runs: &[DogfoodReportPacketIndexRun],
-    preview_projection_runs: &DogfoodPreviewProjectionRuns<'_>,
-    pr_inline_comment_runs: &[DogfoodPrInlineCommentRun],
-) -> &'static str {
+fn dogfood_report_status(inputs: &DogfoodReportInputs<'_>) -> &'static str {
+    let runs = inputs.runs;
+    let gate_runs = inputs.gate_runs;
+    let first_action_runs = inputs.first_action_runs;
+    let first_pr_runs = inputs.first_pr_runs;
+    let front_panel_runs = inputs.front_panel_runs;
+    let report_packet_index_runs = inputs.report_packet_index_runs;
+    let preview_projection_runs = inputs.preview_projection_runs;
+    let finding_alignment_runs = inputs.finding_alignment_runs;
+    let pr_inline_comment_runs = inputs.pr_inline_comment_runs;
+
     if runs.iter().any(|run| !run.errors.is_empty())
         || gate_runs.iter().any(|run| !run.errors.is_empty())
         || first_action_runs.iter().any(|run| !run.errors.is_empty())
+        || first_pr_runs.iter().any(|run| !run.errors.is_empty())
         || front_panel_runs.iter().any(|run| !run.errors.is_empty())
         || report_packet_index_runs
             .iter()
@@ -23442,6 +24887,9 @@ fn dogfood_report_status(
             .editor_gap_cockpit
             .iter()
             .any(|run| !run.errors.is_empty())
+        || finding_alignment_runs
+            .iter()
+            .any(|run| !run.errors.is_empty())
         || pr_inline_comment_runs
             .iter()
             .any(|run| !run.errors.is_empty())
@@ -23452,26 +24900,19 @@ fn dogfood_report_status(
     }
 }
 
-fn dogfood_report_markdown(
-    runs: &[DogfoodRun],
-    gate_runs: &[DogfoodGateRun],
-    first_action_runs: &[DogfoodFirstActionRun],
-    front_panel_runs: &[DogfoodFrontPanelRun],
-    report_packet_index_runs: &[DogfoodReportPacketIndexRun],
-    preview_projection_runs: &DogfoodPreviewProjectionRuns<'_>,
-    pr_inline_comment_runs: &[DogfoodPrInlineCommentRun],
-) -> String {
+fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
+    let runs = inputs.runs;
+    let gate_runs = inputs.gate_runs;
+    let first_action_runs = inputs.first_action_runs;
+    let first_pr_runs = inputs.first_pr_runs;
+    let front_panel_runs = inputs.front_panel_runs;
+    let report_packet_index_runs = inputs.report_packet_index_runs;
+    let preview_projection_runs = inputs.preview_projection_runs;
+    let finding_alignment_runs = inputs.finding_alignment_runs;
+    let pr_inline_comment_runs = inputs.pr_inline_comment_runs;
     let mut body = format!(
         "# ripr dogfood report\n\nStatus: {}\n\nMode: advisory\n\nThis report runs `ripr check --mode fast` against stable in-repo fixture diffs. It records current product output for review without making dogfood a blocking gate yet.\n\n## Summary\n\n",
-        dogfood_report_status(
-            runs,
-            gate_runs,
-            first_action_runs,
-            front_panel_runs,
-            report_packet_index_runs,
-            preview_projection_runs,
-            pr_inline_comment_runs
-        )
+        dogfood_report_status(inputs)
     );
     for run in runs {
         body.push_str(&format!(
@@ -23568,6 +25009,76 @@ fn dogfood_report_markdown(
         body.push_str(&format!(
             "- Expected directory: `{}`\n",
             normalize_path(&run.expected_dir)
+        ));
+        if run.errors.is_empty() {
+            body.push_str("- Errors: none\n\n");
+        } else {
+            body.push_str("- Errors:\n");
+            for error in &run.errors {
+                body.push_str(&format!("  - `{}`\n", markdown_cell(error)));
+            }
+            body.push('\n');
+        }
+    }
+    body.push_str("## First Successful PR Receipts\n\n");
+    body.push_str("These receipts validate checked `start-here.{json,md}` fixture outputs for the first successful PR path. They record that the first screen selects a repairable Rust gap or a clear no-action/blocked state while preserving advisory limits and gate-authority separation.\n\n");
+    body.push_str("- Default CI blocking: no\n");
+    body.push_str(
+        "- Receipt outputs: `fixtures/first_successful_pr/<case>/expected/start-here.{json,md}`\n\n",
+    );
+    body.push_str("| Case | Status | State | Top gap | Verify | Next |\n");
+    body.push_str("| --- | --- | --- | --- | --- | --- |\n");
+    for run in first_pr_runs {
+        body.push_str(&format!(
+            "| `{}` | `{}` | `{}` | `{}` | {} | {} |\n",
+            markdown_cell(&run.name),
+            markdown_cell(&run.status),
+            markdown_cell(&run.state),
+            markdown_cell(&run.top_gap_kind),
+            run.verify_command
+                .as_deref()
+                .map(markdown_cell)
+                .map(|value| format!("`{value}`"))
+                .unwrap_or_else(|| "none".to_string()),
+            run.next_command
+                .as_deref()
+                .map(markdown_cell)
+                .map(|value| format!("`{value}`"))
+                .unwrap_or_else(|| "none".to_string())
+        ));
+    }
+    body.push('\n');
+    for run in first_pr_runs {
+        body.push_str(&format!("### First PR `{}`\n\n", run.name));
+        body.push_str(&format!("- Status: `{}`\n", markdown_cell(&run.status)));
+        body.push_str(&format!(
+            "- Expected status: `{}`\n",
+            markdown_cell(&run.expected_status)
+        ));
+        body.push_str(&format!("- State: `{}`\n", markdown_cell(&run.state)));
+        body.push_str(&format!(
+            "- Expected state: `{}`\n",
+            markdown_cell(&run.expected_state)
+        ));
+        body.push_str(&format!(
+            "- Top gap kind: `{}`\n",
+            markdown_cell(&run.top_gap_kind)
+        ));
+        body.push_str(&format!(
+            "- Receipt JSON: `{}`\n",
+            normalize_path(&run.json_path)
+        ));
+        body.push_str(&format!(
+            "- Receipt Markdown: `{}`\n",
+            normalize_path(&run.markdown_path)
+        ));
+        body.push_str(&format!(
+            "- Expected directory: `{}`\n",
+            normalize_path(&run.expected_dir)
+        ));
+        body.push_str(&format!(
+            "- Description: {}\n",
+            markdown_cell(&run.description)
         ));
         if run.errors.is_empty() {
             body.push_str("- Errors: none\n\n");
@@ -24003,6 +25514,96 @@ fn dogfood_report_markdown(
             body.push('\n');
         }
     }
+    body.push_str("## Finding Alignment Receipts\n\n");
+    body.push_str("These receipts validate real RIPR PR examples of the raw-finding -> canonical-item -> user-outcome model. They keep raw findings as supporting evidence, require canonical item counts and user outcomes, and check that actionable items have repair and verification routes while static limitations name analyzer repair routes. They do not change PR/CI rendering, LSP/editor behavior, gates, public scores, generated tests, provider calls, source edits, or mutation execution.\n\n");
+    body.push_str("- Default CI blocking: no\n");
+    body.push_str("- Receipt input: `fixtures/finding-alignment-dogfood/corpus.json`\n\n");
+    body.push_str("| Case | PR | Class | Raw -> canonical | State | Actionability | Outcome | Repair | Verify | Static limitation |\n");
+    body.push_str("| --- | --- | --- | ---: | --- | --- | --- | --- | --- | --- |\n");
+    for run in finding_alignment_runs {
+        body.push_str(&format!(
+            "| `{}` | `{}` | `{}` | {} -> {} | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` |\n",
+            markdown_cell(&run.name),
+            markdown_cell(&run.source_pr),
+            markdown_cell(&run.evidence_class),
+            run.raw_findings_total,
+            run.canonical_items_total,
+            markdown_cell(&run.gap_state),
+            markdown_cell(&run.actionability),
+            markdown_cell(&run.user_outcome),
+            markdown_cell(&run.repair_kind),
+            markdown_cell(&run.verify_command),
+            markdown_cell(run.static_limitation_category.as_deref().unwrap_or("none"))
+        ));
+    }
+    body.push('\n');
+    for run in finding_alignment_runs {
+        body.push_str(&format!("### Finding Alignment `{}`\n\n", run.name));
+        body.push_str(&format!(
+            "- Source PR: `{}`\n",
+            markdown_cell(&run.source_pr)
+        ));
+        body.push_str(&format!(
+            "- Evidence class: `{}`\n",
+            markdown_cell(&run.evidence_class)
+        ));
+        body.push_str(&format!(
+            "- Counts: {} raw finding(s) -> {} canonical item(s)\n",
+            run.raw_findings_total, run.canonical_items_total
+        ));
+        body.push_str(&format!(
+            "- Gap state: `{}`\n",
+            markdown_cell(&run.gap_state)
+        ));
+        body.push_str(&format!(
+            "- Actionability: `{}`\n",
+            markdown_cell(&run.actionability)
+        ));
+        body.push_str(&format!(
+            "- User outcome: `{}`\n",
+            markdown_cell(&run.user_outcome)
+        ));
+        body.push_str(&format!(
+            "- Recommended repair: {}\n",
+            markdown_cell(&run.recommended_repair)
+        ));
+        body.push_str(&format!(
+            "- Repair kind: `{}` / target `{}`\n",
+            markdown_cell(&run.repair_kind),
+            markdown_cell(&run.target_test_type)
+        ));
+        body.push_str(&format!(
+            "- Verify command: `{}`\n",
+            markdown_cell(&run.verify_command)
+        ));
+        body.push_str(&format!(
+            "- Static limitation: `{}` via `{}`\n",
+            markdown_cell(run.static_limitation_category.as_deref().unwrap_or("none")),
+            markdown_cell(
+                run.static_limitation_repair_route
+                    .as_deref()
+                    .unwrap_or("none")
+            )
+        ));
+        body.push_str(&format!(
+            "- Raw findings supporting-only: {}\n",
+            run.raw_findings_supporting_only
+        ));
+        body.push_str(&format!(
+            "- Must not claim: `{}`\n",
+            markdown_cell(&run.must_not_claim.join("; "))
+        ));
+        body.push_str(&format!("- Reason: {}\n", markdown_cell(&run.reason)));
+        if run.errors.is_empty() {
+            body.push_str("- Errors: none\n\n");
+        } else {
+            body.push_str("- Errors:\n");
+            for error in &run.errors {
+                body.push_str(&format!("  - `{}`\n", markdown_cell(error)));
+            }
+            body.push('\n');
+        }
+    }
     body.push_str("## PR Inline Comment Publisher Receipts\n\n");
     body.push_str("These receipts validate checked `comment-publish-plan.{json,md}` fixture outputs for the documented Campaign 26 inline-comment publisher routes. They verify opt-in modes, safe publish flags, summary-only exclusion, cap behavior, dedupe/upsert, stale-existing cleanup planning, fork or token blockers, missing-input blockers, and advisory limits without posting real PR comments.\n\n");
     body.push_str("- Default CI blocking: no\n");
@@ -24177,26 +25778,19 @@ fn dogfood_report_markdown(
     body
 }
 
-fn dogfood_report_json(
-    runs: &[DogfoodRun],
-    gate_runs: &[DogfoodGateRun],
-    first_action_runs: &[DogfoodFirstActionRun],
-    front_panel_runs: &[DogfoodFrontPanelRun],
-    report_packet_index_runs: &[DogfoodReportPacketIndexRun],
-    preview_projection_runs: &DogfoodPreviewProjectionRuns<'_>,
-    pr_inline_comment_runs: &[DogfoodPrInlineCommentRun],
-) -> String {
+fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
+    let runs = inputs.runs;
+    let gate_runs = inputs.gate_runs;
+    let first_action_runs = inputs.first_action_runs;
+    let first_pr_runs = inputs.first_pr_runs;
+    let front_panel_runs = inputs.front_panel_runs;
+    let report_packet_index_runs = inputs.report_packet_index_runs;
+    let preview_projection_runs = inputs.preview_projection_runs;
+    let finding_alignment_runs = inputs.finding_alignment_runs;
+    let pr_inline_comment_runs = inputs.pr_inline_comment_runs;
     let mut body = format!(
         "{{\n  \"schema_version\": \"0.1\",\n  \"status\": \"{}\",\n  \"advisory\": true,\n  \"runs\": [\n",
-        dogfood_report_status(
-            runs,
-            gate_runs,
-            first_action_runs,
-            front_panel_runs,
-            report_packet_index_runs,
-            preview_projection_runs,
-            pr_inline_comment_runs
-        )
+        dogfood_report_status(inputs)
     );
     for (index, run) in runs.iter().enumerate() {
         if index > 0 {
@@ -24299,6 +25893,66 @@ fn dogfood_report_json(
         body.push_str(&format!(
             "        \"expected_static_movement\": \"{}\",\n",
             json_escape(&run.expected_static_movement)
+        ));
+        body.push_str("        \"errors\": [");
+        write_json_string_array(&mut body, &run.errors);
+        body.push_str("]\n      }");
+    }
+    body.push_str("\n    ]\n  },\n  \"first_successful_pr\": {\n");
+    body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str("    \"receipt_dir\": \"fixtures/first_successful_pr\",\n    \"cases\": [\n");
+    for (index, run) in first_pr_runs.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("      {\n");
+        body.push_str(&format!(
+            "        \"name\": \"{}\",\n",
+            json_escape(&run.name)
+        ));
+        body.push_str(&format!(
+            "        \"expected_dir\": \"{}\",\n",
+            json_escape(&normalize_path(&run.expected_dir))
+        ));
+        body.push_str(&format!(
+            "        \"json_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.json_path))
+        ));
+        body.push_str(&format!(
+            "        \"markdown_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.markdown_path))
+        ));
+        body.push_str(&format!(
+            "        \"status\": \"{}\",\n",
+            json_escape(&run.status)
+        ));
+        body.push_str(&format!(
+            "        \"state\": \"{}\",\n",
+            json_escape(&run.state)
+        ));
+        body.push_str(&format!(
+            "        \"top_gap_kind\": \"{}\",\n",
+            json_escape(&run.top_gap_kind)
+        ));
+        body.push_str(&format!(
+            "        \"verify_command\": {},\n",
+            json_optional_string(run.verify_command.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"next_command\": {},\n",
+            json_optional_string(run.next_command.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"expected_status\": \"{}\",\n",
+            json_escape(&run.expected_status)
+        ));
+        body.push_str(&format!(
+            "        \"expected_state\": \"{}\",\n",
+            json_escape(&run.expected_state)
+        ));
+        body.push_str(&format!(
+            "        \"description\": \"{}\",\n",
+            json_escape(&run.description)
         ));
         body.push_str("        \"errors\": [");
         write_json_string_array(&mut body, &run.errors);
@@ -24761,6 +26415,87 @@ fn dogfood_report_json(
         write_json_string_array(&mut body, &run.errors);
         body.push_str("]\n      }");
     }
+    body.push_str("\n    ]\n  },\n  \"finding_alignment\": {\n");
+    body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str(
+        "    \"receipt_dir\": \"fixtures/finding-alignment-dogfood\",\n    \"cases\": [\n",
+    );
+    for (index, run) in finding_alignment_runs.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("      {\n");
+        body.push_str(&format!(
+            "        \"name\": \"{}\",\n",
+            json_escape(&run.name)
+        ));
+        body.push_str(&format!(
+            "        \"source_pr\": \"{}\",\n",
+            json_escape(&run.source_pr)
+        ));
+        body.push_str(&format!(
+            "        \"evidence_class\": \"{}\",\n",
+            json_escape(&run.evidence_class)
+        ));
+        body.push_str(&format!(
+            "        \"raw_findings_total\": {},\n",
+            run.raw_findings_total
+        ));
+        body.push_str(&format!(
+            "        \"canonical_items_total\": {},\n",
+            run.canonical_items_total
+        ));
+        body.push_str(&format!(
+            "        \"gap_state\": \"{}\",\n",
+            json_escape(&run.gap_state)
+        ));
+        body.push_str(&format!(
+            "        \"actionability\": \"{}\",\n",
+            json_escape(&run.actionability)
+        ));
+        body.push_str(&format!(
+            "        \"user_outcome\": \"{}\",\n",
+            json_escape(&run.user_outcome)
+        ));
+        body.push_str(&format!(
+            "        \"repair_kind\": \"{}\",\n",
+            json_escape(&run.repair_kind)
+        ));
+        body.push_str(&format!(
+            "        \"target_test_type\": \"{}\",\n",
+            json_escape(&run.target_test_type)
+        ));
+        body.push_str(&format!(
+            "        \"verify_command\": \"{}\",\n",
+            json_escape(&run.verify_command)
+        ));
+        body.push_str(&format!(
+            "        \"static_limitation_category\": {},\n",
+            json_optional_string(run.static_limitation_category.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"static_limitation_repair_route\": {},\n",
+            json_optional_string(run.static_limitation_repair_route.as_deref())
+        ));
+        body.push_str(&format!(
+            "        \"raw_findings_supporting_only\": {},\n",
+            run.raw_findings_supporting_only
+        ));
+        body.push_str(&format!(
+            "        \"recommended_repair\": \"{}\",\n",
+            json_escape(&run.recommended_repair)
+        ));
+        body.push_str("        \"must_not_claim\": [");
+        write_json_string_array(&mut body, &run.must_not_claim);
+        body.push_str("],\n");
+        body.push_str(&format!(
+            "        \"reason\": \"{}\",\n",
+            json_escape(&run.reason)
+        ));
+        body.push_str("        \"errors\": [");
+        write_json_string_array(&mut body, &run.errors);
+        body.push_str("]\n      }");
+    }
     body.push_str("\n    ]\n  },\n  \"pr_inline_comment_publisher\": {\n");
     body.push_str("    \"default_ci_blocking\": false,\n");
     body.push_str("    \"default_inline_comments\": \"off\",\n");
@@ -25054,6 +26789,16 @@ fn validate_capabilities(
 
 fn parse_capabilities_manifest(path: &Path) -> Result<(Vec<Capability>, Vec<String>), String> {
     let text = read_text_lossy(path)?;
+    Ok(parse_capabilities_manifest_text(
+        &normalize_path(path),
+        &text,
+    ))
+}
+
+fn parse_capabilities_manifest_text(
+    path_label: &str,
+    text: &str,
+) -> (Vec<Capability>, Vec<String>) {
     let mut capabilities = Vec::new();
     let mut violations = Vec::new();
     let mut current: Option<Capability> = None;
@@ -25069,9 +26814,7 @@ fn parse_capabilities_manifest(path: &Path) -> Result<(Vec<Capability>, Vec<Stri
             if trimmed.starts_with(']') {
                 let Some(mut capability) = current.take() else {
                     violations.push(format!(
-                        "{}:{} array `{key}` is outside a capability entry",
-                        normalize_path(path),
-                        start_line
+                        "{path_label}:{start_line} array `{key}` is outside a capability entry"
                     ));
                     active_array = None;
                     continue;
@@ -25090,9 +26833,7 @@ fn parse_capabilities_manifest(path: &Path) -> Result<(Vec<Capability>, Vec<Stri
             match parse_array_item(trimmed) {
                 Ok(Some(value)) => values.push(value),
                 Ok(None) => {}
-                Err(message) => {
-                    violations.push(format!("{}:{line_number} {message}", normalize_path(path)))
-                }
+                Err(message) => violations.push(format!("{path_label}:{line_number} {message}")),
             }
             continue;
         }
@@ -25107,18 +26848,14 @@ fn parse_capabilities_manifest(path: &Path) -> Result<(Vec<Capability>, Vec<Stri
             continue;
         }
         let Some((key, value)) = trimmed.split_once('=') else {
-            violations.push(format!(
-                "{}:{line_number} expected `key = value`",
-                normalize_path(path)
-            ));
+            violations.push(format!("{path_label}:{line_number} expected `key = value`"));
             continue;
         };
         let key = key.trim();
         let value = value.trim();
         let Some(capability) = current.as_mut() else {
             violations.push(format!(
-                "{}:{line_number} `{key}` appears outside a [[capability]] entry",
-                normalize_path(path)
+                "{path_label}:{line_number} `{key}` appears outside a [[capability]] entry"
             ));
             continue;
         };
@@ -25131,9 +26868,7 @@ fn parse_capabilities_manifest(path: &Path) -> Result<(Vec<Capability>, Vec<Stri
                 Ok(values) => {
                     assign_capability_array(capability, key, values, line_number, &mut violations);
                 }
-                Err(message) => {
-                    violations.push(format!("{}:{line_number} {message}", normalize_path(path)))
-                }
+                Err(message) => violations.push(format!("{path_label}:{line_number} {message}")),
             }
             continue;
         }
@@ -25141,22 +26876,19 @@ fn parse_capabilities_manifest(path: &Path) -> Result<(Vec<Capability>, Vec<Stri
             Ok(parsed) => {
                 assign_capability_string(capability, key, parsed, line_number, &mut violations);
             }
-            Err(message) => {
-                violations.push(format!("{}:{line_number} {message}", normalize_path(path)))
-            }
+            Err(message) => violations.push(format!("{path_label}:{line_number} {message}")),
         }
     }
 
     if let Some((key, _, start_line)) = active_array {
         violations.push(format!(
-            "{}:{start_line} array `{key}` is missing closing `]`",
-            normalize_path(path)
+            "{path_label}:{start_line} array `{key}` is missing closing `]`"
         ));
     }
     if let Some(capability) = current {
         capabilities.push(capability);
     }
-    Ok((capabilities, violations))
+    (capabilities, violations)
 }
 
 fn assign_capability_string(
@@ -34179,9 +35911,10 @@ mod tests {
     use super::{
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
         CheckStatus, CheckViolation, CiFullEvidenceGate, CommandCatalogEntry, CwdCommand,
-        DogfoodEditorGapCockpitRun, DogfoodFirstActionRun, DogfoodFrontPanelRun, DogfoodGateRun,
+        DogfoodEditorGapCockpitRun, DogfoodFindingAlignmentRun, DogfoodFindingAlignmentScenario,
+        DogfoodFirstActionRun, DogfoodFirstPrRun, DogfoodFrontPanelRun, DogfoodGateRun,
         DogfoodGeneratedCiCockpitRun, DogfoodLanguagePreviewRun, DogfoodPrInlineCommentRun,
-        DogfoodPreviewProjectionRuns, DogfoodReportPacketIndexRun, DogfoodRun,
+        DogfoodPreviewProjectionRuns, DogfoodReportInputs, DogfoodReportPacketIndexRun, DogfoodRun,
         EvidenceQualityScorecardInput, EvidenceQualityScorecardInputs,
         EvidenceQualityScorecardReport, EvidenceQualityTrendInputs, EvidenceQualityTrendReport,
         FixKind, GENERATED_CI_FIRST_ACTION_REPAIR, GENERATED_CI_FRONT_PANEL_REPAIR,
@@ -34203,18 +35936,20 @@ mod tests {
         command_catalog, command_catalog_violations, commands_report_json,
         commands_report_markdown, critic_findings, days_from_civil, dogfood_class_counts,
         dogfood_editor_gap_cockpit_run, dogfood_editor_gap_cockpit_scenarios,
-        dogfood_first_action_scenarios, dogfood_gate_adoption_scenarios,
-        dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
-        dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
-        dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
-        dogfood_pr_review_front_panel_scenarios, dogfood_report_json, dogfood_report_markdown,
-        dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
-        evaluate_semantic_no_panic_policy, evidence_quality_scorecard_from_values,
-        evidence_quality_scorecard_json, evidence_quality_scorecard_markdown,
-        evidence_quality_trend_from_values, evidence_quality_trend_json,
-        evidence_quality_trend_markdown, extract_json_object_usize_map, extract_json_string,
-        extract_json_warnings, extract_workflow_run_blocks,
-        finding_alignment_raw_to_canonical_ratio, finish_worktree_doctor_report,
+        dogfood_finding_alignment_run, dogfood_finding_alignment_scenarios,
+        dogfood_first_action_scenarios, dogfood_first_pr_run, dogfood_first_pr_scenarios,
+        dogfood_gate_adoption_scenarios, dogfood_generated_ci_cockpit_run_from_workflow,
+        dogfood_language_preview_run, dogfood_language_preview_scenarios,
+        dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
+        dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
+        dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
+        dogfood_report_packet_index_scenarios, evaluate_semantic_no_panic_policy,
+        evidence_quality_scorecard_from_values, evidence_quality_scorecard_json,
+        evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
+        evidence_quality_trend_json, evidence_quality_trend_markdown,
+        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
+        extract_workflow_run_blocks, finding_alignment_raw_to_canonical_ratio,
+        finding_alignment_verify_command_is_missing, finish_worktree_doctor_report,
         first_line_difference, forbidden_panic_patterns, generated_clean_violations,
         gh_pr_safe_next_action, gh_pr_status_json, gh_pr_status_markdown, gh_pr_status_readiness,
         github_event_pull_request_title_from_text, glob_matches, golden_changes_without_blessing,
@@ -34242,12 +35977,13 @@ mod tests {
         pr_body_validation_warning, pr_checks_summary, pr_ready_json, pr_ready_markdown,
         pr_ready_next_action, pr_ready_status, pr_ready_status_from_report_status,
         pr_sensitive_file_reason, pr_shape_warnings, pr_summary_body, pr_title_family,
-        pr_triage_findings, pr_triage_json, pr_triage_markdown, precommit_report_body,
-        public_contract_rows, read_lsp_cockpit_json_value, read_mutation_input_json, receipt_json,
-        receipt_specs, receipt_status_from_reports, render_no_panic_allowlist_proposals_markdown,
-        render_no_panic_allowlist_proposals_toml, repo_badge_artifact_command_args,
-        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
-        repo_exposure_latency_json, repo_exposure_latency_markdown, repo_exposure_latency_run,
+        pr_triage_findings, pr_triage_json, pr_triage_markdown, pr_triage_queue_dispositions,
+        precommit_report_body, public_contract_rows, read_lsp_cockpit_json_value,
+        read_mutation_input_json, receipt_json, receipt_specs, receipt_status_from_reports,
+        render_no_panic_allowlist_proposals_markdown, render_no_panic_allowlist_proposals_toml,
+        repo_badge_artifact_command_args, repo_badge_artifact_jobs,
+        repo_badge_artifacts_summary_markdown, repo_exposure_latency_json,
+        repo_exposure_latency_markdown, repo_exposure_latency_run,
         repo_exposure_latency_run_from_output, repo_exposure_latency_status,
         repo_exposure_latency_trace, repo_root, repo_seam_inventory_command_args_for_root,
         report_index_json, report_index_markdown, report_index_missing_expected,
@@ -34255,8 +35991,10 @@ mod tests {
         ripr_command_literals_in_text, ripr_debug_binary, ripr_pre_commit_hook,
         run_ci_full_evidence_gates, sarif_policy_report_json, sarif_policy_report_markdown,
         semantic_selector_matches, should_scan_static_language_path, should_skip_path,
-        sorted_allowlist_content, spec_id_from_path, spec_ids_in_text, spec_numbering_violations,
-        specs, static_language_allowlist_covers, status_for_report, suggested_fixes_patch,
+        sorted_allowlist_content, sorted_capability_blocks_content, sorted_command_catalog_content,
+        sorted_markdown_index_table_content, sorted_traceability_behavior_blocks_content,
+        spec_id_from_path, spec_ids_in_text, spec_numbering_violations, specs,
+        static_language_allowlist_covers, status_for_report, suggested_fixes_patch,
         suspicious_runtime_file_names, targeted_test_outcome, targeted_test_outcome_report_json,
         targeted_test_outcome_report_markdown, test_efficiency_entry, test_efficiency_report_json,
         test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
@@ -34404,6 +36142,7 @@ mod tests {
             write_editor_first_run_usability_corpus(root);
             write_editor_first_run_status(root, "server_missing", "active", None);
             write_editor_first_run_actions(root, "setup_ok", &[]);
+            write_editor_first_run_actions(root, "receipt_found", &[]);
             write_editor_first_run_actions(root, "artifact_missing", &["Copy first repair packet"]);
             write(
                 &root.join(
@@ -34427,6 +36166,11 @@ mod tests {
             assert!(violations.iter().any(|violation| {
                 violation
                     .contains("editor first-run usability case setup_ok must include Copy first repair packet")
+            }));
+            assert!(violations.iter().any(|violation| {
+                violation.contains(
+                    "editor first-run usability case receipt_found must include Copy first repair packet",
+                )
             }));
             assert!(violations.iter().any(|violation| {
                 violation.contains(
@@ -34483,16 +36227,18 @@ mod tests {
 
     fn editor_first_run_projection(case: &str) -> &'static str {
         match case {
-            "server_missing" | "language_disabled" | "adapter_unavailable" | "artifact_stale" => {
-                "fail_closed"
-            }
+            "server_missing"
+            | "language_disabled"
+            | "adapter_unavailable"
+            | "artifact_stale"
+            | "receipt_gap_mismatch" => "fail_closed",
             _ => "active",
         }
     }
 
     fn editor_first_run_next_action(case: &str) -> Option<&'static str> {
         match case {
-            "setup_ok" | "receipt_improved" | "receipt_unchanged" => {
+            "setup_ok" | "receipt_found" | "receipt_improved" | "receipt_unchanged" => {
                 Some("copy first repair packet")
             }
             _ => None,
@@ -34501,7 +36247,7 @@ mod tests {
 
     fn editor_first_run_actions(case: &str) -> Vec<&'static str> {
         match case {
-            "setup_ok" | "receipt_improved" | "receipt_unchanged" => {
+            "setup_ok" | "receipt_found" | "receipt_improved" | "receipt_unchanged" => {
                 vec![
                     "Copy first repair packet",
                     "Refresh Analysis - Saved Workspace Check",
@@ -34515,6 +36261,8 @@ mod tests {
         match case {
             "receipt_improved" => "receipt_movement_improved",
             "receipt_unchanged" => "receipt_movement_unchanged",
+            "receipt_found" => "receipt_found",
+            "receipt_gap_mismatch" => "receipt_gap_mismatch",
             "artifact_stale" => "receipt_stale",
             _ => "receipt_missing",
         }
@@ -36234,6 +37982,72 @@ mod tests {
         super::validate_gap_decision_ledger_fixture_corpus_at(&corpus, &mut violations)?;
 
         assert_eq!(violations, Vec::<String>::new());
+        Ok(())
+    }
+
+    fn first_successful_pr_corpus_path() -> Result<PathBuf, String> {
+        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask manifest must have workspace parent".to_string())?;
+        Ok(repo_root.join("fixtures/first_successful_pr/corpus.json"))
+    }
+
+    #[test]
+    fn first_successful_pr_corpus_is_valid() -> Result<(), String> {
+        let corpus = first_successful_pr_corpus_path()?;
+        let mut violations = Vec::new();
+        super::validate_first_successful_pr_fixture_corpus_at(&corpus, &mut violations)?;
+
+        assert_eq!(violations, Vec::<String>::new());
+        Ok(())
+    }
+
+    #[test]
+    fn first_successful_pr_corpus_reports_contract_drift() -> Result<(), String> {
+        let root = temp_dir("first-successful-pr-invalid");
+        let corpus = root.join("corpus.json");
+        write(
+            &corpus,
+            r#"{
+  "kind": "wrong",
+  "schema_version": "0.2",
+  "spec": "RIPR-SPEC-9999",
+  "cases": [
+    {
+      "id": "boundary-gap",
+      "description": "bad case",
+      "expected_status": "blocked",
+      "expected_state": "wrong_state"
+    },
+    {
+      "id": "boundary-gap",
+      "description": "duplicate case",
+      "expected_status": "actionable",
+      "expected_state": "top_gap"
+    },
+    {
+      "id": "output-contract-gap",
+      "description": "wrong status case",
+      "expected_status": "blocked",
+      "expected_state": "wrong_state"
+    }
+  ]
+}"#,
+        );
+        let mut violations = Vec::new();
+        super::validate_first_successful_pr_fixture_corpus_at(&corpus, &mut violations)?;
+        let report = violations.join("\n");
+
+        assert!(report.contains("kind must be first_successful_pr_corpus"));
+        assert!(report.contains("schema_version must be 0.1"));
+        assert!(report.contains("spec must be RIPR-SPEC-0051"));
+        assert!(report.contains("case boundary-gap is duplicated"));
+        assert!(report.contains("case output-contract-gap must be actionable/top_gap"));
+        assert!(report.contains("is missing case empty-diff"));
+        assert!(report.contains("is missing case blocked-ledger"));
+        assert!(report.contains("inputs/reports/gap-decision-ledger.json"));
+        assert!(report.contains("expected/start-here.json"));
+        assert!(report.contains("expected/start-here.md"));
         Ok(())
     }
 
@@ -39140,13 +40954,331 @@ jobs:
     }
 
     #[test]
-    fn suggested_fixes_patch_sorts_allowlists_only() -> Result<(), String> {
+    fn sorted_markdown_index_table_content_sorts_index_rows() {
+        let input = "# Specs\n\n## Index\n\n| Spec | Status | Topic |\n| --- | --- | --- |\n| [RIPR-SPEC-0002](RIPR-SPEC-0002-b.md) | proposed | B |\n| [RIPR-SPEC-0001](RIPR-SPEC-0001-a.md) | accepted | A |\n\nAfter.\n";
+        let sorted = sorted_markdown_index_table_content(input);
+
+        assert_eq!(
+            sorted,
+            "# Specs\n\n## Index\n\n| Spec | Status | Topic |\n| --- | --- | --- |\n| [RIPR-SPEC-0001](RIPR-SPEC-0001-a.md) | accepted | A |\n| [RIPR-SPEC-0002](RIPR-SPEC-0002-b.md) | proposed | B |\n\nAfter.\n"
+        );
+    }
+
+    #[test]
+    fn sorted_traceability_behavior_blocks_content_sorts_blocks_by_id() {
+        let prefix = "# Traceability\n\n";
+        let block_b = "[[behavior]]\n# keep b\nid = \"RIPR-SPEC-0002\"\nname = \"B\"\n\n";
+        let block_a = "[[behavior]]\n# keep a\nid = \"RIPR-SPEC-0001\"\nname = \"A\"\n\n";
+        let input = format!("{prefix}{block_b}{block_a}");
+        let sorted = sorted_traceability_behavior_blocks_content(&input);
+
+        assert_eq!(sorted, format!("{prefix}{block_a}{block_b}"));
+    }
+
+    #[test]
+    fn sorted_traceability_behavior_blocks_content_skips_unsafe_manifests() {
+        let duplicate =
+            "[[behavior]]\nid = \"RIPR-SPEC-0001\"\n\n[[behavior]]\nid = \"RIPR-SPEC-0001\"\n";
+        let missing = "[[behavior]]\nname = \"A\"\n\n[[behavior]]\nid = \"RIPR-SPEC-0002\"\n";
+        let invalid =
+            "[[behavior]]\nid = \"not-a-spec\"\n\n[[behavior]]\nid = \"RIPR-SPEC-0002\"\n";
+        let duplicate_key = "[[behavior]]\nid = \"RIPR-SPEC-0002\"\ntests = []\ntests = [\n  \"example\",\n]\n\n[[behavior]]\nid = \"RIPR-SPEC-0001\"\n";
+        let unterminated_array = "[[behavior]]\nid = \"RIPR-SPEC-0002\"\ntests = [\n  \"example\",\n\n[[behavior]]\nid = \"RIPR-SPEC-0001\"\n";
+        let malformed_inline_array = "[[behavior]]\nid = \"RIPR-SPEC-0002\"\ntests = [\"example\"\n\n[[behavior]]\nid = \"RIPR-SPEC-0001\"\n";
+
+        assert_eq!(
+            sorted_traceability_behavior_blocks_content(duplicate),
+            duplicate
+        );
+        assert_eq!(
+            sorted_traceability_behavior_blocks_content(missing),
+            missing
+        );
+        assert_eq!(
+            sorted_traceability_behavior_blocks_content(invalid),
+            invalid
+        );
+        assert_eq!(
+            sorted_traceability_behavior_blocks_content(duplicate_key),
+            duplicate_key
+        );
+        assert_eq!(
+            sorted_traceability_behavior_blocks_content(unterminated_array),
+            unterminated_array
+        );
+        assert_eq!(
+            sorted_traceability_behavior_blocks_content(malformed_inline_array),
+            malformed_inline_array
+        );
+    }
+
+    #[test]
+    fn sorted_capability_blocks_content_sorts_blocks_by_spec_then_id() {
+        let prefix = "# Capabilities\n\n";
+        let block_c = "[[capability]]\n# keep c\nid = \"alpha_capability\"\nspec = \"RIPR-SPEC-0001\"\nname = \"Alpha\"\n\n";
+        let block_b = "[[capability]]\n# keep b\nid = \"zeta_capability\"\nspec = \"RIPR-SPEC-0001\"\nname = \"Zeta\"\n\n";
+        let block_a = "[[capability]]\n# keep a\nid = \"beta_capability\"\nspec = \"RIPR-SPEC-0002\"\nname = \"Beta\"\n\n";
+        let input = format!("{prefix}{block_a}{block_b}{block_c}");
+        let sorted = sorted_capability_blocks_content(&input);
+
+        assert_eq!(sorted, format!("{prefix}{block_c}{block_b}{block_a}"));
+    }
+
+    #[test]
+    fn sorted_capability_blocks_content_preserves_prefix_and_whole_blocks() {
+        let prefix = "# Capabilities\n\n# human notes stay above generated ordering\n\n";
+        let block_b = "[[capability]]\nid = \"beta_capability\"\nspec = \"RIPR-SPEC-0002\"\n# block comment stays with beta\nname = \"Beta\"\n\n";
+        let block_a = "[[capability]]\nid = \"alpha_capability\"\nspec = \"RIPR-SPEC-0001\"\nname = \"Alpha\"\nfixtures = [\n  \"fixtures/alpha\",\n]\n\n";
+        let input = format!("{prefix}{block_b}{block_a}");
+        let sorted = sorted_capability_blocks_content(&input);
+
+        assert!(sorted.starts_with(prefix));
+        assert_eq!(sorted, format!("{prefix}{block_a}{block_b}"));
+    }
+
+    #[test]
+    fn sorted_capability_blocks_content_skips_unsafe_manifests() {
+        let duplicate = "[[capability]]\nid = \"alpha\"\nspec = \"RIPR-SPEC-0001\"\n\n[[capability]]\nid = \"alpha\"\nspec = \"RIPR-SPEC-0002\"\n";
+        let missing = "[[capability]]\nname = \"A\"\nspec = \"RIPR-SPEC-0001\"\n\n[[capability]]\nid = \"beta\"\nspec = \"RIPR-SPEC-0002\"\n";
+        let invalid_id = "[[capability]]\nid = \"NotSnake\"\nspec = \"RIPR-SPEC-0001\"\n\n[[capability]]\nid = \"beta\"\nspec = \"RIPR-SPEC-0002\"\n";
+        let invalid_spec = "[[capability]]\nid = \"beta\"\nspec = \"not-a-spec\"\n\n[[capability]]\nid = \"alpha\"\nspec = \"RIPR-SPEC-0002\"\n";
+        let duplicate_key = "[[capability]]\nid = \"beta\"\nspec = \"RIPR-SPEC-0002\"\nevidence = []\nevidence = [\n  \"example\",\n]\n\n[[capability]]\nid = \"alpha\"\nspec = \"RIPR-SPEC-0001\"\n";
+        let unterminated_array = "[[capability]]\nid = \"beta\"\nspec = \"RIPR-SPEC-0002\"\nevidence = [\n  \"example\",\n\n[[capability]]\nid = \"alpha\"\nspec = \"RIPR-SPEC-0001\"\n";
+        let malformed_inline_array = "[[capability]]\nid = \"beta\"\nspec = \"RIPR-SPEC-0002\"\nevidence = [example]\n\n[[capability]]\nid = \"alpha\"\nspec = \"RIPR-SPEC-0001\"\n";
+
+        assert_eq!(sorted_capability_blocks_content(duplicate), duplicate);
+        assert_eq!(sorted_capability_blocks_content(missing), missing);
+        assert_eq!(sorted_capability_blocks_content(invalid_id), invalid_id);
+        assert_eq!(sorted_capability_blocks_content(invalid_spec), invalid_spec);
+        assert_eq!(
+            sorted_capability_blocks_content(duplicate_key),
+            duplicate_key
+        );
+        assert_eq!(
+            sorted_capability_blocks_content(unterminated_array),
+            unterminated_array
+        );
+        assert_eq!(
+            sorted_capability_blocks_content(malformed_inline_array),
+            malformed_inline_array
+        );
+    }
+
+    #[test]
+    fn sorted_command_catalog_content_sorts_entries_by_help_order() {
+        let input = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        command_entry(
+            "check-pr",
+            "non_mutating_check",
+            "target/ripr/reports",
+            false,
+            "Review-ready gate.",
+        ),
+        command_entry(
+            "shape",
+            "mutating",
+            "source files",
+            false,
+            "Runs deterministic shaping.",
+        ),
+    ]
+}
+"#;
+        let sorted = sorted_command_catalog_content(input);
+
+        assert!(
+            sorted
+                .find("\"shape\"")
+                .zip(sorted.find("\"check-pr\""))
+                .is_some_and(|(shape, check_pr)| shape < check_pr)
+        );
+    }
+
+    #[test]
+    fn sorted_command_catalog_content_sorts_commands_with_shared_roots() {
+        let input = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        command_entry(
+            "goldens bless <name> --reason <reason>",
+            "mutating",
+            "fixtures/**/expected/**",
+            true,
+            "Updates golden expected outputs.",
+        ),
+        command_entry(
+            "goldens check",
+            "non_mutating_check",
+            "target/ripr/reports/goldens.md",
+            false,
+            "Checks golden drift.",
+        ),
+    ]
+}
+"#;
+        let sorted = sorted_command_catalog_content(input);
+
+        assert!(
+            sorted
+                .find("\"goldens check\"")
+                .zip(sorted.find("\"goldens bless <name> --reason <reason>\""))
+                .is_some_and(|(check, bless)| check < bless)
+        );
+    }
+
+    #[test]
+    fn sorted_command_catalog_content_skips_unknown_or_malformed_catalogs() {
+        let unknown = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        command_entry(
+            "not-a-real-command",
+            "report_only",
+            "target/ripr/reports",
+            false,
+            "Unknown command.",
+        ),
+        command_entry(
+            "shape",
+            "mutating",
+            "source files",
+            false,
+            "Runs deterministic shaping.",
+        ),
+    ]
+}
+"#;
+        let malformed = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        command_entry(
+            "check-pr",
+            "non_mutating_check",
+            "target/ripr/reports",
+            false,
+            "Review-ready gate.",
+        )
+    ]
+}
+"#;
+
+        assert_eq!(sorted_command_catalog_content(unknown), unknown);
+        assert_eq!(sorted_command_catalog_content(malformed), malformed);
+    }
+
+    #[test]
+    fn sorted_command_catalog_content_skips_non_catalog_or_incomplete_catalogs() {
+        let no_catalog = "pub(crate) fn unrelated() {}\n";
+        let incomplete = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        command_entry(
+            "shape",
+            "mutating",
+            "source files",
+            false,
+            "Runs deterministic shaping.",
+        ),
+"#;
+        let non_entry_body = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        CommandCatalogEntry {
+            command: "shape",
+            mutability: "mutating",
+            writes: "source files",
+            judgment_required: false,
+            notes: "Runs deterministic shaping.",
+        },
+    ]
+}
+"#;
+        let single_entry = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        command_entry(
+            "shape",
+            "mutating",
+            "source files",
+            false,
+            "Runs deterministic shaping.",
+        ),
+    ]
+}
+"#;
+
+        assert_eq!(sorted_command_catalog_content(no_catalog), no_catalog);
+        assert_eq!(sorted_command_catalog_content(incomplete), incomplete);
+        assert_eq!(
+            sorted_command_catalog_content(non_entry_body),
+            non_entry_body
+        );
+        assert_eq!(sorted_command_catalog_content(single_entry), single_entry);
+    }
+
+    #[test]
+    fn sorted_command_catalog_content_skips_entries_without_quoted_command() {
+        let input = r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        command_entry(
+            SHAPE_COMMAND,
+            "mutating",
+            "source files",
+            false,
+            "Runs deterministic shaping.",
+        ),
+        command_entry(
+            "check-pr",
+            "non_mutating_check",
+            "target/ripr/reports",
+            false,
+            "Review-ready gate.",
+        ),
+    ]
+}
+"#;
+
+        assert_eq!(sorted_command_catalog_content(input), input);
+    }
+
+    #[test]
+    fn suggested_fixes_patch_sorts_allowlists_doc_indexes_traceability_capabilities_and_catalog()
+    -> Result<(), String> {
         with_temp_cwd("suggested-fixes-allowlist", |root| {
             write(
                 &root.join(".ripr/generated.txt"),
                 "# header\n\nzeta\nalpha\n",
             );
+            write(
+                &root.join(".ripr/traceability.toml"),
+                "# Traceability\n\n[[behavior]]\nid = \"RIPR-SPEC-0002\"\nname = \"B\"\n\n[[behavior]]\nid = \"RIPR-SPEC-0001\"\nname = \"A\"\n",
+            );
+            write(
+                &root.join("metrics/capabilities.toml"),
+                "# Capabilities\n\n[[capability]]\nid = \"zeta_capability\"\nspec = \"RIPR-SPEC-0002\"\nname = \"Zeta\"\n\n[[capability]]\nid = \"alpha_capability\"\nspec = \"RIPR-SPEC-0001\"\nname = \"Alpha\"\n",
+            );
             write(&root.join("policy/process.txt"), "gamma\nbeta\n");
+            write(
+                &root.join("docs/specs/README.md"),
+                "# Specs\n\n## Index\n\n| Spec | Status | Topic |\n| --- | --- | --- |\n| [RIPR-SPEC-0002](RIPR-SPEC-0002-b.md) | proposed | B |\n| [RIPR-SPEC-0001](RIPR-SPEC-0001-a.md) | accepted | A |\n",
+            );
+            write(
+                &root.join("xtask/src/command.rs"),
+                r#"pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        command_entry(
+            "check-pr",
+            "non_mutating_check",
+            "target/ripr/reports",
+            false,
+            "Review-ready gate.",
+        ),
+        command_entry(
+            "shape",
+            "mutating",
+            "source files",
+            false,
+            "Runs deterministic shaping.",
+        ),
+    ]
+}
+"#,
+            );
             write(
                 &root.join("badges/ripr.json"),
                 r#"{"schemaVersion":1,"label":"ripr","message":"999","color":"red"}"#,
@@ -39158,15 +41290,44 @@ jobs:
                 files,
                 vec![
                     ".ripr/generated.txt".to_string(),
-                    "policy/process.txt".to_string()
+                    ".ripr/traceability.toml".to_string(),
+                    "docs/specs/README.md".to_string(),
+                    "metrics/capabilities.toml".to_string(),
+                    "policy/process.txt".to_string(),
+                    "xtask/src/command.rs".to_string()
                 ]
             );
             assert!(patch.contains("diff --git a/.ripr/generated.txt b/.ripr/generated.txt"));
             assert!(patch.contains("+alpha"));
             assert!(patch.contains("+zeta"));
+            assert!(
+                patch
+                    .find("+id = \"RIPR-SPEC-0001\"")
+                    .zip(patch.find("+id = \"RIPR-SPEC-0002\""))
+                    .is_some_and(|(first, second)| first < second)
+            );
+            assert!(
+                patch
+                    .find("+id = \"alpha_capability\"")
+                    .zip(patch.find("+id = \"zeta_capability\""))
+                    .is_some_and(|(first, second)| first < second)
+            );
+            assert!(patch.contains("diff --git a/docs/specs/README.md b/docs/specs/README.md"));
+            assert!(
+                patch
+                    .find("+| [RIPR-SPEC-0001](RIPR-SPEC-0001-a.md) | accepted | A |")
+                    .zip(patch.find("+| [RIPR-SPEC-0002](RIPR-SPEC-0002-b.md) | proposed | B |"))
+                    .is_some_and(|(first, second)| first < second)
+            );
             assert!(patch.contains("diff --git a/policy/process.txt b/policy/process.txt"));
             assert!(!patch.contains("badges/ripr.json"));
             assert!(!patch.contains("999"));
+            assert!(
+                patch
+                    .find("+            \"shape\"")
+                    .zip(patch.find("+            \"check-pr\""))
+                    .is_some_and(|(shape, check_pr)| shape < check_pr)
+            );
             Ok(())
         })
     }
@@ -39177,6 +41338,14 @@ jobs:
             write(
                 &root.join(".ripr/generated.txt"),
                 "# header\n\nalpha\nbeta\n",
+            );
+            write(
+                &root.join("docs/adr/README.md"),
+                "# Architecture Decision Records\n\n## Index\n\n| ADR | Status | Decision |\n| --- | --- | --- |\n| [0001](0001-a.md) | accepted | A. |\n| [0002](0002-b.md) | proposed | B. |\n",
+            );
+            write(
+                &root.join("metrics/capabilities.toml"),
+                "# Capabilities\n\n[[capability]]\nid = \"alpha_capability\"\nspec = \"RIPR-SPEC-0001\"\nname = \"Alpha\"\n\n[[capability]]\nid = \"beta_capability\"\nspec = \"RIPR-SPEC-0002\"\nname = \"Beta\"\n",
             );
 
             let (patch, files) = suggested_fixes_patch()?;
@@ -40248,6 +42417,28 @@ fn exact_owner_call_has_external_expected_value() {
             expected_static_movement: "unknown".to_string(),
             errors: Vec::new(),
         };
+        let first_pr_run = DogfoodFirstPrRun {
+            name: "boundary-gap".to_string(),
+            expected_dir: Path::new("fixtures/first_successful_pr/boundary-gap/expected")
+                .to_path_buf(),
+            json_path: Path::new(
+                "fixtures/first_successful_pr/boundary-gap/expected/start-here.json",
+            )
+            .to_path_buf(),
+            markdown_path: Path::new(
+                "fixtures/first_successful_pr/boundary-gap/expected/start-here.md",
+            )
+            .to_path_buf(),
+            status: "actionable".to_string(),
+            state: "top_gap".to_string(),
+            top_gap_kind: "MissingBoundaryAssertion".to_string(),
+            verify_command: Some("cargo xtask fixtures boundary_gap".to_string()),
+            next_command: None,
+            expected_status: "actionable".to_string(),
+            expected_state: "top_gap".to_string(),
+            description: "boundary gap receipt".to_string(),
+            errors: Vec::new(),
+        };
         let front_panel_run = DogfoodFrontPanelRun {
             name: "actionable".to_string(),
             report_path: Path::new(
@@ -40423,6 +42614,29 @@ fn exact_owner_call_has_external_expected_value() {
             reason: "preview static-limit fixture".to_string(),
             errors: Vec::new(),
         };
+        let finding_alignment_run = DogfoodFindingAlignmentRun {
+            name: "config_policy_rendered_label_unobserved".to_string(),
+            source_pr: "EffortlessMetrics/ripr#1016".to_string(),
+            evidence_class: "config_or_policy_constant".to_string(),
+            raw_findings_total: 2,
+            canonical_items_total: 1,
+            gap_state: "actionable".to_string(),
+            actionability: "add_output_observer".to_string(),
+            user_outcome: "actionable_gap".to_string(),
+            repair_kind: "output_observer".to_string(),
+            target_test_type: "report_render_or_golden".to_string(),
+            verify_command: "cargo xtask evidence-quality-scorecard".to_string(),
+            static_limitation_category: None,
+            static_limitation_repair_route: None,
+            raw_findings_supporting_only: true,
+            recommended_repair: "Add or update a report-render or golden observer.".to_string(),
+            must_not_claim: vec![
+                "Do not infer actionability from raw static class.".to_string(),
+                "Do not recommend mutation testing first.".to_string(),
+            ],
+            reason: "actionable config-policy alignment receipt".to_string(),
+            errors: Vec::new(),
+        };
         let pr_inline_comment_run = DogfoodPrInlineCommentRun {
             name: "publishable_changed_line".to_string(),
             actual_dir: Path::new(
@@ -40469,30 +42683,61 @@ fn exact_owner_call_has_external_expected_value() {
         let generated_ci_runs = [generated_ci_run];
         let language_preview_runs = [language_preview_run];
         let editor_gap_cockpit_runs = [editor_gap_cockpit_run];
+        let finding_alignment_runs = [finding_alignment_run];
         let preview_projection_runs = DogfoodPreviewProjectionRuns {
             generated_ci_cockpit: &generated_ci_runs,
             language_preview: &language_preview_runs,
             editor_gap_cockpit: &editor_gap_cockpit_runs,
         };
-        let markdown = dogfood_report_markdown(
-            &[run],
-            &[gate_run],
-            &[first_action_run],
-            &[front_panel_run],
-            &[report_packet_index_run],
-            &preview_projection_runs,
-            &[pr_inline_comment_run],
-        );
-        let json = dogfood_report_json(&[], &[], &[], &[], &[], &preview_projection_runs, &[]);
+        let markdown_runs = [run];
+        let markdown_gate_runs = [gate_run];
+        let markdown_first_action_runs = [first_action_run];
+        let markdown_first_pr_runs = [first_pr_run];
+        let markdown_front_panel_runs = [front_panel_run];
+        let markdown_report_packet_index_runs = [report_packet_index_run];
+        let markdown_pr_inline_comment_runs = [pr_inline_comment_run];
+        let markdown_inputs = DogfoodReportInputs {
+            runs: &markdown_runs,
+            gate_runs: &markdown_gate_runs,
+            first_action_runs: &markdown_first_action_runs,
+            first_pr_runs: &markdown_first_pr_runs,
+            front_panel_runs: &markdown_front_panel_runs,
+            report_packet_index_runs: &markdown_report_packet_index_runs,
+            preview_projection_runs: &preview_projection_runs,
+            finding_alignment_runs: &finding_alignment_runs,
+            pr_inline_comment_runs: &markdown_pr_inline_comment_runs,
+        };
+        let empty_runs = [];
+        let empty_gate_runs = [];
+        let empty_first_action_runs = [];
+        let empty_first_pr_runs = [];
+        let empty_front_panel_runs = [];
+        let empty_report_packet_index_runs = [];
+        let empty_pr_inline_comment_runs = [];
+        let json_inputs = DogfoodReportInputs {
+            runs: &empty_runs,
+            gate_runs: &empty_gate_runs,
+            first_action_runs: &empty_first_action_runs,
+            first_pr_runs: &empty_first_pr_runs,
+            front_panel_runs: &empty_front_panel_runs,
+            report_packet_index_runs: &empty_report_packet_index_runs,
+            preview_projection_runs: &preview_projection_runs,
+            finding_alignment_runs: &finding_alignment_runs,
+            pr_inline_comment_runs: &empty_pr_inline_comment_runs,
+        };
+        let markdown = dogfood_report_markdown(&markdown_inputs);
+        let json = dogfood_report_json(&json_inputs);
 
         assert!(markdown.contains("Mode: advisory"));
         assert!(markdown.contains("boundary_gap"));
         assert!(markdown.contains("First Useful Action Receipts"));
+        assert!(markdown.contains("First Successful PR Receipts"));
         assert!(markdown.contains("PR Review Front Panel Receipts"));
         assert!(markdown.contains("Report Packet Index Receipts"));
         assert!(markdown.contains("Generated CI Cockpit Receipts"));
         assert!(markdown.contains("Language Preview Receipts"));
         assert!(markdown.contains("Editor Gap Cockpit Receipts"));
+        assert!(markdown.contains("Finding Alignment Receipts"));
         assert!(markdown.contains("PR Inline Comment Publisher Receipts"));
         assert!(markdown.contains("Gate Adoption Receipts"));
         assert!(markdown.contains("Default CI blocking: no"));
@@ -40502,9 +42747,11 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(markdown.contains("calibrated-high-confidence-new-gap"));
         assert!(json.contains("\"advisory\": true"));
         assert!(json.contains("\"default_ci_blocking\": false"));
+        assert!(json.contains("\"first_successful_pr\""));
         assert!(json.contains("\"report_packet_index\""));
         assert!(json.contains("\"generated_ci_cockpit\""));
         assert!(json.contains("\"language_preview\""));
+        assert!(json.contains("\"finding_alignment\""));
         let value: Value =
             serde_json::from_str(&json).map_err(|err| format!("dogfood JSON invalid: {err}"))?;
         let editor_gap_cockpit = value
@@ -40564,8 +42811,253 @@ fn exact_owner_call_has_external_expected_value() {
             actions,
             vec!["copy_repair_packet", "copy_static_limit_note", "refresh"]
         );
+        let finding_alignment = value
+            .get("finding_alignment")
+            .ok_or_else(|| "finding_alignment section missing".to_string())?;
+        assert_eq!(
+            finding_alignment.get("receipt_dir").and_then(Value::as_str),
+            Some("fixtures/finding-alignment-dogfood")
+        );
+        let alignment_cases = finding_alignment
+            .get("cases")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "finding_alignment cases missing".to_string())?;
+        assert_eq!(alignment_cases.len(), 1);
+        assert_eq!(
+            alignment_cases
+                .first()
+                .and_then(|case| case.get("user_outcome"))
+                .and_then(Value::as_str),
+            Some("actionable_gap")
+        );
         assert!(json.contains("\"pr_inline_comment_publisher\""));
         Ok(())
+    }
+
+    #[test]
+    fn dogfood_finding_alignment_scenarios_have_checked_receipts() -> Result<(), String> {
+        with_repo_cwd(|| {
+            let scenarios = dogfood_finding_alignment_scenarios();
+            for required in [
+                ("presentation_text_actionable_output_observer", "actionable"),
+                (
+                    "presentation_text_already_observed_output",
+                    "already_observed",
+                ),
+                ("config_policy_internal_metadata_no_action", "internal_only"),
+                ("config_policy_rendered_label_unobserved", "actionable"),
+                ("config_policy_behavior_selector_unobserved", "actionable"),
+                (
+                    "config_policy_behavior_selector_observed",
+                    "already_observed",
+                ),
+                ("config_policy_flow_unknown_limitation", "static_limitation"),
+            ] {
+                assert!(
+                    scenarios.iter().any(|scenario| {
+                        scenario.name == required.0 && scenario.gap_state == required.1
+                    }),
+                    "{} finding-alignment dogfood receipt should be checked as {}",
+                    required.0,
+                    required.1
+                );
+            }
+
+            for scenario in scenarios {
+                let run = dogfood_finding_alignment_run(&scenario);
+                assert!(
+                    run.errors.is_empty(),
+                    "{} finding-alignment receipt should validate: {:?}",
+                    run.name,
+                    run.errors
+                );
+            }
+
+            Ok(())
+        })
+    }
+
+    fn valid_finding_alignment_scenario(
+        name: &str,
+        gap_state: &str,
+    ) -> DogfoodFindingAlignmentScenario {
+        DogfoodFindingAlignmentScenario {
+            name: name.to_string(),
+            source_pr: "EffortlessMetrics/ripr#1016".to_string(),
+            evidence_class: "presentation_text".to_string(),
+            raw_findings_total: 2,
+            canonical_items_total: 1,
+            gap_state: gap_state.to_string(),
+            actionability: "add_output_observer".to_string(),
+            user_outcome: "actionable_gap".to_string(),
+            repair_kind: "output_observer".to_string(),
+            target_test_type: "help_output_snapshot".to_string(),
+            verify_command: "cargo xtask evidence-quality-scorecard".to_string(),
+            static_limitation_category: None,
+            static_limitation_repair_route: None,
+            raw_findings_supporting_only: true,
+            recommended_repair: "Add or update an output observer.".to_string(),
+            must_not_claim: vec![
+                "Do not infer actionability from raw static class.".to_string(),
+                "Do not recommend mutation testing first.".to_string(),
+            ],
+            reason: "fixture-backed dogfood receipt".to_string(),
+        }
+    }
+
+    #[test]
+    fn dogfood_finding_alignment_validation_reports_actionable_drift() {
+        let mut scenario = valid_finding_alignment_scenario("", "actionable");
+        scenario.source_pr = "ripr#1016".to_string();
+        scenario.evidence_class = "unknown".to_string();
+        scenario.raw_findings_total = 0;
+        scenario.canonical_items_total = 1;
+        scenario.user_outcome = "no_action".to_string();
+        scenario.repair_kind = "unknown".to_string();
+        scenario.target_test_type = "none".to_string();
+        scenario.verify_command = "unknown".to_string();
+        scenario.static_limitation_category =
+            Some("presentation_text_visibility_unknown".to_string());
+        scenario.raw_findings_supporting_only = false;
+        scenario.recommended_repair = "Escalate to mutation testing first.".to_string();
+        scenario.must_not_claim = vec!["Keep advisory.".to_string()];
+
+        let report = dogfood_finding_alignment_run(&scenario).errors.join("\n");
+
+        assert!(report.contains("case id must be present"));
+        assert!(report.contains("source_pr should name a real RIPR PR"));
+        assert!(report.contains("unsupported evidence class"));
+        assert!(report.contains("raw findings 0 must be >= canonical items 1"));
+        assert!(report.contains("raw findings must be marked supporting-only"));
+        assert!(report.contains("must not route first to mutation testing"));
+        assert!(report.contains("must_not_claim guards should preserve"));
+        assert!(report.contains("actionable case should have actionable_gap outcome"));
+        assert!(report.contains("actionable case must carry a concrete repair kind"));
+        assert!(report.contains("actionable case must carry a target test type"));
+        assert!(report.contains("actionable case must carry a verify command"));
+        assert!(report.contains("actionable case should not carry a static limitation category"));
+    }
+
+    #[test]
+    fn dogfood_finding_alignment_validation_reports_no_action_and_limitation_drift() {
+        let mut observed = valid_finding_alignment_scenario("observed", "already_observed");
+        observed.user_outcome = "actionable_gap".to_string();
+        observed.repair_kind = "output_observer".to_string();
+        let observed_report = dogfood_finding_alignment_run(&observed).errors.join("\n");
+        assert!(observed_report.contains("already_observed case should have no_action outcome"));
+        assert!(observed_report.contains("already_observed case should use no_action repair kind"));
+
+        let mut internal = valid_finding_alignment_scenario("internal", "internal_only");
+        internal.user_outcome = "actionable_gap".to_string();
+        internal.repair_kind = "inspect_visibility".to_string();
+        let internal_report = dogfood_finding_alignment_run(&internal).errors.join("\n");
+        assert!(internal_report.contains("internal_only case should have no_action outcome"));
+        assert!(internal_report.contains("internal_only case should use no_action repair kind"));
+
+        let mut limitation = valid_finding_alignment_scenario("limitation", "static_limitation");
+        limitation.user_outcome = "no_action".to_string();
+        limitation.static_limitation_category = None;
+        limitation.static_limitation_repair_route = None;
+        let limitation_report = dogfood_finding_alignment_run(&limitation).errors.join("\n");
+        assert!(
+            limitation_report
+                .contains("static_limitation case should have static_limitation outcome")
+        );
+        assert!(
+            limitation_report.contains("static limitation case must name a limitation category")
+        );
+        assert!(
+            limitation_report
+                .contains("static limitation case must name a limitation repair route")
+        );
+
+        let unknown = valid_finding_alignment_scenario("unknown", "mystery");
+        assert!(
+            dogfood_finding_alignment_run(&unknown)
+                .errors
+                .join("\n")
+                .contains("unsupported gap_state `mystery`")
+        );
+    }
+
+    #[test]
+    fn finding_alignment_verify_command_missing_recognizes_empty_unknown_and_none() {
+        assert!(finding_alignment_verify_command_is_missing(""));
+        assert!(finding_alignment_verify_command_is_missing("   "));
+        assert!(finding_alignment_verify_command_is_missing("unknown"));
+        assert!(finding_alignment_verify_command_is_missing("none"));
+        assert!(!finding_alignment_verify_command_is_missing(
+            "cargo xtask evidence-quality-scorecard"
+        ));
+    }
+
+    #[test]
+    fn finding_alignment_dogfood_fixture_corpus_validator_reports_contract_drift() {
+        with_temp_cwd("finding-alignment-dogfood-invalid", |_| {
+            write(
+                Path::new("fixtures/finding-alignment-dogfood/SPEC.md"),
+                "# Finding Alignment Dogfood\n",
+            );
+            write(
+                Path::new("fixtures/finding-alignment-dogfood/corpus.json"),
+                r#"{
+  "schema_version": "0.1",
+  "kind": "finding_alignment_dogfood_corpus",
+  "cases": [
+    {
+      "id": "presentation_text_actionable_output_observer",
+      "source_pr": "EffortlessMetrics/ripr#966",
+      "evidence_class": "presentation_text",
+      "raw_findings_total": 2,
+      "canonical_items_total": 1,
+      "gap_state": "already_observed",
+      "actionability": "already_observed",
+      "user_outcome": "no_action",
+      "repair_kind": "no_action",
+      "target_test_type": "none",
+      "verify_command": "none",
+      "raw_findings_supporting_only": true,
+      "recommended_repair": "No action.",
+      "must_not_claim": ["Do not infer actionability from raw static class."],
+      "reason": "duplicate id with wrong state"
+    },
+    {
+      "id": "presentation_text_actionable_output_observer",
+      "source_pr": "bad",
+      "evidence_class": "unknown",
+      "raw_findings_total": 0,
+      "canonical_items_total": 0,
+      "gap_state": "mystery",
+      "actionability": "unknown",
+      "user_outcome": "unknown",
+      "repair_kind": "unknown",
+      "target_test_type": "unknown",
+      "verify_command": "unknown",
+      "raw_findings_supporting_only": false,
+      "recommended_repair": "",
+      "must_not_claim": [],
+      "reason": ""
+    }
+  ]
+}"#,
+            );
+
+            let mut violations = Vec::new();
+            let validation_result =
+                super::validate_finding_alignment_dogfood_fixture_corpus(&mut violations);
+            assert!(
+                validation_result.is_ok(),
+                "fixture corpus validation should not hard-fail: {validation_result:?}"
+            );
+            let report = violations.join("\n");
+
+            assert!(report.contains("finding alignment dogfood case presentation_text_actionable_output_observer is duplicated"));
+            assert!(report.contains("must have gap_state actionable, got mystery"));
+            assert!(report.contains("finding alignment dogfood corpus is missing case presentation_text_already_observed_output"));
+            assert!(report.contains("unsupported evidence class for dogfood receipt"));
+            assert!(report.contains("canonical_items_total must be non-zero"));
+            assert!(report.contains("unsupported gap_state `mystery`"));
+        });
     }
 
     #[test]
@@ -40922,6 +43414,57 @@ jobs:
                     "{} Markdown should pin action",
                     scenario.name
                 );
+            }
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn dogfood_first_pr_scenarios_have_checked_receipts() -> Result<(), String> {
+        with_repo_cwd(|| {
+            let scenarios = dogfood_first_pr_scenarios();
+            for required in [
+                ("boundary-gap", "actionable", "top_gap"),
+                ("output-contract-gap", "actionable", "top_gap"),
+                ("empty-diff", "no_action", "empty_diff"),
+                ("blocked-ledger", "blocked", "blocked_artifact"),
+            ] {
+                assert!(
+                    scenarios.iter().any(|scenario| {
+                        scenario.name == required.0
+                            && scenario.expected_status == required.1
+                            && scenario.expected_state == required.2
+                    }),
+                    "{} first successful PR receipt should be checked as {}/{}",
+                    required.0,
+                    required.1,
+                    required.2
+                );
+            }
+
+            for scenario in scenarios {
+                let run = dogfood_first_pr_run(&scenario);
+                assert!(
+                    run.errors.is_empty(),
+                    "{} first successful PR receipt should validate: {:?}",
+                    run.name,
+                    run.errors
+                );
+                if run.expected_status == "actionable" {
+                    assert!(
+                        run.verify_command.is_some(),
+                        "{} actionable receipt should name a verify command",
+                        run.name
+                    );
+                }
+                if run.expected_status == "blocked" {
+                    assert!(
+                        run.next_command.is_some(),
+                        "{} blocked receipt should name a next command",
+                        run.name
+                    );
+                }
             }
 
             Ok(())
@@ -45263,7 +47806,8 @@ jobs:
         }];
 
         let today = days_from_civil(2026, 5, 14);
-        let findings = pr_triage_findings(&[first, second, stale, policy], today);
+        let prs = vec![first, second, stale, policy];
+        let findings = pr_triage_findings(&prs, today);
         let categories = findings
             .iter()
             .map(|finding| finding.category.as_str())
@@ -45274,6 +47818,82 @@ jobs:
         assert!(categories.contains("behind main"));
         assert!(categories.contains("incomplete validation"));
         assert!(categories.contains("policy-sensitive surface"));
+
+        let dispositions = pr_triage_queue_dispositions(&prs, &findings)
+            .into_iter()
+            .map(|item| (item.pr_number, item.disposition))
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(
+            dispositions.get(&1).map(String::as_str),
+            Some("needs_owner_decision")
+        );
+        assert_eq!(
+            dispositions.get(&2).map(String::as_str),
+            Some("needs_owner_decision")
+        );
+        assert_eq!(
+            dispositions.get(&3).map(String::as_str),
+            Some("needs_owner_decision")
+        );
+        assert_eq!(
+            dispositions.get(&4).map(String::as_str),
+            Some("do_not_touch_wrong_lane")
+        );
+    }
+
+    #[test]
+    fn pr_triage_queue_dispositions_name_actionable_queue_state() {
+        let mergeable = triage_pr(1, "devex: ready", &["xtask/src/main.rs"]);
+        let mut behind = triage_pr(2, "devex: behind", &["docs/CI.md"]);
+        behind.merge_state_status = "BEHIND".to_string();
+        let mut pending = triage_pr(3, "devex: pending", &["docs/PR_AUTOMATION.md"]);
+        pending.checks = vec![PrTriageCheck {
+            name: "rust".to_string(),
+            status: "IN_PROGRESS".to_string(),
+            conclusion: String::new(),
+        }];
+        let mut duplicate = triage_pr(4, "devex: duplicate cleanup", &["docs/README.md"]);
+        duplicate.labels = vec!["duplicate".to_string()];
+        let mut superseded = triage_pr(5, "devex: old approach", &["docs/OLD.md"]);
+        superseded.body.push_str("\nSuperseded by #6.\n");
+        let mut duplicate_body = triage_pr(6, "devex: refresh", &["docs/REFRESH.md"]);
+        duplicate_body.body.push_str("\nDuplicate of #4.\n");
+
+        let prs = vec![
+            mergeable,
+            behind,
+            pending,
+            duplicate,
+            superseded,
+            duplicate_body,
+        ];
+        let findings = pr_triage_findings(&prs, days_from_civil(2026, 5, 14));
+        let dispositions = pr_triage_queue_dispositions(&prs, &findings)
+            .into_iter()
+            .map(|item| (item.pr_number, item.disposition))
+            .collect::<BTreeMap<_, _>>();
+
+        assert_eq!(
+            dispositions.get(&1).map(String::as_str),
+            Some("merge_candidate")
+        );
+        assert_eq!(
+            dispositions.get(&2).map(String::as_str),
+            Some("needs_rebase")
+        );
+        assert_eq!(
+            dispositions.get(&3).map(String::as_str),
+            Some("needs_fresh_validation")
+        );
+        assert_eq!(
+            dispositions.get(&4).map(String::as_str),
+            Some("close_duplicate")
+        );
+        assert_eq!(dispositions.get(&5).map(String::as_str), Some("superseded"));
+        assert_eq!(
+            dispositions.get(&6).map(String::as_str),
+            Some("close_duplicate")
+        );
     }
 
     #[test]
@@ -45326,6 +47946,8 @@ jobs:
         let markdown = pr_triage_markdown(&[pr], &[finding], days_from_civil(2026, 5, 14));
         assert!(markdown.contains("# ripr PR triage report"));
         assert!(markdown.contains("Status: warn"));
+        assert!(markdown.contains("## Queue Disposition"));
+        assert!(markdown.contains("needs_owner_decision"));
         assert!(markdown.contains("## Open PRs"));
         assert!(markdown.contains("cargo xtask pr-triage-report"));
     }
@@ -45348,6 +47970,10 @@ jobs:
         assert_eq!(value["mode"], "advisory");
         assert_eq!(value["generated_at"], "unix_ms:1");
         assert_eq!(value["open_prs"][0]["number"], 9);
+        assert_eq!(
+            value["queue_disposition"][0]["disposition"],
+            "needs_owner_decision"
+        );
         assert_eq!(value["findings"][0]["category"], "same title family");
         assert_eq!(
             value["recommended_actions"][0]["action"],
@@ -45965,6 +48591,56 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn command_catalog_check_reports_order_drift() {
+        let commands = vec!["shape", "check-pr"];
+        let catalog = vec![
+            CommandCatalogEntry {
+                command: "check-pr",
+                mutability: "non_mutating_check",
+                writes: "target/ripr/reports",
+                judgment_required: false,
+                notes: "Review-ready gate.",
+            },
+            CommandCatalogEntry {
+                command: "shape",
+                mutability: "mutating",
+                writes: "source files",
+                judgment_required: false,
+                notes: "Runs deterministic shaping.",
+            },
+        ];
+
+        let report = command_catalog_violations(&commands, &catalog).join("\n");
+
+        assert!(report.contains("must follow the xtask help catalog order"));
+    }
+
+    #[test]
+    fn command_catalog_check_reports_order_drift_for_commands_with_shared_roots() {
+        let commands = vec!["goldens check", "goldens bless <name> --reason <reason>"];
+        let catalog = vec![
+            CommandCatalogEntry {
+                command: "goldens bless <name> --reason <reason>",
+                mutability: "mutating",
+                writes: "fixtures/**/expected/**",
+                judgment_required: true,
+                notes: "Updates golden expected outputs.",
+            },
+            CommandCatalogEntry {
+                command: "goldens check",
+                mutability: "non_mutating_check",
+                writes: "target/ripr/reports/goldens.md",
+                judgment_required: false,
+                notes: "Checks golden drift.",
+            },
+        ];
+
+        let report = command_catalog_violations(&commands, &catalog).join("\n");
+
+        assert!(report.contains("must follow the xtask help catalog order"));
+    }
+
+    #[test]
     fn command_catalog_classifies_core_workflow_commands() -> Result<(), String> {
         let catalog = command_catalog();
         let find = |command: &str| {
@@ -46207,6 +48883,50 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn lane1_repo_exposure_file_completion_check_requires_seams_and_closing_brace()
+    -> Result<(), String> {
+        let root = temp_dir("lane1-repo-exposure-complete");
+        let complete = root.join("complete.json");
+        write(
+            &complete,
+            r#"{
+  "schema_version": "0.3",
+  "seams": []
+}
+"#,
+        );
+        if !super::lane1_repo_exposure_file_looks_complete(&complete)? {
+            return Err("complete repo-exposure JSON should be accepted".to_string());
+        }
+
+        let missing_seams = root.join("missing-seams.json");
+        write(
+            &missing_seams,
+            r#"{
+  "schema_version": "0.3"
+}
+"#,
+        );
+        if super::lane1_repo_exposure_file_looks_complete(&missing_seams)? {
+            return Err("repo-exposure JSON without seams should be rejected".to_string());
+        }
+
+        let truncated = root.join("truncated.json");
+        write(
+            &truncated,
+            r#"{
+  "schema_version": "0.3",
+  "seams": [
+"#,
+        );
+        if super::lane1_repo_exposure_file_looks_complete(&truncated)? {
+            return Err("truncated repo-exposure JSON should be rejected".to_string());
+        }
+
+        Ok(())
+    }
+
+    #[test]
     fn lane1_evidence_audit_counts_quality_gaps_from_evidence_record() -> Result<(), String> {
         let report = lane1_evidence_audit_from_repo_exposure(".", lane1_audit_sample_json())?;
         let json = lane1_evidence_audit_json(&report)?;
@@ -46278,7 +48998,7 @@ covered_by = ["cargo xtask check-file-policy"]
         let coverage = &value["finding_alignment"]["coverage"];
         assert_eq!(
             coverage["static_unknown_without_named_limitation"],
-            serde_json::Value::from(1)
+            serde_json::Value::from(0)
         );
         assert_eq!(
             coverage["canonical_items_without_repair_route"],
@@ -46398,6 +49118,118 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn lane1_evidence_audit_rejects_generic_static_unknown_limitation_category()
+    -> Result<(), String> {
+        let report = lane1_evidence_audit_from_repo_exposure(
+            ".",
+            r#"{
+              "schema_version": "0.3",
+              "scope": "repo",
+              "seams": [
+                {
+                  "seam_id": "generic-static-unknown",
+                  "headline_eligible": true,
+                  "file": "src/opaque.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "generic-static-unknown",
+                    "canonical_gap_id": "gap:generic-static-unknown",
+                    "owner": "opaque::generic",
+                    "location": {"file": "src/opaque.rs", "line": 10},
+                    "seam_kind": "call_presence",
+                    "grip_class": "static_unknown",
+                    "headline_eligible": true,
+                    "evidence_path": {},
+                    "observed_values": [],
+                    "missing_discriminators": [],
+                    "related_tests_total": 0,
+                    "related_tests": [],
+                    "recommendation": {"action": "inspect_static_limitation", "reason": "generic limitation", "verify_command": null},
+                    "actionability": {"class": "static_limitation"},
+                    "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+                    "static_limitations": [
+                      {"category": "static_unknown", "repair_route": "analysis/static-limitation-taxonomy"}
+                    ],
+                    "raw_findings": [
+                      {"file": "src/opaque.rs", "line": 10, "kind": "static_unknown", "expression": "opaque(value)"}
+                    ],
+                    "canonical_item": {
+                      "canonical_gap_id": "gap:generic-static-unknown",
+                      "canonical_item_kind": "limitation",
+                      "evidence_class": "call_presence",
+                      "gap_state": "static_limitation",
+                      "actionability": "static_limitation",
+                      "raw_findings": [
+                        {"file": "src/opaque.rs", "line": 10, "kind": "static_unknown", "expression": "opaque(value)"}
+                      ],
+                      "static_limitations": [
+                        {"category": "static_unknown", "repair_route": "analysis/static-limitation-taxonomy"}
+                      ],
+                      "recommended_repair": "Inspect static limitation",
+                      "verify_command": null
+                    }
+                  }
+                },
+                {
+                  "seam_id": "named-static-limitation",
+                  "headline_eligible": true,
+                  "file": "src/helper.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "named-static-limitation",
+                    "canonical_gap_id": "gap:named-static-limitation",
+                    "owner": "helper::named",
+                    "location": {"file": "src/helper.rs", "line": 12},
+                    "seam_kind": "call_presence",
+                    "grip_class": "static_unknown",
+                    "headline_eligible": true,
+                    "evidence_path": {},
+                    "observed_values": [],
+                    "missing_discriminators": [],
+                    "related_tests_total": 0,
+                    "related_tests": [],
+                    "recommendation": {"action": "inspect_static_limitation", "reason": "opaque helper", "verify_command": null},
+                    "actionability": {"class": "static_limitation"},
+                    "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+                    "static_limitations": [
+                      {"category": "opaque_helper_call", "repair_route": "analysis/oracle-semantics-audit-fixes"}
+                    ],
+                    "raw_findings": [
+                      {"file": "src/helper.rs", "line": 12, "kind": "static_unknown", "expression": "helper(value)"}
+                    ],
+                    "canonical_item": {
+                      "canonical_gap_id": "gap:named-static-limitation",
+                      "canonical_item_kind": "limitation",
+                      "evidence_class": "call_presence",
+                      "gap_state": "static_limitation",
+                      "actionability": "static_limitation",
+                      "raw_findings": [
+                        {"file": "src/helper.rs", "line": 12, "kind": "static_unknown", "expression": "helper(value)"}
+                      ],
+                      "static_limitations": [
+                        {"category": "opaque_helper_call", "repair_route": "analysis/oracle-semantics-audit-fixes"}
+                      ],
+                      "recommended_repair": "Inspect opaque helper assertion path",
+                      "verify_command": null
+                    }
+                  }
+                }
+              ]
+            }"#,
+        )?;
+        let json = lane1_evidence_audit_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        let coverage = &value["finding_alignment"]["coverage"];
+
+        assert_eq!(
+            coverage["static_unknown_without_named_limitation"],
+            serde_json::Value::from(1)
+        );
+        Ok(())
+    }
+
+    #[test]
     fn lane1_evidence_audit_markdown_names_required_sections() -> Result<(), String> {
         let report = lane1_evidence_audit_from_repo_exposure(".", lane1_audit_sample_json())?;
         let markdown = lane1_evidence_audit_markdown(&report);
@@ -46505,7 +49337,12 @@ covered_by = ["cargo xtask check-file-policy"]
                 "missing exact assertion",
                 "discrimination_static_unknown",
             ),
-            ("unknown", "unknown", "missing stage", "static_unknown"),
+            (
+                "unknown",
+                "unknown",
+                "missing stage",
+                "static_limitation_unclassified",
+            ),
         ] {
             assert_eq!(
                 static_limitation_category(stage, state, reason),
@@ -46567,6 +49404,10 @@ covered_by = ["cargo xtask check-file-policy"]
             (
                 "discrimination_static_unknown",
                 "analysis/oracle-semantics-audit-fixes",
+            ),
+            (
+                "static_limitation_unclassified",
+                "analysis/static-limitation-taxonomy",
             ),
             ("unknown", "analysis/static-limitation-taxonomy"),
         ] {
@@ -47419,7 +50260,13 @@ covered_by = ["cargo xtask check-file-policy"]
                 "recommendation": {"action": "inspect_static_limitation", "reason": "opaque helper", "verify_command": null},
                 "actionability": {"class": "static_limitation"},
                 "calibration": {"availability": "imported", "confidence": "medium", "agreement": "static_runtime_agree"},
-                "static_limitations": [{"stage": "activate", "state": "unknown", "reason": "opaque helper value"}],
+                "static_limitations": [{
+                  "stage": "activate",
+                  "state": "unknown",
+                  "reason": "opaque helper value",
+                  "category": "opaque_helper_call",
+                  "repair_route": "analysis/oracle-semantics-audit-fixes"
+                }],
                 "raw_findings": [{
                   "file": "src/opaque.rs",
                   "line": 30,

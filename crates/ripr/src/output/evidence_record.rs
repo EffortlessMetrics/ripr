@@ -812,7 +812,7 @@ fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'stati
             "propagate" => "propagation_static_unknown",
             "observe" => "observation_static_unknown",
             "discriminate" => "discrimination_static_unknown",
-            _ => "static_unknown",
+            _ => "static_limitation_unclassified",
         }
     }
 }
@@ -833,6 +833,7 @@ fn static_limitation_repair_route(category: &str) -> &'static str {
         "propagation_static_unknown" => "analysis/static-limitation-taxonomy",
         "observation_static_unknown" => "analysis/oracle-semantics-audit-fixes",
         "discrimination_static_unknown" => "analysis/oracle-semantics-audit-fixes",
+        "static_limitation_unclassified" => "analysis/static-limitation-taxonomy",
         _ => "analysis/static-limitation-taxonomy",
     }
 }
@@ -1356,7 +1357,12 @@ mod tests {
                 "missing exact assertion",
                 "discrimination_static_unknown",
             ),
-            ("unknown", "unknown", "missing stage", "static_unknown"),
+            (
+                "unknown",
+                "unknown",
+                "missing stage",
+                "static_limitation_unclassified",
+            ),
         ] {
             assert_eq!(
                 static_limitation_category(stage, state, reason),
@@ -1418,6 +1424,10 @@ mod tests {
             (
                 "discrimination_static_unknown",
                 "analysis/oracle-semantics-audit-fixes",
+            ),
+            (
+                "static_limitation_unclassified",
+                "analysis/static-limitation-taxonomy",
             ),
             ("unknown", "analysis/static-limitation-taxonomy"),
         ] {

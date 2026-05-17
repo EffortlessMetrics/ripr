@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 const SCHEMA_VERSION: &str = "0.1";
 const DEFAULT_ROOT: &str = ".";
-const DEFAULT_OUT_DIR: &str = "target/ripr/first-pr";
+const DEFAULT_OUT_DIR: &str = "target/ripr/reports";
 const START_HERE_JSON: &str = "start-here.json";
 const START_HERE_MD: &str = "start-here.md";
 const DEFAULT_GAP_LEDGER: &str = "target/ripr/reports/gap-decision-ledger.json";
@@ -153,7 +153,7 @@ fn render_start_here_packet(root: &Path, options: &FirstPrOptions) -> Value {
     let gap_path = resolve_path(root, &options.gap_ledger);
     let mut warnings = Vec::new();
     let selection = match read_json(&gap_path) {
-        Ok(gap_ledger) => select_from_gap_ledger(&gap_ledger, options),
+        Ok(gap_ledger) => select_from_gap_ledger(&gap_ledger, root, options),
         Err(ArtifactReadError::Missing) => Selection::missing_artifact(
             "gap_ledger",
             "Gap decision ledger",
@@ -279,6 +279,7 @@ enum Selection {
         next_command: Option<String>,
     },
     NoAction {
+        state: String,
         reason: String,
         records_total: usize,
     },
@@ -299,6 +300,14 @@ impl Selection {
             state: state.to_string(),
             message,
             next_command,
+        }
+    }
+
+    fn no_action(state: &str, reason: String, records_total: usize) -> Self {
+        Self::NoAction {
+            state: state.to_string(),
+            reason,
+            records_total,
         }
     }
 
@@ -397,10 +406,11 @@ impl Selection {
                 "next_command": next_command
             }),
             Self::NoAction {
+                state,
                 reason,
                 records_total,
             } => json!({
-                "state": "no_action",
+                "state": state,
                 "reason": reason,
                 "records_total": records_total
             }),
@@ -458,16 +468,116 @@ impl TopGapSelection {
     }
 }
 
-fn select_from_gap_ledger(gap_ledger: &Value, options: &FirstPrOptions) -> Selection {
+fn select_from_gap_ledger(gap_ledger: &Value, root: &Path, options: &FirstPrOptions) -> Selection {
     let records = gap_records(gap_ledger);
+    if ledger_reports_timeout(gap_ledger) {
+        return Selection::blocked(
+            "timeout",
+            "The gap decision ledger reports a timeout; refresh the first-run evidence before assigning repair work.".to_string(),
+            Some(regenerate_gap_ledger_command(&options.gap_ledger)),
+        );
+    }
+    if ledger_reports_stale(gap_ledger) {
+        return Selection::blocked(
+            "stale_artifact",
+            "The gap decision ledger is stale; refresh the first-run evidence before assigning repair work.".to_string(),
+            Some(regenerate_gap_ledger_command(&options.gap_ledger)),
+        );
+    }
+    if let Some(observed_root) = string_path(gap_ledger, &["root"])
+        && root_mismatch(root, &options.root, &observed_root)
+    {
+        return Selection::blocked(
+            "wrong_root",
+            format!(
+                "The gap decision ledger was generated for root `{observed_root}`, but first-pr is running for `{}`.",
+                options.root
+            ),
+            Some(regenerate_gap_ledger_command(&options.gap_ledger)),
+        );
+    }
+    if ledger_reports_blocked(gap_ledger) {
+        let message = first_string_array_item(gap_ledger, &["warnings"]).map_or_else(
+            || {
+                "The gap decision ledger is blocked; refresh the first-run evidence before assigning repair work.".to_string()
+            },
+            |warning| {
+                format!(
+                    "The gap decision ledger is blocked: {warning}. Refresh the first-run evidence before assigning repair work."
+                )
+            },
+        );
+        return Selection::blocked(
+            "blocked_artifact",
+            message,
+            Some(regenerate_gap_ledger_command(&options.gap_ledger)),
+        );
+    }
+    if ledger_reports_empty_diff(gap_ledger) {
+        return Selection::no_action(
+            "empty_diff",
+            "The PR diff is empty, so no repairable Rust gap was selected.".to_string(),
+            records.len(),
+        );
+    }
     if let Some(record) = records.iter().copied().find(is_first_run_repairable_gap) {
         return Selection::TopGap(Box::new(top_gap_from_record(record, options)));
     }
-    Selection::NoAction {
-        reason: "No repairable PR-local stable Rust gap was selected from the gap decision ledger."
+    Selection::no_action(
+        "no_action",
+        "No repairable PR-local stable Rust gap was selected from the gap decision ledger."
             .to_string(),
-        records_total: records.len(),
+        records.len(),
+    )
+}
+
+fn ledger_reports_timeout(value: &Value) -> bool {
+    matches!(
+        string_path(value, &["status"])
+            .or_else(|| string_path(value, &["state"]))
+            .as_deref(),
+        Some("timeout" | "timed_out")
+    ) || matches!(bool_path(value, &["timeout"]), Some(true))
+}
+
+fn ledger_reports_stale(value: &Value) -> bool {
+    matches!(
+        string_path(value, &["status"])
+            .or_else(|| string_path(value, &["state"]))
+            .as_deref(),
+        Some("stale" | "analysis_stale")
+    ) || matches!(bool_path(value, &["stale"]), Some(true))
+}
+
+fn ledger_reports_empty_diff(value: &Value) -> bool {
+    matches!(
+        string_path(value, &["status"])
+            .or_else(|| string_path(value, &["state"]))
+            .or_else(|| string_path(value, &["reason"]))
+            .as_deref(),
+        Some("empty_diff")
+    )
+}
+
+fn ledger_reports_blocked(value: &Value) -> bool {
+    matches!(
+        string_path(value, &["status"])
+            .or_else(|| string_path(value, &["state"]))
+            .as_deref(),
+        Some("blocked")
+    )
+}
+
+fn root_mismatch(expected_root: &Path, expected_arg: &str, observed_root: &str) -> bool {
+    let observed = observed_root.trim();
+    if observed.is_empty() || observed == "." || observed == expected_arg {
+        return false;
     }
+    let observed_path = Path::new(observed);
+    if observed_path.is_absolute() {
+        return normalized_path(observed_path) != normalized_path(expected_root);
+    }
+    true
 }
 
 fn is_first_run_repairable_gap(record: &&Value) -> bool {
@@ -639,6 +749,10 @@ fn first_string_array_item(value: &Value, path: &[&str]) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+fn bool_path(value: &Value, path: &[&str]) -> Option<bool> {
+    path_value(value, path)?.as_bool()
+}
+
 fn regenerate_gap_ledger_command(out: &str) -> String {
     format!(
         "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out {out} --out-md {}",
@@ -669,7 +783,7 @@ fn render_start_here_markdown(packet: &Value) -> String {
     match state.as_str() {
         "top_gap" => render_top_gap_markdown(selected, &mut out),
         "missing_artifact" => render_missing_artifact_markdown(selected, &mut out),
-        "no_action" => render_no_action_markdown(selected, &mut out),
+        "empty_diff" | "no_action" => render_no_action_markdown(selected, &mut out),
         _ => render_blocked_markdown(selected, &mut out),
     }
 
@@ -796,7 +910,16 @@ fn validate_start_here_packet(json_path: &Path, markdown_path: &Path) -> Result<
         None => violations.push("status is missing or not a string".to_string()),
     }
     expect_string(&packet, "posture", "advisory", &mut violations);
-    if !packet.get("selected").is_some_and(Value::is_object) {
+    if let Some(selected) = packet.get("selected").filter(|value| value.is_object()) {
+        validate_selected_state(
+            packet
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown"),
+            selected,
+            &mut violations,
+        );
+    } else {
         violations.push("selected is missing or not an object".to_string());
     }
     if !packet.get("commands").is_some_and(Value::is_object) {
@@ -819,6 +942,28 @@ fn validate_start_here_packet(json_path: &Path, markdown_path: &Path) -> Result<
                 .collect::<Vec<_>>()
                 .join("\n")
         ))
+    }
+}
+
+fn validate_selected_state(status: &str, selected: &Value, violations: &mut Vec<String>) {
+    let Some(state) = selected.get("state").and_then(Value::as_str) else {
+        violations.push("selected.state is missing or not a string".to_string());
+        return;
+    };
+    let expected_status = match state {
+        "top_gap" => "actionable",
+        "missing_artifact" | "malformed_artifact" | "stale_artifact" | "wrong_root"
+        | "blocked_artifact" | "timeout" => "blocked",
+        "empty_diff" | "no_action" => "no_action",
+        other => {
+            violations.push(format!("selected.state {other:?} is not contract-valid"));
+            return;
+        }
+    };
+    if status != expected_status {
+        violations.push(format!(
+            "selected.state {state:?} requires status {expected_status:?}, found {status:?}"
+        ));
     }
 }
 
@@ -848,6 +993,14 @@ fn resolve_path(root: &Path, path: &str) -> PathBuf {
     } else {
         root.join(candidate)
     }
+}
+
+fn normalized_path(path: &Path) -> String {
+    path.display()
+        .to_string()
+        .replace('\\', "/")
+        .trim_end_matches('/')
+        .to_ascii_lowercase()
 }
 
 fn repo_root() -> Result<PathBuf, String> {
@@ -948,6 +1101,118 @@ mod tests {
     }
 
     #[test]
+    fn stale_gap_ledger_suppresses_repair_selection() -> Result<(), String> {
+        let repo = temp_repo("first-pr-stale")?;
+        let ledger = repo.join(DEFAULT_GAP_LEDGER);
+        let mut value = ledger_with_repairable_gap();
+        value["status"] = json!("stale");
+        write_json(&ledger, value)?;
+        let packet = render_start_here_packet(&repo, &FirstPrOptions::default());
+        assert_eq!(packet["status"], "blocked");
+        assert_eq!(packet["selected"]["state"], "stale_artifact");
+        assert!(
+            packet["selected"]["next_command"]
+                .as_str()
+                .is_some_and(|command| command.contains("ripr reports gap-ledger"))
+        );
+        cleanup(&repo)
+    }
+
+    #[test]
+    fn wrong_root_gap_ledger_suppresses_repair_selection() -> Result<(), String> {
+        let repo = temp_repo("first-pr-wrong-root")?;
+        let ledger = repo.join(DEFAULT_GAP_LEDGER);
+        let mut value = ledger_with_repairable_gap();
+        value["root"] = json!("other-workspace");
+        write_json(&ledger, value)?;
+        let packet = render_start_here_packet(&repo, &FirstPrOptions::default());
+        assert_eq!(packet["status"], "blocked");
+        assert_eq!(packet["selected"]["state"], "wrong_root");
+        assert!(
+            packet["selected"]["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("other-workspace"))
+        );
+        cleanup(&repo)
+    }
+
+    #[test]
+    fn timeout_gap_ledger_writes_retry_packet() -> Result<(), String> {
+        let repo = temp_repo("first-pr-timeout")?;
+        let ledger = repo.join(DEFAULT_GAP_LEDGER);
+        let mut value = ledger_with_repairable_gap();
+        value["status"] = json!("timeout");
+        write_json(&ledger, value)?;
+        let packet = render_start_here_packet(&repo, &FirstPrOptions::default());
+        assert_eq!(packet["status"], "blocked");
+        assert_eq!(packet["selected"]["state"], "timeout");
+        assert!(
+            packet["selected"]["next_command"]
+                .as_str()
+                .is_some_and(|command| command.contains("ripr reports gap-ledger"))
+        );
+        cleanup(&repo)
+    }
+
+    #[test]
+    fn blocked_gap_ledger_writes_retry_packet() -> Result<(), String> {
+        let repo = temp_repo("first-pr-blocked-ledger")?;
+        let ledger = repo.join(DEFAULT_GAP_LEDGER);
+        write_json(
+            &ledger,
+            json!({
+                "schema_version": "0.1",
+                "kind": "gap_decision_ledger",
+                "status": "blocked",
+                "warnings": ["read missing.json failed: not found"],
+                "summary": {"records_total": 0},
+                "records": []
+            }),
+        )?;
+        let packet = render_start_here_packet(&repo, &FirstPrOptions::default());
+        assert_eq!(packet["status"], "blocked");
+        assert_eq!(packet["selected"]["state"], "blocked_artifact");
+        assert!(
+            packet["selected"]["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("read missing.json failed"))
+        );
+        assert!(
+            packet["selected"]["next_command"]
+                .as_str()
+                .is_some_and(|command| command.contains("ripr reports gap-ledger"))
+        );
+        cleanup(&repo)
+    }
+
+    #[test]
+    fn empty_diff_gap_ledger_is_schema_valid_no_action() -> Result<(), String> {
+        let repo = temp_repo("first-pr-empty-diff")?;
+        let ledger = repo.join(DEFAULT_GAP_LEDGER);
+        write_json(
+            &ledger,
+            json!({
+                "schema_version": "0.1",
+                "kind": "gap_decision_ledger",
+                "status": "empty_diff",
+                "summary": {"records_total": 0},
+                "records": []
+            }),
+        )?;
+        let options = FirstPrOptions::default();
+        write_first_pr(&repo, &options)?;
+        let packet = read_packet(&repo.join(DEFAULT_OUT_DIR).join(START_HERE_JSON))?;
+        let markdown = fs::read_to_string(repo.join(DEFAULT_OUT_DIR).join(START_HERE_MD))
+            .map_err(|err| format!("read start-here markdown: {err}"))?;
+        assert_eq!(packet["status"], "no_action");
+        assert_eq!(packet["selected"]["state"], "empty_diff");
+        assert_eq!(packet["selected"]["records_total"], 0);
+        assert!(markdown.contains("## No Action"));
+        assert!(!markdown.contains("## Blocked"));
+        cleanup(&repo)
+    }
+
+    #[test]
     fn no_repairable_gap_is_advisory_no_action() -> Result<(), String> {
         let repo = temp_repo("first-pr-no-action")?;
         let ledger = repo.join(DEFAULT_GAP_LEDGER);
@@ -972,6 +1237,22 @@ mod tests {
         assert_eq!(packet["status"], "no_action");
         assert_eq!(packet["selected"]["state"], "no_action");
         cleanup(&repo)
+    }
+
+    #[test]
+    fn first_successful_pr_fixture_corpus_matches_expected_outputs() -> Result<(), String> {
+        let corpus = repo_root()?.join("fixtures/first_successful_pr");
+        let manifest = read_packet(&corpus.join("corpus.json"))?;
+        let cases = manifest
+            .get("cases")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "first_successful_pr corpus is missing cases".to_string())?;
+        for case in cases {
+            let case_id = string_path(case, &["id"])
+                .ok_or_else(|| "first_successful_pr case is missing id".to_string())?;
+            assert_first_successful_pr_case(&corpus, &case_id)?;
+        }
+        Ok(())
     }
 
     fn ledger_with_repairable_gap() -> Value {
@@ -1037,6 +1318,31 @@ mod tests {
         let text =
             fs::read_to_string(path).map_err(|err| format!("read {}: {err}", path.display()))?;
         serde_json::from_str(&text).map_err(|err| format!("parse {}: {err}", path.display()))
+    }
+
+    fn assert_first_successful_pr_case(corpus: &Path, case_id: &str) -> Result<(), String> {
+        let case = corpus.join(case_id);
+        let options = FirstPrOptions {
+            root: format!("fixtures/first_successful_pr/{case_id}"),
+            gap_ledger: "inputs/reports/gap-decision-ledger.json".to_string(),
+            ..FirstPrOptions::default()
+        };
+        let actual_json = render_start_here_packet(&case, &options);
+        let expected_json = read_packet(&case.join("expected/start-here.json"))?;
+        assert_eq!(
+            actual_json, expected_json,
+            "start-here JSON drift in {case_id}"
+        );
+
+        let actual_md = render_start_here_markdown(&actual_json);
+        let expected_md = fs::read_to_string(case.join("expected/start-here.md"))
+            .map_err(|err| format!("read expected start-here markdown for {case_id}: {err}"))?;
+        assert_eq!(
+            actual_md.replace("\r\n", "\n"),
+            expected_md.replace("\r\n", "\n"),
+            "start-here Markdown drift in {case_id}"
+        );
+        Ok(())
     }
 
     fn temp_repo(name: &str) -> Result<PathBuf, String> {

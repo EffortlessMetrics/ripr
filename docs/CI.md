@@ -150,6 +150,9 @@ source-of-truth checks, generated-evidence rails, badge ownership, and command
 catalog coverage. `pr-ready` is the active-branch pre-review packet. Neither
 command changes badge endpoint JSON, branch protection, baseline state,
 suppressions, generated tests, or policy authority.
+Use [Merge freshness and watcher policy](MERGE_WATCH_POLICY.md) when watching a
+specific PR through hosted checks, branch freshness, Droid/advisory status, and
+merge execution.
 
 The `pr-plan-changes.txt` file is the current structural advisory artifact;
 the `target/ci/ci-plan.json` forecast remains planned. The `editor-agent-loop`
@@ -338,8 +341,10 @@ and JSON.
 PR as Markdown and JSON, including merge state, required check status when
 GitHub exposes it, reviews, Droid status, and the next safe action.
 `suggested-fixes` writes a deterministic repair patch and companion report
-under `target/ripr/reports/`; v1 only suggests allowlist ordering fixes and
-never writes badge values, baselines, suppressions, goldens, dependency
+under `target/ripr/reports/`; it suggests allowlist ordering fixes and docs
+index table ordering for specs and ADRs, plus traceability behavior block
+ordering by spec ID and capability block ordering by spec ID and capability ID.
+It never writes badge values, baselines, suppressions, goldens, dependency
 exceptions, or schema changes.
 `precommit` is the cheap non-mutating local guardrail. `check-pr` is the
 review-ready local gate and intentionally does not run package or publish
@@ -1605,9 +1610,13 @@ agent receipt, gate decision, coverage/grip frontier, and editor context
 inputs when those files exist, then writes and uploads
 `target/ripr/reports/first-useful-action.json` and
 `target/ripr/reports/first-useful-action.md` with the normal report packet. The
-job summary appends the recommended next test at a glance plus the Markdown report. If
-no inputs exist, the step logs that no first-useful-action inputs were
-available and leaves CI pass/fail behavior unchanged.
+job summary appends a first-run status card near the top of the advisory
+summary, then the recommended next test at a glance plus the Markdown report.
+The first-run card names the selected gap or no-action fallback, repair target,
+agent packet command, verify command, receipt command, artifact paths, and the
+advisory gate boundary. If no inputs exist, the step logs that no
+first-useful-action inputs were available, the summary shows the regeneration
+command, and CI pass/fail behavior is unchanged.
 
 See [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) for how
 developers, reviewers, and coding agents should read that summary, act on the
@@ -2021,8 +2030,11 @@ blocking signal.
 Use [RIPR blocking readiness](BLOCKING_READINESS.md) before promoting a gate
 mode. The guide explains when to stay advisory, when to require `ripr-waive`,
 when a reviewed baseline is enough for `baseline-check`, and when
-`calibrated-gate` has enough local evidence to block. Default generated CI
-still stays non-blocking unless `RIPR_GATE_MODE` is explicitly configured.
+`calibrated-gate` has enough local evidence to block. Its
+[Gate Adoption Checklist](BLOCKING_READINESS.md#gate-adoption-checklist) should
+be complete before a repository moves from visible evidence to optional
+blocking. Default generated CI still stays non-blocking unless
+`RIPR_GATE_MODE` is explicitly configured.
 
 The security workflow currently runs:
 
@@ -2109,6 +2121,9 @@ Planned CI work:
 A branch is ready to merge when:
 
 - required gates for touched areas pass on a committed tree
+- the branch is current enough for repository freshness policy, or a maintainer
+  has approved an explicit freshness exception using
+  [Merge freshness and watcher policy](MERGE_WATCH_POLICY.md)
 - docs and changelog are updated for user-visible changes
 - static output language rules are preserved
 - spec-test-code traceability is present for behavior changes

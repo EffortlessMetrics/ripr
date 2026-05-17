@@ -3363,6 +3363,13 @@ End state:
   generated under `target/ripr/`
 - contributor docs explain which surfaces are authored truth, generated
   evidence, deterministic repair, and judgment-required decisions
+- `cargo xtask pr-ready` gives agents one local PR readiness packet before
+  opening or updating a PR
+- `cargo xtask cockpit` gives maintainers one repo-level advisory action queue
+  for board state, generated-evidence hygiene, source-of-truth checks, and next
+  commands
+- report packets have Markdown for humans and JSON for agents instead of
+  requiring prose scraping
 
 Work items:
 
@@ -3384,6 +3391,16 @@ Work items:
 | `docs/generated-evidence-discipline` | done | #975 added `docs/GENERATED_EVIDENCE.md` and linked contributor/automation docs. |
 | `devex/command-mutability-catalog` | done | Adds `cargo xtask commands` to classify xtask commands by mutability, generated-output paths, external-state access, and judgment-required boundaries. |
 | `campaign/generated-evidence-discipline-closeout` | done | Closed after the generated-clean, badge diff policy, worktree, triage, PR status, spec numbering, campaign hardening, receipt, critic, suggested-fixes, and docs surfaces aligned; see `docs/handoffs/2026-05-14-generated-evidence-discipline-closeout.md`. |
+| `devex/pr-triage-json` | done | Commit `9cf2c039` added `target/ripr/reports/pr-triage.json` so the board-level advisory packet is agent-readable. |
+| `devex/gh-pr-status-json` | done | #1011 added `target/ripr/reports/gh-pr-status.json` for single-PR merge readiness. |
+| `reports/repo-ops-packet-index` | done | #1015 added repo-ops packet status to `cargo xtask reports index`, including command mutability, cockpit, PR-ready, worktree doctor, PR triage, merge readiness, generated-clean, badge policy, critic, receipts, suggested fixes, and check-pr artifacts. |
+| `devex/check-command-catalog` | done | #1018 added `cargo xtask check-command-catalog` so new xtask commands cannot bypass mutability classification. |
+| `devex/pr-ready-cockpit` | done | #1025 added `cargo xtask pr-ready`, writing `target/ripr/reports/pr-ready.{md,json}` as the local PR front door. |
+| `devex/repo-cockpit` | done | #1035 added `cargo xtask cockpit`, writing `target/ripr/reports/cockpit.{md,json}` as the repo-level maintainer front door. |
+| `docs/merge-watch-policy` | done | #1036 added `docs/MERGE_WATCH_POLICY.md` for polling cadence, branch-refresh decisions, REST fallback, Droid/advisory checks, and local merge limits. |
+| `automation/suggested-fixes-expansion` | done | #1039, #1041, #1044, and #1053 expanded deterministic suggested fixes for docs index ordering, traceability ordering, capability ordering, and command catalog ordering while preserving judgment-required boundaries. |
+| `devex/pr-triage-queue-disposition` | done | #1047 added advisory queue dispositions for merge candidates, stale/duplicate work, rebase needs, fresh-validation gaps, owner decisions, and wrong-lane work. |
+| `campaign/repo-ops-ux-cockpit-closeout` | done | Closed after the front-door packet flow landed; see `docs/handoffs/2026-05-16-repo-ops-ux-cockpit-closeout.md`. |
 
 Blocking conditions:
 
@@ -3402,6 +3419,8 @@ cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
 cargo xtask check-generated-clean
+cargo xtask pr-ready
+cargo xtask cockpit
 cargo xtask check-campaign
 cargo xtask check-pr
 git diff --check
@@ -3410,8 +3429,10 @@ git diff --check
 Closeout:
 
 - [Generated Evidence Discipline closeout](handoffs/2026-05-14-generated-evidence-discipline-closeout.md)
-  records the PR chain, prompt-to-artifact audit, validation plan, and the
-  boundary that future repo-operations guardrails should open explicitly.
+- [Repo-Ops UX cockpit closeout](handoffs/2026-05-16-repo-ops-ux-cockpit-closeout.md)
+  records the front-door follow-up PR chain, prompt-to-artifact audit,
+  validation plan, and boundary that future repo-operations guardrails should
+  open explicitly.
 
 ## Future Campaign: Editor Evidence UX
 
@@ -3515,3 +3536,89 @@ Blocking conditions:
 - unsaved-buffer overlays in this campaign
 - CodeLens, inlay hints, semantic tokens, or other speculative editor surfaces
 - new public crates
+
+## Lane 3 Campaign: Editor First-Run and Repair Usability
+
+Campaign ID: `editor-first-run-usability`
+
+Status: complete as an explicit Lane 3 closeout.
+
+Editor Gap Cockpit made the saved-workspace evidence loop projectable. Editor
+First-Run and Repair Usability made that loop self-orienting for a user who
+does not already know RIPR's artifact graph.
+
+Objective:
+
+```text
+Make the VS Code path explain setup, no-output states, one evidence-backed gap,
+one bounded repair action, verification, receipt state, and refresh without
+adding analyzer, policy, source-edit, generated-test, provider, mutation, PR,
+or gate authority to Lane 3.
+```
+
+End state:
+
+- `ripr: Diagnose Setup` and `ripr: Show Status` name the active workspace,
+  resolved server state, config, enabled languages, artifact presence,
+  freshness, receipt state, and next safe action.
+- No-output states distinguish missing workspace, server unavailable, missing
+  config, disabled language, unavailable adapter, missing artifacts, stale
+  artifacts, no actionable gap, and preview-limited evidence.
+- First-repair actions appear only when typed gap identity, repair route,
+  related-test, verify command, and receipt command evidence is safe.
+- Receipt projection consumes existing receipt artifacts only and fails closed
+  for stale, wrong-root, malformed, unsupported-schema, or gap-mismatched
+  receipts.
+- Preview-language evidence remains opt-in, advisory, syntax-first, and
+  static-limit labeled before action language.
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `docs/lane3-editor-first-run-usability-stack` | done | Added RIPR-PROP-0008, RIPR-SPEC-0049, RIPR-SPEC-0050, ADR-0013, the implementation plan, lane tracker state, indexes, and traceability. |
+| `vscode/setup-diagnosis-status-model` | done | Added the setup status model for server path/version, workspace root, config path, enabled and build-available languages, artifacts, freshness, receipt state, and next safe action. |
+| `vscode/diagnose-setup-command` | done | Added `ripr: Diagnose Setup` as a read-only report in the output channel. |
+| `test/vscode-first-run-no-output-states` | done | Smoke-tested no workspace, server unavailable, server available, missing config, Rust default, preview disabled, adapter unavailable, stale evidence, no actionable gap, and actionable gap states. |
+| `lsp/receipt-status-in-show-status` | done | Projected existing receipt state in Show Status without producing receipts or claiming runtime adequacy. |
+| `lsp/first-repair-action-packet` | done | Added a bounded first-repair packet action gated by typed gap identity, repair route, verify command, receipt command, and path safety. |
+| `fixtures/editor-first-run-usability` | done | Added setup, server missing, config missing, language disabled, adapter unavailable, artifact missing, artifact stale, receipt found, receipt mismatch, receipt improved, and receipt unchanged fixtures. |
+| `docs/editor-first-run-to-first-receipt` | done | Documented the install/open, Diagnose Setup, diagnostic, hover, related-test or packet, verify, receipt, and refresh loop. |
+| `dogfood/lane3-first-run-repair-receipts` | done | Recorded first-run repair dogfood receipts and limitations without adding editor behavior. |
+| `campaign/lane3-editor-first-run-usability-closeout` | done | Closed the campaign in #1040 with validation evidence and explicit non-goals. |
+
+Closeout:
+
+- [Editor First-Run Usability closeout](handoffs/2026-05-16-editor-first-run-usability-closeout.md)
+  records the PR chain, prompt-to-artifact audit, validation commands, known
+  limitations, and future-work boundary.
+
+Commands:
+
+```bash
+cargo xtask lsp-cockpit-report
+cargo xtask check-fixture-contracts
+cargo test -p ripr lsp --lib
+cargo test -p ripr lsp::tests --lib
+npm --prefix editors/vscode run compile
+npm --prefix editors/vscode run test:e2e
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-traceability
+cargo xtask check-pr
+git diff --check
+```
+
+Blocking conditions:
+
+- analyzer truth changes
+- policy or gate behavior changes
+- PR or CI rendering changes
+- source edits or generated tests
+- provider/model calls
+- runtime mutation execution
+- runtime adequacy, Rust-parity, or gate-eligibility claims for preview evidence
+- unsaved-buffer overlays, CodeLens, inlay hints, semantic tokens, or inline
+  patch application in this campaign

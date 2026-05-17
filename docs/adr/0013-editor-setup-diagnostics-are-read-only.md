@@ -1,6 +1,6 @@
 # ADR 0013: Editor Setup Diagnostics Are Read-Only
 
-Status: proposed
+Status: accepted
 
 Date: 2026-05-15
 
