@@ -180,6 +180,17 @@ mod tests {
         assert!(!selector_matches_location("src/main.rs:42", &finding));
     }
 
+    #[test]
+    fn selector_matches_absolute_finding_location_exactly() {
+        let finding = sample_finding("/workspace/ripr/src/lib.rs", 42);
+
+        assert!(selector_matches_location(
+            "/workspace/ripr/src/lib.rs:42",
+            &finding
+        ));
+        assert!(!selector_matches_location("src/lib.rs:42", &finding));
+    }
+
     fn sample_finding(file: &str, line: usize) -> Finding {
         Finding {
             id: "probe:src_lib_rs:42:error_path".to_string(),
