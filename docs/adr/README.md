@@ -20,3 +20,4 @@ PR. They should be short, dated, and focused on consequences.
 | [0011](0011-editor-preview-routing-is-projection-only.md) | proposed | Keep editor preview routing projection-only. |
 | [0012](0012-editor-gap-projection-is-read-only.md) | accepted | Keep editor gap projection read-only. |
 | [0013](0013-editor-setup-diagnostics-are-read-only.md) | accepted | Keep editor setup diagnostics read-only. |
+| [0014](0014-editor-first-pr-projection-is-read-only.md) | proposed | Keep editor first-pr packet projection read-only. |

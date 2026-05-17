@@ -576,6 +576,73 @@ Future first-run/install polish, CodeLens, inlay, semantic-token, inline-patch,
 source-edit, generated-test, provider, mutation, policy, PR-comment, or
 unsaved-buffer work needs a new editor campaign.
 
+## Selected Slice: Editor First-PR Bridge
+
+The next selected Lane 3 slice is Editor First-PR Bridge. It carries the user
+from the closed first-run repair loop into the existing first successful PR
+packet without making the editor a PR/CI producer:
+
+```text
+Diagnose Setup
+-> Show Status
+-> inspect one diagnostic
+-> copy first repair packet
+-> verify
+-> receipt
+-> refresh
+-> inspect first-pr packet
+```
+
+Durable sources for the selected docs stack:
+
+- [RIPR-PROP-0010: Editor First-PR Bridge](../proposals/RIPR-PROP-0010-editor-first-pr-bridge.md)
+- [RIPR-SPEC-0052: Editor First-PR Packet Projection](../specs/RIPR-SPEC-0052-editor-first-pr-packet-projection.md)
+- [ADR-0014: Editor First-PR Projection Is Read-Only](../adr/0014-editor-first-pr-projection-is-read-only.md)
+- [Editor First-PR Bridge implementation plan](../../plans/editor-first-pr-bridge/implementation-plan.md)
+
+The slice consumes existing first-pr packet artifacts:
+
+```text
+target/ripr/reports/start-here.{json,md}
+target/ripr/first-pr/start-here.{json,md}
+```
+
+Lane 3 may validate and project first-pr packet state in Diagnose Setup, Show
+Status, hover, fixtures, VS Code smoke, and bounded open/copy actions. It does
+not create first-pr packets, compose generated CI summaries, publish PR
+comments, decide policy or gates, claim merge readiness, edit source, generate
+tests, call providers, run mutation, or add CodeLens, inlays, semantic tokens,
+inline patches, or unsaved-buffer overlays.
+
+Planned PR path:
+
+1. `docs(lane3): open editor first-pr bridge source-of-truth stack`
+2. `test(lsp): pin post-first-run editor contract`
+3. `lsp(first-pr): validate first-pr packet artifacts`
+4. `lsp(first-pr): project first-pr state in Show Status`
+5. `lsp(first-pr): add bounded first-pr packet actions`
+6. `fixtures(editor): add first-pr bridge fixtures`
+7. `test(vscode): smoke first-pr bridge`
+8. `docs(editor): document first successful PR bridge`
+9. `dogfood(lane3): record first-pr bridge receipts`
+10. `campaign(lane3): close editor first-pr bridge`
+
+Hard boundaries:
+
+- saved-workspace first;
+- read-only projection over existing artifacts;
+- typed fields over prose;
+- Rust default unchanged;
+- preview evidence visibly bounded;
+- static limits before action language;
+- stale, wrong-root, malformed, missing, unsupported, disabled, unavailable,
+  path-unsafe, and command-unsafe states fail closed;
+- no first-pr packet producer changes;
+- no PR comment publishing or generated CI summary composition;
+- no source edits, generated tests, provider/model calls, mutation execution,
+  policy/gate/default-blocking behavior, CodeLens, inlay hints, semantic
+  tokens, inline patches, or unsaved-buffer overlays.
+
 ## Lane 3 Document Model
 
 Lane 3 uses the repo tracking model in layers so future editor work does not
