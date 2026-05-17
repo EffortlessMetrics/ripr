@@ -97,7 +97,7 @@ pub(crate) enum XtaskCommand {
     VscodeTestE2e,
     Package,
     PublishDryRun,
-    Help,
+    Help(Vec<String>),
     Unknown(String),
 }
 
@@ -105,7 +105,7 @@ impl XtaskCommand {
     pub(crate) fn parse(args: impl IntoIterator<Item = String>) -> Self {
         let mut args = args.into_iter();
         let Some(command) = args.next() else {
-            return Self::Help;
+            return Self::Help(Vec::new());
         };
         let rest: Vec<String> = args.collect();
         match command.as_str() {
@@ -210,15 +210,55 @@ impl XtaskCommand {
             "vscode-test-e2e" => Self::VscodeTestE2e,
             "package" => Self::Package,
             "publish-dry-run" => Self::PublishDryRun,
-            "help" => Self::Help,
+            "help" => Self::Help(rest),
             other => Self::Unknown(other.to_string()),
         }
     }
 }
 
-pub(crate) fn print_help() {
-    let commands = known_commands().join("\n  ");
-    println!("xtask commands:\n  {commands}");
+pub(crate) fn print_help(args: &[String]) -> Result<(), String> {
+    println!("{}", help_message(args)?);
+    Ok(())
+}
+
+pub(crate) fn help_message(args: &[String]) -> Result<String, String> {
+    if args.is_empty() {
+        let commands = known_commands().join("\n  ");
+        return Ok(format!(
+            "xtask commands:\n\n  {commands}\n\nCommon starting points:\n  cargo xtask shape       # safe local shaping before review\n  cargo xtask check-pr    # review-ready non-release gate\n  cargo xtask pr-ready    # composed local readiness packet\n\nRun `cargo xtask help <command>` for mutability, writes, and notes.\nRun `cargo xtask commands` to write the full command catalog report."
+        ));
+    }
+
+    let query = args.join(" ");
+    let matches = help_entries_for_query(&query);
+    if matches.is_empty() {
+        return Err(unknown_command_message(&query));
+    }
+
+    let mut lines = vec![format!("xtask help: `{query}`"), String::new()];
+    for entry in matches {
+        lines.push(format!("Usage: cargo xtask {}", entry.command));
+        lines.push(format!("Mutability: {}", entry.mutability));
+        lines.push(format!("Writes: {}", entry.writes));
+        lines.push(format!("Judgment required: {}", entry.judgment_required));
+        lines.push(format!("Notes: {}", entry.notes));
+        lines.push(String::new());
+    }
+    lines.push("Run `cargo xtask help` for the full command list.".to_string());
+    Ok(lines.join("\n"))
+}
+
+fn help_entries_for_query(query: &str) -> Vec<CommandCatalogEntry> {
+    let normalized = query.trim();
+    let root = known_command_root(normalized);
+    command_catalog()
+        .into_iter()
+        .filter(|entry| {
+            entry.command == normalized
+                || known_command_root(entry.command) == root
+                || known_command_root(entry.command) == normalized
+        })
+        .collect()
 }
 
 pub(crate) fn known_commands() -> Vec<&'static str> {

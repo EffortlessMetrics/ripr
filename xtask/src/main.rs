@@ -16,11 +16,11 @@ mod reports;
 mod run;
 mod verification_contracts;
 
-#[cfg(test)]
-use command::unknown_command_message;
 use command::{
     CommandCatalogEntry, XtaskCommand, command_catalog, known_command_root, known_commands,
 };
+#[cfg(test)]
+use command::{help_message, unknown_command_message};
 use policy::{
     check_allow_attributes, check_ci_lane_whitelist, check_doc_roles, check_droid_review_config,
     check_executable_files, check_file_policy, check_local_context, check_network_policy,
@@ -35142,8 +35142,8 @@ mod tests {
         generated_clean_violations, gh_pr_safe_next_action, gh_pr_status_json,
         gh_pr_status_markdown, gh_pr_status_readiness, github_event_pull_request_title_from_text,
         glob_matches, golden_changes_without_blessing, golden_drift_semantics,
-        guarded_allow_attribute_lints, guarded_allow_attributes_in_text, install_hooks_in,
-        is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
+        guarded_allow_attribute_lints, guarded_allow_attributes_in_text, help_message,
+        install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
         is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
         is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
         is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
@@ -46205,6 +46205,30 @@ jobs:
     }
 
     #[test]
+    fn help_message_highlights_common_workflows_and_command_lookup() -> Result<(), String> {
+        let overview = help_message(&[])?;
+        assert!(overview.contains("Common starting points:"));
+        assert!(overview.contains("cargo xtask help <command>"));
+
+        let check_pr = help_message(&["check-pr".to_string()])?;
+        assert!(check_pr.contains("Usage: cargo xtask check-pr"));
+        assert!(check_pr.contains("Mutability: non_mutating_check"));
+        assert!(check_pr.contains("Writes: target/ripr/reports"));
+
+        let goldens = help_message(&["goldens".to_string()])?;
+        assert!(goldens.contains("Usage: cargo xtask goldens check"));
+        assert!(goldens.contains("Usage: cargo xtask goldens bless <name> --reason <reason>"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn help_message_for_unknown_command_reuses_suggestion_text() {
+        let err = help_message(&["chek-pr".to_string()]).expect_err("unknown help target");
+        assert!(err.contains("Did you mean `check-pr`?"));
+    }
+
+    #[test]
     fn unknown_command_message_suggests_nearest_match() {
         let message = unknown_command_message("chek-pr");
         assert!(message.contains("Did you mean `check-pr`?"));
@@ -47274,7 +47298,7 @@ jobs:
         );
         assert_eq!(
             XtaskCommand::parse(std::iter::empty::<String>()),
-            XtaskCommand::Help
+            XtaskCommand::Help(Vec::new())
         );
     }
 
