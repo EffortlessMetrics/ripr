@@ -24,3 +24,40 @@ pub(crate) fn route(path: &Path) -> Option<LanguageId> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{LanguageId, route};
+    use std::path::Path;
+
+    #[test]
+    fn routes_stable_and_preview_source_extensions() {
+        for (path, expected) in [
+            ("src/lib.rs", LanguageId::Rust),
+            ("src/app.ts", LanguageId::TypeScript),
+            ("src/component.tsx", LanguageId::TypeScript),
+            ("src/app.js", LanguageId::TypeScript),
+            ("src/component.jsx", LanguageId::TypeScript),
+            ("src/validation.py", LanguageId::Python),
+        ] {
+            assert_eq!(route(Path::new(path)), Some(expected), "route for {path}");
+        }
+    }
+
+    #[test]
+    fn leaves_unknown_extension_and_extensionless_paths_unrouted() {
+        assert_eq!(route(Path::new("README.md")), None);
+        assert_eq!(route(Path::new("Makefile")), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn leaves_non_utf8_paths_unrouted() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+        use std::path::PathBuf;
+
+        let non_utf8 = PathBuf::from(OsString::from_vec(vec![b's', b'r', b'c', b'/', 0xff]));
+        assert_eq!(route(&non_utf8), None);
+    }
+}

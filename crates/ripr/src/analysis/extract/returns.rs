@@ -21,3 +21,44 @@ pub(crate) fn extract_return_facts(body: &str, start_line: usize) -> Vec<ReturnF
     returns.dedup_by(|a, b| a.line == b.line && a.text == b.text);
     returns
 }
+
+#[cfg(test)]
+mod tests {
+    use super::extract_return_facts;
+
+    #[test]
+    fn extracts_explicit_result_option_and_none_return_shapes() {
+        let body = r#"fn classify(value: i32) -> Option<Result<i32, Error>> {
+    if value < 0 { return None; }
+    if value == 0 { Some(Ok(0)) } else { Some(Err(Error::Bad)) }
+}"#;
+
+        let facts = extract_return_facts(body, 20);
+        let simplified = facts
+            .iter()
+            .map(|fact| (fact.line, fact.text.as_str()))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            simplified,
+            vec![
+                (21, "if value < 0 { return None; }"),
+                (
+                    22,
+                    "if value == 0 { Some(Ok(0)) } else { Some(Err(Error::Bad)) }"
+                )
+            ]
+        );
+    }
+
+    #[test]
+    fn deduplicates_same_return_text_on_same_line_but_keeps_later_lines() {
+        let body = "return Ok(1);\nreturn Ok(1);\n";
+
+        let facts = extract_return_facts(body, 7);
+
+        assert_eq!(facts.len(), 2);
+        assert_eq!(facts[0].line, 7);
+        assert_eq!(facts[1].line, 8);
+    }
+}

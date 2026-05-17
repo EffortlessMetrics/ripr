@@ -421,3 +421,133 @@ fn comparable_expression(expression: &str) -> String {
         .trim_start_matches('&')
         .to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{classify_assertion, contains_macro_invocation, extract_assertions};
+    use crate::domain::{OracleKind, OracleStrength};
+
+    #[test]
+    fn classifies_core_rust_oracle_shapes_by_kind_and_strength() {
+        for (line, expected_kind, expected_strength) in [
+            (
+                "assert_matches!(result, Err(ParseError::InvalidPort));",
+                OracleKind::ExactErrorVariant,
+                OracleStrength::Strong,
+            ),
+            (
+                "assert!(result.is_err());",
+                OracleKind::BroadError,
+                OracleStrength::Weak,
+            ),
+            (
+                "assert_eq!(&actual.total, actual.total);",
+                OracleKind::RelationalCheck,
+                OracleStrength::Weak,
+            ),
+            (
+                "assert_eq!(actual, Quote { total: 10 });",
+                OracleKind::WholeObjectEquality,
+                OracleStrength::Strong,
+            ),
+            (
+                "assert_eq!(actual, 10);",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            ),
+            (
+                "assert!(events.contains(&Event::Saved));",
+                OracleKind::MockExpectation,
+                OracleStrength::Medium,
+            ),
+        ] {
+            let classification = classify_assertion(line);
+            assert_eq!(classification.kind, expected_kind, "kind for {line}");
+            assert_eq!(
+                classification.strength, expected_strength,
+                "strength for {line}"
+            );
+        }
+    }
+
+    #[test]
+    fn classifies_snapshot_mock_smoke_and_custom_assertion_helpers() {
+        for (line, expected_kind, expected_strength) in [
+            (
+                "insta::assert_json_snapshot!(payload);",
+                OracleKind::Snapshot,
+                OracleStrength::Medium,
+            ),
+            (
+                "mock_transport.expect_send().times(1);",
+                OracleKind::MockExpectation,
+                OracleStrength::Medium,
+            ),
+            (
+                "let value = parse(input).unwrap();",
+                OracleKind::SmokeOnly,
+                OracleStrength::Smoke,
+            ),
+            (
+                "assert_price_eq(actual, expected);",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            ),
+            (
+                "assert_price_is_valid(actual);",
+                OracleKind::Unknown,
+                OracleStrength::Unknown,
+            ),
+        ] {
+            let classification = classify_assertion(line);
+            assert_eq!(classification.kind, expected_kind, "kind for {line}");
+            assert_eq!(
+                classification.strength, expected_strength,
+                "strength for {line}"
+            );
+        }
+    }
+
+    #[test]
+    fn extract_assertions_reports_source_lines_text_and_observed_tokens() {
+        let body = r#"let actual = calculate_total(input);
+assert_eq!(actual, expected_total);
+let value = parse(input).expect("valid fixture");
+"#;
+
+        let facts = extract_assertions(body, 100);
+
+        assert_eq!(facts.len(), 2);
+        assert_eq!(facts[0].line, 101);
+        assert_eq!(facts[0].kind, OracleKind::ExactValue);
+        assert!(facts[0].observed_tokens.contains(&"actual".to_string()));
+        assert!(
+            facts[0]
+                .observed_tokens
+                .contains(&"expected_total".to_string())
+        );
+        assert_eq!(facts[1].line, 102);
+        assert_eq!(facts[1].kind, OracleKind::SmokeOnly);
+        assert_eq!(facts[1].strength, OracleStrength::Smoke);
+    }
+
+    #[test]
+    fn macro_invocation_detection_requires_identifier_boundary_and_invocation_delimiter() {
+        assert!(contains_macro_invocation(
+            "insta::assert_json_snapshot!(payload);",
+            "assert_json_snapshot!"
+        ));
+        assert!(contains_macro_invocation(
+            "assert_snapshot! { payload }",
+            "assert_snapshot!"
+        ));
+        assert!(!contains_macro_invocation(
+            "my_assert_snapshot!(payload);",
+            "assert_snapshot!"
+        ));
+        assert!(!contains_macro_invocation(
+            "assert_snapshot payload",
+            "assert_snapshot!"
+        ));
+    }
+}
