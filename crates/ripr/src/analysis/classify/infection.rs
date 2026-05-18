@@ -115,6 +115,19 @@ mod tests {
     }
 
     #[test]
+    fn predicate_infection_matches_decimal_exponent_case() {
+        let probe = probe(ProbeFamily::Predicate, "ratio < 4E-2");
+        let test = test_with_literals(&["4e-2"]);
+        let evidence = infection_evidence(&probe, &[&test], &ActivationEvidence::default());
+
+        assert_eq!(evidence.state, StageState::Yes);
+        assert_eq!(
+            evidence.summary,
+            "Detected test input literal matching changed boundary: 4e-2"
+        );
+    }
+
+    #[test]
     fn predicate_infection_reports_opaque_fixture_when_literals_are_missing() {
         let probe = probe(ProbeFamily::Predicate, "value > 10");
         let test = test_with_literals(&[]);
