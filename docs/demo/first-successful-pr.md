@@ -1,0 +1,129 @@
+# First Successful PR Demo
+
+This demo shows the adopter path that `ripr first-pr` is meant to make obvious:
+
+```text
+one PR
+-> one start-here packet
+-> one repairable Rust gap or a clear no-action state
+-> one repair route
+-> one verification command
+-> one receipt trail
+```
+
+The checked corpus lives in [fixtures/first_successful_pr](../../fixtures/first_successful_pr/README.md).
+It is fixture-backed by [RIPR-SPEC-0051](../specs/RIPR-SPEC-0051-first-successful-pr-ux.md)
+and composes explicit gap-ledger artifacts. It does not run hidden analysis,
+edit source, generate tests, call providers, run mutation testing, or change
+gate policy.
+
+## Run The Demo
+
+From the repository root, generate a demo packet for the boundary-gap case:
+
+```bash
+ripr first-pr \
+  --root . \
+  --base origin/main \
+  --head HEAD \
+  --gap-ledger fixtures/first_successful_pr/boundary-gap/inputs/reports/gap-decision-ledger.json \
+  --out-dir target/ripr/demo/boundary-gap
+```
+
+Open:
+
+```text
+target/ripr/demo/boundary-gap/start-here.md
+```
+
+The checked golden version is:
+
+```text
+fixtures/first_successful_pr/boundary-gap/expected/start-here.md
+```
+
+## Demo Cases
+
+| Case | User story | Start-here result | Repair route | Verification |
+| --- | --- | --- | --- | --- |
+| `boundary-gap` | Changed Rust behavior is reached by a related test, but the equality boundary is not checked. | Top gap: missing boundary assertion for `amount >= threshold`. | `AddBoundaryAssertion` in `tests/pricing.rs`. | `cargo xtask fixtures boundary_gap` |
+| `output-contract-gap` | User-facing output text changed without checked output or golden evidence. | Top gap: missing output contract for `APPLE_M3_AIR_DEVICE_LABELS_TEXT`. | `AddOutputGolden` in the expected output fixture. | `cargo xtask goldens check` |
+| `empty-diff` | The PR has no changed behavior to inspect. | Successful no-action state. | No repair selected. | No-action is advisory, not adequacy proof. |
+| `blocked-ledger` | The gap ledger cannot be trusted yet. | Blocked state with a regeneration command. | Refresh the ledger before assigning repair work. | `ripr reports gap-ledger ...` |
+
+## Boundary Gap Story
+
+The boundary-gap packet is the first-run happy path:
+
+```text
+Changed behavior:
+  amount >= threshold
+
+Why it matters:
+  A related Rust test reaches the change, but no equality-boundary assertion
+  was found.
+
+Repair:
+  Add an exact assertion for amount == threshold.
+
+Verify:
+  cargo xtask fixtures boundary_gap
+```
+
+The useful output is not the raw finding. It is the bounded work order:
+what changed, why it matters, where to repair, and which command verifies
+movement.
+
+## Output Contract Story
+
+The output-contract case covers a different proof surface:
+
+```text
+Changed output:
+  APPLE_M3_AIR_DEVICE_LABELS_TEXT
+
+Why it matters:
+  User-facing output changed without checked output or golden evidence.
+
+Repair:
+  Add or update the golden output fixture.
+
+Verify:
+  cargo xtask goldens check
+```
+
+This keeps output text changes out of generic `static_unknown` repair language.
+The packet routes the change to the output proof that should move.
+
+## No-Action And Blocked Are Valid
+
+The demo also pins the non-repair states:
+
+- `empty-diff` is a successful no-action packet. It does not claim runtime,
+  coverage, mutation, or correctness adequacy.
+- `blocked-ledger` is a useful blocked packet. It names the stale or missing
+  evidence and gives the regeneration command instead of assigning repair work.
+
+## What This Shows
+
+This demo shows that the first-run front door can turn existing artifacts into a
+user-readable repair path.
+
+It does not claim:
+
+- runtime mutation adequacy;
+- coverage adequacy;
+- general correctness;
+- gate authority;
+- preview-language promotion.
+
+Gate decisions remain separate explicit artifacts. `start-here.md` guides the
+reviewer; it does not decide pass or fail.
+
+## Related Docs
+
+- [First successful PR workflow](../FIRST_PR_WORKFLOW.md)
+- [Quickstart](../QUICKSTART.md)
+- [Output schema](../OUTPUT_SCHEMA.md#first-pr-start-here-packet)
+- [Support tiers](../status/SUPPORT_TIERS.md)
+- [First successful PR fixture corpus](../../fixtures/first_successful_pr/README.md)

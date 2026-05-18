@@ -49,3 +49,20 @@ pub(crate) use review_comments::ripr_review_comments;
 pub(crate) use sarif::sarif_policy;
 pub(crate) use targeted_test::targeted_test_outcome;
 pub(crate) use test_oracles::{test_efficiency_report, test_oracle_report};
+
+fn ensure_parent_dir(path: &std::path::Path, label: &str) -> Result<(), String> {
+    let Some(parent) = path.parent() else {
+        return Err(format!("{label} has no parent directory"));
+    };
+    std::fs::create_dir_all(parent)
+        .map_err(|err| format!("failed to create {} parent: {err}", parent.display()))
+}
+
+fn write_parented_file(
+    path: &std::path::Path,
+    label: &str,
+    contents: impl AsRef<[u8]>,
+) -> Result<(), String> {
+    ensure_parent_dir(path, label)?;
+    std::fs::write(path, contents).map_err(|err| format!("failed to write {label}: {err}"))
+}

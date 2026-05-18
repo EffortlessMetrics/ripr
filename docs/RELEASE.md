@@ -29,6 +29,8 @@ cargo check --workspace --all-targets
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo doc --workspace --no-deps
+cargo xtask check-product-copy
+cargo xtask check-generated-clean
 cargo xtask release-readiness --version 0.6.0
 cargo package -p ripr --list
 cargo publish -p ripr --dry-run
@@ -36,6 +38,20 @@ cargo publish -p ripr --dry-run
 
 For the defaults-first install path, also run the local install proof from
 [Installation verification](INSTALLATION_VERIFICATION.md).
+
+For 0.6.x release claims about finding alignment or evidence accuracy, also
+run the Lane 1 evidence reports:
+
+```bash
+cargo xtask lane1-evidence-audit
+cargo xtask evidence-quality-scorecard
+```
+
+The release claim is supported only when the Lane 1 audit coverage section
+reports zero `static_unknown` items without named limitations, zero actionable
+canonical items without repair routes, and zero actionable canonical items
+without verify commands. Raw finding counts are diagnostic context; actionable
+aligned items are the user-facing work count.
 
 ## Runtime Smoke
 
@@ -60,11 +76,20 @@ cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 cargo install --path crates/ripr --locked --force --root target/ripr/install-smoke
 target/ripr/install-smoke/bin/ripr --version
+target/ripr/install-smoke/bin/ripr first-pr --help
 target/ripr/install-smoke/bin/ripr doctor
 target/ripr/install-smoke/bin/ripr pilot --root fixtures/boundary_gap/input --out target/ripr/install-smoke/pilot
 target/ripr/install-smoke/bin/ripr outcome --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json
+npm --prefix editors/vscode ci
+npm --prefix editors/vscode run compile
 npm --prefix editors/vscode run package
 ```
+
+For first-run adoption releases, also confirm the generated GitHub workflow
+summary includes `#### First-run status`, the `missing_start_here` recovery
+state, and the `target/ripr/reports/start-here.md` front door. Confirm
+`editors/vscode/package.json` contributes `ripr: Start Current Repair` so the
+installed editor path exposes the same repair loop.
 
 For a published release, confirm that GitHub Releases contains the VSIX, server
 manifest, server archives, and checksums:
@@ -114,6 +139,7 @@ happens, check crates.io manually before retrying.
 ```bash
 cargo install ripr --version 0.6.0 --locked --root target/ripr/install-smoke-cratesio --force
 target/ripr/install-smoke-cratesio/bin/ripr --version
+target/ripr/install-smoke-cratesio/bin/ripr first-pr --help
 target/ripr/install-smoke-cratesio/bin/ripr doctor
 target/ripr/install-smoke-cratesio/bin/ripr pilot --root fixtures/boundary_gap/input --out target/ripr/install-smoke-cratesio/pilot
 target/ripr/install-smoke-cratesio/bin/ripr outcome --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json
@@ -137,6 +163,11 @@ Before publishing, run the
 [Release copy checklist](RELEASE_COPY_CHECKLIST.md). It covers the GitHub
 Release body, marketplace metadata, README install commands, badge freshness
 disclosure, public vocabulary, and asset/dependent-channel verification.
+For 0.6.0, also compare GitHub About and repository topics with the current
+release-readiness handoff before changing repository metadata. Repository
+metadata should describe static mutation-exposure analysis for test-gap review
+without implying runtime mutation execution, generated tests, provider-backed
+analysis, default blocking, or stable preview-language gate authority.
 
 ## Recovery
 
