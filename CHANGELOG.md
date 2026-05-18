@@ -44,7 +44,7 @@ Release themes:
 
 Detailed changes:
 - Changelog source range: the 0.6.0 notes were reconciled against merged PRs
-  and first-parent commits through `12adda8a` / #1123 on current `main`.
+  and first-parent commits through `b642f637` / #1124 on current `main`.
   Internal learning-doc polish is intentionally not part of the public release
   story. Remaining open non-release PR families stay outside this section until
   they land.
@@ -70,6 +70,9 @@ Detailed changes:
 - Output-format command names and repo-scope metadata now come from one
   behavior-preserving metadata table, reducing duplicated CLI/report wiring
   without changing output contracts or release behavior.
+- Shared Markdown and JSON value-path helpers now back policy promotion report
+  rendering, reducing duplicated output code without changing output schemas,
+  policy authority, or gate behavior.
 - Lane 1 evidence audit generation now streams repo-exposure latency
   breadcrumbs during long live-repo runs and records bounded generation
   diagnostics in `inputs.repo_exposure_generation`, including timeout, status,
