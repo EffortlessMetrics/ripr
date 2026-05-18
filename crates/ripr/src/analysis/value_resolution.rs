@@ -167,7 +167,7 @@ impl<'a> ValueEnv<'a> {
         }
         if let Some((object, field)) = field_projection(expr)
             && let Some(binding) = self.facts.struct_field_bindings.get(object)
-            && binding.line <= call_line
+            && binding.line < call_line
             && !self
                 .facts
                 .struct_field_invalidations
@@ -1341,7 +1341,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_same_test_struct_field_projection_is_source_order_scoped() {
+    fn resolve_same_test_struct_field_projection_is_call_line_scoped() {
         let seam = predicate_seam();
         let body = "let case = DiscountCase { amount: 100, discount_threshold: 100 };\n\
                     discounted_total(case.amount, case.discount_threshold);\n\
@@ -1358,7 +1358,7 @@ mod tests {
         assert_eq!(
             env.resolve_at("case.amount", 11),
             vec![("100".to_string(), ValueContext::FunctionArgument)],
-            "later shadowing must not erase values for an earlier owner call"
+            "later-line shadowing must not erase values for an earlier owner call"
         );
         assert!(
             env.resolve_at("case.amount", 12).is_empty(),
@@ -1367,7 +1367,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_same_test_struct_field_projection_requires_value_visible_at_call() {
+    fn resolve_same_test_struct_field_projection_requires_prior_line_value() {
         let seam = predicate_seam();
         let body = "discounted_total(case.amount, case.discount_threshold);\n\
                     let case = DiscountCase { amount: 100, discount_threshold: 100 };\n";
@@ -1384,10 +1384,34 @@ mod tests {
             env.resolve_at("case.amount", 10).is_empty(),
             "later literals must not explain owner-call projections before the binding"
         );
+        assert!(
+            env.resolve_at("case.amount", 11).is_empty(),
+            "same-line ordering is not tracked, so the binding line itself stays unresolved"
+        );
         assert_eq!(
-            env.resolve_at("case.amount", 11),
+            env.resolve_at("case.amount", 12),
             vec![("100".to_string(), ValueContext::FunctionArgument)],
-            "the literal becomes available only once the binding line is reached"
+            "the literal becomes available only after the binding line"
+        );
+    }
+
+    #[test]
+    fn resolve_same_test_struct_field_projection_keeps_same_line_ordering_unknown() {
+        let seam = predicate_seam();
+        let body = "discounted_total(case.amount, case.discount_threshold); \
+                    let case = DiscountCase { amount: 100, discount_threshold: 100 };\n";
+        let (struct_field_bindings, struct_field_invalidations) =
+            extract_struct_field_bindings(body, 10, &[]);
+        let facts = ValueEnvFacts {
+            struct_field_bindings,
+            struct_field_invalidations,
+            ..ValueEnvFacts::default()
+        };
+        let env = ValueEnv::new(&seam, &facts);
+
+        assert!(
+            env.resolve_at("case.amount", 10).is_empty(),
+            "line-scoped call facts cannot prove whether a same-line literal binding came first"
         );
     }
 

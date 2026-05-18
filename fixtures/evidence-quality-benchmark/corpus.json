@@ -453,9 +453,10 @@
         "metric": "activation_value_unresolved",
         "direction": "decrease"
       },
-      "expected_claim": "Source-order-scoped same-test struct literal fields can resolve activation values for owner calls before a later shadow while preserving stale-value guards after the shadow.",
+      "expected_claim": "Call-line-scoped same-test struct literal fields can resolve activation values for owner calls on later lines before a later shadow while preserving stale-value guards after the shadow.",
       "must_not_claim": [
         "Do not reuse stale literal fields for owner calls at or after the shadowing line.",
+        "Do not infer same-line source order without call and binding offsets.",
         "Do not resolve literal field projections before the binding appears.",
         "Do not resolve helper-returned struct projections.",
         "Do not infer semantic struct flow outside the same test body.",
@@ -669,7 +670,7 @@
       "expected_claim": "Fixture parameter projections remain named static limitations because a later literal binding is not proof of the runtime fixture value.",
       "must_not_claim": [
         "Do not resolve fixture/rstest parameter fields from later same-name literals.",
-        "Do not let source-order struct projection support override fixture/rstest parameter invalidation.",
+        "Do not let call-line struct projection support override fixture/rstest parameter invalidation.",
         "Do not treat runtime fixture parameters as same-test literal struct fields."
       ],
       "repair_route": "analysis/value-resolution-audit-fixes"

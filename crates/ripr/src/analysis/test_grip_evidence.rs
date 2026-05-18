@@ -3777,9 +3777,9 @@ fn wrapper_mentions_owner_only_in_non_code() {
                         { if amount >= threshold { amount - 10 } else { amount } }\n";
         let test = (
             "tests/pricing_tests.rs",
-            "#[test] fn via_struct_literal() { \
-                 let case = DiscountCase { amount: 100, threshold: 100 }; \
-                 assert_eq!(discounted_total(case.amount, case.threshold), 90); \
+            "#[test]\nfn via_struct_literal() {\n    \
+                 let case = DiscountCase { amount: 100, threshold: 100 };\n    \
+                 assert_eq!(discounted_total(case.amount, case.threshold), 90);\n\
              }\n",
         );
         let values = observed_values_for(prod_src, &[test])?;
@@ -3793,7 +3793,7 @@ fn wrapper_mentions_owner_only_in_non_code() {
     #[test]
     fn given_struct_literal_shadowed_after_owner_call_then_values_are_recorded()
     -> Result<(), String> {
-        // Source order matters for the fixture shape: a later shadow
+        // Line order matters for the fixture shape: a later-line shadow
         // should not erase a direct owner call that already used the
         // same-test literal field projection.
         let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
@@ -3839,6 +3839,51 @@ fn wrapper_mentions_owner_only_in_non_code() {
     }
 
     #[test]
+    fn given_same_line_struct_literal_after_owner_call_then_projection_values_stay_unresolved()
+    -> Result<(), String> {
+        // Call facts currently carry line, not column/byte offsets. A
+        // same-line binding after the owner call must stay unresolved
+        // instead of pretending source order was established.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test]\nfn via_same_line_late_literal_fixture() {\n    \
+                 assert_eq!(discounted_total(case.amount, case.threshold), 90); let case = DiscountCase { amount: 100, threshold: 100 };\n    \
+                 let _ = case;\n\
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        assert!(
+            values.is_empty(),
+            "same-line literal fields after the owner call must not produce fake values; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_same_line_struct_literal_before_owner_call_then_projection_values_stay_unresolved()
+    -> Result<(), String> {
+        // This is conservative: until calls and bindings carry offsets,
+        // same-line ordering is not projectable even when the source text
+        // happens to place the literal before the owner call.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test]\nfn via_same_line_literal_fixture() {\n    \
+                 let case = DiscountCase { amount: 100, threshold: 100 }; assert_eq!(discounted_total(case.amount, case.threshold), 90);\n\
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        assert!(
+            values.is_empty(),
+            "same-line literal field ordering must stay unresolved without offsets; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn given_struct_literal_field_mutated_before_owner_call_then_values_stay_unresolved()
     -> Result<(), String> {
         // A mutation before the owner call makes the original literal
@@ -3864,7 +3909,7 @@ fn wrapper_mentions_owner_only_in_non_code() {
     #[test]
     fn given_struct_literal_field_mutated_after_owner_call_then_values_are_recorded()
     -> Result<(), String> {
-        // A mutation after the owner call should not erase the literal
+        // A later-line mutation after the owner call should not erase the literal
         // value observed by the earlier owner call.
         let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
                         { if amount >= threshold { amount - 10 } else { amount } }\n";
@@ -3984,7 +4029,8 @@ fn wrapper_mentions_owner_only_in_non_code() {
     fn given_let_pattern_shadowing_struct_literal_then_values_stay_unresolved() -> Result<(), String>
     {
         // Non-simple let patterns can bind a fresh value under the same
-        // name. Without source-order scope, that remains a limitation.
+        // name. If the binder reaches the owner-call line first, that
+        // remains a limitation.
         let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
                         { if amount >= threshold { amount - 10 } else { amount } }\n";
         let test = (
