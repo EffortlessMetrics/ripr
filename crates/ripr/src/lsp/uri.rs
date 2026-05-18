@@ -94,3 +94,51 @@ pub(super) fn encode_uri_path(path: &str) -> String {
     }
     encoded
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_uri_for_path_percent_encodes_spaces_and_symbols() -> Result<(), String> {
+        let uri = file_uri_for_path(Path::new("fixtures/my crate/src/lib #1.rs"))?;
+
+        assert_eq!(
+            uri.as_str(),
+            "file:///fixtures/my%20crate/src/lib%20%231.rs"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn path_from_file_uri_decodes_percent_encoded_paths() -> Result<(), String> {
+        let uri: Uri = "file:///workspace/my%20crate/src/lib%20%231.rs"
+            .parse()
+            .map_err(|err| format!("valid URI should parse: {err}"))?;
+
+        assert_eq!(
+            path_from_file_uri(&uri),
+            Some(PathBuf::from("/workspace/my crate/src/lib #1.rs"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn file_uris_match_normalizes_windows_drive_case() -> Result<(), String> {
+        let left: Uri = "file:///C:/repo/project/src/lib.rs"
+            .parse()
+            .map_err(|err| format!("valid URI should parse: {err}"))?;
+        let right: Uri = "file:///c:/repo/project/src/lib.rs"
+            .parse()
+            .map_err(|err| format!("valid URI should parse: {err}"))?;
+
+        assert!(file_uris_match(&left, &right));
+        Ok(())
+    }
+
+    #[test]
+    fn percent_decode_uri_path_rejects_invalid_escape_or_utf8() {
+        assert_eq!(percent_decode_uri_path("/workspace/%GG"), None);
+        assert_eq!(percent_decode_uri_path("/workspace/%FF"), None);
+    }
+}

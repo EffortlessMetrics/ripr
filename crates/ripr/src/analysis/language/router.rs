@@ -24,3 +24,41 @@ pub(crate) fn route(path: &Path) -> Option<LanguageId> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn route_maps_supported_extensions_to_language_ids() {
+        let cases = [
+            ("src/lib.rs", LanguageId::Rust),
+            ("web/app.ts", LanguageId::TypeScript),
+            ("web/app.tsx", LanguageId::TypeScript),
+            ("web/app.js", LanguageId::TypeScript),
+            ("web/app.jsx", LanguageId::TypeScript),
+            ("tests/test_checkout.py", LanguageId::Python),
+        ];
+
+        for (path, expected) in cases {
+            assert_eq!(route(&PathBuf::from(path)), Some(expected));
+        }
+    }
+
+    #[test]
+    fn route_returns_none_for_unknown_missing_or_non_utf8_extensions() {
+        assert_eq!(route(&PathBuf::from("README.md")), None);
+        assert_eq!(route(&PathBuf::from("Makefile")), None);
+
+        #[cfg(unix)]
+        {
+            use std::ffi::OsString;
+            use std::os::unix::ffi::OsStringExt;
+
+            let mut path = PathBuf::from("src/lib.");
+            path.set_extension(OsString::from_vec(vec![0xFF]));
+            assert_eq!(route(&path), None);
+        }
+    }
+}

@@ -38,3 +38,31 @@ pub(crate) fn extract_literal_facts(body: &str, start_line: usize) -> Vec<Litera
     literals.dedup_by(|a, b| a.line == b.line && a.value == b.value);
     literals
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_literals_returns_sorted_unique_values() {
+        let body = "let low = -3;\nlet high = 42;\nlet again = 42;";
+
+        let literals = extract_literals(body);
+
+        assert_eq!(literals, vec!["-3".to_string(), "42".to_string()]);
+    }
+
+    #[test]
+    fn extract_literal_facts_preserves_source_lines_and_ignores_bare_minus() {
+        let body = "let range = 1..=3;\nlet value = -7;\nlet dash = a - b;";
+
+        let facts = extract_literal_facts(body, 10);
+
+        let line_values = facts
+            .iter()
+            .map(|fact| (fact.line, fact.value.as_str()))
+            .collect::<Vec<_>>();
+
+        assert_eq!(line_values, vec![(10, "1"), (10, "3"), (11, "-7")]);
+    }
+}
