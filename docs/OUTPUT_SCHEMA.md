@@ -1868,9 +1868,9 @@ Field contract:
   from canonical items, not raw findings. Each row is `{label, count}` sorted
   by descending count and then label. The section reports actionable gap
   classes, files, repair kinds, missing discriminator kinds, static limitation
-  reasons, verify-command unknowns by class, and repair-route unknowns by
-  class so maintainers can choose the next fixture-backed repair slice from
-  live evidence.
+  reasons on actionable gap records, verify-command unknowns by class, and
+  repair-route unknowns by class so maintainers can choose the next
+  fixture-backed repair slice from live evidence.
 - `canonical_gap_groups.total` - number of distinct canonical gap IDs among
   headline records.
 - `canonical_gap_groups.largest` - top canonical groups by observed count,
@@ -2137,9 +2137,9 @@ Field contract:
 - `actionable_gap_top_lists` - the audit-derived
   `finding_alignment.actionable_gap_top_lists` section carried forward for the
   scorecard. It shows the dominant actionable classes, files, repair kinds,
-  missing discriminator kinds, static limitation reasons, and guidance-unknown
-  classes so the scorecard explains the shape of user work before any badge or
-  downstream rendering change.
+  missing discriminator kinds, static limitation reasons on actionable gap
+  records, and guidance-unknown classes so the scorecard explains the shape of
+  user work before any badge or downstream rendering change.
 - `recommended_repairs` - bounded Lane 1 repair slices ordered by product risk
   priority first, then signal count. These are advisory next steps, not policy
   decisions.

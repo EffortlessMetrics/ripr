@@ -86,8 +86,9 @@ includes:
 `finding_alignment.actionable_gap_top_lists` is derived from canonical items,
 not raw findings. It reports bounded `{label, count}` rows for actionable gap
 classes, files, repair kinds, missing discriminator kinds, static limitation
-reasons, verify-command unknowns, and repair-route unknowns. These rows are
-advisory triage hints for the next fixture-backed Lane 1 repair slice.
+reasons on actionable gap records, verify-command unknowns, and repair-route
+unknowns. These rows are advisory triage hints for the next fixture-backed Lane
+1 repair slice.
 
 The report is additive and repo-local. It is not a replacement for
 `repo-exposure.json`, `evidence-health.json`, or calibration reports.
@@ -124,8 +125,8 @@ The audit must summarize:
   same-line duplicate groups, static-unknown items without named limitations,
   and canonical items missing repair or verification guidance;
 - actionable canonical gap top lists for class, file, repair kind, missing
-  discriminator kind, static limitation reason, verify-command unknown, and
-  repair-route unknown counts;
+  discriminator kind, static limitation reason on actionable gap records,
+  verify-command unknown, and repair-route unknown counts;
 - canonical gap groups;
 - largest canonical groups;
 - duplicate-looking groups;

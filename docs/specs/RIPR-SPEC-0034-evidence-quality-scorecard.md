@@ -58,8 +58,8 @@ The scorecard must summarize:
 - calibration coverage;
 - top recommended Lane 1 repair slices;
 - audit-derived actionable canonical gap top lists for classes, files, repair
-  kinds, missing discriminator kinds, static limitation reasons, and
-  guidance-unknown classes;
+  kinds, missing discriminator kinds, static limitation reasons on actionable
+  gap records, and guidance-unknown classes;
 - recent audit deltas when a previous scorecard or audit snapshot is
   available.
 
@@ -242,7 +242,8 @@ count and keeps raw signals as diagnostic context.
 Given a Lane 1 audit with actionable gap top lists, the scorecard carries those
 lists forward unchanged so agents and maintainers can see the dominant evidence
 classes, files, repair kinds, missing discriminator kinds, static limitation
-reasons, and guidance-unknown classes without inferring from raw findings.
+reasons on actionable gap records, and guidance-unknown classes without
+inferring from raw findings.
 
 Given no previous scorecard or audit snapshot, the trend report marks history
 unavailable and emits `unknown` rather than claiming improvement.

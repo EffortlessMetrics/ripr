@@ -14715,6 +14715,7 @@ struct Lane1EvidenceAuditBuilder {
     actionable_gap_file_counts: BTreeMap<String, usize>,
     actionable_gap_repair_kind_counts: BTreeMap<String, usize>,
     actionable_gap_missing_discriminator_kind_counts: BTreeMap<String, usize>,
+    actionable_gap_static_limitation_reason_counts: BTreeMap<String, usize>,
     actionable_gap_verify_command_unknown_counts: BTreeMap<String, usize>,
     actionable_gap_repair_route_unknown_counts: BTreeMap<String, usize>,
     canonical_groups: BTreeMap<String, Lane1EvidenceAuditGroup>,
@@ -15073,6 +15074,14 @@ impl Lane1EvidenceAuditBuilder {
                 &kind,
             );
         }
+        for limitation in audit_array(record, &["static_limitations"]) {
+            let reason = audit_string(limitation, &["reason"])
+                .unwrap_or_else(|| "missing_reason".to_string());
+            audit_increment(
+                &mut self.actionable_gap_static_limitation_reason_counts,
+                &reason,
+            );
+        }
     }
 
     fn ingest_same_line_raw_finding(&mut self, record: &Value, raw: &Value, evidence_class: &str) {
@@ -15183,7 +15192,9 @@ impl Lane1EvidenceAuditBuilder {
             top_missing_discriminator_kinds: audit_top_counts(
                 self.actionable_gap_missing_discriminator_kind_counts,
             ),
-            top_static_limitation_reasons: audit_top_counts(self.static_reason_counts.clone()),
+            top_static_limitation_reasons: audit_top_counts(
+                self.actionable_gap_static_limitation_reason_counts,
+            ),
             top_verify_command_unknowns: audit_top_counts(
                 self.actionable_gap_verify_command_unknown_counts,
             ),
@@ -51523,9 +51534,11 @@ covered_by = ["cargo xtask check-file-policy"]
             top_lists["top_missing_discriminator_kinds"][0]["label"],
             "return_value"
         );
-        assert_eq!(
-            top_lists["top_static_limitation_reasons"][0]["label"],
-            "opaque helper value"
+        assert!(
+            top_lists["top_static_limitation_reasons"]
+                .as_array()
+                .is_some_and(Vec::is_empty),
+            "non-action static limitations should stay out of actionable top lists"
         );
         let class_rows = coverage["alignment_coverage_by_class"]
             .as_array()
@@ -51941,6 +51954,89 @@ covered_by = ["cargo xtask check-file-policy"]
             value["finding_alignment"]["actionable_gap_top_lists"]["top_verify_command_unknowns"]
                 [0]["label"],
             "predicate_boundary"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_evidence_audit_limits_static_top_reasons_to_actionable_items() -> Result<(), String> {
+        let report = lane1_evidence_audit_from_repo_exposure(
+            ".",
+            r#"{
+              "schema_version": "0.3",
+              "scope": "repo",
+              "seams": [
+                {
+                  "seam_id": "actionable-static-limit",
+                  "headline_eligible": true,
+                  "file": "src/lib.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "actionable-static-limit",
+                    "canonical_gap_id": "gap:actionable-static-limit",
+                    "location": {"file": "src/lib.rs", "line": 12},
+                    "missing_discriminators": [],
+                    "static_limitations": [
+                      {"reason": "preview import graph", "stage": "reach", "state": "unknown"}
+                    ],
+                    "canonical_item": {
+                      "canonical_gap_id": "gap:actionable-static-limit",
+                      "canonical_item_kind": "gap",
+                      "evidence_class": "predicate_boundary",
+                      "gap_state": "actionable",
+                      "actionability": "upgrade_assertion",
+                      "repair_route": {"repair_kind": "add_boundary_assertion"},
+                      "verify_command": "cargo xtask evidence-quality-scorecard"
+                    }
+                  }
+                },
+                {
+                  "seam_id": "non-action-static-limit",
+                  "headline_eligible": true,
+                  "file": "src/opaque.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "non-action-static-limit",
+                    "canonical_gap_id": null,
+                    "location": {"file": "src/opaque.rs", "line": 30},
+                    "missing_discriminators": [],
+                    "static_limitations": [
+                      {"reason": "opaque helper value", "stage": "activate", "state": "unknown"}
+                    ],
+                    "canonical_item": {
+                      "canonical_gap_id": null,
+                      "canonical_item_kind": "limitation",
+                      "evidence_class": "call_presence",
+                      "gap_state": "static_limitation",
+                      "actionability": "static_limitation",
+                      "verify_command": null
+                    }
+                  }
+                }
+              ]
+            }"#,
+        )?;
+        let json = lane1_evidence_audit_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+
+        assert_eq!(
+            value["static_limitations"]["by_reason"]["preview import graph"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["static_limitations"]["by_reason"]["opaque helper value"],
+            serde_json::Value::from(1)
+        );
+        let top_static = &value["finding_alignment"]["actionable_gap_top_lists"]["top_static_limitation_reasons"];
+        assert_eq!(top_static[0]["label"], "preview import graph");
+        assert_eq!(top_static[0]["count"], serde_json::Value::from(1));
+        assert_eq!(
+            top_static
+                .as_array()
+                .ok_or_else(|| "top static reasons should be an array".to_string())?
+                .len(),
+            1
         );
         Ok(())
     }
@@ -52498,15 +52594,17 @@ covered_by = ["cargo xtask check-file-policy"]
             value["actionable_gap_top_lists"]["top_repair_kinds"][0]["label"],
             "add_boundary_assertion"
         );
-        assert_eq!(
-            value["actionable_gap_top_lists"]["top_static_limitation_reasons"][0]["label"],
-            "opaque helper value"
+        assert!(
+            value["actionable_gap_top_lists"]["top_static_limitation_reasons"]
+                .as_array()
+                .is_some_and(Vec::is_empty),
+            "scorecard should carry only actionable static-limit reasons from the audit"
         );
 
         let markdown = evidence_quality_scorecard_markdown(&report);
         assert!(markdown.contains("Actionable Canonical Gap Top Lists"));
         assert!(markdown.contains("add_boundary_assertion"));
-        assert!(markdown.contains("opaque helper value"));
+        assert!(markdown.contains("No static limitation reason counts were reported."));
         Ok(())
     }
 
