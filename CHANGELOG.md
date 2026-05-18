@@ -9,15 +9,7 @@ are scoped or reviewed.
 
 ## Unreleased
 
-- Lane 1 value resolution now treats same-test struct literal field
-  projections as fixture-backed activation values when the field value is
-  literal. Helper-built structs, shadowed bindings, fixture-parameter
-  collisions, common non-`let` shadowing binders, non-simple `let` pattern
-  binders, and non-literal fields remain named
-  `activation_value_unresolved` limitations. This burns down one
-  fixture-backed sub-shape of the top live static-limitation bucket without
-  claiming strong grip, cross-file, helper, semantic, gate, PR/CI rendering,
-  source-edit, generated-test, provider, or mutation-execution behavior.
+- Nothing yet.
 
 ## 0.6.0 - 2026-05-17
 
@@ -52,10 +44,10 @@ Release themes:
 
 Detailed changes:
 - Changelog source range: the 0.6.0 notes were reconciled against merged PRs
-  and first-parent commits through `21ec67e` / #1199 on current `main`.
-  Internal learning-doc polish is intentionally not part of the public release
-  story. Remaining open non-release PR families stay outside this section until
-  they land.
+  and first-parent commits through `fd4d9cb` / #1218 on current `main`.
+  Internal learning-doc polish remains outside the public release story, while
+  #1210 is included because the final proof and publish-decision packets
+  accepted it into the 0.6.0 candidate.
 - Removed-only diff hunks now still seed probes, so deleting or changing a
   behavior-bearing line without an added replacement does not disappear from
   static review. Related diff hardening covers quoted and metadata-bearing diff
@@ -67,6 +59,15 @@ Detailed changes:
   spellings before boundary comparison, so equivalent exponent forms line up in
   stable Rust predicate infection evidence without changing output schemas,
   policy, CI, or gate behavior.
+- Lane 1 value resolution now treats same-test struct literal field
+  projections as fixture-backed activation values when the field value is
+  literal. Helper-built structs, shadowed bindings, fixture-parameter
+  collisions, common non-`let` shadowing binders, non-simple `let` pattern
+  binders, and non-literal fields remain named
+  `activation_value_unresolved` limitations. This burns down one
+  fixture-backed sub-shape of the top live static-limitation bucket without
+  claiming strong grip, cross-file, helper, semantic, gate, PR/CI rendering,
+  source-edit, generated-test, provider, or mutation-execution behavior.
 - Canonical evidence items now expose explicit `primary_anchor` and
   `raw_spans[]` fields in supported `finding_alignment.items[]` and
   `evidence_record.canonical_item` records. Downstream PR/CI, editor, and agent
