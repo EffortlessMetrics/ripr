@@ -21,7 +21,10 @@ use super::rust_index::{
     PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE, PROBE_SHAPE_RETURN_VALUE,
     PROBE_SHAPE_SIDE_EFFECT, ProbeShapeFact, RustIndex,
 };
-use super::seam_cache::{CacheLoad, RepoSeamCountCache, RepoSeamFactCache, WorkspaceState};
+use super::seam_cache::{
+    CLASSIFIED_SEAM_CACHE_STORE_LIMIT, CacheLoad, RepoSeamCountCache, RepoSeamFactCache,
+    WorkspaceState,
+};
 use super::seam_classification::{self, ClassifiedSeam, SeamGripClassCounts};
 use super::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
 use super::test_grip_evidence;
@@ -128,12 +131,23 @@ pub(crate) fn inventory_classified_seams_at_with_config(
     // Best-effort write: a write failure does not fail analysis. The
     // result is already in memory; the next run just sees a miss again.
     let store_started = Instant::now();
-    let store_status = if cache.store_classified_seams(&key, &classified).is_ok() {
-        "ok"
-    } else {
-        "ignored_error"
+    trace_latency_phase(
+        "cache_store",
+        &format!(
+            "start_classified_{}_limit_{}",
+            classified.len(),
+            CLASSIFIED_SEAM_CACHE_STORE_LIMIT
+        ),
+        Duration::ZERO,
+    );
+    let store_status = match cache.store_classified_seams(&key, &classified) {
+        Ok(()) => "ok".to_string(),
+        Err(reason) => {
+            eprintln!("ripr: repo seam cache store ignored ({reason})");
+            cache_store_status_label(&reason)
+        }
     };
-    trace_latency_phase("cache_store", store_status, store_started.elapsed());
+    trace_latency_phase("cache_store", &store_status, store_started.elapsed());
     trace_latency_phase("total", "computed", total_started.elapsed());
     Ok(classified)
 }
@@ -142,6 +156,21 @@ fn trace_latency_phase(phase: &str, status: &str, duration: Duration) {
     if std::env::var_os(LATENCY_TRACE_ENV).is_some() {
         eprintln!("{}", latency_trace_line(phase, status, duration));
     }
+}
+
+fn cache_store_status_label(reason: &str) -> String {
+    let mut label = String::from("ignored_");
+    for ch in reason.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+            label.push(ch);
+        } else {
+            label.push('_');
+        }
+        if label.len() >= 160 {
+            break;
+        }
+    }
+    label
 }
 
 fn latency_trace_line(phase: &str, status: &str, duration: Duration) -> String {
@@ -888,6 +917,18 @@ mod tests {
         assert_eq!(
             line,
             "ripr_repo_exposure_latency phase=file_fact_cache status=start_files_42_production_7 duration_ms=0"
+        );
+    }
+
+    #[test]
+    fn cache_store_status_label_is_trace_safe() {
+        assert_eq!(
+            cache_store_status_label("skipped_large_entry_seams_38124_limit_20000"),
+            "ignored_skipped_large_entry_seams_38124_limit_20000"
+        );
+        assert_eq!(
+            cache_store_status_label("write cache failed: access denied"),
+            "ignored_write_cache_failed__access_denied"
         );
     }
 
