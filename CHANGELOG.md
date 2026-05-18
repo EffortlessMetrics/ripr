@@ -40,7 +40,7 @@ are scoped or reviewed.
   checks, or changing PR/CI rendering, gates, providers, generated tests, or
   mutation execution.
 
-## 0.6.0 - 2026-05-17
+## 0.6.0 - 2026-05-18
 
 0.6.0 makes static test-gap review easier to trust and easier to operate. The
 release keeps RIPR static and advisory by default while adding better evidence
