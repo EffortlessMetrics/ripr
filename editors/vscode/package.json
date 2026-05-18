@@ -2,7 +2,7 @@
   "name": "ripr",
   "displayName": "ripr: Static Mutation Exposure",
   "description": "Find mutation-exposed Rust code with static diagnostics, targeted test briefs, and agent handoff commands.",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "publisher": "EffortlessMetrics",
   "preview": true,
   "license": "MIT OR Apache-2.0",
@@ -44,7 +44,14 @@
     "workspaceContains:Cargo.toml",
     "onCommand:ripr.restartServer",
     "onCommand:ripr.showStatus",
-    "onCommand:ripr.diagnoseSetup"
+    "onCommand:ripr.diagnoseSetup",
+    "onCommand:ripr.startCurrentRepair",
+    "onCommand:ripr.openFirstPrPacket",
+    "onCommand:ripr.copyFirstPrSummary",
+    "onCommand:ripr.copyFirstPrRepairPacket",
+    "onCommand:ripr.copyFirstPrVerifyCommand",
+    "onCommand:ripr.copyFirstPrReceiptCommand",
+    "onCommand:ripr.copyFirstPrRegenerationGuidance"
   ],
   "main": "./out/src/extension.js",
   "scripts": {
@@ -150,6 +157,34 @@
       {
         "command": "ripr.diagnoseSetup",
         "title": "ripr: Diagnose Setup"
+      },
+      {
+        "command": "ripr.startCurrentRepair",
+        "title": "ripr: Start Current Repair"
+      },
+      {
+        "command": "ripr.openFirstPrPacket",
+        "title": "ripr: First PR - Open Packet"
+      },
+      {
+        "command": "ripr.copyFirstPrSummary",
+        "title": "ripr: First PR - Copy Summary"
+      },
+      {
+        "command": "ripr.copyFirstPrRepairPacket",
+        "title": "ripr: First PR - Copy Repair Packet"
+      },
+      {
+        "command": "ripr.copyFirstPrVerifyCommand",
+        "title": "ripr: First PR - Copy Verify Command"
+      },
+      {
+        "command": "ripr.copyFirstPrReceiptCommand",
+        "title": "ripr: First PR - Copy Receipt Command"
+      },
+      {
+        "command": "ripr.copyFirstPrRegenerationGuidance",
+        "title": "ripr: First PR - Copy Regeneration Guidance"
       },
       {
         "command": "ripr.copyContext",
