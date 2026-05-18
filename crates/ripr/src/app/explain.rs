@@ -1,6 +1,6 @@
 use super::CheckInput;
 use super::check_workspace_with_config;
-use super::selector::selector_matches_location;
+use super::selector::select_finding;
 use crate::config::RiprConfig;
 use crate::output;
 use std::path::Path;
@@ -30,12 +30,7 @@ pub(crate) fn explain_finding_with_config(
     config: &RiprConfig,
 ) -> Result<String, String> {
     let output = check_workspace_with_config(input, config)?;
-    let selected = output
-        .findings
-        .iter()
-        .find(|finding| finding.id == selector || selector_matches_location(selector, finding));
-
-    match selected {
+    match select_finding(&output.findings, selector) {
         Some(finding) => Ok(output::human::render_finding_with_config(finding, config)),
         None => Err(format!("no finding matched {selector:?}")),
     }
