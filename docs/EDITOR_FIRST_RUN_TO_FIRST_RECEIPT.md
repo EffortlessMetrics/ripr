@@ -8,7 +8,7 @@ The path is intentionally narrow:
 ```text
 install/open -> diagnose setup -> read status -> inspect one diagnostic
 -> open related test or copy packet -> write one focused test
--> verify -> receipt -> refresh
+-> verify -> receipt -> refresh -> inspect first-pr packet
 ```
 
 Rust is the stable default. TypeScript, JavaScript, and Python are opt-in
@@ -76,6 +76,9 @@ Use it to distinguish "nothing happened" states:
 | Receipt stale or mismatch | Existing receipt evidence does not match the current gap state. | Re-run verify and receipt from current artifacts. |
 | Receipt improved | Existing receipt records improved static movement. | Refresh and confirm the diagnostic state moved as expected. |
 | Receipt unchanged | Existing receipt records no static movement. | Revisit the focused test or repair target. |
+| First-pr packet missing | No `start-here` packet exists for this workspace. | Run or copy first-pr regeneration guidance after verify/receipt artifacts exist. |
+| First-pr packet ready | A validated packet selects a top repairable gap or no-action state. | Inspect the packet before opening the PR. |
+| First-pr packet stale, wrong-root, malformed, or unsafe | The editor cannot trust the first-pr packet. | Regenerate from the open workspace before copying packet actions. |
 
 Status is advisory. It does not decide policy or gate eligibility.
 
@@ -108,6 +111,8 @@ Use one of the bounded editor actions:
   command, and receipt command are all present.
 - `Copy verify command` and `Copy receipt command` when you want the command
   chain separately.
+- `First PR - Open Packet` and first-pr copy actions when a validated
+  `start-here` packet matches the current workspace and diagnostic identity.
 - `Refresh Analysis - Saved Workspace Check` when evidence is stale or missing.
 
 The first repair packet is safe to hand to a human or coding agent because it
@@ -180,6 +185,41 @@ clear states:
   focused test;
 - the evidence is stale and must be refreshed again before acting.
 
+## 10. Inspect The First-PR Packet
+
+After the receipt and refresh, run `ripr: Diagnose Setup` or
+`ripr: Show Status` again and read the first-pr packet state. The editor checks:
+
+```text
+target/ripr/reports/start-here.{json,md}
+target/ripr/first-pr/start-here.{json,md}
+```
+
+When the packet is safe, use the first-pr actions to open the Markdown packet,
+copy the summary, copy the repair packet, or copy the verify/receipt commands.
+The stronger copy actions require the current diagnostic identity to match the
+packet's typed `canonical_gap_id` or `gap_id`.
+
+If the packet is missing, stale, wrong-root, malformed, path-unsafe, or
+command-unsafe, treat it as a fail-closed state. Use the regeneration guidance
+instead of copying repair claims. The common public command is:
+
+```bash
+ripr first-pr --root . --base origin/main --head HEAD
+```
+
+Inside this repository, the compatibility wrapper is:
+
+```bash
+cargo xtask first-pr
+```
+
+The first-pr packet is the PR handoff surface, not a merge approval. It tells a
+reviewer what one gap was selected, what evidence moved, which receipt to
+inspect, and what remains advisory. See
+[Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md) for the
+full handoff.
+
 ## Non-Claims
 
 The editor first-run loop is read-only projection over existing RIPR artifacts.
@@ -195,7 +235,10 @@ It does not:
 - make preview evidence equivalent to stable Rust evidence.
 
 For the full editor repair model, see
-[Editor gap cockpit workflow](EDITOR_GAP_COCKPIT_WORKFLOW.md). For command and
-server details, see [Editor extension](EDITOR_EXTENSION.md). For preview
-language boundaries, see [Language adapter preview workflow](LANGUAGE_ADAPTER_PREVIEW.md)
-and [Static limits](STATIC_LIMITS.md).
+[Editor gap cockpit workflow](EDITOR_GAP_COCKPIT_WORKFLOW.md). For the PR
+handoff after receipt, see
+[Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md). For
+command and server details, see [Editor extension](EDITOR_EXTENSION.md). For
+preview language boundaries, see
+[Language adapter preview workflow](LANGUAGE_ADAPTER_PREVIEW.md) and
+[Static limits](STATIC_LIMITS.md).
