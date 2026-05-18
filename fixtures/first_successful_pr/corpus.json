@@ -1,0 +1,48 @@
+{
+  "kind": "first_successful_pr_corpus",
+  "schema_version": "0.1",
+  "spec": "RIPR-SPEC-0051",
+  "proposal": "RIPR-PROP-0009",
+  "status": "fixture_backed",
+  "cases": [
+    {
+      "id": "boundary-gap",
+      "description": "A repairable Rust boundary gap becomes the top first-run repair.",
+      "input": "boundary-gap/inputs/reports/gap-decision-ledger.json",
+      "expected": "boundary-gap/expected/start-here.json",
+      "expected_status": "actionable",
+      "expected_state": "top_gap"
+    },
+    {
+      "id": "output-contract-gap",
+      "description": "A presentation/output text gap routes to output golden repair.",
+      "input": "output-contract-gap/inputs/reports/gap-decision-ledger.json",
+      "expected": "output-contract-gap/expected/start-here.json",
+      "expected_status": "actionable",
+      "expected_state": "top_gap"
+    },
+    {
+      "id": "empty-diff",
+      "description": "An empty diff emits schema-valid no-action output.",
+      "input": "empty-diff/inputs/reports/gap-decision-ledger.json",
+      "expected": "empty-diff/expected/start-here.json",
+      "expected_status": "no_action",
+      "expected_state": "empty_diff"
+    },
+    {
+      "id": "blocked-ledger",
+      "description": "A blocked ledger stays blocked and points to regeneration.",
+      "input": "blocked-ledger/inputs/reports/gap-decision-ledger.json",
+      "expected": "blocked-ledger/expected/start-here.json",
+      "expected_status": "blocked",
+      "expected_state": "blocked_artifact"
+    }
+  ],
+  "must_not_claim": [
+    "runtime mutation proof",
+    "coverage adequacy",
+    "gate authority",
+    "source edits",
+    "generated tests"
+  ]
+}
