@@ -55,6 +55,8 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [0.6.0 publish decision](2026-05-18-0.6.0-publish-decision.md)
+- [0.6.x final proof](2026-05-18-0.6.x-final-proof.md)
 - [0.6.x release freeze](2026-05-18-0.6.x-release-freeze.md)
 - [0.6.x PR board disposition](2026-05-18-0.6.x-pr-board-disposition.md)
 - [0.6.x release finalization](2026-05-17-0.6.x-release-finalization.md)
