@@ -1,6 +1,5 @@
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "baseline_debt_delta";
@@ -1135,9 +1134,7 @@ fn string_field(value: Option<&Value>) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-pub(crate) fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
+pub(crate) use crate::output::path::display_path;
 
 #[cfg(test)]
 mod tests {

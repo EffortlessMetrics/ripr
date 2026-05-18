@@ -1,7 +1,6 @@
 use super::gap_decision_ledger::{self, GapRecord};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
-use std::path::Path;
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "ripr_zero_status";
@@ -1305,9 +1304,7 @@ fn string_value(value: &Value) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-pub(crate) fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
+pub(crate) use crate::output::path::display_path;
 
 #[cfg(test)]
 mod tests {

@@ -1,6 +1,5 @@
 use serde::Serialize;
 use serde_json::Value;
-use std::path::Path;
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "assistant_loop_health";
@@ -295,9 +294,7 @@ pub(crate) fn assistant_loop_health_proof_count(report: &AssistantLoopHealthRepo
     report.proofs.len()
 }
 
-pub(crate) fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
+pub(crate) use crate::output::path::display_path;
 
 fn classify_proof(input: AssistantLoopHealthProofInput) -> HealthProof {
     match input.proof_json {
