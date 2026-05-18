@@ -98,7 +98,7 @@ export function requestedServerVersion(context: vscode.ExtensionContext, config:
   if (configured.length > 0) {
     return configured.replace(/^v/, '');
   }
-  const version = context.extension.packageJSON?.version;
+  const version = context.extension?.packageJSON?.version;
   return typeof version === 'string' ? version.replace(/^v/, '') : '0.6.0';
 }
 
