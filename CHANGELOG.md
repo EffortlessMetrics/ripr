@@ -9,29 +9,7 @@ are scoped or reviewed.
 
 ## Unreleased
 
-- Made Lane 1 evidence audit generation operationally visible for long live
-  repo runs. `cargo xtask lane1-evidence-audit` now streams repo-exposure
-  latency breadcrumbs while the analyzer subprocess runs and records bounded
-  generation diagnostics in `inputs.repo_exposure_generation`, including
-  timeout, status, duration, output byte counts, and the latency trace tail.
-  Large best-effort classified-seam cache entries are skipped with an explicit
-  `cache_store` trace instead of blocking report generation after analysis
-  completes.
-- Added explicit `primary_anchor` and `raw_spans` fields to supported
-  `finding_alignment.items[]` and `evidence_record.canonical_item` canonical
-  evidence items. Downstream surfaces now have one preferred placement hint
-  plus all contributing raw spans without inferring actionability from
-  line-local raw findings.
-- Added the Lane 1 Finding Alignment Burn-Down rail and issue-backed
-  implementation plan. The queue starts from current raw-to-canonical audit
-  evidence and tracks class-by-class alignment coverage, primary-anchor/raw
-  span completeness, top named static limitation buckets, config/policy
-  unsupported-flow expansion, repair-route and verify-command invariants,
-  scorecard-leading actionable canonical gaps, runtime confidence coverage,
-  dogfood refreshes, and downstream canonical-item handoff refreshes. This is
-  planning and documentation only; PR/CI rendering, LSP/editor behavior, gates,
-  badges, generated tests, source edits, provider calls, and mutation
-  execution remain unchanged.
+- No changes recorded yet.
 
 ## 0.6.0 - 2026-05-17
 
@@ -66,14 +44,21 @@ Release themes:
 
 Detailed changes:
 - Changelog source range: the 0.6.0 notes were reconciled against merged PRs
-  and first-parent commits through `ebd68ad0` / #1139 on current `main`.
+  and first-parent commits through `21ec67e` / #1199 on current `main`.
   Internal learning-doc polish is intentionally not part of the public release
-  story. Open release-hardening PRs such as #1191 remain outside this section
-  until they land.
+  story. Remaining open non-release PR families stay outside this section until
+  they land.
 - Removed-only diff hunks now still seed probes, so deleting or changing a
   behavior-bearing line without an added replacement does not disappear from
   static review. Related diff hardening covers quoted and metadata-bearing diff
   paths, indented lexical probe shapes, and clearer CLI typo recovery.
+- Rust numeric literal extraction now handles a broader set of literal forms
+  and requires valid exponent digits, improving stable Rust evidence facts
+  without adding runtime execution or mutation-test claims.
+- Rust decimal exponent literals now canonicalize equivalent `e` and `E`
+  spellings before boundary comparison, so equivalent exponent forms line up in
+  stable Rust predicate infection evidence without changing output schemas,
+  policy, CI, or gate behavior.
 - Canonical evidence items now expose explicit `primary_anchor` and
   `raw_spans[]` fields in supported `finding_alignment.items[]` and
   `evidence_record.canonical_item` records. Downstream PR/CI, editor, and agent
@@ -82,6 +67,58 @@ Detailed changes:
 - Generated CI and report packets now align their first screen on the canonical
   repair unit, keeping the start-here path centered on the actionable evidence
   item rather than on raw supporting signals.
+- Report packet index availability now requires the primary Markdown artifact
+  instead of treating a JSON sibling as sufficient, keeping the uploaded review
+  artifact front door honest.
+- TypeScript preview assertion extraction now sees common nested test-body
+  statements and returned or awaited async expectation chains. This improves
+  preview advisory evidence collection while staying syntax-only, non-gating,
+  and separate from Rust stable evidence authority.
+- Output-format command names and repo-scope metadata now come from one
+  behavior-preserving metadata table, reducing duplicated CLI/report wiring
+  without changing output contracts or release behavior.
+- Shared Markdown and JSON value-path helpers now back policy promotion report
+  rendering, reducing duplicated output code without changing output schemas,
+  policy authority, or gate behavior.
+- Shared JSON output helpers now back additional agent, review, evidence-health,
+  outcome, and mutation-calibration report renderers, reducing duplicated
+  serialization code without changing output schemas or release behavior.
+- Human output rendering is split into focused evidence-line and section
+  modules, with source-of-truth and PR-summary surface detection updated for the
+  new module path. This is behavior-preserving output organization, not a
+  report-contract or release-behavior change.
+- Gate output rendering is split into focused model and presentation modules,
+  reducing renderer size while preserving existing gate report behavior,
+  policies, schemas, and default advisory boundaries.
+- Agent review summary generation is split into focused artifact-loading,
+  receipt-parsing, report-assembly, JSON, Markdown, type, and helper modules
+  while preserving the public facade and existing agent review packet behavior.
+- Mutation calibration import now handles additional nested mutation outcome
+  record shapes, including nested mutation identifiers, locations, spans, and
+  detail-only runtime records, with parser coverage. This improves advisory
+  runtime-calibration ingestion without running mutation tests or changing
+  policy, gates, CI, or release behavior.
+- Output fixture tests now share common helper setup, reducing duplicated test
+  scaffolding without changing report behavior or output contracts.
+- `cargo xtask help` now gives clearer command-discovery output and preserves
+  command lookup behavior, improving contributor and agent repo-ops flow
+  without changing release, policy, or analyzer behavior.
+- Classify text helper internals are split into focused modules while keeping
+  the existing helper facade and classifier behavior unchanged.
+- Output report path rendering now uses one slash-normalized helper across
+  report modules, reducing duplicated renderer code while keeping existing
+  report surfaces, schemas, analyzer behavior, policy authority, gate behavior,
+  and release behavior unchanged.
+- Public charter language now matches the 0.6.0 release boundary by describing
+  RIPR as static mutation-exposure guidance between coverage signals and
+  mutation testing, not as a test-adequacy layer.
+- Lane 1 evidence audit generation now streams repo-exposure latency
+  breadcrumbs during long live-repo runs and records bounded generation
+  diagnostics in `inputs.repo_exposure_generation`, including timeout, status,
+  duration, output byte counts, and the latency trace tail. Large best-effort
+  classified-seam cache entries are skipped with an explicit `cache_store`
+  trace instead of blocking report generation after analysis completes. This is
+  operational audit reliability, not a new evidence-accuracy or gate claim.
 - The 0.6.x finalization proof was refreshed with install, VSIX, generated-CI,
   public-copy, and external-adopter smoke evidence. It still does not tag,
   publish, create a GitHub Release, or refresh generated badge endpoints.
@@ -111,6 +148,13 @@ Detailed changes:
   input through a bounded direct `ripr` invocation with latency tracing, so a
   cold full-repo evidence pass reports a clear timeout with phase context
   instead of waiting indefinitely or leaving an orphaned analyzer process.
+- Focused release hardening added coverage for extraction helpers, oracle
+  parsing, LSP URI edges, language routing, domain support primitives, and
+  selector location matching, plus behavior-preserving app/report refactors
+  that reduce duplicated wiring without changing public output contracts.
+- Source-of-truth rails now make plan, goal, claim-boundary, validation, and
+  rollback prompts explicit for future agent PRs without adding a competing
+  release or policy authority surface.
 - Lane 1 evidence-quality scorecards and trends now surface finding-alignment
   coverage gaps for unnamed static unknowns, actionable canonical items missing
   repair routes, and actionable canonical items missing verify commands.
