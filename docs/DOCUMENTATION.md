@@ -100,6 +100,7 @@ Current reference docs:
 - [Static exposure model](STATIC_EXPOSURE_MODEL.md)
 - [Configuration](CONFIGURATION.md)
 - [Support tiers](status/SUPPORT_TIERS.md)
+- [Repo source-of-truth system](reference/SPEC_SYSTEM.md)
 - [Language adapter preview workflow](LANGUAGE_ADAPTER_PREVIEW.md)
 - [Static limits](STATIC_LIMITS.md)
 - [Badge policy](BADGE_POLICY.md)
@@ -164,6 +165,7 @@ Templates:
 - [Spec template](templates/SPEC_TEMPLATE.md)
 - [Proposal template](templates/PROPOSAL_TEMPLATE.md)
 - [Handoff template](templates/HANDOFF_TEMPLATE.md)
+- [Active goals guide](../.ripr/goals/README.md)
 
 ## Explanation
 
@@ -178,6 +180,7 @@ Current explanation docs:
 - [Repo context system](agent-context/CONTEXT_SYSTEM.md)
 - [Implementation plan](IMPLEMENTATION_PLAN.md)
 - [Implementation campaigns](IMPLEMENTATION_CAMPAIGNS.md)
+- [Implementation plans](../plans/README.md)
 - [Campaign 27 plans](../plans/campaign-27/README.md)
 - [Proposals](proposals/README.md)
 - [User-visible output evidence proposal](proposals/RIPR-PROP-0005-user-visible-output-evidence.md)
@@ -189,6 +192,7 @@ Current explanation docs:
 - [Metrics](METRICS.md)
 - [Capability matrix](CAPABILITY_MATRIX.md)
 - [Support tiers](status/SUPPORT_TIERS.md)
+- [Repo source-of-truth system](reference/SPEC_SYSTEM.md)
 - [Learnings](LEARNINGS.md)
 - [Friction log](FRICTION_LOG.md)
 - [Deferred decisions](DEFERRED.md)

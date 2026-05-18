@@ -295,6 +295,15 @@ reason = "Codex Goals campaign metadata."
 covered_by = ["cargo xtask check-campaign"]
 
 [[allow]]
+glob = ".ripr/goals/*.md"
+kind = "documentation"
+owner = "repo-policy"
+surface = "docs"
+classification = "docs"
+reason = "Active-goal source-of-truth guidance."
+covered_by = ["cargo xtask check-file-policy", "cargo xtask markdown-links"]
+
+[[allow]]
 glob = ".ripr/goals/archive/*.toml"
 kind = "policy_metadata"
 owner = "repo-policy"

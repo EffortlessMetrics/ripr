@@ -6,6 +6,16 @@
 
 -
 
+## Source-of-truth links
+
+Proposal:
+Spec:
+ADR:
+Plan item:
+Active goal:
+Support/status impact:
+Policy impact:
+
 ## Scope Classification
 
 This PR is scoped by:
@@ -78,6 +88,24 @@ normal CI cannot validate the revert, document that explicitly.
 - [ ] New generated, dependency, process-spawn, or network surfaces are allowlisted with owner and reason.
 - [ ] Errors are reported with actionable context.
 - [ ] Public JSON/schema changes are documented.
+
+## Proof
+
+```bash
+# commands run
+```
+
+Results:
+
+-
+
+Claim boundary:
+
+-
+
+Rollback:
+
+-
 
 ## Gates
 

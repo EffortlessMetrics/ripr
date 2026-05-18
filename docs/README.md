@@ -1,6 +1,7 @@
 # Documentation index
 
 - [status/SUPPORT_TIERS.md](status/SUPPORT_TIERS.md) - buyer-readable support, preview, advisory, blocked, and proof boundaries
+- [reference/SPEC_SYSTEM.md](reference/SPEC_SYSTEM.md) - linked source-of-truth stack for proposals, specs, ADRs, plans, active goals, proof, and policy ledgers
 - [FIRST_PR_WORKFLOW.md](FIRST_PR_WORKFLOW.md) - first successful Rust PR loop from one repairable gap to one receipt
 - [demo/first-successful-pr.md](demo/first-successful-pr.md) - fixture-backed first successful PR demo from start-here packet to repair route
 - [EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md) - VS Code setup-to-receipt path for one Rust repair loop

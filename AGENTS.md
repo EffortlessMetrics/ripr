@@ -266,6 +266,28 @@ When reviewing or repairing code, read these files first:
 - `docs/agent-context/review-invariants.md`
 - `docs/agent-context/validation.md`
 
+## Repo Source-of-Truth Stack
+
+This repo uses a linked source-of-truth stack:
+
+```text
+Roadmap -> Proposal -> Spec -> ADR -> Plan -> Active goal -> PR -> Proof
+```
+
+Read `docs/reference/SPEC_SYSTEM.md` before changing files when doing scoped
+planning, docs, implementation, review, or repair work. The rule is one kind of
+truth per artifact: proposals explain why, specs define behavior, ADRs record
+durable decisions, plans sequence PRs, `.ripr/goals/active.toml` states current
+execution, and proof lives in commands, receipts, support tiers, CI, and policy
+ledgers.
+
+Work on exactly one ready work item unless the user or linked plan explicitly
+asks you to revise the rail itself. Stop and report instead of guessing when
+the active goal is missing, closed, stale, or points at missing linked specs,
+plans, or ADRs. Do not hand-edit generated status; run the named generator or
+checker. Do not broaden public claims without support-tier proof, and do not add
+policy exceptions without owner, reason, coverage, and review metadata.
+
 ## Long-Context Agent Workflow
 
 This repo is intentionally organized so agents can resume long-running goals
