@@ -114,6 +114,14 @@ Checks:
   - Cargo.toml is present at the selected root
   - ripr.toml load status and effective defaults are visible
   - git, cargo, and rustc are available
+
+Start-here next step:
+  - after setup is valid, run `ripr first-pr --root . --base origin/main --head HEAD`
+    or this repo's `cargo xtask first-pr` wrapper
+  - open `target/ripr/reports/start-here.md` first when it exists
+  - treat missing artifact, stale evidence, wrong root, malformed artifact,
+    no actionable gap, and preview-limited evidence as explicit stop or
+    regeneration states, not hidden success
 "#;
 pub(super) const LSP_HELP: &str = r#"Start the experimental ripr LSP server over stdio.
 
