@@ -325,3 +325,233 @@ fn timeout_summary_json_is_partial_and_points_to_retry() {
     assert!(json.contains("ripr pilot --root . --out target/ripr/pilot --mode draft"));
     assert!(json.contains("--timeout-ms 120000"));
 }
+
+fn pilot_context_without_config<'a>(artifacts: &'a PilotArtifacts) -> PilotSummaryContext<'a> {
+    PilotSummaryContext {
+        root: Path::new("."),
+        mode: &Mode::Draft,
+        config_path: None,
+        max_seams: 5,
+        timeout_ms: 30_000,
+        artifacts,
+    }
+}
+
+#[test]
+fn timeout_summary_md_explains_partial_status_and_retry_command() {
+    let artifacts = pilot_artifacts();
+    let md = render_pilot_timeout_summary_md(pilot_context(&artifacts));
+
+    for needle in [
+        "# RIPR Pilot Summary",
+        "## Scope",
+        "- Status: `partial`",
+        "- Reason: analysis timed out after 30000 ms",
+        "- Config: loaded `ripr.toml`",
+        "## Outputs",
+        "Analysis did not finish within the pilot budget",
+        "- Pilot summary JSON: `target/ripr/pilot/pilot-summary.json`",
+        "## Next Command",
+        "ripr pilot --root . --out target/ripr/pilot --mode draft",
+        "--timeout-ms 120000",
+    ] {
+        assert!(md.contains(needle), "missing timeout-md needle: {needle}");
+    }
+}
+
+#[test]
+fn timeout_summary_md_reports_missing_config_branch_when_no_config_loaded() {
+    let artifacts = pilot_artifacts();
+    let md = render_pilot_timeout_summary_md(pilot_context_without_config(&artifacts));
+    assert!(
+        md.contains("- Config: missing; using built-in defaults"),
+        "expected missing-config line in timeout markdown, got:\n{md}"
+    );
+}
+
+#[test]
+fn timeout_terminal_lists_written_files_and_retry_command() {
+    let artifacts = pilot_artifacts();
+    let terminal = render_pilot_timeout_terminal(pilot_context(&artifacts));
+
+    for needle in [
+        "RIPR pilot partial.",
+        "Reason:",
+        "analysis timed out after 30000 ms",
+        "Config:",
+        "loaded: ripr.toml",
+        "Written:",
+        "target/ripr/pilot/pilot-summary.json",
+        "target/ripr/pilot/pilot-summary.md",
+        "Next:",
+        "ripr pilot --root . --out target/ripr/pilot --mode draft",
+    ] {
+        assert!(
+            terminal.contains(needle),
+            "missing timeout-terminal needle: {needle}"
+        );
+    }
+}
+
+#[test]
+fn timeout_terminal_reports_missing_config_branch_when_no_config_loaded() {
+    let artifacts = pilot_artifacts();
+    let terminal = render_pilot_timeout_terminal(pilot_context_without_config(&artifacts));
+    assert!(
+        terminal.contains("missing: using built-in defaults"),
+        "expected missing-config line in timeout terminal, got:\n{terminal}"
+    );
+}
+
+#[test]
+fn pilot_summary_json_reports_missing_config_when_none_loaded() {
+    let entry = classified_with(
+        SeamGripClass::WeaklyGripped,
+        "src/pricing.rs",
+        88,
+        vec![missing()],
+        vec![related_test()],
+    );
+    let artifacts = pilot_artifacts();
+    let json = render_pilot_summary_json(&[entry], pilot_context_without_config(&artifacts));
+    assert!(
+        json.contains(r#""state": "missing", "path": null"#),
+        "expected missing-config JSON branch, got:\n{json}"
+    );
+}
+
+#[test]
+fn pilot_summary_md_reports_missing_config_when_none_loaded() {
+    let entry = classified_with(
+        SeamGripClass::WeaklyGripped,
+        "src/pricing.rs",
+        88,
+        vec![missing()],
+        vec![related_test()],
+    );
+    let artifacts = pilot_artifacts();
+    let md = render_pilot_summary_md(&[entry], pilot_context_without_config(&artifacts));
+    assert!(
+        md.contains("- Config: missing; using built-in defaults"),
+        "expected missing-config line in pilot markdown, got:\n{md}"
+    );
+}
+
+#[test]
+fn pilot_terminal_reports_missing_config_when_none_loaded() {
+    let entry = classified_with(
+        SeamGripClass::WeaklyGripped,
+        "src/pricing.rs",
+        88,
+        vec![missing()],
+        vec![related_test()],
+    );
+    let artifacts = pilot_artifacts();
+    let terminal = render_pilot_terminal(&[entry], pilot_context_without_config(&artifacts));
+    assert!(
+        terminal.contains("config: missing, using built-in defaults"),
+        "expected missing-config line in pilot terminal, got:\n{terminal}"
+    );
+}
+
+#[test]
+fn pilot_summary_renderers_omit_recommendation_when_no_actionable_seams() {
+    let entries = [
+        classified_with(
+            SeamGripClass::StronglyGripped,
+            "src/a.rs",
+            10,
+            Vec::new(),
+            Vec::new(),
+        ),
+        classified_with(
+            SeamGripClass::Intentional,
+            "src/b.rs",
+            20,
+            Vec::new(),
+            Vec::new(),
+        ),
+        classified_with(
+            SeamGripClass::Suppressed,
+            "src/c.rs",
+            30,
+            Vec::new(),
+            Vec::new(),
+        ),
+    ];
+    let artifacts = pilot_artifacts();
+
+    let json = render_pilot_summary_json(&entries, pilot_context(&artifacts));
+    assert!(
+        json.contains(r#""actionable_seams_total": 0"#),
+        "expected zero actionable seams in JSON, got:\n{json}"
+    );
+    assert!(
+        json.contains(r#""top_actionable_seams": []"#),
+        "expected empty top_actionable_seams array, got:\n{json}"
+    );
+
+    let md = render_pilot_summary_md(&entries, pilot_context(&artifacts));
+    assert!(
+        md.contains("No actionable seam was ranked by the default pilot policy."),
+        "expected no-actionable-seam markdown line, got:\n{md}"
+    );
+
+    let terminal = render_pilot_terminal(&entries, pilot_context(&artifacts));
+    assert!(
+        terminal.contains("none ranked by the default pilot policy"),
+        "expected no-recommendation terminal line, got:\n{terminal}"
+    );
+}
+
+#[test]
+fn why_line_uses_static_discriminator_summary_when_no_missing_discriminator() {
+    let seam = seam("src/pricing.rs", 88, "amount >= discount_threshold");
+    let entry = ClassifiedSeam {
+        evidence: TestGripEvidence {
+            seam_id: seam.id().clone(),
+            related_tests: vec![related_test()],
+            reach: stage(StageState::Yes),
+            activate: stage(StageState::Yes),
+            propagate: stage(StageState::Yes),
+            observe: stage(StageState::Yes),
+            discriminate: StageEvidence::new(
+                StageState::Weak,
+                Confidence::Medium,
+                "weak boundary oracle",
+            ),
+            observed_values: Vec::<ValueFact>::new(),
+            missing_discriminators: Vec::new(),
+        },
+        seam,
+        class: SeamGripClass::WeaklyGripped,
+    };
+    assert_eq!(
+        super::render::why_line(&entry),
+        "static discriminator summary: weak boundary oracle"
+    );
+}
+
+#[test]
+fn why_line_falls_back_to_class_label_when_no_summary_or_missing_discriminator() {
+    let seam = seam("src/pricing.rs", 88, "amount >= discount_threshold");
+    let entry = ClassifiedSeam {
+        evidence: TestGripEvidence {
+            seam_id: seam.id().clone(),
+            related_tests: Vec::new(),
+            reach: stage(StageState::Yes),
+            activate: stage(StageState::Yes),
+            propagate: stage(StageState::Yes),
+            observe: stage(StageState::Yes),
+            discriminate: StageEvidence::new(StageState::Weak, Confidence::Medium, "   "),
+            observed_values: Vec::<ValueFact>::new(),
+            missing_discriminators: Vec::new(),
+        },
+        seam,
+        class: SeamGripClass::Ungripped,
+    };
+    assert_eq!(
+        super::render::why_line(&entry),
+        "ungripped static seam evidence"
+    );
+}

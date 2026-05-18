@@ -509,7 +509,7 @@ fn push_path_field(out: &mut String, name: &str, path: &Path, trailing: bool) {
     ));
 }
 
-fn why_line(entry: &ClassifiedSeam) -> String {
+pub(super) fn why_line(entry: &ClassifiedSeam) -> String {
     if let Some(missing) = entry.evidence.missing_discriminators.first() {
         return format!(
             "missing discriminator: {} ({})",
