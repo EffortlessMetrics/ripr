@@ -1250,6 +1250,9 @@ impl LanguageAdapter for PythonAdapter {
 }
 
 #[cfg(test)]
+mod python_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::path::{Path, PathBuf};
