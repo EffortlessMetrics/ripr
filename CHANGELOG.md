@@ -44,7 +44,7 @@ Release themes:
 
 Detailed changes:
 - Changelog source range: the 0.6.0 notes were reconciled against merged PRs
-  and first-parent commits through `293cd30d` / #1130 on current `main`.
+  and first-parent commits through `12adda8a` / #1123 on current `main`.
   Internal learning-doc polish is intentionally not part of the public release
   story. Remaining open non-release PR families stay outside this section until
   they land.
@@ -67,6 +67,9 @@ Detailed changes:
   statements and returned or awaited async expectation chains. This improves
   preview advisory evidence collection while staying syntax-only, non-gating,
   and separate from Rust stable evidence authority.
+- Output-format command names and repo-scope metadata now come from one
+  behavior-preserving metadata table, reducing duplicated CLI/report wiring
+  without changing output contracts or release behavior.
 - Lane 1 evidence audit generation now streams repo-exposure latency
   breadcrumbs during long live-repo runs and records bounded generation
   diagnostics in `inputs.repo_exposure_generation`, including timeout, status,
