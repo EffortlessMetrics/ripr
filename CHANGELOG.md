@@ -37,11 +37,13 @@ are scoped or reviewed.
 
 0.6.0 makes static test-gap review easier to trust and easier to operate. The
 release keeps RIPR static and advisory by default while adding better evidence
-alignment, clearer editor and generated-CI guidance, preview TypeScript/Python
+alignment, clearer editor and generated-CI guidance, preview
+TypeScript/JavaScript/Python
 visibility, policy operation packets, and repo-local cockpit tools for safe
-agentic PR work. Rust remains the stable evidence path. TypeScript and Python
-remain preview evidence paths: visible and useful, but not default gates, RIPR
-Zero blocking debt, calibrated confidence, or runtime proof.
+agentic PR work. Rust remains the stable evidence path.
+TypeScript/JavaScript/Python remain preview evidence paths: visible and useful,
+but not default gates, RIPR Zero blocking debt, calibrated confidence, or
+runtime proof.
 
 Release themes:
 
@@ -58,13 +60,35 @@ Release themes:
   static-limit docs make advisory evidence easier to act on without source
   edits or generated tests.
 - Preview-language honesty: TypeScript/JavaScript and Python preview adapters
-  are available by default, but remain syntax-first advisory evidence until a
-  later explicit policy promotion changes that.
+  ship in the normal binary build, but their evidence remains opt-in,
+  syntax-first, visibly preview/advisory, and non-gating until a later explicit
+  policy promotion changes that.
 
 Detailed changes:
 - Changelog source range: the 0.6.0 notes were reconciled against merged PRs
-  and first-parent commits through #1168. Internal learning-doc polish after
-  the release-proof PRs is intentionally not part of the public release story.
+  and first-parent commits through `ebd68ad0` / #1139 on current `main`.
+  Internal learning-doc polish is intentionally not part of the public release
+  story. Open release-hardening PRs such as #1191 remain outside this section
+  until they land.
+- Removed-only diff hunks now still seed probes, so deleting or changing a
+  behavior-bearing line without an added replacement does not disappear from
+  static review. Related diff hardening covers quoted and metadata-bearing diff
+  paths, indented lexical probe shapes, and clearer CLI typo recovery.
+- Canonical evidence items now expose explicit `primary_anchor` and
+  `raw_spans[]` fields in supported `finding_alignment.items[]` and
+  `evidence_record.canonical_item` records. Downstream PR/CI, editor, and agent
+  surfaces get one preferred placement hint plus all contributing raw spans
+  without inferring actionability from line-local raw findings.
+- Generated CI and report packets now align their first screen on the canonical
+  repair unit, keeping the start-here path centered on the actionable evidence
+  item rather than on raw supporting signals.
+- The 0.6.x finalization proof was refreshed with install, VSIX, generated-CI,
+  public-copy, and external-adopter smoke evidence. It still does not tag,
+  publish, create a GitHub Release, or refresh generated badge endpoints.
+- Added the Lane 1 Finding Alignment Burn-Down rail and issue-backed
+  implementation plan for post-0.6 cleanup. This is planning and documentation
+  only; PR/CI rendering, LSP/editor behavior, gates, badges, generated tests,
+  source edits, provider calls, and mutation execution remain unchanged.
 - Closed the Lane 1 shippable finding-alignment pass for 0.6.0. Current
   repo-local audit evidence rolls 47,181 raw alignment signals into 38,027
   canonical items and 149 actionable canonical gaps, with zero actionable
