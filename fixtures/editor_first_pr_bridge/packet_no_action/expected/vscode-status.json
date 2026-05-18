@@ -1,0 +1,11 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_pr_bridge/packet_no_action",
+  "status": "no_actionable_gap",
+  "projection": "active",
+  "first_pr_packet": {
+    "state": "no_action",
+    "path": "target/ripr/first-pr/start-here.json"
+  },
+  "next_safe_action": "Inspect the packet summary; no local first-pr repair action is projected."
+}

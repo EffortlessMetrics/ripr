@@ -1,3 +1,4 @@
+use super::{ensure_parent_dir, write_parented_file};
 use crate::run::{capture_output_with_timeout, run_output_owned};
 use crate::verification_contracts::validate_json_file_against_schema;
 use serde_json::Value;
@@ -254,11 +255,7 @@ fn non_empty_string(value: &Value) -> bool {
 
 fn run_ripr_review_comments(repo: &Path, options: &ReviewCommentsOptions) -> Result<(), String> {
     let out = repo.join(REVIEW_COMMENTS_JSON);
-    let Some(parent) = out.parent() else {
-        return Err(format!("{REVIEW_COMMENTS_JSON} has no parent directory"));
-    };
-    fs::create_dir_all(parent)
-        .map_err(|err| format!("failed to create {REVIEW_COMMENTS_JSON} parent: {err}"))?;
+    ensure_parent_dir(&out, REVIEW_COMMENTS_JSON)?;
 
     let root_arg = command_root_arg(repo, &options.root);
     let out_arg = out.display().to_string();
@@ -367,36 +364,32 @@ fn write_error_review_comments(
     options: &ReviewCommentsOptions,
     error: &str,
 ) -> Result<(), String> {
-    ensure_review_comments_parent(repo)?;
     let packet = error_review_comments_packet(repo, options, error);
     let json_text = serde_json::to_string_pretty(&packet)
         .map_err(|err| format!("serialize review comments error packet: {err}"))?;
     let markdown = render_error_review_comments_markdown(&packet);
-    fs::write(repo.join(REVIEW_COMMENTS_JSON), format!("{json_text}\n"))
-        .map_err(|err| format!("failed to write {REVIEW_COMMENTS_JSON}: {err}"))?;
-    fs::write(repo.join(REVIEW_COMMENTS_MD), markdown)
-        .map_err(|err| format!("failed to write {REVIEW_COMMENTS_MD}: {err}"))
+    write_review_comments_artifacts(repo, &json_text, &markdown)
 }
 
 fn write_empty_review_comments(repo: &Path, options: &ReviewCommentsOptions) -> Result<(), String> {
-    ensure_review_comments_parent(repo)?;
     let packet = empty_review_comments_packet(repo, options);
     let json_text = serde_json::to_string_pretty(&packet)
         .map_err(|err| format!("serialize review comments empty packet: {err}"))?;
     let markdown = render_empty_review_comments_markdown(&packet);
-    fs::write(repo.join(REVIEW_COMMENTS_JSON), format!("{json_text}\n"))
-        .map_err(|err| format!("failed to write {REVIEW_COMMENTS_JSON}: {err}"))?;
-    fs::write(repo.join(REVIEW_COMMENTS_MD), markdown)
-        .map_err(|err| format!("failed to write {REVIEW_COMMENTS_MD}: {err}"))
+    write_review_comments_artifacts(repo, &json_text, &markdown)
 }
 
-fn ensure_review_comments_parent(repo: &Path) -> Result<(), String> {
-    let path = repo.join(REVIEW_COMMENTS_JSON);
-    let Some(parent) = path.parent() else {
-        return Err(format!("{REVIEW_COMMENTS_JSON} has no parent directory"));
-    };
-    fs::create_dir_all(parent)
-        .map_err(|err| format!("failed to create {REVIEW_COMMENTS_JSON} parent: {err}"))
+fn write_review_comments_artifacts(
+    repo: &Path,
+    json_text: &str,
+    markdown: &str,
+) -> Result<(), String> {
+    write_parented_file(
+        &repo.join(REVIEW_COMMENTS_JSON),
+        REVIEW_COMMENTS_JSON,
+        format!("{json_text}\n"),
+    )?;
+    write_parented_file(&repo.join(REVIEW_COMMENTS_MD), REVIEW_COMMENTS_MD, markdown)
 }
 
 fn error_review_comments_packet(

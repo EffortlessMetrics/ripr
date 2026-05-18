@@ -10,6 +10,7 @@ pub(crate) mod baseline_update;
 pub(crate) mod coverage_grip_frontier;
 pub(crate) mod evidence_health;
 pub(crate) mod evidence_record;
+pub(crate) mod first_pr;
 pub(crate) mod first_useful_action;
 pub(crate) mod format;
 pub(crate) mod gap_decision_ledger;

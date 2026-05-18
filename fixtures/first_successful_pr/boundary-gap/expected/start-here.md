@@ -7,6 +7,11 @@ State: actionable
 
 ripr gap: missing boundary assertion
 
+Evidence boundary:
+- Canonical gap: `gap:rust:pricing:discount:threshold-boundary`
+- Language: `rust` (stable)
+- Receipt state: `receipt_missing`
+
 Changed behavior:
 `amount >= threshold`
 
