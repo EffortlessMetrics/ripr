@@ -154,12 +154,7 @@ pub(crate) fn render_targeted_test_outcome_json(
         "new": report.new.iter().map(targeted_test_outcome_seam_json).collect::<Vec<_>>(),
         "removed": report.removed.iter().map(targeted_test_outcome_seam_json).collect::<Vec<_>>()
     });
-    serde_json::to_string_pretty(&value)
-        .map(|mut rendered| {
-            rendered.push('\n');
-            rendered
-        })
-        .map_err(|err| format!("failed to render targeted-test outcome JSON: {err}"))
+    super::json::render_pretty_with_newline(&value, "targeted-test outcome")
 }
 
 pub(crate) fn render_agent_verify_json(
@@ -203,12 +198,7 @@ pub(crate) fn render_agent_verify_json(
         "new_gaps": report.new.iter().map(|seam| agent_verify_seam_json(seam, "new")).collect::<Vec<_>>(),
         "resolved_gaps": report.removed.iter().map(|seam| agent_verify_seam_json(seam, "resolved")).collect::<Vec<_>>()
     });
-    serde_json::to_string_pretty(&value)
-        .map(|mut rendered| {
-            rendered.push('\n');
-            rendered
-        })
-        .map_err(|err| format!("failed to render agent verify JSON: {err}"))
+    super::json::render_pretty_with_newline(&value, "agent verify")
 }
 
 pub(crate) fn render_targeted_test_outcome_md(report: &TargetedTestOutcomeReport) -> String {

@@ -89,7 +89,5 @@ pub(crate) fn render_evidence_health_json(report: &EvidenceHealthReport) -> Resu
             })
         }).collect::<Vec<_>>(),
     });
-    serde_json::to_string_pretty(&value)
-        .map(|json| format!("{json}\n"))
-        .map_err(|err| format!("failed to render evidence health JSON: {err}"))
+    crate::output::json::render_pretty_with_newline(&value, "evidence health")
 }

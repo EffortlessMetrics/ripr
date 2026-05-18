@@ -738,7 +738,7 @@ evidence = [
   "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_unchanged_state",
   "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_new_gap_state",
   "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_resolved_state",
-  "crates/ripr/src/lsp/actions.rs, crates/ripr/src/output/agent_brief.rs, crates/ripr/src/output/pilot.rs, crates/ripr/src/cli/commands.rs, and xtask/src/reports/operator.rs reuse the shared templates for existing command payloads without changing output text",
+  "crates/ripr/src/lsp/actions.rs, crates/ripr/src/output/agent_brief.rs, crates/ripr/src/output/pilot/mod.rs, crates/ripr/src/cli/commands.rs, and xtask/src/reports/operator.rs reuse the shared templates for existing command payloads without changing output text",
   "crates/ripr/src/cli/agent.rs parses the status, start, and review-summary subcommands",
   "docs/OUTPUT_SCHEMA.md Agent Status, Agent Workflow Manifest, Agent Receipt, and Agent Review Summary sections",
   "docs/specs/RIPR-SPEC-0011-llm-work-loop.md",
@@ -1100,7 +1100,7 @@ status = "alpha"
 spec = "RIPR-SPEC-0009"
 evidence = [
   "crates/ripr/src/cli/commands.rs exposes ripr pilot",
-  "crates/ripr/src/output/pilot.rs ranks top actionable seams and renders pilot-summary.json/md",
+  "crates/ripr/src/output/pilot/ranking.rs ranks top actionable seams and crates/ripr/src/output/pilot/render.rs renders pilot-summary.json/md",
   "ripr pilot writes repo-exposure.json, repo-exposure.md, agent-seam-packets.json, pilot-summary.json, and pilot-summary.md",
   "pilot-summary.md and terminal copy surface the top inspected seam, why it matters, the focused test to write, and the before/after commands without opening JSON",
   "docs/OUTPUT_SCHEMA.md Pilot Summary section",
