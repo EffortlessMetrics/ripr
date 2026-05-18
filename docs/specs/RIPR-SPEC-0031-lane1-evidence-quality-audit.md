@@ -29,6 +29,8 @@ The command:
 - records bounded repo-exposure generation diagnostics in the audit input block,
   including timeout, status, duration, output byte counts, and the tail of the
   latency trace;
+- emits named run limitations when repo-exposure generation is too slow or
+  pathological instead of silently dropping evidence or waiting forever;
 - writes deterministic JSON and Markdown reports under `target/ripr/reports`;
 - summarizes evidence quality without changing classifications;
 - does not alter gates, PR/CI projection, editor behavior, schemas outside this
@@ -54,9 +56,12 @@ target/ripr/reports/lane1-evidence-audit.md
 It exits successfully after both artifacts are written. If repo exposure
 generation exits non-zero after writing a complete repo-exposure JSON document
 with a top-level `seams` array, the audit may continue from that captured
-artifact with a warning. If the captured artifact is missing, malformed, or does
-not contain `seams`, the command returns an actionable error and does not claim
-an audit exists.
+artifact with a warning. If repo exposure generation times out before a
+complete artifact exists, the command writes bounded warning artifacts with a
+`lane1_repo_exposure_timeout` run limitation, phase/input context, the latency
+trace tail, and a repair route. If the captured artifact is missing, malformed,
+or does not contain `seams` for a non-timeout failure, the command returns an
+actionable error and does not claim a complete audit exists.
 
 ## JSON Contract
 
@@ -70,6 +75,7 @@ includes:
 - `scope`;
 - `status`;
 - `inputs`;
+- `run_limitations`;
 - `summary`;
 - `finding_alignment`;
 - `canonical_gap_groups`;
@@ -175,8 +181,12 @@ work instead of becoming vague user test debt.
 Given a long-running repo-wide audit, the command prints latency-trace progress
 from the repo-exposure subprocess and records the bounded diagnostics in
 `inputs.repo_exposure_generation`. If generation times out before a complete
-repo-exposure JSON document exists, the error includes the most recent latency
-trace entries instead of silently returning no actionable phase information.
+repo-exposure JSON document exists, the audit still writes a limited artifact
+with `run_limitations[].category = "lane1_repo_exposure_timeout"`,
+`phase = "repo_exposure_generation"`, phase/input diagnostics, the most recent
+latency trace entries, and a repair route. Downstream scorecards must surface
+that limitation and must not treat zero counts in the limited artifact as proof
+that no gaps exist.
 Best-effort cache writes are not allowed to turn a completed analysis into an
 unbounded wait: large classified-seam cache entries may be skipped when the
 trace records a `cache_store` status such as
@@ -217,6 +227,9 @@ audit report only; it does not change static classifications.
   Markdown section coverage.
 - `xtask::tests::lane1_evidence_audit_json_reports_generation_diagnostics` pins
   the repo-exposure generation diagnostics carried in the audit JSON.
+- `xtask::tests::lane1_evidence_audit_limited_report_names_timeout_limitation`
+  pins the bounded timeout artifact, named run limitation, repair route, and
+  latency trace tail.
 - `xtask::run::tests::latency_progress_reader_preserves_captured_stderr` pins
   that streamed latency progress remains available to timeout and report
   diagnostics.
@@ -255,6 +268,7 @@ The audit feeds these Lane 1 metrics:
 - `lane1_evidence_audit_missing_discriminators`;
 - `lane1_evidence_audit_static_limitations`;
 - `lane1_evidence_audit_uncalibrated_records`.
+- `lane1_evidence_audit_run_limitations`.
 - `finding_alignment_raw_signals_total`;
 - `finding_alignment_canonical_items_total`;
 - `finding_alignment_actionable_items_total`;
