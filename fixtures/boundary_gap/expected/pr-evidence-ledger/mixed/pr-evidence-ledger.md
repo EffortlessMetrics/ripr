@@ -15,6 +15,8 @@ Gate: acknowledgeable / acknowledged
 
 Top focused test to add:
 - src/new.rs:4
+  Evidence boundary:
+  - Receipt state: receipt_missing
   Missing discriminator: new == 4
   Suggested test: assert_eq!(new(), 4)
   Related test: tests/new.rs::boundary

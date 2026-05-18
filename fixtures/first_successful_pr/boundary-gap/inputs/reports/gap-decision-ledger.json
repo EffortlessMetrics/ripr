@@ -1,0 +1,35 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "gap_decision_ledger",
+  "status": "advisory",
+  "records": [
+    {
+      "gap_id": "gap:pr:pricing:threshold-boundary",
+      "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+      "kind": "MissingBoundaryAssertion",
+      "language": "rust",
+      "language_status": "stable",
+      "scope": "pr_local",
+      "changed_behavior": "amount >= threshold",
+      "gap_state": "actionable",
+      "policy_state": "new",
+      "repairability": "repairable",
+      "anchor": {
+        "file": "src/pricing.rs",
+        "line": 42,
+        "owner": "pricing::discount",
+        "dedupe_fingerprint": "gap:rust:pricing:discount:threshold-boundary"
+      },
+      "repair_route": {
+        "route_kind": "AddBoundaryAssertion",
+        "target_file": "tests/pricing.rs",
+        "related_test": "tests/pricing.rs::premium_customer_gets_discount",
+        "assertion_shape": "assert_eq!(discount(100, 100), 90)"
+      },
+      "verification_commands": [
+        "cargo xtask fixtures boundary_gap"
+      ]
+    }
+  ]
+}

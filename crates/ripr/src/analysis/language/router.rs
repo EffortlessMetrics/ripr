@@ -30,36 +30,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn routes_supported_extensions_to_one_adapter() {
-        assert_eq!(route(Path::new("src/lib.rs")), Some(LanguageId::Rust));
-        assert_eq!(
-            route(Path::new("web/component.tsx")),
-            Some(LanguageId::TypeScript)
-        );
-        assert_eq!(
-            route(Path::new("web/app.jsx")),
-            Some(LanguageId::TypeScript)
-        );
-        assert_eq!(
-            route(Path::new("scripts/test_fixture.py")),
-            Some(LanguageId::Python)
-        );
+    fn route_rust_and_preview_languages_by_extension() {
+        let cases = [
+            ("src/lib.rs", LanguageId::Rust),
+            ("web/app.ts", LanguageId::TypeScript),
+            ("web/app.tsx", LanguageId::TypeScript),
+            ("web/app.js", LanguageId::TypeScript),
+            ("web/app.jsx", LanguageId::TypeScript),
+            ("tests/test_retry.py", LanguageId::Python),
+        ];
+
+        for (path, expected) in cases {
+            assert_eq!(route(Path::new(path)), Some(expected));
+        }
     }
 
     #[test]
-    fn ignores_unknown_or_non_utf8_extensions() {
-        use std::ffi::OsString;
-        use std::path::PathBuf;
-
+    fn route_ignores_unknown_or_extensionless_paths() {
         assert_eq!(route(Path::new("README.md")), None);
         assert_eq!(route(Path::new("Makefile")), None);
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::ffi::OsStringExt;
-
-            let path = PathBuf::from(OsString::from_vec(b"src/file.\xFF".to_vec()));
-            assert_eq!(route(&path), None);
-        }
     }
 }

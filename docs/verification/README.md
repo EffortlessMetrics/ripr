@@ -82,6 +82,9 @@ This contract does not:
 readers. These files are the portable implementation contract. Existing RIPR
 workflow docs still own their detailed surfaces:
 
+- [`docs/FIRST_PR_WORKFLOW.md`](../FIRST_PR_WORKFLOW.md) for the first outside
+  user path from start-here to one repair receipt and the surface ownership
+  table;
 - [`docs/BADGE_POLICY.md`](../BADGE_POLICY.md) for RIPR badge counting policy;
 - [`docs/PR_REVIEW_GUIDANCE.md`](../PR_REVIEW_GUIDANCE.md) for
   `ripr review-comments`;
