@@ -1049,23 +1049,31 @@ mod tests {
 
     #[test]
     fn run_ripr_check_reports_fake_binary_timeout() -> Result<(), String> {
+        #[cfg(not(windows))]
+        let repo = temp_repo("ripr-pr-fake-timeout")?;
         #[cfg(windows)]
         let (binary, args) = (
-            "powershell",
+            "powershell".to_string(),
             vec![
                 "-NoProfile".to_string(),
+                "-NonInteractive".to_string(),
                 "-Command".to_string(),
-                "Start-Sleep -Seconds 5".to_string(),
+                "Start-Sleep -Seconds 30".to_string(),
             ],
         );
         #[cfg(not(windows))]
-        let (binary, args) = ("sh", vec!["-c".to_string(), "sleep 5".to_string()]);
-        let err = match run_ripr_check_binary(binary, args, &options(), Duration::from_secs(1)) {
+        let (binary, args) = {
+            let fake = fake_ripr_invocation(&repo, "fake-ripr-timeout", "", "", 0, Some(30))?;
+            (fake.binary, fake.args)
+        };
+        let err = match run_ripr_check_binary(&binary, args, &options(), Duration::from_secs(1)) {
             Ok(output) => return Err(format!("fake timeout should fail, got {output}")),
             Err(err) => err,
         };
         assert!(err.contains("timed out after 1 seconds"));
         assert!(err.contains("retry command: cargo xtask ripr-pr"));
+        #[cfg(not(windows))]
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
     }
 
