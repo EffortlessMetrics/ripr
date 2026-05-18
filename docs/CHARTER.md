@@ -27,8 +27,8 @@ ready.
 
 ## Vision
 
-The vision for `ripr` is to become the live test-adequacy layer between coverage
-and mutation testing for Rust/Cargo workspaces.
+The vision for `ripr` is to become the live static mutation-exposure guidance
+layer between coverage signals and mutation testing for Rust/Cargo workspaces.
 
 Coverage tells developers what executed. Mutation testing tells developers what
 survived. `ripr` tells developers, reviewers, and agents what changed behavior
