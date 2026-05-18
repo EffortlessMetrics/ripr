@@ -1,6 +1,6 @@
 # Editor Adoption Assurance Implementation Plan
 
-Status: proposed
+Status: active
 
 Owner: Lane 3 - Editor / LSP UX
 
