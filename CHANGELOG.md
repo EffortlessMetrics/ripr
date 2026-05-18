@@ -44,7 +44,7 @@ Release themes:
 
 Detailed changes:
 - Changelog source range: the 0.6.0 notes were reconciled against merged PRs
-  and first-parent commits through `c9752b84` / #1193 on current `main`.
+  and first-parent commits through `21ec67e` / #1199 on current `main`.
   Internal learning-doc polish is intentionally not part of the public release
   story. Remaining open non-release PR families stay outside this section until
   they land.
@@ -90,6 +90,9 @@ Detailed changes:
 - Gate output rendering is split into focused model and presentation modules,
   reducing renderer size while preserving existing gate report behavior,
   policies, schemas, and default advisory boundaries.
+- Agent review summary generation is split into focused artifact-loading,
+  receipt-parsing, report-assembly, JSON, Markdown, type, and helper modules
+  while preserving the public facade and existing agent review packet behavior.
 - Mutation calibration import now handles additional nested mutation outcome
   record shapes, including nested mutation identifiers, locations, spans, and
   detail-only runtime records, with parser coverage. This improves advisory
