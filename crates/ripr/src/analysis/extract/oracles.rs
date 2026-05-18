@@ -421,3 +421,121 @@ fn comparable_expression(expression: &str) -> String {
         .trim_start_matches('&')
         .to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_classification(line: &str, kind: OracleKind, strength: OracleStrength) {
+        let classification = classify_assertion(line);
+        assert_eq!(classification.kind, kind);
+        assert_eq!(classification.strength, strength);
+    }
+
+    #[test]
+    fn classify_assertion_distinguishes_exact_and_broad_error_oracles() {
+        assert_classification(
+            "assert_matches!(result, Err(ConfigError::MissingKey));",
+            OracleKind::ExactErrorVariant,
+            OracleStrength::Strong,
+        );
+        assert_classification(
+            "assert!(result.is_err());",
+            OracleKind::BroadError,
+            OracleStrength::Weak,
+        );
+    }
+
+    #[test]
+    fn classify_assertion_downgrades_duplicative_equality() {
+        assert_classification(
+            "assert_eq!(response.total, response.total);",
+            OracleKind::RelationalCheck,
+            OracleStrength::Weak,
+        );
+        assert_classification(
+            "assert_eq!(&response.total, response.total);",
+            OracleKind::RelationalCheck,
+            OracleStrength::Weak,
+        );
+    }
+
+    #[test]
+    fn classify_assertion_recognizes_snapshot_macros_and_expect_tests() {
+        assert_classification(
+            "insta::assert_json_snapshot!(report);",
+            OracleKind::Snapshot,
+            OracleStrength::Medium,
+        );
+        assert_classification(
+            "expect![[r#\"ok\"#]].assert_eq(&actual);",
+            OracleKind::Snapshot,
+            OracleStrength::Medium,
+        );
+    }
+
+    #[test]
+    fn contains_macro_invocation_requires_token_boundary_and_delimiter() {
+        assert!(contains_macro_invocation(
+            "insta::assert_snapshot!{ report }",
+            "assert_snapshot!",
+        ));
+        assert!(!contains_macro_invocation(
+            "assert_snapshot_helper!(report)",
+            "assert_snapshot!",
+        ));
+        assert!(!contains_macro_invocation(
+            "assert_snapshot! report",
+            "assert_snapshot!",
+        ));
+    }
+
+    #[test]
+    fn extract_assertions_trims_lines_and_records_observed_tokens() {
+        let assertions = extract_assertions(
+            "let value = compute();\n    assert_eq!(value.total, 12);\nvalue.unwrap();",
+            10,
+        );
+
+        assert_eq!(assertions.len(), 2);
+        assert_eq!(assertions[0].line, 11);
+        assert_eq!(assertions[0].text, "assert_eq!(value.total, 12);");
+        assert_eq!(assertions[0].kind, OracleKind::ExactValue);
+        assert!(assertions[0].observed_tokens.contains(&"value".to_string()));
+        assert_eq!(assertions[1].line, 12);
+        assert_eq!(assertions[1].kind, OracleKind::SmokeOnly);
+    }
+
+    #[test]
+    fn extract_line_scanned_oracles_includes_mocks_and_side_effect_observers_only() {
+        let oracles = extract_line_scanned_oracles(
+            "mock_client.expect_send().times(1);\nassert_eq!(actual, expected);\nassert_event_emitted(event);",
+            20,
+        );
+
+        assert_eq!(oracles.len(), 2);
+        assert_eq!(oracles[0].line, 20);
+        assert_eq!(oracles[0].kind, OracleKind::MockExpectation);
+        assert_eq!(oracles[1].line, 22);
+        assert_eq!(oracles[1].kind, OracleKind::MockExpectation);
+    }
+
+    #[test]
+    fn custom_exact_helpers_require_exact_name_and_supported_argument_shape() {
+        assert_classification(
+            "assert_price_eq(actual, expected);",
+            OracleKind::ExactValue,
+            OracleStrength::Strong,
+        );
+        assert_classification(
+            "response.assert_matches(expected);",
+            OracleKind::ExactValue,
+            OracleStrength::Strong,
+        );
+        assert_classification(
+            "assert_response(actual);",
+            OracleKind::Unknown,
+            OracleStrength::Unknown,
+        );
+    }
+}

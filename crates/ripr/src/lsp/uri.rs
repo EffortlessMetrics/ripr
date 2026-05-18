@@ -94,3 +94,56 @@ pub(super) fn encode_uri_path(path: &str) -> String {
     }
     encoded
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_uri_for_path_percent_encodes_spaces_and_unicode() -> Result<(), String> {
+        let uri = file_uri_for_path(Path::new("/tmp/ripr fixtures/über.rs"))?;
+
+        assert_eq!(uri.as_str(), "file:///tmp/ripr%20fixtures/%C3%BCber.rs");
+        Ok(())
+    }
+
+    #[test]
+    fn path_from_file_uri_decodes_percent_escaped_paths() -> Result<(), String> {
+        let uri: Uri = "file:///tmp/ripr%20fixtures/%C3%BCber.rs"
+            .parse()
+            .map_err(|err| format!("test URI should parse: {err}"))?;
+
+        assert_eq!(
+            path_from_file_uri(&uri),
+            Some(PathBuf::from("/tmp/ripr fixtures/über.rs")),
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn file_uris_match_normalizes_windows_drive_case() -> Result<(), String> {
+        let lower: Uri = "file:///c:/work/ripr/src/lib.rs"
+            .parse()
+            .map_err(|err| format!("test URI should parse: {err}"))?;
+        let upper: Uri = "file:///C:/work/ripr/src/lib.rs"
+            .parse()
+            .map_err(|err| format!("test URI should parse: {err}"))?;
+
+        assert!(file_uris_match(&lower, &upper));
+        Ok(())
+    }
+
+    #[test]
+    fn invalid_utf8_percent_escape_does_not_match() -> Result<(), String> {
+        let invalid: Uri = "file:///tmp/%FF.rs".parse().map_err(|err| {
+            format!("URI parser should accept structurally valid percent escapes: {err}")
+        })?;
+        let valid: Uri = "file:///tmp/%C3%BC.rs"
+            .parse()
+            .map_err(|err| format!("test URI should parse: {err}"))?;
+
+        assert!(!file_uris_match(&invalid, &valid));
+        assert_eq!(path_from_file_uri(&invalid), None);
+        Ok(())
+    }
+}
