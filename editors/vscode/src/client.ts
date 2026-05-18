@@ -969,7 +969,7 @@ export class RiprClientController {
   private repairActionRootBlocker(targetUri?: vscode.Uri): string | undefined {
     const uri = targetUri ?? vscode.window.activeTextEditor?.document.uri;
     if (!uri) {
-      return undefined;
+      return 'ripr repair actions require an active file or target URI in the current workspace.';
     }
     if (uri.scheme !== 'file') {
       return 'ripr repair actions require a file URI in the current workspace.';
