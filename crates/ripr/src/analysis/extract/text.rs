@@ -63,6 +63,13 @@ mod tests {
     }
 
     #[test]
+    fn extract_identifier_tokens_keeps_unicode_alphanumeric_tokens() {
+        let tokens = extract_identifier_tokens("assert_eq!(café_total, заказ_total);");
+
+        assert_eq!(tokens, vec!["café_total", "заказ_total"]);
+    }
+
+    #[test]
     fn extract_identifier_tokens_ignores_short_and_builtin_tokens() {
         let tokens = extract_identifier_tokens("let x = Ok(Some(id)); let flag = true;");
 

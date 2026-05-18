@@ -1,3 +1,4 @@
+use super::write_parented_file;
 use crate::run::run_output_owned;
 use serde_json::{Map, Value, json};
 use std::env;
@@ -119,13 +120,12 @@ fn write_pr_evidence_packet(
         .map_err(|err| format!("serialize PR evidence packet: {err}"))?;
     let markdown = render_pr_evidence_markdown(&packet);
 
-    let out_dir = repo.join("target").join("ripr").join("pr");
-    fs::create_dir_all(&out_dir)
-        .map_err(|err| format!("failed to create {}: {err}", out_dir.display()))?;
-    fs::write(repo.join(PR_EVIDENCE_JSON), format!("{json_text}\n"))
-        .map_err(|err| format!("failed to write {PR_EVIDENCE_JSON}: {err}"))?;
-    fs::write(repo.join(PR_EVIDENCE_MD), markdown)
-        .map_err(|err| format!("failed to write {PR_EVIDENCE_MD}: {err}"))?;
+    write_parented_file(
+        &repo.join(PR_EVIDENCE_JSON),
+        PR_EVIDENCE_JSON,
+        format!("{json_text}\n"),
+    )?;
+    write_parented_file(&repo.join(PR_EVIDENCE_MD), PR_EVIDENCE_MD, markdown)?;
 
     let violations = validate_packet_value(&packet, options, changed_files.len(), true);
     if !violations.is_empty() {
@@ -198,14 +198,9 @@ fn changed_files(repo: &Path, options: &PrEvidenceOptions) -> Result<Vec<String>
 
 fn write_diff(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
     let out = repo.join(PR_DIFF);
-    let Some(parent) = out.parent() else {
-        return Err(format!("{PR_DIFF} has no parent directory"));
-    };
-    fs::create_dir_all(parent)
-        .map_err(|err| format!("failed to create {PR_DIFF} parent: {err}"))?;
     let range = format!("{}...{}", options.base, options.head);
     let diff = run_git_output(repo, &["diff", "--binary", "--no-ext-diff", range.as_str()])?;
-    fs::write(&out, diff).map_err(|err| format!("failed to write {PR_DIFF}: {err}"))
+    write_parented_file(&out, PR_DIFF, diff)
 }
 
 fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, String> {

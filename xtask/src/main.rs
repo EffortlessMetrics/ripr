@@ -14175,6 +14175,7 @@ pub(crate) fn evidence_health_report_impl() -> Result<(), String> {
 const LANE1_EVIDENCE_AUDIT_SCHEMA_VERSION: &str = "0.1";
 const LANE1_EVIDENCE_AUDIT_TOP_LIMIT: usize = 10;
 const LANE1_EVIDENCE_AUDIT_DUPLICATE_LIMIT: usize = 25;
+const LANE1_EVIDENCE_AUDIT_TRACE_TAIL_LIMIT: usize = 12;
 const LANE1_EVIDENCE_AUDIT_TIMEOUT_ENV: &str = "RIPR_LANE1_EVIDENCE_AUDIT_TIMEOUT_MS";
 const LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS: u64 = 1_200_000;
 
@@ -14182,6 +14183,7 @@ const LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS: u64 = 1_200_000;
 struct Lane1EvidenceAuditReport {
     root: String,
     repo_exposure_schema_version: Option<String>,
+    repo_exposure_generation: Option<Lane1EvidenceAuditRepoExposureGeneration>,
     summary: Lane1EvidenceAuditSummary,
     finding_alignment: Lane1EvidenceAuditFindingAlignmentSummary,
     alignment_coverage_by_class: Vec<Lane1EvidenceAuditAlignmentClassCoverage>,
@@ -14212,6 +14214,19 @@ struct Lane1EvidenceAuditReport {
     calibration_agreement_counts: BTreeMap<String, usize>,
     evidence_record_field_health: Vec<Lane1EvidenceAuditFieldHealth>,
     top_files_by_unresolved_evidence_debt: Vec<Lane1EvidenceAuditFileDebt>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Lane1EvidenceAuditRepoExposureGeneration {
+    command: String,
+    timeout_ms: u128,
+    status: String,
+    duration_ms: u128,
+    exit_code: Option<i32>,
+    stdout_bytes: usize,
+    stderr_bytes: usize,
+    latency_trace_events_total: usize,
+    latency_trace_tail: Vec<RepoExposureLatencyTrace>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -14359,8 +14374,9 @@ struct Lane1EvidenceAuditFileDebt {
 pub(crate) fn lane1_evidence_audit_report_impl() -> Result<(), String> {
     ensure_reports_dir()?;
     let repo_exposure_path = reports_dir().join("lane1-evidence-audit.repo-exposure.json");
-    write_lane1_evidence_audit_repo_exposure(&repo_exposure_path)?;
-    let report = lane1_evidence_audit_from_repo_exposure_file(".", &repo_exposure_path)?;
+    let repo_exposure_generation = write_lane1_evidence_audit_repo_exposure(&repo_exposure_path)?;
+    let mut report = lane1_evidence_audit_from_repo_exposure_file(".", &repo_exposure_path)?;
+    report.repo_exposure_generation = Some(repo_exposure_generation);
     if let Err(err) = fs::remove_file(&repo_exposure_path) {
         eprintln!(
             "warning: failed to remove temporary Lane 1 repo exposure input {}: {err}",
@@ -14377,7 +14393,9 @@ pub(crate) fn lane1_evidence_audit_report_impl() -> Result<(), String> {
     )
 }
 
-fn write_lane1_evidence_audit_repo_exposure(path: &Path) -> Result<(), String> {
+fn write_lane1_evidence_audit_repo_exposure(
+    path: &Path,
+) -> Result<Lane1EvidenceAuditRepoExposureGeneration, String> {
     run("cargo", &["build", "-p", "ripr"])?;
     let binary = ripr_debug_binary();
     let timeout = Duration::from_millis(lane1_evidence_audit_timeout_ms());
@@ -14430,7 +14448,7 @@ fn write_lane1_evidence_audit_repo_exposure_with_runner<F>(
     binary: &Path,
     timeout: Duration,
     mut run_repo_exposure: F,
-) -> Result<(), String>
+) -> Result<Lane1EvidenceAuditRepoExposureGeneration, String>
 where
     F: FnMut(&Path, &[String], Duration) -> Result<TimedOutput, String>,
 {
@@ -14445,15 +14463,20 @@ where
 
     fs::write(path, &output.stdout)
         .map_err(|err| format!("failed to write {}: {err}", path.display()))?;
+    let diagnostics =
+        lane1_evidence_audit_repo_exposure_generation(binary, &args, timeout, &output);
     match output.status {
-        Some(status) if status.success() => Ok(()),
+        Some(status) if status.success() => Ok(diagnostics),
         Some(status) => match lane1_repo_exposure_file_looks_complete(path) {
             Ok(true) => {
                 eprintln!(
                     "warning: repo exposure generation returned non-zero status; continuing because {} contains a complete repo-exposure JSON document",
                     path.display()
                 );
-                Ok(())
+                Ok(Lane1EvidenceAuditRepoExposureGeneration {
+                    status: "nonzero_complete".to_string(),
+                    ..diagnostics
+                })
             }
             Ok(false) => Err(format!(
                 "{} {} failed with {status}\nstderr:\n{}",
@@ -14475,6 +14498,35 @@ where
             args.join(" "),
             output.stderr.trim()
         )),
+    }
+}
+
+fn lane1_evidence_audit_repo_exposure_generation(
+    binary: &Path,
+    args: &[String],
+    timeout: Duration,
+    output: &TimedOutput,
+) -> Lane1EvidenceAuditRepoExposureGeneration {
+    let trace = repo_exposure_latency_trace(&output.stderr);
+    let trace_tail_start = trace
+        .len()
+        .saturating_sub(LANE1_EVIDENCE_AUDIT_TRACE_TAIL_LIMIT);
+    Lane1EvidenceAuditRepoExposureGeneration {
+        command: format!("{} {}", binary.display(), args.join(" ")),
+        timeout_ms: timeout.as_millis(),
+        status: if output.timed_out {
+            "timeout".to_string()
+        } else if output.status.is_some_and(|status| status.success()) {
+            "pass".to_string()
+        } else {
+            "fail".to_string()
+        },
+        duration_ms: output.duration.as_millis(),
+        exit_code: output.status.and_then(|status| status.code()),
+        stdout_bytes: output.stdout.len(),
+        stderr_bytes: output.stderr.len(),
+        latency_trace_events_total: trace.len(),
+        latency_trace_tail: trace[trace_tail_start..].to_vec(),
     }
 }
 
@@ -15036,6 +15088,7 @@ impl Lane1EvidenceAuditBuilder {
         Lane1EvidenceAuditReport {
             root,
             repo_exposure_schema_version,
+            repo_exposure_generation: None,
             summary: self.summary,
             finding_alignment: self.finding_alignment,
             alignment_coverage_by_class,
@@ -15099,6 +15152,10 @@ fn lane1_evidence_audit_json(report: &Lane1EvidenceAuditReport) -> Result<String
             "source": "repo-exposure-json",
             "repo_exposure_mode": "instant",
             "repo_exposure_schema_version": report.repo_exposure_schema_version,
+            "repo_exposure_generation": report
+                .repo_exposure_generation
+                .as_ref()
+                .map(lane1_evidence_audit_repo_exposure_generation_json),
         },
         "summary": {
             "seams_total": report.summary.seams_total,
@@ -15208,6 +15265,48 @@ fn lane1_evidence_audit_markdown(report: &Lane1EvidenceAuditReport) -> String {
     out.push_str("# Lane 1 evidence quality audit\n\n");
     out.push_str("Status: advisory\n\n");
     out.push_str("This repo-local report summarizes evidence quality from `seams[].evidence_record`. It does not change analyzer behavior, gate policy, PR projection, LSP UX, or runtime execution.\n\n");
+
+    out.push_str("## Repo Exposure Generation\n\n");
+    if let Some(generation) = &report.repo_exposure_generation {
+        out.push_str("| Field | Value |\n");
+        out.push_str("| --- | --- |\n");
+        out.push_str(&format!(
+            "| Status | `{}` |\n",
+            audit_markdown_cell(&generation.status)
+        ));
+        out.push_str(&format!("| Duration | {} ms |\n", generation.duration_ms));
+        out.push_str(&format!("| Timeout | {} ms |\n", generation.timeout_ms));
+        let exit = generation
+            .exit_code
+            .map(|code| code.to_string())
+            .unwrap_or_else(|| "n/a".to_string());
+        out.push_str(&format!("| Exit code | {} |\n", exit));
+        out.push_str(&format!("| Stdout bytes | {} |\n", generation.stdout_bytes));
+        out.push_str(&format!("| Stderr bytes | {} |\n", generation.stderr_bytes));
+        out.push_str(&format!(
+            "| Latency trace events | {} |\n",
+            generation.latency_trace_events_total
+        ));
+        out.push('\n');
+        if generation.latency_trace_tail.is_empty() {
+            out.push_str("No repo-exposure latency trace lines were captured.\n\n");
+        } else {
+            out.push_str("Last repo-exposure latency trace events:\n\n");
+            out.push_str("| Phase | Status | Duration |\n");
+            out.push_str("| --- | --- | ---: |\n");
+            for trace in &generation.latency_trace_tail {
+                out.push_str(&format!(
+                    "| `{}` | `{}` | {} ms |\n",
+                    audit_markdown_cell(&trace.phase),
+                    audit_markdown_cell(&trace.status),
+                    trace.duration_ms
+                ));
+            }
+            out.push('\n');
+        }
+    } else {
+        out.push_str("No repo-exposure generation diagnostics were attached. This usually means the audit was built from an in-memory fixture instead of the live repo-exposure subprocess.\n\n");
+    }
 
     out.push_str("## Summary\n\n");
     out.push_str("| Metric | Count |\n");
@@ -15754,6 +15853,34 @@ fn audit_finding_alignment_summary_json(
         summary.presentation_text_actionable_total,
     );
     Value::Object(object)
+}
+
+fn lane1_evidence_audit_repo_exposure_generation_json(
+    generation: &Lane1EvidenceAuditRepoExposureGeneration,
+) -> Value {
+    serde_json::json!({
+        "command": normalize_report_path(&generation.command),
+        "timeout_ms": generation.timeout_ms,
+        "status": generation.status,
+        "duration_ms": generation.duration_ms,
+        "exit_code": generation.exit_code,
+        "stdout_bytes": generation.stdout_bytes,
+        "stderr_bytes": generation.stderr_bytes,
+        "latency_trace_events_total": generation.latency_trace_events_total,
+        "latency_trace_tail": generation
+            .latency_trace_tail
+            .iter()
+            .map(lane1_evidence_audit_latency_trace_json)
+            .collect::<Vec<_>>(),
+    })
+}
+
+fn lane1_evidence_audit_latency_trace_json(trace: &RepoExposureLatencyTrace) -> Value {
+    serde_json::json!({
+        "phase": trace.phase,
+        "status": trace.status,
+        "duration_ms": trace.duration_ms,
+    })
 }
 
 fn audit_alignment_class_coverage_json(row: &Lane1EvidenceAuditAlignmentClassCoverage) -> Value {
@@ -19273,7 +19400,7 @@ struct RepoExposureLatencyRun {
     trace: Vec<RepoExposureLatencyTrace>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct RepoExposureLatencyTrace {
     phase: String,
     status: String,
@@ -37305,50 +37432,51 @@ mod tests {
         EvidenceQualityScorecardReport, EvidenceQualityTrendInputs, EvidenceQualityTrendReport,
         FixKind, GENERATED_CI_FIRST_ACTION_REPAIR, GENERATED_CI_FIRST_PR_REPAIR,
         GENERATED_CI_FRONT_PANEL_REPAIR, GENERATED_CI_PACKET_INDEX_REPAIR, GhPrStatusPullRequest,
-        GhPrStatusReview, LocalContextAllow, LspCockpitFixture, LspCockpitReport, MarkdownLink,
-        PrTriageCheck, PrTriageFinding, PrTriagePullRequest, ReceiptRecord,
-        RepoExposureLatencyReport, RepoExposureLatencyRun, RepoExposureLatencyTrace,
-        ReportIndexCampaign, ReportIndexEntry, ReportIndexRepoOpsArtifact, SarifPolicyMode,
-        SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
-        TestOracleClass, WorktreeDoctorFinding, WorktreeDoctorSeverity,
-        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
-        badge_artifacts_summary_markdown, badge_diff_policy_violations, build_lsp_cockpit_report,
-        build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
-        build_targeted_test_outcome_report, campaign_source_truth_violations_for_root,
-        check_allow_attributes, check_badge_diff_policy_with_context, check_droid_review_config,
-        check_executable_files, check_file_policy, check_local_context, check_network_policy,
-        check_no_panic_family, check_process_policy, check_static_language, check_workflows,
-        ci_full_evidence_gates, cockpit_json, cockpit_markdown, collect_panic_findings,
-        collect_semantic_panic_findings, command_catalog, command_catalog_violations,
-        commands_report_json, commands_report_markdown, critic_findings, days_from_civil,
-        dogfood_class_counts, dogfood_editor_first_pr_bridge_run,
-        dogfood_editor_first_pr_bridge_scenarios, dogfood_editor_gap_cockpit_run,
-        dogfood_editor_gap_cockpit_scenarios, dogfood_finding_alignment_run,
-        dogfood_finding_alignment_scenarios, dogfood_first_action_scenarios,
-        dogfood_first_pr_metrics, dogfood_first_pr_run, dogfood_first_pr_scenarios,
-        dogfood_gate_adoption_scenarios, dogfood_generated_ci_cockpit_run_from_workflow,
-        dogfood_language_preview_run, dogfood_language_preview_scenarios,
-        dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
-        dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
-        dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
-        dogfood_report_packet_index_scenarios, evaluate_semantic_no_panic_policy,
-        evidence_quality_scorecard_from_values, evidence_quality_scorecard_json,
-        evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
-        evidence_quality_trend_json, evidence_quality_trend_markdown,
-        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
-        extract_workflow_run_blocks, finding_alignment_raw_to_canonical_ratio,
-        finding_alignment_verify_command_is_missing, finish_worktree_doctor_report,
-        first_line_difference, forbidden_panic_patterns, generated_clean_violations,
-        gh_pr_safe_next_action, gh_pr_status_json, gh_pr_status_markdown, gh_pr_status_readiness,
-        github_event_pull_request_title_from_text, glob_matches, golden_changes_without_blessing,
-        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
-        help_message, install_hooks_in, is_badge_refresh_context, is_bdd_test_name,
-        is_campaign_path, is_dependency_surface_candidate, is_docs_path, is_evidence_path,
-        is_generated_candidate, is_known_campaign_command, is_non_rust_programming_candidate,
-        is_policy_path, is_production_path, is_receipt_status, is_ripr_managed_hook,
-        is_snake_case_id, is_spec_id, is_stale_agent_boundary_scan_target, json_escape,
-        json_number_after, json_string_values_for_key, json_summary_count, known_commands,
-        known_xtask_command, lane1_evidence_audit_from_repo_exposure, lane1_evidence_audit_json,
+        GhPrStatusReview, Lane1EvidenceAuditRepoExposureGeneration, LocalContextAllow,
+        LspCockpitFixture, LspCockpitReport, MarkdownLink, PrTriageCheck, PrTriageFinding,
+        PrTriagePullRequest, ReceiptRecord, RepoExposureLatencyReport, RepoExposureLatencyRun,
+        RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
+        ReportIndexRepoOpsArtifact, SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold,
+        StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass, WorktreeDoctorFinding,
+        WorktreeDoctorSeverity, badge_artifact_command_args, badge_artifact_jobs,
+        badge_artifact_native_slot, badge_artifacts_summary_markdown, badge_diff_policy_violations,
+        build_lsp_cockpit_report, build_no_panic_allowlist_proposals,
+        build_repo_exposure_latency_report, build_targeted_test_outcome_report,
+        campaign_source_truth_violations_for_root, check_allow_attributes,
+        check_badge_diff_policy_with_context, check_droid_review_config, check_executable_files,
+        check_file_policy, check_local_context, check_network_policy, check_no_panic_family,
+        check_process_policy, check_static_language, check_workflows, ci_full_evidence_gates,
+        cockpit_json, cockpit_markdown, collect_panic_findings, collect_semantic_panic_findings,
+        command_catalog, command_catalog_violations, commands_report_json,
+        commands_report_markdown, critic_findings, days_from_civil, dogfood_class_counts,
+        dogfood_editor_first_pr_bridge_run, dogfood_editor_first_pr_bridge_scenarios,
+        dogfood_editor_gap_cockpit_run, dogfood_editor_gap_cockpit_scenarios,
+        dogfood_finding_alignment_run, dogfood_finding_alignment_scenarios,
+        dogfood_first_action_scenarios, dogfood_first_pr_metrics, dogfood_first_pr_run,
+        dogfood_first_pr_scenarios, dogfood_gate_adoption_scenarios,
+        dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
+        dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
+        dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
+        dogfood_pr_review_front_panel_scenarios, dogfood_report_json, dogfood_report_markdown,
+        dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
+        evaluate_semantic_no_panic_policy, evidence_quality_scorecard_from_values,
+        evidence_quality_scorecard_json, evidence_quality_scorecard_markdown,
+        evidence_quality_trend_from_values, evidence_quality_trend_json,
+        evidence_quality_trend_markdown, extract_json_object_usize_map, extract_json_string,
+        extract_json_warnings, extract_workflow_run_blocks,
+        finding_alignment_raw_to_canonical_ratio, finding_alignment_verify_command_is_missing,
+        finish_worktree_doctor_report, first_line_difference, forbidden_panic_patterns,
+        generated_clean_violations, gh_pr_safe_next_action, gh_pr_status_json,
+        gh_pr_status_markdown, gh_pr_status_readiness, github_event_pull_request_title_from_text,
+        glob_matches, golden_changes_without_blessing, golden_drift_semantics,
+        guarded_allow_attribute_lints, guarded_allow_attributes_in_text, help_message,
+        install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
+        is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
+        is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
+        is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
+        is_stale_agent_boundary_scan_target, json_escape, json_number_after,
+        json_string_values_for_key, json_summary_count, known_commands, known_xtask_command,
+        lane1_evidence_audit_from_repo_exposure, lane1_evidence_audit_json,
         lane1_evidence_audit_markdown, lane1_evidence_audit_repo_exposure_args,
         lane1_evidence_audit_timeout_error, local_context_line_findings, local_markdown_target,
         lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
@@ -50795,7 +50923,7 @@ covered_by = ["cargo xtask check-file-policy"]
         let timeout = Duration::from_millis(50);
         let stdout = "{\n  \"schema_version\": \"0.3\",\n  \"seams\": []\n}\n";
 
-        write_lane1_evidence_audit_repo_exposure_with_runner(
+        let diagnostics = write_lane1_evidence_audit_repo_exposure_with_runner(
             &output_path,
             Path::new("ripr"),
             timeout,
@@ -50806,7 +50934,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 Ok(TimedOutput {
                     status: Some(success_exit_status()),
                     stdout: stdout.to_string(),
-                    stderr: String::new(),
+                    stderr: "ripr_repo_exposure_latency phase=evidence_for_seams status=ok duration_ms=42\n".to_string(),
                     duration: Duration::from_millis(1),
                     timed_out: false,
                 })
@@ -50816,6 +50944,18 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(
             fs::read_to_string(&output_path).map_err(|err| err.to_string())?,
             stdout
+        );
+        assert_eq!(diagnostics.status, "pass");
+        assert_eq!(diagnostics.duration_ms, 1);
+        assert_eq!(diagnostics.timeout_ms, 50);
+        assert_eq!(diagnostics.latency_trace_events_total, 1);
+        assert_eq!(
+            diagnostics.latency_trace_tail[0],
+            RepoExposureLatencyTrace {
+                phase: "evidence_for_seams".to_string(),
+                status: "ok".to_string(),
+                duration_ms: 42,
+            }
         );
 
         Ok(())
@@ -50828,7 +50968,7 @@ covered_by = ["cargo xtask check-file-policy"]
         let output_path = root.join("repo-exposure.json");
         let stdout = "{\n  \"schema_version\": \"0.3\",\n  \"seams\": []\n}\n";
 
-        write_lane1_evidence_audit_repo_exposure_with_runner(
+        let diagnostics = write_lane1_evidence_audit_repo_exposure_with_runner(
             &output_path,
             Path::new("ripr"),
             Duration::from_millis(50),
@@ -50843,6 +50983,7 @@ covered_by = ["cargo xtask check-file-policy"]
             },
         )?;
 
+        assert_eq!(diagnostics.status, "nonzero_complete");
         assert_eq!(
             fs::read_to_string(&output_path).map_err(|err| err.to_string())?,
             stdout
@@ -51509,6 +51650,7 @@ covered_by = ["cargo xtask check-file-policy"]
         let markdown = lane1_evidence_audit_markdown(&report);
 
         assert!(markdown.contains("Lane 1 evidence quality audit"));
+        assert!(markdown.contains("Repo Exposure Generation"));
         assert!(markdown.contains("Largest Canonical Gap Groups"));
         assert!(markdown.contains("Finding Alignment"));
         assert!(markdown.contains("Finding Alignment Coverage"));
@@ -51521,6 +51663,44 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("Evidence Record Field Health"));
         assert!(markdown.contains("Top Files By Unresolved Evidence Debt"));
         assert!(markdown.contains("gap:shared"));
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_evidence_audit_json_reports_generation_diagnostics() -> Result<(), String> {
+        let mut report = lane1_evidence_audit_from_repo_exposure(".", lane1_audit_sample_json())?;
+        report.repo_exposure_generation = Some(Lane1EvidenceAuditRepoExposureGeneration {
+            command: "target/debug/ripr check --root . --mode instant --format repo-exposure-json"
+                .to_string(),
+            timeout_ms: 60_000,
+            status: "pass".to_string(),
+            duration_ms: 42_000,
+            exit_code: Some(0),
+            stdout_bytes: 1024,
+            stderr_bytes: 128,
+            latency_trace_events_total: 3,
+            latency_trace_tail: vec![RepoExposureLatencyTrace {
+                phase: "evidence_for_seams_progress".to_string(),
+                status: "processed_5000_of_38124".to_string(),
+                duration_ms: 41_000,
+            }],
+        });
+
+        let json = lane1_evidence_audit_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        let generation = &value["inputs"]["repo_exposure_generation"];
+
+        assert_eq!(generation["status"], "pass");
+        assert_eq!(generation["duration_ms"], serde_json::Value::from(42_000));
+        assert_eq!(
+            generation["latency_trace_tail"][0]["phase"],
+            "evidence_for_seams_progress"
+        );
+        assert_eq!(
+            generation["latency_trace_tail"][0]["status"],
+            "processed_5000_of_38124"
+        );
         Ok(())
     }
 

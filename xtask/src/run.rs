@@ -1,4 +1,4 @@
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread;
@@ -190,8 +190,17 @@ pub(crate) fn capture_output_with_timeout(
         .stderr
         .take()
         .ok_or_else(|| format!("failed to capture stderr for {error_context}"))?;
+    let echo_latency_trace = envs
+        .iter()
+        .any(|(name, _)| *name == "RIPR_REPO_EXPOSURE_LATENCY_TRACE");
     let stdout_reader = thread::spawn(move || read_stream(stdout));
-    let stderr_reader = thread::spawn(move || read_stream(stderr));
+    let stderr_reader = thread::spawn(move || {
+        if echo_latency_trace {
+            read_stream_with_latency_progress(stderr)
+        } else {
+            read_stream(stderr)
+        }
+    });
 
     loop {
         if let Some(status) = child
@@ -261,6 +270,26 @@ fn read_stream<T: Read>(mut stream: T) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
+fn read_stream_with_latency_progress<T: Read>(stream: T) -> Result<String, String> {
+    let mut reader = BufReader::new(stream);
+    let mut out = String::new();
+    let mut line = String::new();
+    loop {
+        line.clear();
+        let bytes = reader
+            .read_line(&mut line)
+            .map_err(|err| format!("failed to read process output: {err}"))?;
+        if bytes == 0 {
+            break;
+        }
+        if line.starts_with("ripr_repo_exposure_latency ") {
+            eprint!("{line}");
+        }
+        out.push_str(&line);
+    }
+    Ok(out)
+}
+
 fn join_stream_reader(
     reader: thread::JoinHandle<Result<String, String>>,
     stream_name: &str,
@@ -277,10 +306,11 @@ fn join_stream_reader(
 #[cfg(test)]
 mod tests {
     use super::{
-        CapturedOutput, capture_output, capture_output_with_timeout, command_success_owned, run,
-        run_in_dir, run_output, run_output_optional, run_output_owned, run_owned,
-        terminate_after_timeout, timeout_was_enforced,
+        CapturedOutput, capture_output, capture_output_with_timeout, command_success_owned,
+        read_stream_with_latency_progress, run, run_in_dir, run_output, run_output_optional,
+        run_output_owned, run_owned, terminate_after_timeout, timeout_was_enforced,
     };
+    use std::io::Cursor;
     use std::path::Path;
     use std::process::{Command, Stdio};
     use std::thread;
@@ -454,6 +484,14 @@ mod tests {
             !output.status.is_some_and(|status| status.success()),
             "timed-out cargo metadata should not exit successfully"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn latency_progress_reader_preserves_captured_stderr() -> Result<(), String> {
+        let stderr = "first\nripr_repo_exposure_latency phase=evidence_for_seams status=start duration_ms=0\nlast\n";
+        let captured = read_stream_with_latency_progress(Cursor::new(stderr.as_bytes()))?;
+        assert_eq!(captured, stderr);
         Ok(())
     }
 
