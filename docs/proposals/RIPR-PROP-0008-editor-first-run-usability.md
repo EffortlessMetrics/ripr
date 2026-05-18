@@ -1,6 +1,6 @@
 # RIPR-PROP-0008: Editor First-Run Usability
 
-Status: proposed
+Status: accepted
 
 Owner: Lane 3 - Editor / LSP UX
 
@@ -21,7 +21,16 @@ Linked ADRs:
 
 Linked work items:
 
-- To be recorded when the editor first-run usability campaign manifest opens.
+- #1012 `docs(lane3): open editor first-run usability stack`
+- #1017 `vscode: add setup diagnosis status model`
+- #1023 `vscode: add Diagnose Setup command`
+- #1026 `test(vscode): smoke first-run and no-output states`
+- #1028 `lsp: link receipts into Show Status`
+- #1030 `lsp: add first-repair action packet`
+- #1033 `fixtures(editor): add first-run usability fixtures`
+- #1037 `docs(editor): write first-run-to-first-receipt guide`
+- #1038 `dogfood(lane3): record first-run repair receipts`
+- #1040 `campaign(lane3): close editor first-run usability`
 
 ## Problem
 

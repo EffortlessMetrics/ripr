@@ -41,3 +41,31 @@ fn is_interesting_token(token: &str) -> bool {
                 | "is_err"
         )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_identifier_tokens_filters_assertion_noise_and_sorts_tokens() {
+        let tokens = extract_identifier_tokens(
+            "assert_eq!(actual_total, expected_total); assert!(actual_total > threshold)",
+        );
+
+        assert_eq!(tokens, vec!["actual_total", "expected_total", "threshold"]);
+    }
+
+    #[test]
+    fn extract_identifier_tokens_deduplicates_repeated_observed_tokens() {
+        let tokens = extract_identifier_tokens("value.unwrap(); assert_eq!(value, value)");
+
+        assert_eq!(tokens, vec!["value"]);
+    }
+
+    #[test]
+    fn extract_identifier_tokens_ignores_short_and_builtin_tokens() {
+        let tokens = extract_identifier_tokens("let x = Ok(Some(id)); let flag = true;");
+
+        assert_eq!(tokens, vec!["flag"]);
+    }
+}

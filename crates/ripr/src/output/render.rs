@@ -330,6 +330,377 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn render_dispatch_renders_human_json_github_with_default_config() -> Result<(), String> {
+        let output = check_output_with(vec![sample_finding("src/lib.rs", 1)]);
+        let config = RiprConfig::default();
+
+        let human = render_check_with_config(&output, &OutputFormat::Human, &config)?;
+        let json = render_check_with_config(&output, &OutputFormat::Json, &config)?;
+        let github = render_check_with_config(&output, &OutputFormat::Github, &config)?;
+
+        assert!(!human.is_empty());
+        assert!(json.contains("\"schema_version\""));
+        assert!(github.contains("ripr"));
+        Ok(())
+    }
+
+    #[test]
+    fn render_dispatch_renders_diff_badge_formats() -> Result<(), String> {
+        let output = check_output_with(vec![sample_finding("src/lib.rs", 1)]);
+        let config = RiprConfig::default();
+
+        let native = render_check_with_config(&output, &OutputFormat::BadgeJson, &config)?;
+        let shields = render_check_with_config(&output, &OutputFormat::BadgeShields, &config)?;
+
+        assert!(native.contains("\"kind\""));
+        assert!(shields.contains("\"schemaVersion\": 1"));
+        Ok(())
+    }
+
+    #[test]
+    fn render_dispatch_renders_repo_badge_formats_with_seam_workspace() -> Result<(), String> {
+        let output = check_output_with_temp_seam_workspace(Vec::new())?;
+        let config = RiprConfig::default();
+
+        let native = render_check_with_config(&output, &OutputFormat::RepoBadgeJson, &config)?;
+        let shields = render_check_with_config(&output, &OutputFormat::RepoBadgeShields, &config)?;
+
+        assert!(native.contains("\"scope\": \"repo\""));
+        assert!(shields.contains("\"schemaVersion\": 1"));
+
+        remove_temp_root(&output.root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn render_dispatch_sarif_surfaces_malformed_suppressions_as_error() -> Result<(), String> {
+        let output = check_output_with_temp_malformed_suppressions()?;
+        let result =
+            render_check_with_config(&output, &OutputFormat::Sarif, &RiprConfig::default());
+
+        let err = expect_err(result)?;
+        assert!(
+            err.contains("validation failed"),
+            "expected suppressions validation failure, got: {err}"
+        );
+        assert!(err.contains(".ripr/suppressions.toml"));
+
+        remove_temp_root(&output.root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn render_dispatch_badge_json_surfaces_malformed_suppressions_as_error() -> Result<(), String> {
+        let output = check_output_with_temp_malformed_suppressions()?;
+        let result =
+            render_check_with_config(&output, &OutputFormat::BadgeJson, &RiprConfig::default());
+
+        let err = expect_err(result)?;
+        assert!(err.contains("validation failed"));
+
+        remove_temp_root(&output.root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn render_dispatch_badge_shields_surfaces_malformed_suppressions_as_error() -> Result<(), String>
+    {
+        let output = check_output_with_temp_malformed_suppressions()?;
+        let result =
+            render_check_with_config(&output, &OutputFormat::BadgeShields, &RiprConfig::default());
+
+        let err = expect_err(result)?;
+        assert!(err.contains("validation failed"));
+
+        remove_temp_root(&output.root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn render_dispatch_repo_badge_json_surfaces_missing_workspace_as_error() -> Result<(), String> {
+        let output = check_output_with_nonexistent_root();
+        let result = render_check_with_config(
+            &output,
+            &OutputFormat::RepoBadgeJson,
+            &RiprConfig::default(),
+        );
+
+        let err = expect_err(result)?;
+        assert!(!err.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn render_dispatch_repo_badge_shields_surfaces_missing_workspace_as_error() -> Result<(), String>
+    {
+        let output = check_output_with_nonexistent_root();
+        let result = render_check_with_config(
+            &output,
+            &OutputFormat::RepoBadgeShields,
+            &RiprConfig::default(),
+        );
+
+        let err = expect_err(result)?;
+        assert!(!err.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn render_dispatch_repo_seams_json_surfaces_missing_workspace_as_error() -> Result<(), String> {
+        let output = check_output_with_nonexistent_root();
+        let result = render_check_with_config(
+            &output,
+            &OutputFormat::RepoSeamsJson,
+            &RiprConfig::default(),
+        );
+
+        let err = expect_err(result)?;
+        assert!(!err.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn render_dispatch_repo_seams_md_surfaces_missing_workspace_as_error() -> Result<(), String> {
+        let output = check_output_with_nonexistent_root();
+        let result =
+            render_check_with_config(&output, &OutputFormat::RepoSeamsMd, &RiprConfig::default());
+
+        let err = expect_err(result)?;
+        assert!(!err.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn render_dispatch_repo_exposure_json_surfaces_missing_workspace_as_error() -> Result<(), String>
+    {
+        let output = check_output_with_nonexistent_root();
+        let result = render_check_with_config(
+            &output,
+            &OutputFormat::RepoExposureJson,
+            &RiprConfig::default(),
+        );
+
+        let err = expect_err(result)?;
+        assert!(!err.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn render_dispatch_repo_exposure_md_surfaces_missing_workspace_as_error() -> Result<(), String>
+    {
+        let output = check_output_with_nonexistent_root();
+        let result = render_check_with_config(
+            &output,
+            &OutputFormat::RepoExposureMd,
+            &RiprConfig::default(),
+        );
+
+        let err = expect_err(result)?;
+        assert!(!err.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn render_dispatch_repo_sarif_surfaces_missing_workspace_as_error() -> Result<(), String> {
+        let output = check_output_with_nonexistent_root();
+        let result =
+            render_check_with_config(&output, &OutputFormat::RepoSarif, &RiprConfig::default());
+
+        let err = expect_err(result)?;
+        assert!(!err.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn render_dispatch_agent_seam_packets_surfaces_missing_workspace_as_error() -> Result<(), String>
+    {
+        let output = check_output_with_nonexistent_root();
+        let result = render_check_with_config(
+            &output,
+            &OutputFormat::AgentSeamPacketsJson,
+            &RiprConfig::default(),
+        );
+
+        let err = expect_err(result)?;
+        assert!(!err.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn render_dispatch_badge_plus_shields_surfaces_missing_report_as_error() -> Result<(), String> {
+        let root = temp_root("ripr-render-badge-plus-shields-missing")?;
+        let mut output = check_output_with(Vec::new());
+        output.root = root;
+
+        let result = render_check_with_config(
+            &output,
+            &OutputFormat::BadgePlusShields,
+            &RiprConfig::default(),
+        );
+
+        let err = expect_err(result)?;
+        assert!(
+            err.contains("test-efficiency.json"),
+            "expected missing-report hint, got: {err}"
+        );
+        assert!(err.contains("cargo xtask test-efficiency-report"));
+
+        remove_temp_root(&output.root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn render_dispatch_repo_badge_plus_shields_surfaces_missing_report_as_error()
+    -> Result<(), String> {
+        let root = temp_root("ripr-render-repo-badge-plus-shields-missing")?;
+        let mut output = check_output_with(Vec::new());
+        output.root = root;
+
+        let result = render_check_with_config(
+            &output,
+            &OutputFormat::RepoBadgePlusShields,
+            &RiprConfig::default(),
+        );
+
+        let err = expect_err(result)?;
+        assert!(err.contains("test-efficiency.json"));
+
+        remove_temp_root(&output.root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn render_dispatch_badge_plus_surfaces_invalid_test_efficiency_json_as_error()
+    -> Result<(), String> {
+        let root = temp_root("ripr-render-badge-plus-invalid-json")?;
+        let report_dir = root.join("target/ripr/reports");
+        std::fs::create_dir_all(&report_dir)
+            .map_err(|err| format!("create test-efficiency report dir: {err}"))?;
+        std::fs::write(report_dir.join("test-efficiency.json"), "this is not json")
+            .map_err(|err| format!("write malformed test-efficiency: {err}"))?;
+        let mut output = check_output_with(Vec::new());
+        output.root = root;
+
+        let result = render_check_with_config(
+            &output,
+            &OutputFormat::BadgePlusJson,
+            &RiprConfig::default(),
+        );
+
+        let err = expect_err(result)?;
+        assert!(
+            err.contains("test-efficiency.json is not valid JSON"),
+            "expected JSON parse failure, got: {err}"
+        );
+
+        remove_temp_root(&output.root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn render_dispatch_badge_plus_surfaces_malformed_suppressions_as_error() -> Result<(), String> {
+        let root = temp_root("ripr-render-badge-plus-bad-suppressions")?;
+        // Valid efficiency report so parse succeeds and execution reaches the
+        // suppressions load.
+        write_test_efficiency_report(&root)?;
+        write_malformed_suppressions(&root)?;
+        let mut output = check_output_with(Vec::new());
+        output.root = root;
+
+        let result = render_check_with_config(
+            &output,
+            &OutputFormat::BadgePlusJson,
+            &RiprConfig::default(),
+        );
+
+        let err = expect_err(result)?;
+        assert!(
+            err.contains("validation failed"),
+            "expected suppressions validation failure, got: {err}"
+        );
+
+        remove_temp_root(&output.root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn remove_temp_root_treats_missing_dir_as_success() -> Result<(), String> {
+        let path = std::env::temp_dir().join(format!(
+            "ripr-render-missing-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        // Path does not exist; helper should return Ok without error.
+        remove_temp_root(&path)?;
+        Ok(())
+    }
+
+    #[test]
+    fn remove_temp_root_returns_error_for_other_io_failures() -> Result<(), String> {
+        // Passing a regular file (not a directory) makes `remove_dir_all`
+        // fail with an error kind other than NotFound, exercising the
+        // catch-all `Err(err) => Err(...)` arm.
+        let root = temp_root("ripr-render-remove-error")?;
+        let file_path = root.join("not-a-dir");
+        std::fs::write(&file_path, b"").map_err(|err| format!("write sentinel file: {err}"))?;
+
+        let result = remove_temp_root(&file_path);
+        match result {
+            Ok(()) => {
+                // Some platforms allow `remove_dir_all` on a regular file
+                // (it just unlinks it). In that case we cannot exercise
+                // the error arm here, so accept the success path. Clean up
+                // and return.
+                remove_temp_root(&root)?;
+                Ok(())
+            }
+            Err(message) => {
+                assert!(message.contains("remove temp root"));
+                let _ = std::fs::remove_file(&file_path);
+                remove_temp_root(&root)?;
+                Ok(())
+            }
+        }
+    }
+
+    fn check_output_with_nonexistent_root() -> CheckOutput {
+        let mut output = check_output_with(Vec::new());
+        output.root = PathBuf::from("/this/path/does/not/exist/ripr-render-test");
+        output
+    }
+
+    fn check_output_with_temp_malformed_suppressions() -> Result<CheckOutput, String> {
+        let root = temp_root("ripr-render-bad-suppressions")?;
+        write_malformed_suppressions(&root)?;
+        let mut output = check_output_with(Vec::new());
+        output.root = root;
+        Ok(output)
+    }
+
+    fn write_malformed_suppressions(root: &Path) -> Result<(), String> {
+        let dir = root.join(".ripr");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create .ripr dir: {err}"))?;
+        // Missing `schema_version = 1` and an unsupported top-level field
+        // both produce validation violations from `parse_suppressions_manifest`.
+        std::fs::write(
+            dir.join("suppressions.toml"),
+            "unsupported_field = \"value\"\n",
+        )
+        .map_err(|err| format!("write malformed suppressions: {err}"))?;
+        Ok(())
+    }
+
+    fn expect_err<T: std::fmt::Debug>(result: Result<T, String>) -> Result<String, String> {
+        match result {
+            Ok(value) => Err(format!("expected error, got Ok({value:?})")),
+            Err(err) => Ok(err),
+        }
+    }
+
     fn check_output_with(findings: Vec<Finding>) -> CheckOutput {
         CheckOutput {
             schema_version: "0.1".to_string(),
