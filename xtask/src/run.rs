@@ -268,10 +268,13 @@ pub(crate) fn capture_stdout_to_file_with_timeout(
     for (name, value) in envs {
         command.env(name, value);
     }
-    let mut child = command
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|err| format!("failed to run {error_context}: {err}"))?;
+    let mut child = match command.stderr(Stdio::piped()).spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            let _ = fs::remove_file(stdout_path);
+            return Err(format!("failed to run {error_context}: {err}"));
+        }
+    };
     let stderr = child
         .stderr
         .take()
@@ -621,6 +624,39 @@ mod tests {
             .map_err(|err| format!("failed to remove streamed stdout file: {err}"))?;
         if !captured.contains("rustc") {
             return Err(format!("captured stdout should name rustc: {captured}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn capture_stdout_to_file_with_timeout_removes_file_on_spawn_failure() -> Result<(), String> {
+        let path = std::env::temp_dir().join(format!(
+            "ripr-xtask-stdout-file-spawn-failure-{}-{}.txt",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0)
+        ));
+        let args = Vec::new();
+        let err = match capture_stdout_to_file_with_timeout(
+            "ripr-xtask-definitely-missing-binary",
+            &args,
+            &[],
+            &path,
+            Duration::from_secs(30),
+            "missing binary",
+        ) {
+            Ok(_) => return Err("missing binary should fail to spawn".to_string()),
+            Err(err) => err,
+        };
+
+        if !err.contains("failed to run missing binary") {
+            return Err(format!("spawn failure should include context: {err}"));
+        }
+        if path.exists() {
+            let _ = fs::remove_file(&path);
+            return Err("spawn failure should remove the truncated stdout file".to_string());
         }
         Ok(())
     }
