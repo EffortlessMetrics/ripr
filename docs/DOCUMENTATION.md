@@ -193,6 +193,8 @@ Current explanation docs:
 - [Editor first-pr bridge proposal](proposals/RIPR-PROP-0010-editor-first-pr-bridge.md)
 - [Start-here surface convergence proposal](proposals/RIPR-PROP-0011-start-here-surface-convergence.md)
 - [Start-here surface convergence plan](../plans/start-here-surface-convergence/implementation-plan.md)
+- [Editor adoption assurance proposal](proposals/RIPR-PROP-0012-editor-adoption-assurance.md)
+- [Editor adoption assurance plan](../plans/editor-adoption-assurance/implementation-plan.md)
 - [Codex Goals](CODEX_GOALS.md)
 - [Scoped PR contract](SCOPED_PR_CONTRACT.md)
 - [PR automation](PR_AUTOMATION.md)

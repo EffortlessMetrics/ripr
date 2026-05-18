@@ -78,13 +78,14 @@ Completed slices:
 
 ## Current Open PRs
 
-There are no behavior-bearing Lane 3 PRs open.
+The selected Lane 3 follow-up is Editor Adoption Assurance. The opener is
+docs-only and records the source-of-truth stack for #1245-#1253.
 
 When opening future Lane 3 PRs, list them here until they merge or close:
 
 | PR | Slice | State | Notes |
 | --- | --- | --- | --- |
-| none | - | - | - |
+| #1245 | `docs(lane3): open editor adoption assurance stack` | active | Docs/source-of-truth opener only; no behavior-bearing LSP or VS Code changes. |
 
 ## Campaign 27 Routing State
 
@@ -649,6 +650,66 @@ Future install polish, PR/CI publishing, source edits, generated tests,
 provider/model calls, mutation execution, policy/gate changes, CodeLens,
 inlay hints, semantic tokens, inline patches, or unsaved-buffer overlays need a
 new editor campaign.
+
+## Active Slice: Editor Adoption Assurance
+
+Editor Adoption Assurance is the selected Lane 3 follow-up. It does not reopen
+Editor Gap Cockpit, Editor First-Run and Repair Usability, or Editor First-PR
+Bridge. It makes the closed editor path adoption-ready by improving diagnosis,
+root clarity, fixture proof, e2e proof, docs, and receipts for external-style
+first-use states.
+
+Durable sources for the selected docs stack:
+
+- [RIPR-PROP-0012: Editor Adoption Assurance](../proposals/RIPR-PROP-0012-editor-adoption-assurance.md)
+- [RIPR-SPEC-0054: Editor Adoption Assurance](../specs/RIPR-SPEC-0054-editor-adoption-assurance.md)
+- [ADR-0016: Editor Adoption Assurance Is Read-Only Diagnosis](../adr/0016-editor-adoption-assurance-is-read-only-diagnosis.md)
+- [Editor Adoption Assurance implementation plan](../../plans/editor-adoption-assurance/implementation-plan.md)
+
+The target adoption path is:
+
+```text
+install / open workspace
+-> Diagnose Setup
+-> Show Status
+-> confirm server, root, language, artifact, first-pr, and receipt state
+-> inspect one diagnostic or no-output state
+-> take one bounded repair or regeneration action
+-> verify / receipt / refresh
+-> inspect first-pr packet when safe
+```
+
+Planned PR path:
+
+1. #1245 `docs(lane3): open editor adoption assurance stack`
+2. #1246 `test(lsp): pin editor adoption baseline`
+3. #1247 `vscode: add extension/server compatibility diagnosis`
+4. #1248 `vscode: harden workspace-root and multi-root diagnosis`
+5. #1249 `fixtures(editor): add adoption-assurance fixture corpus`
+6. #1250 `test(vscode): smoke editor adoption assurance path`
+7. #1251 `docs(editor): write install-to-first-pr editor guide`
+8. #1252 `dogfood(lane3): record external-style editor adoption receipts`
+9. #1253 `campaign(lane3): close editor adoption assurance`
+
+Hard boundaries:
+
+- saved-workspace first;
+- read-only diagnosis and projection;
+- typed fields over prose;
+- Rust default unchanged;
+- preview evidence visibly bounded;
+- static limits before action language;
+- stale, wrong-root, malformed, missing, unsupported, disabled, unavailable,
+  ambiguous, path-unsafe, and command-unsafe states fail closed;
+- no analyzer truth changes;
+- no first-pr packet producer changes;
+- no generated CI summary composition or PR comment publishing;
+- no policy, gate, baseline, suppression, or default-blocking behavior;
+- no source edits, generated tests, provider/model calls, mutation execution,
+  CodeLens, inlays, semantic tokens, inline patches, or unsaved-buffer
+  overlays;
+- no auto-install, binary download, config mutation, or hidden server
+  replacement.
 
 ## Lane 3 Document Model
 

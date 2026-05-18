@@ -3769,3 +3769,72 @@ Blocking conditions:
 - PR comment publishing changes
 - source edits, generated tests, provider/model calls, mutation execution, or
   editor UI-sprawl work
+
+## Lane 3 Campaign: Editor Adoption Assurance
+
+Campaign ID: `editor-adoption-assurance`
+
+Status: proposed.
+
+The editor cockpit, first-run usability path, and first-pr bridge are closed.
+This campaign makes that closed editor path adoption-ready by explaining
+install/open, server compatibility, workspace-root, first-pr packet, receipt,
+and fail-closed states in the editor before a user or agent takes repair
+action.
+
+Objective:
+
+```text
+Make ripr: Diagnose Setup and ripr: Show Status answer whether the editor path
+is safe to use, which root and server are active, which artifacts are current,
+and what one next action is safe.
+```
+
+End state:
+
+- Diagnose Setup and Show Status report server compatibility, active root,
+  config, language, artifact, first-pr packet, and receipt state.
+- Multi-root, wrong-root, stale, malformed, missing, disabled, unavailable,
+  path-unsafe, and command-unsafe states fail closed.
+- Repair and first-pr actions appear only when the current root and typed
+  artifacts make them safe.
+- Preview-language states remain opt-in, advisory, and static-limit bounded.
+- Fixtures, VS Code smoke, docs, and dogfood receipts prove the real adoption
+  path without reopening analyzer, policy, PR/CI, or release behavior.
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `docs/editor-adoption-assurance-stack` | planned | Add proposal, spec, ADR, plan, indexes, lane tracker state, and traceability. |
+| `test/lsp-editor-adoption-baseline` | planned | Pin the closed editor contract before compatibility/root behavior changes. |
+| `vscode/extension-server-compatibility-diagnosis` | planned | Add read-only extension/server compatibility state to Diagnose Setup and Show Status. |
+| `vscode/workspace-root-multiroot-diagnosis` | planned | Harden root selection, wrong-root, and multi-root fail-closed states. |
+| `fixtures/editor-adoption-assurance` | planned | Add setup, compatibility, root, first-pr, receipt, and preview-unavailable fixture states. |
+| `test/vscode-editor-adoption-assurance` | planned | Prove the real VS Code path for setup, status, packet, receipt, and action gating. |
+| `docs/editor-install-to-first-pr-guide` | planned | Document the install/open to first-pr editor path and recovery states. |
+| `dogfood/editor-adoption-receipts` | planned | Record external-style editor adoption receipts and known limits. |
+| `campaign/editor-adoption-assurance-closeout` | planned | Close only after #1245-#1253 are closed or explicitly superseded. |
+
+Commands:
+
+```bash
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-traceability
+cargo xtask check-pr
+git diff --check
+```
+
+Blocking conditions:
+
+- LSP or VS Code behavior changes in the docs/stack PR
+- analyzer truth changes
+- first-pr packet producer changes
+- generated CI summary composition or PR comment publishing
+- policy, gate, baseline, suppression, or default-blocking changes
+- source edits, generated tests, provider/model calls, mutation execution, or
+  editor UI-sprawl work
+- auto-install, binary download, config mutation, or hidden server replacement

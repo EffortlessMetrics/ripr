@@ -22,3 +22,4 @@ PR. They should be short, dated, and focused on consequences.
 | [0013](0013-editor-setup-diagnostics-are-read-only.md) | accepted | Keep editor setup diagnostics read-only. |
 | [0014](0014-editor-first-pr-projection-is-read-only.md) | accepted | Keep editor first-pr packet projection read-only. |
 | [0015](0015-start-here-surfaces-use-canonical-gap-records.md) | proposed | Keep start-here surfaces centered on canonical gap records. |
+| [0016](0016-editor-adoption-assurance-is-read-only-diagnosis.md) | proposed | Keep editor adoption assurance as read-only diagnosis. |

@@ -3397,3 +3397,37 @@ metrics = [
   "start_here_fail_closed_states",
   "start_here_preview_promotion_blockers",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0054"
+name = "Editor adoption assurance"
+spec = "docs/specs/RIPR-SPEC-0054-editor-adoption-assurance.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0054-editor-adoption-assurance.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0012-editor-adoption-assurance.md",
+  "docs/proposals/README.md",
+  "docs/adr/0016-editor-adoption-assurance-is-read-only-diagnosis.md",
+  "docs/adr/README.md",
+  "docs/DOCUMENTATION.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/lanes/LANE_3_EDITOR_LSP.md",
+  "plans/editor-adoption-assurance/implementation-plan.md",
+  "plans/README.md",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "editor_adoption_setup_ok",
+  "editor_adoption_server_missing",
+  "editor_adoption_server_version_mismatch",
+  "editor_adoption_root_ambiguous",
+  "editor_adoption_wrong_root_artifact",
+  "editor_adoption_first_pr_packet_ready",
+  "editor_adoption_receipt_stale",
+  "editor_adoption_actions_suppressed_unsafe_state",
+  "editor_adoption_preview_adapter_unavailable",
+]
