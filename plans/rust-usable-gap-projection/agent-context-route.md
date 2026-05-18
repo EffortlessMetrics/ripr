@@ -48,7 +48,7 @@ human-readable route seed for the same data.
 | CLI command parsing | `crates/ripr/src/cli/commands.rs`, `crates/ripr/src/cli/help.rs` |
 | Review repair cards | `crates/ripr/src/output/review_comments.rs` |
 | First action and PR ledger | `crates/ripr/src/output/first_useful_action.rs`, `crates/ripr/src/output/pr_evidence_ledger.rs` |
-| Badges and RIPR Zero | `crates/ripr/src/output/badge.rs`, `crates/ripr/src/output/ripr_zero_status.rs` |
+| Badges and RIPR Zero | `crates/ripr/src/output/badge/mod.rs`, `crates/ripr/src/output/ripr_zero_status.rs` |
 | Gates | `crates/ripr/src/output/gate.rs` |
 | Agent packets | `crates/ripr/src/output/agent_seam_packets.rs`, `crates/ripr/src/cli/agent.rs` |
 | LSP projection | `crates/ripr/src/lsp/diagnostics.rs`, `crates/ripr/src/lsp/hover.rs`, `crates/ripr/src/lsp/actions.rs` |
