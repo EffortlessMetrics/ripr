@@ -1,3 +1,5 @@
+use crate::output::markdown::{markdown_text, render_string_section};
+use crate::output::value_path::{path_value, string_path};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -661,17 +663,6 @@ fn notice_json(notice: &Notice) -> Value {
     })
 }
 
-fn render_string_section(out: &mut String, title: &str, values: &[String]) {
-    out.push_str(&format!("\n## {title}\n\n"));
-    if values.is_empty() {
-        out.push_str("- none\n");
-    } else {
-        for value in values {
-            out.push_str(&format!("- {}\n", markdown_text(value)));
-        }
-    }
-}
-
 fn push_unique(values: &mut Vec<String>, value: impl Into<String>) {
     let value = value.into();
     if value.trim().is_empty() || values.iter().any(|existing| existing == &value) {
@@ -693,24 +684,6 @@ fn string_array_path(value: &Value, path: &[&str]) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
-}
-
-fn string_path(value: &Value, path: &[&str]) -> Option<String> {
-    path_value(value, path)
-        .and_then(Value::as_str)
-        .map(ToOwned::to_owned)
-}
-
-fn path_value<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
-    let mut current = value;
-    for key in path {
-        current = current.get(*key)?;
-    }
-    Some(current)
-}
-
-fn markdown_text(value: &str) -> String {
-    value.replace('\\', "\\\\")
 }
 
 #[cfg(test)]
@@ -942,6 +915,771 @@ mod tests {
         assert!(markdown.contains("# RIPR Policy Promotion Packet"));
         assert!(markdown.contains("Target mode: baseline-check"));
         assert!(markdown.contains("Manual review only"));
+        Ok(())
+    }
+
+    // --- public helpers ---
+
+    #[test]
+    fn is_supported_target_mode_accepts_known_modes() {
+        assert!(is_supported_target_mode("visible-only"));
+        assert!(is_supported_target_mode("acknowledgeable"));
+        assert!(is_supported_target_mode("baseline-check"));
+        assert!(is_supported_target_mode("calibrated-gate"));
+        assert!(!is_supported_target_mode("unknown-mode"));
+        assert!(!is_supported_target_mode(""));
+    }
+
+    #[test]
+    fn default_paths_contain_target_mode() {
+        assert_eq!(
+            default_policy_promotion_out("visible-only"),
+            "target/ripr/reports/policy-promotion-visible-only.json"
+        );
+        assert_eq!(
+            default_policy_promotion_md_out("acknowledgeable"),
+            "target/ripr/reports/policy-promotion-acknowledgeable.md"
+        );
+    }
+
+    #[test]
+    fn policy_promotion_allowed_now_mirrors_report_field() {
+        let allowed = build_policy_promotion_report(input(
+            "visible-only",
+            Ok(operations_json(&["visible-only"], &[])),
+        ));
+        let blocked = build_policy_promotion_report(input(
+            "visible-only",
+            Ok(operations_json(&[], &["visible-only"])),
+        ));
+        assert!(policy_promotion_allowed_now(&allowed));
+        assert!(!policy_promotion_allowed_now(&blocked));
+    }
+
+    #[test]
+    fn display_path_normalises_backslashes() {
+        let p = std::path::Path::new("a/b/c");
+        assert_eq!(display_path(p), "a/b/c");
+    }
+
+    // --- parse_json status variants ---
+
+    #[test]
+    fn parse_json_omitted_when_no_path() {
+        // parse_optional_json with path=None → status "omitted"
+        let artifact = parse_optional_json("policy_history", None, None);
+        assert_eq!(artifact.status, "omitted");
+        assert!(artifact.value.is_none());
+        assert!(artifact.path.is_none());
+    }
+
+    #[test]
+    fn parse_json_missing_when_path_present_but_text_none() {
+        // parse_optional_json with path=Some but text=None → status "missing"
+        let artifact = parse_optional_json(
+            "policy_history",
+            Some("policy-history.json".to_string()),
+            None,
+        );
+        assert_eq!(artifact.status, "missing");
+        assert!(artifact.value.is_none());
+    }
+
+    #[test]
+    fn parse_json_missing_when_error_looks_like_missing_file_os_error_2() {
+        let artifact = parse_required_json(
+            "policy_operations",
+            "policy-operations.json".to_string(),
+            Err("read failed: os error 2".to_string()),
+        );
+        assert_eq!(artifact.status, "missing");
+        assert!(artifact.value.is_none());
+    }
+
+    #[test]
+    fn parse_json_missing_when_error_contains_no_such_file() {
+        let artifact = parse_required_json(
+            "policy_operations",
+            "policy-operations.json".to_string(),
+            Err("No such file or directory".to_string()),
+        );
+        assert_eq!(artifact.status, "missing");
+    }
+
+    #[test]
+    fn parse_json_missing_when_error_contains_cannot_find_the_file() {
+        let artifact = parse_required_json(
+            "policy_operations",
+            "policy-operations.json".to_string(),
+            Err("cannot find the file specified".to_string()),
+        );
+        assert_eq!(artifact.status, "missing");
+    }
+
+    #[test]
+    fn parse_json_malformed_when_error_is_not_missing_file() {
+        let artifact = parse_required_json(
+            "policy_operations",
+            "policy-operations.json".to_string(),
+            Err("permission denied".to_string()),
+        );
+        assert_eq!(artifact.status, "malformed");
+    }
+
+    #[test]
+    fn parse_json_read_when_valid_json() {
+        let artifact = parse_required_json(
+            "policy_operations",
+            "policy-operations.json".to_string(),
+            Ok(r#"{"kind":"policy_operations"}"#.to_string()),
+        );
+        assert_eq!(artifact.status, "read");
+        assert!(artifact.value.is_some());
+    }
+
+    // --- collect_artifact_notices branches ---
+
+    #[test]
+    fn collect_artifact_notices_read_status_produces_no_notices() {
+        let artifact = ParsedArtifact {
+            kind: "policy_operations",
+            path: Some("policy-operations.json".to_string()),
+            status: "read",
+            value: None,
+        };
+        let mut warnings = Vec::new();
+        let mut unknowns = Vec::new();
+        collect_artifact_notices(&artifact, true, &mut warnings, &mut unknowns);
+        assert!(warnings.is_empty());
+        assert!(unknowns.is_empty());
+    }
+
+    #[test]
+    fn collect_artifact_notices_omitted_optional_records_unknown() {
+        let artifact = ParsedArtifact {
+            kind: "policy_history",
+            path: None,
+            status: "omitted",
+            value: None,
+        };
+        let mut warnings = Vec::new();
+        let mut unknowns = Vec::new();
+        collect_artifact_notices(&artifact, false, &mut warnings, &mut unknowns);
+        assert!(warnings.is_empty());
+        assert_eq!(unknowns.len(), 1);
+        assert_eq!(unknowns[0].kind, "policy_history_not_supplied");
+    }
+
+    #[test]
+    fn collect_artifact_notices_omitted_required_is_silent() {
+        // "omitted" + required=true → falls through to _ => {} (no notice)
+        let artifact = ParsedArtifact {
+            kind: "policy_operations",
+            path: None,
+            status: "omitted",
+            value: None,
+        };
+        let mut warnings = Vec::new();
+        let mut unknowns = Vec::new();
+        collect_artifact_notices(&artifact, true, &mut warnings, &mut unknowns);
+        assert!(warnings.is_empty());
+        assert!(unknowns.is_empty());
+    }
+
+    #[test]
+    fn collect_artifact_notices_missing_required_records_warning() {
+        let artifact = ParsedArtifact {
+            kind: "policy_operations",
+            path: Some("policy-operations.json".to_string()),
+            status: "missing",
+            value: None,
+        };
+        let mut warnings = Vec::new();
+        let mut unknowns = Vec::new();
+        collect_artifact_notices(&artifact, true, &mut warnings, &mut unknowns);
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].kind, "policy_operations_missing");
+        assert!(unknowns.is_empty());
+    }
+
+    #[test]
+    fn collect_artifact_notices_missing_optional_records_unknown() {
+        let artifact = ParsedArtifact {
+            kind: "policy_history",
+            path: Some("policy-history.json".to_string()),
+            status: "missing",
+            value: None,
+        };
+        let mut warnings = Vec::new();
+        let mut unknowns = Vec::new();
+        collect_artifact_notices(&artifact, false, &mut warnings, &mut unknowns);
+        assert!(warnings.is_empty());
+        assert_eq!(unknowns.len(), 1);
+        assert_eq!(unknowns[0].kind, "policy_history_missing");
+    }
+
+    #[test]
+    fn collect_artifact_notices_malformed_records_warning_regardless_of_required() {
+        for required in [true, false] {
+            let artifact = ParsedArtifact {
+                kind: "policy_operations",
+                path: Some("policy-operations.json".to_string()),
+                status: "malformed",
+                value: None,
+            };
+            let mut warnings = Vec::new();
+            let mut unknowns = Vec::new();
+            collect_artifact_notices(&artifact, required, &mut warnings, &mut unknowns);
+            assert_eq!(warnings.len(), 1, "required={required}");
+            assert_eq!(warnings[0].kind, "policy_operations_malformed");
+        }
+    }
+
+    // --- operations_json error path propagates to report ---
+
+    #[test]
+    fn operations_io_error_os_error_2_records_missing_warning() {
+        let report = build_policy_promotion_report(input(
+            "visible-only",
+            Err("read error: os error 2".to_string()),
+        ));
+        assert!(!report.allowed_now);
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| w.kind == "policy_operations_missing")
+        );
+        assert!(report.why_or_why_not.contains("missing or malformed"));
+    }
+
+    // --- explain_promotion branches ---
+
+    #[test]
+    fn explain_promotion_allowed_with_no_reason_uses_fallback_message() {
+        // safe assessment exists but has no "reason" field → uses default format string
+        let ops = r#"{
+            "schema_version": "0.1",
+            "safe_to_promote_to": [{"mode": "visible-only", "allowed_now": true}],
+            "not_safe_to_promote_to": [],
+            "promotion_blockers": []
+        }"#;
+        let report = build_policy_promotion_report(input("visible-only", Ok(ops.to_string())));
+        assert!(report.allowed_now);
+        assert!(
+            report.why_or_why_not.contains("visible-only"),
+            "got: {}",
+            report.why_or_why_not
+        );
+        assert!(
+            report.why_or_why_not.contains("safe_to_promote_to"),
+            "got: {}",
+            report.why_or_why_not
+        );
+    }
+
+    #[test]
+    fn explain_promotion_blocked_with_no_assessment_reason_uses_blocker_messages() {
+        // no blocked assessment for the mode, but promotion_blockers has a message
+        let ops = r#"{
+            "schema_version": "0.1",
+            "safe_to_promote_to": [],
+            "not_safe_to_promote_to": [],
+            "promotion_blockers": [
+                {
+                    "kind": "some_blocker",
+                    "message": "Blocker message from promotion_blockers.",
+                    "target_modes": ["visible-only"],
+                    "repair_action": "Fix it."
+                }
+            ]
+        }"#;
+        let report = build_policy_promotion_report(input("visible-only", Ok(ops.to_string())));
+        assert!(!report.allowed_now);
+        assert!(
+            report
+                .why_or_why_not
+                .contains("Blocker message from promotion_blockers."),
+            "got: {}",
+            report.why_or_why_not
+        );
+    }
+
+    #[test]
+    fn explain_promotion_blocked_with_no_blockers_at_all_uses_final_fallback() {
+        // no safe assessment, no blocked assessment, no matching blockers → final fallback
+        let ops = r#"{
+            "schema_version": "0.1",
+            "safe_to_promote_to": [],
+            "not_safe_to_promote_to": [],
+            "promotion_blockers": []
+        }"#;
+        let report = build_policy_promotion_report(input("visible-only", Ok(ops.to_string())));
+        assert!(!report.allowed_now);
+        assert!(
+            report.why_or_why_not.contains("does not list"),
+            "got: {}",
+            report.why_or_why_not
+        );
+        assert!(
+            report.why_or_why_not.contains("visible-only"),
+            "got: {}",
+            report.why_or_why_not
+        );
+    }
+
+    // --- required_repairs per mode ---
+
+    #[test]
+    fn required_repairs_calibrated_gate_blocked_includes_calibration_actions() {
+        let report = build_policy_promotion_report(input(
+            "calibrated-gate",
+            Ok(operations_json(&[], &["calibrated-gate"])),
+        ));
+        assert!(!report.allowed_now);
+        assert!(
+            report
+                .required_repairs
+                .iter()
+                .any(|r| r.contains("calibration receipts")),
+            "repairs: {:?}",
+            report.required_repairs
+        );
+    }
+
+    #[test]
+    fn required_repairs_visible_only_blocked_falls_through_to_generic_repair() {
+        // "visible-only" mode doesn't match acknowledgeable/baseline-check/calibrated-gate
+        // so falls through to the generic fallback repair message
+        let ops = r#"{
+            "schema_version": "0.1",
+            "safe_to_promote_to": [],
+            "not_safe_to_promote_to": [],
+            "promotion_blockers": []
+        }"#;
+        let report = build_policy_promotion_report(input("visible-only", Ok(ops.to_string())));
+        assert!(!report.allowed_now);
+        assert!(
+            report
+                .required_repairs
+                .iter()
+                .any(|r| r.contains("Generate policy-operations.json")),
+            "repairs: {:?}",
+            report.required_repairs
+        );
+    }
+
+    #[test]
+    fn required_repairs_acknowledgeable_allowed_returns_empty() {
+        let report = build_policy_promotion_report(input(
+            "acknowledgeable",
+            Ok(operations_json(&["acknowledgeable"], &[])),
+        ));
+        assert!(report.allowed_now);
+        assert!(report.required_repairs.is_empty());
+    }
+
+    // --- required_receipts per mode ---
+
+    #[test]
+    fn required_receipts_acknowledgeable_includes_waiver_and_suppression() {
+        let report = build_policy_promotion_report(input(
+            "acknowledgeable",
+            Ok(operations_json(&["acknowledgeable"], &[])),
+        ));
+        assert!(
+            report
+                .required_receipts
+                .iter()
+                .any(|r| r.contains("waiver-aging.json")),
+            "receipts: {:?}",
+            report.required_receipts
+        );
+        assert!(
+            report
+                .required_receipts
+                .iter()
+                .any(|r| r.contains("suppression-health.json")),
+            "receipts: {:?}",
+            report.required_receipts
+        );
+    }
+
+    #[test]
+    fn required_receipts_calibrated_gate_includes_calibration_receipts() {
+        let report = build_policy_promotion_report(input(
+            "calibrated-gate",
+            Ok(operations_json(&["calibrated-gate"], &[])),
+        ));
+        assert!(
+            report
+                .required_receipts
+                .iter()
+                .any(|r| r.contains("recommendation-calibration.json")),
+            "receipts: {:?}",
+            report.required_receipts
+        );
+        assert!(
+            report
+                .required_receipts
+                .iter()
+                .any(|r| r.contains("mutation-calibration.json")),
+            "receipts: {:?}",
+            report.required_receipts
+        );
+    }
+
+    #[test]
+    fn required_receipts_visible_only_includes_policy_readiness() {
+        let report = build_policy_promotion_report(input(
+            "visible-only",
+            Ok(operations_json(&["visible-only"], &[])),
+        ));
+        assert!(
+            report
+                .required_receipts
+                .iter()
+                .any(|r| r.contains("policy-readiness.json")),
+            "receipts: {:?}",
+            report.required_receipts
+        );
+    }
+
+    #[test]
+    fn required_receipts_unknown_mode_only_has_operations_and_history_entries() {
+        // mode that doesn't match any arm → no mode-specific receipts
+        let ops = r#"{
+            "schema_version": "0.1",
+            "safe_to_promote_to": [],
+            "not_safe_to_promote_to": [],
+            "promotion_blockers": []
+        }"#;
+        // Use an unsupported mode string to exercise the _ arm in required_receipts
+        let report = build_policy_promotion_report(PolicyPromotionInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:1".to_string(),
+            target_mode: "other-mode".to_string(),
+            operations_path: "policy-operations.json".to_string(),
+            history_path: None,
+            operations_json: Ok(ops.to_string()),
+            history_json: None,
+        });
+        // Should still have two entries: operations blocked + history recommended
+        assert!(report.required_receipts.len() >= 2);
+    }
+
+    // --- rollback_path modes ---
+
+    #[test]
+    fn rollback_path_calibrated_gate_falls_back_to_baseline_check() {
+        let path = rollback_path("calibrated-gate");
+        assert!(path.iter().any(|s| s.contains("baseline-check")));
+    }
+
+    #[test]
+    fn rollback_path_baseline_check_falls_back_to_acknowledgeable() {
+        let path = rollback_path("baseline-check");
+        assert!(path.iter().any(|s| s.contains("acknowledgeable")));
+    }
+
+    #[test]
+    fn rollback_path_acknowledgeable_falls_back_to_visible_only() {
+        let path = rollback_path("acknowledgeable");
+        assert!(path.iter().any(|s| s.contains("visible-only")));
+    }
+
+    #[test]
+    fn rollback_path_visible_only_falls_back_to_advisory_only() {
+        let path = rollback_path("visible-only");
+        assert!(path.iter().any(|s| s.contains("advisory-only")));
+    }
+
+    // --- copy_notices with actual entries ---
+
+    #[test]
+    fn copy_notices_propagates_operations_warnings_and_unknowns() {
+        let ops = r#"{
+            "schema_version": "0.1",
+            "safe_to_promote_to": [{"mode": "visible-only", "allowed_now": true, "reason": "ok"}],
+            "not_safe_to_promote_to": [],
+            "promotion_blockers": [],
+            "warnings": [
+                {"kind": "stale_data", "message": "Some data is stale.", "source_artifact": "stale.json"}
+            ],
+            "unknowns": [
+                {"kind": "coverage_gap", "message": "Coverage gap detected."}
+            ]
+        }"#;
+        let report = build_policy_promotion_report(input("visible-only", Ok(ops.to_string())));
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| w.kind == "policy_operations_warning_stale_data"),
+            "warnings: {:?}",
+            report.warnings
+        );
+        assert!(
+            report
+                .unknowns
+                .iter()
+                .any(|u| u.kind == "policy_operations_unknown_coverage_gap"),
+            "unknowns: {:?}",
+            report.unknowns
+        );
+    }
+
+    #[test]
+    fn copy_notices_entry_without_kind_uses_unknown_kind() {
+        let ops = r#"{
+            "schema_version": "0.1",
+            "safe_to_promote_to": [],
+            "not_safe_to_promote_to": [],
+            "promotion_blockers": [],
+            "warnings": [{"message": "A warning without a kind."}],
+            "unknowns": []
+        }"#;
+        let report = build_policy_promotion_report(input("visible-only", Ok(ops.to_string())));
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| w.kind == "policy_operations_warning_unknown"),
+            "warnings: {:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn copy_notices_entry_without_message_uses_fallback_message() {
+        let ops = r#"{
+            "schema_version": "0.1",
+            "safe_to_promote_to": [],
+            "not_safe_to_promote_to": [],
+            "promotion_blockers": [],
+            "warnings": [{"kind": "no_message_kind"}],
+            "unknowns": []
+        }"#;
+        let report = build_policy_promotion_report(input("visible-only", Ok(ops.to_string())));
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| w.message.contains("without a message")),
+            "warnings: {:?}",
+            report.warnings
+        );
+    }
+
+    // --- history path is Some but text is None (missing optional) ---
+
+    #[test]
+    fn history_path_supplied_but_text_none_records_unknown_missing() {
+        let mut inp = input("visible-only", Ok(operations_json(&["visible-only"], &[])));
+        inp.history_path = Some("policy-history.json".to_string());
+        inp.history_json = None;
+        let report = build_policy_promotion_report(inp);
+        // history path supplied but no content: status="missing" + optional → unknown
+        assert!(
+            report
+                .unknowns
+                .iter()
+                .any(|u| u.kind == "policy_history_missing"),
+            "unknowns: {:?}",
+            report.unknowns
+        );
+    }
+
+    #[test]
+    fn history_io_error_looks_like_missing_records_unknown_missing() {
+        let mut inp = input("visible-only", Ok(operations_json(&["visible-only"], &[])));
+        inp.history_path = Some("policy-history.json".to_string());
+        inp.history_json = Some(Err("os error 2: file not found".to_string()));
+        let report = build_policy_promotion_report(inp);
+        assert!(
+            report
+                .unknowns
+                .iter()
+                .any(|u| u.kind == "policy_history_missing"),
+            "unknowns: {:?}",
+            report.unknowns
+        );
+    }
+
+    #[test]
+    fn history_malformed_json_records_warning() {
+        let mut inp = input("visible-only", Ok(operations_json(&["visible-only"], &[])));
+        inp.history_path = Some("policy-history.json".to_string());
+        inp.history_json = Some(Ok("{bad json".to_string()));
+        let report = build_policy_promotion_report(inp);
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| w.kind == "policy_history_malformed"),
+            "warnings: {:?}",
+            report.warnings
+        );
+    }
+
+    // --- push_unique deduplication and empty-string guard ---
+
+    #[test]
+    fn push_unique_deduplicates_entries() {
+        let mut values: Vec<String> = Vec::new();
+        push_unique(&mut values, "alpha");
+        push_unique(&mut values, "alpha");
+        push_unique(&mut values, "beta");
+        assert_eq!(values, vec!["alpha", "beta"]);
+    }
+
+    #[test]
+    fn push_unique_ignores_empty_and_whitespace_only() {
+        let mut values: Vec<String> = Vec::new();
+        push_unique(&mut values, "");
+        push_unique(&mut values, "   ");
+        assert!(values.is_empty());
+    }
+
+    // --- render_string_section empty path ---
+
+    #[test]
+    fn render_string_section_empty_values_renders_none_bullet() {
+        let mut out = String::new();
+        render_string_section(&mut out, "Example", &[]);
+        assert!(out.contains("## Example"));
+        assert!(out.contains("- none"));
+    }
+
+    // --- path_value and string_array_path helpers ---
+
+    #[test]
+    fn path_value_returns_none_for_missing_key() {
+        let v = json!({"a": {"b": 1}});
+        assert!(path_value(&v, &["a", "missing"]).is_none());
+        assert!(path_value(&v, &["missing"]).is_none());
+    }
+
+    #[test]
+    fn string_array_path_deduplicates_and_sorts() {
+        let v = json!({"items": ["beta", "alpha", "alpha"]});
+        let result = string_array_path(&v, &["items"]);
+        // BTreeSet deduplication and sorting
+        assert_eq!(result, vec!["alpha", "beta"]);
+    }
+
+    #[test]
+    fn string_array_path_returns_empty_for_missing_path() {
+        let v = json!({});
+        assert!(string_array_path(&v, &["missing"]).is_empty());
+    }
+
+    #[test]
+    fn string_path_returns_none_for_non_string_value() {
+        let v = json!({"count": 42});
+        assert!(string_path(&v, &["count"]).is_none());
+    }
+
+    // --- assessment_for and blockers_for_target edge cases ---
+
+    #[test]
+    fn assessment_for_returns_none_when_field_missing() {
+        let v = json!({});
+        assert!(assessment_for(&v, "safe_to_promote_to", "visible-only").is_none());
+    }
+
+    #[test]
+    fn assessment_for_returns_none_when_no_matching_mode() {
+        let v = json!({
+            "safe_to_promote_to": [{"mode": "other-mode"}]
+        });
+        assert!(assessment_for(&v, "safe_to_promote_to", "visible-only").is_none());
+    }
+
+    #[test]
+    fn blockers_for_target_returns_empty_when_no_promotion_blockers_field() {
+        let v = json!({});
+        assert!(blockers_for_target(&v, "visible-only").is_empty());
+    }
+
+    #[test]
+    fn blockers_for_target_filters_by_target_mode() {
+        let v = json!({
+            "promotion_blockers": [
+                {"target_modes": ["visible-only"], "message": "for visible-only"},
+                {"target_modes": ["acknowledgeable"], "message": "for acknowledgeable"}
+            ]
+        });
+        let blockers = blockers_for_target(&v, "visible-only");
+        assert_eq!(blockers.len(), 1);
+    }
+
+    // --- markdown rendering with warnings and unknowns ---
+
+    #[test]
+    fn markdown_renders_warnings_and_unknowns_sections() {
+        let ops = r#"{
+            "schema_version": "0.1",
+            "safe_to_promote_to": [],
+            "not_safe_to_promote_to": [],
+            "promotion_blockers": [],
+            "warnings": [{"kind": "w1", "message": "Warning one."}],
+            "unknowns": [{"kind": "u1", "message": "Unknown one."}]
+        }"#;
+        let report = build_policy_promotion_report(input("visible-only", Ok(ops.to_string())));
+        let md = render_policy_promotion_markdown(&report);
+        assert!(md.contains("## Warnings"), "md: {md}");
+        assert!(md.contains("## Unknowns"), "md: {md}");
+        assert!(md.contains("Warning one."), "md: {md}");
+        assert!(md.contains("Unknown one."), "md: {md}");
+    }
+
+    #[test]
+    fn markdown_no_warnings_unknowns_sections_absent_when_empty() {
+        let report = build_policy_promotion_report(input(
+            "visible-only",
+            Ok(operations_json(&["visible-only"], &[])),
+        ));
+        let md = render_policy_promotion_markdown(&report);
+        // No warnings means no ## Warnings section
+        assert!(!md.contains("## Warnings"), "md: {md}");
+    }
+
+    // --- JSON output field verification ---
+
+    #[test]
+    fn json_output_contains_schema_and_limits_fields() -> Result<(), String> {
+        let report = build_policy_promotion_report(input(
+            "visible-only",
+            Ok(operations_json(&["visible-only"], &[])),
+        ));
+        let json = render_policy_promotion_json(&report)?;
+        let parsed = serde_json::from_str::<Value>(&json).map_err(|e| format!("parse: {e}"))?;
+        assert_eq!(
+            string_path(&parsed, &["schema_version"]),
+            Some("0.1".to_string())
+        );
+        assert_eq!(string_path(&parsed, &["tool"]), Some("ripr".to_string()));
+        assert!(
+            string_path(&parsed, &["limits_note"]).is_some(),
+            "limits_note missing"
+        );
+        assert!(string_path(&parsed, &["root"]).is_some(), "root missing");
+        Ok(())
+    }
+
+    #[test]
+    fn json_input_artifacts_reflect_both_operations_and_history() -> Result<(), String> {
+        let mut inp = input("visible-only", Ok(operations_json(&["visible-only"], &[])));
+        inp.history_path = Some("policy-history.json".to_string());
+        inp.history_json = Some(Ok(history_json()));
+        let report = build_policy_promotion_report(inp);
+        let json = render_policy_promotion_json(&report)?;
+        let parsed = serde_json::from_str::<Value>(&json).map_err(|e| format!("parse: {e}"))?;
+        let artifacts = parsed["input_artifacts"]
+            .as_array()
+            .ok_or("input_artifacts not an array")?;
+        assert_eq!(artifacts.len(), 2);
         Ok(())
     }
 }

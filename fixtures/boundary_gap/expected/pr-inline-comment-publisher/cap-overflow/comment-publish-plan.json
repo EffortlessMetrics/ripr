@@ -29,12 +29,69 @@
     "safe_to_publish": false
   },
   "operations": [
-    {"operation": "create", "safe_to_publish": false, "dry_run": true, "source_collection": "comments", "source_id": "ripr-review-a", "dedupe_key": "ripr:a:src/pricing.rs:10", "placement": {"path": "src/pricing.rs", "line": 10, "side": "RIGHT", "mode": "exact_seam_line"}, "body": "RIPR advisory: first", "existing_comment_id": null, "skip_reason": null, "blocked_reason": null},
-    {"operation": "create", "safe_to_publish": false, "dry_run": true, "source_collection": "comments", "source_id": "ripr-review-b", "dedupe_key": "ripr:b:src/pricing.rs:20", "placement": {"path": "src/pricing.rs", "line": 20, "side": "RIGHT", "mode": "exact_seam_line"}, "body": "RIPR advisory: second", "existing_comment_id": null, "skip_reason": null, "blocked_reason": null},
-    {"operation": "create", "safe_to_publish": false, "dry_run": true, "source_collection": "comments", "source_id": "ripr-review-c", "dedupe_key": "ripr:c:src/pricing.rs:30", "placement": {"path": "src/pricing.rs", "line": 30, "side": "RIGHT", "mode": "exact_seam_line"}, "body": "RIPR advisory: third", "existing_comment_id": null, "skip_reason": null, "blocked_reason": null}
+    {
+      "operation": "create",
+      "safe_to_publish": false,
+      "dry_run": true,
+      "source_collection": "comments",
+      "source_id": "ripr-review-a",
+      "dedupe_key": "ripr:a:src/pricing.rs:10",
+      "placement": {
+        "path": "src/pricing.rs",
+        "line": 10,
+        "side": "RIGHT",
+        "mode": "exact_seam_line"
+      },
+      "body": "### ripr gap: missing boundary assertion\n\nChanged behavior:\n`amount == threshold_a`\n\nWhy this matters:\nA related test reaches this code, but no equality-boundary assertion was found.\n\nRepair route:\nadd boundary assertion\n\nRepair:\nAdd one focused boundary assertion for `amount == threshold_a`.\n\nVerify:\n`ripr agent verify`",
+      "existing_comment_id": null,
+      "skip_reason": null,
+      "blocked_reason": null
+    },
+    {
+      "operation": "create",
+      "safe_to_publish": false,
+      "dry_run": true,
+      "source_collection": "comments",
+      "source_id": "ripr-review-b",
+      "dedupe_key": "ripr:b:src/pricing.rs:20",
+      "placement": {
+        "path": "src/pricing.rs",
+        "line": 20,
+        "side": "RIGHT",
+        "mode": "exact_seam_line"
+      },
+      "body": "### ripr gap: missing boundary assertion\n\nChanged behavior:\n`amount == threshold_b`\n\nWhy this matters:\nA related test reaches this code, but no equality-boundary assertion was found.\n\nRepair route:\nadd boundary assertion\n\nRepair:\nAdd one focused boundary assertion for `amount == threshold_b`.\n\nVerify:\n`ripr agent verify`",
+      "existing_comment_id": null,
+      "skip_reason": null,
+      "blocked_reason": null
+    },
+    {
+      "operation": "create",
+      "safe_to_publish": false,
+      "dry_run": true,
+      "source_collection": "comments",
+      "source_id": "ripr-review-c",
+      "dedupe_key": "ripr:c:src/pricing.rs:30",
+      "placement": {
+        "path": "src/pricing.rs",
+        "line": 30,
+        "side": "RIGHT",
+        "mode": "exact_seam_line"
+      },
+      "body": "### ripr gap: missing boundary assertion\n\nChanged behavior:\n`amount == threshold_c`\n\nWhy this matters:\nA related test reaches this code, but no equality-boundary assertion was found.\n\nRepair route:\nadd boundary assertion\n\nRepair:\nAdd one focused boundary assertion for `amount == threshold_c`.\n\nVerify:\n`ripr agent verify`",
+      "existing_comment_id": null,
+      "skip_reason": null,
+      "blocked_reason": null
+    }
   ],
   "skipped": [
-    {"source_collection": "comments", "source_id": "ripr-review-d", "dedupe_key": "ripr:d:src/pricing.rs:40", "skip_reason": "cap_reached", "message": "Default inline comment cap reached."}
+    {
+      "source_collection": "comments",
+      "source_id": "ripr-review-d",
+      "dedupe_key": "ripr:d:src/pricing.rs:40",
+      "skip_reason": "cap_reached",
+      "message": "Default inline comment cap reached."
+    }
   ],
   "blocked": [],
   "warnings": [],

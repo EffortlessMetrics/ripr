@@ -1,0 +1,14 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_pr_bridge/packet_missing",
+  "actions": [
+    {
+      "title": "First PR: copy regeneration guidance",
+      "command": "ripr.copyFirstPrRegenerationGuidance"
+    },
+    {
+      "title": "Refresh Analysis - Saved Workspace Check",
+      "command": "ripr.refresh"
+    }
+  ]
+}
