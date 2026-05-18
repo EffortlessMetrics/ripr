@@ -11,6 +11,7 @@
 //! confidence, relation reason, oracle strength, activation overlap,
 //! then stable file/name/line tie-breakers.
 
+use super::facts::CallFact;
 use super::rust_index::{
     self, FunctionSummary, OracleFact, RustIndex, TestSummary, extract_identifier_tokens,
 };
@@ -1144,7 +1145,7 @@ fn observed_value_facts_for_test(
             // value-extraction-v2: try to resolve the arg through the
             // priority chain (let / rstest case / table row /
             // same-file const / Some/Ok/Err).
-            for (value, context) in env.resolve_at(&arg, call.line) {
+            for (value, context) in env.resolve_at_call(&arg, call.line, &call.name, &call.text) {
                 observed.push(ValueFact {
                     line: call.line,
                     text: call.text.clone(),
@@ -1259,7 +1260,7 @@ fn boundary_equality_overlap_score(
         let Some(right_arg) = args.get(right_index) else {
             continue;
         };
-        if arguments_overlap_at_boundary(seam, indexed, index, left_arg, right_arg, call.line) {
+        if arguments_overlap_at_boundary(seam, indexed, index, left_arg, right_arg, call) {
             score += 1;
         }
     }
@@ -1272,13 +1273,13 @@ fn arguments_overlap_at_boundary(
     index: &RustIndex,
     left_arg: &str,
     right_arg: &str,
-    call_line: usize,
+    call: &CallFact,
 ) -> bool {
     if left_arg.trim() == right_arg.trim() && !left_arg.trim().is_empty() {
         return true;
     }
-    let left_values = resolved_argument_values(seam, indexed, index, left_arg, call_line);
-    let right_values = resolved_argument_values(seam, indexed, index, right_arg, call_line);
+    let left_values = resolved_argument_values(seam, indexed, index, left_arg, call);
+    let right_values = resolved_argument_values(seam, indexed, index, right_arg, call);
     left_values.iter().any(|left| {
         let left = comparable_value(left);
         right_values
@@ -1292,7 +1293,7 @@ fn resolved_argument_values(
     indexed: &CompactTest<'_>,
     index: &RustIndex,
     arg: &str,
-    call_line: usize,
+    call: &CallFact,
 ) -> Vec<String> {
     let values = scalar_values(arg);
     if !values.is_empty() {
@@ -1302,7 +1303,7 @@ fn resolved_argument_values(
         .value_facts
         .get_or_init(|| super::value_resolution::ValueEnvFacts::build(indexed.test, index));
     let env = super::value_resolution::ValueEnv::new(seam, value_facts);
-    env.resolve_at(arg, call_line)
+    env.resolve_at_call(arg, call.line, &call.name, &call.text)
         .into_iter()
         .map(|(value, _context)| value)
         .collect()
@@ -3786,6 +3787,31 @@ fn wrapper_mentions_owner_only_in_non_code() {
         assert!(
             values.iter().any(|v| v == "100"),
             "same-test struct literal field value 100 must be recorded; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_same_line_struct_literal_after_owner_call_then_projection_values_stay_unresolved()
+    -> Result<(), String> {
+        // Call facts preserve only the line and full text, so
+        // same-line ordering must stay conservative. A literal that
+        // appears after the owner call cannot explain that call's
+        // field projections.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test] fn via_same_line_late_literal() { \
+                 assert_eq!(discounted_total(case.amount, case.threshold), 90); \
+                 let case = DiscountCase { amount: 100, threshold: 100 }; \
+                 let _ = case; \
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        assert!(
+            values.is_empty(),
+            "same-line literals introduced after the owner call must not produce fake values; got {values:?}"
         );
         Ok(())
     }
