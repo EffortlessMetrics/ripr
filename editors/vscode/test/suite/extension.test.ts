@@ -522,6 +522,66 @@ suite('Extension Smoke', () => {
     }
   });
 
+  test('root-scoped repair commands reject active files outside selected root', async () => {
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(folder, 'test workspace should be open');
+    const selectedRoot = path.resolve('selected workspace root');
+    const relativePath = 'src/root-mismatch.rs';
+    const uri = workspaceFileUri(relativePath);
+    const context = createControllerTestContext({
+      workspaceRootState: {
+        kind: 'selectedRoot',
+        root: selectedRoot,
+        roots: [selectedRoot, folder.uri.fsPath],
+        detail: 'test selected root'
+      }
+    });
+
+    try {
+      await writeWorkspaceFile(relativePath, 'pub fn root_mismatch() {}\n');
+      const document = await vscode.workspace.openTextDocument(uri);
+      await vscode.window.showTextDocument(document);
+      await context.controller.start();
+
+      await context.controller.copyContext({
+        label: 'first_repair_packet',
+        packet: 'RIPR first repair packet'
+      });
+      await context.controller.copyContext({
+        label: 'static_limit_note',
+        note: 'Static limit: missing_import_graph'
+      });
+      await context.controller.copyContext({
+        uri: uri.toString(),
+        line: 1,
+        seam_id: 'abc123'
+      });
+      await context.controller.copyAgentLoopCommand(
+        agentLoopCommandTarget(
+          'gap_verify',
+          'ripr agent verify --root . --json'
+        )
+      );
+      await context.controller.openRelatedTest({
+        uri: uri.toString(),
+        line: 1,
+        test_name: 'root_mismatch'
+      });
+
+      assert.deepStrictEqual(context.clipboardWrites, []);
+      assert.strictEqual(context.client.requests.length, 0);
+      assert.strictEqual(context.runRiprCalls.length, 0);
+      assert.ok(context.infoMessages.length >= 5);
+      for (const message of context.infoMessages.slice(-5)) {
+        assert.ok(message.includes('different workspace root'), message);
+      }
+    } finally {
+      await context.dispose();
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await removeWorkspacePath(relativePath);
+    }
+  });
+
   test('startCurrentRepair executes the nearest existing repair action', async () => {
     const relativePath = 'src/start-current-repair.rs';
     const uri = workspaceFileUri(relativePath);
