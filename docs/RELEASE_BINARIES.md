@@ -14,7 +14,7 @@ Use:
 Manual dispatch:
 
 ```bash
-gh workflow run release-server-binaries.yml -f version=0.5.0
+gh workflow run release-server-binaries.yml -f version=0.6.0
 ```
 
 The workflow builds:
@@ -59,7 +59,26 @@ README-server.txt
 
 ## Release Proof
 
-The previous `v0.3.1` release was verified on May 7, 2026:
+The current verified public release line is `v0.5.0`, published on May 10,
+2026:
+
+- The GitHub Release has `ripr-0.5.0.vsix`.
+- The release has `ripr-server-manifest-v0.5.0.json`.
+- The release has `checksums.txt`.
+- The release has server archives and `.sha256` files for each supported
+  target:
+  - `x86_64-pc-windows-msvc`;
+  - `x86_64-apple-darwin`;
+  - `aarch64-apple-darwin`;
+  - `x86_64-unknown-linux-gnu`;
+  - `aarch64-unknown-linux-gnu`.
+- The installed public loop was verified for `doctor`, `pilot`, `outcome`,
+  `agent verify`, and `agent receipt`; see
+  [Installation verification](INSTALLATION_VERIFICATION.md).
+- The 0.6.0 release must refresh the same VSIX, manifest, checksum, and
+  per-target server-archive asset family before publication.
+
+The historical `v0.3.1` release was verified on May 7, 2026:
 
 - `ripr v0.3.1` was the public GitHub Release at that time.
 - The release has `ripr-0.3.1.vsix`.
@@ -71,11 +90,11 @@ The previous `v0.3.1` release was verified on May 7, 2026:
 - The extracted Windows server ran `ripr --version`, `ripr lsp --version`,
   `ripr pilot`, and `ripr outcome`.
 
-That proof covers server archive shape for the previous public release and the
-defaults-first `ripr pilot` and `ripr outcome` public-install smoke; see
+That proof covered server archive shape for the then-current public release and
+the defaults-first `ripr pilot` and `ripr outcome` public-install smoke; see
 [Installation verification](INSTALLATION_VERIFICATION.md).
 
-The `v0.4.0` release was verified on May 7, 2026:
+The historical `v0.4.0` release was verified on May 7, 2026:
 
 - `ripr-server-manifest-v0.4.0.json`, `checksums.txt`, per-target server
   archives, per-target `.sha256` files, and `ripr-0.4.0.vsix` were present on
@@ -103,7 +122,7 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-code --install-extension dist/ripr-0.5.0.vsix --force
+code --install-extension dist/ripr-0.6.0.vsix --force
 ```
 
 For the defaults-first release line, also run the server archive smoke from

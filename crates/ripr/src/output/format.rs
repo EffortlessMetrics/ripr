@@ -3,7 +3,7 @@
 /// Most automation should prefer [`OutputFormat::Json`] for stable
 /// machine-readable data. Badge and repo-inventory formats exist for specific
 /// downstream integrations and may require additional artifacts.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OutputFormat {
     /// Human-readable plain text report.
     Human,
@@ -68,21 +68,112 @@ pub enum OutputFormat {
     AgentSeamPacketsJson,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct OutputFormatSpec {
+    format: OutputFormat,
+    cli_names: &'static [&'static str],
+    is_repo_seam_inventory: bool,
+}
+
+const FORMAT_SPECS: &[OutputFormatSpec] = &[
+    OutputFormatSpec {
+        format: OutputFormat::Human,
+        cli_names: &["human", "text"],
+        is_repo_seam_inventory: false,
+    },
+    OutputFormatSpec {
+        format: OutputFormat::Json,
+        cli_names: &["json"],
+        is_repo_seam_inventory: false,
+    },
+    OutputFormatSpec {
+        format: OutputFormat::Github,
+        cli_names: &["github"],
+        is_repo_seam_inventory: false,
+    },
+    OutputFormatSpec {
+        format: OutputFormat::Sarif,
+        cli_names: &["sarif"],
+        is_repo_seam_inventory: false,
+    },
+    OutputFormatSpec {
+        format: OutputFormat::BadgeJson,
+        cli_names: &["badge-json"],
+        is_repo_seam_inventory: false,
+    },
+    OutputFormatSpec {
+        format: OutputFormat::BadgeShields,
+        cli_names: &["badge-shields"],
+        is_repo_seam_inventory: false,
+    },
+    OutputFormatSpec {
+        format: OutputFormat::BadgePlusJson,
+        cli_names: &["badge-plus-json"],
+        is_repo_seam_inventory: false,
+    },
+    OutputFormatSpec {
+        format: OutputFormat::BadgePlusShields,
+        cli_names: &["badge-plus-shields"],
+        is_repo_seam_inventory: false,
+    },
+    OutputFormatSpec {
+        format: OutputFormat::RepoBadgeJson,
+        cli_names: &["repo-badge-json"],
+        is_repo_seam_inventory: true,
+    },
+    OutputFormatSpec {
+        format: OutputFormat::RepoBadgeShields,
+        cli_names: &["repo-badge-shields"],
+        is_repo_seam_inventory: true,
+    },
+    OutputFormatSpec {
+        format: OutputFormat::RepoBadgePlusJson,
+        cli_names: &["repo-badge-plus-json"],
+        is_repo_seam_inventory: true,
+    },
+    OutputFormatSpec {
+        format: OutputFormat::RepoBadgePlusShields,
+        cli_names: &["repo-badge-plus-shields"],
+        is_repo_seam_inventory: true,
+    },
+    OutputFormatSpec {
+        format: OutputFormat::RepoSeamsJson,
+        cli_names: &["repo-seams-json"],
+        is_repo_seam_inventory: true,
+    },
+    OutputFormatSpec {
+        format: OutputFormat::RepoSeamsMd,
+        cli_names: &["repo-seams-md"],
+        is_repo_seam_inventory: true,
+    },
+    OutputFormatSpec {
+        format: OutputFormat::RepoExposureJson,
+        cli_names: &["repo-exposure-json"],
+        is_repo_seam_inventory: true,
+    },
+    OutputFormatSpec {
+        format: OutputFormat::RepoExposureMd,
+        cli_names: &["repo-exposure-md"],
+        is_repo_seam_inventory: true,
+    },
+    OutputFormatSpec {
+        format: OutputFormat::RepoSarif,
+        cli_names: &["repo-sarif"],
+        is_repo_seam_inventory: true,
+    },
+    OutputFormatSpec {
+        format: OutputFormat::AgentSeamPacketsJson,
+        cli_names: &["agent-seam-packets-json"],
+        is_repo_seam_inventory: true,
+    },
+];
+
 impl OutputFormat {
-    fn is_repo_seam_format(&self) -> bool {
-        matches!(
-            self,
-            OutputFormat::RepoBadgeJson
-                | OutputFormat::RepoBadgeShields
-                | OutputFormat::RepoBadgePlusJson
-                | OutputFormat::RepoBadgePlusShields
-                | OutputFormat::RepoSeamsJson
-                | OutputFormat::RepoSeamsMd
-                | OutputFormat::RepoExposureJson
-                | OutputFormat::RepoExposureMd
-                | OutputFormat::RepoSarif
-                | OutputFormat::AgentSeamPacketsJson
-        )
+    /// Parses a CLI output format name or alias.
+    pub(crate) fn parse_cli_name(value: &str) -> Option<Self> {
+        FORMAT_SPECS
+            .iter()
+            .find_map(|spec| spec.cli_names.contains(&value).then_some(spec.format))
     }
 
     /// Returns `true` when the format targets full-repo scope rather than
@@ -93,7 +184,7 @@ impl OutputFormat {
     /// `basis: "seam_native"`. The Shields projection stays four-field for
     /// both scopes.
     pub fn is_repo_scope(&self) -> bool {
-        self.is_repo_seam_format()
+        self.is_repo_seam_inventory()
     }
 
     /// Returns `true` when the format renders repo seam-driven artifacts
@@ -104,75 +195,54 @@ impl OutputFormat {
     /// classified seams. Running legacy repo Finding analysis first would add
     /// cost and then be discarded.
     pub fn is_repo_seam_inventory(&self) -> bool {
-        self.is_repo_seam_format()
+        FORMAT_SPECS
+            .iter()
+            .find(|spec| spec.format == *self)
+            .is_some_and(|spec| spec.is_repo_seam_inventory)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::OutputFormat;
+    use super::{FORMAT_SPECS, OutputFormat};
 
     #[test]
     fn output_format_is_repo_scope_only_for_repo_variants() {
-        for repo in [
-            OutputFormat::RepoBadgeJson,
-            OutputFormat::RepoBadgeShields,
-            OutputFormat::RepoBadgePlusJson,
-            OutputFormat::RepoBadgePlusShields,
-            OutputFormat::RepoSeamsJson,
-            OutputFormat::RepoSeamsMd,
-            OutputFormat::RepoExposureJson,
-            OutputFormat::RepoExposureMd,
-            OutputFormat::RepoSarif,
-            OutputFormat::AgentSeamPacketsJson,
-        ] {
-            assert!(
-                repo.is_repo_scope(),
-                "expected {:?} to report repo scope",
-                repo
-            );
-        }
-        for diff in [
-            OutputFormat::Human,
-            OutputFormat::Json,
-            OutputFormat::Github,
-            OutputFormat::Sarif,
-            OutputFormat::BadgeJson,
-            OutputFormat::BadgeShields,
-            OutputFormat::BadgePlusJson,
-            OutputFormat::BadgePlusShields,
-        ] {
-            assert!(
-                !diff.is_repo_scope(),
-                "expected {:?} to report diff scope",
-                diff
+        for spec in FORMAT_SPECS {
+            assert_eq!(
+                spec.format.is_repo_scope(),
+                spec.is_repo_seam_inventory,
+                "repo scope should match metadata for {:?}",
+                spec.format
             );
         }
     }
 
     #[test]
     fn repo_artifact_formats_use_repo_seam_short_circuit() {
-        for format in [
-            OutputFormat::RepoBadgeJson,
-            OutputFormat::RepoBadgeShields,
-            OutputFormat::RepoBadgePlusJson,
-            OutputFormat::RepoBadgePlusShields,
-            OutputFormat::RepoSeamsJson,
-            OutputFormat::RepoSeamsMd,
-            OutputFormat::RepoExposureJson,
-            OutputFormat::RepoExposureMd,
-            OutputFormat::RepoSarif,
-            OutputFormat::AgentSeamPacketsJson,
-        ] {
-            assert!(
-                format.is_repo_seam_inventory(),
-                "expected {:?} to skip legacy repo Finding analysis",
-                format
+        for spec in FORMAT_SPECS {
+            assert_eq!(
+                spec.format.is_repo_seam_inventory(),
+                spec.is_repo_seam_inventory,
+                "repo seam short-circuit should match metadata for {:?}",
+                spec.format
             );
         }
-        assert!(!OutputFormat::Human.is_repo_seam_inventory());
-        assert!(!OutputFormat::Json.is_repo_seam_inventory());
-        assert!(!OutputFormat::BadgeJson.is_repo_seam_inventory());
-        assert!(!OutputFormat::BadgePlusJson.is_repo_seam_inventory());
+    }
+
+    #[test]
+    fn output_format_parse_cli_name_uses_declared_names() {
+        for spec in FORMAT_SPECS {
+            for cli_name in spec.cli_names {
+                assert_eq!(
+                    OutputFormat::parse_cli_name(cli_name),
+                    Some(spec.format),
+                    "CLI name {:?} should parse to {:?}",
+                    cli_name,
+                    spec.format
+                );
+            }
+        }
+        assert_eq!(OutputFormat::parse_cli_name("xml"), None);
     }
 }

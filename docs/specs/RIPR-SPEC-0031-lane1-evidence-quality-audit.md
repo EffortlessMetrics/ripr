@@ -21,8 +21,14 @@ The command:
 
 - generates repo exposure through the existing `ripr check --mode instant
   --format repo-exposure-json` path;
+- streams repo-exposure latency trace lines while the generated repo exposure
+  subprocess runs so long live audits show bounded progress instead of silent
+  waiting;
 - streams `seams[].evidence_record` from the generated repo exposure JSON so
   the audit does not need to retain the full repo-exposure artifact in memory;
+- records bounded repo-exposure generation diagnostics in the audit input block,
+  including timeout, status, duration, output byte counts, and the tail of the
+  latency trace;
 - writes deterministic JSON and Markdown reports under `target/ripr/reports`;
 - summarizes evidence quality without changing classifications;
 - does not alter gates, PR/CI projection, editor behavior, schemas outside this
@@ -84,6 +90,7 @@ The report is additive and repo-local. It is not a replacement for
 
 The Markdown sibling prints the same audit areas in bounded tables:
 
+- repo-exposure generation diagnostics;
 - summary;
 - finding alignment;
 - largest canonical gap groups;
@@ -144,6 +151,16 @@ named only when it carries a non-generic category and repair route. Generic
 `static_unknown_without_named_limitation` so unknowns stay visible as analyzer
 work instead of becoming vague user test debt.
 
+Given a long-running repo-wide audit, the command prints latency-trace progress
+from the repo-exposure subprocess and records the bounded diagnostics in
+`inputs.repo_exposure_generation`. If generation times out before a complete
+repo-exposure JSON document exists, the error includes the most recent latency
+trace entries instead of silently returning no actionable phase information.
+Best-effort cache writes are not allowed to turn a completed analysis into an
+unbounded wait: large classified-seam cache entries may be skipped when the
+trace records a `cache_store` status such as
+`ignored_skipped_large_entry_seams_..._limit_...`.
+
 Given a headline seam with no canonical gap ID, the audit counts it under
 `headline_without_canonical_gap_id`.
 
@@ -171,6 +188,11 @@ audit report only; it does not change static classifications.
   requirement.
 - `xtask::tests::lane1_evidence_audit_markdown_names_required_sections` pins
   Markdown section coverage.
+- `xtask::tests::lane1_evidence_audit_json_reports_generation_diagnostics` pins
+  the repo-exposure generation diagnostics carried in the audit JSON.
+- `xtask::run::tests::latency_progress_reader_preserves_captured_stderr` pins
+  that streamed latency progress remains available to timeout and report
+  diagnostics.
 - `xtask::tests::lane1_evidence_audit_rejects_repo_exposure_without_seams` pins
   malformed input handling.
 - `xtask::tests::lane1_repo_exposure_file_completion_check_requires_seams_and_closing_brace`

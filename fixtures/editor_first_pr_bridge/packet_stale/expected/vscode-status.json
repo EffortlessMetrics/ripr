@@ -1,0 +1,11 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_pr_bridge/packet_stale",
+  "status": "packet_stale",
+  "projection": "fail_closed",
+  "first_pr_packet": {
+    "state": "stale",
+    "path": "target/ripr/first-pr/start-here.json"
+  },
+  "next_safe_action": "Refresh saved-workspace evidence and rerun cargo xtask first-pr before acting."
+}

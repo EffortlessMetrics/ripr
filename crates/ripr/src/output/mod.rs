@@ -10,6 +10,7 @@ pub(crate) mod baseline_update;
 pub(crate) mod coverage_grip_frontier;
 pub(crate) mod evidence_health;
 pub(crate) mod evidence_record;
+pub(crate) mod first_pr;
 pub(crate) mod first_useful_action;
 pub(crate) mod format;
 pub(crate) mod gap_decision_ledger;
@@ -17,6 +18,7 @@ pub(crate) mod gate;
 pub mod github;
 pub mod human;
 pub mod json;
+pub(crate) mod markdown;
 pub(crate) mod mutation_calibration;
 pub(crate) mod outcome;
 pub(crate) mod pilot;
@@ -38,4 +40,24 @@ pub(crate) mod sarif;
 pub(crate) mod suppression_health;
 pub(crate) mod suppressions;
 pub(crate) mod test_oracle_assistant_proof;
+pub(crate) mod value_path;
 pub(crate) mod waiver_aging;
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use std::path::{Path, PathBuf};
+
+    pub(crate) fn repo_root() -> Result<PathBuf, String> {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        manifest_dir
+            .parent()
+            .and_then(Path::parent)
+            .map(Path::to_path_buf)
+            .ok_or_else(|| "failed to resolve repo root".to_string())
+    }
+
+    pub(crate) fn read_file(path: &Path) -> Result<String, String> {
+        std::fs::read_to_string(path)
+            .map_err(|err| format!("read {} failed: {err}", path.display()))
+    }
+}
