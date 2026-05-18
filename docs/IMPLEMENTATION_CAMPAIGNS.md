@@ -3774,7 +3774,7 @@ Blocking conditions:
 
 Campaign ID: `editor-adoption-assurance`
 
-Status: proposed.
+Status: active.
 
 The editor cockpit, first-run repair loop, first-pr bridge, and preview routing
 are closed. This campaign makes the first-use editor path safer for outside
@@ -3804,10 +3804,10 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `docs/lane3-editor-adoption-assurance-stack` | active | Add proposal, spec, ADR, plan, indexes, traceability, and GitHub issues. |
-| `test/lsp-editor-adoption-baseline` | planned | Pin the closed Lane 3 contract before compatibility/root behavior changes. |
-| `vscode/extension-server-compatibility-diagnosis` | planned | Show extension/server version and schema compatibility state. |
-| `vscode/workspace-root-multi-root-diagnosis` | planned | Harden active root, multi-root, nested-root, wrong-root, and path normalization states. |
+| `docs/lane3-editor-adoption-assurance-stack` | done | Added proposal, spec, ADR, plan, indexes, traceability, and GitHub issues. |
+| `test/lsp-editor-adoption-baseline` | done | Pinned the closed Lane 3 contract before compatibility/root behavior changes. |
+| `vscode/extension-server-compatibility-diagnosis` | done | Show extension/server version and schema compatibility state. |
+| `vscode/workspace-root-multi-root-diagnosis` | done | Hardened active root, multi-root ambiguity, wrong-root artifacts, and path normalization states. |
 | `fixtures/editor-adoption-assurance` | planned | Add setup, mismatch, first-pr, receipt, and preview-unavailable fixtures. |
 | `test/vscode-editor-adoption-assurance` | planned | Smoke the packaged extension path for adoption assurance. |
 | `docs/editor-install-to-first-pr` | planned | Document install/open through first-pr packet inspection and recovery states. |

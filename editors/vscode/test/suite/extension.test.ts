@@ -6,6 +6,7 @@ import {
   RiprClientController,
   RiprClientRuntime,
   RiprAgentLoopCommandTarget,
+  RiprWorkspaceRootState,
   readFirstPrPacketStatus
 } from '../../src/client';
 
@@ -597,6 +598,7 @@ suite('Extension Smoke', () => {
       assert.ok(context.status.text.includes('ripr: queued'));
       assert.ok(String(context.status.tooltip).includes('saved-workspace analysis is queued'));
       assert.ok(String(context.status.tooltip).includes('Workspace:'));
+      assert.ok(String(context.status.tooltip).includes('Workspace root state: workspace_single_root'));
       assert.ok(String(context.status.tooltip).includes('Server command: ripr'));
       assert.ok(String(context.status.tooltip).includes('Extension state: extension_version_ok (0.6.0)'));
       assert.ok(String(context.status.tooltip).includes('ripr server state: ripr_version_ok (ripr 0.6.0-test)'));
@@ -976,6 +978,20 @@ suite('Extension Smoke', () => {
     }));
     assert.strictEqual(wrongRoot.state, 'wrongRoot');
 
+    const workspaceWithSpaces = path.resolve('first-pr workspace with spaces');
+    const equivalentRoot = await readFirstPrPacketStatus(workspaceWithSpaces, firstPrReadFile(workspaceWithSpaces, {
+      'target/ripr/reports/start-here.json': firstPrPacket({ root: path.join(workspaceWithSpaces, '.') })
+    }));
+    assert.strictEqual(equivalentRoot.state, 'topRepairableGap');
+
+    if (process.platform === 'win32') {
+      const windowsRoot = path.resolve('first-pr-windows-root');
+      const windowsNormalizedRoot = await readFirstPrPacketStatus(windowsRoot, firstPrReadFile(windowsRoot, {
+        'target/ripr/reports/start-here.json': firstPrPacket({ root: windowsRoot.toUpperCase() })
+      }));
+      assert.strictEqual(windowsNormalizedRoot.state, 'topRepairableGap');
+    }
+
     const unsafeCommand = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
       'target/ripr/reports/start-here.json': firstPrPacket({
         commands: {
@@ -1104,6 +1120,7 @@ suite('Extension Smoke', () => {
       await context.controller.start();
       const statusOutput = await showStatusReport(context);
       assert.ok(statusOutput.includes('First PR packet: wrong root; packet root ../other-workspace does not match this workspace.'));
+      assert.ok(statusOutput.includes('Expected workspace root:'));
       assert.ok(statusOutput.includes('First PR packet repair claims are suppressed.'));
       assert.strictEqual(context.runRiprCalls.length, 0);
     });
@@ -1745,6 +1762,65 @@ suite('Extension Smoke', () => {
     }
   });
 
+  test('status bar reports ambiguous multi-root without starting server', async () => {
+    const roots = [path.resolve('multi-root-a'), path.resolve('multi-root-b')];
+    const context = createControllerTestContext({
+      workspaceRootState: {
+        kind: 'ambiguousMultiRoot',
+        roots,
+        detail: 'test multi-root ambiguity'
+      }
+    });
+    try {
+      await context.controller.start();
+
+      assert.ok(context.status.text.includes('ripr: select root'));
+      assert.ok(String(context.status.tooltip).includes('workspace_multi_root_ambiguous'));
+      assert.ok(String(context.status.tooltip).includes('Root-scoped repair actions are suppressed'));
+      assert.ok(String(context.status.tooltip).includes('Server started: no; workspace root is ambiguous'));
+      assert.strictEqual(context.client.startCalls, 0);
+
+      const report = await diagnoseSetupReport(context);
+      assertReportIncludes(report, [
+        'Status: Select one workspace folder before using ripr repair actions.',
+        'Workspace root state: workspace_multi_root_ambiguous',
+        'Root-scoped repair actions are suppressed until one workspace folder is selected.',
+        'Next safe action: Open a Rust or enabled preview-language file from one workspace folder'
+      ]);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('status model reports explicit multi-root selection', async () => {
+    const selectedRoot = path.resolve('selected workspace root');
+    const otherRoot = path.resolve('other workspace root');
+    const context = createControllerTestContext({
+      workspaceRootState: {
+        kind: 'selectedRoot',
+        root: selectedRoot,
+        roots: [selectedRoot, otherRoot],
+        detail: 'selected from active editor workspace folder'
+      },
+      files: {
+        'target/ripr/first-pr/start-here.json': firstPrPacket({})
+      }
+    });
+    try {
+      await context.controller.start();
+      const statusOutput = await showStatusReport(context);
+
+      assert.ok(statusOutput.includes('Workspace root state: workspace_multi_root_selected'));
+      assert.ok(statusOutput.includes(selectedRoot));
+      assert.ok(statusOutput.includes(otherRoot));
+      assert.ok(statusOutput.includes('First PR packet: top repairable gap available; target/ripr/first-pr/start-here.json is advisory.'));
+      assert.strictEqual(context.client.startCalls, 1);
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    } finally {
+      await context.dispose();
+    }
+  });
+
   test('status bar reports unavailable server without hanging on modal UI', async () => {
     const context = createControllerTestContext({
       resolveFailure: {
@@ -2216,6 +2292,7 @@ interface ControllerTestOptions {
   firstActionJson?: string | null;
   files?: Record<string, string | null>;
   workspaceRoot?: string | null;
+  workspaceRootState?: RiprWorkspaceRootState;
   resolveFailure?: { message: string; detail: string };
   serverVersion?: string;
   workspaceTrusted?: boolean;
@@ -2487,6 +2564,28 @@ class FakeLanguageClient {
   async stop(): Promise<void> {}
 }
 
+function controllerWorkspaceRootState(options: ControllerTestOptions): RiprWorkspaceRootState {
+  if (options.workspaceRootState) {
+    return options.workspaceRootState;
+  }
+  const workspaceRoot = options.workspaceRoot === null
+    ? undefined
+    : options.workspaceRoot ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!workspaceRoot) {
+    return {
+      kind: 'noWorkspace',
+      roots: [],
+      detail: 'test workspace not open'
+    };
+  }
+  return {
+    kind: 'singleRoot',
+    root: workspaceRoot,
+    roots: [workspaceRoot],
+    detail: 'single test workspace folder is active'
+  };
+}
+
 function createControllerTestContext(options: ControllerTestOptions) {
   const client = new FakeLanguageClient(options);
   const outputLines: string[] = [];
@@ -2498,9 +2597,7 @@ function createControllerTestContext(options: ControllerTestOptions) {
   const warningMessages: string[] = [];
   const errorMessages: string[] = [];
   let clientOptions: unknown;
-  const configuredWorkspaceRoot = options.workspaceRoot === null
-    ? undefined
-    : options.workspaceRoot ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const configuredWorkspaceRootState = controllerWorkspaceRootState(options);
   const runtime: RiprClientRuntime = {
     getConfig: () => ({
       enabled: options.enabled ?? true,
@@ -2513,7 +2610,7 @@ function createControllerTestContext(options: ControllerTestOptions) {
       baseRef: 'origin/main',
       traceServer: 'off'
     }),
-    workspaceRoot: () => configuredWorkspaceRoot,
+    workspaceRootState: () => configuredWorkspaceRootState,
     resolveServer: async () => options.resolveFailure ?? ({
       command: 'ripr',
       source: 'path',
