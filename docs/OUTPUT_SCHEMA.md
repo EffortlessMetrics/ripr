@@ -4603,7 +4603,7 @@ JSON shape:
     {
       "kind": "static_limit_exclusions",
       "required": true,
-      "description": "Known static parser and language-adapter limits are excluded or labeled."
+      "description": "Known static parser, language-adapter, and static-limit taxonomy limits are covered, excluded, or labeled."
     },
     {
       "kind": "false_positive_review",
@@ -4614,6 +4614,31 @@ JSON shape:
       "kind": "recommendation_calibration",
       "required": true,
       "description": "Same-class recommendation calibration supports policy eligibility."
+    },
+    {
+      "kind": "dogfood_receipts",
+      "required": true,
+      "description": "External-style dogfood receipts exercise the candidate language and class through the start-here repair loop."
+    },
+    {
+      "kind": "related_test_accuracy_review",
+      "required": true,
+      "description": "Maintainer-reviewed related-test samples show the candidate language does not route repair packets to wrong tests."
+    },
+    {
+      "kind": "false_repair_packet_review",
+      "required": true,
+      "description": "Maintainer-reviewed sample confirms preview repair packets do not overstate or invent safe repairs."
+    },
+    {
+      "kind": "surface_consistency_review",
+      "required": true,
+      "description": "Editor, CLI, generated CI, PR evidence, receipts, and docs show the same preview/advisory boundary."
+    },
+    {
+      "kind": "policy_signoff",
+      "required": true,
+      "description": "Policy owner explicitly signs off that the narrow language/class may be reviewed for stronger status."
     },
     {
       "kind": "mutation_calibration",
@@ -4647,6 +4672,11 @@ JSON shape:
     "static_limit_exclusions",
     "false_positive_review",
     "recommendation_calibration",
+    "dogfood_receipts",
+    "related_test_accuracy_review",
+    "false_repair_packet_review",
+    "surface_consistency_review",
+    "policy_signoff",
     "baseline_behavior",
     "waiver_suppression_behavior",
     "rollback_path",
@@ -4662,6 +4692,11 @@ JSON shape:
     "static-limit exclusions receipt for TypeScript boundary_gap",
     "false-positive review receipt for TypeScript boundary_gap",
     "recommendation-calibration receipt for TypeScript boundary_gap",
+    "dogfood receipt for TypeScript boundary_gap",
+    "related-test accuracy review receipt for TypeScript boundary_gap",
+    "false repair packet review receipt for TypeScript boundary_gap",
+    "surface consistency receipt for TypeScript boundary_gap",
+    "policy signoff receipt for TypeScript boundary_gap",
     "baseline behavior receipt for TypeScript boundary_gap",
     "waiver/suppression behavior receipt for TypeScript boundary_gap",
     "rollback path receipt for TypeScript boundary_gap",

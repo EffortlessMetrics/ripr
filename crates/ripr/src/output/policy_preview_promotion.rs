@@ -30,7 +30,7 @@ const NON_GOALS: [&str; 17] = [
     "No mutation execution.",
 ];
 
-const REQUIRED_EVIDENCE: [EvidenceRequirement; 9] = [
+const REQUIRED_EVIDENCE: [EvidenceRequirement; 14] = [
     EvidenceRequirement {
         kind: "fixture_corpus_coverage",
         required: true,
@@ -39,7 +39,7 @@ const REQUIRED_EVIDENCE: [EvidenceRequirement; 9] = [
     EvidenceRequirement {
         kind: "static_limit_exclusions",
         required: true,
-        description: "Known static parser and language-adapter limits are excluded or labeled.",
+        description: "Known static parser, language-adapter, and static-limit taxonomy limits are covered, excluded, or labeled.",
     },
     EvidenceRequirement {
         kind: "false_positive_review",
@@ -50,6 +50,31 @@ const REQUIRED_EVIDENCE: [EvidenceRequirement; 9] = [
         kind: "recommendation_calibration",
         required: true,
         description: "Same-class recommendation calibration supports policy eligibility.",
+    },
+    EvidenceRequirement {
+        kind: "dogfood_receipts",
+        required: true,
+        description: "External-style dogfood receipts exercise the candidate language and class through the start-here repair loop.",
+    },
+    EvidenceRequirement {
+        kind: "related_test_accuracy_review",
+        required: true,
+        description: "Maintainer-reviewed related-test samples show the candidate language does not route repair packets to wrong tests.",
+    },
+    EvidenceRequirement {
+        kind: "false_repair_packet_review",
+        required: true,
+        description: "Maintainer-reviewed sample confirms preview repair packets do not overstate or invent safe repairs.",
+    },
+    EvidenceRequirement {
+        kind: "surface_consistency_review",
+        required: true,
+        description: "Editor, CLI, generated CI, PR evidence, receipts, and docs show the same preview/advisory boundary.",
+    },
+    EvidenceRequirement {
+        kind: "policy_signoff",
+        required: true,
+        description: "Policy owner explicitly signs off that the narrow language/class may be reviewed for stronger status.",
     },
     EvidenceRequirement {
         kind: "mutation_calibration",
@@ -594,6 +619,11 @@ fn required_receipts(language: &str, candidate_class: &str) -> Vec<String> {
         format!("static-limit exclusions receipt for {language_label} {candidate_class}"),
         format!("false-positive review receipt for {language_label} {candidate_class}"),
         format!("recommendation-calibration receipt for {language_label} {candidate_class}"),
+        format!("dogfood receipt for {language_label} {candidate_class}"),
+        format!("related-test accuracy review receipt for {language_label} {candidate_class}"),
+        format!("false repair packet review receipt for {language_label} {candidate_class}"),
+        format!("surface consistency receipt for {language_label} {candidate_class}"),
+        format!("policy signoff receipt for {language_label} {candidate_class}"),
         format!("baseline behavior receipt for {language_label} {candidate_class}"),
         format!("waiver/suppression behavior receipt for {language_label} {candidate_class}"),
         format!("rollback path receipt for {language_label} {candidate_class}"),
@@ -692,7 +722,7 @@ mod tests {
         assert_eq!(report.reason, DEFAULT_REASON);
         assert_eq!(report.language_status, "preview");
         assert_eq!(report.target_status, "policy_eligible");
-        assert_eq!(report.missing_evidence.len(), 8);
+        assert_eq!(report.missing_evidence.len(), 13);
         assert!(report.input_artifacts.is_empty());
         assert!(report.unknowns.is_empty());
     }
@@ -720,7 +750,7 @@ mod tests {
               "language_status": "preview",
               "candidate_class": "boundary_gap",
               "supplied_evidence": ["fixture_corpus_coverage"],
-              "static_limit_exclusions": true
+                "static_limit_exclusions": true
             }"#
         .to_string()));
         let report = build_preview_promotion_report(input);
@@ -760,6 +790,11 @@ mod tests {
                 "static_limit_exclusions",
                 "false_positive_review",
                 "recommendation_calibration",
+                "dogfood_receipts",
+                "related_test_accuracy_review",
+                "false_repair_packet_review",
+                "surface_consistency_review",
+                "policy_signoff",
                 "baseline_behavior",
                 "waiver_suppression_behavior",
                 "rollback_path",
@@ -794,6 +829,11 @@ mod tests {
                 "static_limit_exclusions",
                 "false_positive_review",
                 "recommendation_calibration",
+                "dogfood_receipts",
+                "related_test_accuracy_review",
+                "false_repair_packet_review",
+                "surface_consistency_review",
+                "policy_signoff",
                 "baseline_behavior",
                 "waiver_suppression_behavior",
                 "rollback_path",

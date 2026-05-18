@@ -128,9 +128,11 @@ fn non_empty_arg<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a
 }
 
 fn print_help() {
-    println!(
-        "Create the start-here packet for one PR from existing RIPR artifacts.\n\nusage: ripr first-pr [--root <path>] [--base <rev>] [--head <rev>] [--gap-ledger <path>] [--first-action <path>] [--review-comments <path>] [--agent-packet <path>] [--gate-decision <path>] [--receipts-dir <path>] [--out-dir <path>] [--check]"
-    );
+    println!("{}", first_pr_help_text());
+}
+
+fn first_pr_help_text() -> &'static str {
+    "Create the start-here packet for one PR from existing RIPR artifacts.\n\nusage: ripr first-pr [--root <path>] [--base <rev>] [--head <rev>] [--gap-ledger <path>] [--first-action <path>] [--review-comments <path>] [--agent-packet <path>] [--gate-decision <path>] [--receipts-dir <path>] [--out-dir <path>] [--check]\n\nStart-here language:\n  - start here: open target/ripr/reports/start-here.md first when it exists\n  - safe next action: repair one named gap, regenerate missing evidence, or stop on no-action\n  - missing artifact / stale evidence / wrong root / malformed artifact: fail closed before repair work\n  - no actionable gap: advisory no-action, not runtime adequacy or mutation proof\n  - preview-limited evidence: syntax-first and advisory, with static limits before repair language\n  - verify command / receipt command / receipt path: static movement proof rail"
 }
 
 fn write_first_pr(repo: &Path, options: &FirstPrOptions) -> Result<(), String> {
@@ -1104,6 +1106,19 @@ mod tests {
             Err("first-pr --gap-ledger requires a non-empty value".to_string())
         );
         Ok(())
+    }
+
+    #[test]
+    fn first_pr_help_pins_start_here_language() {
+        let help = first_pr_help_text();
+        assert!(help.contains("Start-here language:"));
+        assert!(help.contains("safe next action"));
+        assert!(
+            help.contains("missing artifact / stale evidence / wrong root / malformed artifact")
+        );
+        assert!(help.contains("no actionable gap"));
+        assert!(help.contains("preview-limited evidence"));
+        assert!(help.contains("verify command / receipt command / receipt path"));
     }
 
     #[test]

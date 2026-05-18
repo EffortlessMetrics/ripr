@@ -62,10 +62,12 @@ The report contract is satisfied only when implementation can show:
   `rollback_path`, `generated_ci_posture`, `input_artifacts`, `warnings`,
   `unknowns`, `non_goals`, and `limits_note` fields;
 - default blocked behavior when promotion evidence is not supplied;
-- explicit accounting for fixture corpus coverage, static-limit exclusions,
-  false-positive review, recommendation calibration, optional mutation
-  calibration, baseline behavior, waiver/suppression behavior, rollback path,
-  and generated CI posture;
+- explicit accounting for fixture corpus coverage, static-limit taxonomy
+  coverage, false-positive review, recommendation calibration, dogfood
+  receipts, related-test accuracy review, false repair packet review, surface
+  consistency, policy signoff, optional mutation calibration, baseline
+  behavior, waiver/suppression behavior, rollback path, and generated CI
+  posture;
 - language status remains `preview` unless a later explicit promotion policy
   changes it;
 - no config, baseline, suppression, workflow, branch-protection, generated CI,
@@ -122,7 +124,7 @@ The JSON report uses schema version `0.1`:
     {
       "kind": "static_limit_exclusions",
       "required": true,
-      "description": "Known static parser and language-adapter limits are excluded or labeled."
+      "description": "Known static parser, language-adapter, and static-limit taxonomy limits are covered, excluded, or labeled."
     },
     {
       "kind": "false_positive_review",
@@ -133,6 +135,31 @@ The JSON report uses schema version `0.1`:
       "kind": "recommendation_calibration",
       "required": true,
       "description": "Same-class recommendation calibration supports policy eligibility."
+    },
+    {
+      "kind": "dogfood_receipts",
+      "required": true,
+      "description": "External-style dogfood receipts exercise the candidate language and class through the start-here repair loop."
+    },
+    {
+      "kind": "related_test_accuracy_review",
+      "required": true,
+      "description": "Maintainer-reviewed related-test samples show the candidate language does not route repair packets to wrong tests."
+    },
+    {
+      "kind": "false_repair_packet_review",
+      "required": true,
+      "description": "Maintainer-reviewed sample confirms preview repair packets do not overstate or invent safe repairs."
+    },
+    {
+      "kind": "surface_consistency_review",
+      "required": true,
+      "description": "Editor, CLI, generated CI, PR evidence, receipts, and docs show the same preview/advisory boundary."
+    },
+    {
+      "kind": "policy_signoff",
+      "required": true,
+      "description": "Policy owner explicitly signs off that the narrow language/class may be reviewed for stronger status."
     },
     {
       "kind": "mutation_calibration",
@@ -166,6 +193,11 @@ The JSON report uses schema version `0.1`:
     "static_limit_exclusions",
     "false_positive_review",
     "recommendation_calibration",
+    "dogfood_receipts",
+    "related_test_accuracy_review",
+    "false_repair_packet_review",
+    "surface_consistency_review",
+    "policy_signoff",
     "baseline_behavior",
     "waiver_suppression_behavior",
     "rollback_path",
@@ -178,8 +210,18 @@ The JSON report uses schema version `0.1`:
     "preview-promotion-typescript-boundary-gap.json",
     "preview-boundary report showing advisory language status",
     "fixture corpus coverage receipt for TypeScript boundary_gap",
+    "static-limit exclusions receipt for TypeScript boundary_gap",
     "false-positive review receipt for TypeScript boundary_gap",
-    "recommendation-calibration receipt for TypeScript boundary_gap"
+    "recommendation-calibration receipt for TypeScript boundary_gap",
+    "dogfood receipt for TypeScript boundary_gap",
+    "related-test accuracy review receipt for TypeScript boundary_gap",
+    "false repair packet review receipt for TypeScript boundary_gap",
+    "surface consistency receipt for TypeScript boundary_gap",
+    "policy signoff receipt for TypeScript boundary_gap",
+    "baseline behavior receipt for TypeScript boundary_gap",
+    "waiver/suppression behavior receipt for TypeScript boundary_gap",
+    "rollback path receipt for TypeScript boundary_gap",
+    "generated CI posture receipt for TypeScript boundary_gap"
   ],
   "rollback_path": [
     "Keep TypeScript boundary_gap evidence advisory.",
@@ -252,6 +294,11 @@ Why: preview promotion evidence not supplied
 - static_limit_exclusions
 - false_positive_review
 - recommendation_calibration
+- dogfood_receipts
+- related_test_accuracy_review
+- false_repair_packet_review
+- surface_consistency_review
+- policy_signoff
 - baseline_behavior
 - waiver_suppression_behavior
 - rollback_path
@@ -261,7 +308,18 @@ Why: preview promotion evidence not supplied
 
 - preview-boundary report showing advisory language status
 - fixture corpus coverage receipt for TypeScript boundary_gap
+- static-limit exclusions receipt for TypeScript boundary_gap
 - false-positive review receipt for TypeScript boundary_gap
+- recommendation-calibration receipt for TypeScript boundary_gap
+- dogfood receipt for TypeScript boundary_gap
+- related-test accuracy review receipt for TypeScript boundary_gap
+- false repair packet review receipt for TypeScript boundary_gap
+- surface consistency receipt for TypeScript boundary_gap
+- policy signoff receipt for TypeScript boundary_gap
+- baseline behavior receipt for TypeScript boundary_gap
+- waiver/suppression behavior receipt for TypeScript boundary_gap
+- rollback path receipt for TypeScript boundary_gap
+- generated CI posture receipt for TypeScript boundary_gap
 
 ## Generated CI Posture
 
