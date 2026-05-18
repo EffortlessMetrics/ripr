@@ -408,8 +408,8 @@ Current tests and reports that support the contract:
 - `crates/ripr/src/analysis/workspace/select.rs::tests::operator_mode_tiers_are_pinned_for_defaults_first_adoption`
 - `crates/ripr/src/analysis/workspace/classify.rs::tests::production_path_excludes_repository_automation_fixture_and_non_production_trees`
 - `crates/ripr/src/analysis/workspace/select.rs::tests::repo_discovery_skips_fixture_tree_but_fixture_roots_still_work`
-- `crates/ripr/src/output/badge/tests.rs::tests::seam_badge_summary_counts_visible_headline_eligible_seams`
-- `crates/ripr/src/output/badge/tests.rs::tests::seam_badge_summary_respects_configured_off_severity`
+- `crates/ripr/src/output/badge/tests.rs::seam_badge_summary_counts_visible_headline_eligible_seams`
+- `crates/ripr/src/output/badge/tests.rs::seam_badge_summary_respects_configured_off_severity`
 - `crates/ripr/tests/cli_smoke.rs::check_repo_badge_json_emits_repo_scope_metadata`
 - `crates/ripr/tests/cli_smoke.rs::check_repo_badge_does_not_consult_diff_arg_when_supplied`
 - `crates/ripr/tests/cli_smoke.rs::check_repo_badge_plus_json_emits_repo_scope_metadata`
