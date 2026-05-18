@@ -157,6 +157,25 @@ turn it into a fixture-backed analyzer repair.
 - Unsupported cases remain named limitations.
 - The PR reports before/after audit or scorecard delta.
 
+### Current Selected Slice
+
+The 2026-05-18 live audit selected `activation_value_unresolved` as the top
+named static limitation bucket. This PR burns down the value-insensitive
+no-argument owner-call sub-shape:
+
+- before: 27,677 static limitations, including 27,288
+  `activation_value_unresolved`;
+- after: 26,339 static limitations, including 25,967
+  `activation_value_unresolved`;
+- delta: -1,338 static limitations and -1,321
+  `activation_value_unresolved` limitations.
+
+The supported case is a direct no-argument owner call for a value-insensitive
+seam. It moves activation out of a limitation without inventing observed values.
+Predicate-boundary value checks, non-direct owner affinity, helper-only flows,
+generated tests, provider calls, PR/CI rendering, gate policy, public score
+semantics, and mutation execution remain out of scope.
+
 ### Proof Commands
 
 ```bash

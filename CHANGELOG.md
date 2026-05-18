@@ -9,6 +9,12 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Lane 1 activation evidence now treats direct no-argument owner calls as
+  activation for value-insensitive seams. This burns down one measured
+  `activation_value_unresolved` sub-shape for return/call/error/effect style
+  seams without inventing observed values, relaxing predicate-boundary value
+  checks, or changing PR/CI rendering, gates, providers, generated tests, or
+  mutation execution.
 - Lane 1 value resolution now treats same-test struct literal field
   projections as fixture-backed activation values when the field value is
   literal. Helper-built structs, shadowed bindings, fixture-parameter

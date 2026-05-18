@@ -944,10 +944,15 @@ fn activate_evidence(
     sort_value_facts(&mut observed);
 
     let missing = missing_discriminators_for(seam, &observed);
+    let no_arg_owner_call = !owner_name.is_empty()
+        && !requires_concrete_activation_values(seam)
+        && related
+            .iter()
+            .any(|indexed| has_direct_no_arg_owner_call(indexed, owner_name));
 
     let state = if related.is_empty() {
         StageState::No
-    } else if !observed.is_empty() {
+    } else if !observed.is_empty() || no_arg_owner_call {
         StageState::Yes
     } else {
         // Reach exists but no concrete value seen — most often a helper
@@ -956,20 +961,12 @@ fn activate_evidence(
     };
     let stage = StageEvidence::new(
         state,
-        if observed.is_empty() {
-            Confidence::Low
-        } else {
+        if !observed.is_empty() || no_arg_owner_call {
             Confidence::Medium
-        },
-        if observed.is_empty() {
-            format!(
-                "No concrete activation values observed for seam `{}`",
-                seam.expression()
-                    .lines()
-                    .next()
-                    .unwrap_or(seam.expression())
-            )
         } else {
+            Confidence::Low
+        },
+        if !observed.is_empty() {
             format!(
                 "Observed {} concrete activation value(s) for seam `{}`",
                 observed.len(),
@@ -978,9 +975,29 @@ fn activate_evidence(
                     .next()
                     .unwrap_or(seam.expression())
             )
+        } else if no_arg_owner_call {
+            format!(
+                "Observed direct no-argument owner call for seam `{}`",
+                seam.expression()
+                    .lines()
+                    .next()
+                    .unwrap_or(seam.expression())
+            )
+        } else {
+            format!(
+                "No concrete activation values observed for seam `{}`",
+                seam.expression()
+                    .lines()
+                    .next()
+                    .unwrap_or(seam.expression())
+            )
         },
     );
     (stage, observed, missing)
+}
+
+fn requires_concrete_activation_values(seam: &RepoSeam) -> bool {
+    matches!(seam.kind(), SeamKind::PredicateBoundary)
 }
 
 fn observed_value_facts_for_test(
@@ -1045,6 +1062,13 @@ fn observed_value_facts_for_test(
     // that filter.
     observed.extend(env.builder_facts());
     observed
+}
+
+fn has_direct_no_arg_owner_call(indexed: &CompactTest<'_>, owner_name: &str) -> bool {
+    indexed.test.calls.iter().any(|call| {
+        call.name == owner_name
+            && call_arguments(&call.text, owner_name).is_some_and(|args| args.is_empty())
+    })
 }
 
 fn observed_argument_indices(
@@ -2449,6 +2473,53 @@ fn parse_rejects_empty() {
         assert_eq!(evidence.related_tests.len(), 0);
         assert_eq!(evidence.observed_values.len(), 0);
         assert_eq!(evidence.missing_discriminators.len(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn given_full_evidence_when_no_arg_owner_call_reaches_return_seam_then_activation_is_yes()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/labels.rs");
+        let prod_src = r#"
+pub fn device_labels() -> Vec<&'static str> {
+    Vec::new()
+}
+"#;
+        let tests = PathBuf::from("tests/labels_tests.rs");
+        let tests_src = r#"
+#[test]
+fn device_labels_start_empty() {
+    assert!(device_labels().is_empty());
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/labels.rs")], &index);
+        let return_seam = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::ReturnValue && s.expression().contains("Vec::new()"))
+            .ok_or_else(|| "expected Vec::new return_value seam".to_string())?;
+
+        let evidence = evidence_for_seam(return_seam, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence.observed_values.is_empty(),
+            "no-arg activation should not invent observed values: {:?}",
+            evidence.observed_values
+        );
+        assert!(
+            evidence
+                .activate
+                .summary
+                .contains("direct no-argument owner call"),
+            "activation summary should explain the no-arg route: {}",
+            evidence.activate.summary
+        );
+        assert!(
+            evidence.missing_discriminators.is_empty(),
+            "return-value no-arg activation must not create boundary debt"
+        );
         Ok(())
     }
 
