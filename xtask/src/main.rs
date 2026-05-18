@@ -7333,6 +7333,7 @@ const EVIDENCE_QUALITY_BENCHMARK_REQUIRED_CLASSES: &[&str] = &[
     "self_computed_expected_value",
     "opaque_helper_static_limitation",
     "cross_file_constant_limitation",
+    "activation_value_resolution",
     "presentation_text",
     "config_or_policy_constant",
     "side_effect_observer",
