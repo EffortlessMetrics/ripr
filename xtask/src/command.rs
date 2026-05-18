@@ -228,7 +228,7 @@ pub(crate) fn help_message(args: &[String]) -> Result<String, String> {
     if args.is_empty() {
         let commands = known_commands().join("\n  ");
         return Ok(format!(
-            "xtask commands:\n\n  {commands}\n\nCommon starting points:\n  cargo xtask shape       # safe local shaping before review\n  cargo xtask check-pr    # review-ready non-release gate\n  cargo xtask pr-ready    # composed local readiness packet\n\nRun `cargo xtask help <command>` for mutability, writes, and notes.\nRun `cargo xtask commands` to write the full command catalog report."
+            "xtask commands:\n\n  {commands}\n\nCommon starting points:\n  cargo xtask doctor      # setup and worktree hygiene\n  cargo xtask first-pr    # start-here packet with one safe next action\n  cargo xtask pr-ready    # local PR readiness packet\n  cargo xtask cockpit     # repo maintainer front panel\n  cargo xtask check-pr    # review-ready non-release gate\n\nStart-here language uses the same words for safe next action, missing artifact, stale evidence, wrong root, malformed artifact, no actionable gap, preview-limited evidence, verify command, receipt command, and receipt path.\n\nRun `cargo xtask help <command>` for mutability, writes, and notes.\nRun `cargo xtask commands` to write the full command catalog report."
         ));
     }
 
@@ -427,14 +427,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/pr-ready.{md,json}, target/ripr/reports/index.{md,json}, and composed repo-ops reports",
             false,
-            "Composes worktree doctor, command catalog, PR summary, critic, receipts, generated-clean, badge policy, and suggested fixes into one local operator packet.",
+            "Composes local readiness signals and points to safe next action, receipt state, and check-pr proof before opening or updating a PR.",
         ),
         command_entry(
             "cockpit",
             "external_state_read",
             "target/ripr/reports/cockpit.{md,json}, target/ripr/reports/index.{md,json}, and composed repo-ops reports",
             false,
-            "Composes repo-level operating packets, including PR triage, command catalog coverage, source-of-truth checks, generated-clean, and badge policy, into one advisory maintainer front panel.",
+            "Composes repo-level operating packets into an advisory front panel that names the next safe command and stop states before more work.",
         ),
         command_entry(
             "pr-triage-report",
@@ -700,7 +700,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "argument_dependent",
             "target/ripr/reports or check-only",
             false,
-            "Writes start-here packets when --check is absent; validates existing packets when --check is present.",
+            "Writes the start-here packet when --check is absent; checks existing packets when --check is present. The packet names one repairable gap, fallback state, verify command, receipt command, and receipt path.",
         ),
         command_entry(
             "ripr-review-comments [--base <rev>] [--head <rev>] [--root <path>] [--check]",
@@ -791,14 +791,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/worktree-doctor.md",
             false,
-            "Shortcut for worktree doctor; writes advisory worktree hygiene report.",
+            "Shortcut for worktree doctor; use before first-pr when setup, missing artifacts, stale evidence, or wrong-root state is unclear.",
         ),
         command_entry(
             "worktree doctor",
             "report_only",
             "target/ripr/reports/worktree-doctor.md",
             false,
-            "Writes advisory worktree hygiene report.",
+            "Writes advisory setup and worktree hygiene status before choosing a start-here repair path.",
         ),
         command_entry(
             "specs next",
@@ -1212,4 +1212,45 @@ fn levenshtein(lhs: &str, rhs: &str) -> usize {
     }
 
     previous_row[rhs_len]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{command_catalog, help_message};
+
+    #[test]
+    fn top_level_help_pins_start_here_front_door_language() -> Result<(), String> {
+        let help = help_message(&[])?;
+        assert!(help.contains("cargo xtask doctor"));
+        assert!(help.contains("cargo xtask first-pr"));
+        assert!(help.contains("safe next action"));
+        assert!(help.contains("missing artifact"));
+        assert!(help.contains("stale evidence"));
+        assert!(help.contains("wrong root"));
+        assert!(help.contains("malformed artifact"));
+        assert!(help.contains("no actionable gap"));
+        assert!(help.contains("preview-limited evidence"));
+        assert!(help.contains("verify command"));
+        assert!(help.contains("receipt command"));
+        assert!(help.contains("receipt path"));
+        Ok(())
+    }
+
+    #[test]
+    fn command_catalog_pins_start_here_notes() {
+        let catalog = command_catalog();
+        let note = |command: &str| {
+            catalog
+                .iter()
+                .find(|entry| entry.command == command)
+                .map(|entry| entry.notes)
+                .unwrap_or("")
+        };
+        assert!(note("first-pr [--root <path>] [--base <rev>] [--head <rev>] [--gap-ledger <path>] [--out-dir <path>] [--check]").contains("start-here packet"));
+        assert!(note("first-pr [--root <path>] [--base <rev>] [--head <rev>] [--gap-ledger <path>] [--out-dir <path>] [--check]").contains("verify command"));
+        assert!(note("pr-ready").contains("safe next action"));
+        assert!(note("cockpit").contains("stop states"));
+        assert!(note("doctor").contains("missing artifacts"));
+        assert!(note("worktree doctor").contains("start-here repair path"));
+    }
 }

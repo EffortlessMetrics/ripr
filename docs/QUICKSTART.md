@@ -154,6 +154,19 @@ It composes existing artifacts into `target/ripr/reports/start-here.{json,md}`
 and does not add analyzer truth. Inside this repo, `cargo xtask first-pr` is a
 compatibility wrapper over the same public command.
 
+Read the front door with the same vocabulary across CLI, editor, and PR
+surfaces:
+
+- `start here`: open `target/ripr/reports/start-here.md` first when it exists.
+- `safe next action`: repair one named gap, regenerate missing evidence, or
+  stop on no-action.
+- `missing artifact`, `stale evidence`, `wrong root`, and `malformed artifact`:
+  fail closed before repair work.
+- `preview-limited evidence`: syntax-first and advisory, with static limits
+  before repair language.
+- `verify command`, `receipt command`, and `receipt path`: the static movement
+  proof rail, not runtime adequacy or gate approval.
+
 When a surface boundary is unclear, use the ownership table in
 [First successful PR workflow](FIRST_PR_WORKFLOW.md#surface-ownership). It
 names which surface owns start-here, generated CI, editor handoff, agent

@@ -266,6 +266,13 @@ mutability catalog, PR summary, critic, receipts check, suggested fixes,
 generated-clean, and badge diff policy. The command is advisory front-door
 metadata; it does not replace `check-pr`.
 
+The CLI front doors use the same start-here wording. `safe next action` means
+repair one named gap, regenerate missing evidence, or stop on no-action.
+`missing artifact`, `stale evidence`, `wrong root`, and `malformed artifact`
+are fail-closed states. `preview-limited evidence` remains syntax-first and
+advisory. `verify command`, `receipt command`, and `receipt path` are the static
+movement proof rail, not runtime adequacy, mutation proof, or gate approval.
+
 `receipts` writes machine-readable gate receipts under `target/ripr/receipts/`
 for shape, fix-pr, ci-fast, check-pr, fixtures, goldens, test-oracle, dogfood,
 and metrics runs. `receipts check` validates the required receipt files and

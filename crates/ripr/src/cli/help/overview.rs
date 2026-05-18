@@ -86,4 +86,11 @@ Quick start:
   ripr check --diff crates/ripr/examples/sample/example.diff
   ripr check --diff crates/ripr/examples/sample/example.diff --json
   ripr explain --diff crates/ripr/examples/sample/example.diff <finding-id>
+
+Start-here path:
+  - `ripr doctor` checks whether the local workspace and config can produce evidence.
+  - `ripr first-pr` writes `target/ripr/reports/start-here.{json,md}` from existing artifacts.
+  - Safe next action means repair one named gap, regenerate a missing or malformed artifact, or stop on no-action.
+  - Verify command, receipt command, and receipt path are the static proof rail; receipts are advisory, not runtime adequacy or gate approval.
+  - Preview-limited evidence stays syntax-first and advisory, with static limits before repair language.
 "#;
