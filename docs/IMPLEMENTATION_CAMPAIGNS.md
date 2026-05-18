@@ -3807,7 +3807,7 @@ Work items:
 | `docs/lane3-editor-adoption-assurance-stack` | done | Added proposal, spec, ADR, plan, indexes, traceability, and GitHub issues. |
 | `test/lsp-editor-adoption-baseline` | done | Pinned the closed Lane 3 contract before compatibility/root behavior changes. |
 | `vscode/extension-server-compatibility-diagnosis` | done | #1262 landed the #1247 implementation; close the still-open issue from that merged work. |
-| `vscode/workspace-root-multi-root-diagnosis` | done | #1267 and #1270 landed the #1248 implementation; close the still-open issue from those merged changes. |
+| `vscode/workspace-root-multi-root-diagnosis` | done | #1267, #1270, and #1272 landed the #1248 implementation; close the still-open issue from those merged changes. |
 | `fixtures/editor-adoption-assurance` | planned | Add setup, mismatch, first-pr, receipt, and preview-unavailable fixtures. |
 | `test/vscode-editor-adoption-assurance` | planned | Smoke the packaged extension path for adoption assurance. |
 | `docs/editor-install-to-first-pr` | planned | Document install/open through first-pr packet inspection and recovery states. |
