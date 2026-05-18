@@ -9,29 +9,7 @@ are scoped or reviewed.
 
 ## Unreleased
 
-- Made Lane 1 evidence audit generation operationally visible for long live
-  repo runs. `cargo xtask lane1-evidence-audit` now streams repo-exposure
-  latency breadcrumbs while the analyzer subprocess runs and records bounded
-  generation diagnostics in `inputs.repo_exposure_generation`, including
-  timeout, status, duration, output byte counts, and the latency trace tail.
-  Large best-effort classified-seam cache entries are skipped with an explicit
-  `cache_store` trace instead of blocking report generation after analysis
-  completes.
-- Added explicit `primary_anchor` and `raw_spans` fields to supported
-  `finding_alignment.items[]` and `evidence_record.canonical_item` canonical
-  evidence items. Downstream surfaces now have one preferred placement hint
-  plus all contributing raw spans without inferring actionability from
-  line-local raw findings.
-- Added the Lane 1 Finding Alignment Burn-Down rail and issue-backed
-  implementation plan. The queue starts from current raw-to-canonical audit
-  evidence and tracks class-by-class alignment coverage, primary-anchor/raw
-  span completeness, top named static limitation buckets, config/policy
-  unsupported-flow expansion, repair-route and verify-command invariants,
-  scorecard-leading actionable canonical gaps, runtime confidence coverage,
-  dogfood refreshes, and downstream canonical-item handoff refreshes. This is
-  planning and documentation only; PR/CI rendering, LSP/editor behavior, gates,
-  badges, generated tests, source edits, provider calls, and mutation
-  execution remain unchanged.
+- No changes recorded yet.
 
 ## 0.6.0 - 2026-05-17
 
@@ -66,9 +44,9 @@ Release themes:
 
 Detailed changes:
 - Changelog source range: the 0.6.0 notes were reconciled against merged PRs
-  and first-parent commits through `ebd68ad0` / #1139 on current `main`.
+  and first-parent commits through `a1e98858` / #1204 on current `main`.
   Internal learning-doc polish is intentionally not part of the public release
-  story. Open release-hardening PRs such as #1191 remain outside this section
+  story. Open release-hardening PRs such as #1138 remain outside this section
   until they land.
 - Removed-only diff hunks now still seed probes, so deleting or changing a
   behavior-bearing line without an added replacement does not disappear from
@@ -82,6 +60,13 @@ Detailed changes:
 - Generated CI and report packets now align their first screen on the canonical
   repair unit, keeping the start-here path centered on the actionable evidence
   item rather than on raw supporting signals.
+- Lane 1 evidence audit generation now streams repo-exposure latency
+  breadcrumbs during long live-repo runs and records bounded generation
+  diagnostics in `inputs.repo_exposure_generation`, including timeout, status,
+  duration, output byte counts, and the latency trace tail. Large best-effort
+  classified-seam cache entries are skipped with an explicit `cache_store`
+  trace instead of blocking report generation after analysis completes. This is
+  operational audit reliability, not a new evidence-accuracy or gate claim.
 - The 0.6.x finalization proof was refreshed with install, VSIX, generated-CI,
   public-copy, and external-adopter smoke evidence. It still does not tag,
   publish, create a GitHub Release, or refresh generated badge endpoints.
@@ -111,6 +96,10 @@ Detailed changes:
   input through a bounded direct `ripr` invocation with latency tracing, so a
   cold full-repo evidence pass reports a clear timeout with phase context
   instead of waiting indefinitely or leaving an orphaned analyzer process.
+- Focused release hardening added coverage for extraction helpers, oracle
+  parsing, LSP URI edges, language routing, and domain support primitives, plus
+  behavior-preserving app/report refactors that reduce duplicated wiring
+  without changing public output contracts.
 - Lane 1 evidence-quality scorecards and trends now surface finding-alignment
   coverage gaps for unnamed static unknowns, actionable canonical items missing
   repair routes, and actionable canonical items missing verify commands.
