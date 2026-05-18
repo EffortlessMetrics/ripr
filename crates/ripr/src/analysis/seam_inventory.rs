@@ -565,7 +565,10 @@ fn expected_sink_for(kind: SeamKind) -> ExpectedSink {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analysis::rust_index::{RaRustSyntaxAdapter, RustSyntaxAdapter};
+    use crate::analysis::rust_index::{
+        FileFacts, FunctionFact, RaRustSyntaxAdapter, RustSyntaxAdapter,
+    };
+    use crate::domain::SymbolId;
 
     fn index_from_files(files: &[(PathBuf, &str)]) -> Result<RustIndex, String> {
         let adapter = RaRustSyntaxAdapter;
@@ -945,6 +948,135 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&root);
         Ok(())
+    }
+
+    #[test]
+    fn uncached_inventory_surfaces_discover_error_for_non_directory_root() -> Result<(), String> {
+        let root = make_tempdir("uncached-discover-error")?;
+        let file_root = root.join("not-a-directory");
+        write_file(&file_root, "not a directory")?;
+
+        let result =
+            inventory_classified_seams_uncached_with_config(&file_root, &RiprConfig::default());
+        assert!(
+            result.is_err(),
+            "uncached inventory should surface discover_rust_files error for non-directory root"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn seam_walker_skips_paths_not_present_in_the_index() {
+        // The repo walker keeps its production-file list and the index
+        // in lockstep, but in tests the two can diverge when a caller
+        // passes a synthetic file list. The early-continue at the
+        // `index.files.get(path)` lookup is what keeps the walker
+        // crash-free in that case.
+        let index = RustIndex::default();
+        let seams = inventory_seams_from_index(&[PathBuf::from("missing.rs")], &index);
+        assert!(
+            seams.is_empty(),
+            "expected no seams for paths absent from the index, got {}",
+            seams.len()
+        );
+    }
+
+    #[test]
+    fn seam_walker_skips_shapes_with_unrecognized_probe_kind() {
+        // `seam_kind_from_probe_shape` is the single place where new
+        // probe-shape strings become first-class seam kinds. Until a
+        // string is mapped explicitly, the walker must drop the shape
+        // rather than inventing a fallback seam kind.
+        let path = PathBuf::from("src/lib.rs");
+        let owner = FunctionFact {
+            id: SymbolId(format!("{}::owner", path.display())),
+            name: "owner".to_string(),
+            file: path.clone(),
+            start_line: 1,
+            end_line: 5,
+            body: String::new(),
+            calls: Vec::new(),
+            returns: Vec::new(),
+            literals: Vec::new(),
+            is_test: false,
+            attrs: Vec::new(),
+        };
+        let mut index = RustIndex::default();
+        index.functions.push(owner.clone());
+        index.files.insert(
+            path.clone(),
+            FileFacts {
+                path: path.clone(),
+                functions: vec![owner],
+                probe_shapes: vec![ProbeShapeFact {
+                    start_line: 2,
+                    end_line: 2,
+                    start_byte: 16,
+                    kind: "shape_kind_that_is_not_recognized".to_string(),
+                    text: "owner_body".to_string(),
+                }],
+                ..FileFacts::default()
+            },
+        );
+
+        let seams = inventory_seams_from_index(&[path], &index);
+        let kinds = seams.iter().map(|s| s.kind().as_str()).collect::<Vec<_>>();
+        assert!(
+            seams.is_empty(),
+            "expected no seams for unrecognized probe-shape kind, got kinds {kinds:?}"
+        );
+    }
+
+    #[test]
+    fn seam_walker_skips_shapes_whose_owner_function_is_marked_test() {
+        // Inline `#[test]` modules inside production files share the
+        // file with real production code. The walker drops shapes whose
+        // owner is itself a test function so the seam inventory stays
+        // production-only even when `is_production_rust_path` cannot
+        // exclude the file outright.
+        let path = PathBuf::from("src/lib.rs");
+        let test_owner = FunctionFact {
+            id: SymbolId(format!("{}::tests::predicate_inside_test", path.display())),
+            name: "predicate_inside_test".to_string(),
+            file: path.clone(),
+            start_line: 10,
+            end_line: 14,
+            body: String::new(),
+            calls: Vec::new(),
+            returns: Vec::new(),
+            literals: Vec::new(),
+            is_test: true,
+            attrs: vec!["#[test]".to_string()],
+        };
+        let mut index = RustIndex::default();
+        index.functions.push(test_owner.clone());
+        index.files.insert(
+            path.clone(),
+            FileFacts {
+                path: path.clone(),
+                functions: vec![test_owner],
+                probe_shapes: vec![ProbeShapeFact {
+                    start_line: 11,
+                    end_line: 11,
+                    start_byte: 120,
+                    kind: PROBE_SHAPE_PREDICATE.to_string(),
+                    text: "x >= 0".to_string(),
+                }],
+                ..FileFacts::default()
+            },
+        );
+
+        let seams = inventory_seams_from_index(&[path], &index);
+        let owners = seams
+            .iter()
+            .map(|s| s.owner().to_string())
+            .collect::<Vec<_>>();
+        assert!(
+            seams.is_empty(),
+            "expected no seams when the only owner is `is_test = true`, got owners {owners:?}"
+        );
     }
 
     #[test]
