@@ -287,9 +287,14 @@ ripr policy preview-promote \
 Required receipts include:
 
 - fixture corpus coverage;
-- static-limit exclusions;
+- static-limit taxonomy coverage and exclusions;
 - false-positive review;
 - recommendation calibration;
+- external-style dogfood receipts;
+- related-test accuracy review;
+- false repair packet review;
+- editor, CLI, generated CI, PR evidence, receipt, and docs surface consistency;
+- policy-owner signoff;
 - baseline behavior;
 - waiver and suppression behavior;
 - rollback path;
