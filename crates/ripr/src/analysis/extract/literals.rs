@@ -92,7 +92,7 @@ fn numeric_literal_at(line: &str, cursor: usize) -> Option<(String, usize)> {
             exponent_cursor += 1;
         }
         let exponent_digits = consume_digits_and_underscores(line, exponent_cursor, 10);
-        if exponent_digits > exponent_cursor {
+        if contains_digit_for_radix(&line[exponent_cursor..exponent_digits], 10) {
             current = exponent_digits;
         } else {
             current = exponent_start;
@@ -227,6 +227,40 @@ mod tests {
     #[test]
     fn extract_literals_ignores_malformed_radix_prefix_without_digits() {
         let values = extract_literals("let bad = 0b_cnt + 0x_ + 0o_mode;");
+
+        assert!(values.is_empty());
+    }
+
+    #[test]
+    fn extract_literals_handles_radix_prefixes_suffixes_and_case() {
+        let values = extract_literals(
+            "let flags = 0B1010usize + 0O77_u8 + 0Xff_i32 + 0b_1010_u16;",
+        );
+
+        assert_eq!(values, vec!["0b1010", "0o77", "0xff"]);
+    }
+
+    #[test]
+    fn extract_literals_handles_decimal_float_exponents_and_suffixes() {
+        let values = extract_literals(
+            "let ratio = 1_000.50f64 + 2e+3_f32 + 4E-2 + 9e_name;",
+        );
+
+        assert_eq!(values, vec!["1000.50", "2e+3", "4E-2", "9"]);
+    }
+
+    #[test]
+    fn extract_literals_respects_identifier_and_unary_boundaries() {
+        let values = extract_literals(
+            "let value9 = total - discount + foo_42 + (-7) + [ -8, amount*-9 ];",
+        );
+
+        assert_eq!(values, vec!["-7", "-8", "-9"]);
+    }
+
+    #[test]
+    fn extract_literals_ignores_invalid_radix_without_later_digit_leakage() {
+        let values = extract_literals("let bad = 0b_2 + 0x_g1 + 0o_8;");
 
         assert!(values.is_empty());
     }
