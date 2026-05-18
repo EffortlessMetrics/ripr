@@ -1679,6 +1679,103 @@ fn gap_code_actions_omit_unsafe_related_paths_and_commands() -> Result<(), Strin
 }
 
 #[test]
+fn editor_adoption_baseline_pins_gap_repair_action_contract() -> Result<(), String> {
+    let root = unique_lsp_test_root("editor-adoption-gap-actions")?;
+    std::fs::create_dir_all(root.path().join("src"))
+        .map_err(|err| format!("create src failed: {err}"))?;
+    std::fs::create_dir_all(root.path().join("tests"))
+        .map_err(|err| format!("create tests failed: {err}"))?;
+    std::fs::write(
+        root.path().join("tests/test_pricing.py"),
+        "def test_discount_boundary():\n    assert price(10) == 9\n",
+    )
+    .map_err(|err| format!("write related test failed: {err}"))?;
+
+    let uri = file_uri_for_path(&root.path().join("src/pricing.py"))?;
+    let diagnostic = gap_action_diagnostic();
+    let mut snapshot = sample_analysis_snapshot(
+        root.path().to_path_buf(),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.gap_artifacts = vec![validated_gap_artifact()];
+
+    let actions = code_action_response(
+        &code_action_params_for(
+            uri.clone(),
+            diagnostic.range.start.line,
+            vec![diagnostic.clone()],
+        )?,
+        Some(&snapshot),
+    );
+    let commands = code_action_commands(&actions)?;
+    assert_eq!(
+        commands
+            .iter()
+            .map(|(title, command, _)| (title.as_str(), command.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("Copy first repair packet", COPY_CONTEXT_COMMAND),
+            ("Inspect gap: copy repair packet", COPY_CONTEXT_COMMAND),
+            (
+                "Write targeted test: open best related test",
+                OPEN_RELATED_TEST_COMMAND
+            ),
+            (
+                "Verify after test: copy verify command",
+                COPY_AGENT_VERIFY_COMMAND
+            ),
+            (
+                "Review result: copy receipt command",
+                COPY_AGENT_RECEIPT_COMMAND
+            ),
+            ("Inspect gap: copy static-limit note", COPY_CONTEXT_COMMAND),
+            ("Refresh Analysis - Saved Workspace Check", REFRESH_COMMAND),
+        ],
+        "the editor adoption baseline must keep one bounded repair ladder"
+    );
+    let packet = commands[0].2[0]["packet"]
+        .as_str()
+        .ok_or_else(|| "missing first repair packet text".to_string())?;
+    assert!(packet.contains("Language status: preview"));
+    assert!(packet.contains("Static limit: missing_import_graph"));
+    assert!(packet.contains("Verify command:\nripr agent verify --root . --json"));
+    assert!(packet.contains("Receipt command:\nripr agent receipt --root . --json"));
+    let static_limit_position = packet
+        .find("Static limit: missing_import_graph")
+        .ok_or_else(|| format!("missing static limit in first repair packet:\n{packet}"))?;
+    let suggested_action_position = packet
+        .find("Suggested action:")
+        .ok_or_else(|| format!("missing suggested action in first repair packet:\n{packet}"))?;
+    assert!(
+        static_limit_position < suggested_action_position,
+        "static limits must stay before action language:\n{packet}"
+    );
+
+    let unvalidated_snapshot = sample_analysis_snapshot(
+        root.path().to_path_buf(),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    let unvalidated_actions = code_action_response(
+        &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
+        Some(&unvalidated_snapshot),
+    );
+    let unvalidated_commands = code_action_commands(&unvalidated_actions)?;
+    assert_eq!(
+        unvalidated_commands
+            .iter()
+            .map(|(title, command, _)| (title.as_str(), command.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("Refresh Analysis - Saved Workspace Check", REFRESH_COMMAND)],
+        "stale or unvalidated adoption-baseline evidence must fail closed to refresh"
+    );
+    Ok(())
+}
+
+#[test]
 fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Result<(), String> {
     let seam = sample_classified_seam();
     let diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
