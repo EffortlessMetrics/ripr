@@ -42,3 +42,22 @@ pub(crate) mod suppressions;
 pub(crate) mod test_oracle_assistant_proof;
 pub(crate) mod value_path;
 pub(crate) mod waiver_aging;
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use std::path::{Path, PathBuf};
+
+    pub(crate) fn repo_root() -> Result<PathBuf, String> {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        manifest_dir
+            .parent()
+            .and_then(Path::parent)
+            .map(Path::to_path_buf)
+            .ok_or_else(|| "failed to resolve repo root".to_string())
+    }
+
+    pub(crate) fn read_file(path: &Path) -> Result<String, String> {
+        std::fs::read_to_string(path)
+            .map_err(|err| format!("read {} failed: {err}", path.display()))
+    }
+}
