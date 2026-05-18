@@ -30051,6 +30051,10 @@ fn detected_surface_rows(changes: &[ChangedPath]) -> Vec<(&'static str, Vec<Stri
     ]
 }
 
+fn is_human_output_path(path: &str) -> bool {
+    path == "crates/ripr/src/output/human.rs" || path.starts_with("crates/ripr/src/output/human/")
+}
+
 fn public_contract_rows(changes: &[ChangedPath]) -> Vec<(&'static str, Vec<String>)> {
     vec![
         (
@@ -30071,7 +30075,7 @@ fn public_contract_rows(changes: &[ChangedPath]) -> Vec<(&'static str, Vec<Strin
         ),
         (
             "Human output",
-            paths_matching(changes, |path| path == "crates/ripr/src/output/human.rs"),
+            paths_matching(changes, is_human_output_path),
         ),
         (
             "LSP",
@@ -39070,6 +39074,10 @@ jobs:
                 path: "editors/vscode/src/client.ts".to_string(),
                 statuses: BTreeSet::from(["M".to_string()]),
             },
+            ChangedPath {
+                path: "crates/ripr/src/output/human/sections.rs".to_string(),
+                statuses: BTreeSet::from(["A".to_string()]),
+            },
         ];
 
         let rows = public_contract_rows(&changes);
@@ -39083,9 +39091,15 @@ jobs:
             .find(|(label, _)| *label == "LSP")
             .map(|(_, paths)| paths.clone())
             .unwrap_or_default();
+        let human = rows
+            .iter()
+            .find(|(label, _)| *label == "Human output")
+            .map(|(_, paths)| paths.clone())
+            .unwrap_or_default();
 
         assert_eq!(json, vec!["crates/ripr/src/output/json/report.rs (M)"]);
         assert_eq!(lsp, vec!["editors/vscode/src/client.ts (M)"]);
+        assert_eq!(human, vec!["crates/ripr/src/output/human/sections.rs (A)"]);
     }
 
     #[test]
