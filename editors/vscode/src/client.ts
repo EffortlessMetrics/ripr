@@ -31,6 +31,17 @@ const RIPR_RELATED_TEST_LANGUAGE_BY_EXTENSION = new Map<string, 'rust' | 'typesc
   ['.py', 'python']
 ]);
 const RIPR_CONFIG_RELATIVE_PATH = 'ripr.toml';
+
+function riprDocumentSelectorsForWorkspace(
+  workspaceRoot: string
+): Array<{ language: string; scheme: 'file'; pattern: string }> {
+  const workspacePattern = `${workspaceRoot.replace(/\\/g, '/')}/**/*`;
+  return RIPR_DOCUMENT_SELECTORS.map((selector) => ({
+    ...selector,
+    pattern: workspacePattern
+  }));
+}
+
 const RIPR_SETUP_ARTIFACTS: RiprSetupArtifactDefinition[] = [
   {
     label: 'first useful action report',
@@ -130,6 +141,7 @@ export interface RiprClientRuntime {
     serverOptions: ServerOptions,
     clientOptions: LanguageClientOptions
   ): RiprLanguageClient;
+  createFileSystemWatcher(pattern: vscode.GlobPattern): vscode.FileSystemWatcher;
   readFile(filePath: string): Promise<string | undefined>;
   runRipr(command: string, args: string[], cwd: string): Promise<string>;
   writeClipboard(text: string): Promise<void>;
@@ -158,6 +170,7 @@ const defaultRuntime: RiprClientRuntime = {
   resolveServer,
   createLanguageClient: (serverOptions, clientOptions) =>
     new LanguageClient('ripr', 'ripr', serverOptions, clientOptions),
+  createFileSystemWatcher: (pattern) => vscode.workspace.createFileSystemWatcher(pattern),
   readFile: readOptionalFile,
   runRipr,
   writeClipboard: async (text) => {
@@ -272,7 +285,7 @@ export class RiprClientController {
     };
 
     const clientOptions: LanguageClientOptions = {
-      documentSelector: RIPR_DOCUMENT_SELECTORS,
+      documentSelector: riprDocumentSelectorsForWorkspace(this.workspaceRoot),
       initializationOptions: {
         baseRef: config.baseRef,
         checkMode: config.checkMode,
@@ -282,7 +295,9 @@ export class RiprClientController {
       revealOutputChannelOn: RevealOutputChannelOn.Never,
       traceOutputChannel: this.output,
       synchronize: {
-        fileEvents: vscode.workspace.createFileSystemWatcher('**/Cargo.toml')
+        fileEvents: this.runtime.createFileSystemWatcher(
+          new vscode.RelativePattern(this.workspaceRoot, '**/Cargo.toml')
+        )
       }
     };
 
@@ -762,6 +777,11 @@ export class RiprClientController {
     const editor = vscode.window.activeTextEditor;
     if (!editor || !isRiprFileDocument(editor.document)) {
       this.runtime.showInformationMessage('Open the diagnostic file before copying diagnostic-scoped first-pr packet actions.');
+      return false;
+    }
+    const rootBlocker = this.activeDocumentRootBlocker(editor.document);
+    if (rootBlocker) {
+      this.runtime.showInformationMessage(rootBlocker);
       return false;
     }
     const diagnostic = nearestGapDiagnostic(editor);
