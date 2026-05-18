@@ -44,7 +44,7 @@ Release themes:
 
 Detailed changes:
 - Changelog source range: the 0.6.0 notes were reconciled against merged PRs
-  and first-parent commits through `9b9693c6` / #1138 on current `main`.
+  and first-parent commits through `293cd30d` / #1130 on current `main`.
   Internal learning-doc polish is intentionally not part of the public release
   story. Remaining open non-release PR families stay outside this section until
   they land.
@@ -63,6 +63,10 @@ Detailed changes:
 - Report packet index availability now requires the primary Markdown artifact
   instead of treating a JSON sibling as sufficient, keeping the uploaded review
   artifact front door honest.
+- TypeScript preview assertion extraction now sees common nested test-body
+  statements and returned or awaited async expectation chains. This improves
+  preview advisory evidence collection while staying syntax-only, non-gating,
+  and separate from Rust stable evidence authority.
 - Lane 1 evidence audit generation now streams repo-exposure latency
   breadcrumbs during long live-repo runs and records bounded generation
   diagnostics in `inputs.repo_exposure_generation`, including timeout, status,
