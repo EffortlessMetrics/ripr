@@ -1558,6 +1558,18 @@ mod tests {
     }
 
     #[test]
+    fn resolve_at_ignores_empty_arguments() {
+        let seam = predicate_seam();
+        let facts = ValueEnvFacts::default();
+        let env = ValueEnv::new(&seam, &facts);
+
+        assert!(
+            env.resolve_at("   ", 1).is_empty(),
+            "empty argument text must not produce activation values"
+        );
+    }
+
+    #[test]
     fn extract_module_constants_finds_const_and_static_top_level() {
         let source = "pub const A: i32 = 1;\nstatic B: i32 = 2;\n\
                       pub(crate) const C: i32 = 3;\n";

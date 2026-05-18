@@ -257,6 +257,7 @@ tests = [
   "crates/ripr/src/analysis/value_resolution.rs::tests::resolve_same_test_struct_field_projection_requires_value_visible_at_call",
   "crates/ripr/src/analysis/value_resolution.rs::tests::resolve_same_test_struct_field_projection_is_column_scoped_on_same_line",
   "crates/ripr/src/analysis/value_resolution.rs::tests::resolve_same_test_struct_field_projection_is_mutation_scoped",
+  "crates/ripr/src/analysis/value_resolution.rs::tests::resolve_at_ignores_empty_arguments",
   "crates/ripr/src/analysis/test_grip_evidence.rs::tests::evidence_for_seams_is_deterministic_across_input_order",
   "crates/ripr/src/analysis/seam_classification.rs::tests::given_all_ripr_stages_yes_and_strong_oracle_then_seam_is_strongly_gripped",
   "crates/ripr/src/analysis/seam_classification.rs::tests::given_related_tests_with_missing_boundary_discriminator_then_seam_is_weakly_gripped",
