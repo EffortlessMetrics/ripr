@@ -44,10 +44,10 @@ Release themes:
 
 Detailed changes:
 - Changelog source range: the 0.6.0 notes were reconciled against merged PRs
-  and first-parent commits through `4f80ffd5` / #1208 on current `main`.
+  and first-parent commits through `9b9693c6` / #1138 on current `main`.
   Internal learning-doc polish is intentionally not part of the public release
-  story. Open release-hardening PRs such as #1138 remain outside this section
-  until they land.
+  story. Remaining open non-release PR families stay outside this section until
+  they land.
 - Removed-only diff hunks now still seed probes, so deleting or changing a
   behavior-bearing line without an added replacement does not disappear from
   static review. Related diff hardening covers quoted and metadata-bearing diff
@@ -60,6 +60,9 @@ Detailed changes:
 - Generated CI and report packets now align their first screen on the canonical
   repair unit, keeping the start-here path centered on the actionable evidence
   item rather than on raw supporting signals.
+- Report packet index availability now requires the primary Markdown artifact
+  instead of treating a JSON sibling as sufficient, keeping the uploaded review
+  artifact front door honest.
 - Lane 1 evidence audit generation now streams repo-exposure latency
   breadcrumbs during long live-repo runs and records bounded generation
   diagnostics in `inputs.repo_exposure_generation`, including timeout, status,
