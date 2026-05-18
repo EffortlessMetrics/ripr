@@ -10,7 +10,7 @@ import {
   Trace
 } from 'vscode-languageclient/node';
 import { getConfig, RiprConfig } from './config';
-import { resolveServer, ResolveFailure, ResolvedServer } from './serverResolver';
+import { requestedServerVersion, resolveServer, ResolveFailure, ResolvedServer } from './serverResolver';
 
 const RIPR_DOCUMENT_SELECTORS: Array<{ language: string; scheme: 'file' }> = [
   { language: 'rust', scheme: 'file' },
@@ -133,6 +133,7 @@ export interface RiprClientRuntime {
   readFile(filePath: string): Promise<string | undefined>;
   runRipr(command: string, args: string[], cwd: string): Promise<string>;
   writeClipboard(text: string): Promise<void>;
+  isWorkspaceTrusted(): boolean;
   showInformationMessage(message: string): Thenable<string | undefined>;
   showWarningMessage(message: string): Thenable<string | undefined>;
   showErrorMessage(message: string, ...items: string[]): Thenable<string | undefined>;
@@ -150,6 +151,7 @@ const defaultRuntime: RiprClientRuntime = {
     await vscode.env.clipboard.writeText(text);
     await writeTestClipboardCapture(text);
   },
+  isWorkspaceTrusted: () => vscode.workspace.isTrusted,
   showInformationMessage: (message) => vscode.window.showInformationMessage(message),
   showWarningMessage: (message) => vscode.window.showWarningMessage(message),
   showErrorMessage: (message, ...items) => vscode.window.showErrorMessage(message, ...items)
@@ -460,6 +462,11 @@ export class RiprClientController {
     const editor = vscode.window.activeTextEditor;
     if (!editor || !isRiprFileDocument(editor.document)) {
       this.runtime.showInformationMessage('Open a Rust, TypeScript/JavaScript, or Python file before starting a ripr repair.');
+      return;
+    }
+    const setupBlocker = setupRepairBlocker(this.statusContext());
+    if (setupBlocker) {
+      this.runtime.showInformationMessage(setupBlocker);
       return;
     }
     const diagnostic = nearestGapDiagnostic(editor);
@@ -894,7 +901,11 @@ export class RiprClientController {
   }
 
   private statusContext(): RiprStatusContext {
+    const config = this.runtime.getConfig();
     return {
+      extensionVersion: extensionVersion(this.context),
+      expectedServerVersion: requestedServerVersion(this.context, config),
+      workspaceTrusted: this.runtime.isWorkspaceTrusted(),
       workspaceRoot: this.workspaceRoot,
       server: this.server,
       documentLanguages: RIPR_DOCUMENT_SELECTORS.map((selector) => selector.language),
@@ -936,6 +947,9 @@ interface RiprStatusState {
 }
 
 interface RiprStatusContext {
+  extensionVersion: string;
+  expectedServerVersion: string;
+  workspaceTrusted: boolean;
   workspaceRoot?: string;
   server?: ResolvedServer;
   documentLanguages: string[];
@@ -1181,6 +1195,7 @@ function setupDiagnosisReport(
 
 function statusContextLines(status: RiprStatusState, context: RiprStatusContext): string[] {
   const lines = [`Workspace: ${context.workspaceRoot ?? 'not open'}`];
+  lines.push(...setupCompatibilityLines(context));
   if (context.server) {
     lines.push(`Server: ${context.server.source} (${context.server.detail})`);
     lines.push(`Server command: ${context.server.command}`);
@@ -1203,6 +1218,162 @@ function statusContextLines(status: RiprStatusState, context: RiprStatusContext)
     lines.push(setupFileLine(`Artifact ${artifact.label}`, artifact));
   }
   return lines;
+}
+
+type RiprSetupState =
+  | 'extension_version_ok'
+  | 'ripr_missing'
+  | 'ripr_version_ok'
+  | 'ripr_version_too_old'
+  | 'ripr_version_unknown'
+  | 'workspace_trusted'
+  | 'workspace_untrusted'
+  | 'workspace_not_open'
+  | 'config_found'
+  | 'config_missing'
+  | 'config_unreadable'
+  | 'config_not_applicable'
+  | 'artifact_dir_present'
+  | 'artifact_dir_missing'
+  | 'artifact_dir_not_applicable';
+
+function setupCompatibilityLines(context: RiprStatusContext): string[] {
+  const serverState = riprServerVersionState(context);
+  return [
+    `Extension state: extension_version_ok (${context.extensionVersion})`,
+    `Expected ripr server version: ${context.expectedServerVersion}`,
+    `ripr server state: ${serverState.state}${serverState.detail ? ` (${serverState.detail})` : ''}`,
+    `Workspace trust state: ${workspaceTrustState(context)}`,
+    `Config state: ${configSetupState(context.setupStatus.config)}`,
+    `Artifact directory state: ${artifactDirectoryState(context.setupStatus)}`
+  ];
+}
+
+function setupRepairBlocker(context: RiprStatusContext): string | undefined {
+  if (workspaceTrustState(context) === 'workspace_untrusted') {
+    return 'ripr setup is not trusted for repair actions: workspace_untrusted. Trust the workspace, then rerun ripr: Diagnose Setup.';
+  }
+  const serverState = riprServerVersionState(context);
+  if (serverState.state === 'ripr_missing') {
+    return 'ripr setup is not ready for repair actions: ripr_missing. Run ripr: Diagnose Setup for install and server path guidance.';
+  }
+  if (serverState.state === 'ripr_version_too_old') {
+    return 'ripr setup is not ready for repair actions: ripr_version_too_old. Update the ripr server or pin a compatible ripr.server.version.';
+  }
+  if (serverState.state === 'ripr_version_unknown') {
+    return 'ripr setup is not ready for repair actions: ripr_version_unknown. Run ripr: Diagnose Setup before acting on editor repair packets.';
+  }
+  return undefined;
+}
+
+function extensionVersion(context: vscode.ExtensionContext): string {
+  const version = context.extension?.packageJSON?.version;
+  return typeof version === 'string' && version.trim() !== '' ? version.replace(/^v/, '') : '0.6.0';
+}
+
+function workspaceTrustState(context: RiprStatusContext): RiprSetupState {
+  if (!context.workspaceRoot) {
+    return 'workspace_not_open';
+  }
+  return context.workspaceTrusted ? 'workspace_trusted' : 'workspace_untrusted';
+}
+
+function configSetupState(config: RiprSetupFileStatus): RiprSetupState {
+  switch (config.state) {
+    case 'found':
+      return 'config_found';
+    case 'missing':
+      return 'config_missing';
+    case 'unreadable':
+      return 'config_unreadable';
+    case 'noWorkspace':
+      return 'config_not_applicable';
+  }
+}
+
+function artifactDirectoryState(setup: RiprSetupStatus): RiprSetupState {
+  if (setup.artifacts.some((artifact) => artifact.state === 'noWorkspace') || setup.firstPr.state === 'noWorkspace') {
+    return 'artifact_dir_not_applicable';
+  }
+  const trackedArtifactFound = setup.artifacts.some((artifact) => artifact.state === 'found')
+    || setup.receipt.state === 'found'
+    || firstPrPacketStoredInTarget(setup.firstPr);
+  return trackedArtifactFound ? 'artifact_dir_present' : 'artifact_dir_missing';
+}
+
+function firstPrPacketStoredInTarget(packet: RiprFirstPrPacketStatus): boolean {
+  return packet.state !== 'missing'
+    && packet.state !== 'noWorkspace'
+    && packet.relativePath.startsWith('target/ripr/');
+}
+
+function riprServerVersionState(context: RiprStatusContext): { state: RiprSetupState; detail?: string } {
+  const version = context.server?.version;
+  if (!context.server) {
+    return { state: 'ripr_missing' };
+  }
+  if (!version || version.trim() === '') {
+    return { state: 'ripr_version_unknown', detail: 'server did not report --version output' };
+  }
+  const actual = parseVersion(version);
+  const expected = parseVersion(context.expectedServerVersion);
+  if (!actual || !expected) {
+    return { state: 'ripr_version_unknown', detail: `reported ${version}` };
+  }
+  if (compareVersions(actual, expected) < 0) {
+    return { state: 'ripr_version_too_old', detail: `reported ${version}; expected ${context.expectedServerVersion}` };
+  }
+  return { state: 'ripr_version_ok', detail: version };
+}
+
+function parseVersion(value: string): [number, number, number] | undefined {
+  for (let index = 0; index < value.length; index += 1) {
+    if (!isAsciiDigit(value.charCodeAt(index))) {
+      continue;
+    }
+    const major = readVersionNumber(value, index);
+    if (!major || value.charAt(major.nextIndex) !== '.') {
+      continue;
+    }
+    const minor = readVersionNumber(value, major.nextIndex + 1);
+    if (!minor || value.charAt(minor.nextIndex) !== '.') {
+      continue;
+    }
+    const patch = readVersionNumber(value, minor.nextIndex + 1);
+    if (!patch) {
+      continue;
+    }
+    return [major.value, minor.value, patch.value];
+  }
+  return undefined;
+}
+
+function readVersionNumber(value: string, startIndex: number): { value: number; nextIndex: number } | undefined {
+  let nextIndex = startIndex;
+  while (nextIndex < value.length && isAsciiDigit(value.charCodeAt(nextIndex))) {
+    nextIndex += 1;
+  }
+  if (nextIndex === startIndex) {
+    return undefined;
+  }
+  return {
+    value: Number(value.slice(startIndex, nextIndex)),
+    nextIndex
+  };
+}
+
+function isAsciiDigit(code: number): boolean {
+  return code >= 48 && code <= 57;
+}
+
+function compareVersions(left: [number, number, number], right: [number, number, number]): number {
+  for (let index = 0; index < left.length; index += 1) {
+    const diff = left[index] - right[index];
+    if (diff !== 0) {
+      return diff;
+    }
+  }
+  return 0;
 }
 
 function setupFileLine(prefix: string, file: RiprSetupFileStatus): string {
