@@ -19,8 +19,50 @@ first useful CLI, editor, or CI experience.
 
 ## Last Published Release Proof
 
+The `ripr 0.6.0` release was published and verified on 2026-05-18. The
+verified public loop covers `ripr first-pr`, zero-config `ripr pilot`,
+`ripr outcome`, `ripr agent verify`, `ripr agent receipt`, saved-workspace
+editor actions, first-run/start-here guidance, operator cockpit status, and
+generated non-blocking CI artifacts.
+
+Post-publish proof covered:
+
+- crates.io serving `ripr 0.6.0`;
+- public `cargo install ripr --version 0.6.0 --locked`;
+- installed CLI smoke for `doctor`, `first-pr --help`, `first-pr`, `pilot`,
+  `outcome`, `agent verify`, and `agent receipt`;
+- GitHub Release `v0.6.0` with VSIX, server manifest, checksums, and all
+  supported server archives (Windows, Linux x86_64/aarch64, macOS
+  x86_64/aarch64);
+- VS Marketplace serving `EffortlessMetrics.ripr@0.6.0`;
+- Open VSX serving `EffortlessMetrics.ripr@0.6.0`.
+
+Release execution also verified the Windows server archive checksum, the
+downloaded VSIX package version, the Open VSX badge/listing routes, and the
+public-copy boundary. Isolated marketplace install smoke remains useful
+post-release hygiene, but the 0.6.0 public availability claim is already
+verified by the release closeout.
+
+## Next Release-Candidate Proof
+
+Use this section for the next unreleased line. Until the maintainer tags,
+publishes, and verifies new public artifacts, do not claim crates.io, GitHub
+Release, VS Marketplace, or Open VSX availability for that next version.
+
+Pre-publish proof should record:
+
+- local package and publish dry-run success;
+- path-installed `ripr --version` and `ripr first-pr --help`;
+- generated CI dry-run with start-here/advisory gate boundaries;
+- VSIX packaging success;
+- one external-adopter smoke showing an installed binary can find one Rust
+  repairable gap, produce a bounded packet or no-action state, add one focused
+  proof outside `ripr`, and verify static movement.
+
+## Previous Release Proof
+
 The `ripr 0.5.0` release was published and verified on 2026-05-10. The
-verified public loop covers zero-config `ripr pilot`, `ripr outcome`,
+verified public loop covered zero-config `ripr pilot`, `ripr outcome`,
 `ripr agent verify`, `ripr agent receipt`, saved-workspace editor actions,
 operator cockpit status, and generated non-blocking CI artifacts.
 
@@ -36,28 +78,7 @@ Post-publish proof covered:
 - VS Marketplace serving `EffortlessMetrics.ripr@0.5.0`;
 - Open VSX serving `EffortlessMetrics.ripr@0.5.0`.
 
-Windows server archive checksum smoke and isolated marketplace install
-smoke remain follow-up items handled by the maintainer when convenient;
-they were unchanged for the `0.4.0` release proof and are not gating the
-defaults-first public install loop.
-
-## 0.6.x Release-Candidate Proof
-
-The `0.6.x` line is the current release-candidate line. Until the maintainer
-tags, publishes, and verifies 0.6.x public artifacts, do not claim crates.io,
-GitHub Release, VS Marketplace, or Open VSX availability for 0.6.x.
-
-Pre-publish proof for 0.6.x should record:
-
-- local package and publish dry-run success;
-- path-installed `ripr --version` and `ripr first-pr --help`;
-- generated CI dry-run with start-here/advisory gate boundaries;
-- VSIX packaging success;
-- one external-adopter smoke showing an installed binary can find one Rust
-  repairable gap, produce a bounded packet or no-action state, add one focused
-  proof outside `ripr`, and verify static movement.
-
-## Previous Release Proof
+## Older Release Proof
 
 The `ripr 0.4.0` release was published and verified on 2026-05-07. The
 verified public loop covered zero-config `ripr pilot`, `ripr outcome`,

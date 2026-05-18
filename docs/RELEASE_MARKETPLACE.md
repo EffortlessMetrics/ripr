@@ -140,7 +140,8 @@ defaults-first releases, the matching server must also pass the
 VS Code Marketplace listing is live.
 Open VSX listing is live.
 Both listings show the same version.
-VS Marketplace manual install badge count was refreshed.
+VS Marketplace manual install badge count was refreshed from publisher
+metrics or explicitly disclosed as static/deferred.
 Open VSX download badge renders.
 GitHub Release has the VSIX attached.
 Installing from each registry works.
@@ -168,7 +169,12 @@ Open VSX download badges may use live Shields routes:
 https://img.shields.io/open-vsx/dt/EffortlessMetrics/ripr
 ```
 
-After each extension release:
+After each extension release, either refresh the static VS Marketplace count
+from publisher metrics or record why the static count was intentionally left
+unchanged in the release proof. Do not infer a new count from public badge
+rendering or hand-edit the number without the publisher metrics source.
+
+When refreshing:
 
 1. Open the VS Marketplace publisher metrics page.
 2. Record the current install count.
