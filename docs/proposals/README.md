@@ -83,5 +83,7 @@ Start new proposals from
 | [RIPR-PROP-0005](RIPR-PROP-0005-user-visible-output-evidence.md) | proposed | User-visible output evidence |
 | [RIPR-PROP-0006](RIPR-PROP-0006-rust-usable-gap-projection.md) | accepted | Rust usable gap projection |
 | [RIPR-PROP-0007](RIPR-PROP-0007-editor-gap-cockpit.md) | accepted | Editor gap cockpit |
-| [RIPR-PROP-0008](RIPR-PROP-0008-editor-first-run-usability.md) | proposed | Editor first-run usability |
-| [RIPR-PROP-0009](RIPR-PROP-0009-first-run-ux-adoption-hardening.md) | proposed | First-run UX and adoption hardening |
+| [RIPR-PROP-0008](RIPR-PROP-0008-editor-first-run-usability.md) | accepted | Editor first-run usability |
+| [RIPR-PROP-0009](RIPR-PROP-0009-first-run-ux-adoption-hardening.md) | accepted | First-run UX and adoption hardening |
+| [RIPR-PROP-0010](RIPR-PROP-0010-editor-first-pr-bridge.md) | accepted | Editor first-pr bridge |
+| [RIPR-PROP-0011](RIPR-PROP-0011-start-here-surface-convergence.md) | proposed | Start-here surface convergence |

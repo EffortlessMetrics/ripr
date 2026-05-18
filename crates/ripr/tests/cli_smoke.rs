@@ -410,6 +410,69 @@ fn first_action_cli_writes_actionable_report() -> Result<(), Box<dyn std::error:
 }
 
 #[test]
+fn first_pr_cli_writes_start_here_packet() -> Result<(), Box<dyn std::error::Error>> {
+    let workspace = unique_temp_workspace("first-pr");
+    let reports = workspace.join("target/ripr/reports");
+    std::fs::create_dir_all(&reports)?;
+    let reports_arg = reports.display().to_string();
+    let output = run_ripr_in_workspace(&[
+        "first-pr",
+        "--root",
+        ".",
+        "--base",
+        "origin/main",
+        "--head",
+        "HEAD",
+        "--gap-ledger",
+        "fixtures/first_successful_pr/boundary-gap/inputs/reports/gap-decision-ledger.json",
+        "--out-dir",
+        &reports_arg,
+    ])?;
+    assert_success(&output);
+
+    let json_path = reports.join("start-here.json");
+    let md_path = reports.join("start-here.md");
+    let report: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&json_path)?)?;
+    assert_eq!(json_pointer_str(&report, "/schema_version")?, "0.1");
+    assert_eq!(json_pointer_str(&report, "/kind")?, "first_pr_start_here");
+    assert_eq!(json_pointer_str(&report, "/status")?, "actionable");
+    assert_eq!(json_pointer_str(&report, "/selected/state")?, "top_gap");
+    assert_eq!(
+        json_pointer_str(&report, "/selected/kind")?,
+        "MissingBoundaryAssertion"
+    );
+    assert_eq!(
+        json_pointer_str(&report, "/selected/repair/route")?,
+        "AddBoundaryAssertion"
+    );
+    assert_eq!(json_pointer_str(&report, "/inputs/base")?, "origin/main");
+    assert_eq!(json_pointer_str(&report, "/inputs/head")?, "HEAD");
+    assert_eq!(
+        json_pointer_str(&report, "/commands/verify")?,
+        "cargo xtask fixtures boundary_gap"
+    );
+
+    let markdown = std::fs::read_to_string(&md_path)?;
+    assert!(markdown.contains("# RIPR First PR Start Here"));
+    assert!(markdown.contains("Status: advisory"));
+    assert!(markdown.contains("ripr gap: missing boundary assertion"));
+    assert!(markdown.contains("Pass/fail authority remains with explicit gate-decision artifacts"));
+    let check_output = run_ripr_in_workspace(&[
+        "first-pr",
+        "--root",
+        ".",
+        "--gap-ledger",
+        "fixtures/first_successful_pr/boundary-gap/inputs/reports/gap-decision-ledger.json",
+        "--out-dir",
+        &reports_arg,
+        "--check",
+    ])?;
+    assert_success(&check_output);
+    std::fs::remove_dir_all(workspace)?;
+    Ok(())
+}
+
+#[test]
 fn report_packet_index_cli_writes_packet_index() -> Result<(), Box<dyn std::error::Error>> {
     let workspace = unique_temp_workspace("report-packet-index");
     let reports = workspace.join("target/ripr/reports");
@@ -1101,7 +1164,7 @@ fn agent_receipt_writes_one_seam_handoff_json() -> Result<(), Box<dyn std::error
     assert!(text.contains(r#""schema_version": "0.3""#));
     assert!(text.contains(r#""seam_id": "seam-a""#));
     assert!(text.contains(r#""change": "improved""#));
-    assert!(text.contains(r#""ripr_version": "0.5.0""#));
+    assert!(text.contains(r#""ripr_version": "0.6.0""#));
     assert!(text.contains(r#""repo_root": "#));
     assert!(text.contains(r#""config_fingerprint": "fnv1a64:"#));
     assert!(text.contains(r#""generated_at": "unix_ms:"#));
@@ -1366,6 +1429,10 @@ fn init_ci_github_dry_run_prints_config_and_workflow_without_writing() -> Result
     assert!(stdout.contains("ripr agent review-summary"));
     assert!(stdout.contains("target/ripr/workflow/agent-status.md"));
     assert!(stdout.contains("target/ripr/workflow/agent-review-summary.md"));
+    assert!(stdout.contains("#### First-run status"));
+    assert!(stdout.contains("Start-here artifact:"));
+    assert!(stdout.contains("missing_start_here"));
+    assert!(stdout.contains("cat target/ripr/reports/start-here.md"));
     assert!(stdout.contains("### Language preview grouping"));
     assert!(stdout.contains("github/codeql-action/upload-sarif@v4"));
     assert!(!workspace.join("ripr.toml").exists());
@@ -1451,6 +1518,11 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
     assert!(workflow.contains("Emit RIPR PR guidance annotations"));
     assert!(workflow.contains("Add RIPR advisory summary"));
     assert!(workflow.contains("## RIPR advisory summary"));
+    assert!(workflow.contains("### Start here"));
+    assert!(workflow.contains("#### First-run status"));
+    assert!(workflow.contains("Start-here artifact:"));
+    assert!(workflow.contains("missing_start_here"));
+    assert!(workflow.contains("cat target/ripr/reports/start-here.md"));
     assert!(workflow.contains("### Language preview grouping"));
     assert!(workflow.contains("### SARIF and badge status"));
     assert!(workflow.contains("### PR guidance annotations"));

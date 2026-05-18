@@ -70,6 +70,14 @@ mod tests {
             Err("agent brief requires --json until human output is implemented".to_string())
         );
         assert_eq!(
+            run(args(&["ripr", "first-pr", "--gap-ledger"])),
+            Err("missing value for --gap-ledger".to_string())
+        );
+        assert_eq!(
+            run(args(&["ripr", "start-here", "--gap-ledger"])),
+            Err("missing value for --gap-ledger".to_string())
+        );
+        assert_eq!(
             run(args(&["ripr", "first-action", "--assistant-proof"])),
             Err("missing value for --assistant-proof".to_string())
         );
