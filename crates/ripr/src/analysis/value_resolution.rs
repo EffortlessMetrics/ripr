@@ -24,6 +24,8 @@
 //! 5. `const NAME: T = LITERAL;` / `static NAME: T = LITERAL;` in the
 //!    same source file
 //! 6. `Some(L)` / `Err(L)` constructor unwrap (one level)
+//! 7. `let NAME = Type { field: LITERAL };` plus `NAME.field` in the
+//!    same test body
 //!
 //! Builder method values (`.amount(100).threshold(100)`) are handled
 //! by a separate scan in `extract_builder_facts`; they don't fit the
@@ -39,7 +41,7 @@
 use super::rust_index::{FileFacts, RustIndex, TestSummary};
 use super::seams::{RepoSeam, RequiredDiscriminator};
 use crate::domain::{ValueContext, ValueFact};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Per-test value facts that do not depend on a specific seam. Built
 /// once per indexed test and reused while classifying every seam.
@@ -63,6 +65,9 @@ pub(crate) struct ValueEnvFacts {
     /// `static NAME: T = LITERAL;` at the test's source-file top
     /// level (same-file scope).
     module_constants: BTreeMap<String, String>,
+    /// `IDENT.field -> LITERAL` from same-test struct literals such as
+    /// `let case = DiscountCase { amount: 100 };`.
+    struct_field_bindings: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 impl ValueEnvFacts {
@@ -70,10 +75,12 @@ impl ValueEnvFacts {
         let body_clean = strip_comments_and_strings(&test.body);
         let let_bindings = extract_let_bindings(&body_clean);
         let (rstest_cases, case_param_names) = extract_rstest_cases(test);
+        let test_param_names = extract_fn_param_names(&body_clean);
         let table_bindings = extract_table_bindings(&body_clean);
         let module_constants = file_facts_for(test, index)
             .map(|facts| extract_module_constants(&facts.source))
             .unwrap_or_default();
+        let struct_field_bindings = extract_struct_field_bindings(&body_clean, &test_param_names);
         Self {
             body_clean,
             let_bindings,
@@ -81,6 +88,7 @@ impl ValueEnvFacts {
             case_param_names,
             table_bindings,
             module_constants,
+            struct_field_bindings,
         }
     }
 }
@@ -130,6 +138,12 @@ impl<'a> ValueEnv<'a> {
         // chars, simple paths.
         if looks_like_literal(expr) {
             return vec![(expr.to_string(), ValueContext::FunctionArgument)];
+        }
+        if let Some((object, field)) = field_projection(expr)
+            && let Some(fields) = self.facts.struct_field_bindings.get(object)
+            && let Some(value) = fields.get(field)
+        {
+            return vec![(value.clone(), ValueContext::FunctionArgument)];
         }
         if !is_simple_identifier(expr) {
             return Vec::new();
@@ -339,6 +353,252 @@ fn extract_module_constants(file_source: &str) -> BTreeMap<String, String> {
         out.insert(ident.to_string(), rhs.to_string());
     }
     out
+}
+
+fn extract_struct_field_bindings(
+    body: &str,
+    invalid_idents: &[String],
+) -> BTreeMap<String, BTreeMap<String, String>> {
+    let mut out = BTreeMap::new();
+    let mut seen = BTreeSet::new();
+    let mut invalid = invalid_idents.iter().cloned().collect::<BTreeSet<_>>();
+    let cleaned = strip_comments_and_strings(body);
+    for start in find_all(&cleaned, "let ") {
+        let after_let = &cleaned[start + 4..];
+        let stmt_end = top_level_semicolon(after_let).unwrap_or(after_let.len());
+        let stmt = &after_let[..stmt_end];
+        let Some(eq_idx) = first_single_eq(stmt) else {
+            continue;
+        };
+        let (lhs, rhs) = stmt.split_at(eq_idx);
+        let rhs = rhs[1..].trim();
+        let Some((ident, is_mut)) = let_binding_ident(lhs) else {
+            continue;
+        };
+        if !seen.insert(ident.to_string()) {
+            invalid.insert(ident.to_string());
+            out.remove(ident);
+            continue;
+        }
+        if is_mut {
+            invalid.insert(ident.to_string());
+            out.remove(ident);
+            continue;
+        }
+        let fields = extract_struct_literal_fields(rhs);
+        if !fields.is_empty() {
+            out.insert(ident.to_string(), fields);
+        } else {
+            invalid.insert(ident.to_string());
+            out.remove(ident);
+        }
+    }
+    out.retain(|ident, _| {
+        !invalid.contains(ident)
+            && !has_non_simple_let_shadowing_binding(&cleaned, ident)
+            && !has_field_assignment(&cleaned, ident)
+            && !has_non_let_shadowing_binding(&cleaned, ident)
+    });
+    out
+}
+
+fn let_binding_ident(lhs: &str) -> Option<(&str, bool)> {
+    let ident_part = lhs.split(':').next().unwrap_or(lhs).trim();
+    let (ident, is_mut) = if let Some(rest) = ident_part.strip_prefix("mut ") {
+        (rest.trim(), true)
+    } else {
+        (ident_part, false)
+    };
+    is_simple_identifier(ident).then_some((ident, is_mut))
+}
+
+fn has_non_simple_let_shadowing_binding(body: &str, ident: &str) -> bool {
+    for start in find_all(body, "let ") {
+        let after_let = &body[start + 4..];
+        let stmt_end = top_level_semicolon(after_let).unwrap_or(after_let.len());
+        let stmt = &after_let[..stmt_end];
+        let Some(eq_idx) = first_single_eq(stmt) else {
+            continue;
+        };
+        let (lhs, _) = stmt.split_at(eq_idx);
+        if let_binding_ident(lhs).is_none() && contains_identifier_token(lhs, ident) {
+            return true;
+        }
+    }
+    false
+}
+
+fn extract_struct_literal_fields(rhs: &str) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    let rhs = rhs.trim();
+    let Some(open) = rhs.find('{') else {
+        return out;
+    };
+    if !rhs.ends_with('}') {
+        return out;
+    }
+    let type_part = rhs[..open].trim();
+    if type_part.is_empty()
+        || !type_part
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == ':' || ch.is_whitespace())
+    {
+        return out;
+    }
+    let Some(inner) = rhs[open..]
+        .strip_prefix('{')
+        .and_then(|text| text.strip_suffix('}'))
+    else {
+        return out;
+    };
+    for field in split_top_level(inner) {
+        let Some((name, value)) = split_field_literal(&field) else {
+            continue;
+        };
+        out.insert(name.to_string(), value.to_string());
+    }
+    out
+}
+
+fn split_field_literal(field: &str) -> Option<(&str, &str)> {
+    let (name, value) = field.split_once(':')?;
+    let name = name.trim();
+    let value = value.trim();
+    if !is_simple_identifier(name) || !looks_like_literal(value) {
+        return None;
+    }
+    Some((name, value))
+}
+
+fn has_field_assignment(body: &str, ident: &str) -> bool {
+    let needle = format!("{ident}.");
+    let mut search_from = 0;
+    while let Some(rel) = body[search_from..].find(&needle) {
+        let abs = search_from + rel;
+        let boundary_ok = abs == 0
+            || body
+                .as_bytes()
+                .get(abs - 1)
+                .is_some_and(|b| !(b.is_ascii_alphanumeric() || *b == b'_'));
+        let after_start = abs + needle.len();
+        if !boundary_ok {
+            search_from = after_start;
+            continue;
+        }
+        let after = &body[after_start..];
+        let field_len = after
+            .chars()
+            .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
+            .map(char::len_utf8)
+            .sum::<usize>();
+        if field_len > 0 && is_assignment_operator(after[field_len..].trim_start()) {
+            return true;
+        }
+        search_from = after_start;
+    }
+    false
+}
+
+fn has_non_let_shadowing_binding(body: &str, ident: &str) -> bool {
+    for line in body.lines() {
+        if has_for_binding(line, ident)
+            || has_let_pattern_binding(line, "if let ", ident)
+            || has_let_pattern_binding(line, "while let ", ident)
+            || has_closure_param_binding(line, ident)
+            || has_match_arm_binding(line, ident)
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn has_for_binding(line: &str, ident: &str) -> bool {
+    let mut rest = line;
+    while let Some(idx) = rest.find("for ") {
+        let after = &rest[idx + 4..];
+        let pattern_end = after.find(" in ").unwrap_or(after.len());
+        if contains_identifier_token(&after[..pattern_end], ident) {
+            return true;
+        }
+        rest = &after[pattern_end..];
+    }
+    false
+}
+
+fn has_let_pattern_binding(line: &str, prefix: &str, ident: &str) -> bool {
+    let mut rest = line;
+    while let Some(idx) = rest.find(prefix) {
+        let after = &rest[idx + prefix.len()..];
+        let pattern_end = first_single_eq(after).unwrap_or(after.len());
+        if contains_identifier_token(&after[..pattern_end], ident) {
+            return true;
+        }
+        rest = &after[pattern_end..];
+    }
+    false
+}
+
+fn has_closure_param_binding(line: &str, ident: &str) -> bool {
+    let mut rest = line;
+    while let Some(start) = rest.find('|') {
+        let after_start = &rest[start + 1..];
+        let Some(end) = after_start.find('|') else {
+            return false;
+        };
+        if contains_identifier_token(&after_start[..end], ident) {
+            return true;
+        }
+        rest = &after_start[end + 1..];
+    }
+    false
+}
+
+fn has_match_arm_binding(line: &str, ident: &str) -> bool {
+    let Some(arm) = line.find("=>") else {
+        return false;
+    };
+    contains_identifier_token(&line[..arm], ident)
+}
+
+fn contains_identifier_token(text: &str, ident: &str) -> bool {
+    if ident.is_empty() {
+        return false;
+    }
+    let bytes = text.as_bytes();
+    let ident_bytes = ident.as_bytes();
+    let mut start = 0;
+    while let Some(rel) = text[start..].find(ident) {
+        let abs = start + rel;
+        let before_ok = abs == 0
+            || bytes
+                .get(abs - 1)
+                .is_some_and(|b| !(b.is_ascii_alphanumeric() || *b == b'_'));
+        let after_idx = abs + ident_bytes.len();
+        let after_ok = after_idx >= bytes.len()
+            || bytes
+                .get(after_idx)
+                .is_some_and(|b| !(b.is_ascii_alphanumeric() || *b == b'_'));
+        if before_ok && after_ok {
+            return true;
+        }
+        start = after_idx;
+    }
+    false
+}
+
+fn is_assignment_operator(text: &str) -> bool {
+    if text.starts_with("==")
+        || text.starts_with("=>")
+        || text.starts_with(">=")
+        || text.starts_with("<=")
+    {
+        return false;
+    }
+    text.starts_with('=')
+        || ["+=", "-=", "*=", "/=", "%=", "&=", "|=", "^="]
+            .iter()
+            .any(|op| text.starts_with(op))
 }
 
 /// Parse `#[case(L, L, ...)]` attributes captured on the test fn,
@@ -640,6 +900,20 @@ fn looks_like_literal(expr: &str) -> bool {
     false
 }
 
+fn field_projection(expr: &str) -> Option<(&str, &str)> {
+    let (object, field) = expr.trim().split_once('.')?;
+    if field.contains('.') {
+        return None;
+    }
+    let object = object.trim();
+    let field = field.trim();
+    if is_simple_identifier(object) && is_simple_identifier(field) {
+        Some((object, field))
+    } else {
+        None
+    }
+}
+
 fn is_simple_identifier(text: &str) -> bool {
     !text.is_empty()
         && text
@@ -847,6 +1121,116 @@ mod tests {
         assert_eq!(bindings.get("b").map(String::as_str), Some("200"));
         assert_eq!(bindings.get("c").map(String::as_str), Some("300"));
         assert!(!bindings.contains_key("d"), "non-literal RHS must not bind");
+    }
+
+    #[test]
+    fn extract_struct_field_bindings_picks_up_literal_fields_only() -> Result<(), String> {
+        let body = "let case = DiscountCase { amount: 100, threshold: 100, \
+                    computed: make_amount() };\n";
+        let bindings = extract_struct_field_bindings(body, &[]);
+        let fields = bindings
+            .get("case")
+            .ok_or_else(|| "same-test struct literal should be indexed".to_string())?;
+
+        assert_eq!(fields.get("amount").map(String::as_str), Some("100"));
+        assert_eq!(fields.get("threshold").map(String::as_str), Some("100"));
+        assert!(
+            !fields.contains_key("computed"),
+            "non-literal struct fields must stay unresolved"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn extract_struct_field_bindings_skips_shadowed_or_mutated_bindings() {
+        for body in [
+            "let case = DiscountCase { amount: 100 };\nlet case = make_discount_case();\n",
+            "let case = DiscountCase { amount: 100 };\ncase.amount = make_amount();\n",
+            "let mut case = DiscountCase { amount: 100 };\n",
+        ] {
+            let bindings = extract_struct_field_bindings(body, &[]);
+            assert!(
+                !bindings.contains_key("case"),
+                "shadowed or mutable fixture bindings must stay unresolved: {body}"
+            );
+        }
+    }
+
+    #[test]
+    fn extract_struct_field_bindings_skips_test_function_parameters() {
+        let body = "fn via_param(case: DiscountCase) { \
+                        discounted_total(case.amount, case.threshold); \
+                        let case = DiscountCase { amount: 100, threshold: 100 }; \
+                    }\n";
+        let param_names = extract_fn_param_names(body);
+        let bindings = extract_struct_field_bindings(body, &param_names);
+
+        assert!(
+            !bindings.contains_key("case"),
+            "fixture parameter names must not resolve from later same-name literals"
+        );
+    }
+
+    #[test]
+    fn extract_struct_field_bindings_skips_common_non_let_shadowing_binders() {
+        for body in [
+            "let case = DiscountCase { amount: 100 };\n\
+             for case in helper_cases() { discounted_total(case.amount, 100); }\n",
+            "let q = Quote { amount: 100 };\n\
+             for q in helper_cases() { discounted_total(q.amount, 100); }\n",
+            "let case = DiscountCase { amount: 100 };\n\
+             if let Some(case) = make_case() { discounted_total(case.amount, 100); }\n",
+            "let case = DiscountCase { amount: 100 };\n\
+             cases.iter().for_each(|case| discounted_total(case.amount, 100));\n",
+            "let case = DiscountCase { amount: 100 };\n\
+             match make_case() { Some(case) => discounted_total(case.amount, 100), _ => 0 };\n",
+        ] {
+            let bindings = extract_struct_field_bindings(body, &[]);
+            assert!(
+                !bindings.contains_key("case"),
+                "non-let shadowing binders must keep projection values unresolved: {body}"
+            );
+        }
+    }
+
+    #[test]
+    fn extract_struct_field_bindings_skips_non_simple_let_pattern_shadowing() {
+        for body in [
+            "let case = DiscountCase { amount: 100 };\n\
+             let Some(case) = make_case() else { return; };\n\
+             discounted_total(case.amount, 100);\n",
+            "let case = DiscountCase { amount: 100 };\n\
+             let (case, _) = helper_case();\n\
+             discounted_total(case.amount, 100);\n",
+        ] {
+            let bindings = extract_struct_field_bindings(body, &[]);
+            assert!(
+                !bindings.contains_key("case"),
+                "non-simple let pattern binders must keep projection values unresolved: {body}"
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_same_test_struct_field_projection() {
+        let seam = predicate_seam();
+        let facts = ValueEnvFacts {
+            struct_field_bindings: extract_struct_field_bindings(
+                "let case = DiscountCase { amount: 100, discount_threshold: 100 };\n",
+                &[],
+            ),
+            ..ValueEnvFacts::default()
+        };
+        let env = ValueEnv::new(&seam, &facts);
+
+        assert_eq!(
+            env.resolve("case.amount"),
+            vec![("100".to_string(), ValueContext::FunctionArgument)]
+        );
+        assert!(
+            env.resolve("make_case().amount").is_empty(),
+            "helper-built fixture projections must remain opaque"
+        );
     }
 
     #[test]
