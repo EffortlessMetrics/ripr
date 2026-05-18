@@ -2,7 +2,6 @@ use crate::output::markdown::{markdown_text, render_string_section};
 use crate::output::value_path::{path_value, string_path};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
-use std::path::Path;
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "policy_promotion_packet";
@@ -298,9 +297,7 @@ pub(crate) fn policy_promotion_allowed_now(report: &PolicyPromotionReport) -> bo
     report.allowed_now
 }
 
-pub(crate) fn display_path(path: &Path) -> String {
-    path.display().to_string().replace('\\', "/")
-}
+pub(crate) use crate::output::path::display_path;
 
 fn parse_required_json(
     kind: &'static str,
