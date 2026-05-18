@@ -21,6 +21,7 @@ pub mod json;
 pub(crate) mod markdown;
 pub(crate) mod mutation_calibration;
 pub(crate) mod outcome;
+pub(crate) mod path;
 pub(crate) mod pilot;
 pub(crate) mod policy_history;
 pub(crate) mod policy_operations;
