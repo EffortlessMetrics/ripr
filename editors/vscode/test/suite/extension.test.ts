@@ -1815,6 +1815,8 @@ suite('Extension Smoke', () => {
       assert.ok(statusOutput.includes(otherRoot));
       assert.ok(statusOutput.includes('First PR packet: top repairable gap available; target/ripr/first-pr/start-here.json is advisory.'));
       assert.strictEqual(context.client.startCalls, 1);
+      assertRiprDocumentSelectorsScopedToWorkspace(context.clientOptions(), selectedRoot);
+      assertCargoTomlWatcherScopedToWorkspace(context.watcherPatterns, selectedRoot);
       assert.strictEqual(context.runRiprCalls.length, 0);
     } finally {
       await context.dispose();
@@ -1891,23 +1893,52 @@ suite('Extension Smoke', () => {
     });
   });
 
-  test('language client registers Rust default and preview document selectors', async () => {
+  test('language client registers workspace-scoped Rust default and preview document selectors', async () => {
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    assert.ok(workspaceRoot, 'test workspace should be open');
     const context = createControllerTestContext({});
     try {
       await context.controller.start();
 
-      const clientOptions = context.clientOptions() as { documentSelector?: unknown };
-      assert.deepStrictEqual(clientOptions.documentSelector, [
-        { language: 'rust', scheme: 'file' },
-        { language: 'typescript', scheme: 'file' },
-        { language: 'typescriptreact', scheme: 'file' },
-        { language: 'javascript', scheme: 'file' },
-        { language: 'javascriptreact', scheme: 'file' },
-        { language: 'python', scheme: 'file' }
-      ]);
+      assertRiprDocumentSelectorsScopedToWorkspace(context.clientOptions(), workspaceRoot);
+      assertCargoTomlWatcherScopedToWorkspace(context.watcherPatterns, workspaceRoot);
     } finally {
       await context.dispose();
     }
+  });
+
+  test('first-pr diagnostic commands fail closed when active file is outside selected root', async () => {
+    const selectedRoot = path.resolve('selected workspace root');
+    const otherRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    assert.ok(otherRoot, 'test workspace should be open');
+    await withControllerTestContext({
+      workspaceRootState: {
+        kind: 'selectedRoot',
+        root: selectedRoot,
+        roots: [selectedRoot, otherRoot],
+        detail: 'selected from active editor workspace folder'
+      },
+      files: {
+        'target/ripr/first-pr/start-here.json': firstPrPacket({ root: selectedRoot })
+      }
+    }, async (context) => {
+      await context.controller.start();
+
+      await withCurrentFirstPrDiagnostic({
+        canonical_gap_id: 'gap:rust:pricing:discount:threshold-boundary',
+        gap_id: 'gap:pr:pricing:threshold-boundary'
+      }, async () => {
+        await context.controller.copyFirstPrRepairPacket();
+        await context.controller.copyFirstPrVerifyCommand();
+        await context.controller.copyFirstPrReceiptCommand();
+      });
+
+      assert.strictEqual(context.clipboardWrites.length, 0);
+      assert.ok(context.infoMessages.every((message) =>
+        message.includes('different workspace root')
+      ), context.infoMessages.join('\n'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
   });
 
   test('status bar reports stale saved-workspace analysis after routed file edits', async () => {
@@ -2592,6 +2623,7 @@ function createControllerTestContext(options: ControllerTestOptions) {
   const output = fakeOutputChannel(outputLines);
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
   const runRiprCalls: Array<{ command: string; args: string[]; cwd: string }> = [];
+  const watcherPatterns: vscode.GlobPattern[] = [];
   const clipboardWrites: string[] = [];
   const infoMessages: string[] = [];
   const warningMessages: string[] = [];
@@ -2620,6 +2652,10 @@ function createControllerTestContext(options: ControllerTestOptions) {
     createLanguageClient: (_serverOptions, options) => {
       clientOptions = options;
       return client;
+    },
+    createFileSystemWatcher: (pattern) => {
+      watcherPatterns.push(pattern);
+      return fakeFileSystemWatcher();
     },
     readFile: async (filePath) => testFileContents(filePath, options),
     runRipr: async (command, args, cwd) => {
@@ -2650,6 +2686,7 @@ function createControllerTestContext(options: ControllerTestOptions) {
     status,
     runRiprCalls,
     clipboardWrites,
+    watcherPatterns,
     infoMessages,
     warningMessages,
     errorMessages,
@@ -2681,6 +2718,60 @@ function normalizeTestPath(filePath: string): string {
   return filePath.replace(/\\/g, '/');
 }
 
+function assertRiprDocumentSelectorsScopedToWorkspace(
+  clientOptionsValue: unknown,
+  workspaceRoot: string
+): void {
+  const clientOptions = clientOptionsValue as { documentSelector?: unknown };
+  const selectors = clientOptions.documentSelector as Array<{
+    language?: string;
+    scheme?: string;
+    pattern?: string;
+  }> | undefined;
+  assert.ok(Array.isArray(selectors), 'expected language client document selectors');
+  assert.deepStrictEqual(selectors.map((selector) => ({
+    language: selector.language,
+    scheme: selector.scheme
+  })), [
+    { language: 'rust', scheme: 'file' },
+    { language: 'typescript', scheme: 'file' },
+    { language: 'typescriptreact', scheme: 'file' },
+    { language: 'javascript', scheme: 'file' },
+    { language: 'javascriptreact', scheme: 'file' },
+    { language: 'python', scheme: 'file' }
+  ]);
+
+  for (const selector of selectors) {
+    assert.ok(selector.pattern, `expected ${selector.language} selector to be workspace scoped`);
+    assert.strictEqual(selector.pattern, `${normalizeTestPath(workspaceRoot)}/**/*`);
+  }
+}
+
+function assertCargoTomlWatcherScopedToWorkspace(
+  watcherPatterns: vscode.GlobPattern[],
+  workspaceRoot: string
+): void {
+  assert.strictEqual(watcherPatterns.length, 1, 'expected one Cargo.toml watcher');
+  const pattern = watcherPatterns[0] as {
+    base?: string;
+    baseUri?: vscode.Uri;
+    pattern?: string;
+  };
+  assert.strictEqual(pattern.pattern, '**/Cargo.toml');
+  const basePath = pattern.baseUri?.fsPath ?? pattern.base;
+  assertWorkspacePathEqual(basePath ?? '', workspaceRoot);
+}
+
+function assertWorkspacePathEqual(actual: string, expected: string): void {
+  const normalizedActual = normalizeTestPath(actual);
+  const normalizedExpected = normalizeTestPath(expected);
+  if (process.platform === 'win32') {
+    assert.strictEqual(normalizedActual.toLowerCase(), normalizedExpected.toLowerCase());
+    return;
+  }
+  assert.strictEqual(normalizedActual, normalizedExpected);
+}
+
 function fakeOutputChannel(lines: string[] = []): vscode.OutputChannel {
   return {
     name: 'ripr test',
@@ -2701,6 +2792,19 @@ function fakeOutputChannel(lines: string[] = []): vscode.OutputChannel {
       lines.push(value);
     }
   } as vscode.OutputChannel;
+}
+
+function fakeFileSystemWatcher(): vscode.FileSystemWatcher {
+  const event = (() => ({ dispose: () => {} })) as vscode.Event<vscode.Uri>;
+  return {
+    ignoreCreateEvents: false,
+    ignoreChangeEvents: false,
+    ignoreDeleteEvents: false,
+    onDidCreate: event,
+    onDidChange: event,
+    onDidDelete: event,
+    dispose: () => {}
+  };
 }
 
 async function activateExtension(): Promise<void> {
