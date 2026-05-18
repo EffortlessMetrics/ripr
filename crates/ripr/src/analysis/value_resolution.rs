@@ -66,16 +66,28 @@ pub(crate) struct ValueEnvFacts {
     /// level (same-file scope).
     module_constants: BTreeMap<String, String>,
     /// `IDENT.field -> LITERAL` from same-test struct literals such as
-    /// `let case = DiscountCase { amount: 100 };`, plus line-scoped
+    /// `let case = DiscountCase { amount: 100 };`, plus source-order
     /// invalidations so later shadows do not erase earlier safe calls.
     struct_field_bindings: BTreeMap<String, StructFieldBinding>,
-    struct_field_invalidations: BTreeMap<String, Vec<usize>>,
+    struct_field_invalidations: BTreeMap<String, Vec<SourcePosition>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct StructFieldBinding {
-    line: usize,
+    position: SourcePosition,
     fields: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct SourcePosition {
+    line: usize,
+    column: usize,
+}
+
+impl SourcePosition {
+    fn at_or_before(self, other: Self) -> bool {
+        self.line < other.line || (self.line == other.line && self.column <= other.column)
+    }
 }
 
 impl ValueEnvFacts {
@@ -136,28 +148,65 @@ impl<'a> ValueEnv<'a> {
         if let Some(inner) = unwrap_option_or_result(trimmed) {
             // Recurse once. The inner can itself be a literal, a let,
             // a const, etc.
-            return self.resolve_identifier_or_literal_at(inner.as_str(), usize::MAX);
+            return self.resolve_identifier_or_literal_at(
+                inner.as_str(),
+                SourcePosition {
+                    line: usize::MAX,
+                    column: usize::MAX,
+                },
+            );
         }
 
         // Bare identifier: priority 2-5.
-        self.resolve_identifier_or_literal_at(trimmed, usize::MAX)
+        self.resolve_identifier_or_literal_at(
+            trimmed,
+            SourcePosition {
+                line: usize::MAX,
+                column: usize::MAX,
+            },
+        )
     }
 
+    #[cfg(test)]
     pub(crate) fn resolve_at(&self, arg: &str, call_line: usize) -> Vec<(String, ValueContext)> {
+        self.resolve_at_position(
+            arg,
+            SourcePosition {
+                line: call_line,
+                column: usize::MAX,
+            },
+        )
+    }
+
+    pub(crate) fn resolve_at_call(
+        &self,
+        arg: &str,
+        call_line: usize,
+        call_name: &str,
+        call_text: &str,
+    ) -> Vec<(String, ValueContext)> {
+        self.resolve_at_position(arg, call_position(call_line, call_name, call_text))
+    }
+
+    fn resolve_at_position(
+        &self,
+        arg: &str,
+        call_position: SourcePosition,
+    ) -> Vec<(String, ValueContext)> {
         let trimmed = arg.trim().trim_end_matches([',', ';']);
         if trimmed.is_empty() {
             return Vec::new();
         }
         if let Some(inner) = unwrap_option_or_result(trimmed) {
-            return self.resolve_identifier_or_literal_at(inner.as_str(), call_line);
+            return self.resolve_identifier_or_literal_at(inner.as_str(), call_position);
         }
-        self.resolve_identifier_or_literal_at(trimmed, call_line)
+        self.resolve_identifier_or_literal_at(trimmed, call_position)
     }
 
     fn resolve_identifier_or_literal_at(
         &self,
         expr: &str,
-        call_line: usize,
+        call_position: SourcePosition,
     ) -> Vec<(String, ValueContext)> {
         // If it parses as a literal, just emit it. Re-uses the upstream
         // scalar_values shape implicitly: integers, floats, strings,
@@ -167,12 +216,16 @@ impl<'a> ValueEnv<'a> {
         }
         if let Some((object, field)) = field_projection(expr)
             && let Some(binding) = self.facts.struct_field_bindings.get(object)
-            && binding.line <= call_line
+            && binding.position.at_or_before(call_position)
             && !self
                 .facts
                 .struct_field_invalidations
                 .get(object)
-                .is_some_and(|lines| lines.iter().any(|line| *line <= call_line))
+                .is_some_and(|positions| {
+                    positions
+                        .iter()
+                        .any(|position| position.at_or_before(call_position))
+                })
             && let Some(value) = binding.fields.get(field)
         {
             return vec![(value.clone(), ValueContext::FunctionArgument)];
@@ -393,16 +446,24 @@ fn extract_struct_field_bindings(
     invalid_idents: &[String],
 ) -> (
     BTreeMap<String, StructFieldBinding>,
-    BTreeMap<String, Vec<usize>>,
+    BTreeMap<String, Vec<SourcePosition>>,
 ) {
     let mut out = BTreeMap::new();
-    let mut invalidations: BTreeMap<String, Vec<usize>> = invalid_idents
+    let mut invalidations: BTreeMap<String, Vec<SourcePosition>> = invalid_idents
         .iter()
-        .map(|ident| (ident.clone(), vec![start_line]))
+        .map(|ident| {
+            (
+                ident.clone(),
+                vec![SourcePosition {
+                    line: start_line,
+                    column: 0,
+                }],
+            )
+        })
         .collect();
     let cleaned = strip_comments_and_strings(body);
     for start in find_all(&cleaned, "let ") {
-        let line = line_at_offset(&cleaned, start, start_line);
+        let position = position_at_offset(&cleaned, start, start_line);
         let after_let = &cleaned[start + 4..];
         let stmt_end = top_level_semicolon(after_let).unwrap_or(after_let.len());
         let stmt = &after_let[..stmt_end];
@@ -415,18 +476,18 @@ fn extract_struct_field_bindings(
             continue;
         };
         if out.contains_key(ident) {
-            push_invalidation(&mut invalidations, ident, line);
+            push_invalidation(&mut invalidations, ident, position);
             continue;
         }
         if is_mut {
-            push_invalidation(&mut invalidations, ident, line);
+            push_invalidation(&mut invalidations, ident, position);
             continue;
         }
         let fields = extract_struct_literal_fields(rhs);
         if !fields.is_empty() {
-            out.insert(ident.to_string(), StructFieldBinding { line, fields });
+            out.insert(ident.to_string(), StructFieldBinding { position, fields });
         } else {
-            push_invalidation(&mut invalidations, ident, line);
+            push_invalidation(&mut invalidations, ident, position);
         }
     }
     for ident in out.keys() {
@@ -434,26 +495,54 @@ fn extract_struct_field_bindings(
         lines.extend(non_simple_let_shadowing_lines(&cleaned, ident, start_line));
         lines.extend(field_assignment_lines(&cleaned, ident, start_line));
         lines.extend(non_let_shadowing_lines(&cleaned, ident, start_line));
-        for line in lines {
-            push_invalidation(&mut invalidations, ident, line);
+        for position in lines {
+            push_invalidation(&mut invalidations, ident, position);
         }
     }
     (out, invalidations)
 }
 
-fn push_invalidation(invalidations: &mut BTreeMap<String, Vec<usize>>, ident: &str, line: usize) {
+fn push_invalidation(
+    invalidations: &mut BTreeMap<String, Vec<SourcePosition>>,
+    ident: &str,
+    position: SourcePosition,
+) {
     invalidations
         .entry(ident.to_string())
         .or_default()
-        .push(line);
+        .push(position);
 }
 
-fn line_at_offset(text: &str, offset: usize, start_line: usize) -> usize {
-    start_line
-        + text[..offset.min(text.len())]
-            .bytes()
-            .filter(|b| *b == b'\n')
-            .count()
+fn position_at_offset(text: &str, offset: usize, start_line: usize) -> SourcePosition {
+    let offset = offset.min(text.len());
+    let prefix = &text[..offset];
+    let line = start_line + prefix.bytes().filter(|b| *b == b'\n').count();
+    let line_start = prefix.rfind('\n').map(|idx| idx + 1).unwrap_or(0);
+    let line_end = text[offset..]
+        .find('\n')
+        .map(|idx| offset + idx)
+        .unwrap_or(text.len());
+    let raw_column = offset.saturating_sub(line_start);
+    let leading = text[line_start..line_end]
+        .bytes()
+        .take_while(|b| b.is_ascii_whitespace())
+        .count();
+    SourcePosition {
+        line,
+        column: raw_column.saturating_sub(leading),
+    }
+}
+
+fn call_position(call_line: usize, call_name: &str, call_text: &str) -> SourcePosition {
+    let needle = format!("{call_name}(");
+    let column = call_text
+        .find(&needle)
+        .or_else(|| call_text.find('('))
+        .unwrap_or(0);
+    SourcePosition {
+        line: call_line,
+        column,
+    }
 }
 
 fn let_binding_ident(lhs: &str) -> Option<(&str, bool)> {
@@ -466,8 +555,12 @@ fn let_binding_ident(lhs: &str) -> Option<(&str, bool)> {
     is_simple_identifier(ident).then_some((ident, is_mut))
 }
 
-fn non_simple_let_shadowing_lines(body: &str, ident: &str, start_line: usize) -> Vec<usize> {
-    let mut lines = Vec::new();
+fn non_simple_let_shadowing_lines(
+    body: &str,
+    ident: &str,
+    start_line: usize,
+) -> Vec<SourcePosition> {
+    let mut positions = Vec::new();
     for start in find_all(body, "let ") {
         let after_let = &body[start + 4..];
         let stmt_end = top_level_semicolon(after_let).unwrap_or(after_let.len());
@@ -477,10 +570,10 @@ fn non_simple_let_shadowing_lines(body: &str, ident: &str, start_line: usize) ->
         };
         let (lhs, _) = stmt.split_at(eq_idx);
         if let_binding_ident(lhs).is_none() && contains_identifier_token(lhs, ident) {
-            lines.push(line_at_offset(body, start, start_line));
+            positions.push(position_at_offset(body, start, start_line));
         }
     }
-    lines
+    positions
 }
 
 fn extract_struct_literal_fields(rhs: &str) -> BTreeMap<String, String> {
@@ -525,8 +618,8 @@ fn split_field_literal(field: &str) -> Option<(&str, &str)> {
     Some((name, value))
 }
 
-fn field_assignment_lines(body: &str, ident: &str, start_line: usize) -> Vec<usize> {
-    let mut lines = Vec::new();
+fn field_assignment_lines(body: &str, ident: &str, start_line: usize) -> Vec<SourcePosition> {
+    let mut positions = Vec::new();
     let needle = format!("{ident}.");
     let mut search_from = 0;
     while let Some(rel) = body[search_from..].find(&needle) {
@@ -548,15 +641,15 @@ fn field_assignment_lines(body: &str, ident: &str, start_line: usize) -> Vec<usi
             .map(char::len_utf8)
             .sum::<usize>();
         if field_len > 0 && is_assignment_operator(after[field_len..].trim_start()) {
-            lines.push(line_at_offset(body, abs, start_line));
+            positions.push(position_at_offset(body, abs, start_line));
         }
         search_from = after_start;
     }
-    lines
+    positions
 }
 
-fn non_let_shadowing_lines(body: &str, ident: &str, start_line: usize) -> Vec<usize> {
-    let mut lines = Vec::new();
+fn non_let_shadowing_lines(body: &str, ident: &str, start_line: usize) -> Vec<SourcePosition> {
+    let mut positions = Vec::new();
     for (idx, line) in body.lines().enumerate() {
         if has_for_binding(line, ident)
             || has_let_pattern_binding(line, "if let ", ident)
@@ -564,10 +657,13 @@ fn non_let_shadowing_lines(body: &str, ident: &str, start_line: usize) -> Vec<us
             || has_closure_param_binding(line, ident)
             || has_match_arm_binding(line, ident)
         {
-            lines.push(start_line + idx);
+            positions.push(SourcePosition {
+                line: start_line + idx,
+                column: 0,
+            });
         }
     }
-    lines
+    positions
 }
 
 fn has_for_binding(line: &str, ident: &str) -> bool {
@@ -1170,6 +1266,18 @@ mod tests {
         )
     }
 
+    fn invalidation_lines(
+        invalidations: &BTreeMap<String, Vec<SourcePosition>>,
+        ident: &str,
+    ) -> Vec<usize> {
+        invalidations
+            .get(ident)
+            .into_iter()
+            .flatten()
+            .map(|position| position.line)
+            .collect()
+    }
+
     #[test]
     fn extract_let_bindings_picks_up_literal_rhs_and_skips_expressions() {
         let body = "let a = 100;\nlet b: i32 = 200;\nlet mut c = 300;\nlet d = a + 1;\n";
@@ -1212,7 +1320,7 @@ mod tests {
             bindings.contains_key("case"),
             "literal binding remains available for calls before the shadow"
         );
-        assert_eq!(invalidations.get("case").cloned(), Some(vec![2]));
+        assert_eq!(invalidation_lines(&invalidations, "case"), vec![2]);
 
         let mutated = "let case = DiscountCase { amount: 100 };\ncase.amount = make_amount();\n";
         let (bindings, invalidations) = extract_struct_field_bindings(mutated, 1, &[]);
@@ -1220,7 +1328,7 @@ mod tests {
             bindings.contains_key("case"),
             "literal binding remains available for calls before mutation"
         );
-        assert_eq!(invalidations.get("case").cloned(), Some(vec![2]));
+        assert_eq!(invalidation_lines(&invalidations, "case"), vec![2]);
 
         let mutable = "let mut case = DiscountCase { amount: 100 };\n";
         let (bindings, invalidations) = extract_struct_field_bindings(mutable, 1, &[]);
@@ -1228,7 +1336,7 @@ mod tests {
             !bindings.contains_key("case"),
             "mutable fixture bindings must stay unresolved"
         );
-        assert_eq!(invalidations.get("case").cloned(), Some(vec![1]));
+        assert_eq!(invalidation_lines(&invalidations, "case"), vec![1]);
     }
 
     #[test]
@@ -1241,9 +1349,7 @@ mod tests {
         let (_bindings, invalidations) = extract_struct_field_bindings(body, 1, &param_names);
 
         assert!(
-            invalidations
-                .get("case")
-                .is_some_and(|lines| lines.contains(&1)),
+            invalidation_lines(&invalidations, "case").contains(&1),
             "fixture parameter names must invalidate same-name projection resolution"
         );
     }
@@ -1283,9 +1389,9 @@ mod tests {
                 "literal binding remains available for calls before non-let shadowing: {body}"
             );
             assert!(
-                invalidations
-                    .get(ident)
-                    .is_some_and(|lines| lines.iter().any(|line| *line >= 2)),
+                invalidation_lines(&invalidations, ident)
+                    .iter()
+                    .any(|line| *line >= 2),
                 "non-let shadowing binders must invalidate projection values at their line: {body}"
             );
         }
@@ -1307,9 +1413,7 @@ mod tests {
                 "literal binding remains available for calls before let-pattern shadowing: {body}"
             );
             assert!(
-                invalidations
-                    .get("case")
-                    .is_some_and(|lines| lines.contains(&2)),
+                invalidation_lines(&invalidations, "case").contains(&2),
                 "non-simple let pattern binders must invalidate projection values at their line: {body}"
             );
         }
@@ -1388,6 +1492,42 @@ mod tests {
             env.resolve_at("case.amount", 11),
             vec![("100".to_string(), ValueContext::FunctionArgument)],
             "the literal becomes available only once the binding line is reached"
+        );
+    }
+
+    #[test]
+    fn resolve_same_test_struct_field_projection_is_column_scoped_on_same_line() {
+        let seam = predicate_seam();
+        let late_body = "discounted_total(case.amount, case.discount_threshold); \
+                         let case = DiscountCase { amount: 100, discount_threshold: 100 };\n";
+        let (struct_field_bindings, struct_field_invalidations) =
+            extract_struct_field_bindings(late_body, 10, &[]);
+        let facts = ValueEnvFacts {
+            struct_field_bindings,
+            struct_field_invalidations,
+            ..ValueEnvFacts::default()
+        };
+        let env = ValueEnv::new(&seam, &facts);
+        assert!(
+            env.resolve_at_call("case.amount", 10, "discounted_total", late_body.trim())
+                .is_empty(),
+            "same-line literals after the owner call must not explain earlier field projections"
+        );
+
+        let visible_body = "let case = DiscountCase { amount: 100, discount_threshold: 100 }; \
+                            discounted_total(case.amount, case.discount_threshold);\n";
+        let (struct_field_bindings, struct_field_invalidations) =
+            extract_struct_field_bindings(visible_body, 10, &[]);
+        let facts = ValueEnvFacts {
+            struct_field_bindings,
+            struct_field_invalidations,
+            ..ValueEnvFacts::default()
+        };
+        let env = ValueEnv::new(&seam, &facts);
+        assert_eq!(
+            env.resolve_at_call("case.amount", 10, "discounted_total", visible_body.trim()),
+            vec![("100".to_string(), ValueContext::FunctionArgument)],
+            "same-line literals before the owner call remain safe activation values"
         );
     }
 
