@@ -9,6 +9,15 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Lane 1 value resolution now treats same-test struct literal field
+  projections as fixture-backed activation values when the field value is
+  literal, while helper-built structs, shadowed bindings, mutable bindings,
+  field mutations, fixture-parameter collisions, common non-`let` shadowing
+  binders, non-simple `let` pattern binders, and non-literal fields remain
+  named `activation_value_unresolved` limitations. This burns down the top live
+  static-limitation bucket without adding cross-file, helper, semantic, gate,
+  PR/CI rendering, source-edit, generated-test, provider, or mutation-execution
+  behavior.
 - Made Lane 1 evidence audit generation operationally visible for long live
   repo runs. `cargo xtask lane1-evidence-audit` now streams repo-exposure
   latency breadcrumbs while the analyzer subprocess runs and records bounded
