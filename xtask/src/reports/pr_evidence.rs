@@ -1013,20 +1013,15 @@ mod tests {
     #[test]
     fn run_ripr_check_uses_fake_binary_success_output() -> Result<(), String> {
         let repo = temp_repo("ripr-pr-fake-success")?;
-        let fake = fake_ripr_binary(
+        let fake = fake_ripr_invocation(
             &repo,
             "fake-ripr-success",
             r#"{"summary":{"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0}}"#,
             "",
             0,
-            None,
         )?;
-        let result = run_ripr_check_binary(
-            &fake.display().to_string(),
-            fake_ripr_args(),
-            &options(),
-            Duration::from_secs(10),
-        )?;
+        let result =
+            run_ripr_check_binary(&fake.binary, fake.args, &options(), Duration::from_secs(10))?;
         assert!(result.contains(r#""weakly_exposed":1"#));
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
@@ -1035,10 +1030,10 @@ mod tests {
     #[test]
     fn run_ripr_check_reports_fake_binary_failure() -> Result<(), String> {
         let repo = temp_repo("ripr-pr-fake-failure")?;
-        let fake = fake_ripr_binary(&repo, "fake-ripr-failure", "", "bad diff", 7, None)?;
+        let fake = fake_ripr_invocation(&repo, "fake-ripr-failure", "", "bad diff", 7)?;
         let err = match run_ripr_check_binary(
-            &fake.display().to_string(),
-            fake_ripr_args(),
+            &fake.binary,
+            fake.args,
             &options(),
             Duration::from_secs(10),
         ) {
@@ -1053,20 +1048,18 @@ mod tests {
 
     #[test]
     fn run_ripr_check_reports_fake_binary_timeout() -> Result<(), String> {
-        let repo = temp_repo("ripr-pr-fake-timeout")?;
-        let fake = fake_ripr_binary(&repo, "fake-ripr-timeout", "", "", 0, Some(5))?;
-        let err = match run_ripr_check_binary(
-            &fake.display().to_string(),
-            fake_ripr_args(),
-            &options(),
-            Duration::from_secs(1),
-        ) {
+        let args = vec![
+            "metadata".to_string(),
+            "--no-deps".to_string(),
+            "--format-version".to_string(),
+            "1".to_string(),
+        ];
+        let err = match run_ripr_check_binary("cargo", args, &options(), Duration::ZERO) {
             Ok(output) => return Err(format!("fake timeout should fail, got {output}")),
             Err(err) => err,
         };
-        assert!(err.contains("timed out after 1 seconds"));
+        assert!(err.contains("timed out after 0 seconds"));
         assert!(err.contains("retry command: cargo xtask ripr-pr"));
-        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
     }
 
@@ -1152,23 +1145,54 @@ mod tests {
         ]
     }
 
+    struct FakeRiprInvocation {
+        binary: String,
+        args: Vec<String>,
+    }
+
+    #[cfg(windows)]
+    fn fake_ripr_invocation(
+        repo: &Path,
+        name: &str,
+        stdout: &str,
+        stderr: &str,
+        exit_code: i32,
+    ) -> Result<FakeRiprInvocation, String> {
+        let fake = fake_ripr_binary(repo, name, stdout, stderr, exit_code)?;
+        Ok(FakeRiprInvocation {
+            binary: fake.display().to_string(),
+            args: fake_ripr_args(),
+        })
+    }
+
+    #[cfg(not(windows))]
+    fn fake_ripr_invocation(
+        repo: &Path,
+        name: &str,
+        stdout: &str,
+        stderr: &str,
+        exit_code: i32,
+    ) -> Result<FakeRiprInvocation, String> {
+        let fake = fake_ripr_binary(repo, name, stdout, stderr, exit_code)?;
+        let mut args = vec![fake.display().to_string()];
+        args.extend(fake_ripr_args());
+        Ok(FakeRiprInvocation {
+            binary: "/bin/sh".to_string(),
+            args,
+        })
+    }
+
     fn fake_ripr_binary(
         repo: &Path,
         name: &str,
         stdout: &str,
         stderr: &str,
         exit_code: i32,
-        sleep_seconds: Option<u64>,
     ) -> Result<PathBuf, String> {
         let path = repo.join(fake_ripr_name(name));
         #[cfg(windows)]
         {
             let mut script = String::from("@echo off\r\n");
-            if let Some(seconds) = sleep_seconds {
-                script.push_str(&format!(
-                    "powershell -NoProfile -Command Start-Sleep -Seconds {seconds}\r\n"
-                ));
-            }
             if !stdout.is_empty() {
                 script.push_str(&format!("echo {}\r\n", stdout));
             }
@@ -1182,9 +1206,6 @@ mod tests {
         {
             let temp_path = path.with_extension("tmp");
             let mut script = String::from("#!/bin/sh\n");
-            if let Some(seconds) = sleep_seconds {
-                script.push_str(&format!("sleep {seconds}\n"));
-            }
             if !stdout.is_empty() {
                 script.push_str(&format!("printf '%s\\n' '{}'\n", sh_single_quote(stdout)));
             }

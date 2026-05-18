@@ -239,11 +239,18 @@ pub(crate) fn capture_output_with_timeout(
     }
 }
 
-fn timeout_was_enforced(termination_requested: bool, status: &ExitStatus) -> bool {
-    termination_requested && !status.success()
+fn timeout_was_enforced(termination_requested: bool, _status: &ExitStatus) -> bool {
+    termination_requested
 }
 
 fn terminate_after_timeout(child: &mut Child, error_context: &str) -> Result<bool, String> {
+    if child
+        .try_wait()
+        .map_err(|err| format!("failed to poll {error_context}: {err}"))?
+        .is_some()
+    {
+        return Ok(false);
+    }
     match child.kill() {
         Ok(()) => Ok(true),
         Err(kill_err) => {
@@ -527,13 +534,15 @@ mod tests {
     }
 
     #[test]
-    fn timeout_was_enforced_requires_termination_and_unsuccessful_status() -> Result<(), String> {
+    fn timeout_was_enforced_reports_requested_termination() -> Result<(), String> {
         let success = capture_output("rustc", &["--version"], "rustc version")?.status;
         let failure =
             capture_output("rustc", &["--ripr-invalid-test-flag"], "rustc invalid flag")?.status;
 
-        if timeout_was_enforced(true, &success) {
-            return Err("successful status should not be treated as enforced timeout".to_string());
+        if !timeout_was_enforced(true, &success) {
+            return Err(
+                "requested termination should be treated as an enforced timeout".to_string(),
+            );
         }
         if timeout_was_enforced(false, &failure) {
             return Err("failure without termination should not be a timeout".to_string());

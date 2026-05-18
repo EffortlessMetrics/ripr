@@ -15,6 +15,10 @@ are scoped or reviewed.
   seams without inventing observed values, relaxing predicate-boundary value
   checks, or changing PR/CI rendering, gates, providers, generated tests, or
   mutation execution.
+- Bounded command timeouts now remain classified as timeouts whenever process
+  termination was requested, even if a shell wrapper reports a successful exit
+  status after termination. PR-evidence tests use platform-stable fake
+  invocations so timeout/error packets do not pass silently on Windows or Unix.
 
 ## 0.6.0 - 2026-05-17
 
