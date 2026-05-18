@@ -44,7 +44,7 @@ Release themes:
 
 Detailed changes:
 - Changelog source range: the 0.6.0 notes were reconciled against merged PRs
-  and first-parent commits through `272e43bb` / #1194 on current `main`.
+  and first-parent commits through `c451dd72` / #1125 on current `main`.
   Internal learning-doc polish is intentionally not part of the public release
   story. Remaining open non-release PR families stay outside this section until
   they land.
@@ -83,6 +83,13 @@ Detailed changes:
   without changing release, policy, or analyzer behavior.
 - Classify text helper internals are split into focused modules while keeping
   the existing helper facade and classifier behavior unchanged.
+- Output report path rendering now uses one slash-normalized helper across
+  report modules, reducing duplicated renderer code while keeping existing
+  report surfaces, schemas, analyzer behavior, policy authority, gate behavior,
+  and release behavior unchanged.
+- Public charter language now matches the 0.6.0 release boundary by describing
+  RIPR as static mutation-exposure guidance between coverage signals and
+  mutation testing, not as a test-adequacy layer.
 - Lane 1 evidence audit generation now streams repo-exposure latency
   breadcrumbs during long live-repo runs and records bounded generation
   diagnostics in `inputs.repo_exposure_generation`, including timeout, status,
