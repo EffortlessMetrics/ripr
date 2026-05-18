@@ -1180,6 +1180,7 @@ mod tests {
         }
         #[cfg(not(windows))]
         {
+            let temp_path = path.with_extension("tmp");
             let mut script = String::from("#!/bin/sh\n");
             if let Some(seconds) = sleep_seconds {
                 script.push_str(&format!("sleep {seconds}\n"));
@@ -1194,14 +1195,22 @@ mod tests {
                 ));
             }
             script.push_str(&format!("exit {exit_code}\n"));
-            fs::write(&path, script).map_err(|err| format!("write {}: {err}", path.display()))?;
-            let mut permissions = fs::metadata(&path)
-                .map_err(|err| format!("metadata {}: {err}", path.display()))?
+            fs::write(&temp_path, script)
+                .map_err(|err| format!("write {}: {err}", temp_path.display()))?;
+            let mut permissions = fs::metadata(&temp_path)
+                .map_err(|err| format!("metadata {}: {err}", temp_path.display()))?
                 .permissions();
             use std::os::unix::fs::PermissionsExt;
             permissions.set_mode(0o755);
-            fs::set_permissions(&path, permissions)
-                .map_err(|err| format!("chmod {}: {err}", path.display()))?;
+            fs::set_permissions(&temp_path, permissions)
+                .map_err(|err| format!("chmod {}: {err}", temp_path.display()))?;
+            fs::rename(&temp_path, &path).map_err(|err| {
+                format!(
+                    "rename {} to {}: {err}",
+                    temp_path.display(),
+                    path.display()
+                )
+            })?;
         }
         Ok(path)
     }
