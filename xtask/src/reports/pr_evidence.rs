@@ -296,8 +296,17 @@ fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, St
         }
     };
     let timeout = Duration::from_secs(pr_evidence_timeout_secs()?);
+    run_ripr_check_binary(&binary, ripr_args, options, timeout)
+}
+
+fn run_ripr_check_binary(
+    binary: &str,
+    ripr_args: Vec<String>,
+    options: &PrEvidenceOptions,
+    timeout: Duration,
+) -> Result<String, String> {
     let output = capture_output_with_timeout(
-        &binary,
+        binary,
         &ripr_args,
         &[],
         timeout,
@@ -323,21 +332,21 @@ fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, St
 
 fn pr_evidence_timeout_secs() -> Result<u64, String> {
     match env::var(PR_EVIDENCE_TIMEOUT_ENV) {
-        Ok(value) => value
-            .trim()
-            .parse::<u64>()
-            .map_err(|err| format!("{PR_EVIDENCE_TIMEOUT_ENV} must be a positive integer: {err}")),
+        Ok(value) => parse_positive_timeout_secs(PR_EVIDENCE_TIMEOUT_ENV, &value),
         Err(_) => Ok(DEFAULT_TOOL_TIMEOUT_SECS),
     }
-    .and_then(|value| {
-        if value > 0 {
-            Ok(value)
-        } else {
-            Err(format!(
-                "{PR_EVIDENCE_TIMEOUT_ENV} must be a positive integer"
-            ))
-        }
-    })
+}
+
+fn parse_positive_timeout_secs(name: &str, value: &str) -> Result<u64, String> {
+    let parsed = value
+        .trim()
+        .parse::<u64>()
+        .map_err(|err| format!("{name} must be a positive integer: {err}"))?;
+    if parsed > 0 {
+        Ok(parsed)
+    } else {
+        Err(format!("{name} must be a positive integer"))
+    }
 }
 
 fn pr_evidence_retry_command(options: &PrEvidenceOptions) -> String {
@@ -875,6 +884,25 @@ mod tests {
     }
 
     #[test]
+    fn timeout_parser_rejects_non_positive_and_invalid_values() -> Result<(), String> {
+        assert_eq!(
+            parse_positive_timeout_secs("RIPR_TEST_TIMEOUT", "120"),
+            Ok(120)
+        );
+        assert_eq!(
+            parse_positive_timeout_secs("RIPR_TEST_TIMEOUT", "0"),
+            Err("RIPR_TEST_TIMEOUT must be a positive integer".to_string())
+        );
+        let err = match parse_positive_timeout_secs("RIPR_TEST_TIMEOUT", "abc") {
+            Ok(value) => return Err(format!("invalid timeout should fail, got {value}")),
+            Err(err) => err,
+        };
+        assert!(err.contains("RIPR_TEST_TIMEOUT"));
+        assert!(err.contains("positive integer"));
+        Ok(())
+    }
+
+    #[test]
     fn validation_rejects_changed_file_drift() {
         let packet = pr_evidence_packet(
             &options(),
@@ -983,6 +1011,66 @@ mod tests {
     }
 
     #[test]
+    fn run_ripr_check_uses_fake_binary_success_output() -> Result<(), String> {
+        let repo = temp_repo("ripr-pr-fake-success")?;
+        let fake = fake_ripr_binary(
+            &repo,
+            "fake-ripr-success",
+            r#"{"summary":{"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0}}"#,
+            "",
+            0,
+            None,
+        )?;
+        let result = run_ripr_check_binary(
+            &fake.display().to_string(),
+            fake_ripr_args(),
+            &options(),
+            Duration::from_secs(10),
+        )?;
+        assert!(result.contains(r#""weakly_exposed":1"#));
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn run_ripr_check_reports_fake_binary_failure() -> Result<(), String> {
+        let repo = temp_repo("ripr-pr-fake-failure")?;
+        let fake = fake_ripr_binary(&repo, "fake-ripr-failure", "", "bad diff", 7, None)?;
+        let err = match run_ripr_check_binary(
+            &fake.display().to_string(),
+            fake_ripr_args(),
+            &options(),
+            Duration::from_secs(10),
+        ) {
+            Ok(output) => return Err(format!("fake failure should fail, got {output}")),
+            Err(err) => err,
+        };
+        assert!(err.contains("ripr check for PR evidence failed"));
+        assert!(err.contains("bad diff"));
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn run_ripr_check_reports_fake_binary_timeout() -> Result<(), String> {
+        let repo = temp_repo("ripr-pr-fake-timeout")?;
+        let fake = fake_ripr_binary(&repo, "fake-ripr-timeout", "", "", 0, Some(5))?;
+        let err = match run_ripr_check_binary(
+            &fake.display().to_string(),
+            fake_ripr_args(),
+            &options(),
+            Duration::from_secs(1),
+        ) {
+            Ok(output) => return Err(format!("fake timeout should fail, got {output}")),
+            Err(err) => err,
+        };
+        assert!(err.contains("timed out after 1 seconds"));
+        assert!(err.contains("retry command: cargo xtask ripr-pr"));
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
     fn write_and_check_packet_in_git_repo() -> Result<(), String> {
         let repo = temp_repo("ripr-pr-packet")?;
         run_git(&repo, &["init"])?;
@@ -1050,6 +1138,85 @@ mod tests {
 
     fn run_git(repo: &Path, args: &[&str]) -> Result<(), String> {
         run_git_output(repo, args).map(|_| ())
+    }
+
+    fn fake_ripr_args() -> Vec<String> {
+        vec![
+            "check".to_string(),
+            "--root".to_string(),
+            ".".to_string(),
+            "--diff".to_string(),
+            "target/ripr/pr/pr.diff".to_string(),
+            "--format".to_string(),
+            "json".to_string(),
+        ]
+    }
+
+    fn fake_ripr_binary(
+        repo: &Path,
+        name: &str,
+        stdout: &str,
+        stderr: &str,
+        exit_code: i32,
+        sleep_seconds: Option<u64>,
+    ) -> Result<PathBuf, String> {
+        let path = repo.join(fake_ripr_name(name));
+        #[cfg(windows)]
+        {
+            let mut script = String::from("@echo off\r\n");
+            if let Some(seconds) = sleep_seconds {
+                script.push_str(&format!(
+                    "powershell -NoProfile -Command Start-Sleep -Seconds {seconds}\r\n"
+                ));
+            }
+            if !stdout.is_empty() {
+                script.push_str(&format!("echo {}\r\n", stdout));
+            }
+            if !stderr.is_empty() {
+                script.push_str(&format!("echo {} 1>&2\r\n", stderr));
+            }
+            script.push_str(&format!("exit /b {exit_code}\r\n"));
+            fs::write(&path, script).map_err(|err| format!("write {}: {err}", path.display()))?;
+        }
+        #[cfg(not(windows))]
+        {
+            let mut script = String::from("#!/bin/sh\n");
+            if let Some(seconds) = sleep_seconds {
+                script.push_str(&format!("sleep {seconds}\n"));
+            }
+            if !stdout.is_empty() {
+                script.push_str(&format!("printf '%s\\n' '{}'\n", sh_single_quote(stdout)));
+            }
+            if !stderr.is_empty() {
+                script.push_str(&format!(
+                    "printf '%s\\n' '{}' >&2\n",
+                    sh_single_quote(stderr)
+                ));
+            }
+            script.push_str(&format!("exit {exit_code}\n"));
+            fs::write(&path, script).map_err(|err| format!("write {}: {err}", path.display()))?;
+            let mut permissions = fs::metadata(&path)
+                .map_err(|err| format!("metadata {}: {err}", path.display()))?
+                .permissions();
+            use std::os::unix::fs::PermissionsExt;
+            permissions.set_mode(0o755);
+            fs::set_permissions(&path, permissions)
+                .map_err(|err| format!("chmod {}: {err}", path.display()))?;
+        }
+        Ok(path)
+    }
+
+    fn fake_ripr_name(name: &str) -> String {
+        if cfg!(windows) {
+            format!("{name}.cmd")
+        } else {
+            name.to_string()
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn sh_single_quote(value: &str) -> String {
+        value.replace('\'', "'\\''")
     }
 
     #[test]
