@@ -1,3 +1,4 @@
+use super::write_parented_file;
 use serde_json::Value;
 use std::env;
 use std::fs;
@@ -59,12 +60,7 @@ fn check_summary(path: &Path, expected: &str) -> Result<(), String> {
 }
 
 fn write_summary(path: &Path, summary: &str) -> Result<(), String> {
-    let Some(parent) = path.parent() else {
-        return Err(format!("{PR_SUMMARY_MD} has no parent directory"));
-    };
-    fs::create_dir_all(parent)
-        .map_err(|err| format!("failed to create {}: {err}", parent.display()))?;
-    fs::write(path, summary).map_err(|err| format!("failed to write {PR_SUMMARY_MD}: {err}"))?;
+    write_parented_file(path, PR_SUMMARY_MD, summary)?;
     println!("Wrote {PR_SUMMARY_MD}");
     Ok(())
 }

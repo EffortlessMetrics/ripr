@@ -10,6 +10,28 @@ pub(crate) use report::render_with_config;
 
 pub(crate) use formatter::{array_field, escape, field, float_field, number_field};
 
+/// Renders a serializable JSON value with the repository's pretty-printing
+/// convention and a consistent contextual error message.
+pub(crate) fn render_pretty<T>(value: &T, context: &str) -> Result<String, String>
+where
+    T: serde::Serialize + ?Sized,
+{
+    serde_json::to_string_pretty(value)
+        .map_err(|err| format!("failed to render {context} JSON: {err}"))
+}
+
+/// Renders pretty JSON and appends the trailing newline expected by artifact
+/// writers that are consumed as line-oriented files.
+pub(crate) fn render_pretty_with_newline<T>(value: &T, context: &str) -> Result<String, String>
+where
+    T: serde::Serialize + ?Sized,
+{
+    render_pretty(value, context).map(|mut rendered| {
+        rendered.push('\n');
+        rendered
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{context_packet::render_context_packet, render, report::finding_json};
@@ -159,6 +181,15 @@ mod tests {
         assert_eq!(alignment["items"][0]["raw_group_size"], 2);
         assert_eq!(alignment["items"][0]["gap_state"], "static_limitation");
         assert_eq!(alignment["items"][0]["actionability"], "inspect_visibility");
+        assert_eq!(alignment["items"][0]["primary_anchor"]["line"], 46);
+        assert_eq!(
+            alignment["items"][0]["primary_anchor"]["reason"],
+            "declaration_line_for_grouped_constant"
+        );
+        assert_eq!(alignment["items"][0]["raw_spans"][0]["start_line"], 46);
+        assert_eq!(alignment["items"][0]["raw_spans"][0]["end_line"], 46);
+        assert_eq!(alignment["items"][0]["raw_spans"][1]["start_line"], 47);
+        assert_eq!(alignment["items"][0]["raw_spans"][1]["end_line"], 47);
         assert!(alignment["items"][0]["repair_route"].is_null());
         assert_eq!(
             alignment["items"][0]["static_limitations"][0]["category"],

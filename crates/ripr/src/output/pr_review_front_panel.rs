@@ -1,6 +1,5 @@
 use serde::Serialize;
 use serde_json::Value;
-use std::path::Path;
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "pr_review_front_panel";
@@ -574,9 +573,7 @@ pub(crate) fn render_pr_review_front_panel_markdown(report: &PrReviewFrontPanelR
     out
 }
 
-pub(crate) fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
+pub(crate) use crate::output::path::display_path;
 
 fn parse_panel_sources(input: &PrReviewFrontPanelInput) -> ParsedPanelSources {
     let mut parsed = ParsedPanelSources::default();
@@ -1731,7 +1728,8 @@ fn str_or<'a>(value: Option<&'a str>, fallback: &'a str) -> &'a str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::{Path, PathBuf};
+    use crate::output::test_support::{read_file, repo_root};
+    use std::path::Path;
 
     #[test]
     fn pr_review_front_panel_matches_fixture_corpus() -> Result<(), String> {
@@ -1894,20 +1892,6 @@ mod tests {
             "{} does not exist",
             display_path(&absolute)
         ))))
-    }
-
-    fn repo_root() -> Result<PathBuf, String> {
-        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        manifest_dir
-            .parent()
-            .and_then(Path::parent)
-            .map(Path::to_path_buf)
-            .ok_or_else(|| "failed to resolve repo root".to_string())
-    }
-
-    fn read_file(path: &Path) -> Result<String, String> {
-        std::fs::read_to_string(path)
-            .map_err(|err| format!("read {} failed: {err}", path.display()))
     }
 
     fn fixture_path(repo_root: &Path, path: &Path) -> String {

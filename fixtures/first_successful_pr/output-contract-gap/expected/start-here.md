@@ -7,6 +7,11 @@ State: actionable
 
 ripr gap: missing output contract
 
+Evidence boundary:
+- Canonical gap: `gap:rust:output:device-label`
+- Language: `rust` (stable)
+- Receipt state: `receipt_missing`
+
 Changed behavior:
 `APPLE_M3_AIR_DEVICE_LABELS_TEXT`
 

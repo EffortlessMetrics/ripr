@@ -21,3 +21,47 @@ pub(crate) fn extract_return_facts(body: &str, start_line: usize) -> Vec<ReturnF
     returns.dedup_by(|a, b| a.line == b.line && a.text == b.text);
     returns
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_return_facts_captures_result_option_and_explicit_returns() {
+        let body =
+            "if missing { return Err(ConfigError::Missing); }\nOk(Some(value))\nlet x = None;";
+
+        let facts = extract_return_facts(body, 10);
+
+        let lines_and_text = facts
+            .iter()
+            .map(|fact| (fact.line, fact.text.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            lines_and_text,
+            vec![
+                (10, "if missing { return Err(ConfigError::Missing); }"),
+                (11, "Ok(Some(value))"),
+                (12, "let x = None;"),
+            ]
+        );
+    }
+
+    #[test]
+    fn extract_return_facts_sorts_and_deduplicates_duplicate_lines() {
+        let facts = extract_return_facts("Ok(value)\nOk(value)", 3);
+
+        let lines_and_text = facts
+            .iter()
+            .map(|fact| (fact.line, fact.text.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(lines_and_text, vec![(3, "Ok(value)"), (4, "Ok(value)")]);
+    }
+
+    #[test]
+    fn extract_return_facts_ignores_substrings_without_return_signal() {
+        let facts = extract_return_facts("let ok_value = status;\nlet none_count = 0;", 1);
+
+        assert!(facts.is_empty());
+    }
+}

@@ -1,6 +1,5 @@
 use serde::Serialize;
 use serde_json::Value;
-use std::path::Path;
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "assistant_loop_health";
@@ -295,9 +294,7 @@ pub(crate) fn assistant_loop_health_proof_count(report: &AssistantLoopHealthRepo
     report.proofs.len()
 }
 
-pub(crate) fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
+pub(crate) use crate::output::path::display_path;
 
 fn classify_proof(input: AssistantLoopHealthProofInput) -> HealthProof {
     match input.proof_json {
@@ -983,7 +980,7 @@ fn value_as_string(value: &Value) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::{Path, PathBuf};
+    use crate::output::test_support::{read_file, repo_root};
 
     #[test]
     fn assistant_loop_health_matches_fixture_corpus() -> Result<(), String> {
@@ -1206,19 +1203,5 @@ mod tests {
         assert!(markdown.contains("regenerate proof; supply selected seam"));
         assert!(markdown.contains("src/lib.rs:7 - missing receipt"));
         Ok(())
-    }
-
-    fn repo_root() -> Result<PathBuf, String> {
-        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        manifest_dir
-            .parent()
-            .and_then(Path::parent)
-            .map(Path::to_path_buf)
-            .ok_or_else(|| "failed to resolve repo root".to_string())
-    }
-
-    fn read_file(path: &Path) -> Result<String, String> {
-        std::fs::read_to_string(path)
-            .map_err(|err| format!("read {} failed: {err}", path.display()))
     }
 }
