@@ -10,11 +10,61 @@
     "pr_guidance": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/dedupe-upsert/comments.json",
     "existing_comments": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/dedupe-upsert/existing-comments.json"
   },
-  "limits": {"max_inline_comments": 3, "advisory": true, "comments_default": "off"},
-  "summary": {"guidance_comments": 2, "summary_only": 0, "suppressed": 0, "publishable": 2, "planned_create": 0, "planned_update": 1, "planned_keep": 1, "planned_delete": 0, "skipped": 0, "blocked": 0, "safe_to_publish": false},
+  "limits": {
+    "max_inline_comments": 3,
+    "advisory": true,
+    "comments_default": "off"
+  },
+  "summary": {
+    "guidance_comments": 2,
+    "summary_only": 0,
+    "suppressed": 0,
+    "publishable": 2,
+    "planned_create": 0,
+    "planned_update": 1,
+    "planned_keep": 1,
+    "planned_delete": 0,
+    "skipped": 0,
+    "blocked": 0,
+    "safe_to_publish": false
+  },
   "operations": [
-    {"operation": "update", "safe_to_publish": false, "dry_run": true, "source_collection": "comments", "source_id": "ripr-review-update", "dedupe_key": "ripr:u:src/pricing.rs:50", "placement": {"path": "src/pricing.rs", "line": 50, "side": "RIGHT", "mode": "exact_seam_line"}, "body": "RIPR advisory: body changed", "existing_comment_id": 101, "skip_reason": null, "blocked_reason": null},
-    {"operation": "keep", "safe_to_publish": false, "dry_run": true, "source_collection": "comments", "source_id": "ripr-review-keep", "dedupe_key": "ripr:k:src/pricing.rs:60", "placement": {"path": "src/pricing.rs", "line": 60, "side": "RIGHT", "mode": "exact_seam_line"}, "body": "RIPR advisory: body same", "existing_comment_id": 102, "skip_reason": null, "blocked_reason": null}
+    {
+      "operation": "update",
+      "safe_to_publish": false,
+      "dry_run": true,
+      "source_collection": "comments",
+      "source_id": "ripr-review-update",
+      "dedupe_key": "ripr:u:src/pricing.rs:50",
+      "placement": {
+        "path": "src/pricing.rs",
+        "line": 50,
+        "side": "RIGHT",
+        "mode": "exact_seam_line"
+      },
+      "body": "### ripr gap: missing boundary assertion\n\nChanged behavior:\n`amount == updated_threshold`\n\nWhy this matters:\nA related test reaches this code, but no equality-boundary assertion was found.\n\nRepair route:\nadd boundary assertion\n\nRepair:\nAdd one focused boundary assertion for `amount == updated_threshold`.\n\nVerify:\n`ripr agent verify`",
+      "existing_comment_id": 101,
+      "skip_reason": null,
+      "blocked_reason": null
+    },
+    {
+      "operation": "keep",
+      "safe_to_publish": false,
+      "dry_run": true,
+      "source_collection": "comments",
+      "source_id": "ripr-review-keep",
+      "dedupe_key": "ripr:k:src/pricing.rs:60",
+      "placement": {
+        "path": "src/pricing.rs",
+        "line": 60,
+        "side": "RIGHT",
+        "mode": "exact_seam_line"
+      },
+      "body": "### ripr gap: missing boundary assertion\n\nChanged behavior:\n`amount == kept_threshold`\n\nWhy this matters:\nA related test reaches this code, but no equality-boundary assertion was found.\n\nRepair route:\nadd boundary assertion\n\nRepair:\nAdd one focused boundary assertion for `amount == kept_threshold`.\n\nVerify:\n`ripr agent verify`",
+      "existing_comment_id": 102,
+      "skip_reason": null,
+      "blocked_reason": null
+    }
   ],
   "skipped": [],
   "blocked": [],

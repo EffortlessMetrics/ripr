@@ -582,22 +582,23 @@ For a CI-first user, the useful output is the artifact packet:
 - `target/ripr/agent/` - compatibility copies of packet, brief, verify, and
   receipt JSON for the top seam when one is available;
 - `target/ripr/reports/` - targeted-test outcome, SARIF files when enabled,
-  repo badge JSON, `agent-receipt.json`, `assistant-loop-health.{json,md}`,
-  `first-useful-action.{json,md}`, `pr-review-front-panel.{json,md}`,
+  repo badge JSON, `agent-receipt.json`, `gap-decision-ledger.{json,md}`,
+  `assistant-loop-health.{json,md}`, `first-useful-action.{json,md}`,
+  `pr-review-front-panel.{json,md}`, `start-here.{json,md}`,
   `waiver-aging.{json,md}`, `suppression-health.{json,md}`,
   `policy-readiness.{json,md}`, `index.{json,md}`, and any repo-local
   cockpit output.
 - `target/ripr/review/` - PR test guidance JSON and Markdown when
   `ripr review-comments` runs on pull requests.
 
-The workflow also writes a `RIPR advisory summary` step summary. It includes
-the PR review front panel when existing inputs allow
-`ripr pr-review front-panel` to run, the first useful action when existing
-inputs allow `ripr first-action` to run, a language preview grouping section
-when `[languages]` enables TypeScript or Python, policy readiness, waiver aging, and
-suppression health when their input artifacts exist, assistant-loop health when
-proof artifacts exist, the report packet index when any indexed artifact exists,
-the top recommendation, the agent review packet when present, artifact links,
+The workflow also writes a `RIPR advisory summary` step summary. It starts with
+the `start-here` first-run packet when `ripr first-pr` can compose one from
+explicit artifacts, then includes the PR review front panel, first useful
+action fallback, a language preview grouping section when `[languages]` enables
+TypeScript or Python, policy readiness, waiver aging, and suppression health
+when their input artifacts exist, assistant-loop health when proof artifacts
+exist, the report packet index when any indexed artifact exists, the top
+recommendation, the agent review packet when present, artifact links,
 SARIF and badge status, known limits, and PR guidance annotation counts when
 `target/ripr/review/comments.json` exists. On pull
 requests, the generated workflow writes that report before emitting
@@ -1610,13 +1611,31 @@ agent receipt, gate decision, coverage/grip frontier, and editor context
 inputs when those files exist, then writes and uploads
 `target/ripr/reports/first-useful-action.json` and
 `target/ripr/reports/first-useful-action.md` with the normal report packet. The
-job summary appends the recommended next test at a glance plus the Markdown report. If
-no inputs exist, the step logs that no first-useful-action inputs were
-available and leaves CI pass/fail behavior unchanged.
+job summary appends a first-run status card near the top of the advisory
+summary, then the recommended next test at a glance plus the Markdown report.
+The first-run card names the selected gap or no-action fallback, repair target,
+agent packet command, verify command, receipt command, artifact paths, and the
+advisory gate boundary. If no inputs exist, the step logs that no
+first-useful-action inputs were available, the summary shows the regeneration
+command, and CI pass/fail behavior is unchanged.
 
 See [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) for how
 developers, reviewers, and coding agents should read that summary, act on the
 selected action, verify static movement, and emit receipts.
+
+Generated CI also renders the first-run start-here packet. It first renders
+`target/ripr/reports/gap-decision-ledger.{json,md}` from
+`repo-exposure.json` when that snapshot exists, then runs `ripr first-pr --root
+.` with the gap ledger, first useful action, PR repair cards, agent packet, and
+gate decision paths. The command writes and uploads
+`target/ripr/reports/start-here.json` and
+`target/ripr/reports/start-here.md`. The job summary opens with this packet,
+showing status, top gap or no-action/blocked state, canonical gap identity,
+language/status, repair route, repair target, related test, static limit,
+verify command, receipt command, receipt state, next regeneration command,
+artifacts, and the gate authority boundary. If the packet is missing, the
+summary shows the exact `ripr first-pr` regeneration command and leaves CI
+pass/fail behavior unchanged.
 
 Generated CI also projects the PR review front panel when at least one explicit
 front-panel input artifact is already present. It runs
@@ -1673,23 +1692,27 @@ For every configured gate mode, the generated workflow behavior is:
    exists;
 14. render the assistant-loop-health section from `assistant-loop-health.json`
    and append `assistant-loop-health.md` when present;
-15. run `ripr first-action` when explicit first-action inputs exist;
-16. render the First Useful Action section from `first-useful-action.json` and
+15. run `ripr reports gap-ledger` from `repo-exposure.json` when present;
+16. run `ripr first-action` when explicit first-action inputs exist;
+17. render the First Useful Action section from `first-useful-action.json` and
    append `first-useful-action.md` when present;
-17. run `ripr pr-review front-panel` when explicit front-panel inputs exist;
-18. render the PR review front-panel section from
+18. run `ripr pr-review front-panel` when explicit front-panel inputs exist;
+19. run `ripr first-pr` to compose `start-here.{json,md}` from explicit
+   artifacts;
+20. render the start-here packet first in the job summary when present;
+21. render the PR review front-panel section from
    `pr-review-front-panel.json` and append `pr-review-front-panel.md` when
    present;
-19. run `ripr reports index` when explicit indexed artifacts exist;
-20. render the report-packet index section from `index.json` and append
+22. run `ripr reports index` when explicit indexed artifacts exist;
+23. render the report-packet index section from `index.json` and append
    `index.md` when present;
-21. append the detailed `gate-decision.md`, `baseline-debt-delta.md`, and
+24. append the detailed `gate-decision.md`, `baseline-debt-delta.md`, and
    `ripr-zero-status.md` reports when present;
-22. upload gate, baseline delta, RIPR Zero, PR evidence ledger,
+25. upload gate, baseline delta, RIPR Zero, PR evidence ledger,
    test-oracle assistant proof, assistant-loop health, first useful action, and
-   PR review front-panel plus report-packet index artifacts with the normal
-   `ripr-reports` artifact packet;
-23. fail only when the explicit gate mode returns `blocked` or `config_error`.
+   PR review front-panel plus start-here and report-packet index artifacts with
+   the normal `ripr-reports` artifact packet;
+26. fail only when the explicit gate mode returns `blocked` or `config_error`.
 
 The generated workflow reads the configured baseline for gate, delta, and RIPR
 Zero reports only. It must not run `ripr baseline update`, pass
@@ -2026,8 +2049,11 @@ blocking signal.
 Use [RIPR blocking readiness](BLOCKING_READINESS.md) before promoting a gate
 mode. The guide explains when to stay advisory, when to require `ripr-waive`,
 when a reviewed baseline is enough for `baseline-check`, and when
-`calibrated-gate` has enough local evidence to block. Default generated CI
-still stays non-blocking unless `RIPR_GATE_MODE` is explicitly configured.
+`calibrated-gate` has enough local evidence to block. Its
+[Gate Adoption Checklist](BLOCKING_READINESS.md#gate-adoption-checklist) should
+be complete before a repository moves from visible evidence to optional
+blocking. Default generated CI still stays non-blocking unless
+`RIPR_GATE_MODE` is explicitly configured.
 
 The security workflow currently runs:
 

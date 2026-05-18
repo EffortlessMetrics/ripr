@@ -134,7 +134,7 @@ definitions. The default PR lane targets the `standard` band. Release-surface la
 ## See also
 
 - [`docs/ci/ripr-mutation-boundary.md`](ripr-mutation-boundary.md) — mutation boundary.
-- [`docs/ci/rust-1.95-quality-rollout.md`](rust-1.95-quality-rollout.md) — 0.5.1 rollout anchor.
+- [`docs/ci/rust-1.95-quality-rollout.md`](rust-1.95-quality-rollout.md) — 0.6.0 release-shaping anchor.
 - [`docs/ci/verification-ladder.md`](verification-ladder.md) — PR verification ladder.
 - [`docs/ci/lem-budgeting.md`](lem-budgeting.md) — LEM budget bands.
 - [`docs/ci/labels.md`](labels.md) — CI label registry.

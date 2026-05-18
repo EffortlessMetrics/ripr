@@ -13,8 +13,9 @@ a discriminator that would notice if that behavior were wrong?
 `ripr` is alpha software. The current release is a syntax-first scanner that is
 useful for early feedback, not a proof system.
 
-This is the product repository for `ripr`. The `0.5.x` line keeps the analyzer,
-editor, CI, and agent loops aligned around static evidence for targeted tests.
+This is the product repository for `ripr`. The `0.6.x` line keeps the analyzer,
+editor, CI, and agent loops aligned around static evidence, preview-language
+visibility, and repo-local operating packets for targeted tests.
 
 The first-hour docs lead with plain language; internal terms (seam,
 discriminator, oracle, grip, canonical gap) live in the spec/schema layer.
@@ -241,7 +242,7 @@ test, and comparing before/after evidence.
 
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
-| Distribution | `0.5.0` is the prepared release line for the Rust crate, VS Code/Open VSX extension, GitHub Release server assets, generated CI workflow artifacts, and Rust 1.95 MSRV. `0.4.0` remains the last publicly verified release until the publish checklist completes. | Publish 0.5.0, then refresh public install and marketplace verification receipts. |
+| Distribution | `0.6.0` is the prepared release line for the Rust crate, VS Code/Open VSX extension, GitHub Release server assets, generated CI workflow artifacts, and Rust 1.95 MSRV. `0.5.0` remains the last publicly verified release until the 0.6.0 publish checklist completes. | Publish 0.6.0, then refresh public install and marketplace verification receipts. |
 | Diff analysis | Syntax-backed changed-line probes with owner symbols, parser-backed probe facts, explicit stop reasons for unknowns, probe-relative oracle strength, and local flow sink facts. | Maintenance; no active analyzer-refactor lane. |
 | Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, and unknown oracle kinds. | Maintenance; no active analyzer-refactor lane. |
 | Output | Human, JSON, context, GitHub/SARIF, repo seam, pilot, outcome, and badge formats include evidence-first stop reasons and advisory next actions. | Output contract maintenance. |
