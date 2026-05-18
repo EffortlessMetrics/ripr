@@ -506,7 +506,7 @@ The LLM work loop must not:
   commands Markdown.
 - `crates/ripr/src/output/agent_receipt.rs` renders receipt schema `0.3` with
   provenance and structured next-action guidance.
-- `crates/ripr/src/output/agent_brief.rs`, `crates/ripr/src/output/pilot.rs`,
+- `crates/ripr/src/output/agent_brief.rs`, `crates/ripr/src/output/pilot/mod.rs`,
   and `crates/ripr/src/lsp/actions.rs` reuse the shared command builders for
   their current command payloads.
 - `xtask/src/reports/operator.rs` reuses the shared command builder source for
