@@ -410,6 +410,60 @@
       "repair_route": "analysis/value-resolution-audit-fixes"
     },
     {
+      "id": "later_shadowed_struct_literal_projection_resolves_before_shadow",
+      "case_kind": "positive",
+      "evidence_class": "activation_value_resolution",
+      "maturity_scope": "fixture_backed",
+      "description": "A same-test struct literal field projection remains a concrete activation value when the owner call happens before a later shadow of the binding.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_struct_literal_shadowed_after_owner_call_then_values_are_recorded",
+      "sample": {
+        "file": "tests/pricing_tests.rs",
+        "source": "let case = DiscountCase { amount: 100, threshold: 100 };\nassert_eq!(discounted_total(case.amount, case.threshold), 90);\nlet case = make_discount_case();"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-activation-struct-literal-later-shadow",
+          "canonical_gap_id": "gap:bench-activation-struct-literal-later-shadow",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pricing::discounted_total",
+          "location": {
+            "file": "src/pricing.rs",
+            "line": 44
+          },
+          "seam_kind": "predicate_boundary",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 1,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_value_unresolved",
+        "direction": "decrease"
+      },
+      "expected_claim": "Source-order-scoped same-test struct literal fields can resolve activation values for owner calls before a later shadow while preserving stale-value guards after the shadow.",
+      "must_not_claim": [
+        "Do not reuse stale literal fields for owner calls at or after the shadowing line.",
+        "Do not resolve literal field projections before the binding appears.",
+        "Do not resolve helper-returned struct projections.",
+        "Do not infer semantic struct flow outside the same test body.",
+        "Do not claim strong grip from activation-value resolution alone."
+      ],
+      "repair_route": "analysis/value-resolution-audit-fixes"
+    },
+    {
       "id": "no_arg_owner_call_activation_values_not_required",
       "case_kind": "positive",
       "evidence_class": "activation_value_resolution",
@@ -561,8 +615,8 @@
       "static_limitation_category": "activation_value_unresolved",
       "expected_claim": "Shadowed struct literal projections remain named static limitations because the earlier literal value is stale by the owner call.",
       "must_not_claim": [
-        "Do not reuse stale literal fields after a binding is shadowed.",
-        "Do not infer source-order scope for struct field projections.",
+        "Do not reuse stale literal fields after a binding is shadowed before the owner call.",
+        "Do not treat a before-call shadow as an after-call shadow.",
         "Do not treat shadowed helper-built projections as observed activation values."
       ],
       "repair_route": "analysis/value-resolution-audit-fixes"
@@ -615,7 +669,7 @@
       "expected_claim": "Fixture parameter projections remain named static limitations because a later literal binding is not proof of the runtime fixture value.",
       "must_not_claim": [
         "Do not resolve fixture/rstest parameter fields from later same-name literals.",
-        "Do not infer source-order scope for struct field projections.",
+        "Do not let source-order struct projection support override fixture/rstest parameter invalidation.",
         "Do not treat runtime fixture parameters as same-test literal struct fields."
       ],
       "repair_route": "analysis/value-resolution-audit-fixes"
@@ -665,10 +719,10 @@
         "value": 1
       },
       "static_limitation_category": "activation_value_unresolved",
-      "expected_claim": "Struct projections shadowed by loop or pattern binders remain named static limitations because whole-test literal maps are not source-order proof.",
+      "expected_claim": "Struct projections shadowed by loop or pattern binders before the owner call remain named static limitations because the earlier literal value is stale by the owner call.",
       "must_not_claim": [
         "Do not reuse stale literal fields after for/if-let/closure/match binders shadow the identifier.",
-        "Do not infer source-order scope for struct field projections.",
+        "Do not treat a before-call binder shadow as an after-call shadow.",
         "Do not treat shadowed helper-built projections as observed activation values."
       ],
       "repair_route": "analysis/value-resolution-audit-fixes"
@@ -718,10 +772,10 @@
         "value": 1
       },
       "static_limitation_category": "activation_value_unresolved",
-      "expected_claim": "Struct projections shadowed by non-simple let patterns remain named static limitations because whole-test literal maps are not source-order proof.",
+      "expected_claim": "Struct projections shadowed by non-simple let patterns before the owner call remain named static limitations because the earlier literal value is stale by the owner call.",
       "must_not_claim": [
         "Do not reuse stale literal fields after let-pattern binders shadow the identifier.",
-        "Do not infer source-order scope for struct field projections.",
+        "Do not treat a before-call let-pattern shadow as an after-call shadow.",
         "Do not treat pattern-bound helper projections as observed activation values."
       ],
       "repair_route": "analysis/value-resolution-audit-fixes"
