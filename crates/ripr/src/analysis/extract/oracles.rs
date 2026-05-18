@@ -421,3 +421,84 @@ fn comparable_expression(expression: &str) -> String {
         .trim_start_matches('&')
         .to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_assertions_keeps_line_numbers_and_observed_tokens() {
+        let body = "let value = compute();\nassert_eq!(value, expected_total);\nvalue.unwrap();";
+
+        let assertions = extract_assertions(body, 20);
+
+        assert_eq!(assertions.len(), 2);
+        assert_eq!(assertions[0].line, 21);
+        assert_eq!(assertions[0].kind, OracleKind::ExactValue);
+        assert_eq!(assertions[0].strength, OracleStrength::Strong);
+        assert_eq!(
+            assertions[0].observed_tokens,
+            vec!["expected_total", "value"]
+        );
+        assert_eq!(assertions[1].line, 22);
+        assert_eq!(assertions[1].kind, OracleKind::SmokeOnly);
+        assert_eq!(assertions[1].strength, OracleStrength::Smoke);
+    }
+
+    #[test]
+    fn classify_assertion_distinguishes_exact_and_broad_error_oracles() {
+        let exact = classify_assertion("assert_matches!(result, Err(ConfigError::MissingPort))");
+        let broad = classify_assertion("assert!(result.is_err())");
+
+        assert_eq!(exact.kind, OracleKind::ExactErrorVariant);
+        assert_eq!(exact.strength, OracleStrength::Strong);
+        assert_eq!(broad.kind, OracleKind::BroadError);
+        assert_eq!(broad.strength, OracleStrength::Weak);
+    }
+
+    #[test]
+    fn classify_assertion_marks_duplicative_equality_as_weak() {
+        let classification = classify_assertion("assert_eq!(&actual, actual)");
+
+        assert_eq!(classification.kind, OracleKind::RelationalCheck);
+        assert_eq!(classification.strength, OracleStrength::Weak);
+    }
+
+    #[test]
+    fn classify_assertion_handles_nested_commas_in_custom_exact_helpers() {
+        let classification = classify_assertion(
+            "crate::helpers::assert_config_matches(actual, Config { ports: [80, 443] })",
+        );
+
+        assert_eq!(classification.kind, OracleKind::ExactValue);
+        assert_eq!(classification.strength, OracleStrength::Strong);
+    }
+
+    #[test]
+    fn contains_macro_invocation_requires_identifier_boundary_and_delimiter() {
+        assert!(contains_macro_invocation(
+            "insta::assert_json_snapshot!({\"ok\": true})",
+            "assert_json_snapshot!"
+        ));
+        assert!(!contains_macro_invocation(
+            "my_assert_json_snapshot!({\"ok\": true})",
+            "assert_json_snapshot!"
+        ));
+        assert!(!contains_macro_invocation(
+            "assert_json_snapshot_helper({\"ok\": true})",
+            "assert_json_snapshot!"
+        ));
+    }
+
+    #[test]
+    fn line_scanned_oracles_include_mock_expectations_without_macro_asserts() {
+        let body = "mock_service.expect_publish().times(1);\nlet value = 1;";
+
+        let oracles = extract_line_scanned_oracles(body, 7);
+
+        assert_eq!(oracles.len(), 1);
+        assert_eq!(oracles[0].line, 7);
+        assert_eq!(oracles[0].kind, OracleKind::MockExpectation);
+        assert_eq!(oracles[0].strength, OracleStrength::Medium);
+    }
+}
