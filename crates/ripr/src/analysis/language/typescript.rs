@@ -356,6 +356,13 @@ fn collect_expect_assertions_in_statement(
                 out.push(assertion);
             }
         }
+        Statement::ReturnStatement(return_stmt) => {
+            if let Some(argument) = &return_stmt.argument
+                && let Some(assertion) = expect_assertion_from_expression(argument, source)
+            {
+                out.push(assertion);
+            }
+        }
         Statement::IfStatement(if_stmt) => {
             collect_expect_assertions_in_statement(&if_stmt.consequent, source, out);
             if let Some(alternate) = &if_stmt.alternate {
@@ -1324,6 +1331,21 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
             Path::new("tests/lib.test.ts"),
             r#"test("async", async () => {
     await expect(loader()).resolves.toBe(42);
+});
+"#,
+        );
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests[0].assertions.len(), 1);
+        assert_eq!(tests[0].assertions[0].matcher, "toBe");
+        assert_eq!(tests[0].assertions[0].oracle_kind, OracleKind::ExactValue);
+    }
+
+    #[test]
+    fn extract_tests_recognizes_return_await_resolves_async_chain() {
+        let tests = extract_tests(
+            Path::new("tests/lib.test.ts"),
+            r#"test("async return", async () => {
+    return await expect(loader()).resolves.toBe(42);
 });
 "#,
         );
