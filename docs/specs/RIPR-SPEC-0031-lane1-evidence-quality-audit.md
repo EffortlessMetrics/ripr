@@ -83,6 +83,13 @@ includes:
 - `evidence_record_field_health`;
 - `top_files_by_unresolved_evidence_debt`.
 
+`finding_alignment.actionable_gap_top_lists` is derived from canonical items,
+not raw findings. It reports bounded `{label, count}` rows for actionable gap
+classes, files, repair kinds, missing discriminator kinds, static limitation
+reasons on actionable gap records, verify-command unknowns, and repair-route
+unknowns. These rows are advisory triage hints for the next fixture-backed Lane
+1 repair slice.
+
 The report is additive and repo-local. It is not a replacement for
 `repo-exposure.json`, `evidence-health.json`, or calibration reports.
 
@@ -93,6 +100,7 @@ The Markdown sibling prints the same audit areas in bounded tables:
 - repo-exposure generation diagnostics;
 - summary;
 - finding alignment;
+- actionable canonical gap top lists;
 - largest canonical gap groups;
 - duplicate-looking groups;
 - missing discriminator classes;
@@ -116,6 +124,9 @@ The audit must summarize:
 - finding-alignment coverage by evidence class, unaligned raw finding examples,
   same-line duplicate groups, static-unknown items without named limitations,
   and canonical items missing repair or verification guidance;
+- actionable canonical gap top lists for class, file, repair kind, missing
+  discriminator kind, static limitation reason on actionable gap records,
+  verify-command unknown, and repair-route unknown counts;
 - canonical gap groups;
 - largest canonical groups;
 - duplicate-looking groups;
@@ -138,6 +149,16 @@ Given evidence records that carry `canonical_item`, the audit reports a
 `finding_alignment.summary` so the scorecard can count canonical items,
 actionable items, observed items, static limitations, calibration support, and
 raw-to-canonical alignment without requiring a separate top-level projection.
+
+Given actionable canonical items with structured repair routes and verify
+commands, the audit reports top actionable classes, files, repair kinds, and
+missing discriminator kinds while preserving raw findings as supporting
+evidence only.
+
+Given actionable canonical items missing a structured repair route or verify
+command, the audit increments the existing coverage counters and lists the
+affected evidence classes in `top_repair_route_unknowns` or
+`top_verify_command_unknowns`.
 
 Given evidence records with and without `canonical_item`, the audit reports
 `finding_alignment.coverage` so maintainers can see which evidence classes are
@@ -179,10 +200,16 @@ audit report only; it does not change static classifications.
 - `xtask::tests::lane1_evidence_audit_counts_quality_gaps_from_evidence_record`
   pins JSON counts for canonical groups, duplicate groups, missing
   discriminators, static limitation categories, ranking confidence,
-  calibration, derived finding-alignment summary, alignment coverage, and
-  field health.
+  calibration, derived finding-alignment summary, alignment coverage,
+  actionable gap top lists, and field health.
+- `xtask::tests::lane1_evidence_audit_reports_aligned_supported_class_coverage`
+  pins per-class aligned item counts and actionable top lists for supported
+  presentation, config/policy, and predicate-boundary examples.
 - `xtask::tests::lane1_evidence_audit_reports_alignment_coverage_holes` pins
   unaligned raw finding examples and same-line duplicate grouping.
+- `xtask::tests::lane1_evidence_audit_requires_structured_repair_route_for_actionable_items`
+  pins repair-route and verify-command unknown top lists for actionable
+  canonical items missing agent-safe guidance.
 - `xtask::tests::lane1_evidence_audit_rejects_generic_static_unknown_limitation_category`
   pins that generic `static_unknown` does not satisfy the named-limitation
   requirement.

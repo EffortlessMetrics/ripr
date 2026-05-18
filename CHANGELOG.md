@@ -9,6 +9,13 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Lane 1 evidence audit and scorecard now report bounded actionable canonical
+  gap top lists by evidence class, file, repair kind, missing discriminator
+  kind, static limitation reason, verify-command unknown class, and
+  repair-route unknown class. The lists are derived from
+  `evidence_record.canonical_item` so maintainers can choose the next
+  fixture-backed repair class from live evidence without changing PR/CI
+  rendering, gates, badges, providers, generated tests, or mutation execution.
 - Lane 1 evidence audit generation now streams the live repo-exposure JSON
   subprocess directly into the temporary audit input file instead of buffering
   hundreds of megabytes in memory. Stderr and latency breadcrumbs remain
