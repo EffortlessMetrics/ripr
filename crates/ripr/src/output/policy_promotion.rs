@@ -1,3 +1,5 @@
+use crate::output::markdown::{markdown_text, render_string_section};
+use crate::output::value_path::{path_value, string_path};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -661,17 +663,6 @@ fn notice_json(notice: &Notice) -> Value {
     })
 }
 
-fn render_string_section(out: &mut String, title: &str, values: &[String]) {
-    out.push_str(&format!("\n## {title}\n\n"));
-    if values.is_empty() {
-        out.push_str("- none\n");
-    } else {
-        for value in values {
-            out.push_str(&format!("- {}\n", markdown_text(value)));
-        }
-    }
-}
-
 fn push_unique(values: &mut Vec<String>, value: impl Into<String>) {
     let value = value.into();
     if value.trim().is_empty() || values.iter().any(|existing| existing == &value) {
@@ -693,24 +684,6 @@ fn string_array_path(value: &Value, path: &[&str]) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
-}
-
-fn string_path(value: &Value, path: &[&str]) -> Option<String> {
-    path_value(value, path)
-        .and_then(Value::as_str)
-        .map(ToOwned::to_owned)
-}
-
-fn path_value<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
-    let mut current = value;
-    for key in path {
-        current = current.get(*key)?;
-    }
-    Some(current)
-}
-
-fn markdown_text(value: &str) -> String {
-    value.replace('\\', "\\\\")
 }
 
 #[cfg(test)]
@@ -1576,14 +1549,6 @@ mod tests {
         render_string_section(&mut out, "Example", &[]);
         assert!(out.contains("## Example"));
         assert!(out.contains("- none"));
-    }
-
-    // --- markdown_text backslash escaping ---
-
-    #[test]
-    fn markdown_text_escapes_backslashes() {
-        assert_eq!(markdown_text("a\\b"), "a\\\\b");
-        assert_eq!(markdown_text("no backslash"), "no backslash");
     }
 
     // --- path_value and string_array_path helpers ---
