@@ -211,6 +211,11 @@ ripr agent receipt \
 The receipt is the review trail. Without a receipt, do not infer improvement
 from the test diff alone.
 
+If you are working from VS Code, run `ripr: Show Status` after the receipt and
+refresh. The editor can point to the validated first-pr packet, open the
+Markdown packet, and copy the bounded summary or repair packet when the packet
+matches the current workspace and diagnostic identity.
+
 ## 9. Add Advisory CI After One Manual Win
 
 After one PR has a useful before/after receipt, add generated advisory CI:
@@ -247,10 +252,34 @@ The static evidence improved or resolved, or the checked output proof now exists
 The result is advisory, and runtime mutation testing remains optional follow-up.
 ```
 
+## Surface Ownership
+
+The first-run loop composes existing surfaces. Do not add a new artifact when
+one of these already owns the job:
+
+| Surface | Opens with | Owns | Does not own |
+| --- | --- | --- | --- |
+| First-run packet | `target/ripr/reports/start-here.md` | Top repairable Rust gap or no-action state, repair route, verify command, artifact links, advisory boundary. | Analyzer truth, gate authority, PR comments, source edits, generated tests. |
+| First successful PR workflow | This document | Manual adoption path from one PR to one repair receipt. | Output schema contracts or editor behavior. |
+| Quickstart | [Quickstart](QUICKSTART.md) | First-hour path selection across CLI, PR, editor, and agent use. | Full report topology. |
+| Generated CI | [CI strategy](CI.md) | Advisory PR summary, artifact upload, start-here projection, optional gate artifact links. | Pass/fail authority unless an explicit gate-decision artifact owns it. |
+| PR repair comments | [PR review guidance](PR_REVIEW_GUIDANCE.md) and [PR inline comment publisher workflow](PR_INLINE_COMMENT_PUBLISHER_WORKFLOW.md) | Bounded repair cards from existing review-comment artifacts when explicitly configured. | Free-form review, branch protection, default blocking. |
+| Editor handoff | [Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md) | Read-only projection of existing first-pr packets into saved-workspace editor status and actions. | Producing first-pr packets or PR/CI artifacts. |
+| Agent packet | [LLM operator guide](LLM_OPERATOR_GUIDE.md) | Bounded work order with task, context, repair, verification, stop conditions, and non-goals. | Provider calls, generated tests, or source edits. |
+| Badge endpoints | [Badge policy](BADGE_POLICY.md) and [verification contracts](verification/) | Repo-scoped public trust markers. | PR-local test adequacy or runtime mutation proof. |
+| Gate decision | [Calibrated gate policy](CALIBRATED_GATE_POLICY.md) and [blocking readiness](BLOCKING_READINESS.md) | Explicit pass/fail authority when a repository opts into a gate mode. | Start-here summaries, comments, or badges. |
+
+Implementation and cleanup follow-up lives in
+[`plans/adoption-integration-cleanup/`](../plans/adoption-integration-cleanup/).
+
 ## Related Docs
 
 - [Quickstart](QUICKSTART.md) covers first-hour paths for CLI, CI, editor, and
   agent users.
+- [First successful PR demo](demo/first-successful-pr.md) shows the checked
+  boundary-gap, output-contract, no-action, and blocked fixture cases.
+- [Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md)
+  explains the VS Code handoff from local receipt to `start-here` packet.
 - [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) explains the
   artifact router that can pick the next bounded action.
 - [Targeted test workflow](TARGETED_TEST_WORKFLOW.md) is the deeper

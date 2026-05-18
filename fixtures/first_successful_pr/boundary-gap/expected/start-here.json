@@ -18,7 +18,7 @@
       "id": "review_comments",
       "label": "PR repair cards",
       "path": "target/ripr/review/comments.json",
-      "regeneration_command": "ripr review-comments --root fixtures/first_successful_pr/boundary-gap --base <base> --head <head> --gap-ledger inputs/reports/gap-decision-ledger.json --out target/ripr/review/comments.json",
+      "regeneration_command": "ripr review-comments --root fixtures/first_successful_pr/boundary-gap --base origin/main --head HEAD --gap-ledger inputs/reports/gap-decision-ledger.json --out target/ripr/review/comments.json",
       "status": "missing"
     },
     {
@@ -48,9 +48,11 @@
   },
   "inputs": {
     "agent_packet": "target/ripr/workflow/agent-packet.json",
+    "base": "origin/main",
     "first_action": "target/ripr/reports/first-useful-action.json",
     "gap_ledger": "inputs/reports/gap-decision-ledger.json",
     "gate_decision": "target/ripr/reports/gate-decision.json",
+    "head": "HEAD",
     "receipts_dir": "target/ripr/receipts",
     "review_comments": "target/ripr/review/comments.json"
   },
@@ -77,7 +79,10 @@
     "changed_behavior": "amount >= threshold",
     "gap_id": "gap:pr:pricing:threshold-boundary",
     "kind": "MissingBoundaryAssertion",
+    "language": "rust",
+    "language_status": "stable",
     "receipt_command": null,
+    "receipt_state": null,
     "repair": {
       "related_test": "tests/pricing.rs::premium_customer_gets_discount",
       "route": "AddBoundaryAssertion",
@@ -86,6 +91,8 @@
     },
     "source_artifact": "inputs/reports/gap-decision-ledger.json",
     "state": "top_gap",
+    "static_limit_detail": null,
+    "static_limit_kind": null,
     "verify_command": "cargo xtask fixtures boundary_gap",
     "why": "A related Rust test reaches this change, but no equality-boundary assertion was found for the changed behavior."
   },
