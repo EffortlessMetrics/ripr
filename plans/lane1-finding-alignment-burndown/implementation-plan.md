@@ -46,14 +46,14 @@ directly after `cargo build -p ripr`.
 Current live proof after the streaming fix:
 
 - repo-exposure generation status: `pass`;
-- generated stdout bytes: 518,483,471;
+- generated stdout bytes: 518,815,499;
 - latency trace events captured: 95;
-- raw alignment signals: 47,591;
-- canonical evidence items: 38,523;
+- raw alignment signals: 47,617;
+- canonical evidence items: 38,547;
 - actionable canonical gaps: 156;
-- named static limitations: 26,339;
+- named static limitations: 26,343;
 - top remaining named limitation bucket: `activation_value_unresolved` at
-  25,967.
+  25,971.
 - `cargo xtask evidence-health` completes through the same built-binary path and
   writes `target/ripr/reports/evidence-health.{json,md}`.
 
