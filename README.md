@@ -454,6 +454,7 @@ Start here:
 | Adopt a baseline debt ledger | [Baseline ledger workflow](docs/BASELINE_LEDGER_WORKFLOW.md) |
 | Understand easy-start defaults | [Defaults-first adoption spec](docs/specs/RIPR-SPEC-0009-defaults-first-adoption.md) |
 | See current product direction | [Roadmap](docs/ROADMAP.md) |
+| Understand source-of-truth rails | [Repo tracking model](docs/REPO_TRACKING_MODEL.md) and [context system](docs/agent-context/CONTEXT_SYSTEM.md) |
 | See active campaigns | [Implementation campaigns](docs/IMPLEMENTATION_CAMPAIGNS.md) |
 | See implementation checkpoints | [Implementation plan](docs/IMPLEMENTATION_PLAN.md) |
 | Run Codex Goals | [Codex Goals](docs/CODEX_GOALS.md) |
