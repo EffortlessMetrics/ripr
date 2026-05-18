@@ -1353,6 +1353,60 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
     }
 
     #[test]
+    fn extract_tests_collects_assertions_nested_in_loop_switch_and_label_bodies() {
+        let tests = extract_tests(
+            Path::new("tests/lib.test.ts"),
+            r#"test("nested statements", () => {
+    while (enabled) {
+        expect(loopValue).toBe(1);
+    }
+    do {
+        expect(done).toBeTruthy();
+    } while (retry);
+    for (let index = 0; index < items.length; index++) {
+        expect(items[index]).toBeDefined();
+    }
+    for (const key in record) {
+        expect(record[key]).toEqual("value");
+    }
+    for (const item of items) {
+        expect(item).toBeDefined();
+    }
+    retry: {
+        expect(labelled).toBe(false);
+    }
+    switch (kind) {
+        case "a":
+            expect(kind).toBe("a");
+            break;
+        default:
+            expect(kind).toEqual("fallback");
+    }
+});
+"#,
+        );
+        assert_eq!(tests.len(), 1);
+        let matchers: Vec<&str> = tests[0]
+            .assertions
+            .iter()
+            .map(|assertion| assertion.matcher.as_str())
+            .collect();
+        assert_eq!(
+            matchers,
+            vec![
+                "toBe",
+                "toBeTruthy",
+                "toBeDefined",
+                "toEqual",
+                "toBeDefined",
+                "toBe",
+                "toBe",
+                "toEqual"
+            ]
+        );
+    }
+
+    #[test]
     fn extract_tests_collects_assertions_nested_in_try_catch_finally() {
         let tests = extract_tests(
             Path::new("tests/lib.test.ts"),
