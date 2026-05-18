@@ -598,7 +598,12 @@ suite('Extension Smoke', () => {
       assert.ok(String(context.status.tooltip).includes('saved-workspace analysis is queued'));
       assert.ok(String(context.status.tooltip).includes('Workspace:'));
       assert.ok(String(context.status.tooltip).includes('Server command: ripr'));
-      assert.ok(String(context.status.tooltip).includes('Server version: ripr 0.5.0-test'));
+      assert.ok(String(context.status.tooltip).includes('Extension state: extension_version_ok (0.6.0)'));
+      assert.ok(String(context.status.tooltip).includes('ripr server state: ripr_version_ok (ripr 0.6.0-test)'));
+      assert.ok(String(context.status.tooltip).includes('Workspace trust state: workspace_trusted'));
+      assert.ok(String(context.status.tooltip).includes('Config state: config_missing'));
+      assert.ok(String(context.status.tooltip).includes('Artifact directory state: artifact_dir_missing'));
+      assert.ok(String(context.status.tooltip).includes('Server version: ripr 0.6.0-test'));
       assert.ok(String(context.status.tooltip).includes('Server started: yes'));
       assert.ok(String(context.status.tooltip).includes('Config: ripr.toml (missing'));
       assert.ok(String(context.status.tooltip).includes('Editor selectors: rust, typescript'));
@@ -788,7 +793,10 @@ suite('Extension Smoke', () => {
       assert.ok(statusOutput.includes('Artifact gap decision ledger: target/ripr/reports/gap-decision-ledger.json (found; found in current workspace'));
       assert.ok(statusOutput.includes('Artifact editor agent receipt: target/ripr/agent/agent-receipt.json (found; found in current workspace'));
       assert.ok(statusOutput.includes('First useful action: Add equality-boundary discriminator test'));
-      assert.ok(statusOutput.includes('Server version: ripr 0.5.0-test'));
+      assert.ok(statusOutput.includes('ripr server state: ripr_version_ok (ripr 0.6.0-test)'));
+      assert.ok(statusOutput.includes('Config state: config_found'));
+      assert.ok(statusOutput.includes('Artifact directory state: artifact_dir_present'));
+      assert.ok(statusOutput.includes('Server version: ripr 0.6.0-test'));
     } finally {
       await context.dispose();
     }
@@ -1165,7 +1173,7 @@ suite('Extension Smoke', () => {
       assertReportIncludes(diagnosis, [
         'ripr setup diagnosis:',
         'Server command: ripr',
-        'Server version: ripr 0.5.0-test',
+        'Server version: ripr 0.6.0-test',
         'Config: ripr.toml (found',
         'Enabled languages: rust',
         'ripr validated 1 actionable gap artifact.',
@@ -1351,7 +1359,11 @@ suite('Extension Smoke', () => {
       const report = context.outputLines.join('\n');
       assert.ok(report.includes('ripr setup diagnosis:'));
       assert.ok(report.includes('Status: ripr saved-workspace analysis is queued.'));
-      assert.ok(report.includes('Server version: ripr 0.5.0-test'));
+      assert.ok(report.includes('ripr server state: ripr_version_ok (ripr 0.6.0-test)'));
+      assert.ok(report.includes('Workspace trust state: workspace_trusted'));
+      assert.ok(report.includes('Config state: config_found'));
+      assert.ok(report.includes('Artifact directory state: artifact_dir_present'));
+      assert.ok(report.includes('Server version: ripr 0.6.0-test'));
       assert.ok(report.includes('Config: ripr.toml (found; found in current workspace'));
       assert.ok(report.includes('Artifact gap decision ledger: target/ripr/reports/gap-decision-ledger.json (found'));
       assert.ok(report.includes('First useful action: Add equality-boundary discriminator test'));
@@ -1400,7 +1412,8 @@ suite('Extension Smoke', () => {
       assertReportIncludes(report, [
         'Status: ripr saved-workspace analysis is queued.',
         'Server command: ripr',
-        'Server version: ripr 0.5.0-test',
+        'ripr server state: ripr_version_ok (ripr 0.6.0-test)',
+        'Server version: ripr 0.6.0-test',
         'Config: ripr.toml (missing',
         'Artifact first useful action report: target/ripr/reports/first-useful-action.json (missing',
         'Evidence freshness: pending refresh'
@@ -1754,6 +1767,52 @@ suite('Extension Smoke', () => {
     } finally {
       await context.dispose();
     }
+  });
+
+  test('setup diagnosis reports compatibility states and blocks unsafe repair start', async () => {
+    await withControllerTestContext({
+      serverVersion: 'ripr 0.5.0-test'
+    }, async (context) => {
+      await context.controller.start();
+      const report = await diagnoseSetupReport(context);
+      assertReportIncludes(report, [
+        'Extension state: extension_version_ok (0.6.0)',
+        'Expected ripr server version: 0.6.0',
+        'ripr server state: ripr_version_too_old (reported ripr 0.5.0-test; expected 0.6.0)',
+        'Workspace trust state: workspace_trusted',
+        'Config state: config_missing',
+        'Artifact directory state: artifact_dir_missing'
+      ]);
+
+      await withCurrentFirstPrDiagnostic({
+        gap_id: 'gap:pr:pricing:threshold-boundary',
+        canonical_gap_id: 'gap:rust:pricing:discount:threshold-boundary'
+      }, async () => {
+        await context.controller.startCurrentRepair();
+      });
+      assert.ok(context.infoMessages.at(-1)?.includes('ripr_version_too_old'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      workspaceTrusted: false
+    }, async (context) => {
+      await context.controller.start();
+      const report = await diagnoseSetupReport(context);
+      assertReportIncludes(report, [
+        'Workspace trust state: workspace_untrusted',
+        'ripr server state: ripr_version_ok (ripr 0.6.0-test)'
+      ]);
+
+      await withCurrentFirstPrDiagnostic({
+        gap_id: 'gap:pr:pricing:threshold-boundary',
+        canonical_gap_id: 'gap:rust:pricing:discount:threshold-boundary'
+      }, async () => {
+        await context.controller.startCurrentRepair();
+      });
+      assert.ok(context.infoMessages.at(-1)?.includes('workspace_untrusted'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
   });
 
   test('language client registers Rust default and preview document selectors', async () => {
@@ -2158,6 +2217,8 @@ interface ControllerTestOptions {
   files?: Record<string, string | null>;
   workspaceRoot?: string | null;
   resolveFailure?: { message: string; detail: string };
+  serverVersion?: string;
+  workspaceTrusted?: boolean;
 }
 
 function agentLoopCommandTarget(
@@ -2457,7 +2518,7 @@ function createControllerTestContext(options: ControllerTestOptions) {
       command: 'ripr',
       source: 'path',
       detail: 'test ripr on PATH',
-      version: 'ripr 0.5.0-test'
+      version: options.serverVersion ?? 'ripr 0.6.0-test'
     }),
     createLanguageClient: (_serverOptions, options) => {
       clientOptions = options;
@@ -2471,6 +2532,7 @@ function createControllerTestContext(options: ControllerTestOptions) {
     writeClipboard: async (text) => {
       clipboardWrites.push(text);
     },
+    isWorkspaceTrusted: () => options.workspaceTrusted ?? true,
     showInformationMessage: async (message) => {
       infoMessages.push(message);
       return undefined;
