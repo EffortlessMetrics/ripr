@@ -1,5 +1,4 @@
 use serde_json::{Value, json};
-use std::path::Path;
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "policy_history";
@@ -380,9 +379,7 @@ pub(crate) fn policy_history_trend_direction(report: &PolicyHistoryReport) -> &s
     &report.trend.ceiling.direction
 }
 
-pub(crate) fn display_path(path: &Path) -> String {
-    path.display().to_string().replace('\\', "/")
-}
+pub(crate) use crate::output::path::display_path;
 
 fn parse_required_json(
     kind: &str,
