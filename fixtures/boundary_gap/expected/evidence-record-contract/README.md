@@ -13,6 +13,11 @@ Related-test entries include `oracle_semantics` so the contract pins what the
 oracle observes, what discriminator remains missing, and which assertion upgrade
 is available when RIPR can name one.
 
+Actionable canonical items include a structured `repair_route` with
+`repair_kind`, `target_test_type`, and `suggested_assertion`. The
+predicate-boundary case pins the fixture-backed `add_boundary_assertion` route
+so Lane 1 can count it as actionable work rather than prose-only guidance.
+
 Current v0.1 calibration entries use the placeholder:
 
 ```json

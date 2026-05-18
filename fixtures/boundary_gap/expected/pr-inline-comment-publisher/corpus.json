@@ -35,6 +35,32 @@
       "reason": "Plan mode should show exactly what would be created while posting nothing."
     },
     {
+      "id": "repair_card_copy",
+      "scenario": "plan mode with a GapRecord-backed repair card",
+      "inputs": {
+        "pr_guidance": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/repair-card-copy/comments.json",
+        "mode": "plan",
+        "pull_request": 123,
+        "event_name": "pull_request",
+        "head_repo": "EffortlessMetrics/ripr",
+        "base_repo": "EffortlessMetrics/ripr"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/repair-card-copy/comment-publish-plan.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/repair-card-copy/comment-publish-plan.md",
+      "expected": {
+        "status": "advisory",
+        "mode": "plan",
+        "publishable": 1,
+        "skipped": 0,
+        "blocked": 0,
+        "safe_to_publish": false,
+        "operations": ["create"],
+        "skip_reasons": [],
+        "blocked_reasons": []
+      },
+      "reason": "Inline planning should render GapRecord repair cards as bounded repair comments."
+    },
+    {
       "id": "summary_only_excluded",
       "scenario": "summary-only guidance remains visible but is never inline-publishable",
       "inputs": {

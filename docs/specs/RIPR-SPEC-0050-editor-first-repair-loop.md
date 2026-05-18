@@ -1,6 +1,6 @@
 # RIPR-SPEC-0050: Editor First Repair Loop
 
-Status: proposed
+Status: accepted
 
 ## Problem
 
