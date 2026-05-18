@@ -1049,6 +1049,7 @@ mod tests {
 
     #[test]
     fn run_ripr_check_reports_fake_binary_timeout() -> Result<(), String> {
+        #[cfg(not(windows))]
         let repo = temp_repo("ripr-pr-fake-timeout")?;
         #[cfg(windows)]
         let (binary, args) = (
@@ -1071,6 +1072,7 @@ mod tests {
         };
         assert!(err.contains("timed out after 1 seconds"));
         assert!(err.contains("retry command: cargo xtask ripr-pr"));
+        #[cfg(not(windows))]
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
     }
