@@ -7294,7 +7294,7 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     }
     let config = load_for_root(&input.root)?;
     apply_to_check_input(&mut input, &config, explicit);
-    let format = input.format.clone();
+    let format = input.format;
     if let Some(gap_ledger) = gap_ledger.as_ref() {
         print!(
             "{}",
