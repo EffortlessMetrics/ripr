@@ -1630,11 +1630,12 @@ Generated CI also renders the first-run start-here packet. It first renders
 gate decision paths. The command writes and uploads
 `target/ripr/reports/start-here.json` and
 `target/ripr/reports/start-here.md`. The job summary opens with this packet,
-showing status, top gap or no-action/blocked state, repair route, verify
-command, receipt command, next regeneration command, artifacts, and the gate
-authority boundary. If the packet is missing, the summary shows the exact
-`ripr first-pr` regeneration command and leaves CI pass/fail behavior
-unchanged.
+showing status, top gap or no-action/blocked state, canonical gap identity,
+language/status, repair route, repair target, related test, static limit,
+verify command, receipt command, receipt state, next regeneration command,
+artifacts, and the gate authority boundary. If the packet is missing, the
+summary shows the exact `ripr first-pr` regeneration command and leaves CI
+pass/fail behavior unchanged.
 
 Generated CI also projects the PR review front panel when at least one explicit
 front-panel input artifact is already present. It runs

@@ -115,6 +115,29 @@ repeated only as supporting evidence for the canonical item.
         "actionability": "inspect_visibility",
         "raw_group_size": 2,
         "group_reason": "declaration_and_literal_same_text_constant",
+        "primary_anchor": {
+          "file": "src/device_labels.rs",
+          "line": 46,
+          "kind": "exposed",
+          "source_id": "probe:src_device_labels_rs:46:decl",
+          "reason": "declaration_line_for_grouped_constant"
+        },
+        "raw_spans": [
+          {
+            "file": "src/device_labels.rs",
+            "start_line": 46,
+            "end_line": 46,
+            "kind": "exposed",
+            "source_id": "probe:src_device_labels_rs:46:decl"
+          },
+          {
+            "file": "src/device_labels.rs",
+            "start_line": 47,
+            "end_line": 47,
+            "kind": "static_unknown",
+            "source_id": "probe:src_device_labels_rs:47:literal"
+          }
+        ],
         "why": "Changed presentation text could not be traced to or away from a user-visible output sink.",
         "recommended_repair": "Trace the string constant to a rendered output path or confirm it is internal-only.",
         "repair_route": null,
@@ -233,6 +256,14 @@ Field contract:
   as `inspect_visibility`, `add_output_observer`, `already_observed`, or
   `no_action`. Presentation text does not produce user repair work from text
   alone.
+- `finding_alignment.items[].primary_anchor` - nullable preferred placement
+  hint for downstream surfaces that need one inline location. Supported
+  declaration-backed items point at the declaration or owner line and include
+  the source ID plus a placement reason.
+- `finding_alignment.items[].raw_spans[]` - source-span summary for every raw
+  finding attached to the canonical item. These spans preserve line-local
+  evidence for expansion/detail views; they do not become separate user
+  actions.
 - `finding_alignment.items[].repair_route` - nullable normalized repair route
   copied from class-specific evidence. It is required for
   `gap_state = "actionable"` in supported classes and is `null` for
@@ -964,6 +995,22 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
           "gap_state": "actionable",
           "actionability": "extend_related_test",
           "group_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "primary_anchor": {
+            "file": "src/pricing.rs",
+            "line": 88,
+            "kind": "weakly_gripped",
+            "source_id": "f3c9e4d21a0b7c88",
+            "reason": "canonical_group_primary_raw_finding"
+          },
+          "raw_spans": [
+            {
+              "file": "src/pricing.rs",
+              "start_line": 88,
+              "end_line": 88,
+              "kind": "weakly_gripped",
+              "source_id": "f3c9e4d21a0b7c88"
+            }
+          ],
           "why": "extend the nearest related test with the missing discriminator",
           "recommended_repair": "extend the nearest related test with the missing discriminator",
           "repair_route": {
@@ -1181,11 +1228,18 @@ Field contract:
 - `seams[].evidence_record.canonical_item` - additive finding-alignment
   projection with `gap_state`, class-scoped `actionability`, `why`,
   `recommended_repair`, nullable structured `repair_route`, `related_test`,
-  `verify_command`, `confidence`, and raw group size. Actionable canonical
-  items carry `repair_route.repair_kind`, `target_test_type`, and
-  `suggested_assertion`; no-action, observed, limitation, and unknown items
-  keep `repair_route: null`. Downstream surfaces should render this canonical
-  item before treating raw findings as separate work.
+  `verify_command`, `confidence`, raw group size, nullable `primary_anchor`,
+  and `raw_spans`. Actionable canonical items carry
+  `repair_route.repair_kind`, `target_test_type`, and `suggested_assertion`;
+  no-action, observed, limitation, and unknown items keep
+  `repair_route: null`. Downstream surfaces should render this canonical item
+  before treating raw findings as separate work.
+- `seams[].evidence_record.canonical_item.primary_anchor` - preferred
+  placement hint for downstream surfaces when the canonical item has a safe
+  source location. It is `null` only when RIPR cannot safely name a placement.
+- `seams[].evidence_record.canonical_item.raw_spans[]` - source-span summary
+  for every raw finding contributing to the canonical item. These spans are
+  supporting evidence, not independent user-facing actions.
 - `seams[].evidence_record.evidence_path` - typed reach, activate,
   propagate, observe, and discriminate stages. Each stage carries `state`,
   `confidence`, and `summary`.
@@ -1510,7 +1564,24 @@ runtime execution.
     "root": ".",
     "source": "repo-exposure-json",
     "repo_exposure_mode": "instant",
-    "repo_exposure_schema_version": "0.3"
+    "repo_exposure_schema_version": "0.3",
+    "repo_exposure_generation": {
+      "command": "target/debug/ripr check --root . --mode instant --format repo-exposure-json",
+      "timeout_ms": 1200000,
+      "status": "pass",
+      "duration_ms": 42000,
+      "exit_code": 0,
+      "stdout_bytes": 1048576,
+      "stderr_bytes": 4096,
+      "latency_trace_events_total": 18,
+      "latency_trace_tail": [
+        {
+          "phase": "evidence_for_seams_progress",
+          "status": "processed_5000_of_38124",
+          "duration_ms": 41000
+        }
+      ]
+    }
   },
   "summary": {
     "seams_total": 9355,
@@ -1728,6 +1799,11 @@ Field contract:
   `evidence_record` contract.
 - `inputs.repo_exposure_schema_version` - schema version read from the generated
   repo exposure JSON, or `null` if absent.
+- `inputs.repo_exposure_generation` - bounded diagnostics for the live
+  repo-exposure subprocess, including timeout, status, duration, output byte
+  counts, and the last captured latency trace events. These diagnostics explain
+  long or pathological audit input generation without changing classifications,
+  gate policy, or score semantics.
 - `summary.raw_headline_gaps` - count of seams that are headline-eligible in
   the record or top-level repo exposure row.
 - `finding_alignment.source` - source used for audit-local alignment counts;
@@ -6043,7 +6119,7 @@ JSON shape:
     "missing_expected": 4,
     "warnings": 3,
     "failures": 0,
-    "start_here": "target/ripr/reports/pr-review-front-panel.md",
+    "start_here": "target/ripr/reports/start-here.md",
     "gate_authority": "target/ripr/reports/gate-decision.md",
     "advisory": true
   },
@@ -6053,6 +6129,19 @@ JSON shape:
       "label": "Start here",
       "summary": "Reviewer-first PR story.",
       "entries": [
+        {
+          "id": "first_pr_start_here",
+          "label": "First PR start here",
+          "kind": "markdown",
+          "path": "target/ripr/reports/start-here.md",
+          "json_path": "target/ripr/reports/start-here.json",
+          "status": "available",
+          "available": true,
+          "required": true,
+          "authority": false,
+          "description": "Canonical first-screen repair packet.",
+          "next_command": null
+        },
         {
           "id": "pr_review_front_panel",
           "label": "PR review front panel",
@@ -6381,6 +6470,20 @@ Field contract:
   `blocked_artifact` or `timeout` for blocked recovery states, and
   `empty_diff` or `no_action` for no-action states.
 - `top_gap` requires `status = "actionable"`.
+- `selected.canonical_gap_id` and `selected.gap_id` identify the repair unit
+  when a top gap is selected. Generated CI and report indexes should prefer the
+  canonical gap id when present.
+- `selected.language` and `selected.language_status` keep Rust stable evidence
+  distinct from preview evidence when a top gap is selected.
+- `selected.repair.route`, `selected.repair.target_file`,
+  `selected.repair.related_test`, and `selected.repair.suggested_assertion`
+  describe the bounded repair route when present.
+- `selected.static_limit_kind` and `selected.static_limit_detail` are optional;
+  surfaces must show them before suggested action language when they are
+  present.
+- `selected.verify_command`, `selected.receipt_command`, and
+  `selected.receipt_state` are the static movement proof path. A missing
+  receipt is not failure, merge approval, mutation proof, or runtime adequacy.
 - `missing_artifact`, `malformed_artifact`, `stale_artifact`, `wrong_root`,
   `blocked_artifact`, and `timeout` require `status = "blocked"` and a
   bounded next command when one is known.

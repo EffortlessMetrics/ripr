@@ -63,3 +63,4 @@ observable behavior.
 | [RIPR-SPEC-0050](RIPR-SPEC-0050-editor-first-repair-loop.md) | accepted | Editor first repair loop |
 | [RIPR-SPEC-0051](RIPR-SPEC-0051-first-successful-pr-ux.md) | accepted | First successful PR UX |
 | [RIPR-SPEC-0052](RIPR-SPEC-0052-editor-first-pr-packet-projection.md) | accepted | Editor first-pr packet projection |
+| [RIPR-SPEC-0053](RIPR-SPEC-0053-start-here-surface-convergence.md) | proposed | Start-here surface convergence |
