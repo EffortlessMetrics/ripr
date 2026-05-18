@@ -9,7 +9,12 @@ are scoped or reviewed.
 
 ## Unreleased
 
-- Nothing yet.
+- Lane 1 activation evidence now treats direct no-argument owner calls as
+  activation for value-insensitive seams. This burns down one measured
+  `activation_value_unresolved` sub-shape for return/call/error/effect style
+  seams without inventing observed values, relaxing predicate-boundary value
+  checks, or changing PR/CI rendering, gates, providers, generated tests, or
+  mutation execution.
 
 ## 0.6.0 - 2026-05-17
 
@@ -43,11 +48,12 @@ Release themes:
   policy promotion changes that.
 
 Detailed changes:
-- Changelog source range: the 0.6.0 notes were reconciled against merged PRs
-  and first-parent commits through `fd4d9cb` / #1218 on current `main`.
-  Internal learning-doc polish remains outside the public release story, while
-  #1210 is included because the final proof and publish-decision packets
-  accepted it into the 0.6.0 candidate.
+- Changelog source range: the 0.6.0 notes were reconciled against the tagged
+  `v0.6.0` candidate at `fd4d9cb` / #1218. Internal learning-doc polish
+  remains outside the public release story, while #1210 is included because the
+  final proof and publish-decision packets accepted it into the 0.6.0
+  candidate. Post-tag generated badge refresh and release-note correction PRs
+  are release-state housekeeping, not new 0.6.0 product claims.
 - Removed-only diff hunks now still seed probes, so deleting or changing a
   behavior-bearing line without an added replacement does not disappear from
   static review. Related diff hardening covers quoted and metadata-bearing diff
