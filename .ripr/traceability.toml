@@ -2127,8 +2127,10 @@ spec = "docs/specs/RIPR-SPEC-0031-lane1-evidence-quality-audit.md"
 tests = [
   "xtask::tests::lane1_evidence_audit_counts_quality_gaps_from_evidence_record",
   "xtask::tests::lane1_evidence_audit_reports_alignment_coverage_holes",
+  "xtask::tests::lane1_evidence_audit_rejects_generic_static_unknown_limitation_category",
   "xtask::tests::lane1_evidence_audit_markdown_names_required_sections",
   "xtask::tests::lane1_evidence_audit_rejects_repo_exposure_without_seams",
+  "xtask::tests::lane1_repo_exposure_file_completion_check_requires_seams_and_closing_brace",
   "xtask::tests::xtask_command_parse_preserves_compatibility_aliases",
   "xtask::tests::report_commands_dispatch_through_report_facades",
 ]
@@ -2755,6 +2757,7 @@ code = [
 outputs = [
   "docs/specs/RIPR-SPEC-0043-presentation-text-evidence.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/handoffs/2026-05-16-finding-alignment-consumer-contract-v2.md",
   "docs/handoffs/2026-05-14-presentation-text-consumer-handoff.md",
   "docs/handoffs/2026-05-14-user-visible-output-evidence-closeout.md",
   "docs/specs/README.md",
@@ -2854,9 +2857,11 @@ tests = [
   "xtask/src/main.rs::tests::evidence_quality_scorecard_reports_finding_alignment_presentation_text_counts",
   "xtask/src/main.rs::tests::evidence_quality_trend_reports_finding_alignment_presentation_text_deltas",
   "xtask/src/main.rs::tests::evidence_quality_benchmark_corpus_is_valid",
+  "xtask/src/main.rs::tests::dogfood_finding_alignment_scenarios_have_checked_receipts",
 ]
 fixtures = [
   "fixtures/evidence-quality-benchmark/corpus.json",
+  "fixtures/finding-alignment-dogfood/corpus.json",
 ]
 code = [
   "crates/ripr/src/output/json/finding_alignment.rs",
@@ -2873,11 +2878,14 @@ outputs = [
   "docs/handoffs/2026-05-14-user-visible-output-evidence-closeout.md",
   "docs/specs/README.md",
   "docs/DOCUMENTATION.md",
+  "docs/DOGFOODING.md",
   "docs/lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "fixtures/evidence-quality-benchmark/README.md",
   "fixtures/evidence-quality-benchmark/corpus.json",
+  "fixtures/finding-alignment-dogfood/SPEC.md",
+  "fixtures/finding-alignment-dogfood/corpus.json",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
   ".ripr/traceability.toml",
@@ -3079,16 +3087,19 @@ metrics = [
 id = "RIPR-SPEC-0048"
 name = "Config and policy constant evidence"
 spec = "docs/specs/RIPR-SPEC-0048-config-policy-constant-evidence.md"
-tests = []
 tests = [
   "crates/ripr/src/output/json/finding_alignment.rs::tests::actionable_canonical_items_require_repair_routes",
+  "crates/ripr/src/output/json/finding_alignment.rs::tests::behavior_selector_with_discriminator_is_already_observed",
+  "crates/ripr/src/output/json/finding_alignment.rs::tests::behavior_selector_without_discriminator_is_actionable",
   "crates/ripr/src/output/json/finding_alignment.rs::tests::rendered_policy_label_without_observer_is_actionable",
+  "xtask/src/main.rs::tests::dogfood_finding_alignment_scenarios_have_checked_receipts",
   "crates/ripr/src/output/json/finding_alignment.rs",
   "crates/ripr/src/output/json/mod.rs",
   "xtask/src/main.rs",
 ]
 fixtures = [
   "fixtures/evidence-quality-benchmark/corpus.json",
+  "fixtures/finding-alignment-dogfood/corpus.json",
 ]
 code = [
   "crates/ripr/src/output/json/finding_alignment.rs",
@@ -3099,8 +3110,14 @@ outputs = [
   "docs/specs/RIPR-SPEC-0048-config-policy-constant-evidence.md",
   "docs/specs/RIPR-SPEC-0035-evidence-quality-benchmark-corpus.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/handoffs/2026-05-16-finding-alignment-consumer-contract-v2.md",
   "docs/specs/README.md",
   "fixtures/evidence-quality-benchmark/README.md",
+  "fixtures/finding-alignment-dogfood/SPEC.md",
+  "fixtures/finding-alignment-dogfood/corpus.json",
+  "docs/DOGFOODING.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
   ".ripr/traceability.toml",
   "CHANGELOG.md",
 ]
@@ -3214,13 +3231,31 @@ id = "RIPR-SPEC-0051"
 name = "First successful PR UX"
 spec = "docs/specs/RIPR-SPEC-0051-first-successful-pr-ux.md"
 tests = [
+  "crates/ripr/src/output/first_pr.rs",
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/mod.rs",
+  "crates/ripr/src/cli/help.rs",
+  "crates/ripr/tests/cli_smoke.rs::first_pr_cli_writes_start_here_packet",
   "xtask/src/reports/first_pr.rs",
+  "xtask/src/reports/release.rs",
   "xtask/src/main.rs",
+  "xtask/src/main.rs::tests::dogfood_first_pr_scenarios_have_checked_receipts",
 ]
 fixtures = [
+  "fixtures/first_successful_pr",
 ]
 code = [
+  "crates/ripr/src/output/first_pr.rs",
+  "crates/ripr/src/output/mod.rs",
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/mod.rs",
+  "crates/ripr/src/cli/help.rs",
   "xtask/src/reports/first_pr.rs",
+  "xtask/src/reports/release.rs",
+  "xtask/Cargo.toml",
   "xtask/src/command.rs",
   "xtask/src/dispatch.rs",
   "xtask/src/reports/mod.rs",
@@ -3229,13 +3264,24 @@ outputs = [
   "docs/specs/RIPR-SPEC-0051-first-successful-pr-ux.md",
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0009-first-run-ux-adoption-hardening.md",
+  "docs/OUTPUT_SCHEMA.md",
   "docs/FIRST_PR_WORKFLOW.md",
+  "docs/demo/first-successful-pr.md",
+  "docs/INSTALLATION_VERIFICATION.md",
+  "docs/RELEASE.md",
+  "docs/BLOCKING_READINESS.md",
+  "docs/QUICKSTART.md",
+  "README.md",
+  "docs/handoffs/2026-05-16-first-successful-pr-receipts.md",
+  "docs/handoffs/2026-05-16-first-run-ux-adoption-hardening-closeout.md",
+  "docs/handoffs/README.md",
   ".ripr/traceability.toml",
 ]
 metrics = [
   "first_run_packets_total",
   "first_run_top_gap_selected_total",
   "first_run_no_action_total",
+  "first_run_blocked_total",
   "first_run_missing_artifact_total",
   "first_run_stale_artifact_total",
   "first_run_wrong_root_total",
@@ -3247,4 +3293,82 @@ metrics = [
   "first_run_movement_unchanged_total",
   "first_run_false_interruption_total",
   "first_run_time_to_first_useful_action_seconds",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0052"
+name = "Editor first-pr packet projection"
+spec = "docs/specs/RIPR-SPEC-0052-editor-first-pr-packet-projection.md"
+tests = [
+  "editors/vscode/test/suite/extension.test.ts",
+]
+fixtures = [
+  "fixtures/editor_first_pr_bridge",
+]
+code = [
+  "editors/vscode/package.json",
+  "editors/vscode/src/client.ts",
+  "editors/vscode/src/extension.ts",
+  "xtask/src/main.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0052-editor-first-pr-packet-projection.md",
+  "docs/specs/README.md",
+  "docs/EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md",
+  "docs/EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md",
+  "docs/EDITOR_EXTENSION.md",
+  "docs/FIRST_PR_WORKFLOW.md",
+  "editors/vscode/README.md",
+  "docs/proposals/RIPR-PROP-0010-editor-first-pr-bridge.md",
+  "docs/proposals/README.md",
+  "docs/adr/0014-editor-first-pr-projection-is-read-only.md",
+  "docs/adr/README.md",
+  "docs/lanes/LANE_3_EDITOR_LSP.md",
+  "docs/handoffs/2026-05-17-editor-first-pr-bridge-receipts.md",
+  "docs/handoffs/2026-05-17-editor-first-pr-bridge-closeout.md",
+  "docs/DOCUMENTATION.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "fixtures/README.md",
+  "fixtures/EXAMPLE_CORPUS.md",
+  "plans/editor-first-pr-bridge/implementation-plan.md",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "editor_first_pr_packet_missing",
+  "editor_first_pr_packet_found",
+  "editor_first_pr_packet_stale",
+  "editor_first_pr_packet_wrong_root",
+  "editor_first_pr_packet_malformed",
+  "editor_first_pr_packet_no_action",
+  "editor_first_pr_top_gap_available",
+  "editor_first_pr_actions_suppressed_unsafe_state",
+  "editor_first_pr_open_packet_actions",
+  "editor_first_pr_copy_packet_actions",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0053"
+name = "Start-here surface convergence"
+spec = "docs/specs/RIPR-SPEC-0053-start-here-surface-convergence.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0053-start-here-surface-convergence.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0011-start-here-surface-convergence.md",
+  "docs/proposals/README.md",
+  "docs/adr/0015-start-here-surfaces-use-canonical-gap-records.md",
+  "docs/adr/README.md",
+  "docs/DOCUMENTATION.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "plans/start-here-surface-convergence/implementation-plan.md",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "start_here_surfaces_with_canonical_gap",
+  "start_here_surfaces_with_receipt_state",
+  "start_here_fail_closed_states",
+  "start_here_preview_promotion_blockers",
 ]

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.0
+
+- Aligns the marketplace extension with RIPR 0.6.0's static evidence trust
+  and operator-trust release line.
+- Keeps the first-run editor path centered on status, saved-workspace
+  diagnostics, related-test safety, focused-test briefs, and copied verify or
+  receipt commands.
+- Surfaces preview language visibility through the server while preserving the
+  preview boundary: no mutation execution, no automatic edits, no generated
+  tests, no CI blocking, no default gate authority, and no preview-language
+  promotion.
+
 ## 0.5.0
 
 - Aligns the marketplace extension with RIPR 0.5.0 and the Rust 1.95 server

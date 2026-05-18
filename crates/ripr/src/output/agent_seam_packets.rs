@@ -24,6 +24,7 @@ use crate::analysis::test_grip_evidence::TestGripEvidence;
 use crate::output::evidence_record::{evidence_record_for, evidence_record_json_value};
 use crate::output::gap_decision_ledger::{GapRecord, GapRepairRoute, projection_eligible};
 use crate::output::json::escape as json_escape;
+use crate::output::path::{display_path, display_path_text};
 use serde_json::json;
 
 pub(crate) const AGENT_SEAM_PACKET_SCHEMA_VERSION: &str = "0.3";
@@ -118,6 +119,14 @@ pub(crate) fn render_agent_gap_record_packet_json(
     } else {
         record.authority_boundary.clone()
     };
+    let pasteable_packet = pasteable_gap_repair_packet(
+        gap_ledger_path,
+        record,
+        route,
+        &verify_command,
+        &stop_conditions,
+        authority_boundary.as_str(),
+    );
     let packet = json!({
         "task": task_for_gap_route(route),
         "source": "gap_decision_ledger",
@@ -166,6 +175,7 @@ pub(crate) fn render_agent_gap_record_packet_json(
             "prompt": gap_record_prompt(route, &verify_command),
             "verify_command": verify_command,
             "stop_conditions": stop_conditions,
+            "copyable_packet": pasteable_packet,
         },
         "runtime_confirmation": RUNTIME_CONFIRMATION_NOTE,
     });
@@ -300,14 +310,6 @@ pub(crate) fn targeted_test_brief_outline_for_classified_seam(
     }
 }
 
-fn display_path(path: &std::path::Path) -> String {
-    display_path_text(&path.to_string_lossy())
-}
-
-fn display_path_text(path: &str) -> String {
-    path.replace('\\', "/")
-}
-
 fn validate_agent_gap_record_packet(record: &GapRecord) -> Result<(), String> {
     let projection = record
         .projection_eligibility
@@ -390,6 +392,189 @@ fn gap_record_prompt(route: &GapRepairRoute, verify_command: &str) -> String {
     format!(
         "{repair} Use the supplied GapRecord fields as the repair boundary. Verify with `{verify_command}`."
     )
+}
+
+fn pasteable_gap_repair_packet(
+    gap_ledger_path: &str,
+    record: &GapRecord,
+    route: &GapRepairRoute,
+    verify_command: &str,
+    stop_conditions: &[String],
+    authority_boundary: &str,
+) -> serde_json::Value {
+    let gap_id = gap_record_id(record);
+    let task = format!(
+        "Repair the `{}` gap `{}` using the bounded `{}` route.",
+        record.kind, gap_id, route.route_kind
+    );
+    let context = gap_record_packet_context(gap_ledger_path, record, route);
+    let repair = gap_record_packet_repair(route);
+    let verification = gap_record_packet_verification(record, verify_command);
+    let do_not_do = gap_record_packet_do_not_do(record);
+    let markdown = pasteable_packet_markdown(
+        &task,
+        &context,
+        &repair,
+        &verification,
+        stop_conditions,
+        &do_not_do,
+        authority_boundary,
+    );
+    json!({
+        "task": task,
+        "context": context,
+        "repair": repair,
+        "verification": verification,
+        "stop_conditions": stop_conditions,
+        "do_not_do": do_not_do,
+        "authority_boundary": authority_boundary,
+        "markdown": markdown,
+    })
+}
+
+fn gap_record_packet_context(
+    gap_ledger_path: &str,
+    record: &GapRecord,
+    route: &GapRepairRoute,
+) -> Vec<String> {
+    let mut context = Vec::new();
+    context.push(format!(
+        "Gap kind: {}; state: {}; policy: {}.",
+        record.kind, record.gap_state, record.policy_state
+    ));
+    context.push(format!(
+        "Language: {} ({}).",
+        record.language, record.language_status
+    ));
+    if let Some(anchor) = record.anchor.as_ref() {
+        if let Some(file) = anchor.file.as_deref() {
+            let mut location = format!("Anchor: {}", display_path_text(file));
+            if let Some(line) = anchor.line {
+                location.push_str(&format!(":{line}"));
+            }
+            if let Some(owner) = anchor.owner.as_deref() {
+                location.push_str(&format!(" in `{owner}`"));
+            }
+            location.push('.');
+            context.push(location);
+        } else if let Some(owner) = anchor.owner.as_deref() {
+            context.push(format!("Anchor owner: `{owner}`."));
+        }
+    }
+    if let Some(changed_behavior) = route.changed_behavior.as_deref() {
+        context.push(format!("Changed behavior: `{changed_behavior}`."));
+    }
+    if let Some(target_file) = route.target_file.as_deref() {
+        context.push(format!(
+            "Repair target: {}.",
+            display_path_text(target_file)
+        ));
+    }
+    if let Some(related_test) = route.related_test.as_deref() {
+        context.push(format!("Related test or proof target: `{related_test}`."));
+    }
+    if !record.evidence_ids.is_empty() {
+        context.push(format!("Evidence IDs: {}.", record.evidence_ids.join(", ")));
+    }
+    context.push(format!("Source artifact: {}.", gap_ledger_path));
+    context
+}
+
+fn gap_record_packet_repair(route: &GapRepairRoute) -> Vec<String> {
+    let mut repair = Vec::new();
+    repair.push(format!("Use repair route `{}`.", route.route_kind));
+    if let Some(assertion_shape) = route.assertion_shape.as_deref() {
+        repair.push(format!(
+            "Add or strengthen this check: `{assertion_shape}`."
+        ));
+    } else if let Some(changed_behavior) = route.changed_behavior.as_deref() {
+        repair.push(format!("Add a focused check for `{changed_behavior}`."));
+    } else {
+        repair.push(repair_text_for_gap_route(route));
+    }
+    match route.route_kind.as_str() {
+        "AddOutputGolden" => {
+            repair.push(
+                "Add or update the checked output/golden proof named by the route.".to_string(),
+            );
+        }
+        "InspectStaticLimit" => {
+            repair.push(
+                "Inspect the named static limit before changing tests or output proofs."
+                    .to_string(),
+            );
+        }
+        _ => {
+            repair.push(
+                "Keep the repair focused on the selected gap and its related test target."
+                    .to_string(),
+            );
+        }
+    }
+    repair
+}
+
+fn gap_record_packet_verification(record: &GapRecord, verify_command: &str) -> Vec<String> {
+    let mut verification = Vec::new();
+    verification.push(verify_command.to_string());
+    if let Some(receipt_command) = record.receipt_command.as_deref() {
+        verification.push(receipt_command.to_string());
+    }
+    verification
+}
+
+fn gap_record_packet_do_not_do(record: &GapRecord) -> Vec<String> {
+    let mut guidance = vec![
+        "Do not edit production code unless the focused proof exposes a real product defect."
+            .to_string(),
+        "Do not broaden the change beyond this GapRecord and its repair route.".to_string(),
+        "Do not treat static evidence as runtime mutation, coverage, or correctness proof."
+            .to_string(),
+        "Do not generate tests or call external providers from this packet.".to_string(),
+    ];
+    if record.language_status != "stable" {
+        guidance.push("Do not treat preview-language evidence as gate authority.".to_string());
+    }
+    guidance
+}
+
+fn pasteable_packet_markdown(
+    task: &str,
+    context: &[String],
+    repair: &[String],
+    verification: &[String],
+    stop_conditions: &[String],
+    do_not_do: &[String],
+    authority_boundary: &str,
+) -> String {
+    let mut out = String::new();
+    out.push_str("## Task\n");
+    out.push_str(task);
+    out.push_str("\n\n## Context\n");
+    push_markdown_bullets(&mut out, context);
+    out.push_str("\n## Repair\n");
+    push_markdown_bullets(&mut out, repair);
+    out.push_str("\n## Verification\n");
+    push_markdown_bullets(&mut out, verification);
+    out.push_str("\n## Stop Conditions\n");
+    push_markdown_bullets(&mut out, stop_conditions);
+    out.push_str("\n## Do Not Do\n");
+    push_markdown_bullets(&mut out, do_not_do);
+    out.push_str("\n## Authority\n");
+    out.push_str(authority_boundary);
+    out
+}
+
+fn push_markdown_bullets(out: &mut String, items: &[String]) {
+    if items.is_empty() {
+        out.push_str("- None supplied.\n");
+        return;
+    }
+    for item in items {
+        out.push_str("- ");
+        out.push_str(item);
+        out.push('\n');
+    }
 }
 
 fn is_actionable(class: SeamGripClass) -> bool {
@@ -1596,6 +1781,57 @@ mod tests {
         assert!(
             json.contains("Stop if this is baseline debt."),
             "expected stop condition from GapRecord: {json}"
+        );
+        let copyable = packet
+            .get("llm_guidance")
+            .and_then(|guidance| guidance.get("copyable_packet"))
+            .ok_or_else(|| format!("missing copyable repair packet in: {json}"))?;
+        let copyable_markdown = copyable
+            .get("markdown")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| format!("missing copyable markdown in: {json}"))?;
+        for heading in [
+            "## Task",
+            "## Context",
+            "## Repair",
+            "## Verification",
+            "## Stop Conditions",
+            "## Do Not Do",
+        ] {
+            assert!(
+                copyable_markdown.contains(heading),
+                "copyable packet should carry {heading:?} in: {copyable_markdown}"
+            );
+        }
+        assert!(
+            copyable_markdown.contains(
+                "Repair the `MissingBoundaryAssertion` gap `gap:pr:pricing` using the bounded `AddBoundaryAssertion` route."
+            ),
+            "copyable packet should name the task: {copyable_markdown}"
+        );
+        assert!(
+            copyable_markdown
+                .contains("- Related test or proof target: `discount_threshold_boundary`."),
+            "copyable packet should name the related target: {copyable_markdown}"
+        );
+        assert!(
+            copyable_markdown
+                .contains("- Add or strengthen this check: `assert_eq!(discount(100, 100), 90)`."),
+            "copyable packet should name the repair: {copyable_markdown}"
+        );
+        assert!(
+            copyable_markdown.contains("- cargo xtask fixtures boundary_gap"),
+            "copyable packet should include verification: {copyable_markdown}"
+        );
+        assert!(
+            copyable_markdown.contains("- Stop if this is baseline debt."),
+            "copyable packet should include stop conditions: {copyable_markdown}"
+        );
+        assert!(
+            copyable_markdown.contains(
+                "- Do not edit production code unless the focused proof exposes a real product defect."
+            ),
+            "copyable packet should include do-not-do guidance: {copyable_markdown}"
         );
         Ok(())
     }

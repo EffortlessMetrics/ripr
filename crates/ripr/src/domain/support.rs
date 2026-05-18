@@ -36,3 +36,29 @@ impl fmt::Display for SymbolId {
         f.write_str(&self.0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn source_location_new_accepts_path_like_inputs() {
+        let location = SourceLocation::new("src/lib.rs", 12, 4);
+
+        assert_eq!(location.file, PathBuf::from("src/lib.rs"));
+        assert_eq!(location.line, 12);
+        assert_eq!(location.column, 4);
+    }
+
+    #[test]
+    fn probe_and_symbol_ids_display_inner_values() {
+        assert_eq!(
+            ProbeId("probe:src_lib:1:predicate".to_string()).to_string(),
+            "probe:src_lib:1:predicate"
+        );
+        assert_eq!(
+            SymbolId("symbol:checkout".to_string()).to_string(),
+            "symbol:checkout"
+        );
+    }
+}

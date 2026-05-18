@@ -1,10 +1,10 @@
-use crate::agent::loop_commands::display_path;
 use crate::analysis::ClassifiedSeam;
 use crate::output::agent_seam_packets::{
     suggested_assertion_for_classified_seam, targeted_test_brief_for_classified_seam,
     targeted_test_brief_outline_for_classified_seam,
 };
 use crate::output::json::escape as json_escape;
+use crate::output::path::{display_path, display_path_text};
 use crate::output::pilot::commands::PilotCommands;
 use crate::output::pilot::ranking::{actionable_total, top_actionable_seams};
 use crate::output::pilot::{PILOT_SUMMARY_SCHEMA_VERSION, PilotSummaryContext};
@@ -525,8 +525,4 @@ fn why_line(entry: &ClassifiedSeam) -> String {
 
 fn yes_no(value: bool) -> &'static str {
     if value { "yes" } else { "no" }
-}
-
-fn display_path_text(path: &str) -> String {
-    path.replace('\\', "/")
 }

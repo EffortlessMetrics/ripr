@@ -1,7 +1,7 @@
-use crate::agent::loop_commands::display_path;
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::seams::SeamGripClass;
 use crate::output::agent_seam_packets::suggested_assertion_for_classified_seam;
+use crate::output::path::display_path;
 use std::cmp::Ordering;
 
 pub(crate) fn top_actionable_seams(

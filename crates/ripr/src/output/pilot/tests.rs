@@ -1,5 +1,4 @@
 use super::*;
-use crate::agent::loop_commands::display_path;
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::seams::SeamGripClass;
 use crate::analysis::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
@@ -11,6 +10,7 @@ use crate::domain::{
     Confidence, MissingDiscriminatorFact, OracleKind, OracleStrength, StageEvidence, StageState,
     ValueFact,
 };
+use crate::output::path::display_path;
 use crate::output::pilot::ranking::top_actionable_seams;
 use std::path::{Path, PathBuf};
 
