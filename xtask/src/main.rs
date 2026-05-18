@@ -50010,6 +50010,10 @@ jobs:
             ])
         );
         assert_eq!(
+            XtaskCommand::parse(["doctor".to_string()]),
+            XtaskCommand::Worktree(vec!["doctor".to_string()])
+        );
+        assert_eq!(
             XtaskCommand::parse(["worktree".to_string(), "doctor".to_string()]),
             XtaskCommand::Worktree(vec!["doctor".to_string()])
         );
