@@ -1397,7 +1397,7 @@ spec = "RIPR-SPEC-0005"
 evidence = [
   "docs/BADGE_POLICY.md seam-native repo counting contract and optional gap-decision-ledger target path",
   "docs/OUTPUT_SCHEMA.md Badge Output schema 0.4 with basis, analyzed_seams, and analyzed_gap_records",
-  "crates/ripr/src/output/badge.rs ripr_seam_badge_summary and gap-ledger badge target rendering",
+  "crates/ripr/src/output/badge/summaries.rs ripr_seam_badge_summary and gap-ledger badge target rendering",
   "repo-badge native JSON uses basis seam_native by default and basis gap_decision_ledger when supplied",
   "diff badge native JSON remains basis finding_exposure for legacy finding counts",
   "repo badge CLI smoke tests pin seam-native scope, gap-ledger target counts, and no diff leakage",
