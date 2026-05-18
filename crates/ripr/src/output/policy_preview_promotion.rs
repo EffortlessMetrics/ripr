@@ -1,3 +1,5 @@
+use crate::output::markdown::{markdown_text, render_string_section};
+use crate::output::value_path::string_path;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -653,35 +655,6 @@ fn notice_json(notice: &Notice) -> Value {
     })
 }
 
-fn render_string_section(out: &mut String, title: &str, values: &[String]) {
-    out.push_str(&format!("\n## {title}\n\n"));
-    if values.is_empty() {
-        out.push_str("- none\n");
-    } else {
-        for value in values {
-            out.push_str(&format!("- {}\n", markdown_text(value)));
-        }
-    }
-}
-
-fn string_path(value: &Value, path: &[&str]) -> Option<String> {
-    path_value(value, path)
-        .and_then(Value::as_str)
-        .map(ToOwned::to_owned)
-}
-
-fn path_value<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
-    let mut current = value;
-    for key in path {
-        current = current.get(*key)?;
-    }
-    Some(current)
-}
-
-fn markdown_text(value: &str) -> String {
-    value.replace('\\', "\\\\")
-}
-
 fn yes_no(value: bool) -> &'static str {
     if value { "yes" } else { "no" }
 }
@@ -701,6 +674,7 @@ fn display_language(language: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::output::value_path::path_value;
 
     fn input(language: &str, candidate_class: &str) -> PreviewPromotionInput {
         PreviewPromotionInput {
