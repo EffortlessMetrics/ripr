@@ -36,7 +36,7 @@ Active goal:
 
 ## Work item: <short-id>
 
-Status: ready | active | blocked | completed | superseded
+Status: ready | active | blocked | done | superseded
 Linked proposal:
 Linked spec:
 Linked ADR:
@@ -71,6 +71,7 @@ For docs-only plan changes, run at minimum:
 
 ```bash
 git diff --check
+cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask check-pr-shape
 ```

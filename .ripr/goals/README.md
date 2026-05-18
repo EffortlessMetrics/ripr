@@ -43,11 +43,12 @@ row, or policy ledger.
 Agents should read:
 
 1. `AGENTS.md`.
-2. `docs/reference/SPEC_SYSTEM.md`.
-3. `.ripr/goals/active.toml`.
-4. The linked implementation plan.
-5. The linked spec for the selected work item.
-6. Linked ADRs.
+2. `docs/REPO_TRACKING_MODEL.md`.
+3. `docs/agent-context/CONTEXT_SYSTEM.md`.
+4. `.ripr/goals/active.toml`.
+5. The linked implementation plan.
+6. The linked spec for the selected work item.
+7. Linked ADRs.
 
 Then the agent should pick exactly one ready work item, run the listed proof
 commands, and stop if linked artifacts are missing or contradictory.
@@ -75,6 +76,7 @@ For manifest-only changes, run at minimum:
 git diff --check
 cargo xtask goals next
 cargo xtask check-campaign
+cargo xtask check-doc-index
 cargo xtask check-pr-shape
 ```
 
