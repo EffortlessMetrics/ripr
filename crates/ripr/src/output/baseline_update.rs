@@ -1,6 +1,5 @@
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
 
 const SCHEMA_VERSION: &str = "0.1";
 const BASELINE_KIND: &str = "gate_baseline";
@@ -245,9 +244,7 @@ pub(crate) fn baseline_update_warning_count(report: &BaselineUpdateReport) -> us
     report.warnings.len()
 }
 
-pub(crate) fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
+pub(crate) use crate::output::path::display_path;
 
 fn parse_json(
     label: &str,
