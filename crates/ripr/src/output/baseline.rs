@@ -1,5 +1,4 @@
 use serde_json::{Value, json};
-use std::path::Path;
 
 const SCHEMA_VERSION: &str = "0.1";
 const BASELINE_KIND: &str = "gate_baseline";
@@ -156,9 +155,7 @@ pub(crate) fn baseline_entry_count(report: &BaselineCreateReport) -> usize {
     report.entries.len()
 }
 
-pub(crate) fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
+pub(crate) use crate::output::path::display_path;
 
 fn baseline_entry_from_decision(
     value: &Value,

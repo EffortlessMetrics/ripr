@@ -2,7 +2,6 @@ use crate::output::suppressions::{
     SUPPRESSIONS_PATH, SuppressionEntry, SuppressionKind, is_expired, parse_suppressions_manifest,
 };
 use serde_json::{Value, json};
-use std::path::Path;
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "suppression_health";
@@ -289,9 +288,7 @@ pub(crate) fn suppression_health_status(report: &SuppressionHealthReport) -> &st
     &report.status
 }
 
-pub(crate) fn display_path(path: &Path) -> String {
-    path.display().to_string().replace('\\', "/")
-}
+pub(crate) use crate::output::path::display_path;
 
 fn record_for_entry(
     manifest_path: &str,
