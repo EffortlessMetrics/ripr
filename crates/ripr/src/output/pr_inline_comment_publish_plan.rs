@@ -2,7 +2,6 @@ use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "pr_inline_comment_publish_plan";
@@ -483,9 +482,7 @@ pub(crate) fn render_comment_publish_plan_markdown(report: &CommentPublishPlanRe
     out
 }
 
-pub(crate) fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
+pub(crate) use crate::output::path::display_path;
 
 fn parse_pr_guidance(
     input: &CommentPublishPlanInput,

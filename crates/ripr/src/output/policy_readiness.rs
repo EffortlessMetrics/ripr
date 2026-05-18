@@ -1,6 +1,5 @@
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
-use std::path::Path;
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "policy_readiness";
@@ -434,9 +433,7 @@ pub(crate) fn policy_readiness_recommended_mode(report: &PolicyReadinessReport) 
     &report.recommended_mode
 }
 
-pub(crate) fn display_path(path: &Path) -> String {
-    path.display().to_string().replace('\\', "/")
-}
+pub(crate) use crate::output::path::display_path;
 
 fn parse_optional_json(
     label: &'static str,

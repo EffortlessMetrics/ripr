@@ -1,6 +1,5 @@
 use serde_json::{Map, Value, json};
 use std::collections::BTreeSet;
-use std::path::Path;
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "policy_operations";
@@ -574,9 +573,7 @@ pub(crate) fn policy_operations_next_action(report: &PolicyOperationsReport) -> 
     &report.recommended_next_action
 }
 
-pub(crate) fn display_path(path: &Path) -> String {
-    path.display().to_string().replace('\\', "/")
-}
+pub(crate) use crate::output::path::display_path;
 
 fn parse_artifact(
     kind: &'static str,
