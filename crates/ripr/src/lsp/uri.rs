@@ -94,3 +94,43 @@ pub(super) fn encode_uri_path(path: &str) -> String {
     }
     encoded
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_uri_for_path_percent_encodes_spaces_and_symbols() -> Result<(), String> {
+        let uri = file_uri_for_path(Path::new("/tmp/ripr fixtures/a#b?.rs"))?;
+
+        assert_eq!(uri.as_str(), "file:///tmp/ripr%20fixtures/a%23b%3F.rs");
+        assert_eq!(
+            path_from_file_uri(&uri).ok_or("expected decoded path")?,
+            PathBuf::from("/tmp/ripr fixtures/a#b?.rs")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn invalid_percent_encoding_is_not_a_file_path() -> Result<(), String> {
+        let uri: Uri = "file:///tmp/%FF.rs"
+            .parse()
+            .map_err(|err| format!("expected URI parse to succeed: {err}"))?;
+
+        assert_eq!(path_from_file_uri(&uri), None);
+        Ok(())
+    }
+
+    #[test]
+    fn windows_drive_file_uris_match_case_insensitively() -> Result<(), String> {
+        let upper: Uri = "file:///C:/Work/Ripr/src/lib.rs"
+            .parse()
+            .map_err(|err| format!("expected upper-case drive URI to parse: {err}"))?;
+        let lower: Uri = "file:///c:/Work/Ripr/src/lib.rs"
+            .parse()
+            .map_err(|err| format!("expected lower-case drive URI to parse: {err}"))?;
+
+        assert!(file_uris_match(&upper, &lower));
+        Ok(())
+    }
+}
