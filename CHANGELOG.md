@@ -9,6 +9,16 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Lane 1 evidence audit generation now streams the live repo-exposure JSON
+  subprocess directly into the temporary audit input file instead of buffering
+  hundreds of megabytes in memory. Stderr and latency breadcrumbs remain
+  captured for bounded phase/input diagnostics, and timeout detection now
+  reports a timeout whenever xtask requested subprocess termination.
+  `cargo xtask evidence-health` now uses the already-built debug `ripr` binary
+  instead of nesting `cargo run`, preserving the same live-repo evidence path
+  with fewer Windows process-wrapper failures. This is run-reliability
+  hardening for Lane 1 reports, not a new evidence class, score, gate, PR/CI
+  rendering, provider, generated-test, or mutation-execution behavior.
 - Lane 1 activation evidence now treats direct no-argument owner calls as
   activation for value-insensitive seams. This burns down one measured
   `activation_value_unresolved` sub-shape for return/call/error/effect style

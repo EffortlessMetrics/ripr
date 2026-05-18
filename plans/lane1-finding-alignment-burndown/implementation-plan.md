@@ -29,6 +29,38 @@ true while burning down measured gaps such as incomplete placement fields,
 large named limitation buckets, unsupported config/policy flows, and static-only
 runtime confidence coverage.
 
+## Current Run-Reliability Slice
+
+The 2026-05-18 live audit exposed an operational reliability gap before the
+next analyzer class repair: direct `ripr check --root . --mode instant --format
+repo-exposure-json` completed when stdout was redirected to a file, but
+`cargo xtask lane1-evidence-audit` tried to buffer the large repo-exposure JSON
+payload in memory before writing the audit input. `cargo xtask
+evidence-health` also failed through its nested `cargo run` wrapper while the
+already-built `ripr` binary completed the same live-repo report. The supported
+fix is to stream the audit subprocess stdout directly to the temporary
+repo-exposure input file while capturing stderr latency breadcrumbs and bounded
+status diagnostics, and to have evidence-health invoke the built debug binary
+directly after `cargo build -p ripr`.
+
+Current live proof after the streaming fix:
+
+- repo-exposure generation status: `pass`;
+- generated stdout bytes: 521,053,340;
+- latency trace events captured: 95;
+- raw alignment signals: 47,626;
+- canonical evidence items: 38,564;
+- actionable canonical gaps: 162;
+- named static limitations: 26,250;
+- top remaining named limitation bucket: `activation_value_unresolved` at
+  25,881.
+- `cargo xtask evidence-health` completes through the same built-binary path and
+  writes `target/ripr/reports/evidence-health.{json,md}`.
+
+This slice is run-reliability hardening only. It does not change evidence
+classification, public badge semantics, PR/CI rendering, gates, provider/model
+calls, generated tests, source edits, or mutation execution.
+
 ## Hard Boundaries
 
 - fixture first;
