@@ -57,6 +57,11 @@ const COUNT_CACHE_SCHEMA_VERSION: &str = "0.1";
 /// even when a full classified seam entry has not been written yet.
 const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "0.1";
 
+/// Keep the best-effort classified-seam cache from turning a successful live
+/// analysis into an unbounded post-analysis stall on large repos. The per-file
+/// fact cache still keeps later cold paths cheaper.
+pub(crate) const CLASSIFIED_SEAM_CACHE_STORE_LIMIT: usize = 20_000;
+
 /// Aggregate cache key — every field that, when changed, must invalidate
 /// the workspace-level classified seam cache.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -260,6 +265,13 @@ impl RepoSeamFactCache {
         key: &RepoSeamCacheKey,
         seams: &[ClassifiedSeam],
     ) -> Result<(), String> {
+        if seams.len() > CLASSIFIED_SEAM_CACHE_STORE_LIMIT {
+            return Err(format!(
+                "skipped_large_entry_seams_{}_limit_{}",
+                seams.len(),
+                CLASSIFIED_SEAM_CACHE_STORE_LIMIT
+            ));
+        }
         std::fs::create_dir_all(&self.dir)
             .map_err(|err| format!("create cache dir failed: {err}"))?;
         let envelope = CacheEnvelope::new(key.clone(), seams.to_vec());
@@ -688,6 +700,32 @@ mod tests {
         };
         let _ = std::fs::remove_dir_all(&dir);
         result
+    }
+
+    #[test]
+    fn given_large_classified_entry_when_cache_store_runs_then_write_is_skipped()
+    -> Result<(), String> {
+        let dir = isolated_dir("large-skip");
+        let _ = std::fs::remove_dir_all(&dir);
+        let cache = RepoSeamFactCache::at_dir(dir.clone());
+        let key = empty_state().cache_key();
+        let seams = vec![sample_classified(); CLASSIFIED_SEAM_CACHE_STORE_LIMIT + 1];
+        let err = match cache.store_classified_seams(&key, &seams) {
+            Ok(()) => return Err("large classified seam cache entries should be skipped".into()),
+            Err(err) => err,
+        };
+
+        assert!(
+            err.contains("skipped_large_entry_seams_"),
+            "skip reason should be machine-readable: {err}"
+        );
+        assert!(
+            !cache.entry_path(&key).exists(),
+            "skipped cache store should not write a classified seam entry"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
     }
 
     #[test]

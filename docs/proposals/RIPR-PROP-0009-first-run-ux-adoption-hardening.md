@@ -1,6 +1,6 @@
 # RIPR-PROP-0009: First-Run UX and Adoption Hardening
 
-Status: proposed
+Status: accepted
 
 Owner: ripr maintainers
 

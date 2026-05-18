@@ -1,0 +1,9 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_run_usability/receipt_found",
+  "receipt_state": "receipt_found",
+  "gap_identity": "gap:rust:pricing",
+  "runtime_adequacy_claim": false,
+  "gate_eligibility_claim": false,
+  "next_safe_action": "Keep the receipt with the current gap evidence and refresh before acting again."
+}

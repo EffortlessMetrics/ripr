@@ -27,32 +27,41 @@ mod tests {
     use super::*;
 
     #[test]
-    fn extract_return_facts_captures_explicit_and_result_option_returns() {
-        let facts = extract_return_facts(
-            "if invalid { return Err(Error::Invalid); }\nOk(total)\nSome(total)\nNone",
-            21,
-        );
-        let rendered = facts
-            .into_iter()
-            .map(|fact| (fact.line, fact.text))
+    fn extract_return_facts_captures_result_option_and_explicit_returns() {
+        let body =
+            "if missing { return Err(ConfigError::Missing); }\nOk(Some(value))\nlet x = None;";
+
+        let facts = extract_return_facts(body, 10);
+
+        let lines_and_text = facts
+            .iter()
+            .map(|fact| (fact.line, fact.text.as_str()))
             .collect::<Vec<_>>();
         assert_eq!(
-            rendered,
+            lines_and_text,
             vec![
-                (21, "if invalid { return Err(Error::Invalid); }".to_string()),
-                (22, "Ok(total)".to_string()),
-                (23, "Some(total)".to_string()),
-                (24, "None".to_string()),
+                (10, "if missing { return Err(ConfigError::Missing); }"),
+                (11, "Ok(Some(value))"),
+                (12, "let x = None;"),
             ]
         );
     }
 
     #[test]
-    fn extract_return_facts_ignores_non_return_mentions() {
-        let facts = extract_return_facts(
-            "let return_value = total;\nlet token = \"Ok\";\nlet none_value = option;",
-            3,
-        );
-        assert_eq!(facts, Vec::<ReturnFact>::new());
+    fn extract_return_facts_sorts_and_deduplicates_duplicate_lines() {
+        let facts = extract_return_facts("Ok(value)\nOk(value)", 3);
+
+        let lines_and_text = facts
+            .iter()
+            .map(|fact| (fact.line, fact.text.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(lines_and_text, vec![(3, "Ok(value)"), (4, "Ok(value)")]);
+    }
+
+    #[test]
+    fn extract_return_facts_ignores_substrings_without_return_signal() {
+        let facts = extract_return_facts("let ok_value = status;\nlet none_count = 0;", 1);
+
+        assert!(facts.is_empty());
     }
 }

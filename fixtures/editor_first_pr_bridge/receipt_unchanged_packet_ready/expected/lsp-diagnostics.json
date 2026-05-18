@@ -1,0 +1,17 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_pr_bridge/receipt_unchanged_packet_ready",
+  "diagnostics": [
+    {
+      "source": "ripr",
+      "code": "ripr-gap-MissingBoundaryAssertion",
+      "message": "RIPR first-pr bridge gap with unchanged receipt movement.",
+      "data": {
+        "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+        "gap_id": "gap:pr:pricing:threshold-boundary",
+        "language": "rust",
+        "language_status": "stable"
+      }
+    }
+  ]
+}
