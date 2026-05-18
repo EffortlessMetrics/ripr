@@ -457,8 +457,8 @@ evidence = [
   "boundary_gap fixture",
   "weak_error_oracle fixture",
   "snapshot_oracle fixture",
-  "syntactic value resolution for let bindings, same-file constants, table rows, rstest cases, builder/fixture overrides, enum variants, and Option/Result constructors",
-  "negative guards for comment/string shadows, cross-file constants, unresolved helpers, and unrelated builder methods",
+  "syntactic value resolution for let bindings, same-file constants, table rows, rstest cases, builder/fixture overrides, enum variants, Option/Result constructors, and same-test struct literal field projections",
+  "negative guards for comment/string shadows, cross-file constants, unresolved helpers, unrelated builder methods, helper-built structs, shadowed struct bindings, fixture parameter collisions, common non-let binders, non-simple let pattern binders, and non-literal struct fields",
   "evidence-first activation output",
   "docs/lanes/LANE_1_EVIDENCE_SPINE.md documents stable syntax-first activation/value scope and keeps unsupported value sources as explicit limitations"
 ]
