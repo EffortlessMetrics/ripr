@@ -17,7 +17,7 @@ ripr agent receipt --verify-json <agent-verify.json> --seam-id <seam_id> --json
 `ripr init` may materialize repo policy, but it must not be required for the
 first useful CLI, editor, or CI experience.
 
-## Current Release Proof
+## Last Published Release Proof
 
 The `ripr 0.5.0` release was published and verified on 2026-05-10. The
 verified public loop covers zero-config `ripr pilot`, `ripr outcome`,
@@ -40,6 +40,22 @@ Windows server archive checksum smoke and isolated marketplace install
 smoke remain follow-up items handled by the maintainer when convenient;
 they were unchanged for the `0.4.0` release proof and are not gating the
 defaults-first public install loop.
+
+## 0.6.x Release-Candidate Proof
+
+The `0.6.x` line is the current release-candidate line. Until the maintainer
+tags, publishes, and verifies 0.6.x public artifacts, do not claim crates.io,
+GitHub Release, VS Marketplace, or Open VSX availability for 0.6.x.
+
+Pre-publish proof for 0.6.x should record:
+
+- local package and publish dry-run success;
+- path-installed `ripr --version` and `ripr first-pr --help`;
+- generated CI dry-run with start-here/advisory gate boundaries;
+- VSIX packaging success;
+- one external-adopter smoke showing an installed binary can find one Rust
+  repairable gap, produce a bounded packet or no-action state, add one focused
+  proof outside `ripr`, and verify static movement.
 
 ## Previous Release Proof
 

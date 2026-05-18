@@ -442,6 +442,8 @@ impl Selection {
 struct TopGapSelection {
     gap_id: String,
     canonical_gap_id: Option<String>,
+    language: Option<String>,
+    language_status: Option<String>,
     kind: String,
     source_artifact: String,
     changed_behavior: Option<String>,
@@ -456,6 +458,9 @@ struct TopGapSelection {
     dedupe_fingerprint: Option<String>,
     verify_command: String,
     receipt_command: Option<String>,
+    receipt_state: Option<String>,
+    static_limit_kind: Option<String>,
+    static_limit_detail: Option<String>,
     agent_packet_command: String,
 }
 
@@ -465,6 +470,8 @@ impl TopGapSelection {
             "state": "top_gap",
             "gap_id": self.gap_id,
             "canonical_gap_id": self.canonical_gap_id,
+            "language": self.language,
+            "language_status": self.language_status,
             "kind": self.kind,
             "source_artifact": self.source_artifact,
             "changed_behavior": self.changed_behavior,
@@ -483,6 +490,9 @@ impl TopGapSelection {
             },
             "verify_command": self.verify_command,
             "receipt_command": self.receipt_command,
+            "receipt_state": self.receipt_state,
+            "static_limit_kind": self.static_limit_kind,
+            "static_limit_detail": self.static_limit_detail,
             "agent_packet_command": self.agent_packet_command
         })
     }
@@ -627,6 +637,8 @@ fn top_gap_from_record(record: &Value, options: &FirstPrOptions) -> TopGapSelect
     TopGapSelection {
         gap_id: gap_id.clone(),
         canonical_gap_id: string_path(record, &["canonical_gap_id"]),
+        language: string_path(record, &["language"]),
+        language_status: string_path(record, &["language_status"]),
         kind: kind.clone(),
         source_artifact: options.gap_ledger.clone(),
         changed_behavior,
@@ -642,6 +654,10 @@ fn top_gap_from_record(record: &Value, options: &FirstPrOptions) -> TopGapSelect
         dedupe_fingerprint: string_from_sources(&[(anchor, &["dedupe_fingerprint"])]),
         verify_command,
         receipt_command,
+        receipt_state: string_path(record, &["receipt", "state"])
+            .or_else(|| string_path(record, &["receipt", "movement"])),
+        static_limit_kind: string_path(record, &["static_limit_kind"]),
+        static_limit_detail: string_path(record, &["static_limit_detail"]),
         agent_packet_command: format!(
             "ripr agent packet --root {} --gap-ledger {} --gap-id {} --json > {}",
             options.root, options.gap_ledger, gap_id, options.agent_packet
@@ -844,6 +860,32 @@ fn render_top_gap_markdown(selected: &Value, out: &mut String) {
         .and_then(Value::as_str)
         .unwrap_or("gap");
     out.push_str(&format!("ripr gap: {}\n\n", sentence_case(kind)));
+    out.push_str("Evidence boundary:\n");
+    if let Some(gap_id) = selected.get("canonical_gap_id").and_then(Value::as_str) {
+        out.push_str(&format!("- Canonical gap: `{gap_id}`\n"));
+    } else if let Some(gap_id) = selected.get("gap_id").and_then(Value::as_str) {
+        out.push_str(&format!("- Gap: `{gap_id}`\n"));
+    }
+    let language = selected
+        .get("language")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let language_status = selected
+        .get("language_status")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    out.push_str(&format!("- Language: `{language}` ({language_status})\n"));
+    if let Some(limit) = selected.get("static_limit_kind").and_then(Value::as_str) {
+        out.push_str(&format!("- Static limit: `{limit}`\n"));
+        if let Some(detail) = selected.get("static_limit_detail").and_then(Value::as_str) {
+            out.push_str(&format!("  - {detail}\n"));
+        }
+    }
+    let receipt_state = selected
+        .get("receipt_state")
+        .and_then(Value::as_str)
+        .unwrap_or("receipt_missing");
+    out.push_str(&format!("- Receipt state: `{receipt_state}`\n\n"));
     if let Some(changed) = selected.get("changed_behavior").and_then(Value::as_str) {
         out.push_str("Changed behavior:\n");
         out.push_str(&format!("`{}`\n\n", changed.trim()));
@@ -868,6 +910,10 @@ fn render_top_gap_markdown(selected: &Value, out: &mut String) {
     }
     if let Some(command) = selected.get("verify_command").and_then(Value::as_str) {
         out.push_str("Verify:\n");
+        out.push_str(&format!("`{command}`\n\n"));
+    }
+    if let Some(command) = selected.get("receipt_command").and_then(Value::as_str) {
+        out.push_str("Receipt:\n");
         out.push_str(&format!("`{command}`\n\n"));
     }
     if let Some(command) = selected.get("agent_packet_command").and_then(Value::as_str) {
