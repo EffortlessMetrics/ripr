@@ -25,6 +25,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('ripr.startCurrentRepair', async () =>
       controller?.startCurrentRepair()
     ),
+    vscode.commands.registerCommand('ripr.openFirstPrPacket', async () =>
+      controller?.openFirstPrPacket()
+    ),
+    vscode.commands.registerCommand('ripr.copyFirstPrSummary', async () =>
+      controller?.copyFirstPrSummary()
+    ),
+    vscode.commands.registerCommand('ripr.copyFirstPrRepairPacket', async () =>
+      controller?.copyFirstPrRepairPacket()
+    ),
+    vscode.commands.registerCommand('ripr.copyFirstPrVerifyCommand', async () =>
+      controller?.copyFirstPrVerifyCommand()
+    ),
+    vscode.commands.registerCommand('ripr.copyFirstPrReceiptCommand', async () =>
+      controller?.copyFirstPrReceiptCommand()
+    ),
+    vscode.commands.registerCommand('ripr.copyFirstPrRegenerationGuidance', async () =>
+      controller?.copyFirstPrRegenerationGuidance()
+    ),
     vscode.commands.registerCommand('ripr.copyContext', async (target?: RiprContextTarget) =>
       controller?.copyContext(target)
     ),
