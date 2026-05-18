@@ -2,17 +2,6 @@
 
 -
 
-
-## Source-of-truth Links
-
-Proposal:
-Spec:
-ADR:
-Plan item:
-Active goal:
-Support-tier impact:
-Policy impact:
-
 ## Scope
 
 -
@@ -40,19 +29,6 @@ Single acceptance criterion:
 -
 
 Non-goals:
-
--
-
-
-## Claim Boundary
-
-What may be claimed after this PR? What must not be claimed yet?
-
--
-
-## Rollback
-
-How can this PR be reverted safely?
 
 -
 
