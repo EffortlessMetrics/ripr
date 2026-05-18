@@ -1013,7 +1013,7 @@ mod tests {
     #[test]
     fn run_ripr_check_uses_fake_binary_success_output() -> Result<(), String> {
         let repo = temp_repo("ripr-pr-fake-success")?;
-        let fake = fake_ripr_binary(
+        let fake = fake_ripr_invocation(
             &repo,
             "fake-ripr-success",
             r#"{"summary":{"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0}}"#,
@@ -1021,12 +1021,8 @@ mod tests {
             0,
             None,
         )?;
-        let result = run_ripr_check_binary(
-            &fake.display().to_string(),
-            fake_ripr_args(),
-            &options(),
-            Duration::from_secs(10),
-        )?;
+        let result =
+            run_ripr_check_binary(&fake.binary, fake.args, &options(), Duration::from_secs(10))?;
         assert!(result.contains(r#""weakly_exposed":1"#));
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
@@ -1035,10 +1031,10 @@ mod tests {
     #[test]
     fn run_ripr_check_reports_fake_binary_failure() -> Result<(), String> {
         let repo = temp_repo("ripr-pr-fake-failure")?;
-        let fake = fake_ripr_binary(&repo, "fake-ripr-failure", "", "bad diff", 7, None)?;
+        let fake = fake_ripr_invocation(&repo, "fake-ripr-failure", "", "bad diff", 7, None)?;
         let err = match run_ripr_check_binary(
-            &fake.display().to_string(),
-            fake_ripr_args(),
+            &fake.binary,
+            fake.args,
             &options(),
             Duration::from_secs(10),
         ) {
@@ -1066,8 +1062,8 @@ mod tests {
         );
         #[cfg(not(windows))]
         let (binary, args) = {
-            let fake = fake_ripr_binary(&repo, "fake-ripr-timeout", "", "", 0, Some(30))?;
-            (fake.display().to_string(), fake_ripr_args())
+            let fake = fake_ripr_invocation(&repo, "fake-ripr-timeout", "", "", 0, Some(30))?;
+            (fake.binary, fake.args)
         };
         let err = match run_ripr_check_binary(&binary, args, &options(), Duration::from_secs(1)) {
             Ok(output) => return Err(format!("fake timeout should fail, got {output}")),
@@ -1159,6 +1155,38 @@ mod tests {
             "--format".to_string(),
             "json".to_string(),
         ]
+    }
+
+    struct FakeRiprInvocation {
+        binary: String,
+        args: Vec<String>,
+    }
+
+    fn fake_ripr_invocation(
+        repo: &Path,
+        name: &str,
+        stdout: &str,
+        stderr: &str,
+        exit_code: i32,
+        sleep_seconds: Option<u64>,
+    ) -> Result<FakeRiprInvocation, String> {
+        let fake = fake_ripr_binary(repo, name, stdout, stderr, exit_code, sleep_seconds)?;
+        #[cfg(windows)]
+        {
+            Ok(FakeRiprInvocation {
+                binary: fake.display().to_string(),
+                args: fake_ripr_args(),
+            })
+        }
+        #[cfg(not(windows))]
+        {
+            let mut args = vec![fake.display().to_string()];
+            args.extend(fake_ripr_args());
+            Ok(FakeRiprInvocation {
+                binary: "/bin/sh".to_string(),
+                args,
+            })
+        }
     }
 
     fn fake_ripr_binary(
