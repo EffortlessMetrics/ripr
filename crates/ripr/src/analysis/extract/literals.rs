@@ -44,21 +44,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn extract_literal_facts_preserves_source_lines_and_deduplicates_per_line() {
-        let facts = extract_literal_facts("let a = 42;\nlet b = -7 + 42;\nlet c = -;", 10);
+    fn extract_literals_sorts_and_deduplicates_values() {
+        let values = extract_literals("let a = 42;\nlet b = -7;\nlet c = 42;");
 
-        let actual = facts
+        assert_eq!(values, vec!["-7".to_string(), "42".to_string()]);
+    }
+
+    #[test]
+    fn extract_literal_facts_preserves_source_lines_and_ignores_bare_minus() {
+        let facts = extract_literal_facts("let a = -;\nlet b = -12;\nlet c = 3 + 3;", 40);
+
+        assert_eq!(facts.len(), 2);
+        assert_eq!(facts[0].line, 41);
+        assert_eq!(facts[0].value, "-12");
+        assert_eq!(facts[1].line, 42);
+        assert_eq!(facts[1].value, "3");
+    }
+
+    #[test]
+    fn extract_literal_facts_deduplicates_same_value_on_same_line_only() {
+        let facts = extract_literal_facts("let a = 9 + 9;\nlet b = 9;", 1);
+
+        let values_by_line = facts
             .iter()
             .map(|fact| (fact.line, fact.value.as_str()))
             .collect::<Vec<_>>();
 
-        assert_eq!(actual, vec![(10, "42"), (11, "-7"), (11, "42")]);
-    }
-
-    #[test]
-    fn extract_literals_returns_sorted_unique_values_across_body() {
-        let literals = extract_literals("let a = 3;\nlet b = -1;\nlet c = 3;");
-
-        assert_eq!(literals, vec!["-1", "3"]);
+        assert_eq!(values_by_line, vec![(1, "9"), (2, "9")]);
     }
 }

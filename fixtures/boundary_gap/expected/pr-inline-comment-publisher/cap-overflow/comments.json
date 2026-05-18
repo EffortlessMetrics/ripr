@@ -17,10 +17,10 @@
     "unchanged_tests": true
   },
   "comments": [
-    {"id": "ripr-review-a", "seam_id": "a", "dedupe_key": "ripr:a:src/pricing.rs:10", "placement": {"path": "src/pricing.rs", "line": 10, "side": "RIGHT", "mode": "exact_seam_line"}, "reason": "first"},
-    {"id": "ripr-review-b", "seam_id": "b", "dedupe_key": "ripr:b:src/pricing.rs:20", "placement": {"path": "src/pricing.rs", "line": 20, "side": "RIGHT", "mode": "exact_seam_line"}, "reason": "second"},
-    {"id": "ripr-review-c", "seam_id": "c", "dedupe_key": "ripr:c:src/pricing.rs:30", "placement": {"path": "src/pricing.rs", "line": 30, "side": "RIGHT", "mode": "exact_seam_line"}, "reason": "third"},
-    {"id": "ripr-review-d", "seam_id": "d", "dedupe_key": "ripr:d:src/pricing.rs:40", "placement": {"path": "src/pricing.rs", "line": 40, "side": "RIGHT", "mode": "exact_seam_line"}, "reason": "fourth"}
+    {"id": "ripr-review-a", "seam_id": "a", "dedupe_key": "ripr:a:src/pricing.rs:10", "placement": {"path": "src/pricing.rs", "line": 10, "side": "RIGHT", "mode": "exact_seam_line"}, "missing_discriminator": "amount == threshold_a", "reason": "first"},
+    {"id": "ripr-review-b", "seam_id": "b", "dedupe_key": "ripr:b:src/pricing.rs:20", "placement": {"path": "src/pricing.rs", "line": 20, "side": "RIGHT", "mode": "exact_seam_line"}, "missing_discriminator": "amount == threshold_b", "reason": "second"},
+    {"id": "ripr-review-c", "seam_id": "c", "dedupe_key": "ripr:c:src/pricing.rs:30", "placement": {"path": "src/pricing.rs", "line": 30, "side": "RIGHT", "mode": "exact_seam_line"}, "missing_discriminator": "amount == threshold_c", "reason": "third"},
+    {"id": "ripr-review-d", "seam_id": "d", "dedupe_key": "ripr:d:src/pricing.rs:40", "placement": {"path": "src/pricing.rs", "line": 40, "side": "RIGHT", "mode": "exact_seam_line"}, "missing_discriminator": "amount == threshold_d", "reason": "fourth"}
   ],
   "summary_only": [],
   "suppressed": [],

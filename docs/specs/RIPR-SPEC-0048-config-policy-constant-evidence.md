@@ -129,7 +129,7 @@ canonical evidence item:
 ```text
 canonical_gap_id: config_or_policy_constant::<stable-owner>
 raw_group_size: <number of contributing raw findings>
-group_reason: same_config_policy_constant
+group_reason: declaration_and_literal_same_text_constant | same_config_policy_constant | constant_owner_identity
 ```
 
 Supported grouping includes:
@@ -212,7 +212,7 @@ The expected evidence-record subset for an internal-only policy constant is:
   "evidence_class": "config_or_policy_constant",
   "canonical_gap_id": "config_or_policy_constant::INTERNAL_POLICY_LABEL",
   "canonical_gap_group_size": 2,
-  "canonical_gap_reason": "same_config_policy_constant",
+  "canonical_gap_reason": "declaration_and_literal_same_text_constant",
   "gap_state": "internal_only",
   "actionability": "no_action_internal",
   "config_policy": {
@@ -348,7 +348,10 @@ Follow-up implementation should include:
   actionability, grouping, primary anchor, raw findings, static limitations,
   repair routes, and verify command coverage;
 - scorecard and audit tests for `config_or_policy_constant` alignment coverage;
-- must-not-claim tests proving policy metadata alone is not user test debt.
+- must-not-claim tests proving policy metadata alone is not user test debt;
+- dogfood receipts that record internal metadata, rendered label, behavior
+  selector, observed schema or behavior, and flow-unknown examples from real
+  RIPR PR work.
 
 This spec PR does not add analyzer behavior, public output fields, or fixture
 data.
@@ -371,6 +374,10 @@ Planned Lane 1 slices:
   and verify commands.
 - `report/config-policy-alignment-quality` carries class-specific counts into
   audit, scorecard, and trend reports.
+- `dogfood/finding-alignment-examples` records checked config/policy examples
+  under `fixtures/finding-alignment-dogfood/` without changing downstream
+  rendering, gates, scores, source edits, generated tests, providers, or
+  mutation execution.
 
 Implementation must preserve the Lane 1 boundary: evidence truth changes are in
 scope, projection rendering changes are not.

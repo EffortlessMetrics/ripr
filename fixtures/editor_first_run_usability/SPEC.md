@@ -22,6 +22,10 @@ Each fixture pins one visible state with:
 - `lsp-code-actions.json`;
 - `receipt-status.json`.
 
+Receipt cases cover missing, found, stale, gap-mismatched, improved, and
+unchanged states so Show Status cannot collapse receipt proof into a generic
+no-output condition.
+
 ## Must Not
 
 Fixtures must not imply source edits, generated tests, provider calls, mutation

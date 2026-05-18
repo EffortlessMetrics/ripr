@@ -1,6 +1,6 @@
 # RIPR-SPEC-0051: First Successful PR UX
 
-Status: proposed
+Status: accepted
 
 ## Problem
 
@@ -29,9 +29,9 @@ manual pilot, coding-agent, and advisory-CI adoption.
 
 ## Behavior
 
-RIPR should provide one documented first-run path for a Rust PR. The path may
-be a public `ripr first-pr` command or an `xtask` wrapper in the first
-implementation slice, but it must produce the same first-run packet contract.
+RIPR should provide one documented first-run path for a Rust PR. The public
+path is `ripr first-pr`; the repo-local `cargo xtask first-pr` command remains
+a compatibility wrapper over the same first-run packet contract.
 
 The target flow is:
 
@@ -235,6 +235,13 @@ If an implementation runs lower-level commands to create these artifacts, the
 start-here packet must show what was run or give the equivalent regeneration
 command.
 
+When the start-here packet selects a repairable gap, generated CI and report
+navigation should use its typed fields as the first-screen unit:
+`canonical_gap_id` or `gap_id`, `language`, `language_status`, repair route,
+repair target, related test, static limit when present, verify command, receipt
+command, receipt state, and advisory non-claims. Raw finding counts remain
+supporting evidence.
+
 ## Outputs
 
 The first-run path should output:
@@ -351,8 +358,8 @@ This spec PR does not add production code or output fields.
 Planned slices:
 
 1. `docs/spec-first-successful-pr-ux-contract` defines this behavior contract.
-2. `workflow/first-pr-packet` adds the first-run command path or documented
-   wrapper over existing artifacts.
+2. `workflow/first-pr-packet` adds the first-run command path and keeps the
+   repo-local wrapper aligned with existing artifacts.
 3. `report/start-here-pr-repair-summary` renders `start-here.{json,md}`.
 4. `ux/first-run-state-packets` standardizes empty, missing, stale,
    wrong-root, malformed, and timeout packet states.
@@ -385,17 +392,25 @@ Likely implementation surfaces:
 
 ## Metrics
 
-Future implementation may add metrics only when backed by code and traceable
-tests. Candidate metrics:
+The dogfood report emits first-run adoption counters for the checked
+`fixtures/first_successful_pr/` corpus. These counters measure whether the
+first screen selected a repairable gap, produced a no-action state, or produced
+a blocked recovery state; they are adoption evidence, not runtime mutation or
+coverage adequacy claims.
 
 - `first_run_packets_total`;
 - `first_run_top_gap_selected_total`;
 - `first_run_no_action_total`;
+- `first_run_blocked_total`;
 - `first_run_missing_artifact_total`;
 - `first_run_stale_artifact_total`;
 - `first_run_wrong_root_total`;
 - `first_run_malformed_artifact_total`;
-- `first_run_timeout_total`;
+- `first_run_timeout_total`.
+
+Future implementation may add repair and movement counters only when backed by
+code and traceable tests. Candidate follow-up metrics:
+
 - `first_run_repair_attempted_total`;
 - `first_run_receipt_present_total`;
 - `first_run_movement_improved_total`;

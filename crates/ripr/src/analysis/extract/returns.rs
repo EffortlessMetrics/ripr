@@ -27,35 +27,41 @@ mod tests {
     use super::*;
 
     #[test]
-    fn extract_return_facts_keeps_line_order_and_repeated_text_on_distinct_lines() {
-        let facts = extract_return_facts(
-            "if ok { return Ok(42); }\nlet value = Some(1);\nlet value = Some(1);\nNone",
-            20,
-        );
+    fn extract_return_facts_captures_result_option_and_explicit_returns() {
+        let body =
+            "if missing { return Err(ConfigError::Missing); }\nOk(Some(value))\nlet x = None;";
 
-        let actual = facts
+        let facts = extract_return_facts(body, 10);
+
+        let lines_and_text = facts
             .iter()
             .map(|fact| (fact.line, fact.text.as_str()))
             .collect::<Vec<_>>();
-
         assert_eq!(
-            actual,
+            lines_and_text,
             vec![
-                (20, "if ok { return Ok(42); }"),
-                (21, "let value = Some(1);"),
-                (22, "let value = Some(1);"),
-                (23, "None"),
+                (10, "if missing { return Err(ConfigError::Missing); }"),
+                (11, "Ok(Some(value))"),
+                (12, "let x = None;"),
             ]
         );
     }
 
     #[test]
-    fn extract_return_facts_ignores_lines_without_return_shapes() {
-        let facts = extract_return_facts(
-            "let token = missing_value;\nlet error = no_error_here;\nlet option = something;",
-            1,
-        );
+    fn extract_return_facts_sorts_and_deduplicates_duplicate_lines() {
+        let facts = extract_return_facts("Ok(value)\nOk(value)", 3);
 
-        assert_eq!(facts, Vec::new());
+        let lines_and_text = facts
+            .iter()
+            .map(|fact| (fact.line, fact.text.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(lines_and_text, vec![(3, "Ok(value)"), (4, "Ok(value)")]);
+    }
+
+    #[test]
+    fn extract_return_facts_ignores_substrings_without_return_signal() {
+        let facts = extract_return_facts("let ok_value = status;\nlet none_count = 0;", 1);
+
+        assert!(facts.is_empty());
     }
 }
