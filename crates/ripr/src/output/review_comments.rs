@@ -136,8 +136,7 @@ pub(crate) fn render_review_comments_json(
         "limits_note": "Advisory static evidence only; no automatic edits, generated tests, runtime mutation execution, or CI blocking.",
     });
 
-    serde_json::to_string_pretty(&value)
-        .map_err(|err| format!("failed to render review comments JSON: {err}"))
+    super::json::render_pretty(&value, "review comments")
 }
 
 pub(crate) fn render_gap_record_review_comments_json(
@@ -201,8 +200,7 @@ pub(crate) fn render_gap_record_review_comments_json(
         "limits_note": "Advisory static evidence only; gap-ledger repair cards do not edit source, generate tests, run mutation testing, or change CI/gate authority.",
     });
 
-    serde_json::to_string_pretty(&value)
-        .map_err(|err| format!("failed to render gap-ledger review comments JSON: {err}"))
+    super::json::render_pretty(&value, "gap-ledger review comments")
 }
 
 pub(crate) fn render_review_comments_markdown(
