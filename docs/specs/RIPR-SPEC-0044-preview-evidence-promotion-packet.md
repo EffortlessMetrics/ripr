@@ -217,7 +217,11 @@ The JSON report uses schema version `0.1`:
     "related-test accuracy review receipt for TypeScript boundary_gap",
     "false repair packet review receipt for TypeScript boundary_gap",
     "surface consistency receipt for TypeScript boundary_gap",
-    "policy signoff receipt for TypeScript boundary_gap"
+    "policy signoff receipt for TypeScript boundary_gap",
+    "baseline behavior receipt for TypeScript boundary_gap",
+    "waiver/suppression behavior receipt for TypeScript boundary_gap",
+    "rollback path receipt for TypeScript boundary_gap",
+    "generated CI posture receipt for TypeScript boundary_gap"
   ],
   "rollback_path": [
     "Keep TypeScript boundary_gap evidence advisory.",
@@ -312,6 +316,10 @@ Why: preview promotion evidence not supplied
 - false repair packet review receipt for TypeScript boundary_gap
 - surface consistency receipt for TypeScript boundary_gap
 - policy signoff receipt for TypeScript boundary_gap
+- baseline behavior receipt for TypeScript boundary_gap
+- waiver/suppression behavior receipt for TypeScript boundary_gap
+- rollback path receipt for TypeScript boundary_gap
+- generated CI posture receipt for TypeScript boundary_gap
 
 ## Generated CI Posture
 
