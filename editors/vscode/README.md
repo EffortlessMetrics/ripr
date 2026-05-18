@@ -3,7 +3,7 @@
 [![VS Marketplace Installs (manual)](https://img.shields.io/badge/VS%20Marketplace-5%20installs-0078D4)](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr)
 [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/EffortlessMetrics/ripr?label=Open%20VSX%20downloads)](https://open-vsx.org/extension/EffortlessMetrics/ripr)
 
-<!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-17 before the 0.6.0 publish; Marketplace served 0.5.0 with 5 installs. Refresh the count and date from publisher metrics whenever you check; do not use live VS Marketplace Shields routes. -->
+<!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-17 before the 0.6.0 publish; Marketplace served 0.5.0 with 5 installs. The 0.6.0 Marketplace package is published and verified, but install-count metrics were not refreshed from publisher telemetry. Refresh the count and date from publisher metrics whenever you check; do not use live VS Marketplace Shields routes. -->
 
 Preview VS Code/Open VSX extension for `ripr`, a static Rust analysis tool that
 finds changed code where the nearby tests may run but not actually check the

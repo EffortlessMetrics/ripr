@@ -243,7 +243,7 @@ test, and comparing before/after evidence.
 
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
-| Distribution | `0.6.0` is the prepared release line for the Rust crate, VS Code/Open VSX extension, GitHub Release server assets, generated CI workflow artifacts, and Rust 1.95 MSRV. `0.5.0` remains the last publicly verified release until the 0.6.0 publish checklist completes. | Publish 0.6.0, then refresh public install and marketplace verification receipts. |
+| Distribution | `0.6.0` is the current public release line for the Rust crate, VS Code/Open VSX extension, GitHub Release server assets, generated CI workflow artifacts, and Rust 1.95 MSRV. The 0.6.0 release execution closeout verified crates.io, GitHub Release assets, VS Code Marketplace, Open VSX, and install smoke. | Post-release maintenance: keep install and marketplace receipts current. |
 | Diff analysis | Syntax-backed changed-line probes with owner symbols, parser-backed probe facts, explicit stop reasons for unknowns, probe-relative oracle strength, and local flow sink facts. | Maintenance; no active analyzer-refactor lane. |
 | Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, and unknown oracle kinds. | Maintenance; no active analyzer-refactor lane. |
 | Output | Human, JSON, context, GitHub/SARIF, repo seam, pilot, outcome, and badge formats include evidence-first stop reasons and advisory next actions. | Output contract maintenance. |
