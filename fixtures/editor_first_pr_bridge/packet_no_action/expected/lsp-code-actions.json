@@ -1,0 +1,22 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_pr_bridge/packet_no_action",
+  "actions": [
+    {
+      "title": "First PR: open packet",
+      "command": "ripr.openFirstPrPacket"
+    },
+    {
+      "title": "First PR: copy summary",
+      "command": "ripr.copyFirstPrSummary"
+    },
+    {
+      "title": "First PR: copy regeneration guidance",
+      "command": "ripr.copyFirstPrRegenerationGuidance"
+    },
+    {
+      "title": "Refresh Analysis - Saved Workspace Check",
+      "command": "ripr.refresh"
+    }
+  ]
+}

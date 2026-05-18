@@ -54,7 +54,11 @@ uses nested cases with `expected/lsp-diagnostics.json`,
 `expected/lsp-hover.md`, `expected/lsp-code-actions.json`,
 `expected/vscode-status.json`, and `expected/gap-projection.json`; the shape is
 validated by `cargo xtask check-fixture-contracts` and summarized by
-`cargo xtask lsp-cockpit-report`.
+`cargo xtask lsp-cockpit-report`. `fixtures/editor_first_pr_bridge` uses
+nested cases with `expected/vscode-status.json`,
+`expected/setup-diagnosis.md`, `expected/lsp-diagnostics.json`,
+`expected/lsp-code-actions.json`, and `expected/first-pr-status.json` to pin
+first-pr packet success and fail-closed states.
 
 Run:
 
@@ -90,6 +94,7 @@ The current fixture baseline covers:
   `weak_error_oracle_assert_matches`
 - editor/LSP workflow projection: `editor_lsp_workflow`
 - editor gap cockpit projection: `editor_gap_cockpit`
+- editor first-pr bridge projection: `editor_first_pr_bridge`
 
 For defaults-first adoption examples, see
 [`EXAMPLE_CORPUS.md`](EXAMPLE_CORPUS.md). For calibration scenarios, see
