@@ -3,6 +3,15 @@
 ADRs record decisions that should not be rediscovered or re-litigated in every
 PR. They should be short, dated, and focused on consequences.
 
+ADRs answer **which durable decision constrains future work** in the linked
+source-of-truth stack. They should stay sparse, consequence-oriented, and linked
+to the proposals, specs, and plans they constrain. See
+[`docs/reference/SPEC_SYSTEM.md`](../reference/SPEC_SYSTEM.md) for the shared
+artifact roles.
+
+ADRs should not become implementation queues. Move sequencing to
+`plans/<lane>/implementation-plan.md`.
+
 ## Index
 
 | ADR | Status | Decision |

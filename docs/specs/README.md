@@ -7,6 +7,15 @@ Use specs for behavior that users, integrations, or future agents need to rely
 on. Keep implementation details in architecture docs or ADRs unless they affect
 observable behavior.
 
+Specs answer **what must be true** in the source-of-truth stack. They should
+link back to proposals for why, ADRs for durable decisions, plans for PR order,
+and proof surfaces for receipts. See
+[`docs/reference/SPEC_SYSTEM.md`](../reference/SPEC_SYSTEM.md) for the shared
+artifact roles.
+
+Specs should not become task lists. If a spec starts naming PR order, move that
+sequence to `plans/<lane>/implementation-plan.md`.
+
 ## Index
 
 | Spec | Status | Topic |

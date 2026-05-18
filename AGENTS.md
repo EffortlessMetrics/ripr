@@ -82,6 +82,35 @@ The VS Code extension, GitHub Actions declarations, fixture inputs,
 documentation examples, generated outputs, and assets are explicit exceptions
 when covered by policy metadata.
 
+## Repo Source-of-Truth Stack
+
+This repo uses a linked source-of-truth stack:
+
+```text
+Roadmap -> Proposal -> Spec -> ADR -> Plan -> Active goal -> PR -> Proof
+```
+
+Before changing files, read:
+
+1. `docs/reference/SPEC_SYSTEM.md`
+2. `.ripr/goals/active.toml`
+3. The linked implementation plan
+4. The linked spec for the selected work item
+5. Any linked ADRs
+
+Work on exactly one ready work item per PR unless the selected plan item says
+otherwise. Do not mix proposal, spec, ADR, plan, active-goal, runtime, policy,
+or support-tier changes unless the plan says that combined evidence package is
+required. If the active goal is missing, stale, closed, or has no ready item,
+stop and report instead of inventing work.
+
+Run the proof commands listed in the selected plan item. If proof cannot run,
+record the command, why it was unavailable, substitute evidence if any, and
+whether that blocks merge. Do not hand-edit generated status; run the owning
+generator or checker. Public claims require support-tier proof, and policy
+exceptions require owner, reason, coverage, and review metadata in the relevant
+ledger.
+
 ## Required Gates
 
 Run these before claiming the branch is ready:

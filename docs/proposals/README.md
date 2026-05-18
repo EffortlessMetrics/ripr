@@ -4,12 +4,15 @@ Proposals are design briefs. They explain why a product or repo change should
 exist, what shape it should take, and what alternatives were considered. They
 are not behavior contracts and are not work queues.
 
-Proposals decompose into:
+Proposals participate in the linked source-of-truth stack described in
+[`docs/reference/SPEC_SYSTEM.md`](../reference/SPEC_SYSTEM.md). They decompose
+into:
 
 - one or more behavior specs in [`docs/specs/`](../specs/)
 - ADRs in [`docs/adr/`](../adr/) when a durable architectural decision is
   needed
 - campaign and work-item entries in
+  [`plans/`](../../plans/) plus legacy campaign trackers such as
   [`docs/IMPLEMENTATION_CAMPAIGNS.md`](../IMPLEMENTATION_CAMPAIGNS.md) and
   [`docs/IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md)
 - the active execution manifest at `.ripr/goals/active.toml`
