@@ -44,7 +44,7 @@ Release themes:
 
 Detailed changes:
 - Changelog source range: the 0.6.0 notes were reconciled against merged PRs
-  and first-parent commits through `a1e98858` / #1204 on current `main`.
+  and first-parent commits through `4aab24d6` on current `main`.
   Internal learning-doc polish is intentionally not part of the public release
   story. Open release-hardening PRs such as #1138 remain outside this section
   until they land.
@@ -97,9 +97,9 @@ Detailed changes:
   cold full-repo evidence pass reports a clear timeout with phase context
   instead of waiting indefinitely or leaving an orphaned analyzer process.
 - Focused release hardening added coverage for extraction helpers, oracle
-  parsing, LSP URI edges, language routing, and domain support primitives, plus
-  behavior-preserving app/report refactors that reduce duplicated wiring
-  without changing public output contracts.
+  parsing, LSP URI edges, language routing, domain support primitives, and
+  selector location matching, plus behavior-preserving app/report refactors
+  that reduce duplicated wiring without changing public output contracts.
 - Lane 1 evidence-quality scorecards and trends now surface finding-alignment
   coverage gaps for unnamed static unknowns, actionable canonical items missing
   repair routes, and actionable canonical items missing verify commands.
