@@ -93,7 +93,7 @@ See `docs/ci/ripr-soft-gate.md` for the soft gate calibration path.
 ## See also
 
 - [`docs/ci/test-evidence-lanes.md`](test-evidence-lanes.md) — full lane split doctrine.
-- [`docs/ci/rust-1.95-quality-rollout.md`](rust-1.95-quality-rollout.md) — 0.5.1 rollout anchor.
+- [`docs/ci/rust-1.95-quality-rollout.md`](rust-1.95-quality-rollout.md) — 0.6.0 release-shaping anchor.
 - [`docs/STATIC_EXPOSURE_MODEL.md`](../STATIC_EXPOSURE_MODEL.md) — RIPR evidence model.
 - [`docs/ci/cost-and-verification-policy.md`](cost-and-verification-policy.md) — verification economics.
 - [`docs/ci/ripr-soft-gate.md`](ripr-soft-gate.md) — soft gate calibration path.

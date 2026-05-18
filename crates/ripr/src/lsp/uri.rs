@@ -101,44 +101,36 @@ mod tests {
 
     #[test]
     fn file_uri_for_path_percent_encodes_spaces_and_symbols() -> Result<(), String> {
-        let uri = file_uri_for_path(Path::new("fixtures/my crate/src/lib #1.rs"))?;
+        let uri = file_uri_for_path(Path::new("/tmp/ripr fixtures/a#b?.rs"))?;
 
+        assert_eq!(uri.as_str(), "file:///tmp/ripr%20fixtures/a%23b%3F.rs");
         assert_eq!(
-            uri.as_str(),
-            "file:///fixtures/my%20crate/src/lib%20%231.rs"
+            path_from_file_uri(&uri).ok_or("expected decoded path")?,
+            PathBuf::from("/tmp/ripr fixtures/a#b?.rs")
         );
         Ok(())
     }
 
     #[test]
-    fn path_from_file_uri_decodes_percent_encoded_paths() -> Result<(), String> {
-        let uri: Uri = "file:///workspace/my%20crate/src/lib%20%231.rs"
+    fn invalid_percent_encoding_is_not_a_file_path() -> Result<(), String> {
+        let uri: Uri = "file:///tmp/%FF.rs"
             .parse()
-            .map_err(|err| format!("valid URI should parse: {err}"))?;
+            .map_err(|err| format!("expected URI parse to succeed: {err}"))?;
 
-        assert_eq!(
-            path_from_file_uri(&uri),
-            Some(PathBuf::from("/workspace/my crate/src/lib #1.rs"))
-        );
+        assert_eq!(path_from_file_uri(&uri), None);
         Ok(())
     }
 
     #[test]
-    fn file_uris_match_normalizes_windows_drive_case() -> Result<(), String> {
-        let left: Uri = "file:///C:/repo/project/src/lib.rs"
+    fn windows_drive_file_uris_match_case_insensitively() -> Result<(), String> {
+        let upper: Uri = "file:///C:/Work/Ripr/src/lib.rs"
             .parse()
-            .map_err(|err| format!("valid URI should parse: {err}"))?;
-        let right: Uri = "file:///c:/repo/project/src/lib.rs"
+            .map_err(|err| format!("expected upper-case drive URI to parse: {err}"))?;
+        let lower: Uri = "file:///c:/Work/Ripr/src/lib.rs"
             .parse()
-            .map_err(|err| format!("valid URI should parse: {err}"))?;
+            .map_err(|err| format!("expected lower-case drive URI to parse: {err}"))?;
 
-        assert!(file_uris_match(&left, &right));
+        assert!(file_uris_match(&upper, &lower));
         Ok(())
-    }
-
-    #[test]
-    fn percent_decode_uri_path_rejects_invalid_escape_or_utf8() {
-        assert_eq!(percent_decode_uri_path("/workspace/%GG"), None);
-        assert_eq!(percent_decode_uri_path("/workspace/%FF"), None);
     }
 }

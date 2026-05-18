@@ -11,8 +11,11 @@ Summary:
 
 Planned operations:
 - create src/pricing.rs:88 `ripr:8f7fa8644fd12280:src/pricing.rs:88`
-  - missing discriminator: `amount == discount_threshold`
-  - action: add one focused boundary assertion
+  - gap: missing boundary assertion
+  - changed behavior: `amount == discount_threshold`
+  - repair route: add boundary assertion
+  - repair: Add one focused boundary assertion for `amount == discount_threshold`.
+  - verify: `ripr agent verify`
 
 Limits:
 - Advisory inline-comment publish plan only.

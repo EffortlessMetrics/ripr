@@ -39,6 +39,14 @@ not in the public release body.
       mutants, and treats mutation testing as the runtime backstop. The
       release body must not frame `ripr` and mutation testing as parallel
       evidence lanes or as detecting different signals.
+- [ ] Preview-language copy distinguishes packaging from authority: preview
+      adapters may ship in the normal binary, but TypeScript/JavaScript/Python
+      evidence remains opt-in, visibly preview/advisory, non-gating, and not a
+      Rust parity or runtime-proof claim.
+- [ ] Any release-note counts are labeled with their basis. Lane 1
+      finding-alignment counts are static advisory audit evidence, not public
+      badge totals, coverage, runtime mutation outcomes, or test-adequacy
+      claims.
 
 ## VS Marketplace and Open VSX
 

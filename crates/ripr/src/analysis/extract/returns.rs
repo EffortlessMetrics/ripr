@@ -27,40 +27,41 @@ mod tests {
     use super::*;
 
     #[test]
-    fn extract_return_facts_finds_explicit_and_result_like_returns() {
-        let body = "let value = compute();\nreturn value;\nOk(value)\nErr(Error::Missing)";
+    fn extract_return_facts_captures_result_option_and_explicit_returns() {
+        let body =
+            "if missing { return Err(ConfigError::Missing); }\nOk(Some(value))\nlet x = None;";
 
-        let facts = extract_return_facts(body, 20);
+        let facts = extract_return_facts(body, 10);
 
         let lines_and_text = facts
             .iter()
             .map(|fact| (fact.line, fact.text.as_str()))
             .collect::<Vec<_>>();
-
         assert_eq!(
             lines_and_text,
             vec![
-                (21, "return value;"),
-                (22, "Ok(value)"),
-                (23, "Err(Error::Missing)")
+                (10, "if missing { return Err(ConfigError::Missing); }"),
+                (11, "Ok(Some(value))"),
+                (12, "let x = None;"),
             ]
         );
     }
 
     #[test]
-    fn extract_return_facts_sorts_and_deduplicates_by_line_and_text() {
-        let body = "Some(value)\nSome(value)\nNone";
-
-        let facts = extract_return_facts(body, 1);
+    fn extract_return_facts_sorts_and_deduplicates_duplicate_lines() {
+        let facts = extract_return_facts("Ok(value)\nOk(value)", 3);
 
         let lines_and_text = facts
             .iter()
             .map(|fact| (fact.line, fact.text.as_str()))
             .collect::<Vec<_>>();
+        assert_eq!(lines_and_text, vec![(3, "Ok(value)"), (4, "Ok(value)")]);
+    }
 
-        assert_eq!(
-            lines_and_text,
-            vec![(1, "Some(value)"), (2, "Some(value)"), (3, "None")]
-        );
+    #[test]
+    fn extract_return_facts_ignores_substrings_without_return_signal() {
+        let facts = extract_return_facts("let ok_value = status;\nlet none_count = 0;", 1);
+
+        assert!(facts.is_empty());
     }
 }

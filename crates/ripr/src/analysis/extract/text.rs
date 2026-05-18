@@ -47,26 +47,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn extract_identifier_tokens_returns_sorted_unique_interesting_tokens() {
+    fn extract_identifier_tokens_filters_assertion_noise_and_sorts_tokens() {
         let tokens = extract_identifier_tokens(
-            "assert_eq!(invoice.total_cents(), expected_total_cents); let total = total;",
+            "assert_eq!(actual_total, expected_total); assert!(actual_total > threshold)",
         );
 
-        assert_eq!(
-            tokens,
-            vec![
-                "expected_total_cents".to_string(),
-                "invoice".to_string(),
-                "total".to_string(),
-                "total_cents".to_string()
-            ]
-        );
+        assert_eq!(tokens, vec!["actual_total", "expected_total", "threshold"]);
     }
 
     #[test]
-    fn extract_identifier_tokens_filters_short_and_builtin_assertion_words() {
-        let tokens = extract_identifier_tokens("assert!(Ok(x).is_ok()); let id = true;");
+    fn extract_identifier_tokens_deduplicates_repeated_observed_tokens() {
+        let tokens = extract_identifier_tokens("value.unwrap(); assert_eq!(value, value)");
 
-        assert!(tokens.is_empty());
+        assert_eq!(tokens, vec!["value"]);
+    }
+
+    #[test]
+    fn extract_identifier_tokens_keeps_unicode_alphanumeric_tokens() {
+        let tokens = extract_identifier_tokens("assert_eq!(café_total, заказ_total);");
+
+        assert_eq!(tokens, vec!["café_total", "заказ_total"]);
+    }
+
+    #[test]
+    fn extract_identifier_tokens_ignores_short_and_builtin_tokens() {
+        let tokens = extract_identifier_tokens("let x = Ok(Some(id)); let flag = true;");
+
+        assert_eq!(tokens, vec!["flag"]);
     }
 }

@@ -50,6 +50,7 @@ cargo xtask critic
 cargo xtask reports index
 cargo xtask receipts
 cargo xtask receipts check
+cargo xtask doctor
 cargo xtask specs next
 cargo xtask check-allow-attributes
 cargo xtask check-local-context
@@ -99,15 +100,21 @@ sections of the reviewer packet without being treated as production behavior.
 format and numbering, and the policy surfaces that should fail quickly before
 review.
 
-`worktree doctor` is the agent hygiene check. It reports dirty `main`
-worktrees, branches behind `origin/main`, generated badge/target residue, and
-broad source-of-truth diffs that lack an obvious work item marker.
+`doctor` is the shortest agent hygiene entry point and is equivalent to
+`worktree doctor`. It reports dirty `main` worktrees, branches behind
+`origin/main`, generated badge/target residue, and broad source-of-truth diffs
+that lack an obvious work item marker. Its report also includes a short
+next-action queue so agents can move from diagnosis to the right cleanup or
+follow-up validation command without reverse-engineering the findings.
 
 `pr-triage-report` is the open-board hygiene report. It reads open PR metadata
 through GitHub CLI and writes `target/ripr/reports/pr-triage.md` plus
 `target/ripr/reports/pr-triage.json`. It flags same-title families, identical
 changed-file sets, stale drafts, branches behind main, incomplete validation
-signals, and policy/gate/generated workflow surfaces. It is advisory and never
+signals, and policy/gate/generated workflow surfaces. It also emits an
+advisory queue disposition for each PR — `merge_candidate`, `needs_rebase`,
+`needs_review`, `close_duplicate`, `superseded`, `needs_fresh_validation`,
+`needs_owner_decision`, or `do_not_touch_wrong_lane`. It is advisory and never
 updates, closes, merges, or comments on PRs.
 
 `gh-pr-status --pr <number>` is the per-PR merge-readiness packet. It reads
@@ -125,9 +132,12 @@ handling, and local worktree merge limitations.
 `suggested-fixes` writes `target/ripr/reports/suggested-fixes.patch` and
 `target/ripr/reports/suggested-fixes.md` with safe deterministic repair
 suggestions. The patch covers allowlist ordering under `.ripr/*.txt` and
-`policy/*.txt` plus docs index table ordering for specs and ADRs. It never
-generates badge endpoint values, golden blessings, baselines, suppressions,
-dependency exceptions, or schema-version changes.
+`policy/*.txt`, docs index table ordering for specs and ADRs, and traceability
+behavior block ordering by spec ID, plus capability block ordering by spec ID
+and capability ID, and command catalog ordering by xtask help order. It never
+generates badge endpoint values,
+golden blessings, baselines, suppressions, dependency exceptions, or
+schema-version changes.
 The generated-vs-authored boundary is documented in
 [Generated evidence discipline](GENERATED_EVIDENCE.md).
 
