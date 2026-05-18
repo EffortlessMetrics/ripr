@@ -77,9 +77,10 @@ Detailed changes:
   policy, CI, or gate behavior.
 - Lane 1 value resolution now treats same-test struct literal field
   projections as fixture-backed activation values when the field value is
-  literal. Helper-built structs, shadowed bindings, fixture-parameter
-  collisions, common non-`let` shadowing binders, non-simple `let` pattern
-  binders, and non-literal fields remain named
+  literal. Resolution is now scoped to the owner-call line, so later shadows do
+  not erase earlier safe calls while before-call shadows, helper-built structs,
+  fixture-parameter collisions, common non-`let` shadowing binders, non-simple
+  `let` pattern binders, and non-literal fields remain named
   `activation_value_unresolved` limitations. This burns down one
   fixture-backed sub-shape of the top live static-limitation bucket without
   claiming strong grip, cross-file, helper, semantic, gate, PR/CI rendering,

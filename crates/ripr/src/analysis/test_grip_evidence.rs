@@ -1144,7 +1144,7 @@ fn observed_value_facts_for_test(
             // value-extraction-v2: try to resolve the arg through the
             // priority chain (let / rstest case / table row /
             // same-file const / Some/Ok/Err).
-            for (value, context) in env.resolve(&arg) {
+            for (value, context) in env.resolve_at(&arg, call.line) {
                 observed.push(ValueFact {
                     line: call.line,
                     text: call.text.clone(),
@@ -1259,7 +1259,7 @@ fn boundary_equality_overlap_score(
         let Some(right_arg) = args.get(right_index) else {
             continue;
         };
-        if arguments_overlap_at_boundary(seam, indexed, index, left_arg, right_arg) {
+        if arguments_overlap_at_boundary(seam, indexed, index, left_arg, right_arg, call.line) {
             score += 1;
         }
     }
@@ -1272,12 +1272,13 @@ fn arguments_overlap_at_boundary(
     index: &RustIndex,
     left_arg: &str,
     right_arg: &str,
+    call_line: usize,
 ) -> bool {
     if left_arg.trim() == right_arg.trim() && !left_arg.trim().is_empty() {
         return true;
     }
-    let left_values = resolved_argument_values(seam, indexed, index, left_arg);
-    let right_values = resolved_argument_values(seam, indexed, index, right_arg);
+    let left_values = resolved_argument_values(seam, indexed, index, left_arg, call_line);
+    let right_values = resolved_argument_values(seam, indexed, index, right_arg, call_line);
     left_values.iter().any(|left| {
         let left = comparable_value(left);
         right_values
@@ -1291,6 +1292,7 @@ fn resolved_argument_values(
     indexed: &CompactTest<'_>,
     index: &RustIndex,
     arg: &str,
+    call_line: usize,
 ) -> Vec<String> {
     let values = scalar_values(arg);
     if !values.is_empty() {
@@ -1300,7 +1302,7 @@ fn resolved_argument_values(
         .value_facts
         .get_or_init(|| super::value_resolution::ValueEnvFacts::build(indexed.test, index));
     let env = super::value_resolution::ValueEnv::new(seam, value_facts);
-    env.resolve(arg)
+    env.resolve_at(arg, call_line)
         .into_iter()
         .map(|(value, _context)| value)
         .collect()
@@ -3789,6 +3791,100 @@ fn wrapper_mentions_owner_only_in_non_code() {
     }
 
     #[test]
+    fn given_struct_literal_shadowed_after_owner_call_then_values_are_recorded()
+    -> Result<(), String> {
+        // Source order matters for the fixture shape: a later shadow
+        // should not erase a direct owner call that already used the
+        // same-test literal field projection.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test]\nfn via_later_shadowed_fixture() {\n    \
+                 let case = DiscountCase { amount: 100, threshold: 100 };\n    \
+                 assert_eq!(discounted_total(case.amount, case.threshold), 90);\n    \
+                 let case = make_discount_case();\n    \
+                 let _ = case;\n\
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        assert!(
+            values.iter().any(|v| v == "100"),
+            "later-shadowed struct literal field value 100 must still be recorded for the earlier owner call; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_struct_literal_after_owner_call_then_projection_values_stay_unresolved()
+    -> Result<(), String> {
+        // A later literal cannot explain a field projection that reached
+        // the owner before the literal binding existed.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test]\nfn via_late_literal_fixture() {\n    \
+                 assert_eq!(discounted_total(case.amount, case.threshold), 90);\n    \
+                 let case = DiscountCase { amount: 100, threshold: 100 };\n    \
+                 let _ = case;\n\
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        assert!(
+            values.is_empty(),
+            "literal struct fields introduced after the owner call must not produce fake values; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_struct_literal_field_mutated_before_owner_call_then_values_stay_unresolved()
+    -> Result<(), String> {
+        // A mutation before the owner call makes the original literal
+        // field stale for activation-value evidence.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test]\nfn via_mutated_fixture() {\n    \
+                 let case = DiscountCase { amount: 100, threshold: 100 };\n    \
+                 case.amount = make_amount();\n    \
+                 assert_eq!(discounted_total(case.amount, case.threshold), 90);\n\
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        assert!(
+            values.is_empty(),
+            "mutated struct literal fields must not reuse stale literal values; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_struct_literal_field_mutated_after_owner_call_then_values_are_recorded()
+    -> Result<(), String> {
+        // A mutation after the owner call should not erase the literal
+        // value observed by the earlier owner call.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test]\nfn via_later_mutated_fixture() {\n    \
+                 let case = DiscountCase { amount: 100, threshold: 100 };\n    \
+                 assert_eq!(discounted_total(case.amount, case.threshold), 90);\n    \
+                 case.amount = make_amount();\n\
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        assert!(
+            values.iter().any(|v| v == "100"),
+            "later-mutated struct literal field value 100 must still be recorded for the earlier owner call; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn given_helper_built_struct_when_owner_call_uses_projection_then_values_stay_unresolved()
     -> Result<(), String> {
         // Do not infer through helper-returned fixtures. Without the
@@ -3816,9 +3912,9 @@ fn wrapper_mentions_owner_only_in_non_code() {
     fn given_shadowed_struct_literal_when_owner_call_uses_projection_then_values_stay_unresolved()
     -> Result<(), String> {
         // A same-test literal stops being a safe activation value once
-        // the binding is shadowed before the owner call. The resolver is
-        // deliberately conservative instead of inferring source-order
-        // scope for this fixture class.
+        // the binding is shadowed before the owner call. The resolver
+        // deliberately avoids reusing stale literal fields after the
+        // shadowing line.
         let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
                         { if amount >= threshold { amount - 10 } else { amount } }\n";
         let test = (
