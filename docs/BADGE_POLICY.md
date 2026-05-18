@@ -484,7 +484,7 @@ fields. The projection is mechanical: drop everything except `label`,
 
 Both formats are derived from the same internal `BadgeSummary`. That type is
 intentionally **not public** — it lives in a private rendering module
-(`crates/ripr/src/output/badge.rs` when implemented) and the public API
+(`crates/ripr/src/output/badge/` when implemented) and the public API
 remains the JSON shape. This keeps `cargo xtask check-public-api` green and
 matches the existing pattern (`output::json::render` is private; the JSON
 contract is what's stable).
