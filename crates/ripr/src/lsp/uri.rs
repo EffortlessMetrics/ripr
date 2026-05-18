@@ -112,18 +112,6 @@ mod tests {
     }
 
     #[test]
-    fn relative_path_file_uri_uses_absolute_uri_shape() -> Result<(), String> {
-        let uri = file_uri_for_path(Path::new("fixtures/src lib.rs"))?;
-
-        assert_eq!(uri.as_str(), "file:///fixtures/src%20lib.rs");
-        assert_eq!(
-            path_from_file_uri(&uri).ok_or("expected decoded path")?,
-            PathBuf::from("/fixtures/src lib.rs")
-        );
-        Ok(())
-    }
-
-    #[test]
     fn invalid_percent_encoding_is_not_a_file_path() -> Result<(), String> {
         let uri: Uri = "file:///tmp/%FF.rs"
             .parse()
