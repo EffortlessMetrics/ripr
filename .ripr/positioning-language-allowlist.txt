@@ -9,6 +9,8 @@
 # into the bad framing, rewrite the copy instead.
 
 # The check's implementation lists every forbidden phrase as a literal.
-
-docs/ci/ripr-mutation-boundary.md
 xtask/src/policy/positioning_language.rs
+
+# The doctrine doc explains the canonical positioning by quoting what
+# `ripr` is *not* (a parallel evidence lane).
+docs/ci/ripr-mutation-boundary.md
