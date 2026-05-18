@@ -373,6 +373,13 @@ export class RiprClientController {
   }
 
   async copyContext(target?: RiprContextTarget): Promise<void> {
+    const targetUri = uriFromTarget(target);
+    const rootBlocker = this.repairActionRootBlocker(targetUri);
+    if (rootBlocker) {
+      this.runtime.showInformationMessage(rootBlocker);
+      return;
+    }
+
     if (target?.label === 'first_repair_packet' && typeof target.packet === 'string') {
       const packet = target.packet.trim();
       if (!packet) {
@@ -407,7 +414,6 @@ export class RiprClientController {
       return;
     }
 
-    const targetUri = uriFromTarget(target);
     const editor = vscode.window.activeTextEditor;
     const documentUri = targetUri ?? editor?.document.uri;
     if (!documentUri) {
@@ -577,6 +583,12 @@ export class RiprClientController {
   }
 
   async copyAgentLoopCommand(target?: RiprAgentLoopCommandTarget): Promise<void> {
+    const rootBlocker = this.repairActionRootBlocker();
+    if (rootBlocker) {
+      this.runtime.showInformationMessage(rootBlocker);
+      return;
+    }
+
     const command = validatedAgentLoopCommand(target);
     if (!command) {
       this.runtime.showInformationMessage('No ripr agent loop command is available for this diagnostic.');
@@ -951,15 +963,27 @@ export class RiprClientController {
   }
 
   private activeDocumentRootBlocker(document: vscode.TextDocument): string | undefined {
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+    return this.repairActionRootBlocker(document.uri);
+  }
+
+  private repairActionRootBlocker(targetUri?: vscode.Uri): string | undefined {
+    const uri = targetUri ?? vscode.window.activeTextEditor?.document.uri;
+    if (!uri) {
+      return undefined;
+    }
+    if (uri.scheme !== 'file') {
+      return 'ripr repair actions require a file URI in the current workspace.';
+    }
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
     if (!workspaceFolder) {
-      return 'ripr repair actions require the active file to belong to a workspace folder.';
+      return 'ripr repair actions require the active or target file to belong to a workspace folder.';
     }
     if (this.workspaceRoot && !sameWorkspaceRoot(workspaceFolder.uri.fsPath, this.workspaceRoot)) {
-      return 'ripr repair actions are suppressed because the active file belongs to a different workspace root than the active ripr session.';
+      return 'ripr repair actions are suppressed because the active or target file belongs to a different workspace root than the active ripr session.';
     }
     return undefined;
   }
+
 }
 
 interface RiprSetupArtifactDefinition {
