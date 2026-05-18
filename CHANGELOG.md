@@ -9,7 +9,12 @@ are scoped or reviewed.
 
 ## Unreleased
 
-- Nothing yet.
+- Lane 1 activation evidence now treats direct no-argument owner calls as
+  activation for value-insensitive seams. This burns down one measured
+  `activation_value_unresolved` sub-shape for return/call/error/effect style
+  seams without inventing observed values, relaxing predicate-boundary value
+  checks, or changing PR/CI rendering, gates, providers, generated tests, or
+  mutation execution.
 
 ## 0.6.0 - 2026-05-17
 
