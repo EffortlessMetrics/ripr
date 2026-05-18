@@ -1286,4 +1286,247 @@ mod tests {
         assert!(markdown.contains("The command may show this record for manual review"));
         Ok(())
     }
+
+    #[test]
+    fn policy_history_marks_missing_history_jsonl_as_missing_artifact() {
+        // History path supplied + read error that looks like
+        // "No such file": the artifact is reported as `missing`, and
+        // an `history_not_supplied` unknown notice is appended.
+        let mut input = input(&operations("ready_for_visible_only", &["visible-only"]));
+        input.history_path = Some(".ripr/policy-history.jsonl".to_string());
+        input.history_jsonl = Some(Err("No such file or directory (os error 2)".to_string()));
+
+        let report = build_policy_history_report(input);
+
+        let history_artifact = report
+            .input_artifacts
+            .iter()
+            .find(|artifact| artifact.kind == "policy_history_jsonl");
+        assert!(
+            history_artifact.is_some(),
+            "expected policy_history_jsonl artifact"
+        );
+        assert_eq!(history_artifact.map(|a| a.status.as_str()), Some("missing"));
+        assert!(
+            report
+                .unknowns
+                .iter()
+                .any(|notice| notice.kind == "history_not_supplied"),
+            "expected history_not_supplied notice, got {:?}",
+            report.unknowns
+        );
+    }
+
+    #[test]
+    fn policy_history_records_warning_for_non_missing_history_read_error() {
+        // History path supplied + read error that does not look like
+        // missing-file: the artifact is reported as `malformed` and
+        // a `history_unreadable` warning is appended.
+        let mut input = input(&operations("ready_for_visible_only", &["visible-only"]));
+        input.history_path = Some(".ripr/policy-history.jsonl".to_string());
+        input.history_jsonl = Some(Err("permission denied".to_string()));
+
+        let report = build_policy_history_report(input);
+
+        let history_artifact = report
+            .input_artifacts
+            .iter()
+            .find(|artifact| artifact.kind == "policy_history_jsonl");
+        assert_eq!(
+            history_artifact.map(|a| a.status.as_str()),
+            Some("malformed")
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|notice| notice.kind == "history_unreadable"),
+            "expected history_unreadable warning, got {:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
+    fn policy_history_records_unknown_when_history_supplied_without_text() {
+        // History path supplied but `history_jsonl` is `None`: this
+        // hits the "supplied but not loaded" branch in
+        // `parse_history_jsonl` and routes to a `history_not_loaded`
+        // unknown notice with the artifact marked `missing`.
+        let mut input = input(&operations("ready_for_visible_only", &["visible-only"]));
+        input.history_path = Some(".ripr/policy-history.jsonl".to_string());
+        input.history_jsonl = None;
+
+        let report = build_policy_history_report(input);
+
+        let history_artifact = report
+            .input_artifacts
+            .iter()
+            .find(|artifact| artifact.kind == "policy_history_jsonl");
+        assert_eq!(history_artifact.map(|a| a.status.as_str()), Some("missing"));
+        assert!(
+            report
+                .unknowns
+                .iter()
+                .any(|notice| notice.kind == "history_not_loaded"),
+            "expected history_not_loaded notice, got {:?}",
+            report.unknowns
+        );
+    }
+
+    #[test]
+    fn policy_history_records_warning_for_unreadable_current_operations() {
+        // `current_json` is an `Err`: parse_required_json appends a
+        // `policy_operations_unreadable` warning and the snapshot
+        // falls back to `config_error` ceiling.
+        let report = build_policy_history_report(PolicyHistoryInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:10".to_string(),
+            current_path: "policy-operations.json".to_string(),
+            history_path: None,
+            commit: Some("HEAD".to_string()),
+            pr_number: Some("123".to_string()),
+            current_json: Err("permission denied".to_string()),
+            history_jsonl: None,
+        });
+
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.kind == "policy_operations_unreadable"),
+            "expected policy_operations_unreadable warning, got {:?}",
+            report.warnings
+        );
+        assert_eq!(report.current.current_policy_ceiling, "config_error");
+        assert_eq!(report.input_artifacts[0].status, "malformed");
+    }
+
+    #[test]
+    fn policy_history_baseline_health_flips_to_config_error_on_malformed_blocker() {
+        // `promotion_blockers` carries a `*_malformed` kind matching
+        // the baseline prefix: `health_from_inputs_and_blockers`
+        // returns `config_error` for the baseline health field.
+        let mut operations = operations("ready_for_visible_only", &["visible-only"]);
+        operations = operations.replace(
+            r#""promotion_blockers": []"#,
+            r#""promotion_blockers": [{"kind":"baseline_delta_malformed","severity":"config_error","message":"baseline malformed","target_modes":["baseline-check"],"source_artifact":"baseline.json","repair_action":"fix it"}]"#,
+        );
+
+        let report = build_policy_history_report(input(&operations));
+
+        assert_eq!(report.current.baseline_health, "config_error");
+    }
+
+    #[test]
+    fn policy_history_waiver_health_flips_to_warning_on_matching_blocker() {
+        // A non-malformed waiver_aging blocker should map to `warning`.
+        let mut operations = operations("ready_for_visible_only", &["visible-only"]);
+        operations = operations.replace(
+            r#""promotion_blockers": []"#,
+            r#""promotion_blockers": [{"kind":"waiver_aging_threshold","severity":"warning","message":"too many old waivers","target_modes":["baseline-check"],"source_artifact":"waiver.json","repair_action":"resolve waivers"}]"#,
+        );
+
+        let report = build_policy_history_report(input(&operations));
+
+        assert_eq!(report.current.waiver_health, "warning");
+    }
+
+    #[test]
+    fn policy_history_preview_boundary_state_warns_on_non_violation_preview_blocker() {
+        // A `preview_*` blocker that is not the exact
+        // `preview_boundary_violation` kind maps to `warning` rather
+        // than `config_error`.
+        let mut operations = operations("ready_for_visible_only", &["visible-only"]);
+        operations = operations.replace(
+            r#""promotion_blockers": []"#,
+            r#""promotion_blockers": [{"kind":"preview_pending_calibration","severity":"warning","message":"awaiting calibration","target_modes":["calibrated-gate"],"source_artifact":"policy-readiness.json","repair_action":"wait"}]"#,
+        );
+
+        let report = build_policy_history_report(input(&operations));
+
+        assert_eq!(report.current.preview_boundary_state, "warning");
+    }
+
+    #[test]
+    fn mode_for_ceiling_maps_known_ceilings_and_falls_back_to_advisory_only() {
+        assert_eq!(
+            mode_for_ceiling("ready_for_calibrated_gate"),
+            "calibrated-gate"
+        );
+        assert_eq!(
+            mode_for_ceiling("ready_for_baseline_check"),
+            "baseline-check"
+        );
+        assert_eq!(
+            mode_for_ceiling("ready_for_acknowledgeable"),
+            "acknowledgeable"
+        );
+        assert_eq!(mode_for_ceiling("ready_for_visible_only"), "visible-only");
+        assert_eq!(mode_for_ceiling("anything_else"), "advisory-only");
+    }
+
+    #[test]
+    fn policy_history_recommended_mode_falls_back_from_ceiling_on_history_record_without_mode() {
+        // The history record omits `recommended_mode` but supplies
+        // `current_policy_ceiling`. `snapshot_from_history_value`
+        // routes through `mode_for_ceiling` for the previous trend.
+        //
+        // The direct snapshot assertion below pins the fallback output
+        // itself (no `recommended_mode` -> `mode_for_ceiling(ceiling)`),
+        // so the branch cannot regress silently behind the trend assertions.
+        let history_value = json!({
+            "generated_at": "unix_ms:1",
+            "current_policy_ceiling": "ready_for_baseline_check",
+        });
+        let snapshot = snapshot_from_history_value(&history_value);
+        assert_eq!(snapshot.snapshot.recommended_mode, "baseline-check");
+
+        let mut input = input(&operations(
+            "ready_for_calibrated_gate",
+            &[
+                "visible-only",
+                "acknowledgeable",
+                "baseline-check",
+                "calibrated-gate",
+            ],
+        ));
+        input.history_path = Some(".ripr/policy-history.jsonl".to_string());
+        input.history_jsonl = Some(Ok(
+            r#"{"generated_at":"unix_ms:1","current_policy_ceiling":"ready_for_baseline_check","new_policy_eligible_count":0,"waiver_count":0,"stale_suppression_count":0,"baseline_still_present":0,"baseline_resolved":0}"#
+                .to_string(),
+        ));
+
+        let report = build_policy_history_report(input);
+
+        assert_eq!(
+            report.trend.ceiling.previous.as_deref(),
+            Some("ready_for_baseline_check")
+        );
+        assert_eq!(report.trend.ceiling.direction, "improved");
+    }
+
+    #[test]
+    fn policy_history_markdown_includes_warnings_section_when_warnings_exist() {
+        // Use the malformed-history-line case to seed a warning, then
+        // confirm the markdown renders the `## Warnings` section that
+        // is otherwise omitted when `report.warnings.is_empty()`.
+        let mut input = input(&operations("ready_for_visible_only", &["visible-only"]));
+        input.history_path = Some(".ripr/policy-history.jsonl".to_string());
+        input.history_jsonl = Some(Ok(format!(
+            "{}\nnot-json\n",
+            r#"{"generated_at":"unix_ms:1","current_policy_ceiling":"advisory_only","recommended_mode":"advisory-only","new_policy_eligible_count":1,"waiver_count":2,"stale_suppression_count":0,"baseline_still_present":5,"baseline_resolved":0}"#
+        )));
+
+        let report = build_policy_history_report(input);
+        let markdown = render_policy_history_markdown(&report);
+
+        assert!(
+            markdown.contains("\n## Warnings\n"),
+            "expected `## Warnings` section in markdown, got:\n{markdown}"
+        );
+        assert!(
+            markdown.contains("history_line_malformed"),
+            "expected the warning kind to appear in the section, got:\n{markdown}"
+        );
+    }
 }
