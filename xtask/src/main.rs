@@ -14472,7 +14472,19 @@ where
     let diagnostics =
         lane1_evidence_audit_repo_exposure_generation(binary, &args, timeout, &output);
     match output.status {
-        Some(status) if status.success() => Ok(diagnostics),
+        Some(status) if status.success() => {
+            if output.stdout_bytes == 0 {
+                let _ = fs::remove_file(path);
+                return Err(format!(
+                    "{} {} completed successfully but produced an empty repo-exposure input at {}\nstderr:\n{}",
+                    binary.display(),
+                    args.join(" "),
+                    path.display(),
+                    output.stderr.trim()
+                ));
+            }
+            Ok(diagnostics)
+        }
         Some(status) => match lane1_repo_exposure_file_looks_complete(path) {
             Ok(true) => {
                 eprintln!(
@@ -14484,26 +14496,35 @@ where
                     ..diagnostics
                 })
             }
-            Ok(false) => Err(format!(
-                "{} {} failed with {status}\nstderr:\n{}",
-                binary.display(),
-                args.join(" "),
-                output.stderr.trim()
-            )),
-            Err(inspect_err) => Err(format!(
-                "{} {} failed with {status}\nfailed to inspect captured repo exposure {}: {inspect_err}\nstderr:\n{}",
-                binary.display(),
-                args.join(" "),
-                path.display(),
-                output.stderr.trim()
-            )),
+            Ok(false) => {
+                let _ = fs::remove_file(path);
+                Err(format!(
+                    "{} {} failed with {status}\nstderr:\n{}",
+                    binary.display(),
+                    args.join(" "),
+                    output.stderr.trim()
+                ))
+            }
+            Err(inspect_err) => {
+                let _ = fs::remove_file(path);
+                Err(format!(
+                    "{} {} failed with {status}\nfailed to inspect captured repo exposure {}: {inspect_err}\nstderr:\n{}",
+                    binary.display(),
+                    args.join(" "),
+                    path.display(),
+                    output.stderr.trim()
+                ))
+            }
         },
-        None => Err(format!(
-            "{} {} did not report an exit status\nstderr:\n{}",
-            binary.display(),
-            args.join(" "),
-            output.stderr.trim()
-        )),
+        None => {
+            let _ = fs::remove_file(path);
+            Err(format!(
+                "{} {} did not report an exit status\nstderr:\n{}",
+                binary.display(),
+                args.join(" "),
+                output.stderr.trim()
+            ))
+        }
     }
 }
 
@@ -51064,6 +51085,42 @@ covered_by = ["cargo xtask check-file-policy"]
 
         assert!(err.contains("failed with"), "{err}");
         assert!(err.contains("repo exposure failed"), "{err}");
+        assert!(
+            !output_path.exists(),
+            "incomplete failed captures should not leave stale repo exposure input"
+        );
+    }
+
+    #[test]
+    fn lane1_evidence_audit_repo_exposure_generation_rejects_empty_success_file() {
+        let root = temp_dir("lane1-repo-exposure-empty-success");
+        let output_path = root.join("repo-exposure.json");
+        let err = write_lane1_evidence_audit_repo_exposure_with_runner(
+            &output_path,
+            Path::new("ripr"),
+            Duration::from_millis(50),
+            |_binary, _args, output_path_seen, _timeout_seen| {
+                write(output_path_seen, "");
+                Ok(TimedFileOutput {
+                    status: Some(success_exit_status()),
+                    stderr: "repo exposure exited without JSON".to_string(),
+                    duration: Duration::from_millis(1),
+                    timed_out: false,
+                    stdout_bytes: 0,
+                })
+            },
+        )
+        .expect_err("empty successful repo-exposure capture should fail");
+
+        assert!(
+            err.contains("produced an empty repo-exposure input"),
+            "{err}"
+        );
+        assert!(err.contains("repo exposure exited without JSON"), "{err}");
+        assert!(
+            !output_path.exists(),
+            "empty successful captures should not leave stale repo exposure input"
+        );
     }
 
     #[test]
@@ -51090,6 +51147,10 @@ covered_by = ["cargo xtask check-file-policy"]
 
         assert!(err.contains("did not report an exit status"), "{err}");
         assert!(err.contains("missing status stderr"), "{err}");
+        assert!(
+            !output_path.exists(),
+            "missing-status captures should not leave stale repo exposure input"
+        );
     }
 
     #[test]
