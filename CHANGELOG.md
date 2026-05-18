@@ -9,6 +9,14 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Made Lane 1 evidence audit generation operationally visible for long live
+  repo runs. `cargo xtask lane1-evidence-audit` now streams repo-exposure
+  latency breadcrumbs while the analyzer subprocess runs and records bounded
+  generation diagnostics in `inputs.repo_exposure_generation`, including
+  timeout, status, duration, output byte counts, and the latency trace tail.
+  Large best-effort classified-seam cache entries are skipped with an explicit
+  `cache_store` trace instead of blocking report generation after analysis
+  completes.
 - Added explicit `primary_anchor` and `raw_spans` fields to supported
   `finding_alignment.items[]` and `evidence_record.canonical_item` canonical
   evidence items. Downstream surfaces now have one preferred placement hint

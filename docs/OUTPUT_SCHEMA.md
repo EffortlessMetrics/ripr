@@ -1564,7 +1564,24 @@ runtime execution.
     "root": ".",
     "source": "repo-exposure-json",
     "repo_exposure_mode": "instant",
-    "repo_exposure_schema_version": "0.3"
+    "repo_exposure_schema_version": "0.3",
+    "repo_exposure_generation": {
+      "command": "target/debug/ripr check --root . --mode instant --format repo-exposure-json",
+      "timeout_ms": 1200000,
+      "status": "pass",
+      "duration_ms": 42000,
+      "exit_code": 0,
+      "stdout_bytes": 1048576,
+      "stderr_bytes": 4096,
+      "latency_trace_events_total": 18,
+      "latency_trace_tail": [
+        {
+          "phase": "evidence_for_seams_progress",
+          "status": "processed_5000_of_38124",
+          "duration_ms": 41000
+        }
+      ]
+    }
   },
   "summary": {
     "seams_total": 9355,
@@ -1782,6 +1799,11 @@ Field contract:
   `evidence_record` contract.
 - `inputs.repo_exposure_schema_version` - schema version read from the generated
   repo exposure JSON, or `null` if absent.
+- `inputs.repo_exposure_generation` - bounded diagnostics for the live
+  repo-exposure subprocess, including timeout, status, duration, output byte
+  counts, and the last captured latency trace events. These diagnostics explain
+  long or pathological audit input generation without changing classifications,
+  gate policy, or score semantics.
 - `summary.raw_headline_gaps` - count of seams that are headline-eligible in
   the record or top-level repo exposure row.
 - `finding_alignment.source` - source used for audit-local alignment counts;
