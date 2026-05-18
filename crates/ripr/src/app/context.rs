@@ -1,5 +1,5 @@
 use super::check_workspace_with_config;
-use super::selector::select_finding;
+use super::selector::selector_matches_location;
 use super::{CheckInput, OutputFormat};
 use crate::config::RiprConfig;
 use crate::output;
@@ -42,7 +42,12 @@ pub(crate) fn collect_context_with_config(
         ..input
     };
     let output = check_workspace_with_config(input, config)?;
-    match select_finding(&output.findings, selector) {
+    let selected = output
+        .findings
+        .iter()
+        .find(|finding| finding.id == selector || selector_matches_location(selector, finding));
+
+    match selected {
         Some(finding) => Ok(output::json::render_context_packet(
             finding,
             max_related_tests,

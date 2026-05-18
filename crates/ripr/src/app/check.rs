@@ -1,7 +1,6 @@
 use super::{CheckInput, CheckOutput};
 use crate::analysis::{
-    AnalysisOptions, AnalysisResult, run_analysis_with_oracle_policy,
-    run_repo_analysis_with_oracle_policy,
+    AnalysisOptions, run_analysis_with_oracle_policy, run_repo_analysis_with_oracle_policy,
 };
 use crate::config::RiprConfig;
 use crate::domain::Summary;
@@ -30,10 +29,24 @@ pub(crate) fn check_workspace_with_config(
     input: CheckInput,
     config: &RiprConfig,
 ) -> Result<CheckOutput, String> {
-    let options = analysis_options_from_input(&input);
+    let options = AnalysisOptions {
+        root: input.root.clone(),
+        base: input.base.clone(),
+        diff_file: input.diff_file.clone(),
+        mode: input.mode.analysis_mode(),
+        include_unchanged_tests: input.include_unchanged_tests,
+    };
     let analysis =
         run_analysis_with_oracle_policy(&options, config.oracles(), config.languages().enabled())?;
-    Ok(check_output_from_analysis(input, analysis))
+    Ok(CheckOutput {
+        schema_version: "0.1".to_string(),
+        tool: "ripr".to_string(),
+        mode: input.mode,
+        root: input.root,
+        base: input.base,
+        summary: analysis.summary,
+        findings: analysis.findings,
+    })
 }
 
 /// Runs the repo-baseline static exposure analysis for a workspace. This
@@ -54,13 +67,27 @@ pub(crate) fn check_workspace_repo_with_config(
     input: CheckInput,
     config: &RiprConfig,
 ) -> Result<CheckOutput, String> {
-    let options = analysis_options_from_input(&input);
+    let options = AnalysisOptions {
+        root: input.root.clone(),
+        base: input.base.clone(),
+        diff_file: input.diff_file.clone(),
+        mode: input.mode.analysis_mode(),
+        include_unchanged_tests: input.include_unchanged_tests,
+    };
     let analysis = run_repo_analysis_with_oracle_policy(
         &options,
         config.oracles(),
         config.languages().enabled(),
     )?;
-    Ok(check_output_from_analysis(input, analysis))
+    Ok(CheckOutput {
+        schema_version: "0.1".to_string(),
+        tool: "ripr".to_string(),
+        mode: input.mode,
+        root: input.root,
+        base: input.base,
+        summary: analysis.summary,
+        findings: analysis.findings,
+    })
 }
 
 /// Build a minimal [`CheckOutput`] for repo seam-driven rendering.
@@ -71,34 +98,14 @@ pub(crate) fn check_workspace_repo_with_config(
 /// to compute legacy `Findings` those formats discard. The rest of the
 /// fields are populated for schema-consistency only.
 pub fn repo_seam_inventory_input(input: CheckInput) -> CheckOutput {
-    check_output_from_analysis(
-        input,
-        AnalysisResult {
-            summary: Summary::default(),
-            findings: Vec::new(),
-        },
-    )
-}
-
-fn analysis_options_from_input(input: &CheckInput) -> AnalysisOptions {
-    AnalysisOptions {
-        root: input.root.clone(),
-        base: input.base.clone(),
-        diff_file: input.diff_file.clone(),
-        mode: input.mode.analysis_mode(),
-        include_unchanged_tests: input.include_unchanged_tests,
-    }
-}
-
-fn check_output_from_analysis(input: CheckInput, analysis: AnalysisResult) -> CheckOutput {
     CheckOutput {
         schema_version: "0.1".to_string(),
         tool: "ripr".to_string(),
         mode: input.mode,
         root: input.root,
         base: input.base,
-        summary: analysis.summary,
-        findings: analysis.findings,
+        summary: Summary::default(),
+        findings: Vec::new(),
     }
 }
 
