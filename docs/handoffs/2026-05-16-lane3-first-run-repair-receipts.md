@@ -6,7 +6,7 @@ Lane: 3, Editor / LSP UX
 
 Work item: `dogfood(lane3): record first-run repair receipts`
 
-Branch / PR: `dogfood-first-run-repair-receipts` / pending at authoring
+Branch / PR: `dogfood-first-run-repair-receipts` / #1038
 
 Latest merged PRs:
 

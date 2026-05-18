@@ -1,11 +1,14 @@
-# Rust 1.95 / 0.5.1 Quality Rollout
+# Rust 1.95 / 0.6.0 Release Shaping
 
-This document is the anchor for the 0.5.1 quality hardening cycle. It records the current
-state, the target state, the PR ladder, and the rules each PR must follow.
+This document started as the 0.5.1 quality hardening anchor. The accumulated
+scope is now a 0.6.0 feature and experience release, so the release identity is
+0.6.0 while the original Rust 1.95 quality rails remain part of the proof trail.
+It records the current state, the target state, the PR ladder, and the rules
+each PR must follow.
 
 The MSRV bump to Rust 1.95 already landed in 0.5.0. This rollout is **not** another MSRV
-bump. It is about documenting the current state, hardening policy rails, and preparing the
-0.5.1 patch release.
+bump. It is about documenting the current state, hardening policy rails, shaping
+the 0.6.0 release, and keeping the expanded user-visible scope honest.
 
 ## Current / target state
 
@@ -14,7 +17,7 @@ bump. It is about documenting the current state, hardening policy rails, and pre
 | Edition | 2024 | 2024 | done |
 | MSRV | 1.95 | 1.95 | done |
 | Toolchain | 1.95.0 | 1.95.0 | done |
-| Published version | 0.5.0 | 0.5.1 | planned |
+| Published version | 0.5.0 | 0.6.0 | planned |
 | Clippy policy | strict profile active | complete ledger/checker alignment | partial |
 | No-panic | allowlist present (schema 0.3) | exact counted allowlist + baseline/no-new-debt | partial |
 | Non-Rust policy | allowlist present | companion ledgers + strict mode | partial |
@@ -23,9 +26,9 @@ bump. It is about documenting the current state, hardening policy rails, and pre
 | Mutation | not default PR replacement | targeted/nightly/release lanes | planned |
 | Release workflow | dry-run on-demand | explicit readiness workflow | todo |
 
-## What 0.5.1 contains
+## What 0.6.0 contains
 
-The 0.5.1 release bundles:
+The 0.6.0 release bundles:
 
 - No-panic allowlist exact-identity hardening (path + family + selector + snippet + count).
 - Clippy ledger and checker alignment for all active lints.
@@ -34,12 +37,20 @@ The 0.5.1 release bundles:
 - Evidence lane tuning: mutation stays targeted/nightly/release, not a default PR tax.
 - Targeted Rust 1.95 API cleanup in evidence and report builders.
 - Release readiness workflow and dry-run proof.
+- Policy operations, history, promotion packets, preview-promotion packets, and
+  advisory generated-CI projection.
+- Preview TypeScript/Python visibility that remains advisory and non-gating by
+  default.
+- Repo-operations cockpit, PR-ready packet, command mutability catalog, PR
+  triage disposition, generated-evidence discipline, and suggested fixes.
+- Editor first-run/status and first-useful-action polish.
 
-## Why 0.5.1 not 0.6.0
+## Why 0.6.0
 
-The MSRV bump landed in 0.5.0. The remaining work is policy hardening, CI economics, and
-DevEx improvement — patch-level changes on top of the 1.95 foundation. No new user-visible
-features, no public API changes. 0.5.1 is correct.
+The MSRV bump landed in 0.5.0, and the original plan was patch-level quality
+hardening. The landed scope now includes user-visible editor, CI, preview
+language, policy-operations, and repo-operations surfaces. 0.6.0 is the correct
+release identity for that accumulated experience work.
 
 ## Rust 1.95 value for `ripr`
 
@@ -55,7 +66,7 @@ features, no public API changes. 0.5.1 is correct.
 
 | PR | Branch | Title | Type |
 | --- | --- | --- | --- |
-| 1 | `docs/rust-1.95-quality-rollout` | docs(policy): map Rust 1.95 and 0.5.1 quality rollout | docs only |
+| 1 | `docs/rust-1.95-quality-rollout` | docs(policy): map Rust 1.95 and 0.6.0 release shaping | docs only |
 | 2 | `policy/rust-1.95-consistency-audit` | policy(rust): verify Rust 1.95 consistency | audit |
 | 3 | `policy/no-panic-exact-identity` | policy(panic): harden no-panic allowlist identity | hardening |
 | 4 | `policy/no-panic-baseline` | policy(panic): add exact no-panic baseline and no-new-debt mode | hardening |
@@ -64,11 +75,11 @@ features, no public API changes. 0.5.1 is correct.
 | 7 | `policy/disallowed-fields-protected-seams` | policy(clippy): configure protected seam field bans | planned |
 | 8 | `policy/file-companion-ledgers` | policy(files): add companion allowlists for generated and risky surfaces | hardening |
 | 9 | `ci/evidence-lane-tuning` | ci: tune coverage, mutation, and release evidence lanes | CI |
-| 10 | `release/workflow-readiness` | release: add 0.5.1 release readiness workflow | release |
+| 10 | `release/workflow-readiness` | release: add 0.6.0 release readiness workflow | release |
 | 11 | `refactor/rust-1.95-api-cleanups` | refactor: use Rust 1.95 APIs in evidence and report builders | cleanup |
 | 12 | `policy/first-burndown` | policy: burn down first no-panic and Clippy debt | cleanup |
-| 13 | `release/0.5.1-prep` | release: prepare 0.5.1 | release |
-| 14 | `release/0.5.1-dry-run` | release: validate 0.5.1 publish readiness | release |
+| 13 | `release/0.6.0-prep` | release: prepare 0.6.0 | release |
+| 14 | `release/0.6.0-dry-run` | release: validate 0.6.0 publish readiness | release |
 
 ## Acceptance gates per PR
 
@@ -95,10 +106,10 @@ Plus, PR-specific gates:
 | 7 | (audit only if no protected fields are ready) |
 | 8 | `cargo xtask check-file-policy`, `cargo xtask check-executable-files`, `cargo xtask check-workflows`, `cargo xtask check-generated`, `cargo xtask check-dependencies`, `cargo xtask check-process-policy`, `cargo xtask check-network-policy` |
 | 9 | `cargo xtask policy-report` |
-| 10 | `cargo xtask release-readiness --version 0.5.1 \|\| true`, `cargo package -p ripr --list`, `cargo publish -p ripr --dry-run` |
+| 10 | `cargo xtask release-readiness --version 0.6.0 \|\| true`, `cargo package -p ripr --list`, `cargo publish -p ripr --dry-run` |
 | 11 | `cargo xtask dogfood` |
 | 12 | `cargo xtask check-no-panic-family`, `cargo xtask policy-report` |
-| 13 | `cargo xtask release-readiness --version 0.5.1`, `cargo package -p ripr --list`, `cargo publish -p ripr --dry-run` |
+| 13 | `cargo xtask release-readiness --version 0.6.0`, `cargo package -p ripr --list`, `cargo publish -p ripr --dry-run` |
 | 14 | same as 13 |
 
 ## Hard rules for every PR in this stack

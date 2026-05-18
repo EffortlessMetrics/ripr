@@ -8,10 +8,10 @@ pub fn parse_unified_diff(input: &str) -> Vec<ChangedFile> {
     let mut current_path: Option<PathBuf> = None;
     let mut old_line = 0usize;
     let mut new_line = 0usize;
+    let mut in_hunk = false;
 
     for raw in input.lines() {
-        if let Some(path) = raw.strip_prefix("+++ b/") {
-            let path = PathBuf::from(path.trim());
+        if !in_hunk && let Some(path) = parse_new_path_marker(raw) {
             current_path = Some(path.clone());
             files.entry(path.clone()).or_insert_with(|| ChangedFile {
                 path,
@@ -22,6 +22,7 @@ pub fn parse_unified_diff(input: &str) -> Vec<ChangedFile> {
 
         if raw.starts_with("diff --git ") {
             current_path = None;
+            in_hunk = false;
             continue;
         }
 
@@ -29,6 +30,7 @@ pub fn parse_unified_diff(input: &str) -> Vec<ChangedFile> {
             if let Some((old_start, new_start)) = parse_hunk_header(raw) {
                 old_line = old_start;
                 new_line = new_start;
+                in_hunk = true;
             }
             continue;
         }
@@ -40,7 +42,7 @@ pub fn parse_unified_diff(input: &str) -> Vec<ChangedFile> {
             continue;
         };
 
-        if raw.starts_with("+++") || raw.starts_with("---") {
+        if !in_hunk && (raw.starts_with("+++") || raw.starts_with("---")) {
             continue;
         }
 
@@ -80,6 +82,80 @@ fn parse_hunk_header(raw: &str) -> Option<(usize, usize)> {
 fn parse_start(segment: &str) -> Option<usize> {
     let start = segment.split(',').next()?;
     start.parse::<usize>().ok()
+}
+
+fn parse_new_path_marker(raw: &str) -> Option<PathBuf> {
+    let marker = raw.strip_prefix("+++ ")?;
+    let path = parse_diff_path_token(marker)?;
+    if path == "/dev/null" {
+        return None;
+    }
+    let path = path.strip_prefix("b/").unwrap_or(&path);
+    Some(PathBuf::from(path))
+}
+
+fn parse_diff_path_token(raw: &str) -> Option<String> {
+    let raw = raw.trim_end_matches('\r');
+    if let Some(quoted) = raw.strip_prefix('"') {
+        return parse_c_quoted_path(quoted);
+    }
+
+    let token = raw.split_once('\t').map_or(raw, |(path, _metadata)| path);
+    Some(token.trim_end().to_string()).filter(|path| !path.is_empty())
+}
+
+fn parse_c_quoted_path(raw: &str) -> Option<String> {
+    let mut path = String::new();
+    let mut chars = raw.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            '"' => return Some(path),
+            '\\' => path.push(parse_c_escape(&mut chars)),
+            _ => path.push(ch),
+        }
+    }
+
+    None
+}
+
+fn parse_c_escape<I>(chars: &mut std::iter::Peekable<I>) -> char
+where
+    I: Iterator<Item = char>,
+{
+    let Some(ch) = chars.next() else {
+        return '\\';
+    };
+
+    match ch {
+        'n' => '\n',
+        'r' => '\r',
+        't' => '\t',
+        '\\' => '\\',
+        '"' => '"',
+        '0'..='7' => parse_octal_escape(ch, chars),
+        _ => ch,
+    }
+}
+
+fn parse_octal_escape<I>(first: char, chars: &mut std::iter::Peekable<I>) -> char
+where
+    I: Iterator<Item = char>,
+{
+    let mut value = first.to_digit(8).unwrap_or(0);
+
+    for _ in 0..2 {
+        let Some(next) = chars.peek().copied() else {
+            break;
+        };
+        let Some(digit) = next.to_digit(8) else {
+            break;
+        };
+        let _ = chars.next();
+        value = value.saturating_mul(8).saturating_add(digit);
+    }
+
+    char::from_u32(value).unwrap_or('\u{FFFD}')
 }
 
 #[cfg(test)]
@@ -178,6 +254,85 @@ mod tests {
         assert_eq!(files[0].added_lines.len(), 2);
         assert_eq!(files[0].added_lines[0].line, 1);
         assert_eq!(files[0].added_lines[1].line, 2);
+    }
+
+    #[test]
+    fn parses_git_quoted_new_paths_with_spaces() {
+        let diff = "diff --git \"a/src/price rules.rs\" \"b/src/price rules.rs\"\n--- \"a/src/price rules.rs\"\n+++ \"b/src/price rules.rs\"\n@@ -7,1 +7,1 @@\n-old\n+new\n";
+
+        let files = parse_unified_diff(diff);
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, PathBuf::from("src/price rules.rs"));
+        assert_eq!(files[0].removed_lines[0].line, 7);
+        assert_eq!(files[0].removed_lines[0].text, "old");
+        assert_eq!(files[0].added_lines[0].line, 7);
+        assert_eq!(files[0].added_lines[0].text, "new");
+    }
+
+    #[test]
+    fn parses_git_quoted_new_paths_with_escaped_characters() {
+        let diff = "diff --git \"a/src/tab\\tquote\\\".rs\" \"b/src/tab\\tquote\\\".rs\"\n--- \"a/src/tab\\tquote\\\".rs\"\n+++ \"b/src/tab\\tquote\\\".rs\"\n@@ -1,1 +1,1 @@\n-old\n+new\n";
+
+        let files = parse_unified_diff(diff);
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, PathBuf::from("src/tab\tquote\".rs"));
+        assert_eq!(files[0].added_lines[0].line, 1);
+    }
+
+    #[test]
+    fn parses_git_quoted_new_paths_with_octal_escapes() {
+        let diff = "diff --git \"a/src/price\\040rules.rs\" \"b/src/price\\040rules.rs\"\n--- \"a/src/price\\040rules.rs\"\n+++ \"b/src/price\\040rules.rs\"\n@@ -1,1 +1,1 @@\n-old\n+new\n";
+
+        let files = parse_unified_diff(diff);
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, PathBuf::from("src/price rules.rs"));
+        assert_eq!(files[0].added_lines[0].line, 1);
+    }
+
+    #[test]
+    fn ignores_unclosed_quoted_new_path_marker() {
+        let diff = "diff --git \"a/src/lib.rs\" \"b/src/lib.rs\"\n--- \"a/src/lib.rs\"\n+++ \"b/src/lib.rs\n@@ -1,1 +1,1 @@\n-old\n+new\n";
+
+        let files = parse_unified_diff(diff);
+
+        assert!(files.is_empty());
+    }
+
+    #[test]
+    fn parses_unquoted_new_paths_with_tab_metadata() {
+        let diff =
+            "--- src/lib.rs\t2026-01-01\n+++ src/lib.rs\t2026-01-02\n@@ -2,1 +2,1 @@\n-old\n+new\n";
+
+        let files = parse_unified_diff(diff);
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, PathBuf::from("src/lib.rs"));
+        assert_eq!(files[0].added_lines[0].line, 2);
+    }
+
+    #[test]
+    fn keeps_payload_that_looks_like_file_markers_in_current_hunk() {
+        let diff = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,2 +1,2 @@\n old\n--- removed payload not a file marker\n+++ added payload not a file marker\n";
+
+        let files = parse_unified_diff(diff);
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, PathBuf::from("src/lib.rs"));
+        assert_eq!(files[0].removed_lines.len(), 1);
+        assert_eq!(files[0].removed_lines[0].line, 2);
+        assert_eq!(
+            files[0].removed_lines[0].text,
+            "-- removed payload not a file marker"
+        );
+        assert_eq!(files[0].added_lines.len(), 1);
+        assert_eq!(files[0].added_lines[0].line, 2);
+        assert_eq!(
+            files[0].added_lines[0].text,
+            "++ added payload not a file marker"
+        );
     }
 
     #[test]

@@ -176,8 +176,25 @@ mod tests {
             "crates/ripr/src/lib.rs:42",
             &finding
         ));
+        assert!(selector_matches_location(
+            "crates\\ripr\\src/lib.rs:42",
+            &finding
+        ));
         assert!(!selector_matches_location("src/lib.rs:41", &finding));
         assert!(!selector_matches_location("src/main.rs:42", &finding));
+    }
+
+    #[test]
+    fn selector_rejects_location_lookalikes_that_only_contain_file_text() {
+        let finding = sample_finding("src/lib.rs", 42);
+
+        assert!(!selector_matches_location("src/lib.rs.bak:42", &finding));
+        assert!(!selector_matches_location(
+            "generated-src/lib.rs:42",
+            &finding
+        ));
+        assert!(!selector_matches_location("src/lib.rs", &finding));
+        assert!(!selector_matches_location("src/lib.rs:042", &finding));
     }
 
     fn sample_finding(file: &str, line: usize) -> Finding {
