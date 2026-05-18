@@ -1146,6 +1146,48 @@ suite('Extension Smoke', () => {
     });
   });
 
+  test('editor adoption baseline keeps setup receipt and first-pr projection read-only', async () => {
+    await withControllerTestContext({
+      files: {
+        'ripr.toml': '[languages]\nenabled = ["rust"]\n',
+        'target/ripr/reports/first-useful-action.json': firstActionReport({}),
+        'target/ripr/agent/agent-receipt.json': agentReceipt({ movement: 'improved' }),
+        'target/ripr/first-pr/start-here.json': firstPrPacket({}),
+        'target/ripr/first-pr/start-here.md': '# RIPR first-pr packet\n'
+      }
+    }, async (context) => {
+      await context.controller.start();
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=8, diagnostics=1, files=1, findings=1, preview_findings=0, static_limits=0, seam_diagnostics=1, gap_artifacts=1, actionable_gap_artifacts=1, preview_gap_artifacts=0, no_action_gap_artifacts=0, gap_static_limits=0, gap_artifact_rejections=0, gap_artifact_rejection_kinds=, enabled_languages=1, enabled_language_names=rust, published_files=1, cleared_files=0'
+      });
+
+      const diagnosis = await diagnoseSetupReport(context);
+      assertReportIncludes(diagnosis, [
+        'ripr setup diagnosis:',
+        'Server command: ripr',
+        'Server version: ripr 0.5.0-test',
+        'Config: ripr.toml (found',
+        'Enabled languages: rust',
+        'ripr validated 1 actionable gap artifact.',
+        'Next safe action: Open the related test or copy a bounded repair packet',
+        'Receipt status: movement improved; matching receipt found for seam 67fc764ba37d77bd',
+        'First PR packet: top repairable gap available; target/ripr/first-pr/start-here.json is advisory.'
+      ]);
+
+      const statusOutput = await showStatusReport(context);
+      assertReportIncludes(statusOutput, [
+        'ripr validated 1 actionable gap artifact.',
+        'Artifact first useful action report: target/ripr/reports/first-useful-action.json (found',
+        'Receipt status: movement improved; matching receipt found for seam 67fc764ba37d77bd',
+        'First PR packet: top repairable gap available; target/ripr/first-pr/start-here.json is advisory.',
+        'Verify: cargo xtask fixtures boundary_gap',
+        'Receipt: ripr agent receipt --root . --json',
+        'does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status'
+      ]);
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+  });
+
   test('first-pr packet actions copy bounded payloads for matching diagnostics', async () => {
     await withControllerTestContext({
       files: {
