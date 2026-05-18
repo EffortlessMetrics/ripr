@@ -38,3 +38,40 @@ pub(crate) fn extract_literal_facts(body: &str, start_line: usize) -> Vec<Litera
     literals.dedup_by(|a, b| a.line == b.line && a.value == b.value);
     literals
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_literals_sorts_and_deduplicates_values() {
+        let literals = extract_literals("let high = 10;\nlet low = 2;\nlet repeat = 10;");
+        assert_eq!(literals, vec!["10", "2"]);
+    }
+
+    #[test]
+    fn extract_literal_facts_tracks_source_lines_and_negative_numbers() {
+        let facts = extract_literal_facts(
+            "let floor = -5;\nlet separator = value - other;\nlet ceiling = 10;",
+            41,
+        );
+        let rendered = facts
+            .into_iter()
+            .map(|fact| (fact.line, fact.value))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            rendered,
+            vec![(41, "-5".to_string()), (43, "10".to_string())]
+        );
+    }
+
+    #[test]
+    fn extract_literal_facts_deduplicates_same_value_on_same_line_only() {
+        let facts = extract_literal_facts("let a = 7 + 7;\nlet b = 7;", 10);
+        let rendered = facts
+            .into_iter()
+            .map(|fact| (fact.line, fact.value))
+            .collect::<Vec<_>>();
+        assert_eq!(rendered, vec![(10, "7".to_string()), (11, "7".to_string())]);
+    }
+}

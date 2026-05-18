@@ -41,3 +41,22 @@ fn is_interesting_token(token: &str) -> bool {
                 | "is_err"
         )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_identifier_tokens_sorts_deduplicates_and_filters_assertion_noise() {
+        let tokens = extract_identifier_tokens(
+            "assert_eq!(apply_discount(total), expected_total); let total = Some(42);",
+        );
+        assert_eq!(tokens, vec!["apply_discount", "expected_total", "total"]);
+    }
+
+    #[test]
+    fn extract_identifier_tokens_keeps_unicode_and_underscored_identifiers() {
+        let tokens = extract_identifier_tokens("let café_total = price + 税率 + id;");
+        assert_eq!(tokens, vec!["café_total", "price", "税率"]);
+    }
+}

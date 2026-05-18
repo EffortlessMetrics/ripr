@@ -94,3 +94,74 @@ pub(super) fn encode_uri_path(path: &str) -> String {
     }
     encoded
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_uri(value: &str) -> Result<Uri, String> {
+        value
+            .parse()
+            .map_err(|err| format!("failed to parse test URI {value}: {err}"))
+    }
+
+    #[test]
+    fn file_uri_for_path_percent_encodes_spaces_and_unicode() -> Result<(), String> {
+        let uri = file_uri_for_path(Path::new("workspace/ripr/src/price rules.rs"))?;
+        assert_eq!(uri.as_str(), "file:///workspace/ripr/src/price%20rules.rs");
+
+        let uri = file_uri_for_path(Path::new("workspace/ripr/src/café.rs"))?;
+        assert_eq!(uri.as_str(), "file:///workspace/ripr/src/caf%C3%A9.rs");
+        Ok(())
+    }
+
+    #[test]
+    fn file_uri_for_path_preserves_absolute_paths() -> Result<(), String> {
+        let uri = file_uri_for_path(Path::new("/workspace/ripr/src/lib.rs"))?;
+        assert_eq!(uri.as_str(), "file:///workspace/ripr/src/lib.rs");
+        Ok(())
+    }
+
+    #[test]
+    fn path_from_file_uri_decodes_uri_path() -> Result<(), String> {
+        let uri = parse_uri("file:///workspace/ripr/src/price%20rules.rs")?;
+        assert_eq!(
+            path_from_file_uri(&uri),
+            Some(PathBuf::from("/workspace/ripr/src/price rules.rs"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn path_from_file_uri_rejects_non_file_or_invalid_utf8_path() -> Result<(), String> {
+        assert_eq!(
+            path_from_file_uri(&parse_uri("https://example.test/src.rs")?),
+            None
+        );
+        assert_eq!(
+            path_from_file_uri(&parse_uri("file:///workspace/%FF/src.rs")?),
+            None
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn file_uris_match_normalizes_percent_encoding_and_windows_drive_case() -> Result<(), String> {
+        let encoded_separator = parse_uri("file:///workspace/ripr/src%2Flib.rs")?;
+        let literal_separator = parse_uri("file:///workspace/ripr/src/lib.rs")?;
+        assert!(file_uris_match(&encoded_separator, &literal_separator));
+
+        let upper_drive = parse_uri("file:///C:/workspace/ripr/src/lib.rs")?;
+        let lower_drive = parse_uri("file:///c:/workspace/ripr/src/lib.rs")?;
+        assert!(file_uris_match(&upper_drive, &lower_drive));
+        Ok(())
+    }
+
+    #[test]
+    fn file_uris_match_keeps_non_windows_paths_case_sensitive() -> Result<(), String> {
+        let upper = parse_uri("file:///workspace/ripr/src/Lib.rs")?;
+        let lower = parse_uri("file:///workspace/ripr/src/lib.rs")?;
+        assert!(!file_uris_match(&upper, &lower));
+        Ok(())
+    }
+}
