@@ -32,12 +32,7 @@ pub(crate) fn render_agent_workflow_json(
             "ci_blocking": false,
         },
     });
-    serde_json::to_string_pretty(&value)
-        .map(|mut rendered| {
-            rendered.push('\n');
-            rendered
-        })
-        .map_err(|err| format!("failed to render agent workflow JSON: {err}"))
+    super::json::render_pretty_with_newline(&value, "agent workflow")
 }
 
 pub(crate) fn render_agent_workflow_commands_md(manifest: &AgentWorkflowManifest) -> String {

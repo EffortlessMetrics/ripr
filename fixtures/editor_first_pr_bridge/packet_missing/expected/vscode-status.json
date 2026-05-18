@@ -1,0 +1,11 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_pr_bridge/packet_missing",
+  "status": "packet_missing",
+  "projection": "fail_closed",
+  "first_pr_packet": {
+    "state": "missing",
+    "path": "target/ripr/first-pr/start-here.json"
+  },
+  "next_safe_action": "Run cargo xtask first-pr after verify and receipt artifacts exist."
+}

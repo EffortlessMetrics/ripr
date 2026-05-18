@@ -9,21 +9,184 @@ are scoped or reviewed.
 
 ## Unreleased
 
-### 0.5.1 — quality rollout planned
+- Nothing yet.
 
-The 0.5.1 patch release carries policy hardening, CI economics, DevEx improvements, and
-targeted Rust 1.95 API cleanup on top of the 1.95 MSRV foundation that landed in 0.5.0.
-No new user-visible features. No public API changes. MSRV remains 1.95.
+## 0.6.0 - 2026-05-17
 
-Planned scope:
+0.6.0 makes static test-gap review easier to trust and easier to operate. The
+release keeps RIPR static and advisory by default while adding better evidence
+alignment, clearer editor and generated-CI guidance, preview
+TypeScript/JavaScript/Python
+visibility, policy operation packets, and repo-local cockpit tools for safe
+agentic PR work. Rust remains the stable evidence path.
+TypeScript/JavaScript/Python remain preview evidence paths: visible and useful,
+but not default gates, RIPR Zero blocking debt, calibrated confidence, or
+runtime proof.
 
-- No-panic allowlist exact-identity hardening (path + family + selector + snippet + count).
-- Clippy ledger and checker alignment for all active and planned lints.
-- Companion file-policy ledgers for generated, executable, dependency, workflow, process, and
-  network surfaces.
-- Evidence lane tuning: mutation stays targeted/nightly/release, not a default PR tax.
-- Targeted Rust 1.95 API cleanup in evidence and report builders.
-- Release readiness workflow and 0.5.1 dry-run proof.
+Release themes:
+
+- Evidence trust: raw findings now roll up into canonical evidence items,
+  actionability and repair routes are explicit, static limitations are named,
+  and raw findings remain supporting evidence instead of hidden truth.
+- Operator trust: policy operations, history, promotion packets, preview
+  promotion packets, generated-evidence discipline, command mutability,
+  PR-ready, repo cockpit, merge-watch policy, PR triage dispositions,
+  Rust-conversion candidate inventory, and deterministic suggested fixes make
+  high-throughput PR work reviewable.
+- Editor and CI trust: first-run status, related-test safety, release-copy
+  guardrails, generated-CI policy packets, report indexing, and user-facing
+  static-limit docs make advisory evidence easier to act on without source
+  edits or generated tests.
+- Preview-language honesty: TypeScript/JavaScript and Python preview adapters
+  ship in the normal binary build, but their evidence remains opt-in,
+  syntax-first, visibly preview/advisory, and non-gating until a later explicit
+  policy promotion changes that.
+
+Detailed changes:
+- Changelog source range: the 0.6.0 notes were reconciled against merged PRs
+  and first-parent commits through `fd4d9cb` / #1218 on current `main`.
+  Internal learning-doc polish remains outside the public release story, while
+  #1210 is included because the final proof and publish-decision packets
+  accepted it into the 0.6.0 candidate.
+- Removed-only diff hunks now still seed probes, so deleting or changing a
+  behavior-bearing line without an added replacement does not disappear from
+  static review. Related diff hardening covers quoted and metadata-bearing diff
+  paths, indented lexical probe shapes, and clearer CLI typo recovery.
+- Rust numeric literal extraction now handles a broader set of literal forms
+  and requires valid exponent digits, improving stable Rust evidence facts
+  without adding runtime execution or mutation-test claims.
+- Rust decimal exponent literals now canonicalize equivalent `e` and `E`
+  spellings before boundary comparison, so equivalent exponent forms line up in
+  stable Rust predicate infection evidence without changing output schemas,
+  policy, CI, or gate behavior.
+- Lane 1 value resolution now treats same-test struct literal field
+  projections as fixture-backed activation values when the field value is
+  literal. Helper-built structs, shadowed bindings, fixture-parameter
+  collisions, common non-`let` shadowing binders, non-simple `let` pattern
+  binders, and non-literal fields remain named
+  `activation_value_unresolved` limitations. This burns down one
+  fixture-backed sub-shape of the top live static-limitation bucket without
+  claiming strong grip, cross-file, helper, semantic, gate, PR/CI rendering,
+  source-edit, generated-test, provider, or mutation-execution behavior.
+- Canonical evidence items now expose explicit `primary_anchor` and
+  `raw_spans[]` fields in supported `finding_alignment.items[]` and
+  `evidence_record.canonical_item` records. Downstream PR/CI, editor, and agent
+  surfaces get one preferred placement hint plus all contributing raw spans
+  without inferring actionability from line-local raw findings.
+- Generated CI and report packets now align their first screen on the canonical
+  repair unit, keeping the start-here path centered on the actionable evidence
+  item rather than on raw supporting signals.
+- Report packet index availability now requires the primary Markdown artifact
+  instead of treating a JSON sibling as sufficient, keeping the uploaded review
+  artifact front door honest.
+- TypeScript preview assertion extraction now sees common nested test-body
+  statements and returned or awaited async expectation chains. This improves
+  preview advisory evidence collection while staying syntax-only, non-gating,
+  and separate from Rust stable evidence authority.
+- Output-format command names and repo-scope metadata now come from one
+  behavior-preserving metadata table, reducing duplicated CLI/report wiring
+  without changing output contracts or release behavior.
+- Shared Markdown and JSON value-path helpers now back policy promotion report
+  rendering, reducing duplicated output code without changing output schemas,
+  policy authority, or gate behavior.
+- Shared JSON output helpers now back additional agent, review, evidence-health,
+  outcome, and mutation-calibration report renderers, reducing duplicated
+  serialization code without changing output schemas or release behavior.
+- Human output rendering is split into focused evidence-line and section
+  modules, with source-of-truth and PR-summary surface detection updated for the
+  new module path. This is behavior-preserving output organization, not a
+  report-contract or release-behavior change.
+- Gate output rendering is split into focused model and presentation modules,
+  reducing renderer size while preserving existing gate report behavior,
+  policies, schemas, and default advisory boundaries.
+- Agent review summary generation is split into focused artifact-loading,
+  receipt-parsing, report-assembly, JSON, Markdown, type, and helper modules
+  while preserving the public facade and existing agent review packet behavior.
+- Mutation calibration import now handles additional nested mutation outcome
+  record shapes, including nested mutation identifiers, locations, spans, and
+  detail-only runtime records, with parser coverage. This improves advisory
+  runtime-calibration ingestion without running mutation tests or changing
+  policy, gates, CI, or release behavior.
+- Output fixture tests now share common helper setup, reducing duplicated test
+  scaffolding without changing report behavior or output contracts.
+- `cargo xtask help` now gives clearer command-discovery output and preserves
+  command lookup behavior, improving contributor and agent repo-ops flow
+  without changing release, policy, or analyzer behavior.
+- Classify text helper internals are split into focused modules while keeping
+  the existing helper facade and classifier behavior unchanged.
+- Output report path rendering now uses one slash-normalized helper across
+  report modules, reducing duplicated renderer code while keeping existing
+  report surfaces, schemas, analyzer behavior, policy authority, gate behavior,
+  and release behavior unchanged.
+- Public charter language now matches the 0.6.0 release boundary by describing
+  RIPR as static mutation-exposure guidance between coverage signals and
+  mutation testing, not as a test-adequacy layer.
+- Lane 1 evidence audit generation now streams repo-exposure latency
+  breadcrumbs during long live-repo runs and records bounded generation
+  diagnostics in `inputs.repo_exposure_generation`, including timeout, status,
+  duration, output byte counts, and the latency trace tail. Large best-effort
+  classified-seam cache entries are skipped with an explicit `cache_store`
+  trace instead of blocking report generation after analysis completes. This is
+  operational audit reliability, not a new evidence-accuracy or gate claim.
+- The 0.6.x finalization proof was refreshed with install, VSIX, generated-CI,
+  public-copy, and external-adopter smoke evidence. It still does not tag,
+  publish, create a GitHub Release, or refresh generated badge endpoints.
+- Added the Lane 1 Finding Alignment Burn-Down rail and issue-backed
+  implementation plan for post-0.6 cleanup. This is planning and documentation
+  only; PR/CI rendering, LSP/editor behavior, gates, badges, generated tests,
+  source edits, provider calls, and mutation execution remain unchanged.
+- Closed the Lane 1 shippable finding-alignment pass for 0.6.0. Current
+  repo-local audit evidence rolls 47,181 raw alignment signals into 38,027
+  canonical items and 149 actionable canonical gaps, with zero actionable
+  canonical items missing repair routes or verify commands and zero
+  `static_unknown` items missing named limitations. This is evidence-truth
+  closeout only: gates, badges, PR/CI rendering, LSP behavior, source edits,
+  generated tests, provider calls, preview-language authority, and mutation
+  execution remain unchanged.
+- Added public `ripr first-pr` / `ripr start-here` command routing for the
+  first successful PR start-here packet. The existing `cargo xtask first-pr`
+  path now delegates to the same public implementation, preserving explicit
+  artifact composition, advisory defaults, gate-authority separation, and the
+  no-source-edit/no-generated-test/no-mutation-execution boundaries.
+- Generated GitHub CI now renders the gap decision ledger and first-run
+  `start-here` packet, then opens the advisory summary with that front door.
+  Release readiness now verifies installed `ripr first-pr --help`, generated-CI
+  start-here markers, and the VS Code `ripr: Start Current Repair` command
+  contribution.
+- `cargo xtask lane1-evidence-audit` now generates its temporary repo-exposure
+  input through a bounded direct `ripr` invocation with latency tracing, so a
+  cold full-repo evidence pass reports a clear timeout with phase context
+  instead of waiting indefinitely or leaving an orphaned analyzer process.
+- Focused release hardening added coverage for extraction helpers, oracle
+  parsing, LSP URI edges, language routing, domain support primitives, and
+  selector location matching, plus behavior-preserving app/report refactors
+  that reduce duplicated wiring without changing public output contracts.
+- Source-of-truth rails now make plan, goal, claim-boundary, validation, and
+  rollback prompts explicit for future agent PRs without adding a competing
+  release or policy authority surface.
+- Lane 1 evidence-quality scorecards and trends now surface finding-alignment
+  coverage gaps for unnamed static unknowns, actionable canonical items missing
+  repair routes, and actionable canonical items missing verify commands.
+- Actionable predicate-boundary evidence records now carry a structured
+  canonical repair route for adding an equality-boundary assertion, so Lane 1
+  can count them as concrete repair work instead of prose-only guidance.
+- The editor first-pr bridge now projects first-pr packet state in status,
+  validates bounded packet artifacts, ships first-pr bridge fixtures and smoke
+  tests, records dogfood receipts, documents the workflow, and closes the Lane
+  3 bridge with the generated-CI first-run card as the reviewer-facing front
+  door. VS Code packet actions can open the packet, copy summary/repair
+  guidance, copy verify and receipt commands, and show regeneration guidance
+  while suppressing stale, wrong-root, unsafe-path, unsafe-command, or malformed
+  packet payloads.
+- Added `cargo xtask rust-conversion-candidates`, a report-only Rust-first
+  policy aid that writes Markdown and JSON candidate reports for unretained
+  non-Rust automation and workflow shell logic while documenting retained
+  editor and fixture boundaries.
+- Release readiness now records the 0.6.0 dry-run proof, repository metadata
+  guidance, installed `ripr first-pr --help` verification, first-run install
+  surface checks, refreshed public server-asset proof copy for the verified
+  `v0.5.0` line, and the current pre-0.6.0 manual VS Marketplace install count
+  without refreshing generated badge endpoints.
 - Closed the First-Run UX and Adoption Hardening campaign. The closeout ties
   the first successful PR command path, `start-here` reports, recovery states,
   fixtures, receipts, PR repair cards, editor start-current-repair action,
@@ -37,15 +200,15 @@ Planned scope:
   `README.md`, `editors/vscode/README.md`, `docs/QUICKSTART.md`, and
   `docs/EDITOR_EXTENSION.md`. Internal vocabulary (seams, discriminators,
   status IDs, schemas, commands) is unchanged.
-- Added [docs/TERMINOLOGY.md](docs/TERMINOLOGY.md): plain-language ↔ internal
+- Added [docs/TERMINOLOGY.md](docs/TERMINOLOGY.md): plain-language -> internal
   vocabulary bridge linked from `README.md`, `docs/QUICKSTART.md`,
   `docs/EDITOR_EXTENSION.md`, and `editors/vscode/README.md`. No schema, JSON,
   status ID, or command renames.
 - Generated CI advisory job summary now uses reviewer-friendly section
-  headings: `PR review front panel` → `PR review summary`, `First useful
-  action` → `Recommended next test`, `Report packet index` → `Uploaded review
-  artifacts`, `Assistant loop health` → `Agent proof status`. The matching
-  `… at a glance` subsection headings move with each section, and fallback
+  headings: `PR review front panel` -> `PR review summary`, `First useful
+  action` -> `Recommended next test`, `Report packet index` -> `Uploaded review
+  artifacts`, `Assistant loop health` -> `Agent proof status`. The matching
+  `... at a glance` subsection headings move with each section, and fallback
   "X was not generated" messages stay aligned. Artifact filenames, JSON
   fields, command names, status IDs, workflow step `name:` values, and
   schemas are unchanged.
@@ -90,6 +253,11 @@ Planned scope:
 - Lane 1 finding-alignment coverage now treats generic `static_unknown` and
   `unknown` limitation categories as unnamed, so static-unknown canonical items
   must carry a specific analyzer limitation category and repair route.
+- Lane 1 finding-alignment coverage now requires actionable canonical items to
+  carry a structured top-level `repair_route`, not just prose repair text, and
+  its audit tests directly cover aligned `presentation_text` and
+  `config_or_policy_constant` rows. The dogfood corpus also includes the opaque
+  config lookup named-limitation receipt.
 - `cargo xtask reports index` now includes repo-ops packet status in Markdown
   and JSON for command mutability, the repo cockpit, PR-ready, worktree doctor,
   PR triage, per-PR merge readiness, generated-clean, badge ownership, critic,
@@ -248,7 +416,7 @@ Planned scope:
 - VS Code command palette title for `ripr.copyContext` renamed from
   `ripr: Copy Finding Context` to `ripr: Inspect Test Gap - Copy Context` so
   it groups alongside the existing workflow-step categories ("Write Targeted
-  Test - …", "Agent Handoff - …", "Verify After Test - …", "Review Result - …").
+  Test - ...", "Agent Handoff - ...", "Verify After Test - ...", "Review Result - ...").
   Other command palette titles are already action-oriented and stay
   unchanged. Command IDs, settings IDs, LSP requests, JSON fields, schemas,
   status IDs, report names, artifact paths, and behavior are unchanged.

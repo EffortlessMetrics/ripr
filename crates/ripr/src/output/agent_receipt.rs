@@ -108,12 +108,7 @@ pub(crate) fn render_agent_receipt_json(
             }
         }
     });
-    serde_json::to_string_pretty(&value)
-        .map(|mut rendered| {
-            rendered.push('\n');
-            rendered
-        })
-        .map_err(|err| format!("failed to render agent receipt JSON: {err}"))
+    super::json::render_pretty_with_newline(&value, "agent receipt")
 }
 
 pub(crate) fn agent_receipt_input_paths(
@@ -422,7 +417,7 @@ mod tests {
 
     fn fixed_provenance() -> AgentReceiptProvenance {
         AgentReceiptProvenance {
-            ripr_version: "0.5.0".to_string(),
+            ripr_version: "0.6.0".to_string(),
             repo_root: ".".to_string(),
             config_fingerprint: Some("fnv1a64:4c94a2f6cfaa5c21".to_string()),
             command_template_version: "0.1".to_string(),
@@ -490,7 +485,7 @@ mod tests {
         assert_eq!(value["seam"]["before"], "weakly_gripped");
         assert_eq!(value["seam"]["after"], "strongly_gripped");
         assert_eq!(value["seam"]["change"], "improved");
-        assert_eq!(value["provenance"]["ripr_version"], "0.5.0");
+        assert_eq!(value["provenance"]["ripr_version"], "0.6.0");
         assert_eq!(value["provenance"]["repo_root"], ".");
         assert_eq!(
             value["provenance"]["config_fingerprint"],

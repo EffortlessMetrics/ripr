@@ -1,6 +1,5 @@
 use serde::Serialize;
 use serde_json::Value;
-use std::path::Path;
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "test_oracle_assistant_loop";
@@ -347,9 +346,7 @@ pub(crate) fn render_test_oracle_assistant_proof_markdown(
     out
 }
 
-pub(crate) fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
+pub(crate) use crate::output::path::display_path;
 
 fn option_text<'a>(value: Option<&'a str>, fallback: &'a str) -> &'a str {
     match value {
@@ -1058,7 +1055,8 @@ fn value_as_string(value: &Value) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::{Path, PathBuf};
+    use crate::output::test_support::{read_file, repo_root};
+    use std::path::Path;
 
     #[test]
     fn test_oracle_assistant_proof_matches_canonical_fixture() -> Result<(), String> {
@@ -1439,20 +1437,6 @@ mod tests {
         assert!(rendered.contains("\"source\": \"evidence_record\""));
         assert!(!rendered.contains("\"before_class\": \"strongly_gripped\""));
         Ok(())
-    }
-
-    fn repo_root() -> Result<PathBuf, String> {
-        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        manifest_dir
-            .parent()
-            .and_then(Path::parent)
-            .map(Path::to_path_buf)
-            .ok_or_else(|| "failed to resolve repo root".to_string())
-    }
-
-    fn read_file(path: &Path) -> Result<String, String> {
-        std::fs::read_to_string(path)
-            .map_err(|err| format!("read {} failed: {err}", path.display()))
     }
 
     fn fixture_path(repo_root: &Path, path: &Path) -> String {

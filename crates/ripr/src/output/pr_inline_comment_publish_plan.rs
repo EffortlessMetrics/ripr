@@ -2,7 +2,6 @@ use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "pr_inline_comment_publish_plan";
@@ -483,9 +482,7 @@ pub(crate) fn render_comment_publish_plan_markdown(report: &CommentPublishPlanRe
     out
 }
 
-pub(crate) fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
+pub(crate) use crate::output::path::display_path;
 
 fn parse_pr_guidance(
     input: &CommentPublishPlanInput,
@@ -1025,7 +1022,8 @@ fn lower_first(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::{Path, PathBuf};
+    use crate::output::test_support::{read_file, repo_root};
+    use std::path::PathBuf;
 
     #[test]
     fn inline_comment_body_prefers_gap_repair_card() {
@@ -1525,19 +1523,5 @@ mod tests {
                 write_permission: true,
             },
         })
-    }
-
-    fn repo_root() -> Result<PathBuf, String> {
-        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        manifest_dir
-            .parent()
-            .and_then(Path::parent)
-            .map(Path::to_path_buf)
-            .ok_or_else(|| "failed to resolve repo root".to_string())
-    }
-
-    fn read_file(path: &Path) -> Result<String, String> {
-        std::fs::read_to_string(path)
-            .map_err(|err| format!("read {} failed: {err}", path.display()))
     }
 }

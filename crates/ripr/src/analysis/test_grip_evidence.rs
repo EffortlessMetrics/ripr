@@ -295,6 +295,11 @@ impl RelationConfidence {
 /// `seam_id` so two runs over the same input produce identical bytes.
 pub(crate) fn evidence_for_seams(seams: &[RepoSeam], index: &RustIndex) -> Vec<TestGripEvidence> {
     let context_started = Instant::now();
+    trace_latency_phase(
+        "evidence_context",
+        &format!("start_seams_{}", seams.len()),
+        Duration::ZERO,
+    );
     let context = CompactGripContext::new(index);
     trace_latency_phase(
         "evidence_context",
@@ -1899,6 +1904,16 @@ mod tests {
         assert_eq!(
             line,
             "ripr_repo_exposure_latency phase=evidence_for_seams_progress status=processed_500_of_12337 duration_ms=42"
+        );
+    }
+
+    #[test]
+    fn latency_trace_line_can_report_evidence_context_start() {
+        let line = latency_trace_line("evidence_context", "start_seams_12337", Duration::ZERO);
+
+        assert_eq!(
+            line,
+            "ripr_repo_exposure_latency phase=evidence_context status=start_seams_12337 duration_ms=0"
         );
     }
 
@@ -3675,6 +3690,148 @@ fn wrapper_mentions_owner_only_in_non_code() {
         assert!(
             values.iter().filter(|v| v.as_str() == "100").count() >= 1,
             "fixture override 100 must be recorded; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_same_test_struct_literal_fields_when_owner_call_uses_projection_then_values_are_recorded()
+    -> Result<(), String> {
+        // Same-test struct literals are a syntactic fixture shape:
+        // the field values are explicit in the test body and the owner
+        // call passes those field projections directly.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test] fn via_struct_literal() { \
+                 let case = DiscountCase { amount: 100, threshold: 100 }; \
+                 assert_eq!(discounted_total(case.amount, case.threshold), 90); \
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        assert!(
+            values.iter().any(|v| v == "100"),
+            "same-test struct literal field value 100 must be recorded; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_helper_built_struct_when_owner_call_uses_projection_then_values_stay_unresolved()
+    -> Result<(), String> {
+        // Do not infer through helper-returned fixtures. Without the
+        // literal struct body in the same test, `case.amount` remains
+        // an opaque activation value and should stay a named static
+        // limitation instead of becoming user test debt.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test] fn via_helper_fixture() { \
+                 let case = make_discount_case(); \
+                 assert_eq!(discounted_total(case.amount, case.threshold), 90); \
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        assert!(
+            values.is_empty(),
+            "helper-built struct projections must not produce fake values; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_shadowed_struct_literal_when_owner_call_uses_projection_then_values_stay_unresolved()
+    -> Result<(), String> {
+        // A same-test literal stops being a safe activation value once
+        // the binding is shadowed before the owner call. The resolver is
+        // deliberately conservative instead of inferring source-order
+        // scope for this fixture class.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test] fn via_shadowed_fixture() { \
+                 let case = DiscountCase { amount: 100, threshold: 100 }; \
+                 let case = make_discount_case(); \
+                 assert_eq!(discounted_total(case.amount, case.threshold), 90); \
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        assert!(
+            values.is_empty(),
+            "shadowed struct projections must not reuse stale literal fields; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_fixture_parameter_and_later_same_name_struct_literal_then_values_stay_unresolved()
+    -> Result<(), String> {
+        // A fixture/rstest parameter is runtime-provided. A later
+        // same-name literal in the same body cannot safely explain the
+        // earlier owner-call field projection.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[rstest] fn via_fixture_param(case: DiscountCase) { \
+                 assert_eq!(discounted_total(case.amount, case.threshold), 90); \
+                 let case = DiscountCase { amount: 100, threshold: 100 }; \
+                 let _ = case; \
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        assert!(
+            values.is_empty(),
+            "fixture parameter projections must not resolve from later literals; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_for_loop_shadowing_struct_literal_then_values_stay_unresolved() -> Result<(), String> {
+        // The whole-test literal map cannot safely explain a projection
+        // when a later loop binder reuses the same identifier.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test] fn via_shadowing_loop() { \
+                 let case = DiscountCase { amount: 100, threshold: 100 }; \
+                 for case in helper_cases() { \
+                     assert_eq!(discounted_total(case.amount, case.threshold), 90); \
+                 } \
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        assert!(
+            values.is_empty(),
+            "loop-shadowed struct projections must not reuse stale literal fields; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_let_pattern_shadowing_struct_literal_then_values_stay_unresolved() -> Result<(), String>
+    {
+        // Non-simple let patterns can bind a fresh value under the same
+        // name. Without source-order scope, that remains a limitation.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test] fn via_shadowing_let_pattern() { \
+                 let case = DiscountCase { amount: 100, threshold: 100 }; \
+                 let Some(case) = make_discount_case() else { return; }; \
+                 assert_eq!(discounted_total(case.amount, case.threshold), 90); \
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        assert!(
+            values.is_empty(),
+            "let-pattern-shadowed projections must not reuse stale literal fields; got {values:?}"
         );
         Ok(())
     }
