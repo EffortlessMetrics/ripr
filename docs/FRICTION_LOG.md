@@ -51,7 +51,7 @@ Each entry is a date-grouped bullet:
 - **briefing off in-memory schema instead of reading source** — the
   haiku brief for `cargo xtask badge-artifacts` described the badge
   JSON shape from memory: `{"value": ..., "components": {...}}`. The
-  actual schema in `crates/ripr/src/output/badge.rs` uses
+  actual schema in `crates/ripr/src/output/badge/mod.rs` uses
   `"message"` (string) for the headline and `"counts"` + `"reason_counts"`
   (two separate objects) for the breakdown — there is no `"value"` and
   no `"components"`. Tests passed because the haiku built test fixtures
@@ -114,7 +114,7 @@ Each entry is a date-grouped bullet:
   picks lock the user into a path they didn't actually choose.
 - **clippy gates can redden existing committed code** — `cargo xtask
   check-pr` on `badge/repo-scope-artifacts` failed `clippy::manual_strip`
-  on an existing test in `crates/ripr/src/output/badge.rs:880-885`
+  on an existing test in `crates/ripr/src/output/badge/tests.rs:394-397`
   added by `6d845df` (the prior thread's checkpoint commit). The test
   was already on origin; the lint hadn't fired during the prior
   thread's dev loop because `-D warnings` only runs through the full
