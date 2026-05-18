@@ -24,6 +24,7 @@ Usage:
   ripr coverage-grip frontier (--ledger target/ripr/reports/pr-evidence-ledger.json|--baseline-delta target/ripr/reports/baseline-debt-delta.json|--zero-status target/ripr/reports/ripr-zero-status.json) [--coverage target/ripr/reports/coverage-summary.json] [--out target/ripr/reports/coverage-grip-frontier.json]
   ripr assistant-loop proof --pr-guidance target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-brief.json --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --receipt target/ripr/reports/agent-receipt.json [--out target/ripr/reports/test-oracle-assistant-proof.json]
   ripr assistant-loop health --proof target/ripr/reports/test-oracle-assistant-proof.json [--out target/ripr/reports/assistant-loop-health.json]
+  ripr first-pr [--root .] [--base origin/main] [--head HEAD] [--gap-ledger target/ripr/reports/gap-decision-ledger.json] [--out-dir target/ripr/reports] [--check]
   ripr first-action [--root .] [--pr-guidance target/ripr/review/comments.json] [--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json] [--gap-ledger target/ripr/reports/gap-decision-ledger.json] [--ledger target/ripr/reports/pr-evidence-ledger.json] [--out target/ripr/reports/first-useful-action.json]
   ripr reports index [--reports-dir target/ripr/reports] [--review-dir target/ripr/review] [--out target/ripr/reports/index.json]
   ripr reports gap-ledger --records fixtures/gap-decision-ledger/corpus.json [--out target/ripr/reports/gap-decision-ledger.json]
@@ -70,6 +71,7 @@ Quick start:
   ripr coverage-grip frontier --ledger target/ripr/reports/pr-evidence-ledger.json --coverage target/ripr/reports/coverage-summary.json
   ripr assistant-loop proof --pr-guidance target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-brief.json --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --receipt target/ripr/reports/agent-receipt.json
   ripr assistant-loop health --proof target/ripr/reports/test-oracle-assistant-proof.json
+  ripr first-pr --root . --base origin/main --head HEAD
   ripr first-action --pr-guidance target/ripr/review/comments.json --assistant-proof target/ripr/reports/test-oracle-assistant-proof.json --ledger target/ripr/reports/pr-evidence-ledger.json
   ripr reports index
   ripr reports gap-ledger --records fixtures/gap-decision-ledger/corpus.json
@@ -991,6 +993,7 @@ mod tests {
         assert!(HELP.contains("ripr coverage-grip frontier"));
         assert!(HELP.contains("ripr assistant-loop proof"));
         assert!(HELP.contains("ripr assistant-loop health"));
+        assert!(HELP.contains("ripr first-pr"));
         assert!(HELP.contains("ripr first-action"));
         assert!(HELP.contains("ripr reports index"));
         assert!(HELP.contains("ripr reports gap-ledger"));

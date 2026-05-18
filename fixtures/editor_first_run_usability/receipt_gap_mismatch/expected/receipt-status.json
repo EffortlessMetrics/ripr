@@ -1,0 +1,10 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_run_usability/receipt_gap_mismatch",
+  "receipt_state": "receipt_gap_mismatch",
+  "expected_gap_identity": "gap:rust:pricing",
+  "receipt_gap_identity": "gap:rust:shipping",
+  "runtime_adequacy_claim": false,
+  "gate_eligibility_claim": false,
+  "next_safe_action": "Rerun verify and receipt for the current gap; do not use this receipt as movement proof."
+}

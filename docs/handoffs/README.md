@@ -55,6 +55,21 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [0.6.0 publish decision](2026-05-18-0.6.0-publish-decision.md)
+- [0.6.x final proof](2026-05-18-0.6.x-final-proof.md)
+- [0.6.x release freeze](2026-05-18-0.6.x-release-freeze.md)
+- [0.6.x PR board disposition](2026-05-18-0.6.x-pr-board-disposition.md)
+- [0.6.x release finalization](2026-05-17-0.6.x-release-finalization.md)
+- [Editor First-PR Bridge closeout](2026-05-17-editor-first-pr-bridge-closeout.md)
+- [Lane 1 Shippable Finding Alignment closeout](2026-05-17-lane1-shippable-finding-alignment-closeout.md)
+- [0.6.0 dry-run proof](2026-05-17-0.6.0-dry-run-proof.md)
+- [0.6.0 release readiness](2026-05-17-0.6.0-release-readiness.md)
+- [Editor First-PR Bridge dogfood receipts](2026-05-17-editor-first-pr-bridge-receipts.md)
+- [First-Run UX and Adoption Hardening closeout](2026-05-16-first-run-ux-adoption-hardening-closeout.md)
+- [Repo-Ops UX Cockpit closeout](2026-05-16-repo-ops-ux-cockpit-closeout.md)
+- [Finding Alignment Consumer Contract v2](2026-05-16-finding-alignment-consumer-contract-v2.md)
+- [Editor First-Run Usability closeout](2026-05-16-editor-first-run-usability-closeout.md)
+- [Lane 3 First-Run Repair dogfood receipts](2026-05-16-lane3-first-run-repair-receipts.md)
 - [Rust Usable Gap Projection closeout](2026-05-15-rust-usable-gap-projection-closeout.md)
 - [Editor Gap Cockpit closeout](2026-05-15-editor-gap-cockpit-closeout.md)
 - [Generated evidence discipline closeout](2026-05-14-generated-evidence-discipline-closeout.md)

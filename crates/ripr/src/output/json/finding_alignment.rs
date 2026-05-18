@@ -74,6 +74,8 @@ struct FindingAlignmentItem {
     actionability: String,
     raw_group_size: usize,
     group_reason: String,
+    primary_anchor: Option<FindingAlignmentPrimaryAnchor>,
+    raw_spans: Vec<FindingAlignmentRawSpan>,
     why: String,
     recommended_repair: String,
     repair_route: Option<FindingAlignmentRepairRoute>,
@@ -94,6 +96,22 @@ struct FindingAlignmentRawFinding {
     probe_kind: String,
     source_id: String,
     evidence_record_ref: String,
+}
+
+struct FindingAlignmentPrimaryAnchor {
+    file: String,
+    line: usize,
+    kind: String,
+    source_id: String,
+    reason: String,
+}
+
+struct FindingAlignmentRawSpan {
+    file: String,
+    start_line: usize,
+    end_line: usize,
+    kind: String,
+    source_id: String,
 }
 
 struct FindingAlignmentStaticLimitation {
@@ -320,6 +338,83 @@ pub(super) fn report_json(out: &mut String, report: &FindingAlignmentReport, ind
 }
 
 fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAlignmentSummary {
+    let presentation_items = items
+        .iter()
+        .filter(|item| item.evidence_class == PRESENTATION_TEXT_CLASS)
+        .collect::<Vec<_>>();
+    let config_policy_items = items
+        .iter()
+        .filter(|item| item.evidence_class == CONFIG_POLICY_CLASS)
+        .collect::<Vec<_>>();
+
+    let overall = overall_alignment_counts(items);
+    let presentation = presentation_text_counts(&presentation_items);
+    let config_policy = config_policy_counts(&config_policy_items);
+
+    FindingAlignmentSummary {
+        raw_signals,
+        canonical_items: items.len(),
+        aligned_raw_findings: overall.aligned_raw_findings,
+        unaligned_raw_findings: raw_signals.saturating_sub(overall.aligned_raw_findings),
+        duplicate_groups_total: overall.duplicate_groups_total,
+        actionable_gaps: overall.actionable_gaps,
+        already_observed: overall.already_observed,
+        internal_no_action: overall.internal_no_action,
+        static_limitations: overall.static_limitations,
+        unknown: overall.unknown,
+        calibrated_supported: overall.calibrated_supported,
+        uncalibrated: overall.uncalibrated,
+        repair_route_coverage: overall.repair_route_coverage,
+        actionable_items_without_repair_route: overall.actionable_items_without_repair_route,
+        verify_command_coverage: overall.verify_command_coverage,
+        actionable_items_without_verify_command: overall.actionable_items_without_verify_command,
+        presentation_text_total: presentation.total,
+        presentation_text_user_visible: presentation.user_visible,
+        presentation_text_observed: presentation.observed,
+        presentation_text_unobserved: presentation.unobserved,
+        presentation_text_internal_only: presentation.internal_only,
+        presentation_text_visibility_unknown: presentation.visibility_unknown,
+        presentation_text_observer_unknown: presentation.observer_unknown,
+        presentation_text_duplicate_groups: presentation.duplicate_groups,
+        presentation_text_actionable_snapshot: presentation.actionable_output_repairs,
+        presentation_text_actionable_output_repairs: presentation.actionable_output_repairs,
+        presentation_text_no_action: presentation.no_action,
+        presentation_text_static_limitations: presentation.static_limitations,
+        config_policy_constant_total: config_policy.total,
+        config_policy_user_visible: config_policy.user_visible,
+        config_policy_observed: config_policy.observed,
+        config_policy_unobserved: config_policy.unobserved,
+        config_policy_internal_only: config_policy.internal_only,
+        config_policy_flow_unknown: config_policy.flow_unknown,
+        config_policy_observer_unknown: config_policy.observer_unknown,
+        config_policy_duplicate_groups: config_policy.duplicate_groups,
+        config_policy_actionable_output_observer: config_policy.actionable_output_observer,
+        config_policy_actionable_behavior_discriminator: config_policy
+            .actionable_behavior_discriminator,
+        config_policy_no_action: config_policy.no_action,
+        config_policy_static_limitations: config_policy.static_limitations,
+        config_policy_repair_route_coverage: config_policy.repair_route_coverage,
+        config_policy_verify_command_coverage: config_policy.verify_command_coverage,
+    }
+}
+
+struct OverallAlignmentCounts {
+    aligned_raw_findings: usize,
+    duplicate_groups_total: usize,
+    actionable_gaps: usize,
+    already_observed: usize,
+    internal_no_action: usize,
+    static_limitations: usize,
+    unknown: usize,
+    calibrated_supported: usize,
+    uncalibrated: usize,
+    repair_route_coverage: usize,
+    actionable_items_without_repair_route: usize,
+    verify_command_coverage: usize,
+    actionable_items_without_verify_command: usize,
+}
+
+fn overall_alignment_counts(items: &[FindingAlignmentItem]) -> OverallAlignmentCounts {
     let aligned_raw_findings = items
         .iter()
         .map(|item| item.raw_findings.len())
@@ -358,24 +453,47 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
         .filter(|item| item.gap_state == "actionable")
         .filter(|item| item_has_repair_route(item))
         .count();
-    let actionable_items_without_repair_route =
-        actionable_gaps.saturating_sub(repair_route_coverage);
     let verify_command_coverage = items
         .iter()
         .filter(|item| item.gap_state == "actionable")
         .filter(|item| item_has_verify_command(item))
         .count();
-    let actionable_items_without_verify_command =
-        actionable_gaps.saturating_sub(verify_command_coverage);
-    let presentation_items = items
-        .iter()
-        .filter(|item| item.evidence_class == PRESENTATION_TEXT_CLASS)
-        .collect::<Vec<_>>();
-    let config_policy_items = items
-        .iter()
-        .filter(|item| item.evidence_class == CONFIG_POLICY_CLASS)
-        .collect::<Vec<_>>();
-    let presentation_text_visibility_unknown = presentation_items
+
+    OverallAlignmentCounts {
+        aligned_raw_findings,
+        duplicate_groups_total,
+        actionable_gaps,
+        already_observed,
+        internal_no_action,
+        static_limitations,
+        unknown,
+        calibrated_supported,
+        uncalibrated,
+        repair_route_coverage,
+        actionable_items_without_repair_route: actionable_gaps
+            .saturating_sub(repair_route_coverage),
+        verify_command_coverage,
+        actionable_items_without_verify_command: actionable_gaps
+            .saturating_sub(verify_command_coverage),
+    }
+}
+
+struct PresentationTextCounts {
+    total: usize,
+    user_visible: usize,
+    observed: usize,
+    unobserved: usize,
+    internal_only: usize,
+    visibility_unknown: usize,
+    observer_unknown: usize,
+    duplicate_groups: usize,
+    actionable_output_repairs: usize,
+    no_action: usize,
+    static_limitations: usize,
+}
+
+fn presentation_text_counts(items: &[&FindingAlignmentItem]) -> PresentationTextCounts {
+    let visibility_unknown = items
         .iter()
         .filter(|item| {
             item.presentation_text
@@ -383,7 +501,7 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
                 .is_some_and(|text| text.visibility == "unknown")
         })
         .count();
-    let presentation_text_user_visible = presentation_items
+    let user_visible = items
         .iter()
         .filter(|item| {
             item.presentation_text
@@ -391,11 +509,11 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
                 .is_some_and(|text| text.visibility == "user_visible")
         })
         .count();
-    let presentation_text_observed = presentation_items
+    let observed = items
         .iter()
         .filter(|item| item.gap_state == "already_observed")
         .count();
-    let presentation_text_unobserved = presentation_items
+    let unobserved = items
         .iter()
         .filter(|item| {
             item.presentation_text
@@ -403,11 +521,11 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
                 .is_some_and(|text| text.visibility == "user_visible" && text.observer == "none")
         })
         .count();
-    let presentation_text_internal_only = presentation_items
+    let internal_only = items
         .iter()
         .filter(|item| item.gap_state == "internal_only")
         .count();
-    let presentation_text_observer_unknown = presentation_items
+    let observer_unknown = items
         .iter()
         .filter(|item| {
             item.presentation_text
@@ -415,7 +533,7 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
                 .is_some_and(|text| text.observer == "unknown")
         })
         .count();
-    let presentation_text_duplicate_groups = presentation_items
+    let duplicate_groups = items
         .iter()
         .filter(|item| {
             item.presentation_text.as_ref().is_some_and(|text| {
@@ -424,7 +542,7 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
             })
         })
         .count();
-    let presentation_text_actionable_output_repairs = presentation_items
+    let actionable_output_repairs = items
         .iter()
         .filter(|item| {
             item.presentation_text
@@ -432,7 +550,7 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
                 .is_some_and(|text| text.actionability == "add_output_observer")
         })
         .count();
-    let presentation_text_no_action = presentation_items
+    let no_action = items
         .iter()
         .filter(|item| {
             item.presentation_text.as_ref().is_some_and(|text| {
@@ -441,11 +559,45 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
             })
         })
         .count();
-    let presentation_text_static_limitations = presentation_items
+    let static_limitations = items
         .iter()
         .filter(|item| item.gap_state == "static_limitation")
         .count();
-    let config_policy_user_visible = config_policy_items
+
+    PresentationTextCounts {
+        total: items.len(),
+        user_visible,
+        observed,
+        unobserved,
+        internal_only,
+        visibility_unknown,
+        observer_unknown,
+        duplicate_groups,
+        actionable_output_repairs,
+        no_action,
+        static_limitations,
+    }
+}
+
+struct ConfigPolicyCounts {
+    total: usize,
+    user_visible: usize,
+    observed: usize,
+    unobserved: usize,
+    internal_only: usize,
+    flow_unknown: usize,
+    observer_unknown: usize,
+    duplicate_groups: usize,
+    actionable_output_observer: usize,
+    actionable_behavior_discriminator: usize,
+    no_action: usize,
+    static_limitations: usize,
+    repair_route_coverage: usize,
+    verify_command_coverage: usize,
+}
+
+fn config_policy_counts(items: &[&FindingAlignmentItem]) -> ConfigPolicyCounts {
+    let user_visible = items
         .iter()
         .filter(|item| {
             item.config_policy
@@ -453,11 +605,11 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
                 .is_some_and(|config| config.visibility == "user_visible")
         })
         .count();
-    let config_policy_observed = config_policy_items
+    let observed = items
         .iter()
         .filter(|item| item.gap_state == "already_observed")
         .count();
-    let config_policy_unobserved = config_policy_items
+    let unobserved = items
         .iter()
         .filter(|item| {
             item.config_policy.as_ref().is_some_and(|config| {
@@ -465,11 +617,11 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
             })
         })
         .count();
-    let config_policy_internal_only = config_policy_items
+    let internal_only = items
         .iter()
         .filter(|item| item.gap_state == "internal_only")
         .count();
-    let config_policy_flow_unknown = config_policy_items
+    let flow_unknown = items
         .iter()
         .filter(|item| {
             item.static_limitations
@@ -477,7 +629,7 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
                 .any(|limitation| limitation.category == CONFIG_POLICY_FLOW_UNKNOWN_CATEGORY)
         })
         .count();
-    let config_policy_observer_unknown = config_policy_items
+    let observer_unknown = items
         .iter()
         .filter(|item| {
             item.config_policy
@@ -485,13 +637,13 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
                 .is_some_and(|config| config.observer == "unknown")
         })
         .count();
-    let config_policy_duplicate_groups = config_policy_items
+    let duplicate_groups = items
         .iter()
         .filter(|item| {
             item.group_reason == GROUP_REASON_CONFIG_POLICY && item.raw_findings.len() > 1
         })
         .count();
-    let config_policy_actionable_output_observer = config_policy_items
+    let actionable_output_observer = items
         .iter()
         .filter(|item| {
             item.config_policy
@@ -499,7 +651,7 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
                 .is_some_and(|config| config.actionability == "add_output_observer")
         })
         .count();
-    let config_policy_actionable_behavior_discriminator = config_policy_items
+    let actionable_behavior_discriminator = items
         .iter()
         .filter(|item| {
             item.config_policy
@@ -507,7 +659,7 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
                 .is_some_and(|config| config.actionability == "add_behavior_discriminator")
         })
         .count();
-    let config_policy_no_action = config_policy_items
+    let no_action = items
         .iter()
         .filter(|item| {
             item.config_policy.as_ref().is_some_and(|config| {
@@ -516,11 +668,11 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
             })
         })
         .count();
-    let config_policy_static_limitations = config_policy_items
+    let static_limitations = items
         .iter()
         .filter(|item| item.gap_state == "static_limitation")
         .count();
-    let config_policy_repair_route_coverage = config_policy_items
+    let repair_route_coverage = items
         .iter()
         .filter(|item| item.gap_state == "actionable")
         .filter(|item| {
@@ -531,55 +683,27 @@ fn summary_for(raw_signals: usize, items: &[FindingAlignmentItem]) -> FindingAli
                     .is_some_and(|config| config.repair_kind != "unknown")
         })
         .count();
-    let config_policy_verify_command_coverage = config_policy_items
+    let verify_command_coverage = items
         .iter()
         .filter(|item| item.gap_state == "actionable")
         .filter(|item| !item.verify_command.is_empty() && item.verify_command != "unknown")
         .count();
 
-    FindingAlignmentSummary {
-        raw_signals,
-        canonical_items: items.len(),
-        aligned_raw_findings,
-        unaligned_raw_findings: raw_signals.saturating_sub(aligned_raw_findings),
-        duplicate_groups_total,
-        actionable_gaps,
-        already_observed,
-        internal_no_action,
+    ConfigPolicyCounts {
+        total: items.len(),
+        user_visible,
+        observed,
+        unobserved,
+        internal_only,
+        flow_unknown,
+        observer_unknown,
+        duplicate_groups,
+        actionable_output_observer,
+        actionable_behavior_discriminator,
+        no_action,
         static_limitations,
-        unknown,
-        calibrated_supported,
-        uncalibrated,
         repair_route_coverage,
-        actionable_items_without_repair_route,
         verify_command_coverage,
-        actionable_items_without_verify_command,
-        presentation_text_total: presentation_items.len(),
-        presentation_text_user_visible,
-        presentation_text_observed,
-        presentation_text_unobserved,
-        presentation_text_internal_only,
-        presentation_text_visibility_unknown,
-        presentation_text_observer_unknown,
-        presentation_text_duplicate_groups,
-        presentation_text_actionable_snapshot: presentation_text_actionable_output_repairs,
-        presentation_text_actionable_output_repairs,
-        presentation_text_no_action,
-        presentation_text_static_limitations,
-        config_policy_constant_total: config_policy_items.len(),
-        config_policy_user_visible,
-        config_policy_observed,
-        config_policy_unobserved,
-        config_policy_internal_only,
-        config_policy_flow_unknown,
-        config_policy_observer_unknown,
-        config_policy_duplicate_groups,
-        config_policy_actionable_output_observer,
-        config_policy_actionable_behavior_discriminator,
-        config_policy_no_action,
-        config_policy_static_limitations,
-        config_policy_repair_route_coverage,
-        config_policy_verify_command_coverage,
     }
 }
 
@@ -594,6 +718,8 @@ fn presentation_text_item(
     } else {
         GROUP_REASON_OWNER
     };
+    let primary_anchor = primary_anchor_for(&raw_findings, group_reason);
+    let raw_spans = raw_spans_for(&raw_findings);
     let repair_route = repair_route_for(
         &classification.gap_state,
         &classification.repair_kind,
@@ -613,6 +739,8 @@ fn presentation_text_item(
         actionability: classification.actionability,
         raw_group_size: raw_findings.len(),
         group_reason: group_reason.to_string(),
+        primary_anchor,
+        raw_spans,
         why: classification.why,
         recommended_repair: classification.recommended_repair,
         repair_route,
@@ -644,10 +772,12 @@ fn config_policy_item(
     classification: ConfigPolicyClassification,
 ) -> FindingAlignmentItem {
     let group_reason = if raw_findings.len() > 1 {
-        GROUP_REASON_CONFIG_POLICY
+        GROUP_REASON_DECL_LITERAL
     } else {
         GROUP_REASON_OWNER
     };
+    let primary_anchor = primary_anchor_for(&raw_findings, group_reason);
+    let raw_spans = raw_spans_for(&raw_findings);
     let repair_route = repair_route_for(
         &classification.gap_state,
         &classification.repair_kind,
@@ -667,6 +797,8 @@ fn config_policy_item(
         actionability: classification.actionability,
         raw_group_size: raw_findings.len(),
         group_reason: group_reason.to_string(),
+        primary_anchor,
+        raw_spans,
         why: classification.why,
         recommended_repair: classification.recommended_repair,
         repair_route,
@@ -1303,6 +1435,43 @@ fn raw_finding_for(finding: &Finding) -> FindingAlignmentRawFinding {
     }
 }
 
+fn primary_anchor_for(
+    raw_findings: &[FindingAlignmentRawFinding],
+    group_reason: &str,
+) -> Option<FindingAlignmentPrimaryAnchor> {
+    raw_findings
+        .first()
+        .map(|finding| FindingAlignmentPrimaryAnchor {
+            file: finding.file.clone(),
+            line: finding.line,
+            kind: finding.kind.clone(),
+            source_id: finding.source_id.clone(),
+            reason: primary_anchor_reason(group_reason).to_string(),
+        })
+}
+
+fn primary_anchor_reason(group_reason: &str) -> &'static str {
+    match group_reason {
+        GROUP_REASON_DECL_LITERAL => "declaration_line_for_grouped_constant",
+        GROUP_REASON_OWNER => "constant_owner_line",
+        GROUP_REASON_CONFIG_POLICY => "config_policy_owner_line",
+        _ => "first_raw_finding_in_canonical_item",
+    }
+}
+
+fn raw_spans_for(raw_findings: &[FindingAlignmentRawFinding]) -> Vec<FindingAlignmentRawSpan> {
+    raw_findings
+        .iter()
+        .map(|finding| FindingAlignmentRawSpan {
+            file: finding.file.clone(),
+            start_line: finding.line,
+            end_line: finding.line,
+            kind: finding.kind.clone(),
+            source_id: finding.source_id.clone(),
+        })
+        .collect()
+}
+
 fn adjacent_literal_index(
     findings: &[Finding],
     used: &[bool],
@@ -1544,6 +1713,10 @@ fn item_json(out: &mut String, item: &FindingAlignmentItem, indent: usize) {
     field(out, indent + 1, "actionability", &item.actionability, true);
     number_field(out, indent + 1, "raw_group_size", item.raw_group_size, true);
     field(out, indent + 1, "group_reason", &item.group_reason, true);
+    primary_anchor_json(out, item.primary_anchor.as_ref(), indent + 1);
+    out.push_str(",\n");
+    raw_spans_json(out, &item.raw_spans, indent + 1);
+    out.push_str(",\n");
     field(out, indent + 1, "why", &item.why, true);
     field(
         out,
@@ -1669,6 +1842,44 @@ fn confidence_json(out: &mut String, confidence: &FindingAlignmentConfidence, in
     field(out, indent + 1, "basis", &confidence.basis, true);
     array_field(out, indent + 1, "notes", &confidence.notes, false);
     out.push_str(&format!("{}}}", "  ".repeat(indent)));
+}
+
+fn primary_anchor_json(
+    out: &mut String,
+    primary_anchor: Option<&FindingAlignmentPrimaryAnchor>,
+    indent: usize,
+) {
+    out.push_str(&format!("{}\"primary_anchor\": ", "  ".repeat(indent)));
+    let Some(anchor) = primary_anchor else {
+        out.push_str("null");
+        return;
+    };
+    out.push_str("{\n");
+    field(out, indent + 1, "file", &anchor.file, true);
+    number_field(out, indent + 1, "line", anchor.line, true);
+    field(out, indent + 1, "kind", &anchor.kind, true);
+    field(out, indent + 1, "source_id", &anchor.source_id, true);
+    field(out, indent + 1, "reason", &anchor.reason, false);
+    out.push_str(&format!("{}}}", "  ".repeat(indent)));
+}
+
+fn raw_spans_json(out: &mut String, raw_spans: &[FindingAlignmentRawSpan], indent: usize) {
+    out.push_str(&format!("{}\"raw_spans\": [\n", "  ".repeat(indent)));
+    for (index, span) in raw_spans.iter().enumerate() {
+        let sp = "  ".repeat(indent + 1);
+        out.push_str(&format!("{sp}{{\n"));
+        field(out, indent + 2, "file", &span.file, true);
+        number_field(out, indent + 2, "start_line", span.start_line, true);
+        number_field(out, indent + 2, "end_line", span.end_line, true);
+        field(out, indent + 2, "kind", &span.kind, true);
+        field(out, indent + 2, "source_id", &span.source_id, false);
+        out.push_str(&format!("{sp}}}"));
+        if index + 1 != raw_spans.len() {
+            out.push(',');
+        }
+        out.push('\n');
+    }
+    out.push_str(&format!("{}]", "  ".repeat(indent)));
 }
 
 fn raw_findings_json(out: &mut String, raw_findings: &[FindingAlignmentRawFinding], indent: usize) {
@@ -1850,9 +2061,8 @@ fn config_policy_json(
 #[cfg(test)]
 mod tests {
     use super::{
-        GROUP_REASON_CONFIG_POLICY, GROUP_REASON_DECL_LITERAL, GROUP_REASON_OWNER,
-        parse_presentation_text_declaration, parse_string_literal, report_for_findings,
-        verify_command_is_missing,
+        GROUP_REASON_DECL_LITERAL, GROUP_REASON_OWNER, parse_presentation_text_declaration,
+        parse_string_literal, report_for_findings, verify_command_is_missing,
     };
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, OracleKind,
@@ -1892,6 +2102,26 @@ mod tests {
         );
         assert_eq!(item.raw_group_size, 2);
         assert_eq!(item.group_reason, GROUP_REASON_DECL_LITERAL);
+        let primary_anchor = item
+            .primary_anchor
+            .as_ref()
+            .ok_or_else(|| "grouped item should expose a primary anchor".to_string())?;
+        assert_eq!(primary_anchor.file, "src/device_labels.rs");
+        assert_eq!(primary_anchor.line, 46);
+        assert_eq!(primary_anchor.kind, "exposed");
+        assert_eq!(
+            primary_anchor.source_id,
+            "probe:src_device_labels_rs:46:decl"
+        );
+        assert_eq!(
+            primary_anchor.reason,
+            "declaration_line_for_grouped_constant"
+        );
+        assert_eq!(item.raw_spans.len(), 2);
+        assert_eq!(item.raw_spans[0].start_line, 46);
+        assert_eq!(item.raw_spans[0].end_line, 46);
+        assert_eq!(item.raw_spans[1].start_line, 47);
+        assert_eq!(item.raw_spans[1].end_line, 47);
         assert_eq!(item.gap_state, "static_limitation");
         assert_eq!(item.actionability, "inspect_visibility");
         let presentation_text = presentation_text_for(item)?;
@@ -2042,6 +2272,14 @@ mod tests {
 
         assert_eq!(report.items[0].raw_group_size, 1);
         assert_eq!(report.items[0].group_reason, GROUP_REASON_OWNER);
+        assert_eq!(
+            report.items[0]
+                .primary_anchor
+                .as_ref()
+                .map(|anchor| anchor.reason.as_str()),
+            Some("constant_owner_line")
+        );
+        assert_eq!(report.items[0].raw_spans.len(), 1);
         assert!(
             presentation_text_for(&report.items[0])?
                 .text_literal
@@ -2282,11 +2520,19 @@ mod tests {
         assert_eq!(report.summary.internal_no_action, 1);
         assert_eq!(report.summary.config_policy_constant_total, 1);
         assert_eq!(report.summary.config_policy_internal_only, 1);
+        assert_eq!(report.summary.config_policy_duplicate_groups, 0);
         assert_eq!(
             item.canonical_gap_id,
             "config_or_policy_constant::INTERNAL_POLICY_LABEL"
         );
-        assert_eq!(item.group_reason, GROUP_REASON_CONFIG_POLICY);
+        assert_eq!(
+            item.primary_anchor
+                .as_ref()
+                .map(|anchor| (anchor.line, anchor.reason.as_str())),
+            Some((14, "declaration_line_for_grouped_constant"))
+        );
+        assert_eq!(item.raw_spans.len(), 2);
+        assert_eq!(item.group_reason, GROUP_REASON_DECL_LITERAL);
         assert_eq!(item.raw_group_size, 2);
         assert_eq!(item.gap_state, "internal_only");
         assert_eq!(item.actionability, "no_action_internal");
@@ -2349,6 +2595,129 @@ mod tests {
         assert_eq!(config_policy.repair_kind, "output_observer");
         assert_eq!(config_policy.target_test_type, "report_render_or_golden");
         assert!(!item.recommended_repair.contains("mutation"));
+        Ok(())
+    }
+
+    #[test]
+    fn behavior_selector_without_discriminator_is_actionable() -> Result<(), String> {
+        let findings = vec![
+            finding_in_file(
+                "src/validation_selector.rs",
+                "decl",
+                40,
+                ExposureClass::Exposed,
+                ProbeFamily::FieldConstruction,
+                "pub const VALIDATION_SELECTOR: &str =",
+            ),
+            finding_in_file(
+                "src/validation_selector.rs",
+                "literal",
+                41,
+                ExposureClass::WeaklyExposed,
+                ProbeFamily::StaticUnknown,
+                "\"strict\";",
+            ),
+        ];
+
+        let report = report_for_findings(&findings)
+            .ok_or_else(|| "behavior selector should align".to_string())?;
+        let item = &report.items[0];
+        let config_policy = config_policy_for(item)?;
+
+        assert_eq!(report.summary.raw_signals, 2);
+        assert_eq!(report.summary.canonical_items, 1);
+        assert_eq!(report.summary.actionable_gaps, 1);
+        assert_eq!(report.summary.config_policy_user_visible, 1);
+        assert_eq!(report.summary.config_policy_unobserved, 1);
+        assert_eq!(
+            report
+                .summary
+                .config_policy_actionable_behavior_discriminator,
+            1
+        );
+        assert_eq!(report.summary.config_policy_repair_route_coverage, 1);
+        assert_eq!(report.summary.config_policy_verify_command_coverage, 1);
+        assert_eq!(
+            item.canonical_gap_id,
+            "config_or_policy_constant::VALIDATION_SELECTOR"
+        );
+        assert_eq!(item.group_reason, GROUP_REASON_DECL_LITERAL);
+        assert_eq!(item.raw_group_size, 2);
+        assert_eq!(item.canonical_item_kind, "gap");
+        assert_eq!(item.gap_state, "actionable");
+        assert_eq!(item.actionability, "add_behavior_discriminator");
+        let repair_route = repair_route_for_item(item)?;
+        assert_eq!(repair_route.repair_kind, "behavior_discriminator");
+        assert_eq!(repair_route.target_test_type, "validation_behavior");
+        assert_eq!(
+            repair_route.suggested_assertion,
+            "Assert the selected behavior includes the VALIDATION_SELECTOR value or selected behavior."
+        );
+        assert_eq!(config_policy.role, "behavior_selector");
+        assert_eq!(config_policy.visibility, "user_visible");
+        assert_eq!(config_policy.observer, "none");
+        assert_eq!(config_policy.actionability, "add_behavior_discriminator");
+        assert_eq!(config_policy.repair_kind, "behavior_discriminator");
+        assert_eq!(config_policy.target_test_type, "validation_behavior");
+        assert!(!item.recommended_repair.contains("mutation"));
+        Ok(())
+    }
+
+    #[test]
+    fn behavior_selector_with_discriminator_is_already_observed() -> Result<(), String> {
+        let validation_observer = related_test(
+            "validation_behavior_selects_strict_mode",
+            "tests/validation_behavior.rs",
+            28,
+            OracleKind::RelationalCheck,
+            OracleStrength::Strong,
+        );
+        let findings = vec![
+            finding_in_file_with_related(
+                "src/validation_selector.rs",
+                "decl",
+                52,
+                ExposureClass::Exposed,
+                ProbeFamily::FieldConstruction,
+                "pub const ROUTING_SELECTOR: &str =",
+                vec![validation_observer],
+            ),
+            finding_in_file(
+                "src/validation_selector.rs",
+                "literal",
+                53,
+                ExposureClass::Exposed,
+                ProbeFamily::StaticUnknown,
+                "\"strict\";",
+            ),
+        ];
+
+        let report = report_for_findings(&findings)
+            .ok_or_else(|| "observed behavior selector should align".to_string())?;
+        let item = &report.items[0];
+        let config_policy = config_policy_for(item)?;
+
+        assert_eq!(report.summary.raw_signals, 2);
+        assert_eq!(report.summary.canonical_items, 1);
+        assert_eq!(report.summary.actionable_gaps, 0);
+        assert_eq!(report.summary.already_observed, 1);
+        assert_eq!(report.summary.config_policy_user_visible, 1);
+        assert_eq!(report.summary.config_policy_observed, 1);
+        assert_eq!(report.summary.config_policy_no_action, 1);
+        assert_eq!(item.canonical_item_kind, "observed");
+        assert_eq!(item.gap_state, "already_observed");
+        assert_eq!(item.actionability, "already_observed");
+        assert!(item.repair_route.is_none());
+        assert_eq!(config_policy.role, "behavior_selector");
+        assert_eq!(config_policy.visibility, "user_visible");
+        assert_eq!(config_policy.observer, "validation_behavior");
+        assert_eq!(config_policy.actionability, "already_observed");
+        assert_eq!(config_policy.repair_kind, "no_action");
+        assert_eq!(config_policy.target_test_type, "validation_behavior");
+        assert_eq!(
+            item.related_test.as_ref().map(|test| test.name.as_str()),
+            Some("validation_behavior_selects_strict_mode")
+        );
         Ok(())
     }
 

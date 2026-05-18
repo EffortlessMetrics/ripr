@@ -213,7 +213,7 @@ next-action guidance are present:
     "after": "target/ripr/workflow/after.repo-exposure.json"
   },
   "provenance": {
-    "ripr_version": "0.5.0",
+    "ripr_version": "0.6.0",
     "repo_root": ".",
     "config_fingerprint": "fnv1a64:4c94a2f6cfaa5c21",
     "command_template_version": "0.1",
@@ -506,7 +506,7 @@ The LLM work loop must not:
   commands Markdown.
 - `crates/ripr/src/output/agent_receipt.rs` renders receipt schema `0.3` with
   provenance and structured next-action guidance.
-- `crates/ripr/src/output/agent_brief.rs`, `crates/ripr/src/output/pilot.rs`,
+- `crates/ripr/src/output/agent_brief.rs`, `crates/ripr/src/output/pilot/mod.rs`,
   and `crates/ripr/src/lsp/actions.rs` reuse the shared command builders for
   their current command payloads.
 - `xtask/src/reports/operator.rs` reuses the shared command builder source for

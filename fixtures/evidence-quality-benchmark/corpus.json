@@ -10,6 +10,7 @@
     "self_computed_expected_value",
     "opaque_helper_static_limitation",
     "cross_file_constant_limitation",
+    "activation_value_resolution",
     "presentation_text",
     "config_or_policy_constant",
     "side_effect_observer",
@@ -353,6 +354,325 @@
         "Do not treat unresolved constants as missing user assertions."
       ],
       "repair_route": "analysis/static-limitation-taxonomy"
+    },
+    {
+      "id": "same_test_struct_literal_field_activation_values",
+      "case_kind": "positive",
+      "evidence_class": "activation_value_resolution",
+      "maturity_scope": "fixture_backed",
+      "description": "Same-test struct literal fields passed into the owner call are concrete activation values when the field values are literal.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_same_test_struct_literal_fields_when_owner_call_uses_projection_then_values_are_recorded",
+      "sample": {
+        "file": "tests/pricing_tests.rs",
+        "source": "let case = DiscountCase { amount: 100, threshold: 100 };\nassert_eq!(discounted_total(case.amount, case.threshold), 90);"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-activation-struct-literal",
+          "canonical_gap_id": "gap:bench-activation-struct-literal",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pricing::discounted_total",
+          "location": {
+            "file": "src/pricing.rs",
+            "line": 44
+          },
+          "seam_kind": "predicate_boundary",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "yes",
+              "confidence": "medium"
+            }
+          },
+          "counts": {
+            "observed_values": 1,
+            "static_limitations": 0
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_value_unresolved",
+        "direction": "decrease"
+      },
+      "expected_claim": "Literal same-test struct fields can resolve activation values for field-projection owner call arguments while preserving missing-discriminator repair routing.",
+      "must_not_claim": [
+        "Do not treat resolved activation values as proof that a missing boundary discriminator is checked.",
+        "Do not claim strong grip from activation-value resolution alone.",
+        "Do not resolve helper-returned struct projections.",
+        "Do not resolve non-literal struct fields.",
+        "Do not add cross-file or semantic struct analysis."
+      ],
+      "repair_route": "analysis/value-resolution-audit-fixes"
+    },
+    {
+      "id": "helper_built_struct_projection_stays_activation_limitation",
+      "case_kind": "negative_guard",
+      "evidence_class": "activation_value_resolution",
+      "maturity_scope": "fixture_backed",
+      "description": "A field projection from a helper-built fixture remains unresolved because the struct field values are not visible in the same test body.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_helper_built_struct_when_owner_call_uses_projection_then_values_stay_unresolved",
+      "sample": {
+        "file": "tests/pricing_tests.rs",
+        "source": "let case = make_discount_case();\nassert_eq!(discounted_total(case.amount, case.threshold), 90);"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-activation-helper-built-struct",
+          "canonical_gap_id": "gap:bench-activation-helper-built-struct",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pricing::discounted_total",
+          "location": {
+            "file": "src/pricing.rs",
+            "line": 44
+          },
+          "seam_kind": "predicate_boundary",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "unknown",
+              "confidence": "low"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 1
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_value_unresolved",
+        "value": 1
+      },
+      "static_limitation_category": "activation_value_unresolved",
+      "expected_claim": "Helper-built struct projections remain named static limitations until analyzer support can inspect the helper safely.",
+      "must_not_claim": [
+        "Do not invent candidate values from helper-returned structs.",
+        "Do not treat opaque fixture helpers as observed activation values.",
+        "Do not claim semantic field resolution outside the same test body."
+      ],
+      "repair_route": "analysis/value-resolution-audit-fixes"
+    },
+    {
+      "id": "shadowed_struct_literal_projection_stays_activation_limitation",
+      "case_kind": "negative_guard",
+      "evidence_class": "activation_value_resolution",
+      "maturity_scope": "fixture_backed",
+      "description": "A same-test struct literal field projection remains unresolved when the binding is shadowed before the owner call.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_shadowed_struct_literal_when_owner_call_uses_projection_then_values_stay_unresolved",
+      "sample": {
+        "file": "tests/pricing_tests.rs",
+        "source": "let case = DiscountCase { amount: 100, threshold: 100 };\nlet case = make_discount_case();\nassert_eq!(discounted_total(case.amount, case.threshold), 90);"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-activation-shadowed-struct",
+          "canonical_gap_id": "gap:bench-activation-shadowed-struct",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pricing::discounted_total",
+          "location": {
+            "file": "src/pricing.rs",
+            "line": 44
+          },
+          "seam_kind": "predicate_boundary",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "unknown",
+              "confidence": "low"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 1
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_value_unresolved",
+        "value": 1
+      },
+      "static_limitation_category": "activation_value_unresolved",
+      "expected_claim": "Shadowed struct literal projections remain named static limitations because the earlier literal value is stale by the owner call.",
+      "must_not_claim": [
+        "Do not reuse stale literal fields after a binding is shadowed.",
+        "Do not infer source-order scope for struct field projections.",
+        "Do not treat shadowed helper-built projections as observed activation values."
+      ],
+      "repair_route": "analysis/value-resolution-audit-fixes"
+    },
+    {
+      "id": "fixture_parameter_struct_projection_stays_activation_limitation",
+      "case_kind": "negative_guard",
+      "evidence_class": "activation_value_resolution",
+      "maturity_scope": "fixture_backed",
+      "description": "A fixture/rstest parameter field projection remains unresolved even if a later same-name struct literal appears in the test body.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_fixture_parameter_and_later_same_name_struct_literal_then_values_stay_unresolved",
+      "sample": {
+        "file": "tests/pricing_tests.rs",
+        "source": "#[rstest] fn via_fixture_param(case: DiscountCase) {\n    assert_eq!(discounted_total(case.amount, case.threshold), 90);\n    let case = DiscountCase { amount: 100, threshold: 100 };\n}"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-activation-fixture-param-struct",
+          "canonical_gap_id": "gap:bench-activation-fixture-param-struct",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pricing::discounted_total",
+          "location": {
+            "file": "src/pricing.rs",
+            "line": 44
+          },
+          "seam_kind": "predicate_boundary",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "unknown",
+              "confidence": "low"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 1
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_value_unresolved",
+        "value": 1
+      },
+      "static_limitation_category": "activation_value_unresolved",
+      "expected_claim": "Fixture parameter projections remain named static limitations because a later literal binding is not proof of the runtime fixture value.",
+      "must_not_claim": [
+        "Do not resolve fixture/rstest parameter fields from later same-name literals.",
+        "Do not infer source-order scope for struct field projections.",
+        "Do not treat runtime fixture parameters as same-test literal struct fields."
+      ],
+      "repair_route": "analysis/value-resolution-audit-fixes"
+    },
+    {
+      "id": "non_let_shadowed_struct_projection_stays_activation_limitation",
+      "case_kind": "negative_guard",
+      "evidence_class": "activation_value_resolution",
+      "maturity_scope": "fixture_backed",
+      "description": "A same-test struct literal field projection remains unresolved when a loop or pattern binder shadows the struct literal before the owner call.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_for_loop_shadowing_struct_literal_then_values_stay_unresolved",
+      "sample": {
+        "file": "tests/pricing_tests.rs",
+        "source": "let case = DiscountCase { amount: 100, threshold: 100 };\nfor case in helper_cases() {\n    assert_eq!(discounted_total(case.amount, case.threshold), 90);\n}"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-activation-shadowing-loop-struct",
+          "canonical_gap_id": "gap:bench-activation-shadowing-loop-struct",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pricing::discounted_total",
+          "location": {
+            "file": "src/pricing.rs",
+            "line": 44
+          },
+          "seam_kind": "predicate_boundary",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "unknown",
+              "confidence": "low"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 1
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_value_unresolved",
+        "value": 1
+      },
+      "static_limitation_category": "activation_value_unresolved",
+      "expected_claim": "Struct projections shadowed by loop or pattern binders remain named static limitations because whole-test literal maps are not source-order proof.",
+      "must_not_claim": [
+        "Do not reuse stale literal fields after for/if-let/closure/match binders shadow the identifier.",
+        "Do not infer source-order scope for struct field projections.",
+        "Do not treat shadowed helper-built projections as observed activation values."
+      ],
+      "repair_route": "analysis/value-resolution-audit-fixes"
+    },
+    {
+      "id": "let_pattern_shadowed_struct_projection_stays_activation_limitation",
+      "case_kind": "negative_guard",
+      "evidence_class": "activation_value_resolution",
+      "maturity_scope": "fixture_backed",
+      "description": "A same-test struct literal field projection remains unresolved when a non-simple let pattern shadows the struct literal before the owner call.",
+      "fixture_reference": "crates/ripr/src/analysis/test_grip_evidence.rs::tests::given_let_pattern_shadowing_struct_literal_then_values_stay_unresolved",
+      "sample": {
+        "file": "tests/pricing_tests.rs",
+        "source": "let case = DiscountCase { amount: 100, threshold: 100 };\nlet Some(case) = make_discount_case() else { return; };\nassert_eq!(discounted_total(case.amount, case.threshold), 90);"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-activation-shadowing-let-pattern-struct",
+          "canonical_gap_id": "gap:bench-activation-shadowing-let-pattern-struct",
+          "canonical_gap_group_size": 1,
+          "canonical_gap_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+          "owner": "pricing::discounted_total",
+          "location": {
+            "file": "src/pricing.rs",
+            "line": 44
+          },
+          "seam_kind": "predicate_boundary",
+          "grip_class": "activation_unknown",
+          "headline_eligible": true,
+          "evidence_path": {
+            "activate": {
+              "state": "unknown",
+              "confidence": "low"
+            }
+          },
+          "counts": {
+            "observed_values": 0,
+            "static_limitations": 1
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "static_limitation_categories",
+        "metric": "activation_value_unresolved",
+        "value": 1
+      },
+      "static_limitation_category": "activation_value_unresolved",
+      "expected_claim": "Struct projections shadowed by non-simple let patterns remain named static limitations because whole-test literal maps are not source-order proof.",
+      "must_not_claim": [
+        "Do not reuse stale literal fields after let-pattern binders shadow the identifier.",
+        "Do not infer source-order scope for struct field projections.",
+        "Do not treat pattern-bound helper projections as observed activation values."
+      ],
+      "repair_route": "analysis/value-resolution-audit-fixes"
     },
     {
       "id": "presentation_text_constant_visibility_unknown",
@@ -858,7 +1178,7 @@
           "seam_id": "bench-config-policy-internal",
           "canonical_gap_id": "config_or_policy_constant::INTERNAL_POLICY_LABEL",
           "canonical_gap_group_size": 2,
-          "canonical_gap_reason": "same_config_policy_constant",
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
           "owner": "INTERNAL_POLICY_LABEL",
           "location": {
             "file": "src/policy.rs",
@@ -933,7 +1253,7 @@
           "seam_id": "bench-config-policy-rendered-unobserved",
           "canonical_gap_id": "config_or_policy_constant::REPORT_POLICY_LABEL",
           "canonical_gap_group_size": 2,
-          "canonical_gap_reason": "same_config_policy_constant",
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
           "owner": "REPORT_POLICY_LABEL",
           "location": {
             "file": "src/report_config.rs",
@@ -987,6 +1307,157 @@
       "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
     },
     {
+      "id": "config_policy_behavior_selector_unobserved",
+      "case_kind": "positive",
+      "evidence_class": "config_or_policy_constant",
+      "maturity_scope": "fixture_backed",
+      "description": "A validation or routing selector with no behavior discriminator becomes one actionable behavior-discriminator item.",
+      "fixture_reference": "RIPR-SPEC-0048 behavior selector without discriminator",
+      "sample": {
+        "file": "src/validation_selector.rs",
+        "declaration_line": 40,
+        "literal_line": 41,
+        "constant": "VALIDATION_SELECTOR",
+        "sink": "validation_behavior",
+        "observer": "none"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-config-policy-behavior-selector",
+          "canonical_gap_id": "config_or_policy_constant::VALIDATION_SELECTOR",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "VALIDATION_SELECTOR",
+          "location": {
+            "file": "src/validation_selector.rs",
+            "line": 40
+          },
+          "seam_kind": "config_policy_constant",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_class": "config_or_policy_constant",
+          "gap_state": "actionable",
+          "actionability": "add_behavior_discriminator",
+          "why": "Changed validation selector flows to observable validation behavior and no supported discriminator is found.",
+          "recommended_repair": "Add or update a behavior discriminator test for VALIDATION_SELECTOR.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/validation_selector.rs",
+              "line": 40,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/validation_selector.rs",
+              "line": 41,
+              "kind": "weakly_exposed"
+            }
+          ],
+          "config_policy": {
+            "constant": "VALIDATION_SELECTOR",
+            "role": "behavior_selector",
+            "source_kind": "const_decl",
+            "visibility": "user_visible",
+            "observer": "none",
+            "actionability": "add_behavior_discriminator",
+            "repair_kind": "behavior_discriminator",
+            "target_test_type": "validation_behavior",
+            "suggested_assertion": "Assert the selected behavior includes the VALIDATION_SELECTOR value or selected behavior."
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "config_policy_actionable_behavior_discriminator",
+        "value": 1
+      },
+      "expected_claim": "A supported validation or routing selector can become one actionable behavior-discriminator repair.",
+      "must_not_claim": [
+        "Do not treat behavior selectors as output labels.",
+        "Do not count declaration and literal findings as separate user actions.",
+        "Do not accept lexical-only tests as behavior discriminators.",
+        "Do not recommend mutation testing before behavior-discriminator work."
+      ],
+      "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
+    },
+    {
+      "id": "config_policy_behavior_selector_observed",
+      "case_kind": "positive",
+      "evidence_class": "config_or_policy_constant",
+      "maturity_scope": "fixture_backed",
+      "description": "A validation or routing selector with a supported behavior discriminator becomes an already-observed no-action item.",
+      "fixture_reference": "RIPR-SPEC-0048 behavior selector with discriminator",
+      "sample": {
+        "file": "src/validation_selector.rs",
+        "declaration_line": 52,
+        "literal_line": 53,
+        "constant": "ROUTING_SELECTOR",
+        "sink": "validation_behavior",
+        "observer": "validation_behavior"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-config-policy-behavior-selector-observed",
+          "canonical_gap_id": "config_or_policy_constant::ROUTING_SELECTOR",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "ROUTING_SELECTOR",
+          "location": {
+            "file": "src/validation_selector.rs",
+            "line": 52
+          },
+          "seam_kind": "config_policy_constant",
+          "grip_class": "strongly_gripped",
+          "headline_eligible": false,
+          "evidence_class": "config_or_policy_constant",
+          "gap_state": "already_observed",
+          "actionability": "already_observed",
+          "why": "Changed validation selector reaches observable behavior and an existing behavior discriminator covers it.",
+          "recommended_repair": "No new RIPR action.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/validation_selector.rs",
+              "line": 52,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/validation_selector.rs",
+              "line": 53,
+              "kind": "exposed"
+            }
+          ],
+          "config_policy": {
+            "constant": "ROUTING_SELECTOR",
+            "role": "behavior_selector",
+            "source_kind": "const_decl",
+            "visibility": "user_visible",
+            "observer": "validation_behavior",
+            "actionability": "already_observed",
+            "repair_kind": "no_action",
+            "target_test_type": "validation_behavior",
+            "suggested_assertion": "Existing validation behavior test already covers the selected behavior."
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "config_policy_observed",
+        "value": 1
+      },
+      "expected_claim": "A supported validation or routing discriminator keeps the behavior selector visible as already observed, not user repair work.",
+      "must_not_claim": [
+        "Do not emit an actionable behavior-discriminator gap when a supported behavior observer exists.",
+        "Do not hide the raw selector findings.",
+        "Do not let an unrelated validation test satisfy the selector."
+      ],
+      "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
+    },
+    {
       "id": "config_policy_schema_label_observed",
       "case_kind": "positive",
       "evidence_class": "config_or_policy_constant",
@@ -1008,7 +1479,7 @@
           "seam_id": "bench-config-policy-schema-observed",
           "canonical_gap_id": "config_or_policy_constant::SCHEMA_POLICY_FIELD",
           "canonical_gap_group_size": 2,
-          "canonical_gap_reason": "same_config_policy_constant",
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
           "owner": "SCHEMA_POLICY_FIELD",
           "location": {
             "file": "src/schema.rs",
@@ -1083,7 +1554,7 @@
           "seam_id": "bench-config-policy-cross-file-flow",
           "canonical_gap_id": "config_or_policy_constant::CONFIG_TABLE_LABEL",
           "canonical_gap_group_size": 2,
-          "canonical_gap_reason": "same_config_policy_constant",
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
           "owner": "CONFIG_TABLE_LABEL",
           "location": {
             "file": "src/config_labels.rs",
@@ -1163,7 +1634,7 @@
           "seam_id": "bench-config-policy-opaque-lookup",
           "canonical_gap_id": "config_or_policy_constant::OPAQUE_CONFIG_LABEL",
           "canonical_gap_group_size": 2,
-          "canonical_gap_reason": "same_config_policy_constant",
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
           "owner": "OPAQUE_CONFIG_LABEL",
           "location": {
             "file": "src/config_registry.rs",

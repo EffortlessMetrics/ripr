@@ -1,8 +1,11 @@
-use crate::run::run_output_owned;
+use super::write_parented_file;
+use crate::run::{capture_output_with_timeout, run_output_owned};
 use serde_json::{Map, Value, json};
 use std::env;
+use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 const DEFAULT_ROOT: &str = ".";
 const DEFAULT_BASE: &str = "origin/main";
@@ -10,6 +13,8 @@ const DEFAULT_HEAD: &str = "HEAD";
 const PR_EVIDENCE_JSON: &str = "target/ripr/pr/repo-exposure.json";
 const PR_EVIDENCE_MD: &str = "target/ripr/pr/repo-exposure.md";
 const PR_DIFF: &str = "target/ripr/pr/pr.diff";
+const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 120;
+const PR_EVIDENCE_TIMEOUT_ENV: &str = "RIPR_PR_EVIDENCE_TIMEOUT_SECS";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct PrEvidenceOptions {
@@ -84,12 +89,32 @@ fn print_help() {
 }
 
 fn write_pr_evidence(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
+    write_pr_evidence_with_runner(repo, options, run_ripr_check)
+}
+
+fn write_pr_evidence_with_runner(
+    repo: &Path,
+    options: &PrEvidenceOptions,
+    run_check: impl FnOnce(&Path, &PrEvidenceOptions) -> Result<String, String>,
+) -> Result<(), String> {
     verify_revision(repo, &options.base)?;
     verify_revision(repo, &options.head)?;
     let changed_files = changed_files(repo, options)?;
     write_diff(repo, options)?;
-    let check_json = run_ripr_check(repo, options)?;
-    write_pr_evidence_packet(repo, options, &changed_files, &check_json)
+    match run_check(repo, options) {
+        Ok(check_json) => {
+            match write_pr_evidence_packet(repo, options, &changed_files, &check_json) {
+                Ok(()) => Ok(()),
+                Err(err) => write_pr_evidence_error_packet(
+                    repo,
+                    options,
+                    &changed_files,
+                    &format!("RIPR check output could not be converted into PR evidence: {err}"),
+                ),
+            }
+        }
+        Err(err) => write_pr_evidence_error_packet(repo, options, &changed_files, &err),
+    }
 }
 
 #[cfg(test)]
@@ -119,18 +144,52 @@ fn write_pr_evidence_packet(
         .map_err(|err| format!("serialize PR evidence packet: {err}"))?;
     let markdown = render_pr_evidence_markdown(&packet);
 
-    let out_dir = repo.join("target").join("ripr").join("pr");
-    fs::create_dir_all(&out_dir)
-        .map_err(|err| format!("failed to create {}: {err}", out_dir.display()))?;
-    fs::write(repo.join(PR_EVIDENCE_JSON), format!("{json_text}\n"))
-        .map_err(|err| format!("failed to write {PR_EVIDENCE_JSON}: {err}"))?;
-    fs::write(repo.join(PR_EVIDENCE_MD), markdown)
-        .map_err(|err| format!("failed to write {PR_EVIDENCE_MD}: {err}"))?;
+    write_parented_file(
+        &repo.join(PR_EVIDENCE_JSON),
+        PR_EVIDENCE_JSON,
+        format!("{json_text}\n"),
+    )?;
+    write_parented_file(&repo.join(PR_EVIDENCE_MD), PR_EVIDENCE_MD, markdown)?;
 
     let violations = validate_packet_value(&packet, options, changed_files.len(), true);
     if !violations.is_empty() {
         return Err(format!(
             "generated PR evidence failed contract validation:\n{}",
+            violations
+                .iter()
+                .map(|violation| format!("- {violation}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ));
+    }
+
+    println!("Wrote {PR_EVIDENCE_JSON}");
+    println!("Wrote {PR_EVIDENCE_MD}");
+    Ok(())
+}
+
+fn write_pr_evidence_error_packet(
+    repo: &Path,
+    options: &PrEvidenceOptions,
+    changed_files: &[String],
+    error: &str,
+) -> Result<(), String> {
+    let packet = pr_evidence_error_packet(options, changed_files, error);
+    let json_text = serde_json::to_string_pretty(&packet)
+        .map_err(|err| format!("serialize PR evidence error packet: {err}"))?;
+    let markdown = render_pr_evidence_markdown(&packet);
+
+    write_parented_file(
+        &repo.join(PR_EVIDENCE_JSON),
+        PR_EVIDENCE_JSON,
+        format!("{json_text}\n"),
+    )?;
+    write_parented_file(&repo.join(PR_EVIDENCE_MD), PR_EVIDENCE_MD, markdown)?;
+
+    let violations = validate_packet_value(&packet, options, changed_files.len(), true);
+    if !violations.is_empty() {
+        return Err(format!(
+            "generated PR evidence error packet failed contract validation:\n{}",
             violations
                 .iter()
                 .map(|violation| format!("- {violation}"))
@@ -198,14 +257,9 @@ fn changed_files(repo: &Path, options: &PrEvidenceOptions) -> Result<Vec<String>
 
 fn write_diff(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
     let out = repo.join(PR_DIFF);
-    let Some(parent) = out.parent() else {
-        return Err(format!("{PR_DIFF} has no parent directory"));
-    };
-    fs::create_dir_all(parent)
-        .map_err(|err| format!("failed to create {PR_DIFF} parent: {err}"))?;
     let range = format!("{}...{}", options.base, options.head);
     let diff = run_git_output(repo, &["diff", "--binary", "--no-ext-diff", range.as_str()])?;
-    fs::write(&out, diff).map_err(|err| format!("failed to write {PR_DIFF}: {err}"))
+    write_parented_file(&out, PR_DIFF, diff)
 }
 
 fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, String> {
@@ -221,26 +275,125 @@ fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, St
         "--format".to_string(),
         "json".to_string(),
     ];
-    if let Ok(binary) = env::var("RIPR_BIN") {
-        if binary.trim().is_empty() {
-            return Err("RIPR_BIN is set but empty".to_string());
+    let binary = match env::var("RIPR_BIN") {
+        Ok(binary) => {
+            if binary.trim().is_empty() {
+                return Err("RIPR_BIN is set but empty".to_string());
+            }
+            binary
         }
-        return run_output_owned(binary.as_str(), &ripr_args);
-    }
+        Err(_) => {
+            let build_args = [
+                "build".to_string(),
+                "--manifest-path".to_string(),
+                repo.join("Cargo.toml").display().to_string(),
+                "-p".to_string(),
+                "ripr".to_string(),
+                "--quiet".to_string(),
+            ];
+            run_output_owned("cargo", &build_args)?;
+            built_ripr_binary_path(repo)?.display().to_string()
+        }
+    };
+    let timeout = Duration::from_secs(pr_evidence_timeout_secs()?);
+    run_ripr_check_binary(&binary, ripr_args, options, timeout)
+}
 
-    let mut cargo_args = ["run", "-p", "ripr", "--quiet", "--"]
-        .iter()
-        .map(|arg| (*arg).to_string())
-        .collect::<Vec<_>>();
-    cargo_args.splice(
-        1..1,
-        [
-            "--manifest-path".to_string(),
-            repo.join("Cargo.toml").display().to_string(),
-        ],
-    );
-    cargo_args.extend(ripr_args);
-    run_output_owned("cargo", &cargo_args)
+fn run_ripr_check_binary(
+    binary: &str,
+    ripr_args: Vec<String>,
+    options: &PrEvidenceOptions,
+    timeout: Duration,
+) -> Result<String, String> {
+    let output = capture_output_with_timeout(
+        binary,
+        &ripr_args,
+        &[],
+        timeout,
+        "ripr check for PR evidence",
+    )?;
+    if output.timed_out {
+        return Err(format!(
+            "ripr check for PR evidence timed out after {} seconds; retry command: {}",
+            timeout.as_secs(),
+            pr_evidence_retry_command(options)
+        ));
+    }
+    if output.status.is_some_and(|status| status.success()) {
+        Ok(output.stdout)
+    } else {
+        Err(format!(
+            "ripr check for PR evidence failed\nstdout:\n{}\nstderr:\n{}",
+            output.stdout.trim(),
+            output.stderr.trim()
+        ))
+    }
+}
+
+fn pr_evidence_timeout_secs() -> Result<u64, String> {
+    match env::var(PR_EVIDENCE_TIMEOUT_ENV) {
+        Ok(value) => parse_positive_timeout_secs(PR_EVIDENCE_TIMEOUT_ENV, &value),
+        Err(_) => Ok(DEFAULT_TOOL_TIMEOUT_SECS),
+    }
+}
+
+fn parse_positive_timeout_secs(name: &str, value: &str) -> Result<u64, String> {
+    let parsed = value
+        .trim()
+        .parse::<u64>()
+        .map_err(|err| format!("{name} must be a positive integer: {err}"))?;
+    if parsed > 0 {
+        Ok(parsed)
+    } else {
+        Err(format!("{name} must be a positive integer"))
+    }
+}
+
+fn pr_evidence_retry_command(options: &PrEvidenceOptions) -> String {
+    format!(
+        "cargo xtask ripr-pr --base {} --head {} --root {}",
+        options.base, options.head, options.root
+    )
+}
+
+fn ripr_exe_name() -> &'static str {
+    if cfg!(windows) { "ripr.exe" } else { "ripr" }
+}
+
+fn built_ripr_binary_path(repo: &Path) -> Result<PathBuf, String> {
+    let cwd = env::current_dir().map_err(|err| format!("resolve current directory: {err}"))?;
+    Ok(built_ripr_binary_path_from_target_dir(
+        repo,
+        &cwd,
+        env::var_os("CARGO_TARGET_DIR").as_deref(),
+    ))
+}
+
+fn built_ripr_binary_path_from_target_dir(
+    repo: &Path,
+    cwd: &Path,
+    target_dir: Option<&OsStr>,
+) -> PathBuf {
+    cargo_target_dir(repo, cwd, target_dir)
+        .join("debug")
+        .join(ripr_exe_name())
+}
+
+fn cargo_target_dir(repo: &Path, cwd: &Path, target_dir: Option<&OsStr>) -> PathBuf {
+    match target_dir {
+        Some(value) if !value.is_empty() => target_dir_from_value(repo, cwd, &PathBuf::from(value)),
+        _ => repo.join("target"),
+    }
+}
+
+fn target_dir_from_value(repo: &Path, cwd: &Path, value: &Path) -> PathBuf {
+    if value.is_absolute() {
+        value.to_path_buf()
+    } else if cwd.is_absolute() {
+        cwd.join(value)
+    } else {
+        repo.join(value)
+    }
 }
 
 fn command_root_arg(repo: &Path, root: &str) -> String {
@@ -336,6 +489,82 @@ fn pr_evidence_packet(
             "Public badge state must not be derived from this diff-scoped packet."
         ]
     })
+}
+
+fn pr_evidence_error_packet(
+    options: &PrEvidenceOptions,
+    changed_files: &[String],
+    error: &str,
+) -> Value {
+    json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "kind": "pr_evidence",
+        "scope": "diff",
+        "status": "error",
+        "root": options.root.as_str(),
+        "base": options.base.as_str(),
+        "head": options.head.as_str(),
+        "summary": {
+            "changed_files": changed_files.len(),
+            "comments": 0,
+            "summary_only": 0,
+            "suppressed": 0,
+            "weakly_exposed": 0,
+            "reachable_unrevealed": 0,
+            "no_static_path": 0,
+            "severe_gaps": 0,
+            "requires_targeted_mutation": false,
+            "ripr_severe_gap": false,
+            "routing_reason": null
+        },
+        "artifacts": [
+            {
+                "label": "PR evidence JSON",
+                "path": PR_EVIDENCE_JSON,
+                "kind": "json",
+                "scope": "diff",
+                "available": true,
+                "required": true
+            },
+            {
+                "label": "PR evidence Markdown",
+                "path": PR_EVIDENCE_MD,
+                "kind": "markdown",
+                "scope": "diff",
+                "available": true
+            },
+            {
+                "label": "Analyzed PR diff",
+                "path": PR_DIFF,
+                "kind": "other",
+                "scope": "diff",
+                "available": true
+            }
+        ],
+        "warnings": [
+            {
+                "kind": "tool_error",
+                "message": first_line(error),
+                "path": null
+            }
+        ],
+        "advisory_limits": [
+            "RIPR evidence is static and advisory by default.",
+            "This packet does not post review comments or execute mutation.",
+            "Public badge state must not be derived from this diff-scoped packet.",
+            "PR evidence generation did not complete, so this packet must not be treated as proof of no gaps."
+        ]
+    })
+}
+
+fn first_line(text: &str) -> String {
+    text.lines()
+        .next()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .unwrap_or("RIPR PR evidence generation did not complete.")
+        .to_string()
 }
 
 fn count_field(summary: Option<&Map<String, Value>>, key: &str) -> usize {
@@ -523,6 +752,23 @@ fn render_pr_evidence_markdown(packet: &Value) -> String {
         }
     }
 
+    if let Some(warnings) = packet.get("warnings").and_then(Value::as_array)
+        && !warnings.is_empty()
+    {
+        out.push_str("\n## Warnings\n\n");
+        for warning in warnings {
+            out.push_str(&format!(
+                "- {}: {}\n",
+                md_escape(string_field(warning, "kind", "warning")),
+                md_escape(string_field(
+                    warning,
+                    "message",
+                    "PR evidence generation warning"
+                ))
+            ));
+        }
+    }
+
     out.push_str(
         "\n_This packet is diff-scoped and advisory. Do not copy it into public badge state._\n",
     );
@@ -615,6 +861,48 @@ mod tests {
     }
 
     #[test]
+    fn error_packet_is_contract_valid_and_actionable() {
+        let changed = vec!["src/lib.rs".to_string()];
+        let packet = pr_evidence_error_packet(
+            &options(),
+            &changed,
+            "ripr check for PR evidence timed out after 120 seconds; retry command: cargo xtask ripr-pr --base origin/main --head HEAD --root .",
+        );
+        assert_eq!(packet["status"], "error");
+        assert_eq!(packet["summary"]["changed_files"], 1);
+        assert_eq!(packet["summary"]["severe_gaps"], 0);
+        assert_eq!(packet["summary"]["ripr_severe_gap"], false);
+        assert_eq!(packet["warnings"][0]["kind"], "tool_error");
+        assert!(
+            packet["warnings"][0]["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("retry command")
+        );
+        let violations = validate_packet_value(&packet, &options(), 1, true);
+        assert_eq!(violations, Vec::<String>::new());
+    }
+
+    #[test]
+    fn timeout_parser_rejects_non_positive_and_invalid_values() -> Result<(), String> {
+        assert_eq!(
+            parse_positive_timeout_secs("RIPR_TEST_TIMEOUT", "120"),
+            Ok(120)
+        );
+        assert_eq!(
+            parse_positive_timeout_secs("RIPR_TEST_TIMEOUT", "0"),
+            Err("RIPR_TEST_TIMEOUT must be a positive integer".to_string())
+        );
+        let err = match parse_positive_timeout_secs("RIPR_TEST_TIMEOUT", "abc") {
+            Ok(value) => return Err(format!("invalid timeout should fail, got {value}")),
+            Err(err) => err,
+        };
+        assert!(err.contains("RIPR_TEST_TIMEOUT"));
+        assert!(err.contains("positive integer"));
+        Ok(())
+    }
+
+    #[test]
     fn validation_rejects_changed_file_drift() {
         let packet = pr_evidence_packet(
             &options(),
@@ -671,6 +959,115 @@ mod tests {
         assert!(markdown.contains("## RIPR"));
         assert!(markdown.contains("## Targeted Mutation"));
         assert!(markdown.contains("target/ripr/pr/repo-exposure.json"));
+    }
+
+    #[test]
+    fn markdown_renders_error_warnings() {
+        let packet = pr_evidence_error_packet(
+            &options(),
+            &["src/lib.rs".to_string()],
+            "ripr check for PR evidence failed; retry command: cargo xtask ripr-pr --base origin/main --head HEAD --root .",
+        );
+        let markdown = render_pr_evidence_markdown(&packet);
+        assert!(markdown.contains("## Warnings"));
+        assert!(markdown.contains("tool_error"));
+        assert!(markdown.contains("retry command"));
+    }
+
+    #[test]
+    fn write_pr_evidence_writes_error_packet_when_check_fails() -> Result<(), String> {
+        let repo = temp_repo("ripr-pr-error-packet")?;
+        run_git(&repo, &["init"])?;
+        run_git(&repo, &["config", "user.email", "ripr-pr@example.invalid"])?;
+        run_git(&repo, &["config", "user.name", "RIPR PR Test"])?;
+        write_repo_file(&repo, "README.md", "# sample\n")?;
+        run_git(&repo, &["add", "."])?;
+        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "initial"])?;
+        write_repo_file(&repo, "src/lib.rs", "pub fn value() -> u8 { 1 }\n")?;
+        run_git(&repo, &["add", "."])?;
+        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "add rust"])?;
+
+        let options = PrEvidenceOptions {
+            base: "HEAD~1".to_string(),
+            head: "HEAD".to_string(),
+            ..options()
+        };
+        write_pr_evidence_with_runner(&repo, &options, |_repo, _options| {
+            Err("ripr check for PR evidence timed out after 120 seconds; retry command: cargo xtask ripr-pr --base HEAD~1 --head HEAD --root .".to_string())
+        })?;
+        check_pr_evidence(&repo, &options)?;
+
+        let packet_text = fs::read_to_string(repo.join(PR_EVIDENCE_JSON))
+            .map_err(|err| format!("read packet: {err}"))?;
+        let packet: Value =
+            serde_json::from_str(&packet_text).map_err(|err| format!("parse packet: {err}"))?;
+        assert_eq!(packet["status"], "error");
+        assert_eq!(packet["warnings"][0]["kind"], "tool_error");
+        assert!(repo.join(PR_DIFF).exists());
+        assert!(repo.join(PR_EVIDENCE_MD).exists());
+
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn run_ripr_check_uses_fake_binary_success_output() -> Result<(), String> {
+        let repo = temp_repo("ripr-pr-fake-success")?;
+        let fake = fake_ripr_binary(
+            &repo,
+            "fake-ripr-success",
+            r#"{"summary":{"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0}}"#,
+            "",
+            0,
+            None,
+        )?;
+        let result = run_ripr_check_binary(
+            &fake.display().to_string(),
+            fake_ripr_args(),
+            &options(),
+            Duration::from_secs(10),
+        )?;
+        assert!(result.contains(r#""weakly_exposed":1"#));
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn run_ripr_check_reports_fake_binary_failure() -> Result<(), String> {
+        let repo = temp_repo("ripr-pr-fake-failure")?;
+        let fake = fake_ripr_binary(&repo, "fake-ripr-failure", "", "bad diff", 7, None)?;
+        let err = match run_ripr_check_binary(
+            &fake.display().to_string(),
+            fake_ripr_args(),
+            &options(),
+            Duration::from_secs(10),
+        ) {
+            Ok(output) => return Err(format!("fake failure should fail, got {output}")),
+            Err(err) => err,
+        };
+        assert!(err.contains("ripr check for PR evidence failed"));
+        assert!(err.contains("bad diff"));
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn run_ripr_check_reports_fake_binary_timeout() -> Result<(), String> {
+        let repo = temp_repo("ripr-pr-fake-timeout")?;
+        let fake = fake_ripr_binary(&repo, "fake-ripr-timeout", "", "", 0, Some(5))?;
+        let err = match run_ripr_check_binary(
+            &fake.display().to_string(),
+            fake_ripr_args(),
+            &options(),
+            Duration::from_secs(1),
+        ) {
+            Ok(output) => return Err(format!("fake timeout should fail, got {output}")),
+            Err(err) => err,
+        };
+        assert!(err.contains("timed out after 1 seconds"));
+        assert!(err.contains("retry command: cargo xtask ripr-pr"));
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
     }
 
     #[test]
@@ -741,5 +1138,107 @@ mod tests {
 
     fn run_git(repo: &Path, args: &[&str]) -> Result<(), String> {
         run_git_output(repo, args).map(|_| ())
+    }
+
+    fn fake_ripr_args() -> Vec<String> {
+        vec![
+            "check".to_string(),
+            "--root".to_string(),
+            ".".to_string(),
+            "--diff".to_string(),
+            "target/ripr/pr/pr.diff".to_string(),
+            "--format".to_string(),
+            "json".to_string(),
+        ]
+    }
+
+    fn fake_ripr_binary(
+        repo: &Path,
+        name: &str,
+        stdout: &str,
+        stderr: &str,
+        exit_code: i32,
+        sleep_seconds: Option<u64>,
+    ) -> Result<PathBuf, String> {
+        let path = repo.join(fake_ripr_name(name));
+        #[cfg(windows)]
+        {
+            let mut script = String::from("@echo off\r\n");
+            if let Some(seconds) = sleep_seconds {
+                script.push_str(&format!(
+                    "powershell -NoProfile -Command Start-Sleep -Seconds {seconds}\r\n"
+                ));
+            }
+            if !stdout.is_empty() {
+                script.push_str(&format!("echo {}\r\n", stdout));
+            }
+            if !stderr.is_empty() {
+                script.push_str(&format!("echo {} 1>&2\r\n", stderr));
+            }
+            script.push_str(&format!("exit /b {exit_code}\r\n"));
+            fs::write(&path, script).map_err(|err| format!("write {}: {err}", path.display()))?;
+        }
+        #[cfg(not(windows))]
+        {
+            let temp_path = path.with_extension("tmp");
+            let mut script = String::from("#!/bin/sh\n");
+            if let Some(seconds) = sleep_seconds {
+                script.push_str(&format!("sleep {seconds}\n"));
+            }
+            if !stdout.is_empty() {
+                script.push_str(&format!("printf '%s\\n' '{}'\n", sh_single_quote(stdout)));
+            }
+            if !stderr.is_empty() {
+                script.push_str(&format!(
+                    "printf '%s\\n' '{}' >&2\n",
+                    sh_single_quote(stderr)
+                ));
+            }
+            script.push_str(&format!("exit {exit_code}\n"));
+            fs::write(&temp_path, script)
+                .map_err(|err| format!("write {}: {err}", temp_path.display()))?;
+            let mut permissions = fs::metadata(&temp_path)
+                .map_err(|err| format!("metadata {}: {err}", temp_path.display()))?
+                .permissions();
+            use std::os::unix::fs::PermissionsExt;
+            permissions.set_mode(0o755);
+            fs::set_permissions(&temp_path, permissions)
+                .map_err(|err| format!("chmod {}: {err}", temp_path.display()))?;
+            fs::rename(&temp_path, &path).map_err(|err| {
+                format!(
+                    "rename {} to {}: {err}",
+                    temp_path.display(),
+                    path.display()
+                )
+            })?;
+        }
+        Ok(path)
+    }
+
+    fn fake_ripr_name(name: &str) -> String {
+        if cfg!(windows) {
+            format!("{name}.cmd")
+        } else {
+            name.to_string()
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn sh_single_quote(value: &str) -> String {
+        value.replace('\'', "'\\''")
+    }
+
+    #[test]
+    fn built_binary_path_honors_absolute_target_dir() -> Result<(), String> {
+        let repo = temp_repo("ripr-pr-target-dir")?;
+        let cwd = repo.join("subdir");
+        let target = repo.join("custom-target");
+        let expected = target.join("debug").join(ripr_exe_name());
+        assert_eq!(
+            built_ripr_binary_path_from_target_dir(&repo, &cwd, Some(target.as_os_str())),
+            expected
+        );
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
     }
 }
