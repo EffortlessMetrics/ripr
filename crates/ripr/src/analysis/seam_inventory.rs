@@ -826,6 +826,47 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn seam_inventory_maps_rich_production_source_to_supported_seam_kinds() -> Result<(), String> {
+        let path = PathBuf::from("src/quotes.rs");
+        let source = r#"
+pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
+    if amount >= 100 {
+        service.publish(
+            Event::Discounted,
+        );
+        return Ok(Quote {
+            total: 90,
+        });
+    }
+
+    match amount {
+        0 => Err(Error::Zero),
+        _ => Ok(Quote { total: amount }),
+    }
+}
+"#;
+        let index = index_from_files(&[(path.clone(), source)])?;
+        let seams = inventory_seams_from_index(&[path], &index);
+        let kinds = seams.iter().map(|seam| seam.kind()).collect::<Vec<_>>();
+
+        for required in [
+            SeamKind::PredicateBoundary,
+            SeamKind::ReturnValue,
+            SeamKind::ErrorVariant,
+            SeamKind::FieldConstruction,
+            SeamKind::SideEffect,
+            SeamKind::MatchArm,
+            SeamKind::CallPresence,
+        ] {
+            assert!(
+                kinds.contains(&required),
+                "expected SeamKind::{required:?} to be inventoried, got {kinds:?}"
+            );
+        }
+        Ok(())
+    }
+
     // -- Cache wiring integration tests -------------------------------
     //
     // These exercise the `inventory_classified_seams_at` -> cache load
