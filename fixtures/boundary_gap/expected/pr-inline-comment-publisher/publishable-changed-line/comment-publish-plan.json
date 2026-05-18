@@ -46,7 +46,7 @@
         "side": "RIGHT",
         "mode": "exact_seam_line"
       },
-      "body": "RIPR advisory: static evidence says this seam misses `amount == discount_threshold`. Add one focused boundary assertion and verify with `ripr agent verify`.",
+      "body": "### ripr gap: missing boundary assertion\n\nChanged behavior:\n`amount == discount_threshold`\n\nWhy this matters:\nA related test reaches this code, but no equality-boundary assertion was found.\n\nRepair route:\nadd boundary assertion\n\nRepair:\nAdd one focused boundary assertion for `amount == discount_threshold`.\n\nVerify:\n`ripr agent verify`",
       "existing_comment_id": null,
       "skip_reason": null,
       "blocked_reason": null

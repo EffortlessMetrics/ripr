@@ -99,8 +99,9 @@ Each `seams[].evidence_record` must include:
   reference.
 - `canonical_item`: additive finding-alignment projection with canonical item
   identity, evidence class, `gap_state`, class-scoped actionability, why,
-  recommended repair, related test, verification command, confidence basis, and
-  raw group size.
+  recommended repair, structured repair route when actionable, related test,
+  verification command, confidence basis, raw group size, `primary_anchor`, and
+  `raw_spans`.
 - `owner`: owner symbol copied from the seam.
 - `location.file` and `location.line`: source locator fields.
 - `seam_kind`: seam kind copied from the seam.
@@ -348,8 +349,29 @@ RIPR-SPEC-0045:
     "gap_state": "actionable",
     "actionability": "extend_related_test",
     "group_reason": "same owner, seam kind, flow sink, missing discriminator, and assertion shape",
+    "primary_anchor": {
+      "file": "src/pricing.rs",
+      "line": 88,
+      "kind": "weakly_gripped",
+      "source_id": "f3c9e4d21a0b7c88",
+      "reason": "canonical_group_primary_raw_finding"
+    },
+    "raw_spans": [
+      {
+        "file": "src/pricing.rs",
+        "start_line": 88,
+        "end_line": 88,
+        "kind": "weakly_gripped",
+        "source_id": "f3c9e4d21a0b7c88"
+      }
+    ],
     "why": "extend the nearest related test with the missing discriminator",
     "recommended_repair": "extend the nearest related test with the missing discriminator",
+    "repair_route": {
+      "repair_kind": "add_boundary_assertion",
+      "target_test_type": "boundary_discriminator",
+      "suggested_assertion": "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"
+    },
     "related_test": {
       "name": "below_threshold_has_no_discount",
       "file": "tests/pricing_tests.rs",
@@ -370,6 +392,27 @@ The existing `actionability` object remains the backward-compatible advisory
 class and signal set. `canonical_item.actionability` is the class-scoped
 alignment label used by downstream surfaces that need one canonical item rather
 than one action per raw line signal.
+
+`canonical_item.primary_anchor` is the preferred placement hint when a
+downstream surface needs one inline location. It is `null` only when RIPR
+cannot safely name a placement. `canonical_item.raw_spans[]` preserves every
+contributing raw source span as supporting evidence; consumers must not treat
+those spans as separate user-facing actions.
+
+When `canonical_item.gap_state` is `actionable`, `canonical_item.repair_route`
+must be a structured object with:
+
+- `repair_kind`: class-scoped repair kind, for example
+  `add_boundary_assertion`.
+- `target_test_type`: target observer or assertion type, for example
+  `boundary_discriminator`.
+- `suggested_assertion`: bounded assertion or observer shape derived from
+  existing static evidence.
+
+Non-actionable, already-observed, internal-only, static-limitation, and unknown
+items keep `canonical_item.repair_route: null`. A repair route is advisory test
+intent only; it must not edit source, generate tests, run mutation testing,
+change policy, or change gate authority.
 
 ## Test Mapping
 
