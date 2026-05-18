@@ -1,3 +1,4 @@
+use std::fs;
 use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
 use std::process::{Child, Command, ExitStatus, Stdio};
@@ -16,6 +17,14 @@ pub(crate) struct TimedOutput {
     pub(crate) stderr: String,
     pub(crate) duration: Duration,
     pub(crate) timed_out: bool,
+}
+
+pub(crate) struct TimedFileOutput {
+    pub(crate) status: Option<ExitStatus>,
+    pub(crate) stderr: String,
+    pub(crate) duration: Duration,
+    pub(crate) timed_out: bool,
+    pub(crate) stdout_bytes: usize,
 }
 
 pub(crate) fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
@@ -239,11 +248,92 @@ pub(crate) fn capture_output_with_timeout(
     }
 }
 
-fn timeout_was_enforced(termination_requested: bool, status: &ExitStatus) -> bool {
-    termination_requested && !status.success()
+pub(crate) fn capture_stdout_to_file_with_timeout(
+    program: &str,
+    args: &[String],
+    envs: &[(&str, &str)],
+    stdout_path: &Path,
+    timeout: Duration,
+    error_context: &str,
+) -> Result<TimedFileOutput, String> {
+    let started = Instant::now();
+    let stdout_file = fs::File::create(stdout_path).map_err(|err| {
+        format!(
+            "failed to create stdout file {} for {error_context}: {err}",
+            stdout_path.display()
+        )
+    })?;
+    let mut command = Command::new(program);
+    command.args(args).stdout(Stdio::from(stdout_file));
+    for (name, value) in envs {
+        command.env(name, value);
+    }
+    let mut child = command
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|err| format!("failed to run {error_context}: {err}"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| format!("failed to capture stderr for {error_context}"))?;
+    let echo_latency_trace = envs
+        .iter()
+        .any(|(name, _)| *name == "RIPR_REPO_EXPOSURE_LATENCY_TRACE");
+    let stderr_reader = thread::spawn(move || {
+        if echo_latency_trace {
+            read_stream_with_latency_progress(stderr)
+        } else {
+            read_stream(stderr)
+        }
+    });
+
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|err| format!("failed to poll {error_context}: {err}"))?
+        {
+            let stderr = join_stream_reader(stderr_reader, "stderr", error_context)?;
+            return Ok(TimedFileOutput {
+                status: Some(status),
+                stderr,
+                duration: started.elapsed(),
+                timed_out: false,
+                stdout_bytes: stdout_file_len(stdout_path),
+            });
+        }
+
+        if started.elapsed() >= timeout {
+            let termination_requested = terminate_after_timeout(&mut child, error_context)?;
+            let status = child
+                .wait()
+                .map_err(|err| format!("failed to finish timed-out {error_context}: {err}"))?;
+            let timed_out = timeout_was_enforced(termination_requested, &status);
+            let stderr = join_stream_reader(stderr_reader, "stderr", error_context)?;
+            return Ok(TimedFileOutput {
+                status: Some(status),
+                stderr,
+                duration: started.elapsed(),
+                timed_out,
+                stdout_bytes: stdout_file_len(stdout_path),
+            });
+        }
+
+        thread::sleep(Duration::from_millis(100));
+    }
+}
+
+fn timeout_was_enforced(termination_requested: bool, _status: &ExitStatus) -> bool {
+    termination_requested
 }
 
 fn terminate_after_timeout(child: &mut Child, error_context: &str) -> Result<bool, String> {
+    if child
+        .try_wait()
+        .map_err(|err| format!("failed to poll {error_context}: {err}"))?
+        .is_some()
+    {
+        return Ok(false);
+    }
     match child.kill() {
         Ok(()) => Ok(true),
         Err(kill_err) => {
@@ -260,6 +350,13 @@ fn terminate_after_timeout(child: &mut Child, error_context: &str) -> Result<boo
             }
         }
     }
+}
+
+fn stdout_file_len(path: &Path) -> usize {
+    fs::metadata(path)
+        .ok()
+        .and_then(|metadata| usize::try_from(metadata.len()).ok())
+        .unwrap_or(0)
 }
 
 fn read_stream<T: Read>(mut stream: T) -> Result<String, String> {
@@ -306,10 +403,12 @@ fn join_stream_reader(
 #[cfg(test)]
 mod tests {
     use super::{
-        CapturedOutput, capture_output, capture_output_with_timeout, command_success_owned,
+        CapturedOutput, capture_output, capture_output_with_timeout,
+        capture_stdout_to_file_with_timeout, command_success_owned,
         read_stream_with_latency_progress, run, run_in_dir, run_output, run_output_optional,
         run_output_owned, run_owned, terminate_after_timeout, timeout_was_enforced,
     };
+    use std::fs;
     use std::io::Cursor;
     use std::path::Path;
     use std::process::{Command, Stdio};
@@ -488,6 +587,45 @@ mod tests {
     }
 
     #[test]
+    fn capture_stdout_to_file_with_timeout_streams_stdout_to_file() -> Result<(), String> {
+        let path = std::env::temp_dir().join(format!(
+            "ripr-xtask-stdout-file-{}-{}.txt",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0)
+        ));
+        let args = vec!["--version".to_string()];
+        let output = capture_stdout_to_file_with_timeout(
+            "rustc",
+            &args,
+            &[],
+            &path,
+            Duration::from_secs(30),
+            "rustc version",
+        )?;
+
+        if output.timed_out {
+            return Err("rustc --version should not time out".to_string());
+        }
+        if !output.status.is_some_and(|status| status.success()) {
+            return Err("rustc --version should succeed".to_string());
+        }
+        if output.stdout_bytes == 0 {
+            return Err("streamed stdout should report bytes".to_string());
+        }
+        let captured = fs::read_to_string(&path)
+            .map_err(|err| format!("failed to read streamed stdout file: {err}"))?;
+        fs::remove_file(&path)
+            .map_err(|err| format!("failed to remove streamed stdout file: {err}"))?;
+        if !captured.contains("rustc") {
+            return Err(format!("captured stdout should name rustc: {captured}"));
+        }
+        Ok(())
+    }
+
+    #[test]
     fn latency_progress_reader_preserves_captured_stderr() -> Result<(), String> {
         let stderr = "first\nripr_repo_exposure_latency phase=evidence_for_seams status=start duration_ms=0\nlast\n";
         let captured = read_stream_with_latency_progress(Cursor::new(stderr.as_bytes()))?;
@@ -527,13 +665,13 @@ mod tests {
     }
 
     #[test]
-    fn timeout_was_enforced_requires_termination_and_unsuccessful_status() -> Result<(), String> {
+    fn timeout_was_enforced_reports_requested_termination() -> Result<(), String> {
         let success = capture_output("rustc", &["--version"], "rustc version")?.status;
         let failure =
             capture_output("rustc", &["--ripr-invalid-test-flag"], "rustc invalid flag")?.status;
 
-        if timeout_was_enforced(true, &success) {
-            return Err("successful status should not be treated as enforced timeout".to_string());
+        if !timeout_was_enforced(true, &success) {
+            return Err("requested termination should be reported as timeout".to_string());
         }
         if timeout_was_enforced(false, &failure) {
             return Err("failure without termination should not be a timeout".to_string());

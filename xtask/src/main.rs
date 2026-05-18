@@ -34,8 +34,9 @@ use reports::{
 #[cfg(test)]
 use reports::{lsp_cockpit_report, targeted_test_outcome};
 use run::{
-    TimedOutput, capture_output, capture_output_with_timeout, command_success_owned, run,
-    run_in_dir, run_in_dir_with_envs, run_output, run_output_optional, run_output_owned, run_owned,
+    TimedFileOutput, TimedOutput, capture_output, capture_output_with_timeout,
+    capture_stdout_to_file_with_timeout, command_success_owned, run, run_in_dir,
+    run_in_dir_with_envs, run_output, run_output_optional, run_output_owned, run_owned,
 };
 
 #[derive(Debug)]
@@ -14151,12 +14152,10 @@ pub(crate) fn repo_exposure_report_impl() -> Result<(), String> {
 /// calibration report already exists, include it only as calibration
 /// availability context.
 pub(crate) fn evidence_health_report_impl() -> Result<(), String> {
+    run("cargo", &["build", "-p", "ripr"])?;
+    let binary = ripr_debug_binary();
+    let binary_text = binary.display().to_string();
     let mut args = vec![
-        "run".to_string(),
-        "-p".to_string(),
-        "ripr".to_string(),
-        "--quiet".to_string(),
-        "--".to_string(),
         "evidence-health".to_string(),
         "--root".to_string(),
         ".".to_string(),
@@ -14170,7 +14169,7 @@ pub(crate) fn evidence_health_report_impl() -> Result<(), String> {
         args.push("--mutation-calibration".to_string());
         args.push(calibration.display().to_string());
     }
-    run_owned("cargo", &args)
+    run_owned(&binary_text, &args)
 }
 
 const LANE1_EVIDENCE_AUDIT_SCHEMA_VERSION: &str = "0.1";
@@ -14431,14 +14430,16 @@ fn lane1_evidence_audit_timeout_ms() -> u64 {
 fn lane1_evidence_audit_run_repo_exposure(
     binary: &Path,
     args: &[String],
+    path: &Path,
     timeout: Duration,
-) -> Result<TimedOutput, String> {
+) -> Result<TimedFileOutput, String> {
     let binary_text = binary.display().to_string();
     let envs = [(REPO_EXPOSURE_LATENCY_TRACE_ENV, "1")];
-    capture_output_with_timeout(
+    capture_stdout_to_file_with_timeout(
         &binary_text,
         args,
         &envs,
+        path,
         timeout,
         "Lane 1 evidence audit repo exposure",
     )
@@ -14451,10 +14452,16 @@ fn write_lane1_evidence_audit_repo_exposure_with_runner<F>(
     mut run_repo_exposure: F,
 ) -> Result<Lane1EvidenceAuditRepoExposureGeneration, String>
 where
-    F: FnMut(&Path, &[String], Duration) -> Result<TimedOutput, String>,
+    F: FnMut(&Path, &[String], &Path, Duration) -> Result<TimedFileOutput, String>,
 {
     let args = lane1_evidence_audit_repo_exposure_args();
-    let output = run_repo_exposure(binary, &args, timeout)?;
+    let output = match run_repo_exposure(binary, &args, path, timeout) {
+        Ok(output) => output,
+        Err(err) => {
+            let _ = fs::remove_file(path);
+            return Err(err);
+        }
+    };
     if output.timed_out {
         let _ = fs::remove_file(path);
         return Err(lane1_evidence_audit_timeout_error(
@@ -14462,8 +14469,6 @@ where
         ));
     }
 
-    fs::write(path, &output.stdout)
-        .map_err(|err| format!("failed to write {}: {err}", path.display()))?;
     let diagnostics =
         lane1_evidence_audit_repo_exposure_generation(binary, &args, timeout, &output);
     match output.status {
@@ -14506,7 +14511,7 @@ fn lane1_evidence_audit_repo_exposure_generation(
     binary: &Path,
     args: &[String],
     timeout: Duration,
-    output: &TimedOutput,
+    output: &TimedFileOutput,
 ) -> Lane1EvidenceAuditRepoExposureGeneration {
     let trace = repo_exposure_latency_trace(&output.stderr);
     let trace_tail_start = trace
@@ -14524,7 +14529,7 @@ fn lane1_evidence_audit_repo_exposure_generation(
         },
         duration_ms: output.duration.as_millis(),
         exit_code: output.status.and_then(|status| status.code()),
-        stdout_bytes: output.stdout.len(),
+        stdout_bytes: output.stdout_bytes,
         stderr_bytes: output.stderr.len(),
         latency_trace_events_total: trace.len(),
         latency_trace_tail: trace[trace_tail_start..].to_vec(),
@@ -14535,7 +14540,7 @@ fn lane1_evidence_audit_timeout_error(
     binary: &Path,
     args: &[String],
     timeout: Duration,
-    output: &TimedOutput,
+    output: &TimedFileOutput,
 ) -> String {
     let timeout_ms = timeout.as_millis();
     let mut message = format!(
@@ -37423,7 +37428,8 @@ mod tests {
     use super::XtaskCommand;
     use super::dispatch;
     use super::run::{
-        TimedOutput, capture_output, run, run_output, run_output_optional, run_output_owned,
+        TimedFileOutput, TimedOutput, capture_output, run, run_output, run_output_optional,
+        run_output_owned,
     };
     use super::{
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
@@ -50896,16 +50902,17 @@ covered_by = ["cargo xtask check-file-policy"]
             &output_path,
             Path::new("ripr"),
             timeout,
-            |binary, args, timeout_seen| {
+            |binary, args, output_path_seen, timeout_seen| {
                 assert_eq!(binary, Path::new("ripr"));
                 assert_eq!(timeout_seen, timeout);
                 assert_eq!(args, lane1_evidence_audit_repo_exposure_args().as_slice());
-                Ok(TimedOutput {
+                assert_eq!(output_path_seen, output_path.as_path());
+                Ok(TimedFileOutput {
                     status: None,
-                    stdout: "{\"schema_version\":\"0.3\"".to_string(),
                     stderr: "ripr_repo_exposure_latency phase=evidence_for_seams_progress status=processed_500_of_37361 duration_ms=9983\n".to_string(),
                     duration: timeout,
                     timed_out: true,
+                    stdout_bytes: 0,
                 })
             },
         )
@@ -50942,16 +50949,18 @@ covered_by = ["cargo xtask check-file-policy"]
             &output_path,
             Path::new("ripr"),
             timeout,
-            |binary, args, timeout_seen| {
+            |binary, args, output_path_seen, timeout_seen| {
                 assert_eq!(binary, Path::new("ripr"));
                 assert_eq!(timeout_seen, timeout);
                 assert_eq!(args, lane1_evidence_audit_repo_exposure_args().as_slice());
-                Ok(TimedOutput {
+                assert_eq!(output_path_seen, output_path.as_path());
+                write(output_path_seen, stdout);
+                Ok(TimedFileOutput {
                     status: Some(success_exit_status()),
-                    stdout: stdout.to_string(),
                     stderr: "ripr_repo_exposure_latency phase=evidence_for_seams status=ok duration_ms=42\n".to_string(),
                     duration: Duration::from_millis(1),
                     timed_out: false,
+                    stdout_bytes: stdout.len(),
                 })
             },
         )?;
@@ -50977,6 +50986,29 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn lane1_evidence_audit_repo_exposure_generation_removes_stale_file_on_runner_error() {
+        let root = temp_dir("lane1-repo-exposure-runner-error");
+        let output_path = root.join("repo-exposure.json");
+        write(&output_path, "stale");
+
+        let err = write_lane1_evidence_audit_repo_exposure_with_runner(
+            &output_path,
+            Path::new("ripr"),
+            Duration::from_millis(50),
+            |_binary, _args, _output_path_seen, _timeout_seen| {
+                Err("failed to spawn repo exposure".to_string())
+            },
+        )
+        .expect_err("runner error should fail repo exposure generation");
+
+        assert!(err.contains("failed to spawn repo exposure"), "{err}");
+        assert!(
+            !output_path.exists(),
+            "runner errors should not leave stale repo exposure input"
+        );
+    }
+
+    #[test]
     fn lane1_evidence_audit_repo_exposure_generation_accepts_complete_json_from_nonzero_status()
     -> Result<(), String> {
         let root = temp_dir("lane1-repo-exposure-nonzero-complete");
@@ -50987,13 +51019,14 @@ covered_by = ["cargo xtask check-file-policy"]
             &output_path,
             Path::new("ripr"),
             Duration::from_millis(50),
-            |_binary, _args, _timeout_seen| {
-                Ok(TimedOutput {
+            |_binary, _args, output_path_seen, _timeout_seen| {
+                write(output_path_seen, stdout);
+                Ok(TimedFileOutput {
                     status: Some(failure_exit_status()),
-                    stdout: stdout.to_string(),
                     stderr: "nonfatal stderr after full JSON".to_string(),
                     duration: Duration::from_millis(1),
                     timed_out: false,
+                    stdout_bytes: stdout.len(),
                 })
             },
         )?;
@@ -51015,13 +51048,15 @@ covered_by = ["cargo xtask check-file-policy"]
             &output_path,
             Path::new("ripr"),
             Duration::from_millis(50),
-            |_binary, _args, _timeout_seen| {
-                Ok(TimedOutput {
+            |_binary, _args, output_path_seen, _timeout_seen| {
+                let partial = "{\n  \"schema_version\": \"0.3\",\n  \"seams\": [\n";
+                write(output_path_seen, partial);
+                Ok(TimedFileOutput {
                     status: Some(failure_exit_status()),
-                    stdout: "{\n  \"schema_version\": \"0.3\",\n  \"seams\": [\n".to_string(),
                     stderr: "repo exposure failed".to_string(),
                     duration: Duration::from_millis(1),
                     timed_out: false,
+                    stdout_bytes: partial.len(),
                 })
             },
         )
@@ -51039,13 +51074,15 @@ covered_by = ["cargo xtask check-file-policy"]
             &output_path,
             Path::new("ripr"),
             Duration::from_millis(50),
-            |_binary, _args, _timeout_seen| {
-                Ok(TimedOutput {
+            |_binary, _args, output_path_seen, _timeout_seen| {
+                let stdout = "{\n  \"schema_version\": \"0.3\",\n  \"seams\": []\n}\n";
+                write(output_path_seen, stdout);
+                Ok(TimedFileOutput {
                     status: None,
-                    stdout: "{\n  \"schema_version\": \"0.3\",\n  \"seams\": []\n}\n".to_string(),
                     stderr: "missing status stderr".to_string(),
                     duration: Duration::from_millis(1),
                     timed_out: false,
+                    stdout_bytes: stdout.len(),
                 })
             },
         )
@@ -51057,12 +51094,12 @@ covered_by = ["cargo xtask check-file-policy"]
 
     #[test]
     fn lane1_evidence_audit_timeout_error_uses_stderr_tail_without_trace() {
-        let output = TimedOutput {
+        let output = TimedFileOutput {
             status: None,
-            stdout: String::new(),
             stderr: "first\nsecond\nthird\n".to_string(),
             duration: Duration::from_millis(10),
             timed_out: true,
+            stdout_bytes: 0,
         };
         let err = lane1_evidence_audit_timeout_error(
             Path::new("ripr"),
