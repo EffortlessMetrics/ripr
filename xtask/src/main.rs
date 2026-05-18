@@ -2162,6 +2162,8 @@ fn pr_ready_markdown(steps: &[PrReadyStep]) -> String {
         body.push('\n');
     }
 
+    push_start_here_language_section(&mut body);
+
     body.push_str("\n## Next Commands\n\n```bash\ncargo xtask check-pr\n```\n");
     body
 }
@@ -2257,6 +2259,26 @@ fn pr_ready_judgment_required() -> &'static [&'static str] {
         "branch protection",
         "policy authority change",
     ]
+}
+
+fn start_here_language_terms() -> &'static [&'static str] {
+    &[
+        "start here: open target/ripr/reports/start-here.md first when it exists",
+        "safe next action: repair one named gap, regenerate missing evidence, or stop on no-action",
+        "missing artifact / stale evidence / wrong root / malformed artifact: fail closed before repair work",
+        "no actionable gap: advisory no-action, not runtime adequacy or mutation proof",
+        "preview-limited evidence: syntax-first and advisory, with static limits before repair language",
+        "verify command / receipt command / receipt path: static movement proof rail",
+    ]
+}
+
+fn push_start_here_language_section(body: &mut String) {
+    body.push_str("\n## Start-Here Language\n\n");
+    for term in start_here_language_terms() {
+        body.push_str("- ");
+        body.push_str(term);
+        body.push('\n');
+    }
 }
 
 fn cockpit_next_action(steps: &[PrReadyStep]) -> &'static str {
@@ -2357,7 +2379,8 @@ fn cockpit_markdown(steps: &[PrReadyStep]) -> String {
     for item in pr_ready_judgment_required() {
         body.push_str(&format!("- {item}\n"));
     }
-    body.push('\n');
+
+    push_start_here_language_section(&mut body);
 
     body.push_str("## Next Commands\n\n```bash\ncargo xtask pr-ready\ncargo xtask check-pr\n```\n");
     body
@@ -50699,6 +50722,12 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("# ripr PR Ready"));
         assert!(markdown.contains("Status: fail"));
         assert!(markdown.contains("## Stop / Judgment Required"));
+        assert!(markdown.contains("## Start-Here Language"));
+        assert!(
+            markdown
+                .contains("missing artifact / stale evidence / wrong root / malformed artifact")
+        );
+        assert!(markdown.contains("verify command / receipt command / receipt path"));
         Ok(())
     }
 
@@ -50807,6 +50836,8 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("Status: actionable"));
         assert!(markdown.contains("## Action Queue"));
         assert!(markdown.contains("## Generated Only"));
+        assert!(markdown.contains("## Start-Here Language"));
+        assert!(markdown.contains("preview-limited evidence"));
         Ok(())
     }
 
