@@ -43,7 +43,7 @@ first outside user or coding agent receives a repair packet.
 Issue reconciliation on 2026-05-18 found that the implementation work for
 #1247 and #1248 already landed on `main`, but the GitHub issues remained open
 because those PRs did not carry closing references. Close #1247 from #1262.
-Close #1248 from #1267, #1270, and #1272. Keep #1249 through #1253 open until their
+Close #1248 from #1267, #1270, #1272, and #1274. Keep #1249 through #1253 open until their
 dedicated fixture, VS Code smoke, guide, dogfood, and closeout artifacts land.
 
 | Issue | Work item | Status | Evidence / remaining gap |
@@ -51,7 +51,7 @@ dedicated fixture, VS Code smoke, guide, dogfood, and closeout artifacts land.
 | #1245 | `docs(lane3): open editor adoption assurance stack` | done | Source-of-truth stack landed. |
 | #1246 | `test(lsp): pin editor adoption baseline` | done | Baseline editor contract landed. |
 | #1247 | `vscode: add extension/server compatibility diagnosis` | done; close issue | #1262 added extension/server compatibility diagnosis, version/schema status, unsupported-schema handling, and VS Code coverage. |
-| #1248 | `vscode: harden workspace-root and multi-root diagnosis` | done; close issue | #1267 added root/multi-root diagnosis; #1270 added direct repair-command root guards; #1272 added selected-root projection guards for first-pr copy actions and LSP subscriptions. |
+| #1248 | `vscode: harden workspace-root and multi-root diagnosis` | done; close issue | #1267 added root/multi-root diagnosis; #1270 added direct repair-command root guards; #1272 added selected-root projection guards for first-pr copy actions and LSP subscriptions; #1274 added no-active-editor fail-closed guards for direct repair payloads. |
 | #1249 | `fixtures(editor): add adoption-assurance fixture corpus` | open; planned | Dedicated `editor_adoption_assurance` fixture corpus is still missing. |
 | #1250 | `test(vscode): smoke editor adoption assurance path` | open; planned | Dedicated adoption-assurance VS Code smoke remains after #1249. |
 | #1251 | `docs(editor): write install-to-first-pr editor guide` | open; planned | Existing first-run and first-pr guides are partial; the install-to-first-pr recovery guide is still missing. |
