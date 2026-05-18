@@ -21,3 +21,44 @@ pub(crate) fn extract_return_facts(body: &str, start_line: usize) -> Vec<ReturnF
     returns.dedup_by(|a, b| a.line == b.line && a.text == b.text);
     returns
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_return_facts_tracks_common_return_shapes() {
+        let body = r#"
+fn parse(input: &str) -> Result<Option<i32>, Error> {
+    if input.is_empty() { return Ok(None); }
+    if input == "x" { return Err(Error::Invalid); }
+    Some(7)
+}
+"#;
+
+        assert_eq!(
+            extract_return_facts(body, 10),
+            vec![
+                ReturnFact {
+                    line: 12,
+                    text: "if input.is_empty() { return Ok(None); }".to_string(),
+                },
+                ReturnFact {
+                    line: 13,
+                    text: "if input == \"x\" { return Err(Error::Invalid); }".to_string(),
+                },
+                ReturnFact {
+                    line: 14,
+                    text: "Some(7)".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn extract_return_facts_keeps_repeated_text_on_distinct_lines() {
+        let body = "return Ok(1);\nreturn Ok(1);";
+
+        assert_eq!(extract_return_facts(body, 5).len(), 2);
+    }
+}

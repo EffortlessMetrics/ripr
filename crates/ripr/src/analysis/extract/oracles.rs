@@ -421,3 +421,103 @@ fn comparable_expression(expression: &str) -> String {
         .trim_start_matches('&')
         .to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classify_assertion_distinguishes_error_variant_from_broad_error() {
+        assert_eq!(
+            classify_assertion("assert_matches!(result, Err(ParseError::MissingField))"),
+            OracleClassification {
+                kind: OracleKind::ExactErrorVariant,
+                strength: OracleStrength::Strong,
+            }
+        );
+        assert_eq!(
+            classify_assertion("assert!(result.is_err())"),
+            OracleClassification {
+                kind: OracleKind::BroadError,
+                strength: OracleStrength::Weak,
+            }
+        );
+    }
+
+    #[test]
+    fn classify_assertion_downgrades_duplicative_equality() {
+        assert_eq!(
+            classify_assertion("assert_eq!(total.amount(), total . amount())"),
+            OracleClassification {
+                kind: OracleKind::RelationalCheck,
+                strength: OracleStrength::Weak,
+            }
+        );
+    }
+
+    #[test]
+    fn classify_assertion_recognizes_snapshot_and_custom_exact_helpers() {
+        assert_eq!(
+            classify_assertion("insta::assert_json_snapshot!(payload)"),
+            OracleClassification {
+                kind: OracleKind::Snapshot,
+                strength: OracleStrength::Medium,
+            }
+        );
+        assert_eq!(
+            classify_assertion("assert_order_matches(actual, expected)"),
+            OracleClassification {
+                kind: OracleKind::ExactValue,
+                strength: OracleStrength::Strong,
+            }
+        );
+    }
+
+    #[test]
+    fn extract_assertions_attaches_line_text_strength_and_tokens() {
+        let body =
+            "let result = parse_order(input);\nassert_eq!(result.order_id, expected_order_id);";
+
+        assert_eq!(
+            extract_assertions(body, 20),
+            vec![OracleFact {
+                line: 21,
+                text: "assert_eq!(result.order_id, expected_order_id);".to_string(),
+                kind: OracleKind::ExactValue,
+                strength: OracleStrength::Strong,
+                observed_tokens: vec![
+                    "expected_order_id".to_string(),
+                    "order_id".to_string(),
+                    "result".to_string(),
+                ],
+            }]
+        );
+    }
+
+    #[test]
+    fn extract_line_scanned_oracles_finds_mock_and_side_effect_observers() {
+        let body = "mock_gateway.expect_send(receipt);\nassert_metric_recorded(\"checkout\");";
+
+        let facts = extract_line_scanned_oracles(body, 7);
+
+        assert_eq!(facts.len(), 2);
+        assert_eq!(facts[0].kind, OracleKind::MockExpectation);
+        assert_eq!(facts[0].strength, OracleStrength::Medium);
+        assert_eq!(facts[0].line, 7);
+        assert_eq!(facts[1].kind, OracleKind::MockExpectation);
+        assert_eq!(facts[1].strength, OracleStrength::Medium);
+        assert_eq!(facts[1].line, 8);
+    }
+
+    #[test]
+    fn contains_macro_invocation_requires_macro_boundaries() {
+        assert!(contains_macro_invocation(
+            "insta::assert_json_snapshot!(payload)",
+            "assert_json_snapshot!"
+        ));
+        assert!(!contains_macro_invocation(
+            "my_assert_json_snapshot!(payload)",
+            "assert_json_snapshot!"
+        ));
+    }
+}

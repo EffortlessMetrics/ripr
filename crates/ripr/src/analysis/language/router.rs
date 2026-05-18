@@ -24,3 +24,27 @@ pub(crate) fn route(path: &Path) -> Option<LanguageId> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn route_rust_and_preview_languages_by_extension() {
+        assert_eq!(route(Path::new("src/lib.rs")), Some(LanguageId::Rust));
+        assert_eq!(
+            route(Path::new("web/app.tsx")),
+            Some(LanguageId::TypeScript)
+        );
+        assert_eq!(
+            route(Path::new("tests/test_retry.py")),
+            Some(LanguageId::Python)
+        );
+    }
+
+    #[test]
+    fn route_ignores_unknown_or_extensionless_paths() {
+        assert_eq!(route(Path::new("README.md")), None);
+        assert_eq!(route(Path::new("Makefile")), None);
+    }
+}
