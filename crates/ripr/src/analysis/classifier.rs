@@ -1,107 +1,28 @@
-use super::classify::{
-    ProbeContext, activation_evidence, classify, confidence_score, ensure_unknown_stop_reason,
-    find_related_tests, infection_evidence, local_flow_sinks, missing_evidence,
-    propagation_evidence, reach_evidence, recommended_next_step, reveal_evidence, stop_reasons,
-};
+mod evidence;
+mod finding;
+mod owner;
+
+use self::evidence::ClassifiedProbeEvidence;
+use self::finding::build_finding;
+use self::owner::resolve_owner_function;
+use super::classify::{ProbeContext, find_related_tests};
 use super::rust_index::RustIndex;
 use crate::domain::*;
 
 pub fn classify_probe(probe: &Probe, index: &RustIndex) -> Finding {
-    let owner_fn = probe.owner.as_ref().and_then(|owner| {
-        index
-            .functions
-            .iter()
-            .find(|function| &function.id == owner)
-    });
-
+    let owner_fn = resolve_owner_function(probe, index);
     let related_tests = find_related_tests(probe, owner_fn, index);
     let context = ProbeContext::new(probe, owner_fn, related_tests);
-    let reach = reach_evidence(&context.related_tests, context.owner_fn);
-    let flow_sinks = local_flow_sinks(context.probe, context.owner_fn);
-    let activation = activation_evidence(
-        context.probe,
-        context.owner_fn,
-        &context.related_tests,
-        &flow_sinks,
-    );
-    let infect = infection_evidence(context.probe, &context.related_tests, &activation);
-    let propagate = propagation_evidence(context.probe, &flow_sinks);
-    let (observe, discriminate, related) = reveal_evidence(context.probe, &context.related_tests);
+    let evidence = ClassifiedProbeEvidence::gather(&context);
+    let class = evidence.classify(context.probe);
 
-    let ripr = RiprEvidence {
-        reach: reach.clone(),
-        infect: infect.clone(),
-        propagate: propagate.clone(),
-        reveal: RevealEvidence {
-            observe: observe.clone(),
-            discriminate: discriminate.clone(),
-        },
-    };
-
-    let class = classify(
-        &reach,
-        &infect,
-        &propagate,
-        &observe,
-        &discriminate,
-        context.probe,
-    );
-    let confidence = confidence_score(&reach, &infect, &propagate, &observe, &discriminate, &class);
-    let mut evidence = Vec::new();
-    evidence.push(reach.summary.clone());
-    if !infect.summary.is_empty() {
-        evidence.push(infect.summary.clone());
-    }
-    if !propagate.summary.is_empty() {
-        evidence.push(propagate.summary.clone());
-    }
-    if !observe.summary.is_empty() {
-        evidence.push(observe.summary.clone());
-    }
-    if !discriminate.summary.is_empty() {
-        evidence.push(discriminate.summary.clone());
-    }
-    evidence.sort();
-    evidence.dedup();
-
-    let missing = missing_evidence(
-        context.probe,
-        &class,
-        &infect,
-        &observe,
-        &discriminate,
-        &activation,
-    );
-    let mut stop_reasons = stop_reasons(context.probe, context.owner_fn, &context.related_tests);
-    ensure_unknown_stop_reason(&class, &mut stop_reasons);
-    let recommended_next_step = recommended_next_step(context.probe, &class);
-
-    Finding {
-        id: context.probe.id.0.clone(),
-        probe: context.probe.clone(),
-        class,
-        ripr,
-        confidence,
-        evidence,
-        missing,
-        flow_sinks,
-        activation,
-        stop_reasons,
-        related_tests: related,
-        recommended_next_step,
-        // Language metadata is populated by the per-language adapter
-        // (e.g. `analysis::language::RustAdapter::analyze_diff`) after
-        // classification. The classifier itself stays language-neutral.
-        language: None,
-        language_status: None,
-        owner_kind: None,
-        static_limit_kind: None,
-    }
+    build_finding(&context, class, evidence)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::analysis::classify::{recommended_next_step, stop_reasons};
     use crate::analysis::rust_index::{
         CallFact, FunctionSummary, LiteralFact, OracleFact, ReturnFact, TestSummary,
         extract_identifier_tokens,

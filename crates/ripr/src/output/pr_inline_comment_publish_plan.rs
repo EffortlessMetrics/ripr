@@ -418,9 +418,22 @@ pub(crate) fn render_comment_publish_plan_markdown(report: &CommentPublishPlanRe
                 operation.placement.line,
                 operation.dedupe_key
             ));
-            if let Some(missing) = missing_discriminator_from_body(operation.body.as_deref()) {
-                out.push_str(&format!("  - missing discriminator: `{missing}`\n"));
-                out.push_str("  - action: add one focused boundary assertion\n");
+            if let Some(body) = operation.body.as_deref() {
+                if let Some(gap) = gap_title_from_comment_body(body) {
+                    out.push_str(&format!("  - gap: {gap}\n"));
+                }
+                if let Some(changed) = changed_behavior_from_body(Some(body)) {
+                    out.push_str(&format!("  - changed behavior: `{changed}`\n"));
+                }
+                if let Some(route) = repair_route_from_body(Some(body)) {
+                    out.push_str(&format!("  - repair route: {route}\n"));
+                }
+                if let Some(repair) = repair_from_body(Some(body)) {
+                    out.push_str(&format!("  - repair: {repair}\n"));
+                }
+                if let Some(verify) = verify_from_body(Some(body)) {
+                    out.push_str(&format!("  - verify: `{verify}`\n"));
+                }
             }
         }
         out.push('\n');
@@ -771,6 +784,12 @@ fn comment_body(item: &Value) -> String {
             .get("gap_kind")
             .and_then(Value::as_str)
             .unwrap_or("repairable gap");
+        let gap_title = gap_title(gap_kind);
+        let changed_behavior = card
+            .get("changed_behavior")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         let why = card
             .get("why_this_matters")
             .and_then(Value::as_str)
@@ -779,25 +798,121 @@ fn comment_body(item: &Value) -> String {
             .get("repair")
             .and_then(Value::as_str)
             .unwrap_or("Follow the repair route in the gap ledger.");
+        let repair_route = card
+            .get("repair_route")
+            .and_then(|value| value.get("route_kind"))
+            .and_then(Value::as_str)
+            .map(repair_route_title);
         let verify = card
             .get("verify_command")
             .and_then(Value::as_str)
             .unwrap_or("ripr first-action --root .");
-        return format!(
-            "ripr gap: {gap_kind}\n\nWhy this matters: {why}\n\nRepair: {repair}\n\nVerify: `{verify}`"
+        return repair_card_body(
+            &gap_title,
+            changed_behavior,
+            why,
+            repair_route.as_deref(),
+            repair,
+            verify,
         );
     }
     if let Some(missing) = string_field(item, "missing_discriminator") {
-        return format!(
-            "RIPR advisory: static evidence says this seam misses `{}`. Add one focused boundary assertion and verify with `ripr agent verify`.",
-            normalize_missing_discriminator(&missing)
+        let changed = normalize_missing_discriminator(&missing);
+        let why = "A related test reaches this code, but no equality-boundary assertion was found.";
+        let repair = format!("Add one focused boundary assertion for `{changed}`.");
+        return repair_card_body(
+            "missing boundary assertion",
+            Some(&changed),
+            why,
+            Some("add boundary assertion"),
+            &repair,
+            "ripr agent verify",
         );
     }
-    format!(
-        "RIPR advisory: {}",
-        string_field(item, "reason")
-            .unwrap_or_else(|| "review this changed-line guidance".to_string())
+    let reason = string_field(item, "reason")
+        .unwrap_or_else(|| "This changed-line guidance needs a bounded repair route.".to_string());
+    repair_card_body(
+        "repair route missing",
+        None,
+        &reason,
+        None,
+        "Regenerate PR guidance from a gap ledger so this comment has a repair route.",
+        "ripr review-comments --root . --base <base> --head <head>",
     )
+}
+
+fn repair_card_body(
+    gap_title: &str,
+    changed_behavior: Option<&str>,
+    why: &str,
+    repair_route: Option<&str>,
+    repair: &str,
+    verify: &str,
+) -> String {
+    let mut body = format!("### ripr gap: {gap_title}\n\n");
+    if let Some(changed) = changed_behavior {
+        body.push_str("Changed behavior:\n");
+        body.push_str(&format!("`{changed}`\n\n"));
+    }
+    body.push_str("Why this matters:\n");
+    body.push_str(why.trim());
+    if let Some(route) = repair_route {
+        body.push_str("\n\nRepair route:\n");
+        body.push_str(route.trim());
+    }
+    body.push_str("\n\nRepair:\n");
+    body.push_str(repair.trim());
+    body.push_str("\n\nVerify:\n");
+    body.push_str(&format!("`{}`", verify.trim()));
+    body
+}
+
+fn repair_route_title(route_kind: &str) -> String {
+    match route_kind {
+        "AddBoundaryAssertion" => "add boundary assertion".to_string(),
+        "AddBoundaryCase" => "add boundary case".to_string(),
+        "AddFocusedTest" => "add focused test".to_string(),
+        "AddMockExpectation" => "add mock expectation".to_string(),
+        "AddOutputGolden" => "add output golden".to_string(),
+        "AddRuntimeCalibration" => "add runtime calibration".to_string(),
+        "StrengthenAssertion" => "strengthen assertion".to_string(),
+        "SuppressOrWaiveWithReason" => "suppress or waive with reason".to_string(),
+        value => split_pascal_like(value),
+    }
+}
+
+fn gap_title(kind: &str) -> String {
+    match kind {
+        "MissingBoundaryAssertion" | "MissingDiscriminator" => {
+            "missing boundary assertion".to_string()
+        }
+        "MissingOutputContract" => "missing output contract".to_string(),
+        "MissingRelatedTest" => "missing related test".to_string(),
+        "WeakOracle" => "weak oracle".to_string(),
+        "StaticLimitBlocksClassification" => "static limit blocks classification".to_string(),
+        "UnclassifiedBehavior" => "unclassified behavior".to_string(),
+        value => split_pascal_like(value),
+    }
+}
+
+fn split_pascal_like(value: &str) -> String {
+    let mut out = String::new();
+    let mut previous_lower_or_digit = false;
+    for ch in value.chars() {
+        if ch == '_' || ch == '-' {
+            if !out.ends_with(' ') {
+                out.push(' ');
+            }
+            previous_lower_or_digit = false;
+            continue;
+        }
+        if ch.is_uppercase() && previous_lower_or_digit {
+            out.push(' ');
+        }
+        out.extend(ch.to_lowercase());
+        previous_lower_or_digit = ch.is_lowercase() || ch.is_ascii_digit();
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn normalize_missing_discriminator(value: &str) -> String {
@@ -805,6 +920,36 @@ fn normalize_missing_discriminator(value: &str) -> String {
         .strip_prefix("input that hits the boundary: ")
         .unwrap_or(value)
         .to_string()
+}
+
+fn section_from_comment_body(body: &str, heading: &str) -> Option<String> {
+    let marker = format!("{heading}:\n");
+    let start = body.find(&marker)? + marker.len();
+    let rest = &body[start..];
+    let end = rest.find("\n\n").unwrap_or(rest.len());
+    Some(rest[..end].trim().trim_matches('`').to_string())
+}
+
+fn gap_title_from_comment_body(body: &str) -> Option<String> {
+    let rest = body.strip_prefix("### ripr gap: ")?;
+    let (title, _) = rest.split_once("\n\n")?;
+    Some(title.trim().to_string())
+}
+
+fn changed_behavior_from_body(body: Option<&str>) -> Option<String> {
+    section_from_comment_body(body?, "Changed behavior")
+}
+
+fn repair_from_body(body: Option<&str>) -> Option<String> {
+    section_from_comment_body(body?, "Repair")
+}
+
+fn repair_route_from_body(body: Option<&str>) -> Option<String> {
+    section_from_comment_body(body?, "Repair route")
+}
+
+fn verify_from_body(body: Option<&str>) -> Option<String> {
+    section_from_comment_body(body?, "Verify")
 }
 
 fn existing_comment_matches_body(existing: &ExistingComment, body: &str) -> bool {
@@ -865,14 +1010,6 @@ fn blocked_message_for_markdown(reason: &str, blocked: &[PlanBlocked]) -> String
         .unwrap_or_else(|| "publishing is not safe".to_string())
 }
 
-fn missing_discriminator_from_body(body: Option<&str>) -> Option<String> {
-    let body = body?;
-    let prefix = "RIPR advisory: static evidence says this seam misses `";
-    let rest = body.strip_prefix(prefix)?;
-    let (missing, _) = rest.split_once('`')?;
-    Some(missing.to_string())
-}
-
 fn trim_period(value: &str) -> String {
     value.trim_end_matches('.').to_string()
 }
@@ -895,17 +1032,36 @@ mod tests {
         let body = comment_body(&serde_json::json!({
             "repair_card": {
                 "gap_kind": "MissingBoundaryAssertion",
+                "changed_behavior": "amount == threshold",
                 "why_this_matters": "Changed behavior `amount == threshold` has a repairable gap.",
                 "repair": "assert_eq!(discount(100, 100), 90)",
+                "repair_route": {"route_kind": "AddBoundaryAssertion"},
                 "verify_command": "cargo xtask fixtures boundary_gap"
             },
             "missing_discriminator": "amount == threshold"
         }));
 
-        assert!(body.contains("ripr gap: MissingBoundaryAssertion"));
-        assert!(body.contains("Repair: assert_eq!(discount(100, 100), 90)"));
-        assert!(body.contains("Verify: `cargo xtask fixtures boundary_gap`"));
+        assert!(body.contains("### ripr gap: missing boundary assertion"));
+        assert!(body.contains("Changed behavior:\n`amount == threshold`"));
+        assert!(body.contains("Repair route:\nadd boundary assertion"));
+        assert!(body.contains("Repair:\nassert_eq!(discount(100, 100), 90)"));
+        assert!(body.contains("Verify:\n`cargo xtask fixtures boundary_gap`"));
         assert!(!body.contains("Confidence"));
+        assert!(!body.contains("MissingBoundaryAssertion"));
+    }
+
+    #[test]
+    fn inline_comment_body_fallback_still_uses_repair_card_shape() {
+        let body = comment_body(&serde_json::json!({
+            "missing_discriminator": "input that hits the boundary: amount == threshold"
+        }));
+
+        assert!(body.contains("### ripr gap: missing boundary assertion"));
+        assert!(body.contains("Changed behavior:\n`amount == threshold`"));
+        assert!(body.contains("Repair route:\nadd boundary assertion"));
+        assert!(body.contains("Repair:\nAdd one focused boundary assertion"));
+        assert!(body.contains("Verify:\n`ripr agent verify`"));
+        assert!(!body.contains("RIPR advisory: static evidence"));
     }
 
     #[test]
@@ -1186,7 +1342,14 @@ mod tests {
                 .body
                 .as_deref()
                 .unwrap_or_default()
-                .contains("review this changed-line guidance")
+                .contains("repair route missing")
+        );
+        assert!(
+            default_fields.operations[0]
+                .body
+                .as_deref()
+                .unwrap_or_default()
+                .contains("Regenerate PR guidance from a gap ledger")
         );
         Ok(())
     }
@@ -1241,12 +1404,33 @@ mod tests {
             blocked_message_for_markdown("missing", &[]),
             "publishing is not safe"
         );
-        assert_eq!(missing_discriminator_from_body(None), None);
+        let body = repair_card_body(
+            "missing boundary assertion",
+            Some("amount == threshold"),
+            "A related test reaches this path.",
+            Some("add boundary assertion"),
+            "Add an exact assertion.",
+            "cargo xtask fixtures boundary_gap",
+        );
         assert_eq!(
-            missing_discriminator_from_body(Some(
-                "RIPR advisory: static evidence says this seam misses `missing"
-            )),
-            None
+            gap_title_from_comment_body(&body).as_deref(),
+            Some("missing boundary assertion")
+        );
+        assert_eq!(
+            changed_behavior_from_body(Some(&body)).as_deref(),
+            Some("amount == threshold")
+        );
+        assert_eq!(
+            repair_route_from_body(Some(&body)).as_deref(),
+            Some("add boundary assertion")
+        );
+        assert_eq!(
+            repair_from_body(Some(&body)).as_deref(),
+            Some("Add an exact assertion.")
+        );
+        assert_eq!(
+            verify_from_body(Some(&body)).as_deref(),
+            Some("cargo xtask fixtures boundary_gap")
         );
         assert_eq!(lower_first(""), "");
     }
