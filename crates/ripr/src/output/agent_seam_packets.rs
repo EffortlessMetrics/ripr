@@ -24,6 +24,7 @@ use crate::analysis::test_grip_evidence::TestGripEvidence;
 use crate::output::evidence_record::{evidence_record_for, evidence_record_json_value};
 use crate::output::gap_decision_ledger::{GapRecord, GapRepairRoute, projection_eligible};
 use crate::output::json::escape as json_escape;
+use crate::output::path::{display_path, display_path_text};
 use serde_json::json;
 
 pub(crate) const AGENT_SEAM_PACKET_SCHEMA_VERSION: &str = "0.3";
@@ -307,14 +308,6 @@ pub(crate) fn targeted_test_brief_outline_for_classified_seam(
         candidate_value,
         assertion_shape: assertion_shape.example,
     }
-}
-
-fn display_path(path: &std::path::Path) -> String {
-    display_path_text(&path.to_string_lossy())
-}
-
-fn display_path_text(path: &str) -> String {
-    path.replace('\\', "/")
 }
 
 fn validate_agent_gap_record_packet(record: &GapRecord) -> Result<(), String> {

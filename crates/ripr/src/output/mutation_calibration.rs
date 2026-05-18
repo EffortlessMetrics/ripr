@@ -156,12 +156,7 @@ pub(crate) fn render_mutation_calibration_json(
             .map(static_seam_json)
             .collect::<Vec<_>>(),
     });
-    serde_json::to_string_pretty(&value)
-        .map(|mut rendered| {
-            rendered.push('\n');
-            rendered
-        })
-        .map_err(|err| format!("failed to render mutation calibration JSON: {err}"))
+    super::json::render_pretty_with_newline(&value, "mutation calibration")
 }
 
 pub(crate) fn render_mutation_calibration_md(report: &MutationCalibrationReport) -> String {

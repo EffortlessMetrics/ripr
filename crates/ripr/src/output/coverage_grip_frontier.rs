@@ -1,5 +1,4 @@
 use serde_json::{Value, json};
-use std::path::Path;
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "coverage_grip_frontier";
@@ -269,9 +268,7 @@ pub(crate) fn render_coverage_grip_frontier_markdown(
     out
 }
 
-pub(crate) fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
+pub(crate) use crate::output::path::display_path;
 
 fn parse_sources(input: &CoverageGripFrontierInput) -> ParsedSources {
     let mut parsed = ParsedSources::default();

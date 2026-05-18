@@ -8,17 +8,16 @@ schema_version = 1
 # is additive metadata, not a replacement for the static signal.
 #
 # Source: dogfood preflight on main at ce609b5 (2026-05-03) ahead of
-# `badge/repo-scope-artifacts`. The 7 possibly_circular + 2 likely_vacuous
-# entries below were classified as intentional after reading each test
-# body. Each entry carries its own durable reason; PR #199 contains the
-# review table.
+# `badge/repo-scope-artifacts`. Entries below were classified as intentional
+# after reading each test body. Each entry carries its own durable reason;
+# PR #199 contains the review table.
 #
 # Supported intents (from test-intent/v1):
 #   smoke, business_case_duplicate, opaque_external_oracle,
 #   integration_contract, performance_guard, documentation_example.
 # Adding a new intent is a doc + schema PR, not an ad-hoc string.
 
-# --- 7 integration_contract: BDD / state-machine / table-driven tests
+# --- integration_contract: BDD / state-machine / table-driven tests
 # whose expected values are computed from the same code paths the SUT
 # walks. The analyzer flags these as `possibly_circular` because setup
 # helpers and assertions reference the same owners; the circularity is
@@ -66,10 +65,3 @@ path = "crates/ripr/src/lsp/tests.rs"
 intent = "integration_contract"
 owner = "ripr"
 reason = "State-machine integration test for the missing-document-on-full-change branch. Same helper-vs-SUT shape as document_store_tracks_open_change_and_close; possibly_circular flag is conservative."
-
-[[test_intent]]
-test = "test_efficiency_signals_likely_vacuous_and_possibly_circular_tests"
-path = "xtask/src/main.rs"
-intent = "integration_contract"
-owner = "ripr"
-reason = "Meta-test of the test-efficiency classifier itself: it constructs sample test bodies that *should* be classified as likely_vacuous and possibly_circular, then asserts the classifier produces those classes. The setup intentionally mirrors the patterns the analyzer is detecting — circularity is the contract, not a bug."

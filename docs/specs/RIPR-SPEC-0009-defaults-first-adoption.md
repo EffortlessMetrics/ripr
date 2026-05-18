@@ -413,12 +413,12 @@ Current tests and reports that support the contract:
 - `crates/ripr/tests/cli_smoke.rs::check_repo_badge_json_emits_repo_scope_metadata`
 - `crates/ripr/tests/cli_smoke.rs::check_repo_badge_does_not_consult_diff_arg_when_supplied`
 - `crates/ripr/tests/cli_smoke.rs::check_repo_badge_plus_json_emits_repo_scope_metadata`
-- `crates/ripr/src/output/pilot.rs::tests::pilot_ranking_prefers_actionable_class_order_before_tie_breakers`
-- `crates/ripr/src/output/pilot.rs::tests::pilot_ranking_uses_evidence_tie_breakers_then_stable_location`
-- `crates/ripr/src/output/pilot.rs::tests::pilot_ranking_excludes_solved_governed_classes`
-- `crates/ripr/src/output/pilot.rs::tests::pilot_summary_json_contains_config_state_artifacts_and_next_commands`
-- `crates/ripr/src/output/pilot.rs::tests::pilot_summary_md_spells_out_first_screen_recommendation`
-- `crates/ripr/src/output/pilot.rs::tests::pilot_terminal_prints_top_test_and_follow_up_commands`
+- `crates/ripr/src/output/pilot/tests.rs::pilot_ranking_prefers_actionable_class_order_before_tie_breakers`
+- `crates/ripr/src/output/pilot/tests.rs::pilot_ranking_uses_evidence_tie_breakers_then_stable_location`
+- `crates/ripr/src/output/pilot/tests.rs::pilot_ranking_excludes_solved_governed_classes`
+- `crates/ripr/src/output/pilot/tests.rs::pilot_summary_json_contains_config_state_artifacts_and_next_commands`
+- `crates/ripr/src/output/pilot/tests.rs::pilot_summary_md_spells_out_first_screen_recommendation`
+- `crates/ripr/src/output/pilot/tests.rs::pilot_terminal_prints_top_test_and_follow_up_commands`
 - `crates/ripr/tests/cli_smoke.rs::pilot_writes_default_packet_outputs_for_boundary_gap_fixture`
 - `crates/ripr/tests/cli_smoke.rs::pilot_uses_repo_config_mode_without_explicit_flag`
 - `crates/ripr/tests/cli_smoke.rs::pilot_honors_explicit_mode_over_repo_config`
@@ -461,8 +461,8 @@ Current implementation pieces:
 - `crates/ripr/src/app.rs` orchestrates config-aware analysis entry points.
 - `crates/ripr/src/output/agent_seam_packets.rs` renders targeted-test work
   orders.
-- `crates/ripr/src/output/pilot.rs` ranks actionable seams and renders the
-  pilot summary files.
+- `crates/ripr/src/output/pilot/ranking.rs` ranks actionable seams and
+  `crates/ripr/src/output/pilot/render.rs` renders the pilot summary files.
 - `crates/ripr/src/output/outcome.rs` compares before/after repo-exposure
   snapshots and renders the public targeted-test outcome receipt.
 - `crates/ripr/src/output/mutation_calibration.rs` imports supplied
