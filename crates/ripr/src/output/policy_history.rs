@@ -1470,6 +1470,17 @@ mod tests {
         // The history record omits `recommended_mode` but supplies
         // `current_policy_ceiling`. `snapshot_from_history_value`
         // routes through `mode_for_ceiling` for the previous trend.
+        //
+        // The direct snapshot assertion below pins the fallback output
+        // itself (no `recommended_mode` -> `mode_for_ceiling(ceiling)`),
+        // so the branch cannot regress silently behind the trend assertions.
+        let history_value = json!({
+            "generated_at": "unix_ms:1",
+            "current_policy_ceiling": "ready_for_baseline_check",
+        });
+        let snapshot = snapshot_from_history_value(&history_value);
+        assert_eq!(snapshot.snapshot.recommended_mode, "baseline-check");
+
         let mut input = input(&operations(
             "ready_for_calibrated_gate",
             &[
