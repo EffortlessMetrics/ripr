@@ -44,7 +44,7 @@ Release themes:
 
 Detailed changes:
 - Changelog source range: the 0.6.0 notes were reconciled against merged PRs
-  and first-parent commits through `135b10a8` / #1211 on current `main`.
+  and first-parent commits through `619d1cae` / #1135 on current `main`.
   Internal learning-doc polish is intentionally not part of the public release
   story. Remaining open non-release PR families stay outside this section until
   they land.
@@ -80,6 +80,11 @@ Detailed changes:
 - Shared Markdown and JSON value-path helpers now back policy promotion report
   rendering, reducing duplicated output code without changing output schemas,
   policy authority, or gate behavior.
+- Mutation calibration import now handles additional nested mutation outcome
+  record shapes, including nested mutation identifiers, locations, spans, and
+  detail-only runtime records, with parser coverage. This improves advisory
+  runtime-calibration ingestion without running mutation tests or changing
+  policy, gates, CI, or release behavior.
 - Output fixture tests now share common helper setup, reducing duplicated test
   scaffolding without changing report behavior or output contracts.
 - `cargo xtask help` now gives clearer command-discovery output and preserves
