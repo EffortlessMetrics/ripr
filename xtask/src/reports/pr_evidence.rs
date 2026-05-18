@@ -1054,13 +1054,22 @@ mod tests {
     #[test]
     fn run_ripr_check_reports_fake_binary_timeout() -> Result<(), String> {
         let repo = temp_repo("ripr-pr-fake-timeout")?;
-        let fake = fake_ripr_binary(&repo, "fake-ripr-timeout", "", "", 0, Some(5))?;
-        let err = match run_ripr_check_binary(
-            &fake.display().to_string(),
-            fake_ripr_args(),
-            &options(),
-            Duration::from_secs(1),
-        ) {
+        #[cfg(windows)]
+        let (binary, args) = (
+            "powershell".to_string(),
+            vec![
+                "-NoProfile".to_string(),
+                "-NonInteractive".to_string(),
+                "-Command".to_string(),
+                "Start-Sleep -Seconds 30".to_string(),
+            ],
+        );
+        #[cfg(not(windows))]
+        let (binary, args) = {
+            let fake = fake_ripr_binary(&repo, "fake-ripr-timeout", "", "", 0, Some(30))?;
+            (fake.display().to_string(), fake_ripr_args())
+        };
+        let err = match run_ripr_check_binary(&binary, args, &options(), Duration::from_secs(1)) {
             Ok(output) => return Err(format!("fake timeout should fail, got {output}")),
             Err(err) => err,
         };
