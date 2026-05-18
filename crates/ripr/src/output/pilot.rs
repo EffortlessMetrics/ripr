@@ -13,6 +13,7 @@ use crate::output::agent_seam_packets::{
     targeted_test_brief_outline_for_classified_seam,
 };
 use crate::output::json::escape as json_escape;
+use crate::output::path::display_path_text;
 use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
 
@@ -662,10 +663,6 @@ impl PilotCommands {
             retry,
         }
     }
-}
-
-fn display_path_text(path: &str) -> String {
-    path.replace('\\', "/")
 }
 
 #[cfg(test)]
