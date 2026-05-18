@@ -472,9 +472,14 @@ suite('Extension Smoke', () => {
     }
   });
 
-  test('copyContext copies static-limit notes without LSP fallback', async () => {
+  test('copyContext copies static-limit notes without LSP fallback for active workspace file', async () => {
+    const relativePath = 'src/static-limit-note.rs';
+    const uri = workspaceFileUri(relativePath);
     const context = createControllerTestContext({});
     try {
+      await writeWorkspaceFile(relativePath, 'pub fn static_limit_note_target() {}\n');
+      const document = await vscode.workspace.openTextDocument(uri);
+      await vscode.window.showTextDocument(document);
       await context.controller.start();
       await context.controller.copyContext({
         label: 'static_limit_note',
@@ -488,10 +493,14 @@ suite('Extension Smoke', () => {
       );
     } finally {
       await context.dispose();
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await removeWorkspacePath(relativePath);
     }
   });
 
-  test('copyContext copies first repair packets without LSP fallback', async () => {
+  test('copyContext copies first repair packets without LSP fallback for active workspace file', async () => {
+    const relativePath = 'src/first-repair-packet.rs';
+    const uri = workspaceFileUri(relativePath);
     const context = createControllerTestContext({});
     const packet = [
       'RIPR first repair packet',
@@ -508,6 +517,9 @@ suite('Extension Smoke', () => {
       '- Static editor evidence only.'
     ].join('\n');
     try {
+      await writeWorkspaceFile(relativePath, 'pub fn first_repair_packet_target() {}\n');
+      const document = await vscode.workspace.openTextDocument(uri);
+      await vscode.window.showTextDocument(document);
       await context.controller.start();
       await context.controller.copyContext({
         label: 'first_repair_packet',
@@ -519,6 +531,42 @@ suite('Extension Smoke', () => {
       assert.ok(context.infoMessages.at(-1)?.includes('first repair packet'));
     } finally {
       await context.dispose();
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await removeWorkspacePath(relativePath);
+    }
+  });
+
+  test('direct repair commands fail closed without active file or target URI', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await context.controller.start();
+
+      await context.controller.copyContext({
+        label: 'first_repair_packet',
+        packet: 'RIPR first repair packet'
+      });
+      await context.controller.copyContext({
+        label: 'static_limit_note',
+        note: 'Static limit: missing_import_graph'
+      });
+      await context.controller.copyAgentLoopCommand(
+        agentLoopCommandTarget(
+          'gap_verify',
+          'ripr agent verify --root . --json'
+        )
+      );
+
+      assert.deepStrictEqual(context.clipboardWrites, []);
+      assert.deepStrictEqual(context.client.requests, []);
+      assert.strictEqual(context.runRiprCalls.length, 0);
+      assert.strictEqual(context.infoMessages.length, 3);
+      for (const message of context.infoMessages) {
+        assert.ok(message.includes('active file or target URI'), message);
+      }
+    } finally {
+      await context.dispose();
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
     }
   });
 
@@ -2163,8 +2211,13 @@ suite('Extension Smoke', () => {
   });
 
   test('copyAgentLoopCommand copies command text', async () => {
+    const relativePath = 'src/agent-loop-command.rs';
+    const uri = workspaceFileUri(relativePath);
     const context = createControllerTestContext({});
     try {
+      await writeWorkspaceFile(relativePath, 'pub fn agent_loop_command_target() {}\n');
+      const document = await vscode.workspace.openTextDocument(uri);
+      await vscode.window.showTextDocument(document);
       const seamId = '67fc764ba37d77bd';
       const targets = [
         agentLoopCommandTarget(
@@ -2216,6 +2269,8 @@ suite('Extension Smoke', () => {
       );
     } finally {
       await context.dispose();
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await removeWorkspacePath(relativePath);
     }
   });
 
