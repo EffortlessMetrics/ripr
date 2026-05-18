@@ -196,6 +196,57 @@ opening raw JSON first. It should include:
 
 If those fields are missing or confusing, treat the mode as not ready to block.
 
+## Gate Adoption Checklist
+
+Complete this checklist before moving beyond advisory evidence or
+`visible-only`. It is an adoption checklist for the repair loop, not a reason
+to make generated CI block by default.
+
+- `policy-readiness.md` recommends the target mode, or a stricter ceiling, and
+  no readiness axis is still reporting the failure mode that the target mode
+  would depend on.
+- Reviewers have inspected several `gate-decision.md` and generated-CI
+  summaries for recent PRs, including at least one empty or no-action PR when
+  the repository has that case.
+- The top repairable RIPR gap was useful on the agreed sample of recent PRs.
+  Record the sample size before the trial so the decision is not based on one
+  memorable success.
+- Blocking summaries name the gap, missing discriminator, focused test or
+  output-proof shape, acknowledgement path, baseline state, and verification
+  command without opening raw JSON first.
+- The checked-in baseline, if used, has been reviewed as historical debt and
+  can be refreshed by shrink-only removal after focused repairs.
+- `.ripr/suppressions.toml` has been reviewed for owner, reason, scope,
+  visibility, static class, language status, and review date.
+- The `ripr-waive` policy is written down: who can apply it, when it is
+  appropriate, and when a focused test or output fixture is expected instead.
+- Empty diffs and no-action PRs produce schema-valid advisory packets, not
+  blocked runs or missing-artifact failures.
+- Known timeout paths produce advisory error packets with retry commands and do
+  not leave reviewers without uploaded artifacts.
+- Preview TypeScript and Python findings remain visibly preview/advisory and
+  are not gate-eligible unless a later policy promotes the exact class.
+- The team understands that RIPR gates are static repair-routing policy. They
+  do not claim runtime mutation adequacy, coverage adequacy, or general
+  correctness.
+- Generated CI still leaves `RIPR_GATE_MODE` unset by default, and rollout is a
+  repository-variable change rather than a forked workflow.
+- Rollback has been rehearsed by unsetting `RIPR_GATE_MODE` and, when present,
+  `RIPR_GATE_BASELINE` while keeping advisory summaries and artifact uploads.
+
+Use these supporting documents while checking the list:
+
+- [Policy readiness](policy/POLICY_READINESS.md) for the readiness axes and
+  preview-evidence boundary.
+- [Calibrated gate policy](CALIBRATED_GATE_POLICY.md) for mode behavior,
+  waiver semantics, and generated-CI inputs.
+- [Baseline ledger workflow](BASELINE_LEDGER_WORKFLOW.md) for reviewed
+  baseline creation and shrink-only refresh.
+- [CI gate adoption examples](CI.md#gate-adoption-examples) for repository
+  variable examples.
+- [PR automation](PR_AUTOMATION.md) for local receipts and generated report
+  packets used as adoption evidence.
+
 ## Rollback
 
 Rollback is configuration-only:

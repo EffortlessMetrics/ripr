@@ -2,10 +2,10 @@
 
 Date: 2026-05-16
 
-Branch / PR: `lane3-first-run-usability-closeout` / pending at authoring
+Branch / PR: `lane3-first-run-usability-closeout` / #1040
 
-Latest merged PR: #1038 `dogfood(lane3): record first-run repair receipts`
-(commit `e8088c37cc68b375f4dd35bb3ac27187fd6cce0f`)
+Latest merged PR: #1040 `campaign(lane3): close editor first-run usability`
+(commit `35d0d83e974e4d103a9a2045401111b3071d7125`)
 
 ## Current Work Item
 
@@ -56,7 +56,7 @@ binary installation, or config mutation from the editor.
 - #1033 `fixtures(editor): add first-run usability fixtures`
 - #1037 `docs(editor): write first-run-to-first-receipt guide`
 - #1038 `dogfood(lane3): record first-run repair receipts`
-- `campaign(lane3): close editor first-run usability`
+- #1040 `campaign(lane3): close editor first-run usability`
 
 ## Closeout Validation
 

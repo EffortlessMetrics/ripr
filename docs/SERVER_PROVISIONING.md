@@ -48,10 +48,10 @@ The manifest shape is:
 
 ```json
 {
-  "version": "0.5.0",
+  "version": "0.6.0",
   "assets": {
     "x86_64-pc-windows-msvc": {
-      "url": "https://github.com/EffortlessMetrics/ripr/releases/download/v0.5.0/ripr-server-v0.5.0-x86_64-pc-windows-msvc.zip",
+      "url": "https://github.com/EffortlessMetrics/ripr/releases/download/v0.6.0/ripr-server-v0.6.0-x86_64-pc-windows-msvc.zip",
       "sha256": "..."
     }
   }
@@ -82,7 +82,7 @@ The release/install proof downloaded the Windows server archive, matched its
 SHA-256 against the manifest, extracted it, and ran `ripr --version`,
 `ripr lsp --version`, `ripr pilot`, and `ripr outcome`.
 
-For `v0.5.0`, the release proof must publish the same asset family and extend
+For `v0.6.0`, the release proof must publish the same asset family and extend
 the extracted server smoke through `ripr agent verify` and
 `ripr agent receipt`.
 
@@ -116,7 +116,7 @@ The e2e suite runs in a fixture Rust workspace and covers extension activation,
 defaults-first `draft` mode, command registration, LSP-first seam context
 collection with CLI fallback, targeted-test brief copying, suggested assertion
 copying, related-test opening, malformed command arguments, and restart
-behavior. The `v0.5.0` release proof verifies the server archive path and local
+behavior. The `v0.6.0` release proof verifies the server archive path and local
 VSIX package path for current provisioning. Defaults-first public install proof
 for `ripr pilot`, `ripr outcome`, `ripr agent verify`, and
 `ripr agent receipt` is covered by
