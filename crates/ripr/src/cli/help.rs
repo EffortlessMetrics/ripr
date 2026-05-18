@@ -172,6 +172,7 @@ mod tests {
         assert!(HELP.contains("ripr coverage-grip frontier"));
         assert!(HELP.contains("ripr assistant-loop proof"));
         assert!(HELP.contains("ripr assistant-loop health"));
+        assert!(HELP.contains("ripr first-pr"));
         assert!(HELP.contains("ripr first-action"));
         assert!(HELP.contains("ripr reports index"));
         assert!(HELP.contains("ripr reports gap-ledger"));

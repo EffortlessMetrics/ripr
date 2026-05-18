@@ -651,6 +651,27 @@ fn exact_boundary_value_is_checked() {
     }
 
     #[test]
+    fn literal_extraction_keeps_decimal_boundaries_intact() {
+        let literals = extract_literals("value >= 1_000u32 && ratio < 2.5f64 && delta == -3_i32");
+
+        assert_eq!(literals, vec!["-3", "1000", "2.5"]);
+    }
+
+    #[test]
+    fn literal_extraction_ignores_subtraction_operator_without_fabricating_negative_literal() {
+        let literals = extract_literals("let remaining = total - discount + total-25;");
+
+        assert_eq!(literals, vec!["25"]);
+    }
+
+    #[test]
+    fn literal_extraction_preserves_radix_boundaries_without_suffixes() {
+        let literals = extract_literals("mask == 0xff_u8 || flags == 0b1010usize || mode == 0o77");
+
+        assert_eq!(literals, vec!["0b1010", "0o77", "0xff"]);
+    }
+
+    #[test]
     fn preserves_test_marker_across_stacked_attributes() {
         let file = summarize_file(
             PathBuf::from("src/lib.rs"),
