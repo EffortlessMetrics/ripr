@@ -326,20 +326,96 @@ fn test_from_statement(stmt: &Statement<'_>, file: &Path, source: &str) -> Optio
 }
 
 /// Walk a list of statements (e.g., a function body) and collect every
-/// `expect(actual).matcher(...)` expression statement we recognise.
+/// `expect(actual).matcher(...)` expression statement we recognise. Test
+/// discriminators are often guarded by setup branches or cleanup blocks, so
+/// this recurses through common control-flow bodies while still staying
+/// syntax-only and conservative.
 fn collect_expect_assertions_in_statements(
     statements: &oxc_allocator::Vec<'_, Statement<'_>>,
     source: &str,
 ) -> Vec<TypeScriptAssertion> {
     let mut out = Vec::new();
     for stmt in statements {
-        if let Statement::ExpressionStatement(expr_stmt) = stmt
-            && let Some(assertion) = expect_assertion_from_expression(&expr_stmt.expression, source)
-        {
-            out.push(assertion);
-        }
+        collect_expect_assertions_in_statement(stmt, source, &mut out);
     }
     out
+}
+
+fn collect_expect_assertions_in_statement(
+    stmt: &Statement<'_>,
+    source: &str,
+    out: &mut Vec<TypeScriptAssertion>,
+) {
+    match stmt {
+        Statement::BlockStatement(block) => {
+            collect_expect_assertions_from_statement_vec(&block.body, source, out);
+        }
+        Statement::ExpressionStatement(expr_stmt) => {
+            if let Some(assertion) = expect_assertion_from_expression(&expr_stmt.expression, source)
+            {
+                out.push(assertion);
+            }
+        }
+        Statement::ReturnStatement(return_stmt) => {
+            if let Some(argument) = &return_stmt.argument
+                && let Some(assertion) = expect_assertion_from_expression(argument, source)
+            {
+                out.push(assertion);
+            }
+        }
+        Statement::IfStatement(if_stmt) => {
+            collect_expect_assertions_in_statement(&if_stmt.consequent, source, out);
+            if let Some(alternate) = &if_stmt.alternate {
+                collect_expect_assertions_in_statement(alternate, source, out);
+            }
+        }
+        Statement::DoWhileStatement(do_while) => {
+            collect_expect_assertions_in_statement(&do_while.body, source, out);
+        }
+        Statement::WhileStatement(while_stmt) => {
+            collect_expect_assertions_in_statement(&while_stmt.body, source, out);
+        }
+        Statement::ForStatement(for_stmt) => {
+            collect_expect_assertions_in_statement(&for_stmt.body, source, out);
+        }
+        Statement::ForInStatement(for_in) => {
+            collect_expect_assertions_in_statement(&for_in.body, source, out);
+        }
+        Statement::ForOfStatement(for_of) => {
+            collect_expect_assertions_in_statement(&for_of.body, source, out);
+        }
+        Statement::LabeledStatement(labeled) => {
+            collect_expect_assertions_in_statement(&labeled.body, source, out);
+        }
+        Statement::SwitchStatement(switch_stmt) => {
+            for case in &switch_stmt.cases {
+                collect_expect_assertions_from_statement_vec(&case.consequent, source, out);
+            }
+        }
+        Statement::TryStatement(try_stmt) => {
+            collect_expect_assertions_from_statement_vec(&try_stmt.block.body, source, out);
+            if let Some(handler) = &try_stmt.handler {
+                collect_expect_assertions_from_statement_vec(&handler.body.body, source, out);
+            }
+            if let Some(finalizer) = &try_stmt.finalizer {
+                collect_expect_assertions_from_statement_vec(&finalizer.body, source, out);
+            }
+        }
+        Statement::WithStatement(with_stmt) => {
+            collect_expect_assertions_in_statement(&with_stmt.body, source, out);
+        }
+        _ => {}
+    }
+}
+
+fn collect_expect_assertions_from_statement_vec(
+    statements: &oxc_allocator::Vec<'_, Statement<'_>>,
+    source: &str,
+    out: &mut Vec<TypeScriptAssertion>,
+) {
+    for stmt in statements {
+        collect_expect_assertions_in_statement(stmt, source, out);
+    }
 }
 
 /// Match the simplest `expect(actual).matcher(...)` shape on a top-level
@@ -351,6 +427,10 @@ fn expect_assertion_from_expression(
     expr: &Expression<'_>,
     source: &str,
 ) -> Option<TypeScriptAssertion> {
+    let expr = match expr {
+        Expression::AwaitExpression(await_expr) => &await_expr.argument,
+        _ => expr,
+    };
     let Expression::CallExpression(outer_call) = expr else {
         return None;
     };
@@ -1255,13 +1335,119 @@ it("beta", () => { expect(otherHelper()).toBe(true); });
 "#,
         );
         assert_eq!(tests.len(), 1);
-        // The async chain is one level deeper; current scaffold matches
-        // only top-level expect().matcher() shapes inside the test body.
-        // The async `expect(...).resolves.toBe(...)` lives inside an
-        // `await` expression, which is not a top-level expression
-        // statement we walk yet (deferred to #767 follow-up). The test
-        // pins this current limit so a future change tightens it.
-        assert!(tests[0].assertions.is_empty());
+        assert_eq!(tests[0].assertions.len(), 1);
+        assert_eq!(tests[0].assertions[0].matcher, "toBe");
+        assert_eq!(tests[0].assertions[0].oracle_kind, OracleKind::ExactValue);
+    }
+
+    #[test]
+    fn extract_tests_recognizes_return_await_resolves_async_chain() {
+        let tests = extract_tests(
+            Path::new("tests/lib.test.ts"),
+            r#"test("async return", async () => {
+    return await expect(loader()).resolves.toBe(42);
+});
+"#,
+        );
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests[0].assertions.len(), 1);
+        assert_eq!(tests[0].assertions[0].matcher, "toBe");
+        assert_eq!(tests[0].assertions[0].oracle_kind, OracleKind::ExactValue);
+    }
+
+    #[test]
+    fn extract_tests_collects_assertions_nested_in_control_flow() {
+        let tests = extract_tests(
+            Path::new("tests/lib.test.ts"),
+            r#"test("nested", () => {
+    if (enabled) {
+        expect(applyDiscount(50, 100)).toBe(50);
+    } else {
+        expect(applyDiscount(1, 100)).toEqual(1);
+    }
+});
+"#,
+        );
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests[0].assertions.len(), 2);
+        assert_eq!(tests[0].assertions[0].matcher, "toBe");
+        assert_eq!(tests[0].assertions[1].matcher, "toEqual");
+    }
+
+    #[test]
+    fn extract_tests_collects_assertions_nested_in_loop_switch_and_label_bodies() {
+        let tests = extract_tests(
+            Path::new("tests/lib.test.ts"),
+            r#"test("nested statements", () => {
+    while (enabled) {
+        expect(loopValue).toBe(1);
+    }
+    do {
+        expect(done).toBeTruthy();
+    } while (retry);
+    for (let index = 0; index < items.length; index++) {
+        expect(items[index]).toBeDefined();
+    }
+    for (const key in record) {
+        expect(record[key]).toEqual("value");
+    }
+    for (const item of items) {
+        expect(item).toBeDefined();
+    }
+    retry: {
+        expect(labelled).toBe(false);
+    }
+    switch (kind) {
+        case "a":
+            expect(kind).toBe("a");
+            break;
+        default:
+            expect(kind).toEqual("fallback");
+    }
+});
+"#,
+        );
+        assert_eq!(tests.len(), 1);
+        let matchers: Vec<&str> = tests[0]
+            .assertions
+            .iter()
+            .map(|assertion| assertion.matcher.as_str())
+            .collect();
+        assert_eq!(
+            matchers,
+            vec![
+                "toBe",
+                "toBeTruthy",
+                "toBeDefined",
+                "toEqual",
+                "toBeDefined",
+                "toBe",
+                "toBe",
+                "toEqual"
+            ]
+        );
+    }
+
+    #[test]
+    fn extract_tests_collects_assertions_nested_in_try_catch_finally() {
+        let tests = extract_tests(
+            Path::new("tests/lib.test.ts"),
+            r#"test("try-catch", () => {
+    try {
+        expect(parseUser("Ada")).toEqual({ name: "Ada" });
+    } catch (err) {
+        expect(err).toBeDefined();
+    } finally {
+        expect(cleanup).toHaveBeenCalled();
+    }
+});
+"#,
+        );
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests[0].assertions.len(), 3);
+        assert_eq!(tests[0].assertions[0].matcher, "toEqual");
+        assert_eq!(tests[0].assertions[1].matcher, "toBeDefined");
+        assert_eq!(tests[0].assertions[2].matcher, "toHaveBeenCalled");
     }
 
     #[test]

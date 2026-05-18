@@ -1697,7 +1697,8 @@ fn has_any_parsed(parsed: &ParsedSources) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::{Path, PathBuf};
+    use crate::output::test_support::{read_file, repo_root};
+    use std::path::Path;
 
     #[test]
     fn first_useful_action_matches_actionable_fixture() -> Result<(), String> {
@@ -2018,20 +2019,6 @@ mod tests {
     "cargo xtask goldens check"
   ]
 }"#
-    }
-
-    fn repo_root() -> Result<PathBuf, String> {
-        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        manifest_dir
-            .parent()
-            .and_then(Path::parent)
-            .map(Path::to_path_buf)
-            .ok_or_else(|| "failed to resolve repo root".to_string())
-    }
-
-    fn read_file(path: &Path) -> Result<String, String> {
-        std::fs::read_to_string(path)
-            .map_err(|err| format!("read {} failed: {err}", path.display()))
     }
 
     fn fixture_path(repo_root: &Path, path: &Path) -> String {
