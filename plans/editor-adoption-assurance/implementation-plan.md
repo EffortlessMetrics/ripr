@@ -40,17 +40,23 @@ first outside user or coding agent receives a repair packet.
 
 ## GitHub Issue Burn-Down
 
-| Issue | Work item | Status |
-| --- | --- | --- |
-| #1245 | `docs(lane3): open editor adoption assurance stack` | done |
-| #1246 | `test(lsp): pin editor adoption baseline` | done |
-| #1247 | `vscode: add extension/server compatibility diagnosis` | done |
-| #1248 | `vscode: harden workspace-root and multi-root diagnosis` | done |
-| #1249 | `fixtures(editor): add adoption-assurance fixture corpus` | planned |
-| #1250 | `test(vscode): smoke editor adoption assurance path` | planned |
-| #1251 | `docs(editor): write install-to-first-pr editor guide` | planned |
-| #1252 | `dogfood(lane3): record external-style editor adoption receipts` | planned |
-| #1253 | `campaign(lane3): close editor adoption assurance` | planned |
+Issue reconciliation on 2026-05-18 found that the implementation work for
+#1247 and #1248 already landed on `main`, but the GitHub issues remained open
+because those PRs did not carry closing references. Close #1247 from #1262.
+Close #1248 from #1267 and #1270. Keep #1249 through #1253 open until their
+dedicated fixture, VS Code smoke, guide, dogfood, and closeout artifacts land.
+
+| Issue | Work item | Status | Evidence / remaining gap |
+| --- | --- | --- | --- |
+| #1245 | `docs(lane3): open editor adoption assurance stack` | done | Source-of-truth stack landed. |
+| #1246 | `test(lsp): pin editor adoption baseline` | done | Baseline editor contract landed. |
+| #1247 | `vscode: add extension/server compatibility diagnosis` | done; close issue | #1262 added extension/server compatibility diagnosis, version/schema status, unsupported-schema handling, and VS Code coverage. |
+| #1248 | `vscode: harden workspace-root and multi-root diagnosis` | done; close issue | #1267 added root/multi-root diagnosis; #1270 added direct repair-command root guards. |
+| #1249 | `fixtures(editor): add adoption-assurance fixture corpus` | open; planned | Dedicated `editor_adoption_assurance` fixture corpus is still missing. |
+| #1250 | `test(vscode): smoke editor adoption assurance path` | open; planned | Dedicated adoption-assurance VS Code smoke remains after #1249. |
+| #1251 | `docs(editor): write install-to-first-pr editor guide` | open; planned | Existing first-run and first-pr guides are partial; the install-to-first-pr recovery guide is still missing. |
+| #1252 | `dogfood(lane3): record external-style editor adoption receipts` | open; planned | Existing dogfood receipts are partial; external-style adoption receipts are still missing. |
+| #1253 | `campaign(lane3): close editor adoption assurance` | open; blocked | Blocked by #1249 through #1252. |
 
 ## Work Item 1: docs(lane3): open editor adoption assurance stack
 

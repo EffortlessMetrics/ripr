@@ -676,15 +676,22 @@ Durable sources for the proposed docs stack:
 
 The issue burn-down is:
 
-1. #1245 `docs(lane3): open editor adoption assurance stack`
-2. #1246 `test(lsp): pin editor adoption baseline`
-3. #1247 `vscode: add extension/server compatibility diagnosis`
-4. #1248 `vscode: harden workspace-root and multi-root diagnosis`
-5. #1249 `fixtures(editor): add adoption-assurance fixture corpus`
-6. #1250 `test(vscode): smoke editor adoption assurance path`
-7. #1251 `docs(editor): write install-to-first-pr editor guide`
-8. #1252 `dogfood(lane3): record external-style editor adoption receipts`
-9. #1253 `campaign(lane3): close editor adoption assurance`
+| Issue | Work item | Current state |
+| --- | --- | --- |
+| #1245 | `docs(lane3): open editor adoption assurance stack` | Done. |
+| #1246 | `test(lsp): pin editor adoption baseline` | Done. |
+| #1247 | `vscode: add extension/server compatibility diagnosis` | Done on `main`; close from #1262. |
+| #1248 | `vscode: harden workspace-root and multi-root diagnosis` | Done on `main`; close from #1267 and #1270. |
+| #1249 | `fixtures(editor): add adoption-assurance fixture corpus` | Open; still needs the dedicated fixture corpus. |
+| #1250 | `test(vscode): smoke editor adoption assurance path` | Open; still needs the dedicated packaged-extension smoke. |
+| #1251 | `docs(editor): write install-to-first-pr editor guide` | Open; still needs the recovery-oriented install-to-first-pr guide. |
+| #1252 | `dogfood(lane3): record external-style editor adoption receipts` | Open; still needs external-style adoption receipts. |
+| #1253 | `campaign(lane3): close editor adoption assurance` | Open; blocked by #1249 through #1252. |
+
+Reconciliation on 2026-05-18 found #1247 and #1248 implementation-complete
+but still open in GitHub because their merged PRs did not carry closing issue
+references. Do not rebuild those slices unless a regression appears. Continue
+with #1249 through #1253.
 
 Hard boundaries:
 
