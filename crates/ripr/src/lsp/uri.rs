@@ -99,6 +99,12 @@ pub(super) fn encode_uri_path(path: &str) -> String {
 mod tests {
     use super::*;
 
+    fn parse_uri(value: &str) -> Result<Uri, String> {
+        value
+            .parse()
+            .map_err(|err| format!("failed to parse test URI {value}: {err}"))
+    }
+
     #[test]
     fn file_uri_for_path_percent_encodes_spaces_and_symbols() -> Result<(), String> {
         let uri = file_uri_for_path(Path::new("/tmp/ripr fixtures/a#b?.rs"))?;
@@ -112,25 +118,55 @@ mod tests {
     }
 
     #[test]
+    fn file_uri_for_path_percent_encodes_unicode_relative_paths() -> Result<(), String> {
+        let uri = file_uri_for_path(Path::new("workspace/ripr/src/cafe_menu.rs"))?;
+        assert_eq!(uri.as_str(), "file:///workspace/ripr/src/cafe_menu.rs");
+
+        let uri = file_uri_for_path(Path::new("workspace/ripr/src/café.rs"))?;
+        assert_eq!(uri.as_str(), "file:///workspace/ripr/src/caf%C3%A9.rs");
+        Ok(())
+    }
+
+    #[test]
     fn invalid_percent_encoding_is_not_a_file_path() -> Result<(), String> {
-        let uri: Uri = "file:///tmp/%FF.rs"
-            .parse()
-            .map_err(|err| format!("expected URI parse to succeed: {err}"))?;
+        let uri = parse_uri("file:///tmp/%FF.rs")?;
 
         assert_eq!(path_from_file_uri(&uri), None);
         Ok(())
     }
 
     #[test]
+    fn path_from_file_uri_rejects_non_file_scheme() -> Result<(), String> {
+        let uri = parse_uri("https://example.test/src.rs")?;
+
+        assert_eq!(path_from_file_uri(&uri), None);
+        Ok(())
+    }
+
+    #[test]
+    fn file_uris_match_normalizes_percent_encoded_separators() -> Result<(), String> {
+        let encoded_separator = parse_uri("file:///workspace/ripr/src%2Flib.rs")?;
+        let literal_separator = parse_uri("file:///workspace/ripr/src/lib.rs")?;
+
+        assert!(file_uris_match(&encoded_separator, &literal_separator));
+        Ok(())
+    }
+
+    #[test]
     fn windows_drive_file_uris_match_case_insensitively() -> Result<(), String> {
-        let upper: Uri = "file:///C:/Work/Ripr/src/lib.rs"
-            .parse()
-            .map_err(|err| format!("expected upper-case drive URI to parse: {err}"))?;
-        let lower: Uri = "file:///c:/Work/Ripr/src/lib.rs"
-            .parse()
-            .map_err(|err| format!("expected lower-case drive URI to parse: {err}"))?;
+        let upper = parse_uri("file:///C:/Work/Ripr/src/lib.rs")?;
+        let lower = parse_uri("file:///c:/Work/Ripr/src/lib.rs")?;
 
         assert!(file_uris_match(&upper, &lower));
+        Ok(())
+    }
+
+    #[test]
+    fn file_uris_match_keeps_non_windows_paths_case_sensitive() -> Result<(), String> {
+        let upper = parse_uri("file:///workspace/ripr/src/Lib.rs")?;
+        let lower = parse_uri("file:///workspace/ripr/src/lib.rs")?;
+
+        assert!(!file_uris_match(&upper, &lower));
         Ok(())
     }
 }
