@@ -103,7 +103,9 @@ review.
 `doctor` is the shortest agent hygiene entry point and is equivalent to
 `worktree doctor`. It reports dirty `main` worktrees, branches behind
 `origin/main`, generated badge/target residue, and broad source-of-truth diffs
-that lack an obvious work item marker.
+that lack an obvious work item marker. Its report also includes a short
+next-action queue so agents can move from diagnosis to the right cleanup or
+follow-up validation command without reverse-engineering the findings.
 
 `pr-triage-report` is the open-board hygiene report. It reads open PR metadata
 through GitHub CLI and writes `target/ripr/reports/pr-triage.md` plus
