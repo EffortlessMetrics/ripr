@@ -178,7 +178,12 @@ pub(crate) fn build_report_packet_index_report(
 
     let start_here = entries
         .iter()
-        .find(|entry| entry.id == "pr_review_front_panel" && entry.available)
+        .find(|entry| entry.id == "first_pr_start_here" && entry.available)
+        .or_else(|| {
+            entries
+                .iter()
+                .find(|entry| entry.id == "pr_review_front_panel" && entry.available)
+        })
         .map(|entry| entry.path.clone());
     let gate_authority = entries
         .iter()
@@ -328,6 +333,21 @@ fn artifact_specs(input: &ReportPacketIndexInput) -> Vec<ArtifactSpec> {
     let reports = &input.reports_dir;
     let review = &input.review_dir;
     vec![
+        ArtifactSpec {
+            id: "first_pr_start_here",
+            label: "First PR start here",
+            group: "start_here",
+            kind: "markdown",
+            path: reports.join("start-here.md"),
+            json_path: Some(reports.join("start-here.json")),
+            required: true,
+            authority: false,
+            description: "Canonical first-screen repair packet.",
+            default_status: "available",
+            next_command: Some(
+                "ripr first-pr --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json --first-action target/ripr/reports/first-useful-action.json --review-comments target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-packet.json --gate-decision target/ripr/reports/gate-decision.json --receipts-dir target/ripr/receipts --out-dir target/ripr/reports",
+            ),
+        },
         ArtifactSpec {
             id: "pr_review_front_panel",
             label: "PR review front panel",
