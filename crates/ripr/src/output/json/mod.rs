@@ -159,6 +159,15 @@ mod tests {
         assert_eq!(alignment["items"][0]["raw_group_size"], 2);
         assert_eq!(alignment["items"][0]["gap_state"], "static_limitation");
         assert_eq!(alignment["items"][0]["actionability"], "inspect_visibility");
+        assert_eq!(alignment["items"][0]["primary_anchor"]["line"], 46);
+        assert_eq!(
+            alignment["items"][0]["primary_anchor"]["reason"],
+            "declaration_line_for_grouped_constant"
+        );
+        assert_eq!(alignment["items"][0]["raw_spans"][0]["start_line"], 46);
+        assert_eq!(alignment["items"][0]["raw_spans"][0]["end_line"], 46);
+        assert_eq!(alignment["items"][0]["raw_spans"][1]["start_line"], 47);
+        assert_eq!(alignment["items"][0]["raw_spans"][1]["end_line"], 47);
         assert!(alignment["items"][0]["repair_route"].is_null());
         assert_eq!(
             alignment["items"][0]["static_limitations"][0]["category"],

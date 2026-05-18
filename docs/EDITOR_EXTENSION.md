@@ -13,7 +13,7 @@ Open VSX extension:
   EffortlessMetrics.ripr
 ```
 
-The `0.5.x` extension is a universal VSIX preview client. It resolves the
+The `0.6.x` extension is a universal VSIX preview client. It resolves the
 server in this order:
 
 ```text
@@ -53,7 +53,7 @@ Use one of these surfaces:
 - VS Code Marketplace: install `EffortlessMetrics.ripr`.
 - Open VSX: install `EffortlessMetrics.ripr`.
 - Local VSIX smoke: run `npm run package`, then install
-  `editors/vscode/dist/ripr-0.5.0.vsix`.
+  `editors/vscode/dist/ripr-0.6.0.vsix`.
 
 On activation, the extension resolves a configured, bundled, cached,
 downloaded, or PATH server and writes the selected source to the `ripr` output
@@ -83,8 +83,12 @@ The extension owns normal first-run server provisioning. A separate
 `cargo install ripr` remains a fallback for offline, pinned, or controlled
 environments.
 
-For the local repair loop from diagnostic to gap state, bounded action,
-verify, receipt, and refresh, see
+For a first install-to-receipt walkthrough, see
+[Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md). For
+the local handoff from receipt to `start-here` packet, see
+[Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md). For
+the local repair loop from diagnostic to gap state, bounded action, verify,
+receipt, and refresh, see
 [Editor gap cockpit workflow](EDITOR_GAP_COCKPIT_WORKFLOW.md). For the older
 saved-workspace seam walkthrough, see
 [Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md). For the plain-language
@@ -167,6 +171,22 @@ wrong-root, stale, malformed, disabled-language, unavailable-adapter, and
 out-of-workspace related-test states suppress repair actions and leave status
 inspection or refresh as the safe next step.
 
+When first-pr packet artifacts are present, `ripr: Show Status` and
+`ripr: Diagnose Setup` can project the packet state from:
+
+```text
+target/ripr/reports/start-here.{json,md}
+target/ripr/first-pr/start-here.{json,md}
+```
+
+The editor validates the JSON packet before showing stronger first-pr actions.
+Missing, stale, wrong-root, malformed, unsupported, path-unsafe, and
+command-unsafe packets fail closed: repair, verify, receipt, and packet-copy
+claims are suppressed, while refresh, setup diagnosis, or first-pr regeneration
+guidance remain safe. A found packet is advisory and does not prove merge
+readiness, runtime adequacy, mutation coverage, policy eligibility, or gate
+status.
+
 ## Defaults-First Stance
 
 The editor surface follows the defaults-first adoption contract in
@@ -188,6 +208,13 @@ quieter.
 - `ripr: Restart Server`
 - `ripr: Show Status`
 - `ripr: Show Output`
+- `ripr: Start Current Repair`
+- `ripr: First PR - Open Packet`
+- `ripr: First PR - Copy Summary`
+- `ripr: First PR - Copy Repair Packet`
+- `ripr: First PR - Copy Verify Command`
+- `ripr: First PR - Copy Receipt Command`
+- `ripr: First PR - Copy Regeneration Guidance`
 - `ripr: Inspect Test Gap - Copy Context`
 - `ripr: Write Targeted Test - Copy Suggested Assertion`
 - `ripr: Write Targeted Test - Copy Brief`
@@ -211,6 +238,21 @@ back to shelling out to the `ripr` CLI (`ripr context --at <selector> --json`).
 The code action `Inspect finding: copy context packet` includes `finding_id` and
 `probe_id` from the diagnostic data so the server can resolve the finding
 without re-running workspace analysis.
+
+### Start Current Repair
+
+The `ripr: Start Current Repair` command is editor-side orchestration over the
+current projected gap. It selects the current or nearest `ripr` gap diagnostic,
+asks the LSP for the existing code actions at that diagnostic range, and runs
+one of those already-bounded actions. It does not read report files, parse hover
+text, rerun hidden analysis, generate tests, edit source, or change gate
+authority.
+
+When a current repair is available, the command offers the same actions exposed
+on the diagnostic: copy the first repair packet, copy the gap repair packet,
+open the best related test, copy the verify command, copy the receipt command,
+or copy a static-limit note. If only refresh/setup actions are available, the
+command reports that no current bounded repair action is available.
 
 ### Seam Code Actions
 
@@ -269,6 +311,8 @@ Gap cockpit actions remain conditional:
 
 - `Write targeted test: open best related test` appears only for a
   workspace-local related test in the current language.
+- `ripr: Start Current Repair` only dispatches to the repair actions already
+  produced for the current or nearest gap diagnostic.
 - `Inspect Test Gap - Copy Context` and repair-packet actions appear only when
   gap identity and repair route exist.
 - `Write targeted test: copy brief` appears only when there is enough evidence
@@ -281,6 +325,33 @@ Gap cockpit actions remain conditional:
 Stale, wrong-root, malformed, disabled-language, unavailable-adapter, and path
 escape states suppress repair actions. The editor may explain the state in
 status or hover, but it should not offer an unsafe packet.
+
+### First-PR Packet Actions
+
+First-pr packet actions bridge the local repair loop to the PR-facing
+`start-here` packet. They consume existing packet artifacts only; the editor
+does not run `ripr first-pr`, publish PR comments, compose generated CI
+summaries, or decide gate state.
+
+The command set is:
+
+- `ripr: First PR - Open Packet`: opens the workspace-local Markdown packet
+  when the JSON packet validates and the Markdown path exists.
+- `ripr: First PR - Copy Summary`: copies an advisory summary for safe found
+  packet states.
+- `ripr: First PR - Copy Repair Packet`: copies a bounded work packet only when
+  the current diagnostic identity matches the packet gap identity.
+- `ripr: First PR - Copy Verify Command`: copies the validated verify command
+  for the matching current diagnostic.
+- `ripr: First PR - Copy Receipt Command`: copies the validated receipt command
+  for the matching current diagnostic.
+- `ripr: First PR - Copy Regeneration Guidance`: copies guidance for missing,
+  stale, blocked, or no-action packet states without running the command.
+
+The diagnostic-scoped actions match typed fields such as `canonical_gap_id` and
+`gap_id`; they do not infer identity from hover or Markdown prose. Treat
+preview-language first-pr packets as preview evidence: syntax-first, advisory,
+static-limit bounded, and not Rust-level confidence.
 
 ## Missing Server Behavior
 
@@ -307,7 +378,7 @@ npm ci
 npm run compile
 npm run package
 npm run test:e2e
-code --install-extension dist/ripr-0.5.0.vsix --force
+code --install-extension dist/ripr-0.6.0.vsix --force
 ```
 
 Manual smoke:

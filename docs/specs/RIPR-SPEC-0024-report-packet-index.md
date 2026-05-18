@@ -138,8 +138,8 @@ and known explicit artifact paths. A useful index should provide:
 - explicit input directories and paths inspected by the producer;
 - grouped artifact entries with label, path, availability, status, requiredness,
   and authority flags;
-- one recommended start-here artifact, preferably `pr-review-front-panel.md`
-  when present;
+- one recommended start-here artifact, preferably `start-here.md` when present,
+  then `pr-review-front-panel.md` as the fallback PR review story;
 - gate authority path when a gate decision exists;
 - missing expected artifacts with bounded reasons and regeneration commands
   when known;

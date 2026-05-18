@@ -1,0 +1,59 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "pr_inline_comment_publish_plan",
+  "status": "advisory",
+  "root": ".",
+  "generated_at": "2026-05-10T12:00:00Z",
+  "mode": "plan",
+  "inputs": {
+    "pr_guidance": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/repair-card-copy/comments.json",
+    "existing_comments": null,
+    "pull_request": 123,
+    "event_name": "pull_request",
+    "head_repo": "EffortlessMetrics/ripr",
+    "base_repo": "EffortlessMetrics/ripr"
+  },
+  "limits": {
+    "max_inline_comments": 3,
+    "advisory": true,
+    "comments_default": "off"
+  },
+  "summary": {
+    "guidance_comments": 1,
+    "summary_only": 0,
+    "suppressed": 0,
+    "publishable": 1,
+    "planned_create": 1,
+    "planned_update": 0,
+    "planned_keep": 0,
+    "planned_delete": 0,
+    "skipped": 0,
+    "blocked": 0,
+    "safe_to_publish": false
+  },
+  "operations": [
+    {
+      "operation": "create",
+      "safe_to_publish": false,
+      "dry_run": true,
+      "source_collection": "comments",
+      "source_id": "ripr-review-repair-card",
+      "dedupe_key": "gap:rust:pricing:discount:threshold-boundary",
+      "placement": {
+        "path": "src/pricing.rs",
+        "line": 88,
+        "side": "RIGHT",
+        "mode": "gap_record_anchor"
+      },
+      "body": "### ripr gap: missing boundary assertion\n\nChanged behavior:\n`amount == discount_threshold`\n\nWhy this matters:\nA related test reaches this code, but no equality-boundary assertion was found.\n\nRepair route:\nadd boundary assertion\n\nRepair:\nAdd an exact assertion for `amount == discount_threshold`.\n\nVerify:\n`cargo xtask fixtures boundary_gap`",
+      "existing_comment_id": null,
+      "skip_reason": null,
+      "blocked_reason": null
+    }
+  ],
+  "skipped": [],
+  "blocked": [],
+  "warnings": [],
+  "limits_note": "Advisory inline-comment publish plan only; default workflows do not post comments, summary-only guidance is never published inline, and gate decisions remain separate."
+}

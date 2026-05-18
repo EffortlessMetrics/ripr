@@ -53,12 +53,13 @@ fn numeric_literal_at(line: &str, cursor: usize) -> Option<(String, usize)> {
         if let Some((radix, prefix_len)) = radix_prefix(line, prefix_cursor) {
             let digit_start = prefix_cursor + prefix_len;
             let digit_end = consume_digits_and_underscores(line, digit_start, radix);
-            if digit_end > digit_start {
+            if contains_digit_for_radix(&line[digit_start..digit_end], radix) {
                 let numeric_end = digit_end;
                 let next_cursor = consume_literal_suffix(line, digit_end);
                 let value = canonical_radix_literal(&line[numeric_start..numeric_end]);
                 return Some((value, next_cursor));
             }
+            return None;
         }
     }
 
@@ -126,6 +127,10 @@ fn consume_literal_suffix(line: &str, mut cursor: usize) -> usize {
     cursor
 }
 
+fn contains_digit_for_radix(value: &str, radix: u32) -> bool {
+    value.chars().any(|ch| ch.is_digit(radix))
+}
+
 fn radix_prefix(line: &str, cursor: usize) -> Option<(u32, usize)> {
     let suffix = line.get(cursor..)?;
     if suffix.starts_with('x') || suffix.starts_with('X') {
@@ -183,4 +188,46 @@ fn is_identifier_tail_before(line: &str, cursor: usize) -> bool {
         .chars()
         .next_back()
         .is_some_and(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_literals_sorts_and_deduplicates_values() {
+        let values = extract_literals("let a = 42;\nlet b = -7;\nlet c = 42;");
+
+        assert_eq!(values, vec!["-7".to_string(), "42".to_string()]);
+    }
+
+    #[test]
+    fn extract_literal_facts_preserves_source_lines_and_ignores_bare_minus() {
+        let facts = extract_literal_facts("let a = -;\nlet b = -12;\nlet c = 3 + 3;", 40);
+
+        assert_eq!(facts.len(), 2);
+        assert_eq!(facts[0].line, 41);
+        assert_eq!(facts[0].value, "-12");
+        assert_eq!(facts[1].line, 42);
+        assert_eq!(facts[1].value, "3");
+    }
+
+    #[test]
+    fn extract_literal_facts_deduplicates_same_value_on_same_line_only() {
+        let facts = extract_literal_facts("let a = 9 + 9;\nlet b = 9;", 1);
+
+        let values_by_line = facts
+            .iter()
+            .map(|fact| (fact.line, fact.value.as_str()))
+            .collect::<Vec<_>>();
+
+        assert_eq!(values_by_line, vec![(1, "9"), (2, "9")]);
+    }
+
+    #[test]
+    fn extract_literals_ignores_malformed_radix_prefix_without_digits() {
+        let values = extract_literals("let bad = 0b_cnt + 0x_ + 0o_mode;");
+
+        assert!(values.is_empty());
+    }
 }
