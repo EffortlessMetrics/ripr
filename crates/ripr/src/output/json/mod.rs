@@ -10,6 +10,28 @@ pub(crate) use report::render_with_config;
 
 pub(crate) use formatter::{array_field, escape, field, float_field, number_field};
 
+/// Renders a serializable JSON value with the repository's pretty-printing
+/// convention and a consistent contextual error message.
+pub(crate) fn render_pretty<T>(value: &T, context: &str) -> Result<String, String>
+where
+    T: serde::Serialize + ?Sized,
+{
+    serde_json::to_string_pretty(value)
+        .map_err(|err| format!("failed to render {context} JSON: {err}"))
+}
+
+/// Renders pretty JSON and appends the trailing newline expected by artifact
+/// writers that are consumed as line-oriented files.
+pub(crate) fn render_pretty_with_newline<T>(value: &T, context: &str) -> Result<String, String>
+where
+    T: serde::Serialize + ?Sized,
+{
+    render_pretty(value, context).map(|mut rendered| {
+        rendered.push('\n');
+        rendered
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{context_packet::render_context_packet, render, report::finding_json};
