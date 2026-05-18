@@ -44,7 +44,7 @@ Release themes:
 
 Detailed changes:
 - Changelog source range: the 0.6.0 notes were reconciled against merged PRs
-  and first-parent commits through `68474d8a` / #1121 on current `main`.
+  and first-parent commits through `568861f0` / #1197 on current `main`.
   Internal learning-doc polish is intentionally not part of the public release
   story. Remaining open non-release PR families stay outside this section until
   they land.
@@ -83,6 +83,10 @@ Detailed changes:
 - Shared JSON output helpers now back additional agent, review, evidence-health,
   outcome, and mutation-calibration report renderers, reducing duplicated
   serialization code without changing output schemas or release behavior.
+- Human output rendering is split into focused evidence-line and section
+  modules, with source-of-truth and PR-summary surface detection updated for the
+  new module path. This is behavior-preserving output organization, not a
+  report-contract or release-behavior change.
 - Mutation calibration import now handles additional nested mutation outcome
   record shapes, including nested mutation identifiers, locations, spans, and
   detail-only runtime records, with parser coverage. This improves advisory
