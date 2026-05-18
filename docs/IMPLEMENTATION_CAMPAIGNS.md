@@ -3769,3 +3769,73 @@ Blocking conditions:
 - PR comment publishing changes
 - source edits, generated tests, provider/model calls, mutation execution, or
   editor UI-sprawl work
+
+## Lane 3 Campaign: Editor Adoption Assurance
+
+Campaign ID: `editor-adoption-assurance`
+
+Status: proposed.
+
+The editor cockpit, first-run repair loop, first-pr bridge, and preview routing
+are closed. This campaign makes the first-use editor path safer for outside
+users by hardening compatibility, active-root, multi-root, receipt mismatch,
+and first-pr packet mismatch diagnosis without making Lane 3 a producer.
+
+Objective:
+
+```text
+Make the editor explain what is active, what is incompatible or unsafe, and
+what is safe to do next before a user or agent receives a repair packet.
+```
+
+End state:
+
+- current Rust/default editor cockpit behavior remains pinned;
+- extension/server compatibility diagnosis names version, path, schema, and
+  safe next action;
+- active workspace root and multi-root ambiguity are explicit;
+- wrong-root, stale, malformed, unsupported, receipt-mismatched, and first-pr
+  mismatched states fail closed;
+- fixtures and VS Code smoke prove success and fail-closed states;
+- install-to-first-pr docs and external-style dogfood receipts prove the path;
+- Lane 3 remains read-only and projection-only.
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `docs/lane3-editor-adoption-assurance-stack` | active | Add proposal, spec, ADR, plan, indexes, traceability, and GitHub issues. |
+| `test/lsp-editor-adoption-baseline` | planned | Pin the closed Lane 3 contract before compatibility/root behavior changes. |
+| `vscode/extension-server-compatibility-diagnosis` | planned | Show extension/server version and schema compatibility state. |
+| `vscode/workspace-root-multi-root-diagnosis` | planned | Harden active root, multi-root, nested-root, wrong-root, and path normalization states. |
+| `fixtures/editor-adoption-assurance` | planned | Add setup, mismatch, first-pr, receipt, and preview-unavailable fixtures. |
+| `test/vscode-editor-adoption-assurance` | planned | Smoke the packaged extension path for adoption assurance. |
+| `docs/editor-install-to-first-pr` | planned | Document install/open through first-pr packet inspection and recovery states. |
+| `dogfood/lane3-editor-adoption-receipts` | planned | Record external-style adoption receipts. |
+| `campaign/lane3-editor-adoption-assurance-closeout` | planned | Close only after proof and issue burn-down. |
+
+Commands:
+
+```bash
+cargo xtask check-spec-format
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-traceability
+cargo xtask check-pr
+git diff --check
+```
+
+Blocking conditions:
+
+- analyzer truth changes
+- policy or gate behavior changes
+- PR or CI producer behavior
+- release publishing, binary download, binary install, or config mutation
+- source edits or generated tests
+- provider/model calls
+- runtime mutation execution
+- runtime adequacy, Rust-parity, policy-eligibility, or gate claims
+- unsaved-buffer overlays, CodeLens, inlay hints, semantic tokens, or inline
+  patch application in this campaign

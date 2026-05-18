@@ -22,6 +22,9 @@ Current and planned tutorial docs:
 - [Start-here surface convergence proposal](proposals/RIPR-PROP-0011-start-here-surface-convergence.md) -
   cross-surface plan for making editor, CLI, PR/CI, receipts, and preview
   promotion use the same safe next-action unit
+- [Editor adoption assurance proposal](proposals/RIPR-PROP-0012-editor-adoption-assurance.md) -
+  Lane 3 plan for compatibility, active root, multi-root, and fail-closed
+  first-use diagnosis
 - README quick start
 - future first-extension-install walkthrough
 - future first-fixture walkthrough
@@ -193,6 +196,8 @@ Current explanation docs:
 - [Editor first-pr bridge proposal](proposals/RIPR-PROP-0010-editor-first-pr-bridge.md)
 - [Start-here surface convergence proposal](proposals/RIPR-PROP-0011-start-here-surface-convergence.md)
 - [Start-here surface convergence plan](../plans/start-here-surface-convergence/implementation-plan.md)
+- [Editor adoption assurance proposal](proposals/RIPR-PROP-0012-editor-adoption-assurance.md)
+- [Editor adoption assurance plan](../plans/editor-adoption-assurance/implementation-plan.md)
 - [Codex Goals](CODEX_GOALS.md)
 - [Scoped PR contract](SCOPED_PR_CONTRACT.md)
 - [PR automation](PR_AUTOMATION.md)
@@ -215,6 +220,7 @@ Current explanation docs:
 - [Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md)
 - [Editor evidence UX](EDITOR_EVIDENCE_UX.md)
 - [Editor first-pr bridge plan](../plans/editor-first-pr-bridge/implementation-plan.md)
+- [Editor adoption assurance plan](../plans/editor-adoption-assurance/implementation-plan.md)
 - [Adoption integration cleanup rails](../plans/adoption-integration-cleanup/README.md)
 - [LLM operator guide](LLM_OPERATOR_GUIDE.md)
 - [Recommendation calibration](RECOMMENDATION_CALIBRATION.md)

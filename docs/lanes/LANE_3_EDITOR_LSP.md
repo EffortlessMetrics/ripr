@@ -650,6 +650,57 @@ provider/model calls, mutation execution, policy/gate changes, CodeLens,
 inlay hints, semantic tokens, inline patches, or unsaved-buffer overlays need a
 new editor campaign.
 
+## Proposed Slice: Editor Adoption Assurance
+
+Editor Adoption Assurance opens the next Lane 3 scope. It is not more editor
+furniture and it does not reopen the closed cockpit, first-run, first-pr, or
+preview-routing behavior. It hardens first-use trust around compatibility and
+root state:
+
+```text
+Diagnose Setup
+-> Show Status
+-> compatibility/root state
+-> inspect one safe diagnostic
+-> repair packet / related test / verify / receipt
+-> refresh
+-> first-pr packet
+```
+
+Durable sources for the proposed docs stack:
+
+- [RIPR-PROP-0012: Editor Adoption Assurance](../proposals/RIPR-PROP-0012-editor-adoption-assurance.md)
+- [RIPR-SPEC-0054: Editor Adoption Assurance](../specs/RIPR-SPEC-0054-editor-adoption-assurance.md)
+- [ADR-0016: Editor Adoption Assurance Remains Read-Only](../adr/0016-editor-adoption-assurance-remains-read-only.md)
+- [Editor Adoption Assurance implementation plan](../../plans/editor-adoption-assurance/implementation-plan.md)
+
+The issue burn-down is:
+
+1. #1245 `docs(lane3): open editor adoption assurance stack`
+2. #1246 `test(lsp): pin editor adoption baseline`
+3. #1247 `vscode: add extension/server compatibility diagnosis`
+4. #1248 `vscode: harden workspace-root and multi-root diagnosis`
+5. #1249 `fixtures(editor): add adoption-assurance fixture corpus`
+6. #1250 `test(vscode): smoke editor adoption assurance path`
+7. #1251 `docs(editor): write install-to-first-pr editor guide`
+8. #1252 `dogfood(lane3): record external-style editor adoption receipts`
+9. #1253 `campaign(lane3): close editor adoption assurance`
+
+Hard boundaries:
+
+- saved-workspace first;
+- read-only projection over existing artifacts;
+- typed fields over prose;
+- Rust default unchanged;
+- preview evidence visibly bounded;
+- stale, wrong-root, malformed, missing, unsupported, disabled, unavailable,
+  path-unsafe, command-unsafe, receipt-mismatched, first-pr-mismatched, and
+  compatibility-mismatched states fail closed;
+- no analyzer truth;
+- no policy, gate, PR/CI producer, release, source-edit, generated-test,
+  provider, mutation, CodeLens, inlay, semantic-token, inline-patch, or
+  unsaved-buffer scope.
+
 ## Lane 3 Document Model
 
 Lane 3 uses the repo tracking model in layers so future editor work does not
