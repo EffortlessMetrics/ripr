@@ -145,7 +145,10 @@ fn radix_prefix(line: &str, cursor: usize) -> Option<(u32, usize)> {
 }
 
 fn canonical_decimal_literal(raw: &str) -> String {
-    raw.chars().filter(|ch| *ch != '_').collect()
+    raw.chars()
+        .filter(|ch| *ch != '_')
+        .flat_map(char::to_lowercase)
+        .collect()
 }
 
 fn canonical_radix_literal(raw: &str) -> String {
@@ -243,7 +246,7 @@ mod tests {
     fn extract_literals_handles_decimal_float_exponents_and_suffixes() {
         let values = extract_literals("let ratio = 1_000.50f64 + 2e+3_f32 + 4E-2 + 9e_name;");
 
-        assert_eq!(values, vec!["1000.50", "2e+3", "4E-2", "9"]);
+        assert_eq!(values, vec!["1000.50", "2e+3", "4e-2", "9"]);
     }
 
     #[test]
