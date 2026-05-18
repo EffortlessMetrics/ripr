@@ -45,27 +45,31 @@ mod tests {
 
     #[test]
     fn extract_literals_sorts_and_deduplicates_values() {
-        let body = "let retry = 3;\nlet copy = 3;\nlet penalty = -2;";
+        let values = extract_literals("let a = 42;\nlet b = -7;\nlet c = 42;");
 
-        assert_eq!(extract_literals(body), vec!["-2", "3"]);
+        assert_eq!(values, vec!["-7".to_string(), "42".to_string()]);
     }
 
     #[test]
-    fn extract_literal_facts_keep_line_context_and_skip_bare_minus() {
-        let body = "let range = 10 - value;\nlet adjustment = -4;";
+    fn extract_literal_facts_preserves_source_lines_and_ignores_bare_minus() {
+        let facts = extract_literal_facts("let a = -;\nlet b = -12;\nlet c = 3 + 3;", 40);
 
-        assert_eq!(
-            extract_literal_facts(body, 41),
-            vec![
-                LiteralFact {
-                    line: 41,
-                    value: "10".to_string(),
-                },
-                LiteralFact {
-                    line: 42,
-                    value: "-4".to_string(),
-                },
-            ]
-        );
+        assert_eq!(facts.len(), 2);
+        assert_eq!(facts[0].line, 41);
+        assert_eq!(facts[0].value, "-12");
+        assert_eq!(facts[1].line, 42);
+        assert_eq!(facts[1].value, "3");
+    }
+
+    #[test]
+    fn extract_literal_facts_deduplicates_same_value_on_same_line_only() {
+        let facts = extract_literal_facts("let a = 9 + 9;\nlet b = 9;", 1);
+
+        let values_by_line = facts
+            .iter()
+            .map(|fact| (fact.line, fact.value.as_str()))
+            .collect::<Vec<_>>();
+
+        assert_eq!(values_by_line, vec![(1, "9"), (2, "9")]);
     }
 }

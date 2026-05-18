@@ -13,8 +13,15 @@ Current and planned tutorial docs:
   agent or reviewer handoff
 - [First successful PR workflow](FIRST_PR_WORKFLOW.md) - one Rust PR,
   one repairable gap, one focused proof, one receipt
+- [First successful PR demo](demo/first-successful-pr.md) - fixture-backed
+  boundary, output-contract, no-action, and blocked start-here cases
 - [Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md) -
   install/open, diagnose setup, repair one Rust gap, verify, receipt, refresh
+- [Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md) -
+  local handoff from receipt and refresh to first-pr `start-here` packet
+- [Start-here surface convergence proposal](proposals/RIPR-PROP-0011-start-here-surface-convergence.md) -
+  cross-surface plan for making editor, CLI, PR/CI, receipts, and preview
+  promotion use the same safe next-action unit
 - README quick start
 - future first-extension-install walkthrough
 - future first-fixture walkthrough
@@ -66,6 +73,7 @@ Current how-to docs:
 - [Lane 1 evidence accuracy tracker](lanes/LANE_1_EVIDENCE_ACCURACY.md)
 - [Lane 1 evidence quality leadership tracker](lanes/LANE_1_EVIDENCE_QUALITY_LEADERSHIP.md)
 - [Lane 1 user-visible output evidence tracker](lanes/LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md)
+- [Lane 1 finding alignment burn-down tracker](lanes/LANE_1_FINDING_ALIGNMENT_BURNDOWN.md)
 - [Lane 2 policy readiness tracker](policy/POLICY_READINESS.md)
 - [Lane 2 policy operations tracker](policy/POLICY_OPERATIONS.md)
 - [Lane 3 editor/LSP tracker](lanes/LANE_3_EDITOR_LSP.md)
@@ -73,9 +81,11 @@ Current how-to docs:
 - [Release](RELEASE.md)
 - [Installation verification](INSTALLATION_VERIFICATION.md)
 - [First successful PR workflow](FIRST_PR_WORKFLOW.md)
+- [First successful PR demo](demo/first-successful-pr.md)
 - [Publishing](PUBLISHING.md)
 - [Editor extension](EDITOR_EXTENSION.md)
 - [Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md)
+- [Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md)
 - [Editor gap cockpit workflow](EDITOR_GAP_COCKPIT_WORKFLOW.md)
 - [Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md)
 - [Editor evidence UX](EDITOR_EVIDENCE_UX.md)
@@ -142,7 +152,7 @@ Current reference docs:
 - [CI cost and verification policy](ci/cost-and-verification-policy.md)
 - [MSRV 1.95 rollout plan](ci/ripr-rollout-plan.md)
 - [Rust 1.95 compatibility audit](ci/msrv-1.95-audit.md)
-- [Rust 1.95 / 0.5.1 quality rollout](ci/rust-1.95-quality-rollout.md)
+- [Rust 1.95 / 0.6.0 release shaping](ci/rust-1.95-quality-rollout.md)
 - [Test evidence lanes](ci/test-evidence-lanes.md)
 - [ripr / mutation boundary](ci/ripr-mutation-boundary.md)
 - [Rust 1.95 consistency audit](ci/rust-1.95-consistency-audit.md)
@@ -175,6 +185,11 @@ Current explanation docs:
 - [Campaign 27 plans](../plans/campaign-27/README.md)
 - [Proposals](proposals/README.md)
 - [User-visible output evidence proposal](proposals/RIPR-PROP-0005-user-visible-output-evidence.md)
+- [Lane 1 finding alignment burn-down plan](../plans/lane1-finding-alignment-burndown/implementation-plan.md)
+- [Adoption integration cleanup plan](../plans/adoption-integration-cleanup/implementation-plan.md)
+- [Editor first-pr bridge proposal](proposals/RIPR-PROP-0010-editor-first-pr-bridge.md)
+- [Start-here surface convergence proposal](proposals/RIPR-PROP-0011-start-here-surface-convergence.md)
+- [Start-here surface convergence plan](../plans/start-here-surface-convergence/implementation-plan.md)
 - [Codex Goals](CODEX_GOALS.md)
 - [Scoped PR contract](SCOPED_PR_CONTRACT.md)
 - [PR automation](PR_AUTOMATION.md)
@@ -196,6 +211,8 @@ Current explanation docs:
 - [Editor gap cockpit workflow](EDITOR_GAP_COCKPIT_WORKFLOW.md)
 - [Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md)
 - [Editor evidence UX](EDITOR_EVIDENCE_UX.md)
+- [Editor first-pr bridge plan](../plans/editor-first-pr-bridge/implementation-plan.md)
+- [Adoption integration cleanup rails](../plans/adoption-integration-cleanup/README.md)
 - [LLM operator guide](LLM_OPERATOR_GUIDE.md)
 - [Recommendation calibration](RECOMMENDATION_CALIBRATION.md)
 - [Calibrated gate policy](CALIBRATED_GATE_POLICY.md)

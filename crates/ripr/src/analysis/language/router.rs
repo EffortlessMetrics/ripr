@@ -31,15 +31,18 @@ mod tests {
 
     #[test]
     fn route_rust_and_preview_languages_by_extension() {
-        assert_eq!(route(Path::new("src/lib.rs")), Some(LanguageId::Rust));
-        assert_eq!(
-            route(Path::new("web/app.tsx")),
-            Some(LanguageId::TypeScript)
-        );
-        assert_eq!(
-            route(Path::new("tests/test_retry.py")),
-            Some(LanguageId::Python)
-        );
+        let cases = [
+            ("src/lib.rs", LanguageId::Rust),
+            ("web/app.ts", LanguageId::TypeScript),
+            ("web/app.tsx", LanguageId::TypeScript),
+            ("web/app.js", LanguageId::TypeScript),
+            ("web/app.jsx", LanguageId::TypeScript),
+            ("tests/test_retry.py", LanguageId::Python),
+        ];
+
+        for (path, expected) in cases {
+            assert_eq!(route(Path::new(path)), Some(expected));
+        }
     }
 
     #[test]

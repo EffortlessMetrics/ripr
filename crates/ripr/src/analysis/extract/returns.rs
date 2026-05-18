@@ -27,38 +27,41 @@ mod tests {
     use super::*;
 
     #[test]
-    fn extract_return_facts_tracks_common_return_shapes() {
-        let body = r#"
-fn parse(input: &str) -> Result<Option<i32>, Error> {
-    if input.is_empty() { return Ok(None); }
-    if input == "x" { return Err(Error::Invalid); }
-    Some(7)
-}
-"#;
+    fn extract_return_facts_captures_result_option_and_explicit_returns() {
+        let body =
+            "if missing { return Err(ConfigError::Missing); }\nOk(Some(value))\nlet x = None;";
 
+        let facts = extract_return_facts(body, 10);
+
+        let lines_and_text = facts
+            .iter()
+            .map(|fact| (fact.line, fact.text.as_str()))
+            .collect::<Vec<_>>();
         assert_eq!(
-            extract_return_facts(body, 10),
+            lines_and_text,
             vec![
-                ReturnFact {
-                    line: 12,
-                    text: "if input.is_empty() { return Ok(None); }".to_string(),
-                },
-                ReturnFact {
-                    line: 13,
-                    text: "if input == \"x\" { return Err(Error::Invalid); }".to_string(),
-                },
-                ReturnFact {
-                    line: 14,
-                    text: "Some(7)".to_string(),
-                },
+                (10, "if missing { return Err(ConfigError::Missing); }"),
+                (11, "Ok(Some(value))"),
+                (12, "let x = None;"),
             ]
         );
     }
 
     #[test]
-    fn extract_return_facts_keeps_repeated_text_on_distinct_lines() {
-        let body = "return Ok(1);\nreturn Ok(1);";
+    fn extract_return_facts_sorts_and_deduplicates_duplicate_lines() {
+        let facts = extract_return_facts("Ok(value)\nOk(value)", 3);
 
-        assert_eq!(extract_return_facts(body, 5).len(), 2);
+        let lines_and_text = facts
+            .iter()
+            .map(|fact| (fact.line, fact.text.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(lines_and_text, vec![(3, "Ok(value)"), (4, "Ok(value)")]);
+    }
+
+    #[test]
+    fn extract_return_facts_ignores_substrings_without_return_signal() {
+        let facts = extract_return_facts("let ok_value = status;\nlet none_count = 0;", 1);
+
+        assert!(facts.is_empty());
     }
 }

@@ -858,7 +858,7 @@
           "seam_id": "bench-config-policy-internal",
           "canonical_gap_id": "config_or_policy_constant::INTERNAL_POLICY_LABEL",
           "canonical_gap_group_size": 2,
-          "canonical_gap_reason": "same_config_policy_constant",
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
           "owner": "INTERNAL_POLICY_LABEL",
           "location": {
             "file": "src/policy.rs",
@@ -933,7 +933,7 @@
           "seam_id": "bench-config-policy-rendered-unobserved",
           "canonical_gap_id": "config_or_policy_constant::REPORT_POLICY_LABEL",
           "canonical_gap_group_size": 2,
-          "canonical_gap_reason": "same_config_policy_constant",
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
           "owner": "REPORT_POLICY_LABEL",
           "location": {
             "file": "src/report_config.rs",
@@ -987,6 +987,157 @@
       "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
     },
     {
+      "id": "config_policy_behavior_selector_unobserved",
+      "case_kind": "positive",
+      "evidence_class": "config_or_policy_constant",
+      "maturity_scope": "fixture_backed",
+      "description": "A validation or routing selector with no behavior discriminator becomes one actionable behavior-discriminator item.",
+      "fixture_reference": "RIPR-SPEC-0048 behavior selector without discriminator",
+      "sample": {
+        "file": "src/validation_selector.rs",
+        "declaration_line": 40,
+        "literal_line": 41,
+        "constant": "VALIDATION_SELECTOR",
+        "sink": "validation_behavior",
+        "observer": "none"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": true,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-config-policy-behavior-selector",
+          "canonical_gap_id": "config_or_policy_constant::VALIDATION_SELECTOR",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "VALIDATION_SELECTOR",
+          "location": {
+            "file": "src/validation_selector.rs",
+            "line": 40
+          },
+          "seam_kind": "config_policy_constant",
+          "grip_class": "weakly_gripped",
+          "headline_eligible": true,
+          "evidence_class": "config_or_policy_constant",
+          "gap_state": "actionable",
+          "actionability": "add_behavior_discriminator",
+          "why": "Changed validation selector flows to observable validation behavior and no supported discriminator is found.",
+          "recommended_repair": "Add or update a behavior discriminator test for VALIDATION_SELECTOR.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/validation_selector.rs",
+              "line": 40,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/validation_selector.rs",
+              "line": 41,
+              "kind": "weakly_exposed"
+            }
+          ],
+          "config_policy": {
+            "constant": "VALIDATION_SELECTOR",
+            "role": "behavior_selector",
+            "source_kind": "const_decl",
+            "visibility": "user_visible",
+            "observer": "none",
+            "actionability": "add_behavior_discriminator",
+            "repair_kind": "behavior_discriminator",
+            "target_test_type": "validation_behavior",
+            "suggested_assertion": "Assert the selected behavior includes the VALIDATION_SELECTOR value or selected behavior."
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "config_policy_actionable_behavior_discriminator",
+        "value": 1
+      },
+      "expected_claim": "A supported validation or routing selector can become one actionable behavior-discriminator repair.",
+      "must_not_claim": [
+        "Do not treat behavior selectors as output labels.",
+        "Do not count declaration and literal findings as separate user actions.",
+        "Do not accept lexical-only tests as behavior discriminators.",
+        "Do not recommend mutation testing before behavior-discriminator work."
+      ],
+      "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
+    },
+    {
+      "id": "config_policy_behavior_selector_observed",
+      "case_kind": "positive",
+      "evidence_class": "config_or_policy_constant",
+      "maturity_scope": "fixture_backed",
+      "description": "A validation or routing selector with a supported behavior discriminator becomes an already-observed no-action item.",
+      "fixture_reference": "RIPR-SPEC-0048 behavior selector with discriminator",
+      "sample": {
+        "file": "src/validation_selector.rs",
+        "declaration_line": 52,
+        "literal_line": 53,
+        "constant": "ROUTING_SELECTOR",
+        "sink": "validation_behavior",
+        "observer": "validation_behavior"
+      },
+      "expected_repo_exposure": {
+        "static_gap_created": false,
+        "evidence_record": {
+          "schema_version": "0.1",
+          "seam_id": "bench-config-policy-behavior-selector-observed",
+          "canonical_gap_id": "config_or_policy_constant::ROUTING_SELECTOR",
+          "canonical_gap_group_size": 2,
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
+          "owner": "ROUTING_SELECTOR",
+          "location": {
+            "file": "src/validation_selector.rs",
+            "line": 52
+          },
+          "seam_kind": "config_policy_constant",
+          "grip_class": "strongly_gripped",
+          "headline_eligible": false,
+          "evidence_class": "config_or_policy_constant",
+          "gap_state": "already_observed",
+          "actionability": "already_observed",
+          "why": "Changed validation selector reaches observable behavior and an existing behavior discriminator covers it.",
+          "recommended_repair": "No new RIPR action.",
+          "verify_command": "cargo xtask evidence-quality-scorecard",
+          "raw_findings": [
+            {
+              "file": "src/validation_selector.rs",
+              "line": 52,
+              "kind": "exposed"
+            },
+            {
+              "file": "src/validation_selector.rs",
+              "line": 53,
+              "kind": "exposed"
+            }
+          ],
+          "config_policy": {
+            "constant": "ROUTING_SELECTOR",
+            "role": "behavior_selector",
+            "source_kind": "const_decl",
+            "visibility": "user_visible",
+            "observer": "validation_behavior",
+            "actionability": "already_observed",
+            "repair_kind": "no_action",
+            "target_test_type": "validation_behavior",
+            "suggested_assertion": "Existing validation behavior test already covers the selected behavior."
+          }
+        }
+      },
+      "expected_audit_signal": {
+        "section": "finding_alignment_counts",
+        "metric": "config_policy_observed",
+        "value": 1
+      },
+      "expected_claim": "A supported validation or routing discriminator keeps the behavior selector visible as already observed, not user repair work.",
+      "must_not_claim": [
+        "Do not emit an actionable behavior-discriminator gap when a supported behavior observer exists.",
+        "Do not hide the raw selector findings.",
+        "Do not let an unrelated validation test satisfy the selector."
+      ],
+      "repair_route": "fixtures/config-policy-constant-alignment-benchmark"
+    },
+    {
       "id": "config_policy_schema_label_observed",
       "case_kind": "positive",
       "evidence_class": "config_or_policy_constant",
@@ -1008,7 +1159,7 @@
           "seam_id": "bench-config-policy-schema-observed",
           "canonical_gap_id": "config_or_policy_constant::SCHEMA_POLICY_FIELD",
           "canonical_gap_group_size": 2,
-          "canonical_gap_reason": "same_config_policy_constant",
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
           "owner": "SCHEMA_POLICY_FIELD",
           "location": {
             "file": "src/schema.rs",
@@ -1083,7 +1234,7 @@
           "seam_id": "bench-config-policy-cross-file-flow",
           "canonical_gap_id": "config_or_policy_constant::CONFIG_TABLE_LABEL",
           "canonical_gap_group_size": 2,
-          "canonical_gap_reason": "same_config_policy_constant",
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
           "owner": "CONFIG_TABLE_LABEL",
           "location": {
             "file": "src/config_labels.rs",
@@ -1163,7 +1314,7 @@
           "seam_id": "bench-config-policy-opaque-lookup",
           "canonical_gap_id": "config_or_policy_constant::OPAQUE_CONFIG_LABEL",
           "canonical_gap_group_size": 2,
-          "canonical_gap_reason": "same_config_policy_constant",
+          "canonical_gap_reason": "declaration_and_literal_same_text_constant",
           "owner": "OPAQUE_CONFIG_LABEL",
           "location": {
             "file": "src/config_registry.rs",

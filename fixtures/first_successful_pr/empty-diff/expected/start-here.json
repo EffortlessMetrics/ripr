@@ -1,0 +1,76 @@
+{
+  "artifacts": [
+    {
+      "id": "gap_ledger",
+      "label": "Gap decision ledger",
+      "path": "inputs/reports/gap-decision-ledger.json",
+      "regeneration_command": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out inputs/reports/gap-decision-ledger.json --out-md inputs/reports/gap-decision-ledger.md",
+      "status": "present"
+    },
+    {
+      "id": "first_action",
+      "label": "First useful action",
+      "path": "target/ripr/reports/first-useful-action.json",
+      "regeneration_command": "ripr first-action --root fixtures/first_successful_pr/empty-diff --gap-ledger inputs/reports/gap-decision-ledger.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md",
+      "status": "missing"
+    },
+    {
+      "id": "review_comments",
+      "label": "PR repair cards",
+      "path": "target/ripr/review/comments.json",
+      "regeneration_command": "ripr review-comments --root fixtures/first_successful_pr/empty-diff --base origin/main --head HEAD --gap-ledger inputs/reports/gap-decision-ledger.json --out target/ripr/review/comments.json",
+      "status": "missing"
+    },
+    {
+      "id": "agent_packet",
+      "label": "Agent repair packet",
+      "path": "target/ripr/workflow/agent-packet.json",
+      "regeneration_command": "ripr agent packet --root fixtures/first_successful_pr/empty-diff --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id <gap-id> --json > target/ripr/workflow/agent-packet.json",
+      "status": "missing"
+    },
+    {
+      "id": "gate_decision",
+      "label": "Gate decision",
+      "path": "target/ripr/reports/gate-decision.json",
+      "regeneration_command": "ripr gate evaluate --gap-ledger inputs/reports/gap-decision-ledger.json --out target/ripr/reports/gate-decision.json --out-md target/ripr/reports/gate-decision.md",
+      "status": "missing"
+    }
+  ],
+  "authority": {
+    "boundary": "Pass/fail authority remains with explicit gate-decision artifacts when configured; this first-run packet does not gate.",
+    "gate_decision": "target/ripr/reports/gate-decision.json",
+    "status": "advisory"
+  },
+  "commands": {
+    "regenerate_gap_ledger": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out inputs/reports/gap-decision-ledger.json --out-md inputs/reports/gap-decision-ledger.md"
+  },
+  "inputs": {
+    "agent_packet": "target/ripr/workflow/agent-packet.json",
+    "base": "origin/main",
+    "first_action": "target/ripr/reports/first-useful-action.json",
+    "gap_ledger": "inputs/reports/gap-decision-ledger.json",
+    "gate_decision": "target/ripr/reports/gate-decision.json",
+    "head": "HEAD",
+    "receipts_dir": "target/ripr/receipts",
+    "review_comments": "target/ripr/review/comments.json"
+  },
+  "kind": "first_pr_start_here",
+  "limits": [
+    "Composes explicit RIPR artifacts only.",
+    "Does not run hidden analysis.",
+    "Does not edit source or generate tests.",
+    "Does not run mutation testing.",
+    "Does not change CI blocking or gate policy."
+  ],
+  "posture": "advisory",
+  "root": "fixtures/first_successful_pr/empty-diff",
+  "schema_version": "0.1",
+  "selected": {
+    "reason": "The PR diff is empty, so no repairable Rust gap was selected.",
+    "records_total": 0,
+    "state": "empty_diff"
+  },
+  "status": "no_action",
+  "tool": "ripr",
+  "warnings": []
+}
