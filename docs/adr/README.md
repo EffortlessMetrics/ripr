@@ -20,3 +20,5 @@ PR. They should be short, dated, and focused on consequences.
 | [0011](0011-editor-preview-routing-is-projection-only.md) | proposed | Keep editor preview routing projection-only. |
 | [0012](0012-editor-gap-projection-is-read-only.md) | accepted | Keep editor gap projection read-only. |
 | [0013](0013-editor-setup-diagnostics-are-read-only.md) | accepted | Keep editor setup diagnostics read-only. |
+| [0014](0014-editor-first-pr-projection-is-read-only.md) | accepted | Keep editor first-pr packet projection read-only. |
+| [0015](0015-start-here-surfaces-use-canonical-gap-records.md) | proposed | Keep start-here surfaces centered on canonical gap records. |

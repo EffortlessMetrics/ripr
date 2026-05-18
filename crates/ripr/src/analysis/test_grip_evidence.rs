@@ -295,6 +295,11 @@ impl RelationConfidence {
 /// `seam_id` so two runs over the same input produce identical bytes.
 pub(crate) fn evidence_for_seams(seams: &[RepoSeam], index: &RustIndex) -> Vec<TestGripEvidence> {
     let context_started = Instant::now();
+    trace_latency_phase(
+        "evidence_context",
+        &format!("start_seams_{}", seams.len()),
+        Duration::ZERO,
+    );
     let context = CompactGripContext::new(index);
     trace_latency_phase(
         "evidence_context",
@@ -1800,6 +1805,16 @@ mod tests {
         assert_eq!(
             line,
             "ripr_repo_exposure_latency phase=evidence_for_seams_progress status=processed_500_of_12337 duration_ms=42"
+        );
+    }
+
+    #[test]
+    fn latency_trace_line_can_report_evidence_context_start() {
+        let line = latency_trace_line("evidence_context", "start_seams_12337", Duration::ZERO);
+
+        assert_eq!(
+            line,
+            "ripr_repo_exposure_latency phase=evidence_context status=start_seams_12337 duration_ms=0"
         );
     }
 

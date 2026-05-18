@@ -171,6 +171,29 @@
         "Do not recommend mutation testing before naming the static limitation."
       ],
       "reason": "Untraceable config flow should remain a named analyzer limitation with a repair route, not a user-facing test gap."
+    },
+    {
+      "id": "config_policy_opaque_lookup_limitation",
+      "source_pr": "EffortlessMetrics/ripr#1016",
+      "evidence_class": "config_or_policy_constant",
+      "raw_findings_total": 2,
+      "canonical_items_total": 1,
+      "gap_state": "static_limitation",
+      "actionability": "inspect_config_flow",
+      "user_outcome": "static_limitation",
+      "repair_kind": "inspect_config_flow",
+      "target_test_type": "unknown",
+      "verify_command": "cargo xtask evidence-quality-scorecard",
+      "static_limitation_category": "opaque_config_lookup",
+      "static_limitation_repair_route": "add_fixture_backed_support_for_opaque_config_lookup",
+      "raw_findings_supporting_only": true,
+      "recommended_repair": "Inspect the opaque config lookup path or add fixture-backed analyzer support before claiming output-observer debt.",
+      "must_not_claim": [
+        "Do not treat opaque lookup static_unknown as user test debt.",
+        "Do not infer user-visible config output through an opaque helper.",
+        "Do not hide the raw declaration and literal findings."
+      ],
+      "reason": "An opaque config lookup should stay a named static limitation until the analyzer can trace the lookup shape."
     }
   ]
 }
