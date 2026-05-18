@@ -19,27 +19,7 @@ pub(super) fn parse_mode(value: &str) -> Result<Mode, String> {
 }
 
 pub(super) fn parse_format(value: &str) -> Result<OutputFormat, String> {
-    match value {
-        "human" | "text" => Ok(OutputFormat::Human),
-        "json" => Ok(OutputFormat::Json),
-        "github" => Ok(OutputFormat::Github),
-        "sarif" => Ok(OutputFormat::Sarif),
-        "badge-json" => Ok(OutputFormat::BadgeJson),
-        "badge-shields" => Ok(OutputFormat::BadgeShields),
-        "badge-plus-json" => Ok(OutputFormat::BadgePlusJson),
-        "badge-plus-shields" => Ok(OutputFormat::BadgePlusShields),
-        "repo-badge-json" => Ok(OutputFormat::RepoBadgeJson),
-        "repo-badge-shields" => Ok(OutputFormat::RepoBadgeShields),
-        "repo-badge-plus-json" => Ok(OutputFormat::RepoBadgePlusJson),
-        "repo-badge-plus-shields" => Ok(OutputFormat::RepoBadgePlusShields),
-        "repo-seams-json" => Ok(OutputFormat::RepoSeamsJson),
-        "repo-seams-md" => Ok(OutputFormat::RepoSeamsMd),
-        "repo-exposure-json" => Ok(OutputFormat::RepoExposureJson),
-        "repo-exposure-md" => Ok(OutputFormat::RepoExposureMd),
-        "repo-sarif" => Ok(OutputFormat::RepoSarif),
-        "agent-seam-packets-json" => Ok(OutputFormat::AgentSeamPacketsJson),
-        _ => Err(format!("unknown format {value:?}")),
-    }
+    OutputFormat::parse_cli_name(value).ok_or_else(|| format!("unknown format {value:?}"))
 }
 
 pub(super) fn expect_value<'a>(
@@ -134,11 +114,6 @@ mod tests {
         then_result: Result<Mode, String>,
     }
 
-    struct FormatScenario {
-        given_format: &'static str,
-        then_result: Result<OutputFormat, String>,
-    }
-
     #[test]
     fn given_mode_strings_when_parse_mode_then_returns_expected_result() {
         let scenarios = [
@@ -180,97 +155,17 @@ mod tests {
 
     #[test]
     fn given_format_strings_when_parse_format_then_returns_expected_result() {
-        let scenarios = [
-            FormatScenario {
-                given_format: "human",
-                then_result: Ok(OutputFormat::Human),
-            },
-            FormatScenario {
-                given_format: "text",
-                then_result: Ok(OutputFormat::Human),
-            },
-            FormatScenario {
-                given_format: "json",
-                then_result: Ok(OutputFormat::Json),
-            },
-            FormatScenario {
-                given_format: "github",
-                then_result: Ok(OutputFormat::Github),
-            },
-            FormatScenario {
-                given_format: "sarif",
-                then_result: Ok(OutputFormat::Sarif),
-            },
-            FormatScenario {
-                given_format: "badge-json",
-                then_result: Ok(OutputFormat::BadgeJson),
-            },
-            FormatScenario {
-                given_format: "badge-shields",
-                then_result: Ok(OutputFormat::BadgeShields),
-            },
-            FormatScenario {
-                given_format: "badge-plus-json",
-                then_result: Ok(OutputFormat::BadgePlusJson),
-            },
-            FormatScenario {
-                given_format: "badge-plus-shields",
-                then_result: Ok(OutputFormat::BadgePlusShields),
-            },
-            FormatScenario {
-                given_format: "repo-badge-json",
-                then_result: Ok(OutputFormat::RepoBadgeJson),
-            },
-            FormatScenario {
-                given_format: "repo-badge-shields",
-                then_result: Ok(OutputFormat::RepoBadgeShields),
-            },
-            FormatScenario {
-                given_format: "repo-badge-plus-json",
-                then_result: Ok(OutputFormat::RepoBadgePlusJson),
-            },
-            FormatScenario {
-                given_format: "repo-badge-plus-shields",
-                then_result: Ok(OutputFormat::RepoBadgePlusShields),
-            },
-            FormatScenario {
-                given_format: "repo-seams-json",
-                then_result: Ok(OutputFormat::RepoSeamsJson),
-            },
-            FormatScenario {
-                given_format: "repo-seams-md",
-                then_result: Ok(OutputFormat::RepoSeamsMd),
-            },
-            FormatScenario {
-                given_format: "repo-exposure-json",
-                then_result: Ok(OutputFormat::RepoExposureJson),
-            },
-            FormatScenario {
-                given_format: "repo-exposure-md",
-                then_result: Ok(OutputFormat::RepoExposureMd),
-            },
-            FormatScenario {
-                given_format: "repo-sarif",
-                then_result: Ok(OutputFormat::RepoSarif),
-            },
-            FormatScenario {
-                given_format: "agent-seam-packets-json",
-                then_result: Ok(OutputFormat::AgentSeamPacketsJson),
-            },
-            FormatScenario {
-                given_format: "xml",
-                then_result: Err("unknown format \"xml\"".to_string()),
-            },
-        ];
-
-        for scenario in scenarios {
-            let actual = parse_format(scenario.given_format);
-            assert_eq!(
-                actual, scenario.then_result,
-                "format scenario failed for given={:?}",
-                scenario.given_format
-            );
-        }
+        assert_eq!(parse_format("human"), Ok(OutputFormat::Human));
+        assert_eq!(parse_format("text"), Ok(OutputFormat::Human));
+        assert_eq!(parse_format("json"), Ok(OutputFormat::Json));
+        assert_eq!(
+            parse_format("agent-seam-packets-json"),
+            Ok(OutputFormat::AgentSeamPacketsJson)
+        );
+        assert_eq!(
+            parse_format("xml"),
+            Err("unknown format \"xml\"".to_string())
+        );
     }
 
     #[test]

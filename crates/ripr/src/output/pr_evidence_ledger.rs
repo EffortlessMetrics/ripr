@@ -158,13 +158,20 @@ struct RepairRoute {
     source: String,
     gap_id: Option<String>,
     canonical_gap_id: Option<String>,
+    language: Option<String>,
+    language_status: Option<String>,
     seam_id: Option<String>,
     path: Option<String>,
     line: Option<u64>,
+    repair_route: Option<String>,
     missing_discriminator: Option<String>,
     suggested_test: Option<String>,
     related_test: Option<String>,
     verify_command: Option<String>,
+    receipt_command: Option<String>,
+    receipt_state: Option<String>,
+    static_limit_kind: Option<String>,
+    static_limit_detail: Option<String>,
     agent_command: Option<String>,
 }
 
@@ -367,6 +374,29 @@ pub(crate) fn render_pr_evidence_ledger_markdown(report: &PrEvidenceLedgerReport
     if let Some(route) = report.top_repair_route.as_ref() {
         out.push_str("\nTop focused test to add:\n");
         out.push_str(&format!("- {}\n", route_headline(route)));
+        out.push_str("  Evidence boundary:\n");
+        if let Some(gap_id) = route.canonical_gap_id.as_deref() {
+            out.push_str(&format!("  - Canonical gap: {gap_id}\n"));
+        } else if let Some(gap_id) = route.gap_id.as_deref() {
+            out.push_str(&format!("  - Gap: {gap_id}\n"));
+        }
+        if let Some(language) = route.language.as_deref() {
+            let status = route.language_status.as_deref().unwrap_or("unknown");
+            out.push_str(&format!("  - Language: {language} ({status})\n"));
+        }
+        if let Some(limit) = route.static_limit_kind.as_deref() {
+            out.push_str(&format!("  - Static limit: {limit}\n"));
+            if let Some(detail) = route.static_limit_detail.as_deref() {
+                out.push_str(&format!("    - {detail}\n"));
+            }
+        }
+        out.push_str(&format!(
+            "  - Receipt state: {}\n",
+            route.receipt_state.as_deref().unwrap_or("receipt_missing")
+        ));
+        if let Some(repair_route) = route.repair_route.as_deref() {
+            out.push_str(&format!("  Repair route: {repair_route}\n"));
+        }
         if let Some(missing) = route.missing_discriminator.as_deref() {
             out.push_str(&format!("  Missing discriminator: {missing}\n"));
         }
@@ -381,6 +411,9 @@ pub(crate) fn render_pr_evidence_ledger_markdown(report: &PrEvidenceLedgerReport
         }
         if let Some(verify) = route.verify_command.as_deref() {
             out.push_str(&format!("  Verify: {verify}\n"));
+        }
+        if let Some(receipt) = route.receipt_command.as_deref() {
+            out.push_str(&format!("  Receipt command: {receipt}\n"));
         }
         if let Some(agent) = route.agent_command.as_deref() {
             out.push_str(&format!("  Agent: {agent}\n"));
@@ -991,9 +1024,12 @@ fn route_from_gap_ledger(value: &Value) -> Option<RepairRoute> {
         source: "gap_decision_ledger".to_string(),
         gap_id,
         canonical_gap_id: string_path(record, &["canonical_gap_id"]),
+        language: string_path(record, &["language"]),
+        language_status: string_path(record, &["language_status"]),
         seam_id: seam_id.clone(),
         path: string_from_sources(&[(anchor, &["file"]), (Some(route), &["target_file"])]),
         line: u64_from_sources(&[(anchor, &["line"]), (Some(route), &["target_line"])]),
+        repair_route: string_path(route, &["route_kind"]),
         missing_discriminator: string_from_sources(&[
             (Some(record), &["missing_discriminator"]),
             (Some(record), &["evidence_class"]),
@@ -1004,6 +1040,11 @@ fn route_from_gap_ledger(value: &Value) -> Option<RepairRoute> {
         related_test: string_path(route, &["related_test"])
             .or_else(|| string_path(route, &["target_file"])),
         verify_command: first_string_array_item(record, &["verification_commands"]),
+        receipt_command: string_path(record, &["receipt_command"]),
+        receipt_state: string_path(record, &["receipt", "state"])
+            .or_else(|| string_path(record, &["receipt", "movement"])),
+        static_limit_kind: string_path(record, &["static_limit_kind"]),
+        static_limit_detail: string_path(record, &["static_limit_detail"]),
         agent_command: string_path(route, &["agent_command"]).or_else(|| {
             seam_id.map(|id| {
                 format!("ripr agent start --root . --seam-id {id} --out target/ripr/workflow")
@@ -1062,13 +1103,21 @@ fn route_from_zero_status(value: &Value) -> Option<RepairRoute> {
         source: "ripr_zero_status".to_string(),
         gap_id: string_path(route, &["gap_id"]),
         canonical_gap_id: canonical_gap_id_from_value(route),
+        language: string_path(route, &["language"]),
+        language_status: string_path(route, &["language_status"]),
         seam_id: string_path(route, &["seam_id"]),
         path: string_path(route, &["path"]),
         line: u64_path(route, &["line"]),
+        repair_route: string_path(route, &["repair_route"])
+            .or_else(|| string_path(route, &["route_kind"])),
         missing_discriminator: string_path(route, &["missing_discriminator"]),
         suggested_test: string_path(route, &["suggested_test"]),
         related_test: string_path(route, &["related_test"]),
         verify_command: string_path(route, &["verify_command"]),
+        receipt_command: string_path(route, &["receipt_command"]),
+        receipt_state: string_path(route, &["receipt_state"]),
+        static_limit_kind: string_path(route, &["static_limit_kind"]),
+        static_limit_detail: string_path(route, &["static_limit_detail"]),
         agent_command: string_path(route, &["agent_command"]),
     })
 }
@@ -1083,15 +1132,23 @@ fn route_from_pr_guidance(value: &Value) -> Option<RepairRoute> {
         source: "pr_guidance".to_string(),
         gap_id: string_path(item, &["gap_id"]),
         canonical_gap_id: canonical_gap_id_from_value(item),
+        language: string_path(item, &["language"]),
+        language_status: string_path(item, &["language_status"]),
         seam_id: seam_id.clone(),
         path: string_path(item, &["placement", "path"])
             .or_else(|| string_path(item, &["seam", "file"])),
         line: u64_path(item, &["placement", "line"]).or_else(|| u64_path(item, &["seam", "line"])),
+        repair_route: string_path(item, &["repair_route", "route_kind"])
+            .or_else(|| string_path(item, &["repair_route"])),
         missing_discriminator: string_path(item, &["missing_discriminator"]),
         suggested_test: string_path(item, &["suggested_test", "assertion_shape"])
             .or_else(|| string_path(item, &["suggested_test", "intent"])),
         related_test: string_path(item, &["suggested_test", "near_test"]),
         verify_command: string_path(item, &["llm_guidance", "verify_command"]),
+        receipt_command: string_path(item, &["llm_guidance", "receipt_command"]),
+        receipt_state: string_path(item, &["receipt_state"]),
+        static_limit_kind: string_path(item, &["static_limit_kind"]),
+        static_limit_detail: string_path(item, &["static_limit_detail"]),
         agent_command: seam_id.map(|id| {
             format!("ripr agent start --root . --seam-id {id} --out target/ripr/workflow")
         }),
@@ -1113,13 +1170,23 @@ fn route_from_gate(value: &Value) -> Option<RepairRoute> {
         source: "gate_decision".to_string(),
         gap_id: string_path(item, &["gap_id"]),
         canonical_gap_id: canonical_gap_id_from_value(item),
+        language: string_path(item, &["language"]),
+        language_status: string_path(item, &["language_status"]),
         seam_id: seam_id.clone(),
         path: string_path(item, &["placement", "path"]),
         line: u64_path(item, &["placement", "line"]),
+        repair_route: string_path(item, &["repair_route"])
+            .or_else(|| string_path(item, &["evidence", "repair_route"])),
         missing_discriminator: string_path(item, &["evidence", "missing_discriminator"]),
         suggested_test: string_path(item, &["evidence", "assertion_shape"]),
         related_test: string_path(item, &["evidence", "recommended_test"]),
         verify_command: Some("ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json".to_string()),
+        receipt_command: None,
+        receipt_state: None,
+        static_limit_kind: string_path(item, &["static_limit_kind"])
+            .or_else(|| string_path(item, &["evidence", "static_limit_kind"])),
+        static_limit_detail: string_path(item, &["static_limit_detail"])
+            .or_else(|| string_path(item, &["evidence", "static_limit_detail"])),
         agent_command: seam_id.map(|id| {
             format!("ripr agent start --root . --seam-id {id} --out target/ripr/workflow")
         }),
@@ -1142,13 +1209,21 @@ fn route_from_baseline_delta(value: &Value) -> Option<RepairRoute> {
         gap_id: string_path(item, &["gap_id"])
             .or_else(|| string_path(item, &["identity", "gap_id"])),
         canonical_gap_id: canonical_gap_id_from_value(item),
+        language: string_path(item, &["language"]),
+        language_status: string_path(item, &["language_status"]),
         seam_id: seam_id.clone(),
         path: string_path(item, &["path"]),
         line: u64_path(item, &["line"]),
+        repair_route: string_path(item, &["repair", "route_kind"])
+            .or_else(|| string_path(item, &["repair_route"])),
         missing_discriminator: string_path(item, &["missing_discriminator"]),
         suggested_test: string_path(item, &["suggested_test", "assertion_shape"]),
         related_test: string_path(item, &["suggested_test", "recommended_test"]),
         verify_command: string_path(item, &["repair", "verify_command"]),
+        receipt_command: string_path(item, &["repair", "receipt_command"]),
+        receipt_state: string_path(item, &["receipt_state"]),
+        static_limit_kind: string_path(item, &["static_limit_kind"]),
+        static_limit_detail: string_path(item, &["static_limit_detail"]),
         agent_command: seam_id.map(|id| {
             format!("ripr agent start --root . --seam-id {id} --out target/ripr/workflow")
         }),
@@ -1273,13 +1348,20 @@ fn repair_route_json(route: &RepairRoute) -> Value {
     let mut value = json!({
         "source": route.source,
         "canonical_gap_id": route.canonical_gap_id,
+        "language": route.language,
+        "language_status": route.language_status,
         "seam_id": route.seam_id,
         "path": route.path,
         "line": route.line,
+        "repair_route": route.repair_route,
         "missing_discriminator": route.missing_discriminator,
         "suggested_test": route.suggested_test,
         "related_test": route.related_test,
         "verify_command": route.verify_command,
+        "receipt_command": route.receipt_command,
+        "receipt_state": route.receipt_state,
+        "static_limit_kind": route.static_limit_kind,
+        "static_limit_detail": route.static_limit_detail,
         "agent_command": route.agent_command,
     });
     if let Some(gap_id) = route.gap_id.as_ref()

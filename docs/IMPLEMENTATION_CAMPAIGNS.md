@@ -3166,6 +3166,85 @@ Closeout:
   records the PR chain, proof, remaining limitations, and boundary that
   downstream PR/CI and editor rendering work belongs to the owning lanes.
 
+## Focused Lane 1 Tracker: Finding Alignment Burn-Down
+
+Status: open planning rail. This focused tracker is not the active execution
+manifest unless `.ripr/goals/active.toml` explicitly selects it.
+
+Sources of truth:
+
+- [Lane 1 Finding Alignment Burn-Down tracker](lanes/LANE_1_FINDING_ALIGNMENT_BURNDOWN.md)
+- [Lane 1 Finding Alignment Burn-Down implementation plan](../plans/lane1-finding-alignment-burndown/implementation-plan.md)
+- [Lane 1 Shippable Finding Alignment closeout](handoffs/2026-05-17-lane1-shippable-finding-alignment-closeout.md)
+- [Finding Alignment Consumer Contract v2](handoffs/2026-05-16-finding-alignment-consumer-contract-v2.md)
+- [RIPR-SPEC-0045](specs/RIPR-SPEC-0045-finding-to-gap-alignment.md)
+  finding-to-gap alignment
+- [RIPR-SPEC-0048](specs/RIPR-SPEC-0048-config-policy-constant-evidence.md)
+  config and policy constant evidence
+
+Objective:
+
+```text
+Keep RIPR operating on canonical evidence items instead of raw findings as new
+alignment gaps are measured, without reopening completed presentation-text or
+config/policy base scope.
+```
+
+End state:
+
+- alignment coverage by evidence class is auditable;
+- canonical items have placement and supporting-span evidence where safe;
+- top named static limitation buckets become fixture-backed repair queues;
+- config/policy unsupported-flow expansion is scoped by spec and fixtures;
+- actionable canonical items preserve repair-route and verify-command coverage;
+- internal scorecards keep actionable canonical gaps as the leading work count;
+- runtime confidence coverage is visible by canonical evidence class;
+- dogfood and downstream handoff docs refresh only when material burn-down
+  deltas land.
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `report/finding-alignment-coverage-audit` | open | [#1140](https://github.com/EffortlessMetrics/ripr/issues/1140) audits aligned, unaligned, duplicate, unnamed-limitation, missing-repair, and missing-verify queues by evidence class. |
+| `analysis/named-static-unknown-invariant` | open | [#1141](https://github.com/EffortlessMetrics/ripr/issues/1141) preserves named static limitations for user-facing static unknowns. |
+| `analysis/canonical-primary-anchor-raw-spans` | open | [#1158](https://github.com/EffortlessMetrics/ripr/issues/1158) completes placement and supporting raw-span evidence for canonical items. |
+| `analysis/top-static-limitation-bucket-burndown` | open | [#1159](https://github.com/EffortlessMetrics/ripr/issues/1159) turns the top named static limitation bucket into fixture-backed analyzer repair. |
+| `docs/spec-config-policy-unsupported-flow-expansion` | open | [#1142](https://github.com/EffortlessMetrics/ripr/issues/1142) refines unsupported-flow expansion criteria for existing config/policy evidence. |
+| `fixtures/config-policy-unsupported-flow-burndown` | open | [#1143](https://github.com/EffortlessMetrics/ripr/issues/1143) pins selected config/policy unsupported-flow cases before analyzer work. |
+| `analysis/config-policy-unsupported-flow-support` | open | [#1144](https://github.com/EffortlessMetrics/ripr/issues/1144) expands one selected unsupported-flow category only when fixture-backed. |
+| `analysis/actionable-repair-route-completeness` | open | [#1145](https://github.com/EffortlessMetrics/ripr/issues/1145) keeps actionable canonical items repair-routed. |
+| `analysis/actionable-verify-command-coverage` | open | [#1146](https://github.com/EffortlessMetrics/ripr/issues/1146) keeps actionable canonical items verifiable where feasible. |
+| `report/actionable-canonical-gaps-scorecard-lead` | open | [#1147](https://github.com/EffortlessMetrics/ripr/issues/1147) preserves scorecard-leading actionable canonical gaps. |
+| `calibration/runtime-confidence-coverage-audit` | open | [#1160](https://github.com/EffortlessMetrics/ripr/issues/1160) reports calibrated-supported versus static-only canonical items by class. |
+| `dogfood/finding-alignment-examples-refresh` | open | [#1149](https://github.com/EffortlessMetrics/ripr/issues/1149) refreshes examples only after material burn-down deltas. |
+| `docs/canonical-alignment-contract-refresh` | open | [#1153](https://github.com/EffortlessMetrics/ripr/issues/1153) refreshes downstream handoff docs only when fields or guidance change. |
+
+Blocking conditions:
+
+- PR/CI rendering changes
+- inline PR comment publishing
+- LSP/editor polish
+- gate-policy or default-blocking changes
+- public badge or score redefinition
+- generated tests
+- automatic source edits
+- provider/model calls
+- mutation execution
+- treating named static limitations as user test debt
+
+Commands:
+
+```bash
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-pr
+git diff --check
+```
+
 ## Focused Lane 2 Tracker: Policy Readiness and Preview Evidence Governance
 
 Tracker ID: `policy-readiness-preview-evidence-governance`
@@ -3622,3 +3701,71 @@ Blocking conditions:
 - runtime adequacy, Rust-parity, or gate-eligibility claims for preview evidence
 - unsaved-buffer overlays, CodeLens, inlay hints, semantic tokens, or inline
   patch application in this campaign
+
+## Cross-Surface Campaign: Start-Here Surface Convergence
+
+Campaign ID: `start-here-surface-convergence`
+
+Status: proposed.
+
+The editor, CLI, generated CI, PR evidence, report packet index, receipts,
+preview-language reports, and install/release docs are useful independently.
+This campaign makes those surfaces lead with the same safe next-action unit so
+users do not need to understand RIPR's internal artifact graph before acting.
+
+Objective:
+
+```text
+Make every start-here surface answer: what is the one repairable gap, why does
+it matter, where should the focused test go, what verifies movement, what
+receipt proves it, and what remains limited or advisory?
+```
+
+End state:
+
+- PR/CI summaries and report packets lead with a canonical gap or no-action
+  state instead of raw finding counts.
+- CLI front-door commands use the same safe-next-action and recovery-state
+  vocabulary.
+- Receipt lifecycle state is consistent across CLI, PR/CI, editor projection,
+  first-pr packets, and docs.
+- No-output and fail-closed states are explicit outside the editor.
+- Preview-language promotion criteria are visible and policy-owned.
+- External-style dogfood proves the converged path on normal repo shapes and
+  failure states.
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `docs/start-here-surface-convergence-stack` | planned | Add proposal, spec, ADR, plan, indexes, traceability, and GitHub issues. |
+| `report/pr-ci-start-here-canonical-unit` | planned | Align generated CI and PR evidence first screens on the canonical repair unit. |
+| `cli/start-here-command-language` | planned | Align CLI front-door command language and recovery states. |
+| `receipt/lifecycle-state-convergence` | planned | Standardize receipt found/missing/stale/mismatch/improved/unchanged states. |
+| `output/no-output-fail-closed-states` | planned | Standardize clean, no-action, missing, stale, wrong-root, disabled, unavailable, malformed, partial, unsafe states outside the editor. |
+| `policy/preview-promotion-proof-criteria` | planned | Define proof criteria before preview evidence can claim a stronger tier. |
+| `dogfood/external-style-start-here-receipts` | planned | Record normal-repo and failure-state receipts for the converged path. |
+| `campaign/start-here-surface-convergence-closeout` | planned | Close only after the issue burn-down is closed or explicitly superseded. |
+
+Commands:
+
+```bash
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-traceability
+cargo xtask check-output-contracts
+cargo xtask check-pr
+git diff --check
+```
+
+Blocking conditions:
+
+- analyzer behavior changes in the docs/issue setup PR
+- output schema changes without a scoped behavior PR
+- generated CI blocking or default gate behavior changes
+- preview-language policy promotion without a promotion packet
+- PR comment publishing changes
+- source edits, generated tests, provider/model calls, mutation execution, or
+  editor UI-sprawl work

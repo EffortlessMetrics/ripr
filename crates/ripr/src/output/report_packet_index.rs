@@ -178,7 +178,12 @@ pub(crate) fn build_report_packet_index_report(
 
     let start_here = entries
         .iter()
-        .find(|entry| entry.id == "pr_review_front_panel" && entry.available)
+        .find(|entry| entry.id == "first_pr_start_here" && entry.available)
+        .or_else(|| {
+            entries
+                .iter()
+                .find(|entry| entry.id == "pr_review_front_panel" && entry.available)
+        })
         .map(|entry| entry.path.clone());
     let gate_authority = entries
         .iter()
@@ -328,6 +333,21 @@ fn artifact_specs(input: &ReportPacketIndexInput) -> Vec<ArtifactSpec> {
     let reports = &input.reports_dir;
     let review = &input.review_dir;
     vec![
+        ArtifactSpec {
+            id: "first_pr_start_here",
+            label: "First PR start here",
+            group: "start_here",
+            kind: "markdown",
+            path: reports.join("start-here.md"),
+            json_path: Some(reports.join("start-here.json")),
+            required: true,
+            authority: false,
+            description: "Canonical first-screen repair packet.",
+            default_status: "available",
+            next_command: Some(
+                "ripr first-pr --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json --first-action target/ripr/reports/first-useful-action.json --review-comments target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-packet.json --gate-decision target/ripr/reports/gate-decision.json --receipts-dir target/ripr/receipts --out-dir target/ripr/reports",
+            ),
+        },
         ArtifactSpec {
             id: "pr_review_front_panel",
             label: "PR review front panel",
@@ -559,7 +579,7 @@ fn artifact_specs(input: &ReportPacketIndexInput) -> Vec<ArtifactSpec> {
 }
 
 fn artifact_available(spec: &ArtifactSpec) -> bool {
-    spec.path.exists() || spec.json_path.as_ref().is_some_and(|path| path.exists())
+    spec.path.exists()
 }
 
 fn status_for_spec(spec: &ArtifactSpec) -> String {
@@ -818,6 +838,35 @@ mod tests {
             render_report_packet_index_markdown(&report)
                 .contains("PR review front panel: not_generated")
         );
+        Ok(())
+    }
+
+    #[test]
+    fn report_packet_index_does_not_treat_json_sibling_as_markdown_artifact() -> Result<(), String>
+    {
+        let root = temp_root("json-only-front-panel")?;
+        write(
+            &root.join("target/ripr/reports/first-useful-action.md"),
+            "Status: pass\n",
+        )?;
+        write(
+            &root.join("target/ripr/reports/pr-review-front-panel.json"),
+            r#"{"status":"pass"}"#,
+        )?;
+
+        let report = build_report_packet_index_report(input_for_root(&root));
+
+        assert_eq!(report.status, "warn");
+        assert_eq!(report.summary.start_here, None);
+        assert_eq!(report.summary.missing_expected, 2);
+        assert!(report.missing_expected.iter().any(|missing| {
+            missing.id == "pr_review_front_panel" && missing.reason == "not_generated"
+        }));
+        assert!(report.groups.iter().any(|group| {
+            group.entries.iter().any(|entry| {
+                entry.id == "pr_review_front_panel" && !entry.available && entry.status == "missing"
+            })
+        }));
         Ok(())
     }
 
@@ -1636,11 +1685,11 @@ mod tests {
         Ok(())
     }
 
-    // ── artifact_available: json_path fallback ───────────────────────────────
+    // ── artifact_available: primary artifact only ────────────────────────────
 
     #[test]
-    fn artifact_available_true_when_only_json_path_exists() -> Result<(), String> {
-        let root = temp_root("avail-json")?;
+    fn artifact_available_ignores_json_sibling_for_markdown_spec() -> Result<(), String> {
+        let root = temp_root("avail-json-sibling")?;
         let json_path = root.join("target/ripr/reports/front-panel.json");
         write(&json_path, r#"{"status":"pass"}"#)?;
         let spec = ArtifactSpec {
@@ -1656,7 +1705,7 @@ mod tests {
             default_status: "available",
             next_command: None,
         };
-        assert!(artifact_available(&spec));
+        assert!(!artifact_available(&spec));
         Ok(())
     }
 
