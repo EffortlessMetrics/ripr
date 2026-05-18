@@ -1,6 +1,6 @@
 # RIPR-SPEC-0049: Editor Setup Status
 
-Status: proposed
+Status: accepted
 
 ## Problem
 

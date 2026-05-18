@@ -97,6 +97,9 @@ the source evidence class first and keep projection changes narrow.
   loop.
 - [Lane 1 User-Visible Output Evidence](LANE_1_USER_VISIBLE_OUTPUT_EVIDENCE.md)
   records the presentation/help/report/table text evidence-class expansion.
+- [Lane 1 Finding Alignment Burn-Down](LANE_1_FINDING_ALIGNMENT_BURNDOWN.md)
+  records the issue-backed queue for generalizing raw-finding to canonical-item
+  alignment across remaining evidence classes.
 
 ## Lane 4 Source Of Truth
 

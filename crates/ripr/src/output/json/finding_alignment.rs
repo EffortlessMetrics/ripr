@@ -74,6 +74,8 @@ struct FindingAlignmentItem {
     actionability: String,
     raw_group_size: usize,
     group_reason: String,
+    primary_anchor: Option<FindingAlignmentPrimaryAnchor>,
+    raw_spans: Vec<FindingAlignmentRawSpan>,
     why: String,
     recommended_repair: String,
     repair_route: Option<FindingAlignmentRepairRoute>,
@@ -94,6 +96,22 @@ struct FindingAlignmentRawFinding {
     probe_kind: String,
     source_id: String,
     evidence_record_ref: String,
+}
+
+struct FindingAlignmentPrimaryAnchor {
+    file: String,
+    line: usize,
+    kind: String,
+    source_id: String,
+    reason: String,
+}
+
+struct FindingAlignmentRawSpan {
+    file: String,
+    start_line: usize,
+    end_line: usize,
+    kind: String,
+    source_id: String,
 }
 
 struct FindingAlignmentStaticLimitation {
@@ -700,6 +718,8 @@ fn presentation_text_item(
     } else {
         GROUP_REASON_OWNER
     };
+    let primary_anchor = primary_anchor_for(&raw_findings, group_reason);
+    let raw_spans = raw_spans_for(&raw_findings);
     let repair_route = repair_route_for(
         &classification.gap_state,
         &classification.repair_kind,
@@ -719,6 +739,8 @@ fn presentation_text_item(
         actionability: classification.actionability,
         raw_group_size: raw_findings.len(),
         group_reason: group_reason.to_string(),
+        primary_anchor,
+        raw_spans,
         why: classification.why,
         recommended_repair: classification.recommended_repair,
         repair_route,
@@ -754,6 +776,8 @@ fn config_policy_item(
     } else {
         GROUP_REASON_OWNER
     };
+    let primary_anchor = primary_anchor_for(&raw_findings, group_reason);
+    let raw_spans = raw_spans_for(&raw_findings);
     let repair_route = repair_route_for(
         &classification.gap_state,
         &classification.repair_kind,
@@ -773,6 +797,8 @@ fn config_policy_item(
         actionability: classification.actionability,
         raw_group_size: raw_findings.len(),
         group_reason: group_reason.to_string(),
+        primary_anchor,
+        raw_spans,
         why: classification.why,
         recommended_repair: classification.recommended_repair,
         repair_route,
@@ -1409,6 +1435,43 @@ fn raw_finding_for(finding: &Finding) -> FindingAlignmentRawFinding {
     }
 }
 
+fn primary_anchor_for(
+    raw_findings: &[FindingAlignmentRawFinding],
+    group_reason: &str,
+) -> Option<FindingAlignmentPrimaryAnchor> {
+    raw_findings
+        .first()
+        .map(|finding| FindingAlignmentPrimaryAnchor {
+            file: finding.file.clone(),
+            line: finding.line,
+            kind: finding.kind.clone(),
+            source_id: finding.source_id.clone(),
+            reason: primary_anchor_reason(group_reason).to_string(),
+        })
+}
+
+fn primary_anchor_reason(group_reason: &str) -> &'static str {
+    match group_reason {
+        GROUP_REASON_DECL_LITERAL => "declaration_line_for_grouped_constant",
+        GROUP_REASON_OWNER => "constant_owner_line",
+        GROUP_REASON_CONFIG_POLICY => "config_policy_owner_line",
+        _ => "first_raw_finding_in_canonical_item",
+    }
+}
+
+fn raw_spans_for(raw_findings: &[FindingAlignmentRawFinding]) -> Vec<FindingAlignmentRawSpan> {
+    raw_findings
+        .iter()
+        .map(|finding| FindingAlignmentRawSpan {
+            file: finding.file.clone(),
+            start_line: finding.line,
+            end_line: finding.line,
+            kind: finding.kind.clone(),
+            source_id: finding.source_id.clone(),
+        })
+        .collect()
+}
+
 fn adjacent_literal_index(
     findings: &[Finding],
     used: &[bool],
@@ -1650,6 +1713,10 @@ fn item_json(out: &mut String, item: &FindingAlignmentItem, indent: usize) {
     field(out, indent + 1, "actionability", &item.actionability, true);
     number_field(out, indent + 1, "raw_group_size", item.raw_group_size, true);
     field(out, indent + 1, "group_reason", &item.group_reason, true);
+    primary_anchor_json(out, item.primary_anchor.as_ref(), indent + 1);
+    out.push_str(",\n");
+    raw_spans_json(out, &item.raw_spans, indent + 1);
+    out.push_str(",\n");
     field(out, indent + 1, "why", &item.why, true);
     field(
         out,
@@ -1775,6 +1842,44 @@ fn confidence_json(out: &mut String, confidence: &FindingAlignmentConfidence, in
     field(out, indent + 1, "basis", &confidence.basis, true);
     array_field(out, indent + 1, "notes", &confidence.notes, false);
     out.push_str(&format!("{}}}", "  ".repeat(indent)));
+}
+
+fn primary_anchor_json(
+    out: &mut String,
+    primary_anchor: Option<&FindingAlignmentPrimaryAnchor>,
+    indent: usize,
+) {
+    out.push_str(&format!("{}\"primary_anchor\": ", "  ".repeat(indent)));
+    let Some(anchor) = primary_anchor else {
+        out.push_str("null");
+        return;
+    };
+    out.push_str("{\n");
+    field(out, indent + 1, "file", &anchor.file, true);
+    number_field(out, indent + 1, "line", anchor.line, true);
+    field(out, indent + 1, "kind", &anchor.kind, true);
+    field(out, indent + 1, "source_id", &anchor.source_id, true);
+    field(out, indent + 1, "reason", &anchor.reason, false);
+    out.push_str(&format!("{}}}", "  ".repeat(indent)));
+}
+
+fn raw_spans_json(out: &mut String, raw_spans: &[FindingAlignmentRawSpan], indent: usize) {
+    out.push_str(&format!("{}\"raw_spans\": [\n", "  ".repeat(indent)));
+    for (index, span) in raw_spans.iter().enumerate() {
+        let sp = "  ".repeat(indent + 1);
+        out.push_str(&format!("{sp}{{\n"));
+        field(out, indent + 2, "file", &span.file, true);
+        number_field(out, indent + 2, "start_line", span.start_line, true);
+        number_field(out, indent + 2, "end_line", span.end_line, true);
+        field(out, indent + 2, "kind", &span.kind, true);
+        field(out, indent + 2, "source_id", &span.source_id, false);
+        out.push_str(&format!("{sp}}}"));
+        if index + 1 != raw_spans.len() {
+            out.push(',');
+        }
+        out.push('\n');
+    }
+    out.push_str(&format!("{}]", "  ".repeat(indent)));
 }
 
 fn raw_findings_json(out: &mut String, raw_findings: &[FindingAlignmentRawFinding], indent: usize) {
@@ -1997,6 +2102,26 @@ mod tests {
         );
         assert_eq!(item.raw_group_size, 2);
         assert_eq!(item.group_reason, GROUP_REASON_DECL_LITERAL);
+        let primary_anchor = item
+            .primary_anchor
+            .as_ref()
+            .ok_or_else(|| "grouped item should expose a primary anchor".to_string())?;
+        assert_eq!(primary_anchor.file, "src/device_labels.rs");
+        assert_eq!(primary_anchor.line, 46);
+        assert_eq!(primary_anchor.kind, "exposed");
+        assert_eq!(
+            primary_anchor.source_id,
+            "probe:src_device_labels_rs:46:decl"
+        );
+        assert_eq!(
+            primary_anchor.reason,
+            "declaration_line_for_grouped_constant"
+        );
+        assert_eq!(item.raw_spans.len(), 2);
+        assert_eq!(item.raw_spans[0].start_line, 46);
+        assert_eq!(item.raw_spans[0].end_line, 46);
+        assert_eq!(item.raw_spans[1].start_line, 47);
+        assert_eq!(item.raw_spans[1].end_line, 47);
         assert_eq!(item.gap_state, "static_limitation");
         assert_eq!(item.actionability, "inspect_visibility");
         let presentation_text = presentation_text_for(item)?;
@@ -2147,6 +2272,14 @@ mod tests {
 
         assert_eq!(report.items[0].raw_group_size, 1);
         assert_eq!(report.items[0].group_reason, GROUP_REASON_OWNER);
+        assert_eq!(
+            report.items[0]
+                .primary_anchor
+                .as_ref()
+                .map(|anchor| anchor.reason.as_str()),
+            Some("constant_owner_line")
+        );
+        assert_eq!(report.items[0].raw_spans.len(), 1);
         assert!(
             presentation_text_for(&report.items[0])?
                 .text_literal
@@ -2392,6 +2525,13 @@ mod tests {
             item.canonical_gap_id,
             "config_or_policy_constant::INTERNAL_POLICY_LABEL"
         );
+        assert_eq!(
+            item.primary_anchor
+                .as_ref()
+                .map(|anchor| (anchor.line, anchor.reason.as_str())),
+            Some((14, "declaration_line_for_grouped_constant"))
+        );
+        assert_eq!(item.raw_spans.len(), 2);
         assert_eq!(item.group_reason, GROUP_REASON_DECL_LITERAL);
         assert_eq!(item.raw_group_size, 2);
         assert_eq!(item.gap_state, "internal_only");
