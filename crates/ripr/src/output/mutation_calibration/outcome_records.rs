@@ -179,10 +179,15 @@ impl<'a> OutcomeObjectContext<'a> {
     }
 
     fn mutant_id(&self) -> Option<String> {
-        string_field_any(self.object, MUTANT_ID_KEYS).or_else(|| {
-            self.mutant
-                .and_then(|nested| string_field_any(nested, MUTANT_ID_KEYS))
-        })
+        string_field_any(self.object, MUTANT_ID_KEYS)
+            .or_else(|| {
+                self.mutant
+                    .and_then(|nested| string_field_any(nested, MUTANT_ID_KEYS))
+            })
+            .or_else(|| {
+                self.mutation
+                    .and_then(|nested| string_field_any(nested, MUTANT_ID_KEYS))
+            })
     }
 
     fn seam_id(&self) -> Option<String> {
@@ -277,4 +282,89 @@ fn string_field_any(object: &serde_json::Map<String, Value>, keys: &[&str]) -> O
 fn usize_field_any(object: &serde_json::Map<String, Value>, keys: &[&str]) -> Option<usize> {
     keys.iter()
         .find_map(|key| object.get(*key).and_then(json_scalar_as_usize))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_nested_mutant_location_and_span_shapes() -> Result<(), String> {
+        let records = parse_mutation_outcomes_json(
+            r#"{
+  "mutation_results": [
+    {
+      "mutant": {
+        "id": "m-nested",
+        "seamId": "seam-nested",
+        "span": {"file_name": "./src/pricing.rs", "start": {"line": 42}},
+        "replacement": ">"
+      },
+      "status": "missed",
+      "durationMillis": 17,
+      "command": "cargo test pricing"
+    },
+    {
+      "mutation": {
+        "mutantId": "m-mutation",
+        "probeId": "seam-mutation",
+        "filename": "src/cart.rs",
+        "startLine": "9",
+        "mutator": "replace literal"
+      },
+      "result": "caught"
+    }
+  ]
+}"#,
+        )?;
+
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].mutant_id.as_deref(), Some("m-mutation"));
+        assert_eq!(records[0].seam_id.as_deref(), Some("seam-mutation"));
+        assert_eq!(records[0].file.as_deref(), Some("src/cart.rs"));
+        assert_eq!(records[0].line, Some(9));
+        assert_eq!(records[0].mutation_operator, "replace literal");
+        assert_eq!(records[0].runtime_outcome, "caught");
+
+        assert_eq!(records[1].mutant_id.as_deref(), Some("m-nested"));
+        assert_eq!(records[1].seam_id.as_deref(), Some("seam-nested"));
+        assert_eq!(records[1].file.as_deref(), Some("src/pricing.rs"));
+        assert_eq!(records[1].line, Some(42));
+        assert_eq!(records[1].mutation_operator, ">");
+        assert_eq!(records[1].runtime_outcome, "missed");
+        assert_eq!(records[1].duration.as_deref(), Some("17"));
+        assert_eq!(
+            records[1].test_command.as_deref(),
+            Some("cargo test pricing")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ignores_objects_without_runtime_signal_and_keeps_detail_only_records() -> Result<(), String>
+    {
+        let records = parse_mutation_outcomes_json(
+            r#"[
+  {"id": "identity-only", "file": "src/lib.rs", "line": 1},
+  {"line": 2, "duration_ms": 5},
+  {"location": {"path": "./src/nested.rs", "line_start": 3}, "state": "timeout"}
+]"#,
+        )?;
+
+        assert_eq!(records.len(), 2);
+        let timeout = records
+            .iter()
+            .find(|record| record.runtime_outcome == "timeout")
+            .ok_or_else(|| "timeout record should be retained".to_string())?;
+        assert_eq!(timeout.file.as_deref(), Some("src/nested.rs"));
+        assert_eq!(timeout.line, Some(3));
+
+        let duration_only = records
+            .iter()
+            .find(|record| record.duration.as_deref() == Some("5"))
+            .ok_or_else(|| "duration-only record should be retained".to_string())?;
+        assert_eq!(duration_only.line, Some(2));
+        assert_eq!(duration_only.runtime_outcome, "unknown");
+        Ok(())
+    }
 }
