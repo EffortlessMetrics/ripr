@@ -57,6 +57,9 @@ The scorecard must summarize:
 - movement availability;
 - calibration coverage;
 - top recommended Lane 1 repair slices;
+- audit-derived actionable canonical gap top lists for classes, files, repair
+  kinds, missing discriminator kinds, static limitation reasons, and
+  guidance-unknown classes;
 - recent audit deltas when a previous scorecard or audit snapshot is
   available.
 
@@ -93,6 +96,9 @@ Each scorecard must include:
 - counts for raw findings/signals, canonical items, actionable items,
   already-observed items, static limitations, and raw-to-canonical ratio when
   canonical alignment data is present in the audit;
+- top actionable canonical gap lists copied from the Lane 1 audit so the
+  scorecard shows the live shape of user work without reconstructing it from
+  raw findings;
 - a headline object that names
   `finding_alignment_actionable_unresolved_canonical_gaps` as the primary
   scorecard count while preserving raw signal, canonical item, no-action,
@@ -150,6 +156,7 @@ The JSON output includes:
 - `oracle_semantics_distribution`;
 - `movement_availability`;
 - `calibration_coverage`;
+- `actionable_gap_top_lists`;
 - `recommended_repairs`;
 - `recent_audit_deltas`;
 - `unknowns`.
@@ -158,6 +165,7 @@ The Markdown output includes bounded sections for the same areas:
 
 - summary;
 - maturity by class;
+- actionable canonical gap top lists;
 - top evidence-quality risks;
 - recommended Lane 1 repairs;
 - duplicate-looking and canonical group signals;
@@ -231,6 +239,11 @@ Given a Lane 1 audit with raw signals, canonical items, and actionable canonical
 gaps, the scorecard headline uses actionable canonical gaps as the primary
 count and keeps raw signals as diagnostic context.
 
+Given a Lane 1 audit with actionable gap top lists, the scorecard carries those
+lists forward unchanged so agents and maintainers can see the dominant evidence
+classes, files, repair kinds, missing discriminator kinds, static limitation
+reasons, and guidance-unknown classes without inferring from raw findings.
+
 Given no previous scorecard or audit snapshot, the trend report marks history
 unavailable and emits `unknown` rather than claiming improvement.
 
@@ -256,6 +269,8 @@ any gate behavior.
   pins before and after audit deltas.
 - `xtask::tests::evidence_quality_scorecard_uses_audit_canonical_item_alignment_summary`
   pins the fallback from audit-derived `canonical_item` alignment summary.
+- `xtask::tests::evidence_quality_scorecard_carries_actionable_gap_top_lists_from_audit`
+  pins scorecard propagation of the audit-derived actionable gap top lists.
 - `xtask::tests::evidence_quality_scorecard_headline_prefers_actionable_canonical_gaps`
   pins the scorecard headline counting model.
 - `xtask::tests::evidence_quality_trend_reports_no_history_explicitly` pins the

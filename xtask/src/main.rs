@@ -14216,6 +14216,7 @@ struct Lane1EvidenceAuditReport {
     static_unknown_without_named_limitation: usize,
     canonical_items_without_repair_route: usize,
     canonical_items_without_verify_command: usize,
+    actionable_gap_top_lists: Lane1EvidenceAuditActionableGapTopLists,
     largest_canonical_groups: Vec<Lane1EvidenceAuditGroup>,
     duplicate_looking_groups: Vec<Lane1EvidenceAuditGroup>,
     missing_discriminator_reason_counts: BTreeMap<String, usize>,
@@ -14237,6 +14238,23 @@ struct Lane1EvidenceAuditReport {
     calibration_agreement_counts: BTreeMap<String, usize>,
     evidence_record_field_health: Vec<Lane1EvidenceAuditFieldHealth>,
     top_files_by_unresolved_evidence_debt: Vec<Lane1EvidenceAuditFileDebt>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct Lane1EvidenceAuditActionableGapTopLists {
+    top_actionable_gap_classes: Vec<Lane1EvidenceAuditTopCount>,
+    top_actionable_files: Vec<Lane1EvidenceAuditTopCount>,
+    top_repair_kinds: Vec<Lane1EvidenceAuditTopCount>,
+    top_missing_discriminator_kinds: Vec<Lane1EvidenceAuditTopCount>,
+    top_static_limitation_reasons: Vec<Lane1EvidenceAuditTopCount>,
+    top_verify_command_unknowns: Vec<Lane1EvidenceAuditTopCount>,
+    top_repair_route_unknowns: Vec<Lane1EvidenceAuditTopCount>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Lane1EvidenceAuditTopCount {
+    label: String,
+    count: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -14693,6 +14711,12 @@ struct Lane1EvidenceAuditBuilder {
     static_unknown_without_named_limitation: usize,
     canonical_items_without_repair_route: usize,
     canonical_items_without_verify_command: usize,
+    actionable_gap_class_counts: BTreeMap<String, usize>,
+    actionable_gap_file_counts: BTreeMap<String, usize>,
+    actionable_gap_repair_kind_counts: BTreeMap<String, usize>,
+    actionable_gap_missing_discriminator_kind_counts: BTreeMap<String, usize>,
+    actionable_gap_verify_command_unknown_counts: BTreeMap<String, usize>,
+    actionable_gap_repair_route_unknown_counts: BTreeMap<String, usize>,
     canonical_groups: BTreeMap<String, Lane1EvidenceAuditGroup>,
     duplicate_groups: BTreeMap<String, Lane1EvidenceAuditGroup>,
     field_health: BTreeMap<String, Lane1EvidenceAuditFieldHealth>,
@@ -14745,7 +14769,7 @@ impl Lane1EvidenceAuditBuilder {
         self.summary.evidence_records_total += 1;
         audit_evidence_record_field_health(record, &mut self.field_health);
         audit_ingest_finding_alignment(record, &mut self.finding_alignment);
-        self.ingest_alignment_coverage(record);
+        self.ingest_alignment_coverage(record, &file);
 
         let seam_id = audit_string(record, &["seam_id"]);
         let canonical_gap_id = audit_string(record, &["canonical_gap_id"]);
@@ -14932,7 +14956,7 @@ impl Lane1EvidenceAuditBuilder {
         }
     }
 
-    fn ingest_alignment_coverage(&mut self, record: &Value) {
+    fn ingest_alignment_coverage(&mut self, record: &Value, file: &str) {
         let raw_findings = audit_array(record, &["raw_findings"]);
         let canonical_item =
             audit_get(record, &["canonical_item"]).filter(|value| value.is_object());
@@ -15000,16 +15024,54 @@ impl Lane1EvidenceAuditBuilder {
             }
         }
         let actionable = audit_is_actionable_canonical_item(&item_kind, &gap_state);
+        if actionable {
+            self.ingest_actionable_gap_top_lists(record, canonical_item, &evidence_class, file);
+        }
         if actionable && !audit_has_structured_repair_route(canonical_item) {
             self.canonical_items_without_repair_route += 1;
+            audit_increment(
+                &mut self.actionable_gap_repair_route_unknown_counts,
+                &evidence_class,
+            );
         }
         if actionable && audit_verify_command_is_missing(canonical_item) {
             self.canonical_items_without_verify_command += 1;
+            audit_increment(
+                &mut self.actionable_gap_verify_command_unknown_counts,
+                &evidence_class,
+            );
         }
         if audit_has_static_unknown_signal(record, canonical_item, &gap_state, &actionability)
             && !audit_has_named_static_limitation(record, canonical_item)
         {
             self.static_unknown_without_named_limitation += 1;
+        }
+    }
+
+    fn ingest_actionable_gap_top_lists(
+        &mut self,
+        record: &Value,
+        canonical_item: &Value,
+        evidence_class: &str,
+        file: &str,
+    ) {
+        audit_increment(&mut self.actionable_gap_class_counts, evidence_class);
+        audit_increment(&mut self.actionable_gap_file_counts, file);
+        if let Some(repair_kind) =
+            audit_non_empty_string(canonical_item, &["repair_route", "repair_kind"])
+                .filter(|value| !audit_guidance_field_is_missing(value))
+        {
+            audit_increment(&mut self.actionable_gap_repair_kind_counts, &repair_kind);
+        }
+        for missing in audit_array(record, &["missing_discriminators"]) {
+            let kind = audit_non_empty_string(missing, &["flow_sink", "kind"])
+                .or_else(|| audit_non_empty_string(missing, &["flow_sink"]))
+                .or_else(|| audit_non_empty_string(missing, &["reason"]))
+                .unwrap_or_else(|| "missing_discriminator_kind_unknown".to_string());
+            audit_increment(
+                &mut self.actionable_gap_missing_discriminator_kind_counts,
+                &kind,
+            );
         }
     }
 
@@ -15114,6 +15176,22 @@ impl Lane1EvidenceAuditBuilder {
         });
         same_line_duplicate_groups.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
 
+        let actionable_gap_top_lists = Lane1EvidenceAuditActionableGapTopLists {
+            top_actionable_gap_classes: audit_top_counts(self.actionable_gap_class_counts),
+            top_actionable_files: audit_top_counts(self.actionable_gap_file_counts),
+            top_repair_kinds: audit_top_counts(self.actionable_gap_repair_kind_counts),
+            top_missing_discriminator_kinds: audit_top_counts(
+                self.actionable_gap_missing_discriminator_kind_counts,
+            ),
+            top_static_limitation_reasons: audit_top_counts(self.static_reason_counts.clone()),
+            top_verify_command_unknowns: audit_top_counts(
+                self.actionable_gap_verify_command_unknown_counts,
+            ),
+            top_repair_route_unknowns: audit_top_counts(
+                self.actionable_gap_repair_route_unknown_counts,
+            ),
+        };
+
         Lane1EvidenceAuditReport {
             root,
             repo_exposure_schema_version,
@@ -15127,6 +15205,7 @@ impl Lane1EvidenceAuditBuilder {
             static_unknown_without_named_limitation: self.static_unknown_without_named_limitation,
             canonical_items_without_repair_route: self.canonical_items_without_repair_route,
             canonical_items_without_verify_command: self.canonical_items_without_verify_command,
+            actionable_gap_top_lists,
             largest_canonical_groups,
             duplicate_looking_groups,
             missing_discriminator_reason_counts: self.missing_reason_counts,
@@ -15226,6 +15305,9 @@ fn lane1_evidence_audit_json(report: &Lane1EvidenceAuditReport) -> Result<String
                 "canonical_items_without_repair_route": report.canonical_items_without_repair_route,
                 "canonical_items_without_verify_command": report.canonical_items_without_verify_command,
             },
+            "actionable_gap_top_lists": audit_actionable_gap_top_lists_json(
+                &report.actionable_gap_top_lists
+            ),
         },
         "canonical_gap_groups": {
             "total": report.summary.canonical_gap_groups_total,
@@ -15472,6 +15554,47 @@ fn lane1_evidence_audit_markdown(report: &Lane1EvidenceAuditReport) -> String {
     audit_push_unaligned_examples_table(&mut out, &report.top_unaligned_examples);
     audit_push_same_line_duplicate_table(&mut out, &report.same_line_duplicate_groups);
 
+    out.push_str("## Actionable Canonical Gap Top Lists\n\n");
+    audit_push_top_count_table(
+        &mut out,
+        "Actionable gap class",
+        &report.actionable_gap_top_lists.top_actionable_gap_classes,
+    );
+    audit_push_top_count_table(
+        &mut out,
+        "Actionable file",
+        &report.actionable_gap_top_lists.top_actionable_files,
+    );
+    audit_push_top_count_table(
+        &mut out,
+        "Repair kind",
+        &report.actionable_gap_top_lists.top_repair_kinds,
+    );
+    audit_push_top_count_table(
+        &mut out,
+        "Missing discriminator kind",
+        &report
+            .actionable_gap_top_lists
+            .top_missing_discriminator_kinds,
+    );
+    audit_push_top_count_table(
+        &mut out,
+        "Static limitation reason",
+        &report
+            .actionable_gap_top_lists
+            .top_static_limitation_reasons,
+    );
+    audit_push_top_count_table(
+        &mut out,
+        "Verify command unknown class",
+        &report.actionable_gap_top_lists.top_verify_command_unknowns,
+    );
+    audit_push_top_count_table(
+        &mut out,
+        "Repair route unknown class",
+        &report.actionable_gap_top_lists.top_repair_route_unknowns,
+    );
+
     out.push_str("## Largest Canonical Gap Groups\n\n");
     audit_push_group_table(&mut out, &report.largest_canonical_groups);
 
@@ -15675,6 +15798,39 @@ fn audit_file_debt_json(row: &Lane1EvidenceAuditFileDebt) -> Value {
         "low_or_opaque_top_related_tests": row.low_or_opaque_top_related_tests,
         "missing_evidence_records": row.missing_evidence_records,
     })
+}
+
+fn audit_actionable_gap_top_lists_json(
+    top_lists: &Lane1EvidenceAuditActionableGapTopLists,
+) -> Value {
+    serde_json::json!({
+        "top_actionable_gap_classes": audit_top_counts_json(&top_lists.top_actionable_gap_classes),
+        "top_actionable_files": audit_top_counts_json(&top_lists.top_actionable_files),
+        "top_repair_kinds": audit_top_counts_json(&top_lists.top_repair_kinds),
+        "top_missing_discriminator_kinds": audit_top_counts_json(
+            &top_lists.top_missing_discriminator_kinds
+        ),
+        "top_static_limitation_reasons": audit_top_counts_json(
+            &top_lists.top_static_limitation_reasons
+        ),
+        "top_verify_command_unknowns": audit_top_counts_json(
+            &top_lists.top_verify_command_unknowns
+        ),
+        "top_repair_route_unknowns": audit_top_counts_json(
+            &top_lists.top_repair_route_unknowns
+        ),
+    })
+}
+
+fn audit_top_counts_json(rows: &[Lane1EvidenceAuditTopCount]) -> Vec<Value> {
+    rows.iter()
+        .map(|row| {
+            serde_json::json!({
+                "label": row.label,
+                "count": row.count,
+            })
+        })
+        .collect()
 }
 
 fn audit_finding_alignment_summary_json(
@@ -16027,6 +16183,21 @@ fn audit_array<'a>(value: &'a Value, path: &[&str]) -> &'a [Value] {
 fn audit_increment(counts: &mut BTreeMap<String, usize>, key: &str) {
     let entry = counts.entry(key.to_string()).or_insert(0);
     *entry += 1;
+}
+
+fn audit_top_counts(counts: BTreeMap<String, usize>) -> Vec<Lane1EvidenceAuditTopCount> {
+    let mut rows = counts
+        .into_iter()
+        .map(|(label, count)| Lane1EvidenceAuditTopCount { label, count })
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        right
+            .count
+            .cmp(&left.count)
+            .then_with(|| left.label.cmp(&right.label))
+    });
+    rows.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
+    rows
 }
 
 fn audit_alignment_evidence_class(record: &Value, canonical_item: Option<&Value>) -> String {
@@ -16545,6 +16716,30 @@ fn audit_push_counts_table_limited(
     out.push('\n');
 }
 
+fn audit_push_top_count_table(
+    out: &mut String,
+    heading: &str,
+    rows: &[Lane1EvidenceAuditTopCount],
+) {
+    if rows.is_empty() {
+        out.push_str(&format!(
+            "No {} counts were reported.\n\n",
+            heading.to_lowercase()
+        ));
+        return;
+    }
+    out.push_str(&format!("| {heading} | Count |\n"));
+    out.push_str("| --- | ---: |\n");
+    for row in rows {
+        out.push_str(&format!(
+            "| {} | {} |\n",
+            audit_markdown_cell(&row.label),
+            row.count
+        ));
+    }
+    out.push('\n');
+}
+
 fn audit_push_alignment_class_coverage_table(
     out: &mut String,
     rows: &[Lane1EvidenceAuditAlignmentClassCoverage],
@@ -16813,6 +17008,7 @@ struct EvidenceQualityScorecardReport {
     oracle_semantics_distribution: Value,
     movement_availability: Value,
     calibration_coverage: Value,
+    actionable_gap_top_lists: Value,
     recommended_repairs: Vec<EvidenceQualityRepair>,
     recent_audit_deltas: EvidenceQualityDeltas,
     unknowns: Vec<EvidenceQualityUnknown>,
@@ -17020,6 +17216,19 @@ fn evidence_quality_scorecard_from_values(
             serde_json::json!({}),
         ),
         calibration_coverage,
+        actionable_gap_top_lists: scorecard_value_or_default(
+            audit,
+            &["finding_alignment", "actionable_gap_top_lists"],
+            serde_json::json!({
+                "top_actionable_gap_classes": [],
+                "top_actionable_files": [],
+                "top_repair_kinds": [],
+                "top_missing_discriminator_kinds": [],
+                "top_static_limitation_reasons": [],
+                "top_verify_command_unknowns": [],
+                "top_repair_route_unknowns": [],
+            }),
+        ),
         recommended_repairs,
         recent_audit_deltas,
         unknowns,
@@ -17870,6 +18079,7 @@ fn evidence_quality_scorecard_json(
         "oracle_semantics_distribution": report.oracle_semantics_distribution,
         "movement_availability": report.movement_availability,
         "calibration_coverage": report.calibration_coverage,
+        "actionable_gap_top_lists": report.actionable_gap_top_lists,
         "recommended_repairs": report.recommended_repairs.iter().map(|repair| {
             serde_json::json!({
                 "slice": repair.slice,
@@ -18163,6 +18373,32 @@ fn scorecard_input_json(input: &EvidenceQualityScorecardInput) -> Value {
     })
 }
 
+fn scorecard_push_top_count_table(out: &mut String, heading: &str, value: &Value, key: &str) {
+    let rows = value
+        .get(key)
+        .and_then(Value::as_array)
+        .map_or(&[][..], Vec::as_slice);
+    if rows.is_empty() {
+        out.push_str(&format!(
+            "No {} counts were reported.\n\n",
+            heading.to_lowercase()
+        ));
+        return;
+    }
+    out.push_str(&format!("| {heading} | Count |\n"));
+    out.push_str("| --- | ---: |\n");
+    for row in rows {
+        let label = audit_string(row, &["label"]).unwrap_or_else(|| "unknown".to_string());
+        let count = audit_usize(row, &["count"]).unwrap_or(0);
+        out.push_str(&format!(
+            "| {} | {} |\n",
+            audit_markdown_cell(&label),
+            count
+        ));
+    }
+    out.push('\n');
+}
+
 fn evidence_quality_scorecard_markdown(report: &EvidenceQualityScorecardReport) -> String {
     let mut out = String::new();
     out.push_str("# Lane 1 evidence quality scorecard\n\n");
@@ -18348,6 +18584,50 @@ fn evidence_quality_scorecard_markdown(report: &EvidenceQualityScorecardReport) 
         out.push_str("| Raw-to-canonical ratio | n/a |\n");
     }
     out.push('\n');
+
+    out.push_str("## Actionable Canonical Gap Top Lists\n\n");
+    scorecard_push_top_count_table(
+        &mut out,
+        "Actionable gap class",
+        &report.actionable_gap_top_lists,
+        "top_actionable_gap_classes",
+    );
+    scorecard_push_top_count_table(
+        &mut out,
+        "Actionable file",
+        &report.actionable_gap_top_lists,
+        "top_actionable_files",
+    );
+    scorecard_push_top_count_table(
+        &mut out,
+        "Repair kind",
+        &report.actionable_gap_top_lists,
+        "top_repair_kinds",
+    );
+    scorecard_push_top_count_table(
+        &mut out,
+        "Missing discriminator kind",
+        &report.actionable_gap_top_lists,
+        "top_missing_discriminator_kinds",
+    );
+    scorecard_push_top_count_table(
+        &mut out,
+        "Static limitation reason",
+        &report.actionable_gap_top_lists,
+        "top_static_limitation_reasons",
+    );
+    scorecard_push_top_count_table(
+        &mut out,
+        "Verify command unknown class",
+        &report.actionable_gap_top_lists,
+        "top_verify_command_unknowns",
+    );
+    scorecard_push_top_count_table(
+        &mut out,
+        "Repair route unknown class",
+        &report.actionable_gap_top_lists,
+        "top_repair_route_unknowns",
+    );
 
     out.push_str("## Maturity By Class\n\n");
     out.push_str("| Class | Status | Proof source | Known limits | Next repair |\n");
@@ -51225,6 +51505,28 @@ covered_by = ["cargo xtask check-file-policy"]
             coverage["canonical_items_without_verify_command"],
             serde_json::Value::from(0)
         );
+        let top_lists = &value["finding_alignment"]["actionable_gap_top_lists"];
+        assert_eq!(
+            top_lists["top_actionable_gap_classes"][0]["label"],
+            "predicate_boundary"
+        );
+        assert_eq!(
+            top_lists["top_actionable_gap_classes"][0]["count"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(top_lists["top_actionable_files"][0]["label"], "src/lib.rs");
+        assert_eq!(
+            top_lists["top_repair_kinds"][0]["label"],
+            "add_boundary_assertion"
+        );
+        assert_eq!(
+            top_lists["top_missing_discriminator_kinds"][0]["label"],
+            "return_value"
+        );
+        assert_eq!(
+            top_lists["top_static_limitation_reasons"][0]["label"],
+            "opaque helper value"
+        );
         let class_rows = coverage["alignment_coverage_by_class"]
             .as_array()
             .ok_or_else(|| "alignment coverage rows should be an array".to_string())?;
@@ -51478,7 +51780,7 @@ covered_by = ["cargo xtask check-file-policy"]
                         "suggested_assertion": "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"
                       },
                       "related_test": {"name": "below_threshold_has_no_discount", "file": "tests/pricing.rs", "line": 10, "reason": "direct_owner_call"},
-                      "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+                      "verify_command": "cargo xtask evidence-quality-scorecard",
                       "confidence": {"basis": "static_only", "notes": []}
                     }
                   }
@@ -51542,6 +51844,24 @@ covered_by = ["cargo xtask check-file-policy"]
             coverage["canonical_items_without_verify_command"],
             serde_json::Value::from(0)
         );
+        let top_lists = &value["finding_alignment"]["actionable_gap_top_lists"];
+        assert_eq!(
+            top_lists["top_actionable_gap_classes"][0]["label"],
+            "predicate_boundary"
+        );
+        assert_eq!(
+            top_lists["top_actionable_gap_classes"][0]["count"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(top_lists["top_actionable_files"][0]["label"], "src/help.rs");
+        assert_eq!(
+            top_lists["top_repair_kinds"][0]["label"],
+            "add_boundary_assertion"
+        );
+        assert_eq!(
+            top_lists["top_missing_discriminator_kinds"][0]["label"],
+            "observed values do not include the equality-boundary case"
+        );
         Ok(())
     }
 
@@ -51591,7 +51911,7 @@ covered_by = ["cargo xtask check-file-policy"]
                       "raw_group_size": 1,
                       "why": "related tests reach the seam but miss the boundary discriminator",
                       "recommended_repair": "Add an equality-boundary assertion for the changed predicate.",
-                      "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+                      "verify_command": "verify_command_unknown",
                       "confidence": {"basis": "static_only", "notes": []}
                     }
                   }
@@ -51610,7 +51930,17 @@ covered_by = ["cargo xtask check-file-policy"]
         );
         assert_eq!(
             coverage["canonical_items_without_verify_command"],
-            serde_json::Value::from(0)
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["finding_alignment"]["actionable_gap_top_lists"]["top_repair_route_unknowns"][0]
+                ["label"],
+            "predicate_boundary"
+        );
+        assert_eq!(
+            value["finding_alignment"]["actionable_gap_top_lists"]["top_verify_command_unknowns"]
+                [0]["label"],
+            "predicate_boundary"
         );
         Ok(())
     }
@@ -51737,6 +52067,8 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("Largest Canonical Gap Groups"));
         assert!(markdown.contains("Finding Alignment"));
         assert!(markdown.contains("Finding Alignment Coverage"));
+        assert!(markdown.contains("Actionable Canonical Gap Top Lists"));
+        assert!(markdown.contains("Repair kind"));
         assert!(markdown.contains("Static unknown without named limitation"));
         assert!(markdown.contains("Raw-to-canonical ratio"));
         assert!(markdown.contains("Duplicate-Looking Groups"));
@@ -52011,6 +52343,7 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(value.get("oracle_semantics_distribution").is_some());
         assert!(value.get("movement_availability").is_some());
         assert!(value.get("calibration_coverage").is_some());
+        assert!(value.get("actionable_gap_top_lists").is_some());
         assert!(value.get("recommended_repairs").is_some());
         assert!(value.get("recent_audit_deltas").is_some());
         assert!(value.get("unknowns").is_some());
@@ -52120,6 +52453,9 @@ covered_by = ["cargo xtask check-file-policy"]
         for needle in [
             "Lane 1 evidence quality scorecard",
             "Actionable canonical gaps",
+            "Actionable Canonical Gap Top Lists",
+            "Actionable gap class",
+            "Repair kind",
             "Maturity By Class",
             "Top Evidence-Quality Risks",
             "Recommended Lane 1 Repairs",
@@ -52136,6 +52472,41 @@ covered_by = ["cargo xtask check-file-policy"]
                 "scorecard Markdown missing {needle}"
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_scorecard_carries_actionable_gap_top_lists_from_audit() -> Result<(), String>
+    {
+        let audit = lane1_scorecard_sample_audit_value()?;
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(false),
+            &audit,
+            None,
+            None,
+        )?;
+        let json = evidence_quality_scorecard_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+
+        assert_eq!(
+            value["actionable_gap_top_lists"]["top_actionable_gap_classes"][0]["label"],
+            "predicate_boundary"
+        );
+        assert_eq!(
+            value["actionable_gap_top_lists"]["top_repair_kinds"][0]["label"],
+            "add_boundary_assertion"
+        );
+        assert_eq!(
+            value["actionable_gap_top_lists"]["top_static_limitation_reasons"][0]["label"],
+            "opaque helper value"
+        );
+
+        let markdown = evidence_quality_scorecard_markdown(&report);
+        assert!(markdown.contains("Actionable Canonical Gap Top Lists"));
+        assert!(markdown.contains("add_boundary_assertion"));
+        assert!(markdown.contains("opaque helper value"));
         Ok(())
     }
 

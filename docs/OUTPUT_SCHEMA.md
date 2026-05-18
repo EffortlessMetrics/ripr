@@ -1664,6 +1664,27 @@ runtime execution.
       "static_unknown_without_named_limitation": 0,
       "canonical_items_without_repair_route": 0,
       "canonical_items_without_verify_command": 120
+    },
+    "actionable_gap_top_lists": {
+      "top_actionable_gap_classes": [
+        {"label": "predicate_boundary", "count": 900}
+      ],
+      "top_actionable_files": [
+        {"label": "src/pricing.rs", "count": 42}
+      ],
+      "top_repair_kinds": [
+        {"label": "add_boundary_assertion", "count": 810}
+      ],
+      "top_missing_discriminator_kinds": [
+        {"label": "return_value", "count": 720}
+      ],
+      "top_static_limitation_reasons": [
+        {"label": "opaque helper value", "count": 1200}
+      ],
+      "top_verify_command_unknowns": [
+        {"label": "predicate_boundary", "count": 120}
+      ],
+      "top_repair_route_unknowns": []
     }
   },
   "canonical_gap_groups": {
@@ -1843,6 +1864,13 @@ Field contract:
 - `finding_alignment.coverage.canonical_items_without_repair_route` and
   `canonical_items_without_verify_command` - coverage counts for canonical
   items missing repair or verification guidance.
+- `finding_alignment.actionable_gap_top_lists` - bounded top counts derived
+  from canonical items, not raw findings. Each row is `{label, count}` sorted
+  by descending count and then label. The section reports actionable gap
+  classes, files, repair kinds, missing discriminator kinds, static limitation
+  reasons, verify-command unknowns by class, and repair-route unknowns by
+  class so maintainers can choose the next fixture-backed repair slice from
+  live evidence.
 - `canonical_gap_groups.total` - number of distinct canonical gap IDs among
   headline records.
 - `canonical_gap_groups.largest` - top canonical groups by observed count,
@@ -2022,6 +2050,27 @@ generated tests, provider calls, or runtime execution.
     "uncalibrated_records": 9355,
     "runtime_scope": "uncalibrated"
   },
+  "actionable_gap_top_lists": {
+    "top_actionable_gap_classes": [
+      {"label": "predicate_boundary", "count": 900}
+    ],
+    "top_actionable_files": [
+      {"label": "src/pricing.rs", "count": 42}
+    ],
+    "top_repair_kinds": [
+      {"label": "add_boundary_assertion", "count": 810}
+    ],
+    "top_missing_discriminator_kinds": [
+      {"label": "return_value", "count": 720}
+    ],
+    "top_static_limitation_reasons": [
+      {"label": "opaque helper value", "count": 1200}
+    ],
+    "top_verify_command_unknowns": [
+      {"label": "predicate_boundary", "count": 120}
+    ],
+    "top_repair_route_unknowns": []
+  },
   "recommended_repairs": [
     {
       "slice": "analysis/related-test-ranking-audit-fixes",
@@ -2085,6 +2134,12 @@ Field contract:
   buckets; they are not user-actionable test-gap labels.
 - `calibration_coverage` - class-scoped calibration availability from
   `evidence_record.calibration`; it does not run mutation testing.
+- `actionable_gap_top_lists` - the audit-derived
+  `finding_alignment.actionable_gap_top_lists` section carried forward for the
+  scorecard. It shows the dominant actionable classes, files, repair kinds,
+  missing discriminator kinds, static limitation reasons, and guidance-unknown
+  classes so the scorecard explains the shape of user work before any badge or
+  downstream rendering change.
 - `recommended_repairs` - bounded Lane 1 repair slices ordered by product risk
   priority first, then signal count. These are advisory next steps, not policy
   decisions.
@@ -2094,10 +2149,11 @@ Field contract:
   stay visible until a fixture, analyzer, or calibration slice addresses them.
 
 The Markdown sibling prints bounded sections for summary, finding-alignment and
-presentation-text quality, maturity by class, top evidence-quality risks,
-recommended repairs, duplicate/canonical group signals, static limitations,
-missing discriminators, related-test and oracle distributions, movement and
-calibration coverage, recent deltas, and unknowns.
+presentation-text quality, actionable canonical gap top lists, maturity by
+class, top evidence-quality risks, recommended repairs, duplicate/canonical
+group signals, static limitations, missing discriminators, related-test and
+oracle distributions, movement and calibration coverage, recent deltas, and
+unknowns.
 
 ## Evidence Quality Trend
 
