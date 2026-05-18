@@ -35,7 +35,7 @@ action.
 
 | Kind | Plain-language meaning | What to do with it |
 | --- | --- | --- |
-| `dynamic_dispatch` | The call target or behavior may be selected dynamically, such as `obj[name](...)` or `getattr(obj, name)(...)`. | Treat the finding as advisory. Prefer a focused test that observes the concrete runtime target or result. |
+| `dynamic_dispatch` | The call target or behavior may be selected dynamically, such as `obj[name]` or `getattr(obj, name)` followed by a call. | Treat the finding as advisory. Prefer a focused test that observes the concrete runtime target or result. |
 | `metaprogramming` | The code shape may change behavior through a metaprogramming mechanism, such as proxies, metaclasses, generated attributes, or similar indirection. | Keep the limit visible. Do not assume the static owner or call path is the full runtime boundary. |
 | `missing_import_graph` | The preview adapter did not resolve a full project import graph. | Check whether the related test and owner are the intended files before copying a packet or opening a test. |
 | `decorator_indirection` | A Python decorator may change the callable boundary before the body runs. | Treat owner/test evidence as syntax-first. Add a test around the decorated public behavior, not only the undecorated body. |

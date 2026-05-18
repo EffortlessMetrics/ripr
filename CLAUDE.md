@@ -2,6 +2,35 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+
+## Repo Source-of-Truth Stack
+
+This repo uses a linked source-of-truth stack:
+
+```text
+Roadmap -> Proposal -> Spec -> ADR -> Plan -> Active goal -> PR -> Proof
+```
+
+Before changing files, read:
+
+1. `docs/reference/SPEC_SYSTEM.md`
+2. `.ripr/goals/active.toml`
+3. the linked implementation plan for the selected work item
+4. the linked spec for acceptance and proof
+5. linked ADRs for durable constraints
+
+Work on exactly one ready work item per PR. Do not create a new lane, mix
+proposal/spec/ADR/plan/runtime changes, broaden support claims, or hand-edit
+generated status unless the selected plan item says to.
+
+A PR is ready only when the intended artifact or code change exists, linked docs
+are updated, proof commands have run or are explicitly marked unavailable, claim
+boundaries are respected, and `git diff --check` passes.
+
+Stop and report instead of guessing when the active goal is missing or stale,
+linked specs or plans are missing, proof cannot run, generated status is dirty,
+unrelated staged changes exist, or requested work conflicts with an ADR.
+
 ## Product Contract
 
 `ripr` answers exactly one draft-time question:

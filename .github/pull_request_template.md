@@ -2,9 +2,29 @@
 
 -
 
+## Source-of-truth links
+
+Proposal:
+Spec:
+ADR:
+Plan item:
+Active goal:
+
 ## Scope
 
 -
+
+Scope type:
+
+- [ ] Proposal / why
+- [ ] Spec / behavior contract
+- [ ] ADR / durable decision
+- [ ] Plan / sequencing
+- [ ] Active goal / current execution state
+- [ ] Runtime / implementation
+- [ ] Policy ledger
+- [ ] Support-tier update
+- [ ] Generated status / receipt
 
 ## Scope Classification
 

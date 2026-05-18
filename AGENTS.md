@@ -3,6 +3,35 @@
 This repository is the product repo for `ripr`: a static mutation-exposure
 analyzer for Rust/Cargo workspaces.
 
+
+## Repo Source-of-Truth Stack
+
+This repo uses a linked source-of-truth stack:
+
+```text
+Roadmap -> Proposal -> Spec -> ADR -> Plan -> Active goal -> PR -> Proof
+```
+
+Before changing files, read:
+
+1. `docs/reference/SPEC_SYSTEM.md`
+2. `.ripr/goals/active.toml`
+3. the linked implementation plan for the selected work item
+4. the linked spec for acceptance and proof
+5. linked ADRs for durable constraints
+
+Work on exactly one ready work item per PR. Docs-only artifacts should stay
+separate unless the selected plan item explicitly bundles them. Runtime/code PRs
+must link to the spec and plan item they implement.
+
+If proof commands cannot run, record the command, why it was unavailable, any
+substitute evidence, and whether that blocks merge. Do not hand-edit generated
+status; run the generator/checker named in the plan.
+
+Stop instead of guessing when the active goal is missing or stale, linked
+artifacts are missing, unrelated staged files exist, proof is unavailable, or
+the requested work conflicts with an ADR.
+
 ## Product Contract
 
 `ripr` answers this question:

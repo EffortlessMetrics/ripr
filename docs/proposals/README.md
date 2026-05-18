@@ -4,6 +4,10 @@ Proposals are design briefs. They explain why a product or repo change should
 exist, what shape it should take, and what alternatives were considered. They
 are not behavior contracts and are not work queues.
 
+See [`docs/reference/SPEC_SYSTEM.md`](../reference/SPEC_SYSTEM.md) for the full
+source-of-truth stack that connects roadmaps, proposals, specs, ADRs, plans,
+active goals, PRs, and proof.
+
 Proposals decompose into:
 
 - one or more behavior specs in [`docs/specs/`](../specs/)

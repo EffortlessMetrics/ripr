@@ -3,6 +3,10 @@
 ADRs record decisions that should not be rediscovered or re-litigated in every
 PR. They should be short, dated, and focused on consequences.
 
+In the source-of-truth stack, ADRs record durable choices that constrain future
+plans and implementation. They do not own PR task lists or generated status; see
+[`docs/reference/SPEC_SYSTEM.md`](../reference/SPEC_SYSTEM.md).
+
 ## Index
 
 | ADR | Status | Decision |

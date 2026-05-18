@@ -7,6 +7,11 @@ Use specs for behavior that users, integrations, or future agents need to rely
 on. Keep implementation details in architecture docs or ADRs unless they affect
 observable behavior.
 
+In the source-of-truth stack, specs answer what must be true. They should not
+become PR queues; put sequencing in `plans/<lane>/implementation-plan.md` and
+current execution state in `.ripr/goals/active.toml`. See
+[`docs/reference/SPEC_SYSTEM.md`](../reference/SPEC_SYSTEM.md).
+
 ## Index
 
 | Spec | Status | Topic |
