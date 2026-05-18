@@ -41,7 +41,7 @@
 use super::rust_index::{FileFacts, RustIndex, TestSummary};
 use super::seams::{RepoSeam, RequiredDiscriminator};
 use crate::domain::{ValueContext, ValueFact};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 /// Per-test value facts that do not depend on a specific seam. Built
 /// once per indexed test and reused while classifying every seam.
@@ -66,8 +66,16 @@ pub(crate) struct ValueEnvFacts {
     /// level (same-file scope).
     module_constants: BTreeMap<String, String>,
     /// `IDENT.field -> LITERAL` from same-test struct literals such as
-    /// `let case = DiscountCase { amount: 100 };`.
-    struct_field_bindings: BTreeMap<String, BTreeMap<String, String>>,
+    /// `let case = DiscountCase { amount: 100 };`, plus line-scoped
+    /// invalidations so later shadows do not erase earlier safe calls.
+    struct_field_bindings: BTreeMap<String, StructFieldBinding>,
+    struct_field_invalidations: BTreeMap<String, Vec<usize>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct StructFieldBinding {
+    line: usize,
+    fields: BTreeMap<String, String>,
 }
 
 impl ValueEnvFacts {
@@ -80,7 +88,8 @@ impl ValueEnvFacts {
         let module_constants = file_facts_for(test, index)
             .map(|facts| extract_module_constants(&facts.source))
             .unwrap_or_default();
-        let struct_field_bindings = extract_struct_field_bindings(&body_clean, &test_param_names);
+        let (struct_field_bindings, struct_field_invalidations) =
+            extract_struct_field_bindings(&body_clean, test.start_line, &test_param_names);
         Self {
             body_clean,
             let_bindings,
@@ -89,6 +98,7 @@ impl ValueEnvFacts {
             table_bindings,
             module_constants,
             struct_field_bindings,
+            struct_field_invalidations,
         }
     }
 }
@@ -110,6 +120,7 @@ impl<'a> ValueEnv<'a> {
     /// `(value, ValueContext)` records. Empty vec means "could not
     /// resolve" - caller leaves the arg as opaque (preserves the
     /// existing `activation_unknown` classification semantics).
+    #[cfg(test)]
     pub(crate) fn resolve(&self, arg: &str) -> Vec<(String, ValueContext)> {
         let trimmed = arg.trim().trim_end_matches([',', ';']);
         // 1. Literal argument (delegate to existing scanner upstream
@@ -125,14 +136,29 @@ impl<'a> ValueEnv<'a> {
         if let Some(inner) = unwrap_option_or_result(trimmed) {
             // Recurse once. The inner can itself be a literal, a let,
             // a const, etc.
-            return self.resolve_identifier_or_literal(inner.as_str());
+            return self.resolve_identifier_or_literal_at(inner.as_str(), usize::MAX);
         }
 
         // Bare identifier: priority 2-5.
-        self.resolve_identifier_or_literal(trimmed)
+        self.resolve_identifier_or_literal_at(trimmed, usize::MAX)
     }
 
-    fn resolve_identifier_or_literal(&self, expr: &str) -> Vec<(String, ValueContext)> {
+    pub(crate) fn resolve_at(&self, arg: &str, call_line: usize) -> Vec<(String, ValueContext)> {
+        let trimmed = arg.trim().trim_end_matches([',', ';']);
+        if trimmed.is_empty() {
+            return Vec::new();
+        }
+        if let Some(inner) = unwrap_option_or_result(trimmed) {
+            return self.resolve_identifier_or_literal_at(inner.as_str(), call_line);
+        }
+        self.resolve_identifier_or_literal_at(trimmed, call_line)
+    }
+
+    fn resolve_identifier_or_literal_at(
+        &self,
+        expr: &str,
+        call_line: usize,
+    ) -> Vec<(String, ValueContext)> {
         // If it parses as a literal, just emit it. Re-uses the upstream
         // scalar_values shape implicitly: integers, floats, strings,
         // chars, simple paths.
@@ -140,8 +166,14 @@ impl<'a> ValueEnv<'a> {
             return vec![(expr.to_string(), ValueContext::FunctionArgument)];
         }
         if let Some((object, field)) = field_projection(expr)
-            && let Some(fields) = self.facts.struct_field_bindings.get(object)
-            && let Some(value) = fields.get(field)
+            && let Some(binding) = self.facts.struct_field_bindings.get(object)
+            && binding.line <= call_line
+            && !self
+                .facts
+                .struct_field_invalidations
+                .get(object)
+                .is_some_and(|lines| lines.iter().any(|line| *line <= call_line))
+            && let Some(value) = binding.fields.get(field)
         {
             return vec![(value.clone(), ValueContext::FunctionArgument)];
         }
@@ -357,13 +389,20 @@ fn extract_module_constants(file_source: &str) -> BTreeMap<String, String> {
 
 fn extract_struct_field_bindings(
     body: &str,
+    start_line: usize,
     invalid_idents: &[String],
-) -> BTreeMap<String, BTreeMap<String, String>> {
+) -> (
+    BTreeMap<String, StructFieldBinding>,
+    BTreeMap<String, Vec<usize>>,
+) {
     let mut out = BTreeMap::new();
-    let mut seen = BTreeSet::new();
-    let mut invalid = invalid_idents.iter().cloned().collect::<BTreeSet<_>>();
+    let mut invalidations: BTreeMap<String, Vec<usize>> = invalid_idents
+        .iter()
+        .map(|ident| (ident.clone(), vec![start_line]))
+        .collect();
     let cleaned = strip_comments_and_strings(body);
     for start in find_all(&cleaned, "let ") {
+        let line = line_at_offset(&cleaned, start, start_line);
         let after_let = &cleaned[start + 4..];
         let stmt_end = top_level_semicolon(after_let).unwrap_or(after_let.len());
         let stmt = &after_let[..stmt_end];
@@ -375,31 +414,46 @@ fn extract_struct_field_bindings(
         let Some((ident, is_mut)) = let_binding_ident(lhs) else {
             continue;
         };
-        if !seen.insert(ident.to_string()) {
-            invalid.insert(ident.to_string());
-            out.remove(ident);
+        if out.contains_key(ident) {
+            push_invalidation(&mut invalidations, ident, line);
             continue;
         }
         if is_mut {
-            invalid.insert(ident.to_string());
-            out.remove(ident);
+            push_invalidation(&mut invalidations, ident, line);
             continue;
         }
         let fields = extract_struct_literal_fields(rhs);
         if !fields.is_empty() {
-            out.insert(ident.to_string(), fields);
+            out.insert(ident.to_string(), StructFieldBinding { line, fields });
         } else {
-            invalid.insert(ident.to_string());
-            out.remove(ident);
+            push_invalidation(&mut invalidations, ident, line);
         }
     }
-    out.retain(|ident, _| {
-        !invalid.contains(ident)
-            && !has_non_simple_let_shadowing_binding(&cleaned, ident)
-            && !has_field_assignment(&cleaned, ident)
-            && !has_non_let_shadowing_binding(&cleaned, ident)
-    });
-    out
+    for ident in out.keys() {
+        let mut lines = Vec::new();
+        lines.extend(non_simple_let_shadowing_lines(&cleaned, ident, start_line));
+        lines.extend(field_assignment_lines(&cleaned, ident, start_line));
+        lines.extend(non_let_shadowing_lines(&cleaned, ident, start_line));
+        for line in lines {
+            push_invalidation(&mut invalidations, ident, line);
+        }
+    }
+    (out, invalidations)
+}
+
+fn push_invalidation(invalidations: &mut BTreeMap<String, Vec<usize>>, ident: &str, line: usize) {
+    invalidations
+        .entry(ident.to_string())
+        .or_default()
+        .push(line);
+}
+
+fn line_at_offset(text: &str, offset: usize, start_line: usize) -> usize {
+    start_line
+        + text[..offset.min(text.len())]
+            .bytes()
+            .filter(|b| *b == b'\n')
+            .count()
 }
 
 fn let_binding_ident(lhs: &str) -> Option<(&str, bool)> {
@@ -412,7 +466,8 @@ fn let_binding_ident(lhs: &str) -> Option<(&str, bool)> {
     is_simple_identifier(ident).then_some((ident, is_mut))
 }
 
-fn has_non_simple_let_shadowing_binding(body: &str, ident: &str) -> bool {
+fn non_simple_let_shadowing_lines(body: &str, ident: &str, start_line: usize) -> Vec<usize> {
+    let mut lines = Vec::new();
     for start in find_all(body, "let ") {
         let after_let = &body[start + 4..];
         let stmt_end = top_level_semicolon(after_let).unwrap_or(after_let.len());
@@ -422,10 +477,10 @@ fn has_non_simple_let_shadowing_binding(body: &str, ident: &str) -> bool {
         };
         let (lhs, _) = stmt.split_at(eq_idx);
         if let_binding_ident(lhs).is_none() && contains_identifier_token(lhs, ident) {
-            return true;
+            lines.push(line_at_offset(body, start, start_line));
         }
     }
-    false
+    lines
 }
 
 fn extract_struct_literal_fields(rhs: &str) -> BTreeMap<String, String> {
@@ -470,7 +525,8 @@ fn split_field_literal(field: &str) -> Option<(&str, &str)> {
     Some((name, value))
 }
 
-fn has_field_assignment(body: &str, ident: &str) -> bool {
+fn field_assignment_lines(body: &str, ident: &str, start_line: usize) -> Vec<usize> {
+    let mut lines = Vec::new();
     let needle = format!("{ident}.");
     let mut search_from = 0;
     while let Some(rel) = body[search_from..].find(&needle) {
@@ -492,25 +548,26 @@ fn has_field_assignment(body: &str, ident: &str) -> bool {
             .map(char::len_utf8)
             .sum::<usize>();
         if field_len > 0 && is_assignment_operator(after[field_len..].trim_start()) {
-            return true;
+            lines.push(line_at_offset(body, abs, start_line));
         }
         search_from = after_start;
     }
-    false
+    lines
 }
 
-fn has_non_let_shadowing_binding(body: &str, ident: &str) -> bool {
-    for line in body.lines() {
+fn non_let_shadowing_lines(body: &str, ident: &str, start_line: usize) -> Vec<usize> {
+    let mut lines = Vec::new();
+    for (idx, line) in body.lines().enumerate() {
         if has_for_binding(line, ident)
             || has_let_pattern_binding(line, "if let ", ident)
             || has_let_pattern_binding(line, "while let ", ident)
             || has_closure_param_binding(line, ident)
             || has_match_arm_binding(line, ident)
         {
-            return true;
+            lines.push(start_line + idx);
         }
     }
-    false
+    lines
 }
 
 fn has_for_binding(line: &str, ident: &str) -> bool {
@@ -1127,10 +1184,11 @@ mod tests {
     fn extract_struct_field_bindings_picks_up_literal_fields_only() -> Result<(), String> {
         let body = "let case = DiscountCase { amount: 100, threshold: 100, \
                     computed: make_amount() };\n";
-        let bindings = extract_struct_field_bindings(body, &[]);
-        let fields = bindings
+        let (bindings, invalidations) = extract_struct_field_bindings(body, 1, &[]);
+        let binding = bindings
             .get("case")
             .ok_or_else(|| "same-test struct literal should be indexed".to_string())?;
+        let fields = &binding.fields;
 
         assert_eq!(fields.get("amount").map(String::as_str), Some("100"));
         assert_eq!(fields.get("threshold").map(String::as_str), Some("100"));
@@ -1138,63 +1196,103 @@ mod tests {
             !fields.contains_key("computed"),
             "non-literal struct fields must stay unresolved"
         );
+        assert!(
+            !invalidations.contains_key("case"),
+            "literal-only struct binding should not be invalidated"
+        );
         Ok(())
     }
 
     #[test]
-    fn extract_struct_field_bindings_skips_shadowed_or_mutated_bindings() {
-        for body in [
-            "let case = DiscountCase { amount: 100 };\nlet case = make_discount_case();\n",
-            "let case = DiscountCase { amount: 100 };\ncase.amount = make_amount();\n",
-            "let mut case = DiscountCase { amount: 100 };\n",
-        ] {
-            let bindings = extract_struct_field_bindings(body, &[]);
-            assert!(
-                !bindings.contains_key("case"),
-                "shadowed or mutable fixture bindings must stay unresolved: {body}"
-            );
-        }
+    fn extract_struct_field_bindings_records_shadow_or_mutation_lines() {
+        let shadowed =
+            "let case = DiscountCase { amount: 100 };\nlet case = make_discount_case();\n";
+        let (bindings, invalidations) = extract_struct_field_bindings(shadowed, 1, &[]);
+        assert!(
+            bindings.contains_key("case"),
+            "literal binding remains available for calls before the shadow"
+        );
+        assert_eq!(invalidations.get("case").cloned(), Some(vec![2]));
+
+        let mutated = "let case = DiscountCase { amount: 100 };\ncase.amount = make_amount();\n";
+        let (bindings, invalidations) = extract_struct_field_bindings(mutated, 1, &[]);
+        assert!(
+            bindings.contains_key("case"),
+            "literal binding remains available for calls before mutation"
+        );
+        assert_eq!(invalidations.get("case").cloned(), Some(vec![2]));
+
+        let mutable = "let mut case = DiscountCase { amount: 100 };\n";
+        let (bindings, invalidations) = extract_struct_field_bindings(mutable, 1, &[]);
+        assert!(
+            !bindings.contains_key("case"),
+            "mutable fixture bindings must stay unresolved"
+        );
+        assert_eq!(invalidations.get("case").cloned(), Some(vec![1]));
     }
 
     #[test]
-    fn extract_struct_field_bindings_skips_test_function_parameters() {
+    fn extract_struct_field_bindings_records_test_function_parameter_invalidations() {
         let body = "fn via_param(case: DiscountCase) { \
                         discounted_total(case.amount, case.threshold); \
                         let case = DiscountCase { amount: 100, threshold: 100 }; \
                     }\n";
         let param_names = extract_fn_param_names(body);
-        let bindings = extract_struct_field_bindings(body, &param_names);
+        let (_bindings, invalidations) = extract_struct_field_bindings(body, 1, &param_names);
 
         assert!(
-            !bindings.contains_key("case"),
-            "fixture parameter names must not resolve from later same-name literals"
+            invalidations
+                .get("case")
+                .is_some_and(|lines| lines.contains(&1)),
+            "fixture parameter names must invalidate same-name projection resolution"
         );
     }
 
     #[test]
-    fn extract_struct_field_bindings_skips_common_non_let_shadowing_binders() {
-        for body in [
-            "let case = DiscountCase { amount: 100 };\n\
-             for case in helper_cases() { discounted_total(case.amount, 100); }\n",
-            "let q = Quote { amount: 100 };\n\
-             for q in helper_cases() { discounted_total(q.amount, 100); }\n",
-            "let case = DiscountCase { amount: 100 };\n\
-             if let Some(case) = make_case() { discounted_total(case.amount, 100); }\n",
-            "let case = DiscountCase { amount: 100 };\n\
-             cases.iter().for_each(|case| discounted_total(case.amount, 100));\n",
-            "let case = DiscountCase { amount: 100 };\n\
-             match make_case() { Some(case) => discounted_total(case.amount, 100), _ => 0 };\n",
+    fn extract_struct_field_bindings_records_common_non_let_shadowing_lines() {
+        for (body, ident) in [
+            (
+                "let case = DiscountCase { amount: 100 };\n\
+                 for case in helper_cases() { discounted_total(case.amount, 100); }\n",
+                "case",
+            ),
+            (
+                "let q = Quote { amount: 100 };\n\
+                 for q in helper_cases() { discounted_total(q.amount, 100); }\n",
+                "q",
+            ),
+            (
+                "let case = DiscountCase { amount: 100 };\n\
+                 if let Some(case) = make_case() { discounted_total(case.amount, 100); }\n",
+                "case",
+            ),
+            (
+                "let case = DiscountCase { amount: 100 };\n\
+                 cases.iter().for_each(|case| discounted_total(case.amount, 100));\n",
+                "case",
+            ),
+            (
+                "let case = DiscountCase { amount: 100 };\n\
+                 match make_case() { Some(case) => discounted_total(case.amount, 100), _ => 0 };\n",
+                "case",
+            ),
         ] {
-            let bindings = extract_struct_field_bindings(body, &[]);
+            let (bindings, invalidations) = extract_struct_field_bindings(body, 1, &[]);
             assert!(
-                !bindings.contains_key("case"),
-                "non-let shadowing binders must keep projection values unresolved: {body}"
+                bindings.contains_key(ident),
+                "literal binding remains available for calls before non-let shadowing: {body}"
+            );
+            assert!(
+                invalidations
+                    .get(ident)
+                    .is_some_and(|lines| lines.iter().any(|line| *line >= 2)),
+                "non-let shadowing binders must invalidate projection values at their line: {body}"
             );
         }
     }
 
     #[test]
-    fn extract_struct_field_bindings_skips_non_simple_let_pattern_shadowing() {
+    fn extract_struct_field_bindings_records_non_simple_let_pattern_shadowing_lines() {
         for body in [
             "let case = DiscountCase { amount: 100 };\n\
              let Some(case) = make_case() else { return; };\n\
@@ -1203,10 +1301,16 @@ mod tests {
              let (case, _) = helper_case();\n\
              discounted_total(case.amount, 100);\n",
         ] {
-            let bindings = extract_struct_field_bindings(body, &[]);
+            let (bindings, invalidations) = extract_struct_field_bindings(body, 1, &[]);
             assert!(
-                !bindings.contains_key("case"),
-                "non-simple let pattern binders must keep projection values unresolved: {body}"
+                bindings.contains_key("case"),
+                "literal binding remains available for calls before let-pattern shadowing: {body}"
+            );
+            assert!(
+                invalidations
+                    .get("case")
+                    .is_some_and(|lines| lines.contains(&2)),
+                "non-simple let pattern binders must invalidate projection values at their line: {body}"
             );
         }
     }
@@ -1214,11 +1318,14 @@ mod tests {
     #[test]
     fn resolve_same_test_struct_field_projection() {
         let seam = predicate_seam();
+        let (struct_field_bindings, struct_field_invalidations) = extract_struct_field_bindings(
+            "let case = DiscountCase { amount: 100, discount_threshold: 100 };\n",
+            1,
+            &[],
+        );
         let facts = ValueEnvFacts {
-            struct_field_bindings: extract_struct_field_bindings(
-                "let case = DiscountCase { amount: 100, discount_threshold: 100 };\n",
-                &[],
-            ),
+            struct_field_bindings,
+            struct_field_invalidations,
             ..ValueEnvFacts::default()
         };
         let env = ValueEnv::new(&seam, &facts);
@@ -1230,6 +1337,95 @@ mod tests {
         assert!(
             env.resolve("make_case().amount").is_empty(),
             "helper-built fixture projections must remain opaque"
+        );
+    }
+
+    #[test]
+    fn resolve_same_test_struct_field_projection_is_source_order_scoped() {
+        let seam = predicate_seam();
+        let body = "let case = DiscountCase { amount: 100, discount_threshold: 100 };\n\
+                    discounted_total(case.amount, case.discount_threshold);\n\
+                    let case = make_discount_case();\n";
+        let (struct_field_bindings, struct_field_invalidations) =
+            extract_struct_field_bindings(body, 10, &[]);
+        let facts = ValueEnvFacts {
+            struct_field_bindings,
+            struct_field_invalidations,
+            ..ValueEnvFacts::default()
+        };
+        let env = ValueEnv::new(&seam, &facts);
+
+        assert_eq!(
+            env.resolve_at("case.amount", 11),
+            vec![("100".to_string(), ValueContext::FunctionArgument)],
+            "later shadowing must not erase values for an earlier owner call"
+        );
+        assert!(
+            env.resolve_at("case.amount", 12).is_empty(),
+            "projection values must stay unresolved once the shadowing line is reached"
+        );
+    }
+
+    #[test]
+    fn resolve_same_test_struct_field_projection_requires_value_visible_at_call() {
+        let seam = predicate_seam();
+        let body = "discounted_total(case.amount, case.discount_threshold);\n\
+                    let case = DiscountCase { amount: 100, discount_threshold: 100 };\n";
+        let (struct_field_bindings, struct_field_invalidations) =
+            extract_struct_field_bindings(body, 10, &[]);
+        let facts = ValueEnvFacts {
+            struct_field_bindings,
+            struct_field_invalidations,
+            ..ValueEnvFacts::default()
+        };
+        let env = ValueEnv::new(&seam, &facts);
+
+        assert!(
+            env.resolve_at("case.amount", 10).is_empty(),
+            "later literals must not explain owner-call projections before the binding"
+        );
+        assert_eq!(
+            env.resolve_at("case.amount", 11),
+            vec![("100".to_string(), ValueContext::FunctionArgument)],
+            "the literal becomes available only once the binding line is reached"
+        );
+    }
+
+    #[test]
+    fn resolve_same_test_struct_field_projection_is_mutation_scoped() {
+        let seam = predicate_seam();
+        let body = "let case = DiscountCase { amount: 100, discount_threshold: 100 };\n\
+                    discounted_total(case.amount, case.discount_threshold);\n\
+                    case.amount = make_amount();\n";
+        let (struct_field_bindings, struct_field_invalidations) =
+            extract_struct_field_bindings(body, 10, &[]);
+        let facts = ValueEnvFacts {
+            struct_field_bindings,
+            struct_field_invalidations,
+            ..ValueEnvFacts::default()
+        };
+        let env = ValueEnv::new(&seam, &facts);
+
+        assert_eq!(
+            env.resolve_at("case.amount", 11),
+            vec![("100".to_string(), ValueContext::FunctionArgument)],
+            "later mutation must not erase values for an earlier owner call"
+        );
+        assert!(
+            env.resolve_at("case.amount", 12).is_empty(),
+            "projection values must stay unresolved once the mutation line is reached"
+        );
+    }
+
+    #[test]
+    fn resolve_at_ignores_empty_arguments() {
+        let seam = predicate_seam();
+        let facts = ValueEnvFacts::default();
+        let env = ValueEnv::new(&seam, &facts);
+
+        assert!(
+            env.resolve_at("   ", 1).is_empty(),
+            "empty argument text must not produce activation values"
         );
     }
 
