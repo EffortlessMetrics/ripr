@@ -407,9 +407,7 @@ pub(crate) fn evidence_record_json_value(record: &EvidenceRecord) -> Value {
     })
 }
 
-fn display_path(path: &std::path::Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
+use crate::output::path::display_path;
 
 fn stage_record(stage: &StageEvidence) -> EvidenceRecordStage {
     EvidenceRecordStage {
