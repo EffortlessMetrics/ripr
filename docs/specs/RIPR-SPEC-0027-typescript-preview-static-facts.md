@@ -114,7 +114,7 @@ Probes the adapter must generate (syntax-first):
 When the adapter cannot classify, it emits one of the `static_limit_kind`
 values defined in RIPR-SPEC-0026:
 
-- `dynamic_dispatch` (e.g., dynamic calls through `obj[methodName]`)
+- `dynamic_dispatch` (e.g., computed member calls such as `obj[methodName]` followed by invocation)
 - `metaprogramming` (e.g., decorators applied at the syntax site)
 - `missing_import_graph` (the symbol is imported from a module the
   adapter cannot resolve syntactically)

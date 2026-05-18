@@ -94,7 +94,7 @@ interpretation guide and integration rules.
 
 | Static limit | How to read it |
 | --- | --- |
-| `dynamic_dispatch` | The call target is selected dynamically, such as dynamic calls through `obj[name]` or `getattr(obj, name)`. |
+| `dynamic_dispatch` | The call target is selected dynamically, such as computed member calls (`obj[name]` followed by invocation) or `getattr(obj, name)(...)`. |
 | `metaprogramming` | The code shape can change behavior through metaprogramming, such as decorators, proxies, or metaclasses. |
 | `missing_import_graph` | The adapter did not resolve a full project import graph. |
 | `decorator_indirection` | A Python decorator may change the callable boundary. |
