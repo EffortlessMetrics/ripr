@@ -24,6 +24,13 @@ are scoped or reviewed.
   `evidence_record.canonical_item` so maintainers can choose the next
   fixture-backed repair class from live evidence without changing PR/CI
   rendering, gates, badges, providers, generated tests, or mutation execution.
+- VS Code setup/status now treats workspace root selection as an explicit
+  adoption state: single-root workspaces are named, multi-root workspaces fail
+  closed until an active editor selects one folder, and first-pr/receipt
+  wrong-root reports include the expected workspace root. This preserves the
+  read-only editor contract: no hidden analysis rerun, source edit, generated
+  test, provider call, mutation execution, default gate, or preview-language
+  promotion.
 - Lane 1 evidence audit generation now streams the live repo-exposure JSON
   subprocess directly into the temporary audit input file instead of buffering
   hundreds of megabytes in memory. Stderr and latency breadcrumbs remain

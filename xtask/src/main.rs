@@ -52484,6 +52484,14 @@ covered_by = ["cargo xtask check-file-policy"]
                 [0]["label"],
             "predicate_boundary"
         );
+        let actionable_static_limitation_reasons =
+            value["finding_alignment"]["actionable_gap_top_lists"]["top_static_limitation_reasons"]
+                .as_array()
+                .ok_or_else(|| "top_static_limitation_reasons should be an array".to_string())?;
+        assert!(
+            actionable_static_limitation_reasons.is_empty(),
+            "static limitations without actionable gap records must not appear in actionable top lists"
+        );
         Ok(())
     }
 
