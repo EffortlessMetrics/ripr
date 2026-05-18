@@ -44,7 +44,7 @@ Release themes:
 
 Detailed changes:
 - Changelog source range: the 0.6.0 notes were reconciled against merged PRs
-  and first-parent commits through `6e9dea2d` / #1120 on current `main`.
+  and first-parent commits through `22fcd23f` / #1129 on current `main`.
   Internal learning-doc polish is intentionally not part of the public release
   story. Remaining open non-release PR families stay outside this section until
   they land.
@@ -52,6 +52,9 @@ Detailed changes:
   behavior-bearing line without an added replacement does not disappear from
   static review. Related diff hardening covers quoted and metadata-bearing diff
   paths, indented lexical probe shapes, and clearer CLI typo recovery.
+- Rust numeric literal extraction now handles a broader set of literal forms
+  and requires valid exponent digits, improving stable Rust evidence facts
+  without adding runtime execution or mutation-test claims.
 - Canonical evidence items now expose explicit `primary_anchor` and
   `raw_spans[]` fields in supported `finding_alignment.items[]` and
   `evidence_record.canonical_item` records. Downstream PR/CI, editor, and agent
