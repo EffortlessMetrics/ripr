@@ -120,7 +120,7 @@ interface RiprLanguageClient {
 
 export interface RiprClientRuntime {
   getConfig(): RiprConfig;
-  workspaceRoot(): string | undefined;
+  workspaceRootState(): RiprWorkspaceRootState;
   resolveServer(
     context: vscode.ExtensionContext,
     config: RiprConfig,
@@ -139,9 +139,22 @@ export interface RiprClientRuntime {
   showErrorMessage(message: string, ...items: string[]): Thenable<string | undefined>;
 }
 
+export type RiprWorkspaceRootKind =
+  | 'noWorkspace'
+  | 'singleRoot'
+  | 'selectedRoot'
+  | 'ambiguousMultiRoot';
+
+export interface RiprWorkspaceRootState {
+  kind: RiprWorkspaceRootKind;
+  root?: string;
+  roots: string[];
+  detail?: string;
+}
+
 const defaultRuntime: RiprClientRuntime = {
   getConfig,
-  workspaceRoot: firstWorkspaceFolder,
+  workspaceRootState: currentWorkspaceRootState,
   resolveServer,
   createLanguageClient: (serverOptions, clientOptions) =>
     new LanguageClient('ripr', 'ripr', serverOptions, clientOptions),
@@ -164,6 +177,7 @@ export class RiprClientController {
   private readonly dirtyRiprDocuments = new Set<string>();
   private firstUsefulAction: FirstUsefulActionStatus | undefined;
   private setupStatus: RiprSetupStatus = setupStatusWithoutWorkspace();
+  private workspaceRootState: RiprWorkspaceRootState = workspaceRootStateNoWorkspace();
   private status: RiprStatusState = {
     kind: 'stopped',
     summary: 'ripr server has not started.',
@@ -187,7 +201,8 @@ export class RiprClientController {
     }
 
     const config = this.runtime.getConfig();
-    this.workspaceRoot = this.runtime.workspaceRoot();
+    this.workspaceRootState = this.runtime.workspaceRootState();
+    this.workspaceRoot = this.workspaceRootState.root;
     await this.refreshSetupStatusFiles();
 
     if (!config.enabled) {
@@ -198,6 +213,17 @@ export class RiprClientController {
         nextStep: 'Set ripr.enabled to true, then run ripr: Restart Server.'
       });
       this.output.appendLine('ripr editor analysis is disabled by configuration.');
+      return;
+    }
+
+    if (this.workspaceRootState.kind === 'ambiguousMultiRoot') {
+      this.updateStatus({
+        kind: 'workspaceAmbiguous',
+        summary: 'Select one workspace folder before using ripr repair actions.',
+        detail: workspaceRootStateDetail(this.workspaceRootState),
+        nextStep: 'Open a Rust or enabled preview-language file from one workspace folder, then run ripr: Restart Server.'
+      });
+      this.output.appendLine('ripr multi-root workspace is ambiguous; select a file before starting the server.');
       return;
     }
 
@@ -464,6 +490,11 @@ export class RiprClientController {
       this.runtime.showInformationMessage('Open a Rust, TypeScript/JavaScript, or Python file before starting a ripr repair.');
       return;
     }
+    const rootBlocker = this.activeDocumentRootBlocker(editor.document);
+    if (rootBlocker) {
+      this.runtime.showInformationMessage(rootBlocker);
+      return;
+    }
     const setupBlocker = setupRepairBlocker(this.statusContext());
     if (setupBlocker) {
       this.runtime.showInformationMessage(setupBlocker);
@@ -636,8 +667,13 @@ export class RiprClientController {
       this.runtime.showInformationMessage('ripr related test navigation requires a file URI.');
       return;
     }
-    if (!vscode.workspace.getWorkspaceFolder(uri)) {
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+    if (!workspaceFolder) {
       this.runtime.showInformationMessage('ripr related test must be inside the current workspace.');
+      return;
+    }
+    if (this.workspaceRoot && !sameWorkspaceRoot(workspaceFolder.uri.fsPath, this.workspaceRoot)) {
+      this.runtime.showInformationMessage('ripr related test belongs to a different workspace root than the active ripr session.');
       return;
     }
     const language = riprRelatedTestLanguage(uri.fsPath);
@@ -906,11 +942,23 @@ export class RiprClientController {
       extensionVersion: extensionVersion(this.context),
       expectedServerVersion: requestedServerVersion(this.context, config),
       workspaceTrusted: this.runtime.isWorkspaceTrusted(),
+      workspaceRootState: this.workspaceRootState,
       workspaceRoot: this.workspaceRoot,
       server: this.server,
       documentLanguages: RIPR_DOCUMENT_SELECTORS.map((selector) => selector.language),
       setupStatus: this.setupStatus
     };
+  }
+
+  private activeDocumentRootBlocker(document: vscode.TextDocument): string | undefined {
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+    if (!workspaceFolder) {
+      return 'ripr repair actions require the active file to belong to a workspace folder.';
+    }
+    if (this.workspaceRoot && !sameWorkspaceRoot(workspaceFolder.uri.fsPath, this.workspaceRoot)) {
+      return 'ripr repair actions are suppressed because the active file belongs to a different workspace root than the active ripr session.';
+    }
+    return undefined;
   }
 }
 
@@ -922,6 +970,7 @@ interface RiprSetupArtifactDefinition {
 type RiprStatusKind =
   | 'disabled'
   | 'noWorkspace'
+  | 'workspaceAmbiguous'
   | 'resolvingServer'
   | 'serverUnavailable'
   | 'starting'
@@ -950,6 +999,7 @@ interface RiprStatusContext {
   extensionVersion: string;
   expectedServerVersion: string;
   workspaceTrusted: boolean;
+  workspaceRootState: RiprWorkspaceRootState;
   workspaceRoot?: string;
   server?: ResolvedServer;
   documentLanguages: string[];
@@ -1074,6 +1124,8 @@ function statusText(kind: RiprStatusKind, firstAction?: FirstUsefulActionStatus)
       return '$(circle-slash) ripr: disabled';
     case 'noWorkspace':
       return '$(folder) ripr: open workspace';
+    case 'workspaceAmbiguous':
+      return '$(warning) ripr: select root';
     case 'resolvingServer':
       return '$(sync~spin) ripr: resolving';
     case 'serverUnavailable':
@@ -1195,6 +1247,7 @@ function setupDiagnosisReport(
 
 function statusContextLines(status: RiprStatusState, context: RiprStatusContext): string[] {
   const lines = [`Workspace: ${context.workspaceRoot ?? 'not open'}`];
+  lines.push(`Workspace root state: ${workspaceRootStateLabel(context.workspaceRootState)}`);
   lines.push(...setupCompatibilityLines(context));
   if (context.server) {
     lines.push(`Server: ${context.server.source} (${context.server.detail})`);
@@ -1250,6 +1303,9 @@ function setupCompatibilityLines(context: RiprStatusContext): string[] {
 }
 
 function setupRepairBlocker(context: RiprStatusContext): string | undefined {
+  if (context.workspaceRootState.kind === 'ambiguousMultiRoot') {
+    return 'ripr setup is not ready for repair actions: workspace_multi_root_ambiguous. Select one workspace folder, then rerun ripr: Diagnose Setup.';
+  }
   if (workspaceTrustState(context) === 'workspace_untrusted') {
     return 'ripr setup is not trusted for repair actions: workspace_untrusted. Trust the workspace, then rerun ripr: Diagnose Setup.';
   }
@@ -1418,6 +1474,8 @@ function serverStartedSummary(kind: RiprStatusKind): string {
       return 'no; extension disabled';
     case 'noWorkspace':
       return 'no; workspace unavailable';
+    case 'workspaceAmbiguous':
+      return 'no; workspace root is ambiguous';
     case 'stopped':
     default:
       return 'no; server stopped';
@@ -1443,6 +1501,7 @@ function evidenceFreshnessSummary(kind: RiprStatusKind): string {
       return 'not projected; languages are disabled';
     case 'serverUnavailable':
     case 'noWorkspace':
+    case 'workspaceAmbiguous':
     case 'disabled':
     case 'stopped':
       return 'unknown; analysis is not running';
@@ -1532,6 +1591,7 @@ function firstPrPacketStatusLines(
     case 'wrongRoot':
       return [
         `First PR packet: wrong root; packet root ${packet.repoRoot ?? 'unknown'} does not match this workspace.`,
+        `Expected workspace root: ${context.workspaceRoot ?? 'unknown'}.`,
         'First PR packet repair claims are suppressed.'
       ];
     case 'unsafePath':
@@ -1889,6 +1949,7 @@ function receiptStatusLines(
     case 'wrongRoot':
       return [
         `Receipt status: wrong root; receipt root ${receipt.repoRoot ?? 'unknown'} does not match this workspace.`,
+        `Expected workspace root: ${context.workspaceRoot ?? 'unknown'}.`,
         'Receipt movement is not projected.'
       ];
     case 'found':
@@ -3000,7 +3061,11 @@ function rootMatchesWorkspace(root: string | undefined, workspaceRoot: string): 
   const resolvedRoot = path.isAbsolute(root)
     ? path.resolve(root)
     : path.resolve(workspaceRoot, root);
-  return normalizePath(resolvedRoot) === normalizePath(path.resolve(workspaceRoot));
+  return sameWorkspaceRoot(resolvedRoot, workspaceRoot);
+}
+
+function sameWorkspaceRoot(left: string, right: string): boolean {
+  return normalizePath(path.resolve(left)) === normalizePath(path.resolve(right));
 }
 
 function relativeWorkspacePath(workspaceRoot: string, filePath: string): string {
@@ -3058,8 +3123,69 @@ function selectedLocation(selected: Record<string, unknown> | undefined): string
   return line === undefined ? selectedPath : `${selectedPath}:${Math.trunc(line)}`;
 }
 
-function firstWorkspaceFolder(): string | undefined {
-  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+function currentWorkspaceRootState(): RiprWorkspaceRootState {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  if (folders.length === 0) {
+    return workspaceRootStateNoWorkspace();
+  }
+  if (folders.length === 1) {
+    return {
+      kind: 'singleRoot',
+      root: folders[0].uri.fsPath,
+      roots: [folders[0].uri.fsPath],
+      detail: 'single workspace folder is active'
+    };
+  }
+  const activeEditor = vscode.window.activeTextEditor;
+  const activeFolder = activeEditor && activeEditor.document.uri.scheme === 'file'
+    ? vscode.workspace.getWorkspaceFolder(activeEditor.document.uri)
+    : undefined;
+  if (activeFolder) {
+    return {
+      kind: 'selectedRoot',
+      root: activeFolder.uri.fsPath,
+      roots: folders.map((folder) => folder.uri.fsPath),
+      detail: 'selected from active editor workspace folder'
+    };
+  }
+  return {
+    kind: 'ambiguousMultiRoot',
+    roots: folders.map((folder) => folder.uri.fsPath),
+    detail: 'multiple workspace folders are open and no active editor selected a safe root'
+  };
+}
+
+function workspaceRootStateNoWorkspace(): RiprWorkspaceRootState {
+  return {
+    kind: 'noWorkspace',
+    roots: [],
+    detail: 'open a workspace folder before matching saved-workspace artifacts'
+  };
+}
+
+function workspaceRootStateLabel(state: RiprWorkspaceRootState): string {
+  switch (state.kind) {
+    case 'singleRoot':
+      return `workspace_single_root (${state.root ?? 'unknown'})`;
+    case 'selectedRoot':
+      return `workspace_multi_root_selected (${state.root ?? 'unknown'}; roots: ${state.roots.join(', ')})`;
+    case 'ambiguousMultiRoot':
+      return `workspace_multi_root_ambiguous (roots: ${state.roots.join(', ') || 'unknown'})`;
+    case 'noWorkspace':
+    default:
+      return 'workspace_not_open';
+  }
+}
+
+function workspaceRootStateDetail(state: RiprWorkspaceRootState): string {
+  const lines = [
+    state.detail ?? 'workspace root state is unavailable'
+  ];
+  if (state.roots.length > 0) {
+    lines.push(`Workspace folders: ${state.roots.join(', ')}`);
+  }
+  lines.push('Root-scoped repair actions are suppressed until one workspace folder is selected.');
+  return lines.join('\n');
 }
 
 function isRiprFileDocument(document: vscode.TextDocument): boolean {

@@ -42,10 +42,10 @@ first outside user or coding agent receives a repair packet.
 
 | Issue | Work item | Status |
 | --- | --- | --- |
-| #1245 | `docs(lane3): open editor adoption assurance stack` | active |
-| #1246 | `test(lsp): pin editor adoption baseline` | planned |
-| #1247 | `vscode: add extension/server compatibility diagnosis` | planned |
-| #1248 | `vscode: harden workspace-root and multi-root diagnosis` | planned |
+| #1245 | `docs(lane3): open editor adoption assurance stack` | done |
+| #1246 | `test(lsp): pin editor adoption baseline` | done |
+| #1247 | `vscode: add extension/server compatibility diagnosis` | done |
+| #1248 | `vscode: harden workspace-root and multi-root diagnosis` | done |
 | #1249 | `fixtures(editor): add adoption-assurance fixture corpus` | planned |
 | #1250 | `test(vscode): smoke editor adoption assurance path` | planned |
 | #1251 | `docs(editor): write install-to-first-pr editor guide` | planned |
