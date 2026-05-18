@@ -1,6 +1,5 @@
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
-use std::path::Path;
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "pr_evidence_ledger";
@@ -1493,9 +1492,7 @@ fn string_or_number_path(value: &Value, path: &[&str]) -> Option<String> {
     })
 }
 
-pub(crate) fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
+pub(crate) use crate::output::path::display_path;
 
 #[cfg(test)]
 mod tests {
