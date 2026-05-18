@@ -44,7 +44,7 @@ Release themes:
 
 Detailed changes:
 - Changelog source range: the 0.6.0 notes were reconciled against merged PRs
-  and first-parent commits through `e04d54c0` / #1174 on current `main`.
+  and first-parent commits through `272e43bb` / #1194 on current `main`.
   Internal learning-doc polish is intentionally not part of the public release
   story. Remaining open non-release PR families stay outside this section until
   they land.
@@ -81,6 +81,8 @@ Detailed changes:
 - `cargo xtask help` now gives clearer command-discovery output and preserves
   command lookup behavior, improving contributor and agent repo-ops flow
   without changing release, policy, or analyzer behavior.
+- Classify text helper internals are split into focused modules while keeping
+  the existing helper facade and classifier behavior unchanged.
 - Lane 1 evidence audit generation now streams repo-exposure latency
   breadcrumbs during long live-repo runs and records bounded generation
   diagnostics in `inputs.repo_exposure_generation`, including timeout, status,
