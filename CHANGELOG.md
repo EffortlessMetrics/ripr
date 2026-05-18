@@ -44,7 +44,7 @@ Release themes:
 
 Detailed changes:
 - Changelog source range: the 0.6.0 notes were reconciled against merged PRs
-  and first-parent commits through `c451dd72` / #1125 on current `main`.
+  and first-parent commits through `135b10a8` / #1211 on current `main`.
   Internal learning-doc polish is intentionally not part of the public release
   story. Remaining open non-release PR families stay outside this section until
   they land.
@@ -55,6 +55,10 @@ Detailed changes:
 - Rust numeric literal extraction now handles a broader set of literal forms
   and requires valid exponent digits, improving stable Rust evidence facts
   without adding runtime execution or mutation-test claims.
+- Rust decimal exponent literals now canonicalize equivalent `e` and `E`
+  spellings before boundary comparison, so equivalent exponent forms line up in
+  stable Rust predicate infection evidence without changing output schemas,
+  policy, CI, or gate behavior.
 - Canonical evidence items now expose explicit `primary_anchor` and
   `raw_spans[]` fields in supported `finding_alignment.items[]` and
   `evidence_record.canonical_item` records. Downstream PR/CI, editor, and agent
