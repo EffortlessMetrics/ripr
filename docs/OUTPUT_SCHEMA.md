@@ -1558,6 +1558,8 @@ availability section.
 ```text
 target/ripr/reports/lane1-evidence-audit.json
 target/ripr/reports/lane1-evidence-audit.md
+target/ripr/reports/actionable-gaps.json
+target/ripr/reports/actionable-gaps.md
 ```
 
 `cargo xtask evidence-quality-audit` is an alias. The report is advisory and
@@ -1697,7 +1699,38 @@ runtime execution.
         {"label": "predicate_boundary", "count": 120}
       ],
       "top_repair_route_unknowns": []
-    }
+    },
+    "actionable_gap_packets": [
+      {
+        "canonical_gap_id": "gap:abc",
+        "evidence_class": "predicate_boundary",
+        "gap_state": "actionable",
+        "actionability": "extend_related_test",
+        "source_file": "src/pricing.rs",
+        "primary_anchor": {"file": "src/pricing.rs", "line": 42},
+        "repair_kind": "add_boundary_assertion",
+        "target_test_type": "boundary_discriminator",
+        "assertion_shape": "assert_eq!(price(threshold), expected)",
+        "recommended_repair": "Add an equality-boundary assertion.",
+        "why": "Related tests reach the seam but miss equality at the threshold.",
+        "related_test_or_observer": {
+          "file": "tests/pricing.rs",
+          "name": "below_threshold_has_no_discount",
+          "line": 10
+        },
+        "candidate_value_or_observer": "amount == threshold",
+        "verify_command": "cargo xtask evidence-quality-scorecard",
+        "raw_findings": [
+          {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed"}
+        ],
+        "raw_findings_supporting_only": true,
+        "static_limitations": [],
+        "confidence_basis": "static_only",
+        "must_not_change": [
+          "Do not infer actionability from raw static class."
+        ]
+      }
+    ]
   },
   "canonical_gap_groups": {
     "total": 4800,
@@ -1889,6 +1922,13 @@ Field contract:
   reasons on actionable gap records, verify-command unknowns by class, and
   repair-route unknowns by class so maintainers can choose the next
   fixture-backed repair slice from live evidence.
+- `finding_alignment.actionable_gap_packets` - bounded top actionable
+  canonical gap packets derived from `evidence_record.canonical_item`. Packets
+  are agent-safe work items: they carry stable identity, evidence class, repair
+  kind, target test/assertion shape, related test or observer when known,
+  verification command, raw findings as supporting evidence, confidence basis,
+  and conservative `must_not_change` boundaries. They do not create user work
+  from raw static class alone.
 - `canonical_gap_groups.total` - number of distinct canonical gap IDs among
   headline records.
 - `canonical_gap_groups.largest` - top canonical groups by observed count,
@@ -1916,6 +1956,88 @@ Field contract:
 
 The Markdown sibling prints the same audit areas in bounded tables. JSON keeps
 the complete count maps.
+
+## Actionable Gap Packets
+
+`cargo xtask lane1-evidence-audit` also writes a bounded packet projection for
+humans and agents:
+
+```text
+target/ripr/reports/actionable-gaps.json
+target/ripr/reports/actionable-gaps.md
+```
+
+The packet artifact is advisory and derives from the Lane 1 audit's
+`evidence_record.canonical_item` projection. It does not change public badge
+semantics, PR/CI rendering, gate policy, provider calls, generated tests, or
+mutation execution.
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "report": "actionable-gaps",
+  "scope": "repo",
+  "status": "advisory",
+  "source_report": "target/ripr/reports/lane1-evidence-audit.json",
+  "source": "evidence_record.canonical_item",
+  "packet_limit": 25,
+  "summary": {
+    "raw_signals": 47515,
+    "canonical_items": 38445,
+    "actionable_gaps": 162,
+    "already_observed": 12006,
+    "internal_no_action": 0,
+    "static_limitations": 26277,
+    "packets_emitted": 25,
+    "raw_to_canonical_ratio": 1.24,
+    "repair_route_unknowns": 0,
+    "verify_command_unknowns": 0
+  },
+  "run_limitations": [],
+  "packets": [
+    {
+      "canonical_gap_id": "gap:abc",
+      "evidence_class": "predicate_boundary",
+      "gap_state": "actionable",
+      "actionability": "extend_related_test",
+      "source_file": "src/pricing.rs",
+      "primary_anchor": {"file": "src/pricing.rs", "line": 42},
+      "repair_kind": "add_boundary_assertion",
+      "target_test_type": "boundary_discriminator",
+      "assertion_shape": "assert_eq!(price(threshold), expected)",
+      "recommended_repair": "Add an equality-boundary assertion.",
+      "why": "Related tests reach the seam but miss equality at the threshold.",
+      "related_test_or_observer": {
+        "file": "tests/pricing.rs",
+        "name": "below_threshold_has_no_discount",
+        "line": 10
+      },
+      "candidate_value_or_observer": "amount == threshold",
+      "verify_command": "cargo xtask evidence-quality-scorecard",
+      "raw_findings": [
+        {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed"}
+      ],
+      "raw_findings_supporting_only": true,
+      "static_limitations": [],
+      "confidence_basis": "static_only",
+      "must_not_change": [
+        "Do not infer actionability from raw static class."
+      ]
+    }
+  ],
+  "must_not_infer": [
+    "raw findings are supporting evidence, not user work",
+    "do not infer actionability from raw static class",
+    "do not treat named static limitations as user test debt",
+    "do not claim mutation execution or runtime proof from this packet"
+  ]
+}
+```
+
+The packet grain is one canonical actionable item. `raw_findings[]` is included
+only to preserve supporting evidence and line context; downstream consumers must
+not fan it back out into separate user-facing work.
 
 ## Evidence Quality Scorecard
 
