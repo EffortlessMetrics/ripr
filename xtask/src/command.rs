@@ -19,6 +19,7 @@ pub(crate) enum XtaskCommand {
     TestEfficiencyReport,
     BadgeArtifacts,
     RepoBadgeArtifacts(Vec<String>),
+    BadgeBasis(Vec<String>),
     RepoSeamInventory,
     RepoExposureReport,
     RepoExposureLatencyReport,
@@ -129,6 +130,7 @@ impl XtaskCommand {
             "test-efficiency-report" => Self::TestEfficiencyReport,
             "badge-artifacts" => Self::BadgeArtifacts,
             "repo-badge-artifacts" => Self::RepoBadgeArtifacts(rest),
+            "badge-basis" => Self::BadgeBasis(rest),
             "repo-seam-inventory" => Self::RepoSeamInventory,
             "repo-exposure-report" => Self::RepoExposureReport,
             "repo-exposure-latency-report" => Self::RepoExposureLatencyReport,
@@ -288,6 +290,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "test-efficiency-report",
         "badge-artifacts",
         "repo-badge-artifacts [--gap-ledger <path>]",
+        "badge-basis [--gap-ledger <path>] [--include-seam-classes]",
         "repo-seam-inventory",
         "repo-exposure-report",
         "repo-exposure-latency-report",
@@ -540,6 +543,13 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "target/ripr/reports",
             false,
             "Writes repo-scoped badge evidence under target.",
+        ),
+        command_entry(
+            "badge-basis [--gap-ledger <path>] [--include-seam-classes]",
+            "report_only",
+            "target/ripr/reports/badge-basis.{json,md}",
+            false,
+            "Audits public badge endpoint counts, current repo badge basis, seam-native inventory pressure, and the recommended actionable gap projection without editing badges/*.json; --include-seam-classes opts into the expensive full class breakdown.",
         ),
         command_entry(
             "repo-seam-inventory",
@@ -1252,5 +1262,9 @@ mod tests {
         assert!(note("cockpit").contains("stop states"));
         assert!(note("doctor").contains("missing artifacts"));
         assert!(note("worktree doctor").contains("start-here repair path"));
+        assert!(
+            note("badge-basis [--gap-ledger <path>] [--include-seam-classes]")
+                .contains("Audits public badge endpoint counts")
+        );
     }
 }
