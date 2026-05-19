@@ -4,6 +4,10 @@ Some security and review controls live in GitHub settings instead of the git
 tree. This checklist records the expected settings so local automation, CI, and
 review policy do not drift apart.
 
+This checkout is `EffortlessMetrics/ripr-swarm`, the public development landing
+zone for trusted same-repo `ripr` PRs. The release-facing source repository
+remains `EffortlessMetrics/ripr`.
+
 ## Settings App Contract
 
 The reviewable Settings App contract lives in `.github/settings.yml`.
@@ -14,10 +18,9 @@ Managed from git:
 - repository feature toggles: issues on, projects off, wiki off, downloads on
 - default branch: `main`
 - merge policy: squash merge enabled, merge commits disabled, rebase merge
-  disabled, auto-merge disabled, update branch enabled, and delete branch on
+  disabled, auto-merge enabled, update branch enabled, and delete branch on
   merge enabled
-- classic `main` branch protection fields supported by the Settings App
-- required status checks for routine PR merges
+- branch protection is deferred until routed result checks land
 - CI policy labels documented in `docs/CI.md`
 
 Not managed from `.github/settings.yml`:
@@ -35,10 +38,25 @@ Not managed from `.github/settings.yml`:
 Post-merge receipt:
 
 - Confirm the GitHub Repository Settings App is installed for
-  `EffortlessMetrics/ripr`.
+  `EffortlessMetrics/ripr-swarm`.
 - Let the app apply `.github/settings.yml`.
-- Inspect branch protection and labels through the GitHub UI or API.
+- Inspect metadata and labels through the GitHub UI or API.
 - Update this document with the last verified date and any applied-state notes.
+
+## Swarm Development Boundary
+
+`ripr-swarm` is not the release authority for `ripr`. Keep these surfaces in
+`EffortlessMetrics/ripr` until a focused promotion changes that boundary:
+
+- crates.io publishing
+- VS Marketplace publishing
+- Open VSX publishing
+- GitHub Release assets
+- signing or release environment secrets
+
+Self-hosted runners are limited to trusted same-repo PRs and pushes. Fork or
+otherwise untrusted PRs must use GitHub-hosted runners or skip self-hosted
+implementation jobs. See [Swarm development](swarm-development.md).
 
 ## Dependency Visibility
 
@@ -120,13 +138,18 @@ automatically.
 ## Branch Protection And Rulesets
 
 Required checks should use the emitted check-run names, not display-style
-workflow prefixes. Current required checks are:
+workflow prefixes. `ripr-swarm` does not require source-repo contexts such as
+`rust`, `msrv`, or `vscode`. Initial branch protection is deferred until the
+routed CI result job lands.
 
-- `rust`
-- `msrv`
-- `vscode`
+Expected first required checks after proof:
+
+- `Ripr Rust Small Result`
 - `cargo-deny`
 - `dependency-review`
+
+Do not require conditional implementation jobs such as `Ripr Rust Small on
+CX53`, `Ripr Rust Small on CX43`, or `Ripr Rust Small on GitHub Hosted`.
 
 Settings App managed rules:
 
@@ -165,3 +188,6 @@ Store publish tokens in the narrowest environment that needs them:
 
 Environment protection gives release approvals, scoped secrets, and audit
 history without adding another repo control plane.
+
+These release environments and publish tokens belong to the source repository,
+not `ripr-swarm`, until a dedicated release-boundary change is approved.

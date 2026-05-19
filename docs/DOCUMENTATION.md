@@ -45,6 +45,7 @@ Current how-to docs:
 - [CI strategy](CI.md)
 - [Security policy](../SECURITY.md)
 - [Repository settings](REPO_SETTINGS.md)
+- [Swarm development](swarm-development.md)
 - [Fix CI shape failures](how-to/fix-ci-shape-failures.md)
 - [Run Codex Goals](how-to/run-codex-goals.md)
 - [PR automation](PR_AUTOMATION.md)
