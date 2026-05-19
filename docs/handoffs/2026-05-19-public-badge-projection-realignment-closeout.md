@@ -2,8 +2,8 @@
 
 Date: 2026-05-19
 
-Latest merged PR: #1315 `docs: align badge wording with actionable gaps`
-(commit `eedda7c58b3167bec2c4299f123d69a40b3ae40d`)
+Latest merged PR: #1325 `badge: refresh public endpoints`
+(commit `d1892a67cae3afa66c9aab099f2b635f6ddab281`)
 
 ## Current Work Item
 
@@ -30,8 +30,8 @@ repair items.
 
 | Field | Before | After |
 | --- | --- | --- |
-| `ripr` public count | 24352 | 179 |
-| `ripr+` public count | 24469 | 179 |
+| `ripr` public count | 24352 | 180 |
+| `ripr+` public count | 24469 | 180 |
 | Public basis | `seam_native` repo inventory | `canonical_actionable_gap` |
 | Public meaning | classified repo seam pressure | unresolved actionable static repair gaps |
 | Internal seam inventory | headline badge | internal report only |
@@ -39,8 +39,8 @@ repair items.
 Current endpoint files:
 
 ```text
-badges/ripr.json       -> message 179
-badges/ripr-plus.json  -> message 179
+badges/ripr.json       -> message 180
+badges/ripr-plus.json  -> message 180
 ```
 
 ## PR Chain
@@ -53,6 +53,9 @@ badges/ripr-plus.json  -> message 179
 - #1312 `badge: guard public badge basis`
 - #1314 `badge: refresh public endpoints`
 - #1315 `docs: align badge wording with actionable gaps`
+- #1322 `docs(spec): lock public actionable projection`
+- #1324 `fix(output): bump evidence health schema for row counts`
+- #1325 `badge: refresh public endpoints`
 
 ## Proof Artifacts
 
@@ -67,11 +70,11 @@ The current `cargo xtask badge-basis` run reports:
 
 ```text
 Status: pass
-badges/ripr.json:      179
-badges/ripr-plus.json: 179
+badges/ripr.json:      180
+badges/ripr-plus.json: 180
 repo badge basis:      canonical_actionable_gap
-ripr count:            179
-ripr+ count:           179
+ripr count:            180
+ripr+ count:           180
 ```
 
 Internal seam inventory remains available through:
@@ -90,6 +93,12 @@ internal pressure gauge on demand.
 ## Generator And Guards
 
 Endpoint generator:
+
+```bash
+cargo xtask badges
+```
+
+The explicit endpoint refresh helper remains:
 
 ```bash
 cargo xtask update-badge-endpoints
@@ -159,6 +168,8 @@ git diff --check
 - It is not runtime mutation confirmation.
 - It is not coverage.
 - It is not merge approval or policy gate authority.
+- It is not full test adequacy.
+- It is not a complete seam inventory.
 - It does not claim every behavior seam is tested.
 - It does not claim preview-language promotion.
 - Internal seam-native inventory is still useful, but it belongs in detailed

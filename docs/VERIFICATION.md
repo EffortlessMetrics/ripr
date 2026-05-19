@@ -17,9 +17,14 @@ For the portable contract that adopted Rust repos should share, see
 
 ### `ripr+`
 
-`ripr+` is a repo-scoped static evidence badge. It counts unresolved static exposure gaps plus actionable test-efficiency findings under repository policy.
+`ripr+` is a repo-scoped static evidence badge. It counts unresolved
+actionable canonical repair gaps, plus actionable test-efficiency repair items
+only after they are projected into the same repair / verify / receipt model.
 
-It is an inbox-zero signal, not coverage, runtime mutation proof, or correctness proof. Diff-scoped `ripr` artifacts belong in pull request summaries and CI artifacts, not public README badges.
+It is an inbox-zero signal, not coverage, runtime mutation proof, full test
+adequacy, correctness proof, merge approval, or complete seam inventory.
+Diff-scoped `ripr` artifacts belong in pull request summaries and CI artifacts,
+not public README badges.
 
 ### Release
 
@@ -47,6 +52,9 @@ cargo xtask badges --check --gap-ledger target/ripr/reports/gap-decision-ledger.
 ```
 
 Committed endpoint files live under `badges/`. Detailed reports stay under `target/` locally or in CI artifacts.
+
+Use `cargo xtask badge-basis` when you need to audit the public count basis or
+find the internal seam-native inventory location.
 
 ## Pull Request Evidence
 
