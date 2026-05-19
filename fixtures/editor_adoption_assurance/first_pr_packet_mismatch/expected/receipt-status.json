@@ -1,0 +1,13 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_adoption_assurance/first_pr_packet_mismatch",
+  "receipt_state": "receipt_gap_mismatch",
+  "receipt_path": "target/ripr/agent/agent-receipt.json",
+  "diagnostic_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+  "receipt_gap_id": "gap:rust:shipping:tax-boundary",
+  "runtime_adequacy_claim": false,
+  "mutation_proof_claim": false,
+  "gate_eligibility_claim": false,
+  "merge_readiness_claim": false,
+  "next_safe_action": "Regenerate the receipt for the current diagnostic gap."
+}

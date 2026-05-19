@@ -59,6 +59,11 @@ nested cases with `expected/vscode-status.json`,
 `expected/setup-diagnosis.md`, `expected/lsp-diagnostics.json`,
 `expected/lsp-code-actions.json`, and `expected/first-pr-status.json` to pin
 first-pr packet success and fail-closed states.
+`fixtures/editor_adoption_assurance` uses nested cases with
+`expected/vscode-status.json`, `expected/setup-diagnosis.md`,
+`expected/lsp-diagnostics.json`, `expected/lsp-code-actions.json`,
+`expected/first-pr-status.json`, and `expected/receipt-status.json` to pin
+first-use compatibility, root, receipt, first-pr, and preview-adapter states.
 
 Run:
 
@@ -95,6 +100,7 @@ The current fixture baseline covers:
 - editor/LSP workflow projection: `editor_lsp_workflow`
 - editor gap cockpit projection: `editor_gap_cockpit`
 - editor first-pr bridge projection: `editor_first_pr_bridge`
+- editor adoption assurance projection: `editor_adoption_assurance`
 
 For defaults-first adoption examples, see
 [`EXAMPLE_CORPUS.md`](EXAMPLE_CORPUS.md). For calibration scenarios, see

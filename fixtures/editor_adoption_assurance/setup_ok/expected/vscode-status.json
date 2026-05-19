@@ -1,0 +1,29 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_adoption_assurance/setup_ok",
+  "status": "setup_ok",
+  "projection": "active",
+  "workspace": {
+    "state": "single_root",
+    "root": "fixtures/editor_adoption_assurance/setup_ok/workspace"
+  },
+  "server": {
+    "state": "compatible",
+    "path": "ripr",
+    "version": "ripr 0.6.0",
+    "expected_version": "compatible",
+    "protocol_features": ["diagnose_setup", "receipt_projection", "first_pr_packet_projection"],
+    "supported_artifact_schemas": ["first-pr.start-here.v1", "agent-receipt.v1"]
+  },
+  "languages": {
+    "enabled": ["rust"],
+    "available": ["rust"]
+  },
+  "first_pr_packet": {
+    "state": "missing"
+  },
+  "receipt": {
+    "state": "receipt_missing"
+  },
+  "next_safe_action": "Run saved-workspace analysis, verify, receipt, and first-pr before opening PR review."
+}

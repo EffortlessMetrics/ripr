@@ -1,0 +1,12 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_adoption_assurance/setup_ok",
+  "packet_state": "missing",
+  "packet_path": "target/ripr/first-pr/start-here.json",
+  "markdown_path": "target/ripr/first-pr/start-here.md",
+  "runtime_adequacy_claim": false,
+  "mutation_proof_claim": false,
+  "policy_gate_claim": false,
+  "pr_ready_claim": false,
+  "next_safe_action": "Run cargo xtask first-pr after verify and receipt artifacts exist."
+}

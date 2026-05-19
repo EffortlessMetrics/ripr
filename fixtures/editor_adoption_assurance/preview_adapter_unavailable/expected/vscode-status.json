@@ -1,0 +1,31 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_adoption_assurance/preview_adapter_unavailable",
+  "status": "preview_adapter_unavailable",
+  "projection": "fail_closed",
+  "workspace": {
+    "state": "single_root",
+    "root": "fixtures/editor_adoption_assurance/preview_adapter_unavailable/workspace"
+  },
+  "server": {
+    "state": "compatible",
+    "path": "ripr",
+    "version": "ripr 0.6.0",
+    "expected_version": "compatible",
+    "protocol_features": ["diagnose_setup", "receipt_projection", "first_pr_packet_projection"],
+    "supported_artifact_schemas": ["first-pr.start-here.v1", "agent-receipt.v1"]
+  },
+  "languages": {
+    "enabled": ["python"],
+    "available": ["rust"],
+    "language_status": "preview",
+    "static_limit_kind": "adapter_unavailable"
+  },
+  "first_pr_packet": {
+    "state": "not_projected"
+  },
+  "receipt": {
+    "state": "not_projected"
+  },
+  "next_safe_action": "Use a ripr build with the preview adapter or disable that preview language."
+}

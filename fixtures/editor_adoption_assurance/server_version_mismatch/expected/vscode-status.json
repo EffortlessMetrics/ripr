@@ -1,0 +1,30 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_adoption_assurance/server_version_mismatch",
+  "status": "server_version_mismatch",
+  "projection": "fail_closed",
+  "workspace": {
+    "state": "single_root",
+    "root": "fixtures/editor_adoption_assurance/server_version_mismatch/workspace"
+  },
+  "server": {
+    "state": "version_mismatch",
+    "path": "ripr",
+    "version": "ripr 0.5.0",
+    "expected_version": "ripr 0.6.x",
+    "protocol_features": ["diagnose_setup"],
+    "supported_artifact_schemas": ["first-pr.start-here.v0"]
+  },
+  "languages": {
+    "enabled": ["rust"],
+    "available": ["rust"]
+  },
+  "unsupported_schema_state": "first-pr packet schema unsupported",
+  "first_pr_packet": {
+    "state": "not_projected"
+  },
+  "receipt": {
+    "state": "not_projected"
+  },
+  "next_safe_action": "Use a compatible ripr server before copying repair, verify, receipt, or first-pr actions."
+}

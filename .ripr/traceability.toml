@@ -3446,9 +3446,16 @@ id = "RIPR-SPEC-0054"
 name = "Editor adoption assurance"
 spec = "docs/specs/RIPR-SPEC-0054-editor-adoption-assurance.md"
 tests = []
-fixtures = []
-code = []
+fixtures = [
+  "fixtures/editor_adoption_assurance",
+]
+code = [
+  "xtask/src/main.rs",
+]
 outputs = [
+  "fixtures/editor_adoption_assurance/SPEC.md",
+  "fixtures/README.md",
+  "fixtures/EXAMPLE_CORPUS.md",
   "docs/specs/RIPR-SPEC-0054-editor-adoption-assurance.md",
   "docs/specs/README.md",
   "docs/proposals/RIPR-PROP-0012-editor-adoption-assurance.md",
