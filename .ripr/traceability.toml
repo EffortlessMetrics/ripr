@@ -2218,6 +2218,7 @@ metrics = [
   "top_verify_command_unknowns",
   "top_repair_route_unknowns",
   "lane1_actionable_gap_packets",
+  "lane1_runtime_confidence_by_class",
 ]
 
 [[behavior]]
@@ -2327,6 +2328,7 @@ metrics = [
   "lane1_evidence_scorecard_uncalibrated_classes",
   "lane1_evidence_scorecard_recent_delta_available",
   "lane1_evidence_scorecard_limited_input_unknowns",
+  "lane1_evidence_scorecard_runtime_confidence_by_class",
   "finding_alignment_raw_signals_total",
   "finding_alignment_canonical_items_total",
   "finding_alignment_actionable_items_total",
@@ -2635,6 +2637,8 @@ name = "Static/runtime confidence expansion"
 spec = "docs/specs/RIPR-SPEC-0040-static-runtime-confidence-expansion.md"
 tests = [
   "crates/ripr/tests/cli_smoke.rs::calibration_runtime_fixture_v3_matches_checked_reports",
+  "xtask/src/main.rs::tests::lane1_evidence_audit_counts_quality_gaps_from_evidence_record",
+  "xtask/src/main.rs::tests::evidence_quality_scorecard_uses_audit_canonical_item_alignment_summary",
 ]
 fixtures = [
   "fixtures/boundary_gap/calibration/runtime-fixtures-v3",
@@ -2642,6 +2646,7 @@ fixtures = [
 code = [
   "crates/ripr/src/output/mutation_calibration.rs",
   "crates/ripr/tests/cli_smoke.rs",
+  "xtask/src/main.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0040-static-runtime-confidence-expansion.md",
@@ -2675,6 +2680,8 @@ metrics = [
   "static_runtime_confidence_ambiguous_runtime_join",
   "static_runtime_confidence_runtime_only_signal",
   "static_runtime_confidence_no_runtime_data",
+  "lane1_runtime_confidence_by_class",
+  "lane1_evidence_scorecard_runtime_confidence_by_class",
 ]
 
 [[behavior]]

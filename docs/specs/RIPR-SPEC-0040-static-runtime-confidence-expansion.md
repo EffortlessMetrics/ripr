@@ -218,7 +218,8 @@ Planned implementation:
 - `crates/ripr/src/output/mutation_calibration.rs` for label assignment and
   report rendering;
 - `xtask/src/main.rs` for repo-local `cargo xtask mutation-calibration`
-  fixture generation and validation;
+  fixture generation and validation, plus Lane 1 audit and scorecard rows that
+  report runtime confidence coverage by canonical evidence class;
 - `fixtures/evidence-quality-benchmark/corpus.json` when benchmark cases need
   v3 calibration references;
 - `docs/CAPABILITY_MATRIX.md` and `metrics/capabilities.toml` for
@@ -242,7 +243,9 @@ The implementation should feed these metrics:
 - `static_runtime_confidence_contradicts_static_clean`;
 - `static_runtime_confidence_ambiguous_runtime_join`;
 - `static_runtime_confidence_runtime_only_signal`;
-- `static_runtime_confidence_no_runtime_data`.
+- `static_runtime_confidence_no_runtime_data`;
+- `lane1_runtime_confidence_by_class`;
+- `lane1_evidence_scorecard_runtime_confidence_by_class`.
 
 ## Validation
 
