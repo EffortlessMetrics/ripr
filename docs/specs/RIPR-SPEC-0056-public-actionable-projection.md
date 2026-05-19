@@ -410,5 +410,8 @@ The landed implementation proves:
 - actionable-gap packets distinguish agent-usable repair packets from public
   projection readiness by naming missing receipt or canonical guidance
   prerequisites;
+- packet-level readiness remains fail-closed for observed, no-action,
+  suppressed, or intentional dispositions even if malformed upstream packets
+  carry repair, verify, and receipt fields;
 - the closeout handoff records old count, new count, old basis, new basis,
   generator command, guard command, and internal seam-inventory location.

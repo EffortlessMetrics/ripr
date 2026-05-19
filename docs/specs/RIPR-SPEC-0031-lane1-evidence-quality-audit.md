@@ -263,6 +263,10 @@ artifact with stable `projection_exclusion_reasons[]` such as
 - `xtask::tests::lane1_actionable_gap_packets_mark_public_projection_ready_with_receipt`
   pins that packet-level public projection readiness requires a receipt command
   or path and records the receipt source without changing badge counts.
+- `xtask::tests::lane1_actionable_gap_packets_keep_observed_gaps_out_of_public_projection`
+  pins that observed/no-action dispositions do not become public-projection
+  eligible even when a malformed packet carries repair, verify, and receipt
+  fields.
 - `xtask::tests::lane1_evidence_audit_reports_alignment_coverage_holes` pins
   unaligned raw finding examples and same-line duplicate grouping.
 - `xtask::tests::lane1_evidence_audit_requires_structured_repair_route_for_actionable_items`
