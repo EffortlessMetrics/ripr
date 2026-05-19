@@ -8,7 +8,7 @@ use crate::analysis::seams::SeamGripClass;
 use crate::domain::{OracleKind, OracleStrength, StageState};
 use crate::output::evidence_record::{EvidenceRecord, evidence_record_for};
 
-pub(crate) const EVIDENCE_HEALTH_SCHEMA_VERSION: &str = "0.1";
+pub(crate) const EVIDENCE_HEALTH_SCHEMA_VERSION: &str = "0.2";
 const EVIDENCE_HEALTH_TOP_GROUP_LIMIT: usize = 10;
 const EVIDENCE_HEALTH_TOP_RISK_LIMIT: usize = 5;
 
@@ -717,7 +717,7 @@ mod tests {
         let json = render_evidence_health_json(&report)?;
         let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
 
-        assert_eq!(value["schema_version"], Value::from("0.1"));
+        assert_eq!(value["schema_version"], Value::from("0.2"));
         assert_eq!(value["metrics"]["seams_total"], Value::from(3));
         assert_eq!(value["metrics"]["weakly_gripped_total"], Value::from(2));
         assert_eq!(value["metrics"]["ungripped_total"], Value::from(1));
