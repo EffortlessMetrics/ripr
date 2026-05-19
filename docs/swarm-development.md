@@ -30,6 +30,33 @@ Self-hosted jobs are only for trusted same-repo PRs and pushes. Fork or
 otherwise untrusted pull requests must route to GitHub-hosted runners or skip
 self-hosted implementation jobs.
 
+The routed Rust workflow is `.github/workflows/routed-rust.yml`. It emits one
+branch-protection-facing check:
+
+```text
+Ripr Rust Small Result
+```
+
+Implementation jobs are conditional:
+
+```text
+Route Ripr Rust Small
+Ripr Rust Small on CX53
+Ripr Rust Small on CX43
+Ripr Rust Small on GitHub Hosted
+```
+
+Do not require implementation jobs directly in branch protection.
+
+The router reads runner state with `EM_RUNNER_READ_TOKEN` when that secret is
+available. It selects a self-hosted runner only when the runner is idle and has
+the matching host label plus the `em-ci-rust-1.95` image-readiness label. If
+runner state cannot be read, no target runner is idle, or a runner is available
+but not image-ready, the workflow falls back to GitHub-hosted with
+`router_reason=runner_api_failed`, `router_reason=no_idle_runner`, or
+`router_reason=runner_image_unavailable`. Fork PRs route to GitHub-hosted with
+`router_reason=fork_or_untrusted_pr`.
+
 The VS Code lane should remain hosted until a separate Node 24 / VS Code / Xvfb
 runner image is proven.
 

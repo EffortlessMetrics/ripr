@@ -150,6 +150,8 @@ Expected first required checks after proof:
 
 Do not require conditional implementation jobs such as `Ripr Rust Small on
 CX53`, `Ripr Rust Small on CX43`, or `Ripr Rust Small on GitHub Hosted`.
+Branch protection should be applied only after `.github/workflows/routed-rust.yml`
+has proven CX53, CX43, and GitHub-hosted fallback behavior.
 
 Settings App managed rules:
 

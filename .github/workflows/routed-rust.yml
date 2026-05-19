@@ -1,0 +1,375 @@
+name: Routed Rust Small
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  route:
+    name: Route Ripr Rust Small
+    runs-on: ubuntu-latest
+    outputs:
+      router_target: ${{ steps.route.outputs.router_target }}
+      router_reason: ${{ steps.route.outputs.router_reason }}
+      repo: ${{ steps.route.outputs.repo }}
+      workflow: ${{ steps.route.outputs.workflow }}
+      run_id: ${{ steps.route.outputs.run_id }}
+    steps:
+      - name: Select runner
+        id: route
+        env:
+          GH_TOKEN: ${{ secrets.EM_RUNNER_READ_TOKEN || github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name || '' }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          target=github
+          reason=runner_api_failed
+          if [ "$EVENT_NAME" = "pull_request" ] && [ "$HEAD_REPO" != "$REPOSITORY" ]; then
+            reason=fork_or_untrusted_pr
+          else
+            if runners="$(gh api orgs/EffortlessMetrics/actions/runners --paginate 2>/tmp/runners.err)"; then
+              if printf '%s' "$runners" | jq -e '.runners[] | select(.status == "online" and (.busy | not) and ([.labels[].name | ascii_downcase] | index("cx53") and index("em-ci-rust-1.95")))' >/dev/null; then
+                target=cx53
+                reason=cx53_idle
+              elif printf '%s' "$runners" | jq -e '.runners[] | select(.status == "online" and (.busy | not) and ([.labels[].name | ascii_downcase] | index("cx43") and index("em-ci-rust-1.95")))' >/dev/null; then
+                target=cx43
+                reason=cx43_idle
+              elif printf '%s' "$runners" | jq -e '.runners[] | select(.status == "online" and (.busy | not) and ([.labels[].name | ascii_downcase] | (index("cx53") or index("cx43"))))' >/dev/null; then
+                reason=runner_image_unavailable
+              else
+                reason=no_idle_runner
+              fi
+            else
+              reason=runner_api_failed
+            fi
+          fi
+          {
+            echo "router_target=$target"
+            echo "router_reason=$reason"
+            echo "repo=$REPOSITORY"
+            echo "workflow=routed-rust"
+            echo "run_id=$RUN_ID"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Ripr Rust Small Router"
+            echo ""
+            echo "- repo: \`$REPOSITORY\`"
+            echo "- workflow: \`routed-rust\`"
+            echo "- run: \`$RUN_ID\`"
+            echo "- target: \`$target\`"
+            echo "- reason: \`$reason\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  rust-cx53:
+    name: Ripr Rust Small on CX53
+    needs: route
+    if: needs.route.outputs.router_target == 'cx53'
+    runs-on:
+      group: em-ci-small
+      labels: [self-hosted, Linux, X64, CX53, em-ci-rust-1.95]
+    container:
+      image: em-ci-rust:1.95
+      options: --cpus=14 --memory=28g -v /mnt/ci-scratch:/mnt/ci-scratch -v /mnt/ci-cache:/mnt/ci-cache -v /mnt/docker:/mnt/docker
+    env:
+      CARGO_BUILD_JOBS: "12"
+      CARGO_HOME: /mnt/ci-cache/cargo-home
+      SCCACHE_DIR: /mnt/ci-cache/sccache
+      CARGO_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
+      TMPDIR: /mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Prepare scratch
+        run: |
+          ci-disk-guard /mnt/ci-scratch 100
+          ci-disk-guard /mnt/docker 20
+          ci-disk-guard /mnt/ci-cache 20
+          mkdir -p "$CARGO_HOME" "$SCCACHE_DIR" "$CARGO_TARGET_DIR" "$TMPDIR"
+      - name: Required Rust gates
+        run: |
+          cargo fmt --check
+          cargo check --workspace --all-targets
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
+          cargo xtask check-static-language
+          cargo xtask check-no-panic-family
+          cargo xtask check-allow-attributes
+          cargo xtask check-local-context
+          cargo xtask check-file-policy
+          cargo xtask check-executable-files
+          cargo xtask check-workflows
+          cargo xtask check-droid-review-config
+          cargo xtask check-spec-format
+          cargo xtask check-spec-numbering
+          cargo xtask check-fixture-contracts
+          cargo xtask check-generated
+          cargo xtask check-badge-diff-policy
+          cargo xtask check-generated-clean
+          cargo xtask check-dependencies
+          cargo xtask check-process-policy
+          cargo xtask check-network-policy
+      - name: Advisory reports
+        if: always()
+        run: |
+          cargo xtask test-efficiency-report || true
+          cargo xtask badge-artifacts || true
+          cargo xtask pr-summary || true
+          cargo xtask reports index || true
+          cargo xtask receipts || true
+          cargo xtask reports index || true
+      - name: PR evidence
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          RIPR_REVIEW_COMMENTS_TIMEOUT_SECS: "60"
+        run: |
+          cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA"
+          cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA"
+          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          cargo xtask impacted-evidence
+          cargo xtask impacted-evidence --check
+          cargo xtask ripr-pr-summary
+          cargo xtask ripr-pr-summary --check
+          cargo xtask ripr-annotations
+          cargo xtask ripr-annotations --check
+      - name: Upload ripr reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-rust-small-cx53
+          path: |
+            target/ripr/reports/
+            target/ripr/receipts/
+            target/ripr/pr/
+            target/ripr/review/
+            target/xtask/impacted-evidence/
+          if-no-files-found: ignore
+      - name: Clean scratch
+        if: always()
+        run: |
+          cargo clean || true
+          rm -rf "$CARGO_TARGET_DIR" "$TMPDIR"
+
+  rust-cx43:
+    name: Ripr Rust Small on CX43
+    needs: route
+    if: needs.route.outputs.router_target == 'cx43'
+    runs-on:
+      group: em-ci-small
+      labels: [self-hosted, Linux, X64, CX43, em-ci-rust-1.95]
+    container:
+      image: em-ci-rust:1.95
+      options: --cpus=14 --memory=28g -v /mnt/ci-scratch:/mnt/ci-scratch -v /mnt/ci-cache:/mnt/ci-cache -v /mnt/docker:/mnt/docker
+    env:
+      CARGO_BUILD_JOBS: "12"
+      CARGO_HOME: /mnt/ci-cache/cargo-home
+      SCCACHE_DIR: /mnt/ci-cache/sccache
+      CARGO_TARGET_DIR: /mnt/ci-scratch/target/${{ github.run_id }}-${{ github.run_attempt }}
+      TMPDIR: /mnt/ci-scratch/tmp/${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Prepare scratch
+        run: |
+          ci-disk-guard /mnt/ci-scratch 100
+          ci-disk-guard /mnt/docker 20
+          ci-disk-guard /mnt/ci-cache 20
+          mkdir -p "$CARGO_HOME" "$SCCACHE_DIR" "$CARGO_TARGET_DIR" "$TMPDIR"
+      - name: Required Rust gates
+        run: |
+          cargo fmt --check
+          cargo check --workspace --all-targets
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
+          cargo xtask check-static-language
+          cargo xtask check-no-panic-family
+          cargo xtask check-allow-attributes
+          cargo xtask check-local-context
+          cargo xtask check-file-policy
+          cargo xtask check-executable-files
+          cargo xtask check-workflows
+          cargo xtask check-droid-review-config
+          cargo xtask check-spec-format
+          cargo xtask check-spec-numbering
+          cargo xtask check-fixture-contracts
+          cargo xtask check-generated
+          cargo xtask check-badge-diff-policy
+          cargo xtask check-generated-clean
+          cargo xtask check-dependencies
+          cargo xtask check-process-policy
+          cargo xtask check-network-policy
+      - name: Advisory reports
+        if: always()
+        run: |
+          cargo xtask test-efficiency-report || true
+          cargo xtask badge-artifacts || true
+          cargo xtask pr-summary || true
+          cargo xtask reports index || true
+          cargo xtask receipts || true
+          cargo xtask reports index || true
+      - name: PR evidence
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          RIPR_REVIEW_COMMENTS_TIMEOUT_SECS: "60"
+        run: |
+          cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA"
+          cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA"
+          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          cargo xtask impacted-evidence
+          cargo xtask impacted-evidence --check
+          cargo xtask ripr-pr-summary
+          cargo xtask ripr-pr-summary --check
+          cargo xtask ripr-annotations
+          cargo xtask ripr-annotations --check
+      - name: Upload ripr reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-rust-small-cx43
+          path: |
+            target/ripr/reports/
+            target/ripr/receipts/
+            target/ripr/pr/
+            target/ripr/review/
+            target/xtask/impacted-evidence/
+          if-no-files-found: ignore
+      - name: Clean scratch
+        if: always()
+        run: |
+          cargo clean || true
+          rm -rf "$CARGO_TARGET_DIR" "$TMPDIR"
+
+  rust-github:
+    name: Ripr Rust Small on GitHub Hosted
+    needs: route
+    if: needs.route.outputs.router_target == 'github'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ripr-swarm-rust-small-${{ runner.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Required Rust gates
+        run: |
+          cargo fmt --check
+          cargo check --workspace --all-targets
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
+          cargo xtask check-static-language
+          cargo xtask check-no-panic-family
+          cargo xtask check-allow-attributes
+          cargo xtask check-local-context
+          cargo xtask check-file-policy
+          cargo xtask check-executable-files
+          cargo xtask check-workflows
+          cargo xtask check-droid-review-config
+          cargo xtask check-spec-format
+          cargo xtask check-spec-numbering
+          cargo xtask check-fixture-contracts
+          cargo xtask check-generated
+          cargo xtask check-badge-diff-policy
+          cargo xtask check-generated-clean
+          cargo xtask check-dependencies
+          cargo xtask check-process-policy
+          cargo xtask check-network-policy
+      - name: Advisory reports
+        if: always()
+        run: |
+          cargo xtask test-efficiency-report || true
+          cargo xtask badge-artifacts || true
+          cargo xtask pr-summary || true
+          cargo xtask reports index || true
+          cargo xtask receipts || true
+          cargo xtask reports index || true
+      - name: PR evidence
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          RIPR_REVIEW_COMMENTS_TIMEOUT_SECS: "60"
+        run: |
+          cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA"
+          cargo xtask ripr-pr --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA"
+          cargo xtask ripr-review-comments --base "$BASE_SHA" --head "$HEAD_SHA" --check
+          cargo xtask impacted-evidence
+          cargo xtask impacted-evidence --check
+          cargo xtask ripr-pr-summary
+          cargo xtask ripr-pr-summary --check
+          cargo xtask ripr-annotations
+          cargo xtask ripr-annotations --check
+      - name: Upload ripr reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-rust-small-github
+          path: |
+            target/ripr/reports/
+            target/ripr/receipts/
+            target/ripr/pr/
+            target/ripr/review/
+            target/xtask/impacted-evidence/
+          if-no-files-found: ignore
+
+  result:
+    name: Ripr Rust Small Result
+    needs: [route, rust-cx53, rust-cx43, rust-github]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summarize routed result
+        env:
+          TARGET: ${{ needs.route.outputs.router_target }}
+          REASON: ${{ needs.route.outputs.router_reason }}
+          ROUTE_RESULT: ${{ needs.route.result }}
+          CX53_RESULT: ${{ needs.rust-cx53.result }}
+          CX43_RESULT: ${{ needs.rust-cx43.result }}
+          GITHUB_RESULT: ${{ needs.rust-github.result }}
+        run: |
+          echo "### Ripr Rust Small Result" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- target: \`$TARGET\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- reason: \`$REASON\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- route: \`$ROUTE_RESULT\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- cx53: \`$CX53_RESULT\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- cx43: \`$CX43_RESULT\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- github: \`$GITHUB_RESULT\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$ROUTE_RESULT" != "success" ]; then
+            exit 1
+          fi
+          case "$TARGET" in
+            cx53) [ "$CX53_RESULT" = "success" ] ;;
+            cx43) [ "$CX43_RESULT" = "success" ] ;;
+            github) [ "$GITHUB_RESULT" = "success" ] ;;
+            *) exit 1 ;;
+          esac

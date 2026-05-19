@@ -241,6 +241,47 @@ and should usually be split.
 
 ## Current Workflows
 
+### Swarm Routed Rust
+
+`ripr-swarm` adds `.github/workflows/routed-rust.yml` as the development-trunk
+Rust gate. It exposes one branch-protection-facing check:
+
+```text
+Ripr Rust Small Result
+```
+
+The implementation jobs are conditional and should not be required directly:
+
+```text
+Route Ripr Rust Small
+Ripr Rust Small on CX53
+Ripr Rust Small on CX43
+Ripr Rust Small on GitHub Hosted
+```
+
+Routing policy:
+
+```text
+trusted same-repo PR or push:
+  CX53 if idle
+  CX43 if idle
+  GitHub-hosted otherwise
+
+fork or otherwise untrusted PR:
+  GitHub-hosted only
+```
+
+The router uses the repository or organization `EM_RUNNER_READ_TOKEN` secret
+when available. It selects a self-hosted runner only when the runner is idle and
+has both the host label (`CX53` or `CX43`) and the `em-ci-rust-1.95`
+image-readiness label. If runner state cannot be read, or a runner is idle but
+not image-ready, the workflow fails closed to GitHub-hosted rather than
+selecting a self-hosted runner by guesswork.
+
+The routed lane runs the existing Rust/product command surface without release
+package or publish dry-run steps. It keeps advisory evidence artifacts
+non-blocking and uploads the normal `target/ripr` report packet when present.
+
 The Rust workflow currently runs:
 
 ```bash

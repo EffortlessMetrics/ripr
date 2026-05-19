@@ -17,5 +17,6 @@
 .github/workflows/pr-plan.yml|1|Advisory PR Plan workflow keeps each run block to one shell command (mkdir/git, ls, printf).
 .github/workflows/publish-extension.yml|20|Release workflow includes marketplace packaging and publishing orchestration.
 .github/workflows/release-server-binaries.yml|1|Release workflow delegates server archive packaging, manifest generation, and release upload branching to Rust xtask commands.
+.github/workflows/routed-rust.yml|60|Swarm routed Rust workflow selects CX53, CX43, or hosted fallback and runs the existing Rust/product command surface.
 .github/workflows/security.yml|0|Security workflow uses standard cargo-deny and dependency-review actions without shell run blocks.
 .github/workflows/test-analytics.yml|1|Test analytics workflow keeps each run block to one cargo or echo command.
