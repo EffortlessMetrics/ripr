@@ -175,6 +175,9 @@ distinguishes field-specific observation from broad snapshot output.
   pin the duplicative equality must-not-claim guard.
 - `test_grip_evidence::tests::opaque_custom_assertion_helper_stays_unknown_oracle`
   pins the opaque helper static-limitation guard.
+- `test_grip_evidence::tests::given_full_evidence_when_owner_call_with_opaque_args_reaches_return_seam_then_activation_is_yes`
+  pins value-insensitive owner-call activation without synthetic observed
+  values.
 
 ## Implementation Mapping
 
