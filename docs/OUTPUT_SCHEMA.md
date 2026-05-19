@@ -1730,6 +1730,19 @@ runtime execution.
           "Do not infer actionability from raw static class."
         ]
       }
+    ],
+    "runtime_confidence_by_class": [
+      {
+        "evidence_class": "predicate_boundary",
+        "canonical_items": 900,
+        "calibrated_supported": 0,
+        "fixture_backed": 0,
+        "static_only": 900,
+        "unknown_confidence": 0,
+        "uncalibrated": 900,
+        "actionable_items": 120,
+        "static_limitation_items": 40
+      }
     ]
   },
   "canonical_gap_groups": {
@@ -1824,7 +1837,20 @@ runtime execution.
       "no_runtime_data": 9355
     },
     "calibrated_records": 0,
-    "uncalibrated_records": 9355
+    "uncalibrated_records": 9355,
+    "runtime_confidence_by_class": [
+      {
+        "evidence_class": "predicate_boundary",
+        "canonical_items": 900,
+        "calibrated_supported": 0,
+        "fixture_backed": 0,
+        "static_only": 900,
+        "unknown_confidence": 0,
+        "uncalibrated": 900,
+        "actionable_items": 42,
+        "static_limitation_items": 0
+      }
+    ]
   },
   "evidence_record_field_health": [
     {
@@ -1929,6 +1955,11 @@ Field contract:
   verification command, raw findings as supporting evidence, confidence basis,
   and conservative `must_not_change` boundaries. They do not create user work
   from raw static class alone.
+- `finding_alignment.runtime_confidence_by_class` - runtime confidence coverage
+  rows at the canonical evidence-class grain. Each row reports canonical item
+  count, calibrated-supported, fixture-backed, static-only, unknown-confidence,
+  uncalibrated, actionable, and static-limitation counts so maintainers can see
+  which classes still need runtime support before badge-readiness work.
 - `canonical_gap_groups.total` - number of distinct canonical gap IDs among
   headline records.
 - `canonical_gap_groups.largest` - top canonical groups by observed count,
@@ -1945,7 +1976,10 @@ Field contract:
 - `movement_availability` - counts of records carrying the identity and
   recommendation fields needed by before/after evidence movement.
 - `calibration_availability` - counts of imported calibration placeholder
-  fields from `evidence_record`; this report does not import or execute
+  fields from `evidence_record`; `runtime_confidence_by_class` breaks canonical
+  items down by `canonical_item.evidence_class`, confidence basis,
+  actionability, and limitation state so badge-readiness work can see which
+  classes remain static-only or unknown. This report does not import or execute
   calibration itself.
 - `evidence_record_field_health` - per-field present, missing, null, and empty
   counts for key `evidence_record` contract fields.
@@ -2188,7 +2222,20 @@ generated tests, provider calls, or runtime execution.
     },
     "calibrated_records": 0,
     "uncalibrated_records": 9355,
-    "runtime_scope": "uncalibrated"
+    "runtime_scope": "uncalibrated",
+    "by_evidence_class": [
+      {
+        "evidence_class": "predicate_boundary",
+        "canonical_items": 900,
+        "calibrated_supported": 0,
+        "fixture_backed": 0,
+        "static_only": 900,
+        "unknown_confidence": 0,
+        "uncalibrated": 900,
+        "actionable_items": 42,
+        "static_limitation_items": 0
+      }
+    ]
   },
   "actionable_gap_top_lists": {
     "top_actionable_gap_classes": [
@@ -2273,7 +2320,11 @@ Field contract:
   limitation categories and repair routes are advisory Lane 1 analyzer-work
   buckets; they are not user-actionable test-gap labels.
 - `calibration_coverage` - class-scoped calibration availability from
-  `evidence_record.calibration`; it does not run mutation testing.
+  `evidence_record.calibration`; `by_evidence_class` carries the audit's
+  runtime-confidence rows for canonical items so maintainers can see calibrated
+  support, fixture-backed static confidence, static-only evidence, unknown
+  confidence, actionable items, and limitation items by class. It does not run
+  mutation testing.
 - `actionable_gap_top_lists` - the audit-derived
   `finding_alignment.actionable_gap_top_lists` section carried forward for the
   scorecard. It shows the dominant actionable classes, files, repair kinds,

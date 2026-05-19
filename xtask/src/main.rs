@@ -14478,6 +14478,7 @@ struct Lane1EvidenceAuditReport {
     canonical_items_without_verify_command: usize,
     actionable_gap_top_lists: Lane1EvidenceAuditActionableGapTopLists,
     actionable_gap_packets: Vec<Lane1ActionableGapPacket>,
+    runtime_confidence_by_class: Vec<Lane1EvidenceAuditRuntimeConfidenceClassCoverage>,
     largest_canonical_groups: Vec<Lane1EvidenceAuditGroup>,
     duplicate_looking_groups: Vec<Lane1EvidenceAuditGroup>,
     missing_discriminator_reason_counts: BTreeMap<String, usize>,
@@ -14638,6 +14639,19 @@ struct Lane1EvidenceAuditAlignmentClassCoverage {
     internal_no_action_items: usize,
     static_limitation_items: usize,
     unknown_items: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct Lane1EvidenceAuditRuntimeConfidenceClassCoverage {
+    evidence_class: String,
+    canonical_items: usize,
+    calibrated_supported: usize,
+    fixture_backed: usize,
+    static_only: usize,
+    unknown_confidence: usize,
+    uncalibrated: usize,
+    actionable_items: usize,
+    static_limitation_items: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -15084,6 +15098,7 @@ struct Lane1EvidenceAuditBuilder {
     actionable_gap_verify_command_unknown_counts: BTreeMap<String, usize>,
     actionable_gap_repair_route_unknown_counts: BTreeMap<String, usize>,
     actionable_gap_packets: BTreeMap<String, Lane1ActionableGapPacket>,
+    runtime_confidence_by_class: BTreeMap<String, Lane1EvidenceAuditRuntimeConfidenceClassCoverage>,
     canonical_groups: BTreeMap<String, Lane1EvidenceAuditGroup>,
     duplicate_groups: BTreeMap<String, Lane1EvidenceAuditGroup>,
     field_health: BTreeMap<String, Lane1EvidenceAuditFieldHealth>,
@@ -15395,6 +15410,7 @@ impl Lane1EvidenceAuditBuilder {
             self.ingest_actionable_gap_top_lists(record, canonical_item, &evidence_class, file);
             self.ingest_actionable_gap_packet(record, canonical_item, &evidence_class, file);
         }
+        self.ingest_runtime_confidence_by_class(canonical_item, &evidence_class, actionable);
         if actionable && !audit_has_structured_repair_route(canonical_item) {
             self.canonical_items_without_repair_route += 1;
             audit_increment(
@@ -15413,6 +15429,50 @@ impl Lane1EvidenceAuditBuilder {
             && !audit_has_named_static_limitation(record, canonical_item)
         {
             self.static_unknown_without_named_limitation += 1;
+        }
+    }
+
+    fn ingest_runtime_confidence_by_class(
+        &mut self,
+        canonical_item: &Value,
+        evidence_class: &str,
+        actionable: bool,
+    ) {
+        let row = self
+            .runtime_confidence_by_class
+            .entry(evidence_class.to_string())
+            .or_insert_with(|| Lane1EvidenceAuditRuntimeConfidenceClassCoverage {
+                evidence_class: evidence_class.to_string(),
+                ..Lane1EvidenceAuditRuntimeConfidenceClassCoverage::default()
+            });
+        row.canonical_items += 1;
+        if actionable {
+            row.actionable_items += 1;
+        }
+        let item_kind = audit_string(canonical_item, &["canonical_item_kind"]).unwrap_or_default();
+        let gap_state = audit_string(canonical_item, &["gap_state"]).unwrap_or_default();
+        if item_kind == "limitation" || gap_state == "static_limitation" {
+            row.static_limitation_items += 1;
+        }
+
+        let confidence_basis =
+            audit_string(canonical_item, &["confidence", "basis"]).unwrap_or_default();
+        match confidence_basis.as_str() {
+            "calibrated" | "runtime_calibrated" => {
+                row.calibrated_supported += 1;
+            }
+            "fixture_backed" => {
+                row.fixture_backed += 1;
+                row.uncalibrated += 1;
+            }
+            "static_only" => {
+                row.static_only += 1;
+                row.uncalibrated += 1;
+            }
+            _ => {
+                row.unknown_confidence += 1;
+                row.uncalibrated += 1;
+            }
         }
     }
 
@@ -15655,6 +15715,17 @@ impl Lane1EvidenceAuditBuilder {
                 .then_with(|| left.canonical_gap_id.cmp(&right.canonical_gap_id))
         });
         actionable_gap_packets.truncate(LANE1_ACTIONABLE_GAP_PACKET_LIMIT);
+        let mut runtime_confidence_by_class = self
+            .runtime_confidence_by_class
+            .into_values()
+            .collect::<Vec<_>>();
+        runtime_confidence_by_class.sort_by(|left, right| {
+            right
+                .uncalibrated
+                .cmp(&left.uncalibrated)
+                .then_with(|| right.canonical_items.cmp(&left.canonical_items))
+                .then_with(|| left.evidence_class.cmp(&right.evidence_class))
+        });
 
         Lane1EvidenceAuditReport {
             root,
@@ -15672,6 +15743,7 @@ impl Lane1EvidenceAuditBuilder {
             canonical_items_without_verify_command: self.canonical_items_without_verify_command,
             actionable_gap_top_lists,
             actionable_gap_packets,
+            runtime_confidence_by_class,
             largest_canonical_groups,
             duplicate_looking_groups,
             missing_discriminator_reason_counts: self.missing_reason_counts,
@@ -15782,6 +15854,9 @@ fn lane1_evidence_audit_json(report: &Lane1EvidenceAuditReport) -> Result<String
             "actionable_gap_packets": audit_actionable_gap_packets_json(
                 &report.actionable_gap_packets
             ),
+            "runtime_confidence_by_class": audit_runtime_confidence_by_class_json(
+                &report.runtime_confidence_by_class
+            ),
         },
         "canonical_gap_groups": {
             "total": report.summary.canonical_gap_groups_total,
@@ -15828,6 +15903,9 @@ fn lane1_evidence_audit_json(report: &Lane1EvidenceAuditReport) -> Result<String
             "agreement_counts": report.calibration_agreement_counts,
             "calibrated_records": report.summary.calibrated_records,
             "uncalibrated_records": report.summary.uncalibrated_records,
+            "runtime_confidence_by_class": audit_runtime_confidence_by_class_json(
+                &report.runtime_confidence_by_class
+            ),
         },
         "evidence_record_field_health": report
             .evidence_record_field_health
@@ -16055,6 +16133,7 @@ fn lane1_evidence_audit_markdown(report: &Lane1EvidenceAuditReport) -> String {
     );
     out.push('\n');
     audit_push_alignment_class_coverage_table(&mut out, &report.alignment_coverage_by_class);
+    audit_push_runtime_confidence_by_class_table(&mut out, &report.runtime_confidence_by_class);
     audit_push_counts_table_limited(
         &mut out,
         "Unaligned raw finding class",
@@ -16799,6 +16878,26 @@ fn audit_alignment_class_coverage_json(row: &Lane1EvidenceAuditAlignmentClassCov
         "static_limitation_items": row.static_limitation_items,
         "unknown_items": row.unknown_items,
     })
+}
+
+fn audit_runtime_confidence_by_class_json(
+    rows: &[Lane1EvidenceAuditRuntimeConfidenceClassCoverage],
+) -> Vec<Value> {
+    rows.iter()
+        .map(|row| {
+            serde_json::json!({
+                "evidence_class": row.evidence_class,
+                "canonical_items": row.canonical_items,
+                "calibrated_supported": row.calibrated_supported,
+                "fixture_backed": row.fixture_backed,
+                "static_only": row.static_only,
+                "unknown_confidence": row.unknown_confidence,
+                "uncalibrated": row.uncalibrated,
+                "actionable_items": row.actionable_items,
+                "static_limitation_items": row.static_limitation_items,
+            })
+        })
+        .collect()
 }
 
 fn audit_unaligned_example_json(example: &Lane1EvidenceAuditUnalignedExample) -> Value {
@@ -17557,6 +17656,34 @@ fn audit_push_alignment_class_coverage_table(
             row.internal_no_action_items,
             row.static_limitation_items,
             row.unknown_items,
+        ));
+    }
+    out.push('\n');
+}
+
+fn audit_push_runtime_confidence_by_class_table(
+    out: &mut String,
+    rows: &[Lane1EvidenceAuditRuntimeConfidenceClassCoverage],
+) {
+    out.push_str("### Runtime Confidence By Evidence Class\n\n");
+    if rows.is_empty() {
+        out.push_str("No runtime confidence coverage rows were reported.\n\n");
+        return;
+    }
+    out.push_str("| Evidence class | Canonical | Calibrated supported | Fixture-backed | Static-only | Unknown confidence | Uncalibrated | Actionable | Limitations |\n");
+    out.push_str("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
+    for row in rows.iter().take(LANE1_EVIDENCE_AUDIT_TOP_LIMIT) {
+        out.push_str(&format!(
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
+            audit_markdown_cell(&row.evidence_class),
+            row.canonical_items,
+            row.calibrated_supported,
+            row.fixture_backed,
+            row.static_only,
+            row.unknown_confidence,
+            row.uncalibrated,
+            row.actionable_items,
+            row.static_limitation_items,
         ));
     }
     out.push('\n');
@@ -18842,6 +18969,15 @@ fn evidence_quality_calibration_coverage(
             &["calibration_availability", "agreement_counts"],
             serde_json::json!({}),
         ),
+        "by_evidence_class": scorecard_value_or_default(
+            audit,
+            &["calibration_availability", "runtime_confidence_by_class"],
+            scorecard_value_or_default(
+                audit,
+                &["finding_alignment", "runtime_confidence_by_class"],
+                serde_json::json!([]),
+            ),
+        ),
         "calibrated_records": summary.calibrated_records,
         "uncalibrated_records": summary.uncalibrated_records,
         "runtime_scope": runtime_scope,
@@ -19215,6 +19351,36 @@ fn scorecard_push_top_count_table(out: &mut String, heading: &str, value: &Value
     out.push('\n');
 }
 
+fn scorecard_push_runtime_confidence_by_class_table(out: &mut String, value: &Value) {
+    let rows = value
+        .get("by_evidence_class")
+        .and_then(Value::as_array)
+        .map_or(&[][..], Vec::as_slice);
+    if rows.is_empty() {
+        out.push_str("No runtime confidence by-class rows were reported.\n\n");
+        return;
+    }
+    out.push_str("| Evidence class | Canonical | Calibrated supported | Fixture-backed | Static-only | Unknown confidence | Uncalibrated | Actionable | Limitations |\n");
+    out.push_str("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
+    for row in rows.iter().take(LANE1_EVIDENCE_AUDIT_TOP_LIMIT) {
+        out.push_str(&format!(
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
+            audit_markdown_cell(
+                &audit_string(row, &["evidence_class"]).unwrap_or_else(|| "unknown".to_string())
+            ),
+            audit_usize(row, &["canonical_items"]).unwrap_or(0),
+            audit_usize(row, &["calibrated_supported"]).unwrap_or(0),
+            audit_usize(row, &["fixture_backed"]).unwrap_or(0),
+            audit_usize(row, &["static_only"]).unwrap_or(0),
+            audit_usize(row, &["unknown_confidence"]).unwrap_or(0),
+            audit_usize(row, &["uncalibrated"]).unwrap_or(0),
+            audit_usize(row, &["actionable_items"]).unwrap_or(0),
+            audit_usize(row, &["static_limitation_items"]).unwrap_or(0),
+        ));
+    }
+    out.push('\n');
+}
+
 fn evidence_quality_scorecard_markdown(report: &EvidenceQualityScorecardReport) -> String {
     let mut out = String::new();
     out.push_str("# Lane 1 evidence quality scorecard\n\n");
@@ -19557,6 +19723,8 @@ fn evidence_quality_scorecard_markdown(report: &EvidenceQualityScorecardReport) 
         report.summary.uncalibrated_records,
     );
     out.push('\n');
+    out.push_str("### Runtime Confidence By Evidence Class\n\n");
+    scorecard_push_runtime_confidence_by_class_table(&mut out, &report.calibration_coverage);
 
     out.push_str("## Recent Deltas\n\n");
     if report.recent_audit_deltas.available {
@@ -52458,6 +52626,35 @@ covered_by = ["cargo xtask check-file-policy"]
                 .is_some_and(Vec::is_empty),
             "non-action static limitations should stay out of actionable top lists"
         );
+        let runtime_rows = value["finding_alignment"]["runtime_confidence_by_class"]
+            .as_array()
+            .ok_or_else(|| "runtime confidence rows should be an array".to_string())?;
+        let predicate_runtime = runtime_rows
+            .iter()
+            .find(|row| row["evidence_class"] == "predicate_boundary")
+            .ok_or_else(|| "missing predicate_boundary runtime confidence row".to_string())?;
+        assert_eq!(
+            predicate_runtime["canonical_items"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(predicate_runtime["static_only"], serde_json::Value::from(2));
+        assert_eq!(
+            predicate_runtime["uncalibrated"],
+            serde_json::Value::from(2)
+        );
+        let call_runtime = runtime_rows
+            .iter()
+            .find(|row| row["evidence_class"] == "call_presence")
+            .ok_or_else(|| "missing call_presence runtime confidence row".to_string())?;
+        assert_eq!(
+            call_runtime["calibrated_supported"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(call_runtime["uncalibrated"], serde_json::Value::from(0));
+        assert_eq!(
+            value["calibration_availability"]["runtime_confidence_by_class"],
+            value["finding_alignment"]["runtime_confidence_by_class"]
+        );
         let class_rows = coverage["alignment_coverage_by_class"]
             .as_array()
             .ok_or_else(|| "alignment coverage rows should be an array".to_string())?;
@@ -53909,6 +54106,26 @@ covered_by = ["cargo xtask check-file-policy"]
                 .iter()
                 .any(|unknown| unknown.kind == "finding_alignment_unavailable")
         );
+        let json = evidence_quality_scorecard_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        let rows = value["calibration_coverage"]["by_evidence_class"]
+            .as_array()
+            .ok_or_else(|| "scorecard calibration by-class rows should be an array".to_string())?;
+        let predicate = rows
+            .iter()
+            .find(|row| row["evidence_class"] == "predicate_boundary")
+            .ok_or_else(|| "missing predicate_boundary by-class row".to_string())?;
+        assert_eq!(predicate["static_only"], serde_json::Value::from(2));
+        assert_eq!(predicate["uncalibrated"], serde_json::Value::from(2));
+        let call = rows
+            .iter()
+            .find(|row| row["evidence_class"] == "call_presence")
+            .ok_or_else(|| "missing call_presence by-class row".to_string())?;
+        assert_eq!(call["calibrated_supported"], serde_json::Value::from(1));
+        let markdown = evidence_quality_scorecard_markdown(&report);
+        assert!(markdown.contains("Calibrated supported"));
+        assert!(markdown.contains("predicate_boundary"));
         Ok(())
     }
 

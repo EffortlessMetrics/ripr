@@ -9,6 +9,14 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Lane 1 evidence audit and scorecard now report runtime confidence coverage by
+  canonical evidence class. The reports show calibrated-supported,
+  fixture-backed, static-only, unknown-confidence, uncalibrated, actionable,
+  and limitation item counts by class so badge-readiness and repair-class
+  planning can see where static confidence still lacks runtime support. This is
+  repo-local Lane 1 reporting only; it does not change public badges, PR/CI
+  rendering, gate policy, provider calls, generated tests, source edits, or
+  mutation execution.
 - Lane 1 evidence audit now emits bounded actionable-gap packet artifacts for
   agent and maintainer triage. `cargo xtask lane1-evidence-audit` writes
   `target/ripr/reports/actionable-gaps.json` and
