@@ -2107,6 +2107,14 @@ when they are already available. The report is advisory and does not change
 analyzer behavior, gate policy, PR/CI projection, editor output, source files,
 generated tests, provider calls, or runtime execution.
 
+If the scorecard cannot regenerate a missing Lane 1 audit, it still writes a
+bounded diagnostic scorecard instead of silently dropping the report. That
+limited scorecard carries `unknowns[].kind =
+"evidence_quality_scorecard_audit_regeneration_failed"` and an audit
+`run_limitations[]` entry with the same category. Counts in that artifact are
+diagnostic only and must not be treated as complete repo truth or user test
+debt.
+
 ```json
 {
   "schema_version": "0.1",
@@ -2355,6 +2363,10 @@ Field contract:
   scorecard artifact is available; otherwise an explicit unavailable reason.
 - `unknowns` - unavailable inputs and evidence-quality unknowns that should
   stay visible until a fixture, analyzer, or calibration slice addresses them.
+  A scorecard generated after failed missing-audit regeneration includes
+  `evidence_quality_scorecard_audit_regeneration_failed` and the generic
+  `lane1_evidence_audit_limited` unknown so downstream consumers can explain
+  the bounded diagnostic state.
 
 The Markdown sibling prints bounded sections for summary, finding-alignment and
 presentation-text quality, actionable canonical gap top lists, maturity by

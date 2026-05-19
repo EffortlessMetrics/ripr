@@ -137,11 +137,14 @@ audit snapshots without inventing a new source of truth.
 
 Missing optional inputs must be reported as unknown or unavailable. Missing
 required audit input may be repaired by regenerating the audit; if regeneration
-fails, the command exits with an actionable error and must not claim a
-scorecard exists. If the audit or evidence-health artifact exists but carries
-`run_limitations[]`, the scorecard must surface that as an unknown and must not
-let the limited artifact's zero or partial counts masquerade as complete repo
-truth.
+fails before a complete audit artifact exists, the command must write a bounded
+diagnostic scorecard with
+`unknowns[].kind = "evidence_quality_scorecard_audit_regeneration_failed"` and
+a matching audit `run_limitations[]` category. That limited scorecard must not
+claim complete repo truth, public badge readiness, or user test debt. If the
+audit or evidence-health artifact exists but carries `run_limitations[]`, the
+scorecard must surface that as an unknown and must not let the limited
+artifact's zero or partial counts masquerade as complete repo truth.
 
 ## Outputs
 
@@ -264,6 +267,11 @@ scorecard adds `lane1_evidence_audit_limited` or `evidence_health_limited` to
 `unknowns` so downstream users can see that the report is bounded diagnostic
 evidence rather than complete repo truth.
 
+Given a failed attempt to regenerate a missing Lane 1 audit, the scorecard
+emits a bounded diagnostic scorecard and adds
+`evidence_quality_scorecard_audit_regeneration_failed` to `unknowns` instead of
+silently dropping the report.
+
 Given no previous scorecard or audit snapshot, the trend report marks history
 unavailable and emits `unknown` rather than claiming improvement.
 
@@ -295,6 +303,8 @@ any gate behavior.
 - `xtask::tests::evidence_quality_scorecard_surfaces_limited_inputs_as_unknowns`
   pins scorecard unknowns for bounded audit and evidence-health input
   limitations.
+- `xtask::tests::evidence_quality_scorecard_names_audit_regeneration_failure`
+  pins the bounded diagnostic scorecard for failed missing-audit regeneration.
 - `xtask::tests::evidence_quality_scorecard_headline_prefers_actionable_canonical_gaps`
   pins the scorecard headline counting model.
 - `xtask::tests::evidence_quality_trend_reports_no_history_explicitly` pins the

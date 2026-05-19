@@ -14856,6 +14856,8 @@ const LANE1_ACTIONABLE_GAP_PACKET_LIMIT: usize = 25;
 const LANE1_EVIDENCE_AUDIT_TRACE_TAIL_LIMIT: usize = 12;
 const LANE1_EVIDENCE_AUDIT_TIMEOUT_ENV: &str = "RIPR_LANE1_EVIDENCE_AUDIT_TIMEOUT_MS";
 const LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS: u64 = 1_200_000;
+const EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED: &str =
+    "evidence_quality_scorecard_audit_regeneration_failed";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct Lane1EvidenceAuditReport {
@@ -18379,14 +18381,22 @@ pub(crate) fn evidence_quality_scorecard_report_impl() -> Result<(), String> {
     let previous_scorecard = scorecard_optional_json(&scorecard_path)?;
 
     let audit_path = reports_dir().join("lane1-evidence-audit.json");
-    if !audit_path.exists() {
-        lane1_evidence_audit_report_impl()?;
+    let evidence_health_path = reports_dir().join("evidence-health.json");
+    if !audit_path.exists()
+        && let Err(err) = lane1_evidence_audit_report_impl()
+    {
+        return write_limited_evidence_quality_scorecard_for_audit_regeneration_failure(
+            &audit_path,
+            &evidence_health_path,
+            &scorecard_path,
+            previous_scorecard.as_ref(),
+            &err,
+        );
     }
     let audit = read_json_value(&audit_path).map_err(|err| {
         format!("evidence-quality-scorecard requires lane1-evidence-audit.json; {err}")
     })?;
 
-    let evidence_health_path = reports_dir().join("evidence-health.json");
     let evidence_health = scorecard_optional_json(&evidence_health_path)?;
     let inputs = evidence_quality_scorecard_inputs(
         &audit_path,
@@ -18410,6 +18420,127 @@ pub(crate) fn evidence_quality_scorecard_report_impl() -> Result<(), String> {
         "evidence-quality-scorecard.md",
         &evidence_quality_scorecard_markdown(&report),
     )
+}
+
+fn write_limited_evidence_quality_scorecard_for_audit_regeneration_failure(
+    audit_path: &Path,
+    evidence_health_path: &Path,
+    scorecard_path: &Path,
+    previous_scorecard: Option<&Value>,
+    error: &str,
+) -> Result<(), String> {
+    let audit_report = evidence_quality_scorecard_audit_regeneration_failure_report(error);
+    let audit_json = lane1_evidence_audit_json(&audit_report)?;
+    write_report("lane1-evidence-audit.json", &audit_json)?;
+    write_report(
+        "lane1-evidence-audit.md",
+        &lane1_evidence_audit_markdown(&audit_report),
+    )?;
+    write_report(
+        "actionable-gaps.json",
+        &lane1_actionable_gap_packets_json(&audit_report)?,
+    )?;
+    write_report(
+        "actionable-gaps.md",
+        &lane1_actionable_gap_packets_markdown(&audit_report),
+    )?;
+    let repo_exposure_path = reports_dir().join("lane1-evidence-audit.repo-exposure.json");
+    if repo_exposure_path.exists() {
+        fs::remove_file(&repo_exposure_path).map_err(|err| {
+            format!(
+                "failed to remove incomplete Lane 1 repo exposure input {}: {err}",
+                repo_exposure_path.display()
+            )
+        })?;
+    }
+
+    let audit: Value = serde_json::from_str(&audit_json).map_err(|err| {
+        format!("failed to parse limited scorecard audit-regeneration JSON: {err}")
+    })?;
+    let evidence_health = scorecard_optional_json(evidence_health_path)?;
+    let inputs = evidence_quality_scorecard_inputs(
+        audit_path,
+        evidence_health_path,
+        scorecard_path,
+        previous_scorecard,
+    )?;
+    let report = evidence_quality_scorecard_from_values(
+        evidence_quality_scorecard_generated_at()?,
+        inputs,
+        &audit,
+        evidence_health.as_ref(),
+        previous_scorecard,
+    )?;
+
+    write_report(
+        "evidence-quality-scorecard.json",
+        &evidence_quality_scorecard_json(&report)?,
+    )?;
+    write_report(
+        "evidence-quality-scorecard.md",
+        &evidence_quality_scorecard_markdown(&report),
+    )
+}
+
+fn evidence_quality_scorecard_audit_regeneration_failure_report(
+    error: &str,
+) -> Lane1EvidenceAuditReport {
+    let mut report = Lane1EvidenceAuditBuilder::default().finish(".".to_string(), None);
+    let summary = evidence_quality_scorecard_error_summary(error);
+    report
+        .run_limitations
+        .push(Lane1EvidenceAuditRunLimitation {
+            category: EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED.to_string(),
+            phase: "scorecard_missing_audit_regeneration".to_string(),
+            input: "lane1-evidence-audit.json".to_string(),
+            summary: format!(
+                "Evidence-quality scorecard could not regenerate the required Lane 1 audit: {summary}. No user test debt is claimed from this limited scorecard."
+            ),
+            repair_route:
+                "rerun cargo xtask lane1-evidence-audit with bounded diagnostics before scorecard generation"
+                    .to_string(),
+            timeout_ms: None,
+            duration_ms: None,
+            command: Some("cargo xtask lane1-evidence-audit".to_string()),
+            exit_code: None,
+            stdout_bytes: None,
+            stderr_bytes: None,
+            latency_trace_tail: Vec::new(),
+        });
+    report.static_limitation_category_counts.insert(
+        EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED.to_string(),
+        1,
+    );
+    report.static_limitation_repair_route_counts.insert(
+        "report/evidence-quality-scorecard-bounded-diagnostics".to_string(),
+        1,
+    );
+    report
+}
+
+#[cfg(test)]
+fn evidence_quality_scorecard_audit_regeneration_failure_audit(
+    error: &str,
+) -> Result<Value, String> {
+    let report = evidence_quality_scorecard_audit_regeneration_failure_report(error);
+    let json = lane1_evidence_audit_json(&report)?;
+    serde_json::from_str(&json)
+        .map_err(|err| format!("failed to build limited scorecard audit-regeneration JSON: {err}"))
+}
+
+fn evidence_quality_scorecard_error_summary(error: &str) -> String {
+    const LIMIT: usize = 360;
+    let mut summary = error
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("unknown error")
+        .to_string();
+    if summary.len() > LIMIT {
+        summary.truncate(LIMIT);
+        summary.push_str("...");
+    }
+    summary
 }
 
 fn evidence_quality_scorecard_inputs(
@@ -19263,6 +19394,17 @@ fn evidence_quality_unknowns(
             Some("report/lane1-audit-bounded-diagnostics"),
         );
     }
+    if report_has_run_limitation_category(
+        audit,
+        EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED,
+    ) {
+        scorecard_push_unknown(
+            &mut unknowns,
+            EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED,
+            "Evidence-quality scorecard could not regenerate the required Lane 1 audit, so this scorecard is a bounded diagnostic instead of complete repo truth.",
+            Some("report/evidence-quality-scorecard-bounded-diagnostics"),
+        );
+    }
     if evidence_health.is_none() {
         scorecard_push_unknown(
             &mut unknowns,
@@ -19357,6 +19499,17 @@ fn report_has_run_limitations(value: &Value) -> bool {
         .get("run_limitations")
         .and_then(Value::as_array)
         .is_some_and(|items| !items.is_empty())
+}
+
+fn report_has_run_limitation_category(value: &Value, category: &str) -> bool {
+    value
+        .get("run_limitations")
+        .and_then(Value::as_array)
+        .is_some_and(|items| {
+            items
+                .iter()
+                .any(|item| item.get("category").and_then(Value::as_str) == Some(category))
+        })
 }
 
 fn finding_alignment_summary_available(value: &Value) -> bool {
@@ -39984,22 +40137,23 @@ mod tests {
         DogfoodFirstActionRun, DogfoodFirstPrRun, DogfoodFrontPanelRun, DogfoodGateRun,
         DogfoodGeneratedCiCockpitRun, DogfoodLanguagePreviewRun, DogfoodPrInlineCommentRun,
         DogfoodPreviewProjectionRuns, DogfoodReportInputs, DogfoodReportPacketIndexRun, DogfoodRun,
-        EvidenceQualityScorecardInput, EvidenceQualityScorecardInputs,
-        EvidenceQualityScorecardReport, EvidenceQualityTrendInputs, EvidenceQualityTrendReport,
-        FixKind, GENERATED_CI_FIRST_ACTION_REPAIR, GENERATED_CI_FIRST_PR_REPAIR,
-        GENERATED_CI_FRONT_PANEL_REPAIR, GENERATED_CI_PACKET_INDEX_REPAIR, GhPrStatusPullRequest,
-        GhPrStatusReview, Lane1EvidenceAuditRepoExposureGeneration,
-        Lane1EvidenceAuditRepoExposureOutcome, LocalContextAllow, LspCockpitFixture,
-        LspCockpitReport, MarkdownLink, PrTriageCheck, PrTriageFinding, PrTriagePullRequest,
-        ReceiptRecord, RepoBadgeArtifactOptions, RepoExposureLatencyReport, RepoExposureLatencyRun,
-        RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
-        ReportIndexRepoOpsArtifact, SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold,
-        StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass, WorktreeDoctorFinding,
-        WorktreeDoctorSeverity, badge_artifact_command_args, badge_artifact_jobs,
-        badge_artifact_native_slot, badge_artifacts_summary_markdown,
-        badge_basis_derived_ripr_plus_snapshot, badge_basis_needs_repo_badge_plus_job,
-        badge_basis_report_markdown, badge_basis_seam_native_counts, badge_diff_policy_violations,
-        badge_native_audit_snapshot, build_lsp_cockpit_report, build_no_panic_allowlist_proposals,
+        EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED, EvidenceQualityScorecardInput,
+        EvidenceQualityScorecardInputs, EvidenceQualityScorecardReport, EvidenceQualityTrendInputs,
+        EvidenceQualityTrendReport, FixKind, GENERATED_CI_FIRST_ACTION_REPAIR,
+        GENERATED_CI_FIRST_PR_REPAIR, GENERATED_CI_FRONT_PANEL_REPAIR,
+        GENERATED_CI_PACKET_INDEX_REPAIR, GhPrStatusPullRequest, GhPrStatusReview,
+        Lane1EvidenceAuditRepoExposureGeneration, Lane1EvidenceAuditRepoExposureOutcome,
+        LocalContextAllow, LspCockpitFixture, LspCockpitReport, MarkdownLink, PrTriageCheck,
+        PrTriageFinding, PrTriagePullRequest, ReceiptRecord, RepoBadgeArtifactOptions,
+        RepoExposureLatencyReport, RepoExposureLatencyRun, RepoExposureLatencyTrace,
+        ReportIndexCampaign, ReportIndexEntry, ReportIndexRepoOpsArtifact, SarifPolicyMode,
+        SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
+        TestOracleClass, WorktreeDoctorFinding, WorktreeDoctorSeverity,
+        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
+        badge_artifacts_summary_markdown, badge_basis_derived_ripr_plus_snapshot,
+        badge_basis_needs_repo_badge_plus_job, badge_basis_report_markdown,
+        badge_basis_seam_native_counts, badge_diff_policy_violations, badge_native_audit_snapshot,
+        build_lsp_cockpit_report, build_no_panic_allowlist_proposals,
         build_repo_exposure_latency_report, build_targeted_test_outcome_report,
         campaign_source_truth_violations_for_root, check_allow_attributes,
         check_badge_diff_policy_with_context, check_droid_review_config, check_executable_files,
@@ -40019,6 +40173,7 @@ mod tests {
         dogfood_pr_review_front_panel_scenarios, dogfood_report_json, dogfood_report_markdown,
         dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
         evaluate_semantic_no_panic_policy, evidence_health_args,
+        evidence_quality_scorecard_audit_regeneration_failure_audit,
         evidence_quality_scorecard_from_values, evidence_quality_scorecard_json,
         evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
         evidence_quality_trend_json, evidence_quality_trend_markdown,
@@ -55782,6 +55937,49 @@ covered_by = ["cargo xtask check-file-policy"]
 
         assert!(kinds.contains("lane1_evidence_audit_limited"));
         assert!(kinds.contains("evidence_health_limited"));
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_scorecard_names_audit_regeneration_failure() -> Result<(), String> {
+        let audit =
+            evidence_quality_scorecard_audit_regeneration_failure_audit("repo exposure failed")?;
+        assert_eq!(
+            audit["run_limitations"][0]["category"],
+            EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED
+        );
+        assert_eq!(
+            audit["static_limitations"]["by_category"]
+                [EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED],
+            serde_json::Value::from(1)
+        );
+
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(false),
+            &audit,
+            None,
+            None,
+        )?;
+        let json = evidence_quality_scorecard_json(&report)?;
+        let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        let kinds = value["unknowns"]
+            .as_array()
+            .ok_or("unknowns must be an array")?
+            .iter()
+            .filter_map(|unknown| unknown["kind"].as_str())
+            .collect::<BTreeSet<_>>();
+
+        assert!(kinds.contains("lane1_evidence_audit_limited"));
+        assert!(kinds.contains(EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED));
+        assert_eq!(
+            value["headline"]["primary_metric"],
+            "finding_alignment_actionable_unresolved_canonical_gaps"
+        );
+        assert_eq!(
+            value["headline"]["primary_count"],
+            serde_json::Value::from(0)
+        );
         Ok(())
     }
 

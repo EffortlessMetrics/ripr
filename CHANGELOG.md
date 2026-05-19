@@ -9,6 +9,12 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Lane 1 evidence-quality scorecard generation now writes a bounded diagnostic
+  scorecard when it cannot regenerate a missing Lane 1 audit artifact. The
+  diagnostic names
+  `evidence_quality_scorecard_audit_regeneration_failed`, records a repair
+  route, and keeps counts diagnostic-only so missing audit regeneration does
+  not silently drop scorecard evidence or claim user test debt.
 - Lane 1 evidence audit and scorecard now report runtime confidence coverage by
   canonical evidence class. The reports show calibrated-supported,
   fixture-backed, static-only, unknown-confidence, uncalibrated, actionable,
