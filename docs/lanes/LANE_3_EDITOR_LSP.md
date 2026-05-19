@@ -709,6 +709,69 @@ Hard boundaries:
   provider, mutation, CodeLens, inlay, semantic-token, inline-patch, or
   unsaved-buffer scope.
 
+## Next Selected Slice: Editor Actionable Gap Queue
+
+Editor Actionable Gap Queue is the next selected Lane 3 slice. It projects the
+existing Lane 1 actionable-gap queue into the editor as a bounded local repair
+queue:
+
+```text
+Diagnose Setup
+-> Show Status
+-> Current Repair Queue
+-> open one diagnostic or gap
+-> hover evidence
+-> copy current repair packet
+-> open related test
+-> verify
+-> receipt
+-> refresh
+-> next gap or no-action
+```
+
+Durable sources for the selected docs stack:
+
+- [RIPR-PROP-0013: Editor Actionable Gap Queue](../proposals/RIPR-PROP-0013-editor-actionable-gap-queue.md)
+- [RIPR-SPEC-0055: Editor Actionable Gap Queue](../specs/RIPR-SPEC-0055-editor-actionable-gap-queue.md)
+- [ADR-0017: Editor Gap Queue Is Read-Only](../adr/0017-editor-gap-queue-is-read-only.md)
+- [Editor Actionable Gap Queue implementation plan](../../plans/editor-actionable-gap-queue/implementation-plan.md)
+
+Input artifact:
+
+```text
+target/ripr/reports/actionable-gaps.{json,md}
+```
+
+Lane 3 owns:
+
+- validating actionable-gap packet artifacts for editor safety;
+- projecting queue state in `ripr: Show Status`;
+- copyable Current Repair Packet and Repo Gap Map actions;
+- hover and status explanation from typed fields;
+- success and fail-closed editor fixtures;
+- packaged VS Code smoke for the queue path;
+- `cargo xtask lsp-cockpit-report` proof once queue state is projected.
+
+Lane 3 does not own:
+
+- the `actionable-gaps` producer or schema;
+- analyzer truth;
+- independent queue ranking;
+- PR/CI summary generation;
+- gate decisions;
+- badge policy;
+- source edits;
+- generated tests;
+- provider/model calls;
+- mutation execution.
+
+No behavior-bearing queue PR should start until the source-of-truth stack lands.
+Future queue behavior must consume typed fields rather than prose, preserve
+Rust defaults, keep preview evidence visibly bounded, and fail closed on stale,
+wrong-root, malformed, missing, unsupported, disabled, unavailable, unsafe,
+receipt-mismatched, first-pr-mismatched, and actionable-packet-mismatched
+states.
+
 ## Lane 3 Document Model
 
 Lane 3 uses the repo tracking model in layers so future editor work does not

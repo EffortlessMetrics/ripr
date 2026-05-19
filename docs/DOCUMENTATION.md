@@ -27,6 +27,9 @@ Current and planned tutorial docs:
 - [Editor adoption assurance proposal](proposals/RIPR-PROP-0012-editor-adoption-assurance.md) -
   Lane 3 plan for compatibility, active root, multi-root, and fail-closed
   first-use diagnosis
+- [Editor actionable gap queue proposal](proposals/RIPR-PROP-0013-editor-actionable-gap-queue.md) -
+  Lane 3 plan for projecting existing `actionable-gaps` artifacts as a
+  read-only editor repair queue
 - README quick start
 - future first-extension-install walkthrough
 - future first-fixture walkthrough
@@ -201,6 +204,8 @@ Current explanation docs:
 - [Start-here surface convergence plan](../plans/start-here-surface-convergence/implementation-plan.md)
 - [Editor adoption assurance proposal](proposals/RIPR-PROP-0012-editor-adoption-assurance.md)
 - [Editor adoption assurance plan](../plans/editor-adoption-assurance/implementation-plan.md)
+- [Editor actionable gap queue proposal](proposals/RIPR-PROP-0013-editor-actionable-gap-queue.md)
+- [Editor actionable gap queue plan](../plans/editor-actionable-gap-queue/implementation-plan.md)
 - [Codex Goals](CODEX_GOALS.md)
 - [Scoped PR contract](SCOPED_PR_CONTRACT.md)
 - [PR automation](PR_AUTOMATION.md)
