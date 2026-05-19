@@ -1,0 +1,29 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_adoption_assurance/no_workspace",
+  "status": "no_workspace",
+  "projection": "fail_closed",
+  "workspace": {
+    "state": "no_workspace",
+    "root": null
+  },
+  "server": {
+    "state": "compatible",
+    "path": "ripr",
+    "version": "ripr 0.6.0",
+    "expected_version": "compatible",
+    "protocol_features": ["diagnose_setup"],
+    "supported_artifact_schemas": ["first-pr.start-here.v1", "agent-receipt.v1"]
+  },
+  "languages": {
+    "enabled": [],
+    "available": ["rust"]
+  },
+  "first_pr_packet": {
+    "state": "not_projected"
+  },
+  "receipt": {
+    "state": "not_projected"
+  },
+  "next_safe_action": "Open a workspace folder before running the saved-workspace repair loop."
+}

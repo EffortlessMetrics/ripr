@@ -1,0 +1,19 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_adoption_assurance/first_pr_packet_ready",
+  "diagnostics": [
+    {
+      "source": "ripr",
+      "code": "ripr-gap-MissingBoundaryAssertion",
+      "message": "RIPR adoption assurance gap: missing equality-boundary assertion.",
+      "data": {
+        "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+        "gap_id": "gap:pr:pricing:threshold-boundary",
+        "language": "rust",
+        "language_status": "stable",
+        "gap_state": "repairable",
+        "repair_route": "AddBoundaryCase"
+      }
+    }
+  ]
+}

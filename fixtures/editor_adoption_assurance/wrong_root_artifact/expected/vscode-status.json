@@ -1,0 +1,33 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_adoption_assurance/wrong_root_artifact",
+  "status": "wrong_root_artifact",
+  "projection": "fail_closed",
+  "workspace": {
+    "state": "single_root",
+    "root": "fixtures/editor_adoption_assurance/wrong_root_artifact/workspace"
+  },
+  "server": {
+    "state": "compatible",
+    "path": "ripr",
+    "version": "ripr 0.6.0",
+    "expected_version": "compatible",
+    "protocol_features": ["diagnose_setup", "receipt_projection", "first_pr_packet_projection"],
+    "supported_artifact_schemas": ["first-pr.start-here.v1", "agent-receipt.v1"]
+  },
+  "languages": {
+    "enabled": ["rust"],
+    "available": ["rust"]
+  },
+  "first_pr_packet": {
+    "state": "wrong_root",
+    "expected_root": "fixtures/editor_adoption_assurance/wrong_root_artifact/workspace",
+    "observed_root": "fixtures/other-repo"
+  },
+  "receipt": {
+    "state": "receipt_wrong_root",
+    "expected_root": "fixtures/editor_adoption_assurance/wrong_root_artifact/workspace",
+    "observed_root": "fixtures/other-repo"
+  },
+  "next_safe_action": "Regenerate first-pr and receipt artifacts for the active workspace root."
+}

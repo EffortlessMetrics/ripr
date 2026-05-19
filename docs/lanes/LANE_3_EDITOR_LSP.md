@@ -682,7 +682,7 @@ The issue burn-down is:
 | #1246 | `test(lsp): pin editor adoption baseline` | Done. |
 | #1247 | `vscode: add extension/server compatibility diagnosis` | Done on `main`; close from #1262. |
 | #1248 | `vscode: harden workspace-root and multi-root diagnosis` | Done on `main`; close from #1267, #1270, #1272, and #1274. |
-| #1249 | `fixtures(editor): add adoption-assurance fixture corpus` | Open; still needs the dedicated fixture corpus. |
+| #1249 | `fixtures(editor): add adoption-assurance fixture corpus` | Done; close from `fixtures/editor_adoption_assurance`. |
 | #1250 | `test(vscode): smoke editor adoption assurance path` | Open; still needs the dedicated packaged-extension smoke. |
 | #1251 | `docs(editor): write install-to-first-pr editor guide` | Open; still needs the recovery-oriented install-to-first-pr guide. |
 | #1252 | `dogfood(lane3): record external-style editor adoption receipts` | Open; still needs external-style adoption receipts. |

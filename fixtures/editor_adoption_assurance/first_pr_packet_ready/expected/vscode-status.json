@@ -1,0 +1,31 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_adoption_assurance/first_pr_packet_ready",
+  "status": "first_pr_packet_ready",
+  "projection": "active",
+  "workspace": {
+    "state": "single_root",
+    "root": "fixtures/editor_adoption_assurance/first_pr_packet_ready/workspace"
+  },
+  "server": {
+    "state": "compatible",
+    "path": "ripr",
+    "version": "ripr 0.6.0",
+    "expected_version": "compatible",
+    "protocol_features": ["diagnose_setup", "receipt_projection", "first_pr_packet_projection"],
+    "supported_artifact_schemas": ["first-pr.start-here.v1", "agent-receipt.v1"]
+  },
+  "languages": {
+    "enabled": ["rust"],
+    "available": ["rust"]
+  },
+  "first_pr_packet": {
+    "state": "top_repairable_gap",
+    "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+    "path": "target/ripr/first-pr/start-here.json"
+  },
+  "receipt": {
+    "state": "receipt_missing"
+  },
+  "next_safe_action": "Inspect the diagnostic, copy the first-pr repair packet, verify, emit a receipt, then refresh."
+}

@@ -1,0 +1,30 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_adoption_assurance/stale_receipt",
+  "status": "receipt_stale",
+  "projection": "fail_closed",
+  "workspace": {
+    "state": "single_root",
+    "root": "fixtures/editor_adoption_assurance/stale_receipt/workspace"
+  },
+  "server": {
+    "state": "compatible",
+    "path": "ripr",
+    "version": "ripr 0.6.0",
+    "expected_version": "compatible",
+    "protocol_features": ["diagnose_setup", "receipt_projection", "first_pr_packet_projection"],
+    "supported_artifact_schemas": ["first-pr.start-here.v1", "agent-receipt.v1"]
+  },
+  "languages": {
+    "enabled": ["rust"],
+    "available": ["rust"]
+  },
+  "first_pr_packet": {
+    "state": "not_projected"
+  },
+  "receipt": {
+    "state": "receipt_stale",
+    "receipt_path": "target/ripr/agent/agent-receipt.json"
+  },
+  "next_safe_action": "Refresh saved-workspace evidence and rerun verify/receipt before copying repair proof."
+}
