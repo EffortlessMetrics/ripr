@@ -137,6 +137,79 @@ suite('Extension Smoke', () => {
     }
   });
 
+  test('real extension adoption assurance smoke keeps setup repair and first-pr actions bounded', async function (this: Mocha.Context) {
+    this.timeout(45000);
+    await cleanupAdoptionAssuranceSmokeFiles();
+    await writeWorkspaceFile('ripr.toml', '[languages]\nenabled = ["rust"]\n');
+    await writeWorkspaceFile(
+      'target/ripr/reports/first-useful-action.json',
+      firstActionReport({})
+    );
+    await writeWorkspaceFile(
+      'target/ripr/agent/agent-receipt.json',
+      agentReceipt({ movement: 'improved' })
+    );
+    await writeWorkspaceFile('target/ripr/first-pr/start-here.json', firstPrPacket({}));
+    await writeWorkspaceFile('target/ripr/first-pr/start-here.md', '# RIPR first-pr packet\n');
+    try {
+      const ext = vscode.extensions.getExtension('EffortlessMetrics.ripr')!;
+      await ext.activate();
+      assert.strictEqual(ext.isActive, true);
+
+      await vscode.commands.executeCommand('ripr.diagnoseSetup');
+      await vscode.commands.executeCommand('ripr.showStatus');
+
+      await vscode.commands.executeCommand('ripr.copyFirstPrSummary');
+      const summary = await waitForClipboardText((text) =>
+        text.includes('RIPR first-pr summary') &&
+        text.includes('Gap identity: gap:rust:pricing:discount:threshold-boundary') &&
+        text.includes('Does not prove runtime adequacy')
+      );
+      assert.ok(summary.includes('Verify command: cargo xtask fixtures boundary_gap'), summary);
+
+      await withCurrentFirstPrDiagnostic({
+        canonical_gap_id: 'gap:rust:pricing:discount:threshold-boundary',
+        gap_id: 'gap:pr:pricing:threshold-boundary'
+      }, async () => {
+        await vscode.commands.executeCommand('ripr.copyFirstPrRepairPacket');
+        const repairPacket = await waitForClipboardText((text) =>
+          text.includes('RIPR first-pr repair packet') &&
+          text.includes('Repair route: AddBoundaryAssertion')
+        );
+        assert.ok(repairPacket.includes('Do not broaden scope.'), repairPacket);
+
+        await vscode.commands.executeCommand('ripr.copyFirstPrVerifyCommand');
+        assert.strictEqual(
+          await waitForClipboardText((text) => text === 'cargo xtask fixtures boundary_gap'),
+          'cargo xtask fixtures boundary_gap'
+        );
+
+        await vscode.commands.executeCommand('ripr.copyFirstPrReceiptCommand');
+        assert.strictEqual(
+          await waitForClipboardText((text) => text === 'ripr agent receipt --root . --json'),
+          'ripr agent receipt --root . --json'
+        );
+      });
+
+      await cleanupFirstPrBridgeSmokeFiles();
+      await writeWorkspaceFile(
+        'target/ripr/reports/start-here.json',
+        firstPrPacket({ root: '../other-workspace' })
+      );
+      await writeClipboardText('adoption-assurance-sentinel');
+      await vscode.commands.executeCommand('ripr.copyFirstPrSummary');
+      assert.strictEqual(await currentClipboardText(), 'adoption-assurance-sentinel');
+
+      await cleanupFirstPrBridgeSmokeFiles();
+      await writeWorkspaceFile('target/ripr/reports/start-here.json', '{not-json');
+      await vscode.commands.executeCommand('ripr.copyFirstPrSummary');
+      assert.strictEqual(await currentClipboardText(), 'adoption-assurance-sentinel');
+    } finally {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await cleanupAdoptionAssuranceSmokeFiles();
+    }
+  });
+
   test('defaults-first check mode is draft', () => {
     const config = vscode.workspace.getConfiguration('ripr');
     assert.strictEqual(config.inspect('check.mode')?.defaultValue, 'draft');
@@ -2972,6 +3045,18 @@ async function cleanupEditorGapSmokeFiles(): Promise<void> {
 
 async function cleanupFirstPrBridgeSmokeFiles(): Promise<void> {
   await Promise.all([
+    removeWorkspacePath('target/ripr/first-pr/start-here.json'),
+    removeWorkspacePath('target/ripr/first-pr/start-here.md'),
+    removeWorkspacePath('target/ripr/reports/start-here.json'),
+    removeWorkspacePath('target/ripr/reports/start-here.md')
+  ]);
+}
+
+async function cleanupAdoptionAssuranceSmokeFiles(): Promise<void> {
+  await Promise.all([
+    removeWorkspacePath('ripr.toml'),
+    removeWorkspacePath('target/ripr/reports/first-useful-action.json'),
+    removeWorkspacePath('target/ripr/agent/agent-receipt.json'),
     removeWorkspacePath('target/ripr/first-pr/start-here.json'),
     removeWorkspacePath('target/ripr/first-pr/start-here.md'),
     removeWorkspacePath('target/ripr/reports/start-here.json'),

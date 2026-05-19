@@ -44,8 +44,9 @@ Issue reconciliation on 2026-05-18 found that the implementation work for
 #1247 and #1248 already landed on `main`, but the GitHub issues remained open
 because those PRs did not carry closing references. Close #1247 from #1262.
 Close #1248 from #1267, #1270, #1272, and #1274. Close #1249 from the
-dedicated `fixtures/editor_adoption_assurance` corpus. Keep #1250 through
-#1253 open until their VS Code smoke, guide, dogfood, and closeout artifacts
+dedicated `fixtures/editor_adoption_assurance` corpus. Close #1250 from the
+dedicated VS Code adoption-assurance smoke. Keep #1251 through #1253 open
+until their guide, dogfood, and closeout artifacts
 land.
 
 | Issue | Work item | Status | Evidence / remaining gap |
@@ -55,7 +56,7 @@ land.
 | #1247 | `vscode: add extension/server compatibility diagnosis` | done; close issue | #1262 added extension/server compatibility diagnosis, version/schema status, unsupported-schema handling, and VS Code coverage. |
 | #1248 | `vscode: harden workspace-root and multi-root diagnosis` | done; close issue | #1267 added root/multi-root diagnosis; #1270 added direct repair-command root guards; #1272 added selected-root projection guards for first-pr copy actions and LSP subscriptions; #1274 added no-active-editor fail-closed guards for direct repair payloads. |
 | #1249 | `fixtures(editor): add adoption-assurance fixture corpus` | done; close issue | `fixtures/editor_adoption_assurance` pins setup-ready, server-missing, server-version-mismatch, no-workspace, multi-root, wrong-root, stale-receipt, first-pr-ready, first-pr-mismatch, and preview-adapter-unavailable states. |
-| #1250 | `test(vscode): smoke editor adoption assurance path` | open; planned | Dedicated adoption-assurance VS Code smoke remains after #1249. |
+| #1250 | `test(vscode): smoke editor adoption assurance path` | done; close issue | VS Code smoke proves setup/status commands, bounded first-pr repair packets, verify/receipt copy actions, and wrong-root/malformed suppression without running hidden analysis. |
 | #1251 | `docs(editor): write install-to-first-pr editor guide` | open; planned | Existing first-run and first-pr guides are partial; the install-to-first-pr recovery guide is still missing. |
 | #1252 | `dogfood(lane3): record external-style editor adoption receipts` | open; planned | Existing dogfood receipts are partial; external-style adoption receipts are still missing. |
 | #1253 | `campaign(lane3): close editor adoption assurance` | open; blocked | Blocked by #1249 through #1252. |
