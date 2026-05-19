@@ -340,11 +340,15 @@ For this repository's checked-in badge endpoints:
 
 ```bash
 cargo xtask repo-badge-artifacts
+cargo xtask badge-basis
 cargo xtask check-badge-endpoints
 ```
 
-Badge counts are seam-native unresolved static gap counts under configuration.
-They are not coverage or runtime mutation confirmation.
+Public badge counts are unresolved actionable canonical repair items under the
+badge policy. Seam-native inventory remains available in `badge-basis`,
+repo-exposure, seam-inventory, and evidence-quality reports as internal
+analyzer-health pressure. Public badges are not coverage or runtime mutation
+confirmation.
 
 ### Runtime Calibration
 

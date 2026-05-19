@@ -1489,9 +1489,13 @@ repair route, and trend availability as advisory progress evidence. Use
 the status, refresh stale baseline metadata, and route repair packets. The repo
 badge files in that artifact are:
 
-- `target/ripr/reports/repo-ripr-badge.json`, the seam-native native badge
-  payload;
+- `target/ripr/reports/repo-ripr-badge.json`, the native public badge payload
+  using the actionable canonical repair basis;
 - `target/ripr/reports/repo-ripr-badge-shields.json`, the Shields projection.
+
+Seam-native inventory is not the public badge headline. Use `cargo xtask
+badge-basis --include-seam-classes` or repo-exposure reports when internal seam
+pressure is needed.
 
 The generated workflow sets `RIPR_UPLOAD_SARIF` to `"true"` so first-run
 repositories get code-scanning guidance. Set it to `"false"` in the copied
