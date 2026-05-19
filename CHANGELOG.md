@@ -9,6 +9,14 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Lane 1 evidence audit JSON now emits free-form text counts as complete
+  `{label, count}` rows instead of arbitrary object keys for
+  missing-discriminator reasons and values, static-limitation reasons, and
+  oracle-semantics strings. This preserves case-only variants such as `Path`
+  and `path` while keeping the live audit artifact parseable for
+  Windows/PowerShell consumers. This is a repo-local Lane 1 reporting contract
+  hardening; it does not change analyzer behavior, PR/CI rendering, gates,
+  badges, providers, generated tests, source edits, or mutation execution.
 - Lane 1 evidence-quality scorecard generation now writes a bounded diagnostic
   scorecard when it cannot regenerate a missing Lane 1 audit artifact. The
   diagnostic names

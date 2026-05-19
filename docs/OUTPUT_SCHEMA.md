@@ -1782,20 +1782,20 @@ runtime execution.
   },
   "duplicate_looking_groups": [],
   "missing_discriminator_classes": {
-    "by_reason": {
-      "boundary value not observed": 900
-    },
+    "by_reason": [
+      {"label": "boundary value not observed", "count": 900}
+    ],
     "by_flow_sink": {
       "return_value": 870
     },
-    "by_value": {
-      "amount == threshold": 4
-    }
+    "by_value": [
+      {"label": "amount == threshold", "count": 4}
+    ]
   },
   "static_limitations": {
-    "by_reason": {
-      "static evidence is opaque or unknown for this seam": 1200
-    },
+    "by_reason": [
+      {"label": "static evidence is opaque or unknown for this seam", "count": 1200}
+    ],
     "by_stage": {
       "activate": 800
     },
@@ -1807,9 +1807,12 @@ runtime execution.
     }
   },
   "oracle_semantics_distribution": {
-    "by_semantics": {
-      "observes=exact return value; missing=boundary equality; upgrade=add equality boundary": 42
-    },
+    "by_semantics": [
+      {
+        "label": "observes=exact return value; missing=boundary equality; upgrade=add equality boundary",
+        "count": 42
+      }
+    ],
     "oracle_kind_counts": {
       "exact_value": 700
     },
@@ -1983,11 +1986,16 @@ Field contract:
   capped for review.
 - `duplicate_looking_groups` - canonical or fallback groups with observed count
   greater than one, or a reported group size greater than one.
-- `missing_discriminator_classes` - count maps by reason, flow sink, and value.
-- `static_limitations` - count maps by limitation reason, evidence stage,
-  normalized category, and suggested repair route.
-- `oracle_semantics_distribution` - rendered related-test oracle semantics plus
-  oracle kind and strength counts.
+- `missing_discriminator_classes` - complete `{label, count}` rows by reason
+  and value plus count maps by flow sink.
+- `static_limitations` - complete `{label, count}` rows by limitation reason
+  plus count maps by evidence stage, normalized category, and suggested repair
+  route.
+- `oracle_semantics_distribution` - complete `{label, count}` rows for rendered
+  related-test oracle semantics plus oracle kind and strength counts.
+  Free-form text counts are not object keys because discriminator, limitation,
+  and oracle text can differ only by case, and Windows/PowerShell JSON
+  consumers treat object keys case-insensitively.
 - `related_test_ranking` - confidence and relation-reason counts for all
   rendered related tests and for the top related test per seam.
 - `movement_availability` - counts of records carrying the identity and
@@ -2213,22 +2221,22 @@ debt.
   },
   "duplicate_looking_groups": [],
   "static_limitation_categories": {
-    "by_reason": {},
+    "by_reason": [],
     "by_stage": {},
     "by_category": {},
     "repair_routes": {}
   },
   "missing_discriminator_classes": {
-    "by_reason": {},
+    "by_reason": [],
     "by_flow_sink": {},
-    "by_value": {}
+    "by_value": []
   },
   "related_test_confidence": {
     "all_confidence_counts": {},
     "top_confidence_counts": {}
   },
   "oracle_semantics_distribution": {
-    "by_semantics": {},
+    "by_semantics": [],
     "oracle_kind_counts": {},
     "oracle_strength_counts": {}
   },

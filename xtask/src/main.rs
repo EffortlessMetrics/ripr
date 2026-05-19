@@ -16293,18 +16293,18 @@ fn lane1_evidence_audit_json(report: &Lane1EvidenceAuditReport) -> Result<String
             .map(audit_group_json)
             .collect::<Vec<_>>(),
         "missing_discriminator_classes": {
-            "by_reason": report.missing_discriminator_reason_counts,
+            "by_reason": audit_count_rows_json(&report.missing_discriminator_reason_counts),
             "by_flow_sink": report.missing_discriminator_flow_sink_counts,
-            "by_value": report.missing_discriminator_value_counts,
+            "by_value": audit_count_rows_json(&report.missing_discriminator_value_counts),
         },
         "static_limitations": {
-            "by_reason": report.static_limitation_reason_counts,
+            "by_reason": audit_count_rows_json(&report.static_limitation_reason_counts),
             "by_stage": report.static_limitation_stage_counts,
             "by_category": report.static_limitation_category_counts,
             "repair_routes": report.static_limitation_repair_route_counts,
         },
         "oracle_semantics_distribution": {
-            "by_semantics": report.oracle_semantics_counts,
+            "by_semantics": audit_count_rows_json(&report.oracle_semantics_counts),
             "oracle_kind_counts": report.oracle_kind_counts,
             "oracle_strength_counts": report.oracle_strength_counts,
         },
@@ -17029,6 +17029,18 @@ fn audit_top_counts_json(rows: &[Lane1EvidenceAuditTopCount]) -> Vec<Value> {
             serde_json::json!({
                 "label": row.label,
                 "count": row.count,
+            })
+        })
+        .collect()
+}
+
+fn audit_count_rows_json(counts: &BTreeMap<String, usize>) -> Vec<Value> {
+    counts
+        .iter()
+        .map(|(label, count)| {
+            serde_json::json!({
+                "label": label,
+                "count": count,
             })
         })
         .collect()
@@ -18676,7 +18688,7 @@ fn evidence_quality_scorecard_from_values(
             audit,
             &["static_limitations"],
             serde_json::json!({
-                "by_reason": {},
+                "by_reason": [],
                 "by_stage": {},
                 "by_category": {},
                 "repair_routes": {}
@@ -18685,7 +18697,7 @@ fn evidence_quality_scorecard_from_values(
         missing_discriminator_classes: scorecard_value_or_default(
             audit,
             &["missing_discriminator_classes"],
-            serde_json::json!({"by_reason": {}, "by_flow_sink": {}, "by_value": {}}),
+            serde_json::json!({"by_reason": [], "by_flow_sink": {}, "by_value": []}),
         ),
         related_test_confidence: scorecard_value_or_default(
             audit,
@@ -54720,6 +54732,68 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn lane1_evidence_audit_preserves_case_variant_discriminator_values_as_rows()
+    -> Result<(), String> {
+        let report = lane1_evidence_audit_from_repo_exposure(
+            ".",
+            r#"{
+              "schema_version": "0.3",
+              "scope": "repo",
+              "seams": [
+                {
+                  "seam_id": "path-upper",
+                  "headline_eligible": true,
+                  "file": "src/path.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "path-upper",
+                    "location": {"file": "src/path.rs", "line": 10},
+                    "seam_kind": "predicate_boundary",
+                    "missing_discriminators": [
+                      {"value": "Path (boundary value)", "reason": "boundary value not observed"}
+                    ],
+                    "related_tests_total": 0,
+                    "related_tests": [],
+                    "static_limitations": [],
+                    "raw_findings": []
+                  }
+                },
+                {
+                  "seam_id": "path-lower",
+                  "headline_eligible": true,
+                  "file": "src/path.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "path-lower",
+                    "location": {"file": "src/path.rs", "line": 20},
+                    "seam_kind": "predicate_boundary",
+                    "missing_discriminators": [
+                      {"value": "path (boundary value)", "reason": "boundary value not observed"}
+                    ],
+                    "related_tests_total": 0,
+                    "related_tests": [],
+                    "static_limitations": [],
+                    "raw_findings": []
+                  }
+                }
+              ]
+            }"#,
+        )?;
+        let json = lane1_evidence_audit_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        let by_value = &value["missing_discriminator_classes"]["by_value"];
+
+        assert!(
+            by_value.is_array(),
+            "missing discriminator values must be rows, not object keys"
+        );
+        assert_eq!(audit_count_row(by_value, "Path (boundary value)")?, 1);
+        assert_eq!(audit_count_row(by_value, "path (boundary value)")?, 1);
+        Ok(())
+    }
+
+    #[test]
     fn lane1_evidence_audit_counts_quality_gaps_from_evidence_record() -> Result<(), String> {
         let report = lane1_evidence_audit_from_repo_exposure(".", lane1_audit_sample_json())?;
         let json = lane1_evidence_audit_json(&report)?;
@@ -54747,12 +54821,25 @@ covered_by = ["cargo xtask check-file-policy"]
             serde_json::Value::from(2)
         );
         assert_eq!(
-            value["missing_discriminator_classes"]["by_reason"]["boundary value not observed"],
-            serde_json::Value::from(2)
+            audit_count_row(
+                &value["missing_discriminator_classes"]["by_reason"],
+                "boundary value not observed"
+            )?,
+            2
         );
         assert_eq!(
-            value["static_limitations"]["by_reason"]["opaque helper value"],
-            serde_json::Value::from(1)
+            audit_count_row(
+                &value["missing_discriminator_classes"]["by_value"],
+                "amount == threshold"
+            )?,
+            2
+        );
+        assert_eq!(
+            audit_count_row(
+                &value["static_limitations"]["by_reason"],
+                "opaque helper value"
+            )?,
+            1
         );
         assert_eq!(
             value["static_limitations"]["by_category"]["opaque_helper_call"],
@@ -55445,12 +55532,18 @@ covered_by = ["cargo xtask check-file-policy"]
             serde_json::from_str(&json).map_err(|err| err.to_string())?;
 
         assert_eq!(
-            value["static_limitations"]["by_reason"]["preview import graph"],
-            serde_json::Value::from(1)
+            audit_count_row(
+                &value["static_limitations"]["by_reason"],
+                "preview import graph"
+            )?,
+            1
         );
         assert_eq!(
-            value["static_limitations"]["by_reason"]["opaque helper value"],
-            serde_json::Value::from(1)
+            audit_count_row(
+                &value["static_limitations"]["by_reason"],
+                "opaque helper value"
+            )?,
+            1
         );
         let top_static = &value["finding_alignment"]["actionable_gap_top_lists"]["top_static_limitation_reasons"];
         assert_eq!(top_static[0]["label"], "preview import graph");
@@ -56052,7 +56145,7 @@ covered_by = ["cargo xtask check-file-policy"]
             serde_json::from_str(&json).map_err(|err| err.to_string())?;
 
         let static_limitations = &value["static_limitation_categories"];
-        assert!(static_limitations["by_reason"].is_object());
+        assert!(static_limitations["by_reason"].is_array());
         assert!(static_limitations["by_stage"].is_object());
         assert!(static_limitations["by_category"].is_object());
         assert!(static_limitations["repair_routes"].is_object());
@@ -56626,15 +56719,15 @@ covered_by = ["cargo xtask check-file-policy"]
             },
             "canonical_gap_groups": {"total": 5, "largest": []},
             "duplicate_looking_groups": [],
-            "missing_discriminator_classes": {"by_reason": {}, "by_flow_sink": {}, "by_value": {}},
+            "missing_discriminator_classes": {"by_reason": [], "by_flow_sink": {}, "by_value": []},
             "static_limitations": {
-                "by_reason": {},
+                "by_reason": [],
                 "by_stage": {},
                 "by_category": {},
                 "repair_routes": {}
             },
             "oracle_semantics_distribution": {
-                "by_semantics": {},
+                "by_semantics": [],
                 "oracle_kind_counts": {"unknown": 0},
                 "oracle_strength_counts": {"unknown": 0}
             },
@@ -56750,6 +56843,19 @@ covered_by = ["cargo xtask check-file-policy"]
             .find(|row| row.class == class)
             .map(|row| row.status.clone())
             .ok_or_else(|| format!("missing maturity row {class}"))
+    }
+
+    fn audit_count_row(rows: &Value, label: &str) -> Result<usize, String> {
+        let row = rows
+            .as_array()
+            .ok_or_else(|| format!("expected count rows for {label}"))?
+            .iter()
+            .find(|row| row["label"].as_str() == Some(label))
+            .ok_or_else(|| format!("missing count row {label}"))?;
+        row["count"]
+            .as_u64()
+            .map(|count| count as usize)
+            .ok_or_else(|| format!("missing count for {label}"))
     }
 
     fn lane1_audit_sample_json() -> &'static str {

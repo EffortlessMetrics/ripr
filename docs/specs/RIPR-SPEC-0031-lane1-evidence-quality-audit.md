@@ -125,6 +125,10 @@ The Markdown sibling prints the same audit areas in bounded tables:
 - top files by unresolved evidence debt.
 
 High-cardinality count maps remain complete in JSON and are capped in Markdown.
+Free-form text counts for missing-discriminator reasons and values,
+static-limitation reasons, and oracle-semantics strings are emitted as complete
+`{label, count}` rows, not object keys, so case-only variants remain distinct
+for case-insensitive JSON consumers such as Windows PowerShell.
 
 ## Required Evidence
 
