@@ -21,7 +21,7 @@
     "path": "src/lib.rs",
     "line": 2,
     "grip_class": "weakly_gripped",
-    "missing_discriminator": "discount_threshold (equality boundary)",
+    "missing_discriminator": "input that hits the boundary: amount >= discount_threshold",
     "evidence_source": "legacy_fields",
     "static_limitations": []
   },
@@ -29,9 +29,9 @@
     "source": "editor_agent_brief",
     "placement": "changed_line",
     "summary_only_reason": null,
-    "suggested_test": "Add a focused test where amount == discount_threshold and assert the exact discounted_total output.",
+    "suggested_test": "Add a focused boundary test that exercises amount >= discount_threshold and assert the exact discounted_total output.",
     "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
-    "assertion_shape": "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)",
+    "assertion_shape": "assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)",
     "verify_command": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
   },
   "handoff": {

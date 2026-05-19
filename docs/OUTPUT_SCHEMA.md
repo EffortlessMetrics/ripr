@@ -974,6 +974,10 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
       "observed_values": ["50", "10000"],
       "missing_discriminators": [
         {
+          "value": "input that hits the boundary: amount >= discount_threshold",
+          "reason": "predicate uses an equality-bearing operator; tests should exercise the boundary case"
+        },
+        {
           "value": "discount_threshold (equality boundary)",
           "reason": "observed values do not include the equality-boundary case for this predicate"
         }
@@ -1020,11 +1024,11 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
             }
           ],
           "why": "extend the nearest related test with the missing discriminator",
-          "recommended_repair": "extend the nearest related test with the missing discriminator",
+          "recommended_repair": "Add or strengthen `assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)` for `input that hits the boundary: amount >= discount_threshold` in `tests/pricing_tests.rs` as `discounted_total_boundary_discriminator`.",
           "repair_route": {
             "repair_kind": "add_boundary_assertion",
             "target_test_type": "boundary_discriminator",
-            "suggested_assertion": "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"
+            "suggested_assertion": "assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)"
           },
           "related_test": {
             "name": "below_threshold_has_no_discount",
@@ -1718,15 +1722,15 @@ runtime execution.
         "primary_anchor": {"file": "src/pricing.rs", "line": 42},
         "repair_kind": "add_boundary_assertion",
         "target_test_type": "boundary_discriminator",
-        "assertion_shape": "assert_eq!(price(threshold), expected)",
-        "recommended_repair": "Add an equality-boundary assertion.",
+        "assertion_shape": "assert_eq!(price(/* boundary input where amount == threshold */), expected)",
+        "recommended_repair": "Add or strengthen `assert_eq!(price(/* boundary input where amount == threshold */), expected)` for `input that hits the boundary: amount == threshold` in `tests/pricing.rs` as `price_boundary_discriminator`.",
         "why": "Related tests reach the seam but miss equality at the threshold.",
         "related_test_or_observer": {
           "file": "tests/pricing.rs",
           "name": "below_threshold_has_no_discount",
           "line": 10
         },
-        "candidate_value_or_observer": "amount == threshold",
+        "candidate_value_or_observer": "input that hits the boundary: amount == threshold",
         "verify_command": "cargo xtask evidence-quality-scorecard",
         "raw_findings": [
           {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed"}
@@ -2047,15 +2051,15 @@ mutation execution.
       "primary_anchor": {"file": "src/pricing.rs", "line": 42},
       "repair_kind": "add_boundary_assertion",
       "target_test_type": "boundary_discriminator",
-      "assertion_shape": "assert_eq!(price(threshold), expected)",
-      "recommended_repair": "Add an equality-boundary assertion.",
+      "assertion_shape": "assert_eq!(price(/* boundary input where amount == threshold */), expected)",
+      "recommended_repair": "Add or strengthen `assert_eq!(price(/* boundary input where amount == threshold */), expected)` for `input that hits the boundary: amount == threshold` in `tests/pricing.rs` as `price_boundary_discriminator`.",
       "why": "Related tests reach the seam but miss equality at the threshold.",
       "related_test_or_observer": {
         "file": "tests/pricing.rs",
         "name": "below_threshold_has_no_discount",
         "line": 10
       },
-      "candidate_value_or_observer": "amount == threshold",
+      "candidate_value_or_observer": "input that hits the boundary: amount == threshold",
       "verify_command": "cargo xtask evidence-quality-scorecard",
       "raw_findings": [
         {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed"}

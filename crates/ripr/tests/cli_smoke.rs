@@ -691,7 +691,7 @@ fn test_oracle_assistant_canonical_review_loop_fixture_pins_expected_surfaces()
     );
     assert_eq!(
         json_pointer_str(&proof, "/seam/missing_discriminator")?,
-        "discount_threshold (equality boundary)"
+        "input that hits the boundary: amount >= discount_threshold"
     );
     assert_eq!(
         json_pointer_str(&proof, "/recommendation/placement")?,
@@ -699,7 +699,7 @@ fn test_oracle_assistant_canonical_review_loop_fixture_pins_expected_surfaces()
     );
     assert!(
         json_pointer_str(&proof, "/recommendation/suggested_test")?
-            .contains("amount == discount_threshold")
+            .contains("amount >= discount_threshold")
     );
     assert_eq!(
         json_pointer_str(&proof, "/evidence_movement/state")?,
@@ -792,7 +792,9 @@ fn test_oracle_assistant_canonical_review_loop_fixture_pins_expected_surfaces()
 
     let proof_md = std::fs::read_to_string(proof_md_path)?;
     assert!(proof_md.contains("Status: advisory"));
-    assert!(proof_md.contains("Missing discriminator: discount_threshold (equality boundary)"));
+    assert!(proof_md.contains(
+        "Missing discriminator: input that hits the boundary: amount >= discount_threshold"
+    ));
     assert!(proof_md.contains("After: weakly_gripped"));
     assert!(proof_md.contains("State: unchanged"));
     assert!(proof_md.contains("Gate: not configured"));

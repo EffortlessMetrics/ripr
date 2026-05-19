@@ -27,7 +27,7 @@ Kind: `predicate_boundary`
 
 - File: `tests/pricing.rs`
 - Suggested name: `discounted_total_boundary_discriminator`
-- Assertion shape: `assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)`
+- Assertion shape: `assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)`
 
 ## Handoff, verify, and receipt commands
 

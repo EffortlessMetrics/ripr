@@ -35,7 +35,7 @@ fn stage(state: StageState) -> StageEvidence {
 
 fn missing() -> MissingDiscriminatorFact {
     MissingDiscriminatorFact {
-        value: "discount_threshold equality boundary".to_string(),
+        value: "input that hits the boundary: amount >= discount_threshold".to_string(),
         reason: "observed values do not include the equality-boundary case".to_string(),
         flow_sink: None,
     }
@@ -249,9 +249,9 @@ fn pilot_summary_md_spells_out_first_screen_recommendation() {
         "## What Was Inspected",
         "## Top Recommendation",
         "- Inspected seam:",
-        "- Why it matters: missing discriminator: discount_threshold equality boundary",
+        "- Why it matters: missing discriminator: input that hits the boundary: amount >= discount_threshold",
         "- Focused test: add `discounted_total_boundary_discriminator` in `tests/pricing.rs`",
-        "- Candidate value: `discount_threshold equality boundary`",
+        "- Candidate value: `input that hits the boundary: amount >= discount_threshold`",
         "Target seam:",
         "Add a targeted test:",
         "## Next Commands",
@@ -280,10 +280,10 @@ fn pilot_terminal_prints_top_test_and_follow_up_commands() {
         "config: loaded ripr.toml",
         "Top recommendation:",
         "inspected seam: src/pricing.rs:88 predicate_boundary in pricing::discounted_total (weakly_gripped)",
-        "why it matters: missing discriminator: discount_threshold equality boundary",
+        "why it matters: missing discriminator: input that hits the boundary: amount >= discount_threshold",
         "focused test: add discounted_total_boundary_discriminator in tests/pricing.rs",
-        "candidate value: discount_threshold equality boundary",
-        "assertion: assert_eq!(discounted_total(/* discount_threshold equality boundary */), /* expected */)",
+        "candidate value: input that hits the boundary: amount >= discount_threshold",
+        "assertion: assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)",
         "Detailed brief:",
         "target/ripr/pilot/pilot-summary.md",
         "Structured packet:",
