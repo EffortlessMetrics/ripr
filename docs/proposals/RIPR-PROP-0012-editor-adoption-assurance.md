@@ -1,6 +1,6 @@
 # RIPR-PROP-0012: Editor Adoption Assurance
 
-Status: proposed
+Status: accepted
 
 Owner: Lane 3 - Editor / LSP UX
 
