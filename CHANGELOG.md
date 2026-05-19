@@ -9,6 +9,14 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Lane 1 evidence audit generation now treats a nominally successful
+  repo-exposure subprocess with an empty or malformed captured JSON file as a
+  bounded `lane1_repo_exposure_incomplete` limitation. The audit removes the
+  partial input, preserves phase/input diagnostics and the latency trace tail,
+  and writes limited reports instead of failing before downstream scorecards can
+  surface the incomplete run. This is repo-local audit reliability only; it does
+  not change analyzer behavior, PR/CI rendering, gates, badges, providers,
+  generated tests, source edits, or mutation execution.
 - Lane 1 evidence audit JSON now emits free-form text counts as complete
   `{label, count}` rows instead of arbitrary object keys for
   missing-discriminator reasons and values, static-limitation reasons, and

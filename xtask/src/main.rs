@@ -15136,9 +15136,11 @@ pub(crate) fn lane1_evidence_audit_report_impl() -> Result<(), String> {
     let repo_exposure_path = reports_dir().join("lane1-evidence-audit.repo-exposure.json");
     let report = match write_lane1_evidence_audit_repo_exposure(&repo_exposure_path)? {
         Lane1EvidenceAuditRepoExposureOutcome::Complete(repo_exposure_generation) => {
-            let mut report =
-                lane1_evidence_audit_from_repo_exposure_file(".", &repo_exposure_path)?;
-            report.repo_exposure_generation = Some(repo_exposure_generation);
+            let report = lane1_evidence_audit_report_from_complete_repo_exposure(
+                ".",
+                &repo_exposure_path,
+                repo_exposure_generation,
+            );
             if let Err(err) = fs::remove_file(&repo_exposure_path) {
                 eprintln!(
                     "warning: failed to remove temporary Lane 1 repo exposure input {}: {err}",
@@ -15170,6 +15172,38 @@ pub(crate) fn lane1_evidence_audit_report_impl() -> Result<(), String> {
         "actionable-gaps.md",
         &lane1_actionable_gap_packets_markdown(&report),
     )
+}
+
+fn lane1_evidence_audit_report_from_complete_repo_exposure(
+    root: &str,
+    path: &Path,
+    generation: Lane1EvidenceAuditRepoExposureGeneration,
+) -> Lane1EvidenceAuditReport {
+    match lane1_evidence_audit_from_repo_exposure_file(root, path) {
+        Ok(mut report) => {
+            report.repo_exposure_generation = Some(generation);
+            report
+        }
+        Err(err) => {
+            eprintln!(
+                "warning: failed to parse captured Lane 1 repo exposure {} after status {}: {err}",
+                path.display(),
+                generation.status
+            );
+            let status = if generation.status == "pass" {
+                "pass_incomplete"
+            } else {
+                "complete_parse_failed"
+            };
+            lane1_evidence_audit_limited_report(
+                root,
+                Lane1EvidenceAuditRepoExposureGeneration {
+                    status: status.to_string(),
+                    ..generation
+                },
+            )
+        }
+    }
 }
 
 fn write_lane1_evidence_audit_repo_exposure(
@@ -40206,6 +40240,7 @@ mod tests {
         lane1_actionable_gap_packets_markdown, lane1_evidence_audit_from_repo_exposure,
         lane1_evidence_audit_json, lane1_evidence_audit_limited_report,
         lane1_evidence_audit_markdown, lane1_evidence_audit_repo_exposure_args,
+        lane1_evidence_audit_report_from_complete_repo_exposure,
         lane1_evidence_audit_timeout_error, local_context_line_findings, local_markdown_target,
         lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
         markdown_links_in_text, mutation_calibration_report_json,
@@ -54336,6 +54371,51 @@ covered_by = ["cargo xtask check-file-policy"]
             }
         );
 
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_evidence_audit_limits_incomplete_success_repo_exposure_artifact() -> Result<(), String>
+    {
+        let root = temp_dir("lane1-repo-exposure-complete-parse-failed");
+        let output_path = root.join("repo-exposure.json");
+        write(&output_path, "");
+        let generation = Lane1EvidenceAuditRepoExposureGeneration {
+            command: "ripr check --format repo-exposure-json".to_string(),
+            timeout_ms: 50,
+            status: "pass".to_string(),
+            duration_ms: 218,
+            exit_code: Some(0),
+            stdout_bytes: 0,
+            stderr_bytes: 123,
+            latency_trace_events_total: 1,
+            latency_trace_tail: vec![RepoExposureLatencyTrace {
+                phase: "evidence_for_seams_progress".to_string(),
+                status: "processed_18500_of_38654".to_string(),
+                duration_ms: 218802,
+            }],
+        };
+
+        let report =
+            lane1_evidence_audit_report_from_complete_repo_exposure(".", &output_path, generation);
+        assert_eq!(
+            report
+                .repo_exposure_generation
+                .as_ref()
+                .map(|generation| generation.status.as_str()),
+            Some("pass_incomplete")
+        );
+        assert_eq!(report.run_limitations.len(), 1);
+        assert_eq!(
+            report.run_limitations[0].category,
+            "lane1_repo_exposure_incomplete"
+        );
+        assert_eq!(report.run_limitations[0].exit_code, Some(0));
+        assert_eq!(report.run_limitations[0].stdout_bytes, Some(0));
+        assert_eq!(
+            report.run_limitations[0].latency_trace_tail[0].status,
+            "processed_18500_of_38654"
+        );
         Ok(())
     }
 
