@@ -80,6 +80,16 @@ static analysis should stop or escalate.
 | `propagation_unknown` | The changed behavior crosses an opaque propagation boundary. |
 | `static_unknown` | Syntax-first analysis cannot make a credible judgment. |
 
+## Public Badge Projection
+
+Public `ripr` badges are not raw exposure-class totals, seam-native inventory,
+coverage, mutation adequacy, all behavior seams, or all untested code. They
+project unresolved actionable static repair gaps: canonical gaps with a repair
+route, verification path, receipt path, and public projection eligibility.
+`ripr+` adds only actionable test-efficiency repairs lifted into the same
+repair / verify / receipt model. Detailed seam-native inventory remains an
+internal pressure report for evidence quality and static limitations.
+
 ## Analysis Modes
 
 Modes define how much static evidence `ripr` is allowed to gather before it
