@@ -13,6 +13,7 @@ not claim.
 
 This is the contract that `ripr check --format badge-json` and
 `--format badge-shields` will render against. It pairs with
+[RIPR-SPEC-0056](specs/RIPR-SPEC-0056-public-actionable-projection.md),
 [Static exposure model](STATIC_EXPOSURE_MODEL.md),
 [Output schema](OUTPUT_SCHEMA.md), and
 [Configuration](CONFIGURATION.md).
