@@ -1826,6 +1826,12 @@ runtime execution.
         },
         "candidate_value_or_observer": "input that hits the boundary: amount == threshold",
         "verify_command": "cargo xtask evidence-quality-scorecard",
+        "repair_route_source": "canonical_item.repair_route",
+        "verify_command_source": "canonical_item.verify_command",
+        "receipt_command_or_path": null,
+        "receipt_source": "missing",
+        "public_projection_eligible": false,
+        "projection_exclusion_reasons": ["missing_receipt_path"],
         "raw_findings": [
           {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed"}
         ],
@@ -1837,6 +1843,14 @@ runtime execution.
         ]
       }
     ],
+    "actionable_gap_packet_public_projection": {
+      "scope": "emitted_actionable_gap_packets",
+      "public_projection_eligible_packets": 0,
+      "public_projection_excluded_packets": 1,
+      "projection_exclusion_reasons": [
+        {"label": "missing_receipt_path", "count": 1}
+      ]
+    },
     "runtime_confidence_by_class": [
       {
         "evidence_class": "predicate_boundary",
@@ -2067,6 +2081,12 @@ Field contract:
   verification command, raw findings as supporting evidence, confidence basis,
   and conservative `must_not_change` boundaries. They do not create user work
   from raw static class alone.
+- `finding_alignment.actionable_gap_packet_public_projection` - packet-level
+  badge-readiness diagnostics for the emitted packet set. It counts
+  public-projection eligible packets, excluded packets, and stable
+  `projection_exclusion_reasons` rows such as `missing_receipt_path`. This is
+  advisory report evidence only and does not change public badge endpoint
+  semantics.
 - `finding_alignment.runtime_confidence_by_class` - runtime confidence coverage
   rows at the canonical evidence-class grain. Each row reports canonical item
   count, calibrated-supported, fixture-backed, static-only, unknown-confidence,
@@ -2141,6 +2161,11 @@ mutation execution.
     "internal_no_action": 0,
     "static_limitations": 26277,
     "packets_emitted": 25,
+    "public_projection_eligible_packets": 0,
+    "public_projection_excluded_packets": 25,
+    "projection_exclusion_reasons": [
+      {"label": "missing_receipt_path", "count": 25}
+    ],
     "raw_to_canonical_ratio": 1.24,
     "repair_route_unknowns": 0,
     "verify_command_unknowns": 0
@@ -2172,6 +2197,12 @@ mutation execution.
         }
       ],
       "verify_command": "cargo xtask evidence-quality-scorecard",
+      "repair_route_source": "canonical_item.repair_route",
+      "verify_command_source": "canonical_item.verify_command",
+      "receipt_command_or_path": null,
+      "receipt_source": "missing",
+      "public_projection_eligible": false,
+      "projection_exclusion_reasons": ["missing_receipt_path"],
       "raw_findings": [
         {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed"}
       ],
@@ -2198,6 +2229,12 @@ not fan it back out into separate user-facing work.
 `missing_discriminators[]` carries the exact unresolved discriminator facts from
 the evidence record so agents do not have to infer the boundary or assertion
 target from a broader candidate-value hint.
+`public_projection_eligible` is an audit-only badge-readiness decision for the
+emitted packet. It is false until the packet has public-projection prerequisites
+such as canonical repair and verify fields plus a receipt command or path; the
+stable `projection_exclusion_reasons[]` values explain why an otherwise useful
+agent packet is not yet a public badge item. This does not change committed
+badge endpoint semantics.
 
 ## Evidence Quality Scorecard
 

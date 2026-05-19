@@ -367,6 +367,9 @@ Landed implementation surfaces:
   separation.
 - `docs/OUTPUT_SCHEMA.md` defines native badge output and badge-basis audit
   report fields.
+- `target/ripr/reports/actionable-gaps.{json,md}` records packet-level
+  `public_projection_eligible` and `projection_exclusion_reasons[]` readiness
+  diagnostics for emitted actionable packets without changing endpoint counts.
 - `badges/ripr.json` and `badges/ripr-plus.json` are generated public endpoint
   snapshots.
 - `docs/handoffs/2026-05-19-public-badge-projection-realignment-closeout.md`
@@ -404,5 +407,8 @@ The landed implementation proves:
 - `check-generated-clean` and `check-badge-endpoints` protect generated
   endpoint ownership;
 - public copy explains the actionable gap meaning and non-claims;
+- actionable-gap packets distinguish agent-usable repair packets from public
+  projection readiness by naming missing receipt or canonical guidance
+  prerequisites;
 - the closeout handoff records old count, new count, old basis, new basis,
   generator command, guard command, and internal seam-inventory location.
