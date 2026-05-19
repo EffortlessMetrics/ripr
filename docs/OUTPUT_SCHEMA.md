@@ -1309,8 +1309,9 @@ without changing analyzer behavior. The same report lands at
 
 The xtask facade bounds the live `ripr evidence-health` subprocess with
 `RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` (default 30 minutes). If the subprocess times
-out, xtask discards stale or partial outputs and writes warning JSON and
-Markdown with `status = "warn"` and a named `evidence_health_timeout`
+out or exits before a complete report is available, xtask discards stale or
+partial outputs and writes warning JSON and Markdown with `status = "warn"` and
+a named `evidence_health_timeout` or `evidence_health_incomplete`
 `run_limitations[]` entry. That limited artifact is diagnostic only; it does
 not claim user test debt from missing health counts.
 
@@ -1483,8 +1484,9 @@ Field contract:
 
 - `schema_version` - currently `"0.1"`.
 - `scope` - always `"repo"`.
-- `status` - always `"advisory"`. This report is an analyzer-health view, not
-  a gate decision.
+- `status` - `"advisory"` for complete analyzer-health reports and `"warn"`
+  for bounded xtask fallback artifacts. This report is an analyzer-health view,
+  not a gate decision.
 - `inputs.root` - the analyzed workspace root as supplied to the command.
 - `inputs.mutation_calibration` - optional imported calibration report path;
   `null` when not provided.
@@ -1522,8 +1524,9 @@ Field contract:
   `evidence_record.static_limitations`.
 - `evidence_quality.static_limitation_category_counts` - normalized limitation
   categories such as `activation_value_unresolved`,
-  `opaque_helper_call`, `cross_file_constant_unresolved`,
-  `dynamic_dispatch`, `unsupported_mock_shape`, `snapshot_field_unknown`, and
+  `activation_owner_call_unresolved`, `opaque_helper_call`,
+  `cross_file_constant_unresolved`, `dynamic_dispatch`,
+  `unsupported_mock_shape`, `snapshot_field_unknown`, and
   `side_effect_sink_unknown`.
 - `evidence_quality.calibration_availability_counts` - counts keyed by
   `evidence_record.calibration.availability`. These are placeholder coverage
@@ -1538,10 +1541,12 @@ Field contract:
   run mutation testing, infer thresholds, or change static classification.
 - `top_static_limitations` - the largest static evidence gaps by count, capped
   to 10 rows and carrying one example seam ID for inspection.
-- `run_limitations` - present on bounded xtask fallback artifacts. A timeout
-  row names `evidence_health_timeout`, the `evidence_health_generation` phase,
+- `run_limitations` - present on bounded xtask fallback artifacts. Timeout and
+  incomplete rows name `evidence_health_timeout` or
+  `evidence_health_incomplete`, the `evidence_health_generation` phase,
   timeout/duration/output byte diagnostics, and a repair route for inspecting
-  runtime or increasing `RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` on slower machines.
+  runtime, stdout/stderr, or increasing `RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` on
+  slower machines.
 
 The Markdown sibling prints the same summary, grip-class, top missing
 discriminator, oracle-strength, related-test confidence, evidence-quality,

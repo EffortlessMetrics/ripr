@@ -918,6 +918,8 @@ fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'stati
         || reason.contains("effect sink")
     {
         "side_effect_sink_unknown"
+    } else if reason.contains("no direct owner call observed for value-insensitive seam") {
+        "activation_owner_call_unresolved"
     } else if reason.contains("no concrete activation values observed")
         || reason.contains("no literal activation values")
     {
@@ -938,6 +940,7 @@ fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'stati
 
 fn static_limitation_repair_route(category: &str) -> &'static str {
     match category {
+        "activation_owner_call_unresolved" => "analysis/related-test-ranking-audit-fixes",
         "activation_value_unresolved" => "analysis/value-resolution-audit-fixes",
         "cross_file_constant_unresolved" => "analysis/cross-file-constant-resolution",
         "macro_generated_value" => "analysis/macro-generated-value-fixtures",
@@ -1470,6 +1473,12 @@ mod tests {
             (
                 "activate",
                 "unknown",
+                "No direct owner call observed for value-insensitive seam `Vec::new()`",
+                "activation_owner_call_unresolved",
+            ),
+            (
+                "activate",
+                "unknown",
                 "No concrete activation values observed for seam `threshold`",
                 "activation_value_unresolved",
             ),
@@ -1566,6 +1575,10 @@ mod tests {
         }
 
         for (category, expected) in [
+            (
+                "activation_owner_call_unresolved",
+                "analysis/related-test-ranking-audit-fixes",
+            ),
             (
                 "activation_value_unresolved",
                 "analysis/value-resolution-audit-fixes",
