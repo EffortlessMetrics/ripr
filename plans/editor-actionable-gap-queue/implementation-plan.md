@@ -49,8 +49,8 @@ No behavior PR should start until this source-of-truth stack lands.
 
 | Issue | Work item | Status | Evidence / remaining gap |
 | --- | --- | --- | --- |
-| #1298 | `docs(lane3): open editor actionable gap queue stack` | closed | Proposal, spec, ADR, plan, indexes, lane tracker, traceability, and capability wiring landed in #1310. |
-| #1299 | `test(lsp): pin post-adoption editor contract` | active | Pin current Diagnose Setup, Show Status, first-pr, receipt, Rust diagnostics, preview labels, and fail-closed behavior. |
+| #1298 | `docs(lane3): open editor actionable gap queue stack` | active | Add proposal, spec, ADR, plan, indexes, lane tracker, traceability, and capability wiring. |
+| #1299 | `test(lsp): pin post-adoption editor contract` | planned | Pin current Diagnose Setup, Show Status, first-pr, receipt, Rust diagnostics, preview labels, and fail-closed behavior. |
 | #1300 | `lsp(queue): validate actionable gap packet artifacts` | planned | Add read-only validation for `target/ripr/reports/actionable-gaps.json`. |
 | #1301 | `lsp(queue): project repair queue in Show Status` | planned | Show bounded queue summary and no-action/fail-closed states. |
 | #1302 | `lsp(queue): add Copy Current Repair Packet` | planned | Copy one bounded packet only for validated actionable gaps. |

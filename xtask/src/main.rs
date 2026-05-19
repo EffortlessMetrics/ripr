@@ -14932,6 +14932,7 @@ struct Lane1ActionableGapPacket {
     why: String,
     related_test_or_observer: Option<Value>,
     candidate_value_or_observer: Option<String>,
+    missing_discriminators: Vec<Value>,
     verify_command: String,
     raw_findings: Vec<Value>,
     raw_findings_supporting_only: bool,
@@ -16022,6 +16023,10 @@ impl Lane1EvidenceAuditBuilder {
                     record,
                     canonical_item,
                 ),
+                missing_discriminators: audit_actionable_gap_missing_discriminators(
+                    record,
+                    canonical_item,
+                ),
                 verify_command: audit_non_empty_string(canonical_item, &["verify_command"])
                     .or_else(|| {
                         audit_non_empty_string(record, &["recommendation", "verify_command"])
@@ -16892,6 +16897,7 @@ fn audit_actionable_gap_packet_json(packet: &Lane1ActionableGapPacket) -> Value 
         "why": packet.why,
         "related_test_or_observer": packet.related_test_or_observer,
         "candidate_value_or_observer": packet.candidate_value_or_observer,
+        "missing_discriminators": packet.missing_discriminators,
         "verify_command": packet.verify_command,
         "raw_findings": packet.raw_findings,
         "raw_findings_supporting_only": packet.raw_findings_supporting_only,
@@ -17047,6 +17053,12 @@ fn lane1_actionable_gap_packets_markdown(report: &Lane1EvidenceAuditReport) -> S
         out.push_str(&format!(
             "| Verify command | `{}` |\n",
             audit_markdown_cell(&packet.verify_command)
+        ));
+        out.push_str(&format!(
+            "| Missing discriminators | {} |\n",
+            audit_markdown_cell(&audit_actionable_gap_missing_discriminator_summary(
+                &packet.missing_discriminators
+            ))
         ));
         out.push_str(&format!(
             "| Raw findings | {} supporting finding(s) |\n",
@@ -17499,6 +17511,36 @@ fn audit_actionable_gap_candidate_value_or_observer(
                         .or_else(|| audit_non_empty_string(missing, &["reason"]))
                 })
         })
+}
+
+fn audit_actionable_gap_missing_discriminators(
+    record: &Value,
+    canonical_item: &Value,
+) -> Vec<Value> {
+    audit_json_array_owned(canonical_item, &["missing_discriminators"])
+        .or_else(|| audit_json_array_owned(record, &["missing_discriminators"]))
+        .unwrap_or_default()
+}
+
+fn audit_actionable_gap_missing_discriminator_summary(discriminators: &[Value]) -> String {
+    if discriminators.is_empty() {
+        return "none".to_string();
+    }
+
+    discriminators
+        .iter()
+        .take(3)
+        .map(|discriminator| {
+            let value = audit_non_empty_string(discriminator, &["value"])
+                .unwrap_or_else(|| "missing_discriminator_value_unknown".to_string());
+            let reason = audit_non_empty_string(discriminator, &["reason"]);
+            match reason {
+                Some(reason) => format!("{value} ({reason})"),
+                None => value,
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 fn default_actionable_gap_packet_must_not_change() -> Vec<String> {
@@ -55424,6 +55466,10 @@ covered_by = ["cargo xtask check-file-policy"]
             embedded_packets[0]["raw_findings_supporting_only"],
             serde_json::Value::Bool(true)
         );
+        assert_eq!(
+            embedded_packets[0]["missing_discriminators"][0]["value"],
+            "discount_threshold (equality boundary)"
+        );
 
         let packet_json = lane1_actionable_gap_packets_json(&report)?;
         let packet_value: serde_json::Value =
@@ -55450,6 +55496,10 @@ covered_by = ["cargo xtask check-file-policy"]
             "input that hits the boundary: amount >= discount_threshold"
         );
         assert_eq!(
+            packet_value["packets"][0]["missing_discriminators"][0]["reason"],
+            "observed values do not include the equality-boundary case"
+        );
+        assert_eq!(
             packet_value["packets"][0]["must_not_change"][0],
             "Do not infer actionability from raw static class."
         );
@@ -55457,6 +55507,7 @@ covered_by = ["cargo xtask check-file-policy"]
         let markdown = lane1_actionable_gap_packets_markdown(&report);
         assert!(markdown.contains("# Actionable Canonical Gap Packets"));
         assert!(markdown.contains("gap:packet-boundary-gap"));
+        assert!(markdown.contains("discount_threshold (equality boundary)"));
         assert!(markdown.contains("cargo xtask evidence-quality-scorecard"));
         Ok(())
     }

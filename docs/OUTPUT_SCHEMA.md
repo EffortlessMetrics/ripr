@@ -678,6 +678,90 @@ The Shields projection drops native-only fields including `schema_version`,
 `kind`, `scope`, `basis`, `status`, `counts`, `reason_counts`, `policy`, and
 `warnings`.
 
+### Badge-Basis Audit Report
+
+`cargo xtask badge-basis` writes an advisory audit report at:
+
+```text
+target/ripr/reports/badge-basis.json
+target/ripr/reports/badge-basis.md
+```
+
+This report decomposes committed public endpoint values and proves whether the
+public badge basis matches RIPR-SPEC-0056. It does not edit `badges/*.json`.
+
+Required JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "status": "pass",
+  "mode": "advisory",
+  "current_public_endpoints": [
+    {
+      "path": "badges/ripr.json",
+      "label": "ripr",
+      "message": "179",
+      "color": "orange"
+    }
+  ],
+  "current_repo_badges": [
+    {
+      "kind": "ripr",
+      "scope": "repo",
+      "basis": "canonical_actionable_gap",
+      "message": "179",
+      "counts": {}
+    }
+  ],
+  "seam_native": {
+    "status": "pass",
+    "source": "ripr check --root . --format repo-exposure-md",
+    "counts_by_class": {}
+  },
+  "test_efficiency": {
+    "status": "pass",
+    "source": "target/ripr/reports/test-efficiency.json",
+    "counts_by_class": {}
+  },
+  "canonical_actionable_gap": {
+    "status": "available",
+    "source": "repo-badge-artifacts",
+    "ripr_count": 179,
+    "ripr_plus_count": 179
+  },
+  "supporting_signals": {
+    "raw_alignment_signals": { "status": "not_in_current_badge_generator" },
+    "canonical_evidence_items": { "status": "not_in_current_badge_generator" },
+    "static_limitations": { "status": "available" },
+    "suppressed_or_intentional_items": { "status": "available_from_badge_counts" },
+    "no_action_items": { "status": "requires_gap_decision_ledger" }
+  },
+  "recommended_public_projection": {
+    "basis": "canonical_actionable_gap",
+    "rule": "README/store badges should count unresolved actionable canonical repair items."
+  },
+  "warnings": [],
+  "non_claims": []
+}
+```
+
+Field contract:
+
+- `current_public_endpoints` mirrors committed Shields endpoint JSON.
+- `current_repo_badges` records the native badge basis used to derive public
+  counts.
+- `canonical_actionable_gap` records the public repair projection counts.
+- `seam_native` records internal inventory status and per-class counts when
+  collected with `--include-seam-classes`.
+- `test_efficiency` records class counts but does not move the public `ripr+`
+  headline unless those items are projected into the repair / verify / receipt
+  model.
+- `supporting_signals` names supporting or excluded evidence rather than
+  silently dropping it.
+- `recommended_public_projection.basis` must be
+  `canonical_actionable_gap` for public repair badges.
+
 ## SARIF Output
 
 Campaign 5B SARIF formats:
@@ -1325,7 +1409,7 @@ not claim user test debt from missing health counts.
 
 ```json
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "scope": "repo",
   "status": "advisory",
@@ -1377,9 +1461,9 @@ not claim user test debt from missing health counts.
     },
     "missing_discriminators_total": 1756,
     "seams_with_missing_discriminators": 1756,
-    "missing_discriminator_counts": {
-      "amount == threshold": 4
-    },
+    "missing_discriminator_counts": [
+      {"label": "amount == threshold", "count": 4}
+    ],
     "observed_values_total": 740,
     "seams_with_observed_values": 310,
     "observed_value_context_counts": {
@@ -1444,9 +1528,12 @@ not claim user test debt from missing health counts.
     "static_limitation_stage_counts": {
       "activate": 3600
     },
-    "static_limitation_reason_counts": {
-      "No concrete activation values observed for seam `Vec::new()`": 255
-    },
+    "static_limitation_reason_counts": [
+      {
+        "label": "No concrete activation values observed for seam `Vec::new()`",
+        "count": 255
+      }
+    ],
     "static_limitation_category_counts": {
       "activation_value_unresolved": 255
     },
@@ -1490,7 +1577,10 @@ not claim user test debt from missing health counts.
 
 Field contract:
 
-- `schema_version` - currently `"0.1"`.
+- `schema_version` - currently `"0.2"`. `0.2` changes free-form
+  `missing_discriminator_counts` and `static_limitation_reason_counts` from
+  JSON objects to `{label, count}` rows so downstream consumers do not treat
+  analyzer evidence strings as stable field names.
 - `scope` - always `"repo"`.
 - `status` - `"advisory"` for complete analyzer-health reports and `"warn"`
   for bounded xtask fallback artifacts. This report is an analyzer-health view,
@@ -1506,8 +1596,9 @@ Field contract:
 - `metrics.unknown_stop_reason_counts` - counts of unknown/opaque
   `SeamGripClass` buckets. This is intentionally repo-seam terminology; diff
   finding stop-reason strings are not reinterpreted here.
-- `metrics.missing_discriminator_counts` - aggregate counts keyed by the
-  missing discriminator value text.
+- `metrics.missing_discriminator_counts` - aggregate `{label, count}` rows for
+  missing discriminator value text. It is row-shaped because the labels are
+  analyzer evidence strings and can collide in case-insensitive JSON consumers.
 - `metrics.observed_value_context_counts` - aggregate counts keyed by
   `ValueContext::as_str()`.
 - `metrics.related_test_confidence_counts` - `high`, `medium`, `low`, and
@@ -1529,7 +1620,8 @@ Field contract:
   `evidence_record.actionability.class`.
 - `evidence_quality.static_limitation_stage_counts` and
   `static_limitation_reason_counts` - distributions from
-  `evidence_record.static_limitations`.
+  `evidence_record.static_limitations`. Reason counts are `{label, count}` rows
+  because reasons are free-form evidence strings.
 - `evidence_quality.static_limitation_category_counts` - normalized limitation
   categories such as `activation_value_unresolved`,
   `activation_owner_call_unresolved`, `opaque_helper_call`,
@@ -2076,6 +2168,12 @@ mutation execution.
         "line": 10
       },
       "candidate_value_or_observer": "input that hits the boundary: amount == threshold",
+      "missing_discriminators": [
+        {
+          "value": "discount_threshold (equality boundary)",
+          "reason": "observed values do not include the equality-boundary case for this predicate"
+        }
+      ],
       "verify_command": "cargo xtask evidence-quality-scorecard",
       "raw_findings": [
         {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed"}
@@ -2100,6 +2198,9 @@ mutation execution.
 The packet grain is one canonical actionable item. `raw_findings[]` is included
 only to preserve supporting evidence and line context; downstream consumers must
 not fan it back out into separate user-facing work.
+`missing_discriminators[]` carries the exact unresolved discriminator facts from
+the evidence record so agents do not have to infer the boundary or assertion
+target from a broader candidate-value hint.
 
 ## Evidence Quality Scorecard
 
