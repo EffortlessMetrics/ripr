@@ -650,11 +650,11 @@ provider/model calls, mutation execution, policy/gate changes, CodeLens,
 inlay hints, semantic tokens, inline patches, or unsaved-buffer overlays need a
 new editor campaign.
 
-## Proposed Slice: Editor Adoption Assurance
+## Closed Slice: Editor Adoption Assurance
 
-Editor Adoption Assurance opens the next Lane 3 scope. It is not more editor
-furniture and it does not reopen the closed cockpit, first-run, first-pr, or
-preview-routing behavior. It hardens first-use trust around compatibility and
+Editor Adoption Assurance closed the next Lane 3 scope. It was not more editor
+furniture and it did not reopen the closed cockpit, first-run, first-pr, or
+preview-routing behavior. It hardened first-use trust around compatibility and
 root state:
 
 ```text
@@ -667,12 +667,13 @@ Diagnose Setup
 -> first-pr packet
 ```
 
-Durable sources for the proposed docs stack:
+Durable sources for the closed docs stack:
 
 - [RIPR-PROP-0012: Editor Adoption Assurance](../proposals/RIPR-PROP-0012-editor-adoption-assurance.md)
 - [RIPR-SPEC-0054: Editor Adoption Assurance](../specs/RIPR-SPEC-0054-editor-adoption-assurance.md)
 - [ADR-0016: Editor Adoption Assurance Remains Read-Only](../adr/0016-editor-adoption-assurance-remains-read-only.md)
 - [Editor Adoption Assurance implementation plan](../../plans/editor-adoption-assurance/implementation-plan.md)
+- [Editor Adoption Assurance closeout](../handoffs/2026-05-19-editor-adoption-assurance-closeout.md)
 
 The issue burn-down is:
 
@@ -685,13 +686,13 @@ The issue burn-down is:
 | #1249 | `fixtures(editor): add adoption-assurance fixture corpus` | Done; close from `fixtures/editor_adoption_assurance`. |
 | #1250 | `test(vscode): smoke editor adoption assurance path` | Done; close from the dedicated packaged-extension adoption smoke. |
 | #1251 | `docs(editor): write install-to-first-pr editor guide` | Done; close from `docs/EDITOR_INSTALL_TO_FIRST_PR.md`. |
-| #1252 | `dogfood(lane3): record external-style editor adoption receipts` | Open; still needs external-style adoption receipts. |
-| #1253 | `campaign(lane3): close editor adoption assurance` | Open; blocked by #1249 through #1252. |
+| #1252 | `dogfood(lane3): record external-style editor adoption receipts` | Done; close from `docs/handoffs/2026-05-19-editor-adoption-assurance-receipts.md`. |
+| #1253 | `campaign(lane3): close editor adoption assurance` | Done; close from `docs/handoffs/2026-05-19-editor-adoption-assurance-closeout.md`. |
 
 Reconciliation on 2026-05-18 found #1247 and #1248 implementation-complete
 but still open in GitHub because their merged PRs did not carry closing issue
-references. Do not rebuild those slices unless a regression appears. Continue
-with #1249 through #1253.
+references. Those issues are now closed. Do not rebuild those slices unless a
+regression appears.
 
 Hard boundaries:
 
