@@ -65,6 +65,24 @@ open related test, open first-pr packet, verify-command, and receipt-command
 actions unless the action is explicitly setup, refresh, or regeneration
 guidance.
 
+### Root Equivalence and Command Targeting
+
+Root equality must be evaluated after platform-aware normalization. The editor
+must not compare raw strings for command authority.
+
+Normalization and targeting checks must handle:
+
+- path separator differences;
+- drive-letter casing differences;
+- URI encoding differences;
+- paths with spaces;
+- nested workspace roots;
+- active files outside selected root;
+- direct command invocations with no active editor and no target URI.
+
+No-active-editor, ambiguous-root, outside-root, or wrong-root target states
+must fail closed before repair action lookup.
+
 ### Fail-Closed States
 
 The editor fails closed on:
@@ -86,14 +104,87 @@ Fail closed means: explain the state, suppress stronger repair actions, offer
 refresh/setup/regeneration guidance when safe, and make no proof, gate,
 runtime, mutation, or merge-readiness claim.
 
-### Preview Boundary
+### Action Authority Matrix
+
+The action boundary is contract-driven:
+
+```text
+state -> allowed actions
+```
+
+| State | Repair packet | Related test/proof | Verify command | Receipt command | Refresh/setup guidance |
+| --- | --- | --- | --- | --- | --- |
+| fresh Rust canonical gap | yes | yes | yes | yes | optional |
+| stale artifact | no | no | no | no | yes |
+| wrong root | no | no | no | no | yes |
+| malformed artifact | no | no | no | no | yes |
+| preview-enabled advisory | no stable repair | maybe advisory | maybe advisory | no authority | yes |
+| no actionable gap | no | maybe inspect | no | no | yes |
+| receipt mismatch | no | no | maybe regenerate | no | yes |
+| first-pr packet mismatch | no | no | no | no | yes |
+
+Any row not explicitly allowing a stronger action suppresses that action.
+
+### Artifact Authority Contract
+
+An artifact is action-authoritative only when all of the following checks pass:
+
+- `schema_version` is supported by the active cockpit;
+- `ripr_version` is compatible or explicitly tolerated for this action class;
+- `workspace_root` matches selected root after normalization;
+- `artifact_kind` is recognized for the attempted action;
+- freshness marker such as `generated_at` is within accepted staleness policy;
+- `language_status` is `stable` for stable repair actions;
+- diagnostic identity matches `canonical_gap_id` or equivalent packet identity;
+- receipt identity matches the same gap/root/artifact identity when receipt
+  actions are exposed;
+- missing, malformed, unknown, or unsupported required fields fail closed.
+
+The editor must not infer authority by parsing prose blobs or non-schema text.
+
+### Editor Command Mutability Table
+
+All editor commands must map to a bounded mutability class.
+
+| Command/action | Mutability class | Allowed side effect |
+| --- | --- | --- |
+| Diagnose Setup | read-only | show text and status |
+| Show Status | read-only | show text and status |
+| Start Current Repair | projection | select/copy/open bounded artifacts only |
+| Copy repair packet | clipboard | copy validated packet only |
+| Open related test/proof | navigation | open workspace-local path only |
+| Copy verify command | clipboard | copy command only |
+| Copy receipt command | clipboard | copy command only |
+| Refresh artifacts | explicit-refresh-guidance | show explicit external command guidance only |
+| Install ripr | not-allowed | guidance only |
+| Generate tests | not-allowed | never |
+| Edit source | not-allowed | never |
+
+Direct command invocation must obey the same authority guards as UI-triggered
+code actions.
+
+### Start Current Repair Contract
+
+`Start Current Repair` must execute this deterministic contract:
+
+1. resolve active document and selected root;
+2. reject no-active-file, wrong-root, and ambiguous-root before action lookup;
+3. load only saved-workspace artifacts;
+4. validate artifact authority contract fields;
+5. match diagnostic identity to canonical gap or first-pr packet identity;
+6. present bounded actions in deterministic order;
+7. fall back to setup/refresh/regeneration guidance when unsafe.
+
+This flow is projection-only and must not mutate source, tests, config, or
+workspace artifacts.
+
+### Preview Boundary and Language Status
 
 TypeScript, JavaScript, and Python evidence remains:
 
 - opt-in;
 - syntax-first;
 - advisory;
-- `language_status = "preview"` visible;
 - static-limit labeled when present;
 - not Rust-level confidence;
 - not runtime adequacy;
@@ -101,7 +192,36 @@ TypeScript, JavaScript, and Python evidence remains:
 - not policy eligible;
 - not gate authority.
 
-Static limits appear before suggested action language.
+`language_status` for command authority is:
+
+- `stable`;
+- `preview_enabled`;
+- `preview_disabled`;
+- `preview_adapter_unavailable`;
+- `unsupported`.
+
+Action implications:
+
+- `stable`: stable repair actions may be shown when all other checks pass;
+- `preview_enabled`: advisory projection only, no stable repair authority;
+- `preview_disabled`: no preview actions; safe enable guidance only;
+- `preview_adapter_unavailable`: explain unavailable, no repair claim;
+- `unsupported`: no action authority.
+
+### Receipt Authority
+
+A receipt may show static loop evidence only when identity matches the same
+gap/root/artifact lineage. A receipt is not:
+
+- merge approval;
+- runtime mutation proof;
+- coverage adequacy proof;
+- policy eligibility;
+- gate decision;
+- preview-language promotion.
+
+Receipt mismatch or stale receipt states suppress repair authority and expose
+only bounded guidance.
 
 ## Required Evidence
 
@@ -165,6 +285,17 @@ mutation results, gate decisions, policy changes, or release artifacts.
 - No CodeLens, inlay hints, semantic tokens, inline patches, or
   unsaved-buffer overlays.
 - No preview-language promotion.
+
+## Promotion Criteria
+
+Editor support tier may be promoted only when all of the following evidence is
+present and current:
+
+- fixture corpus coverage for required adoption-assurance states;
+- VSIX smoke checks passing for setup/root/artifact/receipt/first-pr paths;
+- dogfood receipts proving bounded static workflow usage;
+- support docs matching current authority boundaries;
+- no unsupported state that exposes suppressed repair authority.
 
 ## Acceptance Examples
 
