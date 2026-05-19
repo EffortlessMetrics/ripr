@@ -27,11 +27,11 @@ of each piece is tracked in the status table at the bottom of this
 doc and in
 [`.ripr/goals/active.toml`](../.ripr/goals/active.toml).
 
-The public badge projection realignment is landing in stages. This policy
-defines `canonical_actionable_gap` as the public basis. Existing generated
-endpoint snapshots may still report a seam-native count until the generator and
-endpoint refresh PRs land. Use `cargo xtask badge-basis` to audit the current
-endpoint basis before refreshing public JSON.
+The public badge projection realignment has landed. This policy defines
+`canonical_actionable_gap` as the public basis, and generated endpoint snapshots
+now project unresolved actionable static repair gaps instead of seam-native
+inventory counts. Use `cargo xtask badge-basis` to audit the current endpoint
+basis before refreshing public JSON.
 
 ## What each badge means
 
@@ -890,7 +890,7 @@ Tracked alongside Campaign 4A and Campaign 5B in
 | Badge-basis audit report | done | `cargo xtask badge-basis` |
 | Actionable public badge basis policy | done | `canonical_actionable_gap` definition in this doc |
 | Canonical actionable endpoint generator | done | public badge projection realignment |
-| Internal seam-native inventory report | planned | public badge projection realignment |
+| Internal seam-native inventory report | done | `cargo xtask badge-basis` internal inventory section and repo exposure reports |
 
 ## See also
 
