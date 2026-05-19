@@ -5086,6 +5086,7 @@ fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                 "editor_gap_cockpit"
                     | "editor_first_run_usability"
                     | "editor_first_pr_bridge"
+                    | "editor_adoption_assurance"
                     | "evidence-quality-benchmark"
                     | "first_successful_pr"
                     | "finding-alignment-dogfood"
@@ -7250,6 +7251,7 @@ fn check_fixture_contracts() -> Result<(), String> {
     validate_editor_gap_cockpit_fixture_corpus(&mut violations)?;
     validate_editor_first_run_usability_fixture_corpus(&mut violations)?;
     validate_editor_first_pr_bridge_fixture_corpus(&mut violations)?;
+    validate_editor_adoption_assurance_fixture_corpus(&mut violations)?;
     validate_first_successful_pr_fixture_corpus(&mut violations)?;
     validate_finding_alignment_dogfood_fixture_corpus(&mut violations)?;
     validate_gap_decision_ledger_fixture_corpus(&mut violations)?;
@@ -9219,6 +9221,372 @@ fn validate_editor_first_pr_bridge_diagnostics(
             "editor first-pr bridge case {case} must include the matching diagnostic identity"
         ));
     }
+}
+
+const EDITOR_ADOPTION_ASSURANCE_FIXTURE_ROOT: &str = "fixtures/editor_adoption_assurance";
+const EDITOR_ADOPTION_ASSURANCE_CASES: &[&str] = &[
+    "setup_ok",
+    "server_missing",
+    "server_version_mismatch",
+    "no_workspace",
+    "multi_root",
+    "wrong_root_artifact",
+    "stale_receipt",
+    "first_pr_packet_ready",
+    "first_pr_packet_mismatch",
+    "preview_adapter_unavailable",
+];
+const EDITOR_ADOPTION_ASSURANCE_EXPECTED_FILES: &[&str] = &[
+    "vscode-status.json",
+    "setup-diagnosis.md",
+    "lsp-diagnostics.json",
+    "lsp-code-actions.json",
+    "first-pr-status.json",
+    "receipt-status.json",
+];
+
+fn validate_editor_adoption_assurance_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new(EDITOR_ADOPTION_ASSURANCE_FIXTURE_ROOT);
+    if !root.exists() {
+        violations.push(format!(
+            "editor adoption assurance fixture corpus is missing {}",
+            normalize_path(root)
+        ));
+        return Ok(());
+    }
+    let spec = root.join("SPEC.md");
+    if !spec.exists() {
+        violations.push(format!(
+            "editor adoption assurance fixture corpus is missing {}",
+            normalize_path(&spec)
+        ));
+    } else {
+        let spec_text = read_text_lossy(&spec)?;
+        if !spec_text
+            .lines()
+            .any(|line| line.starts_with("Spec: RIPR-SPEC-0054"))
+        {
+            violations.push(format!(
+                "{} is missing `Spec: RIPR-SPEC-0054`",
+                normalize_path(&spec)
+            ));
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !has_markdown_heading(&spec_text, heading) {
+                violations.push(format!("{} is missing `{heading}`", normalize_path(&spec)));
+            }
+        }
+    }
+
+    for case in EDITOR_ADOPTION_ASSURANCE_CASES {
+        validate_editor_adoption_assurance_case(root, case, violations)?;
+    }
+    Ok(())
+}
+
+fn validate_editor_adoption_assurance_case(
+    root: &Path,
+    case: &str,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let expected = root.join(case).join("expected");
+    for file in EDITOR_ADOPTION_ASSURANCE_EXPECTED_FILES {
+        let path = expected.join(file);
+        if !path.exists() {
+            violations.push(format!(
+                "editor adoption assurance case {case} is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+
+    let status_path = expected.join("vscode-status.json");
+    if status_path.exists() {
+        let status = read_json_value(&status_path)?;
+        validate_editor_adoption_assurance_status(case, &status, violations);
+    }
+    let actions_path = expected.join("lsp-code-actions.json");
+    if actions_path.exists() {
+        let actions = read_json_value(&actions_path)?;
+        validate_editor_adoption_assurance_actions(case, &actions, violations);
+    }
+    let first_pr_path = expected.join("first-pr-status.json");
+    if first_pr_path.exists() {
+        let first_pr = read_json_value(&first_pr_path)?;
+        validate_editor_adoption_assurance_first_pr(case, &first_pr, violations);
+    }
+    let receipt_path = expected.join("receipt-status.json");
+    if receipt_path.exists() {
+        let receipt = read_json_value(&receipt_path)?;
+        validate_editor_adoption_assurance_receipt(case, &receipt, violations);
+    }
+    let diagnostics_path = expected.join("lsp-diagnostics.json");
+    if diagnostics_path.exists() {
+        let diagnostics = read_json_value(&diagnostics_path)?;
+        validate_editor_adoption_assurance_diagnostics(case, &diagnostics, violations);
+    }
+    let diagnosis_path = expected.join("setup-diagnosis.md");
+    if diagnosis_path.exists() {
+        let diagnosis = read_text_lossy(&diagnosis_path)?;
+        for required in [
+            "RIPR setup diagnosis",
+            "Compatibility",
+            "Workspace",
+            "First PR packet",
+            "Receipt",
+            "Next safe action",
+            "Limits",
+            "no source edits",
+            "not a gate decision",
+            "not runtime proof",
+        ] {
+            if !diagnosis.contains(required) {
+                violations.push(format!(
+                    "editor adoption assurance case {case} setup diagnosis is missing `{required}`"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_editor_adoption_assurance_status(
+    case: &str,
+    status: &Value,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(status, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "editor adoption assurance case {case} vscode-status schema_version must be 0.1"
+        ));
+    }
+    let expected_fixture = format!("editor_adoption_assurance/{case}");
+    if json_string_field(status, "fixture").as_deref() != Some(expected_fixture.as_str()) {
+        violations.push(format!(
+            "editor adoption assurance case {case} vscode-status fixture must be {expected_fixture}"
+        ));
+    }
+    let expected_status = match case {
+        "setup_ok" => "setup_ok",
+        "server_missing" => "server_missing",
+        "server_version_mismatch" => "server_version_mismatch",
+        "no_workspace" => "no_workspace",
+        "multi_root" => "multi_root_ambiguous",
+        "wrong_root_artifact" => "wrong_root_artifact",
+        "stale_receipt" => "receipt_stale",
+        "first_pr_packet_ready" => "first_pr_packet_ready",
+        "first_pr_packet_mismatch" => "first_pr_packet_mismatch",
+        "preview_adapter_unavailable" => "preview_adapter_unavailable",
+        _ => "unknown",
+    };
+    if json_string_field(status, "status").as_deref() != Some(expected_status) {
+        violations.push(format!(
+            "editor adoption assurance case {case} status must be {expected_status}"
+        ));
+    }
+    if editor_adoption_assurance_case_fails_closed(case)
+        && json_string_field(status, "projection").as_deref() != Some("fail_closed")
+    {
+        violations.push(format!(
+            "editor adoption assurance case {case} must fail closed"
+        ));
+    }
+    if json_string_field(status, "next_safe_action").is_none() {
+        violations.push(format!(
+            "editor adoption assurance case {case} must name a next_safe_action"
+        ));
+    }
+}
+
+fn validate_editor_adoption_assurance_actions(
+    case: &str,
+    actions: &Value,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(actions, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "editor adoption assurance case {case} lsp-code-actions schema_version must be 0.1"
+        ));
+    }
+    let items = actions
+        .get("actions")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let commands = items
+        .iter()
+        .filter_map(|item| json_string_field(item, "command"))
+        .collect::<BTreeSet<_>>();
+    let has_repair_or_proof_action = commands.contains("ripr.openRelatedTest")
+        || commands.contains("ripr.copyContext")
+        || commands.contains("ripr.copyFirstPrRepairPacket")
+        || commands.contains("ripr.copyFirstPrVerifyCommand")
+        || commands.contains("ripr.copyFirstPrReceiptCommand")
+        || commands.contains("ripr.openFirstPrPacket");
+    if editor_adoption_assurance_case_fails_closed(case) && has_repair_or_proof_action {
+        violations.push(format!(
+            "editor adoption assurance case {case} must suppress repair/proof actions"
+        ));
+    }
+    if case == "first_pr_packet_ready" {
+        for command in [
+            "ripr.openFirstPrPacket",
+            "ripr.copyFirstPrRepairPacket",
+            "ripr.copyFirstPrVerifyCommand",
+            "ripr.copyFirstPrReceiptCommand",
+            "ripr.refresh",
+        ] {
+            if !commands.contains(command) {
+                violations.push(format!(
+                    "editor adoption assurance case {case} must include {command}"
+                ));
+            }
+        }
+    }
+    if !commands.contains("ripr.refresh") {
+        violations.push(format!(
+            "editor adoption assurance case {case} must include refresh guidance"
+        ));
+    }
+}
+
+fn validate_editor_adoption_assurance_first_pr(
+    case: &str,
+    first_pr: &Value,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(first_pr, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "editor adoption assurance case {case} first-pr-status schema_version must be 0.1"
+        ));
+    }
+    let expected_fixture = format!("editor_adoption_assurance/{case}");
+    if json_string_field(first_pr, "fixture").as_deref() != Some(expected_fixture.as_str()) {
+        violations.push(format!(
+            "editor adoption assurance case {case} first-pr-status fixture must be {expected_fixture}"
+        ));
+    }
+    let expected_state = match case {
+        "setup_ok" => "missing",
+        "server_missing"
+        | "server_version_mismatch"
+        | "no_workspace"
+        | "multi_root"
+        | "stale_receipt"
+        | "preview_adapter_unavailable" => "not_projected",
+        "wrong_root_artifact" => "wrong_root",
+        "first_pr_packet_ready" => "top_repairable_gap",
+        "first_pr_packet_mismatch" => "gap_mismatch",
+        _ => "unknown",
+    };
+    if json_string_field(first_pr, "packet_state").as_deref() != Some(expected_state) {
+        violations.push(format!(
+            "editor adoption assurance case {case} first-pr-status packet_state must be {expected_state}"
+        ));
+    }
+    for field in [
+        "runtime_adequacy_claim",
+        "mutation_proof_claim",
+        "policy_gate_claim",
+        "pr_ready_claim",
+    ] {
+        if json_bool_field(first_pr, field) != Some(false) {
+            violations.push(format!(
+                "editor adoption assurance case {case} first-pr-status must deny {field}"
+            ));
+        }
+    }
+}
+
+fn validate_editor_adoption_assurance_receipt(
+    case: &str,
+    receipt: &Value,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(receipt, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "editor adoption assurance case {case} receipt-status schema_version must be 0.1"
+        ));
+    }
+    let expected_fixture = format!("editor_adoption_assurance/{case}");
+    if json_string_field(receipt, "fixture").as_deref() != Some(expected_fixture.as_str()) {
+        violations.push(format!(
+            "editor adoption assurance case {case} receipt-status fixture must be {expected_fixture}"
+        ));
+    }
+    let expected_state = match case {
+        "setup_ok" | "first_pr_packet_ready" => "receipt_missing",
+        "server_missing"
+        | "server_version_mismatch"
+        | "no_workspace"
+        | "multi_root"
+        | "preview_adapter_unavailable" => "not_projected",
+        "wrong_root_artifact" => "receipt_wrong_root",
+        "stale_receipt" => "receipt_stale",
+        "first_pr_packet_mismatch" => "receipt_gap_mismatch",
+        _ => "unknown",
+    };
+    if json_string_field(receipt, "receipt_state").as_deref() != Some(expected_state) {
+        violations.push(format!(
+            "editor adoption assurance case {case} receipt-status receipt_state must be {expected_state}"
+        ));
+    }
+    for field in [
+        "runtime_adequacy_claim",
+        "mutation_proof_claim",
+        "gate_eligibility_claim",
+        "merge_readiness_claim",
+    ] {
+        if json_bool_field(receipt, field) != Some(false) {
+            violations.push(format!(
+                "editor adoption assurance case {case} receipt-status must deny {field}"
+            ));
+        }
+    }
+}
+
+fn validate_editor_adoption_assurance_diagnostics(
+    case: &str,
+    diagnostics: &Value,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(diagnostics, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "editor adoption assurance case {case} lsp-diagnostics schema_version must be 0.1"
+        ));
+    }
+    let items = diagnostics
+        .get("diagnostics")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    if case == "first_pr_packet_ready" && items.is_empty() {
+        violations.push(
+            "editor adoption assurance first_pr_packet_ready must include a diagnostic identity"
+                .to_string(),
+        );
+    }
+    if editor_adoption_assurance_case_fails_closed(case) && !items.is_empty() {
+        violations.push(format!(
+            "editor adoption assurance case {case} must not project diagnostics from unsafe state"
+        ));
+    }
+}
+
+fn editor_adoption_assurance_case_fails_closed(case: &str) -> bool {
+    matches!(
+        case,
+        "server_missing"
+            | "server_version_mismatch"
+            | "no_workspace"
+            | "multi_root"
+            | "wrong_root_artifact"
+            | "stale_receipt"
+            | "first_pr_packet_mismatch"
+            | "preview_adapter_unavailable"
+    )
 }
 
 fn validate_gap_decision_ledger_fixture_corpus(violations: &mut Vec<String>) -> Result<(), String> {
@@ -20946,6 +21314,25 @@ fn lsp_cockpit_fixture_dirs() -> Result<Vec<(String, PathBuf)>, String> {
                 .and_then(|value| value.to_str())
                 .ok_or_else(|| format!("invalid fixture path {}", path.display()))?;
             fixtures.push((format!("editor_first_pr_bridge/{name}"), path));
+        }
+    }
+    let editor_adoption_assurance = Path::new("fixtures/editor_adoption_assurance");
+    if editor_adoption_assurance.exists() {
+        for entry in fs::read_dir(editor_adoption_assurance)
+            .map_err(|err| format!("failed to read fixtures/editor_adoption_assurance: {err}"))?
+        {
+            let entry = entry.map_err(|err| {
+                format!("failed to read fixtures/editor_adoption_assurance: {err}")
+            })?;
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let name = path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .ok_or_else(|| format!("invalid fixture path {}", path.display()))?;
+            fixtures.push((format!("editor_adoption_assurance/{name}"), path));
         }
     }
     fixtures.sort_by(|left, right| left.0.cmp(&right.0));
@@ -38843,6 +39230,313 @@ mod tests {
             }));
             Ok(())
         })
+    }
+
+    #[test]
+    fn editor_adoption_assurance_fixture_corpus_validator_accepts_complete_matrix()
+    -> Result<(), String> {
+        with_temp_cwd("editor-adoption-assurance-fixtures", |root| {
+            write_editor_adoption_assurance_corpus(root);
+
+            let mut violations = Vec::new();
+            super::validate_editor_adoption_assurance_fixture_corpus(&mut violations)?;
+            assert_eq!(violations, Vec::<String>::new());
+
+            let fixture_dirs = super::lsp_cockpit_fixture_dirs()?;
+            let fixture_names = fixture_dirs
+                .iter()
+                .map(|(fixture, _)| fixture.as_str())
+                .collect::<BTreeSet<_>>();
+            assert!(fixture_names.contains("editor_adoption_assurance/first_pr_packet_ready"));
+            assert!(fixture_names.contains("editor_adoption_assurance/server_version_mismatch"));
+
+            let (ready_name, ready_path) = fixture_dirs
+                .iter()
+                .find(|(fixture, _)| {
+                    fixture.as_str() == "editor_adoption_assurance/first_pr_packet_ready"
+                })
+                .ok_or_else(|| "first-pr ready fixture must exist".to_string())?;
+            let ready =
+                super::lsp_cockpit_fixture_report(ready_name, ready_path).and_then(|report| {
+                    report.ok_or_else(|| "first-pr ready report must exist".to_string())
+                })?;
+            assert_eq!(ready.diagnostic_count, 1);
+            assert!(
+                ready
+                    .action_commands
+                    .contains(&"ripr.copyFirstPrRepairPacket".to_string())
+            );
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn editor_adoption_assurance_fixture_corpus_validator_reports_unsafe_states()
+    -> Result<(), String> {
+        with_temp_cwd("editor-adoption-assurance-violations", |root| {
+            let mut violations = Vec::new();
+            super::validate_editor_adoption_assurance_fixture_corpus(&mut violations)?;
+            assert!(violations.iter().any(|violation| {
+                violation.contains("editor adoption assurance fixture corpus is missing")
+            }));
+
+            write_editor_adoption_assurance_corpus(root);
+            write_editor_adoption_status(root, "server_missing", "server_missing", "active");
+            write_editor_adoption_actions(
+                root,
+                "first_pr_packet_mismatch",
+                &[
+                    "First PR: open packet",
+                    "Refresh Analysis - Saved Workspace Check",
+                ],
+            );
+            write_editor_adoption_actions(
+                root,
+                "first_pr_packet_ready",
+                &[
+                    "First PR: open packet",
+                    "Refresh Analysis - Saved Workspace Check",
+                ],
+            );
+            write_editor_adoption_first_pr(root, "first_pr_packet_ready", "missing");
+            write_editor_adoption_receipt(root, "stale_receipt", "receipt_missing", true, true);
+
+            let mut violations = Vec::new();
+            super::validate_editor_adoption_assurance_fixture_corpus(&mut violations)?;
+            assert!(violations.iter().any(|violation| {
+                violation.contains("editor adoption assurance case server_missing must fail closed")
+            }));
+            assert!(violations.iter().any(|violation| {
+                violation.contains(
+                    "editor adoption assurance case first_pr_packet_mismatch must suppress repair/proof actions",
+                )
+            }));
+            assert!(violations.iter().any(|violation| {
+                violation.contains(
+                    "editor adoption assurance case first_pr_packet_ready must include ripr.copyFirstPrRepairPacket",
+                )
+            }));
+            assert!(violations.iter().any(|violation| {
+                violation.contains(
+                    "editor adoption assurance case first_pr_packet_ready first-pr-status packet_state must be top_repairable_gap",
+                )
+            }));
+            assert!(violations.iter().any(|violation| {
+                violation.contains(
+                    "editor adoption assurance case stale_receipt receipt-status receipt_state must be receipt_stale",
+                )
+            }));
+            assert!(violations.iter().any(|violation| {
+                violation.contains(
+                    "editor adoption assurance case stale_receipt receipt-status must deny runtime_adequacy_claim",
+                )
+            }));
+            Ok(())
+        })
+    }
+
+    fn write_editor_adoption_assurance_corpus(root: &Path) {
+        let corpus = root.join("fixtures/editor_adoption_assurance");
+        write(
+            &corpus.join("SPEC.md"),
+            "# Fixture Corpus: editor_adoption_assurance\n\nSpec: RIPR-SPEC-0054\n\n## Given\n\nSetup artifacts exist.\n\n## When\n\nThe adoption assurance contract is checked.\n\n## Then\n\nVisible states are pinned.\n\n## Must Not\n\n- Claim source edits.\n",
+        );
+        for case in super::EDITOR_ADOPTION_ASSURANCE_CASES {
+            write_editor_adoption_status(
+                root,
+                case,
+                editor_adoption_status(case),
+                editor_adoption_projection(case),
+            );
+            write_editor_adoption_actions(root, case, &editor_adoption_actions(case));
+            write_editor_adoption_first_pr(root, case, editor_adoption_first_pr_state(case));
+            write_editor_adoption_receipt(
+                root,
+                case,
+                editor_adoption_receipt_state(case),
+                false,
+                false,
+            );
+            write_editor_adoption_diagnostics(root, case, *case == "first_pr_packet_ready");
+            write(
+                &root.join(format!(
+                    "fixtures/editor_adoption_assurance/{case}/expected/setup-diagnosis.md"
+                )),
+                "# RIPR setup diagnosis\n\nCompatibility: compatible.\n\nWorkspace: selected.\n\nFirst PR packet: projected.\n\nReceipt: projected.\n\nNext safe action: refresh or inspect.\n\nLimits: no source edits; not a gate decision; not runtime proof.\n",
+            );
+        }
+    }
+
+    fn editor_adoption_status(case: &str) -> &'static str {
+        match case {
+            "setup_ok" => "setup_ok",
+            "server_missing" => "server_missing",
+            "server_version_mismatch" => "server_version_mismatch",
+            "no_workspace" => "no_workspace",
+            "multi_root" => "multi_root_ambiguous",
+            "wrong_root_artifact" => "wrong_root_artifact",
+            "stale_receipt" => "receipt_stale",
+            "first_pr_packet_ready" => "first_pr_packet_ready",
+            "first_pr_packet_mismatch" => "first_pr_packet_mismatch",
+            "preview_adapter_unavailable" => "preview_adapter_unavailable",
+            _ => "unknown",
+        }
+    }
+
+    fn editor_adoption_projection(case: &str) -> &'static str {
+        if super::editor_adoption_assurance_case_fails_closed(case) {
+            "fail_closed"
+        } else {
+            "active"
+        }
+    }
+
+    fn editor_adoption_actions(case: &str) -> Vec<&'static str> {
+        if case == "first_pr_packet_ready" {
+            vec![
+                "First PR: open packet",
+                "First PR: copy repair packet",
+                "First PR: copy verify command",
+                "First PR: copy receipt command",
+                "Refresh Analysis - Saved Workspace Check",
+            ]
+        } else {
+            vec!["Refresh Analysis - Saved Workspace Check"]
+        }
+    }
+
+    fn editor_adoption_first_pr_state(case: &str) -> &'static str {
+        match case {
+            "setup_ok" => "missing",
+            "wrong_root_artifact" => "wrong_root",
+            "first_pr_packet_ready" => "top_repairable_gap",
+            "first_pr_packet_mismatch" => "gap_mismatch",
+            _ => "not_projected",
+        }
+    }
+
+    fn editor_adoption_receipt_state(case: &str) -> &'static str {
+        match case {
+            "setup_ok" | "first_pr_packet_ready" => "receipt_missing",
+            "wrong_root_artifact" => "receipt_wrong_root",
+            "stale_receipt" => "receipt_stale",
+            "first_pr_packet_mismatch" => "receipt_gap_mismatch",
+            _ => "not_projected",
+        }
+    }
+
+    fn write_editor_adoption_status(root: &Path, case: &str, status: &str, projection: &str) {
+        write(
+            &root.join(format!(
+                "fixtures/editor_adoption_assurance/{case}/expected/vscode-status.json"
+            )),
+            &serde_json::json!({
+                "schema_version": "0.1",
+                "fixture": format!("editor_adoption_assurance/{case}"),
+                "status": status,
+                "projection": projection,
+                "next_safe_action": "refresh or inspect"
+            })
+            .to_string(),
+        );
+    }
+
+    fn write_editor_adoption_actions(root: &Path, case: &str, titles: &[&str]) {
+        let actions = titles
+            .iter()
+            .map(|title| {
+                serde_json::json!({
+                    "title": title,
+                    "command": match *title {
+                        "First PR: open packet" => "ripr.openFirstPrPacket",
+                        "First PR: copy repair packet" => "ripr.copyFirstPrRepairPacket",
+                        "First PR: copy verify command" => "ripr.copyFirstPrVerifyCommand",
+                        "First PR: copy receipt command" => "ripr.copyFirstPrReceiptCommand",
+                        _ => "ripr.refresh",
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        write(
+            &root.join(format!(
+                "fixtures/editor_adoption_assurance/{case}/expected/lsp-code-actions.json"
+            )),
+            &serde_json::json!({
+                "schema_version": "0.1",
+                "fixture": format!("editor_adoption_assurance/{case}"),
+                "actions": actions
+            })
+            .to_string(),
+        );
+    }
+
+    fn write_editor_adoption_first_pr(root: &Path, case: &str, packet_state: &str) {
+        write(
+            &root.join(format!(
+                "fixtures/editor_adoption_assurance/{case}/expected/first-pr-status.json"
+            )),
+            &serde_json::json!({
+                "schema_version": "0.1",
+                "fixture": format!("editor_adoption_assurance/{case}"),
+                "packet_state": packet_state,
+                "runtime_adequacy_claim": false,
+                "mutation_proof_claim": false,
+                "policy_gate_claim": false,
+                "pr_ready_claim": false
+            })
+            .to_string(),
+        );
+    }
+
+    fn write_editor_adoption_receipt(
+        root: &Path,
+        case: &str,
+        receipt_state: &str,
+        runtime_adequacy_claim: bool,
+        gate_eligibility_claim: bool,
+    ) {
+        write(
+            &root.join(format!(
+                "fixtures/editor_adoption_assurance/{case}/expected/receipt-status.json"
+            )),
+            &serde_json::json!({
+                "schema_version": "0.1",
+                "fixture": format!("editor_adoption_assurance/{case}"),
+                "receipt_state": receipt_state,
+                "runtime_adequacy_claim": runtime_adequacy_claim,
+                "mutation_proof_claim": false,
+                "gate_eligibility_claim": gate_eligibility_claim,
+                "merge_readiness_claim": false
+            })
+            .to_string(),
+        );
+    }
+
+    fn write_editor_adoption_diagnostics(root: &Path, case: &str, include_diagnostic: bool) {
+        let diagnostics = if include_diagnostic {
+            vec![serde_json::json!({
+                "source": "ripr",
+                "message": "gap",
+                "data": {
+                    "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+                    "language": "rust",
+                    "language_status": "stable"
+                }
+            })]
+        } else {
+            Vec::new()
+        };
+        write(
+            &root.join(format!(
+                "fixtures/editor_adoption_assurance/{case}/expected/lsp-diagnostics.json"
+            )),
+            &serde_json::json!({
+                "schema_version": "0.1",
+                "fixture": format!("editor_adoption_assurance/{case}"),
+                "diagnostics": diagnostics
+            })
+            .to_string(),
+        );
     }
 
     fn write_editor_first_run_usability_corpus(root: &Path) {

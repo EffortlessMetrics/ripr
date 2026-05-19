@@ -1,0 +1,10 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_adoption_assurance/multi_root",
+  "receipt_state": "not_projected",
+  "runtime_adequacy_claim": false,
+  "mutation_proof_claim": false,
+  "gate_eligibility_claim": false,
+  "merge_readiness_claim": false,
+  "next_safe_action": "Select one workspace root before trusting receipt state."
+}

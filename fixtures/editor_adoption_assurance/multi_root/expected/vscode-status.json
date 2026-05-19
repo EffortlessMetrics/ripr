@@ -1,0 +1,32 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_adoption_assurance/multi_root",
+  "status": "multi_root_ambiguous",
+  "projection": "fail_closed",
+  "workspace": {
+    "state": "ambiguous_multi_root",
+    "roots": [
+      "fixtures/editor_adoption_assurance/multi_root/workspace-a",
+      "fixtures/editor_adoption_assurance/multi_root/workspace-b"
+    ]
+  },
+  "server": {
+    "state": "compatible",
+    "path": "ripr",
+    "version": "ripr 0.6.0",
+    "expected_version": "compatible",
+    "protocol_features": ["diagnose_setup", "receipt_projection", "first_pr_packet_projection"],
+    "supported_artifact_schemas": ["first-pr.start-here.v1", "agent-receipt.v1"]
+  },
+  "languages": {
+    "enabled": ["rust"],
+    "available": ["rust"]
+  },
+  "first_pr_packet": {
+    "state": "not_projected"
+  },
+  "receipt": {
+    "state": "not_projected"
+  },
+  "next_safe_action": "Select one workspace root before copying root-scoped repair actions."
+}
