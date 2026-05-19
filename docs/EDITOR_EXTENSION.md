@@ -83,9 +83,11 @@ The extension owns normal first-run server provisioning. A separate
 `cargo install ripr` remains a fallback for offline, pinned, or controlled
 environments.
 
-For a first install-to-receipt walkthrough, see
+For the shortest install-to-first-pr walkthrough, see
+[Editor install to first PR](EDITOR_INSTALL_TO_FIRST_PR.md). For the local
+install-to-receipt loop, see
 [Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md). For
-the local handoff from receipt to `start-here` packet, see
+the handoff from receipt to `start-here` packet, see
 [Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md). For
 the local repair loop from diagnostic to gap state, bounded action, verify,
 receipt, and refresh, see

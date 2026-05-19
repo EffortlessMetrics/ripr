@@ -684,7 +684,7 @@ The issue burn-down is:
 | #1248 | `vscode: harden workspace-root and multi-root diagnosis` | Done on `main`; close from #1267, #1270, #1272, and #1274. |
 | #1249 | `fixtures(editor): add adoption-assurance fixture corpus` | Done; close from `fixtures/editor_adoption_assurance`. |
 | #1250 | `test(vscode): smoke editor adoption assurance path` | Done; close from the dedicated packaged-extension adoption smoke. |
-| #1251 | `docs(editor): write install-to-first-pr editor guide` | Open; still needs the recovery-oriented install-to-first-pr guide. |
+| #1251 | `docs(editor): write install-to-first-pr editor guide` | Done; close from `docs/EDITOR_INSTALL_TO_FIRST_PR.md`. |
 | #1252 | `dogfood(lane3): record external-style editor adoption receipts` | Open; still needs external-style adoption receipts. |
 | #1253 | `campaign(lane3): close editor adoption assurance` | Open; blocked by #1249 through #1252. |
 
