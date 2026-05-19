@@ -2,6 +2,7 @@
 
 - [status/SUPPORT_TIERS.md](status/SUPPORT_TIERS.md) - buyer-readable support, preview, advisory, blocked, and proof boundaries
 - [FIRST_PR_WORKFLOW.md](FIRST_PR_WORKFLOW.md) - first successful Rust PR loop from one repairable gap to one receipt
+- [EDITOR_INSTALL_TO_FIRST_PR.md](EDITOR_INSTALL_TO_FIRST_PR.md) - VS Code install-to-first-pr path and recovery states
 - [demo/first-successful-pr.md](demo/first-successful-pr.md) - fixture-backed first successful PR demo from start-here packet to repair route
 - [EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md) - VS Code setup-to-receipt path for one Rust repair loop
 - [EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md) - VS Code handoff from receipt to first-pr start-here packet

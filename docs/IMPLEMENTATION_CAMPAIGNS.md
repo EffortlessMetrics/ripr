@@ -3808,15 +3808,16 @@ Work items:
 | `test/lsp-editor-adoption-baseline` | done | Pinned the closed Lane 3 contract before compatibility/root behavior changes. |
 | `vscode/extension-server-compatibility-diagnosis` | done | #1262 landed the #1247 implementation; close the still-open issue from that merged work. |
 | `vscode/workspace-root-multi-root-diagnosis` | done | #1267, #1270, #1272, and #1274 landed the #1248 implementation; close the still-open issue from those merged changes. |
-| `fixtures/editor-adoption-assurance` | planned | Add setup, mismatch, first-pr, receipt, and preview-unavailable fixtures. |
-| `test/vscode-editor-adoption-assurance` | planned | Smoke the packaged extension path for adoption assurance. |
-| `docs/editor-install-to-first-pr` | planned | Document install/open through first-pr packet inspection and recovery states. |
+| `fixtures/editor-adoption-assurance` | done | Added setup, mismatch, first-pr, receipt, and preview-unavailable fixtures. |
+| `test/vscode-editor-adoption-assurance` | done | Smoked the packaged extension path for adoption assurance. |
+| `docs/editor-install-to-first-pr` | done | Documented install/open through first-pr packet inspection and recovery states. |
 | `dogfood/lane3-editor-adoption-receipts` | planned | Record external-style adoption receipts. |
 | `campaign/lane3-editor-adoption-assurance-closeout` | planned | Close only after proof and issue burn-down. |
 
-Issue reconciliation on 2026-05-18 found #1247 and #1248 satisfied on `main`,
-while #1249 through #1253 remain open with material work still planned. Do not
-restart the compatibility or root-diagnosis slices unless a new regression
+Issue reconciliation on 2026-05-18 found #1247 and #1248 satisfied on `main`.
+#1249, #1250, and #1251 are now satisfied by the fixture corpus, VS Code smoke,
+and install-to-first-pr guide. #1252 and #1253 remain open. Do not restart the
+compatibility or root-diagnosis slices unless a new regression
 appears.
 
 Commands:
