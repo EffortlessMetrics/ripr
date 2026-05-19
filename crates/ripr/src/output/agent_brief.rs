@@ -95,8 +95,7 @@ fn top_seam_json(
     let recommended = agent_seam_packets::recommended_test_for(entry);
     let nearest = agent_seam_packets::nearest_strong_test_to_imitate(evidence);
     let candidate_values = agent_seam_packets::candidate_values_for(entry, &missing);
-    let assertion_shape =
-        agent_seam_packets::assertion_shape_for(seam.kind(), seam.owner(), evidence);
+    let assertion_shape = agent_seam_packets::assertion_shape_for_entry(entry);
 
     json!({
         "seam_id": seam.id().as_str(),
@@ -308,7 +307,7 @@ mod tests {
         );
         assert_eq!(
             value["top_seams"][0]["candidate_values"][0]["value"],
-            "discount_threshold (equality boundary)"
+            "input that hits the boundary: amount >= discount_threshold"
         );
         assert!(
             value["top_seams"][0]["verification"]["after_snapshot_command"]

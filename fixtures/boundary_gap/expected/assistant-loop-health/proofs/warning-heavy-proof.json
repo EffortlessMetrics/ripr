@@ -21,7 +21,7 @@
     "path": "src/lib.rs",
     "line": 2,
     "grip_class": "weakly_gripped",
-    "missing_discriminator": "discount_threshold (equality boundary)"
+    "missing_discriminator": "input that hits the boundary: amount >= discount_threshold"
   },
   "recommendation": {
     "source": "pr_guidance",

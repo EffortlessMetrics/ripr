@@ -25,7 +25,7 @@
     "path": "src/lib.rs",
     "line": 2,
     "classification": "weakly_exposed",
-    "missing_discriminator": "discount_threshold (equality boundary)"
+    "missing_discriminator": "input that hits the boundary: amount >= discount_threshold"
   },
   "title": "Refresh RIPR evidence before acting",
   "why": "The best available seam evidence is stale.",

@@ -23,7 +23,7 @@
         "line": 2
       },
       "evidence": {
-        "missing_discriminator": "discount_threshold (equality boundary)"
+        "missing_discriminator": "input that hits the boundary: amount >= discount_threshold"
       }
     }
   ]

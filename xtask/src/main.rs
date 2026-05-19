@@ -14927,6 +14927,7 @@ struct Lane1EvidenceAuditRepoExposureGeneration {
 enum Lane1EvidenceAuditRepoExposureOutcome {
     Complete(Lane1EvidenceAuditRepoExposureGeneration),
     TimedOut(Lane1EvidenceAuditRepoExposureGeneration),
+    FailedIncomplete(Lane1EvidenceAuditRepoExposureGeneration),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -15119,6 +15120,9 @@ pub(crate) fn lane1_evidence_audit_report_impl() -> Result<(), String> {
         Lane1EvidenceAuditRepoExposureOutcome::TimedOut(repo_exposure_generation) => {
             lane1_evidence_audit_limited_report(".", repo_exposure_generation)
         }
+        Lane1EvidenceAuditRepoExposureOutcome::FailedIncomplete(repo_exposure_generation) => {
+            lane1_evidence_audit_limited_report(".", repo_exposure_generation)
+        }
     };
     write_report(
         "lane1-evidence-audit.json",
@@ -15235,31 +15239,28 @@ where
             }
             Ok(false) => {
                 let _ = fs::remove_file(path);
-                Err(format!(
-                    "{} {} failed with {status}\nstderr:\n{}",
-                    binary.display(),
-                    args.join(" "),
-                    output.stderr.trim()
+                Ok(Lane1EvidenceAuditRepoExposureOutcome::FailedIncomplete(
+                    diagnostics,
                 ))
             }
             Err(inspect_err) => {
+                eprintln!(
+                    "warning: failed to inspect captured repo exposure {} after {status}: {inspect_err}",
+                    path.display()
+                );
                 let _ = fs::remove_file(path);
-                Err(format!(
-                    "{} {} failed with {status}\nfailed to inspect captured repo exposure {}: {inspect_err}\nstderr:\n{}",
-                    binary.display(),
-                    args.join(" "),
-                    path.display(),
-                    output.stderr.trim()
+                Ok(Lane1EvidenceAuditRepoExposureOutcome::FailedIncomplete(
+                    diagnostics,
                 ))
             }
         },
         None => {
             let _ = fs::remove_file(path);
-            Err(format!(
-                "{} {} did not report an exit status\nstderr:\n{}",
-                binary.display(),
-                args.join(" "),
-                output.stderr.trim()
+            Ok(Lane1EvidenceAuditRepoExposureOutcome::FailedIncomplete(
+                Lane1EvidenceAuditRepoExposureGeneration {
+                    status: "missing_exit_status".to_string(),
+                    ..diagnostics
+                },
             ))
         }
     }
@@ -15270,28 +15271,54 @@ fn lane1_evidence_audit_limited_report(
     generation: Lane1EvidenceAuditRepoExposureGeneration,
 ) -> Lane1EvidenceAuditReport {
     let mut report = Lane1EvidenceAuditBuilder::default().finish(root.to_string(), None);
+    let limitation = lane1_limited_repo_exposure_limitation(&generation);
     report.repo_exposure_generation = Some(generation.clone());
-    report.run_limitations.push(Lane1EvidenceAuditRunLimitation {
-        category: "lane1_repo_exposure_timeout".to_string(),
-        phase: "repo_exposure_generation".to_string(),
-        input: "repo-exposure-json".to_string(),
-        summary: "Lane 1 repo-exposure generation exceeded its bounded runtime; partial repo-exposure JSON was discarded and no user test debt is claimed from this limited artifact.".to_string(),
-        repair_route: "inspect repo-exposure latency trace, increase RIPR_LANE1_EVIDENCE_AUDIT_TIMEOUT_MS for slower machines, or add fixture-backed analyzer narrowing for the slow phase".to_string(),
-        timeout_ms: Some(generation.timeout_ms),
-        duration_ms: Some(generation.duration_ms),
-        command: Some(generation.command.clone()),
-        exit_code: generation.exit_code,
-        stdout_bytes: Some(generation.stdout_bytes),
-        stderr_bytes: Some(generation.stderr_bytes),
-        latency_trace_tail: generation.latency_trace_tail,
-    });
+    report
+        .run_limitations
+        .push(Lane1EvidenceAuditRunLimitation {
+            category: limitation.category.to_string(),
+            phase: "repo_exposure_generation".to_string(),
+            input: "repo-exposure-json".to_string(),
+            summary: limitation.summary.to_string(),
+            repair_route: limitation.repair_route.to_string(),
+            timeout_ms: Some(generation.timeout_ms),
+            duration_ms: Some(generation.duration_ms),
+            command: Some(generation.command.clone()),
+            exit_code: generation.exit_code,
+            stdout_bytes: Some(generation.stdout_bytes),
+            stderr_bytes: Some(generation.stderr_bytes),
+            latency_trace_tail: generation.latency_trace_tail,
+        });
     report
         .static_limitation_category_counts
-        .insert("lane1_repo_exposure_timeout".to_string(), 1);
+        .insert(limitation.category.to_string(), 1);
     report
         .static_limitation_repair_route_counts
         .insert("report/lane1-audit-bounded-diagnostics".to_string(), 1);
     report
+}
+
+struct Lane1LimitedRepoExposureLimitation {
+    category: &'static str,
+    summary: &'static str,
+    repair_route: &'static str,
+}
+
+fn lane1_limited_repo_exposure_limitation(
+    generation: &Lane1EvidenceAuditRepoExposureGeneration,
+) -> Lane1LimitedRepoExposureLimitation {
+    if generation.status == "timeout" {
+        return Lane1LimitedRepoExposureLimitation {
+            category: "lane1_repo_exposure_timeout",
+            summary: "Lane 1 repo-exposure generation exceeded its bounded runtime; partial repo-exposure JSON was discarded and no user test debt is claimed from this limited artifact.",
+            repair_route: "inspect repo-exposure latency trace, increase RIPR_LANE1_EVIDENCE_AUDIT_TIMEOUT_MS for slower machines, or add fixture-backed analyzer narrowing for the slow phase",
+        };
+    }
+    Lane1LimitedRepoExposureLimitation {
+        category: "lane1_repo_exposure_incomplete",
+        summary: "Lane 1 repo-exposure generation ended before producing complete repo-exposure JSON; partial repo-exposure JSON was discarded and no user test debt is claimed from this limited artifact.",
+        repair_route: "inspect repo-exposure exit status, stderr, and latency trace; rerun lane1-evidence-audit; or add fixture-backed analyzer narrowing for the failing phase",
+    }
 }
 
 fn lane1_evidence_audit_repo_exposure_generation(
@@ -53870,10 +53897,11 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
-    fn lane1_evidence_audit_repo_exposure_generation_rejects_incomplete_nonzero_json() {
+    fn lane1_evidence_audit_repo_exposure_generation_limits_incomplete_nonzero_json()
+    -> Result<(), String> {
         let root = temp_dir("lane1-repo-exposure-nonzero-incomplete");
         let output_path = root.join("repo-exposure.json");
-        let err = write_lane1_evidence_audit_repo_exposure_with_runner(
+        let outcome = write_lane1_evidence_audit_repo_exposure_with_runner(
             &output_path,
             Path::new("ripr"),
             Duration::from_millis(50),
@@ -53888,22 +53916,30 @@ covered_by = ["cargo xtask check-file-policy"]
                     stdout_bytes: partial.len(),
                 })
             },
-        )
-        .expect_err("incomplete repo-exposure JSON should fail on nonzero status");
+        )?;
 
-        assert!(err.contains("failed with"), "{err}");
-        assert!(err.contains("repo exposure failed"), "{err}");
+        let Lane1EvidenceAuditRepoExposureOutcome::FailedIncomplete(diagnostics) = outcome else {
+            return Err(
+                "incomplete nonzero repo-exposure JSON should produce a bounded limitation"
+                    .to_string(),
+            );
+        };
+        assert_eq!(diagnostics.status, "fail");
+        assert_eq!(diagnostics.exit_code, failure_exit_status().code());
+        assert_eq!(diagnostics.stderr_bytes, "repo exposure failed".len());
         assert!(
             !output_path.exists(),
             "incomplete nonzero repo exposure should remove partial output"
         );
+        Ok(())
     }
 
     #[test]
-    fn lane1_evidence_audit_repo_exposure_generation_reports_missing_exit_status() {
+    fn lane1_evidence_audit_repo_exposure_generation_limits_missing_exit_status()
+    -> Result<(), String> {
         let root = temp_dir("lane1-repo-exposure-no-status");
         let output_path = root.join("repo-exposure.json");
-        let err = write_lane1_evidence_audit_repo_exposure_with_runner(
+        let outcome = write_lane1_evidence_audit_repo_exposure_with_runner(
             &output_path,
             Path::new("ripr"),
             Duration::from_millis(50),
@@ -53918,15 +53954,19 @@ covered_by = ["cargo xtask check-file-policy"]
                     stdout_bytes: stdout.len(),
                 })
             },
-        )
-        .expect_err("missing exit status should be reported");
+        )?;
 
-        assert!(err.contains("did not report an exit status"), "{err}");
-        assert!(err.contains("missing status stderr"), "{err}");
+        let Lane1EvidenceAuditRepoExposureOutcome::FailedIncomplete(diagnostics) = outcome else {
+            return Err("missing exit status should produce a bounded limitation".to_string());
+        };
+        assert_eq!(diagnostics.status, "missing_exit_status");
+        assert_eq!(diagnostics.exit_code, None);
+        assert_eq!(diagnostics.stderr_bytes, "missing status stderr".len());
         assert!(
             !output_path.exists(),
             "missing exit status should remove captured repo exposure"
         );
+        Ok(())
     }
 
     #[test]
@@ -53991,6 +54031,46 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("Run Limitations"));
         assert!(markdown.contains("lane1_repo_exposure_timeout"));
         assert!(markdown.contains("processed_500_of_38445"));
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_evidence_audit_limited_report_names_incomplete_limitation() -> Result<(), String> {
+        let generation = Lane1EvidenceAuditRepoExposureGeneration {
+            command: "ripr check --format repo-exposure-json".to_string(),
+            timeout_ms: 1200,
+            status: "fail".to_string(),
+            duration_ms: 540,
+            exit_code: Some(1),
+            stdout_bytes: 0,
+            stderr_bytes: 91,
+            latency_trace_events_total: 1,
+            latency_trace_tail: vec![RepoExposureLatencyTrace {
+                phase: "evidence_for_seams_progress".to_string(),
+                status: "processed_28500_of_38521".to_string(),
+                duration_ms: 537,
+            }],
+        };
+        let report = lane1_evidence_audit_limited_report(".", generation);
+        let json = lane1_evidence_audit_json(&report)?;
+        let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+
+        assert_eq!(
+            value["run_limitations"][0]["category"],
+            "lane1_repo_exposure_incomplete"
+        );
+        assert_eq!(
+            value["run_limitations"][0]["summary"],
+            "Lane 1 repo-exposure generation ended before producing complete repo-exposure JSON; partial repo-exposure JSON was discarded and no user test debt is claimed from this limited artifact."
+        );
+        assert_eq!(
+            value["static_limitations"]["by_category"]["lane1_repo_exposure_incomplete"],
+            1
+        );
+
+        let markdown = lane1_evidence_audit_markdown(&report);
+        assert!(markdown.contains("lane1_repo_exposure_incomplete"));
+        assert!(markdown.contains("processed_28500_of_38521"));
         Ok(())
     }
 

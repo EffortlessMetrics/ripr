@@ -15,7 +15,7 @@
     {
       "arguments": [
         {
-          "brief": "Target seam:\n- src/lib.rs:2\n- predicate_boundary\n- weakly_gripped\n- owner: src/lib.rs::discounted_total\n\nWhy it matters:\n- Related test evidence: below_threshold_has_no_discount uses strong exact_value oracle.\n- Static discriminator summary: Strongest oracle for seam kind `predicate_boundary` is `strong` (kind-match true)\n- Missing discriminator: discount_threshold (equality boundary) (observed values do not include the equality-boundary case for this predicate)\n- Missing discriminator: input that hits the boundary: amount >= discount_threshold (predicate uses an equality-bearing operator; tests should exercise the boundary case)\n\nAdd a targeted test:\n- Suggested file: tests/pricing.rs\n- Suggested name: discounted_total_boundary_discriminator\n- Candidate value: discount_threshold (equality boundary)\n- Assertion shape: assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)\n\nImitate:\n- below_threshold_has_no_discount (strong exact_value oracle with high relation)\n- far_above_threshold_discounts (strong exact_value oracle with high relation)\n\nAvoid:\n- adding another test with only already-observed values (candidate values should include the missing discriminator)\n",
+          "brief": "Target seam:\n- src/lib.rs:2\n- predicate_boundary\n- weakly_gripped\n- owner: src/lib.rs::discounted_total\n\nWhy it matters:\n- Related test evidence: below_threshold_has_no_discount uses strong exact_value oracle.\n- Static discriminator summary: Strongest oracle for seam kind `predicate_boundary` is `strong` (kind-match true)\n- Missing discriminator: input that hits the boundary: amount >= discount_threshold (predicate uses an equality-bearing operator; tests should exercise the boundary case)\n- Missing discriminator: discount_threshold (equality boundary) (observed values do not include the equality-boundary case for this predicate)\n\nAdd a targeted test:\n- Suggested file: tests/pricing.rs\n- Suggested name: discounted_total_boundary_discriminator\n- Candidate value: input that hits the boundary: amount >= discount_threshold\n- Assertion shape: assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)\n\nImitate:\n- below_threshold_has_no_discount (strong exact_value oracle with high relation)\n- far_above_threshold_discounts (strong exact_value oracle with high relation)\n\nAvoid:\n- adding another test with only already-observed values (candidate values should include the missing discriminator)\n",
           "seam_id": "67fc764ba37d77bd"
         }
       ],
@@ -205,7 +205,7 @@
     {
       "arguments": [
         {
-          "assertion": "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)",
+          "assertion": "assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)",
           "seam_id": "67fc764ba37d77bd"
         }
       ],

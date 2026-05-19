@@ -1248,7 +1248,7 @@ mod seam_hover_tests {
             "## Suggested test shape",
             "- file: `tests/pricing.rs`",
             "- name: `discounted_total_boundary_discriminator`",
-            "- candidate value: `discount_threshold (equality boundary)`",
+            "- candidate value: `input that hits the boundary: amount >= discount_threshold`",
             "- assertion shape: assert_eq!(discounted_total",
             "- assertion template: `assert_eq!(discounted_total",
         ] {

@@ -200,12 +200,17 @@ pub(crate) fn render_agent_gap_record_packet_json(
 /// any seam with a concrete assertion template can expose the editor
 /// action, while prose-only guidance remains hidden.
 pub(crate) fn suggested_assertion_for_classified_seam(entry: &ClassifiedSeam) -> Option<String> {
-    suggested_assertions_for(entry.seam.kind(), entry.seam.owner(), None, &entry.evidence)
-        .into_iter()
-        .find(|suggestion| {
-            let trimmed = suggestion.trim_start();
-            !trimmed.starts_with("//") && trimmed.contains("assert")
-        })
+    suggested_assertions_for(
+        entry.seam.kind(),
+        entry.seam.owner(),
+        Some(entry.seam.required_discriminator()),
+        &entry.evidence,
+    )
+    .into_iter()
+    .find(|suggestion| {
+        let trimmed = suggestion.trim_start();
+        !trimmed.starts_with("//") && trimmed.contains("assert")
+    })
 }
 
 /// Render a compact human/agent work order for the next targeted test.
@@ -822,7 +827,12 @@ fn push_packet_json(
     }
     out.push_str("],\n");
 
-    let suggested = suggested_assertions_for(seam.kind(), seam.owner(), None, evidence);
+    let suggested = suggested_assertions_for(
+        seam.kind(),
+        seam.owner(),
+        Some(seam.required_discriminator()),
+        evidence,
+    );
     out.push_str("      \"suggested_assertions\": [");
     for (idx, suggestion) in suggested.iter().enumerate() {
         out.push_str(&format!("\"{}\"", json_escape(suggestion)));

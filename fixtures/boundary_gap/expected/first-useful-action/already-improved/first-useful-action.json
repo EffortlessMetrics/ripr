@@ -25,7 +25,7 @@
     "path": "src/lib.rs",
     "line": 2,
     "classification": "weakly_exposed",
-    "missing_discriminator": "discount_threshold (equality boundary)"
+    "missing_discriminator": "input that hits the boundary: amount >= discount_threshold"
   },
   "title": "Static evidence already improved",
   "why": "The supplied receipt records improved or resolved static movement.",
@@ -37,7 +37,7 @@
     "file": "tests/pricing.rs",
     "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
     "suggested_test_name": "discounted_total_boundary_discriminator",
-    "suggested_assertion": "Assert the exact discounted_total output at amount == discount_threshold."
+    "suggested_assertion": "Add a focused boundary test that exercises amount >= discount_threshold and assert the exact discounted_total output."
   },
   "commands": {
     "context_packet": null,

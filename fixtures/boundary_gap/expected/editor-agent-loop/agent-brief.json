@@ -22,17 +22,17 @@
   "top_seams": [
     {
       "assertion_shape": {
-        "example": "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)",
+        "example": "assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)",
         "kind": "exact_return_value"
       },
       "candidate_values": [
         {
-          "reason": "observed values do not include the equality-boundary case for this predicate",
-          "value": "discount_threshold (equality boundary)"
-        },
-        {
           "reason": "predicate uses an equality-bearing operator; tests should exercise the boundary case",
           "value": "input that hits the boundary: amount >= discount_threshold"
+        },
+        {
+          "reason": "observed values do not include the equality-boundary case for this predicate",
+          "value": "discount_threshold (equality boundary)"
         }
       ],
       "evidence": {
@@ -49,12 +49,12 @@
       "line": 2,
       "missing_discriminators": [
         {
-          "reason": "observed values do not include the equality-boundary case for this predicate",
-          "value": "discount_threshold (equality boundary)"
-        },
-        {
           "reason": "predicate uses an equality-bearing operator; tests should exercise the boundary case",
           "value": "input that hits the boundary: amount >= discount_threshold"
+        },
+        {
+          "reason": "observed values do not include the equality-boundary case for this predicate",
+          "value": "discount_threshold (equality boundary)"
         }
       ],
       "nearest_strong_test_to_imitate": {

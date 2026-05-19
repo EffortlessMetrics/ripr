@@ -44,9 +44,9 @@
     "path": "src/lib.rs",
     "line": 2,
     "classification": "weakly_exposed",
-    "missing_discriminator": "discount_threshold (equality boundary)",
+    "missing_discriminator": "input that hits the boundary: amount >= discount_threshold",
     "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
-    "suggested_test": "Add a focused test where amount == discount_threshold and assert the exact discounted_total output.",
+    "suggested_test": "Add a focused boundary test that exercises amount >= discount_threshold and assert the exact discounted_total output.",
     "verify_command": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
     "agent_command": "ripr agent start --root fixtures/boundary_gap/input --seam-id 67fc764ba37d77bd --out target/ripr/workflow",
     "receipt": {
