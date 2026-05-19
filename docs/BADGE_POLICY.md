@@ -656,6 +656,16 @@ That renders the same repo badge artifact filenames with
 `projection_eligibility.ripr_zero_count` and `ripr_plus_count` targets.
 Without `--gap-ledger`, repo badge artifacts keep the seam-native basis.
 
+`cargo xtask badge-basis` writes
+`target/ripr/reports/badge-basis.{json,md}` as an audit-only report. It
+decomposes the committed `badges/*.json` endpoint values, the current
+repo badge basis, compact seam-native inventory counts, test-efficiency
+counts, and whether an explicit gap-decision-ledger projection was
+available. It does **not** update `badges/*.json`; use it before a
+badge semantics PR or generated endpoint refresh to see whether the
+public badge is still a seam-native inventory signal or a repair-item
+projection.
+
 ### `ripr` badge product contract
 
 The `ripr` badge product contract is a single sentence:
