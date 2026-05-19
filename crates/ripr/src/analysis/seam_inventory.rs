@@ -21,11 +21,14 @@ use super::rust_index::{
     PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE, PROBE_SHAPE_RETURN_VALUE,
     PROBE_SHAPE_SIDE_EFFECT, ProbeShapeFact, RustIndex,
 };
+#[cfg(test)]
+use super::seam_cache::RepoSeamCountCache;
 use super::seam_cache::{
-    CLASSIFIED_SEAM_CACHE_STORE_LIMIT, CacheLoad, RepoSeamCountCache, RepoSeamFactCache,
-    WorkspaceState,
+    CLASSIFIED_SEAM_CACHE_STORE_LIMIT, CacheLoad, RepoSeamFactCache, WorkspaceState,
 };
-use super::seam_classification::{self, ClassifiedSeam, SeamGripClassCounts};
+#[cfg(test)]
+use super::seam_classification::SeamGripClassCounts;
+use super::seam_classification::{self, ClassifiedSeam};
 use super::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
 use super::test_grip_evidence;
 use super::workspace;
@@ -237,6 +240,7 @@ pub(crate) fn inventory_classified_seams_uncached_with_config(
 /// Walk production Rust files at `root` and return compact seam grip
 /// class counts. Repo badges use this path because they need headline
 /// counts but not full per-seam evidence or related-test payloads.
+#[cfg(test)]
 pub(crate) fn inventory_seam_grip_class_counts_at_with_config(
     root: &Path,
     config: &RiprConfig,
@@ -254,6 +258,58 @@ pub(crate) fn inventory_seam_grip_class_counts_at_with_config(
     let counts = inventory_seam_grip_class_counts_from_state_with_config(&state, config)?;
     let _ = cache.store_counts(&key, &counts);
     Ok(counts)
+}
+
+/// Walk production Rust files at `root` and return compact classified seams.
+///
+/// Public badge projection needs canonical gap grouping and actionability, but
+/// not the full related-test/evidence payload carried by repo exposure. This
+/// mirrors the compact repo-badge count path while retaining the seam records
+/// needed to deduplicate canonical repair items.
+pub(crate) fn inventory_compact_classified_seams_at_with_config(
+    root: &Path,
+    config: &RiprConfig,
+) -> Result<Vec<ClassifiedSeam>, String> {
+    let total_started = Instant::now();
+    let cache = RepoSeamFactCache::at_compact_classified(root);
+    let state = collect_workspace_state(root, config)?;
+    let key = state.cache_key();
+    let cache_started = Instant::now();
+    match cache.load_classified_seams(&key) {
+        CacheLoad::Hit(cached) => {
+            trace_latency_phase("compact_cache_load", "hit", cache_started.elapsed());
+            trace_latency_phase("total", "compact_cache_hit", total_started.elapsed());
+            return Ok(cached);
+        }
+        CacheLoad::Miss => {
+            trace_latency_phase("compact_cache_load", "miss", cache_started.elapsed());
+        }
+        CacheLoad::CorruptIgnored { reason } => {
+            trace_latency_phase(
+                "compact_cache_load",
+                "corrupt_ignored",
+                cache_started.elapsed(),
+            );
+            eprintln!("ripr: compact repo seam cache entry ignored ({reason})");
+        }
+    }
+
+    let classified = inventory_compact_classified_seams_from_state_with_config(&state, config)?;
+    let store_started = Instant::now();
+    let store_status = match cache.store_compact_classified_seams(&key, &classified) {
+        Ok(()) => "ok".to_string(),
+        Err(reason) => {
+            eprintln!("ripr: compact repo seam cache store ignored ({reason})");
+            cache_store_status_label(&reason)
+        }
+    };
+    trace_latency_phase(
+        "compact_cache_store",
+        &store_status,
+        store_started.elapsed(),
+    );
+    trace_latency_phase("total", "compact_computed", total_started.elapsed());
+    Ok(classified)
 }
 
 #[cfg(test)]
@@ -279,6 +335,44 @@ fn inventory_seam_grip_class_counts_uncached_with_config(
         counts.increment(class);
     }
     Ok(counts)
+}
+
+fn inventory_compact_classified_seams_from_state_with_config(
+    state: &OwnedWorkspaceState,
+    config: &RiprConfig,
+) -> Result<Vec<ClassifiedSeam>, String> {
+    let production_files = production_files_from_state(state);
+    let build_started = Instant::now();
+    trace_latency_phase(
+        "file_fact_cache",
+        &format!(
+            "start_files_{}_production_{}",
+            state.files.len(),
+            production_files.len()
+        ),
+        Duration::ZERO,
+    );
+    let mut cached =
+        rust_index::build_index_from_loaded_files_with_cache(&state.workspace_root, &state.files)?;
+    trace_latency_phase(
+        "file_fact_cache",
+        &cached.file_fact_cache.status_label(),
+        build_started.elapsed(),
+    );
+    rust_index::apply_oracle_policy(&mut cached.index, config.oracles());
+    let seams = inventory_seams_from_index(&production_files, &cached.index);
+    let context = test_grip_evidence::CompactGripContext::new(&cached.index);
+    let mut classified = Vec::with_capacity(seams.len());
+    for seam in seams {
+        let evidence = test_grip_evidence::compact_evidence_for_seam(&seam, &context);
+        let class = seam_classification::classify_seam(&seam, &evidence);
+        classified.push(ClassifiedSeam {
+            evidence,
+            seam,
+            class,
+        });
+    }
+    Ok(classified)
 }
 
 fn inventory_classified_seams_from_state_with_config(
@@ -323,6 +417,7 @@ fn inventory_classified_seams_from_state_with_config(
     Ok(classified)
 }
 
+#[cfg(test)]
 fn inventory_seam_grip_class_counts_from_state_with_config(
     state: &OwnedWorkspaceState,
     config: &RiprConfig,
@@ -917,6 +1012,14 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
             .join("0.1")
     }
 
+    fn compact_cache_dir_under(root: &Path) -> PathBuf {
+        root.join("target")
+            .join("ripr")
+            .join("cache")
+            .join("repo-compact-classified-seams")
+            .join(super::super::seam_cache::COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION)
+    }
+
     fn list_cache_entries(root: &Path) -> Result<Vec<PathBuf>, String> {
         let dir = cache_dir_under(root);
         list_entries(&dir)
@@ -924,6 +1027,11 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
 
     fn list_count_cache_entries(root: &Path) -> Result<Vec<PathBuf>, String> {
         let dir = count_cache_dir_under(root);
+        list_entries(&dir)
+    }
+
+    fn list_compact_cache_entries(root: &Path) -> Result<Vec<PathBuf>, String> {
+        let dir = compact_cache_dir_under(root);
         list_entries(&dir)
     }
 
@@ -1253,6 +1361,104 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
             return Err(
                 "count path should return real seams even when count cache write fails".into(),
             );
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn given_cached_compact_classified_seams_when_badge_projection_runs_then_cached_seams_are_returned()
+    -> Result<(), String> {
+        let root = make_tempdir("compact-classified-cache")?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold }\n",
+        )?;
+
+        let cold =
+            inventory_compact_classified_seams_at_with_config(&root, &RiprConfig::default())?;
+        if cold.is_empty() {
+            return Err("cold compact path should classify at least one seam".into());
+        }
+
+        let entries = list_compact_cache_entries(&root)?;
+        if entries.len() != 1 {
+            return Err(format!(
+                "expected exactly 1 compact classified cache entry, got {}",
+                entries.len()
+            ));
+        }
+        let cache_file = &entries[0];
+        let bytes = std::fs::read(cache_file)
+            .map_err(|err| format!("read {}: {err}", cache_file.display()))?;
+        let mut envelope: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|err| format!("parse compact cache: {err}"))?;
+        envelope["classified_seams"] = serde_json::Value::Array(Vec::new());
+        let rewritten =
+            serde_json::to_vec(&envelope).map_err(|err| format!("encode compact cache: {err}"))?;
+        std::fs::write(cache_file, rewritten)
+            .map_err(|err| format!("rewrite {}: {err}", cache_file.display()))?;
+
+        let warm =
+            inventory_compact_classified_seams_at_with_config(&root, &RiprConfig::default())?;
+        if !warm.is_empty() {
+            return Err(format!(
+                "warm compact path should return cached (empty) seams, got {} seams",
+                warm.len()
+            ));
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn given_corrupt_compact_classified_cache_entry_when_badge_projection_runs_then_uncached_path_computes_without_failure()
+    -> Result<(), String> {
+        let root = make_tempdir("compact-classified-cache-corrupt")?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold }\n",
+        )?;
+
+        let state = collect_workspace_state(&root, &RiprConfig::default())?;
+        let key = state.cache_key();
+        let dir = compact_cache_dir_under(&root);
+        std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
+        let entry = dir.join(key.filename());
+        std::fs::write(&entry, b"{not valid json")
+            .map_err(|err| format!("write corrupt compact entry: {err}"))?;
+
+        let result =
+            inventory_compact_classified_seams_at_with_config(&root, &RiprConfig::default())?;
+        if result.is_empty() {
+            return Err("compact path should compute real seams when cache is corrupt".into());
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn given_compact_classified_cache_store_fails_when_badge_projection_runs_then_analysis_result_is_still_returned()
+    -> Result<(), String> {
+        let root = make_tempdir("compact-classified-cache-storefail")?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold }\n",
+        )?;
+
+        let state = collect_workspace_state(&root, &RiprConfig::default())?;
+        let key = state.cache_key();
+        let dir = compact_cache_dir_under(&root);
+        std::fs::create_dir_all(dir.join(key.filename()))
+            .map_err(|err| format!("mkdir compact conflict path: {err}"))?;
+
+        let result =
+            inventory_compact_classified_seams_at_with_config(&root, &RiprConfig::default())?;
+        if result.is_empty() {
+            return Err("compact path should return real seams even when cache write fails".into());
         }
 
         let _ = std::fs::remove_dir_all(&root);

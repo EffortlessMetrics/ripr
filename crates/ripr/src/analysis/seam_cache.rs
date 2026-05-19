@@ -33,7 +33,9 @@
 //! v0.5 entry is impossible.
 
 use super::facts::FileFacts;
-use super::seam_classification::{ClassifiedSeam, SeamGripClassCounts};
+use super::seam_classification::ClassifiedSeam;
+#[cfg(test)]
+use super::seam_classification::SeamGripClassCounts;
 use std::path::{Path, PathBuf};
 
 /// Cache schema version. Bump when the on-disk file shape changes; old
@@ -46,10 +48,17 @@ use std::path::{Path, PathBuf};
 /// directory and lets old entries go orphaned (gc'd on `cargo clean`).
 pub(crate) const CACHE_SCHEMA_VERSION: &str = "0.2";
 
+/// Compact-classified seam cache schema. This cache stores the same
+/// `ClassifiedSeam` envelope shape as the full repo exposure cache, but
+/// under a separate directory because the evidence payload is intentionally
+/// compact and must never satisfy full repo-exposure consumers.
+pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.1";
+
 /// Compact class-count cache used by repo badge rendering. It keys off
 /// the same workspace state as the full fact cache, but stores only
 /// per-class counts so badge endpoints never need to deserialize the
 /// multi-hundred-megabyte evidence cache.
+#[cfg(test)]
 const COUNT_CACHE_SCHEMA_VERSION: &str = "0.1";
 
 /// Per-file fact cache schema. This is intentionally separate from the
@@ -61,6 +70,7 @@ const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "0.1";
 /// analysis into an unbounded post-analysis stall on large repos. The per-file
 /// fact cache still keeps later cold paths cheaper.
 pub(crate) const CLASSIFIED_SEAM_CACHE_STORE_LIMIT: usize = 20_000;
+pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT: usize = 100_000;
 
 /// Aggregate cache key — every field that, when changed, must invalidate
 /// the workspace-level classified seam cache.
@@ -207,13 +217,28 @@ pub(crate) struct RepoSeamFactCache {
 impl RepoSeamFactCache {
     /// Construct a cache rooted at the workspace's `target/ripr/cache/...`.
     pub(crate) fn at(workspace_root: &Path) -> Self {
+        Self::at_named(workspace_root, "repo-seam-facts", CACHE_SCHEMA_VERSION)
+    }
+
+    /// Construct the separate compact-classified cache used by repo badge
+    /// projection. It deliberately does not share entries with full repo
+    /// exposure because compact evidence omits the large related-test payload.
+    pub(crate) fn at_compact_classified(workspace_root: &Path) -> Self {
+        Self::at_named(
+            workspace_root,
+            "repo-compact-classified-seams",
+            COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION,
+        )
+    }
+
+    fn at_named(workspace_root: &Path, cache_name: &str, schema_version: &str) -> Self {
         Self {
             dir: workspace_root
                 .join("target")
                 .join("ripr")
                 .join("cache")
-                .join("repo-seam-facts")
-                .join(CACHE_SCHEMA_VERSION),
+                .join(cache_name)
+                .join(schema_version),
         }
     }
 
@@ -265,11 +290,32 @@ impl RepoSeamFactCache {
         key: &RepoSeamCacheKey,
         seams: &[ClassifiedSeam],
     ) -> Result<(), String> {
-        if seams.len() > CLASSIFIED_SEAM_CACHE_STORE_LIMIT {
+        self.store_classified_seams_with_limit(key, seams, CLASSIFIED_SEAM_CACHE_STORE_LIMIT)
+    }
+
+    pub(crate) fn store_compact_classified_seams(
+        &self,
+        key: &RepoSeamCacheKey,
+        seams: &[ClassifiedSeam],
+    ) -> Result<(), String> {
+        self.store_classified_seams_with_limit(
+            key,
+            seams,
+            COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT,
+        )
+    }
+
+    fn store_classified_seams_with_limit(
+        &self,
+        key: &RepoSeamCacheKey,
+        seams: &[ClassifiedSeam],
+        store_limit: usize,
+    ) -> Result<(), String> {
+        if seams.len() > store_limit {
             return Err(format!(
                 "skipped_large_entry_seams_{}_limit_{}",
                 seams.len(),
-                CLASSIFIED_SEAM_CACHE_STORE_LIMIT
+                store_limit
             ));
         }
         std::fs::create_dir_all(&self.dir)
@@ -368,10 +414,12 @@ impl RepoFileFactCache {
 }
 
 /// Compact cache for [`SeamGripClassCounts`].
+#[cfg(test)]
 pub(crate) struct RepoSeamCountCache {
     dir: PathBuf,
 }
 
+#[cfg(test)]
 impl RepoSeamCountCache {
     /// Construct a count cache rooted at the workspace's
     /// `target/ripr/cache/...`.
@@ -443,6 +491,7 @@ struct CacheEnvelope {
     classified_seams: Vec<ClassifiedSeam>,
 }
 
+#[cfg(test)]
 #[derive(serde::Serialize, serde::Deserialize)]
 struct CountCacheEnvelope {
     count_cache_schema_version: String,
@@ -485,6 +534,7 @@ impl FileFactCacheEnvelope {
     }
 }
 
+#[cfg(test)]
 impl CountCacheEnvelope {
     fn new(key: RepoSeamCacheKey, counts: SeamGripClassCounts) -> Self {
         Self {
@@ -544,7 +594,9 @@ impl CacheEnvelope {
 /// Codec module — the only place serialization format is decided.
 /// Switching to `postcard` for binary v2 is a localized change here.
 mod codec {
-    use super::{CacheEnvelope, CountCacheEnvelope, FileFactCacheEnvelope};
+    #[cfg(test)]
+    use super::CountCacheEnvelope;
+    use super::{CacheEnvelope, FileFactCacheEnvelope};
 
     pub(super) fn encode(envelope: &CacheEnvelope) -> Result<Vec<u8>, String> {
         serde_json::to_vec_pretty(envelope).map_err(|err| format!("encode failed: {err}"))
@@ -554,10 +606,12 @@ mod codec {
         serde_json::from_slice(bytes).map_err(|err| format!("decode failed: {err}"))
     }
 
+    #[cfg(test)]
     pub(super) fn encode_counts(envelope: &CountCacheEnvelope) -> Result<Vec<u8>, String> {
         serde_json::to_vec_pretty(envelope).map_err(|err| format!("encode counts failed: {err}"))
     }
 
+    #[cfg(test)]
     pub(super) fn decode_counts(bytes: &[u8]) -> Result<CountCacheEnvelope, String> {
         serde_json::from_slice(bytes).map_err(|err| format!("decode counts failed: {err}"))
     }
