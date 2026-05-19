@@ -1414,6 +1414,58 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
     }
 
     #[test]
+    fn given_corrupt_compact_classified_cache_entry_when_badge_projection_runs_then_uncached_path_computes_without_failure()
+    -> Result<(), String> {
+        let root = make_tempdir("compact-classified-cache-corrupt")?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold }\n",
+        )?;
+
+        let state = collect_workspace_state(&root, &RiprConfig::default())?;
+        let key = state.cache_key();
+        let dir = compact_cache_dir_under(&root);
+        std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
+        let entry = dir.join(key.filename());
+        std::fs::write(&entry, b"{not valid json")
+            .map_err(|err| format!("write corrupt compact entry: {err}"))?;
+
+        let result =
+            inventory_compact_classified_seams_at_with_config(&root, &RiprConfig::default())?;
+        if result.is_empty() {
+            return Err("compact path should compute real seams when cache is corrupt".into());
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn given_compact_classified_cache_store_fails_when_badge_projection_runs_then_analysis_result_is_still_returned()
+    -> Result<(), String> {
+        let root = make_tempdir("compact-classified-cache-storefail")?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold }\n",
+        )?;
+
+        let state = collect_workspace_state(&root, &RiprConfig::default())?;
+        let key = state.cache_key();
+        let dir = compact_cache_dir_under(&root);
+        std::fs::create_dir_all(dir.join(key.filename()))
+            .map_err(|err| format!("mkdir compact conflict path: {err}"))?;
+
+        let result =
+            inventory_compact_classified_seams_at_with_config(&root, &RiprConfig::default())?;
+        if result.is_empty() {
+            return Err("compact path should return real seams even when cache write fails".into());
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
     fn given_cached_classified_seams_when_inventory_runs_then_cached_seams_are_returned()
     -> Result<(), String> {
         let root = make_tempdir("warm-hit")?;

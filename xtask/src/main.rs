@@ -39910,8 +39910,8 @@ mod tests {
         WorktreeDoctorSeverity, badge_artifact_command_args, badge_artifact_jobs,
         badge_artifact_native_slot, badge_artifacts_summary_markdown,
         badge_basis_derived_ripr_plus_snapshot, badge_basis_needs_repo_badge_plus_job,
-        badge_basis_report_markdown, badge_diff_policy_violations, badge_native_audit_snapshot,
-        build_lsp_cockpit_report, build_no_panic_allowlist_proposals,
+        badge_basis_report_markdown, badge_basis_seam_native_counts, badge_diff_policy_violations,
+        badge_native_audit_snapshot, build_lsp_cockpit_report, build_no_panic_allowlist_proposals,
         build_repo_exposure_latency_report, build_targeted_test_outcome_report,
         campaign_source_truth_violations_for_root, check_allow_attributes,
         check_badge_diff_policy_with_context, check_droid_review_config, check_executable_files,
@@ -50992,6 +50992,71 @@ acceptance = "RIPR-SPEC-0999 defines the focused contract."
         assert_eq!(ripr_plus.counts.get("analyzed_tests"), Some(&7));
         assert_eq!(ripr_plus.reason_counts.get("broad_oracle"), Some(&3));
         assert_eq!(ripr_plus.warnings, vec!["advisory".to_string()]);
+    }
+
+    #[test]
+    fn badge_basis_derived_repo_plus_handles_missing_test_efficiency_context() {
+        let ripr = BadgeNativeAuditSnapshot {
+            label: "ripr".to_string(),
+            kind: "ripr".to_string(),
+            scope: "repo".to_string(),
+            basis: "canonical_actionable_gap".to_string(),
+            message: "4".to_string(),
+            status: "warn".to_string(),
+            color: "orange".to_string(),
+            counts: BTreeMap::from([("unsuppressed_exposure_gaps".to_string(), 4)]),
+            reason_counts: BTreeMap::new(),
+            warnings: Vec::new(),
+        };
+
+        let ripr_plus = badge_basis_derived_ripr_plus_snapshot(&ripr, None);
+
+        assert_eq!(ripr_plus.label, "ripr+");
+        assert_eq!(ripr_plus.kind, "ripr_plus");
+        assert_eq!(ripr_plus.message, "4");
+        assert_eq!(
+            ripr_plus
+                .counts
+                .get("unsuppressed_test_efficiency_findings"),
+            Some(&0)
+        );
+        assert_eq!(
+            ripr_plus.counts.get("intentional_test_efficiency_findings"),
+            Some(&0)
+        );
+        assert_eq!(
+            ripr_plus.counts.get("suppressed_test_efficiency_findings"),
+            Some(&0)
+        );
+        assert_eq!(ripr_plus.counts.get("unknowns_test_efficiency"), Some(&0));
+        assert!(!ripr_plus.counts.contains_key("analyzed_tests"));
+        assert!(ripr_plus.reason_counts.is_empty());
+    }
+
+    #[test]
+    fn badge_basis_seam_native_counts_are_internal_when_public_basis_is_canonical() {
+        let ripr = BadgeNativeAuditSnapshot {
+            label: "ripr".to_string(),
+            kind: "ripr".to_string(),
+            scope: "repo".to_string(),
+            basis: "canonical_actionable_gap".to_string(),
+            message: "12".to_string(),
+            status: "warn".to_string(),
+            color: "orange".to_string(),
+            counts: BTreeMap::from([
+                ("analyzed_seams".to_string(), 100),
+                ("unsuppressed_exposure_gaps".to_string(), 12),
+            ]),
+            reason_counts: BTreeMap::new(),
+            warnings: Vec::new(),
+        };
+
+        let counts = badge_basis_seam_native_counts(false, &ripr);
+
+        assert_eq!(counts.status, "not_collected");
+        assert!(counts.counts.is_empty());
+        assert!(counts.note.contains("canonical_actionable_gap"));
+        assert!(counts.source.contains("--include-seam-classes"));
     }
 
     #[test]
