@@ -1,11 +1,15 @@
 # Badge Policy
 
-`ripr` exposes two badges. Both count **unresolved** static exposure gaps —
-inbox-zero, not coverage. Diff-scoped badges preserve the legacy Finding
-exposure basis; repo-scoped public badges use seam-native classified repo
-seams by default and can use explicit gap-decision-ledger targets when supplied.
-This doc fixes the vocabulary, the counting rule, the JSON shape, and what the
-badge does and does not claim.
+`ripr` exposes two badges. Public README, crate, and extension-store badges
+are **user-actionable repair counters**: inbox-zero, not coverage.
+Diff-scoped artifacts preserve the legacy Finding exposure basis for PR-local
+summaries. Repo-scoped public badges use the
+`canonical_actionable_gap` basis: unresolved canonical repair items with a safe
+repair route, verification path, and receipt path. Seam-native classified repo
+seams remain an internal inventory basis, and explicit gap-decision-ledger
+targets remain the policy-backed projection bridge. This doc fixes the
+vocabulary, the counting rule, the JSON shape, and what the badge does and does
+not claim.
 
 This is the contract that `ripr check --format badge-json` and
 `--format badge-shields` will render against. It pairs with
@@ -23,6 +27,12 @@ of each piece is tracked in the status table at the bottom of this
 doc and in
 [`.ripr/goals/active.toml`](../.ripr/goals/active.toml).
 
+The public badge projection realignment is landing in stages. This policy
+defines `canonical_actionable_gap` as the public basis. Existing generated
+endpoint snapshots may still report a seam-native count until the generator and
+endpoint refresh PRs land. Use `cargo xtask badge-basis` to audit the current
+endpoint basis before refreshing public JSON.
+
 ## What each badge means
 
 ### `ripr 0`
@@ -32,7 +42,7 @@ ripr found zero unsuppressed static exposure gaps under the configured policy.
 ```
 
 Diff scope counts exposure-class findings from `ripr check`. Repo scope counts
-classified seams from the repo seam inventory, using configured seam severity.
+unresolved actionable canonical repair items eligible for public projection.
 The badge is a count-and-render policy on top of existing analyzer output.
 
 ### `ripr+ 0`
@@ -42,9 +52,9 @@ ripr found zero unsuppressed static exposure gaps and zero unsuppressed
 actionable test-efficiency findings.
 ```
 
-`ripr+` adds the test-efficiency signals from
-`cargo xtask test-efficiency-report` to the count. A passing `ripr+` is
-strictly stronger than a passing `ripr`.
+`ripr+` adds only actionable test-efficiency repair items that have been lifted
+into the same repair / verify / receipt model. A passing `ripr+` is strictly
+stronger than a passing `ripr`.
 
 ## Scope: diff vs repo
 
@@ -69,21 +79,22 @@ summaries.
 
 ### Repo scope (`scope: repo`)
 
-The badge counts classified seams across the entire repo baseline. This is
-the only scope that should be published as a public README, crate page, or
-extension store badge.
+The badge counts unresolved actionable canonical repair items across the entire
+repo baseline. This is the only scope that should be published as a public
+README, crate page, or extension store badge.
 
 - **Audience**: anyone reading the repo cold from outside.
-- **Meaning**: "the current repo baseline has N unresolved seam-native
-  exposure gaps under policy."
-- Pure `ripr` repo scope is rendered from compact seam-class counts
-  (`analysis::inventory_seam_grip_class_counts_at_with_config`) and
-  uses `SeamGripClass` plus configured seam severity. The detailed
-  `repo-exposure-*` reports still render full per-seam evidence; badge
-  endpoints use the compact count cache under
-  `target/ripr/cache/repo-seam-counts/` so public badges do not need to
-  deserialize the full evidence cache. The CLI surface is
-  `--format repo-badge-json`,
+- **Meaning**: "the current repo baseline has N unresolved actionable static
+  repair items under policy."
+- Public repo scope uses `canonical_actionable_gap` as its basis. A counted
+  item has a canonical gap identity, unresolved state, actionable repair route,
+  safe verification command, receipt path, no suppression or intentional
+  disposition, and eligibility for public projection.
+- Seam-native counts remain available as internal inventory in badge-basis,
+  repo-exposure, seam-inventory, and evidence-quality reports. They should not
+  be published as the README / crate / store headline unless the badge is
+  explicitly labeled as seam inventory.
+- The CLI surface is `--format repo-badge-json`,
   `--format repo-badge-shields`, `--format repo-badge-plus-json`,
   and `--format repo-badge-plus-shields`; the xtask wrapper is
   `cargo xtask repo-badge-artifacts`.
@@ -121,20 +132,40 @@ intent). Badge **aggregation** is scope-aware:
   `suppressed_test_efficiency_findings`.
 
 - **Repo-scoped `ripr+`** (`--format repo-badge-plus-json`,
-  `--format repo-badge-plus-shields`) aggregates the repo-wide
-  test-efficiency ledger directly — no relatedness filter. This is
-  the intended source for public README / store badges.
+  `--format repo-badge-plus-shields`) counts test-efficiency items only when
+  they are projected into the same actionable repair model as canonical gaps.
+  Raw repo-wide test-efficiency inventory belongs in detailed reports.
 
 The split keeps PR badges scoped to the tests that act on the changed
 code while README / store badges remain repo-baseline signals. Native
 badge JSON carries `basis` so consumers can distinguish
-`finding_exposure` diff artifacts from `seam_native` repo artifacts.
+`finding_exposure` diff artifacts, `canonical_actionable_gap` public repo
+artifacts, `seam_native` internal inventory artifacts, and
+`gap_decision_ledger` explicit projection artifacts.
 
-#### What repo seam-native scope means — and does not mean
+## Basis vocabulary
 
-The repo baseline counts classified behavior seams from the seam inventory.
+Badge-producing surfaces must name the basis they used. The basis tells
+readers whether a count is a repair queue, a PR-local exposure artifact, an
+internal inventory, or a policy-backed projection.
+
+| Basis | Primary scope | Public README / store headline? | Meaning |
+| --- | --- | :---: | --- |
+| `canonical_actionable_gap` | repo | yes | Unresolved canonical repair items with a repair route, verify command, receipt path, and public projection eligibility. |
+| `finding_exposure` | diff | no | Legacy PR-local Finding / ExposureClass aggregation from `ripr check`. |
+| `seam_native` | repo inventory | no | Repo seam inventory and static limitation pressure by `SeamGripClass`; useful internally, too broad for the public repair counter. |
+| `gap_decision_ledger` | repo projection | legacy bridge | Explicit GapRecord projection targets supplied by policy or release tooling. Use when the ledger is the source of projection authority. |
+
+README and store badges must count user-actionable canonical repair items. If a
+badge intentionally reports seam-native inventory, its label and docs must say
+that plainly and it must not reuse the main `ripr` / `ripr+` headline.
+
+#### What repo seam-native inventory means — and does not mean
+
+The repo seam-native inventory counts classified behavior seams from the seam
+inventory.
 At repo root, seam discovery excludes repository automation and fixture data
-(`xtask/` and top-level `fixtures/`) so the public badge represents the
+(`xtask/` and top-level `fixtures/`) so inventory reports represent the
 published `ripr` package surface instead of the repository harness. An
 individual fixture workspace is still analyzable when passed as `--root`.
 
@@ -308,18 +339,21 @@ The metric label `duplicate_discriminator_group_count` (delivered in
 class. Today the equivalent value is `duplicate_groups.length` in the
 test-efficiency JSON.
 
-## Seam-native repo counting
+## Seam-native repo inventory counting
 
-Repo-scoped badge artifacts use the `seam_native` basis. These counts come
-from `SeamGripClass` in RIPR-SPEC-0005 and consume the configured seam
-severity from `ripr.toml`.
+Seam-native repo inventory uses the `seam_native` basis. These counts come
+from `SeamGripClass` in RIPR-SPEC-0005 and consume the configured seam severity
+from `ripr.toml`. They are useful for internal evidence-quality pressure,
+static limitation pressure, and analyzer health. They are not the public repair
+counter.
 
 When `ripr check --format repo-badge-json --gap-ledger <path>` or another
 repo-badge format supplies a gap decision ledger, the native JSON uses
 `basis = "gap_decision_ledger"` and counts explicit
 `projection_eligibility.ripr_zero_count` or `ripr_plus_count` targets instead
 of recalculating from seam-native counts. That path is for policy-backed badge
-refreshes; the default repo badge behavior remains seam-native.
+refreshes and remains a bridge until public endpoints are generated directly
+from `canonical_actionable_gap`.
 
 | Seam grip class | Counts in repo `ripr` | Notes |
 | --- | :---: | --- |
@@ -351,15 +385,21 @@ ripr count =
     minus suppressed exposure-gap findings
 ```
 
-Repo-scoped `ripr` count:
+Repo-scoped public `ripr` count:
 
 ```text
 ripr count =
-    seams where seam_grip_class is headline eligible
-    and configured seam severity != off
+    canonical items where gap_state = unresolved
+    and actionability = actionable
+    and a repair route exists
+    and a safe verify command exists
+    and a receipt path exists
+    and not suppressed
+    and not intentional
+    and eligible for public projection
 ```
 
-`ripr+` adds test-efficiency findings to whichever `ripr` exposure basis was
+`ripr+` adds test-efficiency findings to whichever `ripr` repair basis was
 selected by scope:
 
 ```text
@@ -375,8 +415,20 @@ ripr+ count =
 ```
 
 Diff-scoped `ripr+` uses the diff's related-test filter. Repo-scoped `ripr+`
-uses the repo-wide test-efficiency ledger directly. The badge is a rendering
-policy over analyzer reports, not a separate analysis.
+adds only test-efficiency items lifted into the actionable repair model. The
+badge is a rendering policy over analyzer reports, not a separate analysis.
+
+Internal seam-native inventory count:
+
+```text
+seam inventory count =
+    seams where seam_grip_class is headline eligible
+    and configured seam severity != off
+```
+
+This count may appear in detailed reports, scorecards, and badge-basis audits.
+It must not drive the public `ripr` / `ripr+` headline unless that endpoint is
+explicitly relabeled as seam inventory.
 
 ## JSON wire shape
 
@@ -440,7 +492,8 @@ change and must be called out in the PR. `0.3` adds `basis` and
 ### Scope and basis metadata (native only)
 
 A `scope` field distinguishes PR artifacts from public repo badges. A `basis`
-field distinguishes legacy diff finding counts from seam-native repo counts:
+field distinguishes legacy diff finding counts, public repair projections,
+internal seam-native inventory counts, and explicit ledger projections:
 
 ```json
 {
@@ -459,8 +512,9 @@ field distinguishes legacy diff finding counts from seam-native repo counts:
 - `"scope": "repo"` — repo-scoped (README / main endpoint).
 - `"basis": "finding_exposure"` — legacy `Finding`/`ExposureClass`
   aggregation, currently used by diff-scoped badge artifacts.
-- `"basis": "seam_native"` — `RepoSeam`/`SeamGripClass` aggregation,
-  currently used by repo-scoped badge artifacts.
+- `"basis": "canonical_actionable_gap"` — public repo repair-item projection.
+- `"basis": "seam_native"` — `RepoSeam`/`SeamGripClass` aggregation for
+  internal inventory and transitional repo-scoped badge artifacts.
 - `"basis": "gap_decision_ledger"` — explicit GapRecord projection targets,
   used only when repo badge formats are invoked with `--gap-ledger`.
 
@@ -654,7 +708,9 @@ cargo xtask repo-badge-artifacts --gap-ledger target/ripr/reports/gap-decision-l
 That renders the same repo badge artifact filenames with
 `basis = "gap_decision_ledger"` and counts only the ledger's explicit
 `projection_eligibility.ripr_zero_count` and `ripr_plus_count` targets.
-Without `--gap-ledger`, repo badge artifacts keep the seam-native basis.
+Until the canonical-actionable generator lands, the no-ledger implementation
+may still render `basis = "seam_native"`. Treat that as transitional generator
+state, not the public badge contract.
 
 `cargo xtask badge-basis` writes
 `target/ripr/reports/badge-basis.{json,md}` as an audit-only report. It
@@ -770,12 +826,11 @@ authority.
   refresh `badges/` would be too much friction before the count
   stabilizes. Use it locally before campaign closeouts and after
   material analyzer changes.
-- The `ripr 0` headline on `main` means: zero configured-visible
-  seam-native unresolved exposure gaps under the current repo baseline.
-  It does not mean the repo is fully tested, that all behavior seams
-  are gripped by oracles, or that runtime mutation confirmation would
-  pass — see "What repo seam-native scope means — and does not mean"
-  above.
+- The `ripr 0` headline on `main` means: zero unresolved actionable
+  canonical repair items under the current repo baseline and configured
+  projection policy. It does not mean the repo is fully tested, that all
+  behavior seams are gripped by oracles, or that runtime mutation confirmation
+  would pass.
 
 #### Why checked-in JSON, not GitHub Pages
 
@@ -832,6 +887,10 @@ Tracked alongside Campaign 4A and Campaign 5B in
 | Published Shields endpoint from `main` | done | `badge/publish-main-endpoint` (committed `badges/*.json` served via `raw.githubusercontent.com`; refresh with `cargo xtask update-badge-endpoints`) |
 | Diff-scope `ripr+` related-tests filter | done | `badge/diff-ripr-plus-related-tests` |
 | Seam-native repo badge mapping | done | `badge/seam-native-count-mapping` |
+| Badge-basis audit report | done | `cargo xtask badge-basis` |
+| Actionable public badge basis policy | done | `canonical_actionable_gap` definition in this doc |
+| Canonical actionable endpoint generator | planned | public badge projection realignment |
+| Internal seam-native inventory report | planned | public badge projection realignment |
 
 ## See also
 

@@ -1,7 +1,9 @@
 # Badge Contract
 
 Badges are public, repo-scoped trust markers. They summarize the current
-repository baseline through generated Shields endpoint JSON.
+repository baseline through generated Shields endpoint JSON. The public
+`ripr` / `ripr+` headline is a user-actionable repair counter, not a seam
+inventory counter.
 
 They do not route PR work. They do not summarize a diff. They do not claim
 coverage, runtime mutation confirmation, correctness, or release readiness.
@@ -48,7 +50,9 @@ Fields:
 
 No extra top-level fields are allowed in committed public endpoint files.
 Scope, basis, policy, counts, and warning detail belong in native RIPR reports
-under `target/`, not in the public endpoint.
+under `target/`, not in the public endpoint. Public endpoint generation must
+still use the documented public basis; seam-native inventory belongs in
+detailed reports unless the badge is explicitly labeled as inventory.
 
 ## Repo Scope Only
 
@@ -80,7 +84,8 @@ repo-clean signal.
 A public RIPR badge may claim:
 
 ```text
-The generated endpoint reports the current repo-scoped RIPR badge state.
+The generated endpoint reports the current repo-scoped RIPR actionable repair
+badge state.
 ```
 
 It must not claim:
