@@ -192,8 +192,8 @@ turn it into a fixture-backed analyzer repair.
 ### Current Selected Slice
 
 The 2026-05-18 live audit selected `activation_value_unresolved` as the top
-named static limitation bucket. This PR burns down the value-insensitive
-no-argument owner-call sub-shape:
+named static limitation bucket. The first merged slice burned down the
+value-insensitive no-argument owner-call sub-shape:
 
 - before: 27,677 static limitations, including 27,288
   `activation_value_unresolved`;
@@ -207,6 +207,17 @@ seam. It moves activation out of a limitation without inventing observed values.
 Predicate-boundary value checks, non-direct owner affinity, helper-only flows,
 generated tests, provider calls, PR/CI rendering, gate policy, public score
 semantics, and mutation execution remain out of scope.
+
+The current follow-up keeps the same audit-selected bucket and widens the
+supported value-insensitive owner-call path to direct calls whose argument
+values remain opaque. It still does not invent observed activation values and
+still requires concrete activation values for predicate-boundary checks. The
+2026-05-19 live audit before this slice reported 26,277 static limitations,
+including 25,908 `activation_value_unresolved` limitations. The after-audit
+reported 19,106 static limitations, including 18,859
+`activation_value_unresolved` limitations, while actionable canonical gaps
+stayed at 162. Delta: -7,171 total static limitations and -7,049
+`activation_value_unresolved` limitations.
 
 ### Proof Commands
 

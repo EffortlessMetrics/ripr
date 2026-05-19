@@ -1044,15 +1044,15 @@ fn activate_evidence(
     sort_value_facts(&mut observed);
 
     let missing = missing_discriminators_for(seam, &observed);
-    let no_arg_owner_call = !owner_name.is_empty()
+    let direct_value_insensitive_owner_call = !owner_name.is_empty()
         && !requires_concrete_activation_values(seam)
         && related
             .iter()
-            .any(|indexed| has_direct_no_arg_owner_call(indexed, owner_name));
+            .any(|indexed| has_direct_owner_call(indexed, owner_name));
 
     let state = if related.is_empty() {
         StageState::No
-    } else if !observed.is_empty() || no_arg_owner_call {
+    } else if !observed.is_empty() || direct_value_insensitive_owner_call {
         StageState::Yes
     } else {
         // Reach exists but no concrete value seen — most often a helper
@@ -1061,7 +1061,7 @@ fn activate_evidence(
     };
     let stage = StageEvidence::new(
         state,
-        if !observed.is_empty() || no_arg_owner_call {
+        if !observed.is_empty() || direct_value_insensitive_owner_call {
             Confidence::Medium
         } else {
             Confidence::Low
@@ -1075,9 +1075,9 @@ fn activate_evidence(
                     .next()
                     .unwrap_or(seam.expression())
             )
-        } else if no_arg_owner_call {
+        } else if direct_value_insensitive_owner_call {
             format!(
-                "Observed direct no-argument owner call for seam `{}`",
+                "Observed direct owner call for value-insensitive seam `{}`",
                 seam.expression()
                     .lines()
                     .next()
@@ -1164,11 +1164,12 @@ fn observed_value_facts_for_test(
     observed
 }
 
-fn has_direct_no_arg_owner_call(indexed: &CompactTest<'_>, owner_name: &str) -> bool {
-    indexed.test.calls.iter().any(|call| {
-        call.name == owner_name
-            && call_arguments(&call.text, owner_name).is_some_and(|args| args.is_empty())
-    })
+fn has_direct_owner_call(indexed: &CompactTest<'_>, owner_name: &str) -> bool {
+    indexed
+        .test
+        .calls
+        .iter()
+        .any(|call| call.name == owner_name && call_arguments(&call.text, owner_name).is_some())
 }
 
 fn observed_argument_indices(
@@ -2614,13 +2615,63 @@ fn device_labels_start_empty() {
             evidence
                 .activate
                 .summary
-                .contains("direct no-argument owner call"),
-            "activation summary should explain the no-arg route: {}",
+                .contains("direct owner call for value-insensitive seam"),
+            "activation summary should explain the value-insensitive owner-call route: {}",
             evidence.activate.summary
         );
         assert!(
             evidence.missing_discriminators.is_empty(),
             "return-value no-arg activation must not create boundary debt"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_full_evidence_when_owner_call_with_opaque_args_reaches_return_seam_then_activation_is_yes()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/labels.rs");
+        let prod_src = r#"
+pub fn render_label(input: &str) -> String {
+    input.to_string()
+}
+"#;
+        let tests = PathBuf::from("tests/labels_tests.rs");
+        let tests_src = r#"
+fn fixture_label() -> String { "alpha".to_string() }
+
+#[test]
+fn render_label_matches_fixture() {
+    let label = fixture_label();
+    assert_eq!(render_label(&label), "alpha");
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/labels.rs")], &index);
+        let return_seam = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::ReturnValue && s.expression().contains("to_string"))
+            .ok_or_else(|| "expected to_string return_value seam".to_string())?;
+
+        let evidence = evidence_for_seam(return_seam, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert!(
+            evidence.observed_values.is_empty(),
+            "opaque direct-call arguments must not become observed values: {:?}",
+            evidence.observed_values
+        );
+        assert!(
+            evidence
+                .activate
+                .summary
+                .contains("direct owner call for value-insensitive seam"),
+            "activation summary should explain the value-insensitive owner-call route: {}",
+            evidence.activate.summary
+        );
+        assert!(
+            evidence.missing_discriminators.is_empty(),
+            "value-insensitive direct owner calls must not create boundary debt"
         );
         Ok(())
     }
