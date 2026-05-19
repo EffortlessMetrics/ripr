@@ -49,6 +49,14 @@ are scoped or reviewed.
   `must_not_change` boundaries. This is repo-local Lane 1 reporting only; it
   does not change public badges, PR/CI rendering, gate policy, provider calls,
   generated tests, source edits, or mutation execution.
+- Lane 1 actionable-gap packets now carry audit-only public projection
+  readiness fields. Packets distinguish canonical repair/verify guidance from
+  badge-readiness prerequisites by reporting `public_projection_eligible`,
+  `projection_exclusion_reasons`, repair/verify field sources, and missing
+  receipt command or path reasons. This keeps agent-usable packets from being
+  mistaken for public badge-ready items and does not change public badges,
+  PR/CI rendering, gate policy, provider calls, generated tests, source edits,
+  or mutation execution.
 - Lane 1 run-reliability reports now emit bounded warning artifacts for the
   expensive live paths instead of leaving stale output or failing without a
   report on timeout. `cargo xtask lane1-evidence-audit` records a named

@@ -2164,6 +2164,8 @@ tests = [
   "xtask::tests::lane1_evidence_audit_reports_aligned_supported_class_coverage",
   "xtask::tests::lane1_evidence_audit_preserves_case_variant_discriminator_values_as_rows",
   "xtask::tests::lane1_actionable_gap_packets_emit_agent_safe_work_items",
+  "xtask::tests::lane1_actionable_gap_packets_mark_public_projection_ready_with_receipt",
+  "xtask::tests::lane1_actionable_gap_packets_keep_observed_gaps_out_of_public_projection",
   "xtask::tests::lane1_evidence_audit_requires_structured_repair_route_for_actionable_items",
   "xtask::tests::lane1_evidence_audit_limits_static_top_reasons_to_actionable_items",
   "xtask::tests::lane1_evidence_audit_rejects_generic_static_unknown_limitation_category",
@@ -2221,6 +2223,7 @@ metrics = [
   "top_verify_command_unknowns",
   "top_repair_route_unknowns",
   "lane1_actionable_gap_packets",
+  "lane1_actionable_gap_packet_public_projection",
   "lane1_runtime_confidence_by_class",
 ]
 

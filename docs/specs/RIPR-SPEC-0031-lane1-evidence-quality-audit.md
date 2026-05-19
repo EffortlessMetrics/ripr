@@ -239,6 +239,13 @@ includes missing discriminator facts, repair and verification guidance, and
 carries conservative `must_not_change` boundaries. It does not fan raw findings
 back out into separate user work.
 
+Given emitted actionable-gap packets, the audit also records packet-level
+public projection readiness. `public_projection_eligible` is true only when the
+packet has canonical repair and verify sources plus a receipt command or path.
+Packets that are useful for humans or agents but not badge-ready remain in the
+artifact with stable `projection_exclusion_reasons[]` such as
+`missing_receipt_path`; this does not change public badge semantics.
+
 ## Test Mapping
 
 - `xtask::tests::lane1_evidence_audit_counts_quality_gaps_from_evidence_record`
@@ -253,6 +260,13 @@ back out into separate user work.
   pins the embedded and standalone actionable-gap packet contracts, including
   missing discriminators, repair kind, verify command, raw finding support, and
   conservative `must_not_change` boundaries.
+- `xtask::tests::lane1_actionable_gap_packets_mark_public_projection_ready_with_receipt`
+  pins that packet-level public projection readiness requires a receipt command
+  or path and records the receipt source without changing badge counts.
+- `xtask::tests::lane1_actionable_gap_packets_keep_observed_gaps_out_of_public_projection`
+  pins that observed/no-action dispositions do not become public-projection
+  eligible even when a malformed packet carries repair, verify, and receipt
+  fields.
 - `xtask::tests::lane1_evidence_audit_reports_alignment_coverage_holes` pins
   unaligned raw finding examples and same-line duplicate grouping.
 - `xtask::tests::lane1_evidence_audit_requires_structured_repair_route_for_actionable_items`
