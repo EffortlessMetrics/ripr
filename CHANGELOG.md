@@ -9,6 +9,16 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Lane 1 evidence audit now emits bounded actionable-gap packet artifacts for
+  agent and maintainer triage. `cargo xtask lane1-evidence-audit` writes
+  `target/ripr/reports/actionable-gaps.json` and
+  `target/ripr/reports/actionable-gaps.md` from
+  `evidence_record.canonical_item`, keeping raw findings as supporting evidence
+  while carrying repair kind, verification command or explicit unknown, related
+  test or observer context, confidence basis, and conservative
+  `must_not_change` boundaries. This is repo-local Lane 1 reporting only; it
+  does not change public badges, PR/CI rendering, gate policy, provider calls,
+  generated tests, source edits, or mutation execution.
 - Lane 1 run-reliability reports now emit bounded warning artifacts for the
   expensive live paths instead of leaving stale output or failing without a
   report on timeout. `cargo xtask lane1-evidence-audit` records a named

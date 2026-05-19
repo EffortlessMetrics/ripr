@@ -51,6 +51,8 @@ The command writes:
 ```text
 target/ripr/reports/lane1-evidence-audit.json
 target/ripr/reports/lane1-evidence-audit.md
+target/ripr/reports/actionable-gaps.json
+target/ripr/reports/actionable-gaps.md
 ```
 
 It exits successfully after both artifacts are written. If repo exposure
@@ -78,6 +80,8 @@ includes:
 - `run_limitations`;
 - `summary`;
 - `finding_alignment`;
+- `finding_alignment.actionable_gap_packets`;
+- standalone `actionable-gaps` packet projection;
 - `canonical_gap_groups`;
 - `duplicate_looking_groups`;
 - `missing_discriminator_classes`;
@@ -205,6 +209,14 @@ Given records with `calibration.availability = "not_imported"`, the audit counts
 them as uncalibrated. Imported availability counts as calibrated scope for this
 audit report only; it does not change static classifications.
 
+Given actionable canonical items with structured repair routes and verify
+commands, the audit emits bounded actionable-gap packets in the audit JSON and
+the standalone `target/ripr/reports/actionable-gaps.{json,md}` artifacts. Each
+packet is one canonical item, preserves raw findings as supporting evidence,
+includes repair and verification guidance, and carries conservative
+`must_not_change` boundaries. It does not fan raw findings back out into
+separate user work.
+
 ## Test Mapping
 
 - `xtask::tests::lane1_evidence_audit_counts_quality_gaps_from_evidence_record`
@@ -215,6 +227,10 @@ audit report only; it does not change static classifications.
 - `xtask::tests::lane1_evidence_audit_reports_aligned_supported_class_coverage`
   pins per-class aligned item counts and actionable top lists for supported
   presentation, config/policy, and predicate-boundary examples.
+- `xtask::tests::lane1_actionable_gap_packets_emit_agent_safe_work_items`
+  pins the embedded and standalone actionable-gap packet contracts, including
+  repair kind, verify command, raw finding support, and conservative
+  `must_not_change` boundaries.
 - `xtask::tests::lane1_evidence_audit_reports_alignment_coverage_holes` pins
   unaligned raw finding examples and same-line duplicate grouping.
 - `xtask::tests::lane1_evidence_audit_requires_structured_repair_route_for_actionable_items`
@@ -250,7 +266,7 @@ audit report only; it does not change static classifications.
 - `xtask/src/dispatch.rs`, `xtask/src/reports/mod.rs`, and
   `xtask/src/reports/repo.rs` route the report facade.
 - `xtask/src/main.rs` generates repo exposure, builds the audit, renders JSON
-  and Markdown, and writes the artifacts.
+  and Markdown, and writes the audit plus actionable-gap packet artifacts.
 - `xtask/src/run.rs` provides the stdout-to-file command runner used to stream
   the generated repo-exposure input without adding process-spawn logic to the
   report implementation.
@@ -278,6 +294,7 @@ The audit feeds these Lane 1 metrics:
 - `finding_alignment_static_unknown_without_named_limitation`;
 - `finding_alignment_canonical_items_without_repair_route`;
 - `finding_alignment_canonical_items_without_verify_command`.
+- `lane1_actionable_gap_packets`.
 
 ## Non-Goals
 
