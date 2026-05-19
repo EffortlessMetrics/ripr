@@ -3472,6 +3472,7 @@ outputs = [
   "docs/README.md",
   "docs/EDITOR_EXTENSION.md",
   "docs/handoffs/2026-05-19-editor-adoption-assurance-receipts.md",
+  "docs/handoffs/2026-05-19-editor-adoption-assurance-closeout.md",
   "docs/handoffs/README.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",

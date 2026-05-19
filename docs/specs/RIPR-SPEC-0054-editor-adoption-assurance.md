@@ -1,6 +1,6 @@
 # RIPR-SPEC-0054: Editor Adoption Assurance
 
-Status: proposed
+Status: accepted
 
 ## Problem
 
