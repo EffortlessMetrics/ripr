@@ -61,9 +61,11 @@ with a top-level `seams` array, the audit may continue from that captured
 artifact with a warning. If repo exposure generation times out before a
 complete artifact exists, the command writes bounded warning artifacts with a
 `lane1_repo_exposure_timeout` run limitation, phase/input context, the latency
-trace tail, and a repair route. If the captured artifact is missing, malformed,
-or does not contain `seams` for a non-timeout failure, the command returns an
-actionable error and does not claim a complete audit exists.
+trace tail, and a repair route. If repo exposure generation exits before the
+captured artifact is complete, including a nominally successful exit that left
+an empty or malformed output file, the command writes bounded warning artifacts
+with a `lane1_repo_exposure_incomplete` run limitation instead of failing before
+the report surfaces the phase/input diagnostics.
 
 ## JSON Contract
 
@@ -210,6 +212,12 @@ unbounded wait: large classified-seam cache entries may be skipped when the
 trace records a `cache_store` status such as
 `ignored_skipped_large_entry_seams_..._limit_...`.
 
+Given a repo-exposure subprocess that exits successfully but leaves an empty,
+malformed, or otherwise incomplete captured JSON artifact, the audit treats that
+as `lane1_repo_exposure_incomplete`, preserves the subprocess diagnostics and
+latency trace tail, removes the partial input, and does not claim complete repo
+truth or user test debt from the limited artifact.
+
 Given a headline seam with no canonical gap ID, the audit counts it under
 `headline_without_canonical_gap_id`.
 
@@ -260,6 +268,9 @@ separate user work.
 - `xtask::tests::lane1_evidence_audit_limited_report_names_timeout_limitation`
   pins the bounded timeout artifact, named run limitation, repair route, and
   latency trace tail.
+- `xtask::tests::lane1_evidence_audit_limits_incomplete_success_repo_exposure_artifact`
+  pins bounded diagnostics when a successful repo-exposure subprocess leaves an
+  incomplete captured JSON artifact.
 - `xtask::run::tests::latency_progress_reader_preserves_captured_stderr` pins
   that streamed latency progress remains available to timeout and report
   diagnostics.
