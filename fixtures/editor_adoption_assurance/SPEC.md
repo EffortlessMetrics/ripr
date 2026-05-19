@@ -21,12 +21,8 @@ Each case pins one adoption-assurance state with:
 - `lsp-diagnostics.json`;
 - `lsp-code-actions.json`;
 - `first-pr-status.json`;
-- `receipt-status.json`.
-
-The corpus covers setup-ready, missing server, server version mismatch,
-no-workspace, ambiguous multi-root, wrong-root artifact, stale receipt,
-first-pr packet ready, first-pr packet mismatch, and preview-adapter
-unavailable states.
+- `receipt-status.json`;
+- explicit action-authority classification in fixture metadata.
 
 ## Required State Coverage
 
