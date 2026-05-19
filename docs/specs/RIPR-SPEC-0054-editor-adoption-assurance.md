@@ -143,6 +143,27 @@ present, supported, and consistent with the current workspace:
 The editor may display unavailable or advisory state for incomplete artifacts,
 but it must not promote incomplete artifacts into repair authority.
 
+### Editor Command Mutability Table
+
+All editor commands must map to a bounded mutability class.
+
+| Command/action | Mutability class | Allowed side effect |
+| --- | --- | --- |
+| Diagnose Setup | read-only | show text and status |
+| Show Status | read-only | show text and status |
+| Start Current Repair | projection | select/copy/open bounded artifacts only |
+| Copy repair packet | clipboard | copy validated packet only |
+| Open related test/proof | navigation | open workspace-local path only |
+| Copy verify command | clipboard | copy command only |
+| Copy receipt command | clipboard | copy command only |
+| Refresh artifacts | explicit-refresh-guidance | show explicit external command guidance only |
+| Install ripr | not-allowed | guidance only |
+| Generate tests | not-allowed | never |
+| Edit source | not-allowed | never |
+
+Direct command invocation must obey the same authority guards as UI-triggered
+code actions.
+
 ### Root Equivalence And Command Targeting
 
 Root equality is evaluated after platform-aware normalization. The editor must
@@ -202,14 +223,14 @@ Stale, wrong-root, malformed, unsupported, missing-identity, or mismatched
 receipts suppress receipt-based repair authority and should point the user to
 verify/receipt regeneration.
 
-### Preview Boundary
+### Preview Boundary and Language Status
 
 TypeScript, JavaScript, and Python evidence remains:
 
 - opt-in;
 - syntax-first;
 - advisory;
-- `language_status = "preview"` visible;
+- `language_status = "preview"` visible in artifact-backed surfaces;
 - static-limit labeled when present;
 - not Rust-level confidence;
 - not runtime adequacy;
@@ -218,6 +239,22 @@ TypeScript, JavaScript, and Python evidence remains:
 - not gate authority.
 
 Static limits appear before suggested action language.
+
+Editor command authority derives language state into:
+
+- `stable`;
+- `preview_enabled`;
+- `preview_disabled`;
+- `preview_adapter_unavailable`;
+- `unsupported`.
+
+Action implications:
+
+- `stable`: stable repair actions may be shown when all other checks pass;
+- `preview_enabled`: advisory projection only, no stable repair authority;
+- `preview_disabled`: no preview actions; safe enable guidance only;
+- `preview_adapter_unavailable`: explain unavailable, no repair claim;
+- `unsupported`: no action authority.
 
 ## Required Evidence
 
@@ -281,6 +318,17 @@ mutation results, gate decisions, policy changes, or release artifacts.
 - No CodeLens, inlay hints, semantic tokens, inline patches, or
   unsaved-buffer overlays.
 - No preview-language promotion.
+
+## Promotion Criteria
+
+Editor support tier may be promoted only when all of the following evidence is
+present and current:
+
+- fixture corpus coverage for required adoption-assurance states;
+- VSIX smoke checks passing for setup/root/artifact/receipt/first-pr paths;
+- dogfood receipts proving bounded static workflow usage;
+- support docs matching current authority boundaries;
+- no unsupported state that exposes suppressed repair authority.
 
 ## Acceptance Examples
 
