@@ -33205,8 +33205,65 @@ fn badge_diff_policy_violations(
                 format_changed_path(change)
             ));
         }
+        if is_public_badge_basis_surface(path)
+            && !is_deletion_only(change)
+            && let Ok(text) = read_text_lossy(&PathBuf::from(path))
+        {
+            violations.extend(public_badge_basis_violations(path, &text));
+        }
     }
     violations
+}
+
+fn is_public_badge_basis_surface(path: &str) -> bool {
+    matches!(
+        path,
+        "README.md"
+            | "crates/ripr/README.md"
+            | "editors/vscode/README.md"
+            | "editors/vscode/package.json"
+            | "docs/RELEASE_MARKETPLACE.md"
+    )
+}
+
+fn public_badge_basis_violations(path: &str, text: &str) -> Vec<String> {
+    let lines = text.lines().collect::<Vec<_>>();
+    let mut violations = Vec::new();
+    for (index, line) in lines.iter().enumerate() {
+        let normalized_line = normalize_badge_basis_text(line);
+        if !normalized_line.contains("seam_native") {
+            continue;
+        }
+        let context = public_badge_basis_context(&lines, index);
+        if context.contains("seam inventory")
+            || context.contains("seam-native inventory")
+            || context.contains("internal inventory")
+            || context.contains("inventory badge")
+        {
+            continue;
+        }
+        if context.contains("badge") || path.ends_with("package.json") {
+            violations.push(format!(
+                "public badge surface uses `seam_native` as a repair badge basis: {path}:{}\n  rule: README/crate/store badges must use `canonical_actionable_gap` for public repair counts, or explicitly relabel the badge as seam inventory before using `seam_native`",
+                index + 1
+            ));
+        }
+    }
+    violations
+}
+
+fn public_badge_basis_context(lines: &[&str], index: usize) -> String {
+    let start = index.saturating_sub(2);
+    let end = (index + 3).min(lines.len());
+    lines[start..end]
+        .iter()
+        .map(|line| normalize_badge_basis_text(line))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn normalize_badge_basis_text(text: &str) -> String {
+    text.to_ascii_lowercase().replace('-', "_")
 }
 
 fn is_badge_endpoint_json(path: &str) -> bool {
@@ -39975,10 +40032,10 @@ mod tests {
         help_message, install_hooks_in, is_badge_refresh_context, is_bdd_test_name,
         is_campaign_path, is_dependency_surface_candidate, is_docs_path, is_evidence_path,
         is_generated_candidate, is_known_campaign_command, is_non_rust_programming_candidate,
-        is_policy_path, is_production_path, is_receipt_status, is_ripr_managed_hook,
-        is_snake_case_id, is_spec_id, is_stale_agent_boundary_scan_target, json_escape,
-        json_number_after, json_string_values_for_key, json_summary_count, known_commands,
-        known_xtask_command, lane1_actionable_gap_packets_json,
+        is_policy_path, is_production_path, is_public_badge_basis_surface, is_receipt_status,
+        is_ripr_managed_hook, is_snake_case_id, is_spec_id, is_stale_agent_boundary_scan_target,
+        json_escape, json_number_after, json_string_values_for_key, json_summary_count,
+        known_commands, known_xtask_command, lane1_actionable_gap_packets_json,
         lane1_actionable_gap_packets_markdown, lane1_evidence_audit_from_repo_exposure,
         lane1_evidence_audit_json, lane1_evidence_audit_limited_report,
         lane1_evidence_audit_markdown, lane1_evidence_audit_repo_exposure_args,
@@ -39999,9 +40056,9 @@ mod tests {
         pr_checks_summary, pr_ready_json, pr_ready_markdown, pr_ready_next_action, pr_ready_status,
         pr_ready_status_from_report_status, pr_sensitive_file_reason, pr_shape_warnings,
         pr_summary_body, pr_title_family, pr_triage_findings, pr_triage_json, pr_triage_markdown,
-        pr_triage_queue_dispositions, precommit_report_body, public_contract_rows,
-        read_lsp_cockpit_json_value, read_mutation_input_json, receipt_json, receipt_specs,
-        receipt_status_from_reports, render_no_panic_allowlist_proposals_markdown,
+        pr_triage_queue_dispositions, precommit_report_body, public_badge_basis_violations,
+        public_contract_rows, read_lsp_cockpit_json_value, read_mutation_input_json, receipt_json,
+        receipt_specs, receipt_status_from_reports, render_no_panic_allowlist_proposals_markdown,
         render_no_panic_allowlist_proposals_toml, repo_badge_artifact_command_args,
         repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
         repo_exposure_latency_json, repo_exposure_latency_markdown, repo_exposure_latency_run,
@@ -52512,6 +52569,41 @@ jobs:
     }
 
     #[test]
+    fn public_badge_basis_guard_rejects_seam_native_repair_badge_copy() {
+        let violations =
+            public_badge_basis_violations("README.md", "Public ripr badge basis: seam_native\n");
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("README.md:1"));
+        assert!(violations[0].contains("canonical_actionable_gap"));
+        assert!(violations[0].contains("seam inventory"));
+    }
+
+    #[test]
+    fn public_badge_basis_guard_allows_explicit_seam_inventory_badge_copy() {
+        let violations = public_badge_basis_violations(
+            "README.md",
+            "Internal seam inventory badge basis: seam_native\n",
+        );
+        assert!(
+            violations.is_empty(),
+            "unexpected violations: {violations:?}"
+        );
+    }
+
+    #[test]
+    fn public_badge_basis_guard_ignores_policy_docs_seam_native_references() {
+        assert!(!is_public_badge_basis_surface("docs/BADGE_POLICY.md"));
+        let violations = public_badge_basis_violations(
+            "docs/BADGE_POLICY.md",
+            "`seam_native` is an internal inventory basis.\n",
+        );
+        assert!(
+            violations.is_empty(),
+            "unexpected violations: {violations:?}"
+        );
+    }
+
+    #[test]
     fn check_badge_diff_policy_rejects_endpoint_diff_from_git_status() -> Result<(), String> {
         with_temp_cwd("badge-diff-policy-rejects", |root| {
             run("git", &["init"])?;
@@ -52524,6 +52616,22 @@ jobs:
                 .expect_err("badge endpoint diff should fail");
             assert!(message.contains("generated badge endpoint changed"));
             assert!(message.contains("badges/ripr.json"));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn check_badge_diff_policy_rejects_public_surface_seam_native_from_git_status()
+    -> Result<(), String> {
+        with_temp_cwd("badge-diff-policy-seam-native-public", |root| {
+            run("git", &["init"])?;
+            std::fs::write(root.join("README.md"), "ripr badge basis: seam_native\n")
+                .map_err(|err| err.to_string())?;
+
+            let message = check_badge_diff_policy_with_context(false)
+                .expect_err("public seam_native repair badge copy should fail");
+            assert!(message.contains("public badge surface uses `seam_native`"));
+            assert!(message.contains("canonical_actionable_gap"));
             Ok(())
         })
     }
