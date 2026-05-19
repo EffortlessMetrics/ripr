@@ -678,6 +678,90 @@ The Shields projection drops native-only fields including `schema_version`,
 `kind`, `scope`, `basis`, `status`, `counts`, `reason_counts`, `policy`, and
 `warnings`.
 
+### Badge-Basis Audit Report
+
+`cargo xtask badge-basis` writes an advisory audit report at:
+
+```text
+target/ripr/reports/badge-basis.json
+target/ripr/reports/badge-basis.md
+```
+
+This report decomposes committed public endpoint values and proves whether the
+public badge basis matches RIPR-SPEC-0056. It does not edit `badges/*.json`.
+
+Required JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "status": "pass",
+  "mode": "advisory",
+  "current_public_endpoints": [
+    {
+      "path": "badges/ripr.json",
+      "label": "ripr",
+      "message": "179",
+      "color": "orange"
+    }
+  ],
+  "current_repo_badges": [
+    {
+      "kind": "ripr",
+      "scope": "repo",
+      "basis": "canonical_actionable_gap",
+      "message": "179",
+      "counts": {}
+    }
+  ],
+  "seam_native": {
+    "status": "pass",
+    "source": "ripr check --root . --format repo-exposure-md",
+    "counts_by_class": {}
+  },
+  "test_efficiency": {
+    "status": "pass",
+    "source": "target/ripr/reports/test-efficiency.json",
+    "counts_by_class": {}
+  },
+  "canonical_actionable_gap": {
+    "status": "available",
+    "source": "repo-badge-artifacts",
+    "ripr_count": 179,
+    "ripr_plus_count": 179
+  },
+  "supporting_signals": {
+    "raw_alignment_signals": { "status": "not_in_current_badge_generator" },
+    "canonical_evidence_items": { "status": "not_in_current_badge_generator" },
+    "static_limitations": { "status": "available" },
+    "suppressed_or_intentional_items": { "status": "available_from_badge_counts" },
+    "no_action_items": { "status": "requires_gap_decision_ledger" }
+  },
+  "recommended_public_projection": {
+    "basis": "canonical_actionable_gap",
+    "rule": "README/store badges should count unresolved actionable canonical repair items."
+  },
+  "warnings": [],
+  "non_claims": []
+}
+```
+
+Field contract:
+
+- `current_public_endpoints` mirrors committed Shields endpoint JSON.
+- `current_repo_badges` records the native badge basis used to derive public
+  counts.
+- `canonical_actionable_gap` records the public repair projection counts.
+- `seam_native` records internal inventory status and per-class counts when
+  collected with `--include-seam-classes`.
+- `test_efficiency` records class counts but does not move the public `ripr+`
+  headline unless those items are projected into the repair / verify / receipt
+  model.
+- `supporting_signals` names supporting or excluded evidence rather than
+  silently dropping it.
+- `recommended_public_projection.basis` must be
+  `canonical_actionable_gap` for public repair badges.
+
 ## SARIF Output
 
 Campaign 5B SARIF formats:
