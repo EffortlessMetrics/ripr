@@ -17379,6 +17379,15 @@ fn audit_actionable_gap_candidate_value_or_observer(
     audit_non_empty_string(canonical_item, &["candidate_value_or_observer"])
         .or_else(|| audit_non_empty_string(canonical_item, &["observer"]))
         .or_else(|| {
+            audit_array(record, &["recommendation", "candidate_values"])
+                .iter()
+                .find_map(|candidate| {
+                    audit_non_empty_string(candidate, &["value"])
+                        .or_else(|| audit_non_empty_string(candidate, &["observer"]))
+                        .or_else(|| audit_non_empty_string(candidate, &["reason"]))
+                })
+        })
+        .or_else(|| {
             audit_array(record, &["missing_discriminators"])
                 .iter()
                 .find_map(|missing| {
@@ -53707,6 +53716,11 @@ covered_by = ["cargo xtask check-file-policy"]
                     "missing_discriminators": [
                       {"value": "discount_threshold (equality boundary)", "reason": "observed values do not include the equality-boundary case"}
                     ],
+                    "recommendation": {
+                      "candidate_values": [
+                        {"value": "input that hits the boundary: amount >= discount_threshold", "reason": "predicate boundary expression"}
+                      ]
+                    },
                     "raw_findings": [
                       {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed", "expression": "amount >= discount_threshold"}
                     ],
@@ -53767,6 +53781,10 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(
             packet_value["packets"][0]["verify_command"],
             "cargo xtask evidence-quality-scorecard"
+        );
+        assert_eq!(
+            packet_value["packets"][0]["candidate_value_or_observer"],
+            "input that hits the boundary: amount >= discount_threshold"
         );
         assert_eq!(
             packet_value["packets"][0]["must_not_change"][0],

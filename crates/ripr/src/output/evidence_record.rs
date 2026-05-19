@@ -11,8 +11,9 @@ use crate::analysis::seams::{SeamGripClass, SeamKind};
 use crate::analysis::test_grip_evidence::oracle_semantics_for;
 use crate::domain::{OracleKind, OracleStrength, StageEvidence, StageState};
 use crate::output::agent_seam_packets::{
-    AssertionShape, CandidateValue, RecommendedTest, assertion_shape_for, candidate_values_for,
-    missing_discriminator_records_for, nearest_strong_test_to_imitate, recommended_test_for,
+    AssertionShape, CandidateValue, RecommendedTest, assertion_shape_for_entry,
+    candidate_values_for, missing_discriminator_records_for, nearest_strong_test_to_imitate,
+    recommended_test_for,
 };
 use serde_json::{Value, json};
 
@@ -623,7 +624,8 @@ fn recommended_repair_for(
     static_limitations: &[EvidenceRecordStaticLimitation],
 ) -> String {
     if actionability.has_concrete_guidance {
-        return recommendation.reason.clone();
+        return actionable_repair_summary(recommendation)
+            .unwrap_or_else(|| recommendation.reason.clone());
     }
 
     match gap_state {
@@ -642,6 +644,21 @@ fn recommended_repair_for(
         ),
         _ => recommendation.reason.clone(),
     }
+}
+
+fn actionable_repair_summary(recommendation: &EvidenceRecordRecommendation) -> Option<String> {
+    let assertion = recommendation.assertion_shape.as_ref()?;
+    let mut summary = format!("Add or strengthen `{}`", assertion.example);
+    if let Some(candidate) = recommendation.candidate_values.first()
+        && !candidate.value.trim().is_empty()
+    {
+        summary.push_str(&format!(" for `{}`", candidate.value.trim()));
+    }
+    if let Some(target) = recommendation.recommended_test.as_ref() {
+        summary.push_str(&format!(" in `{}` as `{}`", target.file, target.name));
+    }
+    summary.push('.');
+    Some(summary)
 }
 
 fn canonical_repair_route_for(
@@ -758,13 +775,8 @@ fn recommendation_for(
     };
 
     let recommended_test = actionable.then(|| recommended_test_record(recommended_test_for(entry)));
-    let assertion_shape = actionable.then(|| {
-        assertion_shape_record(assertion_shape_for(
-            entry.seam.kind(),
-            entry.seam.owner(),
-            &entry.evidence,
-        ))
-    });
+    let assertion_shape =
+        actionable.then(|| assertion_shape_record(assertion_shape_for_entry(entry)));
     let verify_command = actionable.then(|| VERIFY_COMMAND.to_string());
     let nearest_test_to_imitate = nearest_strong_test_to_imitate(&entry.evidence)
         .or_else(|| entry.evidence.related_tests.first())
@@ -1350,7 +1362,11 @@ mod tests {
         );
         assert_eq!(
             json["canonical_item"]["repair_route"]["suggested_assertion"],
-            "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"
+            "assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)"
+        );
+        assert_eq!(
+            json["canonical_item"]["recommended_repair"],
+            "Add or strengthen `assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)` for `input that hits the boundary: amount >= discount_threshold` in `tests/pricing_tests.rs` as `discounted_total_boundary_discriminator`."
         );
         assert_eq!(
             json["canonical_item"]["related_test"]["name"],

@@ -200,7 +200,7 @@ pub(crate) fn render_agent_gap_record_packet_json(
 /// any seam with a concrete assertion template can expose the editor
 /// action, while prose-only guidance remains hidden.
 pub(crate) fn suggested_assertion_for_classified_seam(entry: &ClassifiedSeam) -> Option<String> {
-    suggested_assertions_for(entry.seam.kind(), entry.seam.owner(), &entry.evidence)
+    suggested_assertions_for(entry.seam.kind(), entry.seam.owner(), None, &entry.evidence)
         .into_iter()
         .find(|suggestion| {
             let trimmed = suggestion.trim_start();
@@ -299,8 +299,7 @@ pub(crate) fn targeted_test_brief_outline_for_classified_seam(
         .into_iter()
         .next()
         .map(|value| value.value);
-    let assertion_shape =
-        assertion_shape_for(entry.seam.kind(), entry.seam.owner(), &entry.evidence);
+    let assertion_shape = assertion_shape_for_entry(entry);
 
     TargetedTestBriefOutline {
         suggested_file: recommended.file,
@@ -731,7 +730,7 @@ fn push_packet_json(
         json_escape(&missing_oracle_shape_for(seam.kind(), seam.expected_sink()))
     ));
 
-    let assertion_shape = assertion_shape_for(seam.kind(), seam.owner(), evidence);
+    let assertion_shape = assertion_shape_for_entry(entry);
     out.push_str("      \"assertion_shape\": {");
     out.push_str(&format!("\"kind\": \"{}\", ", assertion_shape.kind));
     out.push_str(&format!(
@@ -823,7 +822,7 @@ fn push_packet_json(
     }
     out.push_str("],\n");
 
-    let suggested = suggested_assertions_for(seam.kind(), seam.owner(), evidence);
+    let suggested = suggested_assertions_for(seam.kind(), seam.owner(), None, evidence);
     out.push_str("      \"suggested_assertions\": [");
     for (idx, suggestion) in suggested.iter().enumerate() {
         out.push_str(&format!("\"{}\"", json_escape(suggestion)));
@@ -1061,12 +1060,28 @@ pub(crate) fn assertion_shape_for(
     owner: &str,
     evidence: &TestGripEvidence,
 ) -> AssertionShape {
-    let example = suggested_assertions_for(kind, owner, evidence)
+    let example = suggested_assertions_for(kind, owner, None, evidence)
         .into_iter()
         .next()
         .unwrap_or_else(|| "assert_eq!(actual, expected)".to_string());
     AssertionShape {
         kind: assertion_shape_kind_for(kind),
+        example,
+    }
+}
+
+pub(crate) fn assertion_shape_for_entry(entry: &ClassifiedSeam) -> AssertionShape {
+    let example = suggested_assertions_for(
+        entry.seam.kind(),
+        entry.seam.owner(),
+        Some(entry.seam.required_discriminator()),
+        &entry.evidence,
+    )
+    .into_iter()
+    .next()
+    .unwrap_or_else(|| "assert_eq!(actual, expected)".to_string());
+    AssertionShape {
+        kind: assertion_shape_kind_for(entry.seam.kind()),
         example,
     }
 }
@@ -1185,7 +1200,7 @@ pub(crate) fn missing_discriminator_records_for(entry: &ClassifiedSeam) -> Vec<M
             entry.seam.required_discriminator()
         && !out.iter().any(|r| r.value.contains(description.as_str()))
     {
-        out.push(MissingRecord {
+        out.insert(0, MissingRecord {
             value: format!("input that hits the boundary: {description}"),
             reason: "predicate uses an equality-bearing operator; tests should exercise the boundary case"
                 .to_string(),
@@ -1222,23 +1237,16 @@ fn missing_oracle_shape_for(kind: SeamKind, sink: ExpectedSink) -> String {
 fn suggested_assertions_for(
     kind: SeamKind,
     owner: &str,
+    required: Option<&RequiredDiscriminator>,
     evidence: &TestGripEvidence,
 ) -> Vec<String> {
     let owner_short = owner.rsplit("::").next().unwrap_or(owner);
     match kind {
         SeamKind::PredicateBoundary => {
-            // Suggest the equality-boundary case using the missing
-            // discriminator hypothesis when present.
-            if let Some(missing) = evidence.missing_discriminators.first() {
-                vec![format!(
-                    "assert_eq!({owner_short}(/* {} */), /* expected */)",
-                    missing.value
-                )]
-            } else {
-                vec![format!(
-                    "assert_eq!({owner_short}(/* boundary input */), /* expected */)"
-                )]
-            }
+            let hint = predicate_boundary_assertion_hint(required, evidence);
+            vec![format!(
+                "assert_eq!({owner_short}(/* {hint} */), /* expected */)"
+            )]
         }
         SeamKind::ErrorVariant => vec![format!(
             "assert!(matches!({owner_short}(/* trigger */), Err(/* exact variant */)))"
@@ -1259,6 +1267,23 @@ fn suggested_assertions_for(
             "// assert that {owner_short} called the expected target"
         )],
     }
+}
+
+fn predicate_boundary_assertion_hint(
+    required: Option<&RequiredDiscriminator>,
+    evidence: &TestGripEvidence,
+) -> String {
+    if let Some(RequiredDiscriminator::BoundaryValue { description }) = required
+        && !description.trim().is_empty()
+    {
+        return format!("boundary input where {}", description.trim());
+    }
+    if let Some(missing) = evidence.missing_discriminators.first()
+        && !missing.value.trim().is_empty()
+    {
+        return format!("boundary input for {}", missing.value.trim());
+    }
+    "boundary input".to_string()
 }
 
 #[cfg(test)]
@@ -1639,9 +1664,9 @@ mod tests {
             "\"file\": \"tests/pricing.rs\"",
             "\"nearest_strong_test_to_imitate\": {\"name\": \"below_threshold_has_no_discount\"",
             "\"candidate_values\": [",
-            "\"value\": \"discount_threshold (equality boundary)\"",
+            "\"value\": \"input that hits the boundary: amount >= discount_threshold\"",
             "\"assertion_shape\": {\"kind\": \"exact_return_value\"",
-            "\"example\": \"assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)\"",
+            "\"example\": \"assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)\"",
             "\"confidence\": \"high\"",
         ] {
             if !json.contains(needle) {
@@ -1907,12 +1932,12 @@ mod tests {
             "- owner: pricing::discounted_total",
             "Why it matters:",
             "- Related test evidence: below_threshold_has_no_discount uses strong exact_value oracle.",
-            "- Missing discriminator: discount_threshold (equality boundary)",
+            "- Missing discriminator: input that hits the boundary: amount >= discount_threshold",
             "Add a targeted test:",
             "- Suggested file: tests/pricing.rs",
             "- Suggested name: discounted_total_boundary_discriminator",
-            "- Candidate value: discount_threshold (equality boundary)",
-            "- Assertion shape: assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)",
+            "- Candidate value: input that hits the boundary: amount >= discount_threshold",
+            "- Assertion shape: assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)",
             "Imitate:",
             "- below_threshold_has_no_discount (strong exact_value oracle with high relation)",
             "Avoid:",
@@ -2156,7 +2181,7 @@ mod tests {
         // owner short name is `discounted_total`.
         assert!(
             json.contains(
-                "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */"
+                "assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */"
             ),
             "expected templated assert_eq! suggestion: {json}"
         );
