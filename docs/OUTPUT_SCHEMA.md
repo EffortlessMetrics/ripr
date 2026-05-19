@@ -1377,9 +1377,9 @@ not claim user test debt from missing health counts.
     },
     "missing_discriminators_total": 1756,
     "seams_with_missing_discriminators": 1756,
-    "missing_discriminator_counts": {
-      "amount == threshold": 4
-    },
+    "missing_discriminator_counts": [
+      {"label": "amount == threshold", "count": 4}
+    ],
     "observed_values_total": 740,
     "seams_with_observed_values": 310,
     "observed_value_context_counts": {
@@ -1444,9 +1444,12 @@ not claim user test debt from missing health counts.
     "static_limitation_stage_counts": {
       "activate": 3600
     },
-    "static_limitation_reason_counts": {
-      "No concrete activation values observed for seam `Vec::new()`": 255
-    },
+    "static_limitation_reason_counts": [
+      {
+        "label": "No concrete activation values observed for seam `Vec::new()`",
+        "count": 255
+      }
+    ],
     "static_limitation_category_counts": {
       "activation_value_unresolved": 255
     },
@@ -1506,8 +1509,9 @@ Field contract:
 - `metrics.unknown_stop_reason_counts` - counts of unknown/opaque
   `SeamGripClass` buckets. This is intentionally repo-seam terminology; diff
   finding stop-reason strings are not reinterpreted here.
-- `metrics.missing_discriminator_counts` - aggregate counts keyed by the
-  missing discriminator value text.
+- `metrics.missing_discriminator_counts` - aggregate `{label, count}` rows for
+  missing discriminator value text. It is row-shaped because the labels are
+  analyzer evidence strings and can collide in case-insensitive JSON consumers.
 - `metrics.observed_value_context_counts` - aggregate counts keyed by
   `ValueContext::as_str()`.
 - `metrics.related_test_confidence_counts` - `high`, `medium`, `low`, and
@@ -1529,7 +1533,8 @@ Field contract:
   `evidence_record.actionability.class`.
 - `evidence_quality.static_limitation_stage_counts` and
   `static_limitation_reason_counts` - distributions from
-  `evidence_record.static_limitations`.
+  `evidence_record.static_limitations`. Reason counts are `{label, count}` rows
+  because reasons are free-form evidence strings.
 - `evidence_quality.static_limitation_category_counts` - normalized limitation
   categories such as `activation_value_unresolved`,
   `activation_owner_call_unresolved`, `opaque_helper_call`,
@@ -2076,6 +2081,12 @@ mutation execution.
         "line": 10
       },
       "candidate_value_or_observer": "input that hits the boundary: amount == threshold",
+      "missing_discriminators": [
+        {
+          "value": "discount_threshold (equality boundary)",
+          "reason": "observed values do not include the equality-boundary case for this predicate"
+        }
+      ],
       "verify_command": "cargo xtask evidence-quality-scorecard",
       "raw_findings": [
         {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed"}
@@ -2100,6 +2111,9 @@ mutation execution.
 The packet grain is one canonical actionable item. `raw_findings[]` is included
 only to preserve supporting evidence and line context; downstream consumers must
 not fan it back out into separate user-facing work.
+`missing_discriminators[]` carries the exact unresolved discriminator facts from
+the evidence record so agents do not have to infer the boundary or assertion
+target from a broader candidate-value hint.
 
 ## Evidence Quality Scorecard
 

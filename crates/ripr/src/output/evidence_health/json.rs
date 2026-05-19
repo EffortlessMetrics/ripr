@@ -1,4 +1,6 @@
-use serde_json::json;
+use std::collections::BTreeMap;
+
+use serde_json::{Value, json};
 
 use super::{EVIDENCE_HEALTH_SCHEMA_VERSION, EvidenceHealthReport};
 
@@ -23,7 +25,9 @@ pub(crate) fn render_evidence_health_json(report: &EvidenceHealthReport) -> Resu
             "unknown_stop_reason_counts": report.metrics.unknown_stop_reason_counts,
             "missing_discriminators_total": report.metrics.missing_discriminators_total,
             "seams_with_missing_discriminators": report.metrics.seams_with_missing_discriminators,
-            "missing_discriminator_counts": report.metrics.missing_discriminator_counts,
+            "missing_discriminator_counts": count_rows_json(
+                &report.metrics.missing_discriminator_counts
+            ),
             "observed_values_total": report.metrics.observed_values_total,
             "seams_with_observed_values": report.metrics.seams_with_observed_values,
             "observed_value_context_counts": report.metrics.observed_value_context_counts,
@@ -53,7 +57,9 @@ pub(crate) fn render_evidence_health_json(report: &EvidenceHealthReport) -> Resu
             }).collect::<Vec<_>>(),
             "actionability_class_counts": report.evidence_quality.actionability_class_counts,
             "static_limitation_stage_counts": report.evidence_quality.static_limitation_stage_counts,
-            "static_limitation_reason_counts": report.evidence_quality.static_limitation_reason_counts,
+            "static_limitation_reason_counts": count_rows_json(
+                &report.evidence_quality.static_limitation_reason_counts
+            ),
             "static_limitation_category_counts": report.evidence_quality.static_limitation_category_counts,
             "calibration_availability_counts": report.evidence_quality.calibration_availability_counts,
             "movement_availability": {
@@ -90,4 +96,16 @@ pub(crate) fn render_evidence_health_json(report: &EvidenceHealthReport) -> Resu
         }).collect::<Vec<_>>(),
     });
     crate::output::json::render_pretty_with_newline(&value, "evidence health")
+}
+
+fn count_rows_json(counts: &BTreeMap<String, usize>) -> Vec<Value> {
+    counts
+        .iter()
+        .map(|(label, count)| {
+            json!({
+                "label": label,
+                "count": count,
+            })
+        })
+        .collect()
 }

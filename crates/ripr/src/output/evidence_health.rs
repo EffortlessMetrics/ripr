@@ -725,6 +725,13 @@ mod tests {
             value["metrics"]["missing_discriminators_total"],
             Value::from(2)
         );
+        assert_eq!(
+            count_row(
+                &value["metrics"]["missing_discriminator_counts"],
+                "amount == threshold"
+            )?,
+            2
+        );
         assert_eq!(value["metrics"]["observed_values_total"], Value::from(2));
         assert_eq!(value["metrics"]["related_tests_total"], Value::from(3));
         assert_eq!(value["metrics"]["opaque_oracle_count"], Value::from(1));
@@ -764,6 +771,31 @@ mod tests {
             value["evidence_quality"]["static_limitation_category_counts"]["activation_static_unknown"],
             Value::from(1)
         );
+        assert!(
+            value["evidence_quality"]["static_limitation_reason_counts"].is_array(),
+            "free-form static limitation reasons must serialize as rows"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_health_serializes_free_form_counts_as_rows() -> Result<(), String> {
+        let mut upper = weak_boundary_seam();
+        upper.evidence.missing_discriminators[0].value = "Path".to_string();
+        let mut lower = weak_boundary_seam_at_line(121);
+        lower.evidence.missing_discriminators[0].value = "path".to_string();
+        let report = build_evidence_health_report(
+            &[upper, lower],
+            ".".to_string(),
+            EvidenceHealthCalibration::not_provided(),
+        );
+        let json = render_evidence_health_json(&report)?;
+        let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+
+        let rows = &value["metrics"]["missing_discriminator_counts"];
+        assert!(rows.is_array());
+        assert_eq!(count_row(rows, "Path")?, 1);
+        assert_eq!(count_row(rows, "path")?, 1);
         Ok(())
     }
 
@@ -802,6 +834,18 @@ mod tests {
 
     fn weak_boundary_seam() -> ClassifiedSeam {
         weak_boundary_seam_at_line(120)
+    }
+
+    fn count_row(rows: &Value, label: &str) -> Result<usize, String> {
+        let rows = rows
+            .as_array()
+            .ok_or_else(|| "expected count rows array".to_string())?;
+        rows.iter()
+            .find_map(|row| {
+                (row.get("label").and_then(Value::as_str) == Some(label))
+                    .then(|| row.get("count").and_then(Value::as_u64).unwrap_or(0) as usize)
+            })
+            .ok_or_else(|| format!("missing count row {label}"))
     }
 
     fn weak_boundary_seam_at_line(line: usize) -> ClassifiedSeam {
