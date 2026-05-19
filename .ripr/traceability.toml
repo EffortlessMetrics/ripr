@@ -3535,3 +3535,41 @@ metrics = [
   "editor_actionable_gap_queue_receipt_improved",
   "editor_actionable_gap_queue_receipt_unchanged",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0056"
+name = "Public actionable projection"
+spec = "docs/specs/RIPR-SPEC-0056-public-actionable-projection.md"
+tests = [
+  "xtask::tests::badge_basis_default_derives_repo_plus_without_second_badge_job",
+  "xtask::tests::badge_basis_derived_repo_plus_keeps_canonical_headline_and_te_context",
+  "xtask::tests::badge_basis_derived_repo_plus_handles_missing_test_efficiency_context",
+  "xtask::tests::badge_basis_seam_native_counts_are_internal_when_public_basis_is_canonical",
+  "xtask::tests::badge_basis_report_markdown_names_actionable_recommendation",
+  "xtask::tests::public_badge_basis_guard_rejects_seam_native_repair_badge_copy",
+  "xtask::tests::public_badge_basis_guard_allows_explicit_seam_inventory_badge_copy",
+  "xtask::tests::check_badge_diff_policy_rejects_public_surface_seam_native_from_git_status",
+]
+fixtures = [
+  "badges/ripr.json",
+  "badges/ripr-plus.json",
+]
+code = [
+  "xtask/src/main.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0056-public-actionable-projection.md",
+  "docs/specs/README.md",
+  "docs/BADGE_POLICY.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/STATIC_EXPOSURE_MODEL.md",
+  "docs/handoffs/2026-05-19-public-badge-projection-realignment-closeout.md",
+  "badges/ripr.json",
+  "badges/ripr-plus.json",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "public_actionable_projection_badge_basis_locked",
+  "public_actionable_projection_seam_inventory_internal",
+  "public_actionable_projection_badge_basis_guarded",
+]
