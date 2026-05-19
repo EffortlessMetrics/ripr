@@ -86,6 +86,122 @@ Fail closed means: explain the state, suppress stronger repair actions, offer
 refresh/setup/regeneration guidance when safe, and make no proof, gate,
 runtime, mutation, or merge-readiness claim.
 
+### Action Authority Matrix
+
+Editor actions are derived from validated state, not from prose. Any new
+command path, context-menu path, code-action path, hover path, or first-pr path
+must obey the same authority matrix.
+
+| State | Repair packet | Related test/proof | Verify command | Receipt command | Refresh/setup guidance |
+| --- | --- | --- | --- | --- | --- |
+| Fresh Rust canonical repairable gap | Allowed | Allowed when workspace-local | Allowed | Allowed | Optional |
+| Stale artifact | Suppressed | Suppressed | Suppressed | Suppressed | Required |
+| Wrong root or ambiguous root | Suppressed | Suppressed | Suppressed | Suppressed | Required |
+| Malformed artifact | Suppressed | Suppressed | Suppressed | Suppressed | Required |
+| Unsupported schema or version | Suppressed | Suppressed | Suppressed | Suppressed | Required |
+| Missing identity | Suppressed | Suppressed | Suppressed | Suppressed | Required |
+| Disabled language | Suppressed | Suppressed | Suppressed | Suppressed | Required |
+| Preview adapter unavailable | Suppressed | Suppressed | Suppressed | Suppressed | Required |
+| Preview-only evidence | No stable repair authority | Advisory inspection only | Advisory only when explicitly safe | Suppressed as authority | Required |
+| No actionable gap | Suppressed | Inspection only when workspace-local | Suppressed | Suppressed | Optional |
+| Receipt stale or mismatched | Suppressed | Suppressed | Regeneration or verify guidance only | Suppressed | Required |
+| First-pr packet mismatch | Suppressed | Suppressed | Suppressed | Suppressed | Required |
+| Unsafe path or command payload | Suppressed | Suppressed | Suppressed | Suppressed | Required |
+| Compatibility mismatch | Suppressed for unsupported fields | Suppressed for unsupported fields | Suppressed for unsupported fields | Suppressed for unsupported fields | Required |
+
+`Allowed` means the editor may project a bounded, read-only action after every
+artifact, root, language, identity, and command check passes. `Suppressed`
+means the editor must not copy or open a stronger repair action and should
+instead explain the unsafe state. Advisory preview actions must be visibly
+preview/advisory and must not claim Rust-level confidence, gate eligibility, or
+runtime adequacy.
+
+### Artifact Authority Contract
+
+An editor artifact is action-authoritative only when every required field is
+present, supported, and consistent with the current workspace:
+
+- `schema_version` is one of the editor-supported versions for that artifact;
+- `tool` and `kind` identify a known RIPR artifact shape;
+- `ripr_version`, protocol features, or equivalent compatibility state are
+  supported for every field the editor depends on;
+- `workspace_root`, `root`, or equivalent root identity matches the selected
+  workspace root after platform-aware normalization;
+- `generated_at`, receipt age, status, or an equivalent freshness marker does
+  not mark the artifact stale for the action being projected;
+- `language` and `language_status` authorize the requested action;
+- stable repair actions require stable Rust evidence;
+- `canonical_gap_id`, `gap_id`, or packet identity matches the current
+  diagnostic or selected first-pr packet before repair, verify, or receipt
+  actions are shown;
+- receipt identity matches the same root and gap identity before receipt
+  movement is projected;
+- command payloads are typed, bounded, and accepted by the editor command
+  safety contract;
+- malformed, missing, unknown, unsafe, or unsupported fields fail closed.
+
+The editor may display unavailable or advisory state for incomplete artifacts,
+but it must not promote incomplete artifacts into repair authority.
+
+### Root Equivalence And Command Targeting
+
+Root equality is evaluated after platform-aware normalization. The editor must
+not compare raw path strings when:
+
+- Windows path separators differ;
+- drive casing differs;
+- URI encoding differs;
+- paths contain spaces;
+- a path is nested under another workspace;
+- the active file is outside the selected root;
+- a command has no active file and no target URI.
+
+Root-scoped commands must resolve the active document or explicit target URI
+before projecting a repair packet, static-limit note, related test/proof,
+verify command, or receipt command. In a multi-root workspace, the editor must
+use the selected safe root or fail closed. It must never guess across roots.
+
+### Start Current Repair Contract
+
+`ripr: Start Current Repair` is the cockpit entry point for the editor repair
+loop. It must:
+
+1. resolve an active saved document and selected workspace root;
+2. reject no-active-file, wrong-root, and ambiguous-root states before action
+   lookup;
+3. consume only saved-workspace diagnostics and artifacts;
+4. validate artifact authority before presenting repair actions;
+5. match diagnostic identity to the canonical gap or first-pr packet identity
+   required by the action;
+6. present bounded actions in deterministic order:
+   repair packet, related test/proof, verify command, receipt command,
+   static-limit note, first-pr/open-or-regenerate guidance;
+7. fall back to setup, refresh, or regeneration guidance when any authority
+   check fails.
+
+The command must not install binaries, run hidden analysis, generate artifacts,
+edit source, generate tests, call providers, run mutation execution, or parse
+Markdown prose to decide action authority.
+
+### Receipt Authority
+
+A receipt may show that a static repair loop was attempted, unchanged, or
+improved for a matching gap, root, and artifact identity. The editor may show
+receipt state only within that identity scope.
+
+A receipt is not:
+
+- merge approval;
+- runtime mutation proof;
+- coverage adequacy;
+- policy eligibility;
+- gate authority;
+- preview-language promotion.
+
+Stale, wrong-root, malformed, unsupported, missing-identity, or mismatched
+receipts suppress receipt-based repair authority and should point the user to
+verify/receipt regeneration.
+
 ### Preview Boundary
 
 TypeScript, JavaScript, and Python evidence remains:

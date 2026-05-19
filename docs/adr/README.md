@@ -23,3 +23,4 @@ PR. They should be short, dated, and focused on consequences.
 | [0014](0014-editor-first-pr-projection-is-read-only.md) | accepted | Keep editor first-pr packet projection read-only. |
 | [0015](0015-start-here-surfaces-use-canonical-gap-records.md) | proposed | Keep start-here surfaces centered on canonical gap records. |
 | [0016](0016-editor-adoption-assurance-remains-read-only.md) | proposed | Keep editor adoption assurance read-only. |
+| [0017](0017-editor-gap-queue-is-read-only.md) | proposed | Keep editor actionable gap queue projection read-only. |

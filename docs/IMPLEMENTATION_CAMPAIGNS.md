@@ -3845,3 +3845,80 @@ Blocking conditions:
 - runtime adequacy, Rust-parity, policy-eligibility, or gate claims
 - unsaved-buffer overlays, CodeLens, inlay hints, semantic tokens, or inline
   patch application in this campaign
+
+## Lane 3 Campaign: Editor Actionable Gap Queue
+
+Campaign ID: `editor-actionable-gap-queue`
+
+Status: active.
+
+Editor Adoption Assurance is closed. The next selected Lane 3 slice projects
+the existing Lane 1 `actionable-gaps` artifact into the editor as a bounded
+local repair queue. Lane 3 validates and projects the artifact; it does not
+produce the artifact, re-rank gaps, decide policy, or create PR/CI output.
+
+Objective:
+
+```text
+Make the editor answer what is safe to work on now from existing typed
+actionable-gap artifacts.
+```
+
+End state:
+
+- post-adoption editor behavior remains pinned;
+- `target/ripr/reports/actionable-gaps.json` is validated before use;
+- Show Status names the top actionable gap or no-action state;
+- Copy Current Repair Packet is available only for validated actionable gaps;
+- Copy Repo Gap Map is read-only orientation;
+- stale, wrong-root, malformed, unsupported, unsafe, disabled, unavailable,
+  receipt-mismatched, first-pr-mismatched, and actionable-packet-mismatched
+  states fail closed;
+- fixtures, VS Code smoke, docs, dogfood receipts, and closeout proof the
+  path;
+- Lane 3 remains read-only and projection-only.
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `docs/lane3-editor-actionable-gap-queue-stack` | active | Add proposal, spec, ADR, plan, indexes, traceability, capability wiring, lane tracker, and issue burn-down. |
+| `test/lsp-post-adoption-editor-contract` | planned | Pin Diagnose Setup, Show Status, first-pr, receipt, Rust diagnostics, preview labels, and fail-closed behavior before queue projection. |
+| `lsp/actionable-gap-packet-validation` | planned | Validate `target/ripr/reports/actionable-gaps.json` as a safe input seam. |
+| `lsp/show-status-repair-queue` | planned | Project a bounded queue summary in Show Status. |
+| `lsp/copy-current-repair-packet` | planned | Copy one bounded repair packet only when typed safety fields validate. |
+| `lsp/copy-repo-gap-map` | planned | Copy read-only queue orientation without gate, runtime, mutation, policy, or merge-readiness claims. |
+| `fixtures/editor-actionable-gap-queue` | planned | Add top-gap, multiple-gap, no-action, static-limit-only, stale, wrong-root, malformed, improved, and unchanged fixture cases. |
+| `test/vscode-actionable-gap-queue` | planned | Smoke the packaged extension path for status, packets, repo map, receipt state, and unsafe-state suppression. |
+| `docs/editor-actionable-gap-queue` | planned | Document the queue workflow and recovery states. |
+| `dogfood/lane3-actionable-gap-queue-receipts` | planned | Record actionable, no-action, static-limit-only, wrong-root, stale, receipt, and preview-advisory proof. |
+| `campaign/lane3-actionable-gap-queue-closeout` | planned | Close only after behavior, fixtures, e2e, docs, dogfood, and validation land. |
+
+Commands:
+
+```bash
+cargo xtask check-spec-format
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-doc-roles
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-pr
+git diff --check
+```
+
+Blocking conditions:
+
+- analyzer truth changes
+- `actionable-gaps` producer or schema changes
+- policy or gate behavior changes
+- PR or CI producer behavior
+- release publishing, binary download, binary install, or config mutation
+- source edits or generated tests
+- provider/model calls
+- runtime mutation execution
+- runtime adequacy, Rust-parity, policy-eligibility, gate, or merge-readiness
+  claims
+- unsaved-buffer overlays, CodeLens, inlay hints, semantic tokens, or inline
+  patch application in this campaign

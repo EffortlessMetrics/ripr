@@ -3491,3 +3491,44 @@ metrics = [
   "editor_adoption_receipt_mismatch",
   "editor_adoption_actions_suppressed_unsafe_state",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0055"
+name = "Editor actionable gap queue"
+spec = "docs/specs/RIPR-SPEC-0055-editor-actionable-gap-queue.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0055-editor-actionable-gap-queue.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0013-editor-actionable-gap-queue.md",
+  "docs/proposals/README.md",
+  "docs/adr/0017-editor-gap-queue-is-read-only.md",
+  "docs/adr/README.md",
+  "docs/lanes/LANE_3_EDITOR_LSP.md",
+  "docs/DOCUMENTATION.md",
+  "docs/README.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "plans/editor-actionable-gap-queue/implementation-plan.md",
+  "plans/README.md",
+  "metrics/capabilities.toml",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "editor_actionable_gap_queue_available",
+  "editor_actionable_gap_queue_top_gap_ready",
+  "editor_actionable_gap_queue_no_action",
+  "editor_actionable_gap_queue_report_only",
+  "editor_actionable_gap_queue_static_limit_only",
+  "editor_actionable_gap_queue_stale",
+  "editor_actionable_gap_queue_wrong_root",
+  "editor_actionable_gap_queue_malformed",
+  "editor_actionable_gap_queue_repair_packet_available",
+  "editor_actionable_gap_queue_repo_map_available",
+  "editor_actionable_gap_queue_actions_suppressed_unsafe_state",
+  "editor_actionable_gap_queue_receipt_improved",
+  "editor_actionable_gap_queue_receipt_unchanged",
+]
