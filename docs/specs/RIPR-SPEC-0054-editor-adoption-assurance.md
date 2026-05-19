@@ -198,17 +198,15 @@ Preview unavailable:
 
 ## Test Mapping
 
-Follow-up PRs should add or update:
+Traceability for this spec includes:
 
 - `crates/ripr/src/lsp/tests.rs` for status serialization and fail-closed
   behavior;
-- `editors/vscode/test/suite/extension.test.ts` for live setup and workspace
-  smoke coverage;
+- `editors/vscode/test/suite/extension.test.ts` for setup/status,
+  first-pr packet, receipt, and packaged-extension smoke coverage;
 - `fixtures/editor_adoption_assurance/*` for setup and mismatch states;
 - `cargo xtask lsp-cockpit-report` coverage after status enters the cockpit
   report.
-
-This docs PR does not add behavior tests.
 
 ## Implementation Mapping
 

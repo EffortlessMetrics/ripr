@@ -3361,6 +3361,7 @@ id = "RIPR-SPEC-0052"
 name = "Editor first-pr packet projection"
 spec = "docs/specs/RIPR-SPEC-0052-editor-first-pr-packet-projection.md"
 tests = [
+  "crates/ripr/src/lsp/tests.rs",
   "editors/vscode/test/suite/extension.test.ts",
 ]
 fixtures = [
@@ -3438,11 +3439,14 @@ metrics = [
 id = "RIPR-SPEC-0054"
 name = "Editor adoption assurance"
 spec = "docs/specs/RIPR-SPEC-0054-editor-adoption-assurance.md"
-tests = []
+tests = [
+  "editors/vscode/test/suite/extension.test.ts",
+]
 fixtures = [
   "fixtures/editor_adoption_assurance",
 ]
 code = [
+  "editors/vscode/src/client.ts",
   "xtask/src/main.rs",
 ]
 outputs = [
