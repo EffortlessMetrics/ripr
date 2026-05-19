@@ -685,7 +685,7 @@ The issue burn-down is:
 | #1249 | `fixtures(editor): add adoption-assurance fixture corpus` | Done; close from `fixtures/editor_adoption_assurance`. |
 | #1250 | `test(vscode): smoke editor adoption assurance path` | Done; close from the dedicated packaged-extension adoption smoke. |
 | #1251 | `docs(editor): write install-to-first-pr editor guide` | Done; close from `docs/EDITOR_INSTALL_TO_FIRST_PR.md`. |
-| #1252 | `dogfood(lane3): record external-style editor adoption receipts` | Open; still needs external-style adoption receipts. |
+| #1252 | `dogfood(lane3): record external-style editor adoption receipts` | Done; close from `docs/handoffs/2026-05-19-editor-adoption-assurance-receipts.md`. |
 | #1253 | `campaign(lane3): close editor adoption assurance` | Open; blocked by #1249 through #1252. |
 
 Reconciliation on 2026-05-18 found #1247 and #1248 implementation-complete
