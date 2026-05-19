@@ -24,6 +24,10 @@ promote any capability globally.
   line numbers to move.
 - Static limitations remain analyzer limits until a supported fixture-backed
   pattern is added.
+- Activation-value resolution must not invent synthetic values. Direct owner
+  calls may satisfy activation for value-insensitive seams, including calls
+  with opaque arguments, while predicate-boundary checks still require concrete
+  activation values.
 - Oracle cases must distinguish clear exact-value helpers from opaque helpers
   and must keep tautological equality assertions from claiming strong
   exact-value grip.

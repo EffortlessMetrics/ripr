@@ -517,7 +517,7 @@ evidence = [
   "reach activate propagate observe discriminate per seam",
   "RelatedTestGrip with oracle kind and strength",
   "BDD coverage for boundary equality, error variant, side effect, opaque helper",
-  "value-extraction-v2 BDD coverage for bindings, constants, rstest cases, table rows, builder and fixture override methods, Option/Result constructors, and negative false-positive guards",
+  "value-extraction-v2 BDD coverage for bindings, constants, rstest cases, table rows, builder and fixture override methods, Option/Result constructors, direct owner calls for value-insensitive seams including opaque-argument calls, and negative false-positive guards that keep predicate-boundary checks on concrete activation values",
   "oracle-shape-v2 side-effect observer seam evidence",
   "related-test ranking v2 stabilizes relation confidence, relation reason, oracle strength, activation overlap, and file/name/line tie-breakers while preserving related_tests_total",
   "oracle-semantics-v3 explains what related-test oracle shapes observe, what discriminator remains missing, and which assertion upgrade applies for broad, smoke-only, unknown, snapshot, and exact shapes",
@@ -677,7 +677,7 @@ status = "alpha"
 spec = "RIPR-SPEC-0035"
 evidence = [
   "fixtures/evidence-quality-benchmark/corpus.json defines a manifest-only Lane 1 benchmark corpus",
-  "the corpus covers duplicate canonical gap, match-arm discriminator split, wrong related-test top choice, broad versus exact error oracle, self-computed expected value and duplicative equality guards, opaque helper limitation, cross-file constant limitation, presentation text constants, config/policy constants including behavior selectors with and without discriminators, side-effect observer, snapshot discriminator, mock expectation, runtime-only signal, and ambiguous runtime join classes",
+  "the corpus covers duplicate canonical gap, match-arm discriminator split, wrong related-test top choice, broad versus exact error oracle, self-computed expected value and duplicative equality guards, value-insensitive owner-call activation for no-argument and opaque-argument calls, opaque helper limitation, cross-file constant limitation, presentation text constants, config/policy constants including behavior selectors with and without discriminators, side-effect observer, snapshot discriminator, mock expectation, runtime-only signal, and ambiguous runtime join classes",
   "each case records expected claims, must-not-claim guards, expected repo-exposure evidence_record subsets or runtime-only nonstatic calibration, audit signals, maturity scope, and repair route",
   "cargo xtask check-fixture-contracts validates the corpus shape through xtask/src/main.rs",
   "xtask unit tests pin required config/policy case IDs, required case kinds, missing guard detection, runtime-only nonstatic behavior, and line-movement canonical identity"

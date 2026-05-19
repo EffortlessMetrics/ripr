@@ -59,12 +59,16 @@ are scoped or reviewed.
   with fewer Windows process-wrapper failures. This is run-reliability
   hardening for Lane 1 reports, not a new evidence class, score, gate, PR/CI
   rendering, provider, generated-test, or mutation-execution behavior.
-- Lane 1 activation evidence now treats direct no-argument owner calls as
-  activation for value-insensitive seams. This burns down one measured
-  `activation_value_unresolved` sub-shape for return/call/error/effect style
-  seams without inventing observed values, relaxing predicate-boundary value
-  checks, or changing PR/CI rendering, gates, providers, generated tests, or
-  mutation execution.
+- Lane 1 activation evidence now treats direct owner calls as activation for
+  value-insensitive seams, including no-argument calls and calls whose argument
+  values remain opaque. This burns down measured
+  `activation_value_unresolved` sub-shapes for return/call/error/effect style
+  seams without inventing observed values or relaxing predicate-boundary value
+  checks. The live Lane 1 audit moved from 26,277 to 19,106 total static
+  limitations and from 25,908 to 18,859 `activation_value_unresolved`
+  limitations, with actionable canonical gaps unchanged at 162. This does not
+  change PR/CI rendering, gates, providers, generated tests, or mutation
+  execution.
 
 ## 0.6.0 - 2026-05-18
 
