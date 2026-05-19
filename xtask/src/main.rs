@@ -14456,6 +14456,7 @@ fn limited_evidence_health_markdown(
 const LANE1_EVIDENCE_AUDIT_SCHEMA_VERSION: &str = "0.1";
 const LANE1_EVIDENCE_AUDIT_TOP_LIMIT: usize = 10;
 const LANE1_EVIDENCE_AUDIT_DUPLICATE_LIMIT: usize = 25;
+const LANE1_ACTIONABLE_GAP_PACKET_LIMIT: usize = 25;
 const LANE1_EVIDENCE_AUDIT_TRACE_TAIL_LIMIT: usize = 12;
 const LANE1_EVIDENCE_AUDIT_TIMEOUT_ENV: &str = "RIPR_LANE1_EVIDENCE_AUDIT_TIMEOUT_MS";
 const LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS: u64 = 1_200_000;
@@ -14476,6 +14477,7 @@ struct Lane1EvidenceAuditReport {
     canonical_items_without_repair_route: usize,
     canonical_items_without_verify_command: usize,
     actionable_gap_top_lists: Lane1EvidenceAuditActionableGapTopLists,
+    actionable_gap_packets: Vec<Lane1ActionableGapPacket>,
     largest_canonical_groups: Vec<Lane1EvidenceAuditGroup>,
     duplicate_looking_groups: Vec<Lane1EvidenceAuditGroup>,
     missing_discriminator_reason_counts: BTreeMap<String, usize>,
@@ -14514,6 +14516,29 @@ struct Lane1EvidenceAuditActionableGapTopLists {
 struct Lane1EvidenceAuditTopCount {
     label: String,
     count: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Lane1ActionableGapPacket {
+    canonical_gap_id: String,
+    evidence_class: String,
+    gap_state: String,
+    actionability: String,
+    source_file: String,
+    primary_anchor: Value,
+    repair_kind: String,
+    target_test_type: String,
+    assertion_shape: String,
+    recommended_repair: String,
+    why: String,
+    related_test_or_observer: Option<Value>,
+    candidate_value_or_observer: Option<String>,
+    verify_command: String,
+    raw_findings: Vec<Value>,
+    raw_findings_supporting_only: bool,
+    static_limitations: Vec<Value>,
+    confidence_basis: String,
+    must_not_change: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -14720,6 +14745,14 @@ pub(crate) fn lane1_evidence_audit_report_impl() -> Result<(), String> {
     write_report(
         "lane1-evidence-audit.md",
         &lane1_evidence_audit_markdown(&report),
+    )?;
+    write_report(
+        "actionable-gaps.json",
+        &lane1_actionable_gap_packets_json(&report)?,
+    )?;
+    write_report(
+        "actionable-gaps.md",
+        &lane1_actionable_gap_packets_markdown(&report),
     )
 }
 
@@ -15050,6 +15083,7 @@ struct Lane1EvidenceAuditBuilder {
     actionable_gap_static_limitation_reason_counts: BTreeMap<String, usize>,
     actionable_gap_verify_command_unknown_counts: BTreeMap<String, usize>,
     actionable_gap_repair_route_unknown_counts: BTreeMap<String, usize>,
+    actionable_gap_packets: BTreeMap<String, Lane1ActionableGapPacket>,
     canonical_groups: BTreeMap<String, Lane1EvidenceAuditGroup>,
     duplicate_groups: BTreeMap<String, Lane1EvidenceAuditGroup>,
     field_health: BTreeMap<String, Lane1EvidenceAuditFieldHealth>,
@@ -15359,6 +15393,7 @@ impl Lane1EvidenceAuditBuilder {
         let actionable = audit_is_actionable_canonical_item(&item_kind, &gap_state);
         if actionable {
             self.ingest_actionable_gap_top_lists(record, canonical_item, &evidence_class, file);
+            self.ingest_actionable_gap_packet(record, canonical_item, &evidence_class, file);
         }
         if actionable && !audit_has_structured_repair_route(canonical_item) {
             self.canonical_items_without_repair_route += 1;
@@ -15414,6 +15449,81 @@ impl Lane1EvidenceAuditBuilder {
                 &reason,
             );
         }
+    }
+
+    fn ingest_actionable_gap_packet(
+        &mut self,
+        record: &Value,
+        canonical_item: &Value,
+        evidence_class: &str,
+        file: &str,
+    ) {
+        let canonical_gap_id = audit_non_empty_string(canonical_item, &["canonical_gap_id"])
+            .or_else(|| audit_non_empty_string(record, &["canonical_gap_id"]))
+            .or_else(|| audit_non_empty_string(record, &["seam_id"]))
+            .unwrap_or_else(|| format!("actionable-gap::{file}"));
+        if self.actionable_gap_packets.contains_key(&canonical_gap_id) {
+            return;
+        }
+
+        self.actionable_gap_packets.insert(
+            canonical_gap_id.clone(),
+            Lane1ActionableGapPacket {
+                canonical_gap_id,
+                evidence_class: evidence_class.to_string(),
+                gap_state: audit_non_empty_string(canonical_item, &["gap_state"])
+                    .unwrap_or_else(|| "actionable".to_string()),
+                actionability: audit_non_empty_string(canonical_item, &["actionability"])
+                    .or_else(|| audit_non_empty_string(record, &["actionability", "class"]))
+                    .unwrap_or_else(|| "actionable".to_string()),
+                source_file: file.to_string(),
+                primary_anchor: audit_actionable_gap_primary_anchor(record, canonical_item, file),
+                repair_kind: audit_non_empty_string(
+                    canonical_item,
+                    &["repair_route", "repair_kind"],
+                )
+                .filter(|value| !audit_guidance_field_is_missing(value))
+                .unwrap_or_else(|| "repair_route_unknown".to_string()),
+                target_test_type: audit_non_empty_string(
+                    canonical_item,
+                    &["repair_route", "target_test_type"],
+                )
+                .filter(|value| !audit_guidance_field_is_missing(value))
+                .unwrap_or_else(|| "target_test_type_unknown".to_string()),
+                assertion_shape: audit_actionable_gap_assertion_shape(record, canonical_item),
+                recommended_repair: audit_non_empty_string(canonical_item, &["recommended_repair"])
+                    .or_else(|| audit_non_empty_string(record, &["recommendation", "reason"]))
+                    .unwrap_or_else(|| "recommended_repair_unknown".to_string()),
+                why: audit_non_empty_string(canonical_item, &["why"])
+                    .unwrap_or_else(|| "why_unknown".to_string()),
+                related_test_or_observer: audit_actionable_gap_related_test_or_observer(
+                    canonical_item,
+                ),
+                candidate_value_or_observer: audit_actionable_gap_candidate_value_or_observer(
+                    record,
+                    canonical_item,
+                ),
+                verify_command: audit_non_empty_string(canonical_item, &["verify_command"])
+                    .or_else(|| {
+                        audit_non_empty_string(record, &["recommendation", "verify_command"])
+                    })
+                    .filter(|value| !audit_guidance_field_is_missing(value))
+                    .unwrap_or_else(|| "verify_command_unknown".to_string()),
+                raw_findings: audit_json_array_owned(canonical_item, &["raw_findings"])
+                    .or_else(|| audit_json_array_owned(record, &["raw_findings"]))
+                    .unwrap_or_default(),
+                raw_findings_supporting_only: true,
+                static_limitations: audit_json_array_owned(canonical_item, &["static_limitations"])
+                    .or_else(|| audit_json_array_owned(record, &["static_limitations"]))
+                    .unwrap_or_default(),
+                confidence_basis: audit_non_empty_string(canonical_item, &["confidence", "basis"])
+                    .or_else(|| audit_non_empty_string(record, &["calibration", "confidence"]))
+                    .unwrap_or_else(|| "unknown".to_string()),
+                must_not_change: audit_string_array(canonical_item, &["must_not_change"])
+                    .or_else(|| audit_string_array(record, &["must_not_change"]))
+                    .unwrap_or_else(default_actionable_gap_packet_must_not_change),
+            },
+        );
     }
 
     fn ingest_same_line_raw_finding(&mut self, record: &Value, raw: &Value, evidence_class: &str) {
@@ -15534,6 +15644,17 @@ impl Lane1EvidenceAuditBuilder {
                 self.actionable_gap_repair_route_unknown_counts,
             ),
         };
+        let mut actionable_gap_packets = self
+            .actionable_gap_packets
+            .into_values()
+            .collect::<Vec<_>>();
+        actionable_gap_packets.sort_by(|left, right| {
+            left.evidence_class
+                .cmp(&right.evidence_class)
+                .then_with(|| left.source_file.cmp(&right.source_file))
+                .then_with(|| left.canonical_gap_id.cmp(&right.canonical_gap_id))
+        });
+        actionable_gap_packets.truncate(LANE1_ACTIONABLE_GAP_PACKET_LIMIT);
 
         Lane1EvidenceAuditReport {
             root,
@@ -15550,6 +15671,7 @@ impl Lane1EvidenceAuditBuilder {
             canonical_items_without_repair_route: self.canonical_items_without_repair_route,
             canonical_items_without_verify_command: self.canonical_items_without_verify_command,
             actionable_gap_top_lists,
+            actionable_gap_packets,
             largest_canonical_groups,
             duplicate_looking_groups,
             missing_discriminator_reason_counts: self.missing_reason_counts,
@@ -15656,6 +15778,9 @@ fn lane1_evidence_audit_json(report: &Lane1EvidenceAuditReport) -> Result<String
             },
             "actionable_gap_top_lists": audit_actionable_gap_top_lists_json(
                 &report.actionable_gap_top_lists
+            ),
+            "actionable_gap_packets": audit_actionable_gap_packets_json(
+                &report.actionable_gap_packets
             ),
         },
         "canonical_gap_groups": {
@@ -16207,6 +16332,193 @@ fn audit_actionable_gap_top_lists_json(
     })
 }
 
+fn audit_actionable_gap_packets_json(packets: &[Lane1ActionableGapPacket]) -> Vec<Value> {
+    packets
+        .iter()
+        .map(audit_actionable_gap_packet_json)
+        .collect()
+}
+
+fn audit_actionable_gap_packet_json(packet: &Lane1ActionableGapPacket) -> Value {
+    serde_json::json!({
+        "canonical_gap_id": packet.canonical_gap_id,
+        "evidence_class": packet.evidence_class,
+        "gap_state": packet.gap_state,
+        "actionability": packet.actionability,
+        "source_file": packet.source_file,
+        "primary_anchor": packet.primary_anchor,
+        "repair_kind": packet.repair_kind,
+        "target_test_type": packet.target_test_type,
+        "assertion_shape": packet.assertion_shape,
+        "recommended_repair": packet.recommended_repair,
+        "why": packet.why,
+        "related_test_or_observer": packet.related_test_or_observer,
+        "candidate_value_or_observer": packet.candidate_value_or_observer,
+        "verify_command": packet.verify_command,
+        "raw_findings": packet.raw_findings,
+        "raw_findings_supporting_only": packet.raw_findings_supporting_only,
+        "static_limitations": packet.static_limitations,
+        "confidence_basis": packet.confidence_basis,
+        "must_not_change": packet.must_not_change,
+    })
+}
+
+fn lane1_actionable_gap_packets_json(report: &Lane1EvidenceAuditReport) -> Result<String, String> {
+    let value = serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "report": "actionable-gaps",
+        "scope": "repo",
+        "status": "advisory",
+        "source_report": "target/ripr/reports/lane1-evidence-audit.json",
+        "source": "evidence_record.canonical_item",
+        "packet_limit": LANE1_ACTIONABLE_GAP_PACKET_LIMIT,
+        "summary": {
+            "raw_signals": report.finding_alignment.raw_signals_total,
+            "canonical_items": report.finding_alignment.canonical_items_total,
+            "actionable_gaps": report.finding_alignment.actionable_items_total,
+            "already_observed": report.finding_alignment.already_observed_total,
+            "internal_no_action": report.finding_alignment.internal_no_action_total,
+            "static_limitations": report.finding_alignment.static_limitation_total,
+            "packets_emitted": report.actionable_gap_packets.len(),
+            "raw_to_canonical_ratio": audit_finding_alignment_raw_to_canonical_ratio(
+                &report.finding_alignment
+            ),
+            "repair_route_unknowns": report.canonical_items_without_repair_route,
+            "verify_command_unknowns": report.canonical_items_without_verify_command,
+        },
+        "run_limitations": report
+            .run_limitations
+            .iter()
+            .map(lane1_evidence_audit_run_limitation_json)
+            .collect::<Vec<_>>(),
+        "packets": audit_actionable_gap_packets_json(&report.actionable_gap_packets),
+        "must_not_infer": [
+            "raw findings are supporting evidence, not user work",
+            "do not infer actionability from raw static class",
+            "do not treat named static limitations as user test debt",
+            "do not claim mutation execution or runtime proof from this packet"
+        ],
+    });
+    serde_json::to_string_pretty(&value).map_err(|err| err.to_string())
+}
+
+fn lane1_actionable_gap_packets_markdown(report: &Lane1EvidenceAuditReport) -> String {
+    let mut out = String::new();
+    out.push_str("# Actionable Canonical Gap Packets\n\n");
+    out.push_str("Advisory Lane 1 packets derived from `evidence_record.canonical_item`.\n\n");
+    out.push_str("Raw findings remain supporting evidence; packets are bounded work items for humans and agents.\n\n");
+    out.push_str("## Summary\n\n");
+    out.push_str("| Metric | Count |\n");
+    out.push_str("| --- | ---: |\n");
+    audit_push_count(
+        &mut out,
+        "Raw alignment signals",
+        report.finding_alignment.raw_signals_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Canonical alignment items",
+        report.finding_alignment.canonical_items_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Actionable canonical gaps",
+        report.finding_alignment.actionable_items_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Already observed",
+        report.finding_alignment.already_observed_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Internal/no-action",
+        report.finding_alignment.internal_no_action_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Static limitations",
+        report.finding_alignment.static_limitation_total,
+    );
+    audit_push_count(
+        &mut out,
+        "Packets emitted",
+        report.actionable_gap_packets.len(),
+    );
+    audit_push_count(
+        &mut out,
+        "Repair route unknowns",
+        report.canonical_items_without_repair_route,
+    );
+    audit_push_count(
+        &mut out,
+        "Verify command unknowns",
+        report.canonical_items_without_verify_command,
+    );
+    out.push('\n');
+
+    if !report.run_limitations.is_empty() {
+        out.push_str("## Run Limitations\n\n");
+        out.push_str("| Category | Phase | Repair route |\n");
+        out.push_str("| --- | --- | --- |\n");
+        for limitation in &report.run_limitations {
+            out.push_str(&format!(
+                "| `{}` | `{}` | {} |\n",
+                audit_markdown_cell(&limitation.category),
+                audit_markdown_cell(&limitation.phase),
+                audit_markdown_cell(&limitation.repair_route)
+            ));
+        }
+        out.push('\n');
+    }
+
+    out.push_str("## Packets\n\n");
+    if report.actionable_gap_packets.is_empty() {
+        out.push_str("No actionable canonical gap packets were emitted.\n");
+        return out;
+    }
+
+    for packet in &report.actionable_gap_packets {
+        out.push_str(&format!(
+            "### `{}`\n\n",
+            audit_markdown_cell(&packet.canonical_gap_id)
+        ));
+        out.push_str("| Field | Value |\n");
+        out.push_str("| --- | --- |\n");
+        out.push_str(&format!(
+            "| Evidence class | `{}` |\n",
+            audit_markdown_cell(&packet.evidence_class)
+        ));
+        out.push_str(&format!(
+            "| Source file | `{}` |\n",
+            audit_markdown_cell(&packet.source_file)
+        ));
+        out.push_str(&format!(
+            "| Repair kind | `{}` |\n",
+            audit_markdown_cell(&packet.repair_kind)
+        ));
+        out.push_str(&format!(
+            "| Target test type | `{}` |\n",
+            audit_markdown_cell(&packet.target_test_type)
+        ));
+        out.push_str(&format!(
+            "| Recommended repair | {} |\n",
+            audit_markdown_cell(&packet.recommended_repair)
+        ));
+        out.push_str(&format!(
+            "| Verify command | `{}` |\n",
+            audit_markdown_cell(&packet.verify_command)
+        ));
+        out.push_str(&format!(
+            "| Raw findings | {} supporting finding(s) |\n",
+            packet.raw_findings.len()
+        ));
+        out.push('\n');
+    }
+    out
+}
+
 fn audit_top_counts_json(rows: &[Lane1EvidenceAuditTopCount]) -> Vec<Value> {
     rows.iter()
         .map(|row| {
@@ -16540,6 +16852,82 @@ fn audit_string(value: &Value, path: &[&str]) -> Option<String> {
 
 fn audit_non_empty_string(value: &Value, path: &[&str]) -> Option<String> {
     audit_string(value, path).filter(|text| !text.trim().is_empty())
+}
+
+fn audit_json_array_owned(value: &Value, path: &[&str]) -> Option<Vec<Value>> {
+    audit_get(value, path).and_then(|value| value.as_array().cloned())
+}
+
+fn audit_string_array(value: &Value, path: &[&str]) -> Option<Vec<String>> {
+    Some(
+        audit_get(value, path)?
+            .as_array()?
+            .iter()
+            .filter_map(Value::as_str)
+            .filter(|text| !text.trim().is_empty())
+            .map(ToString::to_string)
+            .collect(),
+    )
+}
+
+fn audit_actionable_gap_primary_anchor(
+    record: &Value,
+    canonical_item: &Value,
+    file: &str,
+) -> Value {
+    if let Some(anchor) = audit_get(canonical_item, &["primary_anchor"]) {
+        return anchor.clone();
+    }
+    let line = audit_usize(record, &["location", "line"]).or_else(|| {
+        audit_get(canonical_item, &["raw_findings"])
+            .and_then(Value::as_array)
+            .and_then(|items| items.first())
+            .and_then(|item| audit_usize(item, &["line"]))
+    });
+    serde_json::json!({
+        "file": audit_non_empty_string(record, &["location", "file"])
+            .unwrap_or_else(|| file.to_string()),
+        "line": line,
+    })
+}
+
+fn audit_actionable_gap_assertion_shape(record: &Value, canonical_item: &Value) -> String {
+    audit_non_empty_string(canonical_item, &["repair_route", "suggested_assertion"])
+        .or_else(|| audit_non_empty_string(record, &["recommendation", "assertion_shape", "kind"]))
+        .filter(|value| !audit_guidance_field_is_missing(value))
+        .unwrap_or_else(|| "assertion_shape_unknown".to_string())
+}
+
+fn audit_actionable_gap_related_test_or_observer(canonical_item: &Value) -> Option<Value> {
+    audit_get(canonical_item, &["related_test"])
+        .or_else(|| audit_get(canonical_item, &["related_test_or_observer"]))
+        .or_else(|| audit_get(canonical_item, &["observer"]))
+        .cloned()
+}
+
+fn audit_actionable_gap_candidate_value_or_observer(
+    record: &Value,
+    canonical_item: &Value,
+) -> Option<String> {
+    audit_non_empty_string(canonical_item, &["candidate_value_or_observer"])
+        .or_else(|| audit_non_empty_string(canonical_item, &["observer"]))
+        .or_else(|| {
+            audit_array(record, &["missing_discriminators"])
+                .iter()
+                .find_map(|missing| {
+                    audit_non_empty_string(missing, &["value"])
+                        .or_else(|| audit_non_empty_string(missing, &["flow_sink", "kind"]))
+                        .or_else(|| audit_non_empty_string(missing, &["reason"]))
+                })
+        })
+}
+
+fn default_actionable_gap_packet_must_not_change() -> Vec<String> {
+    vec![
+        "Do not infer actionability from raw static class.".to_string(),
+        "Do not treat raw findings as independent user work.".to_string(),
+        "Do not claim mutation execution or runtime proof from this packet.".to_string(),
+    ]
 }
 
 fn audit_is_actionable_canonical_item(item_kind: &str, gap_state: &str) -> bool {
@@ -38219,6 +38607,7 @@ mod tests {
         is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
         is_stale_agent_boundary_scan_target, json_escape, json_number_after,
         json_string_values_for_key, json_summary_count, known_commands, known_xtask_command,
+        lane1_actionable_gap_packets_json, lane1_actionable_gap_packets_markdown,
         lane1_evidence_audit_from_repo_exposure, lane1_evidence_audit_json,
         lane1_evidence_audit_limited_report, lane1_evidence_audit_markdown,
         lane1_evidence_audit_repo_exposure_args, lane1_evidence_audit_timeout_error,
@@ -52404,6 +52793,99 @@ covered_by = ["cargo xtask check-file-policy"]
             top_lists["top_missing_discriminator_kinds"][0]["label"],
             "observed values do not include the equality-boundary case"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_actionable_gap_packets_emit_agent_safe_work_items() -> Result<(), String> {
+        let report = lane1_evidence_audit_from_repo_exposure(
+            ".",
+            r#"{
+              "schema_version": "0.3",
+              "scope": "repo",
+              "seams": [
+                {
+                  "seam_id": "packet-boundary-gap",
+                  "headline_eligible": true,
+                  "file": "src/pricing.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "packet-boundary-gap",
+                    "canonical_gap_id": "gap:packet-boundary-gap",
+                    "location": {"file": "src/pricing.rs", "line": 42},
+                    "missing_discriminators": [
+                      {"value": "discount_threshold (equality boundary)", "reason": "observed values do not include the equality-boundary case"}
+                    ],
+                    "raw_findings": [
+                      {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed", "expression": "amount >= discount_threshold"}
+                    ],
+                    "canonical_item": {
+                      "canonical_gap_id": "gap:packet-boundary-gap",
+                      "canonical_item_kind": "gap",
+                      "evidence_class": "predicate_boundary",
+                      "gap_state": "actionable",
+                      "actionability": "extend_related_test",
+                      "raw_findings": [
+                        {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed", "expression": "amount >= discount_threshold"}
+                      ],
+                      "why": "related tests reach the seam but miss equality at the threshold",
+                      "recommended_repair": "Add an equality-boundary assertion for the changed predicate.",
+                      "repair_route": {
+                        "repair_kind": "add_boundary_assertion",
+                        "target_test_type": "boundary_discriminator",
+                        "suggested_assertion": "assert_eq!(discounted_total(threshold), expected)"
+                      },
+                      "related_test": {"name": "below_threshold_has_no_discount", "file": "tests/pricing.rs", "line": 10, "reason": "direct_owner_call"},
+                      "verify_command": "cargo xtask evidence-quality-scorecard",
+                      "confidence": {"basis": "static_only", "notes": []}
+                    }
+                  }
+                }
+              ]
+            }"#,
+        )?;
+
+        let audit_json = lane1_evidence_audit_json(&report)?;
+        let audit_value: serde_json::Value =
+            serde_json::from_str(&audit_json).map_err(|err| err.to_string())?;
+        let embedded_packets = audit_value["finding_alignment"]["actionable_gap_packets"]
+            .as_array()
+            .ok_or_else(|| "audit JSON should include actionable gap packet array".to_string())?;
+        assert_eq!(embedded_packets.len(), 1);
+        assert_eq!(
+            embedded_packets[0]["raw_findings_supporting_only"],
+            serde_json::Value::Bool(true)
+        );
+
+        let packet_json = lane1_actionable_gap_packets_json(&report)?;
+        let packet_value: serde_json::Value =
+            serde_json::from_str(&packet_json).map_err(|err| err.to_string())?;
+        assert_eq!(packet_value["report"], "actionable-gaps");
+        assert_eq!(
+            packet_value["summary"]["actionable_gaps"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            packet_value["packets"][0]["canonical_gap_id"],
+            "gap:packet-boundary-gap"
+        );
+        assert_eq!(
+            packet_value["packets"][0]["repair_kind"],
+            "add_boundary_assertion"
+        );
+        assert_eq!(
+            packet_value["packets"][0]["verify_command"],
+            "cargo xtask evidence-quality-scorecard"
+        );
+        assert_eq!(
+            packet_value["packets"][0]["must_not_change"][0],
+            "Do not infer actionability from raw static class."
+        );
+
+        let markdown = lane1_actionable_gap_packets_markdown(&report);
+        assert!(markdown.contains("# Actionable Canonical Gap Packets"));
+        assert!(markdown.contains("gap:packet-boundary-gap"));
+        assert!(markdown.contains("cargo xtask evidence-quality-scorecard"));
         Ok(())
     }
 
