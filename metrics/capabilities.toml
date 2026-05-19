@@ -326,6 +326,21 @@ next = "maintenance"
 metric = "diagnostics carry finding/probe metadata, explicit GapRecord repair payloads, editor status names saved-workspace analysis state, and editor actions target the selected finding or gap"
 
 [[capability]]
+id = "editor_actionable_gap_queue"
+name = "Editor actionable gap queue"
+status = "planned"
+spec = "RIPR-SPEC-0055"
+evidence = [
+  "docs/proposals/RIPR-PROP-0013-editor-actionable-gap-queue.md defines why Lane 3 should project the existing actionable-gaps artifact as a bounded local repair queue",
+  "docs/specs/RIPR-SPEC-0055-editor-actionable-gap-queue.md defines consumed artifacts, required typed fields, fail-closed matrix, Show Status queue shape, Copy Current Repair Packet, Copy Repo Gap Map, fixture corpus, VS Code smoke expectations, dogfood proof, and non-claims",
+  "docs/adr/0017-editor-gap-queue-is-read-only.md records that Lane 3 may validate and project the queue but must not produce artifacts, re-rank gaps, decide policy, edit source, generate tests, call providers, run mutation, or claim runtime adequacy",
+  "plans/editor-actionable-gap-queue/implementation-plan.md sequences the docs, validation, status, packet, repo-map, fixture, VS Code smoke, docs, dogfood, and closeout PRs"
+]
+fixtures = []
+next = "test/lsp-post-adoption-editor-contract"
+metric = "editor_actionable_gap_queue_available, editor_actionable_gap_queue_top_gap_ready, editor_actionable_gap_queue_no_action, editor_actionable_gap_queue_report_only, editor_actionable_gap_queue_static_limit_only, editor_actionable_gap_queue_actions_suppressed_unsafe_state"
+
+[[capability]]
 id = "parser_backed_syntax_facts"
 name = "Parser-backed syntax facts"
 status = "alpha"

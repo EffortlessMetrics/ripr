@@ -59,6 +59,7 @@ safer.
 ## Current plans
 
 - [Campaign 27](campaign-27/README.md)
+- [Editor actionable gap queue](editor-actionable-gap-queue/implementation-plan.md)
 - [Editor adoption assurance](editor-adoption-assurance/implementation-plan.md)
 - [Editor first-pr bridge](editor-first-pr-bridge/implementation-plan.md)
 - [Editor first-run usability](editor-first-run-usability/implementation-plan.md)
