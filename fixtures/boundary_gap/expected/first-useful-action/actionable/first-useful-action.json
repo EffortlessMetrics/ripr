@@ -25,7 +25,7 @@
     "path": "src/lib.rs",
     "line": 2,
     "classification": "weakly_exposed",
-    "missing_discriminator": "discount_threshold (equality boundary)"
+    "missing_discriminator": "input that hits the boundary: amount >= discount_threshold"
   },
   "title": "Add equality-boundary discriminator test",
   "why": "Changed predicate boundary is weakly exposed and lacks an equality-boundary discriminator.",
@@ -38,7 +38,7 @@
     "file": "tests/pricing.rs",
     "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
     "suggested_test_name": "discounted_total_boundary_discriminator",
-    "suggested_assertion": "Assert the exact discounted_total output at amount == discount_threshold."
+    "suggested_assertion": "Add a focused boundary test that exercises amount >= discount_threshold and assert the exact discounted_total output."
   },
   "commands": {
     "context_packet": "ripr agent packet --root fixtures/boundary_gap/input --seam-id 67fc764ba37d77bd --json",

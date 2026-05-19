@@ -1664,10 +1664,46 @@ fn issue_location(issue: &PanelTopIssue) -> Option<String> {
 }
 
 fn compact_suggested_test(value: &str) -> String {
-    if value.contains("amount == discount_threshold") {
-        return "add amount == discount_threshold assertion".to_string();
+    if let Some(predicate) = extract_boundary_subject(value) {
+        return format!("add {predicate} boundary assertion");
     }
     value.to_ascii_lowercase()
+}
+
+fn extract_boundary_subject(value: &str) -> Option<String> {
+    let lower = value.to_ascii_lowercase();
+    for marker in [
+        "input that hits the boundary:",
+        "boundary input where ",
+        "boundary test that exercises ",
+    ] {
+        if let Some(index) = lower.find(marker) {
+            return compact_boundary_subject(&value[index + marker.len()..]);
+        }
+    }
+    None
+}
+
+fn compact_boundary_subject(value: &str) -> Option<String> {
+    let lower = value.to_ascii_lowercase();
+    let mut end = value.len();
+    for delimiter in [" and assert", " */", "`", "\n", "."] {
+        if let Some(index) = lower.find(delimiter) {
+            end = end.min(index);
+        }
+    }
+    let subject = value[..end]
+        .trim()
+        .trim_matches(|c: char| c == '`' || c == ',' || c == ')' || c == ';')
+        .trim();
+    if subject.is_empty()
+        || ![">=", "<=", "==", "!=", ">", "<"]
+            .iter()
+            .any(|operator| subject.contains(operator))
+    {
+        return None;
+    }
+    Some(subject.to_string())
 }
 
 fn coverage_grip_markdown(coverage: &PanelCoverageGrip) -> String {
@@ -1810,6 +1846,26 @@ mod tests {
         assert!(rendered.contains("\"kind\": \"malformed_input\""));
         assert!(rendered.contains("Optional PR guidance input is malformed"));
         Ok(())
+    }
+
+    #[test]
+    fn compact_suggested_test_extracts_boundary_subjects_without_fixture_specific_names() {
+        assert_eq!(
+            compact_suggested_test(
+                "Add a focused boundary test that exercises total <= max_total and assert the exact output."
+            ),
+            "add total <= max_total boundary assertion"
+        );
+        assert_eq!(
+            compact_suggested_test(
+                "assert_eq!(foo(/* boundary input where left != right */), expected)"
+            ),
+            "add left != right boundary assertion"
+        );
+        assert_eq!(
+            compact_suggested_test("Review RIPR evidence."),
+            "review ripr evidence."
+        );
     }
 
     fn fixture_input(
