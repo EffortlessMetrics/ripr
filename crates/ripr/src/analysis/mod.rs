@@ -20,9 +20,11 @@ mod value_resolution;
 mod workspace;
 
 pub(crate) use diff::{load_diff, parse_unified_diff};
-pub(crate) use seam_classification::{ClassifiedSeam, SeamGripClassCounts};
+pub(crate) use seam_classification::ClassifiedSeam;
+#[cfg(test)]
+pub(crate) use seam_classification::SeamGripClassCounts;
 pub(crate) use seam_inventory::{
-    inventory_classified_seams_at_with_config, inventory_seam_grip_class_counts_at_with_config,
+    inventory_classified_seams_at_with_config, inventory_compact_classified_seams_at_with_config,
     inventory_seams_at,
 };
 pub(crate) use seams::{RepoSeam, RequiredDiscriminator};

@@ -29,6 +29,7 @@ use super::seams::{RepoSeam, SeamGripClass, SeamId};
 use super::test_grip_evidence::TestGripEvidence;
 use crate::domain::StageState;
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
@@ -45,12 +46,14 @@ pub(crate) struct ClassifiedSeam {
 /// need headline counts, not full per-seam evidence. This keeps badge
 /// rendering from loading or writing the much larger `ClassifiedSeam`
 /// fact cache.
+#[cfg(test)]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct SeamGripClassCounts {
     analyzed_seams: usize,
     counts: BTreeMap<SeamGripClass, usize>,
 }
 
+#[cfg(test)]
 impl SeamGripClassCounts {
     pub(crate) fn new(analyzed_seams: usize) -> Self {
         let mut counts = BTreeMap::new();

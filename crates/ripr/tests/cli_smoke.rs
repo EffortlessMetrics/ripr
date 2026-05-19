@@ -1214,7 +1214,7 @@ fn check_badge_json_output_has_native_badge_shape() {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.4""#));
+    assert!(stdout.contains(r#""schema_version": "0.5""#));
     assert!(stdout.contains(r#""kind": "ripr""#));
     assert!(stdout.contains(r#""scope": "diff""#));
     assert!(stdout.contains(r#""basis": "finding_exposure""#));
@@ -2356,28 +2356,26 @@ fn check_badge_plus_fails_clearly_when_test_efficiency_report_missing() -> Resul
 
 #[test]
 fn check_repo_badge_plus_json_emits_native_shape_with_fixture_report() -> Result<(), String> {
-    // Repo scope aggregates the repo-wide test-efficiency ledger directly,
-    // so a fixture report with no matching diff findings still produces
-    // the expected non-zero counts. (Diff scope filters to entries
-    // related to the changed code; that is exercised by the dedicated
-    // diff-scope filter tests below.)
+    // Repo scope parses the repo-wide test-efficiency ledger for validation
+    // and reason visibility, but raw test-efficiency debt no longer moves
+    // the public headline until it is lifted into the canonical repair model.
     let workspace = make_temp_workspace(Some(fixture_test_efficiency_report()))?;
     let root = workspace.display().to_string();
     let output = run_ripr(&["check", "--root", &root, "--format", "repo-badge-plus-json"]);
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.4""#));
+    assert!(stdout.contains(r#""schema_version": "0.5""#));
     assert!(stdout.contains(r#""kind": "ripr_plus""#));
     assert!(stdout.contains(r#""scope": "repo""#));
-    assert!(stdout.contains(r#""basis": "seam_native""#));
+    assert!(stdout.contains(r#""basis": "canonical_actionable_gap""#));
     assert!(stdout.contains(r#""label": "ripr+""#));
     assert!(stdout.contains(r#""counts""#));
     assert!(stdout.contains(r#""reason_counts""#));
     assert!(stdout.contains(r#""policy""#));
-    assert!(stdout.contains(r#""unsuppressed_test_efficiency_findings": 1"#));
-    assert!(stdout.contains(r#""intentional_test_efficiency_findings": 1"#));
-    assert!(stdout.contains(r#""unknowns_test_efficiency": 1"#));
+    assert!(stdout.contains(r#""unsuppressed_test_efficiency_findings": 0"#));
+    assert!(stdout.contains(r#""intentional_test_efficiency_findings": 0"#));
+    assert!(stdout.contains(r#""unknowns_test_efficiency": 0"#));
     assert!(stdout.contains(r#""analyzed_tests": 3"#));
     // Reason counts include all nine keys, with the fixture values surfacing.
     assert!(stdout.contains(r#""smoke_oracle_only": 2"#));
@@ -2466,10 +2464,10 @@ fn check_repo_badge_json_emits_repo_scope_metadata() -> Result<(), String> {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.4""#));
+    assert!(stdout.contains(r#""schema_version": "0.5""#));
     assert!(stdout.contains(r#""kind": "ripr""#));
     assert!(stdout.contains(r#""scope": "repo""#));
-    assert!(stdout.contains(r#""basis": "seam_native""#));
+    assert!(stdout.contains(r#""basis": "canonical_actionable_gap""#));
     assert!(
         !stdout.contains(r#""scope": "diff""#),
         "repo scope output must not also carry diff scope: {stdout}"
@@ -2536,7 +2534,7 @@ fn check_repo_badge_json_can_use_gap_ledger_targets() -> Result<(), String> {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.4""#));
+    assert!(stdout.contains(r#""schema_version": "0.5""#));
     assert!(stdout.contains(r#""basis": "gap_decision_ledger""#));
     assert!(stdout.contains(r#""message": "1""#));
     assert!(stdout.contains(r#""analyzed_gap_records": 2"#));
@@ -2589,10 +2587,10 @@ fn check_repo_badge_plus_json_emits_repo_scope_metadata() -> Result<(), String> 
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.4""#));
+    assert!(stdout.contains(r#""schema_version": "0.5""#));
     assert!(stdout.contains(r#""kind": "ripr_plus""#));
     assert!(stdout.contains(r#""scope": "repo""#));
-    assert!(stdout.contains(r#""basis": "seam_native""#));
+    assert!(stdout.contains(r#""basis": "canonical_actionable_gap""#));
     assert!(stdout.contains(r#""label": "ripr+""#));
 
     let _ = std::fs::remove_dir_all(&workspace);
@@ -2785,7 +2783,8 @@ fn fixture_test_efficiency_with_unrelated_actionable_test() -> &'static str {
     // One actionable entry that reaches an owner the placeholder
     // workspace does not have (and whose name does not appear in any
     // diff finding's related_tests). Diff-scope `ripr+` must filter it
-    // out; repo-scope `ripr+` must still count it.
+    // out; repo-scope public `ripr+` also keeps it out until TE debt is
+    // lifted into the canonical repair / verify / receipt model.
     r#"{
   "schema_version": "0.1",
   "tests": [
@@ -2805,7 +2804,7 @@ fn fixture_test_efficiency_with_unrelated_actionable_test() -> &'static str {
 }
 
 #[test]
-fn check_repo_badge_plus_applies_test_efficiency_suppressions_from_disk() -> Result<(), String> {
+fn check_repo_badge_plus_ignores_raw_test_efficiency_suppressions() -> Result<(), String> {
     let suppressions = r#"schema_version = 1
 
 [[suppressions]]
@@ -2821,20 +2820,16 @@ expires = "2099-09-01"
         Some(suppressions),
     )?;
     let root = workspace.display().to_string();
-    // Repo scope aggregates the repo-wide ledger; suppressions still
-    // apply by `(test, path)` regardless of scope. Using repo scope
-    // here keeps the test focused on suppression mechanics rather than
-    // diff-relatedness filtering (covered by separate tests below).
     let output = run_ripr(&["check", "--root", &root, "--format", "repo-badge-plus-json"]);
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // 1 actionable test moved into the suppressed bucket.
+    // Raw test-efficiency debt is not part of the public canonical repair
+    // badge basis, so its suppressions do not move public counts.
     assert!(stdout.contains(r#""unsuppressed_test_efficiency_findings": 0"#));
-    assert!(stdout.contains(r#""suppressed_test_efficiency_findings": 1"#));
+    assert!(stdout.contains(r#""suppressed_test_efficiency_findings": 0"#));
     // intentional remains 0 — declared_intent and suppressions are distinct.
     assert!(stdout.contains(r#""intentional_test_efficiency_findings": 0"#));
-    // No warnings — selector matched and not expired.
     assert!(stdout.contains(r#""warnings": []"#));
 
     let _ = std::fs::remove_dir_all(&workspace);
@@ -2842,8 +2837,7 @@ expires = "2099-09-01"
 }
 
 #[test]
-fn check_repo_badge_plus_warns_on_expired_suppression_and_keeps_finding_in_headline()
--> Result<(), String> {
+fn check_repo_badge_plus_does_not_promote_expired_raw_te_suppression() -> Result<(), String> {
     let suppressions = r#"schema_version = 1
 
 [[suppressions]]
@@ -2863,13 +2857,11 @@ expires = "2025-01-01"
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Expired suppression must NOT apply — the finding stays in the
-    // unsuppressed bucket.
-    assert!(stdout.contains(r#""unsuppressed_test_efficiency_findings": 1"#));
+    // Raw test-efficiency debt is not counted in the public repo headline,
+    // even when a stale TE suppression exists.
+    assert!(stdout.contains(r#""unsuppressed_test_efficiency_findings": 0"#));
     assert!(stdout.contains(r#""suppressed_test_efficiency_findings": 0"#));
-    // Warnings array surfaces the expiry.
-    assert!(stdout.contains("expired"));
-    assert!(stdout.contains("cli_prints_help"));
+    assert!(stdout.contains(r#""warnings": []"#));
 
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())
@@ -3008,11 +3000,10 @@ index 0000000..1111111 100644
 }
 
 #[test]
-fn check_repo_badge_plus_still_aggregates_unrelated_repo_wide_test_efficiency() -> Result<(), String>
-{
-    // Companion to the diff-scope filter test: under repo scope the
-    // same fixture's unrelated entry IS counted (repo scope aggregates
-    // the whole-repo ledger; relatedness only matters for diff scope).
+fn check_repo_badge_plus_does_not_count_unlifted_repo_wide_test_efficiency() -> Result<(), String> {
+    // Companion to the diff-scope filter test: repo-scope public `ripr+`
+    // also keeps raw TE debt out until it is projected into the same
+    // canonical repair model as gap records.
     let workspace = make_temp_workspace(Some(
         fixture_test_efficiency_with_unrelated_actionable_test(),
     ))?;
@@ -3023,8 +3014,8 @@ fn check_repo_badge_plus_still_aggregates_unrelated_repo_wide_test_efficiency() 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(
-        stdout.contains(r#""unsuppressed_test_efficiency_findings": 1"#),
-        "repo-scope `ripr+` must aggregate repo-wide TE findings: {stdout}"
+        stdout.contains(r#""unsuppressed_test_efficiency_findings": 0"#),
+        "repo-scope public `ripr+` must not count unlifted TE findings: {stdout}"
     );
 
     let _ = std::fs::remove_dir_all(&workspace);

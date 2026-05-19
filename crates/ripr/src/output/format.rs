@@ -26,19 +26,20 @@ pub enum OutputFormat {
     BadgePlusJson,
     /// Shields-compatible projection for the `ripr+` badge.
     BadgePlusShields,
-    /// Repo-scoped native `ripr` badge JSON. Renders seam-native repo
-    /// counts rather than diff-scoped `Finding` counts. Carries
-    /// `scope: "repo"` and `basis: "seam_native"` so README/store
-    /// endpoints can distinguish public repo signal from PR/diff artifacts.
+    /// Repo-scoped native `ripr` badge JSON. Renders unresolved actionable
+    /// canonical repair items rather than diff-scoped `Finding` counts or
+    /// seam-native inventory. Carries `scope: "repo"` and
+    /// `basis: "canonical_actionable_gap"` so README/store endpoints can
+    /// distinguish public repair signal from PR/diff and inventory artifacts.
     RepoBadgeJson,
     /// Repo-scoped Shields projection for the `ripr` badge. Same four
     /// fields as the diff-scoped Shields shape; native-only fields like
     /// `scope` and `basis` do not leak into Shields.
     RepoBadgeShields,
     /// Repo-scoped native `ripr+` badge JSON. Same disk requirement as
-    /// `BadgePlusJson` (the test-efficiency report) - `cargo xtask
-    /// test-efficiency-report` already scans the full test suite, so
-    /// the report is already repo-scoped.
+    /// `BadgePlusJson` (the test-efficiency report), but raw test-efficiency
+    /// debt does not move the repo headline until it is lifted into the same
+    /// actionable repair / verify / receipt model as canonical gaps.
     RepoBadgePlusJson,
     /// Repo-scoped Shields projection for the `ripr+` badge.
     RepoBadgePlusShields,
@@ -180,9 +181,9 @@ impl OutputFormat {
     /// diff scope.
     ///
     /// Repo-scope formats use full-repo inputs. Native repo badge JSON carries
-    /// `scope: "repo"` and seam-native badge formats carry
-    /// `basis: "seam_native"`. The Shields projection stays four-field for
-    /// both scopes.
+    /// `scope: "repo"` and public repo badge formats carry
+    /// `basis: "canonical_actionable_gap"`. The Shields projection stays
+    /// four-field for both scopes.
     pub fn is_repo_scope(&self) -> bool {
         self.is_repo_seam_inventory()
     }

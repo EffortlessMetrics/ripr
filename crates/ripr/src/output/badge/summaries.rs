@@ -1,10 +1,14 @@
-#[cfg(test)]
 use crate::analysis::ClassifiedSeam;
+#[cfg(test)]
 use crate::analysis::SeamGripClassCounts;
+use crate::analysis::canonical_gap::canonical_gap_identities;
+#[cfg(test)]
 use crate::analysis::seams::SeamGripClass;
 use crate::app::CheckOutput;
+#[cfg(test)]
 use crate::config::{ConfigSeverity, RiprConfig};
 use crate::domain::ExposureClass;
+use crate::output::evidence_record::evidence_record_for;
 use crate::output::gap_decision_ledger;
 use crate::output::suppressions::{SuppressionEntry, apply_exposure_suppressions};
 use std::collections::{BTreeMap, BTreeSet};
@@ -127,6 +131,7 @@ pub(crate) fn ripr_seam_badge_summary(
 
 /// Builds the repo-scoped `ripr` badge summary from compact seam grip
 /// class counts.
+#[cfg(test)]
 pub(crate) fn ripr_seam_badge_summary_from_counts(
     class_counts: &SeamGripClassCounts,
     config: &RiprConfig,
@@ -181,6 +186,80 @@ pub(crate) fn ripr_seam_badge_summary_from_counts(
         kind: BadgeKind::Ripr,
         scope: BadgeScope::Repo,
         basis: BadgeBasis::SeamNative,
+        message: headline.to_string(),
+        status,
+        color,
+        counts,
+        reason_counts,
+        policy,
+        warnings: Vec::new(),
+    }
+}
+
+/// Builds the repo-scoped public `ripr` badge summary from unresolved
+/// actionable canonical gaps.
+///
+/// This is the public badge path. It intentionally does not count raw seams,
+/// raw findings, static limitations without actionability, no-action records,
+/// or preview evidence. Seam-native inventory remains available through
+/// `ripr_seam_badge_summary_from_counts` and repo exposure reports.
+pub(crate) fn ripr_canonical_actionable_gap_badge_summary(
+    classified: &[ClassifiedSeam],
+    policy: BadgePolicy,
+) -> BadgeSummary {
+    let canonical_gaps = canonical_gap_identities(classified);
+    let mut actionable_gap_ids = BTreeSet::new();
+
+    for entry in classified {
+        let Some(canonical_gap) = canonical_gaps.get(entry.seam.id()) else {
+            continue;
+        };
+        let record = evidence_record_for(entry, Some(canonical_gap));
+        let item = record.canonical_item;
+        if item.gap_state == "actionable"
+            && item.repair_route.is_some()
+            && item.verify_command.is_some()
+            && let Some(id) = item.canonical_gap_id
+        {
+            actionable_gap_ids.insert(id);
+        }
+    }
+
+    let counts = BadgeCounts {
+        unsuppressed_exposure_gaps: actionable_gap_ids.len(),
+        unsuppressed_test_efficiency_findings: 0,
+        intentional_test_efficiency_findings: 0,
+        suppressed_exposure_gaps: 0,
+        suppressed_test_efficiency_findings: 0,
+        unknowns: 0,
+        unknowns_test_efficiency: 0,
+        analyzed_findings: 0,
+        analyzed_seams: classified.len(),
+        analyzed_gap_records: canonical_gaps
+            .values()
+            .map(|gap| gap.id.as_str())
+            .collect::<BTreeSet<_>>()
+            .len(),
+        analyzed_tests: 0,
+    };
+
+    let mut reason_counts: BTreeMap<&'static str, usize> = BTreeMap::new();
+    for key in BADGE_REASON_KEYS {
+        reason_counts.insert(key, 0);
+    }
+
+    let headline = counts.unsuppressed_exposure_gaps
+        + if policy.include_unknowns {
+            counts.unknowns
+        } else {
+            0
+        };
+    let (status, color) = badge_status_color(headline, policy.fail_on_nonzero);
+
+    BadgeSummary {
+        kind: BadgeKind::Ripr,
+        scope: BadgeScope::Repo,
+        basis: BadgeBasis::CanonicalActionableGap,
         message: headline.to_string(),
         status,
         color,

@@ -1,14 +1,10 @@
-use crate::analysis::SeamGripClassCounts;
 use crate::app::CheckOutput;
-use crate::config::RiprConfig;
 use crate::output::suppressions::{SuppressionEntry, apply_test_efficiency_suppressions};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::model::{BADGE_REASON_KEYS, BadgeCounts, BadgeKind, BadgePolicy, BadgeSummary};
-use super::summaries::{
-    badge_status_color, ripr_badge_summary_with_suppressions, ripr_seam_badge_summary_from_counts,
-};
+use super::summaries::{badge_status_color, ripr_badge_summary_with_suppressions};
 
 /// One test-efficiency entry seen by the badge, retained so suppressions
 /// can be applied per-`(test, path)` after the report is parsed and so
@@ -314,26 +310,48 @@ pub fn ripr_plus_badge_summary_with_suppressions(
     )
 }
 
-/// Builds the repo-scoped `ripr+` badge summary from compact seam grip
-/// class counts plus the parsed test-efficiency ledger.
-pub(crate) fn ripr_plus_seam_badge_summary_from_counts_with_suppressions(
-    class_counts: &SeamGripClassCounts,
-    config: &RiprConfig,
+/// Builds repo-scoped `ripr+` from the canonical actionable repair basis.
+///
+/// Test-efficiency entries are parsed so the report remains validated and
+/// `analyzed_tests` / reason counts stay visible, but raw test-efficiency debt
+/// does not move the public headline until a later producer lifts those items
+/// into the same repair / verify / receipt model as canonical gaps.
+pub(crate) fn ripr_plus_canonical_actionable_gap_badge_summary(
+    mut exposure: BadgeSummary,
     test_efficiency: TestEfficiencyBadgeSummary,
-    suppressions: &[SuppressionEntry],
-    today: &str,
     policy: BadgePolicy,
-    scope: TestEfficiencyAggregationScope<'_>,
 ) -> BadgeSummary {
-    let exposure = ripr_seam_badge_summary_from_counts(class_counts, config, policy.clone());
-    ripr_plus_badge_summary_from_exposure(
-        exposure,
-        test_efficiency,
-        suppressions,
-        today,
-        policy,
-        scope,
-    )
+    let counts = BadgeCounts {
+        unsuppressed_exposure_gaps: exposure.counts.unsuppressed_exposure_gaps,
+        unsuppressed_test_efficiency_findings: 0,
+        intentional_test_efficiency_findings: 0,
+        suppressed_exposure_gaps: exposure.counts.suppressed_exposure_gaps,
+        suppressed_test_efficiency_findings: 0,
+        unknowns: exposure.counts.unknowns,
+        unknowns_test_efficiency: 0,
+        analyzed_findings: exposure.counts.analyzed_findings,
+        analyzed_seams: exposure.counts.analyzed_seams,
+        analyzed_gap_records: exposure.counts.analyzed_gap_records,
+        analyzed_tests: test_efficiency.analyzed_tests,
+    };
+    let unknown_contribution = if policy.include_unknowns {
+        counts.unknowns + counts.unknowns_test_efficiency
+    } else {
+        0
+    };
+    let headline = counts.unsuppressed_exposure_gaps
+        + counts.unsuppressed_test_efficiency_findings
+        + unknown_contribution;
+    let (status, color) = badge_status_color(headline, policy.fail_on_nonzero);
+
+    exposure.kind = BadgeKind::RiprPlus;
+    exposure.message = headline.to_string();
+    exposure.status = status;
+    exposure.color = color;
+    exposure.counts = counts;
+    exposure.reason_counts = test_efficiency.reason_counts;
+    exposure.policy = policy;
+    exposure
 }
 
 fn ripr_plus_badge_summary_from_exposure(

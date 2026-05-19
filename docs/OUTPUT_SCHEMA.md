@@ -578,14 +578,14 @@ ripr check --format repo-badge-plus-json
 ripr check --format repo-badge-json --gap-ledger target/ripr/reports/gap-decision-ledger.json
 ```
 
-Native schema `0.4`:
+Native schema `0.5`:
 
 ```json
 {
-  "schema_version": "0.4",
+  "schema_version": "0.5",
   "kind": "ripr",
   "scope": "repo",
-  "basis": "seam_native",
+  "basis": "canonical_actionable_gap",
   "label": "ripr",
   "message": "0",
   "status": "pass",
@@ -626,32 +626,40 @@ Native schema `0.4`:
 
 Field contract:
 
-- `schema_version` — currently `"0.4"`. `0.2` added `scope`; `0.3` adds
+- `schema_version` — currently `"0.5"`. `0.2` added `scope`; `0.3` adds
   `basis` and `counts.analyzed_seams`; `0.4` adds
-  `basis = "gap_decision_ledger"` and `counts.analyzed_gap_records`.
+  `basis = "gap_decision_ledger"` and `counts.analyzed_gap_records`;
+  `0.5` adds `basis = "canonical_actionable_gap"` for public repair-item
+  projection.
 - `kind` — `"ripr"` or `"ripr_plus"`.
 - `scope` — `"diff"` for PR/diff artifacts, `"repo"` for public repo
   baseline artifacts.
 - `basis` — `"finding_exposure"` for legacy Finding/ExposureClass count
-  artifacts, `"seam_native"` for RepoSeam/SeamGripClass count artifacts, or
-  `"gap_decision_ledger"` when repo badge formats are explicitly rendered from
-  supplied GapRecord projection targets. Diff-scoped badge formats currently
-  use `finding_exposure`; repo-scoped badge formats use `seam_native` unless
-  `--gap-ledger` is supplied.
+  artifacts, `"canonical_actionable_gap"` for public repo repair-item badge
+  projection, `"seam_native"` for internal RepoSeam/SeamGripClass inventory
+  artifacts, or `"gap_decision_ledger"` when repo badge formats are explicitly
+  rendered from supplied GapRecord projection targets. Diff-scoped badge
+  formats currently use `finding_exposure`; repo-scoped public badge formats
+  use `canonical_actionable_gap` unless `--gap-ledger` is supplied.
 - `message` — the headline count rendered as a string for Shields
   compatibility. It is a count, never a denominator or coverage fraction.
 - `counts.unsuppressed_exposure_gaps` — diff scope: unsuppressed
   `weakly_exposed`, `reachable_unrevealed`, and `no_static_path` Findings;
-  repo scope: configured-visible headline-eligible seam classes.
-- `counts.unknowns` — diff scope: static unknown Finding classes; repo
-  scope: configured-visible `opaque` seams.
+  repo public scope: unresolved actionable canonical repair items; seam-native
+  inventory scope: configured-visible headline-eligible seam classes.
+- `counts.unknowns` — diff scope: static unknown Finding classes; seam-native
+  inventory scope: configured-visible `opaque` seams. Canonical-actionable
+  public badge projection does not count unknown-only or limitation-only states
+  in the headline.
 - `counts.analyzed_findings` — number of Findings considered by the
-  finding-exposure basis; `0` for seam-native repo badges.
-- `counts.analyzed_seams` — number of classified seams considered by the
-  seam-native basis; `0` for finding-exposure diff badges.
-- `counts.analyzed_gap_records` — number of GapRecord entries considered by
-  the gap-decision-ledger basis; `0` for finding-exposure and seam-native
+  finding-exposure basis; `0` for canonical-actionable and seam-native repo
   badges.
+- `counts.analyzed_seams` — number of classified seams considered by the
+  canonical-actionable or seam-native repo basis; `0` for finding-exposure diff
+  badges.
+- `counts.analyzed_gap_records` — number of GapRecord entries considered by
+  the gap-decision-ledger basis, or canonical repair groups considered by the
+  canonical-actionable basis; `0` for finding-exposure and seam-native badges.
 - `warnings` — advisory suppressions/config warnings that remain visible in
   native JSON. The Shields projection never includes warnings.
 
