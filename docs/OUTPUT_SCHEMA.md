@@ -1409,7 +1409,7 @@ not claim user test debt from missing health counts.
 
 ```json
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "scope": "repo",
   "status": "advisory",
@@ -1577,7 +1577,10 @@ not claim user test debt from missing health counts.
 
 Field contract:
 
-- `schema_version` - currently `"0.1"`.
+- `schema_version` - currently `"0.2"`. `0.2` changes free-form
+  `missing_discriminator_counts` and `static_limitation_reason_counts` from
+  JSON objects to `{label, count}` rows so downstream consumers do not treat
+  analyzer evidence strings as stable field names.
 - `scope` - always `"repo"`.
 - `status` - `"advisory"` for complete analyzer-health reports and `"warn"`
   for bounded xtask fallback artifacts. This report is an analyzer-health view,
