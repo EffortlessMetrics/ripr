@@ -1,6 +1,6 @@
 # Editor Adoption Assurance Implementation Plan
 
-Status: active
+Status: closed
 
 Owner: Lane 3 - Editor / LSP UX
 
@@ -47,7 +47,7 @@ Close #1248 from #1267, #1270, #1272, and #1274. Close #1249 from the
 dedicated `fixtures/editor_adoption_assurance` corpus. Close #1250 from the
 dedicated VS Code adoption-assurance smoke. Close #1251 from the install-to-
 first-pr editor guide. Close #1252 from the external-style dogfood receipts.
-Keep #1253 open until the closeout artifact lands.
+Close #1253 from the closeout artifact.
 
 | Issue | Work item | Status | Evidence / remaining gap |
 | --- | --- | --- | --- |
@@ -59,7 +59,7 @@ Keep #1253 open until the closeout artifact lands.
 | #1250 | `test(vscode): smoke editor adoption assurance path` | done; close issue | VS Code smoke proves setup/status commands, bounded first-pr repair packets, verify/receipt copy actions, and wrong-root/malformed suppression without running hidden analysis. |
 | #1251 | `docs(editor): write install-to-first-pr editor guide` | done; close issue | `docs/EDITOR_INSTALL_TO_FIRST_PR.md` stitches install/open, setup diagnosis, Show Status, one repair, verify, receipt, refresh, first-pr packet, recovery states, and non-claims into one adoption path. |
 | #1252 | `dogfood(lane3): record external-style editor adoption receipts` | done; close issue | `docs/handoffs/2026-05-19-editor-adoption-assurance-receipts.md` records external-style setup, root, receipt, first-pr, preview-unavailable, and fail-closed evidence. |
-| #1253 | `campaign(lane3): close editor adoption assurance` | open; blocked | Blocked by #1249 through #1252. |
+| #1253 | `campaign(lane3): close editor adoption assurance` | done; close issue | `docs/handoffs/2026-05-19-editor-adoption-assurance-closeout.md` records the requirement-to-artifact audit, validation plan, remaining limits, and future-work boundary. |
 
 ## Work Item 1: docs(lane3): open editor adoption assurance stack
 

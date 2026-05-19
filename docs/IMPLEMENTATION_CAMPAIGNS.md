@@ -3774,7 +3774,7 @@ Blocking conditions:
 
 Campaign ID: `editor-adoption-assurance`
 
-Status: active.
+Status: closed.
 
 The editor cockpit, first-run repair loop, first-pr bridge, and preview routing
 are closed. This campaign makes the first-use editor path safer for outside
@@ -3812,13 +3812,13 @@ Work items:
 | `test/vscode-editor-adoption-assurance` | done | Smoked the packaged extension path for adoption assurance. |
 | `docs/editor-install-to-first-pr` | done | Documented install/open through first-pr packet inspection and recovery states. |
 | `dogfood/lane3-editor-adoption-receipts` | done | Recorded external-style setup, root, receipt, first-pr, preview-unavailable, and fail-closed adoption receipts. |
-| `campaign/lane3-editor-adoption-assurance-closeout` | planned | Close only after proof and issue burn-down. |
+| `campaign/lane3-editor-adoption-assurance-closeout` | done | Recorded closeout proof, accepted the proposal/spec, and closed the issue burn-down. |
 
 Issue reconciliation on 2026-05-18 found #1247 and #1248 satisfied on `main`.
-#1249, #1250, #1251, and #1252 are now satisfied by the fixture corpus,
-VS Code smoke, install-to-first-pr guide, and dogfood receipts. #1253 remains
-open. Do not restart the compatibility or root-diagnosis slices unless a new regression
-appears.
+#1249, #1250, #1251, and #1252 are satisfied by the fixture corpus, VS Code
+smoke, install-to-first-pr guide, and dogfood receipts. #1253 is satisfied by
+the closeout. Do not restart the compatibility or root-diagnosis slices unless
+a new regression appears.
 
 Commands:
 
