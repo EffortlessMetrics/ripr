@@ -24145,11 +24145,167 @@ fn normalize_report_path(path: &str) -> String {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct RepoBadgeArtifactOptions {
     gap_ledger: Option<PathBuf>,
+    include_seam_classes: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct BadgeEndpointSnapshot {
+    path: String,
+    label: String,
+    message: String,
+    color: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct BadgeNativeAuditSnapshot {
+    label: String,
+    kind: String,
+    scope: String,
+    basis: String,
+    message: String,
+    status: String,
+    color: String,
+    counts: BTreeMap<String, usize>,
+    reason_counts: BTreeMap<String, usize>,
+    warnings: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct BadgeCountBreakdown {
+    status: String,
+    source: String,
+    counts: BTreeMap<String, usize>,
+    note: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct BadgeCanonicalProjection {
+    status: String,
+    source: String,
+    ripr_count: Option<usize>,
+    ripr_plus_count: Option<usize>,
+    detail: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct BadgeBasisSignal {
+    status: String,
+    source: String,
+    count: Option<usize>,
+    detail: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct BadgeBasisReport {
+    status: String,
+    current_public_endpoints: Vec<BadgeEndpointSnapshot>,
+    current_repo_badges: Vec<BadgeNativeAuditSnapshot>,
+    seam_native_counts: BadgeCountBreakdown,
+    test_efficiency_counts: BadgeCountBreakdown,
+    canonical_actionable_gap: BadgeCanonicalProjection,
+    raw_alignment_signals: BadgeBasisSignal,
+    canonical_evidence_items: BadgeBasisSignal,
+    static_limitations: BadgeBasisSignal,
+    suppressed_or_intentional_items: BadgeBasisSignal,
+    no_action_items: BadgeBasisSignal,
+    recommended_public_projection: String,
+    warnings: Vec<String>,
 }
 
 pub(crate) fn repo_badge_artifacts_impl(args: &[String]) -> Result<(), String> {
     let options = parse_repo_badge_artifact_options(args, "repo-badge-artifacts")?;
     run_with_repo_root_cwd(|| write_repo_badge_artifacts(&options))
+}
+
+pub(crate) fn badge_basis_impl(args: &[String]) -> Result<(), String> {
+    let options = parse_repo_badge_artifact_options(args, "badge-basis")?;
+    run_with_repo_root_cwd(|| {
+        let report = build_badge_basis_report(&options)?;
+        write_report("badge-basis.json", &badge_basis_report_json(&report)?)?;
+        write_report("badge-basis.md", &badge_basis_report_markdown(&report))
+    })
+}
+
+fn build_badge_basis_report(
+    options: &RepoBadgeArtifactOptions,
+) -> Result<BadgeBasisReport, String> {
+    let current_public_endpoints = badge_basis_endpoint_snapshots()?;
+    test_efficiency_report_impl()?;
+
+    let ripr_native_json =
+        run_repo_badge_artifact_job("repo-badge-json", options.gap_ledger.as_deref())?;
+    let ripr_plus_native_json =
+        run_repo_badge_artifact_job("repo-badge-plus-json", options.gap_ledger.as_deref())?;
+    let ripr_snapshot = badge_native_audit_snapshot(&ripr_native_json)?;
+    let ripr_plus_snapshot = badge_native_audit_snapshot(&ripr_plus_native_json)?;
+    let current_repo_badges = vec![ripr_snapshot.clone(), ripr_plus_snapshot.clone()];
+
+    let seam_native_counts =
+        badge_basis_seam_native_counts(options.include_seam_classes, &ripr_snapshot);
+    let test_efficiency_counts = badge_basis_test_efficiency_counts();
+    let canonical_actionable_gap =
+        badge_basis_canonical_projection(options, &ripr_snapshot, &ripr_plus_snapshot);
+    let static_limitations = badge_basis_static_limitations(&seam_native_counts);
+    let suppressed_or_intentional_items =
+        badge_basis_suppressed_or_intentional_items(&ripr_snapshot, &ripr_plus_snapshot);
+
+    let mut warnings = Vec::new();
+    let current_basis = current_repo_badges
+        .iter()
+        .map(|badge| badge.basis.as_str())
+        .collect::<BTreeSet<_>>();
+    if current_basis.contains("seam_native") && canonical_actionable_gap.ripr_count.is_none() {
+        warnings.push(
+            "Current public endpoint values are decomposed as seam-native inventory; canonical actionable public projection is not implemented in this PR."
+                .to_string(),
+        );
+    }
+    if seam_native_counts.status != "pass" {
+        warnings.push(seam_native_counts.note.clone());
+    }
+
+    let status = if warnings.is_empty() { "pass" } else { "warn" }.to_string();
+
+    Ok(BadgeBasisReport {
+        status,
+        current_public_endpoints,
+        current_repo_badges,
+        seam_native_counts,
+        test_efficiency_counts,
+        canonical_actionable_gap,
+        raw_alignment_signals: BadgeBasisSignal {
+            status: "not_in_current_badge_generator".to_string(),
+            source: "finding-alignment dogfood receipts".to_string(),
+            count: None,
+            detail:
+                "Raw alignment signals remain supporting evidence; they are not counted by the current public endpoint generator."
+                    .to_string(),
+        },
+        canonical_evidence_items: BadgeBasisSignal {
+            status: "not_in_current_badge_generator".to_string(),
+            source: "repo exposure / gap ledger artifacts".to_string(),
+            count: None,
+            detail:
+                "Canonical evidence identity is available to downstream reports, but the current public endpoint generator does not count it as the headline unit."
+                    .to_string(),
+        },
+        static_limitations,
+        suppressed_or_intentional_items,
+        no_action_items: BadgeBasisSignal {
+            status: "requires_gap_decision_ledger".to_string(),
+            source: options
+                .gap_ledger
+                .as_ref()
+                .map(|path| normalize_path(path))
+                .unwrap_or_else(|| "no gap decision ledger supplied".to_string()),
+            count: None,
+            detail:
+                "No-action, already-observed, suppressed, and intentional gap states require explicit gap records; seam-native inventory cannot infer them safely."
+                    .to_string(),
+        },
+        recommended_public_projection: "canonical_actionable_gap".to_string(),
+        warnings,
+    })
 }
 
 fn write_repo_badge_artifacts(options: &RepoBadgeArtifactOptions) -> Result<(), String> {
@@ -24197,6 +24353,14 @@ fn parse_repo_badge_artifact_options(
     while index < args.len() {
         match args[index].as_str() {
             "--check" => {}
+            "--include-seam-classes" if command_name == "badge-basis" => {
+                options.include_seam_classes = true;
+            }
+            "--include-seam-classes" => {
+                return Err(format!(
+                    "{command_name} does not support --include-seam-classes"
+                ));
+            }
             "--gap-ledger" => {
                 index += 1;
                 let Some(value) = args.get(index) else {
@@ -24214,6 +24378,518 @@ fn parse_repo_badge_artifact_options(
         index += 1;
     }
     Ok(options)
+}
+
+fn badge_basis_endpoint_snapshots() -> Result<Vec<BadgeEndpointSnapshot>, String> {
+    let mut snapshots = Vec::new();
+    for (path, _) in BADGE_ENDPOINT_FILES {
+        let value = read_json_value(Path::new(path))?;
+        snapshots.push(BadgeEndpointSnapshot {
+            path: (*path).to_string(),
+            label: json_string_field_value(&value, "label"),
+            message: json_string_field_value(&value, "message"),
+            color: json_string_field_value(&value, "color"),
+        });
+    }
+    Ok(snapshots)
+}
+
+fn badge_native_audit_snapshot(json: &str) -> Result<BadgeNativeAuditSnapshot, String> {
+    let value: Value = serde_json::from_str(json)
+        .map_err(|err| format!("failed to parse native badge JSON: {err}"))?;
+    Ok(BadgeNativeAuditSnapshot {
+        label: json_string_field_value(&value, "label"),
+        kind: json_string_field_value(&value, "kind"),
+        scope: json_string_field_value(&value, "scope"),
+        basis: json_string_field_value(&value, "basis"),
+        message: json_string_field_value(&value, "message"),
+        status: json_string_field_value(&value, "status"),
+        color: json_string_field_value(&value, "color"),
+        counts: json_object_usize_map(&value, "counts"),
+        reason_counts: json_object_usize_map(&value, "reason_counts"),
+        warnings: json_array_string_values(&value, "warnings"),
+    })
+}
+
+fn json_string_field_value(value: &Value, key: &str) -> String {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .unwrap_or("unknown")
+        .to_string()
+}
+
+fn json_object_usize_map(value: &Value, key: &str) -> BTreeMap<String, usize> {
+    value
+        .get(key)
+        .and_then(Value::as_object)
+        .map(|object| {
+            object
+                .iter()
+                .filter_map(|(key, value)| value.as_u64().map(|count| (key.clone(), count)))
+                .filter_map(|(key, count)| usize::try_from(count).ok().map(|count| (key, count)))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn json_array_string_values(value: &Value, key: &str) -> Vec<String> {
+    value
+        .get(key)
+        .and_then(Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn badge_basis_seam_native_counts(
+    include_seam_classes: bool,
+    ripr: &BadgeNativeAuditSnapshot,
+) -> BadgeCountBreakdown {
+    if !include_seam_classes {
+        let mut counts = BTreeMap::new();
+        for key in [
+            "analyzed_seams",
+            "unsuppressed_exposure_gaps",
+            "suppressed_exposure_gaps",
+            "unknowns",
+        ] {
+            if let Some(value) = ripr.counts.get(key) {
+                counts.insert(key.to_string(), *value);
+            }
+        }
+        return BadgeCountBreakdown {
+            status: "partial".to_string(),
+            source: "native repo badge counts".to_string(),
+            counts,
+            note: "Compact badge counts are available. Per-class seam-native breakdown is intentionally skipped by default because repo-exposure can be expensive; rerun with `cargo xtask badge-basis --include-seam-classes` when that detail is needed.".to_string(),
+        };
+    }
+
+    match run_repo_exposure_markdown_for_badge_basis()
+        .and_then(|markdown| parse_repo_exposure_summary_counts(&markdown))
+    {
+        Ok(counts) => BadgeCountBreakdown {
+            status: "pass".to_string(),
+            source: "ripr check --root . --format repo-exposure-md".to_string(),
+            counts,
+            note: "Repo exposure summary class counts are available.".to_string(),
+        },
+        Err(err) => BadgeCountBreakdown {
+            status: "warn".to_string(),
+            source: "ripr check --root . --format repo-exposure-md".to_string(),
+            counts: BTreeMap::new(),
+            note: format!("Could not collect seam-native class counts: {err}"),
+        },
+    }
+}
+
+fn run_repo_exposure_markdown_for_badge_basis() -> Result<String, String> {
+    if let Ok(ripr_bin) = std::env::var("RIPR_BIN") {
+        let repo_root = repo_root()?;
+        let args = vec![
+            "check".to_string(),
+            "--root".to_string(),
+            normalize_path(&repo_root),
+            "--format".to_string(),
+            "repo-exposure-md".to_string(),
+        ];
+        return run_output_owned(&ripr_bin, &args);
+    }
+    let args = repo_seam_inventory_command_args("repo-exposure-md");
+    run_output_owned("cargo", &args)
+}
+
+fn parse_repo_exposure_summary_counts(markdown: &str) -> Result<BTreeMap<String, usize>, String> {
+    let mut counts = BTreeMap::new();
+    for line in markdown.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with('|') || !trimmed.ends_with('|') {
+            continue;
+        }
+        let cells = trimmed.split('|').map(str::trim).collect::<Vec<_>>();
+        if cells.len() != 4 {
+            continue;
+        }
+        let key = cells[1];
+        let value = cells[2];
+        if key.is_empty()
+            || key == "Class"
+            || key.chars().all(|ch| ch == '-')
+            || value.chars().all(|ch| ch == '-' || ch == ':')
+        {
+            continue;
+        }
+        if let Ok(count) = value.parse::<usize>() {
+            counts.insert(key.to_string(), count);
+        }
+    }
+    if counts.is_empty() {
+        return Err("repo exposure Markdown summary did not contain count rows".to_string());
+    }
+    Ok(counts)
+}
+
+fn badge_basis_test_efficiency_counts() -> BadgeCountBreakdown {
+    let path = Path::new("target/ripr/reports/test-efficiency.json");
+    match read_json_value(path) {
+        Ok(value) => BadgeCountBreakdown {
+            status: "pass".to_string(),
+            source: normalize_path(path),
+            counts: json_object_usize_map(&value, "counts"),
+            note: "Test-efficiency class counts are available.".to_string(),
+        },
+        Err(err) => BadgeCountBreakdown {
+            status: "warn".to_string(),
+            source: normalize_path(path),
+            counts: BTreeMap::new(),
+            note: format!("Could not collect test-efficiency counts: {err}"),
+        },
+    }
+}
+
+fn badge_basis_canonical_projection(
+    options: &RepoBadgeArtifactOptions,
+    ripr: &BadgeNativeAuditSnapshot,
+    ripr_plus: &BadgeNativeAuditSnapshot,
+) -> BadgeCanonicalProjection {
+    if options.gap_ledger.is_some()
+        && ripr.basis == "gap_decision_ledger"
+        && ripr_plus.basis == "gap_decision_ledger"
+    {
+        return BadgeCanonicalProjection {
+            status: "available_via_gap_decision_ledger".to_string(),
+            source: options
+                .gap_ledger
+                .as_ref()
+                .map(|path| normalize_path(path))
+                .unwrap_or_else(|| "gap decision ledger".to_string()),
+            ripr_count: ripr.message.parse::<usize>().ok(),
+            ripr_plus_count: ripr_plus.message.parse::<usize>().ok(),
+            detail:
+                "An explicit gap decision ledger supplied projection targets for the current audit run."
+                    .to_string(),
+        };
+    }
+
+    BadgeCanonicalProjection {
+        status: "not_available".to_string(),
+        source: "canonical_actionable_gap generator path".to_string(),
+        ripr_count: None,
+        ripr_plus_count: None,
+        detail:
+            "This audit PR decomposes the current seam-native public basis; a later PR will implement canonical actionable public badge generation."
+                .to_string(),
+    }
+}
+
+fn badge_basis_static_limitations(seam_counts: &BadgeCountBreakdown) -> BadgeBasisSignal {
+    let limit_keys = [
+        "activation_unknown",
+        "propagation_unknown",
+        "observation_unknown",
+        "discrimination_unknown",
+        "opaque",
+    ];
+    let count = if seam_counts.counts.is_empty() {
+        None
+    } else if let Some(unknowns) = seam_counts.counts.get("unknowns") {
+        Some(*unknowns)
+    } else {
+        Some(
+            limit_keys
+                .iter()
+                .map(|key| seam_counts.counts.get(*key).copied().unwrap_or(0))
+                .sum(),
+        )
+    };
+    BadgeBasisSignal {
+        status: if count.is_some() {
+            "available"
+        } else {
+            "not_available"
+        }
+        .to_string(),
+        source: seam_counts.source.clone(),
+        count,
+        detail:
+            "Static-limit pressure is supporting inventory evidence; it should not become a public repair counter without actionability."
+                .to_string(),
+    }
+}
+
+fn badge_basis_suppressed_or_intentional_items(
+    ripr: &BadgeNativeAuditSnapshot,
+    ripr_plus: &BadgeNativeAuditSnapshot,
+) -> BadgeBasisSignal {
+    let count = ripr
+        .counts
+        .get("suppressed_exposure_gaps")
+        .copied()
+        .unwrap_or(0)
+        + ripr_plus
+            .counts
+            .get("suppressed_test_efficiency_findings")
+            .copied()
+            .unwrap_or(0)
+        + ripr_plus
+            .counts
+            .get("intentional_test_efficiency_findings")
+            .copied()
+            .unwrap_or(0);
+    BadgeBasisSignal {
+        status: "available_from_badge_counts".to_string(),
+        source: "native repo badge counts".to_string(),
+        count: Some(count),
+        detail:
+            "Suppressed and intentional items stay out of the public repair counter; they remain visible in detailed reports."
+                .to_string(),
+    }
+}
+
+fn badge_basis_report_json(report: &BadgeBasisReport) -> Result<String, String> {
+    let endpoints = report
+        .current_public_endpoints
+        .iter()
+        .map(|endpoint| {
+            serde_json::json!({
+                "path": &endpoint.path,
+                "label": &endpoint.label,
+                "message": &endpoint.message,
+                "color": &endpoint.color,
+            })
+        })
+        .collect::<Vec<_>>();
+    let repo_badges = report
+        .current_repo_badges
+        .iter()
+        .map(|badge| {
+            serde_json::json!({
+                "label": &badge.label,
+                "kind": &badge.kind,
+                "scope": &badge.scope,
+                "basis": &badge.basis,
+                "message": &badge.message,
+                "status": &badge.status,
+                "color": &badge.color,
+                "counts": &badge.counts,
+                "reason_counts": &badge.reason_counts,
+                "warnings": &badge.warnings,
+            })
+        })
+        .collect::<Vec<_>>();
+    let value = serde_json::json!({
+        "schema_version": "0.1",
+        "status": &report.status,
+        "mode": "advisory",
+        "current_public_endpoints": endpoints,
+        "current_repo_badges": repo_badges,
+        "seam_native": {
+            "status": &report.seam_native_counts.status,
+            "source": &report.seam_native_counts.source,
+            "counts_by_class": &report.seam_native_counts.counts,
+            "note": &report.seam_native_counts.note,
+        },
+        "test_efficiency": {
+            "status": &report.test_efficiency_counts.status,
+            "source": &report.test_efficiency_counts.source,
+            "counts_by_class": &report.test_efficiency_counts.counts,
+            "note": &report.test_efficiency_counts.note,
+        },
+        "canonical_actionable_gap": {
+            "status": &report.canonical_actionable_gap.status,
+            "source": &report.canonical_actionable_gap.source,
+            "ripr_count": report.canonical_actionable_gap.ripr_count,
+            "ripr_plus_count": report.canonical_actionable_gap.ripr_plus_count,
+            "detail": &report.canonical_actionable_gap.detail,
+        },
+        "supporting_signals": {
+            "raw_alignment_signals": badge_basis_signal_json(&report.raw_alignment_signals),
+            "canonical_evidence_items": badge_basis_signal_json(&report.canonical_evidence_items),
+            "static_limitations": badge_basis_signal_json(&report.static_limitations),
+            "suppressed_or_intentional_items": badge_basis_signal_json(&report.suppressed_or_intentional_items),
+            "no_action_items": badge_basis_signal_json(&report.no_action_items),
+        },
+        "recommended_public_projection": {
+            "basis": &report.recommended_public_projection,
+            "rule": "README/store badges should count unresolved actionable canonical repair items; seam-native inventory stays in internal reports.",
+        },
+        "warnings": &report.warnings,
+        "non_claims": [
+            "not coverage",
+            "not runtime mutation confirmation",
+            "not merge approval",
+            "not a complete seam inventory"
+        ],
+    });
+    serde_json::to_string_pretty(&value)
+        .map_err(|err| format!("failed to serialize badge-basis report: {err}"))
+}
+
+fn badge_basis_signal_json(signal: &BadgeBasisSignal) -> Value {
+    serde_json::json!({
+        "status": &signal.status,
+        "source": &signal.source,
+        "count": signal.count,
+        "detail": &signal.detail,
+    })
+}
+
+fn badge_basis_report_markdown(report: &BadgeBasisReport) -> String {
+    let mut body = format!(
+        "# ripr Public Badge Basis Audit\n\nStatus: `{}`\nMode: advisory\n\n",
+        report.status
+    );
+    body.push_str(
+        "This report decomposes the committed public badge endpoint counts before \
+changing badge semantics. It does not edit `badges/*.json`.\n\n",
+    );
+
+    body.push_str("## Current Public Endpoints\n\n");
+    body.push_str("| Path | Label | Message | Color |\n");
+    body.push_str("| --- | --- | ---: | --- |\n");
+    for endpoint in &report.current_public_endpoints {
+        body.push_str(&format!(
+            "| `{}` | `{}` | {} | `{}` |\n",
+            markdown_cell(&endpoint.path),
+            markdown_cell(&endpoint.label),
+            markdown_cell(&endpoint.message),
+            markdown_cell(&endpoint.color)
+        ));
+    }
+
+    body.push_str("\n## Current Repo Badge Basis\n\n");
+    body.push_str("| Badge | Scope | Basis | Message | Status | Color |\n");
+    body.push_str("| --- | --- | --- | ---: | --- | --- |\n");
+    for badge in &report.current_repo_badges {
+        body.push_str(&format!(
+            "| `{}` | `{}` | `{}` | {} | `{}` | `{}` |\n",
+            markdown_cell(&badge.label),
+            markdown_cell(&badge.scope),
+            markdown_cell(&badge.basis),
+            markdown_cell(&badge.message),
+            markdown_cell(&badge.status),
+            markdown_cell(&badge.color)
+        ));
+    }
+
+    body.push_str("\n## Seam-Native Inventory\n\n");
+    body.push_str(&format!(
+        "Status: `{}`\n\nSource: `{}`\n\n{}\n\n",
+        report.seam_native_counts.status,
+        markdown_cell(&report.seam_native_counts.source),
+        markdown_cell(&report.seam_native_counts.note)
+    ));
+    append_count_table(&mut body, &report.seam_native_counts.counts);
+
+    body.push_str("\n## Test-Efficiency Inventory\n\n");
+    body.push_str(&format!(
+        "Status: `{}`\n\nSource: `{}`\n\n{}\n\n",
+        report.test_efficiency_counts.status,
+        markdown_cell(&report.test_efficiency_counts.source),
+        markdown_cell(&report.test_efficiency_counts.note)
+    ));
+    append_count_table(&mut body, &report.test_efficiency_counts.counts);
+
+    body.push_str("\n## Canonical Actionable Projection\n\n");
+    body.push_str("| Field | Value |\n| --- | --- |\n");
+    body.push_str(&format!(
+        "| Status | `{}` |\n",
+        markdown_cell(&report.canonical_actionable_gap.status)
+    ));
+    body.push_str(&format!(
+        "| Source | `{}` |\n",
+        markdown_cell(&report.canonical_actionable_gap.source)
+    ));
+    body.push_str(&format!(
+        "| ripr count | {} |\n",
+        optional_count_label(report.canonical_actionable_gap.ripr_count)
+    ));
+    body.push_str(&format!(
+        "| ripr+ count | {} |\n",
+        optional_count_label(report.canonical_actionable_gap.ripr_plus_count)
+    ));
+    body.push_str(&format!(
+        "| Detail | {} |\n",
+        markdown_cell(&report.canonical_actionable_gap.detail)
+    ));
+
+    body.push_str("\n## Supporting Signals\n\n");
+    append_signal_row_table(
+        &mut body,
+        &[
+            ("Raw alignment signals", &report.raw_alignment_signals),
+            ("Canonical evidence items", &report.canonical_evidence_items),
+            ("Static limitations", &report.static_limitations),
+            (
+                "Suppressed or intentional items",
+                &report.suppressed_or_intentional_items,
+            ),
+            ("No-action items", &report.no_action_items),
+        ],
+    );
+
+    body.push_str("\n## Recommended Public Projection\n\n");
+    body.push_str(&format!(
+        "- Basis: `{}`\n",
+        markdown_cell(&report.recommended_public_projection)
+    ));
+    body.push_str(
+        "- Rule: README/store badges should count unresolved actionable canonical repair items. Seam-native counts stay in internal reports.\n",
+    );
+
+    body.push_str("\n## Warnings\n\n");
+    if report.warnings.is_empty() {
+        body.push_str("- none\n");
+    } else {
+        for warning in &report.warnings {
+            body.push_str(&format!("- {}\n", markdown_cell(warning)));
+        }
+    }
+
+    body.push_str("\n## Non-Claims\n\n");
+    body.push_str("- not coverage\n");
+    body.push_str("- not runtime mutation confirmation\n");
+    body.push_str("- not merge approval\n");
+    body.push_str("- not a complete seam inventory\n");
+    body
+}
+
+fn append_count_table(body: &mut String, counts: &BTreeMap<String, usize>) {
+    if counts.is_empty() {
+        body.push_str("No count breakdown is available.\n");
+        return;
+    }
+    body.push_str("| Class | Count |\n| --- | ---: |\n");
+    for (key, value) in counts {
+        body.push_str(&format!("| `{}` | {} |\n", markdown_cell(key), value));
+    }
+}
+
+fn append_signal_row_table(body: &mut String, rows: &[(&str, &BadgeBasisSignal)]) {
+    body.push_str("| Signal | Status | Count | Source | Detail |\n");
+    body.push_str("| --- | --- | ---: | --- | --- |\n");
+    for (name, signal) in rows {
+        body.push_str(&format!(
+            "| {} | `{}` | {} | `{}` | {} |\n",
+            markdown_cell(name),
+            markdown_cell(&signal.status),
+            optional_count_label(signal.count),
+            markdown_cell(&signal.source),
+            markdown_cell(&signal.detail)
+        ));
+    }
+}
+
+fn optional_count_label(count: Option<usize>) -> String {
+    count
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "n/a".to_string())
 }
 
 fn run_repo_badge_artifact_job(format: &str, gap_ledger: Option<&Path>) -> Result<String, String> {
@@ -39115,13 +39791,14 @@ mod tests {
         run_output_owned,
     };
     use super::{
-        BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
-        CheckStatus, CheckViolation, CiFullEvidenceGate, CommandCatalogEntry, CwdCommand,
-        DogfoodEditorFirstPrBridgeRun, DogfoodEditorGapCockpitRun, DogfoodFindingAlignmentRun,
-        DogfoodFindingAlignmentScenario, DogfoodFirstActionRun, DogfoodFirstPrRun,
-        DogfoodFrontPanelRun, DogfoodGateRun, DogfoodGeneratedCiCockpitRun,
-        DogfoodLanguagePreviewRun, DogfoodPrInlineCommentRun, DogfoodPreviewProjectionRuns,
-        DogfoodReportInputs, DogfoodReportPacketIndexRun, DogfoodRun,
+        BadgeArtifactJob, BadgeBasisReport, BadgeBasisSignal, BadgeCanonicalProjection,
+        BadgeCountBreakdown, BadgeEndpointSnapshot, BadgeNativeAuditSnapshot, BadgeNativeSlot,
+        CampaignManifest, Capability, ChangedPath, CheckReport, CheckStatus, CheckViolation,
+        CiFullEvidenceGate, CommandCatalogEntry, CwdCommand, DogfoodEditorFirstPrBridgeRun,
+        DogfoodEditorGapCockpitRun, DogfoodFindingAlignmentRun, DogfoodFindingAlignmentScenario,
+        DogfoodFirstActionRun, DogfoodFirstPrRun, DogfoodFrontPanelRun, DogfoodGateRun,
+        DogfoodGeneratedCiCockpitRun, DogfoodLanguagePreviewRun, DogfoodPrInlineCommentRun,
+        DogfoodPreviewProjectionRuns, DogfoodReportInputs, DogfoodReportPacketIndexRun, DogfoodRun,
         EvidenceQualityScorecardInput, EvidenceQualityScorecardInputs,
         EvidenceQualityScorecardReport, EvidenceQualityTrendInputs, EvidenceQualityTrendReport,
         FixKind, GENERATED_CI_FIRST_ACTION_REPAIR, GENERATED_CI_FIRST_PR_REPAIR,
@@ -39134,7 +39811,8 @@ mod tests {
         SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
         TestOracleClass, WorktreeDoctorFinding, WorktreeDoctorSeverity,
         badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
-        badge_artifacts_summary_markdown, badge_diff_policy_violations, build_lsp_cockpit_report,
+        badge_artifacts_summary_markdown, badge_basis_report_markdown,
+        badge_diff_policy_violations, badge_native_audit_snapshot, build_lsp_cockpit_report,
         build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
         build_targeted_test_outcome_report, campaign_source_truth_violations_for_root,
         check_allow_attributes, check_badge_diff_policy_with_context, check_droid_review_config,
@@ -39185,18 +39863,19 @@ mod tests {
         parse_gh_pr_status_pull_request, parse_inline_array, parse_mutation_calibration_args,
         parse_mutation_outcomes_json, parse_no_panic_allowlist_toml,
         parse_no_panic_allowlist_toml_v2, parse_pr_triage_pull_requests, parse_reason,
-        parse_repo_exposure_static_seams, parse_required_status_contexts, parse_sarif_policy_args,
-        parse_sarif_policy_results, parse_static_language_allowlist, parse_string_value,
-        parse_targeted_test_outcome_args, pr_body_validation_warning, pr_checks_summary,
-        pr_ready_json, pr_ready_markdown, pr_ready_next_action, pr_ready_status,
-        pr_ready_status_from_report_status, pr_sensitive_file_reason, pr_shape_warnings,
-        pr_summary_body, pr_title_family, pr_triage_findings, pr_triage_json, pr_triage_markdown,
-        pr_triage_queue_dispositions, precommit_report_body, public_contract_rows,
-        read_lsp_cockpit_json_value, read_mutation_input_json, receipt_json, receipt_specs,
-        receipt_status_from_reports, render_no_panic_allowlist_proposals_markdown,
-        render_no_panic_allowlist_proposals_toml, repo_badge_artifact_command_args,
-        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
-        repo_exposure_latency_json, repo_exposure_latency_markdown, repo_exposure_latency_run,
+        parse_repo_exposure_static_seams, parse_repo_exposure_summary_counts,
+        parse_required_status_contexts, parse_sarif_policy_args, parse_sarif_policy_results,
+        parse_static_language_allowlist, parse_string_value, parse_targeted_test_outcome_args,
+        pr_body_validation_warning, pr_checks_summary, pr_ready_json, pr_ready_markdown,
+        pr_ready_next_action, pr_ready_status, pr_ready_status_from_report_status,
+        pr_sensitive_file_reason, pr_shape_warnings, pr_summary_body, pr_title_family,
+        pr_triage_findings, pr_triage_json, pr_triage_markdown, pr_triage_queue_dispositions,
+        precommit_report_body, public_contract_rows, read_lsp_cockpit_json_value,
+        read_mutation_input_json, receipt_json, receipt_specs, receipt_status_from_reports,
+        render_no_panic_allowlist_proposals_markdown, render_no_panic_allowlist_proposals_toml,
+        repo_badge_artifact_command_args, repo_badge_artifact_jobs,
+        repo_badge_artifacts_summary_markdown, repo_exposure_latency_json,
+        repo_exposure_latency_markdown, repo_exposure_latency_run,
         repo_exposure_latency_run_from_output, repo_exposure_latency_status,
         repo_exposure_latency_trace, repo_root, repo_seam_inventory_command_args_for_root,
         report_index_json, report_index_markdown, report_index_missing_expected,
@@ -50202,6 +50881,145 @@ acceptance = "RIPR-SPEC-0999 defines the focused contract."
             }
         }
         Ok(())
+    }
+
+    #[test]
+    fn badge_native_audit_snapshot_reads_basis_and_counts() -> Result<(), String> {
+        let json = r#"{
+  "label": "ripr",
+  "kind": "ripr",
+  "scope": "repo",
+  "basis": "seam_native",
+  "message": "42",
+  "status": "warn",
+  "color": "orange",
+  "counts": {
+    "unsuppressed_exposure_gaps": 42,
+    "analyzed_seams": 99
+  },
+  "reason_counts": {
+    "broad_oracle": 3
+  },
+  "warnings": ["advisory"]
+}"#;
+        let snapshot = badge_native_audit_snapshot(json)?;
+        assert_eq!(snapshot.label, "ripr");
+        assert_eq!(snapshot.scope, "repo");
+        assert_eq!(snapshot.basis, "seam_native");
+        assert_eq!(snapshot.counts.get("analyzed_seams"), Some(&99));
+        assert_eq!(snapshot.reason_counts.get("broad_oracle"), Some(&3));
+        assert_eq!(snapshot.warnings, vec!["advisory".to_string()]);
+        Ok(())
+    }
+
+    #[test]
+    fn parse_repo_exposure_summary_counts_reads_class_table() -> Result<(), String> {
+        let markdown = r#"# ripr repo exposure report
+
+## Summary
+
+| Class | Count |
+| --- | --- |
+| seams_total | 12 |
+| headline_eligible | 7 |
+| strongly_gripped | 5 |
+| weakly_gripped | 2 |
+| opaque | 1 |
+
+## Top gaps
+
+| Seam | Kind | Class |
+| --- | --- | --- |
+| a | b | c |
+"#;
+        let counts = parse_repo_exposure_summary_counts(markdown)?;
+        assert_eq!(counts.get("seams_total"), Some(&12));
+        assert_eq!(counts.get("headline_eligible"), Some(&7));
+        assert_eq!(counts.get("weakly_gripped"), Some(&2));
+        assert_eq!(counts.get("opaque"), Some(&1));
+        assert!(!counts.contains_key("Seam"));
+        Ok(())
+    }
+
+    #[test]
+    fn badge_basis_report_markdown_names_actionable_recommendation() {
+        let report = BadgeBasisReport {
+            status: "warn".to_string(),
+            current_public_endpoints: vec![BadgeEndpointSnapshot {
+                path: "badges/ripr.json".to_string(),
+                label: "ripr".to_string(),
+                message: "24352".to_string(),
+                color: "orange".to_string(),
+            }],
+            current_repo_badges: vec![BadgeNativeAuditSnapshot {
+                label: "ripr".to_string(),
+                kind: "ripr".to_string(),
+                scope: "repo".to_string(),
+                basis: "seam_native".to_string(),
+                message: "24352".to_string(),
+                status: "warn".to_string(),
+                color: "orange".to_string(),
+                counts: BTreeMap::from([("unsuppressed_exposure_gaps".to_string(), 24352)]),
+                reason_counts: BTreeMap::new(),
+                warnings: Vec::new(),
+            }],
+            seam_native_counts: BadgeCountBreakdown {
+                status: "pass".to_string(),
+                source: "repo-exposure-md".to_string(),
+                counts: BTreeMap::from([("weakly_gripped".to_string(), 10)]),
+                note: "available".to_string(),
+            },
+            test_efficiency_counts: BadgeCountBreakdown {
+                status: "pass".to_string(),
+                source: "test-efficiency.json".to_string(),
+                counts: BTreeMap::from([("likely_vacuous".to_string(), 2)]),
+                note: "available".to_string(),
+            },
+            canonical_actionable_gap: BadgeCanonicalProjection {
+                status: "not_available".to_string(),
+                source: "canonical_actionable_gap generator path".to_string(),
+                ripr_count: None,
+                ripr_plus_count: None,
+                detail: "later PR".to_string(),
+            },
+            raw_alignment_signals: BadgeBasisSignal {
+                status: "not_in_current_badge_generator".to_string(),
+                source: "finding alignment".to_string(),
+                count: None,
+                detail: "supporting evidence".to_string(),
+            },
+            canonical_evidence_items: BadgeBasisSignal {
+                status: "not_in_current_badge_generator".to_string(),
+                source: "repo exposure".to_string(),
+                count: None,
+                detail: "supporting evidence".to_string(),
+            },
+            static_limitations: BadgeBasisSignal {
+                status: "available".to_string(),
+                source: "repo exposure".to_string(),
+                count: Some(1),
+                detail: "supporting inventory".to_string(),
+            },
+            suppressed_or_intentional_items: BadgeBasisSignal {
+                status: "available".to_string(),
+                source: "badge counts".to_string(),
+                count: Some(0),
+                detail: "out of headline".to_string(),
+            },
+            no_action_items: BadgeBasisSignal {
+                status: "requires_gap_decision_ledger".to_string(),
+                source: "none".to_string(),
+                count: None,
+                detail: "requires gap records".to_string(),
+            },
+            recommended_public_projection: "canonical_actionable_gap".to_string(),
+            warnings: vec!["seam-native public basis".to_string()],
+        };
+        let markdown = badge_basis_report_markdown(&report);
+        assert!(markdown.contains("# ripr Public Badge Basis Audit"));
+        assert!(markdown.contains("`seam_native`"));
+        assert!(markdown.contains("`canonical_actionable_gap`"));
+        assert!(markdown.contains("badges/ripr.json"));
     }
 
     #[test]
