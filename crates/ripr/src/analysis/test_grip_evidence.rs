@@ -1083,9 +1083,17 @@ fn activate_evidence(
                     .next()
                     .unwrap_or(seam.expression())
             )
-        } else {
+        } else if requires_concrete_activation_values(seam) {
             format!(
                 "No concrete activation values observed for seam `{}`",
+                seam.expression()
+                    .lines()
+                    .next()
+                    .unwrap_or(seam.expression())
+            )
+        } else {
+            format!(
+                "No direct owner call observed for value-insensitive seam `{}`",
                 seam.expression()
                     .lines()
                     .next()
@@ -2622,6 +2630,58 @@ fn device_labels_start_empty() {
         assert!(
             evidence.missing_discriminators.is_empty(),
             "return-value no-arg activation must not create boundary debt"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_value_insensitive_seam_when_only_affinity_related_then_activation_names_owner_call_limitation()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/labels.rs");
+        let prod_src = r#"
+pub fn device_labels() -> Vec<&'static str> {
+    Vec::new()
+}
+"#;
+        let tests = PathBuf::from("tests/contract_tests.rs");
+        let tests_src = r#"
+#[test]
+fn return_value_contract_mentions_empty_output() {
+    let return_value = Vec::<&str>::new();
+    assert!(return_value.is_empty());
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/labels.rs")], &index);
+        let return_seam = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::ReturnValue && s.expression().contains("Vec::new()"))
+            .ok_or_else(|| "expected Vec::new return_value seam".to_string())?;
+
+        let evidence = evidence_for_seam(return_seam, &index);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.relation_reason == RelationReason::AssertionTargetAffinity),
+            "expected assertion-target affinity related test, got {:?}",
+            evidence.related_tests
+        );
+        assert_eq!(evidence.activate.state, StageState::Unknown);
+        assert!(
+            evidence
+                .activate
+                .summary
+                .contains("No direct owner call observed for value-insensitive seam"),
+            "activation summary should name the owner-call limitation, got {}",
+            evidence.activate.summary
+        );
+        assert!(
+            evidence.observed_values.is_empty(),
+            "affinity-only activation must not invent observed values: {:?}",
+            evidence.observed_values
         );
         Ok(())
     }
