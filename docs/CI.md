@@ -274,9 +274,9 @@ fork or otherwise untrusted PR:
 The router uses the repository or organization `EM_RUNNER_READ_TOKEN` secret
 when available. It selects a self-hosted runner only when the runner is idle and
 has both the host label (`CX53` or `CX43`) and the `em-ci-rust-1.95`
-image-readiness label. If runner state cannot be read, or a runner is idle but
-not image-ready, the workflow fails closed to GitHub-hosted rather than
-selecting a self-hosted runner by guesswork.
+runner-image/toolchain readiness label. If runner state cannot be read, or a
+runner is idle but not image-ready, the workflow fails closed to GitHub-hosted
+rather than selecting a self-hosted runner by guesswork.
 
 The routed lane runs the existing Rust/product command surface without release
 package or publish dry-run steps. It keeps advisory evidence artifacts

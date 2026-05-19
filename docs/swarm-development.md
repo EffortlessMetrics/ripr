@@ -50,9 +50,9 @@ Do not require implementation jobs directly in branch protection.
 
 The router reads runner state with `EM_RUNNER_READ_TOKEN` when that secret is
 available. It selects a self-hosted runner only when the runner is idle and has
-the matching host label plus the `em-ci-rust-1.95` image-readiness label. If
-runner state cannot be read, no target runner is idle, or a runner is available
-but not image-ready, the workflow falls back to GitHub-hosted with
+the matching host label plus the `em-ci-rust-1.95` runner-image/toolchain
+readiness label. If runner state cannot be read, no target runner is idle, or a
+runner is available but not image-ready, the workflow falls back to GitHub-hosted with
 `router_reason=runner_api_failed`, `router_reason=no_idle_runner`, or
 `router_reason=runner_image_unavailable`. Fork PRs route to GitHub-hosted with
 `router_reason=fork_or_untrusted_pr`.

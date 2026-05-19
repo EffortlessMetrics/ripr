@@ -43,14 +43,14 @@ jobs:
           if [ "$EVENT_NAME" = "pull_request" ] && [ "$HEAD_REPO" != "$REPOSITORY" ]; then
             reason=fork_or_untrusted_pr
           else
-            if runners="$(gh api orgs/EffortlessMetrics/actions/runners --paginate 2>/tmp/runners.err)"; then
+            if runners="$(gh api --paginate orgs/EffortlessMetrics/actions/runners 2>/tmp/runners.err)"; then
               if printf '%s' "$runners" | jq -e '.runners[] | select(.status == "online" and (.busy | not) and ([.labels[].name | ascii_downcase] | index("cx53") and index("em-ci-rust-1.95")))' >/dev/null; then
                 target=cx53
                 reason=cx53_idle
               elif printf '%s' "$runners" | jq -e '.runners[] | select(.status == "online" and (.busy | not) and ([.labels[].name | ascii_downcase] | index("cx43") and index("em-ci-rust-1.95")))' >/dev/null; then
                 target=cx43
                 reason=cx43_idle
-              elif printf '%s' "$runners" | jq -e '.runners[] | select(.status == "online" and (.busy | not) and ([.labels[].name | ascii_downcase] | (index("cx53") or index("cx43"))))' >/dev/null; then
+              elif printf '%s' "$runners" | jq -e '.runners[] | select(.status == "online" and (.busy | not) and ([.labels[].name | ascii_downcase] | ((index("cx53") or index("cx43")) and (index("em-ci-rust-1.95") | not))))' >/dev/null; then
                 reason=runner_image_unavailable
               else
                 reason=no_idle_runner
@@ -83,9 +83,6 @@ jobs:
     runs-on:
       group: em-ci-small
       labels: [self-hosted, Linux, X64, CX53, em-ci-rust-1.95]
-    container:
-      image: em-ci-rust:1.95
-      options: --cpus=14 --memory=28g -v /mnt/ci-scratch:/mnt/ci-scratch -v /mnt/ci-cache:/mnt/ci-cache -v /mnt/docker:/mnt/docker
     env:
       CARGO_BUILD_JOBS: "12"
       CARGO_HOME: /mnt/ci-cache/cargo-home
@@ -131,7 +128,6 @@ jobs:
           cargo xtask test-efficiency-report || true
           cargo xtask badge-artifacts || true
           cargo xtask pr-summary || true
-          cargo xtask reports index || true
           cargo xtask receipts || true
           cargo xtask reports index || true
       - name: PR evidence
@@ -177,9 +173,6 @@ jobs:
     runs-on:
       group: em-ci-small
       labels: [self-hosted, Linux, X64, CX43, em-ci-rust-1.95]
-    container:
-      image: em-ci-rust:1.95
-      options: --cpus=14 --memory=28g -v /mnt/ci-scratch:/mnt/ci-scratch -v /mnt/ci-cache:/mnt/ci-cache -v /mnt/docker:/mnt/docker
     env:
       CARGO_BUILD_JOBS: "12"
       CARGO_HOME: /mnt/ci-cache/cargo-home
@@ -225,7 +218,6 @@ jobs:
           cargo xtask test-efficiency-report || true
           cargo xtask badge-artifacts || true
           cargo xtask pr-summary || true
-          cargo xtask reports index || true
           cargo xtask receipts || true
           cargo xtask reports index || true
       - name: PR evidence
@@ -307,7 +299,6 @@ jobs:
           cargo xtask test-efficiency-report || true
           cargo xtask badge-artifacts || true
           cargo xtask pr-summary || true
-          cargo xtask reports index || true
           cargo xtask receipts || true
           cargo xtask reports index || true
       - name: PR evidence
@@ -356,20 +347,45 @@ jobs:
           CX43_RESULT: ${{ needs.rust-cx43.result }}
           GITHUB_RESULT: ${{ needs.rust-github.result }}
         run: |
+          status=pass
+          message="selected implementation job succeeded"
+          if [ "$ROUTE_RESULT" != "success" ]; then
+            status=fail
+            message="route job result was $ROUTE_RESULT"
+          else
+            case "$TARGET" in
+              cx53)
+                if [ "$CX53_RESULT" != "success" ]; then
+                  status=fail
+                  message="CX53 job result was $CX53_RESULT"
+                fi
+                ;;
+              cx43)
+                if [ "$CX43_RESULT" != "success" ]; then
+                  status=fail
+                  message="CX43 job result was $CX43_RESULT"
+                fi
+                ;;
+              github)
+                if [ "$GITHUB_RESULT" != "success" ]; then
+                  status=fail
+                  message="GitHub-hosted job result was $GITHUB_RESULT"
+                fi
+                ;;
+              *)
+                status=fail
+                message="unknown routed target: $TARGET"
+                ;;
+            esac
+          fi
           echo "### Ripr Rust Small Result" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- target: \`$TARGET\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- reason: \`$REASON\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- status: \`$status\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- message: \`$message\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- route: \`$ROUTE_RESULT\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- cx53: \`$CX53_RESULT\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- cx43: \`$CX43_RESULT\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- github: \`$GITHUB_RESULT\`" >> "$GITHUB_STEP_SUMMARY"
-          if [ "$ROUTE_RESULT" != "success" ]; then
-            exit 1
-          fi
-          case "$TARGET" in
-            cx53) [ "$CX53_RESULT" = "success" ] ;;
-            cx43) [ "$CX43_RESULT" = "success" ] ;;
-            github) [ "$GITHUB_RESULT" = "success" ] ;;
-            *) exit 1 ;;
-          esac
+          [ "$status" = "pass" ]
