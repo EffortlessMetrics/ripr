@@ -2,7 +2,8 @@ use super::{
     BADGE_REASON_KEYS, BadgePolicy, BadgeScope, BadgeStatus, TestEfficiencyBadgeSummary,
     badge_status_color, parse_test_efficiency_badge_summary, render_native_json,
     render_shields_json, repo_gap_ledger_badge_summary_from_json, ripr_badge_summary,
-    ripr_plus_badge_summary, ripr_seam_badge_summary,
+    ripr_canonical_actionable_gap_badge_summary, ripr_plus_badge_summary,
+    ripr_plus_canonical_actionable_gap_badge_summary, ripr_seam_badge_summary,
 };
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::seams::{
@@ -209,6 +210,60 @@ weakly_gripped = "off"
 }
 
 #[test]
+fn canonical_actionable_gap_badge_summary_counts_unique_repairable_gaps() {
+    let classified = vec![
+        classified_seam(SeamGripClass::WeaklyGripped),
+        classified_seam(SeamGripClass::Ungripped),
+        classified_seam(SeamGripClass::StronglyGripped),
+        classified_seam(SeamGripClass::Opaque),
+    ];
+
+    let summary = ripr_canonical_actionable_gap_badge_summary(&classified, BadgePolicy::default());
+
+    assert_eq!(summary.scope, BadgeScope::Repo);
+    assert_eq!(summary.basis.as_str(), "canonical_actionable_gap");
+    assert_eq!(summary.counts.unsuppressed_exposure_gaps, 1);
+    assert_eq!(summary.counts.unsuppressed_test_efficiency_findings, 0);
+    assert_eq!(summary.counts.analyzed_seams, 4);
+    assert_eq!(summary.counts.analyzed_gap_records, 1);
+    assert_eq!(summary.message, "1");
+}
+
+#[test]
+fn canonical_actionable_gap_plus_ignores_raw_test_efficiency_debt() {
+    let classified = vec![classified_seam(SeamGripClass::WeaklyGripped)];
+    let exposure = ripr_canonical_actionable_gap_badge_summary(&classified, BadgePolicy::default());
+    let mut reason_counts = std::collections::BTreeMap::new();
+    for key in BADGE_REASON_KEYS {
+        reason_counts.insert(*key, 0);
+    }
+    let test_efficiency = TestEfficiencyBadgeSummary {
+        unsuppressed_test_efficiency_findings: 7,
+        intentional_test_efficiency_findings: 2,
+        unknowns_test_efficiency: 3,
+        analyzed_tests: 12,
+        reason_counts,
+        actionable_entries: Vec::new(),
+        entries: Vec::new(),
+    };
+
+    let summary = ripr_plus_canonical_actionable_gap_badge_summary(
+        exposure,
+        test_efficiency,
+        BadgePolicy::default(),
+    );
+
+    assert_eq!(summary.kind.as_str(), "ripr_plus");
+    assert_eq!(summary.basis.as_str(), "canonical_actionable_gap");
+    assert_eq!(summary.counts.unsuppressed_exposure_gaps, 1);
+    assert_eq!(summary.counts.unsuppressed_test_efficiency_findings, 0);
+    assert_eq!(summary.counts.intentional_test_efficiency_findings, 0);
+    assert_eq!(summary.counts.unknowns_test_efficiency, 0);
+    assert_eq!(summary.counts.analyzed_tests, 12);
+    assert_eq!(summary.message, "1");
+}
+
+#[test]
 fn gap_ledger_badge_summary_counts_projection_targets() -> Result<(), String> {
     let ledger = r#"{
           "gap_records": [
@@ -329,7 +384,7 @@ fn badge_native_json_uses_snake_case_schema_version_and_all_required_fields() {
     let summary = ripr_badge_summary(&output, BadgePolicy::default());
     let json = render_native_json(&summary);
 
-    assert!(json.contains("\"schema_version\": \"0.4\""));
+    assert!(json.contains("\"schema_version\": \"0.5\""));
     assert!(!json.contains("\"schemaVersion\""));
     assert!(json.contains("\"kind\": \"ripr\""));
     assert!(json.contains("\"scope\": \"diff\""));

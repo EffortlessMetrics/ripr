@@ -439,10 +439,10 @@ output boundary; it is never the source of truth.
 
 ```json
 {
-  "schema_version": "0.4",
+  "schema_version": "0.5",
   "kind": "ripr",
   "scope": "repo",
-  "basis": "seam_native",
+  "basis": "canonical_actionable_gap",
   "label": "ripr",
   "message": "0",
   "status": "pass",
@@ -487,7 +487,8 @@ otherwise identical so consumers can parse one shape.
 `schema_version` is the badge-native schema. Bumping it is a public-contract
 change and must be called out in the PR. `0.3` adds `basis` and
 `counts.analyzed_seams`; `0.4` adds `basis = "gap_decision_ledger"` and
-`counts.analyzed_gap_records`.
+`counts.analyzed_gap_records`; `0.5` adds
+`basis = "canonical_actionable_gap"` for public repair-item projection.
 
 ### Scope and basis metadata (native only)
 
@@ -497,7 +498,7 @@ internal seam-native inventory counts, and explicit ledger projections:
 
 ```json
 {
-  "schema_version": "0.4",
+  "schema_version": "0.5",
   "kind": "ripr",
   "scope": "diff",
   "basis": "finding_exposure",
@@ -708,9 +709,8 @@ cargo xtask repo-badge-artifacts --gap-ledger target/ripr/reports/gap-decision-l
 That renders the same repo badge artifact filenames with
 `basis = "gap_decision_ledger"` and counts only the ledger's explicit
 `projection_eligibility.ripr_zero_count` and `ripr_plus_count` targets.
-Until the canonical-actionable generator lands, the no-ledger implementation
-may still render `basis = "seam_native"`. Treat that as transitional generator
-state, not the public badge contract.
+The no-ledger public implementation renders `basis = "canonical_actionable_gap"`.
+Seam-native counts remain available in internal inventory and audit reports.
 
 `cargo xtask badge-basis` writes
 `target/ripr/reports/badge-basis.{json,md}` as an audit-only report. It
@@ -889,7 +889,7 @@ Tracked alongside Campaign 4A and Campaign 5B in
 | Seam-native repo badge mapping | done | `badge/seam-native-count-mapping` |
 | Badge-basis audit report | done | `cargo xtask badge-basis` |
 | Actionable public badge basis policy | done | `canonical_actionable_gap` definition in this doc |
-| Canonical actionable endpoint generator | planned | public badge projection realignment |
+| Canonical actionable endpoint generator | done | public badge projection realignment |
 | Internal seam-native inventory report | planned | public badge projection realignment |
 
 ## See also

@@ -24292,15 +24292,20 @@ fn build_badge_basis_report(
 
     let ripr_native_json =
         run_repo_badge_artifact_job("repo-badge-json", options.gap_ledger.as_deref())?;
-    let ripr_plus_native_json =
-        run_repo_badge_artifact_job("repo-badge-plus-json", options.gap_ledger.as_deref())?;
     let ripr_snapshot = badge_native_audit_snapshot(&ripr_native_json)?;
-    let ripr_plus_snapshot = badge_native_audit_snapshot(&ripr_plus_native_json)?;
+    let test_efficiency_value = badge_basis_test_efficiency_value();
+    let test_efficiency_counts = badge_basis_test_efficiency_counts(&test_efficiency_value);
+    let ripr_plus_snapshot = if badge_basis_needs_repo_badge_plus_job(options) {
+        let ripr_plus_native_json =
+            run_repo_badge_artifact_job("repo-badge-plus-json", options.gap_ledger.as_deref())?;
+        badge_native_audit_snapshot(&ripr_plus_native_json)?
+    } else {
+        badge_basis_derived_ripr_plus_snapshot(&ripr_snapshot, test_efficiency_value.as_ref().ok())
+    };
     let current_repo_badges = vec![ripr_snapshot.clone(), ripr_plus_snapshot.clone()];
 
     let seam_native_counts =
         badge_basis_seam_native_counts(options.include_seam_classes, &ripr_snapshot);
-    let test_efficiency_counts = badge_basis_test_efficiency_counts();
     let canonical_actionable_gap =
         badge_basis_canonical_projection(options, &ripr_snapshot, &ripr_plus_snapshot);
     let static_limitations = badge_basis_static_limitations(&seam_native_counts);
@@ -24318,7 +24323,7 @@ fn build_badge_basis_report(
                 .to_string(),
         );
     }
-    if seam_native_counts.status != "pass" {
+    if seam_native_counts.status == "warn" {
         warnings.push(seam_native_counts.note.clone());
     }
 
@@ -24491,6 +24496,44 @@ fn json_object_usize_map(value: &Value, key: &str) -> BTreeMap<String, usize> {
         .unwrap_or_default()
 }
 
+fn badge_basis_needs_repo_badge_plus_job(options: &RepoBadgeArtifactOptions) -> bool {
+    options.gap_ledger.is_some()
+}
+
+fn badge_basis_derived_ripr_plus_snapshot(
+    ripr: &BadgeNativeAuditSnapshot,
+    test_efficiency: Option<&Value>,
+) -> BadgeNativeAuditSnapshot {
+    let mut counts = ripr.counts.clone();
+    counts.insert("unsuppressed_test_efficiency_findings".to_string(), 0);
+    counts.insert("intentional_test_efficiency_findings".to_string(), 0);
+    counts.insert("suppressed_test_efficiency_findings".to_string(), 0);
+    counts.insert("unknowns_test_efficiency".to_string(), 0);
+    if let Some(tests_scanned) = test_efficiency
+        .and_then(|value| value.get("metrics"))
+        .and_then(|metrics| metrics.get("tests_scanned"))
+        .and_then(Value::as_u64)
+        .and_then(|count| usize::try_from(count).ok())
+    {
+        counts.insert("analyzed_tests".to_string(), tests_scanned);
+    }
+
+    BadgeNativeAuditSnapshot {
+        label: "ripr+".to_string(),
+        kind: "ripr_plus".to_string(),
+        scope: ripr.scope.clone(),
+        basis: ripr.basis.clone(),
+        message: ripr.message.clone(),
+        status: ripr.status.clone(),
+        color: ripr.color.clone(),
+        counts,
+        reason_counts: test_efficiency
+            .map(|value| json_object_usize_map(value, "reason_counts"))
+            .unwrap_or_default(),
+        warnings: ripr.warnings.clone(),
+    }
+}
+
 fn json_array_string_values(value: &Value, key: &str) -> Vec<String> {
     value
         .get(key)
@@ -24510,6 +24553,14 @@ fn badge_basis_seam_native_counts(
     ripr: &BadgeNativeAuditSnapshot,
 ) -> BadgeCountBreakdown {
     if !include_seam_classes {
+        if ripr.basis != "seam_native" {
+            return BadgeCountBreakdown {
+                status: "not_collected".to_string(),
+                source: "cargo xtask badge-basis --include-seam-classes".to_string(),
+                counts: BTreeMap::new(),
+                note: "Public repo badge counts now use canonical_actionable_gap; rerun with `cargo xtask badge-basis --include-seam-classes` when seam-native inventory detail is needed.".to_string(),
+            };
+        }
         let mut counts = BTreeMap::new();
         for key in [
             "analyzed_seams",
@@ -24593,13 +24644,20 @@ fn parse_repo_exposure_summary_counts(markdown: &str) -> Result<BTreeMap<String,
     Ok(counts)
 }
 
-fn badge_basis_test_efficiency_counts() -> BadgeCountBreakdown {
+fn badge_basis_test_efficiency_value() -> Result<Value, String> {
     let path = Path::new("target/ripr/reports/test-efficiency.json");
-    match read_json_value(path) {
+    read_json_value(path)
+}
+
+fn badge_basis_test_efficiency_counts(
+    test_efficiency: &Result<Value, String>,
+) -> BadgeCountBreakdown {
+    let path = Path::new("target/ripr/reports/test-efficiency.json");
+    match test_efficiency {
         Ok(value) => BadgeCountBreakdown {
             status: "pass".to_string(),
             source: normalize_path(path),
-            counts: json_object_usize_map(&value, "counts"),
+            counts: json_object_usize_map(value, "counts"),
             note: "Test-efficiency class counts are available.".to_string(),
         },
         Err(err) => BadgeCountBreakdown {
@@ -24616,6 +24674,18 @@ fn badge_basis_canonical_projection(
     ripr: &BadgeNativeAuditSnapshot,
     ripr_plus: &BadgeNativeAuditSnapshot,
 ) -> BadgeCanonicalProjection {
+    if ripr.basis == "canonical_actionable_gap" && ripr_plus.basis == "canonical_actionable_gap" {
+        return BadgeCanonicalProjection {
+            status: "available".to_string(),
+            source: "repo-badge-artifacts".to_string(),
+            ripr_count: ripr.message.parse::<usize>().ok(),
+            ripr_plus_count: ripr_plus.message.parse::<usize>().ok(),
+            detail:
+                "The current repo badge generator uses unresolved actionable canonical repair items."
+                    .to_string(),
+        };
+    }
+
     if options.gap_ledger.is_some()
         && ripr.basis == "gap_decision_ledger"
         && ripr_plus.basis == "gap_decision_ledger"
@@ -39864,76 +39934,77 @@ mod tests {
         GhPrStatusReview, Lane1EvidenceAuditRepoExposureGeneration,
         Lane1EvidenceAuditRepoExposureOutcome, LocalContextAllow, LspCockpitFixture,
         LspCockpitReport, MarkdownLink, PrTriageCheck, PrTriageFinding, PrTriagePullRequest,
-        ReceiptRecord, RepoExposureLatencyReport, RepoExposureLatencyRun, RepoExposureLatencyTrace,
-        ReportIndexCampaign, ReportIndexEntry, ReportIndexRepoOpsArtifact, SarifPolicyMode,
-        SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
-        TestOracleClass, WorktreeDoctorFinding, WorktreeDoctorSeverity,
-        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
-        badge_artifacts_summary_markdown, badge_basis_report_markdown,
-        badge_diff_policy_violations, badge_native_audit_snapshot, build_lsp_cockpit_report,
-        build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
-        build_targeted_test_outcome_report, campaign_source_truth_violations_for_root,
-        check_allow_attributes, check_badge_diff_policy_with_context, check_droid_review_config,
-        check_executable_files, check_file_policy, check_local_context, check_network_policy,
-        check_no_panic_family, check_process_policy, check_static_language, check_workflows,
-        ci_full_evidence_gates, cockpit_json, cockpit_markdown, collect_panic_findings,
-        collect_semantic_panic_findings, command_catalog, command_catalog_violations,
-        commands_report_json, commands_report_markdown, critic_findings, days_from_civil,
-        dogfood_class_counts, dogfood_editor_first_pr_bridge_run,
-        dogfood_editor_first_pr_bridge_scenarios, dogfood_editor_gap_cockpit_run,
-        dogfood_editor_gap_cockpit_scenarios, dogfood_finding_alignment_run,
-        dogfood_finding_alignment_scenarios, dogfood_first_action_scenarios,
-        dogfood_first_pr_metrics, dogfood_first_pr_run, dogfood_first_pr_scenarios,
-        dogfood_gate_adoption_scenarios, dogfood_generated_ci_cockpit_run_from_workflow,
-        dogfood_language_preview_run, dogfood_language_preview_scenarios,
-        dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
-        dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
-        dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
-        dogfood_report_packet_index_scenarios, evaluate_semantic_no_panic_policy,
-        evidence_health_args, evidence_quality_scorecard_from_values,
-        evidence_quality_scorecard_json, evidence_quality_scorecard_markdown,
-        evidence_quality_trend_from_values, evidence_quality_trend_json,
-        evidence_quality_trend_markdown, extract_json_object_usize_map, extract_json_string,
-        extract_json_warnings, extract_workflow_run_blocks,
-        finding_alignment_raw_to_canonical_ratio, finding_alignment_verify_command_is_missing,
-        finish_worktree_doctor_report, first_line_difference, forbidden_panic_patterns,
-        generated_clean_violations, gh_pr_safe_next_action, gh_pr_status_json,
-        gh_pr_status_markdown, gh_pr_status_readiness, github_event_pull_request_title_from_text,
-        glob_matches, golden_changes_without_blessing, golden_drift_semantics,
-        guarded_allow_attribute_lints, guarded_allow_attributes_in_text, help_message,
-        install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
-        is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
-        is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
-        is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
-        is_stale_agent_boundary_scan_target, json_escape, json_number_after,
-        json_string_values_for_key, json_summary_count, known_commands, known_xtask_command,
-        lane1_actionable_gap_packets_json, lane1_actionable_gap_packets_markdown,
-        lane1_evidence_audit_from_repo_exposure, lane1_evidence_audit_json,
-        lane1_evidence_audit_limited_report, lane1_evidence_audit_markdown,
-        lane1_evidence_audit_repo_exposure_args, lane1_evidence_audit_timeout_error,
-        local_context_line_findings, local_markdown_target, lsp_cockpit_report,
-        lsp_cockpit_report_json, lsp_cockpit_report_markdown, markdown_links_in_text,
-        mutation_calibration_report_json, mutation_calibration_report_markdown,
-        next_checkpoints_from_capabilities, next_spec_id_from_ids, no_panic_toml_string,
-        non_rust_programming_retention_reason, normalize_fixture_human_output,
-        normalize_fixture_json_output, normalize_golden_text, panic_family_from_pattern,
-        parse_campaign_manifest, parse_file_policy_allowlist, parse_gh_pr_status_args,
-        parse_gh_pr_status_pull_request, parse_inline_array, parse_mutation_calibration_args,
-        parse_mutation_outcomes_json, parse_no_panic_allowlist_toml,
-        parse_no_panic_allowlist_toml_v2, parse_pr_triage_pull_requests, parse_reason,
-        parse_repo_exposure_static_seams, parse_repo_exposure_summary_counts,
-        parse_required_status_contexts, parse_sarif_policy_args, parse_sarif_policy_results,
-        parse_static_language_allowlist, parse_string_value, parse_targeted_test_outcome_args,
-        pr_body_validation_warning, pr_checks_summary, pr_ready_json, pr_ready_markdown,
-        pr_ready_next_action, pr_ready_status, pr_ready_status_from_report_status,
-        pr_sensitive_file_reason, pr_shape_warnings, pr_summary_body, pr_title_family,
-        pr_triage_findings, pr_triage_json, pr_triage_markdown, pr_triage_queue_dispositions,
-        precommit_report_body, public_contract_rows, read_lsp_cockpit_json_value,
-        read_mutation_input_json, receipt_json, receipt_specs, receipt_status_from_reports,
-        render_no_panic_allowlist_proposals_markdown, render_no_panic_allowlist_proposals_toml,
-        repo_badge_artifact_command_args, repo_badge_artifact_jobs,
-        repo_badge_artifacts_summary_markdown, repo_exposure_latency_json,
-        repo_exposure_latency_markdown, repo_exposure_latency_run,
+        ReceiptRecord, RepoBadgeArtifactOptions, RepoExposureLatencyReport, RepoExposureLatencyRun,
+        RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
+        ReportIndexRepoOpsArtifact, SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold,
+        StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass, WorktreeDoctorFinding,
+        WorktreeDoctorSeverity, badge_artifact_command_args, badge_artifact_jobs,
+        badge_artifact_native_slot, badge_artifacts_summary_markdown,
+        badge_basis_derived_ripr_plus_snapshot, badge_basis_needs_repo_badge_plus_job,
+        badge_basis_report_markdown, badge_basis_seam_native_counts, badge_diff_policy_violations,
+        badge_native_audit_snapshot, build_lsp_cockpit_report, build_no_panic_allowlist_proposals,
+        build_repo_exposure_latency_report, build_targeted_test_outcome_report,
+        campaign_source_truth_violations_for_root, check_allow_attributes,
+        check_badge_diff_policy_with_context, check_droid_review_config, check_executable_files,
+        check_file_policy, check_local_context, check_network_policy, check_no_panic_family,
+        check_process_policy, check_static_language, check_workflows, ci_full_evidence_gates,
+        cockpit_json, cockpit_markdown, collect_panic_findings, collect_semantic_panic_findings,
+        command_catalog, command_catalog_violations, commands_report_json,
+        commands_report_markdown, critic_findings, days_from_civil, dogfood_class_counts,
+        dogfood_editor_first_pr_bridge_run, dogfood_editor_first_pr_bridge_scenarios,
+        dogfood_editor_gap_cockpit_run, dogfood_editor_gap_cockpit_scenarios,
+        dogfood_finding_alignment_run, dogfood_finding_alignment_scenarios,
+        dogfood_first_action_scenarios, dogfood_first_pr_metrics, dogfood_first_pr_run,
+        dogfood_first_pr_scenarios, dogfood_gate_adoption_scenarios,
+        dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
+        dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
+        dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
+        dogfood_pr_review_front_panel_scenarios, dogfood_report_json, dogfood_report_markdown,
+        dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
+        evaluate_semantic_no_panic_policy, evidence_health_args,
+        evidence_quality_scorecard_from_values, evidence_quality_scorecard_json,
+        evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
+        evidence_quality_trend_json, evidence_quality_trend_markdown,
+        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
+        extract_workflow_run_blocks, finding_alignment_raw_to_canonical_ratio,
+        finding_alignment_verify_command_is_missing, finish_worktree_doctor_report,
+        first_line_difference, forbidden_panic_patterns, generated_clean_violations,
+        gh_pr_safe_next_action, gh_pr_status_json, gh_pr_status_markdown, gh_pr_status_readiness,
+        github_event_pull_request_title_from_text, glob_matches, golden_changes_without_blessing,
+        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
+        help_message, install_hooks_in, is_badge_refresh_context, is_bdd_test_name,
+        is_campaign_path, is_dependency_surface_candidate, is_docs_path, is_evidence_path,
+        is_generated_candidate, is_known_campaign_command, is_non_rust_programming_candidate,
+        is_policy_path, is_production_path, is_receipt_status, is_ripr_managed_hook,
+        is_snake_case_id, is_spec_id, is_stale_agent_boundary_scan_target, json_escape,
+        json_number_after, json_string_values_for_key, json_summary_count, known_commands,
+        known_xtask_command, lane1_actionable_gap_packets_json,
+        lane1_actionable_gap_packets_markdown, lane1_evidence_audit_from_repo_exposure,
+        lane1_evidence_audit_json, lane1_evidence_audit_limited_report,
+        lane1_evidence_audit_markdown, lane1_evidence_audit_repo_exposure_args,
+        lane1_evidence_audit_timeout_error, local_context_line_findings, local_markdown_target,
+        lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
+        markdown_links_in_text, mutation_calibration_report_json,
+        mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
+        next_spec_id_from_ids, no_panic_toml_string, non_rust_programming_retention_reason,
+        normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
+        panic_family_from_pattern, parse_campaign_manifest, parse_file_policy_allowlist,
+        parse_gh_pr_status_args, parse_gh_pr_status_pull_request, parse_inline_array,
+        parse_mutation_calibration_args, parse_mutation_outcomes_json,
+        parse_no_panic_allowlist_toml, parse_no_panic_allowlist_toml_v2,
+        parse_pr_triage_pull_requests, parse_reason, parse_repo_exposure_static_seams,
+        parse_repo_exposure_summary_counts, parse_required_status_contexts,
+        parse_sarif_policy_args, parse_sarif_policy_results, parse_static_language_allowlist,
+        parse_string_value, parse_targeted_test_outcome_args, pr_body_validation_warning,
+        pr_checks_summary, pr_ready_json, pr_ready_markdown, pr_ready_next_action, pr_ready_status,
+        pr_ready_status_from_report_status, pr_sensitive_file_reason, pr_shape_warnings,
+        pr_summary_body, pr_title_family, pr_triage_findings, pr_triage_json, pr_triage_markdown,
+        pr_triage_queue_dispositions, precommit_report_body, public_contract_rows,
+        read_lsp_cockpit_json_value, read_mutation_input_json, receipt_json, receipt_specs,
+        receipt_status_from_reports, render_no_panic_allowlist_proposals_markdown,
+        render_no_panic_allowlist_proposals_toml, repo_badge_artifact_command_args,
+        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
+        repo_exposure_latency_json, repo_exposure_latency_markdown, repo_exposure_latency_run,
         repo_exposure_latency_run_from_output, repo_exposure_latency_status,
         repo_exposure_latency_trace, repo_root, repo_seam_inventory_command_args_for_root,
         report_index_json, report_index_markdown, report_index_missing_expected,
@@ -50890,6 +50961,133 @@ acceptance = "RIPR-SPEC-0999 defines the focused contract."
             }
         }
         Ok(())
+    }
+
+    #[test]
+    fn badge_basis_default_derives_repo_plus_without_second_badge_job() {
+        assert!(!badge_basis_needs_repo_badge_plus_job(
+            &RepoBadgeArtifactOptions::default()
+        ));
+        assert!(badge_basis_needs_repo_badge_plus_job(
+            &RepoBadgeArtifactOptions {
+                gap_ledger: Some(PathBuf::from(
+                    "target/ripr/reports/gap-decision-ledger.json"
+                )),
+                include_seam_classes: false,
+            }
+        ));
+    }
+
+    #[test]
+    fn badge_basis_derived_repo_plus_keeps_canonical_headline_and_te_context() {
+        let ripr = BadgeNativeAuditSnapshot {
+            label: "ripr".to_string(),
+            kind: "ripr".to_string(),
+            scope: "repo".to_string(),
+            basis: "canonical_actionable_gap".to_string(),
+            message: "149".to_string(),
+            status: "warn".to_string(),
+            color: "orange".to_string(),
+            counts: BTreeMap::from([
+                ("unsuppressed_exposure_gaps".to_string(), 149),
+                ("analyzed_gap_records".to_string(), 200),
+            ]),
+            reason_counts: BTreeMap::new(),
+            warnings: vec!["advisory".to_string()],
+        };
+        let test_efficiency = serde_json::json!({
+            "reason_counts": {
+                "broad_oracle": 3
+            },
+            "metrics": {
+                "tests_scanned": 7
+            }
+        });
+
+        let ripr_plus = badge_basis_derived_ripr_plus_snapshot(&ripr, Some(&test_efficiency));
+
+        assert_eq!(ripr_plus.label, "ripr+");
+        assert_eq!(ripr_plus.kind, "ripr_plus");
+        assert_eq!(ripr_plus.basis, "canonical_actionable_gap");
+        assert_eq!(ripr_plus.message, "149");
+        assert_eq!(
+            ripr_plus.counts.get("unsuppressed_exposure_gaps"),
+            Some(&149)
+        );
+        assert_eq!(
+            ripr_plus
+                .counts
+                .get("unsuppressed_test_efficiency_findings"),
+            Some(&0)
+        );
+        assert_eq!(ripr_plus.counts.get("analyzed_tests"), Some(&7));
+        assert_eq!(ripr_plus.reason_counts.get("broad_oracle"), Some(&3));
+        assert_eq!(ripr_plus.warnings, vec!["advisory".to_string()]);
+    }
+
+    #[test]
+    fn badge_basis_derived_repo_plus_handles_missing_test_efficiency_context() {
+        let ripr = BadgeNativeAuditSnapshot {
+            label: "ripr".to_string(),
+            kind: "ripr".to_string(),
+            scope: "repo".to_string(),
+            basis: "canonical_actionable_gap".to_string(),
+            message: "4".to_string(),
+            status: "warn".to_string(),
+            color: "orange".to_string(),
+            counts: BTreeMap::from([("unsuppressed_exposure_gaps".to_string(), 4)]),
+            reason_counts: BTreeMap::new(),
+            warnings: Vec::new(),
+        };
+
+        let ripr_plus = badge_basis_derived_ripr_plus_snapshot(&ripr, None);
+
+        assert_eq!(ripr_plus.label, "ripr+");
+        assert_eq!(ripr_plus.kind, "ripr_plus");
+        assert_eq!(ripr_plus.message, "4");
+        assert_eq!(
+            ripr_plus
+                .counts
+                .get("unsuppressed_test_efficiency_findings"),
+            Some(&0)
+        );
+        assert_eq!(
+            ripr_plus.counts.get("intentional_test_efficiency_findings"),
+            Some(&0)
+        );
+        assert_eq!(
+            ripr_plus.counts.get("suppressed_test_efficiency_findings"),
+            Some(&0)
+        );
+        assert_eq!(ripr_plus.counts.get("unknowns_test_efficiency"), Some(&0));
+        assert!(!ripr_plus.counts.contains_key("analyzed_tests"));
+        assert!(ripr_plus.reason_counts.is_empty());
+    }
+
+    #[test]
+    fn badge_basis_seam_native_counts_are_internal_when_public_basis_is_canonical() {
+        let ripr = BadgeNativeAuditSnapshot {
+            label: "ripr".to_string(),
+            kind: "ripr".to_string(),
+            scope: "repo".to_string(),
+            basis: "canonical_actionable_gap".to_string(),
+            message: "12".to_string(),
+            status: "warn".to_string(),
+            color: "orange".to_string(),
+            counts: BTreeMap::from([
+                ("analyzed_seams".to_string(), 100),
+                ("unsuppressed_exposure_gaps".to_string(), 12),
+            ]),
+            reason_counts: BTreeMap::new(),
+            warnings: Vec::new(),
+        };
+
+        let counts = badge_basis_seam_native_counts(false, &ripr);
+
+        assert_eq!(counts.status, "not_collected");
+        assert!(counts.counts.is_empty());
+        assert!(counts.note.contains("canonical_actionable_gap"));
+        assert!(counts.source.contains("--include-seam-classes"));
     }
 
     #[test]

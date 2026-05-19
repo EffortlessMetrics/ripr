@@ -46,7 +46,10 @@ impl BadgeStatus {
 pub enum BadgeBasis {
     /// Counts legacy diff/repo `Finding` exposure classes.
     FindingExposure,
+    /// Counts unresolved actionable canonical repair items.
+    CanonicalActionableGap,
     /// Counts classified repo seams using configured seam severity.
+    #[cfg(test)]
     SeamNative,
     /// Counts explicit policy-targeted `GapRecord` projection targets.
     GapDecisionLedger,
@@ -56,6 +59,8 @@ impl BadgeBasis {
     pub fn as_str(self) -> &'static str {
         match self {
             BadgeBasis::FindingExposure => "finding_exposure",
+            BadgeBasis::CanonicalActionableGap => "canonical_actionable_gap",
+            #[cfg(test)]
             BadgeBasis::SeamNative => "seam_native",
             BadgeBasis::GapDecisionLedger => "gap_decision_ledger",
         }
@@ -138,8 +143,9 @@ pub struct BadgeSummary {
 /// contract change — call it out in the PR. v0.4 added
 /// `basis = "gap_decision_ledger"` and `counts.analyzed_gap_records`
 /// so public badge endpoints can be rendered from explicit GapRecord
-/// policy targets.
-pub const BADGE_SCHEMA_VERSION: &str = "0.4";
+/// policy targets. v0.5 adds `basis = "canonical_actionable_gap"` for
+/// public repair-item badge projection.
+pub const BADGE_SCHEMA_VERSION: &str = "0.5";
 
 /// All test-efficiency reason strings the badge JSON reports as zero
 /// defaults until later PRs read the test-efficiency report. The order
