@@ -3486,3 +3486,24 @@ metrics = [
   "editor_adoption_receipt_mismatch",
   "editor_adoption_actions_suppressed_unsafe_state",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0055"
+name = "actionable evidence projection"
+spec = "docs/specs/RIPR-SPEC-0055-actionable-evidence-projection.md"
+tests = []
+code = [
+  "crates/ripr/src/output",
+  "crates/ripr/src/lsp",
+  "xtask/src/main.rs"
+]
+outputs = [
+  "badges/ripr.json",
+  "badges/ripr-plus.json"
+]
+metrics = [
+  "actionable_canonical_gap_count",
+  "actionable_test_efficiency_repair_count",
+  "seam_native_inventory_count",
+  "public_projection_basis_drift_count"
+]

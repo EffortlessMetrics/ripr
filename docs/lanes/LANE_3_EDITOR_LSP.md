@@ -936,3 +936,10 @@ Deferred editor features remain out of scope until a new editor campaign opens:
 Before taking a Lane 3 task, confirm it touches editor or LSP projection. If it
 is about PR/CI summary composition, dogfood receipts, policy, evidence schema,
 or campaign closeout outside editor behavior, route it to the owning lane.
+
+## Cross-link: Actionable Evidence Projection
+
+Lane 3 editor/LSP surfaces consume the same public actionable evidence unit
+tracked by [RIPR-SPEC-0055](../specs/RIPR-SPEC-0055-actionable-evidence-projection.md).
+Editor packet rendering should remain projection-only while aligning with badge,
+first-pr, and PR/CI lead evidence semantics.

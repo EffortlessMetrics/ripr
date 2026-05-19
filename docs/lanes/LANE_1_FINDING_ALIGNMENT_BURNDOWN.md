@@ -202,3 +202,11 @@ This rail can close when:
 - capability and traceability updates remain class-scoped and proof-backed;
 - a closeout handoff records what improved, what remains unknown, and the next
   evidence class to repair.
+
+## Cross-link: Actionable Evidence Projection
+
+Lane 1 finding alignment remains a key upstream signal for cross-surface
+projection. The actionable-public projection contract is tracked in
+[RIPR-PROP-0013](../proposals/RIPR-PROP-0013-actionable-evidence-projection.md),
+[RIPR-SPEC-0055](../specs/RIPR-SPEC-0055-actionable-evidence-projection.md), and
+[plans/actionable-evidence-projection/implementation-plan.md](../../plans/actionable-evidence-projection/implementation-plan.md).

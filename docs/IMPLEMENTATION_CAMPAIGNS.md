@@ -3845,3 +3845,9 @@ Blocking conditions:
 - runtime adequacy, Rust-parity, policy-eligibility, or gate claims
 - unsaved-buffer overlays, CodeLens, inlay hints, semantic tokens, or inline
   patch application in this campaign
+
+## Cross-Surface Campaign: Actionable Evidence Projection
+
+- **Objective:** align all public/user-facing RIPR surfaces on one actionable evidence unit: canonical gap -> repair route -> related target -> verify -> receipt -> advisory/static/preview boundary.
+- **Primary stack:** [RIPR-PROP-0013](proposals/RIPR-PROP-0013-actionable-evidence-projection.md), [RIPR-SPEC-0055](specs/RIPR-SPEC-0055-actionable-evidence-projection.md), [ADR-0017](adr/0017-public-surfaces-project-actionable-canonical-gaps.md), and [implementation plan](../plans/actionable-evidence-projection/implementation-plan.md).
+- **Initial sequencing:** docs stack, badge-basis audit, eligibility helper, public basis switch, internal seam inventory preservation, basis drift guard, generated endpoint refresh, surface alignment checks, docs copy alignment, closeout proof.

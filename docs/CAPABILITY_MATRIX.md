@@ -96,3 +96,9 @@ public output contract, or adds a measurable acceptance condition.
 
 README should show only the headline capability snapshot. This file is the
 deeper tracking surface for contributors and agents.
+
+## Planned Capability: Actionable Evidence Projection
+
+- **Status:** proposed
+- **Stack:** `RIPR-PROP-0013`, `RIPR-SPEC-0055`, `ADR-0017`
+- **Intent:** public surfaces (badge, first-pr packet, PR/CI lead evidence, and editor projection consumers) converge on unresolved actionable canonical repair items, while seam-native inventory remains an internal pressure gauge.

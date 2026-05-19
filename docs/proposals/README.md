@@ -88,3 +88,4 @@ Start new proposals from
 | [RIPR-PROP-0010](RIPR-PROP-0010-editor-first-pr-bridge.md) | accepted | Editor first-pr bridge |
 | [RIPR-PROP-0011](RIPR-PROP-0011-start-here-surface-convergence.md) | proposed | Start-here surface convergence |
 | [RIPR-PROP-0012](RIPR-PROP-0012-editor-adoption-assurance.md) | proposed | Editor adoption assurance |
+| [RIPR-PROP-0013](RIPR-PROP-0013-actionable-evidence-projection.md) | proposed | Actionable evidence projection |
