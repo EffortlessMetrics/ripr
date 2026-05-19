@@ -14175,9 +14175,18 @@ pub(crate) fn repo_exposure_report_impl() -> Result<(), String> {
 /// calibration report already exists, include it only as calibration
 /// availability context.
 pub(crate) fn evidence_health_report_impl() -> Result<(), String> {
+    ensure_reports_dir()?;
     run("cargo", &["build", "-p", "ripr"])?;
     let binary = ripr_debug_binary();
-    let binary_text = binary.display().to_string();
+    let args = evidence_health_args();
+    let timeout = Duration::from_millis(evidence_health_timeout_ms());
+    write_evidence_health_report_with_runner(&binary, &args, timeout, evidence_health_run_binary)
+}
+
+const EVIDENCE_HEALTH_TIMEOUT_ENV: &str = "RIPR_EVIDENCE_HEALTH_TIMEOUT_MS";
+const EVIDENCE_HEALTH_DEFAULT_TIMEOUT_MS: u64 = 1_800_000;
+
+fn evidence_health_args() -> Vec<String> {
     let mut args = vec![
         "evidence-health".to_string(),
         "--root".to_string(),
@@ -14192,7 +14201,256 @@ pub(crate) fn evidence_health_report_impl() -> Result<(), String> {
         args.push("--mutation-calibration".to_string());
         args.push(calibration.display().to_string());
     }
-    run_owned(&binary_text, &args)
+    args
+}
+
+fn evidence_health_timeout_ms() -> u64 {
+    std::env::var(EVIDENCE_HEALTH_TIMEOUT_ENV)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(EVIDENCE_HEALTH_DEFAULT_TIMEOUT_MS)
+}
+
+fn evidence_health_run_binary(
+    binary: &Path,
+    args: &[String],
+    timeout: Duration,
+) -> Result<TimedOutput, String> {
+    let binary_text = binary.display().to_string();
+    capture_output_with_timeout(
+        &binary_text,
+        args,
+        &[],
+        timeout,
+        "Lane 1 evidence-health report",
+    )
+}
+
+fn write_evidence_health_report_with_runner<F>(
+    binary: &Path,
+    args: &[String],
+    timeout: Duration,
+    mut run_evidence_health: F,
+) -> Result<(), String>
+where
+    F: FnMut(&Path, &[String], Duration) -> Result<TimedOutput, String>,
+{
+    let output = run_evidence_health(binary, args, timeout)?;
+    if output.timed_out {
+        return write_limited_evidence_health_reports(binary, args, timeout, &output);
+    }
+    match output.status {
+        Some(status) if status.success() => Ok(()),
+        Some(status) => Err(format!(
+            "{} {} failed with {status}\nstdout:\n{}\nstderr:\n{}",
+            binary.display(),
+            args.join(" "),
+            output.stdout.trim(),
+            output.stderr.trim()
+        )),
+        None => Err(format!(
+            "{} {} did not report an exit status\nstdout:\n{}\nstderr:\n{}",
+            binary.display(),
+            args.join(" "),
+            output.stdout.trim(),
+            output.stderr.trim()
+        )),
+    }
+}
+
+fn write_limited_evidence_health_reports(
+    binary: &Path,
+    args: &[String],
+    timeout: Duration,
+    output: &TimedOutput,
+) -> Result<(), String> {
+    let json_path = Path::new("target/ripr/reports/evidence-health.json");
+    let md_path = Path::new("target/ripr/reports/evidence-health.md");
+    let _ = fs::remove_file(json_path);
+    let _ = fs::remove_file(md_path);
+    write_report(
+        "evidence-health.json",
+        &limited_evidence_health_json(binary, args, timeout, output)?,
+    )?;
+    write_report(
+        "evidence-health.md",
+        &limited_evidence_health_markdown(binary, args, timeout, output),
+    )
+}
+
+fn limited_evidence_health_json(
+    binary: &Path,
+    args: &[String],
+    timeout: Duration,
+    output: &TimedOutput,
+) -> Result<String, String> {
+    let value = serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "scope": "repo",
+        "status": "warn",
+        "inputs": {
+            "root": ".",
+            "mutation_calibration": null,
+            "generation": evidence_health_generation_json(binary, args, timeout, output),
+        },
+        "metrics": {
+            "seams_total": 0,
+            "headline_eligible_total": 0,
+            "weakly_gripped_total": 0,
+            "ungripped_total": 0,
+            "grip_class_counts": {},
+            "stage_state_counts": {},
+            "unknown_stage_counts": {},
+            "unknown_stop_reason_counts": {},
+            "missing_discriminators_total": 0,
+            "seams_with_missing_discriminators": 0,
+            "missing_discriminator_counts": {},
+            "observed_values_total": 0,
+            "seams_with_observed_values": 0,
+            "observed_value_context_counts": {},
+            "related_tests_total": 0,
+            "seams_with_related_tests": 0,
+            "related_test_confidence_counts": {},
+            "oracle_strength_counts": {},
+            "oracle_kind_counts": {},
+            "opaque_oracle_count": 0,
+        },
+        "evidence_quality": {
+            "canonical_gap_groups_total": 0,
+            "duplicate_looking_groups_total": 0,
+            "largest_canonical_groups": [],
+            "actionability_class_counts": {},
+            "static_limitation_stage_counts": {},
+            "static_limitation_reason_counts": {},
+            "static_limitation_category_counts": {
+                "evidence_health_timeout": 1
+            },
+            "calibration_availability_counts": {},
+            "movement_availability": {
+                "records_with_seam_id": 0,
+                "records_with_canonical_gap_id": 0,
+                "records_with_complete_evidence_path": 0,
+                "records_with_recommendation": 0,
+                "records_with_verify_command": 0,
+            },
+            "top_evidence_quality_risks": [
+                {
+                    "kind": "evidence_health_timeout",
+                    "count": 1,
+                    "summary": "Evidence-health generation timed out before a complete report was available."
+                }
+            ],
+        },
+        "calibration": {
+            "status": "not_evaluated",
+            "source": null,
+            "matched_total": 0,
+            "static_without_runtime_total": 0,
+            "runtime_without_static_total": 0,
+            "ambiguous_file_line_total": 0,
+            "unmatched_runtime_total": 0,
+        },
+        "top_static_limitations": [
+            {
+                "kind": "evidence_health_timeout",
+                "count": 1,
+                "summary": "Evidence-health generation timed out; no user test debt is claimed from this limited artifact.",
+                "example_seam_id": null,
+                "repair_route": "inspect evidence-health runtime, increase RIPR_EVIDENCE_HEALTH_TIMEOUT_MS for slower machines, or add a narrower fixture-backed analyzer path"
+            }
+        ],
+        "run_limitations": [
+            {
+                "category": "evidence_health_timeout",
+                "phase": "evidence_health_generation",
+                "input": "repo",
+                "summary": "Evidence-health generation exceeded its bounded runtime; partial outputs were discarded.",
+                "repair_route": "inspect evidence-health runtime, increase RIPR_EVIDENCE_HEALTH_TIMEOUT_MS for slower machines, or add a narrower fixture-backed analyzer path",
+                "timeout_ms": timeout.as_millis(),
+                "duration_ms": output.duration.as_millis(),
+                "command": normalize_report_path(&format!("{} {}", binary.display(), args.join(" "))),
+                "exit_code": output.status.and_then(|status| status.code()),
+                "stdout_bytes": output.stdout.len(),
+                "stderr_bytes": output.stderr.len(),
+            }
+        ],
+    });
+    serde_json::to_string_pretty(&value)
+        .map(|json| format!("{json}\n"))
+        .map_err(|err| format!("failed to render limited evidence-health JSON: {err}"))
+}
+
+fn evidence_health_generation_json(
+    binary: &Path,
+    args: &[String],
+    timeout: Duration,
+    output: &TimedOutput,
+) -> Value {
+    serde_json::json!({
+        "command": normalize_report_path(&format!("{} {}", binary.display(), args.join(" "))),
+        "timeout_ms": timeout.as_millis(),
+        "status": if output.timed_out { "timeout" } else { "fail" },
+        "duration_ms": output.duration.as_millis(),
+        "exit_code": output.status.and_then(|status| status.code()),
+        "stdout_bytes": output.stdout.len(),
+        "stderr_bytes": output.stderr.len(),
+    })
+}
+
+fn limited_evidence_health_markdown(
+    binary: &Path,
+    args: &[String],
+    timeout: Duration,
+    output: &TimedOutput,
+) -> String {
+    let mut out = String::new();
+    out.push_str("# RIPR evidence health report\n\n");
+    out.push_str("Status: warn\n\n");
+    out.push_str("Evidence-health generation timed out before a complete report was available. Partial outputs were discarded, and no user test debt is claimed from this limited artifact.\n\n");
+    out.push_str("## Run Limitation\n\n");
+    out.push_str("| Field | Value |\n");
+    out.push_str("| --- | --- |\n");
+    out.push_str("| Category | `evidence_health_timeout` |\n");
+    out.push_str("| Phase | `evidence_health_generation` |\n");
+    out.push_str(&format!("| Timeout | {} ms |\n", timeout.as_millis()));
+    out.push_str(&format!(
+        "| Duration | {} ms |\n",
+        output.duration.as_millis()
+    ));
+    let exit = output
+        .status
+        .and_then(|status| status.code())
+        .map(|code| code.to_string())
+        .unwrap_or_else(|| "n/a".to_string());
+    out.push_str(&format!("| Exit code | {} |\n", exit));
+    out.push_str(&format!(
+        "| Command | `{}` |\n",
+        audit_markdown_cell(&normalize_report_path(&format!(
+            "{} {}",
+            binary.display(),
+            args.join(" ")
+        )))
+    ));
+    out.push_str("| Repair route | inspect evidence-health runtime, increase `RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` for slower machines, or add a narrower fixture-backed analyzer path |\n\n");
+    if !output.stderr.trim().is_empty() {
+        out.push_str("## Stderr Tail\n\n```text\n");
+        for line in output
+            .stderr
+            .lines()
+            .rev()
+            .take(8)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+        {
+            out.push_str(line);
+            out.push('\n');
+        }
+        out.push_str("```\n");
+    }
+    out
 }
 
 const LANE1_EVIDENCE_AUDIT_SCHEMA_VERSION: &str = "0.1";
@@ -14207,6 +14465,7 @@ struct Lane1EvidenceAuditReport {
     root: String,
     repo_exposure_schema_version: Option<String>,
     repo_exposure_generation: Option<Lane1EvidenceAuditRepoExposureGeneration>,
+    run_limitations: Vec<Lane1EvidenceAuditRunLimitation>,
     summary: Lane1EvidenceAuditSummary,
     finding_alignment: Lane1EvidenceAuditFindingAlignmentSummary,
     alignment_coverage_by_class: Vec<Lane1EvidenceAuditAlignmentClassCoverage>,
@@ -14267,6 +14526,28 @@ struct Lane1EvidenceAuditRepoExposureGeneration {
     stdout_bytes: usize,
     stderr_bytes: usize,
     latency_trace_events_total: usize,
+    latency_trace_tail: Vec<RepoExposureLatencyTrace>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum Lane1EvidenceAuditRepoExposureOutcome {
+    Complete(Lane1EvidenceAuditRepoExposureGeneration),
+    TimedOut(Lane1EvidenceAuditRepoExposureGeneration),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Lane1EvidenceAuditRunLimitation {
+    category: String,
+    phase: String,
+    input: String,
+    summary: String,
+    repair_route: String,
+    timeout_ms: Option<u128>,
+    duration_ms: Option<u128>,
+    command: Option<String>,
+    exit_code: Option<i32>,
+    stdout_bytes: Option<usize>,
+    stderr_bytes: Option<usize>,
     latency_trace_tail: Vec<RepoExposureLatencyTrace>,
 }
 
@@ -14415,15 +14696,23 @@ struct Lane1EvidenceAuditFileDebt {
 pub(crate) fn lane1_evidence_audit_report_impl() -> Result<(), String> {
     ensure_reports_dir()?;
     let repo_exposure_path = reports_dir().join("lane1-evidence-audit.repo-exposure.json");
-    let repo_exposure_generation = write_lane1_evidence_audit_repo_exposure(&repo_exposure_path)?;
-    let mut report = lane1_evidence_audit_from_repo_exposure_file(".", &repo_exposure_path)?;
-    report.repo_exposure_generation = Some(repo_exposure_generation);
-    if let Err(err) = fs::remove_file(&repo_exposure_path) {
-        eprintln!(
-            "warning: failed to remove temporary Lane 1 repo exposure input {}: {err}",
-            repo_exposure_path.display()
-        );
-    }
+    let report = match write_lane1_evidence_audit_repo_exposure(&repo_exposure_path)? {
+        Lane1EvidenceAuditRepoExposureOutcome::Complete(repo_exposure_generation) => {
+            let mut report =
+                lane1_evidence_audit_from_repo_exposure_file(".", &repo_exposure_path)?;
+            report.repo_exposure_generation = Some(repo_exposure_generation);
+            if let Err(err) = fs::remove_file(&repo_exposure_path) {
+                eprintln!(
+                    "warning: failed to remove temporary Lane 1 repo exposure input {}: {err}",
+                    repo_exposure_path.display()
+                );
+            }
+            report
+        }
+        Lane1EvidenceAuditRepoExposureOutcome::TimedOut(repo_exposure_generation) => {
+            lane1_evidence_audit_limited_report(".", repo_exposure_generation)
+        }
+    };
     write_report(
         "lane1-evidence-audit.json",
         &lane1_evidence_audit_json(&report)?,
@@ -14436,7 +14725,7 @@ pub(crate) fn lane1_evidence_audit_report_impl() -> Result<(), String> {
 
 fn write_lane1_evidence_audit_repo_exposure(
     path: &Path,
-) -> Result<Lane1EvidenceAuditRepoExposureGeneration, String> {
+) -> Result<Lane1EvidenceAuditRepoExposureOutcome, String> {
     run("cargo", &["build", "-p", "ripr"])?;
     let binary = ripr_debug_binary();
     let timeout = Duration::from_millis(lane1_evidence_audit_timeout_ms());
@@ -14491,7 +14780,7 @@ fn write_lane1_evidence_audit_repo_exposure_with_runner<F>(
     binary: &Path,
     timeout: Duration,
     mut run_repo_exposure: F,
-) -> Result<Lane1EvidenceAuditRepoExposureGeneration, String>
+) -> Result<Lane1EvidenceAuditRepoExposureOutcome, String>
 where
     F: FnMut(&Path, &[String], &Path, Duration) -> Result<TimedFileOutput, String>,
 {
@@ -14504,48 +14793,90 @@ where
         }
     };
     if output.timed_out {
+        let diagnostics =
+            lane1_evidence_audit_repo_exposure_generation(binary, &args, timeout, &output);
         let _ = fs::remove_file(path);
-        return Err(lane1_evidence_audit_timeout_error(
-            binary, &args, timeout, &output,
-        ));
+        return Ok(Lane1EvidenceAuditRepoExposureOutcome::TimedOut(diagnostics));
     }
 
     let diagnostics =
         lane1_evidence_audit_repo_exposure_generation(binary, &args, timeout, &output);
     match output.status {
-        Some(status) if status.success() => Ok(diagnostics),
+        Some(status) if status.success() => {
+            Ok(Lane1EvidenceAuditRepoExposureOutcome::Complete(diagnostics))
+        }
         Some(status) => match lane1_repo_exposure_file_looks_complete(path) {
             Ok(true) => {
                 eprintln!(
                     "warning: repo exposure generation returned non-zero status; continuing because {} contains a complete repo-exposure JSON document",
                     path.display()
                 );
-                Ok(Lane1EvidenceAuditRepoExposureGeneration {
-                    status: "nonzero_complete".to_string(),
-                    ..diagnostics
-                })
+                Ok(Lane1EvidenceAuditRepoExposureOutcome::Complete(
+                    Lane1EvidenceAuditRepoExposureGeneration {
+                        status: "nonzero_complete".to_string(),
+                        ..diagnostics
+                    },
+                ))
             }
-            Ok(false) => Err(format!(
-                "{} {} failed with {status}\nstderr:\n{}",
-                binary.display(),
-                args.join(" "),
-                output.stderr.trim()
-            )),
-            Err(inspect_err) => Err(format!(
-                "{} {} failed with {status}\nfailed to inspect captured repo exposure {}: {inspect_err}\nstderr:\n{}",
-                binary.display(),
-                args.join(" "),
-                path.display(),
-                output.stderr.trim()
-            )),
+            Ok(false) => {
+                let _ = fs::remove_file(path);
+                Err(format!(
+                    "{} {} failed with {status}\nstderr:\n{}",
+                    binary.display(),
+                    args.join(" "),
+                    output.stderr.trim()
+                ))
+            }
+            Err(inspect_err) => {
+                let _ = fs::remove_file(path);
+                Err(format!(
+                    "{} {} failed with {status}\nfailed to inspect captured repo exposure {}: {inspect_err}\nstderr:\n{}",
+                    binary.display(),
+                    args.join(" "),
+                    path.display(),
+                    output.stderr.trim()
+                ))
+            }
         },
-        None => Err(format!(
-            "{} {} did not report an exit status\nstderr:\n{}",
-            binary.display(),
-            args.join(" "),
-            output.stderr.trim()
-        )),
+        None => {
+            let _ = fs::remove_file(path);
+            Err(format!(
+                "{} {} did not report an exit status\nstderr:\n{}",
+                binary.display(),
+                args.join(" "),
+                output.stderr.trim()
+            ))
+        }
     }
+}
+
+fn lane1_evidence_audit_limited_report(
+    root: &str,
+    generation: Lane1EvidenceAuditRepoExposureGeneration,
+) -> Lane1EvidenceAuditReport {
+    let mut report = Lane1EvidenceAuditBuilder::default().finish(root.to_string(), None);
+    report.repo_exposure_generation = Some(generation.clone());
+    report.run_limitations.push(Lane1EvidenceAuditRunLimitation {
+        category: "lane1_repo_exposure_timeout".to_string(),
+        phase: "repo_exposure_generation".to_string(),
+        input: "repo-exposure-json".to_string(),
+        summary: "Lane 1 repo-exposure generation exceeded its bounded runtime; partial repo-exposure JSON was discarded and no user test debt is claimed from this limited artifact.".to_string(),
+        repair_route: "inspect repo-exposure latency trace, increase RIPR_LANE1_EVIDENCE_AUDIT_TIMEOUT_MS for slower machines, or add fixture-backed analyzer narrowing for the slow phase".to_string(),
+        timeout_ms: Some(generation.timeout_ms),
+        duration_ms: Some(generation.duration_ms),
+        command: Some(generation.command.clone()),
+        exit_code: generation.exit_code,
+        stdout_bytes: Some(generation.stdout_bytes),
+        stderr_bytes: Some(generation.stderr_bytes),
+        latency_trace_tail: generation.latency_trace_tail,
+    });
+    report
+        .static_limitation_category_counts
+        .insert("lane1_repo_exposure_timeout".to_string(), 1);
+    report
+        .static_limitation_repair_route_counts
+        .insert("report/lane1-audit-bounded-diagnostics".to_string(), 1);
+    report
 }
 
 fn lane1_evidence_audit_repo_exposure_generation(
@@ -14577,6 +14908,7 @@ fn lane1_evidence_audit_repo_exposure_generation(
     }
 }
 
+#[cfg(test)]
 fn lane1_evidence_audit_timeout_error(
     binary: &Path,
     args: &[String],
@@ -15207,6 +15539,7 @@ impl Lane1EvidenceAuditBuilder {
             root,
             repo_exposure_schema_version,
             repo_exposure_generation: None,
+            run_limitations: Vec::new(),
             summary: self.summary,
             finding_alignment: self.finding_alignment,
             alignment_coverage_by_class,
@@ -15276,6 +15609,11 @@ fn lane1_evidence_audit_json(report: &Lane1EvidenceAuditReport) -> Result<String
                 .as_ref()
                 .map(lane1_evidence_audit_repo_exposure_generation_json),
         },
+        "run_limitations": report
+            .run_limitations
+            .iter()
+            .map(lane1_evidence_audit_run_limitation_json)
+            .collect::<Vec<_>>(),
         "summary": {
             "seams_total": report.summary.seams_total,
             "raw_headline_gaps": report.summary.raw_headline_gaps,
@@ -15428,6 +15766,42 @@ fn lane1_evidence_audit_markdown(report: &Lane1EvidenceAuditReport) -> String {
         }
     } else {
         out.push_str("No repo-exposure generation diagnostics were attached. This usually means the audit was built from an in-memory fixture instead of the live repo-exposure subprocess.\n\n");
+    }
+
+    if !report.run_limitations.is_empty() {
+        out.push_str("## Run Limitations\n\n");
+        out.push_str("| Category | Phase | Input | Repair route |\n");
+        out.push_str("| --- | --- | --- | --- |\n");
+        for limitation in &report.run_limitations {
+            out.push_str(&format!(
+                "| `{}` | `{}` | `{}` | {} |\n",
+                audit_markdown_cell(&limitation.category),
+                audit_markdown_cell(&limitation.phase),
+                audit_markdown_cell(&limitation.input),
+                audit_markdown_cell(&limitation.repair_route)
+            ));
+        }
+        out.push('\n');
+        for limitation in &report.run_limitations {
+            if limitation.latency_trace_tail.is_empty() {
+                continue;
+            }
+            out.push_str(&format!(
+                "Last latency trace for `{}`:\n\n",
+                audit_markdown_cell(&limitation.category)
+            ));
+            out.push_str("| Phase | Status | Duration |\n");
+            out.push_str("| --- | --- | ---: |\n");
+            for trace in &limitation.latency_trace_tail {
+                out.push_str(&format!(
+                    "| `{}` | `{}` | {} ms |\n",
+                    audit_markdown_cell(&trace.phase),
+                    audit_markdown_cell(&trace.status),
+                    trace.duration_ms
+                ));
+            }
+            out.push('\n');
+        }
     }
 
     out.push_str("## Summary\n\n");
@@ -16064,6 +16438,27 @@ fn lane1_evidence_audit_repo_exposure_generation_json(
         "stderr_bytes": generation.stderr_bytes,
         "latency_trace_events_total": generation.latency_trace_events_total,
         "latency_trace_tail": generation
+            .latency_trace_tail
+            .iter()
+            .map(lane1_evidence_audit_latency_trace_json)
+            .collect::<Vec<_>>(),
+    })
+}
+
+fn lane1_evidence_audit_run_limitation_json(limitation: &Lane1EvidenceAuditRunLimitation) -> Value {
+    serde_json::json!({
+        "category": limitation.category,
+        "phase": limitation.phase,
+        "input": limitation.input,
+        "summary": limitation.summary,
+        "repair_route": limitation.repair_route,
+        "timeout_ms": limitation.timeout_ms,
+        "duration_ms": limitation.duration_ms,
+        "command": limitation.command.as_ref().map(|command| normalize_report_path(command)),
+        "exit_code": limitation.exit_code,
+        "stdout_bytes": limitation.stdout_bytes,
+        "stderr_bytes": limitation.stderr_bytes,
+        "latency_trace_tail": limitation
             .latency_trace_tail
             .iter()
             .map(lane1_evidence_audit_latency_trace_json)
@@ -17910,12 +18305,27 @@ fn evidence_quality_unknowns(
     inputs: &EvidenceQualityScorecardInputs,
 ) -> Vec<EvidenceQualityUnknown> {
     let mut unknowns = Vec::new();
+    if report_has_run_limitations(audit) {
+        scorecard_push_unknown(
+            &mut unknowns,
+            "lane1_evidence_audit_limited",
+            "Lane 1 evidence audit reported a bounded run limitation, so zero or partial counts from that artifact must not be treated as complete repo truth.",
+            Some("report/lane1-audit-bounded-diagnostics"),
+        );
+    }
     if evidence_health.is_none() {
         scorecard_push_unknown(
             &mut unknowns,
             "evidence_health_unavailable",
             "Evidence-health JSON was not available, so durable health-only audit fields are not joined.",
             Some("report/evidence-health-audit-fields"),
+        );
+    } else if evidence_health.is_some_and(report_has_run_limitations) {
+        scorecard_push_unknown(
+            &mut unknowns,
+            "evidence_health_limited",
+            "Evidence-health JSON reported a bounded run limitation, so health-only fields are diagnostic rather than complete repo truth.",
+            Some("report/evidence-health-bounded-diagnostics"),
         );
     }
     if inputs.previous_scorecard.status == "missing" {
@@ -17990,6 +18400,13 @@ fn evidence_quality_unknowns(
         );
     }
     unknowns
+}
+
+fn report_has_run_limitations(value: &Value) -> bool {
+    value
+        .get("run_limitations")
+        .and_then(Value::as_array)
+        .is_some_and(|items| !items.is_empty())
 }
 
 fn finding_alignment_summary_available(value: &Value) -> bool {
@@ -37757,34 +38174,35 @@ mod tests {
         EvidenceQualityScorecardReport, EvidenceQualityTrendInputs, EvidenceQualityTrendReport,
         FixKind, GENERATED_CI_FIRST_ACTION_REPAIR, GENERATED_CI_FIRST_PR_REPAIR,
         GENERATED_CI_FRONT_PANEL_REPAIR, GENERATED_CI_PACKET_INDEX_REPAIR, GhPrStatusPullRequest,
-        GhPrStatusReview, Lane1EvidenceAuditRepoExposureGeneration, LocalContextAllow,
-        LspCockpitFixture, LspCockpitReport, MarkdownLink, PrTriageCheck, PrTriageFinding,
-        PrTriagePullRequest, ReceiptRecord, RepoExposureLatencyReport, RepoExposureLatencyRun,
-        RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
-        ReportIndexRepoOpsArtifact, SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold,
-        StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass, WorktreeDoctorFinding,
-        WorktreeDoctorSeverity, badge_artifact_command_args, badge_artifact_jobs,
-        badge_artifact_native_slot, badge_artifacts_summary_markdown, badge_diff_policy_violations,
-        build_lsp_cockpit_report, build_no_panic_allowlist_proposals,
-        build_repo_exposure_latency_report, build_targeted_test_outcome_report,
-        campaign_source_truth_violations_for_root, check_allow_attributes,
-        check_badge_diff_policy_with_context, check_droid_review_config, check_executable_files,
-        check_file_policy, check_local_context, check_network_policy, check_no_panic_family,
-        check_process_policy, check_static_language, check_workflows, ci_full_evidence_gates,
-        cockpit_json, cockpit_markdown, collect_panic_findings, collect_semantic_panic_findings,
-        command_catalog, command_catalog_violations, commands_report_json,
-        commands_report_markdown, critic_findings, days_from_civil, dogfood_class_counts,
-        dogfood_editor_first_pr_bridge_run, dogfood_editor_first_pr_bridge_scenarios,
-        dogfood_editor_gap_cockpit_run, dogfood_editor_gap_cockpit_scenarios,
-        dogfood_finding_alignment_run, dogfood_finding_alignment_scenarios,
-        dogfood_first_action_scenarios, dogfood_first_pr_metrics, dogfood_first_pr_run,
-        dogfood_first_pr_scenarios, dogfood_gate_adoption_scenarios,
-        dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
-        dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
-        dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
-        dogfood_pr_review_front_panel_scenarios, dogfood_report_json, dogfood_report_markdown,
-        dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
-        evaluate_semantic_no_panic_policy, evidence_quality_scorecard_from_values,
+        GhPrStatusReview, Lane1EvidenceAuditRepoExposureGeneration,
+        Lane1EvidenceAuditRepoExposureOutcome, LocalContextAllow, LspCockpitFixture,
+        LspCockpitReport, MarkdownLink, PrTriageCheck, PrTriageFinding, PrTriagePullRequest,
+        ReceiptRecord, RepoExposureLatencyReport, RepoExposureLatencyRun, RepoExposureLatencyTrace,
+        ReportIndexCampaign, ReportIndexEntry, ReportIndexRepoOpsArtifact, SarifPolicyMode,
+        SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
+        TestOracleClass, WorktreeDoctorFinding, WorktreeDoctorSeverity,
+        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
+        badge_artifacts_summary_markdown, badge_diff_policy_violations, build_lsp_cockpit_report,
+        build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
+        build_targeted_test_outcome_report, campaign_source_truth_violations_for_root,
+        check_allow_attributes, check_badge_diff_policy_with_context, check_droid_review_config,
+        check_executable_files, check_file_policy, check_local_context, check_network_policy,
+        check_no_panic_family, check_process_policy, check_static_language, check_workflows,
+        ci_full_evidence_gates, cockpit_json, cockpit_markdown, collect_panic_findings,
+        collect_semantic_panic_findings, command_catalog, command_catalog_violations,
+        commands_report_json, commands_report_markdown, critic_findings, days_from_civil,
+        dogfood_class_counts, dogfood_editor_first_pr_bridge_run,
+        dogfood_editor_first_pr_bridge_scenarios, dogfood_editor_gap_cockpit_run,
+        dogfood_editor_gap_cockpit_scenarios, dogfood_finding_alignment_run,
+        dogfood_finding_alignment_scenarios, dogfood_first_action_scenarios,
+        dogfood_first_pr_metrics, dogfood_first_pr_run, dogfood_first_pr_scenarios,
+        dogfood_gate_adoption_scenarios, dogfood_generated_ci_cockpit_run_from_workflow,
+        dogfood_language_preview_run, dogfood_language_preview_scenarios,
+        dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
+        dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
+        dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
+        dogfood_report_packet_index_scenarios, evaluate_semantic_no_panic_policy,
+        evidence_health_args, evidence_quality_scorecard_from_values,
         evidence_quality_scorecard_json, evidence_quality_scorecard_markdown,
         evidence_quality_trend_from_values, evidence_quality_trend_json,
         evidence_quality_trend_markdown, extract_json_object_usize_map, extract_json_string,
@@ -37802,30 +38220,30 @@ mod tests {
         is_stale_agent_boundary_scan_target, json_escape, json_number_after,
         json_string_values_for_key, json_summary_count, known_commands, known_xtask_command,
         lane1_evidence_audit_from_repo_exposure, lane1_evidence_audit_json,
-        lane1_evidence_audit_markdown, lane1_evidence_audit_repo_exposure_args,
-        lane1_evidence_audit_timeout_error, local_context_line_findings, local_markdown_target,
-        lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
-        markdown_links_in_text, mutation_calibration_report_json,
-        mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
-        next_spec_id_from_ids, no_panic_toml_string, non_rust_programming_retention_reason,
-        normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
-        panic_family_from_pattern, parse_campaign_manifest, parse_file_policy_allowlist,
-        parse_gh_pr_status_args, parse_gh_pr_status_pull_request, parse_inline_array,
-        parse_mutation_calibration_args, parse_mutation_outcomes_json,
-        parse_no_panic_allowlist_toml, parse_no_panic_allowlist_toml_v2,
-        parse_pr_triage_pull_requests, parse_reason, parse_repo_exposure_static_seams,
-        parse_required_status_contexts, parse_sarif_policy_args, parse_sarif_policy_results,
-        parse_static_language_allowlist, parse_string_value, parse_targeted_test_outcome_args,
-        pr_body_validation_warning, pr_checks_summary, pr_ready_json, pr_ready_markdown,
-        pr_ready_next_action, pr_ready_status, pr_ready_status_from_report_status,
-        pr_sensitive_file_reason, pr_shape_warnings, pr_summary_body, pr_title_family,
-        pr_triage_findings, pr_triage_json, pr_triage_markdown, pr_triage_queue_dispositions,
-        precommit_report_body, public_contract_rows, read_lsp_cockpit_json_value,
-        read_mutation_input_json, receipt_json, receipt_specs, receipt_status_from_reports,
-        render_no_panic_allowlist_proposals_markdown, render_no_panic_allowlist_proposals_toml,
-        repo_badge_artifact_command_args, repo_badge_artifact_jobs,
-        repo_badge_artifacts_summary_markdown, repo_exposure_latency_json,
-        repo_exposure_latency_markdown, repo_exposure_latency_run,
+        lane1_evidence_audit_limited_report, lane1_evidence_audit_markdown,
+        lane1_evidence_audit_repo_exposure_args, lane1_evidence_audit_timeout_error,
+        local_context_line_findings, local_markdown_target, lsp_cockpit_report,
+        lsp_cockpit_report_json, lsp_cockpit_report_markdown, markdown_links_in_text,
+        mutation_calibration_report_json, mutation_calibration_report_markdown,
+        next_checkpoints_from_capabilities, next_spec_id_from_ids, no_panic_toml_string,
+        non_rust_programming_retention_reason, normalize_fixture_human_output,
+        normalize_fixture_json_output, normalize_golden_text, panic_family_from_pattern,
+        parse_campaign_manifest, parse_file_policy_allowlist, parse_gh_pr_status_args,
+        parse_gh_pr_status_pull_request, parse_inline_array, parse_mutation_calibration_args,
+        parse_mutation_outcomes_json, parse_no_panic_allowlist_toml,
+        parse_no_panic_allowlist_toml_v2, parse_pr_triage_pull_requests, parse_reason,
+        parse_repo_exposure_static_seams, parse_required_status_contexts, parse_sarif_policy_args,
+        parse_sarif_policy_results, parse_static_language_allowlist, parse_string_value,
+        parse_targeted_test_outcome_args, pr_body_validation_warning, pr_checks_summary,
+        pr_ready_json, pr_ready_markdown, pr_ready_next_action, pr_ready_status,
+        pr_ready_status_from_report_status, pr_sensitive_file_reason, pr_shape_warnings,
+        pr_summary_body, pr_title_family, pr_triage_findings, pr_triage_json, pr_triage_markdown,
+        pr_triage_queue_dispositions, precommit_report_body, public_contract_rows,
+        read_lsp_cockpit_json_value, read_mutation_input_json, receipt_json, receipt_specs,
+        receipt_status_from_reports, render_no_panic_allowlist_proposals_markdown,
+        render_no_panic_allowlist_proposals_toml, repo_badge_artifact_command_args,
+        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
+        repo_exposure_latency_json, repo_exposure_latency_markdown, repo_exposure_latency_run,
         repo_exposure_latency_run_from_output, repo_exposure_latency_status,
         repo_exposure_latency_trace, repo_root, repo_seam_inventory_command_args_for_root,
         report_index_json, report_index_markdown, report_index_missing_expected,
@@ -37844,6 +38262,7 @@ mod tests {
         vscode_compile_command, vscode_extension_dir, vscode_package_command,
         vscode_package_version, vscode_test_e2e_command, windows_absolute_path_tokens,
         workflow_runtime_violations, worktree, worktree_doctor_findings,
+        write_evidence_health_report_with_runner,
         write_lane1_evidence_audit_repo_exposure_with_runner, write_repo_exposure_latency_report,
     };
     use super::{
@@ -51220,7 +51639,7 @@ covered_by = ["cargo xtask check-file-policy"]
         let output_path = root.join("repo-exposure.json");
         write(&output_path, "stale");
         let timeout = Duration::from_millis(5);
-        let err = write_lane1_evidence_audit_repo_exposure_with_runner(
+        let outcome = write_lane1_evidence_audit_repo_exposure_with_runner(
             &output_path,
             Path::new("ripr"),
             timeout,
@@ -51237,20 +51656,21 @@ covered_by = ["cargo xtask check-file-policy"]
                     stdout_bytes: 0,
                 })
             },
-        )
-        .expect_err("timeout should fail instead of accepting partial JSON");
+        )?;
 
-        assert!(
-            err.contains("timed out after 5 ms"),
-            "timeout error should name timeout: {err}"
-        );
-        assert!(
-            err.contains("phase=evidence_for_seams_progress"),
-            "timeout error should include latency phase: {err}"
-        );
-        assert!(
-            err.contains("processed_500_of_37361"),
-            "timeout error should include latency status: {err}"
+        let Lane1EvidenceAuditRepoExposureOutcome::TimedOut(diagnostics) = outcome else {
+            return Err("timeout should produce a bounded timeout outcome".to_string());
+        };
+        assert_eq!(diagnostics.status, "timeout");
+        assert_eq!(diagnostics.timeout_ms, 5);
+        assert_eq!(diagnostics.latency_trace_events_total, 1);
+        assert_eq!(
+            diagnostics.latency_trace_tail[0],
+            RepoExposureLatencyTrace {
+                phase: "evidence_for_seams_progress".to_string(),
+                status: "processed_500_of_37361".to_string(),
+                duration_ms: 9983,
+            }
         );
         assert!(
             !output_path.exists(),
@@ -51267,7 +51687,7 @@ covered_by = ["cargo xtask check-file-policy"]
         let timeout = Duration::from_millis(50);
         let stdout = "{\n  \"schema_version\": \"0.3\",\n  \"seams\": []\n}\n";
 
-        let diagnostics = write_lane1_evidence_audit_repo_exposure_with_runner(
+        let outcome = write_lane1_evidence_audit_repo_exposure_with_runner(
             &output_path,
             Path::new("ripr"),
             timeout,
@@ -51286,6 +51706,9 @@ covered_by = ["cargo xtask check-file-policy"]
                 })
             },
         )?;
+        let Lane1EvidenceAuditRepoExposureOutcome::Complete(diagnostics) = outcome else {
+            return Err("success should produce a complete repo-exposure outcome".to_string());
+        };
 
         assert_eq!(
             fs::read_to_string(&output_path).map_err(|err| err.to_string())?,
@@ -51337,7 +51760,7 @@ covered_by = ["cargo xtask check-file-policy"]
         let output_path = root.join("repo-exposure.json");
         let stdout = "{\n  \"schema_version\": \"0.3\",\n  \"seams\": []\n}\n";
 
-        let diagnostics = write_lane1_evidence_audit_repo_exposure_with_runner(
+        let outcome = write_lane1_evidence_audit_repo_exposure_with_runner(
             &output_path,
             Path::new("ripr"),
             Duration::from_millis(50),
@@ -51352,6 +51775,12 @@ covered_by = ["cargo xtask check-file-policy"]
                 })
             },
         )?;
+        let Lane1EvidenceAuditRepoExposureOutcome::Complete(diagnostics) = outcome else {
+            return Err(
+                "complete nonzero repo-exposure output should produce a complete outcome"
+                    .to_string(),
+            );
+        };
 
         assert_eq!(diagnostics.status, "nonzero_complete");
         assert_eq!(
@@ -51386,6 +51815,10 @@ covered_by = ["cargo xtask check-file-policy"]
 
         assert!(err.contains("failed with"), "{err}");
         assert!(err.contains("repo exposure failed"), "{err}");
+        assert!(
+            !output_path.exists(),
+            "incomplete nonzero repo exposure should remove partial output"
+        );
     }
 
     #[test]
@@ -51412,6 +51845,10 @@ covered_by = ["cargo xtask check-file-policy"]
 
         assert!(err.contains("did not report an exit status"), "{err}");
         assert!(err.contains("missing status stderr"), "{err}");
+        assert!(
+            !output_path.exists(),
+            "missing exit status should remove captured repo exposure"
+        );
     }
 
     #[test]
@@ -51432,6 +51869,98 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(err.contains("timed out after 10 ms"));
         assert!(err.contains("stderr tail:"));
         assert!(err.contains("first\nsecond\nthird"));
+    }
+
+    #[test]
+    fn lane1_evidence_audit_limited_report_names_timeout_limitation() -> Result<(), String> {
+        let generation = Lane1EvidenceAuditRepoExposureGeneration {
+            command: "ripr check --format repo-exposure-json".to_string(),
+            timeout_ms: 12,
+            status: "timeout".to_string(),
+            duration_ms: 13,
+            exit_code: None,
+            stdout_bytes: 0,
+            stderr_bytes: 91,
+            latency_trace_events_total: 1,
+            latency_trace_tail: vec![RepoExposureLatencyTrace {
+                phase: "evidence_for_seams_progress".to_string(),
+                status: "processed_500_of_38445".to_string(),
+                duration_ms: 11,
+            }],
+        };
+        let report = lane1_evidence_audit_limited_report(".", generation);
+        let json = lane1_evidence_audit_json(&report)?;
+        let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+
+        assert_eq!(
+            value["run_limitations"][0]["category"],
+            "lane1_repo_exposure_timeout"
+        );
+        assert_eq!(
+            value["run_limitations"][0]["repair_route"],
+            "inspect repo-exposure latency trace, increase RIPR_LANE1_EVIDENCE_AUDIT_TIMEOUT_MS for slower machines, or add fixture-backed analyzer narrowing for the slow phase"
+        );
+        assert_eq!(
+            value["static_limitations"]["by_category"]["lane1_repo_exposure_timeout"],
+            1
+        );
+        assert_eq!(
+            value["inputs"]["repo_exposure_generation"]["latency_trace_tail"][0]["phase"],
+            "evidence_for_seams_progress"
+        );
+
+        let markdown = lane1_evidence_audit_markdown(&report);
+        assert!(markdown.contains("Run Limitations"));
+        assert!(markdown.contains("lane1_repo_exposure_timeout"));
+        assert!(markdown.contains("processed_500_of_38445"));
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_health_timeout_writes_named_limitation_reports() -> Result<(), String> {
+        with_temp_cwd("evidence-health-timeout", |_root| {
+            let timeout = Duration::from_millis(7);
+            let args = evidence_health_args();
+            let stale_json = Path::new("target/ripr/reports/evidence-health.json");
+            let stale_md = Path::new("target/ripr/reports/evidence-health.md");
+            write(stale_json, "stale json");
+            write(stale_md, "stale markdown");
+
+            write_evidence_health_report_with_runner(
+                Path::new("ripr"),
+                &args,
+                timeout,
+                |_binary, _args, _timeout| {
+                    Ok(TimedOutput {
+                        status: None,
+                        stdout: "partial stdout".to_string(),
+                        stderr: "phase=inventory\nphase=evidence_health\n".to_string(),
+                        duration: Duration::from_millis(8),
+                        timed_out: true,
+                    })
+                },
+            )?;
+
+            let json_text = fs::read_to_string(stale_json).map_err(|err| err.to_string())?;
+            let value: Value = serde_json::from_str(&json_text).map_err(|err| err.to_string())?;
+            assert_eq!(value["status"], "warn");
+            assert_eq!(
+                value["run_limitations"][0]["category"],
+                "evidence_health_timeout"
+            );
+            assert_eq!(
+                value["top_static_limitations"][0]["repair_route"],
+                "inspect evidence-health runtime, increase RIPR_EVIDENCE_HEALTH_TIMEOUT_MS for slower machines, or add a narrower fixture-backed analyzer path"
+            );
+            assert!(!json_text.contains("stale json"));
+
+            let markdown = fs::read_to_string(stale_md).map_err(|err| err.to_string())?;
+            assert!(markdown.contains("Status: warn"));
+            assert!(markdown.contains("evidence_health_timeout"));
+            assert!(markdown.contains("RIPR_EVIDENCE_HEALTH_TIMEOUT_MS"));
+            assert!(!markdown.contains("stale markdown"));
+            Ok(())
+        })
     }
 
     #[test]
@@ -52463,6 +52992,54 @@ covered_by = ["cargo xtask check-file-policy"]
             value["headline"]["counting_model"],
             "actionable_canonical_gaps"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_scorecard_surfaces_limited_inputs_as_unknowns() -> Result<(), String> {
+        let mut audit = lane1_scorecard_sample_audit_value()?;
+        audit
+            .as_object_mut()
+            .ok_or_else(|| "sample audit must be an object".to_string())?
+            .insert(
+                "run_limitations".to_string(),
+                serde_json::json!([
+                    {
+                        "category": "lane1_repo_exposure_timeout",
+                        "phase": "repo_exposure_generation",
+                        "repair_route": "inspect repo-exposure latency trace"
+                    }
+                ]),
+            );
+        let evidence_health = serde_json::json!({
+            "schema_version": "0.1",
+            "status": "warn",
+            "run_limitations": [
+                {
+                    "category": "evidence_health_timeout",
+                    "phase": "evidence_health_generation",
+                    "repair_route": "inspect evidence-health runtime"
+                }
+            ]
+        });
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(false),
+            &audit,
+            Some(&evidence_health),
+            None,
+        )?;
+        let json = evidence_quality_scorecard_json(&report)?;
+        let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        let kinds = value["unknowns"]
+            .as_array()
+            .ok_or("unknowns must be an array")?
+            .iter()
+            .filter_map(|unknown| unknown["kind"].as_str())
+            .collect::<BTreeSet<_>>();
+
+        assert!(kinds.contains("lane1_evidence_audit_limited"));
+        assert!(kinds.contains("evidence_health_limited"));
         Ok(())
     }
 

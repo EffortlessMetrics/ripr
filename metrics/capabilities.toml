@@ -606,6 +606,7 @@ evidence = [
   "RIPR-SPEC-0015 evidence health baseline contract",
   "ripr evidence-health writes advisory JSON and Markdown",
   "cargo xtask evidence-health writes target/ripr/reports/evidence-health.json and evidence-health.md",
+  "cargo xtask evidence-health bounds the child process and writes a named evidence_health_timeout run limitation instead of leaving stale or partial artifacts when the live report times out",
   "counts grip classes, stage states, missing discriminators, observed value contexts, related-test confidence, oracle strength, oracle kind, opaque oracles, and top static limitations",
   "folds durable Lane 1 audit fields into evidence-health from the shared evidence_record: canonical gap group totals, largest groups, duplicate-looking groups, actionability classes, static limitation reason/stage/category distributions, evidence-record calibration coverage, movement availability, and top evidence-quality risks",
   "optional imported mutation-calibration JSON contributes calibration availability counts without changing static classification",
@@ -613,7 +614,7 @@ evidence = [
 ]
 fixtures = []
 next = "maintenance"
-metric = "evidence_health_seams_total, evidence_health_missing_discriminators_total, evidence_health_observed_values_total, evidence_health_related_tests_total, evidence_health_opaque_oracle_count, evidence_health_calibration_matched_total, evidence_health_canonical_gap_groups, evidence_health_duplicate_looking_groups, evidence_health_records_with_canonical_gap_id, evidence_health_static_limitation_reasons, evidence_health_static_limitation_categories, evidence_health_calibration_not_imported, evidence_health_top_evidence_quality_risks"
+metric = "evidence_health_seams_total, evidence_health_missing_discriminators_total, evidence_health_observed_values_total, evidence_health_related_tests_total, evidence_health_opaque_oracle_count, evidence_health_calibration_matched_total, evidence_health_canonical_gap_groups, evidence_health_duplicate_looking_groups, evidence_health_records_with_canonical_gap_id, evidence_health_static_limitation_reasons, evidence_health_static_limitation_categories, evidence_health_calibration_not_imported, evidence_health_top_evidence_quality_risks, evidence_health_timeout_limitations"
 
 [[capability]]
 id = "lane1_evidence_quality_audit"
@@ -623,6 +624,7 @@ spec = "RIPR-SPEC-0031"
 evidence = [
   "docs/specs/RIPR-SPEC-0031-lane1-evidence-quality-audit.md defines the repo-local audit contract",
   "cargo xtask lane1-evidence-audit writes target/ripr/reports/lane1-evidence-audit.json and lane1-evidence-audit.md from generated instant-mode repo-exposure JSON",
+  "cargo xtask lane1-evidence-audit writes a bounded lane1_repo_exposure_timeout run limitation with latency trace context when repo-exposure generation exceeds the configured timeout before producing complete input",
   "cargo xtask evidence-quality-audit is a compatibility alias for the same report",
   "xtask/src/main.rs summarizes raw headline gaps, canonical gap groups, duplicate-looking groups, missing discriminator classes, static limitations by reason, stage, normalized category, and repair route, oracle semantics, related-test ranking confidence, movement availability, calibration availability, evidence_record field health, top files by unresolved evidence debt, finding_alignment.summary derived from evidence_record.canonical_item, finding_alignment.coverage rows for per-class coverage, unaligned examples, same-line duplicate raw findings, unnamed static-unknown limitations, and missing repair/verify guidance, plus actionable gap top lists by class, file, repair kind, missing discriminator kind, static limitation reason, and guidance-unknown class",
   "docs/OUTPUT_SCHEMA.md documents the Lane 1 Evidence Quality Audit JSON and Markdown contract",
@@ -634,7 +636,7 @@ fixtures = [
   "fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json"
 ]
 next = "maintenance"
-metric = "lane1_evidence_audit_raw_headline_gaps, lane1_evidence_audit_canonical_gap_groups, lane1_evidence_audit_duplicate_looking_groups, lane1_evidence_audit_missing_discriminators, lane1_evidence_audit_static_limitations, lane1_evidence_audit_static_limitation_categories, lane1_evidence_audit_uncalibrated_records, finding_alignment_raw_signals_total, finding_alignment_canonical_items_total, finding_alignment_actionable_items_total, finding_alignment_static_limitation_total, finding_alignment_coverage_by_class, finding_alignment_unaligned_raw_findings_by_class, finding_alignment_static_unknown_without_named_limitation, finding_alignment_canonical_items_without_repair_route, finding_alignment_canonical_items_without_verify_command, top_actionable_gap_classes, top_actionable_files, top_repair_kinds, top_missing_discriminator_kinds, top_static_limitation_reasons, top_verify_command_unknowns, top_repair_route_unknowns"
+metric = "lane1_evidence_audit_raw_headline_gaps, lane1_evidence_audit_canonical_gap_groups, lane1_evidence_audit_duplicate_looking_groups, lane1_evidence_audit_missing_discriminators, lane1_evidence_audit_static_limitations, lane1_evidence_audit_static_limitation_categories, lane1_evidence_audit_uncalibrated_records, lane1_evidence_audit_run_limitations, finding_alignment_raw_signals_total, finding_alignment_canonical_items_total, finding_alignment_actionable_items_total, finding_alignment_static_limitation_total, finding_alignment_coverage_by_class, finding_alignment_unaligned_raw_findings_by_class, finding_alignment_static_unknown_without_named_limitation, finding_alignment_canonical_items_without_repair_route, finding_alignment_canonical_items_without_verify_command, top_actionable_gap_classes, top_actionable_files, top_repair_kinds, top_missing_discriminator_kinds, top_static_limitation_reasons, top_verify_command_unknowns, top_repair_route_unknowns"
 
 [[capability]]
 id = "evidence_quality_scorecard"
@@ -644,13 +646,13 @@ spec = "RIPR-SPEC-0034"
 evidence = [
   "cargo xtask evidence-quality-scorecard writes target/ripr/reports/evidence-quality-scorecard.json and evidence-quality-scorecard.md",
   "scorecard consumes the current Lane 1 evidence-quality audit, optional evidence-health JSON, previous scorecard when present, capability metadata, and traceability metadata",
-  "xtask/src/main.rs reports class-scoped maturity labels, raw headline gaps, canonical and duplicate-looking group signals, static limitation categories, missing discriminator classes, related-test confidence, oracle semantics distribution, movement availability, calibration coverage, actionable gap top lists, recommended Lane 1 repair slices, recent deltas, explicit unknowns, and audit-derived raw-to-canonical/actionability counts",
+  "xtask/src/main.rs reports class-scoped maturity labels, raw headline gaps, canonical and duplicate-looking group signals, static limitation categories, missing discriminator classes, related-test confidence, oracle semantics distribution, movement availability, calibration coverage, actionable gap top lists, recommended Lane 1 repair slices, recent deltas, limited-input unknowns, explicit unknowns, and audit-derived raw-to-canonical/actionability counts",
   "docs/OUTPUT_SCHEMA.md documents the Evidence Quality Scorecard JSON and Markdown contract",
   "xtask unit tests pin required JSON sections, Markdown section coverage, class-scoped maturity labels, risk-prioritized repair ordering, recent delta reporting, and the audit canonical-item fallback"
 ]
 fixtures = []
 next = "maintenance"
-metric = "lane1_evidence_scorecard_maturity_classes, lane1_evidence_scorecard_top_risks, lane1_evidence_scorecard_recommended_repairs, lane1_evidence_scorecard_static_only_classes, lane1_evidence_scorecard_calibrated_classes, lane1_evidence_scorecard_uncalibrated_classes, lane1_evidence_scorecard_recent_delta_available, finding_alignment_raw_signals_total, finding_alignment_canonical_items_total, finding_alignment_actionable_items_total, finding_alignment_static_limitation_total, top_actionable_gap_classes, top_actionable_files, top_repair_kinds, top_missing_discriminator_kinds, top_static_limitation_reasons, top_verify_command_unknowns, top_repair_route_unknowns"
+metric = "lane1_evidence_scorecard_maturity_classes, lane1_evidence_scorecard_top_risks, lane1_evidence_scorecard_recommended_repairs, lane1_evidence_scorecard_static_only_classes, lane1_evidence_scorecard_calibrated_classes, lane1_evidence_scorecard_uncalibrated_classes, lane1_evidence_scorecard_recent_delta_available, lane1_evidence_scorecard_limited_input_unknowns, finding_alignment_raw_signals_total, finding_alignment_canonical_items_total, finding_alignment_actionable_items_total, finding_alignment_static_limitation_total, top_actionable_gap_classes, top_actionable_files, top_repair_kinds, top_missing_discriminator_kinds, top_static_limitation_reasons, top_verify_command_unknowns, top_repair_route_unknowns"
 
 [[capability]]
 id = "evidence_quality_trend"

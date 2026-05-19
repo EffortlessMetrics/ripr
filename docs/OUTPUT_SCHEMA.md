@@ -1303,6 +1303,13 @@ without changing analyzer behavior. The same report lands at
 `target/ripr/reports/evidence-health.md` when generated through
 `cargo xtask evidence-health`.
 
+The xtask facade bounds the live `ripr evidence-health` subprocess with
+`RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` (default 30 minutes). If the subprocess times
+out, xtask discards stale or partial outputs and writes warning JSON and
+Markdown with `status = "warn"` and a named `evidence_health_timeout`
+`run_limitations[]` entry. That limited artifact is diagnostic only; it does
+not claim user test debt from missing health counts.
+
 ```json
 {
   "schema_version": "0.1",
@@ -1527,6 +1534,10 @@ Field contract:
   run mutation testing, infer thresholds, or change static classification.
 - `top_static_limitations` - the largest static evidence gaps by count, capped
   to 10 rows and carrying one example seam ID for inspection.
+- `run_limitations` - present on bounded xtask fallback artifacts. A timeout
+  row names `evidence_health_timeout`, the `evidence_health_generation` phase,
+  timeout/duration/output byte diagnostics, and a repair route for inspecting
+  runtime or increasing `RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` on slower machines.
 
 The Markdown sibling prints the same summary, grip-class, top missing
 discriminator, oracle-strength, related-test confidence, evidence-quality,
@@ -1583,6 +1594,7 @@ runtime execution.
       ]
     }
   },
+  "run_limitations": [],
   "summary": {
     "seams_total": 9355,
     "raw_headline_gaps": 6114,
@@ -1825,6 +1837,12 @@ Field contract:
   counts, and the last captured latency trace events. These diagnostics explain
   long or pathological audit input generation without changing classifications,
   gate policy, or score semantics.
+- `run_limitations` - bounded report-level limitations. A timed-out
+  repo-exposure subprocess produces a warning audit artifact with a
+  `lane1_repo_exposure_timeout` row, phase/input context, timeout/duration
+  diagnostics, the latency trace tail, and a repair route. Counts in such a
+  limited artifact are not complete repo truth and downstream reports must
+  surface the limitation instead of treating zeros as absence of gaps.
 - `summary.raw_headline_gaps` - count of seams that are headline-eligible in
   the record or top-level repo exposure row.
 - `finding_alignment.source` - source used for audit-local alignment counts;

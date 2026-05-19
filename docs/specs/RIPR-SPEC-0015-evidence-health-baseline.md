@@ -62,6 +62,11 @@ All flags are optional except when callers want non-default paths:
 `cargo xtask evidence-health` is the repo-local automation facade and writes the
 same default artifacts. If `target/ripr/reports/mutation-calibration.json`
 already exists, the xtask command includes it as optional calibration context.
+The facade bounds the live child process with
+`RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` (default 30 minutes). On timeout it removes
+stale or partial outputs and writes warning JSON/Markdown with the named
+`evidence_health_timeout` run limitation instead of waiting forever or
+pretending missing counts mean no evidence debt.
 
 The command:
 
@@ -83,7 +88,8 @@ The JSON shape is defined in
 - `metrics`;
 - `evidence_quality`;
 - `calibration`;
-- `top_static_limitations`.
+- `top_static_limitations`;
+- `run_limitations` on bounded fallback artifacts.
 
 The `metrics` object includes:
 
@@ -175,6 +181,13 @@ calibration section.
 Given no calibration input, the report marks calibration as `not_provided` and
 still succeeds.
 
+Given the xtask evidence-health child process times out, the command writes
+bounded warning artifacts with `status = "warn"`, a
+`run_limitations[].category = "evidence_health_timeout"` entry, phase/input
+context, timeout/duration/output byte counts, and a repair route. The limited
+artifact is diagnostic only and does not claim user test debt from missing
+health counts.
+
 ## Test Mapping
 
 - `crates/ripr/src/output/evidence_health.rs::tests::evidence_health_counts_core_metrics`
@@ -186,6 +199,9 @@ still succeeds.
   pins CLI defaults and optional inputs.
 - `crates/ripr/src/cli/commands.rs::tests::evidence_health_rejects_unknown_arguments`
   pins argument validation.
+- `xtask::tests::evidence_health_timeout_writes_named_limitation_reports`
+  pins the bounded xtask timeout fallback, stale-output cleanup, named
+  limitation category, and repair route.
 
 ## Implementation Mapping
 
@@ -194,7 +210,8 @@ still succeeds.
 - `crates/ripr/src/cli/command.rs`, `execute.rs`, and `help.rs` expose the CLI
   command.
 - `xtask/src/command.rs`, `dispatch.rs`, `main.rs`, and `reports/repo.rs`
-  expose `cargo xtask evidence-health`.
+  expose `cargo xtask evidence-health`; `xtask/src/main.rs` also bounds the
+  child process and writes timeout-limitation fallback artifacts.
 - `docs/OUTPUT_SCHEMA.md` defines the public JSON and Markdown contract.
 
 ## Metrics
@@ -213,6 +230,7 @@ The evidence-health baseline feeds these Lane 1 metrics:
 - `evidence_health_static_limitation_reasons`;
 - `evidence_health_calibration_not_imported`;
 - `evidence_health_top_evidence_quality_risks`.
+- `evidence_health_timeout_limitations`.
 
 ## Non-Goals
 

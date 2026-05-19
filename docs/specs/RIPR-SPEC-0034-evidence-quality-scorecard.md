@@ -60,6 +60,9 @@ The scorecard must summarize:
 - audit-derived actionable canonical gap top lists for classes, files, repair
   kinds, missing discriminator kinds, static limitation reasons on actionable
   gap records, and guidance-unknown classes;
+- explicit unknowns when the audit or evidence-health input reports bounded
+  run limitations, so zero or missing counts from limited artifacts are not
+  treated as complete repo truth;
 - recent audit deltas when a previous scorecard or audit snapshot is
   available.
 
@@ -107,8 +110,9 @@ Each scorecard must include:
 - class-scoped calibration coverage that distinguishes static-only,
   fixture-backed, imported-runtime-calibrated, and uncalibrated classes;
 - before and after deltas when a comparable prior artifact is available;
-- explicit unknowns for missing input artifacts, missing calibration, ambiguous
-  runtime joins, opaque helpers, and unsupported oracle shapes.
+- explicit unknowns for missing input artifacts, bounded run limitations,
+  missing calibration, ambiguous runtime joins, opaque helpers, and unsupported
+  oracle shapes.
 - trend rows over current and previous scorecard or audit summary metrics when
   a previous artifact exists, including duplicate-looking groups, static
   limitations, low or opaque related-test choices, oracle unknown counts,
@@ -134,7 +138,10 @@ audit snapshots without inventing a new source of truth.
 Missing optional inputs must be reported as unknown or unavailable. Missing
 required audit input may be repaired by regenerating the audit; if regeneration
 fails, the command exits with an actionable error and must not claim a
-scorecard exists.
+scorecard exists. If the audit or evidence-health artifact exists but carries
+`run_limitations[]`, the scorecard must surface that as an unknown and must not
+let the limited artifact's zero or partial counts masquerade as complete repo
+truth.
 
 ## Outputs
 
@@ -245,6 +252,11 @@ classes, files, repair kinds, missing discriminator kinds, static limitation
 reasons on actionable gap records, and guidance-unknown classes without
 inferring from raw findings.
 
+Given a Lane 1 audit or evidence-health artifact with `run_limitations[]`, the
+scorecard adds `lane1_evidence_audit_limited` or `evidence_health_limited` to
+`unknowns` so downstream users can see that the report is bounded diagnostic
+evidence rather than complete repo truth.
+
 Given no previous scorecard or audit snapshot, the trend report marks history
 unavailable and emits `unknown` rather than claiming improvement.
 
@@ -272,6 +284,9 @@ any gate behavior.
   pins the fallback from audit-derived `canonical_item` alignment summary.
 - `xtask::tests::evidence_quality_scorecard_carries_actionable_gap_top_lists_from_audit`
   pins scorecard propagation of the audit-derived actionable gap top lists.
+- `xtask::tests::evidence_quality_scorecard_surfaces_limited_inputs_as_unknowns`
+  pins scorecard unknowns for bounded audit and evidence-health input
+  limitations.
 - `xtask::tests::evidence_quality_scorecard_headline_prefers_actionable_canonical_gaps`
   pins the scorecard headline counting model.
 - `xtask::tests::evidence_quality_trend_reports_no_history_explicitly` pins the
@@ -306,6 +321,7 @@ The scorecard feeds these Lane 1 metrics:
 - `lane1_evidence_scorecard_calibrated_classes`;
 - `lane1_evidence_scorecard_uncalibrated_classes`;
 - `lane1_evidence_scorecard_recent_delta_available`.
+- `lane1_evidence_scorecard_limited_input_unknowns`.
 
 The trend report feeds these Lane 1 metrics:
 

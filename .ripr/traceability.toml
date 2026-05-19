@@ -1052,6 +1052,7 @@ spec = "docs/specs/RIPR-SPEC-0015-evidence-health-baseline.md"
 tests = [
   "crates/ripr/src/output/evidence_health.rs::tests::evidence_health_counts_core_metrics",
   "crates/ripr/src/output/evidence_health.rs::tests::evidence_health_markdown_names_calibration_and_limitations",
+  "xtask::tests::evidence_health_timeout_writes_named_limitation_reports",
 ]
 fixtures = []
 code = [
@@ -1087,6 +1088,7 @@ metrics = [
   "evidence_health_static_limitation_reasons",
   "evidence_health_calibration_not_imported",
   "evidence_health_top_evidence_quality_risks",
+  "evidence_health_timeout_limitations",
 ]
 
 [[behavior]]
@@ -2163,6 +2165,7 @@ tests = [
   "xtask::tests::lane1_evidence_audit_limits_static_top_reasons_to_actionable_items",
   "xtask::tests::lane1_evidence_audit_rejects_generic_static_unknown_limitation_category",
   "xtask::tests::lane1_evidence_audit_markdown_names_required_sections",
+  "xtask::tests::lane1_evidence_audit_limited_report_names_timeout_limitation",
   "xtask::tests::lane1_evidence_audit_rejects_repo_exposure_without_seams",
   "xtask::tests::lane1_repo_exposure_file_completion_check_requires_seams_and_closing_brace",
   "xtask::tests::xtask_command_parse_preserves_compatibility_aliases",
@@ -2196,6 +2199,7 @@ metrics = [
   "lane1_evidence_audit_static_limitations",
   "lane1_evidence_audit_static_limitation_categories",
   "lane1_evidence_audit_uncalibrated_records",
+  "lane1_evidence_audit_run_limitations",
   "finding_alignment_raw_signals_total",
   "finding_alignment_canonical_items_total",
   "finding_alignment_actionable_items_total",
@@ -2287,6 +2291,7 @@ tests = [
   "xtask::tests::evidence_quality_scorecard_uses_audit_canonical_item_alignment_summary",
   "xtask::tests::evidence_quality_scorecard_headline_prefers_actionable_canonical_gaps",
   "xtask::tests::evidence_quality_scorecard_carries_actionable_gap_top_lists_from_audit",
+  "xtask::tests::evidence_quality_scorecard_surfaces_limited_inputs_as_unknowns",
   "xtask::tests::evidence_quality_trend_reports_no_history_explicitly",
   "xtask::tests::evidence_quality_trend_distinguishes_improvement_regression_and_unchanged",
   "xtask::tests::evidence_quality_trend_reports_static_limitation_category_deltas",
@@ -2319,6 +2324,7 @@ metrics = [
   "lane1_evidence_scorecard_calibrated_classes",
   "lane1_evidence_scorecard_uncalibrated_classes",
   "lane1_evidence_scorecard_recent_delta_available",
+  "lane1_evidence_scorecard_limited_input_unknowns",
   "finding_alignment_raw_signals_total",
   "finding_alignment_canonical_items_total",
   "finding_alignment_actionable_items_total",

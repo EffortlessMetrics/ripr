@@ -9,6 +9,14 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Lane 1 run-reliability reports now emit bounded warning artifacts for the
+  expensive live paths instead of leaving stale output or failing without a
+  report on timeout. `cargo xtask lane1-evidence-audit` records a named
+  `lane1_repo_exposure_timeout` run limitation with repo-exposure latency
+  context when input generation exceeds its timeout, `cargo xtask
+  evidence-health` records `evidence_health_timeout` when the child report
+  times out, and the scorecard surfaces those limited inputs as unknowns rather
+  than treating zero or partial counts as complete repo truth.
 - Lane 1 evidence audit and scorecard now report bounded actionable canonical
   gap top lists by evidence class, file, repair kind, missing discriminator
   kind, static limitation reason, verify-command unknown class, and
