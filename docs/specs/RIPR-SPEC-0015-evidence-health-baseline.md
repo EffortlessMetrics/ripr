@@ -99,7 +99,7 @@ The `metrics` object includes:
 - per-stage `StageState` counts;
 - unknown/opaque stage counts;
 - unknown/opaque class buckets;
-- missing discriminator totals and value counts;
+- missing discriminator totals and `{label, count}` value rows;
 - observed value totals and value-context counts;
 - related-test totals and confidence counts;
 - oracle kind and strength counts;
@@ -110,7 +110,7 @@ The `evidence_quality` object includes:
 - canonical gap group totals and largest groups;
 - duplicate-looking canonical group totals;
 - actionability class counts from `evidence_record.actionability`;
-- static limitation stage and reason distributions from
+- static limitation stage distributions and `{label, count}` reason rows from
   `evidence_record.static_limitations`;
 - calibration availability counts from `evidence_record.calibration`;
 - evidence movement availability counts for seam ID, canonical gap ID, complete
@@ -148,14 +148,15 @@ The report must include:
 - per-stage `StageState` counts for reach, activate, propagate, observe, and
   discriminate;
 - unknown/opaque stage and class buckets;
-- missing discriminator counts;
+- missing discriminator count rows;
 - observed value context counts;
 - related-test confidence counts;
 - oracle kind and strength counts;
 - opaque-oracle counts;
 - canonical gap group and duplicate-looking group counts;
 - actionability class counts from the shared evidence record;
-- static limitation stage and reason counts from the shared evidence record;
+- static limitation stage counts and reason count rows from the shared evidence
+  record;
 - evidence-record calibration availability counts;
 - evidence movement availability counts;
 - top evidence-quality risks;

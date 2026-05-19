@@ -235,9 +235,9 @@ Given actionable canonical items with structured repair routes and verify
 commands, the audit emits bounded actionable-gap packets in the audit JSON and
 the standalone `target/ripr/reports/actionable-gaps.{json,md}` artifacts. Each
 packet is one canonical item, preserves raw findings as supporting evidence,
-includes repair and verification guidance, and carries conservative
-`must_not_change` boundaries. It does not fan raw findings back out into
-separate user work.
+includes missing discriminator facts, repair and verification guidance, and
+carries conservative `must_not_change` boundaries. It does not fan raw findings
+back out into separate user work.
 
 ## Test Mapping
 
@@ -251,8 +251,8 @@ separate user work.
   presentation, config/policy, and predicate-boundary examples.
 - `xtask::tests::lane1_actionable_gap_packets_emit_agent_safe_work_items`
   pins the embedded and standalone actionable-gap packet contracts, including
-  repair kind, verify command, raw finding support, and conservative
-  `must_not_change` boundaries.
+  missing discriminators, repair kind, verify command, raw finding support, and
+  conservative `must_not_change` boundaries.
 - `xtask::tests::lane1_evidence_audit_reports_alignment_coverage_holes` pins
   unaligned raw finding examples and same-line duplicate grouping.
 - `xtask::tests::lane1_evidence_audit_requires_structured_repair_route_for_actionable_items`
