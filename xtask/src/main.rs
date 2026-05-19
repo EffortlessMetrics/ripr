@@ -14610,20 +14610,7 @@ where
     }
     match output.status {
         Some(status) if status.success() => Ok(()),
-        Some(status) => Err(format!(
-            "{} {} failed with {status}\nstdout:\n{}\nstderr:\n{}",
-            binary.display(),
-            args.join(" "),
-            output.stdout.trim(),
-            output.stderr.trim()
-        )),
-        None => Err(format!(
-            "{} {} did not report an exit status\nstdout:\n{}\nstderr:\n{}",
-            binary.display(),
-            args.join(" "),
-            output.stdout.trim(),
-            output.stderr.trim()
-        )),
+        Some(_) | None => write_limited_evidence_health_reports(binary, args, timeout, &output),
     }
 }
 
@@ -14653,6 +14640,9 @@ fn limited_evidence_health_json(
     timeout: Duration,
     output: &TimedOutput,
 ) -> Result<String, String> {
+    let limitation = evidence_health_limited_kind(output);
+    let summary = evidence_health_limited_summary(limitation);
+    let repair_route = evidence_health_limited_repair_route(limitation);
     let value = serde_json::json!({
         "schema_version": "0.1",
         "tool": "ripr",
@@ -14693,7 +14683,7 @@ fn limited_evidence_health_json(
             "static_limitation_stage_counts": {},
             "static_limitation_reason_counts": {},
             "static_limitation_category_counts": {
-                "evidence_health_timeout": 1
+                limitation: 1
             },
             "calibration_availability_counts": {},
             "movement_availability": {
@@ -14705,9 +14695,9 @@ fn limited_evidence_health_json(
             },
             "top_evidence_quality_risks": [
                 {
-                    "kind": "evidence_health_timeout",
+                    "kind": limitation,
                     "count": 1,
-                    "summary": "Evidence-health generation timed out before a complete report was available."
+                    "summary": summary
                 }
             ],
         },
@@ -14722,20 +14712,20 @@ fn limited_evidence_health_json(
         },
         "top_static_limitations": [
             {
-                "kind": "evidence_health_timeout",
+                "kind": limitation,
                 "count": 1,
-                "summary": "Evidence-health generation timed out; no user test debt is claimed from this limited artifact.",
+                "summary": format!("{summary} No user test debt is claimed from this limited artifact."),
                 "example_seam_id": null,
-                "repair_route": "inspect evidence-health runtime, increase RIPR_EVIDENCE_HEALTH_TIMEOUT_MS for slower machines, or add a narrower fixture-backed analyzer path"
+                "repair_route": repair_route
             }
         ],
         "run_limitations": [
             {
-                "category": "evidence_health_timeout",
+                "category": limitation,
                 "phase": "evidence_health_generation",
                 "input": "repo",
-                "summary": "Evidence-health generation exceeded its bounded runtime; partial outputs were discarded.",
-                "repair_route": "inspect evidence-health runtime, increase RIPR_EVIDENCE_HEALTH_TIMEOUT_MS for slower machines, or add a narrower fixture-backed analyzer path",
+                "summary": format!("{summary} Partial outputs were discarded."),
+                "repair_route": repair_route,
                 "timeout_ms": timeout.as_millis(),
                 "duration_ms": output.duration.as_millis(),
                 "command": normalize_report_path(&format!("{} {}", binary.display(), args.join(" "))),
@@ -14767,20 +14757,58 @@ fn evidence_health_generation_json(
     })
 }
 
+fn evidence_health_limited_kind(output: &TimedOutput) -> &'static str {
+    if output.timed_out {
+        "evidence_health_timeout"
+    } else {
+        "evidence_health_incomplete"
+    }
+}
+
+fn evidence_health_limited_summary(kind: &str) -> &'static str {
+    match kind {
+        "evidence_health_timeout" => {
+            "Evidence-health generation timed out before a complete report was available."
+        }
+        "evidence_health_incomplete" => {
+            "Evidence-health generation ended before producing a complete report."
+        }
+        _ => "Evidence-health generation did not produce a complete report.",
+    }
+}
+
+fn evidence_health_limited_repair_route(kind: &str) -> &'static str {
+    match kind {
+        "evidence_health_timeout" => {
+            "inspect evidence-health runtime, increase RIPR_EVIDENCE_HEALTH_TIMEOUT_MS for slower machines, or add a narrower fixture-backed analyzer path"
+        }
+        "evidence_health_incomplete" => {
+            "inspect evidence-health exit status, stdout/stderr, and live repo size; rerun with RIPR_EVIDENCE_HEALTH_TIMEOUT_MS or add a bounded fixture-backed analyzer path"
+        }
+        _ => "inspect evidence-health runtime and rerun with bounded diagnostics",
+    }
+}
+
 fn limited_evidence_health_markdown(
     binary: &Path,
     args: &[String],
     timeout: Duration,
     output: &TimedOutput,
 ) -> String {
+    let limitation = evidence_health_limited_kind(output);
+    let summary = evidence_health_limited_summary(limitation);
+    let repair_route = evidence_health_limited_repair_route(limitation);
     let mut out = String::new();
     out.push_str("# RIPR evidence health report\n\n");
     out.push_str("Status: warn\n\n");
-    out.push_str("Evidence-health generation timed out before a complete report was available. Partial outputs were discarded, and no user test debt is claimed from this limited artifact.\n\n");
+    out.push_str(summary);
+    out.push_str(
+        " Partial outputs were discarded, and no user test debt is claimed from this limited artifact.\n\n",
+    );
     out.push_str("## Run Limitation\n\n");
     out.push_str("| Field | Value |\n");
     out.push_str("| --- | --- |\n");
-    out.push_str("| Category | `evidence_health_timeout` |\n");
+    out.push_str(&format!("| Category | `{limitation}` |\n"));
     out.push_str("| Phase | `evidence_health_generation` |\n");
     out.push_str(&format!("| Timeout | {} ms |\n", timeout.as_millis()));
     out.push_str(&format!(
@@ -14801,7 +14829,7 @@ fn limited_evidence_health_markdown(
             args.join(" ")
         )))
     ));
-    out.push_str("| Repair route | inspect evidence-health runtime, increase `RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` for slower machines, or add a narrower fixture-backed analyzer path |\n\n");
+    out.push_str(&format!("| Repair route | {repair_route} |\n\n"));
     if !output.stderr.trim().is_empty() {
         out.push_str("## Stderr Tail\n\n```text\n");
         for line in output
@@ -17900,6 +17928,8 @@ fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'stati
         || reason.contains("effect sink")
     {
         "side_effect_sink_unknown"
+    } else if reason.contains("no direct owner call observed for value-insensitive seam") {
+        "activation_owner_call_unresolved"
     } else if reason.contains("no concrete activation values observed")
         || reason.contains("no literal activation values")
     {
@@ -17920,6 +17950,7 @@ fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'stati
 
 fn static_limitation_repair_route(category: &str) -> &'static str {
     match category {
+        "activation_owner_call_unresolved" => "analysis/related-test-ranking-audit-fixes",
         "activation_value_unresolved" => "analysis/value-resolution-audit-fixes",
         "cross_file_constant_unresolved" => "analysis/cross-file-constant-resolution",
         "macro_generated_value" => "analysis/macro-generated-value-fixtures",
@@ -54428,6 +54459,112 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn evidence_health_incomplete_exit_writes_named_limitation_reports() -> Result<(), String> {
+        with_temp_cwd("evidence-health-incomplete", |_root| {
+            let timeout = Duration::from_mins(30);
+            let args = evidence_health_args();
+            let stale_json = Path::new("target/ripr/reports/evidence-health.json");
+            let stale_md = Path::new("target/ripr/reports/evidence-health.md");
+            write(stale_json, "stale json");
+            write(stale_md, "stale markdown");
+
+            write_evidence_health_report_with_runner(
+                Path::new("ripr"),
+                &args,
+                timeout,
+                |_binary, _args, _timeout| {
+                    Ok(TimedOutput {
+                        status: None,
+                        stdout: "partial stdout".to_string(),
+                        stderr: "phase=inventory\nphase=evidence_health\n".to_string(),
+                        duration: Duration::from_secs(377),
+                        timed_out: false,
+                    })
+                },
+            )?;
+
+            let json_text = fs::read_to_string(stale_json).map_err(|err| err.to_string())?;
+            let value: Value = serde_json::from_str(&json_text).map_err(|err| err.to_string())?;
+            assert_eq!(value["status"], "warn");
+            assert_eq!(
+                value["run_limitations"][0]["category"],
+                "evidence_health_incomplete"
+            );
+            assert_eq!(
+                value["evidence_quality"]["static_limitation_category_counts"]["evidence_health_incomplete"],
+                serde_json::Value::from(1)
+            );
+            assert_eq!(
+                value["inputs"]["generation"]["status"],
+                serde_json::Value::from("fail")
+            );
+            assert!(!json_text.contains("stale json"));
+
+            let markdown = fs::read_to_string(stale_md).map_err(|err| err.to_string())?;
+            assert!(markdown.contains("Status: warn"));
+            assert!(markdown.contains("evidence_health_incomplete"));
+            assert!(markdown.contains("stdout/stderr"));
+            assert!(!markdown.contains("stale markdown"));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn evidence_health_nonzero_exit_writes_named_limitation_reports() -> Result<(), String> {
+        with_temp_cwd("evidence-health-nonzero", |_root| {
+            let timeout = Duration::from_secs(90);
+            let args = evidence_health_args();
+            let stale_json = Path::new("target/ripr/reports/evidence-health.json");
+            let stale_md = Path::new("target/ripr/reports/evidence-health.md");
+            write(stale_json, "stale json");
+            write(stale_md, "stale markdown");
+
+            write_evidence_health_report_with_runner(
+                Path::new("ripr"),
+                &args,
+                timeout,
+                |_binary, _args, _timeout| {
+                    Ok(TimedOutput {
+                        status: Some(failure_exit_status()),
+                        stdout: "partial stdout".to_string(),
+                        stderr: "error: evidence health failed\n".to_string(),
+                        duration: Duration::from_secs(12),
+                        timed_out: false,
+                    })
+                },
+            )?;
+
+            let json_text = fs::read_to_string(stale_json).map_err(|err| err.to_string())?;
+            let value: Value = serde_json::from_str(&json_text).map_err(|err| err.to_string())?;
+            assert_eq!(value["status"], "warn");
+            assert_eq!(
+                value["run_limitations"][0]["category"],
+                "evidence_health_incomplete"
+            );
+            assert_eq!(
+                value["run_limitations"][0]["exit_code"].as_i64(),
+                failure_exit_status().code().map(i64::from)
+            );
+            assert_eq!(
+                value["inputs"]["generation"]["exit_code"].as_i64(),
+                failure_exit_status().code().map(i64::from)
+            );
+            assert_eq!(
+                value["inputs"]["generation"]["status"],
+                serde_json::Value::from("fail")
+            );
+            assert!(!json_text.contains("stale json"));
+
+            let markdown = fs::read_to_string(stale_md).map_err(|err| err.to_string())?;
+            assert!(markdown.contains("Status: warn"));
+            assert!(markdown.contains("evidence_health_incomplete"));
+            assert!(markdown.contains("error: evidence health failed"));
+            assert!(!markdown.contains("stale markdown"));
+            Ok(())
+        })
+    }
+
+    #[test]
     fn lane1_evidence_audit_counts_quality_gaps_from_evidence_record() -> Result<(), String> {
         let report = lane1_evidence_audit_from_repo_exposure(".", lane1_audit_sample_json())?;
         let json = lane1_evidence_audit_json(&report)?;
@@ -55353,6 +55490,12 @@ covered_by = ["cargo xtask check-file-policy"]
             (
                 "activate",
                 "unknown",
+                "No direct owner call observed for value-insensitive seam `Vec::new()`",
+                "activation_owner_call_unresolved",
+            ),
+            (
+                "activate",
+                "unknown",
                 "No concrete activation values observed for seam `threshold`",
                 "activation_value_unresolved",
             ),
@@ -55449,6 +55592,10 @@ covered_by = ["cargo xtask check-file-policy"]
         }
 
         for (category, expected) in [
+            (
+                "activation_owner_call_unresolved",
+                "analysis/related-test-ranking-audit-fixes",
+            ),
             (
                 "activation_value_unresolved",
                 "analysis/value-resolution-audit-fixes",
