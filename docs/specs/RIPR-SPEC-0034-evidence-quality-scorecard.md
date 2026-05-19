@@ -180,6 +180,7 @@ The Markdown output includes bounded sections for the same areas:
 - static limitation categories and repair routes;
 - related-test and oracle distributions;
 - movement and calibration coverage;
+- runtime confidence coverage by evidence class;
 - recent deltas;
 - unknowns and unavailable inputs.
 
@@ -225,6 +226,12 @@ globally stable.
 Given no runtime calibration for a class, the scorecard marks the class
 `static_only` or `uncalibrated` instead of presenting static evidence as
 runtime-calibrated.
+
+Given a Lane 1 audit with runtime confidence rows by evidence class, the
+scorecard carries them under `calibration_coverage.by_evidence_class` and prints
+the same bounded table in Markdown. Rows distinguish calibrated-supported,
+fixture-backed, static-only, unknown-confidence, uncalibrated, actionable, and
+limitation items without changing public badge semantics.
 
 Given a high-confidence related test, the scorecard distinguishes it from a
 low-confidence lexical-only match and preserves `related_tests_total` as
@@ -281,7 +288,8 @@ any gate behavior.
 - `xtask::tests::evidence_quality_scorecard_reports_recent_deltas_when_present`
   pins before and after audit deltas.
 - `xtask::tests::evidence_quality_scorecard_uses_audit_canonical_item_alignment_summary`
-  pins the fallback from audit-derived `canonical_item` alignment summary.
+  pins the fallback from audit-derived `canonical_item` alignment summary and
+  runtime confidence coverage by evidence class.
 - `xtask::tests::evidence_quality_scorecard_carries_actionable_gap_top_lists_from_audit`
   pins scorecard propagation of the audit-derived actionable gap top lists.
 - `xtask::tests::evidence_quality_scorecard_surfaces_limited_inputs_as_unknowns`
@@ -318,6 +326,7 @@ The scorecard feeds these Lane 1 metrics:
 - `lane1_evidence_scorecard_top_risks`;
 - `lane1_evidence_scorecard_recommended_repairs`;
 - `lane1_evidence_scorecard_static_only_classes`;
+- `lane1_evidence_scorecard_runtime_confidence_by_class`;
 - `lane1_evidence_scorecard_calibrated_classes`;
 - `lane1_evidence_scorecard_uncalibrated_classes`;
 - `lane1_evidence_scorecard_recent_delta_available`.

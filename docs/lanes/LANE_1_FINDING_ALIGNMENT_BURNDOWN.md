@@ -89,7 +89,7 @@ repairs.
 | 8 | [#1145](https://github.com/EffortlessMetrics/ripr/issues/1145) | `analysis/actionable-repair-route-completeness` | Preserve the invariant that actionable canonical items always name a concrete repair route. | open |
 | 9 | [#1146](https://github.com/EffortlessMetrics/ripr/issues/1146) | `analysis/actionable-verify-command-coverage` | Preserve and expand verification command coverage where feasible. | open |
 | 10 | [#1147](https://github.com/EffortlessMetrics/ripr/issues/1147) | `report/actionable-canonical-gaps-scorecard-lead` | Preserve scorecard-leading actionable canonical gaps as new classes land. | actionable top lists merged in #1266; timeout diagnostics merged in #1271; current follow-up emits bounded actionable-gap packet artifacts for agent-safe triage |
-| 11 | [#1160](https://github.com/EffortlessMetrics/ripr/issues/1160) | `calibration/runtime-confidence-coverage-audit` | Report calibrated-supported versus static-only canonical items by evidence class. | open |
+| 11 | [#1160](https://github.com/EffortlessMetrics/ripr/issues/1160) | `calibration/runtime-confidence-coverage-audit` | Report calibrated-supported versus static-only canonical items by evidence class. | current follow-up reports runtime confidence coverage by canonical evidence class in the Lane 1 audit and scorecard |
 | 12 | [#1149](https://github.com/EffortlessMetrics/ripr/issues/1149) | `dogfood/finding-alignment-examples-refresh` | Refresh real examples after new burn-down deltas instead of duplicating existing dogfood fixtures. | open |
 | 13 | [#1153](https://github.com/EffortlessMetrics/ripr/issues/1153) | `docs/canonical-alignment-contract-refresh` | Refresh the downstream handoff only after material burn-down changes. | open |
 

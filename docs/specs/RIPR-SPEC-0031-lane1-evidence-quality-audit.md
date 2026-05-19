@@ -81,6 +81,7 @@ includes:
 - `summary`;
 - `finding_alignment`;
 - `finding_alignment.actionable_gap_packets`;
+- `finding_alignment.runtime_confidence_by_class`;
 - standalone `actionable-gaps` packet projection;
 - `canonical_gap_groups`;
 - `duplicate_looking_groups`;
@@ -110,6 +111,7 @@ The Markdown sibling prints the same audit areas in bounded tables:
 - repo-exposure generation diagnostics;
 - summary;
 - finding alignment;
+- runtime confidence coverage by evidence class;
 - actionable canonical gap top lists;
 - largest canonical gap groups;
 - duplicate-looking groups;
@@ -146,6 +148,7 @@ The audit must summarize:
 - related-test ranking confidence;
 - movement availability fields;
 - calibration availability;
+- runtime confidence coverage by canonical evidence class;
 - calibrated versus uncalibrated records;
 - `evidence_record` missing, nullable, or empty fields;
 - top files by unresolved evidence debt.
@@ -169,6 +172,13 @@ Given actionable canonical items missing a structured repair route or verify
 command, the audit increments the existing coverage counters and lists the
 affected evidence classes in `top_repair_route_unknowns` or
 `top_verify_command_unknowns`.
+
+Given canonical items with confidence basis data, the audit reports
+`finding_alignment.runtime_confidence_by_class` and mirrors those rows under
+`calibration_availability.runtime_confidence_by_class`. Rows are keyed by
+`canonical_item.evidence_class` and count calibrated-supported, fixture-backed,
+static-only, unknown-confidence, uncalibrated, actionable, and limitation items
+without changing static classifications or running mutation testing.
 
 Given evidence records with and without `canonical_item`, the audit reports
 `finding_alignment.coverage` so maintainers can see which evidence classes are
@@ -223,7 +233,7 @@ separate user work.
   pins JSON counts for canonical groups, duplicate groups, missing
   discriminators, static limitation categories, ranking confidence,
   calibration, derived finding-alignment summary, alignment coverage,
-  actionable gap top lists, and field health.
+  runtime confidence by class, actionable gap top lists, and field health.
 - `xtask::tests::lane1_evidence_audit_reports_aligned_supported_class_coverage`
   pins per-class aligned item counts and actionable top lists for supported
   presentation, config/policy, and predicate-boundary examples.
@@ -295,6 +305,7 @@ The audit feeds these Lane 1 metrics:
 - `finding_alignment_canonical_items_without_repair_route`;
 - `finding_alignment_canonical_items_without_verify_command`.
 - `lane1_actionable_gap_packets`.
+- `lane1_runtime_confidence_by_class`.
 
 ## Non-Goals
 
