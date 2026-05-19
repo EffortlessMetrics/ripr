@@ -15,6 +15,8 @@ Current and planned tutorial docs:
   one repairable gap, one focused proof, one receipt
 - [First successful PR demo](demo/first-successful-pr.md) - fixture-backed
   boundary, output-contract, no-action, and blocked start-here cases
+- [Editor install to first PR](EDITOR_INSTALL_TO_FIRST_PR.md) - VS Code
+  install/open through setup diagnosis, repair, receipt, and first-pr packet
 - [Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md) -
   install/open, diagnose setup, repair one Rust gap, verify, receipt, refresh
 - [Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md) -
@@ -87,6 +89,7 @@ Current how-to docs:
 - [First successful PR demo](demo/first-successful-pr.md)
 - [Publishing](PUBLISHING.md)
 - [Editor extension](EDITOR_EXTENSION.md)
+- [Editor install to first PR](EDITOR_INSTALL_TO_FIRST_PR.md)
 - [Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md)
 - [Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md)
 - [Editor gap cockpit workflow](EDITOR_GAP_COCKPIT_WORKFLOW.md)
