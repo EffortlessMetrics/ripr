@@ -13,7 +13,7 @@ Open VSX extension:
   EffortlessMetrics.ripr
 ```
 
-The `0.6.x` extension is a universal VSIX preview client. It resolves the
+The `0.7.x` extension is a universal VSIX preview client. It resolves the
 server in this order:
 
 ```text
@@ -53,7 +53,7 @@ Use one of these surfaces:
 - VS Code Marketplace: install `EffortlessMetrics.ripr`.
 - Open VSX: install `EffortlessMetrics.ripr`.
 - Local VSIX smoke: run `npm run package`, then install
-  `editors/vscode/dist/ripr-0.6.0.vsix`.
+  `editors/vscode/dist/ripr-0.7.0.vsix`.
 
 On activation, the extension resolves a configured, bundled, cached,
 downloaded, or PATH server and writes the selected source to the `ripr` output
@@ -428,7 +428,7 @@ npm ci
 npm run compile
 npm run package
 npm run test:e2e
-code --install-extension dist/ripr-0.6.0.vsix --force
+code --install-extension dist/ripr-0.7.0.vsix --force
 ```
 
 Manual smoke:

@@ -2,7 +2,7 @@
   "name": "ripr",
   "displayName": "ripr: Static Mutation Exposure",
   "description": "Find mutation-exposed Rust code with static diagnostics, targeted test briefs, and agent handoff commands.",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "publisher": "EffortlessMetrics",
   "preview": true,
   "license": "MIT OR Apache-2.0",

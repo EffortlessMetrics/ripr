@@ -2,7 +2,7 @@
 
 Status: server version mismatch; repair actions are suppressed.
 
-Compatibility: extension expects `ripr 0.6.x`, but the resolved server reports `ripr 0.5.0`; first-pr packet schema support is unsupported.
+Compatibility: extension expects `ripr 0.7.x`, but the resolved server reports `ripr 0.5.0`; first-pr packet schema support is unsupported.
 
 Workspace: single root `fixtures/editor_adoption_assurance/server_version_mismatch/workspace`.
 

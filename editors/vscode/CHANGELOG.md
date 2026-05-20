@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.0
+
+- Aligns the marketplace extension metadata with RIPR 0.7.0's actionable
+  static repair-loop release line.
+- Keeps the editor path centered on saved-workspace status, actionable gap
+  queue projection, current repair packets, repo gap maps, and receipt-aware
+  refresh guidance.
+- Preserves the preview boundary: no mutation execution, no automatic edits, no
+  generated tests, no provider calls, no CI blocking, no gate authority, and no
+  preview-language promotion.
+
 ## 0.6.0
 
 - Aligns the marketplace extension with RIPR 0.6.0's static evidence trust

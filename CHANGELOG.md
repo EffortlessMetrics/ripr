@@ -9,6 +9,10 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Nothing yet.
+
+## 0.7.0 - 2026-05-20
+
 - Added a 0.7 swarm repair-loop dogfood receipt that records live
   `lane1-evidence-audit` fail-closed timeout behavior, fixture-backed
   `ripr-swarm plan` ranking, ready and static-limit dry-run attempt packets,
