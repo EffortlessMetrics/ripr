@@ -364,7 +364,7 @@ evidence = [
   "the implemented plan command is report-only and does not edit files, run tests, call providers, generate tests, create receipts, run mutation testing, change PR/CI rendering, change LSP/editor behavior, change gates, or change public badges"
 ]
 fixtures = ["fixtures/swarm-plan-packet-corpus", "fixtures/actionable-gap-outcomes-corpus"]
-next = "source promotion and 0.7 release proof"
+next = "0.7 release proof and explicit publish decision"
 metric = "swarm_ready_packets, swarm_blocked_packets, swarm_missing_verify_command, swarm_missing_receipt_command, swarm_static_limitation_packets, swarm_high_confidence_packets, swarm_attempted_packets, swarm_verified_improved, swarm_verified_unchanged, swarm_verified_regressed, swarm_failed_to_apply, swarm_orphaned_receipts"
 
 [[capability]]

@@ -11,7 +11,7 @@
     "state": "version_mismatch",
     "path": "ripr",
     "version": "ripr 0.5.0",
-    "expected_version": "ripr 0.6.x",
+    "expected_version": "ripr 0.7.x",
     "protocol_features": ["diagnose_setup"],
     "supported_artifact_schemas": ["first-pr.start-here.v0"]
   },

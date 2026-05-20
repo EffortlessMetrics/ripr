@@ -17,12 +17,12 @@ The Rust crate release is documented separately in [RELEASE.md](RELEASE.md).
 Keep versions aligned:
 
 ```text
-ripr crate:      0.6.x
-VS extension:    0.6.x
-Open VSX:        0.6.x
+ripr crate:      0.7.x
+VS extension:    0.7.x
+Open VSX:        0.7.x
 ```
 
-For `0.6.x`, the universal extension can download the matching `ripr` server
+For `0.7.x`, the universal extension can download the matching `ripr` server
 from GitHub Releases. `cargo install ripr` remains a manual fallback for
 offline, pinned, or controlled environments.
 
@@ -63,7 +63,7 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-code --install-extension dist/ripr-0.6.0.vsix --force
+code --install-extension dist/ripr-0.7.0.vsix --force
 ```
 
 Also run the Rust gates from the repository root:
@@ -101,8 +101,8 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-npx @vscode/vsce publish --packagePath dist/ripr-0.6.0.vsix --pat "$VSCE_PAT"
-npx ovsx publish dist/ripr-0.6.0.vsix -p "$OVSX_PAT" --skip-duplicate
+npx @vscode/vsce publish --packagePath dist/ripr-0.7.0.vsix --pat "$VSCE_PAT"
+npx ovsx publish dist/ripr-0.7.0.vsix -p "$OVSX_PAT" --skip-duplicate
 ```
 
 ## CI Publish
@@ -117,14 +117,14 @@ The workflow packages one VSIX, uploads it as an artifact, publishes that same
 VSIX to both registries, and attaches it to the GitHub Release when run from a
 tag.
 
-The workflow normalizes tag names like `v0.6.0` to the package version
-`0.6.0` for the VSIX filename and duplicate-version checks.
+The workflow normalizes tag names like `v0.7.0` to the package version
+`0.7.0` for the VSIX filename and duplicate-version checks.
 
 To publish only Open VSX from a manual workflow run:
 
 ```bash
 gh workflow run publish-extension.yml \
-  --field version=0.6.0 \
+  --field version=0.7.0 \
   --field publish_vs_marketplace=false \
   --field publish_open_vsx=true
 ```
