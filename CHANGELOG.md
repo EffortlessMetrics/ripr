@@ -39,6 +39,10 @@ are scoped or reviewed.
   prevents cold or pathological builds from consuming the outer shell timeout
   without producing `evidence-health.json` / `.md`; the fallback artifact names
   a limitation and does not claim user test debt.
+- `cargo xtask evidence-health` now uses a 5-minute default bounded runtime for
+  both build and report-generation phases so pathological live-repo evidence
+  health runs degrade to `evidence_health_timeout` warning artifacts before
+  abnormal termination can silently drop `evidence-health.json` / `.md`.
 - Lane 1 now has an actionable-gap outcome report that joins existing
   actionable packets with optional agent receipt and targeted-test outcome
   artifacts. `cargo xtask actionable-gap-outcomes` writes
