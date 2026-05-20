@@ -9,6 +9,13 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Added `cargo xtask ripr-swarm plan --top <n>` to rank existing
+  `actionable-gaps.json` packets into swarm-ready, blocked, and
+  missing-verify-or-receipt buckets. The report writes
+  `target/ripr/reports/swarm-plan.{json,md}`, blocks static limitations and
+  missing receipt/verify context, and remains dry-run/report-only with no file
+  edits, provider calls, generated tests, mutation execution, receipts, gates,
+  badges, PR/CI rendering, or editor/LSP behavior changes.
 - `cargo xtask evidence-health` now bounds its preflight `cargo build -p ripr`
   phase with the evidence-health timeout and writes diagnostic warning reports
   with `phase = evidence_health_build` if that phase times out or fails. This

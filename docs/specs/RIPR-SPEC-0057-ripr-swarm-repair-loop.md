@@ -345,10 +345,16 @@ Must-not-claim guards:
 
 ## Test Mapping
 
-Initial docs-only scope has no implementation tests. Follow-up implementation
-PRs should add tests for:
+Current implementation coverage:
 
-- swarm-plan ranking readiness and blocked reasons;
+- `xtask::tests::ripr_swarm_plan_ranks_ready_packets_and_blocks_missing_context`
+  pins ready, missing-context, missing verify, missing receipt, and
+  static-limitation blocking behavior for `swarm-plan`;
+- `xtask::tests::ripr_swarm_command_parses_plan_args` pins the
+  `cargo xtask ripr-swarm plan --top <n>` command shape.
+
+Follow-up implementation PRs should add tests for:
+
 - dry-run attempt output;
 - packet validation failure modes;
 - receipt and outcome joins;
@@ -361,10 +367,10 @@ PRs should add tests for:
 This spec is the behavior contract for future repo-local automation. Expected
 implementation surfaces are:
 
-- `cargo xtask ripr-swarm plan --top <n>`;
+- `cargo xtask ripr-swarm plan --top <n>` (implemented);
 - `cargo xtask ripr-swarm attempt --packet <id> --dry-run`;
-- `target/ripr/reports/swarm-plan.json`;
-- `target/ripr/reports/swarm-plan.md`;
+- `target/ripr/reports/swarm-plan.json` (implemented);
+- `target/ripr/reports/swarm-plan.md` (implemented);
 - existing `actionable-gaps` and `actionable-gap-outcomes` artifacts.
 
 No provider SDK, mutation executor, generated-test writer, PR/CI renderer,
