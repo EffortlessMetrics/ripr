@@ -20,7 +20,8 @@ Managed from git:
 - merge policy: squash merge enabled, merge commits disabled, rebase merge
   disabled, auto-merge enabled, update branch enabled, and delete branch on
   merge enabled
-- branch protection is deferred until routed result checks land
+- branch protection requires only the routed `Ripr Rust Small Result` check
+  after proof
 - CI policy labels documented in `docs/CI.md`
 
 Not managed from `.github/settings.yml`:
@@ -69,7 +70,7 @@ Expected state:
 Last verified: 2026-05-02. The dependency graph SBOM endpoint returned a
 document, the vulnerability alerts endpoint returned `204 No Content`,
 Dependabot security updates were enabled through the GitHub API, and Dependency
-Review is configured as a blocking PR check.
+Review is configured as a security signal.
 
 Why:
 
@@ -88,7 +89,9 @@ package, and GitHub Actions. Routine updates are grouped by ecosystem and
 limited to minor/patch changes. Major dependency updates are handled as scoped
 human-reviewed PRs because they may affect MSRV, release behavior, CI runtime
 policy, or extension compatibility. Dependabot PRs are not auto-merged; they
-must pass normal CI, security, coverage, and `xtask` checks.
+must pass the protected routed result and any owner-required security review
+before merge. Security, coverage, and `xtask` lanes remain review signals unless
+promoted in a focused policy PR.
 
 ## Secret Scanning
 
@@ -139,19 +142,19 @@ automatically.
 
 Required checks should use the emitted check-run names, not display-style
 workflow prefixes. `ripr-swarm` does not require source-repo contexts such as
-`rust`, `msrv`, or `vscode`. Initial branch protection is deferred until the
-routed CI result job lands.
+`rust`, `msrv`, or `vscode`. Branch protection requires only the normalized
+routed CI result job.
 
-Expected first required checks after proof:
+Required checks:
 
 - `Ripr Rust Small Result`
-- `cargo-deny`
-- `dependency-review`
 
 Do not require conditional implementation jobs such as `Ripr Rust Small on
 CX53`, `Ripr Rust Small on CX43`, or `Ripr Rust Small on GitHub Hosted`.
-Branch protection should be applied only after `.github/workflows/routed-rust.yml`
-has proven CX53, CX43, and GitHub-hosted fallback behavior.
+Do not require advisory security jobs such as `cargo-deny` or
+`dependency-review` unless a focused policy PR promotes them after calibration.
+CX53 and CX43 remain tracked proof obligations, but the protected branch gate is
+the normalized result check.
 
 Settings App managed rules:
 
