@@ -148,9 +148,11 @@ Each packet has one swarm state.
 | `queued` | Packet is valid but not assigned. | Select, dry run, or skip. |
 | `assigned` | A human or agent has accepted the packet. | Attempt or release assignment. |
 | `attempted` | A repair was attempted, but verification or receipt is not complete. | Run verify and receipt commands. |
+| `receipt_present` | A receipt was emitted for the attempt, but joined evidence movement is not known yet. | Join evidence movement or keep the attempt visible as incomplete. |
 | `verified_improved` | Receipt and evidence movement indicate improvement. | Record outcome and refresh audit. |
 | `verified_unchanged` | Receipt exists but evidence did not improve. | Keep attempt visible and inspect repair fit. |
 | `verified_regressed` | Receipt exists and evidence worsened. | Stop, revert or inspect manually. |
+| `resolved` | The canonical actionable gap no longer appears as unresolved after receipt-backed movement. | Record closure and keep the before/after attempt visible. |
 | `failed_to_apply` | The repair could not be applied within packet boundaries. | Record failure and keep packet visible. |
 | `blocked_by_missing_context` | Required packet fields, related test, verify command, receipt command, or safe path context are missing. | Regenerate upstream artifacts or improve Lane 1 packet fields. |
 | `blocked_by_static_limitation` | The packet or class carries a named static limitation that prevents a safe repair attempt. | Close analyzer limitation or inspect manually. |
@@ -234,11 +236,11 @@ The swarm maps these outcome states into swarm attempt states:
 | --- | --- |
 | `not_attempted` | `queued` unless assignment metadata says otherwise. |
 | `attempted_no_receipt` | `attempted`; do not claim improvement. |
-| `receipt_present` | `attempted`; movement still unknown. |
+| `receipt_present` | `receipt_present`; movement still unknown. |
 | `evidence_improved` | `verified_improved`. |
 | `evidence_unchanged` | `verified_unchanged`. |
 | `evidence_regressed` | `verified_regressed`. |
-| `resolved` | `verified_improved` with resolved canonical gap. |
+| `resolved` | `resolved`; the canonical actionable gap is no longer unresolved. |
 | `unknown` | `attempted` or blocked, depending on missing context. |
 
 The same canonical gap may have multiple attempts. The latest attempt may be
