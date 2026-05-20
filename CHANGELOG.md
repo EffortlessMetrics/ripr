@@ -9,6 +9,11 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Added `RIPR-SPEC-0057` for the planned `ripr-swarm` repair loop. The spec
+  defines swarm work as bounded execution over actionable canonical gap
+  packets, not raw findings, and requires verify commands, receipt commands,
+  must-not-change boundaries, typed attempt states, and outcome joins before a
+  repair attempt can claim movement.
 - Lane 1 evidence audit generation now treats a nominally successful
   repo-exposure subprocess with an empty or malformed captured JSON file as a
   bounded `lane1_repo_exposure_incomplete` limitation. The audit removes the
