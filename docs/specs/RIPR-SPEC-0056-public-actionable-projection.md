@@ -407,9 +407,12 @@ The landed implementation proves:
 - `check-generated-clean` and `check-badge-endpoints` protect generated
   endpoint ownership;
 - public copy explains the actionable gap meaning and non-claims;
-- actionable-gap packets distinguish agent-usable repair packets from public
-  projection readiness by naming missing receipt or canonical guidance
-  prerequisites;
+- actionable evidence records emit canonical receipt commands for actionable
+  items so packet-level public projection readiness can be assessed from
+  canonical repair, verify, and receipt fields rather than raw findings;
+- actionable-gap packets still distinguish agent-usable repair packets from
+  public projection readiness by naming missing receipt or canonical guidance
+  prerequisites when any required field is absent;
 - packet-level readiness remains fail-closed for observed, no-action,
   suppressed, or intentional dispositions even if malformed upstream packets
   carry repair, verify, and receipt fields;
