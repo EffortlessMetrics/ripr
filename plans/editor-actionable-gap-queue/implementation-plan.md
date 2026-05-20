@@ -1,6 +1,6 @@
 # Editor Actionable Gap Queue Implementation Plan
 
-Status: active
+Status: closed
 
 Owner: Lane 3 - Editor / LSP UX
 
@@ -26,10 +26,9 @@ parse Markdown for action semantics.
 The source-of-truth stack, read-only artifact validation seam, Show Status
 queue projection, bounded current repair packet copy action, read-only repo gap
 map orientation command, manifest-only fixture corpus, packaged VS Code smoke
-proof, and user-facing editor documentation have landed. The active
-swarm-trunk slice is dogfood receipts that record actionable, no-action,
-receipt, fail-closed, and preview-boundary proof without changing producers,
-gates, PR/CI output, or editor authority.
+proof, user-facing editor documentation, and dogfood receipts have landed.
+The campaign is closed. No behavior-bearing Lane 3 work item is selected after
+this closeout.
 
 ## Hard Boundaries
 
@@ -69,7 +68,7 @@ from the pre-swarm queue. Remaining open work is tracked directly in
 | swarm #17 | `test(vscode): smoke actionable gap queue` | closed | Packaged VS Code smoke proves safe queue packet copy, read-only repo map copy, fail-closed stale/wrong-root/malformed states, receipt state, Rust defaults, and preview boundaries. |
 | swarm #18 | `docs(editor): document actionable gap queue` | closed | `docs/EDITOR_ACTIONABLE_GAP_QUEUE.md` explains the workflow, recovery states, and non-claims. |
 | swarm #19 | `dogfood(lane3): record actionable gap queue receipts` | closed | `docs/handoffs/2026-05-20-editor-actionable-gap-queue-receipts.md` records queue, packet, receipt, no-action, fail-closed, and preview-boundary proof. |
-| swarm #20 | `campaign(lane3): close editor actionable gap queue` | planned | Close after behavior, fixtures, e2e, docs, dogfood, and validation land. |
+| swarm #20 | `campaign(lane3): close editor actionable gap queue` | closed | `docs/handoffs/2026-05-20-editor-actionable-gap-queue-closeout.md` closes after behavior, fixtures, e2e, docs, dogfood, and validation landed. |
 
 ## Work Item 1: docs(lane3): open editor actionable gap queue stack
 

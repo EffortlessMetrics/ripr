@@ -3850,7 +3850,7 @@ Blocking conditions:
 
 Campaign ID: `editor-actionable-gap-queue`
 
-Status: active.
+Status: closed.
 
 Editor Adoption Assurance is closed. The next selected Lane 3 slice projects
 the existing Lane 1 `actionable-gaps` artifact into the editor as a bounded
@@ -3892,7 +3892,7 @@ Work items:
 | `test/vscode-actionable-gap-queue` | closed | Packaged extension smoke covers status, packets, repo map, receipt state, and unsafe-state suppression. |
 | `docs/editor-actionable-gap-queue` | closed | Document the queue workflow and recovery states. |
 | `dogfood/lane3-actionable-gap-queue-receipts` | closed | [Editor Actionable Gap Queue dogfood receipts](handoffs/2026-05-20-editor-actionable-gap-queue-receipts.md) record actionable, no-action, static-limit-only, wrong-root, stale, receipt, and preview-advisory proof. |
-| `campaign/lane3-actionable-gap-queue-closeout` | planned | Close only after behavior, fixtures, e2e, docs, dogfood, and validation land. |
+| `campaign/lane3-actionable-gap-queue-closeout` | closed | [Editor Actionable Gap Queue closeout](handoffs/2026-05-20-editor-actionable-gap-queue-closeout.md) records the PR chain, validation, remaining limits, and future-work boundary. |
 
 Commands:
 

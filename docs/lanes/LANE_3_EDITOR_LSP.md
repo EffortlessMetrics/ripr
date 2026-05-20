@@ -709,9 +709,9 @@ Hard boundaries:
   provider, mutation, CodeLens, inlay, semantic-token, inline-patch, or
   unsaved-buffer scope.
 
-## Next Selected Slice: Editor Actionable Gap Queue
+## Closed Slice: Editor Actionable Gap Queue
 
-Editor Actionable Gap Queue is the current Lane 3 slice. It projects the
+Editor Actionable Gap Queue is a closed Lane 3 slice. It projects the
 existing Lane 1 actionable-gap queue into the editor as a bounded local repair
 queue:
 
@@ -769,10 +769,14 @@ Lane 3 does not own:
 The source-of-truth stack, validation seam, Show Status queue projection,
 bounded Current Repair Packet action, read-only Repo Gap Map action,
 manifest-only fixture corpus, packaged VS Code smoke, user-facing
-documentation, and dogfood receipts have landed. The dogfood slice (#19) is
-represented by
+documentation, dogfood receipts, and closeout have landed. The dogfood slice
+(#19) is represented by
 [`docs/handoffs/2026-05-20-editor-actionable-gap-queue-receipts.md`](../handoffs/2026-05-20-editor-actionable-gap-queue-receipts.md).
-The next swarm-trunk follow-up is campaign closeout (#20).
+The closeout slice (#20) is represented by
+[`docs/handoffs/2026-05-20-editor-actionable-gap-queue-closeout.md`](../handoffs/2026-05-20-editor-actionable-gap-queue-closeout.md).
+
+No behavior-bearing Lane 3 work item is selected after this closeout. Future
+editor behavior needs a new source-of-truth stack.
 
 Future queue behavior must consume typed fields rather than prose, preserve Rust
 defaults, keep preview evidence visibly bounded, and fail closed on stale,

@@ -55,6 +55,7 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [Editor Actionable Gap Queue closeout](2026-05-20-editor-actionable-gap-queue-closeout.md)
 - [Editor Actionable Gap Queue dogfood receipts](2026-05-20-editor-actionable-gap-queue-receipts.md)
 - [Public Badge Projection Realignment closeout](2026-05-19-public-badge-projection-realignment-closeout.md)
 - [Editor Adoption Assurance closeout](2026-05-19-editor-adoption-assurance-closeout.md)

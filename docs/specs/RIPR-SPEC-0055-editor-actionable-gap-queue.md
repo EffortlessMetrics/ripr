@@ -1,6 +1,6 @@
 # RIPR-SPEC-0055: Editor Actionable Gap Queue
 
-Status: proposed
+Status: accepted
 
 ## Problem
 

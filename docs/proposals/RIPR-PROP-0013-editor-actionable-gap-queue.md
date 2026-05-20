@@ -1,6 +1,6 @@
 # RIPR-PROP-0013: Editor Actionable Gap Queue
 
-Status: proposed
+Status: accepted
 
 Owner: Lane 3 - Editor / LSP UX
 
