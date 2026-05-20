@@ -64,6 +64,39 @@ runner is available but not image-ready, the workflow falls back to GitHub-hoste
 The VS Code lane should remain hosted until a separate Node 24 / VS Code / Xvfb
 runner image is proven.
 
+## Machine Cutover
+
+Development machines and orchestrators should clone this repository
+side-by-side with any existing `EffortlessMetrics/ripr` checkout:
+
+```bash
+git clone git@github.com:EffortlessMetrics/ripr-swarm.git ripr-swarm
+```
+
+Do not retarget a dirty source-repo clone in place. Preserve or discard any
+local source-repo work first, then recreate it as a same-repo `ripr-swarm` pull
+request if it is still normal development work.
+
+Use this operating rule after cutover:
+
+```text
+normal development:
+  target EffortlessMetrics/ripr-swarm
+
+source repository:
+  release PRs
+  security PRs
+  explicit swarm-to-source promotion PRs
+```
+
+Each orchestrator should:
+
+- use a fresh `ripr-swarm` clone;
+- create a branch in this repository, not in `EffortlessMetrics/ripr`;
+- open same-repo pull requests;
+- wait for `Ripr Rust Small Result`;
+- keep release, publish, signing, and marketplace secrets out of the swarm repo.
+
 ## Promotion Back To Source
 
 Promotion remains a source-repo pull request:
