@@ -74,7 +74,8 @@ The editor path should not require report-format knowledge:
    contract.)
 4. Let the saved-workspace analysis refresh or run `ripr: Restart Server`.
 5. Open the Problems panel and hover a ripr-flagged change to inspect evidence.
-6. Use `Copy Targeted Test Brief`, the agent copy commands, or
+6. Use `Copy Current Repair Packet`, `Copy Repo Gap Map`,
+   `Copy Targeted Test Brief`, the agent copy commands, or
    `Open Best Related Test`.
 7. Add one focused test and verify with the copied command chain or the CI
    artifact packet.
@@ -87,6 +88,8 @@ For the shortest install-to-first-pr walkthrough, see
 [Editor install to first PR](EDITOR_INSTALL_TO_FIRST_PR.md). For the local
 install-to-receipt loop, see
 [Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md). For
+the local actionable queue, current repair packet, and repo map, see
+[Editor actionable gap queue](EDITOR_ACTIONABLE_GAP_QUEUE.md). For
 the handoff from receipt to `start-here` packet, see
 [Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md). For
 the local repair loop from diagnostic to gap state, bounded action, verify,
@@ -189,6 +192,24 @@ guidance remain safe. A found packet is advisory and does not prove merge
 readiness, runtime adequacy, mutation coverage, policy eligibility, or gate
 status.
 
+When actionable-gap queue artifacts are present, `ripr: Show Status` can
+project the queue from:
+
+```text
+target/ripr/reports/actionable-gaps.json
+target/ripr/reports/actionable-gaps.md
+```
+
+The editor validates typed JSON fields before offering queue actions. The queue
+surface can name the top actionable gap, report-only groups,
+static-limit-only groups, receipt state, first-pr state, and the next safe
+action. Missing, stale, wrong-root, malformed, unsupported, path-unsafe,
+command-unsafe, disabled-language, unavailable-adapter, receipt-mismatched,
+first-pr-mismatched, and static-limit-only states fail closed: repair packet
+actions are suppressed, while refresh, Diagnose Setup, or regeneration guidance
+remain safe. See [Editor actionable gap queue](EDITOR_ACTIONABLE_GAP_QUEUE.md)
+for the workflow and non-claims.
+
 ## Defaults-First Stance
 
 The editor surface follows the defaults-first adoption contract in
@@ -211,6 +232,8 @@ quieter.
 - `ripr: Show Status`
 - `ripr: Show Output`
 - `ripr: Start Current Repair`
+- `ripr: Copy Current Repair Packet`
+- `ripr: Copy Repo Gap Map`
 - `ripr: First PR - Open Packet`
 - `ripr: First PR - Copy Summary`
 - `ripr: First PR - Copy Repair Packet`
@@ -255,6 +278,31 @@ on the diagnostic: copy the first repair packet, copy the gap repair packet,
 open the best related test, copy the verify command, copy the receipt command,
 or copy a static-limit note. If only refresh/setup actions are available, the
 command reports that no current bounded repair action is available.
+
+### Actionable Gap Queue Actions
+
+When `target/ripr/reports/actionable-gaps.json` validates for the current
+workspace, the extension can expose two queue-oriented commands:
+
+- `ripr: Copy Current Repair Packet`: copies one bounded work order for the
+  top validated actionable gap. The packet includes Task, Context, Repair,
+  Verification, Receipt, Stop conditions, and Do not do sections.
+- `ripr: Copy Repo Gap Map`: copies read-only orientation over actionable,
+  report-only, static-limit-only, preview, receipt, first-pr, and no-action
+  states.
+
+These commands use typed fields such as `canonical_gap_id`, `language`,
+`language_status`, `gap_state`, `repair_route`, `related_test`,
+`verify_command`, `receipt_command`, `receipt_movement`, `confidence_basis`,
+artifact freshness, and workspace root. They do not parse Markdown prose to
+decide actionability.
+
+The current repair packet is suppressed unless the queue item has a current
+workspace match, repair route, safe verify command, receipt command or path,
+workspace-local paths, fresh artifacts, and no blocking static limit. The repo
+gap map remains orientation only and must not imply gate pass/fail, merge
+readiness, runtime proof, mutation proof, coverage adequacy, or policy
+eligibility.
 
 ### Seam Code Actions
 

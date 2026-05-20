@@ -735,6 +735,7 @@ Durable sources for the selected docs stack:
 - [RIPR-SPEC-0055: Editor Actionable Gap Queue](../specs/RIPR-SPEC-0055-editor-actionable-gap-queue.md)
 - [ADR-0017: Editor Gap Queue Is Read-Only](../adr/0017-editor-gap-queue-is-read-only.md)
 - [Editor Actionable Gap Queue implementation plan](../../plans/editor-actionable-gap-queue/implementation-plan.md)
+- [Editor Actionable Gap Queue user workflow](../EDITOR_ACTIONABLE_GAP_QUEUE.md)
 
 Input artifact:
 
@@ -768,9 +769,10 @@ Lane 3 does not own:
 The source-of-truth stack, validation seam, Show Status queue projection,
 bounded Current Repair Packet action, read-only Repo Gap Map action, and
 manifest-only fixture corpus have landed. Packaged VS Code smoke for the queue
-path is tracked as closed in `ripr-swarm` issue #17. The active swarm-trunk
-follow-up is user-facing documentation (#18), followed by dogfood receipts
-(#19) and campaign closeout (#20).
+path is tracked as closed in `ripr-swarm` issue #17. The user-facing
+documentation slice (#18) is represented by
+`docs/EDITOR_ACTIONABLE_GAP_QUEUE.md`. The next swarm-trunk follow-up is
+dogfood receipts (#19), followed by campaign closeout (#20).
 
 Future queue behavior must consume typed fields rather than prose, preserve Rust
 defaults, keep preview evidence visibly bounded, and fail closed on stale,

@@ -3557,6 +3557,7 @@ outputs = [
   "docs/adr/0017-editor-gap-queue-is-read-only.md",
   "docs/adr/README.md",
   "docs/lanes/LANE_3_EDITOR_LSP.md",
+  "docs/EDITOR_ACTIONABLE_GAP_QUEUE.md",
   "docs/DOCUMENTATION.md",
   "docs/README.md",
   "docs/IMPLEMENTATION_PLAN.md",

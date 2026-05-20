@@ -66,7 +66,7 @@ from the pre-swarm queue. Remaining open work is tracked directly in
 | #1303 | `lsp(queue): add Copy Repo Gap Map` | closed | Copy read-only orientation without gate/runtime/policy claims. |
 | source #1304 / swarm PR #16 | `fixtures(editor): add actionable gap queue corpus` | closed | Manifest-only fixture corpus covers success, no-action, receipt, and fail-closed queue states without changing editor behavior. |
 | swarm #17 | `test(vscode): smoke actionable gap queue` | closed | Packaged VS Code smoke proves safe queue packet copy, read-only repo map copy, fail-closed stale/wrong-root/malformed states, receipt state, Rust defaults, and preview boundaries. |
-| swarm #18 | `docs(editor): document actionable gap queue` | active | Explain workflow, recovery states, and non-claims. |
+| swarm #18 | `docs(editor): document actionable gap queue` | closed | `docs/EDITOR_ACTIONABLE_GAP_QUEUE.md` explains the workflow, recovery states, and non-claims. |
 | swarm #19 | `dogfood(lane3): record actionable gap queue receipts` | planned | Record queue, packet, receipt, no-action, and fail-closed proof. |
 | swarm #20 | `campaign(lane3): close editor actionable gap queue` | planned | Close after behavior, fixtures, e2e, docs, dogfood, and validation land. |
 

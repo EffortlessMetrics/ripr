@@ -3882,15 +3882,15 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `docs/lane3-editor-actionable-gap-queue-stack` | active | Add proposal, spec, ADR, plan, indexes, traceability, capability wiring, lane tracker, and issue burn-down. |
-| `test/lsp-post-adoption-editor-contract` | planned | Pin Diagnose Setup, Show Status, first-pr, receipt, Rust diagnostics, preview labels, and fail-closed behavior before queue projection. |
-| `lsp/actionable-gap-packet-validation` | planned | Validate `target/ripr/reports/actionable-gaps.json` as a safe input seam. |
-| `lsp/show-status-repair-queue` | planned | Project a bounded queue summary in Show Status. |
-| `lsp/copy-current-repair-packet` | planned | Copy one bounded repair packet only when typed safety fields validate. |
-| `lsp/copy-repo-gap-map` | planned | Copy read-only queue orientation without gate, runtime, mutation, policy, or merge-readiness claims. |
-| `fixtures/editor-actionable-gap-queue` | planned | Add top-gap, multiple-gap, no-action, static-limit-only, stale, wrong-root, malformed, improved, and unchanged fixture cases. |
-| `test/vscode-actionable-gap-queue` | planned | Smoke the packaged extension path for status, packets, repo map, receipt state, and unsafe-state suppression. |
-| `docs/editor-actionable-gap-queue` | planned | Document the queue workflow and recovery states. |
+| `docs/lane3-editor-actionable-gap-queue-stack` | closed | Source-of-truth proposal, spec, ADR, plan, indexes, traceability, capability wiring, lane tracker, and issue burn-down landed. |
+| `test/lsp-post-adoption-editor-contract` | closed | Diagnose Setup, Show Status, first-pr, receipt, Rust diagnostics, preview labels, and fail-closed behavior were pinned before queue projection. |
+| `lsp/actionable-gap-packet-validation` | closed | `target/ripr/reports/actionable-gaps.json` validates as a safe input seam. |
+| `lsp/show-status-repair-queue` | closed | Show Status projects bounded queue summaries and fail-closed/no-action states. |
+| `lsp/copy-current-repair-packet` | closed | Copy one bounded repair packet only when typed safety fields validate. |
+| `lsp/copy-repo-gap-map` | closed | Copy read-only queue orientation without gate, runtime, mutation, policy, or merge-readiness claims. |
+| `fixtures/editor-actionable-gap-queue` | closed | Fixture corpus covers top-gap, multiple-gap, no-action, static-limit-only, stale, wrong-root, malformed, improved, and unchanged states. |
+| `test/vscode-actionable-gap-queue` | closed | Packaged extension smoke covers status, packets, repo map, receipt state, and unsafe-state suppression. |
+| `docs/editor-actionable-gap-queue` | closed | Document the queue workflow and recovery states. |
 | `dogfood/lane3-actionable-gap-queue-receipts` | planned | Record actionable, no-action, static-limit-only, wrong-root, stale, receipt, and preview-advisory proof. |
 | `campaign/lane3-actionable-gap-queue-closeout` | planned | Close only after behavior, fixtures, e2e, docs, dogfood, and validation land. |
 

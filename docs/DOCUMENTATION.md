@@ -17,6 +17,8 @@ Current and planned tutorial docs:
   boundary, output-contract, no-action, and blocked start-here cases
 - [Editor install to first PR](EDITOR_INSTALL_TO_FIRST_PR.md) - VS Code
   install/open through setup diagnosis, repair, receipt, and first-pr packet
+- [Editor actionable gap queue](EDITOR_ACTIONABLE_GAP_QUEUE.md) - VS Code
+  current repair queue, repair packet, repo gap map, and no-action states
 - [Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md) -
   install/open, diagnose setup, repair one Rust gap, verify, receipt, refresh
 - [Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md) -
@@ -95,6 +97,7 @@ Current how-to docs:
 - [Editor extension](EDITOR_EXTENSION.md)
 - [Editor install to first PR](EDITOR_INSTALL_TO_FIRST_PR.md)
 - [Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md)
+- [Editor actionable gap queue](EDITOR_ACTIONABLE_GAP_QUEUE.md)
 - [Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md)
 - [Editor gap cockpit workflow](EDITOR_GAP_COCKPIT_WORKFLOW.md)
 - [Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md)
@@ -207,6 +210,7 @@ Current explanation docs:
 - [Start-here surface convergence plan](../plans/start-here-surface-convergence/implementation-plan.md)
 - [Editor adoption assurance proposal](proposals/RIPR-PROP-0012-editor-adoption-assurance.md)
 - [Editor adoption assurance plan](../plans/editor-adoption-assurance/implementation-plan.md)
+- [Editor actionable gap queue](EDITOR_ACTIONABLE_GAP_QUEUE.md)
 - [Editor actionable gap queue proposal](proposals/RIPR-PROP-0013-editor-actionable-gap-queue.md)
 - [Editor actionable gap queue plan](../plans/editor-actionable-gap-queue/implementation-plan.md)
 - [Codex Goals](CODEX_GOALS.md)
