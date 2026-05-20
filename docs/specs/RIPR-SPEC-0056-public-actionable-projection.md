@@ -76,6 +76,22 @@ it from prose.
 Items that fail any requirement are still allowed in internal reports when they
 are explicitly labeled with their limitation or exclusion reason.
 
+## Badge-Readiness Stages
+
+Badge readiness is staged. A later stage may not claim readiness unless every
+earlier stage is current for the same root and schema.
+
+| Stage | Evidence | Meaning |
+| --- | --- | --- |
+| Packet readiness | `lane1-evidence-audit` and `actionable-gaps` emit `public_projection_eligible`, `projection_exclusion_reasons[]`, repair source, verify source, and receipt source for the emitted actionable-gap packets. | Lane 1 can distinguish agent-usable packets from packets that are also ready for future public projection. |
+| Scorecard readiness | `evidence-quality-scorecard` carries eligible/excluded packet counts plus projection-exclusion reasons, and `evidence-quality-trend` tracks eligible packets as higher-is-better and excluded packets as lower-is-better. | Maintainers can see whether badge-readiness evidence is improving or regressing without changing public endpoints. |
+| Badge-basis readiness | `badge-basis`, generated-clean checks, badge endpoint checks, badge diff policy, and public copy checks agree on `canonical_actionable_gap` as the public basis. | A later, explicitly scoped badge refresh PR may update public endpoints with proof. |
+
+Packet and scorecard readiness are internal evidence-quality states. They do
+not authorize a public badge refresh by themselves. Endpoint changes still
+require the generated badge workflow, badge-basis proof, and an explicitly
+scoped badge refresh PR.
+
 ## Basis Vocabulary
 
 | Basis | Scope | Public headline allowed | Meaning |
@@ -219,6 +235,9 @@ The contract is executable through these commands:
 ```bash
 cargo xtask badge-basis
 cargo xtask badge-basis --include-seam-classes
+cargo xtask lane1-evidence-audit
+cargo xtask evidence-quality-scorecard
+cargo xtask evidence-quality-trend
 cargo xtask check-badge-endpoints
 cargo xtask check-badge-diff-policy
 cargo xtask check-generated-clean
@@ -246,6 +265,9 @@ The public actionable projection contract is supported by:
   `warnings`;
 - `cargo xtask badge-basis` audit reports;
 - badge-basis audit schema in `docs/OUTPUT_SCHEMA.md`;
+- actionable-gap packet readiness fields in `lane1-evidence-audit`,
+  `actionable-gaps`, `evidence-quality-scorecard`, and
+  `evidence-quality-trend`;
 - badge policy wording in `docs/BADGE_POLICY.md`;
 - public copy in README and crate README;
 - generated endpoint ownership guards;
@@ -269,6 +291,8 @@ The public actionable projection contract is supported by:
 - public Shields endpoint JSON;
 - native repo badge JSON;
 - badge-basis JSON and Markdown;
+- `actionable-gaps` JSON and Markdown;
+- evidence-quality scorecard and trend JSON/Markdown;
 - internal seam-native inventory in badge-basis, repo-exposure, or scorecard
   reports;
 - public docs and release copy that explain actionable counts and non-claims.
@@ -336,6 +360,19 @@ Generated endpoint refresh:
   projection, the findings remain inventory and do not increase the public
   `ripr+` headline.
 
+Packet readiness without endpoint refresh:
+
+- Given `actionable-gaps.json` with emitted packets where
+  `public_projection_eligible = true` and no projection exclusions, the
+  scorecard may report those packets as internally projection-ready. It must
+  not edit public endpoint JSON or claim a badge refresh happened.
+
+Packet exclusion:
+
+- Given an actionable canonical gap packet without a receipt command or path,
+  `actionable-gaps.json` and the scorecard keep the packet internal, name
+  `missing_receipt_path`, and leave public badge counts unchanged.
+
 ## Test Mapping
 
 Current tests and checks:
@@ -348,8 +385,14 @@ Current tests and checks:
 - `xtask::tests::public_badge_basis_guard_rejects_seam_native_repair_badge_copy`
 - `xtask::tests::public_badge_basis_guard_allows_explicit_seam_inventory_badge_copy`
 - `xtask::tests::check_badge_diff_policy_rejects_public_surface_seam_native_from_git_status`
+- `xtask::tests::lane1_actionable_gap_packets_mark_public_projection_ready_with_receipt`
+- `xtask::tests::evidence_quality_scorecard_carries_actionable_packet_projection_readiness`
+- `xtask::tests::evidence_quality_trend_reports_finding_alignment_presentation_text_deltas`
 - `cargo xtask badge-basis`
 - `cargo xtask badge-basis --include-seam-classes`
+- `cargo xtask lane1-evidence-audit`
+- `cargo xtask evidence-quality-scorecard`
+- `cargo xtask evidence-quality-trend`
 - `cargo xtask check-badge-endpoints`
 - `cargo xtask check-badge-diff-policy`
 - `cargo xtask check-generated-clean`
@@ -370,6 +413,11 @@ Landed implementation surfaces:
 - `target/ripr/reports/actionable-gaps.{json,md}` records packet-level
   `public_projection_eligible` and `projection_exclusion_reasons[]` readiness
   diagnostics for emitted actionable packets without changing endpoint counts.
+- `target/ripr/reports/evidence-quality-scorecard.{json,md}` carries
+  actionable-gap packet eligible/excluded counts and projection-exclusion
+  reasons from the audit.
+- `target/ripr/reports/evidence-quality-trend.{json,md}` tracks packet
+  eligible counts as higher-is-better and excluded counts as lower-is-better.
 - `badges/ripr.json` and `badges/ripr-plus.json` are generated public endpoint
   snapshots.
 - `docs/handoffs/2026-05-19-public-badge-projection-realignment-closeout.md`
@@ -382,6 +430,8 @@ Traceability uses these contract metrics:
 - `public_actionable_projection_badge_basis_locked`;
 - `public_actionable_projection_seam_inventory_internal`;
 - `public_actionable_projection_badge_basis_guarded`.
+- `public_actionable_projection_packet_eligible`;
+- `public_actionable_projection_packet_excluded`.
 
 The contract is evaluated through these report values:
 
@@ -394,6 +444,10 @@ The contract is evaluated through these report values:
 - badge-basis `canonical_actionable_gap.ripr_plus_count`;
 - badge-basis `seam_native.counts_by_class`;
 - badge-basis `supporting_signals` statuses.
+- scorecard `finding_alignment_actionable_gap_packet_public_projection_eligible_packets`;
+- scorecard `finding_alignment_actionable_gap_packet_public_projection_excluded_packets`;
+- scorecard `actionable_gap_packet_public_projection.projection_exclusion_reasons`;
+- trend metrics for actionable-gap packet eligible and excluded counts.
 
 ## Current Implementation Evidence
 
@@ -413,6 +467,9 @@ The landed implementation proves:
 - actionable-gap packets still distinguish agent-usable repair packets from
   public projection readiness by naming missing receipt or canonical guidance
   prerequisites when any required field is absent;
+- scorecard and trend reports now carry packet-level public projection
+  readiness as internal badge-readiness evidence, including eligible packet
+  counts, excluded packet counts, and exclusion reasons;
 - packet-level readiness remains fail-closed for observed, no-action,
   suppressed, or intentional dispositions even if malformed upstream packets
   carry repair, verify, and receipt fields;
