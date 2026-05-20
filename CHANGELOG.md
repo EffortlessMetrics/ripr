@@ -17,6 +17,11 @@ are scoped or reviewed.
   also records that current live-repo packet repair proof remains a
   release-readiness decision because the full live audit timed out before
   producing actionable packets.
+- Added a 0.7 release-readiness closeout that keeps release and publishing
+  authority in source `ripr`, accepts the current `ripr-swarm` live audit
+  timeout as a bounded 0.7 limitation rather than a source-promotion blocker,
+  and records the source promotion, version bump, release proof, and publish
+  boundaries for the actionable static repair-loop release.
 - Added `cargo xtask ripr-swarm plan --top <n>` to rank existing
   `actionable-gaps.json` packets into swarm-ready, blocked, and
   missing-verify-or-receipt buckets. The report writes

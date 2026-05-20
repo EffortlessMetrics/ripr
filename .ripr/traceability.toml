@@ -3666,6 +3666,7 @@ outputs = [
   "docs/specs/RIPR-SPEC-0057-ripr-swarm-repair-loop.md",
   "docs/RIPR_SWARM_HUMAN_WORKFLOW.md",
   "docs/handoffs/2026-05-20-0.7-swarm-repair-loop-dogfood.md",
+  "docs/handoffs/2026-05-20-0.7-release-readiness-closeout.md",
   "README.md",
   "docs/README.md",
   "docs/DOCUMENTATION.md",
