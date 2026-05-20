@@ -111,4 +111,27 @@ mod tests {
         assert_eq!(summary.propagation_unknown, 1);
         assert_eq!(summary.static_unknown, 1);
     }
+    #[test]
+    fn summarize_findings_accumulates_repeated_classes() {
+        let findings = [
+            finding(ExposureClass::Exposed),
+            finding(ExposureClass::Exposed),
+            finding(ExposureClass::NoStaticPath),
+            finding(ExposureClass::NoStaticPath),
+            finding(ExposureClass::NoStaticPath),
+        ];
+
+        let summary = summarize_findings(1, &findings);
+
+        assert_eq!(summary.changed_rust_files, 1);
+        assert_eq!(summary.probes, 5);
+        assert_eq!(summary.findings, 5);
+        assert_eq!(summary.exposed, 2);
+        assert_eq!(summary.no_static_path, 3);
+        assert_eq!(summary.weakly_exposed, 0);
+        assert_eq!(summary.reachable_unrevealed, 0);
+        assert_eq!(summary.infection_unknown, 0);
+        assert_eq!(summary.propagation_unknown, 0);
+        assert_eq!(summary.static_unknown, 0);
+    }
 }
