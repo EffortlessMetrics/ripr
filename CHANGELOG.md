@@ -14,6 +14,12 @@ are scoped or reviewed.
   packets, not raw findings, and requires verify commands, receipt commands,
   must-not-change boundaries, typed attempt states, and outcome joins before a
   repair attempt can claim movement.
+- Added `cargo xtask ripr-swarm-plan`, a report-only ranking over
+  `actionable-gaps.json` that writes `target/ripr/reports/swarm-plan.json` and
+  `.md`. The report buckets canonical packets into swarm-ready, blocked,
+  missing-command, static-limitation, and high-confidence groups without
+  editing files, calling providers, generating tests, running mutation
+  execution, changing PR/CI rendering, or changing public badge semantics.
 - `cargo xtask evidence-health` now bounds its preflight `cargo build -p ripr`
   phase with the evidence-health timeout and writes diagnostic warning reports
   with `phase = evidence_health_build` if that phase times out or fails. This

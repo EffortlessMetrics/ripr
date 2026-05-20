@@ -36,6 +36,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::ActionableGapOutcomes(args) => {
             super::reports::actionable_gap_outcomes_report(&args)
         }
+        XtaskCommand::RiprSwarmPlan(args) => super::reports::ripr_swarm_plan_report(&args),
         XtaskCommand::AgentSeamPackets(root) => {
             super::reports::agent_seam_packets_report(root.as_ref())
         }

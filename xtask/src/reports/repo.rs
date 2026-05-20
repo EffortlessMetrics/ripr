@@ -7,3 +7,4 @@ pub(crate) use crate::lane1_evidence_audit_report_impl as lane1_evidence_audit_r
 pub(crate) use crate::repo_exposure_latency_report_impl as repo_exposure_latency_report;
 pub(crate) use crate::repo_exposure_report_impl as repo_exposure_report;
 pub(crate) use crate::repo_seam_inventory_impl as repo_seam_inventory;
+pub(crate) use crate::ripr_swarm_plan_report_impl as ripr_swarm_plan_report;

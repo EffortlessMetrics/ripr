@@ -256,13 +256,21 @@ cargo xtask ripr-swarm plan --top 10
 cargo xtask ripr-swarm attempt --packet <id> --dry-run
 ```
 
-`plan` reads actionable packets and writes:
+The first report-only implementation may expose this ranking as:
+
+```bash
+cargo xtask ripr-swarm-plan --top 10
+```
+
+`plan` and `ripr-swarm-plan` read actionable packets and write:
 
 ```text
 target/ripr/reports/swarm-plan.json
 target/ripr/reports/swarm-plan.md
 ```
 
+`ripr-swarm-plan` is report-only. The namespaced `ripr-swarm plan` and
+`attempt --dry-run` entrypoints may layer on the same artifact later.
 `attempt --dry-run` prints the bounded packet context and the commands a human
 or external agent would run. It does not edit files, run tests, call providers,
 or create receipts.

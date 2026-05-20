@@ -2242,6 +2242,111 @@ or path; otherwise the stable `projection_exclusion_reasons[]` values explain
 why an otherwise useful agent packet is not yet a public badge item. This does
 not change committed badge endpoint semantics.
 
+## RIPR Swarm Plan
+
+`cargo xtask ripr-swarm-plan` ranks actionable canonical gap packets for bounded
+repair coordination:
+
+```text
+target/ripr/reports/swarm-plan.json
+target/ripr/reports/swarm-plan.md
+```
+
+The report is advisory and dry-run only. It reads actionable packets, ranks
+packet readiness, and names blocked reasons. It does not edit files, call
+providers, generate tests, execute mutation testing, emit receipts, change
+PR/CI rendering, or change public badge semantics.
+The current `actionable-gaps.json` projection exposes receipt guidance as
+`receipt_command_or_path`; direct canonical packet fixtures may use
+`receipt_command`. The planner treats either field as the packet receipt
+command and always renders it as `receipt_command_or_path`.
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "report": "swarm-plan",
+  "scope": "repo",
+  "status": "advisory",
+  "source": "actionable-gaps",
+  "inputs": {
+    "actionable_gaps": "target/ripr/reports/actionable-gaps.json"
+  },
+  "ranking": {
+    "top": 10,
+    "factors": [
+      "repair_route_present",
+      "verify_command_present",
+      "receipt_command_present",
+      "confidence_basis",
+      "related_test_present",
+      "must_not_change_present",
+      "evidence_class_maturity",
+      "expected_canonical_gap_delta",
+      "low_static_limitation_risk"
+    ]
+  },
+  "summary": {
+    "packets_total": 25,
+    "swarm_ready_packets": 10,
+    "blocked_packets": 15,
+    "missing_verify_command": 0,
+    "missing_receipt_command": 0,
+    "static_limitation_packets": 2,
+    "high_confidence_packets": 8
+  },
+  "buckets": {
+    "swarm_ready_packets": [
+      {
+        "rank": 1,
+        "canonical_gap_id": "gap:abc",
+        "evidence_class": "predicate_boundary",
+        "repair_kind": "add_boundary_assertion",
+        "source_file": "tests/pricing.rs",
+        "readiness_state": "queued",
+        "readiness_score": 105,
+        "high_confidence": true,
+        "blocked_reasons": [],
+        "verify_command": "cargo test -p ripr price_boundary",
+        "receipt_command_or_path": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id abc --json --out target/ripr/reports/agent-receipt.json",
+        "confidence_basis": "fixture_backed",
+        "ranking_factors": {
+          "repair_route_present": true,
+          "verify_command_present": true,
+          "receipt_command_present": true,
+          "related_test_present": true,
+          "must_not_change_present": true,
+          "evidence_class_maturity": "mature",
+          "expected_canonical_gap_delta": 1,
+          "low_static_limitation_risk": true,
+          "static_limitations_total": 0,
+          "raw_findings_total": 1
+        }
+      }
+    ],
+    "blocked_packets": [],
+    "missing_verify_command": [],
+    "missing_receipt_command": [],
+    "static_limitation_packets": [],
+    "high_confidence_packets": []
+  },
+  "must_not_infer": [
+    "swarm-plan ranks canonical actionable packets, not raw findings",
+    "swarm-ready does not execute a repair",
+    "static limitations are blocked analyzer gaps, not user test debt",
+    "missing verify or receipt commands block swarm readiness"
+  ]
+}
+```
+
+`readiness_state` is `queued` for swarm-ready packets,
+`blocked_by_missing_context` when required packet fields are absent, and
+`blocked_by_static_limitation` when a named limitation prevents a safe repair
+attempt. `blocked_reasons[]` is stable enough for follow-up automation and may
+include `missing_repair_route`, `missing_verify_command`,
+`missing_receipt_command`, `missing_must_not_change`,
+`static_limitation_present`, or `not_public_projection_eligible`.
+
 ## Actionable Gap Outcomes
 
 `cargo xtask actionable-gap-outcomes` joins actionable-gap packets with optional
