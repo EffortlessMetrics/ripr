@@ -18874,6 +18874,7 @@ fn lane1_actionable_gap_packets_markdown(report: &Lane1EvidenceAuditReport) -> S
 enum RiprSwarmCommand {
     Plan(RiprSwarmPlanArgs),
     Attempt(RiprSwarmAttemptArgs),
+    Readiness(RiprSwarmReadinessArgs),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -18887,6 +18888,12 @@ struct RiprSwarmAttemptArgs {
     packet_id: String,
     actionable_gaps_path: PathBuf,
     dry_run: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RiprSwarmReadinessArgs {
+    swarm_plan_path: PathBuf,
+    actionable_gap_outcomes_path: PathBuf,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -18946,10 +18953,41 @@ struct RiprSwarmAttemptDryRun {
     expected_evidence_movement: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RiprSwarmReadinessReport {
+    status: String,
+    swarm_plan_path: String,
+    swarm_plan_state: String,
+    swarm_plan_limitation: Option<String>,
+    actionable_gap_outcomes_path: String,
+    actionable_gap_outcomes_state: String,
+    actionable_gap_outcomes_limitation: Option<String>,
+    summary: RiprSwarmReadinessSummary,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct RiprSwarmReadinessSummary {
+    actionable_gaps_total: usize,
+    public_projection_eligible_packets: usize,
+    swarm_ready_packets: usize,
+    blocked_packets: usize,
+    missing_verify_command: usize,
+    missing_receipt_command: usize,
+    static_limitation_packets: usize,
+    high_confidence_packets: usize,
+    attempted_packets: usize,
+    improved_packets: usize,
+    unchanged_packets: usize,
+    regressed_packets: usize,
+    resolved_packets: usize,
+    orphaned_receipts: usize,
+}
+
 fn ripr_swarm(args: &[String]) -> Result<(), String> {
     match parse_ripr_swarm_args(args)? {
         RiprSwarmCommand::Plan(parsed) => ripr_swarm_plan_report(&parsed),
         RiprSwarmCommand::Attempt(parsed) => ripr_swarm_attempt_dry_run(&parsed),
+        RiprSwarmCommand::Readiness(parsed) => ripr_swarm_readiness_report(&parsed),
     }
 }
 
@@ -18960,6 +18998,7 @@ fn parse_ripr_swarm_args(args: &[String]) -> Result<RiprSwarmCommand, String> {
     match subcommand.as_str() {
         "plan" => parse_ripr_swarm_plan_args(args).map(RiprSwarmCommand::Plan),
         "attempt" => parse_ripr_swarm_attempt_args(args).map(RiprSwarmCommand::Attempt),
+        "readiness" => parse_ripr_swarm_readiness_args(args).map(RiprSwarmCommand::Readiness),
         _ => Err(format!(
             "unknown ripr-swarm subcommand `{subcommand}`\n{}",
             ripr_swarm_usage()
@@ -19081,8 +19120,58 @@ fn parse_ripr_swarm_attempt_args(args: &[String]) -> Result<RiprSwarmAttemptArgs
     })
 }
 
+fn parse_ripr_swarm_readiness_args(args: &[String]) -> Result<RiprSwarmReadinessArgs, String> {
+    let Some(subcommand) = args.first() else {
+        return Err(ripr_swarm_usage());
+    };
+    if subcommand != "readiness" {
+        return Err(format!(
+            "unknown ripr-swarm subcommand `{subcommand}`\n{}",
+            ripr_swarm_usage()
+        ));
+    }
+
+    let mut swarm_plan_path = PathBuf::from("target/ripr/reports/swarm-plan.json");
+    let mut actionable_gap_outcomes_path =
+        PathBuf::from("target/ripr/reports/actionable-gap-outcomes.json");
+    let mut index = 1usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--swarm-plan" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err("ripr-swarm readiness --swarm-plan requires a path".to_string());
+                };
+                swarm_plan_path = PathBuf::from(value);
+            }
+            "--actionable-gap-outcomes" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err(
+                        "ripr-swarm readiness --actionable-gap-outcomes requires a path"
+                            .to_string(),
+                    );
+                };
+                actionable_gap_outcomes_path = PathBuf::from(value);
+            }
+            other => {
+                return Err(format!(
+                    "unknown ripr-swarm readiness argument `{other}`\n{}",
+                    ripr_swarm_usage()
+                ));
+            }
+        }
+        index += 1;
+    }
+
+    Ok(RiprSwarmReadinessArgs {
+        swarm_plan_path,
+        actionable_gap_outcomes_path,
+    })
+}
+
 fn ripr_swarm_usage() -> String {
-    "usage: cargo xtask ripr-swarm plan [--top <n>] [--actionable-gaps <path>]\n       cargo xtask ripr-swarm attempt --packet <id> --dry-run [--actionable-gaps <path>]"
+    "usage: cargo xtask ripr-swarm plan [--top <n>] [--actionable-gaps <path>]\n       cargo xtask ripr-swarm attempt --packet <id> --dry-run [--actionable-gaps <path>]\n       cargo xtask ripr-swarm readiness [--swarm-plan <path>] [--actionable-gap-outcomes <path>]"
         .to_string()
 }
 
@@ -19899,6 +19988,245 @@ fn ripr_swarm_plan_push_packet_table(
         ));
     }
     out.push('\n');
+}
+
+fn ripr_swarm_readiness_report(args: &RiprSwarmReadinessArgs) -> Result<(), String> {
+    let (swarm_plan_state, swarm_plan_limitation, swarm_plan) =
+        ripr_swarm_read_optional_json(&args.swarm_plan_path);
+    let (
+        actionable_gap_outcomes_state,
+        actionable_gap_outcomes_limitation,
+        actionable_gap_outcomes,
+    ) = ripr_swarm_read_optional_json(&args.actionable_gap_outcomes_path);
+    let report = ripr_swarm_readiness_from_values(
+        normalize_path(&args.swarm_plan_path),
+        swarm_plan_state,
+        swarm_plan_limitation,
+        swarm_plan.as_ref(),
+        normalize_path(&args.actionable_gap_outcomes_path),
+        actionable_gap_outcomes_state,
+        actionable_gap_outcomes_limitation,
+        actionable_gap_outcomes.as_ref(),
+    );
+
+    write_report("swarm-readiness.json", &ripr_swarm_readiness_json(&report)?)?;
+    write_report(
+        "swarm-readiness.md",
+        &ripr_swarm_readiness_markdown(&report),
+    )
+}
+
+fn ripr_swarm_read_optional_json(path: &Path) -> (String, Option<String>, Option<Value>) {
+    match fs::read_to_string(path) {
+        Ok(text) => match serde_json::from_str::<Value>(&text) {
+            Ok(value) => ("read".to_string(), None, Some(value)),
+            Err(err) => (
+                "malformed".to_string(),
+                Some(format!("failed to parse {}: {err}", normalize_path(path))),
+                None,
+            ),
+        },
+        Err(err) => (
+            "missing".to_string(),
+            Some(format!("failed to read {}: {err}", normalize_path(path))),
+            None,
+        ),
+    }
+}
+
+fn ripr_swarm_readiness_from_values(
+    swarm_plan_path: String,
+    swarm_plan_state: String,
+    swarm_plan_limitation: Option<String>,
+    swarm_plan: Option<&Value>,
+    actionable_gap_outcomes_path: String,
+    actionable_gap_outcomes_state: String,
+    actionable_gap_outcomes_limitation: Option<String>,
+    actionable_gap_outcomes: Option<&Value>,
+) -> RiprSwarmReadinessReport {
+    let summary = ripr_swarm_readiness_summary(swarm_plan, actionable_gap_outcomes);
+    let status = if swarm_plan.is_some() {
+        "advisory"
+    } else {
+        "blocked"
+    }
+    .to_string();
+
+    RiprSwarmReadinessReport {
+        status,
+        swarm_plan_path,
+        swarm_plan_state,
+        swarm_plan_limitation,
+        actionable_gap_outcomes_path,
+        actionable_gap_outcomes_state,
+        actionable_gap_outcomes_limitation,
+        summary,
+    }
+}
+
+fn ripr_swarm_readiness_summary(
+    swarm_plan: Option<&Value>,
+    actionable_gap_outcomes: Option<&Value>,
+) -> RiprSwarmReadinessSummary {
+    let mut summary = RiprSwarmReadinessSummary::default();
+    if let Some(plan) = swarm_plan {
+        summary.actionable_gaps_total = audit_usize(plan, &["source_summary", "actionable_gaps"])
+            .or_else(|| audit_usize(plan, &["source_summary", "actionable_gaps_total"]))
+            .unwrap_or_default();
+        summary.public_projection_eligible_packets = audit_usize(
+            plan,
+            &["source_summary", "public_projection_eligible_packets"],
+        )
+        .unwrap_or_default();
+        summary.swarm_ready_packets =
+            audit_usize(plan, &["summary", "swarm_ready_packets"]).unwrap_or_default();
+        summary.blocked_packets =
+            audit_usize(plan, &["summary", "blocked_packets"]).unwrap_or_default();
+        summary.missing_verify_command =
+            audit_usize(plan, &["summary", "missing_verify_command"]).unwrap_or_default();
+        summary.missing_receipt_command =
+            audit_usize(plan, &["summary", "missing_receipt_command"]).unwrap_or_default();
+        summary.static_limitation_packets =
+            audit_usize(plan, &["summary", "static_limitation_packets"]).unwrap_or_default();
+        summary.high_confidence_packets =
+            audit_usize(plan, &["summary", "high_confidence_packets"]).unwrap_or_default();
+    }
+    if let Some(outcomes) = actionable_gap_outcomes {
+        let outcomes_total =
+            audit_usize(outcomes, &["summary", "outcomes_total"]).unwrap_or_default();
+        let not_attempted =
+            audit_usize(outcomes, &["summary", "not_attempted"]).unwrap_or_default();
+        summary.attempted_packets = outcomes_total.saturating_sub(not_attempted);
+        summary.improved_packets =
+            audit_usize(outcomes, &["summary", "evidence_improved"]).unwrap_or_default();
+        summary.unchanged_packets =
+            audit_usize(outcomes, &["summary", "evidence_unchanged"]).unwrap_or_default();
+        summary.regressed_packets =
+            audit_usize(outcomes, &["summary", "evidence_regressed"]).unwrap_or_default();
+        summary.resolved_packets =
+            audit_usize(outcomes, &["summary", "resolved"]).unwrap_or_default();
+        summary.orphaned_receipts =
+            audit_usize(outcomes, &["summary", "orphaned_receipts"]).unwrap_or_default();
+    }
+    summary
+}
+
+fn ripr_swarm_readiness_json(report: &RiprSwarmReadinessReport) -> Result<String, String> {
+    let value = serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "report": "swarm-readiness",
+        "scope": "repo",
+        "status": report.status,
+        "inputs": {
+            "swarm_plan": {
+                "path": report.swarm_plan_path,
+                "state": report.swarm_plan_state,
+                "limitation": report.swarm_plan_limitation,
+            },
+            "actionable_gap_outcomes": {
+                "path": report.actionable_gap_outcomes_path,
+                "state": report.actionable_gap_outcomes_state,
+                "limitation": report.actionable_gap_outcomes_limitation,
+            },
+        },
+        "summary": ripr_swarm_readiness_summary_json(&report.summary),
+        "must_not_infer": [
+            "readiness reports summarize existing swarm artifacts; they do not execute repairs",
+            "raw findings remain supporting evidence, not swarm work",
+            "missing outcome artifacts mean no outcome join is available, not that attempts failed",
+            "readiness counts do not change public badge semantics",
+            "static limitations and blocked packets are not repair-ready work"
+        ],
+    });
+    serde_json::to_string_pretty(&value)
+        .map(|mut rendered| {
+            rendered.push('\n');
+            rendered
+        })
+        .map_err(|err| format!("failed to render swarm readiness JSON: {err}"))
+}
+
+fn ripr_swarm_readiness_summary_json(summary: &RiprSwarmReadinessSummary) -> Value {
+    serde_json::json!({
+        "actionable_gaps_total": summary.actionable_gaps_total,
+        "public_projection_eligible_packets": summary.public_projection_eligible_packets,
+        "swarm_ready_packets": summary.swarm_ready_packets,
+        "blocked_packets": summary.blocked_packets,
+        "missing_verify_command": summary.missing_verify_command,
+        "missing_receipt_command": summary.missing_receipt_command,
+        "static_limitation_packets": summary.static_limitation_packets,
+        "high_confidence_packets": summary.high_confidence_packets,
+        "attempted_packets": summary.attempted_packets,
+        "improved_packets": summary.improved_packets,
+        "unchanged_packets": summary.unchanged_packets,
+        "regressed_packets": summary.regressed_packets,
+        "resolved_packets": summary.resolved_packets,
+        "orphaned_receipts": summary.orphaned_receipts,
+    })
+}
+
+fn ripr_swarm_readiness_markdown(report: &RiprSwarmReadinessReport) -> String {
+    let summary = ripr_swarm_readiness_summary_json(&report.summary);
+    let mut out = String::new();
+    out.push_str("# RIPR Swarm Readiness\n\n");
+    out.push_str(
+        "Advisory roll-up over swarm-plan and actionable-gap-outcome artifacts. It does not execute repairs or consume raw findings as work.\n\n",
+    );
+    out.push_str("## Inputs\n\n");
+    out.push_str("| Input | State | Path | Limitation |\n");
+    out.push_str("| --- | --- | --- | --- |\n");
+    out.push_str(&format!(
+        "| swarm plan | `{}` | `{}` | {} |\n",
+        audit_markdown_cell(&report.swarm_plan_state),
+        audit_markdown_cell(&report.swarm_plan_path),
+        audit_markdown_cell(report.swarm_plan_limitation.as_deref().unwrap_or(""))
+    ));
+    out.push_str(&format!(
+        "| actionable gap outcomes | `{}` | `{}` | {} |\n\n",
+        audit_markdown_cell(&report.actionable_gap_outcomes_state),
+        audit_markdown_cell(&report.actionable_gap_outcomes_path),
+        audit_markdown_cell(
+            report
+                .actionable_gap_outcomes_limitation
+                .as_deref()
+                .unwrap_or("")
+        )
+    ));
+    out.push_str("## Summary\n\n");
+    out.push_str("| Metric | Count |\n");
+    out.push_str("| --- | ---: |\n");
+    for key in [
+        "actionable_gaps_total",
+        "public_projection_eligible_packets",
+        "swarm_ready_packets",
+        "blocked_packets",
+        "missing_verify_command",
+        "missing_receipt_command",
+        "static_limitation_packets",
+        "high_confidence_packets",
+        "attempted_packets",
+        "improved_packets",
+        "unchanged_packets",
+        "regressed_packets",
+        "resolved_packets",
+        "orphaned_receipts",
+    ] {
+        out.push_str(&format!(
+            "| {} | {} |\n",
+            key.replace('_', " "),
+            summary[key].as_u64().unwrap_or(0)
+        ));
+    }
+    out.push_str("\n## Must Not Infer\n\n");
+    out.push_str(
+        "- Readiness reports summarize existing swarm artifacts; they do not execute repairs.\n",
+    );
+    out.push_str("- Raw findings remain supporting evidence, not swarm work.\n");
+    out.push_str("- Missing outcome artifacts mean no outcome join is available, not that attempts failed.\n");
+    out.push_str("- Readiness counts do not change public badge semantics.\n");
+    out.push_str("- Static limitations and blocked packets are not repair-ready work.\n");
+    out
 }
 
 pub(crate) fn actionable_gap_outcomes_report_impl(args: &[String]) -> Result<(), String> {
@@ -44167,6 +44495,7 @@ mod tests {
         ripr_swarm_plan_blocked_packets, ripr_swarm_plan_blocked_report,
         ripr_swarm_plan_from_actionable_gaps_value, ripr_swarm_plan_json, ripr_swarm_plan_markdown,
         ripr_swarm_plan_packet_is_high_confidence, ripr_swarm_plan_ready_packets,
+        ripr_swarm_readiness_from_values, ripr_swarm_readiness_json, ripr_swarm_readiness_markdown,
         run_ci_full_evidence_gates, sarif_policy_report_json, sarif_policy_report_markdown,
         semantic_selector_matches, should_scan_static_language_path, should_skip_path,
         sorted_allowlist_content, sorted_capability_blocks_content, sorted_command_catalog_content,
@@ -60094,6 +60423,127 @@ covered_by = ["cargo xtask check-file-policy"]
         };
         assert_eq!(args.packet_id, "gap:ready-boundary");
         assert!(args.dry_run);
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_command_parses_readiness_args() -> Result<(), String> {
+        let command = XtaskCommand::parse([
+            "ripr-swarm".to_string(),
+            "readiness".to_string(),
+            "--swarm-plan".to_string(),
+            "target/ripr/reports/swarm-plan.json".to_string(),
+            "--actionable-gap-outcomes".to_string(),
+            "target/ripr/reports/actionable-gap-outcomes.json".to_string(),
+        ]);
+        assert_eq!(
+            command,
+            XtaskCommand::RiprSwarm(vec![
+                "readiness".to_string(),
+                "--swarm-plan".to_string(),
+                "target/ripr/reports/swarm-plan.json".to_string(),
+                "--actionable-gap-outcomes".to_string(),
+                "target/ripr/reports/actionable-gap-outcomes.json".to_string()
+            ])
+        );
+
+        let parsed = parse_ripr_swarm_args(&[
+            "readiness".to_string(),
+            "--swarm-plan".to_string(),
+            "target/ripr/reports/swarm-plan.json".to_string(),
+            "--actionable-gap-outcomes".to_string(),
+            "target/ripr/reports/actionable-gap-outcomes.json".to_string(),
+        ])?;
+        let RiprSwarmCommand::Readiness(args) = parsed else {
+            return Err("expected ripr-swarm readiness args".to_string());
+        };
+        assert_eq!(
+            args.swarm_plan_path,
+            PathBuf::from("target/ripr/reports/swarm-plan.json")
+        );
+        assert_eq!(
+            args.actionable_gap_outcomes_path,
+            PathBuf::from("target/ripr/reports/actionable-gap-outcomes.json")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_readiness_rolls_up_plan_and_outcomes() -> Result<(), String> {
+        let swarm_plan = serde_json::json!({
+            "report": "swarm-plan",
+            "source_summary": {
+                "actionable_gaps": 162,
+                "public_projection_eligible_packets": 25
+            },
+            "summary": {
+                "swarm_ready_packets": 10,
+                "blocked_packets": 15,
+                "missing_verify_command": 0,
+                "missing_receipt_command": 0,
+                "static_limitation_packets": 2,
+                "high_confidence_packets": 4
+            }
+        });
+        let outcomes = serde_json::json!({
+            "report": "actionable-gap-outcomes",
+            "summary": {
+                "outcomes_total": 25,
+                "not_attempted": 22,
+                "evidence_improved": 2,
+                "evidence_unchanged": 1,
+                "evidence_regressed": 0,
+                "resolved": 1,
+                "orphaned_receipts": 0
+            }
+        });
+        let report = ripr_swarm_readiness_from_values(
+            "target/ripr/reports/swarm-plan.json".to_string(),
+            "read".to_string(),
+            None,
+            Some(&swarm_plan),
+            "target/ripr/reports/actionable-gap-outcomes.json".to_string(),
+            "read".to_string(),
+            None,
+            Some(&outcomes),
+        );
+
+        let json = ripr_swarm_readiness_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(value["report"], "swarm-readiness");
+        assert_eq!(
+            value["summary"]["actionable_gaps_total"],
+            serde_json::Value::from(162)
+        );
+        assert_eq!(
+            value["summary"]["public_projection_eligible_packets"],
+            serde_json::Value::from(25)
+        );
+        assert_eq!(
+            value["summary"]["swarm_ready_packets"],
+            serde_json::Value::from(10)
+        );
+        assert_eq!(
+            value["summary"]["attempted_packets"],
+            serde_json::Value::from(3)
+        );
+        assert_eq!(
+            value["summary"]["improved_packets"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(
+            value["summary"]["unchanged_packets"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["summary"]["regressed_packets"],
+            serde_json::Value::from(0)
+        );
+        let markdown = ripr_swarm_readiness_markdown(&report);
+        assert!(markdown.contains("# RIPR Swarm Readiness"));
+        assert!(markdown.contains("actionable gaps total"));
+        assert!(markdown.contains("Readiness counts do not change public badge semantics."));
         Ok(())
     }
 

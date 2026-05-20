@@ -294,6 +294,13 @@ target/ripr/reports/swarm-plan.json
 target/ripr/reports/swarm-plan.md
 ```
 
+`readiness` reads the swarm plan plus actionable-gap outcomes and writes:
+
+```text
+target/ripr/reports/swarm-readiness.json
+target/ripr/reports/swarm-readiness.md
+```
+
 `attempt --dry-run` prints the bounded packet context and the commands a human
 or external agent would run. It does not edit files, run tests, call providers,
 or create receipts.
@@ -434,8 +441,11 @@ implementation surfaces are:
 
 - `cargo xtask ripr-swarm plan --top <n>` (implemented);
 - `cargo xtask ripr-swarm attempt --packet <id> --dry-run` (implemented);
+- `cargo xtask ripr-swarm readiness` (implemented);
 - `target/ripr/reports/swarm-plan.json` (implemented);
 - `target/ripr/reports/swarm-plan.md` (implemented);
+- `target/ripr/reports/swarm-readiness.json` (implemented);
+- `target/ripr/reports/swarm-readiness.md` (implemented);
 - `docs/RIPR_SWARM_HUMAN_WORKFLOW.md` (implemented);
 - existing `actionable-gaps` and `actionable-gap-outcomes` artifacts.
 
