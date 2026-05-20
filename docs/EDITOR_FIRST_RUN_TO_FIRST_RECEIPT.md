@@ -76,6 +76,9 @@ Use it to distinguish "nothing happened" states:
 | Receipt stale or mismatch | Existing receipt evidence does not match the current gap state. | Re-run verify and receipt from current artifacts. |
 | Receipt improved | Existing receipt records improved static movement. | Refresh and confirm the diagnostic state moved as expected. |
 | Receipt unchanged | Existing receipt records no static movement. | Revisit the focused test or repair target. |
+| Actionable queue ready | `actionable-gaps.json` validates and selects a safe top repair. | Copy Current Repair Packet or inspect the repo gap map. |
+| Actionable queue no-action | The current queue has no safe repair packet. | Continue review or refresh after a relevant change. |
+| Static-limit-only queue | Queue evidence is useful but blocked by named static limits. | Read the repo gap map; do not copy a repair packet. |
 | First-pr packet missing | No `start-here` packet exists for this workspace. | Run or copy first-pr regeneration guidance after verify/receipt artifacts exist. |
 | First-pr packet ready | A validated packet selects a top repairable gap or no-action state. | Inspect the packet before opening the PR. |
 | First-pr packet stale, wrong-root, malformed, or unsafe | The editor cannot trust the first-pr packet. | Regenerate from the open workspace before copying packet actions. |
@@ -106,6 +109,10 @@ For the first successful loop, prefer a Rust diagnostic with an actionable gap.
 
 Use one of the bounded editor actions:
 
+- `Copy Current Repair Packet` when the actionable-gap queue validates one top
+  repair with identity, repair route, verify command, and receipt command.
+- `Copy Repo Gap Map` when you need read-only orientation across actionable,
+  report-only, static-limit-only, preview, receipt, and no-action states.
 - `Open related test` when the path is workspace-local and same-language.
 - `Copy first repair packet` when the gap identity, repair route, verify
   command, and receipt command are all present.
@@ -238,6 +245,8 @@ For the full editor repair model, see
 [Editor gap cockpit workflow](EDITOR_GAP_COCKPIT_WORKFLOW.md). For the PR
 handoff after receipt, see
 [Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md). For
+repo-local queue selection, see
+[Editor actionable gap queue](EDITOR_ACTIONABLE_GAP_QUEUE.md). For
 command and server details, see [Editor extension](EDITOR_EXTENSION.md). For
 preview language boundaries, see
 [Language adapter preview workflow](LANGUAGE_ADAPTER_PREVIEW.md) and

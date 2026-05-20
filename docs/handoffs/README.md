@@ -55,6 +55,10 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [0.7 Release Readiness closeout](2026-05-20-0.7-release-readiness-closeout.md)
+- [0.7 Swarm Repair Loop dogfood](2026-05-20-0.7-swarm-repair-loop-dogfood.md)
+- [Editor Actionable Gap Queue closeout](2026-05-20-editor-actionable-gap-queue-closeout.md)
+- [Editor Actionable Gap Queue dogfood receipts](2026-05-20-editor-actionable-gap-queue-receipts.md)
 - [Public Badge Projection Realignment closeout](2026-05-19-public-badge-projection-realignment-closeout.md)
 - [Editor Adoption Assurance closeout](2026-05-19-editor-adoption-assurance-closeout.md)
 - [Editor Adoption Assurance dogfood receipts](2026-05-19-editor-adoption-assurance-receipts.md)
@@ -122,6 +126,10 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 - [Repo exposure warm-path reuse](2026-05-07-repo-exposure-warm-path-reuse.md)
 
 ## Template
+
+Use this minimal template for ordinary handoffs. For campaign closeouts,
+start from [`docs/templates/CLOSEOUT_TEMPLATE.md`](../templates/CLOSEOUT_TEMPLATE.md) and
+keep this ledger's "when to commit" rules intact.
 
 ```markdown
 # Handoff: <topic>

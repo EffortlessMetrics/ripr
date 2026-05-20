@@ -1,0 +1,14 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_actionable_gap_queue/malformed_packet",
+  "queue_status": "malformed",
+  "projection": "fail_closed",
+  "actionable_gaps": 0,
+  "report_only_gaps": 0,
+  "static_limit_only_gaps": 0,
+  "next_safe_action": "Regenerate actionable-gaps before trusting queue projection.",
+  "runtime_adequacy_claim": false,
+  "mutation_proof_claim": false,
+  "policy_gate_claim": false,
+  "merge_readiness_claim": false
+}

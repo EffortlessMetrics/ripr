@@ -1,0 +1,14 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_actionable_gap_queue/setup_ok",
+  "actions": [
+    {
+      "title": "Queue: copy repo gap map",
+      "command": "ripr.copyRepoGapMap"
+    },
+    {
+      "title": "Refresh Analysis - Saved Workspace Check",
+      "command": "ripr.refresh"
+    }
+  ]
+}

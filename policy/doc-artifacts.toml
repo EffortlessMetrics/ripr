@@ -1,0 +1,4 @@
+schema_version = "1.0"
+
+# Document artifact ledger for source-of-truth links.
+# Populate with concrete proposal/spec/adr/plan entries as initiative slices land.

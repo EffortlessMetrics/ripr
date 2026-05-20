@@ -52,6 +52,7 @@ Check these fields first:
 | Config and languages | Rust default state plus any enabled preview adapters. |
 | Artifact freshness | Whether saved-workspace evidence is missing, current, or stale. |
 | Receipt state | Whether repair movement has already been emitted for this gap. |
+| Actionable queue | Whether `actionable-gaps.json` has a top repair, no-action state, or fail-closed state. |
 | First-pr packet state | Whether the PR handoff packet is missing, safe, stale, or unsafe. |
 | Next safe action | The one local step that is safe now. |
 
@@ -76,6 +77,7 @@ stale, disabled, or unsafe. Safe first-use states include:
 | Missing artifacts | Run the command named by status, then refresh. |
 | Stale evidence | Save files and refresh saved-workspace analysis. |
 | Receipt missing | Verify and emit a receipt after the focused repair. |
+| Current repair queue ready | Copy the current repair packet or repo gap map. |
 | First-pr packet missing | Generate it after verify/receipt artifacts exist. |
 
 Unsafe states fail closed. Repair, verify, receipt, and packet-copy actions
@@ -105,6 +107,10 @@ gate-eligible by default.
 
 Use one bounded action:
 
+- copy the current repair packet when the queue selects one validated
+  actionable gap;
+- copy the repo gap map when you need read-only orientation before selecting
+  work;
 - open the related test when RIPR supplies a workspace-local path;
 - copy the first repair packet for a human or coding agent;
 - copy the verify command;
@@ -204,6 +210,9 @@ The editor install-to-first-pr path is advisory. It is not:
 
 - [Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md)
   covers the local setup-to-receipt loop in more detail.
+- [Editor actionable gap queue](EDITOR_ACTIONABLE_GAP_QUEUE.md) covers the
+  current repair queue, Current Repair Packet, Repo Gap Map, and no-action
+  states.
 - [Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md)
   covers the read-only handoff from receipt to first-pr packet.
 - [Editor extension](EDITOR_EXTENSION.md) covers installation, settings, and

@@ -44,6 +44,10 @@ function riprDocumentSelectorsForWorkspace(
 
 const RIPR_SETUP_ARTIFACTS: RiprSetupArtifactDefinition[] = [
   {
+    label: 'actionable gap queue',
+    relativePath: 'target/ripr/reports/actionable-gaps.json'
+  },
+  {
     label: 'first useful action report',
     relativePath: 'target/ripr/reports/first-useful-action.json'
   },
@@ -66,6 +70,7 @@ const RIPR_FIRST_PR_PACKET_ARTIFACTS = [
     markdownRelativePath: 'target/ripr/first-pr/start-here.md'
   }
 ];
+const ACTIONABLE_GAP_QUEUE_RELATIVE_PATH = 'target/ripr/reports/actionable-gaps.json';
 
 export interface RiprContextTarget {
   uri?: string;
@@ -619,6 +624,44 @@ export class RiprClientController {
     }
   }
 
+  async copyCurrentRepairPacket(): Promise<void> {
+    await this.refreshSetupStatusFiles();
+    const queue = this.setupStatus.actionableQueue;
+    if (this.status.kind === 'stale' && actionableGapQueueCanBecomeStale(queue.state)) {
+      this.runtime.showInformationMessage('ripr current repair packet requires current saved-workspace evidence; save or refresh first.');
+      return;
+    }
+    if (!actionableGapQueueAllowsCurrentRepairPacket(queue)) {
+      this.runtime.showInformationMessage(actionableGapQueueSuppressedMessage(queue));
+      return;
+    }
+    try {
+      await this.runtime.writeClipboard(currentRepairPacket(queue));
+      this.runtime.showInformationMessage('ripr current repair packet copied.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr copy current repair packet failed: ${message}`);
+      this.runtime.showWarningMessage('ripr could not copy the current repair packet. See ripr output for details.');
+    }
+  }
+
+  async copyRepoGapMap(): Promise<void> {
+    await this.refreshSetupStatusFiles();
+    const queue = this.setupStatus.actionableQueue;
+    if (!actionableGapQueueAllowsRepoGapMap(queue)) {
+      this.runtime.showInformationMessage(actionableGapQueueRepoMapSuppressedMessage(queue));
+      return;
+    }
+    try {
+      await this.runtime.writeClipboard(repoGapMap(queue, this.setupStatus.receipt, this.setupStatus.firstPr));
+      this.runtime.showInformationMessage('ripr repo gap map copied.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr copy repo gap map failed: ${message}`);
+      this.runtime.showWarningMessage('ripr could not copy the repo gap map. See ripr output for details.');
+    }
+  }
+
   async openFirstPrPacket(): Promise<void> {
     const packet = await this.firstPrPacketForAction('open');
     if (!packet) {
@@ -1063,8 +1106,52 @@ interface RiprSetupFileStatus {
 interface RiprSetupStatus {
   config: RiprSetupFileStatus;
   artifacts: RiprSetupFileStatus[];
+  actionableQueue: RiprActionableGapQueueStatus;
   receipt: RiprReceiptArtifactStatus;
   firstPr: RiprFirstPrPacketStatus;
+}
+
+export type RiprActionableGapQueueState =
+  | 'topActionableGap'
+  | 'noAction'
+  | 'reportOnly'
+  | 'staticLimitOnly'
+  | 'blocked'
+  | 'missing'
+  | 'malformed'
+  | 'unsupportedSchema'
+  | 'wrongRoot'
+  | 'stale'
+  | 'unsafePath'
+  | 'unsafeCommand'
+  | 'noWorkspace';
+
+export interface RiprActionableGapQueueStatus {
+  relativePath: string;
+  path?: string;
+  state: RiprActionableGapQueueState;
+  detail?: string;
+  repoRoot?: string;
+  actionableGaps?: number;
+  packetsEmitted?: number;
+  reportOnlyGaps?: number;
+  staticLimitOnlyGaps?: number;
+  topRepair?: string;
+  sourceFile?: string;
+  evidenceClass?: string;
+  actionability?: string;
+  canonicalGapId?: string;
+  seamId?: string;
+  findingId?: string;
+  language?: string;
+  languageStatus?: string;
+  relatedTest?: string;
+  targetTestType?: string;
+  assertionShape?: string;
+  verifyCommand?: string;
+  receiptCommandOrPath?: string;
+  confidenceBasis?: string;
+  projectionExclusionReasons?: string[];
 }
 
 export type RiprFirstPrPacketState =
@@ -1237,6 +1324,10 @@ function statusTooltip(
     );
   }
   if (context) {
+    const queueLines = actionableGapQueueStatusLines(status, context);
+    if (queueLines.length > 0) {
+      lines.push('', ...queueLines);
+    }
     const receiptLines = receiptStatusLines(status, firstAction, context);
     if (receiptLines.length > 0) {
       lines.push('', ...receiptLines);
@@ -1275,6 +1366,10 @@ function setupDiagnosisReport(
     );
   }
   const receiptLines = receiptStatusLines(status, firstAction, context);
+  const queueLines = actionableGapQueueStatusLines(status, context);
+  if (queueLines.length > 0) {
+    lines.push('', ...queueLines);
+  }
   if (receiptLines.length > 0) {
     lines.push('', ...receiptLines);
   }
@@ -1396,9 +1491,16 @@ function artifactDirectoryState(setup: RiprSetupStatus): RiprSetupState {
     return 'artifact_dir_not_applicable';
   }
   const trackedArtifactFound = setup.artifacts.some((artifact) => artifact.state === 'found')
+    || actionableGapQueueStoredInTarget(setup.actionableQueue)
     || setup.receipt.state === 'found'
     || firstPrPacketStoredInTarget(setup.firstPr);
   return trackedArtifactFound ? 'artifact_dir_present' : 'artifact_dir_missing';
+}
+
+function actionableGapQueueStoredInTarget(queue: RiprActionableGapQueueStatus): boolean {
+  return queue.state !== 'missing'
+    && queue.state !== 'noWorkspace'
+    && queue.relativePath.startsWith('target/ripr/');
 }
 
 function firstPrPacketStoredInTarget(packet: RiprFirstPrPacketStatus): boolean {
@@ -1593,6 +1695,305 @@ function firstUsefulActionLines(firstAction: FirstUsefulActionStatus): string[] 
   return lines;
 }
 
+function actionableGapQueueStatusLines(
+  status: RiprStatusState,
+  context: RiprStatusContext
+): string[] {
+  const queue = context.setupStatus.actionableQueue;
+  if (queue.state === 'noWorkspace') {
+    return [];
+  }
+  if (status.kind === 'stale' && actionableGapQueueCanBecomeStale(queue.state)) {
+    return [
+      `Actionable gap queue: stale; ${queue.relativePath} exists, but editor evidence is stale.`,
+      'Refresh saved-workspace evidence before acting on the queue.',
+      'Actionable gap queue is advisory static evidence only; it does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.'
+    ];
+  }
+  switch (queue.state) {
+    case 'missing':
+      return [
+        `Actionable gap queue: missing; ${queue.relativePath} was not found.`,
+        'Next safe queue action: run cargo xtask evidence-quality-audit or refresh saved-workspace evidence.'
+      ];
+    case 'malformed':
+      return [
+        `Actionable gap queue: malformed; ${queue.relativePath} could not be parsed as an actionable-gaps packet.`,
+        queue.detail ?? 'No parser detail was reported.',
+        'Queue repair actions are suppressed.'
+      ];
+    case 'unsupportedSchema':
+      return [
+        `Actionable gap queue: malformed; ${queue.relativePath} uses an unsupported actionable-gaps schema.`,
+        queue.detail ?? 'No schema detail was reported.',
+        'Queue repair actions are suppressed.'
+      ];
+    case 'wrongRoot':
+      return [
+        `Actionable gap queue: wrong root; queue root ${queue.repoRoot ?? 'unknown'} does not match this workspace.`,
+        `Expected workspace root: ${context.workspaceRoot ?? 'unknown'}.`,
+        'Queue repair actions are suppressed.'
+      ];
+    case 'stale':
+      return [
+        `Actionable gap queue: stale; ${queue.relativePath} reports stale upstream evidence.`,
+        queue.detail ?? 'Refresh saved-workspace evidence before acting on the queue.',
+        'Queue repair actions are suppressed.'
+      ];
+    case 'unsafePath':
+      return [
+        `Actionable gap queue: unsafe path; ${queue.relativePath} references a path outside this workspace.`,
+        queue.detail ?? 'No path detail was reported.',
+        'Queue repair actions are suppressed.'
+      ];
+    case 'unsafeCommand':
+      return [
+        `Actionable gap queue: unsafe command; ${queue.relativePath} contains a command payload outside the editor safety contract.`,
+        queue.detail ?? 'No command detail was reported.',
+        'Queue repair actions are suppressed.'
+      ];
+    case 'blocked':
+      return [
+        `Actionable gap queue: blocked; ${queue.relativePath} has bounded run limitations or producer exclusion reasons.`,
+        queue.detail ?? 'No limitation detail was reported.',
+        'Queue repair actions are suppressed.'
+      ];
+    case 'topActionableGap':
+      return actionableGapQueueTopLines(queue);
+    case 'reportOnly':
+      return [
+        `Actionable gap queue: report-only; ${queue.relativePath} has no repairable queue item.`,
+        `Report-only gaps: ${queue.reportOnlyGaps ?? 0}. Static-limit-only gaps: ${queue.staticLimitOnlyGaps ?? 0}.`,
+        'No local queue repair action is projected from report-only evidence.'
+      ];
+    case 'staticLimitOnly':
+      return [
+        `Actionable gap queue: static-limit-only; ${queue.relativePath} has no repairable queue item.`,
+        `Static-limit-only gaps: ${queue.staticLimitOnlyGaps ?? 0}.`,
+        'Static-limit-only evidence is advisory and must not become a repair packet without a typed repair route.'
+      ];
+    case 'noAction':
+      return [
+        `Actionable gap queue: no actionable gap; ${queue.relativePath} reports zero safe repair packets.`,
+        'No local queue repair action is projected from this packet.',
+        'No-action queue state does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.'
+      ];
+  }
+}
+
+function actionableGapQueueTopLines(queue: RiprActionableGapQueueStatus): string[] {
+  const lines = [
+    `Actionable gap queue: top repair ready; ${queue.relativePath} is advisory.`,
+    `Actionable gaps: ${queue.actionableGaps ?? 1}. Report-only gaps: ${queue.reportOnlyGaps ?? 0}. Static-limit-only gaps: ${queue.staticLimitOnlyGaps ?? 0}.`
+  ];
+  if (queue.topRepair) {
+    lines.push(`Top repair: ${queue.topRepair}`);
+  }
+  const identity = queue.canonicalGapId ?? queue.seamId ?? queue.findingId;
+  if (identity) {
+    lines.push(`Gap identity: ${identity}`);
+  }
+  if (queue.language) {
+    lines.push(`Language: ${queue.language}${queue.languageStatus ? ` (${queue.languageStatus})` : ''}`);
+  }
+  if (queue.relatedTest) {
+    lines.push(`Related test: ${queue.relatedTest}`);
+  }
+  if (queue.targetTestType) {
+    lines.push(`Target test type: ${queue.targetTestType}`);
+  }
+  if (queue.assertionShape) {
+    lines.push(`Target assertion: ${queue.assertionShape}`);
+  }
+  if (queue.verifyCommand) {
+    lines.push(`Verify: ${queue.verifyCommand}`);
+  }
+  if (queue.receiptCommandOrPath) {
+    lines.push(`Receipt: ${queue.receiptCommandOrPath}`);
+  }
+  if (queue.confidenceBasis) {
+    lines.push(`Confidence basis: ${queue.confidenceBasis}`);
+  }
+  lines.push('Next safe queue action: inspect the related test or matching diagnostic; Copy Current Repair Packet is a later queue action.');
+  lines.push('Actionable gap queue is advisory static evidence only; it does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status.');
+  return lines;
+}
+
+function actionableGapQueueAllowsCurrentRepairPacket(queue: RiprActionableGapQueueStatus): boolean {
+  return queue.state === 'topActionableGap'
+    && Boolean(queue.canonicalGapId)
+    && Boolean(queue.topRepair)
+    && Boolean(queue.relatedTest)
+    && Boolean(queue.verifyCommand)
+    && Boolean(queue.receiptCommandOrPath)
+    && queue.languageStatus !== 'disabled'
+    && queue.languageStatus !== 'unavailable'
+    && queue.languageStatus !== 'unsupported';
+}
+
+function actionableGapQueueSuppressedMessage(queue: RiprActionableGapQueueStatus): string {
+  switch (queue.state) {
+    case 'missing':
+      return 'ripr actionable gap queue is missing; run cargo xtask evidence-quality-audit or refresh saved-workspace evidence.';
+    case 'malformed':
+      return 'ripr actionable gap queue is malformed; repair packet actions are suppressed.';
+    case 'unsupportedSchema':
+      return 'ripr actionable gap queue schema is unsupported; repair packet actions are suppressed.';
+    case 'wrongRoot':
+      return 'ripr actionable gap queue belongs to another workspace; repair packet actions are suppressed.';
+    case 'stale':
+      return 'ripr actionable gap queue is stale; refresh saved-workspace evidence before copying repair packets.';
+    case 'unsafePath':
+      return 'ripr actionable gap queue contains an unsafe path; repair packet actions are suppressed.';
+    case 'unsafeCommand':
+      return 'ripr actionable gap queue contains an unsafe command; repair packet actions are suppressed.';
+    case 'blocked':
+      return 'ripr actionable gap queue is blocked by missing typed fields or producer limitations; repair packet actions are suppressed.';
+    case 'reportOnly':
+      return 'ripr actionable gap queue is report-only; no current repair packet is available.';
+    case 'staticLimitOnly':
+      return 'ripr actionable gap queue is static-limit-only; no current repair packet is available.';
+    case 'noAction':
+      return 'ripr actionable gap queue has no actionable gap; no current repair packet is available.';
+    case 'noWorkspace':
+      return 'Open a workspace before copying a ripr current repair packet.';
+    case 'topActionableGap':
+      return 'ripr actionable gap queue is missing required repair packet fields; repair packet actions are suppressed.';
+  }
+}
+
+function currentRepairPacket(queue: RiprActionableGapQueueStatus): string {
+  const lines = [
+    'RIPR current repair packet',
+    '',
+    'Task',
+    `Repair this one canonical gap: ${queue.canonicalGapId ?? 'unknown'}.`,
+    '',
+    'Context'
+  ];
+  pushOptionalLine(lines, 'Source', queue.sourceFile);
+  pushOptionalLine(lines, 'Language', queue.languageStatus ? `${queue.language ?? 'unknown'} (${queue.languageStatus})` : queue.language);
+  pushOptionalLine(lines, 'Evidence class', queue.evidenceClass);
+  pushOptionalLine(lines, 'Actionability', queue.actionability);
+  pushOptionalLine(lines, 'Confidence basis', queue.confidenceBasis);
+  lines.push(`Related test: ${queue.relatedTest ?? 'not provided by typed queue artifact'}`);
+  lines.push('');
+  lines.push('Repair');
+  pushOptionalLine(lines, 'Repair kind', queue.topRepair);
+  pushOptionalLine(lines, 'Target test type', queue.targetTestType);
+  pushOptionalLine(lines, 'Target assertion or output proof', queue.assertionShape);
+  lines.push('');
+  lines.push('Verification');
+  lines.push(`Run: ${queue.verifyCommand}`);
+  lines.push('');
+  lines.push('Receipt');
+  lines.push(`Record: ${queue.receiptCommandOrPath}`);
+  lines.push('');
+  lines.push('Stop conditions');
+  lines.push('- Stop if the queue artifact is stale, wrong-root, malformed, or missing this canonical gap id.');
+  lines.push('- Stop if the related test or target assertion no longer matches the changed behavior.');
+  lines.push('- Stop if the verify command cannot be run safely in the current workspace.');
+  lines.push('');
+  lines.push('Do not do');
+  lines.push('- Do not broaden scope beyond this one gap.');
+  lines.push('- Do not edit production code unless the focused test exposes a real issue.');
+  lines.push('- Do not generate tests automatically, call providers, run mutation execution, or claim runtime adequacy.');
+  lines.push('- Do not treat this advisory static packet as a gate decision, merge approval, or policy eligibility claim.');
+  return lines.join('\n');
+}
+
+function actionableGapQueueAllowsRepoGapMap(queue: RiprActionableGapQueueStatus): boolean {
+  return queue.state === 'topActionableGap'
+    || queue.state === 'noAction'
+    || queue.state === 'reportOnly'
+    || queue.state === 'staticLimitOnly'
+    || queue.state === 'blocked';
+}
+
+function actionableGapQueueRepoMapSuppressedMessage(queue: RiprActionableGapQueueStatus): string {
+  switch (queue.state) {
+    case 'missing':
+      return 'ripr actionable gap queue is missing; run cargo xtask evidence-quality-audit before copying a repo gap map.';
+    case 'malformed':
+      return 'ripr actionable gap queue is malformed; repo gap map is suppressed.';
+    case 'unsupportedSchema':
+      return 'ripr actionable gap queue schema is unsupported; repo gap map is suppressed.';
+    case 'wrongRoot':
+      return 'ripr actionable gap queue belongs to another workspace; repo gap map is suppressed.';
+    case 'unsafePath':
+      return 'ripr actionable gap queue contains an unsafe path; repo gap map is suppressed.';
+    case 'unsafeCommand':
+      return 'ripr actionable gap queue contains an unsafe command; repo gap map is suppressed.';
+    case 'noWorkspace':
+      return 'Open a workspace before copying a ripr repo gap map.';
+    case 'stale':
+      return 'ripr actionable gap queue is stale; refresh saved-workspace evidence before copying a repo gap map.';
+    case 'topActionableGap':
+    case 'noAction':
+    case 'reportOnly':
+    case 'staticLimitOnly':
+    case 'blocked':
+      return 'ripr repo gap map is unavailable for the current queue state.';
+  }
+}
+
+function repoGapMap(
+  queue: RiprActionableGapQueueStatus,
+  receipt: RiprReceiptArtifactStatus,
+  firstPr: RiprFirstPrPacketStatus
+): string {
+  const lines = [
+    'RIPR repo gap map',
+    '',
+    'Scope',
+    `Artifact: ${queue.relativePath}`,
+    `Queue state: ${queue.state}`,
+    `Actionable gaps: ${queue.actionableGaps ?? 0}`,
+    `Report-only gaps: ${queue.reportOnlyGaps ?? 0}`,
+    `Static-limit-only gaps: ${queue.staticLimitOnlyGaps ?? 0}`,
+    '',
+    'Top queue item'
+  ];
+  if (queue.state === 'topActionableGap') {
+    pushOptionalLine(lines, 'Canonical gap id', queue.canonicalGapId);
+    pushOptionalLine(lines, 'Repair kind', queue.topRepair);
+    pushOptionalLine(lines, 'Language', queue.languageStatus ? `${queue.language ?? 'unknown'} (${queue.languageStatus})` : queue.language);
+    pushOptionalLine(lines, 'Related test', queue.relatedTest);
+    pushOptionalLine(lines, 'Verify', queue.verifyCommand);
+    pushOptionalLine(lines, 'Receipt command or path', queue.receiptCommandOrPath);
+  } else {
+    lines.push(`No top repair packet is available in state ${queue.state}.`);
+    if (queue.detail) {
+      lines.push(`Detail: ${queue.detail}`);
+    }
+  }
+  lines.push('');
+  lines.push('Receipt state');
+  lines.push(`State: ${receipt.state}`);
+  pushOptionalLine(lines, 'Movement', receipt.movement);
+  pushOptionalLine(lines, 'Receipt seam', receipt.seamId);
+  lines.push('');
+  lines.push('First PR packet state');
+  lines.push(`State: ${firstPr.state}`);
+  pushOptionalLine(lines, 'First PR gap id', firstPr.canonicalGapId ?? firstPr.gapId);
+  lines.push('');
+  lines.push('Safe next commands');
+  lines.push('- Refresh saved-workspace evidence before acting on stale queue state.');
+  lines.push('- Run cargo xtask evidence-quality-audit to regenerate actionable-gaps artifacts.');
+  lines.push('- Use ripr: Copy Current Repair Packet only for a validated top actionable gap.');
+  lines.push('');
+  lines.push('Non-claims');
+  lines.push('- This map is read-only orientation.');
+  lines.push('- It is not a gate decision, merge approval, runtime proof, mutation proof, coverage claim, or policy eligibility claim.');
+  return lines.join('\n');
+}
+
+function pushOptionalLine(lines: string[], label: string, value: string | undefined): void {
+  if (value) {
+    lines.push(`${label}: ${value}`);
+  }
+}
+
 function firstPrPacketStatusLines(
   status: RiprStatusState,
   context: RiprStatusContext
@@ -1673,6 +2074,14 @@ function firstPrPacketCanBecomeStale(state: RiprFirstPrPacketState): boolean {
   return state === 'found'
     || state === 'topRepairableGap'
     || state === 'noAction'
+    || state === 'blocked';
+}
+
+function actionableGapQueueCanBecomeStale(state: RiprActionableGapQueueState): boolean {
+  return state === 'topActionableGap'
+    || state === 'noAction'
+    || state === 'reportOnly'
+    || state === 'staticLimitOnly'
     || state === 'blocked';
 }
 
@@ -2292,9 +2701,10 @@ async function readSetupStatusFiles(
       'artifact missing; run or refresh saved-workspace evidence when needed'
     )
   ));
+  const actionableQueue = await readActionableGapQueueStatus(workspaceRoot, readFile);
   const receipt = await readReceiptStatus(workspaceRoot, readFile);
   const firstPr = await readFirstPrPacketStatus(workspaceRoot, readFile);
-  return { config, artifacts, receipt, firstPr };
+  return { config, artifacts, actionableQueue, receipt, firstPr };
 }
 
 async function readSetupFileStatus(
@@ -2329,6 +2739,11 @@ function setupStatusWithoutWorkspace(): RiprSetupStatus {
   return {
     config: setupNoWorkspaceFile('ripr config', RIPR_CONFIG_RELATIVE_PATH),
     artifacts: RIPR_SETUP_ARTIFACTS.map((artifact) => setupNoWorkspaceFile(artifact.label, artifact.relativePath)),
+    actionableQueue: {
+      relativePath: ACTIONABLE_GAP_QUEUE_RELATIVE_PATH,
+      state: 'noWorkspace',
+      detail: 'open a workspace before matching actionable gap queue artifacts'
+    },
     receipt: {
       relativePath: 'target/ripr/agent/agent-receipt.json',
       state: 'noWorkspace',
@@ -2354,6 +2769,258 @@ function setupNoWorkspaceFile(label: string, relativePath: string): RiprSetupFil
 
 function setupFilePath(workspaceRoot: string, relativePath: string): string {
   return path.join(workspaceRoot, ...relativePath.split('/'));
+}
+
+export async function readActionableGapQueueStatus(
+  workspaceRoot: string,
+  readFile: RiprClientRuntime['readFile']
+): Promise<RiprActionableGapQueueStatus> {
+  const filePath = setupFilePath(workspaceRoot, ACTIONABLE_GAP_QUEUE_RELATIVE_PATH);
+  let raw: string | undefined;
+  try {
+    raw = await readFile(filePath);
+  } catch (error) {
+    return {
+      relativePath: ACTIONABLE_GAP_QUEUE_RELATIVE_PATH,
+      path: filePath,
+      state: 'malformed',
+      detail: error instanceof Error ? error.message : String(error)
+    };
+  }
+  if (raw === undefined) {
+    return {
+      relativePath: ACTIONABLE_GAP_QUEUE_RELATIVE_PATH,
+      path: filePath,
+      state: 'missing',
+      detail: 'actionable-gaps queue missing; run cargo xtask evidence-quality-audit'
+    };
+  }
+  return validateActionableGapQueue(raw, workspaceRoot, filePath);
+}
+
+function validateActionableGapQueue(
+  raw: string,
+  workspaceRoot: string,
+  filePath: string
+): RiprActionableGapQueueStatus {
+  const base = {
+    relativePath: ACTIONABLE_GAP_QUEUE_RELATIVE_PATH,
+    path: filePath
+  };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    return {
+      ...base,
+      state: 'malformed',
+      detail: error instanceof Error ? error.message : String(error)
+    };
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return {
+      ...base,
+      state: 'malformed',
+      detail: 'actionable-gaps JSON root is not an object'
+    };
+  }
+  const queue = parsed as Record<string, unknown>;
+  if (
+    stringField(queue, 'schema_version') !== '0.1' ||
+    stringField(queue, 'tool') !== 'ripr' ||
+    stringField(queue, 'report') !== 'actionable-gaps'
+  ) {
+    return {
+      ...base,
+      state: 'unsupportedSchema',
+      detail: 'expected ripr actionable-gaps report schema_version 0.1'
+    };
+  }
+  const repoRoot = stringField(queue, 'root');
+  if (!rootMatchesWorkspace(repoRoot, workspaceRoot)) {
+    return {
+      ...base,
+      state: 'wrongRoot',
+      repoRoot,
+      detail: 'actionable-gaps root does not match the active workspace'
+    };
+  }
+  if (stringField(queue, 'status') === 'stale' || staleFreshness(queue)) {
+    return {
+      ...base,
+      state: 'stale',
+      detail: 'actionable-gaps report freshness is stale'
+    };
+  }
+  const runLimitations = queue['run_limitations'];
+  if (Array.isArray(runLimitations) && runLimitations.length > 0) {
+    return {
+      ...base,
+      state: 'blocked',
+      detail: 'actionable-gaps report carries run_limitations, so counts are not complete repo truth'
+    };
+  }
+  const packets = queue['packets'];
+  if (!Array.isArray(packets)) {
+    return {
+      ...base,
+      state: 'malformed',
+      detail: 'actionable-gaps report must contain packets[]'
+    };
+  }
+  const summary = objectField(queue, 'summary');
+  const actionableGaps = summary ? numberFieldValue(summary, 'actionable_gaps') : undefined;
+  const packetsEmitted = summary ? numberFieldValue(summary, 'packets_emitted') : undefined;
+  if (packets.length === 0) {
+    if (actionableGaps === 0 && packetsEmitted === 0) {
+      return {
+        ...base,
+        state: 'noAction',
+        actionableGaps,
+        packetsEmitted
+      };
+    }
+    return {
+      ...base,
+      state: 'malformed',
+      detail: 'empty actionable-gaps report must carry completed zero-count summary'
+    };
+  }
+
+  let reportOnlyGaps = 0;
+  let staticLimitOnlyGaps = 0;
+  let noActionGaps = 0;
+  let topActionable: Record<string, unknown> | undefined;
+  for (const packet of packets) {
+    if (!packet || typeof packet !== 'object' || Array.isArray(packet)) {
+      return {
+        ...base,
+        state: 'malformed',
+        detail: 'actionable-gaps packets must be objects'
+      };
+    }
+    const packetObject = packet as Record<string, unknown>;
+    const packetPaths = actionableGapQueuePacketPaths(packetObject);
+    if (packetPaths.some((packetPath) => !firstPrPathIsWorkspaceLocal(packetPath))) {
+      return {
+        ...base,
+        state: 'unsafePath',
+        detail: 'actionable-gaps packet path is outside the workspace'
+      };
+    }
+    for (const command of actionableGapQueuePacketCommands(packetObject)) {
+      if (!actionableGapQueueCommandIsSafe(command)) {
+        return {
+          ...base,
+          state: 'unsafeCommand',
+          detail: 'actionable-gaps packet command payload is not safe for editor projection'
+        };
+      }
+    }
+    if (stringField(packetObject, 'gap_state') === 'actionable') {
+      topActionable ??= packetObject;
+    } else if (packetIsStaticLimitOnly(packetObject)) {
+      staticLimitOnlyGaps += 1;
+    } else if (packetIsReportOnly(packetObject)) {
+      reportOnlyGaps += 1;
+    } else if (packetIsNoAction(packetObject)) {
+      noActionGaps += 1;
+    }
+  }
+
+  if (!topActionable) {
+    if (staticLimitOnlyGaps > 0) {
+      return {
+        ...base,
+        state: 'staticLimitOnly',
+        actionableGaps,
+        packetsEmitted,
+        reportOnlyGaps,
+        staticLimitOnlyGaps
+      };
+    }
+    if (reportOnlyGaps > 0) {
+      return {
+        ...base,
+        state: 'reportOnly',
+        actionableGaps,
+        packetsEmitted,
+        reportOnlyGaps,
+        staticLimitOnlyGaps
+      };
+    }
+    if (noActionGaps === packets.length) {
+      return {
+        ...base,
+        state: 'noAction',
+        actionableGaps,
+        packetsEmitted,
+        reportOnlyGaps,
+        staticLimitOnlyGaps
+      };
+    }
+    return {
+      ...base,
+      state: 'blocked',
+      detail: 'actionable-gaps report has no validated actionable packet'
+    };
+  }
+
+  const projectionReasons = stringArrayField(topActionable, 'projection_exclusion_reasons');
+  if (
+    stringField(topActionable, 'repair_route_source') !== 'canonical_item.repair_route' ||
+    stringField(topActionable, 'verify_command_source') !== 'canonical_item.verify_command' ||
+    topActionable['public_projection_eligible'] !== true ||
+    projectionReasons.length > 0
+  ) {
+    return {
+      ...base,
+      state: 'blocked',
+      detail: projectionReasons.length > 0
+        ? `producer excluded packet from projection: ${projectionReasons.join(', ')}`
+        : 'producer did not mark the actionable packet safe for public projection'
+    };
+  }
+  const verifyCommand = stringField(topActionable, 'verify_command');
+  const receiptCommandOrPath = stringField(topActionable, 'receipt_command_or_path');
+  const canonicalGapId = stringField(topActionable, 'canonical_gap_id');
+  if (!canonicalGapId) {
+    return {
+      ...base,
+      state: 'blocked',
+      detail: 'actionable packet is missing canonical_gap_id'
+    };
+  }
+  if (!verifyCommand || !receiptCommandOrPath) {
+    return {
+      ...base,
+      state: 'malformed',
+      detail: 'actionable packet is missing verify or receipt payload'
+    };
+  }
+  return {
+    ...base,
+    state: 'topActionableGap',
+    actionableGaps,
+    packetsEmitted,
+    reportOnlyGaps,
+    staticLimitOnlyGaps,
+    topRepair: stringField(topActionable, 'repair_kind'),
+    sourceFile: stringField(topActionable, 'source_file'),
+    evidenceClass: stringField(topActionable, 'evidence_class'),
+    actionability: stringField(topActionable, 'actionability'),
+    canonicalGapId,
+    seamId: stringField(topActionable, 'seam_id'),
+    findingId: stringField(topActionable, 'finding_id'),
+    language: actionableGapPacketLanguage(topActionable),
+    languageStatus: actionableGapPacketLanguageStatus(topActionable),
+    relatedTest: actionableGapPacketRelatedTest(topActionable),
+    targetTestType: stringField(topActionable, 'target_test_type'),
+    assertionShape: stringField(topActionable, 'assertion_shape'),
+    verifyCommand,
+    receiptCommandOrPath,
+    confidenceBasis: stringField(topActionable, 'confidence_basis')
+  };
 }
 
 export async function readFirstPrPacketStatus(
@@ -2661,6 +3328,140 @@ function firstPrArtifactPaths(packet: Record<string, unknown>): string[] {
   }
   return paths;
 }
+
+function staleFreshness(value: Record<string, unknown>): boolean {
+  const freshness = stringField(value, 'freshness');
+  if (freshness === 'stale') {
+    return true;
+  }
+  const editorContext = objectField(value, 'editor_context');
+  return editorContext ? stringField(editorContext, 'freshness') === 'stale' : false;
+}
+
+function actionableGapQueuePacketPaths(packet: Record<string, unknown>): string[] {
+  const observer = objectField(packet, 'related_test_or_observer');
+  const anchor = objectField(packet, 'primary_anchor');
+  const receiptPath = actionableGapQueueReceiptPath(packet);
+  return [
+    stringField(packet, 'source_file'),
+    stringField(packet, 'target_test'),
+    stringField(packet, 'target_file'),
+    anchor ? stringField(anchor, 'file') : undefined,
+    observer ? stringField(observer, 'file') : undefined,
+    observer ? stringField(observer, 'path') : undefined,
+    observer ? stringField(observer, 'related_test') : undefined,
+    observer ? stringField(observer, 'test') : undefined,
+    observer ? stringField(observer, 'target_file') : undefined,
+    receiptPath
+  ].filter((value): value is string => value !== undefined);
+}
+
+function actionableGapQueuePacketCommands(packet: Record<string, unknown>): string[] {
+  const commands = [stringField(packet, 'verify_command')];
+  const receipt = stringField(packet, 'receipt_command_or_path');
+  if (receipt && looksLikeActionableQueueCommand(receipt)) {
+    commands.push(receipt);
+  }
+  return commands.filter((value): value is string => value !== undefined);
+}
+
+function actionableGapQueueReceiptPath(packet: Record<string, unknown>): string | undefined {
+  const receipt = stringField(packet, 'receipt_command_or_path');
+  return receipt && !looksLikeActionableQueueCommand(receipt) ? receipt : undefined;
+}
+
+function looksLikeActionableQueueCommand(value: string): boolean {
+  const normalized = value.trim();
+  return normalized.startsWith('cargo ') || normalized.startsWith('ripr ');
+}
+
+function packetIsStaticLimitOnly(packet: Record<string, unknown>): boolean {
+  return stringField(packet, 'gap_state') === 'static_limit_only'
+    || stringField(packet, 'actionability') === 'static_limit_only';
+}
+
+function packetIsReportOnly(packet: Record<string, unknown>): boolean {
+  return stringField(packet, 'gap_state') === 'report_only'
+    || stringField(packet, 'actionability') === 'report_only';
+}
+
+function packetIsNoAction(packet: Record<string, unknown>): boolean {
+  const state = stringField(packet, 'gap_state');
+  const actionability = stringField(packet, 'actionability');
+  return actionability === 'no_action'
+    || state === 'already_improved'
+    || state === 'already_observed'
+    || state === 'baseline_only'
+    || state === 'internal'
+    || state === 'internal_only'
+    || state === 'no_actionable_seam'
+    || state === 'not_policy_targeted'
+    || state === 'resolved'
+    || state === 'suppressed'
+    || state === 'acknowledged'
+    || state === 'waived';
+}
+
+function actionableGapPacketLanguage(packet: Record<string, unknown>): string | undefined {
+  const direct = stringField(packet, 'language');
+  if (direct) {
+    return direct;
+  }
+  return firstRawFindingString(packet, 'language');
+}
+
+function actionableGapPacketLanguageStatus(packet: Record<string, unknown>): string | undefined {
+  const direct = stringField(packet, 'language_status');
+  if (direct) {
+    return direct;
+  }
+  return firstRawFindingString(packet, 'language_status');
+}
+
+function actionableGapPacketRelatedTest(packet: Record<string, unknown>): string | undefined {
+  const observer = objectField(packet, 'related_test_or_observer');
+  return stringField(packet, 'target_test')
+    ?? (observer ? stringField(observer, 'related_test') : undefined)
+    ?? (observer ? stringField(observer, 'test') : undefined)
+    ?? (observer ? stringField(observer, 'file') : undefined);
+}
+
+function firstRawFindingString(packet: Record<string, unknown>, field: string): string | undefined {
+  const findings = packet['raw_findings'];
+  if (!Array.isArray(findings)) {
+    return undefined;
+  }
+  for (const finding of findings) {
+    if (finding && typeof finding === 'object' && !Array.isArray(finding)) {
+      const value = stringField(finding as Record<string, unknown>, field);
+      if (value) {
+        return value;
+      }
+    }
+  }
+  return undefined;
+}
+
+function actionableGapQueueCommandIsSafe(command: string): boolean {
+  const normalized = command.trim().replace(/\s+/g, ' ');
+  return normalized !== ''
+    && !hasUnsafeShellMetacharacter(normalized)
+    && ACTIONABLE_QUEUE_SAFE_COMMAND_PREFIXES.some((prefix) =>
+      normalized === prefix || normalized.startsWith(`${prefix} `)
+    );
+}
+
+const ACTIONABLE_QUEUE_SAFE_COMMAND_PREFIXES = [
+  'cargo xtask evidence-quality-audit',
+  'cargo xtask evidence-quality-scorecard',
+  'cargo xtask fixtures',
+  'cargo xtask goldens check',
+  'ripr agent verify',
+  'ripr agent receipt',
+  'ripr outcome',
+  'ripr first-pr',
+  'ripr start-here'
+];
 
 async function readReceiptStatus(
   workspaceRoot: string,
@@ -3134,6 +3935,13 @@ function objectField(value: Record<string, unknown>, field: string): Record<stri
 function stringField(value: Record<string, unknown>, field: string): string | undefined {
   const child = value[field];
   return typeof child === 'string' && child.trim() !== '' ? child : undefined;
+}
+
+function stringArrayField(value: Record<string, unknown>, field: string): string[] {
+  const child = value[field];
+  return Array.isArray(child)
+    ? child.filter((item): item is string => typeof item === 'string' && item.trim() !== '')
+    : [];
 }
 
 function boundedStringField(

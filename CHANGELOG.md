@@ -9,11 +9,26 @@ are scoped or reviewed.
 
 ## Unreleased
 
-- Added `RIPR-SPEC-0057` for the planned `ripr-swarm` repair loop. The spec
-  defines swarm work as bounded execution over actionable canonical gap
-  packets, not raw findings, and requires verify commands, receipt commands,
-  must-not-change boundaries, typed attempt states, and outcome joins before a
-  repair attempt can claim movement.
+- Added a 0.7 swarm repair-loop dogfood receipt that records live
+  `lane1-evidence-audit` fail-closed timeout behavior, fixture-backed
+  `ripr-swarm plan` ranking, ready and static-limit dry-run attempt packets,
+  verify/receipt command separation, and actionable-gap outcome joins for
+  not-attempted, improved, unchanged, and orphaned receipt states. The receipt
+  also records that current live-repo packet repair proof remains a
+  release-readiness decision because the full live audit timed out before
+  producing actionable packets.
+- Added a 0.7 release-readiness closeout that keeps release and publishing
+  authority in source `ripr`, accepts the current `ripr-swarm` live audit
+  timeout as a bounded 0.7 limitation rather than a source-promotion blocker,
+  and records the source promotion, version bump, release proof, and publish
+  boundaries for the actionable static repair-loop release.
+- Added `cargo xtask ripr-swarm plan --top <n>` to rank existing
+  `actionable-gaps.json` packets into swarm-ready, blocked, and
+  missing-verify-or-receipt buckets. The report writes
+  `target/ripr/reports/swarm-plan.{json,md}`, blocks static limitations and
+  missing receipt/verify context, and remains dry-run/report-only with no file
+  edits, provider calls, generated tests, mutation execution, receipts, gates,
+  badges, PR/CI rendering, or editor/LSP behavior changes.
 - `cargo xtask evidence-health` now bounds its preflight `cargo build -p ripr`
   phase with the evidence-health timeout and writes diagnostic warning reports
   with `phase = evidence_health_build` if that phase times out or fails. This
@@ -40,6 +55,16 @@ are scoped or reviewed.
   lower-is-better. This is internal badge-readiness evidence only; it does not
   change public badges, PR/CI rendering, gate policy, providers, generated
   tests, source edits, or mutation execution.
+- Added `RIPR-PROP-0014` to define the `ripr-swarm` campaign rationale:
+  consume actionable canonical packets, rank bounded repair attempts, require
+  receipts and evidence movement, reject raw-finding queues and arbitrary agent
+  repairs, and keep providers, generated tests, mutation execution, public
+  badges, PR/CI rendering, and editor/LSP changes out of scope.
+- Added `RIPR-SPEC-0057` for the planned `ripr-swarm` repair loop. The spec
+  defines swarm work as bounded execution over actionable canonical gap
+  packets, not raw findings, and requires verify commands, receipt commands,
+  must-not-change boundaries, typed attempt states, and outcome joins before a
+  repair attempt can claim movement.
 - Lane 1 evidence audit generation now treats a nominally successful
   repo-exposure subprocess with an empty or malformed captured JSON file as a
   bounded `lane1_repo_exposure_incomplete` limitation. The audit removes the

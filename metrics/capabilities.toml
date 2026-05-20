@@ -328,31 +328,44 @@ metric = "diagnostics carry finding/probe metadata, explicit GapRecord repair pa
 [[capability]]
 id = "editor_actionable_gap_queue"
 name = "Editor actionable gap queue"
-status = "planned"
+status = "alpha"
 spec = "RIPR-SPEC-0055"
 evidence = [
   "docs/proposals/RIPR-PROP-0013-editor-actionable-gap-queue.md defines why Lane 3 should project the existing actionable-gaps artifact as a bounded local repair queue",
   "docs/specs/RIPR-SPEC-0055-editor-actionable-gap-queue.md defines consumed artifacts, required typed fields, fail-closed matrix, Show Status queue shape, Copy Current Repair Packet, Copy Repo Gap Map, fixture corpus, VS Code smoke expectations, dogfood proof, and non-claims",
   "docs/adr/0017-editor-gap-queue-is-read-only.md records that Lane 3 may validate and project the queue but must not produce artifacts, re-rank gaps, decide policy, edit source, generate tests, call providers, run mutation, or claim runtime adequacy",
-  "plans/editor-actionable-gap-queue/implementation-plan.md sequences the docs, validation, status, packet, repo-map, fixture, VS Code smoke, docs, dogfood, and closeout PRs"
+  "plans/editor-actionable-gap-queue/implementation-plan.md sequences the docs, validation, status, packet, repo-map, fixture, VS Code smoke, docs, dogfood, and closeout PRs",
+  "fixtures/editor_actionable_gap_queue pins top-gap, no-action, report-only, static-limit-only, stale, wrong-root, malformed, receipt-improved, and receipt-unchanged queue states",
+  "docs/EDITOR_ACTIONABLE_GAP_QUEUE.md documents the user workflow, Current Repair Packet, Repo Gap Map, recovery states, agent handoff, and non-claims",
+  "docs/handoffs/2026-05-20-editor-actionable-gap-queue-receipts.md records actionable, no-action, fail-closed, receipt, and preview-boundary dogfood proof",
+  "docs/handoffs/2026-05-20-editor-actionable-gap-queue-closeout.md records the closed PR chain, validation, non-claims, and future-work boundary"
 ]
-fixtures = []
-next = "test/lsp-post-adoption-editor-contract"
+fixtures = [
+  "fixtures/editor_actionable_gap_queue"
+]
+next = "maintenance"
 metric = "editor_actionable_gap_queue_available, editor_actionable_gap_queue_top_gap_ready, editor_actionable_gap_queue_no_action, editor_actionable_gap_queue_report_only, editor_actionable_gap_queue_static_limit_only, editor_actionable_gap_queue_stale, editor_actionable_gap_queue_wrong_root, editor_actionable_gap_queue_malformed, editor_actionable_gap_queue_repair_packet_available, editor_actionable_gap_queue_repo_map_available, editor_actionable_gap_queue_actions_suppressed_unsafe_state, editor_actionable_gap_queue_receipt_improved, editor_actionable_gap_queue_receipt_unchanged"
 
 [[capability]]
 id = "ripr_swarm_repair_loop"
 name = "RIPR swarm repair loop"
-status = "planned"
+status = "alpha"
 spec = "RIPR-SPEC-0057"
 evidence = [
+  "docs/proposals/RIPR-PROP-0014-ripr-swarm-repair-loop.md explains why swarm work starts as bounded repair coordination rather than raw-finding queues, arbitrary test generation, provider integration, or badge changes",
   "docs/specs/RIPR-SPEC-0057-ripr-swarm-repair-loop.md defines ripr-swarm as a bounded repair runner over actionable canonical gap packets rather than raw findings",
-  "the spec requires verify commands, receipt commands, must-not-change boundaries, typed state transitions, and outcome joins before any repair attempt can claim movement",
-  "the spec keeps provider calls, mutation execution, generated tests, production-code edits by default, PR/CI rendering, LSP/editor changes, gate policy, and public badge changes out of scope"
+  "cargo xtask ripr-swarm plan --top <n> writes target/ripr/reports/swarm-plan.{json,md} from actionable-gaps.json with top ready packets, blocked packets, missing verify/receipt buckets, static-limitation blocking, high-confidence counts, and must-not-infer guardrails",
+  "cargo xtask ripr-swarm attempt --packet <id> --dry-run prints bounded packet context with repair route, target test/assertion shape, verify command, receipt command, expected evidence movement, and must-not-change boundaries without editing files or running commands",
+  "docs/RIPR_SWARM_HUMAN_WORKFLOW.md documents the operator loop from packet selection through dry-run, bounded repair, verify command, receipt command, outcome report, and stop conditions",
+  "docs/handoffs/2026-05-20-0.7-swarm-repair-loop-dogfood.md records release-loop dogfood: live audit timeout fail-closed behavior, fixture-backed packet planning, ready and static-limit dry-run attempts, verify/receipt command separation, and outcome joins for not-attempted, improved, unchanged, and orphaned receipt states",
+  "docs/handoffs/2026-05-20-0.7-release-readiness-closeout.md accepts the live swarm-repo audit timeout as a bounded 0.7 limitation, keeps the loop advisory/dry-run-first, and authorizes source promotion before source release proof",
+  "fixtures/swarm-plan-packet-corpus pins ready boundary/error/output packets plus static-limitation, missing verify, missing receipt, and missing must-not-change blocking cases",
+  "fixtures/actionable-gap-outcomes-corpus pins not-attempted, receipt-present, improved, unchanged, regressed, resolved, attempted-without-receipt, and orphaned-receipt outcome joins",
+  "the implemented plan command is report-only and does not edit files, run tests, call providers, generate tests, create receipts, run mutation testing, change PR/CI rendering, change LSP/editor behavior, change gates, or change public badges"
 ]
-fixtures = []
-next = "report/ripr-swarm-plan"
-metric = "swarm_ready_packets, swarm_blocked_packets, swarm_missing_verify_command, swarm_missing_receipt_command, swarm_static_limitation_packets, swarm_high_confidence_packets, swarm_attempted_packets, swarm_verified_improved, swarm_verified_unchanged, swarm_verified_regressed, swarm_failed_to_apply"
+fixtures = ["fixtures/swarm-plan-packet-corpus", "fixtures/actionable-gap-outcomes-corpus"]
+next = "source promotion and 0.7 release proof"
+metric = "swarm_ready_packets, swarm_blocked_packets, swarm_missing_verify_command, swarm_missing_receipt_command, swarm_static_limitation_packets, swarm_high_confidence_packets, swarm_attempted_packets, swarm_verified_improved, swarm_verified_unchanged, swarm_verified_regressed, swarm_failed_to_apply, swarm_orphaned_receipts"
 
 [[capability]]
 id = "parser_backed_syntax_facts"

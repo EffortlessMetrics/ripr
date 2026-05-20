@@ -1,6 +1,6 @@
 # ADR 0017: Editor Gap Queue Is Read-Only
 
-Status: proposed
+Status: accepted
 
 Date: 2026-05-19
 

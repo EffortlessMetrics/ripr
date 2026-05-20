@@ -1,0 +1,439 @@
+{
+  "schema_version": "0.1",
+  "kind": "swarm_plan_packet_corpus",
+  "spec": "RIPR-SPEC-0057",
+  "description": "Fixture-backed packet shapes for ripr-swarm plan ranking. The swarm consumes canonical actionable packets, not raw findings.",
+  "limits": [
+    "advisory dry-run planning only",
+    "no source edits",
+    "no provider calls",
+    "no generated tests",
+    "no mutation execution",
+    "no receipt creation"
+  ],
+  "cases": [
+    {
+      "id": "high_confidence_boundary_assertion_packet",
+      "description": "Boundary assertion packet with repair, verify, receipt, related test, confidence, and must-not-change boundaries.",
+      "packet": {
+        "canonical_gap_id": "gap:boundary-threshold",
+        "evidence_class": "predicate_boundary",
+        "gap_state": "actionable",
+        "actionability": "extend_related_test",
+        "source_file": "src/pricing.rs",
+        "repair_kind": "add_boundary_assertion",
+        "target_test_type": "boundary_discriminator",
+        "assertion_shape": "assert_eq!(discounted_total(threshold), expected)",
+        "repair_route": {
+          "repair_kind": "add_boundary_assertion",
+          "target_test_type": "boundary_discriminator",
+          "assertion_shape": "assert_eq!(discounted_total(threshold), expected)"
+        },
+        "verify_command": "cargo test -p ripr pricing_threshold",
+        "receipt_command": "cargo xtask receipts check",
+        "related_test_or_observer": {
+          "file": "tests/pricing.rs",
+          "name": "pricing_threshold"
+        },
+        "confidence_basis": "fixture_backed",
+        "must_not_change": [
+          "Do not edit production code by default."
+        ],
+        "raw_findings": [
+          {
+            "file": "src/pricing.rs",
+            "line": 42,
+            "kind": "weakly_exposed"
+          }
+        ],
+        "static_limitations": [],
+        "public_projection_eligible": true
+      },
+      "expected": {
+        "swarm_state": "queued",
+        "swarm_ready": true,
+        "high_confidence": true,
+        "missing_context": [],
+        "blocked_reasons": [],
+        "summary": {
+          "swarm_ready_packets": 1,
+          "blocked_packets": 0,
+          "missing_verify_command": 0,
+          "missing_receipt_command": 0,
+          "missing_must_not_change": 0,
+          "static_limitation_packets": 0,
+          "high_confidence_packets": 1
+        }
+      },
+      "must_not_claim": [
+        "Do not consume raw findings as swarm work.",
+        "Do not edit production code by default."
+      ]
+    },
+    {
+      "id": "exact_error_variant_packet",
+      "description": "Exact error variant packet with focused assertion shape and receipt path.",
+      "packet": {
+        "canonical_gap_id": "gap:parser-missing-input",
+        "evidence_class": "error_path",
+        "gap_state": "actionable",
+        "actionability": "add_exact_error_variant",
+        "source_file": "src/parser.rs",
+        "repair_kind": "add_exact_error_variant",
+        "target_test_type": "error_variant",
+        "assertion_shape": "matches!(parse(input), Err(Error::Missing))",
+        "repair_route": {
+          "repair_kind": "add_exact_error_variant",
+          "target_test_type": "error_variant",
+          "suggested_assertion": "matches!(parse(input), Err(Error::Missing))"
+        },
+        "verify_command": "cargo test -p ripr parser_missing_input",
+        "receipt_command": "cargo xtask receipts check",
+        "related_test_or_observer": {
+          "file": "tests/parser.rs",
+          "name": "parser_missing_input"
+        },
+        "confidence_basis": "calibrated",
+        "must_not_change": [
+          "Do not edit parser production code."
+        ],
+        "raw_findings": [
+          {
+            "file": "src/parser.rs",
+            "line": 18,
+            "kind": "weakly_exposed"
+          }
+        ],
+        "static_limitations": [],
+        "public_projection_eligible": true
+      },
+      "expected": {
+        "swarm_state": "queued",
+        "swarm_ready": true,
+        "high_confidence": true,
+        "missing_context": [],
+        "blocked_reasons": [],
+        "summary": {
+          "swarm_ready_packets": 1,
+          "blocked_packets": 0,
+          "missing_verify_command": 0,
+          "missing_receipt_command": 0,
+          "missing_must_not_change": 0,
+          "static_limitation_packets": 0,
+          "high_confidence_packets": 1
+        }
+      },
+      "must_not_claim": [
+        "Do not replace packet repair_kind with a raw static class.",
+        "Do not edit production parser code by default."
+      ]
+    },
+    {
+      "id": "output_observer_packet",
+      "description": "Output observer packet with report golden target and bounded verification.",
+      "packet": {
+        "canonical_gap_id": "gap:report-config-label",
+        "evidence_class": "config_or_policy_constant",
+        "gap_state": "actionable",
+        "actionability": "add_output_observer",
+        "source_file": "src/report.rs",
+        "repair_kind": "add_output_observer",
+        "target_test_type": "report_golden",
+        "assertion_shape": "assert rendered report contains the changed config label",
+        "repair_route": {
+          "repair_kind": "add_output_observer",
+          "target_test_type": "report_golden",
+          "assertion_shape": "assert rendered report contains the changed config label"
+        },
+        "verify_command": "cargo xtask goldens check",
+        "receipt_command": "cargo xtask receipts check",
+        "related_test_or_observer": {
+          "file": "tests/report_golden.rs",
+          "name": "renders_config_label"
+        },
+        "confidence_basis": "fixture_backed",
+        "must_not_change": [
+          "Do not edit production report rendering code by default."
+        ],
+        "raw_findings": [
+          {
+            "file": "src/report.rs",
+            "line": 64,
+            "kind": "exposed"
+          }
+        ],
+        "static_limitations": [],
+        "public_projection_eligible": true
+      },
+      "expected": {
+        "swarm_state": "queued",
+        "swarm_ready": true,
+        "high_confidence": true,
+        "missing_context": [],
+        "blocked_reasons": [],
+        "summary": {
+          "swarm_ready_packets": 1,
+          "blocked_packets": 0,
+          "missing_verify_command": 0,
+          "missing_receipt_command": 0,
+          "missing_must_not_change": 0,
+          "static_limitation_packets": 0,
+          "high_confidence_packets": 1
+        }
+      },
+      "must_not_claim": [
+        "Do not create output repair work from text alone.",
+        "Do not edit production report rendering code by default."
+      ]
+    },
+    {
+      "id": "blocked_static_limitation_packet",
+      "description": "Static limitation packet stays blocked even when repair, verify, and receipt fields exist.",
+      "packet": {
+        "canonical_gap_id": "gap:opaque-helper-output",
+        "evidence_class": "config_or_policy_constant",
+        "gap_state": "actionable",
+        "actionability": "inspect_visibility",
+        "source_file": "src/config.rs",
+        "repair_kind": "inspect_visibility",
+        "target_test_type": "output_observer",
+        "assertion_shape": "trace opaque config helper to rendered output",
+        "repair_route": {
+          "repair_kind": "inspect_visibility",
+          "target_test_type": "output_observer",
+          "assertion_shape": "trace opaque config helper to rendered output"
+        },
+        "verify_command": "cargo xtask evidence-quality-scorecard",
+        "receipt_command": "cargo xtask receipts check",
+        "related_test_or_observer": {
+          "file": "tests/config.rs",
+          "name": "renders_config"
+        },
+        "confidence_basis": "static_only",
+        "must_not_change": [
+          "Do not edit production code by default."
+        ],
+        "raw_findings": [
+          {
+            "file": "src/config.rs",
+            "line": 27,
+            "kind": "static_unknown"
+          }
+        ],
+        "static_limitations": [
+          {
+            "category": "opaque_helper_call",
+            "repair_route": "add fixture-backed helper tracing"
+          }
+        ],
+        "public_projection_eligible": true
+      },
+      "expected": {
+        "swarm_state": "blocked_by_static_limitation",
+        "swarm_ready": false,
+        "high_confidence": false,
+        "missing_context": [],
+        "blocked_reasons": [
+          "static_limitation_present"
+        ],
+        "summary": {
+          "swarm_ready_packets": 0,
+          "blocked_packets": 1,
+          "missing_verify_command": 0,
+          "missing_receipt_command": 0,
+          "missing_must_not_change": 0,
+          "static_limitation_packets": 1,
+          "high_confidence_packets": 0
+        }
+      },
+      "must_not_claim": [
+        "Do not rank static limitations as repair-ready.",
+        "Do not claim user test debt before visibility is known."
+      ]
+    },
+    {
+      "id": "missing_verify_command_packet",
+      "description": "Packet without verify route is blocked and not high confidence.",
+      "packet": {
+        "canonical_gap_id": "gap:missing-verify",
+        "evidence_class": "side_effect",
+        "gap_state": "actionable",
+        "actionability": "add_side_effect_observer",
+        "source_file": "src/events.rs",
+        "repair_kind": "add_side_effect_observer",
+        "target_test_type": "side_effect_observer",
+        "assertion_shape": "assert audit event emitted",
+        "repair_route": {
+          "repair_kind": "add_side_effect_observer",
+          "target_test_type": "side_effect_observer",
+          "assertion_shape": "assert audit event emitted"
+        },
+        "verify_command": "verify_command_unknown",
+        "receipt_command": "cargo xtask receipts check",
+        "related_test_or_observer": {
+          "file": "tests/events.rs",
+          "name": "audit_event"
+        },
+        "confidence_basis": "fixture_backed",
+        "must_not_change": [
+          "Do not edit production event code by default."
+        ],
+        "raw_findings": [
+          {
+            "file": "src/events.rs",
+            "line": 33,
+            "kind": "weakly_exposed"
+          }
+        ],
+        "static_limitations": [],
+        "public_projection_eligible": true
+      },
+      "expected": {
+        "swarm_state": "blocked_by_missing_context",
+        "swarm_ready": false,
+        "high_confidence": false,
+        "missing_context": [
+          "verify_command"
+        ],
+        "blocked_reasons": [
+          "missing_verify_command"
+        ],
+        "summary": {
+          "swarm_ready_packets": 0,
+          "blocked_packets": 1,
+          "missing_verify_command": 1,
+          "missing_receipt_command": 0,
+          "missing_must_not_change": 0,
+          "static_limitation_packets": 0,
+          "high_confidence_packets": 0
+        }
+      },
+      "must_not_claim": [
+        "Do not rank packet without verify route as high-confidence.",
+        "Do not silently invent a verify command."
+      ]
+    },
+    {
+      "id": "missing_receipt_command_packet",
+      "description": "Packet without receipt route is blocked and not swarm-ready.",
+      "packet": {
+        "canonical_gap_id": "gap:missing-receipt",
+        "evidence_class": "error_path",
+        "gap_state": "actionable",
+        "actionability": "add_exact_error_variant",
+        "source_file": "src/auth.rs",
+        "repair_kind": "add_exact_error_variant",
+        "target_test_type": "error_variant",
+        "assertion_shape": "matches!(auth(input), Err(AuthError::RevokedToken))",
+        "repair_route": {
+          "repair_kind": "add_exact_error_variant",
+          "target_test_type": "error_variant",
+          "assertion_shape": "matches!(auth(input), Err(AuthError::RevokedToken))"
+        },
+        "verify_command": "cargo test -p ripr revoked_token",
+        "receipt_command": "receipt_command_unknown",
+        "related_test_or_observer": {
+          "file": "tests/auth.rs",
+          "name": "revoked_token"
+        },
+        "confidence_basis": "fixture_backed",
+        "must_not_change": [
+          "Do not edit production auth code by default."
+        ],
+        "raw_findings": [
+          {
+            "file": "src/auth.rs",
+            "line": 55,
+            "kind": "weakly_exposed"
+          }
+        ],
+        "static_limitations": [],
+        "public_projection_eligible": true
+      },
+      "expected": {
+        "swarm_state": "blocked_by_missing_context",
+        "swarm_ready": false,
+        "high_confidence": false,
+        "missing_context": [
+          "receipt_command"
+        ],
+        "blocked_reasons": [
+          "missing_receipt_command"
+        ],
+        "summary": {
+          "swarm_ready_packets": 0,
+          "blocked_packets": 1,
+          "missing_verify_command": 0,
+          "missing_receipt_command": 1,
+          "missing_must_not_change": 0,
+          "static_limitation_packets": 0,
+          "high_confidence_packets": 0
+        }
+      },
+      "must_not_claim": [
+        "Do not rank packet without receipt_command as swarm-ready.",
+        "Do not treat verification alone as durable receipt."
+      ]
+    },
+    {
+      "id": "must_not_change_boundary_packet",
+      "description": "Boundary packet without must-not-change boundaries is blocked even when repair, verify, and receipt exist.",
+      "packet": {
+        "canonical_gap_id": "gap:missing-boundary-guard",
+        "evidence_class": "predicate_boundary",
+        "gap_state": "actionable",
+        "actionability": "extend_related_test",
+        "source_file": "src/limits.rs",
+        "repair_kind": "add_boundary_assertion",
+        "target_test_type": "boundary_discriminator",
+        "assertion_shape": "assert_eq!(limit(threshold), expected)",
+        "repair_route": {
+          "repair_kind": "add_boundary_assertion",
+          "target_test_type": "boundary_discriminator",
+          "assertion_shape": "assert_eq!(limit(threshold), expected)"
+        },
+        "verify_command": "cargo test -p ripr limit_threshold",
+        "receipt_command": "cargo xtask receipts check",
+        "related_test_or_observer": {
+          "file": "tests/limits.rs",
+          "name": "limit_threshold"
+        },
+        "confidence_basis": "fixture_backed",
+        "must_not_change": [],
+        "raw_findings": [
+          {
+            "file": "src/limits.rs",
+            "line": 71,
+            "kind": "weakly_exposed"
+          }
+        ],
+        "static_limitations": [],
+        "public_projection_eligible": true
+      },
+      "expected": {
+        "swarm_state": "blocked_by_missing_context",
+        "swarm_ready": false,
+        "high_confidence": false,
+        "missing_context": [
+          "must_not_change"
+        ],
+        "blocked_reasons": [
+          "missing_must_not_change"
+        ],
+        "summary": {
+          "swarm_ready_packets": 0,
+          "blocked_packets": 1,
+          "missing_verify_command": 0,
+          "missing_receipt_command": 0,
+          "missing_must_not_change": 1,
+          "static_limitation_packets": 0,
+          "high_confidence_packets": 0
+        }
+      },
+      "must_not_claim": [
+        "Do not hide missing must_not_change boundaries.",
+        "Do not assume production-code edits are allowed by default."
+      ]
+    }
+  ]
+}

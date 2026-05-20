@@ -25,6 +25,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('ripr.startCurrentRepair', async () =>
       controller?.startCurrentRepair()
     ),
+    vscode.commands.registerCommand('ripr.copyCurrentRepairPacket', async () =>
+      controller?.copyCurrentRepairPacket()
+    ),
+    vscode.commands.registerCommand('ripr.copyRepoGapMap', async () =>
+      controller?.copyRepoGapMap()
+    ),
     vscode.commands.registerCommand('ripr.openFirstPrPacket', async () =>
       controller?.openFirstPrPacket()
     ),
