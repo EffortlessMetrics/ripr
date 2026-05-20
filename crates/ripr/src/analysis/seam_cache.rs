@@ -67,8 +67,9 @@ const COUNT_CACHE_SCHEMA_VERSION: &str = "0.1";
 const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "0.1";
 
 /// Keep the best-effort classified-seam cache from turning a successful live
-/// analysis into an unbounded post-analysis stall on large repos. The per-file
-/// fact cache still keeps later cold paths cheaper.
+/// analysis into an unbounded post-analysis stall on large repos. Larger live
+/// audits should surface a named cache-store limitation instead of spending the
+/// remaining audit budget on full-evidence JSON serialization.
 pub(crate) const CLASSIFIED_SEAM_CACHE_STORE_LIMIT: usize = 20_000;
 pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_STORE_LIMIT: usize = 100_000;
 
@@ -763,14 +764,14 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let cache = RepoSeamFactCache::at_dir(dir.clone());
         let key = empty_state().cache_key();
-        let seams = vec![sample_classified(); CLASSIFIED_SEAM_CACHE_STORE_LIMIT + 1];
-        let err = match cache.store_classified_seams(&key, &seams) {
+        let seams = vec![sample_classified(); 2];
+        let err = match cache.store_classified_seams_with_limit(&key, &seams, 1) {
             Ok(()) => return Err("large classified seam cache entries should be skipped".into()),
             Err(err) => err,
         };
 
         assert!(
-            err.contains("skipped_large_entry_seams_"),
+            err.contains("skipped_large_entry_seams_2_limit_1"),
             "skip reason should be machine-readable: {err}"
         );
         assert!(
