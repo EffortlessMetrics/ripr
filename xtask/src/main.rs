@@ -20577,20 +20577,6 @@ fn evidence_quality_scorecard_markdown(report: &EvidenceQualityScorecardReport) 
     );
     audit_push_count(
         &mut out,
-        "Public projection eligible packets",
-        report
-            .summary
-            .finding_alignment_actionable_gap_packet_public_projection_eligible_packets,
-    );
-    audit_push_count(
-        &mut out,
-        "Public projection excluded packets",
-        report
-            .summary
-            .finding_alignment_actionable_gap_packet_public_projection_excluded_packets,
-    );
-    audit_push_count(
-        &mut out,
         "Presentation text items",
         report.summary.presentation_text_total,
     );
