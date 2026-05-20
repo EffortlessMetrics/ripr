@@ -14579,11 +14579,16 @@ pub(crate) fn repo_exposure_report_impl() -> Result<(), String> {
 /// availability context.
 pub(crate) fn evidence_health_report_impl() -> Result<(), String> {
     ensure_reports_dir()?;
-    run("cargo", &["build", "-p", "ripr"])?;
     let binary = ripr_debug_binary();
     let args = evidence_health_args();
     let timeout = Duration::from_millis(evidence_health_timeout_ms());
-    write_evidence_health_report_with_runner(&binary, &args, timeout, evidence_health_run_binary)
+    write_evidence_health_report_with_runners(
+        &binary,
+        &args,
+        timeout,
+        evidence_health_build_binary,
+        evidence_health_run_binary,
+    )
 }
 
 const EVIDENCE_HEALTH_TIMEOUT_ENV: &str = "RIPR_EVIDENCE_HEALTH_TIMEOUT_MS";
@@ -14615,6 +14620,16 @@ fn evidence_health_timeout_ms() -> u64 {
         .unwrap_or(EVIDENCE_HEALTH_DEFAULT_TIMEOUT_MS)
 }
 
+fn evidence_health_build_binary(timeout: Duration) -> Result<TimedOutput, String> {
+    capture_output_with_timeout(
+        "cargo",
+        &["build".to_string(), "-p".to_string(), "ripr".to_string()],
+        &[],
+        timeout,
+        "Lane 1 evidence-health build",
+    )
+}
+
 fn evidence_health_run_binary(
     binary: &Path,
     args: &[String],
@@ -14628,6 +14643,39 @@ fn evidence_health_run_binary(
         timeout,
         "Lane 1 evidence-health report",
     )
+}
+
+fn write_evidence_health_report_with_runners<BuildRunner, ReportRunner>(
+    binary: &Path,
+    args: &[String],
+    timeout: Duration,
+    mut build_ripr: BuildRunner,
+    run_evidence_health: ReportRunner,
+) -> Result<(), String>
+where
+    BuildRunner: FnMut(Duration) -> Result<TimedOutput, String>,
+    ReportRunner: FnMut(&Path, &[String], Duration) -> Result<TimedOutput, String>,
+{
+    let build_output = build_ripr(timeout)?;
+    if build_output.timed_out {
+        return write_limited_evidence_health_reports_for_command(
+            "cargo build -p ripr",
+            "evidence_health_build",
+            timeout,
+            &build_output,
+        );
+    }
+    match build_output.status {
+        Some(status) if status.success() => {
+            write_evidence_health_report_with_runner(binary, args, timeout, run_evidence_health)
+        }
+        Some(_) | None => write_limited_evidence_health_reports_for_command(
+            "cargo build -p ripr",
+            "evidence_health_build",
+            timeout,
+            &build_output,
+        ),
+    }
 }
 
 fn write_evidence_health_report_with_runner<F>(
@@ -14655,23 +14703,37 @@ fn write_limited_evidence_health_reports(
     timeout: Duration,
     output: &TimedOutput,
 ) -> Result<(), String> {
+    write_limited_evidence_health_reports_for_command(
+        &normalize_report_path(&format!("{} {}", binary.display(), args.join(" "))),
+        "evidence_health_generation",
+        timeout,
+        output,
+    )
+}
+
+fn write_limited_evidence_health_reports_for_command(
+    command: &str,
+    phase: &str,
+    timeout: Duration,
+    output: &TimedOutput,
+) -> Result<(), String> {
     let json_path = Path::new("target/ripr/reports/evidence-health.json");
     let md_path = Path::new("target/ripr/reports/evidence-health.md");
     let _ = fs::remove_file(json_path);
     let _ = fs::remove_file(md_path);
     write_report(
         "evidence-health.json",
-        &limited_evidence_health_json(binary, args, timeout, output)?,
+        &limited_evidence_health_json(command, phase, timeout, output)?,
     )?;
     write_report(
         "evidence-health.md",
-        &limited_evidence_health_markdown(binary, args, timeout, output),
+        &limited_evidence_health_markdown(command, phase, timeout, output),
     )
 }
 
 fn limited_evidence_health_json(
-    binary: &Path,
-    args: &[String],
+    command: &str,
+    phase: &str,
     timeout: Duration,
     output: &TimedOutput,
 ) -> Result<String, String> {
@@ -14686,7 +14748,7 @@ fn limited_evidence_health_json(
         "inputs": {
             "root": ".",
             "mutation_calibration": null,
-            "generation": evidence_health_generation_json(binary, args, timeout, output),
+            "generation": evidence_health_generation_json(command, timeout, output),
         },
         "metrics": {
             "seams_total": 0,
@@ -14757,13 +14819,13 @@ fn limited_evidence_health_json(
         "run_limitations": [
             {
                 "category": limitation,
-                "phase": "evidence_health_generation",
+                "phase": phase,
                 "input": "repo",
                 "summary": format!("{summary} Partial outputs were discarded."),
                 "repair_route": repair_route,
                 "timeout_ms": timeout.as_millis(),
                 "duration_ms": output.duration.as_millis(),
-                "command": normalize_report_path(&format!("{} {}", binary.display(), args.join(" "))),
+                "command": command,
                 "exit_code": output.status.and_then(|status| status.code()),
                 "stdout_bytes": output.stdout.len(),
                 "stderr_bytes": output.stderr.len(),
@@ -14776,13 +14838,12 @@ fn limited_evidence_health_json(
 }
 
 fn evidence_health_generation_json(
-    binary: &Path,
-    args: &[String],
+    command: &str,
     timeout: Duration,
     output: &TimedOutput,
 ) -> Value {
     serde_json::json!({
-        "command": normalize_report_path(&format!("{} {}", binary.display(), args.join(" "))),
+        "command": command,
         "timeout_ms": timeout.as_millis(),
         "status": if output.timed_out { "timeout" } else { "fail" },
         "duration_ms": output.duration.as_millis(),
@@ -14825,8 +14886,8 @@ fn evidence_health_limited_repair_route(kind: &str) -> &'static str {
 }
 
 fn limited_evidence_health_markdown(
-    binary: &Path,
-    args: &[String],
+    command: &str,
+    phase: &str,
     timeout: Duration,
     output: &TimedOutput,
 ) -> String {
@@ -14844,7 +14905,7 @@ fn limited_evidence_health_markdown(
     out.push_str("| Field | Value |\n");
     out.push_str("| --- | --- |\n");
     out.push_str(&format!("| Category | `{limitation}` |\n"));
-    out.push_str("| Phase | `evidence_health_generation` |\n");
+    out.push_str(&format!("| Phase | `{phase}` |\n"));
     out.push_str(&format!("| Timeout | {} ms |\n", timeout.as_millis()));
     out.push_str(&format!(
         "| Duration | {} ms |\n",
@@ -14858,11 +14919,7 @@ fn limited_evidence_health_markdown(
     out.push_str(&format!("| Exit code | {} |\n", exit));
     out.push_str(&format!(
         "| Command | `{}` |\n",
-        audit_markdown_cell(&normalize_report_path(&format!(
-            "{} {}",
-            binary.display(),
-            args.join(" ")
-        )))
+        audit_markdown_cell(command)
     ));
     out.push_str(&format!("| Repair route | {repair_route} |\n\n"));
     if !output.stderr.trim().is_empty() {
@@ -41419,7 +41476,7 @@ mod tests {
         vscode_compile_command, vscode_extension_dir, vscode_package_command,
         vscode_package_version, vscode_test_e2e_command, windows_absolute_path_tokens,
         workflow_runtime_violations, worktree, worktree_doctor_findings,
-        write_evidence_health_report_with_runner,
+        write_evidence_health_report_with_runner, write_evidence_health_report_with_runners,
         write_lane1_evidence_audit_repo_exposure_with_runner, write_repo_exposure_latency_report,
     };
     use super::{
@@ -55805,6 +55862,65 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("lane1_repo_exposure_incomplete"));
         assert!(markdown.contains("processed_28500_of_38521"));
         Ok(())
+    }
+
+    #[test]
+    fn evidence_health_build_timeout_writes_named_limitation_reports() -> Result<(), String> {
+        with_temp_cwd("evidence-health-build-timeout", |_root| {
+            let timeout = Duration::from_millis(7);
+            let args = evidence_health_args();
+            let stale_json = Path::new("target/ripr/reports/evidence-health.json");
+            let stale_md = Path::new("target/ripr/reports/evidence-health.md");
+            write(stale_json, "stale json");
+            write(stale_md, "stale markdown");
+
+            write_evidence_health_report_with_runners(
+                Path::new("ripr"),
+                &args,
+                timeout,
+                |_timeout| {
+                    Ok(TimedOutput {
+                        status: None,
+                        stdout: "partial build stdout".to_string(),
+                        stderr: "Compiling ripr\n".to_string(),
+                        duration: Duration::from_millis(8),
+                        timed_out: true,
+                    })
+                },
+                |_binary, _args, _timeout| {
+                    Err("evidence-health generation should not run after build timeout".to_string())
+                },
+            )?;
+
+            let json_text = fs::read_to_string(stale_json).map_err(|err| err.to_string())?;
+            let value: Value = serde_json::from_str(&json_text).map_err(|err| err.to_string())?;
+            assert_eq!(value["status"], "warn");
+            assert_eq!(
+                value["run_limitations"][0]["category"],
+                "evidence_health_timeout"
+            );
+            assert_eq!(
+                value["run_limitations"][0]["phase"],
+                "evidence_health_build"
+            );
+            assert_eq!(
+                value["run_limitations"][0]["command"],
+                "cargo build -p ripr"
+            );
+            assert_eq!(
+                value["inputs"]["generation"]["command"],
+                "cargo build -p ripr"
+            );
+            assert!(!json_text.contains("stale json"));
+
+            let markdown = fs::read_to_string(stale_md).map_err(|err| err.to_string())?;
+            assert!(markdown.contains("Status: warn"));
+            assert!(markdown.contains("evidence_health_timeout"));
+            assert!(markdown.contains("evidence_health_build"));
+            assert!(markdown.contains("cargo build -p ripr"));
+            assert!(!markdown.contains("stale markdown"));
+            Ok(())
+        })
     }
 
     #[test]

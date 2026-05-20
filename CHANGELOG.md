@@ -14,6 +14,12 @@ are scoped or reviewed.
   packets, not raw findings, and requires verify commands, receipt commands,
   must-not-change boundaries, typed attempt states, and outcome joins before a
   repair attempt can claim movement.
+- `cargo xtask evidence-health` now bounds its preflight `cargo build -p ripr`
+  phase with the evidence-health timeout and writes diagnostic warning reports
+  with `phase = evidence_health_build` if that phase times out or fails. This
+  prevents cold or pathological builds from consuming the outer shell timeout
+  without producing `evidence-health.json` / `.md`; the fallback artifact names
+  a limitation and does not claim user test debt.
 - Lane 1 now has an actionable-gap outcome report that joins existing
   actionable packets with optional agent receipt and targeted-test outcome
   artifacts. `cargo xtask actionable-gap-outcomes` writes
