@@ -392,6 +392,13 @@ See:
 
 ## For Contributors
 
+Normal development has moved to
+[`EffortlessMetrics/ripr-swarm`](https://github.com/EffortlessMetrics/ripr-swarm).
+Use this repository for public releases, security fixes, and explicit
+`ripr-swarm` promotion PRs. Do not open routine analyzer, editor, docs, badge,
+or repo-ops development PRs against `EffortlessMetrics/ripr` unless a maintainer
+has named them source-repo release work.
+
 Most contributors should use the repo automation instead of remembering the gate
 order manually.
 
