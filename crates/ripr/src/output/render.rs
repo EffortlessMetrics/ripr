@@ -28,7 +28,7 @@ pub(crate) fn render_check_with_config(
             Ok(badge::render_native_json(&summary))
         }
         OutputFormat::RepoBadgeJson => {
-            let summary = ripr_repo_seam_summary(output, config)?;
+            let summary = ripr_repo_canonical_actionable_summary(output, config)?;
             Ok(badge::render_native_json(&summary))
         }
         OutputFormat::BadgeShields => {
@@ -36,7 +36,7 @@ pub(crate) fn render_check_with_config(
             Ok(badge::render_shields_json(&summary))
         }
         OutputFormat::RepoBadgeShields => {
-            let summary = ripr_repo_seam_summary(output, config)?;
+            let summary = ripr_repo_canonical_actionable_summary(output, config)?;
             Ok(badge::render_shields_json(&summary))
         }
         OutputFormat::BadgePlusJson | OutputFormat::RepoBadgePlusJson => {
@@ -113,19 +113,18 @@ fn ripr_summary_with_suppressions(
     ))
 }
 
-fn ripr_repo_seam_summary(
+fn ripr_repo_canonical_actionable_summary(
     output: &CheckOutput,
     config: &RiprConfig,
 ) -> Result<badge::BadgeSummary, String> {
-    let class_counts =
-        analysis::inventory_seam_grip_class_counts_at_with_config(&output.root, config)?;
+    let classified =
+        analysis::inventory_compact_classified_seams_at_with_config(&output.root, config)?;
     let policy = badge::BadgePolicy {
         suppressions_path: config.suppressions().display_path(),
         ..badge::BadgePolicy::default()
     };
-    Ok(badge::ripr_seam_badge_summary_from_counts(
-        &class_counts,
-        config,
+    Ok(badge::ripr_canonical_actionable_gap_badge_summary(
+        &classified,
         policy,
     ))
 }
@@ -166,19 +165,12 @@ fn ripr_plus_summary_from_disk(
         ..badge::BadgePolicy::default()
     };
     if repo_scope {
-        let class_counts =
-            analysis::inventory_seam_grip_class_counts_at_with_config(&output.root, config)?;
-        Ok(
-            badge::ripr_plus_seam_badge_summary_from_counts_with_suppressions(
-                &class_counts,
-                config,
-                test_efficiency,
-                &suppressions,
-                &today,
-                policy,
-                scope,
-            ),
-        )
+        let exposure = ripr_repo_canonical_actionable_summary(output, config)?;
+        Ok(badge::ripr_plus_canonical_actionable_gap_badge_summary(
+            exposure,
+            test_efficiency,
+            policy,
+        ))
     } else {
         Ok(badge::ripr_plus_badge_summary_with_suppressions(
             output,
@@ -322,7 +314,7 @@ mod tests {
 
         assert!(native.contains("\"kind\": \"ripr_plus\""));
         assert!(native.contains("\"scope\": \"repo\""));
-        assert!(native.contains("\"basis\": \"seam_native\""));
+        assert!(native.contains("\"basis\": \"canonical_actionable_gap\""));
         assert!(shields.contains("\"schemaVersion\": 1"));
         assert!(!shields.contains("\"scope\""));
 
@@ -367,6 +359,7 @@ mod tests {
         let shields = render_check_with_config(&output, &OutputFormat::RepoBadgeShields, &config)?;
 
         assert!(native.contains("\"scope\": \"repo\""));
+        assert!(native.contains("\"basis\": \"canonical_actionable_gap\""));
         assert!(shields.contains("\"schemaVersion\": 1"));
 
         remove_temp_root(&output.root)?;

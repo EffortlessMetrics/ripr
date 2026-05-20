@@ -13,6 +13,7 @@ not claim.
 
 This is the contract that `ripr check --format badge-json` and
 `--format badge-shields` will render against. It pairs with
+[RIPR-SPEC-0056](specs/RIPR-SPEC-0056-public-actionable-projection.md),
 [Static exposure model](STATIC_EXPOSURE_MODEL.md),
 [Output schema](OUTPUT_SCHEMA.md), and
 [Configuration](CONFIGURATION.md).
@@ -27,11 +28,11 @@ of each piece is tracked in the status table at the bottom of this
 doc and in
 [`.ripr/goals/active.toml`](../.ripr/goals/active.toml).
 
-The public badge projection realignment is landing in stages. This policy
-defines `canonical_actionable_gap` as the public basis. Existing generated
-endpoint snapshots may still report a seam-native count until the generator and
-endpoint refresh PRs land. Use `cargo xtask badge-basis` to audit the current
-endpoint basis before refreshing public JSON.
+The public badge projection realignment has landed. This policy defines
+`canonical_actionable_gap` as the public basis, and generated endpoint snapshots
+now project unresolved actionable static repair gaps instead of seam-native
+inventory counts. Use `cargo xtask badge-basis` to audit the current endpoint
+basis before refreshing public JSON.
 
 ## What each badge means
 
@@ -439,10 +440,10 @@ output boundary; it is never the source of truth.
 
 ```json
 {
-  "schema_version": "0.4",
+  "schema_version": "0.5",
   "kind": "ripr",
   "scope": "repo",
-  "basis": "seam_native",
+  "basis": "canonical_actionable_gap",
   "label": "ripr",
   "message": "0",
   "status": "pass",
@@ -487,7 +488,8 @@ otherwise identical so consumers can parse one shape.
 `schema_version` is the badge-native schema. Bumping it is a public-contract
 change and must be called out in the PR. `0.3` adds `basis` and
 `counts.analyzed_seams`; `0.4` adds `basis = "gap_decision_ledger"` and
-`counts.analyzed_gap_records`.
+`counts.analyzed_gap_records`; `0.5` adds
+`basis = "canonical_actionable_gap"` for public repair-item projection.
 
 ### Scope and basis metadata (native only)
 
@@ -497,7 +499,7 @@ internal seam-native inventory counts, and explicit ledger projections:
 
 ```json
 {
-  "schema_version": "0.4",
+  "schema_version": "0.5",
   "kind": "ripr",
   "scope": "diff",
   "basis": "finding_exposure",
@@ -708,9 +710,8 @@ cargo xtask repo-badge-artifacts --gap-ledger target/ripr/reports/gap-decision-l
 That renders the same repo badge artifact filenames with
 `basis = "gap_decision_ledger"` and counts only the ledger's explicit
 `projection_eligibility.ripr_zero_count` and `ripr_plus_count` targets.
-Until the canonical-actionable generator lands, the no-ledger implementation
-may still render `basis = "seam_native"`. Treat that as transitional generator
-state, not the public badge contract.
+The no-ledger public implementation renders `basis = "canonical_actionable_gap"`.
+Seam-native counts remain available in internal inventory and audit reports.
 
 `cargo xtask badge-basis` writes
 `target/ripr/reports/badge-basis.{json,md}` as an audit-only report. It
@@ -889,8 +890,8 @@ Tracked alongside Campaign 4A and Campaign 5B in
 | Seam-native repo badge mapping | done | `badge/seam-native-count-mapping` |
 | Badge-basis audit report | done | `cargo xtask badge-basis` |
 | Actionable public badge basis policy | done | `canonical_actionable_gap` definition in this doc |
-| Canonical actionable endpoint generator | planned | public badge projection realignment |
-| Internal seam-native inventory report | planned | public badge projection realignment |
+| Canonical actionable endpoint generator | done | public badge projection realignment |
+| Internal seam-native inventory report | done | `cargo xtask badge-basis` internal inventory section and repo exposure reports |
 
 ## See also
 

@@ -1053,6 +1053,7 @@ spec = "docs/specs/RIPR-SPEC-0015-evidence-health-baseline.md"
 tests = [
   "crates/ripr/src/output/evidence_health.rs::tests::evidence_health_counts_core_metrics",
   "crates/ripr/src/output/evidence_health.rs::tests::evidence_health_markdown_names_calibration_and_limitations",
+  "xtask::tests::evidence_health_build_timeout_writes_named_limitation_reports",
   "xtask::tests::evidence_health_timeout_writes_named_limitation_reports",
 ]
 fixtures = []
@@ -2162,12 +2163,18 @@ tests = [
   "xtask::tests::lane1_evidence_audit_counts_quality_gaps_from_evidence_record",
   "xtask::tests::lane1_evidence_audit_reports_alignment_coverage_holes",
   "xtask::tests::lane1_evidence_audit_reports_aligned_supported_class_coverage",
+  "xtask::tests::lane1_evidence_audit_preserves_case_variant_discriminator_values_as_rows",
   "xtask::tests::lane1_actionable_gap_packets_emit_agent_safe_work_items",
+  "xtask::tests::lane1_actionable_gap_packets_mark_public_projection_ready_with_receipt",
+  "xtask::tests::lane1_actionable_gap_packets_keep_observed_gaps_out_of_public_projection",
+  "xtask::tests::actionable_gap_outcomes_join_receipts_and_targeted_movement",
+  "xtask::tests::actionable_gap_outcomes_command_writes_markdown_and_json",
   "xtask::tests::lane1_evidence_audit_requires_structured_repair_route_for_actionable_items",
   "xtask::tests::lane1_evidence_audit_limits_static_top_reasons_to_actionable_items",
   "xtask::tests::lane1_evidence_audit_rejects_generic_static_unknown_limitation_category",
   "xtask::tests::lane1_evidence_audit_markdown_names_required_sections",
   "xtask::tests::lane1_evidence_audit_limited_report_names_timeout_limitation",
+  "xtask::tests::lane1_evidence_audit_limits_incomplete_success_repo_exposure_artifact",
   "xtask::tests::lane1_evidence_audit_rejects_repo_exposure_without_seams",
   "xtask::tests::lane1_repo_exposure_file_completion_check_requires_seams_and_closing_brace",
   "xtask::tests::xtask_command_parse_preserves_compatibility_aliases",
@@ -2219,6 +2226,8 @@ metrics = [
   "top_verify_command_unknowns",
   "top_repair_route_unknowns",
   "lane1_actionable_gap_packets",
+  "lane1_actionable_gap_packet_public_projection",
+  "lane1_actionable_gap_outcomes",
   "lane1_runtime_confidence_by_class",
 ]
 
@@ -2295,7 +2304,9 @@ tests = [
   "xtask::tests::evidence_quality_scorecard_uses_audit_canonical_item_alignment_summary",
   "xtask::tests::evidence_quality_scorecard_headline_prefers_actionable_canonical_gaps",
   "xtask::tests::evidence_quality_scorecard_carries_actionable_gap_top_lists_from_audit",
+  "xtask::tests::evidence_quality_scorecard_carries_actionable_packet_projection_readiness",
   "xtask::tests::evidence_quality_scorecard_surfaces_limited_inputs_as_unknowns",
+  "xtask::tests::evidence_quality_scorecard_names_audit_regeneration_failure",
   "xtask::tests::evidence_quality_trend_reports_no_history_explicitly",
   "xtask::tests::evidence_quality_trend_distinguishes_improvement_regression_and_unchanged",
   "xtask::tests::evidence_quality_trend_reports_static_limitation_category_deltas",
@@ -2342,6 +2353,8 @@ metrics = [
   "top_static_limitation_reasons",
   "top_verify_command_unknowns",
   "top_repair_route_unknowns",
+  "lane1_evidence_scorecard_actionable_packet_projection_eligible",
+  "lane1_evidence_scorecard_actionable_packet_projection_excluded",
   "lane1_evidence_trend_compared_metrics",
   "lane1_evidence_trend_improved_metrics",
   "lane1_evidence_trend_regressed_metrics",
@@ -2349,6 +2362,8 @@ metrics = [
   "lane1_evidence_trend_unknown_metrics",
   "lane1_evidence_trend_no_history",
   "lane1_evidence_trend_static_limitation_category_rows",
+  "lane1_evidence_trend_actionable_packet_projection_eligible",
+  "lane1_evidence_trend_actionable_packet_projection_excluded",
 ]
 
 [[behavior]]
@@ -3490,4 +3505,90 @@ metrics = [
   "editor_adoption_first_pr_packet_mismatch",
   "editor_adoption_receipt_mismatch",
   "editor_adoption_actions_suppressed_unsafe_state",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0055"
+name = "Editor actionable gap queue"
+spec = "docs/specs/RIPR-SPEC-0055-editor-actionable-gap-queue.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0055-editor-actionable-gap-queue.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0013-editor-actionable-gap-queue.md",
+  "docs/proposals/README.md",
+  "docs/adr/0017-editor-gap-queue-is-read-only.md",
+  "docs/adr/README.md",
+  "docs/lanes/LANE_3_EDITOR_LSP.md",
+  "docs/DOCUMENTATION.md",
+  "docs/README.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "plans/editor-actionable-gap-queue/implementation-plan.md",
+  "plans/README.md",
+  "metrics/capabilities.toml",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "editor_actionable_gap_queue_available",
+  "editor_actionable_gap_queue_top_gap_ready",
+  "editor_actionable_gap_queue_no_action",
+  "editor_actionable_gap_queue_report_only",
+  "editor_actionable_gap_queue_static_limit_only",
+  "editor_actionable_gap_queue_stale",
+  "editor_actionable_gap_queue_wrong_root",
+  "editor_actionable_gap_queue_malformed",
+  "editor_actionable_gap_queue_repair_packet_available",
+  "editor_actionable_gap_queue_repo_map_available",
+  "editor_actionable_gap_queue_actions_suppressed_unsafe_state",
+  "editor_actionable_gap_queue_receipt_improved",
+  "editor_actionable_gap_queue_receipt_unchanged",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0056"
+name = "Public actionable projection"
+spec = "docs/specs/RIPR-SPEC-0056-public-actionable-projection.md"
+tests = [
+  "xtask::tests::badge_basis_default_derives_repo_plus_without_second_badge_job",
+  "xtask::tests::badge_basis_derived_repo_plus_keeps_canonical_headline_and_te_context",
+  "xtask::tests::badge_basis_derived_repo_plus_handles_missing_test_efficiency_context",
+  "xtask::tests::badge_basis_seam_native_counts_are_internal_when_public_basis_is_canonical",
+  "xtask::tests::badge_basis_report_markdown_names_actionable_recommendation",
+  "xtask::tests::public_badge_basis_guard_rejects_seam_native_repair_badge_copy",
+  "xtask::tests::public_badge_basis_guard_allows_explicit_seam_inventory_badge_copy",
+  "xtask::tests::check_badge_diff_policy_rejects_public_surface_seam_native_from_git_status",
+  "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_carries_identity_path_guidance_and_calibration_placeholder",
+  "xtask::tests::lane1_actionable_gap_packets_mark_public_projection_ready_with_receipt",
+  "xtask::tests::evidence_quality_scorecard_carries_actionable_packet_projection_readiness",
+  "xtask::tests::evidence_quality_trend_reports_finding_alignment_presentation_text_deltas",
+]
+fixtures = [
+  "badges/ripr.json",
+  "badges/ripr-plus.json",
+]
+code = [
+  "xtask/src/main.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0056-public-actionable-projection.md",
+  "docs/specs/README.md",
+  "docs/BADGE_POLICY.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/specs/RIPR-SPEC-0034-evidence-quality-scorecard.md",
+  "docs/STATIC_EXPOSURE_MODEL.md",
+  "docs/handoffs/2026-05-19-public-badge-projection-realignment-closeout.md",
+  "badges/ripr.json",
+  "badges/ripr-plus.json",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "public_actionable_projection_badge_basis_locked",
+  "public_actionable_projection_seam_inventory_internal",
+  "public_actionable_projection_badge_basis_guarded",
+  "public_actionable_projection_packet_eligible",
+  "public_actionable_projection_packet_excluded",
 ]

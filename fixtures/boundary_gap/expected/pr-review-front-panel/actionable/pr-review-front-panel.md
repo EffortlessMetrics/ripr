@@ -5,8 +5,8 @@ Status: advisory
 Top issue:
 - File: src/lib.rs:2
 - Class: weakly_exposed
-- Missing discriminator: discount_threshold (equality boundary)
-- Suggested focused test: add amount == discount_threshold assertion
+- Missing discriminator: input that hits the boundary: amount >= discount_threshold
+- Suggested focused test: add amount >= discount_threshold boundary assertion
 - Related test: tests/pricing.rs::below_threshold_has_no_discount
 
 Movement:

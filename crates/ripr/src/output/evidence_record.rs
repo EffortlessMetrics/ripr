@@ -5,14 +5,18 @@
 //! only: it does not run mutation testing, make policy decisions, mutate
 //! baselines, or change seam grip classifications.
 
+use crate::agent::loop_commands::{
+    WORKFLOW_AGENT_RECEIPT_ARTIFACT, WORKFLOW_AGENT_VERIFY_ARTIFACT, agent_receipt_command,
+};
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::canonical_gap::CanonicalGapIdentity;
 use crate::analysis::seams::{SeamGripClass, SeamKind};
 use crate::analysis::test_grip_evidence::oracle_semantics_for;
 use crate::domain::{OracleKind, OracleStrength, StageEvidence, StageState};
 use crate::output::agent_seam_packets::{
-    AssertionShape, CandidateValue, RecommendedTest, assertion_shape_for, candidate_values_for,
-    missing_discriminator_records_for, nearest_strong_test_to_imitate, recommended_test_for,
+    AssertionShape, CandidateValue, RecommendedTest, assertion_shape_for_entry,
+    candidate_values_for, missing_discriminator_records_for, nearest_strong_test_to_imitate,
+    recommended_test_for,
 };
 use serde_json::{Value, json};
 
@@ -79,6 +83,7 @@ pub(crate) struct EvidenceRecordCanonicalItem {
     pub(crate) repair_route: Option<EvidenceRecordCanonicalRepairRoute>,
     pub(crate) related_test: Option<EvidenceRecordAlignmentRelatedTest>,
     pub(crate) verify_command: Option<String>,
+    pub(crate) receipt_command: Option<String>,
     pub(crate) confidence: EvidenceRecordAlignmentConfidence,
 }
 
@@ -532,6 +537,7 @@ fn canonical_item_for(
             .as_ref()
             .map(alignment_related_test_for),
         verify_command: recommendation.verify_command.clone(),
+        receipt_command: canonical_receipt_command_for(entry, gap_state),
         confidence: alignment_confidence_for(gap_state, static_limitations),
     }
 }
@@ -623,7 +629,8 @@ fn recommended_repair_for(
     static_limitations: &[EvidenceRecordStaticLimitation],
 ) -> String {
     if actionability.has_concrete_guidance {
-        return recommendation.reason.clone();
+        return actionable_repair_summary(recommendation)
+            .unwrap_or_else(|| recommendation.reason.clone());
     }
 
     match gap_state {
@@ -642,6 +649,21 @@ fn recommended_repair_for(
         ),
         _ => recommendation.reason.clone(),
     }
+}
+
+fn actionable_repair_summary(recommendation: &EvidenceRecordRecommendation) -> Option<String> {
+    let assertion = recommendation.assertion_shape.as_ref()?;
+    let mut summary = format!("Add or strengthen `{}`", assertion.example);
+    if let Some(candidate) = recommendation.candidate_values.first()
+        && !candidate.value.trim().is_empty()
+    {
+        summary.push_str(&format!(" for `{}`", candidate.value.trim()));
+    }
+    if let Some(target) = recommendation.recommended_test.as_ref() {
+        summary.push_str(&format!(" in `{}` as `{}`", target.file, target.name));
+    }
+    summary.push('.');
+    Some(summary)
 }
 
 fn canonical_repair_route_for(
@@ -758,13 +780,8 @@ fn recommendation_for(
     };
 
     let recommended_test = actionable.then(|| recommended_test_record(recommended_test_for(entry)));
-    let assertion_shape = actionable.then(|| {
-        assertion_shape_record(assertion_shape_for(
-            entry.seam.kind(),
-            entry.seam.owner(),
-            &entry.evidence,
-        ))
-    });
+    let assertion_shape =
+        actionable.then(|| assertion_shape_record(assertion_shape_for_entry(entry)));
     let verify_command = actionable.then(|| VERIFY_COMMAND.to_string());
     let nearest_test_to_imitate = nearest_strong_test_to_imitate(&entry.evidence)
         .or_else(|| entry.evidence.related_tests.first())
@@ -782,6 +799,19 @@ fn recommendation_for(
         assertion_shape,
         verify_command,
     }
+}
+
+fn canonical_receipt_command_for(entry: &ClassifiedSeam, gap_state: &str) -> Option<String> {
+    if gap_state != "actionable" {
+        return None;
+    }
+
+    Some(agent_receipt_command(
+        ".",
+        WORKFLOW_AGENT_VERIFY_ARTIFACT,
+        entry.seam.id().as_str(),
+        Some(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+    ))
 }
 
 fn recommended_test_record(test: RecommendedTest) -> EvidenceRecordRecommendedTest {
@@ -906,6 +936,8 @@ fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'stati
         || reason.contains("effect sink")
     {
         "side_effect_sink_unknown"
+    } else if reason.contains("no direct owner call observed for value-insensitive seam") {
+        "activation_owner_call_unresolved"
     } else if reason.contains("no concrete activation values observed")
         || reason.contains("no literal activation values")
     {
@@ -926,6 +958,7 @@ fn static_limitation_category(stage: &str, state: &str, reason: &str) -> &'stati
 
 fn static_limitation_repair_route(category: &str) -> &'static str {
     match category {
+        "activation_owner_call_unresolved" => "analysis/related-test-ranking-audit-fixes",
         "activation_value_unresolved" => "analysis/value-resolution-audit-fixes",
         "cross_file_constant_unresolved" => "analysis/cross-file-constant-resolution",
         "macro_generated_value" => "analysis/macro-generated-value-fixtures",
@@ -1020,6 +1053,7 @@ fn canonical_item_json(item: &EvidenceRecordCanonicalItem) -> Value {
             .as_ref()
             .map_or(Value::Null, alignment_related_test_json),
         "verify_command": item.verify_command.as_deref(),
+        "receipt_command": item.receipt_command.as_deref(),
         "confidence": {
             "basis": item.confidence.basis.as_str(),
             "notes": item
@@ -1350,7 +1384,11 @@ mod tests {
         );
         assert_eq!(
             json["canonical_item"]["repair_route"]["suggested_assertion"],
-            "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"
+            "assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)"
+        );
+        assert_eq!(
+            json["canonical_item"]["recommended_repair"],
+            "Add or strengthen `assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)` for `input that hits the boundary: amount >= discount_threshold` in `tests/pricing_tests.rs` as `discounted_total_boundary_discriminator`."
         );
         assert_eq!(
             json["canonical_item"]["related_test"]["name"],
@@ -1358,6 +1396,16 @@ mod tests {
         );
         assert_eq!(json["canonical_item"]["confidence"]["basis"], "static_only");
         assert_eq!(json["canonical_item"]["verify_command"], VERIFY_COMMAND);
+        let expected_receipt_command = agent_receipt_command(
+            ".",
+            WORKFLOW_AGENT_VERIFY_ARTIFACT,
+            &seam_id,
+            Some(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+        );
+        assert_eq!(
+            json["canonical_item"]["receipt_command"],
+            expected_receipt_command
+        );
         assert!(json["presentation_text"].is_null());
         assert_eq!(json["evidence_path"]["activate"]["state"], "yes");
         assert_eq!(json["observed_values"][0]["context"], "function_argument");
@@ -1406,6 +1454,7 @@ mod tests {
         assert_eq!(json["canonical_item"]["gap_state"], "static_limitation");
         assert_eq!(json["canonical_item"]["actionability"], "static_limitation");
         assert_eq!(json["canonical_item"]["repair_route"], Value::Null);
+        assert_eq!(json["canonical_item"]["receipt_command"], Value::Null);
         assert_eq!(
             json["canonical_item"]["recommended_repair"],
             "Inspect static limitation `activation_static_unknown` via `analysis/static-limitation-taxonomy`."
@@ -1451,6 +1500,12 @@ mod tests {
     #[test]
     fn evidence_record_normalizes_static_limitation_categories() {
         for (stage, state, reason, expected) in [
+            (
+                "activate",
+                "unknown",
+                "No direct owner call observed for value-insensitive seam `Vec::new()`",
+                "activation_owner_call_unresolved",
+            ),
             (
                 "activate",
                 "unknown",
@@ -1550,6 +1605,10 @@ mod tests {
         }
 
         for (category, expected) in [
+            (
+                "activation_owner_call_unresolved",
+                "analysis/related-test-ranking-audit-fixes",
+            ),
             (
                 "activation_value_unresolved",
                 "analysis/value-resolution-audit-fixes",

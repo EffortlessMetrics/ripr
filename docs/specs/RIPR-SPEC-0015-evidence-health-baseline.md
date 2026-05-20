@@ -63,10 +63,13 @@ All flags are optional except when callers want non-default paths:
 same default artifacts. If `target/ripr/reports/mutation-calibration.json`
 already exists, the xtask command includes it as optional calibration context.
 The facade bounds the live child process with
-`RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` (default 30 minutes). On timeout it removes
-stale or partial outputs and writes warning JSON/Markdown with the named
-`evidence_health_timeout` run limitation instead of waiting forever or
-pretending missing counts mean no evidence debt.
+`RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` (default 30 minutes). This includes both the
+preflight `cargo build -p ripr` phase and the `ripr evidence-health` generation
+phase. On timeout or incomplete child-process exit it removes stale or partial
+outputs and writes warning JSON/Markdown with phase context such as
+`evidence_health_build` or `evidence_health_generation` plus the named
+`evidence_health_timeout` or `evidence_health_incomplete` run limitation instead
+of waiting forever or pretending missing counts mean no evidence debt.
 
 The command:
 
@@ -98,7 +101,7 @@ The `metrics` object includes:
 - per-stage `StageState` counts;
 - unknown/opaque stage counts;
 - unknown/opaque class buckets;
-- missing discriminator totals and value counts;
+- missing discriminator totals and `{label, count}` value rows;
 - observed value totals and value-context counts;
 - related-test totals and confidence counts;
 - oracle kind and strength counts;
@@ -109,7 +112,7 @@ The `evidence_quality` object includes:
 - canonical gap group totals and largest groups;
 - duplicate-looking canonical group totals;
 - actionability class counts from `evidence_record.actionability`;
-- static limitation stage and reason distributions from
+- static limitation stage distributions and `{label, count}` reason rows from
   `evidence_record.static_limitations`;
 - calibration availability counts from `evidence_record.calibration`;
 - evidence movement availability counts for seam ID, canonical gap ID, complete
@@ -147,14 +150,15 @@ The report must include:
 - per-stage `StageState` counts for reach, activate, propagate, observe, and
   discriminate;
 - unknown/opaque stage and class buckets;
-- missing discriminator counts;
+- missing discriminator count rows;
 - observed value context counts;
 - related-test confidence counts;
 - oracle kind and strength counts;
 - opaque-oracle counts;
 - canonical gap group and duplicate-looking group counts;
 - actionability class counts from the shared evidence record;
-- static limitation stage and reason counts from the shared evidence record;
+- static limitation stage counts and reason count rows from the shared evidence
+  record;
 - evidence-record calibration availability counts;
 - evidence movement availability counts;
 - top evidence-quality risks;
@@ -181,12 +185,13 @@ calibration section.
 Given no calibration input, the report marks calibration as `not_provided` and
 still succeeds.
 
-Given the xtask evidence-health child process times out, the command writes
-bounded warning artifacts with `status = "warn"`, a
-`run_limitations[].category = "evidence_health_timeout"` entry, phase/input
-context, timeout/duration/output byte counts, and a repair route. The limited
-artifact is diagnostic only and does not claim user test debt from missing
-health counts.
+Given the xtask evidence-health child process times out or exits before a
+complete report is available, the command writes bounded warning artifacts with
+`status = "warn"`, a `run_limitations[].category = "evidence_health_timeout"` or
+`"evidence_health_incomplete"` entry, phase/input context,
+timeout/duration/output byte counts, exit status when available, and a repair
+route. The limited artifact is diagnostic only and does not claim user test debt
+from missing health counts.
 
 ## Test Mapping
 
@@ -202,6 +207,14 @@ health counts.
 - `xtask::tests::evidence_health_timeout_writes_named_limitation_reports`
   pins the bounded xtask timeout fallback, stale-output cleanup, named
   limitation category, and repair route.
+- `xtask::tests::evidence_health_build_timeout_writes_named_limitation_reports`
+  pins the bounded preflight build fallback, phase diagnostics, stale-output
+  cleanup, named limitation category, and repair route.
+- `xtask::tests::evidence_health_incomplete_exit_writes_named_limitation_reports`
+  and
+  `xtask::tests::evidence_health_nonzero_exit_writes_named_limitation_reports`
+  pin incomplete-exit fallback artifacts, stale-output cleanup, exit-status
+  diagnostics, named limitation category, and repair route.
 
 ## Implementation Mapping
 
@@ -211,7 +224,8 @@ health counts.
   command.
 - `xtask/src/command.rs`, `dispatch.rs`, `main.rs`, and `reports/repo.rs`
   expose `cargo xtask evidence-health`; `xtask/src/main.rs` also bounds the
-  child process and writes timeout-limitation fallback artifacts.
+  child process and writes timeout or incomplete-exit limitation fallback
+  artifacts.
 - `docs/OUTPUT_SCHEMA.md` defines the public JSON and Markdown contract.
 
 ## Metrics
@@ -229,8 +243,9 @@ The evidence-health baseline feeds these Lane 1 metrics:
 - `evidence_health_records_with_canonical_gap_id`;
 - `evidence_health_static_limitation_reasons`;
 - `evidence_health_calibration_not_imported`;
-- `evidence_health_top_evidence_quality_risks`.
-- `evidence_health_timeout_limitations`.
+- `evidence_health_top_evidence_quality_risks`;
+- `evidence_health_timeout_limitations`;
+- `evidence_health_incomplete_limitations`.
 
 ## Non-Goals
 

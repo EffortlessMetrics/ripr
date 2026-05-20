@@ -798,10 +798,8 @@ fn placement_from_guidance(guidance: Option<&Value>, summary_only: Option<&Value
 }
 
 fn suggested_test_sentence(agent_seam: &Value, seam: &ProofSeam) -> Option<String> {
-    let discriminator = seam
-        .missing_discriminator
-        .as_deref()
-        .map(discriminator_subject)?;
+    let raw_discriminator = seam.missing_discriminator.as_deref()?;
+    let discriminator = discriminator_subject(raw_discriminator);
     let function = match string_path(agent_seam, &["owner"])
         .and_then(|owner| owner.rsplit("::").next().map(ToOwned::to_owned))
         .filter(|value| !value.trim().is_empty())
@@ -809,6 +807,11 @@ fn suggested_test_sentence(agent_seam: &Value, seam: &ProofSeam) -> Option<Strin
         Some(value) => value,
         None => "changed behavior".to_string(),
     };
+    if is_boundary_expression_discriminator(raw_discriminator, &discriminator) {
+        return Some(format!(
+            "Add a focused boundary test that exercises {discriminator} and assert the exact {function} output."
+        ));
+    }
     let subject = match string_path(agent_seam, &["expression"])
         .or_else(|| string_path(agent_seam, &["changed_expression"]))
         .and_then(|expression| comparison_left_side(&expression))
@@ -976,6 +979,16 @@ fn static_limitation_label(item: &Value) -> String {
 }
 
 fn discriminator_subject(value: &str) -> String {
+    if let Some((_prefix, rest)) = value.split_once(':') {
+        let rest = rest.trim();
+        if value
+            .trim_start()
+            .starts_with("input that hits the boundary:")
+            && !rest.is_empty()
+        {
+            return rest.to_string();
+        }
+    }
     match value
         .split(" (")
         .next()
@@ -984,6 +997,14 @@ fn discriminator_subject(value: &str) -> String {
         Some(part) => part.to_string(),
         None => value.to_string(),
     }
+}
+
+fn is_boundary_expression_discriminator(raw: &str, discriminator: &str) -> bool {
+    raw.trim_start()
+        .starts_with("input that hits the boundary:")
+        || [">=", "<=", "==", "!=", ">", "<"]
+            .iter()
+            .any(|operator| discriminator.contains(operator))
 }
 
 fn comparison_left_side(expression: &str) -> Option<String> {

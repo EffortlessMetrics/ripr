@@ -379,6 +379,7 @@ RIPR-SPEC-0045:
       "reason": "direct_owner_call"
     },
     "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json",
+    "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id f3c9e4d21a0b7c88 --json --out target/ripr/reports/agent-receipt.json",
     "confidence": {
       "basis": "static_only",
       "notes": ["no imported runtime calibration data"]
@@ -413,6 +414,12 @@ Non-actionable, already-observed, internal-only, static-limitation, and unknown
 items keep `canonical_item.repair_route: null`. A repair route is advisory test
 intent only; it must not edit source, generate tests, run mutation testing,
 change policy, or change gate authority.
+
+Actionable items also carry `canonical_item.receipt_command` for the existing
+agent receipt loop when a canonical repair and verify path is available.
+Non-actionable items keep this field `null`. The receipt command is proof
+guidance for agents and maintainers; it does not make the item a public badge
+count by itself and it does not claim mutation execution.
 
 ## Test Mapping
 

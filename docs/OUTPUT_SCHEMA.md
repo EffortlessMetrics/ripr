@@ -578,14 +578,14 @@ ripr check --format repo-badge-plus-json
 ripr check --format repo-badge-json --gap-ledger target/ripr/reports/gap-decision-ledger.json
 ```
 
-Native schema `0.4`:
+Native schema `0.5`:
 
 ```json
 {
-  "schema_version": "0.4",
+  "schema_version": "0.5",
   "kind": "ripr",
   "scope": "repo",
-  "basis": "seam_native",
+  "basis": "canonical_actionable_gap",
   "label": "ripr",
   "message": "0",
   "status": "pass",
@@ -626,32 +626,40 @@ Native schema `0.4`:
 
 Field contract:
 
-- `schema_version` — currently `"0.4"`. `0.2` added `scope`; `0.3` adds
+- `schema_version` — currently `"0.5"`. `0.2` added `scope`; `0.3` adds
   `basis` and `counts.analyzed_seams`; `0.4` adds
-  `basis = "gap_decision_ledger"` and `counts.analyzed_gap_records`.
+  `basis = "gap_decision_ledger"` and `counts.analyzed_gap_records`;
+  `0.5` adds `basis = "canonical_actionable_gap"` for public repair-item
+  projection.
 - `kind` — `"ripr"` or `"ripr_plus"`.
 - `scope` — `"diff"` for PR/diff artifacts, `"repo"` for public repo
   baseline artifacts.
 - `basis` — `"finding_exposure"` for legacy Finding/ExposureClass count
-  artifacts, `"seam_native"` for RepoSeam/SeamGripClass count artifacts, or
-  `"gap_decision_ledger"` when repo badge formats are explicitly rendered from
-  supplied GapRecord projection targets. Diff-scoped badge formats currently
-  use `finding_exposure`; repo-scoped badge formats use `seam_native` unless
-  `--gap-ledger` is supplied.
+  artifacts, `"canonical_actionable_gap"` for public repo repair-item badge
+  projection, `"seam_native"` for internal RepoSeam/SeamGripClass inventory
+  artifacts, or `"gap_decision_ledger"` when repo badge formats are explicitly
+  rendered from supplied GapRecord projection targets. Diff-scoped badge
+  formats currently use `finding_exposure`; repo-scoped public badge formats
+  use `canonical_actionable_gap` unless `--gap-ledger` is supplied.
 - `message` — the headline count rendered as a string for Shields
   compatibility. It is a count, never a denominator or coverage fraction.
 - `counts.unsuppressed_exposure_gaps` — diff scope: unsuppressed
   `weakly_exposed`, `reachable_unrevealed`, and `no_static_path` Findings;
-  repo scope: configured-visible headline-eligible seam classes.
-- `counts.unknowns` — diff scope: static unknown Finding classes; repo
-  scope: configured-visible `opaque` seams.
+  repo public scope: unresolved actionable canonical repair items; seam-native
+  inventory scope: configured-visible headline-eligible seam classes.
+- `counts.unknowns` — diff scope: static unknown Finding classes; seam-native
+  inventory scope: configured-visible `opaque` seams. Canonical-actionable
+  public badge projection does not count unknown-only or limitation-only states
+  in the headline.
 - `counts.analyzed_findings` — number of Findings considered by the
-  finding-exposure basis; `0` for seam-native repo badges.
-- `counts.analyzed_seams` — number of classified seams considered by the
-  seam-native basis; `0` for finding-exposure diff badges.
-- `counts.analyzed_gap_records` — number of GapRecord entries considered by
-  the gap-decision-ledger basis; `0` for finding-exposure and seam-native
+  finding-exposure basis; `0` for canonical-actionable and seam-native repo
   badges.
+- `counts.analyzed_seams` — number of classified seams considered by the
+  canonical-actionable or seam-native repo basis; `0` for finding-exposure diff
+  badges.
+- `counts.analyzed_gap_records` — number of GapRecord entries considered by
+  the gap-decision-ledger basis, or canonical repair groups considered by the
+  canonical-actionable basis; `0` for finding-exposure and seam-native badges.
 - `warnings` — advisory suppressions/config warnings that remain visible in
   native JSON. The Shields projection never includes warnings.
 
@@ -669,6 +677,90 @@ Shields projection:
 The Shields projection drops native-only fields including `schema_version`,
 `kind`, `scope`, `basis`, `status`, `counts`, `reason_counts`, `policy`, and
 `warnings`.
+
+### Badge-Basis Audit Report
+
+`cargo xtask badge-basis` writes an advisory audit report at:
+
+```text
+target/ripr/reports/badge-basis.json
+target/ripr/reports/badge-basis.md
+```
+
+This report decomposes committed public endpoint values and proves whether the
+public badge basis matches RIPR-SPEC-0056. It does not edit `badges/*.json`.
+
+Required JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "status": "pass",
+  "mode": "advisory",
+  "current_public_endpoints": [
+    {
+      "path": "badges/ripr.json",
+      "label": "ripr",
+      "message": "179",
+      "color": "orange"
+    }
+  ],
+  "current_repo_badges": [
+    {
+      "kind": "ripr",
+      "scope": "repo",
+      "basis": "canonical_actionable_gap",
+      "message": "179",
+      "counts": {}
+    }
+  ],
+  "seam_native": {
+    "status": "pass",
+    "source": "ripr check --root . --format repo-exposure-md",
+    "counts_by_class": {}
+  },
+  "test_efficiency": {
+    "status": "pass",
+    "source": "target/ripr/reports/test-efficiency.json",
+    "counts_by_class": {}
+  },
+  "canonical_actionable_gap": {
+    "status": "available",
+    "source": "repo-badge-artifacts",
+    "ripr_count": 179,
+    "ripr_plus_count": 179
+  },
+  "supporting_signals": {
+    "raw_alignment_signals": { "status": "not_in_current_badge_generator" },
+    "canonical_evidence_items": { "status": "not_in_current_badge_generator" },
+    "static_limitations": { "status": "available" },
+    "suppressed_or_intentional_items": { "status": "available_from_badge_counts" },
+    "no_action_items": { "status": "requires_gap_decision_ledger" }
+  },
+  "recommended_public_projection": {
+    "basis": "canonical_actionable_gap",
+    "rule": "README/store badges should count unresolved actionable canonical repair items."
+  },
+  "warnings": [],
+  "non_claims": []
+}
+```
+
+Field contract:
+
+- `current_public_endpoints` mirrors committed Shields endpoint JSON.
+- `current_repo_badges` records the native badge basis used to derive public
+  counts.
+- `canonical_actionable_gap` records the public repair projection counts.
+- `seam_native` records internal inventory status and per-class counts when
+  collected with `--include-seam-classes`.
+- `test_efficiency` records class counts but does not move the public `ripr+`
+  headline unless those items are projected into the repair / verify / receipt
+  model.
+- `supporting_signals` names supporting or excluded evidence rather than
+  silently dropping it.
+- `recommended_public_projection.basis` must be
+  `canonical_actionable_gap` for public repair badges.
 
 ## SARIF Output
 
@@ -966,6 +1058,10 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
       "observed_values": ["50", "10000"],
       "missing_discriminators": [
         {
+          "value": "input that hits the boundary: amount >= discount_threshold",
+          "reason": "predicate uses an equality-bearing operator; tests should exercise the boundary case"
+        },
+        {
           "value": "discount_threshold (equality boundary)",
           "reason": "observed values do not include the equality-boundary case for this predicate"
         }
@@ -1012,11 +1108,11 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
             }
           ],
           "why": "extend the nearest related test with the missing discriminator",
-          "recommended_repair": "extend the nearest related test with the missing discriminator",
+          "recommended_repair": "Add or strengthen `assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)` for `input that hits the boundary: amount >= discount_threshold` in `tests/pricing_tests.rs` as `discounted_total_boundary_discriminator`.",
           "repair_route": {
             "repair_kind": "add_boundary_assertion",
             "target_test_type": "boundary_discriminator",
-            "suggested_assertion": "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"
+            "suggested_assertion": "assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)"
           },
           "related_test": {
             "name": "below_threshold_has_no_discount",
@@ -1228,12 +1324,15 @@ Field contract:
 - `seams[].evidence_record.canonical_item` - additive finding-alignment
   projection with `gap_state`, class-scoped `actionability`, `why`,
   `recommended_repair`, nullable structured `repair_route`, `related_test`,
-  `verify_command`, `confidence`, raw group size, nullable `primary_anchor`,
-  and `raw_spans`. Actionable canonical items carry
+  `verify_command`, nullable `receipt_command`, `confidence`, raw group size,
+  nullable `primary_anchor`, and `raw_spans`. Actionable canonical items carry
   `repair_route.repair_kind`, `target_test_type`, and `suggested_assertion`;
-  no-action, observed, limitation, and unknown items keep
-  `repair_route: null`. Downstream surfaces should render this canonical item
-  before treating raw findings as separate work.
+  no-action, observed, limitation, and unknown items keep `repair_route: null`.
+  Actionable items also carry a safe agent receipt command when the canonical
+  repair/verify loop is available, so public-projection readiness can be
+  assessed from canonical evidence rather than raw findings. Downstream
+  surfaces should render this canonical item before treating raw findings as
+  separate work.
 - `seams[].evidence_record.canonical_item.primary_anchor` - preferred
   placement hint for downstream surfaces when the canonical item has a safe
   source location. It is `null` only when RIPR cannot safely name a placement.
@@ -1303,16 +1402,19 @@ without changing analyzer behavior. The same report lands at
 `target/ripr/reports/evidence-health.md` when generated through
 `cargo xtask evidence-health`.
 
-The xtask facade bounds the live `ripr evidence-health` subprocess with
-`RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` (default 30 minutes). If the subprocess times
-out, xtask discards stale or partial outputs and writes warning JSON and
-Markdown with `status = "warn"` and a named `evidence_health_timeout`
-`run_limitations[]` entry. That limited artifact is diagnostic only; it does
-not claim user test debt from missing health counts.
+The xtask facade bounds both the preflight `cargo build -p ripr` phase and the
+live `ripr evidence-health` subprocess with `RIPR_EVIDENCE_HEALTH_TIMEOUT_MS`
+(default 30 minutes). If either phase times out or exits before a complete
+report is available, xtask discards stale or partial outputs and writes warning
+JSON and Markdown with `status = "warn"`, phase context such as
+`evidence_health_build` or `evidence_health_generation`, and a named
+`evidence_health_timeout` or `evidence_health_incomplete` `run_limitations[]`
+entry. That limited artifact is diagnostic only; it does not claim user test
+debt from missing health counts.
 
 ```json
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "scope": "repo",
   "status": "advisory",
@@ -1364,9 +1466,9 @@ not claim user test debt from missing health counts.
     },
     "missing_discriminators_total": 1756,
     "seams_with_missing_discriminators": 1756,
-    "missing_discriminator_counts": {
-      "amount == threshold": 4
-    },
+    "missing_discriminator_counts": [
+      {"label": "amount == threshold", "count": 4}
+    ],
     "observed_values_total": 740,
     "seams_with_observed_values": 310,
     "observed_value_context_counts": {
@@ -1431,9 +1533,12 @@ not claim user test debt from missing health counts.
     "static_limitation_stage_counts": {
       "activate": 3600
     },
-    "static_limitation_reason_counts": {
-      "No concrete activation values observed for seam `Vec::new()`": 255
-    },
+    "static_limitation_reason_counts": [
+      {
+        "label": "No concrete activation values observed for seam `Vec::new()`",
+        "count": 255
+      }
+    ],
     "static_limitation_category_counts": {
       "activation_value_unresolved": 255
     },
@@ -1477,10 +1582,14 @@ not claim user test debt from missing health counts.
 
 Field contract:
 
-- `schema_version` - currently `"0.1"`.
+- `schema_version` - currently `"0.2"`. `0.2` changes free-form
+  `missing_discriminator_counts` and `static_limitation_reason_counts` from
+  JSON objects to `{label, count}` rows so downstream consumers do not treat
+  analyzer evidence strings as stable field names.
 - `scope` - always `"repo"`.
-- `status` - always `"advisory"`. This report is an analyzer-health view, not
-  a gate decision.
+- `status` - `"advisory"` for complete analyzer-health reports and `"warn"`
+  for bounded xtask fallback artifacts. This report is an analyzer-health view,
+  not a gate decision.
 - `inputs.root` - the analyzed workspace root as supplied to the command.
 - `inputs.mutation_calibration` - optional imported calibration report path;
   `null` when not provided.
@@ -1492,8 +1601,9 @@ Field contract:
 - `metrics.unknown_stop_reason_counts` - counts of unknown/opaque
   `SeamGripClass` buckets. This is intentionally repo-seam terminology; diff
   finding stop-reason strings are not reinterpreted here.
-- `metrics.missing_discriminator_counts` - aggregate counts keyed by the
-  missing discriminator value text.
+- `metrics.missing_discriminator_counts` - aggregate `{label, count}` rows for
+  missing discriminator value text. It is row-shaped because the labels are
+  analyzer evidence strings and can collide in case-insensitive JSON consumers.
 - `metrics.observed_value_context_counts` - aggregate counts keyed by
   `ValueContext::as_str()`.
 - `metrics.related_test_confidence_counts` - `high`, `medium`, `low`, and
@@ -1515,11 +1625,13 @@ Field contract:
   `evidence_record.actionability.class`.
 - `evidence_quality.static_limitation_stage_counts` and
   `static_limitation_reason_counts` - distributions from
-  `evidence_record.static_limitations`.
+  `evidence_record.static_limitations`. Reason counts are `{label, count}` rows
+  because reasons are free-form evidence strings.
 - `evidence_quality.static_limitation_category_counts` - normalized limitation
   categories such as `activation_value_unresolved`,
-  `opaque_helper_call`, `cross_file_constant_unresolved`,
-  `dynamic_dispatch`, `unsupported_mock_shape`, `snapshot_field_unknown`, and
+  `activation_owner_call_unresolved`, `opaque_helper_call`,
+  `cross_file_constant_unresolved`, `dynamic_dispatch`,
+  `unsupported_mock_shape`, `snapshot_field_unknown`, and
   `side_effect_sink_unknown`.
 - `evidence_quality.calibration_availability_counts` - counts keyed by
   `evidence_record.calibration.availability`. These are placeholder coverage
@@ -1534,10 +1646,12 @@ Field contract:
   run mutation testing, infer thresholds, or change static classification.
 - `top_static_limitations` - the largest static evidence gaps by count, capped
   to 10 rows and carrying one example seam ID for inspection.
-- `run_limitations` - present on bounded xtask fallback artifacts. A timeout
-  row names `evidence_health_timeout`, the `evidence_health_generation` phase,
+- `run_limitations` - present on bounded xtask fallback artifacts. Timeout and
+  incomplete rows name `evidence_health_timeout` or
+  `evidence_health_incomplete`, the `evidence_health_generation` phase,
   timeout/duration/output byte diagnostics, and a repair route for inspecting
-  runtime or increasing `RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` on slower machines.
+  runtime, stdout/stderr, or increasing `RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` on
+  slower machines.
 
 The Markdown sibling prints the same summary, grip-class, top missing
 discriminator, oracle-strength, related-test confidence, evidence-quality,
@@ -1710,16 +1824,22 @@ runtime execution.
         "primary_anchor": {"file": "src/pricing.rs", "line": 42},
         "repair_kind": "add_boundary_assertion",
         "target_test_type": "boundary_discriminator",
-        "assertion_shape": "assert_eq!(price(threshold), expected)",
-        "recommended_repair": "Add an equality-boundary assertion.",
+        "assertion_shape": "assert_eq!(price(/* boundary input where amount == threshold */), expected)",
+        "recommended_repair": "Add or strengthen `assert_eq!(price(/* boundary input where amount == threshold */), expected)` for `input that hits the boundary: amount == threshold` in `tests/pricing.rs` as `price_boundary_discriminator`.",
         "why": "Related tests reach the seam but miss equality at the threshold.",
         "related_test_or_observer": {
           "file": "tests/pricing.rs",
           "name": "below_threshold_has_no_discount",
           "line": 10
         },
-        "candidate_value_or_observer": "amount == threshold",
+        "candidate_value_or_observer": "input that hits the boundary: amount == threshold",
         "verify_command": "cargo xtask evidence-quality-scorecard",
+        "repair_route_source": "canonical_item.repair_route",
+        "verify_command_source": "canonical_item.verify_command",
+        "receipt_command_or_path": null,
+        "receipt_source": "missing",
+        "public_projection_eligible": false,
+        "projection_exclusion_reasons": ["missing_receipt_path"],
         "raw_findings": [
           {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed"}
         ],
@@ -1731,6 +1851,14 @@ runtime execution.
         ]
       }
     ],
+    "actionable_gap_packet_public_projection": {
+      "scope": "emitted_actionable_gap_packets",
+      "public_projection_eligible_packets": 0,
+      "public_projection_excluded_packets": 1,
+      "projection_exclusion_reasons": [
+        {"label": "missing_receipt_path", "count": 1}
+      ]
+    },
     "runtime_confidence_by_class": [
       {
         "evidence_class": "predicate_boundary",
@@ -1765,20 +1893,20 @@ runtime execution.
   },
   "duplicate_looking_groups": [],
   "missing_discriminator_classes": {
-    "by_reason": {
-      "boundary value not observed": 900
-    },
+    "by_reason": [
+      {"label": "boundary value not observed", "count": 900}
+    ],
     "by_flow_sink": {
       "return_value": 870
     },
-    "by_value": {
-      "amount == threshold": 4
-    }
+    "by_value": [
+      {"label": "amount == threshold", "count": 4}
+    ]
   },
   "static_limitations": {
-    "by_reason": {
-      "static evidence is opaque or unknown for this seam": 1200
-    },
+    "by_reason": [
+      {"label": "static evidence is opaque or unknown for this seam", "count": 1200}
+    ],
     "by_stage": {
       "activate": 800
     },
@@ -1790,9 +1918,12 @@ runtime execution.
     }
   },
   "oracle_semantics_distribution": {
-    "by_semantics": {
-      "observes=exact return value; missing=boundary equality; upgrade=add equality boundary": 42
-    },
+    "by_semantics": [
+      {
+        "label": "observes=exact return value; missing=boundary equality; upgrade=add equality boundary",
+        "count": 42
+      }
+    ],
     "oracle_kind_counts": {
       "exact_value": 700
     },
@@ -1899,8 +2030,11 @@ Field contract:
 - `run_limitations` - bounded report-level limitations. A timed-out
   repo-exposure subprocess produces a warning audit artifact with a
   `lane1_repo_exposure_timeout` row, phase/input context, timeout/duration
-  diagnostics, the latency trace tail, and a repair route. Counts in such a
-  limited artifact are not complete repo truth and downstream reports must
+  diagnostics, the latency trace tail, and a repair route. A subprocess that
+  exits before writing complete repo-exposure JSON, including a nominally
+  successful exit with an empty or malformed output file, produces
+  `lane1_repo_exposure_incomplete` with the same bounded diagnostics. Counts in
+  such limited artifacts are not complete repo truth and downstream reports must
   surface the limitation instead of treating zeros as absence of gaps.
 - `summary.raw_headline_gaps` - count of seams that are headline-eligible in
   the record or top-level repo exposure row.
@@ -1955,6 +2089,12 @@ Field contract:
   verification command, raw findings as supporting evidence, confidence basis,
   and conservative `must_not_change` boundaries. They do not create user work
   from raw static class alone.
+- `finding_alignment.actionable_gap_packet_public_projection` - packet-level
+  badge-readiness diagnostics for the emitted packet set. It counts
+  public-projection eligible packets, excluded packets, and stable
+  `projection_exclusion_reasons` rows such as `missing_receipt_path`. This is
+  advisory report evidence only and does not change public badge endpoint
+  semantics.
 - `finding_alignment.runtime_confidence_by_class` - runtime confidence coverage
   rows at the canonical evidence-class grain. Each row reports canonical item
   count, calibrated-supported, fixture-backed, static-only, unknown-confidence,
@@ -1966,11 +2106,16 @@ Field contract:
   capped for review.
 - `duplicate_looking_groups` - canonical or fallback groups with observed count
   greater than one, or a reported group size greater than one.
-- `missing_discriminator_classes` - count maps by reason, flow sink, and value.
-- `static_limitations` - count maps by limitation reason, evidence stage,
-  normalized category, and suggested repair route.
-- `oracle_semantics_distribution` - rendered related-test oracle semantics plus
-  oracle kind and strength counts.
+- `missing_discriminator_classes` - complete `{label, count}` rows by reason
+  and value plus count maps by flow sink.
+- `static_limitations` - complete `{label, count}` rows by limitation reason
+  plus count maps by evidence stage, normalized category, and suggested repair
+  route.
+- `oracle_semantics_distribution` - complete `{label, count}` rows for rendered
+  related-test oracle semantics plus oracle kind and strength counts.
+  Free-form text counts are not object keys because discriminator, limitation,
+  and oracle text can differ only by case, and Windows/PowerShell JSON
+  consumers treat object keys case-insensitively.
 - `related_test_ranking` - confidence and relation-reason counts for all
   rendered related tests and for the top related test per seam.
 - `movement_availability` - counts of records carrying the identity and
@@ -2024,6 +2169,9 @@ mutation execution.
     "internal_no_action": 0,
     "static_limitations": 26277,
     "packets_emitted": 25,
+    "public_projection_eligible_packets": 25,
+    "public_projection_excluded_packets": 0,
+    "projection_exclusion_reasons": [],
     "raw_to_canonical_ratio": 1.24,
     "repair_route_unknowns": 0,
     "verify_command_unknowns": 0
@@ -2039,16 +2187,28 @@ mutation execution.
       "primary_anchor": {"file": "src/pricing.rs", "line": 42},
       "repair_kind": "add_boundary_assertion",
       "target_test_type": "boundary_discriminator",
-      "assertion_shape": "assert_eq!(price(threshold), expected)",
-      "recommended_repair": "Add an equality-boundary assertion.",
+      "assertion_shape": "assert_eq!(price(/* boundary input where amount == threshold */), expected)",
+      "recommended_repair": "Add or strengthen `assert_eq!(price(/* boundary input where amount == threshold */), expected)` for `input that hits the boundary: amount == threshold` in `tests/pricing.rs` as `price_boundary_discriminator`.",
       "why": "Related tests reach the seam but miss equality at the threshold.",
       "related_test_or_observer": {
         "file": "tests/pricing.rs",
         "name": "below_threshold_has_no_discount",
         "line": 10
       },
-      "candidate_value_or_observer": "amount == threshold",
+      "candidate_value_or_observer": "input that hits the boundary: amount == threshold",
+      "missing_discriminators": [
+        {
+          "value": "discount_threshold (equality boundary)",
+          "reason": "observed values do not include the equality-boundary case for this predicate"
+        }
+      ],
       "verify_command": "cargo xtask evidence-quality-scorecard",
+      "repair_route_source": "canonical_item.repair_route",
+      "verify_command_source": "canonical_item.verify_command",
+      "receipt_command_or_path": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id probe:src_pricing_rs:42:predicate_boundary --json --out target/ripr/reports/agent-receipt.json",
+      "receipt_source": "canonical_item.receipt_command",
+      "public_projection_eligible": true,
+      "projection_exclusion_reasons": [],
       "raw_findings": [
         {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed"}
       ],
@@ -2072,6 +2232,91 @@ mutation execution.
 The packet grain is one canonical actionable item. `raw_findings[]` is included
 only to preserve supporting evidence and line context; downstream consumers must
 not fan it back out into separate user-facing work.
+`missing_discriminators[]` carries the exact unresolved discriminator facts from
+the evidence record so agents do not have to infer the boundary or assertion
+target from a broader candidate-value hint.
+`public_projection_eligible` is an audit-only badge-readiness decision for the
+emitted packet. It is true only when the packet has public-projection
+prerequisites such as canonical repair and verify fields plus a receipt command
+or path; otherwise the stable `projection_exclusion_reasons[]` values explain
+why an otherwise useful agent packet is not yet a public badge item. This does
+not change committed badge endpoint semantics.
+
+## Actionable Gap Outcomes
+
+`cargo xtask actionable-gap-outcomes` joins actionable-gap packets with optional
+agent receipt and targeted-test outcome artifacts:
+
+```text
+target/ripr/reports/actionable-gap-outcomes.json
+target/ripr/reports/actionable-gap-outcomes.md
+```
+
+The report is advisory. It does not run repairs, generate tests, execute
+mutation testing, change PR/CI rendering, or change public badge semantics.
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "report": "actionable-gap-outcomes",
+  "scope": "repo",
+  "status": "advisory",
+  "source": "actionable-gaps plus optional receipt and targeted-test outcome artifacts",
+  "inputs": {
+    "actionable_gaps": "target/ripr/reports/actionable-gaps.json",
+    "agent_receipt": "target/ripr/reports/agent-receipt.json",
+    "targeted_test_outcome": "target/ripr/reports/targeted-test-outcome.json"
+  },
+  "summary": {
+    "packets_total": 25,
+    "outcomes_total": 25,
+    "not_attempted": 22,
+    "attempted_no_receipt": 0,
+    "receipt_present": 0,
+    "evidence_improved": 1,
+    "evidence_unchanged": 1,
+    "evidence_regressed": 0,
+    "resolved": 1,
+    "unknown": 0,
+    "receipts_present": 1,
+    "receipts_missing_after_input": 24
+  },
+  "outcomes": [
+    {
+      "canonical_gap_id": "gap:abc",
+      "evidence_class": "predicate_boundary",
+      "repair_kind": "add_boundary_assertion",
+      "source_file": "src/pricing.rs",
+      "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+      "receipt_command_or_path": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id abc --json --out target/ripr/reports/agent-receipt.json",
+      "receipt_state": "present",
+      "outcome_state": "evidence_improved",
+      "seam_id": "abc",
+      "before": "weakly_gripped",
+      "after": "strongly_gripped",
+      "movement_source": "agent_receipt",
+      "movement_direction": "improved",
+      "evidence_delta": [
+        "missing discriminator no longer reported: threshold equality"
+      ],
+      "reason": "Matched agent receipt artifact."
+    }
+  ],
+  "must_not_infer": [
+    "outcome reports join existing artifacts; they do not execute repairs",
+    "raw findings remain supporting evidence, not user work",
+    "targeted-test outcomes are static evidence movement, not mutation proof",
+    "missing receipts do not imply a repair failed"
+  ]
+}
+```
+
+`outcome_state` uses the bounded Lane 1 lifecycle states
+`not_attempted`, `attempted_no_receipt`, `receipt_present`,
+`evidence_improved`, `evidence_unchanged`, `evidence_regressed`, `resolved`,
+and `unknown`. Raw findings do not determine outcome state; the join is based
+on canonical packet identity, seam identity, or the packet primary anchor.
 
 ## Evidence Quality Scorecard
 
@@ -2089,6 +2334,14 @@ the audit first only when that required input is absent. It also reads
 when they are already available. The report is advisory and does not change
 analyzer behavior, gate policy, PR/CI projection, editor output, source files,
 generated tests, provider calls, or runtime execution.
+
+If the scorecard cannot regenerate a missing Lane 1 audit, it still writes a
+bounded diagnostic scorecard instead of silently dropping the report. That
+limited scorecard carries `unknowns[].kind =
+"evidence_quality_scorecard_audit_regeneration_failed"` and an audit
+`run_limitations[]` entry with the same category. Counts in that artifact are
+diagnostic only and must not be treated as complete repo truth or user test
+debt.
 
 ```json
 {
@@ -2161,6 +2414,11 @@ generated tests, provider calls, or runtime execution.
     "finding_alignment_uncalibrated_total": 1,
     "finding_alignment_visibility_unknown_total": 1,
     "finding_alignment_presentation_text_actionable_total": 0,
+    "finding_alignment_static_unknown_without_named_limitation": 0,
+    "finding_alignment_canonical_items_without_repair_route": 0,
+    "finding_alignment_canonical_items_without_verify_command": 0,
+    "finding_alignment_actionable_gap_packet_public_projection_eligible_packets": 25,
+    "finding_alignment_actionable_gap_packet_public_projection_excluded_packets": 0,
     "presentation_text_total": 1,
     "presentation_text_user_visible": 0,
     "presentation_text_observed": 0,
@@ -2188,22 +2446,22 @@ generated tests, provider calls, or runtime execution.
   },
   "duplicate_looking_groups": [],
   "static_limitation_categories": {
-    "by_reason": {},
+    "by_reason": [],
     "by_stage": {},
     "by_category": {},
     "repair_routes": {}
   },
   "missing_discriminator_classes": {
-    "by_reason": {},
+    "by_reason": [],
     "by_flow_sink": {},
-    "by_value": {}
+    "by_value": []
   },
   "related_test_confidence": {
     "all_confidence_counts": {},
     "top_confidence_counts": {}
   },
   "oracle_semantics_distribution": {
-    "by_semantics": {},
+    "by_semantics": [],
     "oracle_kind_counts": {},
     "oracle_strength_counts": {}
   },
@@ -2257,6 +2515,12 @@ generated tests, provider calls, or runtime execution.
       {"label": "predicate_boundary", "count": 120}
     ],
     "top_repair_route_unknowns": []
+  },
+  "actionable_gap_packet_public_projection": {
+    "scope": "emitted_actionable_gap_packets",
+    "public_projection_eligible_packets": 25,
+    "public_projection_excluded_packets": 0,
+    "projection_exclusion_reasons": []
   },
   "recommended_repairs": [
     {
@@ -2331,6 +2595,13 @@ Field contract:
   missing discriminator kinds, static limitation reasons on actionable gap
   records, and guidance-unknown classes so the scorecard explains the shape of
   user work before any badge or downstream rendering change.
+- `actionable_gap_packet_public_projection` - the audit-derived
+  `finding_alignment.actionable_gap_packet_public_projection` readiness section
+  carried forward for scorecard and trend use. It counts emitted actionable-gap
+  packets that are internally ready for future public projection and lists
+  exclusion reasons such as missing receipt paths. This is advisory
+  badge-readiness evidence only; it does not switch public badges or PR/CI
+  rendering.
 - `recommended_repairs` - bounded Lane 1 repair slices ordered by product risk
   priority first, then signal count. These are advisory next steps, not policy
   decisions.
@@ -2338,13 +2609,17 @@ Field contract:
   scorecard artifact is available; otherwise an explicit unavailable reason.
 - `unknowns` - unavailable inputs and evidence-quality unknowns that should
   stay visible until a fixture, analyzer, or calibration slice addresses them.
+  A scorecard generated after failed missing-audit regeneration includes
+  `evidence_quality_scorecard_audit_regeneration_failed` and the generic
+  `lane1_evidence_audit_limited` unknown so downstream consumers can explain
+  the bounded diagnostic state.
 
 The Markdown sibling prints bounded sections for summary, finding-alignment and
-presentation-text quality, actionable canonical gap top lists, maturity by
-class, top evidence-quality risks, recommended repairs, duplicate/canonical
-group signals, static limitations, missing discriminators, related-test and
-oracle distributions, movement and calibration coverage, recent deltas, and
-unknowns.
+presentation-text quality, actionable canonical gap top lists, actionable-gap
+packet public-projection readiness, maturity by class, top evidence-quality
+risks, recommended repairs, duplicate/canonical group signals, static
+limitations, missing discriminators, related-test and oracle distributions,
+movement and calibration coverage, recent deltas, and unknowns.
 
 ## Evidence Quality Trend
 
@@ -2398,7 +2673,7 @@ generated tests, provider calls, score definitions, or runtime execution.
     "improved_metrics": 0,
     "regressed_metrics": 0,
     "unchanged_metrics": 0,
-    "unknown_metrics": 24,
+    "unknown_metrics": 26,
     "no_history": true
   },
   "metric_trends": [
@@ -2440,7 +2715,8 @@ Field contract:
   calibrated records, calibrated-supported canonical items, already-observed
   items, and internal no-action items. Finding-alignment and presentation-text
   metrics track raw-to-canonical quality, duplicate groups, actionability,
-  static limitations, visibility unknowns, and no-action/observed outcomes.
+  static limitations, visibility unknowns, no-action/observed outcomes, and
+  actionable-gap packet public-projection readiness.
 - `static_limitation_category_trends[]` - bounded category-level deltas for
   normalized static limitation classes.
 - `unknowns[]` - missing history or missing current metric fields that must
@@ -7422,6 +7698,15 @@ JSON shape:
       "command": "ripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --format json --out target/ripr/reports/targeted-test-outcome.json",
       "required": true,
       "summary": "Report has not been generated yet."
+    },
+    {
+      "name": "actionable gap outcomes",
+      "path": "target/ripr/reports/actionable-gap-outcomes.json",
+      "state": "missing",
+      "status": "missing",
+      "command": "cargo xtask actionable-gap-outcomes",
+      "required": true,
+      "summary": "Actionable packet outcome join has not been generated yet."
     },
     {
       "name": "mutation calibration",

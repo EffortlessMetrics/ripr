@@ -55,15 +55,24 @@ target/ripr/reports/actionable-gaps.json
 target/ripr/reports/actionable-gaps.md
 ```
 
+The related `cargo xtask actionable-gap-outcomes` command writes:
+
+```text
+target/ripr/reports/actionable-gap-outcomes.json
+target/ripr/reports/actionable-gap-outcomes.md
+```
+
 It exits successfully after both artifacts are written. If repo exposure
 generation exits non-zero after writing a complete repo-exposure JSON document
 with a top-level `seams` array, the audit may continue from that captured
 artifact with a warning. If repo exposure generation times out before a
 complete artifact exists, the command writes bounded warning artifacts with a
 `lane1_repo_exposure_timeout` run limitation, phase/input context, the latency
-trace tail, and a repair route. If the captured artifact is missing, malformed,
-or does not contain `seams` for a non-timeout failure, the command returns an
-actionable error and does not claim a complete audit exists.
+trace tail, and a repair route. If repo exposure generation exits before the
+captured artifact is complete, including a nominally successful exit that left
+an empty or malformed output file, the command writes bounded warning artifacts
+with a `lane1_repo_exposure_incomplete` run limitation instead of failing before
+the report surfaces the phase/input diagnostics.
 
 ## JSON Contract
 
@@ -125,6 +134,10 @@ The Markdown sibling prints the same audit areas in bounded tables:
 - top files by unresolved evidence debt.
 
 High-cardinality count maps remain complete in JSON and are capped in Markdown.
+Free-form text counts for missing-discriminator reasons and values,
+static-limitation reasons, and oracle-semantics strings are emitted as complete
+`{label, count}` rows, not object keys, so case-only variants remain distinct
+for case-insensitive JSON consumers such as Windows PowerShell.
 
 ## Required Evidence
 
@@ -206,6 +219,12 @@ unbounded wait: large classified-seam cache entries may be skipped when the
 trace records a `cache_store` status such as
 `ignored_skipped_large_entry_seams_..._limit_...`.
 
+Given a repo-exposure subprocess that exits successfully but leaves an empty,
+malformed, or otherwise incomplete captured JSON artifact, the audit treats that
+as `lane1_repo_exposure_incomplete`, preserves the subprocess diagnostics and
+latency trace tail, removes the partial input, and does not claim complete repo
+truth or user test debt from the limited artifact.
+
 Given a headline seam with no canonical gap ID, the audit counts it under
 `headline_without_canonical_gap_id`.
 
@@ -223,9 +242,25 @@ Given actionable canonical items with structured repair routes and verify
 commands, the audit emits bounded actionable-gap packets in the audit JSON and
 the standalone `target/ripr/reports/actionable-gaps.{json,md}` artifacts. Each
 packet is one canonical item, preserves raw findings as supporting evidence,
-includes repair and verification guidance, and carries conservative
-`must_not_change` boundaries. It does not fan raw findings back out into
-separate user work.
+includes missing discriminator facts, repair and verification guidance, and
+carries conservative `must_not_change` boundaries. It does not fan raw findings
+back out into separate user work.
+
+Given emitted actionable-gap packets, the audit also records packet-level
+public projection readiness. `public_projection_eligible` is true only when the
+packet has canonical repair and verify sources plus a receipt command or path.
+Packets that are useful for humans or agents but not badge-ready remain in the
+artifact with stable `projection_exclusion_reasons[]` such as
+`missing_receipt_path`; this does not change public badge semantics.
+
+Given an actionable-gap packet artifact, an optional agent receipt artifact, and
+an optional targeted-test outcome artifact, `cargo xtask actionable-gap-outcomes`
+joins by canonical gap identity, seam identity, or primary anchor and reports
+one outcome row per packet. Outcome rows use only bounded states:
+`not_attempted`, `attempted_no_receipt`, `receipt_present`,
+`evidence_improved`, `evidence_unchanged`, `evidence_regressed`, `resolved`,
+and `unknown`. Missing receipts do not prove failure, and targeted-test
+movement remains static evidence movement rather than mutation proof.
 
 ## Test Mapping
 
@@ -239,8 +274,20 @@ separate user work.
   presentation, config/policy, and predicate-boundary examples.
 - `xtask::tests::lane1_actionable_gap_packets_emit_agent_safe_work_items`
   pins the embedded and standalone actionable-gap packet contracts, including
-  repair kind, verify command, raw finding support, and conservative
-  `must_not_change` boundaries.
+  missing discriminators, repair kind, verify command, raw finding support, and
+  conservative `must_not_change` boundaries.
+- `xtask::tests::lane1_actionable_gap_packets_mark_public_projection_ready_with_receipt`
+  pins that packet-level public projection readiness requires a receipt command
+  or path and records the receipt source without changing badge counts.
+- `xtask::tests::lane1_actionable_gap_packets_keep_observed_gaps_out_of_public_projection`
+  pins that observed/no-action dispositions do not become public-projection
+  eligible even when a malformed packet carries repair, verify, and receipt
+  fields.
+- `xtask::tests::actionable_gap_outcomes_join_receipts_and_targeted_movement`
+  pins outcome state joins for receipt-present, evidence-improved,
+  evidence-unchanged, resolved, and not-attempted packet states.
+- `xtask::tests::actionable_gap_outcomes_command_writes_markdown_and_json`
+  pins the `cargo xtask actionable-gap-outcomes` JSON/Markdown artifacts.
 - `xtask::tests::lane1_evidence_audit_reports_alignment_coverage_holes` pins
   unaligned raw finding examples and same-line duplicate grouping.
 - `xtask::tests::lane1_evidence_audit_requires_structured_repair_route_for_actionable_items`
@@ -256,6 +303,9 @@ separate user work.
 - `xtask::tests::lane1_evidence_audit_limited_report_names_timeout_limitation`
   pins the bounded timeout artifact, named run limitation, repair route, and
   latency trace tail.
+- `xtask::tests::lane1_evidence_audit_limits_incomplete_success_repo_exposure_artifact`
+  pins bounded diagnostics when a successful repo-exposure subprocess leaves an
+  incomplete captured JSON artifact.
 - `xtask::run::tests::latency_progress_reader_preserves_captured_stderr` pins
   that streamed latency progress remains available to timeout and report
   diagnostics.
@@ -271,12 +321,13 @@ separate user work.
 
 ## Implementation Mapping
 
-- `xtask/src/command.rs` exposes `lane1-evidence-audit` and the
-  `evidence-quality-audit` alias.
+- `xtask/src/command.rs` exposes `lane1-evidence-audit`, the
+  `evidence-quality-audit` alias, and `actionable-gap-outcomes`.
 - `xtask/src/dispatch.rs`, `xtask/src/reports/mod.rs`, and
   `xtask/src/reports/repo.rs` route the report facade.
 - `xtask/src/main.rs` generates repo exposure, builds the audit, renders JSON
-  and Markdown, and writes the audit plus actionable-gap packet artifacts.
+  and Markdown, writes the audit plus actionable-gap packet artifacts, and
+  joins packet/receipt/movement artifacts into actionable-gap outcome reports.
 - `xtask/src/run.rs` provides the stdout-to-file command runner used to stream
   the generated repo-exposure input without adding process-spawn logic to the
   report implementation.
@@ -305,6 +356,7 @@ The audit feeds these Lane 1 metrics:
 - `finding_alignment_canonical_items_without_repair_route`;
 - `finding_alignment_canonical_items_without_verify_command`.
 - `lane1_actionable_gap_packets`.
+- `lane1_actionable_gap_outcomes`.
 - `lane1_runtime_confidence_by_class`.
 
 ## Non-Goals

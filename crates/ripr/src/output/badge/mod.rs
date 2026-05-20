@@ -22,7 +22,7 @@ pub(crate) use model::{BadgeScope, BadgeStatus};
 pub(crate) use render::{render_native_json, render_shields_json};
 pub(crate) use summaries::{
     repo_gap_ledger_badge_summary_from_json, ripr_badge_summary_with_suppressions,
-    ripr_seam_badge_summary_from_counts,
+    ripr_canonical_actionable_gap_badge_summary,
 };
 #[cfg(test)]
 pub(crate) use summaries::{ripr_badge_summary, ripr_seam_badge_summary};
@@ -30,8 +30,7 @@ pub(crate) use summaries::{ripr_badge_summary, ripr_seam_badge_summary};
 pub(crate) use test_efficiency::ripr_plus_badge_summary;
 pub(crate) use test_efficiency::{
     DiffRelatedTests, TestEfficiencyAggregationScope, parse_test_efficiency_badge_summary,
-    ripr_plus_badge_summary_with_suppressions,
-    ripr_plus_seam_badge_summary_from_counts_with_suppressions,
+    ripr_plus_badge_summary_with_suppressions, ripr_plus_canonical_actionable_gap_badge_summary,
 };
 #[cfg(test)]
 pub(crate) use test_efficiency::{TestEfficiencyBadgeEntry, TestEfficiencyBadgeSummary};
