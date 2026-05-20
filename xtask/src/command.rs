@@ -306,6 +306,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "actionable-gap-outcomes [--actionable-gaps <path>] [--agent-receipt <path>] [--targeted-test-outcome <path>]",
         "agent-seam-packets [root]",
         "ripr-swarm plan [--top <n>] [--actionable-gaps <path>]",
+        "ripr-swarm readiness [--swarm-plan <path>] [--actionable-gap-outcomes <path>]",
         "lsp-cockpit-report",
         "operator-cockpit",
         "operator-cockpit-report",
@@ -633,6 +634,13 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "target/ripr/reports/swarm-plan.{json,md}",
             false,
             "Ranks existing actionable canonical gap packets into swarm-ready and blocked repair candidates; does not edit files, run tests, call providers, create receipts, or infer work from raw findings.",
+        ),
+        command_entry(
+            "ripr-swarm readiness [--swarm-plan <path>] [--actionable-gap-outcomes <path>]",
+            "report_only",
+            "target/ripr/reports/swarm-readiness.{json,md}",
+            false,
+            "Rolls up swarm plan and actionable-gap outcome artifacts into advisory repair-coordination readiness counts.",
         ),
         command_entry(
             "lsp-cockpit-report",
