@@ -63,9 +63,11 @@ All flags are optional except when callers want non-default paths:
 same default artifacts. If `target/ripr/reports/mutation-calibration.json`
 already exists, the xtask command includes it as optional calibration context.
 The facade bounds the live child process with
-`RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` (default 30 minutes). This includes both the
+`RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` (default 5 minutes). This includes both the
 preflight `cargo build -p ripr` phase and the `ripr evidence-health` generation
-phase. On timeout or incomplete child-process exit it removes stale or partial
+phase. The default is intentionally conservative so pathological live-repo
+inputs degrade to a named limitation before they can silently drop the artifact.
+On timeout or incomplete child-process exit it removes stale or partial
 outputs and writes warning JSON/Markdown with phase context such as
 `evidence_health_build` or `evidence_health_generation` plus the named
 `evidence_health_timeout` or `evidence_health_incomplete` run limitation instead

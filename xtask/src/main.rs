@@ -16167,7 +16167,7 @@ pub(crate) fn evidence_health_report_impl() -> Result<(), String> {
 }
 
 const EVIDENCE_HEALTH_TIMEOUT_ENV: &str = "RIPR_EVIDENCE_HEALTH_TIMEOUT_MS";
-const EVIDENCE_HEALTH_DEFAULT_TIMEOUT_MS: u64 = 1_800_000;
+const EVIDENCE_HEALTH_DEFAULT_TIMEOUT_MS: u64 = 300_000;
 
 fn evidence_health_args() -> Vec<String> {
     let mut args = vec![
@@ -58993,6 +58993,11 @@ covered_by = ["cargo xtask check-file-policy"]
             assert!(!markdown.contains("stale markdown"));
             Ok(())
         })
+    }
+
+    #[test]
+    fn evidence_health_default_timeout_is_bounded_for_live_repo_pathologies() {
+        assert_eq!(super::EVIDENCE_HEALTH_DEFAULT_TIMEOUT_MS, 300_000);
     }
 
     #[test]
