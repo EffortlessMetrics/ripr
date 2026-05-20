@@ -9,6 +9,11 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Added `RIPR-SPEC-0057` for the planned `ripr-swarm` repair loop. The spec
+  defines swarm work as bounded execution over actionable canonical gap
+  packets, not raw findings, and requires verify commands, receipt commands,
+  must-not-change boundaries, typed attempt states, and outcome joins before a
+  repair attempt can claim movement.
 - `cargo xtask evidence-health` now bounds its preflight `cargo build -p ripr`
   phase with the evidence-health timeout and writes diagnostic warning reports
   with `phase = evidence_health_build` if that phase times out or fails. This

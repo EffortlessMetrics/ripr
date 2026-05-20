@@ -3592,3 +3592,31 @@ metrics = [
   "public_actionable_projection_packet_eligible",
   "public_actionable_projection_packet_excluded",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0057"
+name = "RIPR swarm repair loop"
+spec = "docs/specs/RIPR-SPEC-0057-ripr-swarm-repair-loop.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0057-ripr-swarm-repair-loop.md",
+  "docs/specs/README.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "swarm_ready_packets",
+  "swarm_blocked_packets",
+  "swarm_missing_verify_command",
+  "swarm_missing_receipt_command",
+  "swarm_static_limitation_packets",
+  "swarm_high_confidence_packets",
+  "swarm_attempted_packets",
+  "swarm_verified_improved",
+  "swarm_verified_unchanged",
+  "swarm_verified_regressed",
+  "swarm_failed_to_apply",
+]

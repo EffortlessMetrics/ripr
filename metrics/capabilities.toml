@@ -341,6 +341,20 @@ next = "test/lsp-post-adoption-editor-contract"
 metric = "editor_actionable_gap_queue_available, editor_actionable_gap_queue_top_gap_ready, editor_actionable_gap_queue_no_action, editor_actionable_gap_queue_report_only, editor_actionable_gap_queue_static_limit_only, editor_actionable_gap_queue_stale, editor_actionable_gap_queue_wrong_root, editor_actionable_gap_queue_malformed, editor_actionable_gap_queue_repair_packet_available, editor_actionable_gap_queue_repo_map_available, editor_actionable_gap_queue_actions_suppressed_unsafe_state, editor_actionable_gap_queue_receipt_improved, editor_actionable_gap_queue_receipt_unchanged"
 
 [[capability]]
+id = "ripr_swarm_repair_loop"
+name = "RIPR swarm repair loop"
+status = "planned"
+spec = "RIPR-SPEC-0057"
+evidence = [
+  "docs/specs/RIPR-SPEC-0057-ripr-swarm-repair-loop.md defines ripr-swarm as a bounded repair runner over actionable canonical gap packets rather than raw findings",
+  "the spec requires verify commands, receipt commands, must-not-change boundaries, typed state transitions, and outcome joins before any repair attempt can claim movement",
+  "the spec keeps provider calls, mutation execution, generated tests, production-code edits by default, PR/CI rendering, LSP/editor changes, gate policy, and public badge changes out of scope"
+]
+fixtures = []
+next = "report/ripr-swarm-plan"
+metric = "swarm_ready_packets, swarm_blocked_packets, swarm_missing_verify_command, swarm_missing_receipt_command, swarm_static_limitation_packets, swarm_high_confidence_packets, swarm_attempted_packets, swarm_verified_improved, swarm_verified_unchanged, swarm_verified_regressed, swarm_failed_to_apply"
+
+[[capability]]
 id = "parser_backed_syntax_facts"
 name = "Parser-backed syntax facts"
 status = "alpha"
