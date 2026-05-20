@@ -15,6 +15,14 @@ are scoped or reviewed.
   prevents cold or pathological builds from consuming the outer shell timeout
   without producing `evidence-health.json` / `.md`; the fallback artifact names
   a limitation and does not claim user test debt.
+- Lane 1 now has an actionable-gap outcome report that joins existing
+  actionable packets with optional agent receipt and targeted-test outcome
+  artifacts. `cargo xtask actionable-gap-outcomes` writes
+  `target/ripr/reports/actionable-gap-outcomes.{json,md}` with bounded outcome
+  states such as `not_attempted`, `evidence_improved`, `evidence_unchanged`,
+  `evidence_regressed`, and `resolved` so repair attempts can be tracked
+  without running repairs, generated tests, provider calls, mutation execution,
+  public badge changes, or PR/CI rendering.
 - Public actionable projection docs now define internal badge-readiness stages:
   packet readiness, scorecard readiness, and badge-basis readiness. The spec
   records that Lane 1 scorecard/trend packet readiness is internal evidence
