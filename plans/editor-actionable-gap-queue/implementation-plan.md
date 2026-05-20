@@ -24,9 +24,10 @@ after validating it; it should not rederive the queue, produce the artifact, or
 parse Markdown for action semantics.
 
 The source-of-truth stack, read-only artifact validation seam, Show Status
-queue projection, and bounded current repair packet copy action have landed.
-The active slice adds the read-only repo gap map orientation command without
-changing producers, gates, PR/CI output, or repair-packet semantics.
+queue projection, bounded current repair packet copy action, and read-only repo
+gap map orientation command have landed. The active slice adds the manifest-only
+fixture corpus for success, no-action, receipt, and fail-closed queue states
+without changing producers, gates, PR/CI output, or editor behavior.
 
 ## Hard Boundaries
 
@@ -57,8 +58,8 @@ changing producers, gates, PR/CI output, or repair-packet semantics.
 | #1300 | `lsp(queue): validate actionable gap packet artifacts` | closed | Read-only validation for `target/ripr/reports/actionable-gaps.json` landed with success, no-action, missing, malformed, wrong-root, unsafe-path, unsafe-command, producer-exclusion, and run-limitation guards. |
 | #1301 | `lsp(queue): project repair queue in Show Status` | closed | Show bounded queue summary and no-action/fail-closed states without adding copy actions or packet generation. |
 | #1302 | `lsp(queue): add Copy Current Repair Packet` | closed | Copy one bounded packet only for validated actionable gaps. |
-| #1303 | `lsp(queue): add Copy Repo Gap Map` | active | Copy read-only orientation without gate/runtime/policy claims. |
-| #1304 | `fixtures(editor): add actionable gap queue corpus` | planned | Add success and fail-closed fixture cases. |
+| #1303 | `lsp(queue): add Copy Repo Gap Map` | closed | Copy read-only orientation without gate/runtime/policy claims. |
+| #1304 | `fixtures(editor): add actionable gap queue corpus` | active | Add success and fail-closed fixture cases. |
 | #1305 | `test(vscode): smoke actionable gap queue` | planned | Prove the packaged extension path. |
 | #1306 | `docs(editor): document actionable gap queue` | planned | Explain workflow, recovery states, and non-claims. |
 | #1307 | `dogfood(lane3): record actionable gap queue receipts` | planned | Record queue, packet, receipt, no-action, and fail-closed proof. |

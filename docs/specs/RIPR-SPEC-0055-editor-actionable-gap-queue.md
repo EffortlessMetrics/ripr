@@ -299,7 +299,7 @@ Receipt unchanged:
 
 ## Fixture Corpus
 
-Future behavior PRs should add:
+The manifest-only fixture corpus lives at:
 
 ```text
 fixtures/editor_actionable_gap_queue/setup_ok/
@@ -314,7 +314,7 @@ fixtures/editor_actionable_gap_queue/receipt_improved/
 fixtures/editor_actionable_gap_queue/receipt_unchanged/
 ```
 
-Expected artifacts:
+Each case carries:
 
 ```text
 vscode-status.json
@@ -339,14 +339,14 @@ Fixture rules:
 
 ## Test Mapping
 
-Traceability starts with source-of-truth docs only. Future behavior PRs should
-add:
+Current traceability includes the source-of-truth docs, queue validation tests,
+VS Code command tests, and `fixtures/editor_actionable_gap_queue/*` success and
+fail-closed states. Remaining behavior PRs should add:
 
 - `crates/ripr/src/lsp/tests.rs` for artifact validation, status projection,
   fail-closed action gating, packet rendering, and repo gap map rendering;
 - `editors/vscode/test/suite/extension.test.ts` for packaged-extension command
   smoke;
-- `fixtures/editor_actionable_gap_queue/*` for success and fail-closed states;
 - `cargo xtask lsp-cockpit-report` coverage once queue state enters the
   cockpit report.
 

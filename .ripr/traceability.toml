@@ -3528,12 +3528,15 @@ tests = [
   "editors/vscode/test/suite/extension.test.ts::copyRepoGapMap suppresses unsafe and mismatched queue artifacts",
   "editors/vscode/test/suite/extension.test.ts::editor adoption baseline keeps setup receipt and first-pr projection read-only",
 ]
-fixtures = []
+fixtures = [
+  "fixtures/editor_actionable_gap_queue",
+]
 code = [
   "crates/ripr/src/lsp/gap_artifacts.rs",
   "editors/vscode/package.json",
   "editors/vscode/src/extension.ts",
   "editors/vscode/src/client.ts",
+  "xtask/src/main.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0055-editor-actionable-gap-queue.md",
@@ -3548,6 +3551,9 @@ outputs = [
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/CAPABILITY_MATRIX.md",
+  "fixtures/editor_actionable_gap_queue/SPEC.md",
+  "fixtures/README.md",
+  "fixtures/EXAMPLE_CORPUS.md",
   "plans/editor-actionable-gap-queue/implementation-plan.md",
   "plans/README.md",
   "metrics/capabilities.toml",

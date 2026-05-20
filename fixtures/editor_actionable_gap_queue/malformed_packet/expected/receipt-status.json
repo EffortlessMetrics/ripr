@@ -1,0 +1,9 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_actionable_gap_queue/malformed_packet",
+  "receipt_state": "not_projected",
+  "movement": "not_available",
+  "runtime_adequacy_claim": false,
+  "mutation_proof_claim": false,
+  "policy_gate_claim": false
+}

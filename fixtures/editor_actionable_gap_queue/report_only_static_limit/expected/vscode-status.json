@@ -1,0 +1,15 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_actionable_gap_queue/report_only_static_limit",
+  "queue_status": "static_limit_only",
+  "projection": "active",
+  "actionable_gaps": 0,
+  "report_only_gaps": 1,
+  "static_limit_only_gaps": 1,
+  "static_limit_kind": "dynamic_dispatch",
+  "next_safe_action": "Use the repo gap map for orientation; no current repair packet is safe.",
+  "runtime_adequacy_claim": false,
+  "mutation_proof_claim": false,
+  "policy_gate_claim": false,
+  "merge_readiness_claim": false
+}

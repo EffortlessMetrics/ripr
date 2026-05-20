@@ -64,6 +64,11 @@ first-pr packet success and fail-closed states.
 `expected/lsp-diagnostics.json`, `expected/lsp-code-actions.json`,
 `expected/first-pr-status.json`, and `expected/receipt-status.json` to pin
 first-use compatibility, root, receipt, first-pr, and preview-adapter states.
+`fixtures/editor_actionable_gap_queue` uses nested cases with
+`expected/vscode-status.json`, `expected/lsp-code-actions.json`,
+`expected/current-repair-packet.md`, `expected/repo-gap-map.md`, and
+`expected/receipt-status.json` to pin the local actionable repair queue,
+read-only repo orientation, receipt movement, and fail-closed queue states.
 
 Run:
 

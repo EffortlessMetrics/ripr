@@ -5087,6 +5087,7 @@ fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                     | "editor_first_run_usability"
                     | "editor_first_pr_bridge"
                     | "editor_adoption_assurance"
+                    | "editor_actionable_gap_queue"
                     | "evidence-quality-benchmark"
                     | "first_successful_pr"
                     | "finding-alignment-dogfood"
@@ -7252,6 +7253,7 @@ fn check_fixture_contracts() -> Result<(), String> {
     validate_editor_first_run_usability_fixture_corpus(&mut violations)?;
     validate_editor_first_pr_bridge_fixture_corpus(&mut violations)?;
     validate_editor_adoption_assurance_fixture_corpus(&mut violations)?;
+    validate_editor_actionable_gap_queue_fixture_corpus(&mut violations)?;
     validate_first_successful_pr_fixture_corpus(&mut violations)?;
     validate_finding_alignment_dogfood_fixture_corpus(&mut violations)?;
     validate_gap_decision_ledger_fixture_corpus(&mut violations)?;
@@ -9587,6 +9589,436 @@ fn editor_adoption_assurance_case_fails_closed(case: &str) -> bool {
             | "first_pr_packet_mismatch"
             | "preview_adapter_unavailable"
     )
+}
+
+const EDITOR_ACTIONABLE_GAP_QUEUE_FIXTURE_ROOT: &str = "fixtures/editor_actionable_gap_queue";
+const EDITOR_ACTIONABLE_GAP_QUEUE_CASES: &[&str] = &[
+    "setup_ok",
+    "top_gap_ready",
+    "multiple_gaps_bounded",
+    "no_actionable_gap",
+    "report_only_static_limit",
+    "stale_actionable_packet",
+    "wrong_root_packet",
+    "malformed_packet",
+    "receipt_improved",
+    "receipt_unchanged",
+];
+const EDITOR_ACTIONABLE_GAP_QUEUE_EXPECTED_FILES: &[&str] = &[
+    "vscode-status.json",
+    "lsp-code-actions.json",
+    "current-repair-packet.md",
+    "repo-gap-map.md",
+    "receipt-status.json",
+];
+
+fn validate_editor_actionable_gap_queue_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new(EDITOR_ACTIONABLE_GAP_QUEUE_FIXTURE_ROOT);
+    if !root.exists() {
+        violations.push(format!(
+            "editor actionable gap queue fixture corpus is missing {}",
+            normalize_path(root)
+        ));
+        return Ok(());
+    }
+    let spec = root.join("SPEC.md");
+    if !spec.exists() {
+        violations.push(format!(
+            "editor actionable gap queue fixture corpus is missing {}",
+            normalize_path(&spec)
+        ));
+    } else {
+        let spec_text = read_text_lossy(&spec)?;
+        if !spec_text
+            .lines()
+            .any(|line| line.starts_with("Spec: RIPR-SPEC-0055"))
+        {
+            violations.push(format!(
+                "{} is missing `Spec: RIPR-SPEC-0055`",
+                normalize_path(&spec)
+            ));
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !has_markdown_heading(&spec_text, heading) {
+                violations.push(format!("{} is missing `{heading}`", normalize_path(&spec)));
+            }
+        }
+    }
+
+    for case in EDITOR_ACTIONABLE_GAP_QUEUE_CASES {
+        validate_editor_actionable_gap_queue_case(root, case, violations)?;
+    }
+    Ok(())
+}
+
+fn validate_editor_actionable_gap_queue_case(
+    root: &Path,
+    case: &str,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let expected = root.join(case).join("expected");
+    for file in EDITOR_ACTIONABLE_GAP_QUEUE_EXPECTED_FILES {
+        let path = expected.join(file);
+        if !path.exists() {
+            violations.push(format!(
+                "editor actionable gap queue case {case} is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+
+    let status_path = expected.join("vscode-status.json");
+    if status_path.exists() {
+        let status = read_json_value(&status_path)?;
+        validate_editor_actionable_gap_queue_status(case, &status, violations);
+    }
+    let actions_path = expected.join("lsp-code-actions.json");
+    if actions_path.exists() {
+        let actions = read_json_value(&actions_path)?;
+        validate_editor_actionable_gap_queue_actions(case, &actions, violations);
+    }
+    let receipt_path = expected.join("receipt-status.json");
+    if receipt_path.exists() {
+        let receipt = read_json_value(&receipt_path)?;
+        validate_editor_actionable_gap_queue_receipt(case, &receipt, violations);
+    }
+    let repair_packet_path = expected.join("current-repair-packet.md");
+    if repair_packet_path.exists() {
+        let packet = read_text_lossy(&repair_packet_path)?;
+        validate_editor_actionable_gap_queue_repair_packet(case, &packet, violations);
+    }
+    let repo_map_path = expected.join("repo-gap-map.md");
+    if repo_map_path.exists() {
+        let map = read_text_lossy(&repo_map_path)?;
+        validate_editor_actionable_gap_queue_repo_map(case, &map, violations);
+    }
+    Ok(())
+}
+
+fn validate_editor_actionable_gap_queue_status(
+    case: &str,
+    status: &Value,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(status, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "editor actionable gap queue case {case} vscode-status schema_version must be 0.1"
+        ));
+    }
+    let expected_fixture = format!("editor_actionable_gap_queue/{case}");
+    if json_string_field(status, "fixture").as_deref() != Some(expected_fixture.as_str()) {
+        violations.push(format!(
+            "editor actionable gap queue case {case} vscode-status fixture must be {expected_fixture}"
+        ));
+    }
+    let expected_status = match case {
+        "setup_ok" => "queue_available",
+        "top_gap_ready" | "multiple_gaps_bounded" | "receipt_improved" | "receipt_unchanged" => {
+            "top_actionable_gap"
+        }
+        "no_actionable_gap" => "no_action",
+        "report_only_static_limit" => "static_limit_only",
+        "stale_actionable_packet" => "stale",
+        "wrong_root_packet" => "wrong_root",
+        "malformed_packet" => "malformed",
+        _ => "unknown",
+    };
+    if json_string_field(status, "queue_status").as_deref() != Some(expected_status) {
+        violations.push(format!(
+            "editor actionable gap queue case {case} queue_status must be {expected_status}"
+        ));
+    }
+    if editor_actionable_gap_queue_case_fails_closed(case)
+        && json_string_field(status, "projection").as_deref() != Some("fail_closed")
+    {
+        violations.push(format!(
+            "editor actionable gap queue case {case} must fail closed"
+        ));
+    }
+    if json_string_field(status, "next_safe_action").is_none() {
+        violations.push(format!(
+            "editor actionable gap queue case {case} must name a next_safe_action"
+        ));
+    }
+    for field in [
+        "runtime_adequacy_claim",
+        "mutation_proof_claim",
+        "policy_gate_claim",
+        "merge_readiness_claim",
+    ] {
+        if json_bool_field(status, field) != Some(false) {
+            violations.push(format!(
+                "editor actionable gap queue case {case} vscode-status must deny {field}"
+            ));
+        }
+    }
+    if editor_actionable_gap_queue_case_has_repair(case)
+        && json_string_field(
+            status.get("top_gap").unwrap_or(&Value::Null),
+            "canonical_gap_id",
+        )
+        .is_none()
+    {
+        violations.push(format!(
+            "editor actionable gap queue case {case} must name top_gap.canonical_gap_id"
+        ));
+    }
+    if case == "multiple_gaps_bounded"
+        && status
+            .get("actionable_gaps")
+            .and_then(Value::as_u64)
+            .unwrap_or_default()
+            < 2
+    {
+        violations.push(
+            "editor actionable gap queue case multiple_gaps_bounded must include multiple actionable gaps"
+                .to_string(),
+        );
+    }
+}
+
+fn validate_editor_actionable_gap_queue_actions(
+    case: &str,
+    actions: &Value,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(actions, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "editor actionable gap queue case {case} lsp-code-actions schema_version must be 0.1"
+        ));
+    }
+    let expected_fixture = format!("editor_actionable_gap_queue/{case}");
+    if json_string_field(actions, "fixture").as_deref() != Some(expected_fixture.as_str()) {
+        violations.push(format!(
+            "editor actionable gap queue case {case} lsp-code-actions fixture must be {expected_fixture}"
+        ));
+    }
+    let items = actions
+        .get("actions")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let commands = items
+        .iter()
+        .filter_map(|item| json_string_field(item, "command"))
+        .collect::<BTreeSet<_>>();
+    let allowed_commands = editor_actionable_gap_queue_allowed_commands(case);
+    for command in &commands {
+        if !allowed_commands.contains(command.as_str()) {
+            violations.push(format!(
+                "editor actionable gap queue case {case} includes unexpected command {command}"
+            ));
+        }
+    }
+    if !commands.contains("ripr.refresh") {
+        violations.push(format!(
+            "editor actionable gap queue case {case} must include refresh guidance"
+        ));
+    }
+    let repair_or_navigation = commands.contains("ripr.copyCurrentRepairPacket")
+        || commands.contains("ripr.openRelatedTest");
+    if editor_actionable_gap_queue_case_has_repair(case) {
+        for command in [
+            "ripr.copyCurrentRepairPacket",
+            "ripr.copyRepoGapMap",
+            "ripr.openRelatedTest",
+            "ripr.refresh",
+        ] {
+            if !commands.contains(command) {
+                violations.push(format!(
+                    "editor actionable gap queue case {case} must include {command}"
+                ));
+            }
+        }
+    } else {
+        if repair_or_navigation {
+            violations.push(format!(
+                "editor actionable gap queue case {case} must suppress repair/navigation actions"
+            ));
+        }
+        if editor_actionable_gap_queue_case_allows_repo_map(case)
+            && !commands.contains("ripr.copyRepoGapMap")
+        {
+            violations.push(format!(
+                "editor actionable gap queue case {case} must include ripr.copyRepoGapMap"
+            ));
+        }
+        if editor_actionable_gap_queue_case_fails_closed(case)
+            && commands.contains("ripr.copyRepoGapMap")
+        {
+            violations.push(format!(
+                "editor actionable gap queue case {case} must suppress repo gap map actions"
+            ));
+        }
+    }
+}
+
+fn validate_editor_actionable_gap_queue_receipt(
+    case: &str,
+    receipt: &Value,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(receipt, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "editor actionable gap queue case {case} receipt-status schema_version must be 0.1"
+        ));
+    }
+    let expected_fixture = format!("editor_actionable_gap_queue/{case}");
+    if json_string_field(receipt, "fixture").as_deref() != Some(expected_fixture.as_str()) {
+        violations.push(format!(
+            "editor actionable gap queue case {case} receipt-status fixture must be {expected_fixture}"
+        ));
+    }
+    let expected_state = match case {
+        "receipt_improved" | "receipt_unchanged" => "found",
+        "stale_actionable_packet" | "wrong_root_packet" | "malformed_packet" => "not_projected",
+        _ => "missing",
+    };
+    if json_string_field(receipt, "receipt_state").as_deref() != Some(expected_state) {
+        violations.push(format!(
+            "editor actionable gap queue case {case} receipt_state must be {expected_state}"
+        ));
+    }
+    let expected_movement = match case {
+        "receipt_improved" => "improved",
+        "receipt_unchanged" => "unchanged",
+        _ => "not_available",
+    };
+    if json_string_field(receipt, "movement").as_deref() != Some(expected_movement) {
+        violations.push(format!(
+            "editor actionable gap queue case {case} movement must be {expected_movement}"
+        ));
+    }
+    for field in [
+        "runtime_adequacy_claim",
+        "mutation_proof_claim",
+        "policy_gate_claim",
+    ] {
+        if json_bool_field(receipt, field) != Some(false) {
+            violations.push(format!(
+                "editor actionable gap queue case {case} receipt-status must deny {field}"
+            ));
+        }
+    }
+}
+
+fn validate_editor_actionable_gap_queue_repair_packet(
+    case: &str,
+    packet: &str,
+    violations: &mut Vec<String>,
+) {
+    if editor_actionable_gap_queue_case_has_repair(case) {
+        for heading in [
+            "Task",
+            "Context",
+            "Repair",
+            "Verification",
+            "Receipt",
+            "Stop conditions",
+            "Do not do",
+        ] {
+            if !packet.contains(heading) {
+                violations.push(format!(
+                    "editor actionable gap queue case {case} current repair packet is missing `{heading}`"
+                ));
+            }
+        }
+        if !packet.contains("canonical gap") {
+            violations.push(format!(
+                "editor actionable gap queue case {case} current repair packet must name the canonical gap"
+            ));
+        }
+    } else if !packet.contains("Current repair packet suppressed") {
+        violations.push(format!(
+            "editor actionable gap queue case {case} must suppress the current repair packet"
+        ));
+    }
+    for forbidden in [
+        "Ready to merge",
+        "Gate passed",
+        "runtime adequate",
+        "Mutation proof: yes",
+    ] {
+        if packet.contains(forbidden) {
+            violations.push(format!(
+                "editor actionable gap queue case {case} current repair packet must not claim `{forbidden}`"
+            ));
+        }
+    }
+}
+
+fn validate_editor_actionable_gap_queue_repo_map(
+    case: &str,
+    map: &str,
+    violations: &mut Vec<String>,
+) {
+    if editor_actionable_gap_queue_case_allows_repo_map(case) {
+        for required in [
+            "RIPR repo gap map",
+            "Scope",
+            "Safe next commands",
+            "Non-claims",
+            "not a gate decision",
+        ] {
+            if !map.contains(required) {
+                violations.push(format!(
+                    "editor actionable gap queue case {case} repo gap map is missing `{required}`"
+                ));
+            }
+        }
+    } else if !map.contains("Repo gap map suppressed") {
+        violations.push(format!(
+            "editor actionable gap queue case {case} must suppress the repo gap map"
+        ));
+    }
+    for forbidden in [
+        "Ready to merge",
+        "Gate passed",
+        "runtime adequate",
+        "Mutation proof: yes",
+    ] {
+        if map.contains(forbidden) {
+            violations.push(format!(
+                "editor actionable gap queue case {case} repo gap map must not claim `{forbidden}`"
+            ));
+        }
+    }
+}
+
+fn editor_actionable_gap_queue_case_has_repair(case: &str) -> bool {
+    matches!(
+        case,
+        "top_gap_ready" | "multiple_gaps_bounded" | "receipt_improved" | "receipt_unchanged"
+    )
+}
+
+fn editor_actionable_gap_queue_case_fails_closed(case: &str) -> bool {
+    matches!(
+        case,
+        "stale_actionable_packet" | "wrong_root_packet" | "malformed_packet"
+    )
+}
+
+fn editor_actionable_gap_queue_case_allows_repo_map(case: &str) -> bool {
+    !editor_actionable_gap_queue_case_fails_closed(case)
+}
+
+fn editor_actionable_gap_queue_allowed_commands(case: &str) -> BTreeSet<&'static str> {
+    let commands: &[&str] = if editor_actionable_gap_queue_case_has_repair(case) {
+        &[
+            "ripr.copyCurrentRepairPacket",
+            "ripr.copyRepoGapMap",
+            "ripr.openRelatedTest",
+            "ripr.refresh",
+        ]
+    } else if editor_actionable_gap_queue_case_allows_repo_map(case) {
+        &["ripr.copyRepoGapMap", "ripr.refresh"]
+    } else {
+        &["ripr.refresh"]
+    };
+    commands.iter().copied().collect()
 }
 
 fn validate_gap_decision_ledger_fixture_corpus(violations: &mut Vec<String>) -> Result<(), String> {
