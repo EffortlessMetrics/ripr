@@ -2480,6 +2480,79 @@ on canonical packet identity, seam identity, or the packet primary anchor.
 `orphaned_receipts[]` preserves receipt artifacts that do not match any current
 packet so attempt history remains visible without creating new actionable gaps.
 
+## RIPR Swarm Readiness
+
+`cargo xtask ripr-swarm readiness` rolls up the existing swarm plan and
+actionable-gap outcomes into a repo-level repair-coordination readiness report:
+
+```text
+target/ripr/reports/swarm-readiness.json
+target/ripr/reports/swarm-readiness.md
+```
+
+The command reads `target/ripr/reports/swarm-plan.json` and
+`target/ripr/reports/actionable-gap-outcomes.json` by default, or the paths
+provided by `--swarm-plan` and `--actionable-gap-outcomes`. It is report-only.
+It does not execute repairs, edit files, run tests, call providers, generate
+tests, create receipts, run mutation testing, change PR/CI rendering, change
+editor/LSP behavior, change gates, or change public badges.
+
+If `swarm-plan.json` is missing or malformed, the report is `blocked` with a
+bounded input limitation. If `actionable-gap-outcomes.json` is missing, the
+report still writes zero attempt counts and records that no outcome join is
+available yet; missing outcomes do not imply failed attempts.
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "report": "swarm-readiness",
+  "scope": "repo",
+  "status": "advisory",
+  "inputs": {
+    "swarm_plan": {
+      "path": "target/ripr/reports/swarm-plan.json",
+      "state": "read",
+      "limitation": null
+    },
+    "actionable_gap_outcomes": {
+      "path": "target/ripr/reports/actionable-gap-outcomes.json",
+      "state": "read",
+      "limitation": null
+    }
+  },
+  "summary": {
+    "actionable_gaps_total": 162,
+    "public_projection_eligible_packets": 25,
+    "swarm_ready_packets": 10,
+    "blocked_packets": 15,
+    "missing_verify_command": 0,
+    "missing_receipt_command": 0,
+    "static_limitation_packets": 2,
+    "high_confidence_packets": 4,
+    "attempted_packets": 3,
+    "improved_packets": 2,
+    "unchanged_packets": 1,
+    "regressed_packets": 0,
+    "resolved_packets": 1,
+    "orphaned_receipts": 0
+  },
+  "must_not_infer": [
+    "readiness reports summarize existing swarm artifacts; they do not execute repairs",
+    "raw findings remain supporting evidence, not swarm work",
+    "missing outcome artifacts mean no outcome join is available, not that attempts failed",
+    "readiness counts do not change public badge semantics",
+    "static limitations and blocked packets are not repair-ready work"
+  ]
+}
+```
+
+The readiness report is the management dashboard for repair coordination. It
+summarizes whether actionable packets have enough typed context to be
+swarm-ready, whether attempts have been recorded, and whether receipt-backed
+outcomes improved, stayed unchanged, regressed, or resolved. It does not make
+badge-readiness claims by itself.
+
 
 ## Evidence Quality Scorecard
 
