@@ -9,6 +9,11 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Added `RIPR-SPEC-0057` for the planned `ripr-swarm` repair loop. The spec
+  defines swarm work as bounded execution over actionable canonical gap
+  packets, not raw findings, and requires verify commands, receipt commands,
+  must-not-change boundaries, typed attempt states, and outcome joins before a
+  repair attempt can claim movement.
 - Lane 1 now has an actionable-gap outcome report that joins existing
   actionable packets with optional agent receipt and targeted-test outcome
   artifacts. `cargo xtask actionable-gap-outcomes` writes
