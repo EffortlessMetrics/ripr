@@ -123,6 +123,10 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Template
 
+Use this minimal template for ordinary handoffs. For campaign closeouts,
+start from [`docs/templates/CLOSEOUT_TEMPLATE.md`](../templates/CLOSEOUT_TEMPLATE.md) and
+keep this ledger's "when to commit" rules intact.
+
 ```markdown
 # Handoff: <topic>
 

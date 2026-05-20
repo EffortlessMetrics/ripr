@@ -180,6 +180,8 @@ Templates:
 - [Spec template](templates/SPEC_TEMPLATE.md)
 - [Proposal template](templates/PROPOSAL_TEMPLATE.md)
 - [Handoff template](templates/HANDOFF_TEMPLATE.md)
+- [Closeout template](templates/CLOSEOUT_TEMPLATE.md)
+- [Plan item template](templates/PLAN_ITEM_TEMPLATE.md)
 
 ## Explanation
 
