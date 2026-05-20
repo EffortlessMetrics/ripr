@@ -2336,6 +2336,11 @@ debt.
     "finding_alignment_uncalibrated_total": 1,
     "finding_alignment_visibility_unknown_total": 1,
     "finding_alignment_presentation_text_actionable_total": 0,
+    "finding_alignment_static_unknown_without_named_limitation": 0,
+    "finding_alignment_canonical_items_without_repair_route": 0,
+    "finding_alignment_canonical_items_without_verify_command": 0,
+    "finding_alignment_actionable_gap_packet_public_projection_eligible_packets": 25,
+    "finding_alignment_actionable_gap_packet_public_projection_excluded_packets": 0,
     "presentation_text_total": 1,
     "presentation_text_user_visible": 0,
     "presentation_text_observed": 0,
@@ -2433,6 +2438,12 @@ debt.
     ],
     "top_repair_route_unknowns": []
   },
+  "actionable_gap_packet_public_projection": {
+    "scope": "emitted_actionable_gap_packets",
+    "public_projection_eligible_packets": 25,
+    "public_projection_excluded_packets": 0,
+    "projection_exclusion_reasons": []
+  },
   "recommended_repairs": [
     {
       "slice": "analysis/related-test-ranking-audit-fixes",
@@ -2506,6 +2517,13 @@ Field contract:
   missing discriminator kinds, static limitation reasons on actionable gap
   records, and guidance-unknown classes so the scorecard explains the shape of
   user work before any badge or downstream rendering change.
+- `actionable_gap_packet_public_projection` - the audit-derived
+  `finding_alignment.actionable_gap_packet_public_projection` readiness section
+  carried forward for scorecard and trend use. It counts emitted actionable-gap
+  packets that are internally ready for future public projection and lists
+  exclusion reasons such as missing receipt paths. This is advisory
+  badge-readiness evidence only; it does not switch public badges or PR/CI
+  rendering.
 - `recommended_repairs` - bounded Lane 1 repair slices ordered by product risk
   priority first, then signal count. These are advisory next steps, not policy
   decisions.
@@ -2519,11 +2537,11 @@ Field contract:
   the bounded diagnostic state.
 
 The Markdown sibling prints bounded sections for summary, finding-alignment and
-presentation-text quality, actionable canonical gap top lists, maturity by
-class, top evidence-quality risks, recommended repairs, duplicate/canonical
-group signals, static limitations, missing discriminators, related-test and
-oracle distributions, movement and calibration coverage, recent deltas, and
-unknowns.
+presentation-text quality, actionable canonical gap top lists, actionable-gap
+packet public-projection readiness, maturity by class, top evidence-quality
+risks, recommended repairs, duplicate/canonical group signals, static
+limitations, missing discriminators, related-test and oracle distributions,
+movement and calibration coverage, recent deltas, and unknowns.
 
 ## Evidence Quality Trend
 
@@ -2577,7 +2595,7 @@ generated tests, provider calls, score definitions, or runtime execution.
     "improved_metrics": 0,
     "regressed_metrics": 0,
     "unchanged_metrics": 0,
-    "unknown_metrics": 24,
+    "unknown_metrics": 26,
     "no_history": true
   },
   "metric_trends": [
@@ -2619,7 +2637,8 @@ Field contract:
   calibrated records, calibrated-supported canonical items, already-observed
   items, and internal no-action items. Finding-alignment and presentation-text
   metrics track raw-to-canonical quality, duplicate groups, actionability,
-  static limitations, visibility unknowns, and no-action/observed outcomes.
+  static limitations, visibility unknowns, no-action/observed outcomes, and
+  actionable-gap packet public-projection readiness.
 - `static_limitation_category_trends[]` - bounded category-level deltas for
   normalized static limitation classes.
 - `unknowns[]` - missing history or missing current metric fields that must

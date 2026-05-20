@@ -18703,6 +18703,8 @@ struct EvidenceQualityScorecardSummary {
     finding_alignment_static_unknown_without_named_limitation: usize,
     finding_alignment_canonical_items_without_repair_route: usize,
     finding_alignment_canonical_items_without_verify_command: usize,
+    finding_alignment_actionable_gap_packet_public_projection_eligible_packets: usize,
+    finding_alignment_actionable_gap_packet_public_projection_excluded_packets: usize,
     presentation_text_total: usize,
     presentation_text_user_visible: usize,
     presentation_text_observed: usize,
@@ -18776,6 +18778,7 @@ struct EvidenceQualityScorecardReport {
     movement_availability: Value,
     calibration_coverage: Value,
     actionable_gap_top_lists: Value,
+    actionable_gap_packet_public_projection: Value,
     recommended_repairs: Vec<EvidenceQualityRepair>,
     recent_audit_deltas: EvidenceQualityDeltas,
     unknowns: Vec<EvidenceQualityUnknown>,
@@ -19125,6 +19128,19 @@ fn evidence_quality_scorecard_from_values(
                 "top_repair_route_unknowns": [],
             }),
         ),
+        actionable_gap_packet_public_projection: scorecard_value_or_default(
+            audit,
+            &[
+                "finding_alignment",
+                "actionable_gap_packet_public_projection",
+            ],
+            serde_json::json!({
+                "scope": "emitted_actionable_gap_packets",
+                "public_projection_eligible_packets": 0,
+                "public_projection_excluded_packets": 0,
+                "projection_exclusion_reasons": [],
+            }),
+        ),
         recommended_repairs,
         recent_audit_deltas,
         unknowns,
@@ -19285,6 +19301,18 @@ fn evidence_quality_scorecard_summary(audit: &Value) -> EvidenceQualityScorecard
             "canonical_items_without_verify_command",
         )
         .unwrap_or(0),
+        finding_alignment_actionable_gap_packet_public_projection_eligible_packets:
+            finding_alignment_actionable_gap_packet_public_projection_usize(
+                audit,
+                "public_projection_eligible_packets",
+            )
+            .unwrap_or(0),
+        finding_alignment_actionable_gap_packet_public_projection_excluded_packets:
+            finding_alignment_actionable_gap_packet_public_projection_usize(
+                audit,
+                "public_projection_excluded_packets",
+            )
+            .unwrap_or(0),
         presentation_text_total: presentation_text_summary_usize(audit, "presentation_text_total")
             .unwrap_or(0),
         presentation_text_user_visible: presentation_text_summary_usize(
@@ -19354,6 +19382,20 @@ fn finding_alignment_summary_usize(
 
 fn finding_alignment_coverage_usize(value: &Value, key: &str) -> Option<usize> {
     audit_usize_dynamic(value, &["finding_alignment", "coverage"], key)
+}
+
+fn finding_alignment_actionable_gap_packet_public_projection_usize(
+    value: &Value,
+    key: &str,
+) -> Option<usize> {
+    audit_usize_dynamic(
+        value,
+        &[
+            "finding_alignment",
+            "actionable_gap_packet_public_projection",
+        ],
+        key,
+    )
 }
 
 fn presentation_text_summary_usize(value: &Value, key: &str) -> Option<usize> {
@@ -20029,6 +20071,7 @@ fn evidence_quality_scorecard_json(
         "movement_availability": report.movement_availability,
         "calibration_coverage": report.calibration_coverage,
         "actionable_gap_top_lists": report.actionable_gap_top_lists,
+        "actionable_gap_packet_public_projection": report.actionable_gap_packet_public_projection,
         "recommended_repairs": report.recommended_repairs.iter().map(|repair| {
             serde_json::json!({
                 "slice": repair.slice,
@@ -20245,6 +20288,16 @@ fn evidence_quality_scorecard_summary_json(summary: &EvidenceQualityScorecardSum
         &mut object,
         "finding_alignment_canonical_items_without_verify_command",
         summary.finding_alignment_canonical_items_without_verify_command,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_actionable_gap_packet_public_projection_eligible_packets",
+        summary.finding_alignment_actionable_gap_packet_public_projection_eligible_packets,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_actionable_gap_packet_public_projection_excluded_packets",
+        summary.finding_alignment_actionable_gap_packet_public_projection_excluded_packets,
     );
     scorecard_summary_insert_usize(
         &mut object,
@@ -20606,6 +20659,31 @@ fn evidence_quality_scorecard_markdown(report: &EvidenceQualityScorecardReport) 
         "Repair route unknown class",
         &report.actionable_gap_top_lists,
         "top_repair_route_unknowns",
+    );
+
+    out.push_str("## Actionable Gap Packet Public Projection Readiness\n\n");
+    out.push_str("| Metric | Count |\n");
+    out.push_str("| --- | ---: |\n");
+    audit_push_count(
+        &mut out,
+        "Public projection eligible packets",
+        report
+            .summary
+            .finding_alignment_actionable_gap_packet_public_projection_eligible_packets,
+    );
+    audit_push_count(
+        &mut out,
+        "Public projection excluded packets",
+        report
+            .summary
+            .finding_alignment_actionable_gap_packet_public_projection_excluded_packets,
+    );
+    out.push('\n');
+    scorecard_push_top_count_table(
+        &mut out,
+        "Projection exclusion reason",
+        &report.actionable_gap_packet_public_projection,
+        "projection_exclusion_reasons",
     );
 
     out.push_str("## Maturity By Class\n\n");
@@ -21145,6 +21223,32 @@ fn evidence_quality_metric_trends(
             ],
         },
         EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_actionable_gap_packet_public_projection_eligible_packets",
+            label: "Actionable gap public-projection eligible packets",
+            lower_is_better: false,
+            current_path: &[
+                "summary",
+                "finding_alignment_actionable_gap_packet_public_projection_eligible_packets",
+            ],
+            previous_path: &[
+                "summary",
+                "finding_alignment_actionable_gap_packet_public_projection_eligible_packets",
+            ],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_actionable_gap_packet_public_projection_excluded_packets",
+            label: "Actionable gap public-projection excluded packets",
+            lower_is_better: true,
+            current_path: &[
+                "summary",
+                "finding_alignment_actionable_gap_packet_public_projection_excluded_packets",
+            ],
+            previous_path: &[
+                "summary",
+                "finding_alignment_actionable_gap_packet_public_projection_excluded_packets",
+            ],
+        },
+        EvidenceQualityTrendMetricSpec {
             metric: "finding_alignment_already_observed_total",
             label: "Finding-alignment already observed items",
             lower_is_better: false,
@@ -21345,6 +21449,12 @@ fn evidence_quality_metric_interpretation(metric: &str, direction: &str) -> Stri
         | "presentation_text_visibility_unknown"
         | "presentation_text_static_limitations" => {
             "Lower limitation counts mean fewer analyzer-unknown items remain for this evidence class."
+        }
+        "finding_alignment_actionable_gap_packet_public_projection_eligible_packets" => {
+            "Higher eligible packet counts mean more actionable canonical gaps have the evidence needed for future public projection readiness."
+        }
+        "finding_alignment_actionable_gap_packet_public_projection_excluded_packets" => {
+            "Lower excluded packet counts mean fewer actionable canonical gap packets are missing projection-readiness prerequisites."
         }
         _ => "Trend is advisory and does not redefine RIPR scores.",
     }
@@ -56618,6 +56728,11 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(value.get("movement_availability").is_some());
         assert!(value.get("calibration_coverage").is_some());
         assert!(value.get("actionable_gap_top_lists").is_some());
+        assert!(
+            value
+                .get("actionable_gap_packet_public_projection")
+                .is_some()
+        );
         assert!(value.get("recommended_repairs").is_some());
         assert!(value.get("recent_audit_deltas").is_some());
         assert!(value.get("unknowns").is_some());
@@ -56821,6 +56936,8 @@ covered_by = ["cargo xtask check-file-policy"]
             "Actionable Canonical Gap Top Lists",
             "Actionable gap class",
             "Repair kind",
+            "Actionable Gap Packet Public Projection Readiness",
+            "Projection exclusion reason",
             "Maturity By Class",
             "Top Evidence-Quality Risks",
             "Recommended Lane 1 Repairs",
@@ -56874,6 +56991,80 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("Actionable Canonical Gap Top Lists"));
         assert!(markdown.contains("add_boundary_assertion"));
         assert!(markdown.contains("No static limitation reason counts were reported."));
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_scorecard_carries_actionable_packet_projection_readiness()
+    -> Result<(), String> {
+        let mut audit = scorecard_minimal_audit_value(0, 0, 0, 0, 0);
+        audit
+            .as_object_mut()
+            .ok_or_else(|| "audit should be an object".to_string())?
+            .insert(
+                "finding_alignment".to_string(),
+                serde_json::json!({
+                    "summary": {
+                        "raw_signals": 9,
+                        "canonical_items": 4,
+                        "actionable_gaps": 3
+                    },
+                    "coverage": {
+                        "static_unknown_without_named_limitation": 0,
+                        "canonical_items_without_repair_route": 0,
+                        "canonical_items_without_verify_command": 0
+                    },
+                    "actionable_gap_packet_public_projection": {
+                        "scope": "emitted_actionable_gap_packets",
+                        "public_projection_eligible_packets": 2,
+                        "public_projection_excluded_packets": 1,
+                        "projection_exclusion_reasons": [
+                            {"label": "missing_receipt_path", "count": 1}
+                        ]
+                    }
+                }),
+            );
+
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(false),
+            &audit,
+            None,
+            None,
+        )?;
+
+        assert_eq!(
+            report
+                .summary
+                .finding_alignment_actionable_gap_packet_public_projection_eligible_packets,
+            2
+        );
+        assert_eq!(
+            report
+                .summary
+                .finding_alignment_actionable_gap_packet_public_projection_excluded_packets,
+            1
+        );
+        let json = evidence_quality_scorecard_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(
+            value["summary"]["finding_alignment_actionable_gap_packet_public_projection_eligible_packets"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(
+            value["summary"]["finding_alignment_actionable_gap_packet_public_projection_excluded_packets"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["actionable_gap_packet_public_projection"]["projection_exclusion_reasons"][0]["label"],
+            "missing_receipt_path"
+        );
+
+        let markdown = evidence_quality_scorecard_markdown(&report);
+        assert!(markdown.contains("Actionable Gap Packet Public Projection Readiness"));
+        assert!(markdown.contains("Public projection eligible packets"));
+        assert!(markdown.contains("missing_receipt_path"));
         Ok(())
     }
 
@@ -57271,6 +57462,26 @@ covered_by = ["cargo xtask check-file-policy"]
             "finding_alignment_static_unknown_without_named_limitation",
             1,
         )?;
+        set_summary_count(
+            &mut current,
+            "finding_alignment_actionable_gap_packet_public_projection_eligible_packets",
+            4,
+        )?;
+        set_summary_count(
+            &mut previous,
+            "finding_alignment_actionable_gap_packet_public_projection_eligible_packets",
+            1,
+        )?;
+        set_summary_count(
+            &mut current,
+            "finding_alignment_actionable_gap_packet_public_projection_excluded_packets",
+            0,
+        )?;
+        set_summary_count(
+            &mut previous,
+            "finding_alignment_actionable_gap_packet_public_projection_excluded_packets",
+            3,
+        )?;
 
         let report = evidence_quality_trend_from_values(
             "unix_ms:1".to_string(),
@@ -57312,6 +57523,20 @@ covered_by = ["cargo xtask check-file-policy"]
             )?,
             "regression"
         );
+        assert_eq!(
+            trend_direction_for(
+                &report,
+                "finding_alignment_actionable_gap_packet_public_projection_eligible_packets"
+            )?,
+            "improvement"
+        );
+        assert_eq!(
+            trend_direction_for(
+                &report,
+                "finding_alignment_actionable_gap_packet_public_projection_excluded_packets"
+            )?,
+            "improvement"
+        );
 
         let json = evidence_quality_trend_json(&report)?;
         let value: serde_json::Value =
@@ -57330,11 +57555,17 @@ covered_by = ["cargo xtask check-file-policy"]
             metric_trends.iter().any(|trend| trend["metric"]
                 == "finding_alignment_static_unknown_without_named_limitation")
         );
+        assert!(metric_trends.iter().any(|trend| trend["metric"]
+            == "finding_alignment_actionable_gap_packet_public_projection_eligible_packets"));
+        assert!(metric_trends.iter().any(|trend| trend["metric"]
+            == "finding_alignment_actionable_gap_packet_public_projection_excluded_packets"));
 
         let markdown = evidence_quality_trend_markdown(&report);
         assert!(markdown.contains("Finding-alignment canonical items without repair route"));
         assert!(markdown.contains("Finding-alignment canonical items without verify command"));
         assert!(markdown.contains("Finding-alignment static unknown without named limitation"));
+        assert!(markdown.contains("Actionable gap public-projection eligible packets"));
+        assert!(markdown.contains("Actionable gap public-projection excluded packets"));
         Ok(())
     }
 

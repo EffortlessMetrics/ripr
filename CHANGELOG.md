@@ -9,6 +9,13 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Lane 1 evidence-quality scorecard and trend reports now carry actionable-gap
+  packet public-projection readiness from the live audit. The scorecard reports
+  eligible and excluded packet counts plus projection-exclusion reasons, and
+  the trend tracks eligible packets as higher-is-better and excluded packets as
+  lower-is-better. This is internal badge-readiness evidence only; it does not
+  change public badges, PR/CI rendering, gate policy, providers, generated
+  tests, source edits, or mutation execution.
 - Lane 1 evidence audit generation now treats a nominally successful
   repo-exposure subprocess with an empty or malformed captured JSON file as a
   bounded `lane1_repo_exposure_incomplete` limitation. The audit removes the
