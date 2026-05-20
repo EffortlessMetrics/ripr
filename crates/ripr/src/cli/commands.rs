@@ -23,355 +23,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const DEFAULT_PILOT_TIMEOUT_MS: u64 = 30_000;
 
-#[derive(Debug, PartialEq, Eq)]
-struct InitOptions {
-    root: PathBuf,
-    dry_run: bool,
-    force: bool,
-    ci: Option<InitCi>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum InitCi {
-    Github,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct PilotOptions {
-    root: PathBuf,
-    out_dir: PathBuf,
-    mode: Mode,
-    explicit: CheckInputExplicit,
-    max_seams: usize,
-    timeout_ms: u64,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct OutcomeOptions {
-    before: PathBuf,
-    after: PathBuf,
-    format: OutcomeFormat,
-    out: Option<PathBuf>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct EvidenceHealthOptions {
-    root: PathBuf,
-    out: PathBuf,
-    out_md: PathBuf,
-    mutation_calibration: Option<PathBuf>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct ReviewCommentsOptions {
-    root: PathBuf,
-    base: String,
-    head: String,
-    gap_ledger: Option<PathBuf>,
-    out: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct GateOptions {
-    input: output::gate::GateEvaluateInput,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct BaselineCreateOptions {
-    from: PathBuf,
-    out: PathBuf,
-    dry_run: bool,
-    force: bool,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct BaselineDiffOptions {
-    baseline: PathBuf,
-    current: PathBuf,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct BaselineUpdateOptions {
-    baseline: PathBuf,
-    current: PathBuf,
-    out: Option<PathBuf>,
-    remove_resolved: bool,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct RiprZeroStatusOptions {
-    baseline: Option<PathBuf>,
-    delta: PathBuf,
-    gap_ledger: Option<PathBuf>,
-    gate: Option<PathBuf>,
-    pr_guidance: Option<PathBuf>,
-    recommendation_calibration: Option<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct PolicyReadinessOptions {
-    root: String,
-    gate_decision: Option<PathBuf>,
-    baseline_delta: Option<PathBuf>,
-    recommendation_calibration: Option<PathBuf>,
-    mutation_calibration: Option<PathBuf>,
-    waiver_aging: Option<PathBuf>,
-    suppression_health: Option<PathBuf>,
-    repo_config: Option<PathBuf>,
-    previous_readiness: Option<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct PolicyOperationsOptions {
-    root: String,
-    policy_readiness: Option<PathBuf>,
-    waiver_aging: Option<PathBuf>,
-    suppression_health: Option<PathBuf>,
-    baseline_delta: Option<PathBuf>,
-    gate_decision: Option<PathBuf>,
-    recommendation_calibration: Option<PathBuf>,
-    mutation_calibration: Option<PathBuf>,
-    preview_boundary: Option<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct PolicyHistoryOptions {
-    root: String,
-    current: PathBuf,
-    history: Option<PathBuf>,
-    commit: Option<String>,
-    pr_number: Option<String>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct PolicyPromotionOptions {
-    root: String,
-    target_mode: String,
-    operations: PathBuf,
-    history: Option<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct PolicyPreviewPromotionOptions {
-    root: String,
-    language: String,
-    candidate_class: String,
-    evidence: Option<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct PolicyWaiverAgingOptions {
-    root: String,
-    ledger: Option<PathBuf>,
-    history: Option<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct PolicySuppressionHealthOptions {
-    root: PathBuf,
-    manifest: PathBuf,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct PrEvidenceLedgerOptions {
-    pr_number: String,
-    base: String,
-    head: String,
-    labels: Vec<String>,
-    gate: Option<PathBuf>,
-    baseline_delta: Option<PathBuf>,
-    zero_status: Option<PathBuf>,
-    pr_guidance: Option<PathBuf>,
-    gap_ledger: Option<PathBuf>,
-    recommendation_calibration: Option<PathBuf>,
-    agent_receipt: Option<PathBuf>,
-    coverage: Option<PathBuf>,
-    history: Option<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct PrCommentsPlanOptions {
-    root: String,
-    pr_guidance: Option<PathBuf>,
-    existing_comments: Option<PathBuf>,
-    mode: output::pr_inline_comment_publish_plan::CommentMode,
-    pull_request: Option<u64>,
-    event_name: Option<String>,
-    head_repo: Option<String>,
-    base_repo: Option<String>,
-    token_available: bool,
-    write_permission: bool,
-    max_inline_comments: usize,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct PrReviewFrontPanelOptions {
-    root: String,
-    pr_guidance: Option<PathBuf>,
-    first_action: Option<PathBuf>,
-    assistant_proof: Option<PathBuf>,
-    assistant_health: Option<PathBuf>,
-    ledger: Option<PathBuf>,
-    baseline_delta: Option<PathBuf>,
-    zero_status: Option<PathBuf>,
-    gate_decision: Option<PathBuf>,
-    recommendation_calibration: Option<PathBuf>,
-    mutation_calibration: Option<PathBuf>,
-    coverage_frontier: Option<PathBuf>,
-    receipt: Option<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct ReportPacketIndexOptions {
-    root: String,
-    reports_dir: PathBuf,
-    review_dir: PathBuf,
-    receipts_dir: PathBuf,
-    workflow_dir: PathBuf,
-    agent_dir: PathBuf,
-    pilot_dir: PathBuf,
-    ci_dir: PathBuf,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct GapDecisionLedgerOptions {
-    root: String,
-    source: GapDecisionLedgerSource,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum GapDecisionLedgerSource {
-    Records(PathBuf),
-    RepoExposure(PathBuf),
-    CheckOutput(PathBuf),
-}
-
-impl GapDecisionLedgerSource {
-    fn path(&self) -> &Path {
-        match self {
-            Self::Records(path) | Self::RepoExposure(path) | Self::CheckOutput(path) => path,
-        }
-    }
-
-    fn kind(&self) -> output::gap_decision_ledger::GapDecisionLedgerSourceKind {
-        match self {
-            Self::Records(_) => output::gap_decision_ledger::GapDecisionLedgerSourceKind::Records,
-            Self::RepoExposure(_) => {
-                output::gap_decision_ledger::GapDecisionLedgerSourceKind::RepoExposure
-            }
-            Self::CheckOutput(_) => {
-                output::gap_decision_ledger::GapDecisionLedgerSourceKind::CheckOutput
-            }
-        }
-    }
-
-    fn label(&self) -> &'static str {
-        match self {
-            Self::Records(_) => "gap records",
-            Self::RepoExposure(_) => "repo exposure",
-            Self::CheckOutput(_) => "check output",
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct CoverageGripFrontierOptions {
-    coverage: Option<PathBuf>,
-    ledger: Option<PathBuf>,
-    baseline_delta: Option<PathBuf>,
-    zero_status: Option<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct AssistantLoopProofOptions {
-    root: String,
-    pr_guidance: Option<PathBuf>,
-    agent_packet: Option<PathBuf>,
-    before: Option<PathBuf>,
-    after: Option<PathBuf>,
-    receipt: Option<PathBuf>,
-    ledger: Option<PathBuf>,
-    coverage_frontier: Option<PathBuf>,
-    gate_decision: Option<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct AssistantLoopHealthOptions {
-    root: String,
-    proofs: Vec<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct FirstActionOptions {
-    root: String,
-    pr_guidance: Option<PathBuf>,
-    assistant_proof: Option<PathBuf>,
-    gap_ledger: Option<PathBuf>,
-    ledger: Option<PathBuf>,
-    baseline_delta: Option<PathBuf>,
-    receipt: Option<PathBuf>,
-    gate_decision: Option<PathBuf>,
-    coverage_frontier: Option<PathBuf>,
-    editor_context: Option<PathBuf>,
-    out: PathBuf,
-    out_md: PathBuf,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum OutcomeFormat {
-    Markdown,
-    Json,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct CalibrateOptions {
-    mutants_json: PathBuf,
-    repo_exposure_json: PathBuf,
-    format: CalibrateFormat,
-    out: Option<PathBuf>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum CalibrateFormat {
-    Markdown,
-    Json,
-}
+use crate::cli::commands_options::*;
+use crate::cli::commands_timestamps::generated_at_unix_ms;
 
 pub(super) fn agent(args: &[String]) -> Result<(), String> {
     match parse_agent_args(args)? {
@@ -7097,67 +6750,35 @@ fn parse_first_action_options(args: &[String]) -> Result<FirstActionOptions, Str
 }
 
 fn baseline_created_at() -> Result<String, String> {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|err| format!("system clock before unix epoch: {err}"))?
-        .as_millis();
-    Ok(format!("unix_ms:{millis}"))
+    generated_at_unix_ms()
 }
 
 fn first_action_generated_at() -> Result<String, String> {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|err| format!("system clock before unix epoch: {err}"))?
-        .as_millis();
-    Ok(format!("unix_ms:{millis}"))
+    generated_at_unix_ms()
 }
 
 fn pr_review_front_panel_generated_at() -> Result<String, String> {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|err| format!("system clock before unix epoch: {err}"))?
-        .as_millis();
-    Ok(format!("unix_ms:{millis}"))
+    generated_at_unix_ms()
 }
 
 fn comment_publish_plan_generated_at() -> Result<String, String> {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|err| format!("system clock before unix epoch: {err}"))?
-        .as_millis();
-    Ok(format!("unix_ms:{millis}"))
+    generated_at_unix_ms()
 }
 
 fn report_packet_index_generated_at() -> Result<String, String> {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|err| format!("system clock before unix epoch: {err}"))?
-        .as_millis();
-    Ok(format!("unix_ms:{millis}"))
+    generated_at_unix_ms()
 }
 
 fn gap_decision_ledger_generated_at() -> Result<String, String> {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|err| format!("system clock before unix epoch: {err}"))?
-        .as_millis();
-    Ok(format!("unix_ms:{millis}"))
+    generated_at_unix_ms()
 }
 
 fn policy_readiness_generated_at() -> Result<String, String> {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|err| format!("system clock before unix epoch: {err}"))?
-        .as_millis();
-    Ok(format!("unix_ms:{millis}"))
+    generated_at_unix_ms()
 }
 
 fn assistant_loop_health_generated_at() -> Result<String, String> {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|err| format!("system clock before unix epoch: {err}"))?
-        .as_millis();
-    Ok(format!("unix_ms:{millis}"))
+    generated_at_unix_ms()
 }
 
 fn read_optional_text_for_report(label: &str, path: &Path) -> Result<String, String> {

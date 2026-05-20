@@ -1,6 +1,8 @@
 mod agent;
 mod command;
 mod commands;
+mod commands_options;
+mod commands_timestamps;
 mod execute;
 mod help;
 mod parse;
