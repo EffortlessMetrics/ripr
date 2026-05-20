@@ -48,6 +48,10 @@ Ripr Rust Small on GitHub Hosted
 
 Do not require implementation jobs directly in branch protection.
 
+Cutover proof should use a same-repo pull request and the normalized
+`Ripr Rust Small Result` check. The routed implementation jobs remain routing
+details and may be skipped when another target is selected.
+
 The router reads runner state with `EM_RUNNER_READ_TOKEN` when that secret is
 available. It selects a self-hosted runner only when the runner is idle and has
 the matching host label plus the `em-ci-rust-1.95` runner-image/toolchain
