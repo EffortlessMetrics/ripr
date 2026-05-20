@@ -448,6 +448,77 @@
         "Do not claim improvement when targeted movement is a new gap.",
         "Do not hide missing receipt state for attempted work."
       ]
+    },
+    {
+      "id": "orphaned_receipt_reported",
+      "description": "A receipt that matches no current actionable packet remains visible as orphaned evidence.",
+      "actionable_gaps": {
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "report": "actionable-gaps",
+        "packets": [
+          {
+            "canonical_gap_id": "gap:current-packet",
+            "evidence_class": "predicate_boundary",
+            "repair_kind": "add_boundary_assertion",
+            "source_file": "src/current.rs",
+            "primary_anchor": {
+              "file": "src/current.rs",
+              "line": 33
+            },
+            "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+            "receipt_command_or_path": "ripr agent receipt --verify-json target/ripr/workflow/agent-verify.json --seam-id current-packet --json"
+          }
+        ]
+      },
+      "agent_receipt": {
+        "receipts": [
+          {
+            "schema_version": "0.3",
+            "seam": {
+              "seam_id": "old-packet",
+              "file": "src/old.rs",
+              "line": 7,
+              "before": "weakly_gripped",
+              "after": "strongly_gripped",
+              "change": "improved"
+            },
+            "provenance": {
+              "seam_id": "old-packet",
+              "movement": "improved"
+            }
+          }
+        ]
+      },
+      "targeted_test_outcome": null,
+      "expected": {
+        "summary": {
+          "packets_total": 1,
+          "outcomes_total": 1,
+          "not_attempted": 1,
+          "receipts_missing_after_input": 1,
+          "orphaned_receipts": 1
+        },
+        "outcomes": [
+          {
+            "canonical_gap_id": "gap:current-packet",
+            "outcome_state": "not_attempted",
+            "receipt_state": "missing",
+            "movement_source": null
+          }
+        ],
+        "orphaned_receipts": [
+          {
+            "receipt_id": "receipt:old-packet",
+            "seam_id": "old-packet",
+            "movement_direction": "improved"
+          }
+        ]
+      },
+      "must_not_claim": [
+        "Do not silently drop receipts that no longer match a current packet.",
+        "Do not create a new actionable gap from an orphaned receipt."
+      ]
     }
   ]
 }

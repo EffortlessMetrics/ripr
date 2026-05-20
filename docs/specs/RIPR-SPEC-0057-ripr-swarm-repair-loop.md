@@ -274,7 +274,9 @@ The swarm maps these outcome states into swarm attempt states:
 
 The same canonical gap may have multiple attempts. The latest attempt may be
 highlighted, but previous failed, unchanged, or regressed attempts remain
-visible.
+visible. A receipt that does not match any current canonical gap packet is
+reported as an orphaned receipt; it remains audit evidence and does not create
+a new actionable gap.
 
 ## Dry-Run Commands
 
@@ -352,6 +354,10 @@ resolved.
 Given a receipt-backed attempt with evidence movement `evidence_regressed`,
 `ripr-swarm` must stop and expose the regressed state for human review.
 
+Given a receipt artifact whose seam id or anchor does not match any current
+actionable packet, `actionable-gap-outcomes` must report it as an orphaned
+receipt rather than silently dropping it or creating a new repair packet.
+
 ## Fixture Expectations
 
 `fixtures/swarm-plan-packet-corpus` pins the first packet-ranking corpus with:
@@ -373,6 +379,7 @@ Given a receipt-backed attempt with evidence movement `evidence_regressed`,
 - evidence regressed;
 - resolved;
 - attempted without a matching receipt.
+- orphaned receipt reporting.
 
 Must-not-claim guards:
 
@@ -381,6 +388,7 @@ Must-not-claim guards:
 - do not rank packet without `verify_command` as high confidence;
 - do not create a repair attempt from raw findings alone;
 - do not hide unchanged or regressed attempts;
+- do not create a new actionable gap from an orphaned receipt;
 - do not imply production-code edits are allowed by default.
 
 ## Test Mapping
@@ -438,4 +446,5 @@ Future reports should expose:
 - `swarm_verified_improved`;
 - `swarm_verified_unchanged`;
 - `swarm_verified_regressed`;
-- `swarm_failed_to_apply`.
+- `swarm_failed_to_apply`;
+- `swarm_orphaned_receipts`.

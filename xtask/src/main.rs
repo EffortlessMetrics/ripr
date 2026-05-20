@@ -1013,6 +1013,7 @@ struct ActionableGapOutcomesReport {
     targeted_test_outcome_path: Option<String>,
     packets_total: usize,
     outcomes: Vec<ActionableGapOutcome>,
+    orphaned_receipts: Vec<ActionableGapOrphanedReceipt>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1031,6 +1032,16 @@ struct ActionableGapOutcome {
     movement_source: Option<String>,
     movement_direction: Option<String>,
     evidence_delta: Vec<String>,
+    reason: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ActionableGapOrphanedReceipt {
+    receipt_id: String,
+    seam_id: Option<String>,
+    source_file: Option<String>,
+    line: Option<usize>,
+    movement_direction: Option<String>,
     reason: String,
 }
 
@@ -7505,6 +7516,7 @@ const ACTIONABLE_GAP_OUTCOMES_REQUIRED_CASES: &[(&str, &str, &str)] = &[
         "attempted_no_receipt",
         "missing",
     ),
+    ("orphaned_receipt_reported", "not_attempted", "missing"),
 ];
 
 const FIRST_SUCCESSFUL_PR_CORPUS: &str = "fixtures/first_successful_pr/corpus.json";
@@ -8821,6 +8833,9 @@ fn validate_actionable_gap_outcomes_fixture_case(
         }
     };
     validate_actionable_gap_outcomes_expected_summary(case_id, expected, &rendered, violations);
+    validate_actionable_gap_outcomes_expected_orphaned_receipts(
+        case_id, expected, &rendered, violations,
+    );
     let markdown = actionable_gap_outcomes_markdown(&report);
     if !markdown.contains("# Actionable Gap Outcomes") {
         violations.push(format!(
@@ -8964,6 +8979,48 @@ fn validate_actionable_gap_outcomes_expected_summary(
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "missing".to_string())
             ));
+        }
+    }
+}
+
+fn validate_actionable_gap_outcomes_expected_orphaned_receipts(
+    case_id: &str,
+    expected: &Value,
+    rendered: &Value,
+    violations: &mut Vec<String>,
+) {
+    let Some(expected_receipts) = expected.get("orphaned_receipts").and_then(Value::as_array)
+    else {
+        return;
+    };
+    let actual_receipts = audit_get(rendered, &["orphaned_receipts"])
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    for expected_receipt in expected_receipts {
+        let Some(receipt_id) = json_string_field(expected_receipt, "receipt_id") else {
+            violations.push(format!(
+                "actionable gap outcomes case {case_id} expected orphaned receipt is missing receipt_id"
+            ));
+            continue;
+        };
+        let Some(actual) = actual_receipts.iter().find(|actual| {
+            json_string_field(actual, "receipt_id").as_deref() == Some(receipt_id.as_str())
+        }) else {
+            violations.push(format!(
+                "actionable gap outcomes case {case_id} did not produce orphaned receipt {receipt_id}"
+            ));
+            continue;
+        };
+        for field in ["seam_id", "movement_direction"] {
+            if let Some(expected_value) = expected_receipt.get(field) {
+                let actual_value = actual.get(field).cloned().unwrap_or(Value::Null);
+                if actual_value != *expected_value {
+                    violations.push(format!(
+                        "actionable gap outcomes case {case_id} orphaned receipt {receipt_id} {field} must be {expected_value}, got {actual_value}"
+                    ));
+                }
+            }
         }
     }
 }
@@ -19660,6 +19717,7 @@ fn actionable_gap_outcomes_report_from_values(
             )
         })
         .collect::<Vec<_>>();
+    let orphaned_receipts = actionable_gap_orphaned_receipts(&receipt_values, packet_items);
 
     Ok(ActionableGapOutcomesReport {
         actionable_gaps_path,
@@ -19667,6 +19725,7 @@ fn actionable_gap_outcomes_report_from_values(
         targeted_test_outcome_path,
         packets_total: packet_items.len(),
         outcomes,
+        orphaned_receipts,
     })
 }
 
@@ -19681,6 +19740,47 @@ fn actionable_gap_receipt_values(receipt: Option<&Value>) -> Vec<&Value> {
         return receipts.iter().collect();
     }
     vec![receipt]
+}
+
+fn actionable_gap_orphaned_receipts(
+    receipts: &[&Value],
+    packets: &[Value],
+) -> Vec<ActionableGapOrphanedReceipt> {
+    receipts
+        .iter()
+        .enumerate()
+        .filter(|(_, receipt)| !actionable_gap_receipt_matches_any_packet(receipt, packets))
+        .map(|(index, receipt)| actionable_gap_orphaned_receipt_from_value(index, receipt))
+        .collect()
+}
+
+fn actionable_gap_receipt_matches_any_packet(receipt: &Value, packets: &[Value]) -> bool {
+    packets.iter().any(|packet| {
+        let candidates = actionable_gap_id_candidates(packet);
+        actionable_gap_receipt_matches_packet(receipt, packet, &candidates)
+    })
+}
+
+fn actionable_gap_orphaned_receipt_from_value(
+    index: usize,
+    receipt: &Value,
+) -> ActionableGapOrphanedReceipt {
+    let seam_id = actionable_gap_receipt_seam_id(receipt);
+    let receipt_id = seam_id
+        .as_ref()
+        .map(|seam_id| format!("receipt:{seam_id}"))
+        .unwrap_or_else(|| format!("receipt:index-{index}"));
+    ActionableGapOrphanedReceipt {
+        receipt_id,
+        seam_id,
+        source_file: audit_non_empty_string(receipt, &["seam", "file"]),
+        line: audit_usize(receipt, &["seam", "line"]),
+        movement_direction: audit_non_empty_string(receipt, &["seam", "change"])
+            .or_else(|| audit_non_empty_string(receipt, &["provenance", "movement"]))
+            .or_else(|| audit_non_empty_string(receipt, &["summary", "next_action", "kind"])),
+        reason: "Receipt artifact did not match any current actionable canonical gap packet."
+            .to_string(),
+    }
 }
 
 fn actionable_gap_outcome_from_packet(
@@ -19971,13 +20071,16 @@ fn actionable_gap_outcomes_json(report: &ActionableGapOutcomesReport) -> Result<
             "unknown": state_counts.get("unknown").copied().unwrap_or(0),
             "receipts_present": report.outcomes.iter().filter(|outcome| outcome.receipt_state == "present").count(),
             "receipts_missing_after_input": report.outcomes.iter().filter(|outcome| outcome.receipt_state == "missing").count(),
+            "orphaned_receipts": report.orphaned_receipts.len(),
         },
         "outcomes": report.outcomes.iter().map(actionable_gap_outcome_json).collect::<Vec<_>>(),
+        "orphaned_receipts": report.orphaned_receipts.iter().map(actionable_gap_orphaned_receipt_json).collect::<Vec<_>>(),
         "must_not_infer": [
             "outcome reports join existing artifacts; they do not execute repairs",
             "raw findings remain supporting evidence, not user work",
             "targeted-test outcomes are static evidence movement, not mutation proof",
-            "missing receipts do not imply a repair failed"
+            "missing receipts do not imply a repair failed",
+            "orphaned receipts do not create new actionable gaps"
         ],
     });
     serde_json::to_string_pretty(&value)
@@ -20005,6 +20108,17 @@ fn actionable_gap_outcome_json(outcome: &ActionableGapOutcome) -> Value {
         "movement_direction": outcome.movement_direction,
         "evidence_delta": outcome.evidence_delta,
         "reason": outcome.reason,
+    })
+}
+
+fn actionable_gap_orphaned_receipt_json(receipt: &ActionableGapOrphanedReceipt) -> Value {
+    serde_json::json!({
+        "receipt_id": receipt.receipt_id,
+        "seam_id": receipt.seam_id,
+        "source_file": receipt.source_file,
+        "line": receipt.line,
+        "movement_direction": receipt.movement_direction,
+        "reason": receipt.reason,
     })
 }
 
@@ -20078,57 +20192,85 @@ fn actionable_gap_outcomes_markdown(report: &ActionableGapOutcomesReport) -> Str
             state_counts.get(state).copied().unwrap_or(0),
         );
     }
+    audit_push_count(
+        &mut out,
+        "orphaned_receipts",
+        report.orphaned_receipts.len(),
+    );
     out.push('\n');
 
     out.push_str("## Outcomes\n\n");
     if report.outcomes.is_empty() {
         out.push_str("No actionable-gap packets were present.\n");
-        return out;
+    } else {
+        for outcome in &report.outcomes {
+            out.push_str(&format!(
+                "### `{}`\n\n",
+                audit_markdown_cell(&outcome.canonical_gap_id)
+            ));
+            out.push_str("| Field | Value |\n");
+            out.push_str("| --- | --- |\n");
+            out.push_str(&format!(
+                "| Outcome state | `{}` |\n",
+                audit_markdown_cell(&outcome.outcome_state)
+            ));
+            out.push_str(&format!(
+                "| Evidence class | `{}` |\n",
+                audit_markdown_cell(&outcome.evidence_class)
+            ));
+            out.push_str(&format!(
+                "| Repair kind | `{}` |\n",
+                audit_markdown_cell(&outcome.repair_kind)
+            ));
+            out.push_str(&format!(
+                "| Verify command | `{}` |\n",
+                audit_markdown_cell(&outcome.verify_command)
+            ));
+            out.push_str(&format!(
+                "| Receipt state | `{}` |\n",
+                audit_markdown_cell(&outcome.receipt_state)
+            ));
+            out.push_str(&format!(
+                "| Movement source | {} |\n",
+                audit_markdown_cell(outcome.movement_source.as_deref().unwrap_or("none"))
+            ));
+            out.push_str(&format!(
+                "| Movement | {} |\n",
+                audit_markdown_cell(
+                    outcome
+                        .movement_direction
+                        .as_deref()
+                        .unwrap_or("no movement artifact")
+                )
+            ));
+            out.push_str(&format!(
+                "| Reason | {} |\n\n",
+                audit_markdown_cell(&outcome.reason)
+            ));
+        }
     }
-    for outcome in &report.outcomes {
-        out.push_str(&format!(
-            "### `{}`\n\n",
-            audit_markdown_cell(&outcome.canonical_gap_id)
-        ));
-        out.push_str("| Field | Value |\n");
-        out.push_str("| --- | --- |\n");
-        out.push_str(&format!(
-            "| Outcome state | `{}` |\n",
-            audit_markdown_cell(&outcome.outcome_state)
-        ));
-        out.push_str(&format!(
-            "| Evidence class | `{}` |\n",
-            audit_markdown_cell(&outcome.evidence_class)
-        ));
-        out.push_str(&format!(
-            "| Repair kind | `{}` |\n",
-            audit_markdown_cell(&outcome.repair_kind)
-        ));
-        out.push_str(&format!(
-            "| Verify command | `{}` |\n",
-            audit_markdown_cell(&outcome.verify_command)
-        ));
-        out.push_str(&format!(
-            "| Receipt state | `{}` |\n",
-            audit_markdown_cell(&outcome.receipt_state)
-        ));
-        out.push_str(&format!(
-            "| Movement source | {} |\n",
-            audit_markdown_cell(outcome.movement_source.as_deref().unwrap_or("none"))
-        ));
-        out.push_str(&format!(
-            "| Movement | {} |\n",
-            audit_markdown_cell(
-                outcome
-                    .movement_direction
-                    .as_deref()
-                    .unwrap_or("no movement artifact")
-            )
-        ));
-        out.push_str(&format!(
-            "| Reason | {} |\n\n",
-            audit_markdown_cell(&outcome.reason)
-        ));
+    if !report.orphaned_receipts.is_empty() {
+        out.push_str("## Orphaned Receipts\n\n");
+        out.push_str("Receipts in the input that did not match any current actionable canonical gap packet remain visible here. They do not create new actionable gaps.\n\n");
+        out.push_str("| Receipt | Seam | Location | Movement | Reason |\n");
+        out.push_str("| --- | --- | --- | --- | --- |\n");
+        for receipt in &report.orphaned_receipts {
+            let location = match (&receipt.source_file, receipt.line) {
+                (Some(file), Some(line)) => format!("{file}:{line}"),
+                (Some(file), None) => file.clone(),
+                (None, Some(line)) => format!("line {line}"),
+                (None, None) => "unknown".to_string(),
+            };
+            out.push_str(&format!(
+                "| `{}` | {} | {} | {} | {} |\n",
+                audit_markdown_cell(&receipt.receipt_id),
+                audit_markdown_cell(receipt.seam_id.as_deref().unwrap_or("unknown")),
+                audit_markdown_cell(&location),
+                audit_markdown_cell(receipt.movement_direction.as_deref().unwrap_or("unknown")),
+                audit_markdown_cell(&receipt.reason)
+            ));
+        }
+        out.push('\n');
     }
     out.push_str("This report is advisory and does not run repairs, generate tests, execute mutation testing, or change public badge semantics.\n");
     out

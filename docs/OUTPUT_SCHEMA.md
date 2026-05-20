@@ -2391,7 +2391,8 @@ mutation testing, change PR/CI rendering, or change public badge semantics.
     "resolved": 1,
     "unknown": 0,
     "receipts_present": 1,
-    "receipts_missing_after_input": 24
+    "receipts_missing_after_input": 24,
+    "orphaned_receipts": 1
   },
   "outcomes": [
     {
@@ -2414,11 +2415,22 @@ mutation testing, change PR/CI rendering, or change public badge semantics.
       "reason": "Matched agent receipt artifact."
     }
   ],
+  "orphaned_receipts": [
+    {
+      "receipt_id": "receipt:old-gap",
+      "seam_id": "old-gap",
+      "source_file": "src/old.rs",
+      "line": 7,
+      "movement_direction": "improved",
+      "reason": "Receipt artifact did not match any current actionable canonical gap packet."
+    }
+  ],
   "must_not_infer": [
     "outcome reports join existing artifacts; they do not execute repairs",
     "raw findings remain supporting evidence, not user work",
     "targeted-test outcomes are static evidence movement, not mutation proof",
-    "missing receipts do not imply a repair failed"
+    "missing receipts do not imply a repair failed",
+    "orphaned receipts do not create new actionable gaps"
   ]
 }
 ```
@@ -2428,6 +2440,8 @@ mutation testing, change PR/CI rendering, or change public badge semantics.
 `evidence_improved`, `evidence_unchanged`, `evidence_regressed`, `resolved`,
 and `unknown`. Raw findings do not determine outcome state; the join is based
 on canonical packet identity, seam identity, or the packet primary anchor.
+`orphaned_receipts[]` preserves receipt artifacts that do not match any current
+packet so attempt history remains visible without creating new actionable gaps.
 
 
 ## Evidence Quality Scorecard

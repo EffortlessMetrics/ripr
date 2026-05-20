@@ -3680,4 +3680,5 @@ metrics = [
   "swarm_verified_unchanged",
   "swarm_verified_regressed",
   "swarm_failed_to_apply",
+  "swarm_orphaned_receipts",
 ]
