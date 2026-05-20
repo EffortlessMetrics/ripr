@@ -346,6 +346,7 @@ name = "RIPR swarm repair loop"
 status = "planned"
 spec = "RIPR-SPEC-0057"
 evidence = [
+  "docs/proposals/RIPR-PROP-0014-ripr-swarm-repair-loop.md explains why swarm work starts as bounded repair coordination rather than raw-finding queues, arbitrary test generation, provider integration, or badge changes",
   "docs/specs/RIPR-SPEC-0057-ripr-swarm-repair-loop.md defines ripr-swarm as a bounded repair runner over actionable canonical gap packets rather than raw findings",
   "the spec requires verify commands, receipt commands, must-not-change boundaries, typed state transitions, and outcome joins before any repair attempt can claim movement",
   "the spec keeps provider calls, mutation execution, generated tests, production-code edits by default, PR/CI rendering, LSP/editor changes, gate policy, and public badge changes out of scope"

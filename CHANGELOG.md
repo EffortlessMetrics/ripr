@@ -9,6 +9,11 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Added `RIPR-PROP-0014` to define the `ripr-swarm` campaign rationale:
+  consume actionable canonical packets, rank bounded repair attempts, require
+  receipts and evidence movement, reject raw-finding queues and arbitrary agent
+  repairs, and keep providers, generated tests, mutation execution, public
+  badges, PR/CI rendering, and editor/LSP changes out of scope.
 - Added `RIPR-SPEC-0057` for the planned `ripr-swarm` repair loop. The spec
   defines swarm work as bounded execution over actionable canonical gap
   packets, not raw findings, and requires verify commands, receipt commands,

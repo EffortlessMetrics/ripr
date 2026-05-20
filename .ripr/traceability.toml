@@ -3625,6 +3625,8 @@ code = []
 outputs = [
   "docs/specs/RIPR-SPEC-0057-ripr-swarm-repair-loop.md",
   "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0014-ripr-swarm-repair-loop.md",
+  "docs/proposals/README.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
   ".ripr/traceability.toml",
