@@ -3503,9 +3503,28 @@ metrics = [
 id = "RIPR-SPEC-0055"
 name = "Editor actionable gap queue"
 spec = "docs/specs/RIPR-SPEC-0055-editor-actionable-gap-queue.md"
-tests = []
+tests = [
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_validates_read_only_queue_inputs",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_allows_empty_no_action_queue",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_empty_queue_without_completed_summary",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_limited_run_artifacts",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_actionable_packet_without_identity",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_projection_excluded_actionable_packets",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_public_projection_exclusion_reasons",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_missing_repair_guidance",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_missing_receipt_command_or_path",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_missing_verify_command",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_compound_verify_command",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_missing_confidence_basis",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_disabled_language_in_later_packet",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_unsafe_related_path",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_unsafe_verify_command",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::workspace_gap_artifact_loader_validates_known_report_paths",
+]
 fixtures = []
-code = []
+code = [
+  "crates/ripr/src/lsp/gap_artifacts.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0055-editor-actionable-gap-queue.md",
   "docs/specs/README.md",
