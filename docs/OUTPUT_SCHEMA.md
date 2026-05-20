@@ -1402,13 +1402,15 @@ without changing analyzer behavior. The same report lands at
 `target/ripr/reports/evidence-health.md` when generated through
 `cargo xtask evidence-health`.
 
-The xtask facade bounds the live `ripr evidence-health` subprocess with
-`RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` (default 30 minutes). If the subprocess times
-out or exits before a complete report is available, xtask discards stale or
-partial outputs and writes warning JSON and Markdown with `status = "warn"` and
-a named `evidence_health_timeout` or `evidence_health_incomplete`
-`run_limitations[]` entry. That limited artifact is diagnostic only; it does
-not claim user test debt from missing health counts.
+The xtask facade bounds both the preflight `cargo build -p ripr` phase and the
+live `ripr evidence-health` subprocess with `RIPR_EVIDENCE_HEALTH_TIMEOUT_MS`
+(default 30 minutes). If either phase times out or exits before a complete
+report is available, xtask discards stale or partial outputs and writes warning
+JSON and Markdown with `status = "warn"`, phase context such as
+`evidence_health_build` or `evidence_health_generation`, and a named
+`evidence_health_timeout` or `evidence_health_incomplete` `run_limitations[]`
+entry. That limited artifact is diagnostic only; it does not claim user test
+debt from missing health counts.
 
 ```json
 {
@@ -2240,6 +2242,82 @@ or path; otherwise the stable `projection_exclusion_reasons[]` values explain
 why an otherwise useful agent packet is not yet a public badge item. This does
 not change committed badge endpoint semantics.
 
+## Actionable Gap Outcomes
+
+`cargo xtask actionable-gap-outcomes` joins actionable-gap packets with optional
+agent receipt and targeted-test outcome artifacts:
+
+```text
+target/ripr/reports/actionable-gap-outcomes.json
+target/ripr/reports/actionable-gap-outcomes.md
+```
+
+The report is advisory. It does not run repairs, generate tests, execute
+mutation testing, change PR/CI rendering, or change public badge semantics.
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "report": "actionable-gap-outcomes",
+  "scope": "repo",
+  "status": "advisory",
+  "source": "actionable-gaps plus optional receipt and targeted-test outcome artifacts",
+  "inputs": {
+    "actionable_gaps": "target/ripr/reports/actionable-gaps.json",
+    "agent_receipt": "target/ripr/reports/agent-receipt.json",
+    "targeted_test_outcome": "target/ripr/reports/targeted-test-outcome.json"
+  },
+  "summary": {
+    "packets_total": 25,
+    "outcomes_total": 25,
+    "not_attempted": 22,
+    "attempted_no_receipt": 0,
+    "receipt_present": 0,
+    "evidence_improved": 1,
+    "evidence_unchanged": 1,
+    "evidence_regressed": 0,
+    "resolved": 1,
+    "unknown": 0,
+    "receipts_present": 1,
+    "receipts_missing_after_input": 24
+  },
+  "outcomes": [
+    {
+      "canonical_gap_id": "gap:abc",
+      "evidence_class": "predicate_boundary",
+      "repair_kind": "add_boundary_assertion",
+      "source_file": "src/pricing.rs",
+      "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+      "receipt_command_or_path": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id abc --json --out target/ripr/reports/agent-receipt.json",
+      "receipt_state": "present",
+      "outcome_state": "evidence_improved",
+      "seam_id": "abc",
+      "before": "weakly_gripped",
+      "after": "strongly_gripped",
+      "movement_source": "agent_receipt",
+      "movement_direction": "improved",
+      "evidence_delta": [
+        "missing discriminator no longer reported: threshold equality"
+      ],
+      "reason": "Matched agent receipt artifact."
+    }
+  ],
+  "must_not_infer": [
+    "outcome reports join existing artifacts; they do not execute repairs",
+    "raw findings remain supporting evidence, not user work",
+    "targeted-test outcomes are static evidence movement, not mutation proof",
+    "missing receipts do not imply a repair failed"
+  ]
+}
+```
+
+`outcome_state` uses the bounded Lane 1 lifecycle states
+`not_attempted`, `attempted_no_receipt`, `receipt_present`,
+`evidence_improved`, `evidence_unchanged`, `evidence_regressed`, `resolved`,
+and `unknown`. Raw findings do not determine outcome state; the join is based
+on canonical packet identity, seam identity, or the packet primary anchor.
+
 ## Evidence Quality Scorecard
 
 `cargo xtask evidence-quality-scorecard` writes a repo-local Lane 1 scorecard
@@ -2336,6 +2414,11 @@ debt.
     "finding_alignment_uncalibrated_total": 1,
     "finding_alignment_visibility_unknown_total": 1,
     "finding_alignment_presentation_text_actionable_total": 0,
+    "finding_alignment_static_unknown_without_named_limitation": 0,
+    "finding_alignment_canonical_items_without_repair_route": 0,
+    "finding_alignment_canonical_items_without_verify_command": 0,
+    "finding_alignment_actionable_gap_packet_public_projection_eligible_packets": 25,
+    "finding_alignment_actionable_gap_packet_public_projection_excluded_packets": 0,
     "presentation_text_total": 1,
     "presentation_text_user_visible": 0,
     "presentation_text_observed": 0,
@@ -2433,6 +2516,12 @@ debt.
     ],
     "top_repair_route_unknowns": []
   },
+  "actionable_gap_packet_public_projection": {
+    "scope": "emitted_actionable_gap_packets",
+    "public_projection_eligible_packets": 25,
+    "public_projection_excluded_packets": 0,
+    "projection_exclusion_reasons": []
+  },
   "recommended_repairs": [
     {
       "slice": "analysis/related-test-ranking-audit-fixes",
@@ -2506,6 +2595,13 @@ Field contract:
   missing discriminator kinds, static limitation reasons on actionable gap
   records, and guidance-unknown classes so the scorecard explains the shape of
   user work before any badge or downstream rendering change.
+- `actionable_gap_packet_public_projection` - the audit-derived
+  `finding_alignment.actionable_gap_packet_public_projection` readiness section
+  carried forward for scorecard and trend use. It counts emitted actionable-gap
+  packets that are internally ready for future public projection and lists
+  exclusion reasons such as missing receipt paths. This is advisory
+  badge-readiness evidence only; it does not switch public badges or PR/CI
+  rendering.
 - `recommended_repairs` - bounded Lane 1 repair slices ordered by product risk
   priority first, then signal count. These are advisory next steps, not policy
   decisions.
@@ -2519,11 +2615,11 @@ Field contract:
   the bounded diagnostic state.
 
 The Markdown sibling prints bounded sections for summary, finding-alignment and
-presentation-text quality, actionable canonical gap top lists, maturity by
-class, top evidence-quality risks, recommended repairs, duplicate/canonical
-group signals, static limitations, missing discriminators, related-test and
-oracle distributions, movement and calibration coverage, recent deltas, and
-unknowns.
+presentation-text quality, actionable canonical gap top lists, actionable-gap
+packet public-projection readiness, maturity by class, top evidence-quality
+risks, recommended repairs, duplicate/canonical group signals, static
+limitations, missing discriminators, related-test and oracle distributions,
+movement and calibration coverage, recent deltas, and unknowns.
 
 ## Evidence Quality Trend
 
@@ -2577,7 +2673,7 @@ generated tests, provider calls, score definitions, or runtime execution.
     "improved_metrics": 0,
     "regressed_metrics": 0,
     "unchanged_metrics": 0,
-    "unknown_metrics": 24,
+    "unknown_metrics": 26,
     "no_history": true
   },
   "metric_trends": [
@@ -2619,7 +2715,8 @@ Field contract:
   calibrated records, calibrated-supported canonical items, already-observed
   items, and internal no-action items. Finding-alignment and presentation-text
   metrics track raw-to-canonical quality, duplicate groups, actionability,
-  static limitations, visibility unknowns, and no-action/observed outcomes.
+  static limitations, visibility unknowns, no-action/observed outcomes, and
+  actionable-gap packet public-projection readiness.
 - `static_limitation_category_trends[]` - bounded category-level deltas for
   normalized static limitation classes.
 - `unknowns[]` - missing history or missing current metric fields that must
@@ -7601,6 +7698,15 @@ JSON shape:
       "command": "ripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --format json --out target/ripr/reports/targeted-test-outcome.json",
       "required": true,
       "summary": "Report has not been generated yet."
+    },
+    {
+      "name": "actionable gap outcomes",
+      "path": "target/ripr/reports/actionable-gap-outcomes.json",
+      "state": "missing",
+      "status": "missing",
+      "command": "cargo xtask actionable-gap-outcomes",
+      "required": true,
+      "summary": "Actionable packet outcome join has not been generated yet."
     },
     {
       "name": "mutation calibration",

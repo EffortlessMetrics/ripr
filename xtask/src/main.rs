@@ -966,6 +966,13 @@ struct TargetedTestOutcomeArgs {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+struct ActionableGapOutcomesArgs {
+    actionable_gaps: PathBuf,
+    agent_receipt: Option<PathBuf>,
+    targeted_test_outcome: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct TargetedTestOutcomeReport {
     before_path: String,
     after_path: String,
@@ -997,6 +1004,34 @@ struct TargetedTestOutcomeSeam {
     file: String,
     line: usize,
     grip_class: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ActionableGapOutcomesReport {
+    actionable_gaps_path: String,
+    agent_receipt_path: Option<String>,
+    targeted_test_outcome_path: Option<String>,
+    packets_total: usize,
+    outcomes: Vec<ActionableGapOutcome>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ActionableGapOutcome {
+    canonical_gap_id: String,
+    evidence_class: String,
+    repair_kind: String,
+    source_file: String,
+    verify_command: String,
+    receipt_command_or_path: Option<String>,
+    receipt_state: String,
+    outcome_state: String,
+    seam_id: Option<String>,
+    before: Option<String>,
+    after: Option<String>,
+    movement_source: Option<String>,
+    movement_direction: Option<String>,
+    evidence_delta: Vec<String>,
+    reason: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -14976,11 +15011,16 @@ pub(crate) fn repo_exposure_report_impl() -> Result<(), String> {
 /// availability context.
 pub(crate) fn evidence_health_report_impl() -> Result<(), String> {
     ensure_reports_dir()?;
-    run("cargo", &["build", "-p", "ripr"])?;
     let binary = ripr_debug_binary();
     let args = evidence_health_args();
     let timeout = Duration::from_millis(evidence_health_timeout_ms());
-    write_evidence_health_report_with_runner(&binary, &args, timeout, evidence_health_run_binary)
+    write_evidence_health_report_with_runners(
+        &binary,
+        &args,
+        timeout,
+        evidence_health_build_binary,
+        evidence_health_run_binary,
+    )
 }
 
 const EVIDENCE_HEALTH_TIMEOUT_ENV: &str = "RIPR_EVIDENCE_HEALTH_TIMEOUT_MS";
@@ -15012,6 +15052,16 @@ fn evidence_health_timeout_ms() -> u64 {
         .unwrap_or(EVIDENCE_HEALTH_DEFAULT_TIMEOUT_MS)
 }
 
+fn evidence_health_build_binary(timeout: Duration) -> Result<TimedOutput, String> {
+    capture_output_with_timeout(
+        "cargo",
+        &["build".to_string(), "-p".to_string(), "ripr".to_string()],
+        &[],
+        timeout,
+        "Lane 1 evidence-health build",
+    )
+}
+
 fn evidence_health_run_binary(
     binary: &Path,
     args: &[String],
@@ -15025,6 +15075,39 @@ fn evidence_health_run_binary(
         timeout,
         "Lane 1 evidence-health report",
     )
+}
+
+fn write_evidence_health_report_with_runners<BuildRunner, ReportRunner>(
+    binary: &Path,
+    args: &[String],
+    timeout: Duration,
+    mut build_ripr: BuildRunner,
+    run_evidence_health: ReportRunner,
+) -> Result<(), String>
+where
+    BuildRunner: FnMut(Duration) -> Result<TimedOutput, String>,
+    ReportRunner: FnMut(&Path, &[String], Duration) -> Result<TimedOutput, String>,
+{
+    let build_output = build_ripr(timeout)?;
+    if build_output.timed_out {
+        return write_limited_evidence_health_reports_for_command(
+            "cargo build -p ripr",
+            "evidence_health_build",
+            timeout,
+            &build_output,
+        );
+    }
+    match build_output.status {
+        Some(status) if status.success() => {
+            write_evidence_health_report_with_runner(binary, args, timeout, run_evidence_health)
+        }
+        Some(_) | None => write_limited_evidence_health_reports_for_command(
+            "cargo build -p ripr",
+            "evidence_health_build",
+            timeout,
+            &build_output,
+        ),
+    }
 }
 
 fn write_evidence_health_report_with_runner<F>(
@@ -15052,23 +15135,37 @@ fn write_limited_evidence_health_reports(
     timeout: Duration,
     output: &TimedOutput,
 ) -> Result<(), String> {
+    write_limited_evidence_health_reports_for_command(
+        &normalize_report_path(&format!("{} {}", binary.display(), args.join(" "))),
+        "evidence_health_generation",
+        timeout,
+        output,
+    )
+}
+
+fn write_limited_evidence_health_reports_for_command(
+    command: &str,
+    phase: &str,
+    timeout: Duration,
+    output: &TimedOutput,
+) -> Result<(), String> {
     let json_path = Path::new("target/ripr/reports/evidence-health.json");
     let md_path = Path::new("target/ripr/reports/evidence-health.md");
     let _ = fs::remove_file(json_path);
     let _ = fs::remove_file(md_path);
     write_report(
         "evidence-health.json",
-        &limited_evidence_health_json(binary, args, timeout, output)?,
+        &limited_evidence_health_json(command, phase, timeout, output)?,
     )?;
     write_report(
         "evidence-health.md",
-        &limited_evidence_health_markdown(binary, args, timeout, output),
+        &limited_evidence_health_markdown(command, phase, timeout, output),
     )
 }
 
 fn limited_evidence_health_json(
-    binary: &Path,
-    args: &[String],
+    command: &str,
+    phase: &str,
     timeout: Duration,
     output: &TimedOutput,
 ) -> Result<String, String> {
@@ -15083,7 +15180,7 @@ fn limited_evidence_health_json(
         "inputs": {
             "root": ".",
             "mutation_calibration": null,
-            "generation": evidence_health_generation_json(binary, args, timeout, output),
+            "generation": evidence_health_generation_json(command, timeout, output),
         },
         "metrics": {
             "seams_total": 0,
@@ -15154,13 +15251,13 @@ fn limited_evidence_health_json(
         "run_limitations": [
             {
                 "category": limitation,
-                "phase": "evidence_health_generation",
+                "phase": phase,
                 "input": "repo",
                 "summary": format!("{summary} Partial outputs were discarded."),
                 "repair_route": repair_route,
                 "timeout_ms": timeout.as_millis(),
                 "duration_ms": output.duration.as_millis(),
-                "command": normalize_report_path(&format!("{} {}", binary.display(), args.join(" "))),
+                "command": command,
                 "exit_code": output.status.and_then(|status| status.code()),
                 "stdout_bytes": output.stdout.len(),
                 "stderr_bytes": output.stderr.len(),
@@ -15173,13 +15270,12 @@ fn limited_evidence_health_json(
 }
 
 fn evidence_health_generation_json(
-    binary: &Path,
-    args: &[String],
+    command: &str,
     timeout: Duration,
     output: &TimedOutput,
 ) -> Value {
     serde_json::json!({
-        "command": normalize_report_path(&format!("{} {}", binary.display(), args.join(" "))),
+        "command": command,
         "timeout_ms": timeout.as_millis(),
         "status": if output.timed_out { "timeout" } else { "fail" },
         "duration_ms": output.duration.as_millis(),
@@ -15222,8 +15318,8 @@ fn evidence_health_limited_repair_route(kind: &str) -> &'static str {
 }
 
 fn limited_evidence_health_markdown(
-    binary: &Path,
-    args: &[String],
+    command: &str,
+    phase: &str,
     timeout: Duration,
     output: &TimedOutput,
 ) -> String {
@@ -15241,7 +15337,7 @@ fn limited_evidence_health_markdown(
     out.push_str("| Field | Value |\n");
     out.push_str("| --- | --- |\n");
     out.push_str(&format!("| Category | `{limitation}` |\n"));
-    out.push_str("| Phase | `evidence_health_generation` |\n");
+    out.push_str(&format!("| Phase | `{phase}` |\n"));
     out.push_str(&format!("| Timeout | {} ms |\n", timeout.as_millis()));
     out.push_str(&format!(
         "| Duration | {} ms |\n",
@@ -15255,11 +15351,7 @@ fn limited_evidence_health_markdown(
     out.push_str(&format!("| Exit code | {} |\n", exit));
     out.push_str(&format!(
         "| Command | `{}` |\n",
-        audit_markdown_cell(&normalize_report_path(&format!(
-            "{} {}",
-            binary.display(),
-            args.join(" ")
-        )))
+        audit_markdown_cell(command)
     ));
     out.push_str(&format!("| Repair route | {repair_route} |\n\n"));
     if !output.stderr.trim().is_empty() {
@@ -17635,6 +17727,633 @@ fn lane1_actionable_gap_packets_markdown(report: &Lane1EvidenceAuditReport) -> S
     out
 }
 
+pub(crate) fn actionable_gap_outcomes_report_impl(args: &[String]) -> Result<(), String> {
+    let parsed = parse_actionable_gap_outcomes_args(args)?;
+    if !parsed.actionable_gaps.exists() {
+        return Err(format!(
+            "actionable-gap-outcomes requires `{}`; run `cargo xtask lane1-evidence-audit` first or pass `--actionable-gaps <path>`",
+            normalize_path(&parsed.actionable_gaps)
+        ));
+    }
+
+    let packets = read_json_value(&parsed.actionable_gaps)?;
+    let receipt = match parsed.agent_receipt.as_ref() {
+        Some(path) => Some(read_json_value(path)?),
+        None => None,
+    };
+    let targeted = match parsed.targeted_test_outcome.as_ref() {
+        Some(path) => Some(read_json_value(path)?),
+        None => None,
+    };
+    let report = actionable_gap_outcomes_report_from_values(
+        &packets,
+        receipt.as_ref(),
+        targeted.as_ref(),
+        normalize_path(&parsed.actionable_gaps),
+        parsed
+            .agent_receipt
+            .as_ref()
+            .map(|path| normalize_path(path)),
+        parsed
+            .targeted_test_outcome
+            .as_ref()
+            .map(|path| normalize_path(path)),
+    )?;
+
+    write_report(
+        "actionable-gap-outcomes.json",
+        &actionable_gap_outcomes_json(&report)?,
+    )?;
+    write_report(
+        "actionable-gap-outcomes.md",
+        &actionable_gap_outcomes_markdown(&report),
+    )
+}
+
+fn parse_actionable_gap_outcomes_args(
+    args: &[String],
+) -> Result<ActionableGapOutcomesArgs, String> {
+    let mut actionable_gaps = PathBuf::from("target/ripr/reports/actionable-gaps.json");
+    let mut agent_receipt: Option<PathBuf> = None;
+    let mut targeted_test_outcome: Option<PathBuf> = None;
+    let mut index = 0;
+
+    while index < args.len() {
+        let arg = args[index].as_str();
+        match arg {
+            "--actionable-gaps" => {
+                index += 1;
+                let Some(path) = args.get(index) else {
+                    return Err(format!(
+                        "missing value for `{arg}`\n{}",
+                        actionable_gap_outcomes_usage()
+                    ));
+                };
+                actionable_gaps = PathBuf::from(path);
+            }
+            "--agent-receipt" => {
+                index += 1;
+                let Some(path) = args.get(index) else {
+                    return Err(format!(
+                        "missing value for `{arg}`\n{}",
+                        actionable_gap_outcomes_usage()
+                    ));
+                };
+                agent_receipt = Some(PathBuf::from(path));
+            }
+            "--targeted-test-outcome" => {
+                index += 1;
+                let Some(path) = args.get(index) else {
+                    return Err(format!(
+                        "missing value for `{arg}`\n{}",
+                        actionable_gap_outcomes_usage()
+                    ));
+                };
+                targeted_test_outcome = Some(PathBuf::from(path));
+            }
+            "--help" | "-h" => return Err(actionable_gap_outcomes_usage()),
+            flag if flag.starts_with('-') => {
+                return Err(format!(
+                    "unknown actionable-gap-outcomes option `{flag}`\n{}",
+                    actionable_gap_outcomes_usage()
+                ));
+            }
+            other => {
+                return Err(format!(
+                    "unexpected positional argument `{other}`\n{}",
+                    actionable_gap_outcomes_usage()
+                ));
+            }
+        }
+        index += 1;
+    }
+
+    if agent_receipt.is_none() {
+        agent_receipt = first_existing_path(&[
+            "target/ripr/reports/agent-receipt.json",
+            "target/ripr/workflow/agent-receipt.json",
+            "target/ripr/agent/agent-receipt.json",
+            "target/ripr/receipts/agent-receipt.json",
+        ]);
+    }
+    if targeted_test_outcome.is_none() {
+        targeted_test_outcome =
+            first_existing_path(&["target/ripr/reports/targeted-test-outcome.json"]);
+    }
+
+    Ok(ActionableGapOutcomesArgs {
+        actionable_gaps,
+        agent_receipt,
+        targeted_test_outcome,
+    })
+}
+
+fn first_existing_path(paths: &[&str]) -> Option<PathBuf> {
+    paths.iter().map(PathBuf::from).find(|path| path.exists())
+}
+
+fn actionable_gap_outcomes_usage() -> String {
+    "usage: cargo xtask actionable-gap-outcomes [--actionable-gaps <path>] [--agent-receipt <path>] [--targeted-test-outcome <path>]"
+        .to_string()
+}
+
+fn actionable_gap_outcomes_report_from_values(
+    packets: &Value,
+    agent_receipt: Option<&Value>,
+    targeted_test_outcome: Option<&Value>,
+    actionable_gaps_path: String,
+    agent_receipt_path: Option<String>,
+    targeted_test_outcome_path: Option<String>,
+) -> Result<ActionableGapOutcomesReport, String> {
+    let packet_items = audit_get(packets, &["packets"])
+        .and_then(Value::as_array)
+        .ok_or_else(|| "actionable-gaps JSON is missing `packets` array".to_string())?;
+    let receipt_values = actionable_gap_receipt_values(agent_receipt);
+    let outcomes = packet_items
+        .iter()
+        .map(|packet| {
+            actionable_gap_outcome_from_packet(
+                packet,
+                &receipt_values,
+                targeted_test_outcome,
+                agent_receipt.is_some(),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    Ok(ActionableGapOutcomesReport {
+        actionable_gaps_path,
+        agent_receipt_path,
+        targeted_test_outcome_path,
+        packets_total: packet_items.len(),
+        outcomes,
+    })
+}
+
+fn actionable_gap_receipt_values(receipt: Option<&Value>) -> Vec<&Value> {
+    let Some(receipt) = receipt else {
+        return Vec::new();
+    };
+    if let Some(receipts) = receipt.as_array() {
+        return receipts.iter().collect();
+    }
+    if let Some(receipts) = audit_get(receipt, &["receipts"]).and_then(Value::as_array) {
+        return receipts.iter().collect();
+    }
+    vec![receipt]
+}
+
+fn actionable_gap_outcome_from_packet(
+    packet: &Value,
+    receipts: &[&Value],
+    targeted_test_outcome: Option<&Value>,
+    receipt_input_present: bool,
+) -> ActionableGapOutcome {
+    let canonical_gap_id = audit_non_empty_string(packet, &["canonical_gap_id"])
+        .unwrap_or_else(|| "canonical_gap_id_unknown".to_string());
+    let id_candidates = actionable_gap_id_candidates(packet);
+    let receipt = receipts
+        .iter()
+        .copied()
+        .find(|receipt| actionable_gap_receipt_matches_packet(receipt, packet, &id_candidates));
+    let targeted_movement = targeted_test_outcome
+        .and_then(|outcome| actionable_gap_targeted_movement(outcome, packet, &id_candidates));
+    let receipt_movement = receipt.and_then(actionable_gap_receipt_movement);
+    let movement = targeted_movement.or(receipt_movement);
+    let receipt_state = if receipt.is_some() {
+        "present"
+    } else if receipt_input_present {
+        "missing"
+    } else {
+        "not_attempted"
+    }
+    .to_string();
+    let outcome_state = match movement.as_ref() {
+        Some(movement)
+            if receipt.is_none()
+                && movement.source == "targeted_test_outcome"
+                && movement.outcome_state == "unknown" =>
+        {
+            "attempted_no_receipt".to_string()
+        }
+        Some(movement) => movement.outcome_state.clone(),
+        None if receipt.is_some() => "receipt_present".to_string(),
+        None => "not_attempted".to_string(),
+    };
+    let reason = match movement.as_ref() {
+        Some(movement) => movement.reason.clone(),
+        None if receipt.is_some() => {
+            "Receipt artifact matched this packet, but no evidence movement bucket was available."
+                .to_string()
+        }
+        None => "No receipt or targeted-test outcome artifact matched this packet.".to_string(),
+    };
+
+    ActionableGapOutcome {
+        canonical_gap_id,
+        evidence_class: audit_non_empty_string(packet, &["evidence_class"])
+            .unwrap_or_else(|| "evidence_class_unknown".to_string()),
+        repair_kind: audit_non_empty_string(packet, &["repair_kind"])
+            .unwrap_or_else(|| "repair_kind_unknown".to_string()),
+        source_file: audit_non_empty_string(packet, &["source_file"])
+            .or_else(|| audit_non_empty_string(packet, &["primary_anchor", "file"]))
+            .unwrap_or_else(|| "source_file_unknown".to_string()),
+        verify_command: audit_non_empty_string(packet, &["verify_command"])
+            .unwrap_or_else(|| "verify_command_unknown".to_string()),
+        receipt_command_or_path: audit_non_empty_string(packet, &["receipt_command_or_path"]),
+        receipt_state,
+        outcome_state,
+        seam_id: movement
+            .as_ref()
+            .and_then(|movement| movement.seam_id.clone()),
+        before: movement
+            .as_ref()
+            .and_then(|movement| movement.before.clone()),
+        after: movement
+            .as_ref()
+            .and_then(|movement| movement.after.clone()),
+        movement_source: movement.as_ref().map(|movement| movement.source.clone()),
+        movement_direction: movement
+            .as_ref()
+            .and_then(|movement| movement.direction.clone()),
+        evidence_delta: movement
+            .as_ref()
+            .map(|movement| movement.evidence_delta.clone())
+            .unwrap_or_default(),
+        reason,
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ActionableGapMovement {
+    source: String,
+    outcome_state: String,
+    seam_id: Option<String>,
+    before: Option<String>,
+    after: Option<String>,
+    direction: Option<String>,
+    evidence_delta: Vec<String>,
+    reason: String,
+}
+
+fn actionable_gap_id_candidates(packet: &Value) -> BTreeSet<String> {
+    let mut candidates = BTreeSet::new();
+    if let Some(id) = audit_non_empty_string(packet, &["canonical_gap_id"]) {
+        actionable_gap_push_id_candidate(&mut candidates, &id);
+    }
+    if let Some(id) = audit_non_empty_string(packet, &["seam_id"]) {
+        actionable_gap_push_id_candidate(&mut candidates, &id);
+    }
+    candidates
+}
+
+fn actionable_gap_push_id_candidate(candidates: &mut BTreeSet<String>, id: &str) {
+    let trimmed = id.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    candidates.insert(trimmed.to_string());
+    for prefix in ["gap:", "canonical_gap:", "canonical_item:"] {
+        if let Some(stripped) = trimmed.strip_prefix(prefix)
+            && !stripped.trim().is_empty()
+        {
+            candidates.insert(stripped.trim().to_string());
+        }
+    }
+}
+
+fn actionable_gap_receipt_matches_packet(
+    receipt: &Value,
+    packet: &Value,
+    candidates: &BTreeSet<String>,
+) -> bool {
+    actionable_gap_receipt_seam_id(receipt).is_some_and(|id| candidates.contains(&id))
+        || actionable_gap_anchor_matches(
+            packet,
+            audit_non_empty_string(receipt, &["seam", "file"]).as_deref(),
+            audit_usize(receipt, &["seam", "line"]),
+        )
+}
+
+fn actionable_gap_receipt_seam_id(receipt: &Value) -> Option<String> {
+    audit_non_empty_string(receipt, &["seam", "seam_id"])
+        .or_else(|| audit_non_empty_string(receipt, &["provenance", "seam_id"]))
+}
+
+fn actionable_gap_anchor_matches(packet: &Value, file: Option<&str>, line: Option<usize>) -> bool {
+    let Some(file) = file else {
+        return false;
+    };
+    let Some(line) = line else {
+        return false;
+    };
+    let packet_file = audit_non_empty_string(packet, &["primary_anchor", "file"])
+        .or_else(|| audit_non_empty_string(packet, &["source_file"]));
+    let packet_line = audit_usize(packet, &["primary_anchor", "line"]);
+    packet_file.as_deref().is_some_and(|packet_file| {
+        normalize_report_path(packet_file) == normalize_report_path(file)
+    }) && packet_line == Some(line)
+}
+
+fn actionable_gap_targeted_movement(
+    targeted: &Value,
+    packet: &Value,
+    candidates: &BTreeSet<String>,
+) -> Option<ActionableGapMovement> {
+    for bucket in ["moved", "unchanged", "regressed"] {
+        for item in audit_array(targeted, &[bucket]) {
+            if actionable_gap_targeted_item_matches_packet(item, packet, candidates) {
+                let direction = audit_non_empty_string(item, &["direction"])
+                    .unwrap_or_else(|| bucket.trim_end_matches('d').to_string());
+                let outcome_state = actionable_gap_outcome_state_for_direction(&direction, bucket);
+                return Some(ActionableGapMovement {
+                    source: "targeted_test_outcome".to_string(),
+                    outcome_state,
+                    seam_id: audit_non_empty_string(item, &["seam_id"]),
+                    before: audit_non_empty_string(item, &["before"]),
+                    after: audit_non_empty_string(item, &["after"]),
+                    direction: Some(direction),
+                    evidence_delta: audit_string_array(item, &["evidence_delta"])
+                        .unwrap_or_default(),
+                    reason: format!("Matched targeted-test outcome `{bucket}` bucket."),
+                });
+            }
+        }
+    }
+    for item in audit_array(targeted, &["removed"]) {
+        if actionable_gap_targeted_item_matches_packet(item, packet, candidates) {
+            return Some(ActionableGapMovement {
+                source: "targeted_test_outcome".to_string(),
+                outcome_state: "resolved".to_string(),
+                seam_id: audit_non_empty_string(item, &["seam_id"]),
+                before: audit_non_empty_string(item, &["grip_class"]),
+                after: None,
+                direction: Some("resolved".to_string()),
+                evidence_delta: Vec::new(),
+                reason: "Matched targeted-test outcome `removed` bucket.".to_string(),
+            });
+        }
+    }
+    for item in audit_array(targeted, &["new"]) {
+        if actionable_gap_targeted_item_matches_packet(item, packet, candidates) {
+            return Some(ActionableGapMovement {
+                source: "targeted_test_outcome".to_string(),
+                outcome_state: "unknown".to_string(),
+                seam_id: audit_non_empty_string(item, &["seam_id"]),
+                before: None,
+                after: audit_non_empty_string(item, &["grip_class"]),
+                direction: Some("new".to_string()),
+                evidence_delta: Vec::new(),
+                reason: "Matched targeted-test outcome `new` bucket; this is not repair progress."
+                    .to_string(),
+            });
+        }
+    }
+    None
+}
+
+fn actionable_gap_targeted_item_matches_packet(
+    item: &Value,
+    packet: &Value,
+    candidates: &BTreeSet<String>,
+) -> bool {
+    audit_non_empty_string(item, &["seam_id"]).is_some_and(|id| candidates.contains(&id))
+        || actionable_gap_anchor_matches(
+            packet,
+            audit_non_empty_string(item, &["file"]).as_deref(),
+            audit_usize(item, &["line"]),
+        )
+}
+
+fn actionable_gap_receipt_movement(receipt: &Value) -> Option<ActionableGapMovement> {
+    let seam_id = actionable_gap_receipt_seam_id(receipt);
+    let direction = audit_non_empty_string(receipt, &["seam", "change"])
+        .or_else(|| audit_non_empty_string(receipt, &["provenance", "movement"]))
+        .or_else(|| audit_non_empty_string(receipt, &["summary", "next_action", "kind"]))?;
+    let outcome_state = match direction.as_str() {
+        "new_gap" => "receipt_present".to_string(),
+        _ => actionable_gap_outcome_state_for_direction(&direction, "receipt"),
+    };
+    Some(ActionableGapMovement {
+        source: "agent_receipt".to_string(),
+        outcome_state,
+        seam_id,
+        before: audit_non_empty_string(receipt, &["seam", "before"])
+            .or_else(|| audit_non_empty_string(receipt, &["provenance", "before_class"])),
+        after: audit_non_empty_string(receipt, &["seam", "after"])
+            .or_else(|| audit_non_empty_string(receipt, &["provenance", "after_class"])),
+        direction: Some(direction),
+        evidence_delta: audit_string_array(receipt, &["seam", "evidence_delta"])
+            .unwrap_or_default(),
+        reason: "Matched agent receipt artifact.".to_string(),
+    })
+}
+
+fn actionable_gap_outcome_state_for_direction(direction: &str, bucket: &str) -> String {
+    match direction {
+        "improved" => "evidence_improved",
+        "unchanged" => "evidence_unchanged",
+        "regressed" => "evidence_regressed",
+        "resolved" | "removed" => "resolved",
+        "changed" if bucket == "moved" => "unknown",
+        "changed" => "receipt_present",
+        _ if bucket == "unchanged" => "evidence_unchanged",
+        _ if bucket == "regressed" => "evidence_regressed",
+        _ => "unknown",
+    }
+    .to_string()
+}
+
+fn actionable_gap_outcomes_json(report: &ActionableGapOutcomesReport) -> Result<String, String> {
+    let state_counts = actionable_gap_outcome_state_counts(&report.outcomes);
+    let value = serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "report": "actionable-gap-outcomes",
+        "scope": "repo",
+        "status": "advisory",
+        "source": "actionable-gaps plus optional receipt and targeted-test outcome artifacts",
+        "inputs": {
+            "actionable_gaps": report.actionable_gaps_path,
+            "agent_receipt": report.agent_receipt_path,
+            "targeted_test_outcome": report.targeted_test_outcome_path,
+        },
+        "summary": {
+            "packets_total": report.packets_total,
+            "outcomes_total": report.outcomes.len(),
+            "not_attempted": state_counts.get("not_attempted").copied().unwrap_or(0),
+            "attempted_no_receipt": state_counts.get("attempted_no_receipt").copied().unwrap_or(0),
+            "receipt_present": state_counts.get("receipt_present").copied().unwrap_or(0),
+            "evidence_improved": state_counts.get("evidence_improved").copied().unwrap_or(0),
+            "evidence_unchanged": state_counts.get("evidence_unchanged").copied().unwrap_or(0),
+            "evidence_regressed": state_counts.get("evidence_regressed").copied().unwrap_or(0),
+            "resolved": state_counts.get("resolved").copied().unwrap_or(0),
+            "unknown": state_counts.get("unknown").copied().unwrap_or(0),
+            "receipts_present": report.outcomes.iter().filter(|outcome| outcome.receipt_state == "present").count(),
+            "receipts_missing_after_input": report.outcomes.iter().filter(|outcome| outcome.receipt_state == "missing").count(),
+        },
+        "outcomes": report.outcomes.iter().map(actionable_gap_outcome_json).collect::<Vec<_>>(),
+        "must_not_infer": [
+            "outcome reports join existing artifacts; they do not execute repairs",
+            "raw findings remain supporting evidence, not user work",
+            "targeted-test outcomes are static evidence movement, not mutation proof",
+            "missing receipts do not imply a repair failed"
+        ],
+    });
+    serde_json::to_string_pretty(&value)
+        .map(|mut rendered| {
+            rendered.push('\n');
+            rendered
+        })
+        .map_err(|err| format!("failed to render actionable-gap outcomes JSON: {err}"))
+}
+
+fn actionable_gap_outcome_json(outcome: &ActionableGapOutcome) -> Value {
+    serde_json::json!({
+        "canonical_gap_id": outcome.canonical_gap_id,
+        "evidence_class": outcome.evidence_class,
+        "repair_kind": outcome.repair_kind,
+        "source_file": outcome.source_file,
+        "verify_command": outcome.verify_command,
+        "receipt_command_or_path": outcome.receipt_command_or_path,
+        "receipt_state": outcome.receipt_state,
+        "outcome_state": outcome.outcome_state,
+        "seam_id": outcome.seam_id,
+        "before": outcome.before,
+        "after": outcome.after,
+        "movement_source": outcome.movement_source,
+        "movement_direction": outcome.movement_direction,
+        "evidence_delta": outcome.evidence_delta,
+        "reason": outcome.reason,
+    })
+}
+
+fn actionable_gap_outcome_state_counts(
+    outcomes: &[ActionableGapOutcome],
+) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for state in [
+        "not_attempted",
+        "attempted_no_receipt",
+        "receipt_present",
+        "evidence_improved",
+        "evidence_unchanged",
+        "evidence_regressed",
+        "resolved",
+        "unknown",
+    ] {
+        counts.insert(state.to_string(), 0);
+    }
+    for outcome in outcomes {
+        audit_increment(&mut counts, &outcome.outcome_state);
+    }
+    counts
+}
+
+fn actionable_gap_outcomes_markdown(report: &ActionableGapOutcomesReport) -> String {
+    let mut out = String::new();
+    let state_counts = actionable_gap_outcome_state_counts(&report.outcomes);
+    out.push_str("# Actionable Gap Outcomes\n\n");
+    out.push_str("Advisory Lane 1 join from actionable-gap packets to optional receipt and targeted-test outcome artifacts.\n\n");
+    out.push_str("## Inputs\n\n");
+    out.push_str(&format!(
+        "- actionable gaps: `{}`\n",
+        audit_markdown_cell(&report.actionable_gaps_path)
+    ));
+    out.push_str(&format!(
+        "- agent receipt: `{}`\n",
+        audit_markdown_cell(
+            report
+                .agent_receipt_path
+                .as_deref()
+                .unwrap_or("not provided")
+        )
+    ));
+    out.push_str(&format!(
+        "- targeted-test outcome: `{}`\n\n",
+        audit_markdown_cell(
+            report
+                .targeted_test_outcome_path
+                .as_deref()
+                .unwrap_or("not provided")
+        )
+    ));
+
+    out.push_str("## Summary\n\n");
+    out.push_str("| State | Count |\n");
+    out.push_str("| --- | ---: |\n");
+    for state in [
+        "not_attempted",
+        "attempted_no_receipt",
+        "receipt_present",
+        "evidence_improved",
+        "evidence_unchanged",
+        "evidence_regressed",
+        "resolved",
+        "unknown",
+    ] {
+        audit_push_count(
+            &mut out,
+            state,
+            state_counts.get(state).copied().unwrap_or(0),
+        );
+    }
+    out.push('\n');
+
+    out.push_str("## Outcomes\n\n");
+    if report.outcomes.is_empty() {
+        out.push_str("No actionable-gap packets were present.\n");
+        return out;
+    }
+    for outcome in &report.outcomes {
+        out.push_str(&format!(
+            "### `{}`\n\n",
+            audit_markdown_cell(&outcome.canonical_gap_id)
+        ));
+        out.push_str("| Field | Value |\n");
+        out.push_str("| --- | --- |\n");
+        out.push_str(&format!(
+            "| Outcome state | `{}` |\n",
+            audit_markdown_cell(&outcome.outcome_state)
+        ));
+        out.push_str(&format!(
+            "| Evidence class | `{}` |\n",
+            audit_markdown_cell(&outcome.evidence_class)
+        ));
+        out.push_str(&format!(
+            "| Repair kind | `{}` |\n",
+            audit_markdown_cell(&outcome.repair_kind)
+        ));
+        out.push_str(&format!(
+            "| Verify command | `{}` |\n",
+            audit_markdown_cell(&outcome.verify_command)
+        ));
+        out.push_str(&format!(
+            "| Receipt state | `{}` |\n",
+            audit_markdown_cell(&outcome.receipt_state)
+        ));
+        out.push_str(&format!(
+            "| Movement source | {} |\n",
+            audit_markdown_cell(outcome.movement_source.as_deref().unwrap_or("none"))
+        ));
+        out.push_str(&format!(
+            "| Movement | {} |\n",
+            audit_markdown_cell(
+                outcome
+                    .movement_direction
+                    .as_deref()
+                    .unwrap_or("no movement artifact")
+            )
+        ));
+        out.push_str(&format!(
+            "| Reason | {} |\n\n",
+            audit_markdown_cell(&outcome.reason)
+        ));
+    }
+    out.push_str("This report is advisory and does not run repairs, generate tests, execute mutation testing, or change public badge semantics.\n");
+    out
+}
+
 fn audit_top_counts_json(rows: &[Lane1EvidenceAuditTopCount]) -> Vec<Value> {
     rows.iter()
         .map(|row| {
@@ -19137,6 +19856,8 @@ struct EvidenceQualityScorecardSummary {
     finding_alignment_static_unknown_without_named_limitation: usize,
     finding_alignment_canonical_items_without_repair_route: usize,
     finding_alignment_canonical_items_without_verify_command: usize,
+    finding_alignment_actionable_gap_packet_public_projection_eligible_packets: usize,
+    finding_alignment_actionable_gap_packet_public_projection_excluded_packets: usize,
     presentation_text_total: usize,
     presentation_text_user_visible: usize,
     presentation_text_observed: usize,
@@ -19210,6 +19931,7 @@ struct EvidenceQualityScorecardReport {
     movement_availability: Value,
     calibration_coverage: Value,
     actionable_gap_top_lists: Value,
+    actionable_gap_packet_public_projection: Value,
     recommended_repairs: Vec<EvidenceQualityRepair>,
     recent_audit_deltas: EvidenceQualityDeltas,
     unknowns: Vec<EvidenceQualityUnknown>,
@@ -19559,6 +20281,19 @@ fn evidence_quality_scorecard_from_values(
                 "top_repair_route_unknowns": [],
             }),
         ),
+        actionable_gap_packet_public_projection: scorecard_value_or_default(
+            audit,
+            &[
+                "finding_alignment",
+                "actionable_gap_packet_public_projection",
+            ],
+            serde_json::json!({
+                "scope": "emitted_actionable_gap_packets",
+                "public_projection_eligible_packets": 0,
+                "public_projection_excluded_packets": 0,
+                "projection_exclusion_reasons": [],
+            }),
+        ),
         recommended_repairs,
         recent_audit_deltas,
         unknowns,
@@ -19719,6 +20454,18 @@ fn evidence_quality_scorecard_summary(audit: &Value) -> EvidenceQualityScorecard
             "canonical_items_without_verify_command",
         )
         .unwrap_or(0),
+        finding_alignment_actionable_gap_packet_public_projection_eligible_packets:
+            finding_alignment_actionable_gap_packet_public_projection_usize(
+                audit,
+                "public_projection_eligible_packets",
+            )
+            .unwrap_or(0),
+        finding_alignment_actionable_gap_packet_public_projection_excluded_packets:
+            finding_alignment_actionable_gap_packet_public_projection_usize(
+                audit,
+                "public_projection_excluded_packets",
+            )
+            .unwrap_or(0),
         presentation_text_total: presentation_text_summary_usize(audit, "presentation_text_total")
             .unwrap_or(0),
         presentation_text_user_visible: presentation_text_summary_usize(
@@ -19788,6 +20535,20 @@ fn finding_alignment_summary_usize(
 
 fn finding_alignment_coverage_usize(value: &Value, key: &str) -> Option<usize> {
     audit_usize_dynamic(value, &["finding_alignment", "coverage"], key)
+}
+
+fn finding_alignment_actionable_gap_packet_public_projection_usize(
+    value: &Value,
+    key: &str,
+) -> Option<usize> {
+    audit_usize_dynamic(
+        value,
+        &[
+            "finding_alignment",
+            "actionable_gap_packet_public_projection",
+        ],
+        key,
+    )
 }
 
 fn presentation_text_summary_usize(value: &Value, key: &str) -> Option<usize> {
@@ -20463,6 +21224,7 @@ fn evidence_quality_scorecard_json(
         "movement_availability": report.movement_availability,
         "calibration_coverage": report.calibration_coverage,
         "actionable_gap_top_lists": report.actionable_gap_top_lists,
+        "actionable_gap_packet_public_projection": report.actionable_gap_packet_public_projection,
         "recommended_repairs": report.recommended_repairs.iter().map(|repair| {
             serde_json::json!({
                 "slice": repair.slice,
@@ -20679,6 +21441,16 @@ fn evidence_quality_scorecard_summary_json(summary: &EvidenceQualityScorecardSum
         &mut object,
         "finding_alignment_canonical_items_without_verify_command",
         summary.finding_alignment_canonical_items_without_verify_command,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_actionable_gap_packet_public_projection_eligible_packets",
+        summary.finding_alignment_actionable_gap_packet_public_projection_eligible_packets,
+    );
+    scorecard_summary_insert_usize(
+        &mut object,
+        "finding_alignment_actionable_gap_packet_public_projection_excluded_packets",
+        summary.finding_alignment_actionable_gap_packet_public_projection_excluded_packets,
     );
     scorecard_summary_insert_usize(
         &mut object,
@@ -21040,6 +21812,31 @@ fn evidence_quality_scorecard_markdown(report: &EvidenceQualityScorecardReport) 
         "Repair route unknown class",
         &report.actionable_gap_top_lists,
         "top_repair_route_unknowns",
+    );
+
+    out.push_str("## Actionable Gap Packet Public Projection Readiness\n\n");
+    out.push_str("| Metric | Count |\n");
+    out.push_str("| --- | ---: |\n");
+    audit_push_count(
+        &mut out,
+        "Public projection eligible packets",
+        report
+            .summary
+            .finding_alignment_actionable_gap_packet_public_projection_eligible_packets,
+    );
+    audit_push_count(
+        &mut out,
+        "Public projection excluded packets",
+        report
+            .summary
+            .finding_alignment_actionable_gap_packet_public_projection_excluded_packets,
+    );
+    out.push('\n');
+    scorecard_push_top_count_table(
+        &mut out,
+        "Projection exclusion reason",
+        &report.actionable_gap_packet_public_projection,
+        "projection_exclusion_reasons",
     );
 
     out.push_str("## Maturity By Class\n\n");
@@ -21579,6 +22376,32 @@ fn evidence_quality_metric_trends(
             ],
         },
         EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_actionable_gap_packet_public_projection_eligible_packets",
+            label: "Actionable gap public-projection eligible packets",
+            lower_is_better: false,
+            current_path: &[
+                "summary",
+                "finding_alignment_actionable_gap_packet_public_projection_eligible_packets",
+            ],
+            previous_path: &[
+                "summary",
+                "finding_alignment_actionable_gap_packet_public_projection_eligible_packets",
+            ],
+        },
+        EvidenceQualityTrendMetricSpec {
+            metric: "finding_alignment_actionable_gap_packet_public_projection_excluded_packets",
+            label: "Actionable gap public-projection excluded packets",
+            lower_is_better: true,
+            current_path: &[
+                "summary",
+                "finding_alignment_actionable_gap_packet_public_projection_excluded_packets",
+            ],
+            previous_path: &[
+                "summary",
+                "finding_alignment_actionable_gap_packet_public_projection_excluded_packets",
+            ],
+        },
+        EvidenceQualityTrendMetricSpec {
             metric: "finding_alignment_already_observed_total",
             label: "Finding-alignment already observed items",
             lower_is_better: false,
@@ -21779,6 +22602,12 @@ fn evidence_quality_metric_interpretation(metric: &str, direction: &str) -> Stri
         | "presentation_text_visibility_unknown"
         | "presentation_text_static_limitations" => {
             "Lower limitation counts mean fewer analyzer-unknown items remain for this evidence class."
+        }
+        "finding_alignment_actionable_gap_packet_public_projection_eligible_packets" => {
+            "Higher eligible packet counts mean more actionable canonical gaps have the evidence needed for future public projection readiness."
+        }
+        "finding_alignment_actionable_gap_packet_public_projection_excluded_packets" => {
+            "Lower excluded packet counts mean fewer actionable canonical gap packets are missing projection-readiness prerequisites."
         }
         _ => "Trend is advisory and does not redefine RIPR scores.",
     }
@@ -40992,6 +41821,8 @@ mod tests {
         ReportIndexCampaign, ReportIndexEntry, ReportIndexRepoOpsArtifact, SarifPolicyMode,
         SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
         TestOracleClass, WorktreeDoctorFinding, WorktreeDoctorSeverity,
+        actionable_gap_outcomes_json, actionable_gap_outcomes_markdown,
+        actionable_gap_outcomes_report_from_values, actionable_gap_outcomes_report_impl,
         badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
         badge_artifacts_summary_markdown, badge_basis_derived_ripr_plus_snapshot,
         badge_basis_needs_repo_badge_plus_job, badge_basis_report_markdown,
@@ -41079,7 +41910,7 @@ mod tests {
         vscode_compile_command, vscode_extension_dir, vscode_package_command,
         vscode_package_version, vscode_test_e2e_command, windows_absolute_path_tokens,
         workflow_runtime_violations, worktree, worktree_doctor_findings,
-        write_evidence_health_report_with_runner,
+        write_evidence_health_report_with_runner, write_evidence_health_report_with_runners,
         write_lane1_evidence_audit_repo_exposure_with_runner, write_repo_exposure_latency_report,
     };
     use super::{
@@ -54402,6 +55233,17 @@ jobs:
             ])
         );
         assert_eq!(
+            XtaskCommand::parse([
+                "actionable-gap-outcomes".to_string(),
+                "--actionable-gaps".to_string(),
+                "target/ripr/reports/actionable-gaps.json".to_string(),
+            ]),
+            XtaskCommand::ActionableGapOutcomes(vec![
+                "--actionable-gaps".to_string(),
+                "target/ripr/reports/actionable-gaps.json".to_string(),
+            ])
+        );
+        assert_eq!(
             XtaskCommand::parse(["vscode-compile".to_string()]),
             XtaskCommand::VscodeCompile
         );
@@ -54463,6 +55305,7 @@ jobs:
                 XtaskCommand::Lane1EvidenceAudit,
                 XtaskCommand::EvidenceQualityScorecard,
                 XtaskCommand::EvidenceQualityTrend(Vec::new()),
+                XtaskCommand::ActionableGapOutcomes(Vec::new()),
                 XtaskCommand::AgentSeamPackets(Some(".".to_string())),
                 XtaskCommand::LspCockpitReport,
                 XtaskCommand::OperatorCockpitReport,
@@ -55453,6 +56296,65 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("lane1_repo_exposure_incomplete"));
         assert!(markdown.contains("processed_28500_of_38521"));
         Ok(())
+    }
+
+    #[test]
+    fn evidence_health_build_timeout_writes_named_limitation_reports() -> Result<(), String> {
+        with_temp_cwd("evidence-health-build-timeout", |_root| {
+            let timeout = Duration::from_millis(7);
+            let args = evidence_health_args();
+            let stale_json = Path::new("target/ripr/reports/evidence-health.json");
+            let stale_md = Path::new("target/ripr/reports/evidence-health.md");
+            write(stale_json, "stale json");
+            write(stale_md, "stale markdown");
+
+            write_evidence_health_report_with_runners(
+                Path::new("ripr"),
+                &args,
+                timeout,
+                |_timeout| {
+                    Ok(TimedOutput {
+                        status: None,
+                        stdout: "partial build stdout".to_string(),
+                        stderr: "Compiling ripr\n".to_string(),
+                        duration: Duration::from_millis(8),
+                        timed_out: true,
+                    })
+                },
+                |_binary, _args, _timeout| {
+                    Err("evidence-health generation should not run after build timeout".to_string())
+                },
+            )?;
+
+            let json_text = fs::read_to_string(stale_json).map_err(|err| err.to_string())?;
+            let value: Value = serde_json::from_str(&json_text).map_err(|err| err.to_string())?;
+            assert_eq!(value["status"], "warn");
+            assert_eq!(
+                value["run_limitations"][0]["category"],
+                "evidence_health_timeout"
+            );
+            assert_eq!(
+                value["run_limitations"][0]["phase"],
+                "evidence_health_build"
+            );
+            assert_eq!(
+                value["run_limitations"][0]["command"],
+                "cargo build -p ripr"
+            );
+            assert_eq!(
+                value["inputs"]["generation"]["command"],
+                "cargo build -p ripr"
+            );
+            assert!(!json_text.contains("stale json"));
+
+            let markdown = fs::read_to_string(stale_md).map_err(|err| err.to_string())?;
+            assert!(markdown.contains("Status: warn"));
+            assert!(markdown.contains("evidence_health_timeout"));
+            assert!(markdown.contains("evidence_health_build"));
+            assert!(markdown.contains("cargo build -p ripr"));
+            assert!(!markdown.contains("stale markdown"));
+            Ok(())
+        })
     }
 
     #[test]
@@ -56449,6 +57351,214 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn actionable_gap_outcomes_join_receipts_and_targeted_movement() -> Result<(), String> {
+        let packets = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "report": "actionable-gaps",
+            "packets": [
+                {
+                    "canonical_gap_id": "gap:seam-a",
+                    "evidence_class": "predicate_boundary",
+                    "repair_kind": "add_boundary_assertion",
+                    "source_file": "src/pricing.rs",
+                    "primary_anchor": {"file": "src/pricing.rs", "line": 42},
+                    "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+                    "receipt_command_or_path": "ripr agent receipt --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-a"
+                },
+                {
+                    "canonical_gap_id": "gap:seam-b",
+                    "evidence_class": "error_path",
+                    "repair_kind": "add_exact_error_variant",
+                    "source_file": "src/parser.rs",
+                    "primary_anchor": {"file": "src/parser.rs", "line": 12},
+                    "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+                    "receipt_command_or_path": "ripr agent receipt --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-b"
+                },
+                {
+                    "canonical_gap_id": "gap:seam-c",
+                    "evidence_class": "side_effect",
+                    "repair_kind": "add_side_effect_observer",
+                    "source_file": "src/audit.rs",
+                    "primary_anchor": {"file": "src/audit.rs", "line": 9},
+                    "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+                    "receipt_command_or_path": "ripr agent receipt --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-c"
+                },
+                {
+                    "canonical_gap_id": "gap:seam-d",
+                    "evidence_class": "config_or_policy_constant",
+                    "repair_kind": "add_output_observer",
+                    "source_file": "src/config.rs",
+                    "primary_anchor": {"file": "src/config.rs", "line": 4},
+                    "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+                    "receipt_command_or_path": "ripr agent receipt --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-d"
+                },
+                {
+                    "canonical_gap_id": "gap:seam-e",
+                    "evidence_class": "predicate_boundary",
+                    "repair_kind": "add_boundary_assertion",
+                    "source_file": "src/new_gap.rs",
+                    "primary_anchor": {"file": "src/new_gap.rs", "line": 20},
+                    "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+                    "receipt_command_or_path": "ripr agent receipt --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-e"
+                }
+            ]
+        });
+        let receipt = serde_json::json!({
+            "schema_version": "0.3",
+            "seam": {
+                "seam_id": "seam-a",
+                "file": "src/pricing.rs",
+                "line": 42,
+                "before": "weakly_gripped",
+                "after": "strongly_gripped",
+                "change": "improved",
+                "evidence_delta": ["missing discriminator no longer reported: threshold equality"]
+            },
+            "provenance": {"seam_id": "seam-a", "movement": "improved"}
+        });
+        let targeted = serde_json::json!({
+            "schema_version": "0.1",
+            "moved": [],
+            "unchanged": [
+                {
+                    "seam_id": "seam-b",
+                    "seam_kind": "error_path",
+                    "file": "src/parser.rs",
+                    "line": 12,
+                    "before": "weakly_gripped",
+                    "after": "weakly_gripped",
+                    "direction": "unchanged",
+                    "evidence_delta": []
+                }
+            ],
+            "regressed": [],
+            "removed": [
+                {
+                    "seam_id": "seam-c",
+                    "seam_kind": "side_effect",
+                    "file": "src/audit.rs",
+                    "line": 9,
+                    "grip_class": "weakly_gripped"
+                }
+            ],
+            "new": [
+                {
+                    "seam_id": "seam-e",
+                    "seam_kind": "predicate_boundary",
+                    "file": "src/new_gap.rs",
+                    "line": 20,
+                    "grip_class": "ungripped"
+                }
+            ]
+        });
+
+        let report = actionable_gap_outcomes_report_from_values(
+            &packets,
+            Some(&receipt),
+            Some(&targeted),
+            "target/ripr/reports/actionable-gaps.json".to_string(),
+            Some("target/ripr/reports/agent-receipt.json".to_string()),
+            Some("target/ripr/reports/targeted-test-outcome.json".to_string()),
+        )?;
+        let states = report
+            .outcomes
+            .iter()
+            .map(|outcome| {
+                (
+                    outcome.canonical_gap_id.as_str(),
+                    outcome.outcome_state.as_str(),
+                    outcome.receipt_state.as_str(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            states,
+            vec![
+                ("gap:seam-a", "evidence_improved", "present"),
+                ("gap:seam-b", "evidence_unchanged", "missing"),
+                ("gap:seam-c", "resolved", "missing"),
+                ("gap:seam-d", "not_attempted", "missing"),
+                ("gap:seam-e", "attempted_no_receipt", "missing"),
+            ]
+        );
+
+        let json = actionable_gap_outcomes_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(value["report"], "actionable-gap-outcomes");
+        assert_eq!(value["summary"]["evidence_improved"], 1);
+        assert_eq!(value["summary"]["evidence_unchanged"], 1);
+        assert_eq!(value["summary"]["resolved"], 1);
+        assert_eq!(value["summary"]["not_attempted"], 1);
+        assert_eq!(value["summary"]["attempted_no_receipt"], 1);
+        assert_eq!(value["summary"]["receipts_present"], 1);
+        assert_eq!(
+            value["outcomes"][0]["reason"],
+            "Matched agent receipt artifact."
+        );
+        let markdown = actionable_gap_outcomes_markdown(&report);
+        assert!(markdown.contains("# Actionable Gap Outcomes"));
+        assert!(markdown.contains("gap:seam-c"));
+        assert!(markdown.contains("resolved"));
+        Ok(())
+    }
+
+    #[test]
+    fn actionable_gap_outcomes_command_writes_markdown_and_json() -> Result<(), String> {
+        with_temp_cwd("actionable-gap-outcomes", |_| {
+            fs::create_dir_all("target/ripr/reports")
+                .map_err(|err| format!("failed to create reports dir: {err}"))?;
+            write(
+                Path::new("target/ripr/reports/actionable-gaps.json"),
+                r#"{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "report": "actionable-gaps",
+  "packets": [
+    {
+      "canonical_gap_id": "gap:seam-a",
+      "evidence_class": "predicate_boundary",
+      "repair_kind": "add_boundary_assertion",
+      "source_file": "src/pricing.rs",
+      "primary_anchor": {"file": "src/pricing.rs", "line": 42},
+      "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+      "receipt_command_or_path": "ripr agent receipt --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-a"
+    }
+  ]
+}"#,
+            );
+            write(
+                Path::new("target/ripr/reports/agent-receipt.json"),
+                r#"{
+  "schema_version": "0.3",
+  "seam": {
+    "seam_id": "seam-a",
+    "file": "src/pricing.rs",
+    "line": 42,
+    "before": "weakly_gripped",
+    "after": "strongly_gripped",
+    "change": "improved",
+    "evidence_delta": ["missing discriminator no longer reported: threshold equality"]
+  },
+  "provenance": {"seam_id": "seam-a", "movement": "improved"}
+}"#,
+            );
+
+            actionable_gap_outcomes_report_impl(&[])?;
+            let json = fs::read_to_string("target/ripr/reports/actionable-gap-outcomes.json")
+                .map_err(|err| format!("failed to read outcomes JSON: {err}"))?;
+            let markdown = fs::read_to_string("target/ripr/reports/actionable-gap-outcomes.md")
+                .map_err(|err| format!("failed to read outcomes Markdown: {err}"))?;
+            assert!(json.contains("\"report\": \"actionable-gap-outcomes\""));
+            assert!(json.contains("\"evidence_improved\": 1"));
+            assert!(markdown.contains("# Actionable Gap Outcomes"));
+            assert!(markdown.contains("gap:seam-a"));
+            Ok(())
+        })
+    }
+
+    #[test]
     fn lane1_actionable_gap_packets_keep_observed_gaps_out_of_public_projection()
     -> Result<(), String> {
         let report = lane1_evidence_audit_from_repo_exposure(
@@ -57121,6 +58231,11 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(value.get("movement_availability").is_some());
         assert!(value.get("calibration_coverage").is_some());
         assert!(value.get("actionable_gap_top_lists").is_some());
+        assert!(
+            value
+                .get("actionable_gap_packet_public_projection")
+                .is_some()
+        );
         assert!(value.get("recommended_repairs").is_some());
         assert!(value.get("recent_audit_deltas").is_some());
         assert!(value.get("unknowns").is_some());
@@ -57324,6 +58439,8 @@ covered_by = ["cargo xtask check-file-policy"]
             "Actionable Canonical Gap Top Lists",
             "Actionable gap class",
             "Repair kind",
+            "Actionable Gap Packet Public Projection Readiness",
+            "Projection exclusion reason",
             "Maturity By Class",
             "Top Evidence-Quality Risks",
             "Recommended Lane 1 Repairs",
@@ -57377,6 +58494,80 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("Actionable Canonical Gap Top Lists"));
         assert!(markdown.contains("add_boundary_assertion"));
         assert!(markdown.contains("No static limitation reason counts were reported."));
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_scorecard_carries_actionable_packet_projection_readiness()
+    -> Result<(), String> {
+        let mut audit = scorecard_minimal_audit_value(0, 0, 0, 0, 0);
+        audit
+            .as_object_mut()
+            .ok_or_else(|| "audit should be an object".to_string())?
+            .insert(
+                "finding_alignment".to_string(),
+                serde_json::json!({
+                    "summary": {
+                        "raw_signals": 9,
+                        "canonical_items": 4,
+                        "actionable_gaps": 3
+                    },
+                    "coverage": {
+                        "static_unknown_without_named_limitation": 0,
+                        "canonical_items_without_repair_route": 0,
+                        "canonical_items_without_verify_command": 0
+                    },
+                    "actionable_gap_packet_public_projection": {
+                        "scope": "emitted_actionable_gap_packets",
+                        "public_projection_eligible_packets": 2,
+                        "public_projection_excluded_packets": 1,
+                        "projection_exclusion_reasons": [
+                            {"label": "missing_receipt_path", "count": 1}
+                        ]
+                    }
+                }),
+            );
+
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(false),
+            &audit,
+            None,
+            None,
+        )?;
+
+        assert_eq!(
+            report
+                .summary
+                .finding_alignment_actionable_gap_packet_public_projection_eligible_packets,
+            2
+        );
+        assert_eq!(
+            report
+                .summary
+                .finding_alignment_actionable_gap_packet_public_projection_excluded_packets,
+            1
+        );
+        let json = evidence_quality_scorecard_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(
+            value["summary"]["finding_alignment_actionable_gap_packet_public_projection_eligible_packets"],
+            serde_json::Value::from(2)
+        );
+        assert_eq!(
+            value["summary"]["finding_alignment_actionable_gap_packet_public_projection_excluded_packets"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["actionable_gap_packet_public_projection"]["projection_exclusion_reasons"][0]["label"],
+            "missing_receipt_path"
+        );
+
+        let markdown = evidence_quality_scorecard_markdown(&report);
+        assert!(markdown.contains("Actionable Gap Packet Public Projection Readiness"));
+        assert!(markdown.contains("Public projection eligible packets"));
+        assert!(markdown.contains("missing_receipt_path"));
         Ok(())
     }
 
@@ -57774,6 +58965,26 @@ covered_by = ["cargo xtask check-file-policy"]
             "finding_alignment_static_unknown_without_named_limitation",
             1,
         )?;
+        set_summary_count(
+            &mut current,
+            "finding_alignment_actionable_gap_packet_public_projection_eligible_packets",
+            4,
+        )?;
+        set_summary_count(
+            &mut previous,
+            "finding_alignment_actionable_gap_packet_public_projection_eligible_packets",
+            1,
+        )?;
+        set_summary_count(
+            &mut current,
+            "finding_alignment_actionable_gap_packet_public_projection_excluded_packets",
+            0,
+        )?;
+        set_summary_count(
+            &mut previous,
+            "finding_alignment_actionable_gap_packet_public_projection_excluded_packets",
+            3,
+        )?;
 
         let report = evidence_quality_trend_from_values(
             "unix_ms:1".to_string(),
@@ -57815,6 +59026,20 @@ covered_by = ["cargo xtask check-file-policy"]
             )?,
             "regression"
         );
+        assert_eq!(
+            trend_direction_for(
+                &report,
+                "finding_alignment_actionable_gap_packet_public_projection_eligible_packets"
+            )?,
+            "improvement"
+        );
+        assert_eq!(
+            trend_direction_for(
+                &report,
+                "finding_alignment_actionable_gap_packet_public_projection_excluded_packets"
+            )?,
+            "improvement"
+        );
 
         let json = evidence_quality_trend_json(&report)?;
         let value: serde_json::Value =
@@ -57833,11 +59058,17 @@ covered_by = ["cargo xtask check-file-policy"]
             metric_trends.iter().any(|trend| trend["metric"]
                 == "finding_alignment_static_unknown_without_named_limitation")
         );
+        assert!(metric_trends.iter().any(|trend| trend["metric"]
+            == "finding_alignment_actionable_gap_packet_public_projection_eligible_packets"));
+        assert!(metric_trends.iter().any(|trend| trend["metric"]
+            == "finding_alignment_actionable_gap_packet_public_projection_excluded_packets"));
 
         let markdown = evidence_quality_trend_markdown(&report);
         assert!(markdown.contains("Finding-alignment canonical items without repair route"));
         assert!(markdown.contains("Finding-alignment canonical items without verify command"));
         assert!(markdown.contains("Finding-alignment static unknown without named limitation"));
+        assert!(markdown.contains("Actionable gap public-projection eligible packets"));
+        assert!(markdown.contains("Actionable gap public-projection excluded packets"));
         Ok(())
     }
 

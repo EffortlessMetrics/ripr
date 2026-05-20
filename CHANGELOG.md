@@ -9,6 +9,32 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- `cargo xtask evidence-health` now bounds its preflight `cargo build -p ripr`
+  phase with the evidence-health timeout and writes diagnostic warning reports
+  with `phase = evidence_health_build` if that phase times out or fails. This
+  prevents cold or pathological builds from consuming the outer shell timeout
+  without producing `evidence-health.json` / `.md`; the fallback artifact names
+  a limitation and does not claim user test debt.
+- Lane 1 now has an actionable-gap outcome report that joins existing
+  actionable packets with optional agent receipt and targeted-test outcome
+  artifacts. `cargo xtask actionable-gap-outcomes` writes
+  `target/ripr/reports/actionable-gap-outcomes.{json,md}` with bounded outcome
+  states such as `not_attempted`, `evidence_improved`, `evidence_unchanged`,
+  `evidence_regressed`, and `resolved` so repair attempts can be tracked
+  without running repairs, generated tests, provider calls, mutation execution,
+  public badge changes, or PR/CI rendering.
+- Public actionable projection docs now define internal badge-readiness stages:
+  packet readiness, scorecard readiness, and badge-basis readiness. The spec
+  records that Lane 1 scorecard/trend packet readiness is internal evidence
+  only and does not authorize public endpoint refreshes without the generated
+  badge workflow and an explicitly scoped badge PR.
+- Lane 1 evidence-quality scorecard and trend reports now carry actionable-gap
+  packet public-projection readiness from the live audit. The scorecard reports
+  eligible and excluded packet counts plus projection-exclusion reasons, and
+  the trend tracks eligible packets as higher-is-better and excluded packets as
+  lower-is-better. This is internal badge-readiness evidence only; it does not
+  change public badges, PR/CI rendering, gate policy, providers, generated
+  tests, source edits, or mutation execution.
 - Added `RIPR-PROP-0014` to define the `ripr-swarm` campaign rationale:
   consume actionable canonical packets, rank bounded repair attempts, require
   receipts and evidence movement, reject raw-finding queues and arbitrary agent

@@ -55,6 +55,13 @@ target/ripr/reports/actionable-gaps.json
 target/ripr/reports/actionable-gaps.md
 ```
 
+The related `cargo xtask actionable-gap-outcomes` command writes:
+
+```text
+target/ripr/reports/actionable-gap-outcomes.json
+target/ripr/reports/actionable-gap-outcomes.md
+```
+
 It exits successfully after both artifacts are written. If repo exposure
 generation exits non-zero after writing a complete repo-exposure JSON document
 with a top-level `seams` array, the audit may continue from that captured
@@ -246,6 +253,15 @@ Packets that are useful for humans or agents but not badge-ready remain in the
 artifact with stable `projection_exclusion_reasons[]` such as
 `missing_receipt_path`; this does not change public badge semantics.
 
+Given an actionable-gap packet artifact, an optional agent receipt artifact, and
+an optional targeted-test outcome artifact, `cargo xtask actionable-gap-outcomes`
+joins by canonical gap identity, seam identity, or primary anchor and reports
+one outcome row per packet. Outcome rows use only bounded states:
+`not_attempted`, `attempted_no_receipt`, `receipt_present`,
+`evidence_improved`, `evidence_unchanged`, `evidence_regressed`, `resolved`,
+and `unknown`. Missing receipts do not prove failure, and targeted-test
+movement remains static evidence movement rather than mutation proof.
+
 ## Test Mapping
 
 - `xtask::tests::lane1_evidence_audit_counts_quality_gaps_from_evidence_record`
@@ -267,6 +283,11 @@ artifact with stable `projection_exclusion_reasons[]` such as
   pins that observed/no-action dispositions do not become public-projection
   eligible even when a malformed packet carries repair, verify, and receipt
   fields.
+- `xtask::tests::actionable_gap_outcomes_join_receipts_and_targeted_movement`
+  pins outcome state joins for receipt-present, evidence-improved,
+  evidence-unchanged, resolved, and not-attempted packet states.
+- `xtask::tests::actionable_gap_outcomes_command_writes_markdown_and_json`
+  pins the `cargo xtask actionable-gap-outcomes` JSON/Markdown artifacts.
 - `xtask::tests::lane1_evidence_audit_reports_alignment_coverage_holes` pins
   unaligned raw finding examples and same-line duplicate grouping.
 - `xtask::tests::lane1_evidence_audit_requires_structured_repair_route_for_actionable_items`
@@ -300,12 +321,13 @@ artifact with stable `projection_exclusion_reasons[]` such as
 
 ## Implementation Mapping
 
-- `xtask/src/command.rs` exposes `lane1-evidence-audit` and the
-  `evidence-quality-audit` alias.
+- `xtask/src/command.rs` exposes `lane1-evidence-audit`, the
+  `evidence-quality-audit` alias, and `actionable-gap-outcomes`.
 - `xtask/src/dispatch.rs`, `xtask/src/reports/mod.rs`, and
   `xtask/src/reports/repo.rs` route the report facade.
 - `xtask/src/main.rs` generates repo exposure, builds the audit, renders JSON
-  and Markdown, and writes the audit plus actionable-gap packet artifacts.
+  and Markdown, writes the audit plus actionable-gap packet artifacts, and
+  joins packet/receipt/movement artifacts into actionable-gap outcome reports.
 - `xtask/src/run.rs` provides the stdout-to-file command runner used to stream
   the generated repo-exposure input without adding process-spawn logic to the
   report implementation.
@@ -334,6 +356,7 @@ The audit feeds these Lane 1 metrics:
 - `finding_alignment_canonical_items_without_repair_route`;
 - `finding_alignment_canonical_items_without_verify_command`.
 - `lane1_actionable_gap_packets`.
+- `lane1_actionable_gap_outcomes`.
 - `lane1_runtime_confidence_by_class`.
 
 ## Non-Goals
