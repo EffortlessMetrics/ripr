@@ -336,12 +336,13 @@ evidence = [
   "docs/adr/0017-editor-gap-queue-is-read-only.md records that Lane 3 may validate and project the queue but must not produce artifacts, re-rank gaps, decide policy, edit source, generate tests, call providers, run mutation, or claim runtime adequacy",
   "plans/editor-actionable-gap-queue/implementation-plan.md sequences the docs, validation, status, packet, repo-map, fixture, VS Code smoke, docs, dogfood, and closeout PRs",
   "fixtures/editor_actionable_gap_queue pins top-gap, no-action, report-only, static-limit-only, stale, wrong-root, malformed, receipt-improved, and receipt-unchanged queue states",
-  "docs/EDITOR_ACTIONABLE_GAP_QUEUE.md documents the user workflow, Current Repair Packet, Repo Gap Map, recovery states, agent handoff, and non-claims"
+  "docs/EDITOR_ACTIONABLE_GAP_QUEUE.md documents the user workflow, Current Repair Packet, Repo Gap Map, recovery states, agent handoff, and non-claims",
+  "docs/handoffs/2026-05-20-editor-actionable-gap-queue-receipts.md records actionable, no-action, fail-closed, receipt, and preview-boundary dogfood proof"
 ]
 fixtures = [
   "fixtures/editor_actionable_gap_queue"
 ]
-next = "dogfood/lane3-actionable-gap-queue-receipts"
+next = "campaign/lane3-actionable-gap-queue-closeout"
 metric = "editor_actionable_gap_queue_available, editor_actionable_gap_queue_top_gap_ready, editor_actionable_gap_queue_no_action, editor_actionable_gap_queue_report_only, editor_actionable_gap_queue_static_limit_only, editor_actionable_gap_queue_stale, editor_actionable_gap_queue_wrong_root, editor_actionable_gap_queue_malformed, editor_actionable_gap_queue_repair_packet_available, editor_actionable_gap_queue_repo_map_available, editor_actionable_gap_queue_actions_suppressed_unsafe_state, editor_actionable_gap_queue_receipt_improved, editor_actionable_gap_queue_receipt_unchanged"
 
 [[capability]]

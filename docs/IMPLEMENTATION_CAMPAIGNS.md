@@ -3891,7 +3891,7 @@ Work items:
 | `fixtures/editor-actionable-gap-queue` | closed | Fixture corpus covers top-gap, multiple-gap, no-action, static-limit-only, stale, wrong-root, malformed, improved, and unchanged states. |
 | `test/vscode-actionable-gap-queue` | closed | Packaged extension smoke covers status, packets, repo map, receipt state, and unsafe-state suppression. |
 | `docs/editor-actionable-gap-queue` | closed | Document the queue workflow and recovery states. |
-| `dogfood/lane3-actionable-gap-queue-receipts` | planned | Record actionable, no-action, static-limit-only, wrong-root, stale, receipt, and preview-advisory proof. |
+| `dogfood/lane3-actionable-gap-queue-receipts` | closed | [Editor Actionable Gap Queue dogfood receipts](handoffs/2026-05-20-editor-actionable-gap-queue-receipts.md) record actionable, no-action, static-limit-only, wrong-root, stale, receipt, and preview-advisory proof. |
 | `campaign/lane3-actionable-gap-queue-closeout` | planned | Close only after behavior, fixtures, e2e, docs, dogfood, and validation land. |
 
 Commands:

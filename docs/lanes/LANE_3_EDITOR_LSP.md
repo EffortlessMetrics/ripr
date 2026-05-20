@@ -767,12 +767,12 @@ Lane 3 does not own:
 - mutation execution.
 
 The source-of-truth stack, validation seam, Show Status queue projection,
-bounded Current Repair Packet action, read-only Repo Gap Map action, and
-manifest-only fixture corpus have landed. Packaged VS Code smoke for the queue
-path is tracked as closed in `ripr-swarm` issue #17. The user-facing
-documentation slice (#18) is represented by
-`docs/EDITOR_ACTIONABLE_GAP_QUEUE.md`. The next swarm-trunk follow-up is
-dogfood receipts (#19), followed by campaign closeout (#20).
+bounded Current Repair Packet action, read-only Repo Gap Map action,
+manifest-only fixture corpus, packaged VS Code smoke, user-facing
+documentation, and dogfood receipts have landed. The dogfood slice (#19) is
+represented by
+[`docs/handoffs/2026-05-20-editor-actionable-gap-queue-receipts.md`](../handoffs/2026-05-20-editor-actionable-gap-queue-receipts.md).
+The next swarm-trunk follow-up is campaign closeout (#20).
 
 Future queue behavior must consume typed fields rather than prose, preserve Rust
 defaults, keep preview evidence visibly bounded, and fail closed on stale,

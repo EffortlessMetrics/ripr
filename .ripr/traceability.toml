@@ -3562,6 +3562,7 @@ outputs = [
   "docs/adr/README.md",
   "docs/lanes/LANE_3_EDITOR_LSP.md",
   "docs/EDITOR_ACTIONABLE_GAP_QUEUE.md",
+  "docs/handoffs/2026-05-20-editor-actionable-gap-queue-receipts.md",
   "docs/DOCUMENTATION.md",
   "docs/README.md",
   "docs/IMPLEMENTATION_PLAN.md",
