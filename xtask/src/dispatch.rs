@@ -39,6 +39,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::AgentSeamPackets(root) => {
             super::reports::agent_seam_packets_report(root.as_ref())
         }
+        XtaskCommand::RiprSwarm(args) => super::ripr_swarm(&args),
         XtaskCommand::LspCockpitReport => super::reports::lsp_cockpit_report(),
         XtaskCommand::OperatorCockpitReport => super::reports::operator_cockpit_report(),
         XtaskCommand::ReleaseReadiness(args) => super::reports::release_readiness(&args),

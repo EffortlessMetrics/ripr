@@ -288,6 +288,12 @@ movement remains static evidence movement rather than mutation proof.
   evidence-unchanged, resolved, and not-attempted packet states.
 - `xtask::tests::actionable_gap_outcomes_command_writes_markdown_and_json`
   pins the `cargo xtask actionable-gap-outcomes` JSON/Markdown artifacts.
+- `xtask::tests::actionable_gap_outcomes_fixture_corpus_matches_expected_states`
+  validates `fixtures/actionable-gap-outcomes-corpus/corpus.json` against the
+  same outcome joiner used by the report command.
+- `xtask::tests::actionable_gap_outcomes_fixture_corpus_reports_contract_drift`
+  pins fixture-contract failures for missing, malformed, and mismatched
+  actionable-gap outcome corpus inputs.
 - `xtask::tests::lane1_evidence_audit_reports_alignment_coverage_holes` pins
   unaligned raw finding examples and same-line duplicate grouping.
 - `xtask::tests::lane1_evidence_audit_requires_structured_repair_route_for_actionable_items`
@@ -328,6 +334,9 @@ movement remains static evidence movement rather than mutation proof.
 - `xtask/src/main.rs` generates repo exposure, builds the audit, renders JSON
   and Markdown, writes the audit plus actionable-gap packet artifacts, and
   joins packet/receipt/movement artifacts into actionable-gap outcome reports.
+- `fixtures/actionable-gap-outcomes-corpus` pins report outcomes for
+  not-attempted, receipt-present, improved, unchanged, regressed, resolved, and
+  attempted-without-receipt packets.
 - `xtask/src/run.rs` provides the stdout-to-file command runner used to stream
   the generated repo-exposure input without adding process-spawn logic to the
   report implementation.

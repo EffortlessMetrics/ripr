@@ -1,0 +1,125 @@
+# Swarm Development
+
+`EffortlessMetrics/ripr-swarm` is the public development landing zone for
+trusted same-repo `ripr` pull requests. The release-facing repository remains
+`EffortlessMetrics/ripr`.
+
+Use `ripr-swarm` to prove routed CI and high-throughput agent development
+before promoting reviewed batches back to this source repository.
+
+## Boundaries
+
+- New development PRs target `ripr-swarm` after the swarm lane is enabled.
+- Use same-repo branches and pull requests.
+- Do not run public fork PRs on self-hosted runners.
+- Do not move crates.io, VS Marketplace, Open VSX, GitHub Release, signing, or
+  publish secrets into `ripr-swarm`.
+- Do not publish releases from `ripr-swarm`.
+- Promote reviewed, green batches back to `EffortlessMetrics/ripr`.
+
+## Runner Posture
+
+The first routed lane should be Rust-only:
+
+```text
+Ripr Rust Small Result:
+  CX53 -> CX43 -> GitHub-hosted
+```
+
+Self-hosted jobs are only for trusted same-repo PRs and pushes. Fork or
+otherwise untrusted pull requests must route to GitHub-hosted runners or skip
+self-hosted implementation jobs.
+
+The routed Rust workflow lives in `ripr-swarm` as
+`.github/workflows/routed-rust.yml`. It emits one branch-protection-facing
+check:
+
+```text
+Ripr Rust Small Result
+```
+
+Implementation jobs are conditional:
+
+```text
+Route Ripr Rust Small
+Ripr Rust Small on CX53
+Ripr Rust Small on CX43
+Ripr Rust Small on GitHub Hosted
+```
+
+Do not require implementation jobs directly in branch protection.
+
+Cutover proof should use a same-repo pull request and the normalized
+`Ripr Rust Small Result` check. The routed implementation jobs remain routing
+details and may be skipped when another target is selected.
+
+The router reads runner state with `EM_RUNNER_READ_TOKEN` when that secret is
+available. It selects a self-hosted runner only when the runner is idle and has
+the matching host label plus the `em-ci-rust-1.95` runner-image/toolchain
+readiness label. If runner state cannot be read, no target runner is idle, or a
+runner is available but not image-ready, the workflow falls back to GitHub-hosted with
+`router_reason=runner_api_failed`, `router_reason=no_idle_runner`, or
+`router_reason=runner_image_unavailable`. Fork PRs route to GitHub-hosted with
+`router_reason=fork_or_untrusted_pr`.
+
+The VS Code lane should remain hosted until a separate Node 24 / VS Code / Xvfb
+runner image is proven.
+
+## Machine Cutover
+
+Development machines and orchestrators should clone `ripr-swarm`
+side-by-side with any existing `EffortlessMetrics/ripr` checkout:
+
+```bash
+git clone git@github.com:EffortlessMetrics/ripr-swarm.git ripr-swarm
+```
+
+Do not retarget a dirty source-repo clone in place. Preserve or discard any
+local source-repo work first, then recreate it as a same-repo `ripr-swarm` pull
+request if it is still normal development work.
+
+Use this operating rule after cutover:
+
+```text
+normal development:
+  target EffortlessMetrics/ripr-swarm
+
+source repository:
+  release PRs
+  security PRs
+  explicit swarm-to-source promotion PRs
+```
+
+Each orchestrator should:
+
+- use a fresh `ripr-swarm` clone;
+- create a branch in this repository, not in `EffortlessMetrics/ripr`;
+- open same-repo pull requests;
+- wait for `Ripr Rust Small Result`;
+- keep release, publish, signing, and marketplace secrets out of the swarm repo.
+
+## Promotion Back To Source
+
+Promotion remains a source-repo pull request. The source and swarm repositories
+may not share a merge base, so promotion is a reviewed content sync, not a blind
+fast-forward merge:
+
+```bash
+git clone git@github.com:EffortlessMetrics/ripr.git ripr-promote
+cd ripr-promote
+git fetch origin --prune --tags
+git fetch git@github.com:EffortlessMetrics/ripr-swarm.git main:refs/remotes/swarm/main
+git switch -c promote/swarm-main origin/main
+# Review the tree diff, then copy only the product/docs/fixture/automation
+# surfaces intended for source release proof. Preserve source repository
+# settings, release workflows, publish configuration, and signing boundaries.
+git push origin promote/swarm-main
+```
+
+Open the resulting source-repo PR as:
+
+```text
+promote: sync ripr-swarm main
+```
+
+The source repository CI remains the final release and publish proof.

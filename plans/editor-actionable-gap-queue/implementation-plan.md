@@ -1,6 +1,6 @@
 # Editor Actionable Gap Queue Implementation Plan
 
-Status: active
+Status: closed
 
 Owner: Lane 3 - Editor / LSP UX
 
@@ -19,11 +19,16 @@ repair packet, show receipt state, refresh, and inspect an existing first-pr
 packet.
 
 Lane 1 now emits `target/ripr/reports/actionable-gaps.{json,md}` as the typed
-source artifact for the current repair queue. Lane 3 should project that
-artifact after validating it; it should not rederive the queue, produce the
-artifact, or parse Markdown for action semantics.
+source artifact for the current repair queue. Lane 3 projects that artifact
+after validating it; it should not rederive the queue, produce the artifact, or
+parse Markdown for action semantics.
 
-No behavior PR should start until this source-of-truth stack lands.
+The source-of-truth stack, read-only artifact validation seam, Show Status
+queue projection, bounded current repair packet copy action, read-only repo gap
+map orientation command, manifest-only fixture corpus, packaged VS Code smoke
+proof, user-facing editor documentation, and dogfood receipts have landed.
+The campaign is closed. No behavior-bearing Lane 3 work item is selected after
+this closeout.
 
 ## Hard Boundaries
 
@@ -47,19 +52,23 @@ No behavior PR should start until this source-of-truth stack lands.
 
 ## GitHub Issue Burn-Down
 
+The `#1298` through `#1304` rows are source-repo planning issue references
+from the pre-swarm queue. Remaining open work is tracked directly in
+`ripr-swarm` issues.
+
 | Issue | Work item | Status | Evidence / remaining gap |
 | --- | --- | --- | --- |
-| #1298 | `docs(lane3): open editor actionable gap queue stack` | active | Add proposal, spec, ADR, plan, indexes, lane tracker, traceability, and capability wiring. |
-| #1299 | `test(lsp): pin post-adoption editor contract` | planned | Pin current Diagnose Setup, Show Status, first-pr, receipt, Rust diagnostics, preview labels, and fail-closed behavior. |
-| #1300 | `lsp(queue): validate actionable gap packet artifacts` | planned | Add read-only validation for `target/ripr/reports/actionable-gaps.json`. |
-| #1301 | `lsp(queue): project repair queue in Show Status` | planned | Show bounded queue summary and no-action/fail-closed states. |
-| #1302 | `lsp(queue): add Copy Current Repair Packet` | planned | Copy one bounded packet only for validated actionable gaps. |
-| #1303 | `lsp(queue): add Copy Repo Gap Map` | planned | Copy read-only orientation without gate/runtime/policy claims. |
-| #1304 | `fixtures(editor): add actionable gap queue corpus` | planned | Add success and fail-closed fixture cases. |
-| #1305 | `test(vscode): smoke actionable gap queue` | planned | Prove the packaged extension path. |
-| #1306 | `docs(editor): document actionable gap queue` | planned | Explain workflow, recovery states, and non-claims. |
-| #1307 | `dogfood(lane3): record actionable gap queue receipts` | planned | Record queue, packet, receipt, no-action, and fail-closed proof. |
-| #1308 | `campaign(lane3): close editor actionable gap queue` | planned | Close after behavior, fixtures, e2e, docs, dogfood, and validation land. |
+| #1298 | `docs(lane3): open editor actionable gap queue stack` | closed | Source-of-truth proposal, spec, ADR, plan, indexes, lane tracker, traceability, and capability wiring landed before behavior work. |
+| #1299 | `test(lsp): pin post-adoption editor contract` | closed | Post-adoption Rust LSP projection, hover, actions, first-pr, receipt, and fail-closed behavior were pinned before queue validation. |
+| #1300 | `lsp(queue): validate actionable gap packet artifacts` | closed | Read-only validation for `target/ripr/reports/actionable-gaps.json` landed with success, no-action, missing, malformed, wrong-root, unsafe-path, unsafe-command, producer-exclusion, and run-limitation guards. |
+| #1301 | `lsp(queue): project repair queue in Show Status` | closed | Show bounded queue summary and no-action/fail-closed states without adding copy actions or packet generation. |
+| #1302 | `lsp(queue): add Copy Current Repair Packet` | closed | Copy one bounded packet only for validated actionable gaps. |
+| #1303 | `lsp(queue): add Copy Repo Gap Map` | closed | Copy read-only orientation without gate/runtime/policy claims. |
+| source #1304 / swarm PR #16 | `fixtures(editor): add actionable gap queue corpus` | closed | Manifest-only fixture corpus covers success, no-action, receipt, and fail-closed queue states without changing editor behavior. |
+| swarm #17 | `test(vscode): smoke actionable gap queue` | closed | Packaged VS Code smoke proves safe queue packet copy, read-only repo map copy, fail-closed stale/wrong-root/malformed states, receipt state, Rust defaults, and preview boundaries. |
+| swarm #18 | `docs(editor): document actionable gap queue` | closed | `docs/EDITOR_ACTIONABLE_GAP_QUEUE.md` explains the workflow, recovery states, and non-claims. |
+| swarm #19 | `dogfood(lane3): record actionable gap queue receipts` | closed | `docs/handoffs/2026-05-20-editor-actionable-gap-queue-receipts.md` records queue, packet, receipt, no-action, fail-closed, and preview-boundary proof. |
+| swarm #20 | `campaign(lane3): close editor actionable gap queue` | closed | `docs/handoffs/2026-05-20-editor-actionable-gap-queue-closeout.md` closes after behavior, fixtures, e2e, docs, dogfood, and validation landed. |
 
 ## Work Item 1: docs(lane3): open editor actionable gap queue stack
 

@@ -14,6 +14,10 @@ Linked ADRs:
 
 Linked work items:
 
+Support-tier impact:
+
+Policy impact:
+
 ## Problem
 
 What repo-level or product-level problem are we solving? Frame it in terms of

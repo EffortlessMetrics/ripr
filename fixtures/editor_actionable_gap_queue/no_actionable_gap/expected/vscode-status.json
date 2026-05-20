@@ -1,0 +1,14 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_actionable_gap_queue/no_actionable_gap",
+  "queue_status": "no_action",
+  "projection": "active",
+  "actionable_gaps": 0,
+  "report_only_gaps": 0,
+  "static_limit_only_gaps": 0,
+  "next_safe_action": "No current repair packet is available; refresh if this state is unexpected.",
+  "runtime_adequacy_claim": false,
+  "mutation_proof_claim": false,
+  "policy_gate_claim": false,
+  "merge_readiness_claim": false
+}

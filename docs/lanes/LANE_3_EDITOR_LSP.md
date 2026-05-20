@@ -709,9 +709,9 @@ Hard boundaries:
   provider, mutation, CodeLens, inlay, semantic-token, inline-patch, or
   unsaved-buffer scope.
 
-## Next Selected Slice: Editor Actionable Gap Queue
+## Closed Slice: Editor Actionable Gap Queue
 
-Editor Actionable Gap Queue is the next selected Lane 3 slice. It projects the
+Editor Actionable Gap Queue is a closed Lane 3 slice. It projects the
 existing Lane 1 actionable-gap queue into the editor as a bounded local repair
 queue:
 
@@ -735,6 +735,7 @@ Durable sources for the selected docs stack:
 - [RIPR-SPEC-0055: Editor Actionable Gap Queue](../specs/RIPR-SPEC-0055-editor-actionable-gap-queue.md)
 - [ADR-0017: Editor Gap Queue Is Read-Only](../adr/0017-editor-gap-queue-is-read-only.md)
 - [Editor Actionable Gap Queue implementation plan](../../plans/editor-actionable-gap-queue/implementation-plan.md)
+- [Editor Actionable Gap Queue user workflow](../EDITOR_ACTIONABLE_GAP_QUEUE.md)
 
 Input artifact:
 
@@ -765,9 +766,20 @@ Lane 3 does not own:
 - provider/model calls;
 - mutation execution.
 
-No behavior-bearing queue PR should start until the source-of-truth stack lands.
-Future queue behavior must consume typed fields rather than prose, preserve
-Rust defaults, keep preview evidence visibly bounded, and fail closed on stale,
+The source-of-truth stack, validation seam, Show Status queue projection,
+bounded Current Repair Packet action, read-only Repo Gap Map action,
+manifest-only fixture corpus, packaged VS Code smoke, user-facing
+documentation, dogfood receipts, and closeout have landed. The dogfood slice
+(#19) is represented by
+[`docs/handoffs/2026-05-20-editor-actionable-gap-queue-receipts.md`](../handoffs/2026-05-20-editor-actionable-gap-queue-receipts.md).
+The closeout slice (#20) is represented by
+[`docs/handoffs/2026-05-20-editor-actionable-gap-queue-closeout.md`](../handoffs/2026-05-20-editor-actionable-gap-queue-closeout.md).
+
+No behavior-bearing Lane 3 work item is selected after this closeout. Future
+editor behavior needs a new source-of-truth stack.
+
+Future queue behavior must consume typed fields rather than prose, preserve Rust
+defaults, keep preview evidence visibly bounded, and fail closed on stale,
 wrong-root, malformed, missing, unsupported, disabled, unavailable, unsafe,
 receipt-mismatched, first-pr-mismatched, and actionable-packet-mismatched
 states.

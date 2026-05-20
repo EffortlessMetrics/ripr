@@ -2242,6 +2242,152 @@ or path; otherwise the stable `projection_exclusion_reasons[]` values explain
 why an otherwise useful agent packet is not yet a public badge item. This does
 not change committed badge endpoint semantics.
 
+## RIPR Swarm Plan
+
+`cargo xtask ripr-swarm plan --top <n>` ranks existing actionable canonical gap
+packets for a bounded, dry-run repair loop:
+
+```text
+target/ripr/reports/swarm-plan.json
+target/ripr/reports/swarm-plan.md
+```
+
+The command reads `target/ripr/reports/actionable-gaps.json` by default, or the
+path supplied by `--actionable-gaps`. It is report-only. It does not edit files,
+run tests, call providers, generate tests, create receipts, run mutation
+testing, change PR/CI rendering, change editor/LSP behavior, change gates, or
+change public badges.
+
+For compatibility with current actionable-gap packets, input may carry either
+`receipt_command_or_path` or `receipt_command`. The swarm plan normalizes the
+ranked packet output to `receipt_command`.
+
+If the actionable-gaps input is missing or malformed, the command still writes
+a bounded blocked report with the input path, input state, and limitation text.
+It does not silently drop the plan or infer work from stale Markdown.
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "report": "swarm-plan",
+  "scope": "repo",
+  "status": "advisory",
+  "input": {
+    "actionable_gaps": "target/ripr/reports/actionable-gaps.json",
+    "state": "read",
+    "limitation": null
+  },
+  "source": "actionable-gaps.packets",
+  "source_summary": {
+    "raw_signals": 47515,
+    "canonical_items": 38445,
+    "actionable_gaps": 162,
+    "packets_emitted": 25
+  },
+  "top_limit": 10,
+  "summary": {
+    "packets_total": 25,
+    "swarm_ready_packets": 10,
+    "blocked_packets": 15,
+    "missing_verify_command": 0,
+    "missing_receipt_command": 0,
+    "missing_repair_route": 0,
+    "missing_must_not_change": 0,
+    "related_context_missing": 3,
+    "static_limitation_packets": 2,
+    "high_confidence_packets": 4
+  },
+  "top_ready_packets": [
+    {
+      "packet_id": "gap:abc",
+      "canonical_gap_id": "gap:abc",
+      "evidence_class": "predicate_boundary",
+      "source_file": "src/pricing.rs",
+      "repair_kind": "add_boundary_assertion",
+      "target_test_type": "boundary_discriminator",
+      "assertion_shape": "assert_eq!(price(/* boundary */), expected)",
+      "confidence_basis": "fixture_backed",
+      "swarm_state": "queued",
+      "score": 110,
+      "expected_canonical_gap_delta": 1,
+      "readiness_reasons": [
+        "repair_route_present",
+        "verify_command_present",
+        "receipt_command_present",
+        "related_test_or_observer_present",
+        "must_not_change_present",
+        "public_projection_eligible",
+        "no_static_limitation",
+        "confidence_basis_fixture_backed"
+      ],
+      "blocked_reasons": [],
+      "missing_context": [],
+      "verify_command": "cargo xtask evidence-quality-scorecard",
+      "receipt_command": "cargo xtask receipts check",
+      "related_test_or_observer_available": true,
+      "must_not_change_count": 1,
+      "raw_findings_count": 2,
+      "raw_findings_supporting_only": true,
+      "static_limitations_count": 0,
+      "public_projection_eligible": true
+    }
+  ],
+  "top_blocked_packets": [],
+  "top_missing_verify_or_receipt": [],
+  "must_not_infer": [
+    "do not consume raw findings as swarm work",
+    "do not rank static limitations as repair-ready",
+    "do not rank packets without receipt_command as swarm-ready",
+    "do not rank packets without verify_command as high confidence",
+    "do not edit files, call providers, generate tests, run mutation testing, or create receipts from this plan"
+  ]
+}
+```
+
+`swarm_state = queued` means the packet is ready for a bounded dry-run repair
+attempt. Packets missing required typed context use
+`blocked_by_missing_context`. Packets with static limitations use
+`blocked_by_static_limitation`. Ranking is advisory and never redefines
+actionability; it starts from the canonical packet state already emitted by
+Lane 1.
+
+## RIPR Swarm Attempt Dry Run
+
+`cargo xtask ripr-swarm attempt --packet <id> --dry-run` reads
+`target/ripr/reports/actionable-gaps.json` by default, or the path supplied by
+`--actionable-gaps`, and prints bounded packet context to stdout. The packet id
+can be a `packet_id`, `canonical_gap_id`, or compatible unprefixed canonical
+identifier. The command does not edit files, run tests, call providers,
+generate tests, create receipts, run mutation testing, merge code, or change
+public badge semantics.
+
+The dry-run output includes:
+
+```text
+canonical_gap_id
+evidence_class
+source_file
+swarm_state
+confidence_basis
+repair_kind
+repair_route
+target_test_type
+assertion_or_observer_shape
+related_test_or_observer
+expected_evidence_movement
+verify_command
+receipt_command_or_path
+must_not_change boundaries
+raw_findings_count
+static_limitations_count
+```
+
+`queued` packets show the expected canonical-gap delta if receipt-backed
+evidence movement resolves or improves the item. Blocked packets remain visible
+with their `blocked_by_missing_context` or `blocked_by_static_limitation` state
+and are not promoted to repair-ready work.
+
 ## Actionable Gap Outcomes
 
 `cargo xtask actionable-gap-outcomes` joins actionable-gap packets with optional
@@ -2280,7 +2426,8 @@ mutation testing, change PR/CI rendering, or change public badge semantics.
     "resolved": 1,
     "unknown": 0,
     "receipts_present": 1,
-    "receipts_missing_after_input": 24
+    "receipts_missing_after_input": 24,
+    "orphaned_receipts": 1
   },
   "outcomes": [
     {
@@ -2303,11 +2450,22 @@ mutation testing, change PR/CI rendering, or change public badge semantics.
       "reason": "Matched agent receipt artifact."
     }
   ],
+  "orphaned_receipts": [
+    {
+      "receipt_id": "receipt:old-gap",
+      "seam_id": "old-gap",
+      "source_file": "src/old.rs",
+      "line": 7,
+      "movement_direction": "improved",
+      "reason": "Receipt artifact did not match any current actionable canonical gap packet."
+    }
+  ],
   "must_not_infer": [
     "outcome reports join existing artifacts; they do not execute repairs",
     "raw findings remain supporting evidence, not user work",
     "targeted-test outcomes are static evidence movement, not mutation proof",
-    "missing receipts do not imply a repair failed"
+    "missing receipts do not imply a repair failed",
+    "orphaned receipts do not create new actionable gaps"
   ]
 }
 ```
@@ -2317,6 +2475,9 @@ mutation testing, change PR/CI rendering, or change public badge semantics.
 `evidence_improved`, `evidence_unchanged`, `evidence_regressed`, `resolved`,
 and `unknown`. Raw findings do not determine outcome state; the join is based
 on canonical packet identity, seam identity, or the packet primary anchor.
+`orphaned_receipts[]` preserves receipt artifacts that do not match any current
+packet so attempt history remains visible without creating new actionable gaps.
+
 
 ## Evidence Quality Scorecard
 

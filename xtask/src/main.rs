@@ -1013,6 +1013,7 @@ struct ActionableGapOutcomesReport {
     targeted_test_outcome_path: Option<String>,
     packets_total: usize,
     outcomes: Vec<ActionableGapOutcome>,
+    orphaned_receipts: Vec<ActionableGapOrphanedReceipt>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1031,6 +1032,16 @@ struct ActionableGapOutcome {
     movement_source: Option<String>,
     movement_direction: Option<String>,
     evidence_delta: Vec<String>,
+    reason: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ActionableGapOrphanedReceipt {
+    receipt_id: String,
+    seam_id: Option<String>,
+    source_file: Option<String>,
+    line: Option<usize>,
+    movement_direction: Option<String>,
     reason: String,
 }
 
@@ -5118,14 +5129,17 @@ fn is_manifest_only_fixture_dir(path: &Path) -> bool {
         .is_some_and(|name| {
             matches!(
                 name,
-                "editor_gap_cockpit"
+                "actionable-gap-outcomes-corpus"
+                    | "editor_gap_cockpit"
                     | "editor_first_run_usability"
                     | "editor_first_pr_bridge"
                     | "editor_adoption_assurance"
+                    | "editor_actionable_gap_queue"
                     | "evidence-quality-benchmark"
                     | "first_successful_pr"
                     | "finding-alignment-dogfood"
                     | "gap-decision-ledger"
+                    | "swarm-plan-packet-corpus"
             )
         })
 }
@@ -7287,9 +7301,12 @@ fn check_fixture_contracts() -> Result<(), String> {
     validate_editor_first_run_usability_fixture_corpus(&mut violations)?;
     validate_editor_first_pr_bridge_fixture_corpus(&mut violations)?;
     validate_editor_adoption_assurance_fixture_corpus(&mut violations)?;
+    validate_editor_actionable_gap_queue_fixture_corpus(&mut violations)?;
     validate_first_successful_pr_fixture_corpus(&mut violations)?;
     validate_finding_alignment_dogfood_fixture_corpus(&mut violations)?;
     validate_gap_decision_ledger_fixture_corpus(&mut violations)?;
+    validate_swarm_plan_packet_fixture_corpus(&mut violations)?;
+    validate_actionable_gap_outcomes_fixture_corpus(&mut violations)?;
     validate_pr_review_front_panel_fixture_corpus(&mut violations)?;
     validate_report_packet_index_fixture_corpus(&mut violations)?;
     validate_pr_inline_comment_publisher_fixture_corpus(&mut violations)?;
@@ -7439,6 +7456,67 @@ const FINDING_ALIGNMENT_DOGFOOD_REQUIRED_CASES: &[(&str, &str)] = &[
         "already_observed",
     ),
     ("config_policy_flow_unknown_limitation", "static_limitation"),
+];
+
+const SWARM_PLAN_PACKET_CORPUS: &str = "fixtures/swarm-plan-packet-corpus/corpus.json";
+
+const SWARM_PLAN_PACKET_REQUIRED_CASES: &[(&str, &str)] = &[
+    ("high_confidence_boundary_assertion_packet", "queued"),
+    ("exact_error_variant_packet", "queued"),
+    ("output_observer_packet", "queued"),
+    (
+        "blocked_static_limitation_packet",
+        "blocked_by_static_limitation",
+    ),
+    (
+        "missing_verify_command_packet",
+        "blocked_by_missing_context",
+    ),
+    (
+        "missing_receipt_command_packet",
+        "blocked_by_missing_context",
+    ),
+    (
+        "must_not_change_boundary_packet",
+        "blocked_by_missing_context",
+    ),
+];
+
+const ACTIONABLE_GAP_OUTCOMES_CORPUS: &str = "fixtures/actionable-gap-outcomes-corpus/corpus.json";
+
+const ACTIONABLE_GAP_OUTCOMES_REQUIRED_CASES: &[(&str, &str, &str)] = &[
+    ("not_attempted_packet", "not_attempted", "not_attempted"),
+    (
+        "receipt_present_without_movement",
+        "receipt_present",
+        "present",
+    ),
+    (
+        "evidence_improved_from_receipt",
+        "evidence_improved",
+        "present",
+    ),
+    (
+        "evidence_unchanged_from_targeted_outcome",
+        "evidence_unchanged",
+        "missing",
+    ),
+    (
+        "evidence_regressed_from_targeted_outcome",
+        "evidence_regressed",
+        "missing",
+    ),
+    (
+        "resolved_from_removed_targeted_outcome",
+        "resolved",
+        "missing",
+    ),
+    (
+        "attempted_no_receipt_from_new_targeted_outcome",
+        "attempted_no_receipt",
+        "missing",
+    ),
+    ("orphaned_receipt_reported", "not_attempted", "missing"),
 ];
 
 const FIRST_SUCCESSFUL_PR_CORPUS: &str = "fixtures/first_successful_pr/corpus.json";
@@ -8249,6 +8327,761 @@ fn validate_finding_alignment_dogfood_fixture_corpus_at(
     }
 
     Ok(())
+}
+
+fn validate_swarm_plan_packet_fixture_corpus(violations: &mut Vec<String>) -> Result<(), String> {
+    let root = Path::new("fixtures/swarm-plan-packet-corpus");
+    for required in ["SPEC.md", "corpus.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "swarm plan packet fixture corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    let spec = root.join("SPEC.md");
+    if spec.exists() {
+        let spec_text = read_text_lossy(&spec)?;
+        if !spec_text
+            .lines()
+            .any(|line| line.starts_with("Spec: RIPR-SPEC-0057"))
+        {
+            violations.push(format!(
+                "{} is missing `Spec: RIPR-SPEC-0057`",
+                normalize_path(&spec)
+            ));
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !has_markdown_heading(&spec_text, heading) {
+                violations.push(format!("{} is missing `{heading}`", normalize_path(&spec)));
+            }
+        }
+    }
+
+    validate_swarm_plan_packet_fixture_corpus_at(Path::new(SWARM_PLAN_PACKET_CORPUS), violations)
+}
+
+fn validate_swarm_plan_packet_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !path.exists() {
+        violations.push(format!(
+            "swarm plan packet corpus is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+
+    let corpus = match read_json_value(path) {
+        Ok(value) => value,
+        Err(err) => {
+            violations.push(err);
+            return Ok(());
+        }
+    };
+    if json_string_field(&corpus, "kind").as_deref() != Some("swarm_plan_packet_corpus") {
+        violations.push(format!(
+            "{} kind must be swarm_plan_packet_corpus",
+            normalize_path(path)
+        ));
+    }
+    if json_string_field(&corpus, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "{} schema_version must be 0.1",
+            normalize_path(path)
+        ));
+    }
+    if json_string_field(&corpus, "spec").as_deref() != Some("RIPR-SPEC-0057") {
+        violations.push(format!(
+            "{} spec must be RIPR-SPEC-0057",
+            normalize_path(path)
+        ));
+    }
+
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        violations.push(format!("{} is missing cases array", normalize_path(path)));
+        return Ok(());
+    };
+    let mut seen = BTreeMap::new();
+    for case in cases {
+        let case_id = json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string());
+        if seen
+            .insert(
+                case_id.clone(),
+                json_string_field(case.get("expected").unwrap_or(&Value::Null), "swarm_state")
+                    .unwrap_or_default(),
+            )
+            .is_some()
+        {
+            violations.push(format!("swarm plan packet case {case_id} is duplicated"));
+        }
+        validate_swarm_plan_packet_fixture_case(case, &case_id, violations);
+    }
+
+    for (case_id, expected_state) in SWARM_PLAN_PACKET_REQUIRED_CASES {
+        match seen.get(*case_id) {
+            Some(actual) if actual == expected_state => {}
+            Some(actual) => violations.push(format!(
+                "swarm plan packet case {case_id} must have state {expected_state}, got {actual}"
+            )),
+            None => violations.push(format!(
+                "swarm plan packet corpus is missing case {case_id}"
+            )),
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_swarm_plan_packet_fixture_case(
+    case: &Value,
+    case_id: &str,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(case, "description").is_none() {
+        violations.push(format!(
+            "swarm plan packet case {case_id} is missing description"
+        ));
+    }
+    require_non_empty_string_array_at(case, "must_not_claim", case_id, violations);
+
+    let Some(packet) = case.get("packet").filter(|value| value.is_object()) else {
+        violations.push(format!(
+            "swarm plan packet case {case_id} is missing packet object"
+        ));
+        return;
+    };
+    if !matches!(packet.get("raw_findings"), Some(Value::Array(values)) if !values.is_empty()) {
+        violations.push(format!(
+            "swarm plan packet case {case_id} must keep raw_findings as supporting evidence"
+        ));
+    }
+    if let Some(receipt_command) = audit_non_empty_string(packet, &["receipt_command_or_path"])
+        .or_else(|| audit_non_empty_string(packet, &["receipt_command"]))
+        && !ripr_swarm_plan_fixture_receipt_command_supported(&receipt_command)
+    {
+        violations.push(format!(
+            "swarm plan packet case {case_id} uses unsupported receipt_command `{receipt_command}`"
+        ));
+    }
+
+    let Some(expected) = case.get("expected").filter(|value| value.is_object()) else {
+        violations.push(format!(
+            "swarm plan packet case {case_id} is missing expected object"
+        ));
+        return;
+    };
+
+    let actionable_gaps = serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "report": "actionable-gaps",
+        "summary": {"actionable_gaps": 1},
+        "packets": [packet.clone()]
+    });
+    let report = ripr_swarm_plan_from_actionable_gaps_value(
+        10,
+        Path::new("target/ripr/reports/actionable-gaps.json"),
+        &actionable_gaps,
+    );
+    if report.packets.len() != 1 {
+        violations.push(format!(
+            "swarm plan packet case {case_id} produced {} packets, expected 1",
+            report.packets.len()
+        ));
+        return;
+    }
+    let planned = &report.packets[0];
+
+    if let Some(expected_state) = json_string_field(expected, "swarm_state") {
+        if planned.swarm_state != expected_state {
+            violations.push(format!(
+                "swarm plan packet case {case_id} state must be {expected_state}, got {}",
+                planned.swarm_state
+            ));
+        }
+    } else {
+        violations.push(format!(
+            "swarm plan packet case {case_id} expected.swarm_state is missing"
+        ));
+    }
+
+    if let Some(expected_ready) = json_bool_field(expected, "swarm_ready") {
+        let actual_ready = planned.swarm_state == "queued";
+        if actual_ready != expected_ready {
+            violations.push(format!(
+                "swarm plan packet case {case_id} ready must be {expected_ready}, got {actual_ready}"
+            ));
+        }
+    }
+    if let Some(expected_high_confidence) = json_bool_field(expected, "high_confidence") {
+        let actual_high_confidence = ripr_swarm_plan_packet_is_high_confidence(planned);
+        if actual_high_confidence != expected_high_confidence {
+            violations.push(format!(
+                "swarm plan packet case {case_id} high_confidence must be {expected_high_confidence}, got {actual_high_confidence}"
+            ));
+        }
+    }
+
+    let expected_missing_context = json_string_array_field(expected, "missing_context");
+    if planned.missing_context != expected_missing_context {
+        violations.push(format!(
+            "swarm plan packet case {case_id} missing_context must be [{}], got [{}]",
+            expected_missing_context.join(", "),
+            planned.missing_context.join(", ")
+        ));
+    }
+    let expected_blocked_reasons = json_string_array_field(expected, "blocked_reasons");
+    if planned.blocked_reasons != expected_blocked_reasons {
+        violations.push(format!(
+            "swarm plan packet case {case_id} blocked_reasons must be [{}], got [{}]",
+            expected_blocked_reasons.join(", "),
+            planned.blocked_reasons.join(", ")
+        ));
+    }
+
+    let output_packet = ripr_swarm_plan_packets_json(std::slice::from_ref(planned))
+        .into_iter()
+        .next()
+        .unwrap_or(Value::Null);
+    if output_packet
+        .get("raw_findings_supporting_only")
+        .and_then(Value::as_bool)
+        != Some(true)
+    {
+        violations.push(format!(
+            "swarm plan packet case {case_id} must emit raw_findings_supporting_only"
+        ));
+    }
+
+    let Some(summary) = expected.get("summary").and_then(Value::as_object) else {
+        violations.push(format!(
+            "swarm plan packet case {case_id} expected.summary is missing"
+        ));
+        return;
+    };
+    let actual_summary = ripr_swarm_plan_summary_json(&report);
+    for (key, expected_value) in summary {
+        let Some(expected_count) = expected_value.as_u64() else {
+            violations.push(format!(
+                "swarm plan packet case {case_id} expected.summary.{key} must be numeric"
+            ));
+            continue;
+        };
+        let actual_count = actual_summary.get(key).and_then(Value::as_u64);
+        if actual_count != Some(expected_count) {
+            violations.push(format!(
+                "swarm plan packet case {case_id} summary.{key} must be {expected_count}, got {}",
+                actual_count
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "missing".to_string())
+            ));
+        }
+    }
+}
+
+fn validate_actionable_gap_outcomes_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new("fixtures/actionable-gap-outcomes-corpus");
+    for required in ["SPEC.md", "corpus.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "actionable gap outcomes fixture corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    let spec = root.join("SPEC.md");
+    if spec.exists() {
+        let spec_text = read_text_lossy(&spec)?;
+        if !spec_text
+            .lines()
+            .any(|line| line.starts_with("Spec: RIPR-SPEC-0031"))
+        {
+            violations.push(format!(
+                "{} is missing `Spec: RIPR-SPEC-0031`",
+                normalize_path(&spec)
+            ));
+        }
+        if !spec_text
+            .lines()
+            .any(|line| line.starts_with("Related: RIPR-SPEC-0057"))
+        {
+            violations.push(format!(
+                "{} is missing `Related: RIPR-SPEC-0057`",
+                normalize_path(&spec)
+            ));
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !has_markdown_heading(&spec_text, heading) {
+                violations.push(format!("{} is missing `{heading}`", normalize_path(&spec)));
+            }
+        }
+    }
+
+    validate_actionable_gap_outcomes_fixture_corpus_at(
+        Path::new(ACTIONABLE_GAP_OUTCOMES_CORPUS),
+        violations,
+    )
+}
+
+fn validate_actionable_gap_outcomes_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !path.exists() {
+        violations.push(format!(
+            "actionable gap outcomes corpus is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+
+    let corpus = match read_json_value(path) {
+        Ok(value) => value,
+        Err(err) => {
+            violations.push(err);
+            return Ok(());
+        }
+    };
+    if json_string_field(&corpus, "kind").as_deref() != Some("actionable_gap_outcomes_corpus") {
+        violations.push(format!(
+            "{} kind must be actionable_gap_outcomes_corpus",
+            normalize_path(path)
+        ));
+    }
+    if json_string_field(&corpus, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "{} schema_version must be 0.1",
+            normalize_path(path)
+        ));
+    }
+    if json_string_field(&corpus, "spec").as_deref() != Some("RIPR-SPEC-0031") {
+        violations.push(format!(
+            "{} spec must be RIPR-SPEC-0031",
+            normalize_path(path)
+        ));
+    }
+    if json_string_field(&corpus, "related_spec").as_deref() != Some("RIPR-SPEC-0057") {
+        violations.push(format!(
+            "{} related_spec must be RIPR-SPEC-0057",
+            normalize_path(path)
+        ));
+    }
+
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        violations.push(format!("{} is missing cases array", normalize_path(path)));
+        return Ok(());
+    };
+    let mut seen = BTreeMap::new();
+    for case in cases {
+        let case_id = json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string());
+        if seen
+            .insert(
+                case_id.clone(),
+                actionable_gap_outcomes_expected_case_state(case).unwrap_or_default(),
+            )
+            .is_some()
+        {
+            violations.push(format!(
+                "actionable gap outcomes case {case_id} is duplicated"
+            ));
+        }
+        validate_actionable_gap_outcomes_fixture_case(case, &case_id, violations)?;
+    }
+
+    for (case_id, expected_state, expected_receipt_state) in ACTIONABLE_GAP_OUTCOMES_REQUIRED_CASES
+    {
+        match seen.get(*case_id) {
+            Some((actual_state, actual_receipt_state))
+                if actual_state == expected_state && actual_receipt_state == expected_receipt_state => {}
+            Some((actual_state, actual_receipt_state)) => violations.push(format!(
+                "actionable gap outcomes case {case_id} must have state {expected_state}/{expected_receipt_state}, got {actual_state}/{actual_receipt_state}"
+            )),
+            None => violations.push(format!(
+                "actionable gap outcomes corpus is missing case {case_id}"
+            )),
+        }
+    }
+
+    Ok(())
+}
+
+fn actionable_gap_outcomes_expected_case_state(case: &Value) -> Option<(String, String)> {
+    let outcome = audit_array(case, &["expected", "outcomes"]).first()?;
+    Some((
+        json_string_field(outcome, "outcome_state")?,
+        json_string_field(outcome, "receipt_state")?,
+    ))
+}
+
+fn validate_actionable_gap_outcomes_fixture_case(
+    case: &Value,
+    case_id: &str,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if json_string_field(case, "description").is_none() {
+        violations.push(format!(
+            "actionable gap outcomes case {case_id} is missing description"
+        ));
+    }
+    require_actionable_gap_outcomes_string_array_at(case, "must_not_claim", case_id, violations);
+
+    let Some(actionable_gaps) = case
+        .get("actionable_gaps")
+        .filter(|value| value.is_object())
+    else {
+        violations.push(format!(
+            "actionable gap outcomes case {case_id} is missing actionable_gaps object"
+        ));
+        return Ok(());
+    };
+    if audit_array(actionable_gaps, &["packets"]).is_empty() {
+        violations.push(format!(
+            "actionable gap outcomes case {case_id} actionable_gaps.packets must not be empty"
+        ));
+        return Ok(());
+    }
+    for packet in audit_array(actionable_gaps, &["packets"]) {
+        let packet_id =
+            json_string_field(packet, "canonical_gap_id").unwrap_or_else(|| "unknown".to_string());
+        if let Some(receipt_command) = audit_non_empty_string(packet, &["receipt_command_or_path"])
+            .or_else(|| audit_non_empty_string(packet, &["receipt_command"]))
+            && !ripr_swarm_plan_fixture_receipt_command_supported(&receipt_command)
+        {
+            violations.push(format!(
+                "actionable gap outcomes case {case_id} packet {packet_id} uses unsupported receipt command `{receipt_command}`"
+            ));
+        }
+    }
+
+    let Some(expected) = case.get("expected").filter(|value| value.is_object()) else {
+        violations.push(format!(
+            "actionable gap outcomes case {case_id} is missing expected object"
+        ));
+        return Ok(());
+    };
+    let expected_outcomes = audit_array(expected, &["outcomes"]);
+    if expected_outcomes.is_empty() {
+        violations.push(format!(
+            "actionable gap outcomes case {case_id} expected.outcomes must not be empty"
+        ));
+        return Ok(());
+    }
+
+    let agent_receipt = actionable_gap_outcomes_optional_fixture_input(case, "agent_receipt");
+    let targeted_test_outcome =
+        actionable_gap_outcomes_optional_fixture_input(case, "targeted_test_outcome");
+    if let Some(targeted_test_outcome) = targeted_test_outcome {
+        validate_actionable_gap_outcomes_targeted_shape(case_id, targeted_test_outcome, violations);
+    }
+    let report = match actionable_gap_outcomes_report_from_values(
+        actionable_gaps,
+        agent_receipt,
+        targeted_test_outcome,
+        format!(
+            "{}#{case_id}:actionable_gaps",
+            ACTIONABLE_GAP_OUTCOMES_CORPUS
+        ),
+        agent_receipt
+            .map(|_| format!("{}#{case_id}:agent_receipt", ACTIONABLE_GAP_OUTCOMES_CORPUS)),
+        targeted_test_outcome.map(|_| {
+            format!(
+                "{}#{case_id}:targeted_test_outcome",
+                ACTIONABLE_GAP_OUTCOMES_CORPUS
+            )
+        }),
+    ) {
+        Ok(report) => report,
+        Err(err) => {
+            violations.push(format!(
+                "actionable gap outcomes case {case_id} failed to build report: {err}"
+            ));
+            return Ok(());
+        }
+    };
+
+    for expected_outcome in expected_outcomes {
+        validate_actionable_gap_outcomes_expected_outcome(
+            case_id,
+            expected_outcome,
+            &report,
+            violations,
+        );
+    }
+
+    let rendered = match actionable_gap_outcomes_json(&report) {
+        Ok(json) => json,
+        Err(err) => {
+            violations.push(format!(
+                "actionable gap outcomes case {case_id} failed to render JSON: {err}"
+            ));
+            return Ok(());
+        }
+    };
+    let rendered: Value = match serde_json::from_str(&rendered) {
+        Ok(value) => value,
+        Err(err) => {
+            violations.push(format!(
+                "actionable gap outcomes case {case_id} rendered invalid JSON: {err}"
+            ));
+            return Ok(());
+        }
+    };
+    validate_actionable_gap_outcomes_expected_summary(case_id, expected, &rendered, violations);
+    validate_actionable_gap_outcomes_expected_orphaned_receipts(
+        case_id, expected, &rendered, violations,
+    );
+    let markdown = actionable_gap_outcomes_markdown(&report);
+    if !markdown.contains("# Actionable Gap Outcomes") {
+        violations.push(format!(
+            "actionable gap outcomes case {case_id} markdown must include report heading"
+        ));
+    }
+
+    Ok(())
+}
+
+fn actionable_gap_outcomes_optional_fixture_input<'a>(
+    case: &'a Value,
+    field: &str,
+) -> Option<&'a Value> {
+    case.get(field).filter(|value| !value.is_null())
+}
+
+fn validate_actionable_gap_outcomes_targeted_shape(
+    case_id: &str,
+    targeted_test_outcome: &Value,
+    violations: &mut Vec<String>,
+) {
+    for bucket in ["moved", "unchanged", "regressed"] {
+        for item in audit_array(targeted_test_outcome, &[bucket]) {
+            for field in ["before", "after", "direction"] {
+                if audit_non_empty_string(item, &[field]).is_none() {
+                    violations.push(format!(
+                        "actionable gap outcomes case {case_id} targeted_test_outcome.{bucket} item must include {field}"
+                    ));
+                }
+            }
+        }
+    }
+    for bucket in ["removed", "new"] {
+        for item in audit_array(targeted_test_outcome, &[bucket]) {
+            if audit_non_empty_string(item, &["grip_class"]).is_none() {
+                violations.push(format!(
+                    "actionable gap outcomes case {case_id} targeted_test_outcome.{bucket} item must include grip_class"
+                ));
+            }
+            for field in ["before", "after", "direction"] {
+                if item.get(field).is_some_and(|value| !value.is_null()) {
+                    violations.push(format!(
+                        "actionable gap outcomes case {case_id} targeted_test_outcome.{bucket} item must use one-sided grip_class instead of {field}"
+                    ));
+                }
+            }
+        }
+    }
+}
+
+fn validate_actionable_gap_outcomes_expected_outcome(
+    case_id: &str,
+    expected: &Value,
+    report: &ActionableGapOutcomesReport,
+    violations: &mut Vec<String>,
+) {
+    let Some(canonical_gap_id) = json_string_field(expected, "canonical_gap_id") else {
+        violations.push(format!(
+            "actionable gap outcomes case {case_id} expected outcome is missing canonical_gap_id"
+        ));
+        return;
+    };
+    let Some(actual) = report
+        .outcomes
+        .iter()
+        .find(|outcome| outcome.canonical_gap_id == canonical_gap_id)
+    else {
+        violations.push(format!(
+            "actionable gap outcomes case {case_id} did not produce outcome {canonical_gap_id}"
+        ));
+        return;
+    };
+
+    for (field, actual_value) in [
+        ("outcome_state", actual.outcome_state.as_str()),
+        ("receipt_state", actual.receipt_state.as_str()),
+    ] {
+        let Some(expected_value) = json_string_field(expected, field) else {
+            violations.push(format!(
+                "actionable gap outcomes case {case_id} expected outcome {canonical_gap_id} is missing {field}"
+            ));
+            continue;
+        };
+        if actual_value != expected_value.as_str() {
+            violations.push(format!(
+                "actionable gap outcomes case {case_id} outcome {canonical_gap_id} {field} must be {expected_value}, got {actual_value}"
+            ));
+        }
+    }
+
+    for (field, actual_value) in [
+        (
+            "movement_source",
+            actual.movement_source.as_deref().map(Value::from),
+        ),
+        (
+            "movement_direction",
+            actual.movement_direction.as_deref().map(Value::from),
+        ),
+        ("before", actual.before.as_deref().map(Value::from)),
+        ("after", actual.after.as_deref().map(Value::from)),
+    ] {
+        if let Some(expected_value) = expected.get(field) {
+            let actual_value = actual_value.unwrap_or(Value::Null);
+            if actual_value != *expected_value {
+                violations.push(format!(
+                    "actionable gap outcomes case {case_id} outcome {canonical_gap_id} {field} must be {expected_value}, got {actual_value}"
+                ));
+            }
+        }
+    }
+}
+
+fn validate_actionable_gap_outcomes_expected_summary(
+    case_id: &str,
+    expected: &Value,
+    rendered: &Value,
+    violations: &mut Vec<String>,
+) {
+    let Some(summary) = expected.get("summary").and_then(Value::as_object) else {
+        violations.push(format!(
+            "actionable gap outcomes case {case_id} expected.summary is missing"
+        ));
+        return;
+    };
+    let null_summary = Value::Null;
+    let actual_summary = audit_get(rendered, &["summary"]).unwrap_or(&null_summary);
+    for (key, expected_value) in summary {
+        let Some(expected_count) = expected_value.as_u64() else {
+            violations.push(format!(
+                "actionable gap outcomes case {case_id} expected.summary.{key} must be numeric"
+            ));
+            continue;
+        };
+        let actual_count = actual_summary.get(key).and_then(Value::as_u64);
+        if actual_count != Some(expected_count) {
+            violations.push(format!(
+                "actionable gap outcomes case {case_id} summary.{key} must be {expected_count}, got {}",
+                actual_count
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "missing".to_string())
+            ));
+        }
+    }
+}
+
+fn validate_actionable_gap_outcomes_expected_orphaned_receipts(
+    case_id: &str,
+    expected: &Value,
+    rendered: &Value,
+    violations: &mut Vec<String>,
+) {
+    let Some(expected_receipts) = expected.get("orphaned_receipts").and_then(Value::as_array)
+    else {
+        return;
+    };
+    let actual_receipts = audit_get(rendered, &["orphaned_receipts"])
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    for expected_receipt in expected_receipts {
+        let Some(receipt_id) = json_string_field(expected_receipt, "receipt_id") else {
+            violations.push(format!(
+                "actionable gap outcomes case {case_id} expected orphaned receipt is missing receipt_id"
+            ));
+            continue;
+        };
+        let Some(actual) = actual_receipts.iter().find(|actual| {
+            json_string_field(actual, "receipt_id").as_deref() == Some(receipt_id.as_str())
+        }) else {
+            violations.push(format!(
+                "actionable gap outcomes case {case_id} did not produce orphaned receipt {receipt_id}"
+            ));
+            continue;
+        };
+        for field in ["seam_id", "movement_direction"] {
+            if let Some(expected_value) = expected_receipt.get(field) {
+                let actual_value = actual.get(field).cloned().unwrap_or(Value::Null);
+                if actual_value != *expected_value {
+                    violations.push(format!(
+                        "actionable gap outcomes case {case_id} orphaned receipt {receipt_id} {field} must be {expected_value}, got {actual_value}"
+                    ));
+                }
+            }
+        }
+    }
+}
+
+fn require_actionable_gap_outcomes_string_array_at(
+    value: &Value,
+    field: &str,
+    case_id: &str,
+    violations: &mut Vec<String>,
+) {
+    match value.get(field) {
+        Some(Value::Array(items))
+            if !items.is_empty() && items.iter().all(|item| item.as_str().is_some()) => {}
+        _ => violations.push(format!(
+            "actionable gap outcomes case {case_id} {field} must be a non-empty string array"
+        )),
+    }
+}
+
+fn ripr_swarm_plan_fixture_receipt_command_supported(command: &str) -> bool {
+    let command = command.trim();
+    ripr_swarm_plan_field_missing(command)
+        || command == "cargo xtask receipts"
+        || command == "cargo xtask receipts check"
+        || command
+            .strip_prefix("ripr agent receipt ")
+            .is_some_and(ripr_swarm_plan_fixture_agent_receipt_args_supported)
+        || command
+            .strip_prefix("cargo run -p ripr -- agent receipt ")
+            .is_some_and(ripr_swarm_plan_fixture_agent_receipt_args_supported)
+}
+
+fn ripr_swarm_plan_fixture_agent_receipt_args_supported(args: &str) -> bool {
+    let mut has_json = false;
+    let mut has_verify_json = false;
+    let mut has_seam_id = false;
+    let mut tokens = args.split_whitespace();
+    let mut saw_any = false;
+
+    while let Some(token) = tokens.next() {
+        saw_any = true;
+        match token {
+            "--json" => has_json = true,
+            "--root" | "--verify-json" | "--seam-id" | "--test" | "--command" | "--out" => {
+                let Some(value) = tokens.next() else {
+                    return false;
+                };
+                if value.trim().is_empty() || value.starts_with("--") {
+                    return false;
+                }
+                match token {
+                    "--verify-json" => has_verify_json = true,
+                    "--seam-id" => has_seam_id = true,
+                    _ => {}
+                }
+            }
+            _ => return false,
+        }
+    }
+
+    saw_any && has_json && has_verify_json && has_seam_id
 }
 
 fn validate_first_successful_pr_fixture_corpus(violations: &mut Vec<String>) -> Result<(), String> {
@@ -9622,6 +10455,436 @@ fn editor_adoption_assurance_case_fails_closed(case: &str) -> bool {
             | "first_pr_packet_mismatch"
             | "preview_adapter_unavailable"
     )
+}
+
+const EDITOR_ACTIONABLE_GAP_QUEUE_FIXTURE_ROOT: &str = "fixtures/editor_actionable_gap_queue";
+const EDITOR_ACTIONABLE_GAP_QUEUE_CASES: &[&str] = &[
+    "setup_ok",
+    "top_gap_ready",
+    "multiple_gaps_bounded",
+    "no_actionable_gap",
+    "report_only_static_limit",
+    "stale_actionable_packet",
+    "wrong_root_packet",
+    "malformed_packet",
+    "receipt_improved",
+    "receipt_unchanged",
+];
+const EDITOR_ACTIONABLE_GAP_QUEUE_EXPECTED_FILES: &[&str] = &[
+    "vscode-status.json",
+    "lsp-code-actions.json",
+    "current-repair-packet.md",
+    "repo-gap-map.md",
+    "receipt-status.json",
+];
+
+fn validate_editor_actionable_gap_queue_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new(EDITOR_ACTIONABLE_GAP_QUEUE_FIXTURE_ROOT);
+    if !root.exists() {
+        violations.push(format!(
+            "editor actionable gap queue fixture corpus is missing {}",
+            normalize_path(root)
+        ));
+        return Ok(());
+    }
+    let spec = root.join("SPEC.md");
+    if !spec.exists() {
+        violations.push(format!(
+            "editor actionable gap queue fixture corpus is missing {}",
+            normalize_path(&spec)
+        ));
+    } else {
+        let spec_text = read_text_lossy(&spec)?;
+        if !spec_text
+            .lines()
+            .any(|line| line.starts_with("Spec: RIPR-SPEC-0055"))
+        {
+            violations.push(format!(
+                "{} is missing `Spec: RIPR-SPEC-0055`",
+                normalize_path(&spec)
+            ));
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !has_markdown_heading(&spec_text, heading) {
+                violations.push(format!("{} is missing `{heading}`", normalize_path(&spec)));
+            }
+        }
+    }
+
+    for case in EDITOR_ACTIONABLE_GAP_QUEUE_CASES {
+        validate_editor_actionable_gap_queue_case(root, case, violations)?;
+    }
+    Ok(())
+}
+
+fn validate_editor_actionable_gap_queue_case(
+    root: &Path,
+    case: &str,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let expected = root.join(case).join("expected");
+    for file in EDITOR_ACTIONABLE_GAP_QUEUE_EXPECTED_FILES {
+        let path = expected.join(file);
+        if !path.exists() {
+            violations.push(format!(
+                "editor actionable gap queue case {case} is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+
+    let status_path = expected.join("vscode-status.json");
+    if status_path.exists() {
+        let status = read_json_value(&status_path)?;
+        validate_editor_actionable_gap_queue_status(case, &status, violations);
+    }
+    let actions_path = expected.join("lsp-code-actions.json");
+    if actions_path.exists() {
+        let actions = read_json_value(&actions_path)?;
+        validate_editor_actionable_gap_queue_actions(case, &actions, violations);
+    }
+    let receipt_path = expected.join("receipt-status.json");
+    if receipt_path.exists() {
+        let receipt = read_json_value(&receipt_path)?;
+        validate_editor_actionable_gap_queue_receipt(case, &receipt, violations);
+    }
+    let repair_packet_path = expected.join("current-repair-packet.md");
+    if repair_packet_path.exists() {
+        let packet = read_text_lossy(&repair_packet_path)?;
+        validate_editor_actionable_gap_queue_repair_packet(case, &packet, violations);
+    }
+    let repo_map_path = expected.join("repo-gap-map.md");
+    if repo_map_path.exists() {
+        let map = read_text_lossy(&repo_map_path)?;
+        validate_editor_actionable_gap_queue_repo_map(case, &map, violations);
+    }
+    Ok(())
+}
+
+fn validate_editor_actionable_gap_queue_status(
+    case: &str,
+    status: &Value,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(status, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "editor actionable gap queue case {case} vscode-status schema_version must be 0.1"
+        ));
+    }
+    let expected_fixture = format!("editor_actionable_gap_queue/{case}");
+    if json_string_field(status, "fixture").as_deref() != Some(expected_fixture.as_str()) {
+        violations.push(format!(
+            "editor actionable gap queue case {case} vscode-status fixture must be {expected_fixture}"
+        ));
+    }
+    let expected_status = match case {
+        "setup_ok" => "queue_available",
+        "top_gap_ready" | "multiple_gaps_bounded" | "receipt_improved" | "receipt_unchanged" => {
+            "top_actionable_gap"
+        }
+        "no_actionable_gap" => "no_action",
+        "report_only_static_limit" => "static_limit_only",
+        "stale_actionable_packet" => "stale",
+        "wrong_root_packet" => "wrong_root",
+        "malformed_packet" => "malformed",
+        _ => "unknown",
+    };
+    if json_string_field(status, "queue_status").as_deref() != Some(expected_status) {
+        violations.push(format!(
+            "editor actionable gap queue case {case} queue_status must be {expected_status}"
+        ));
+    }
+    if editor_actionable_gap_queue_case_fails_closed(case)
+        && json_string_field(status, "projection").as_deref() != Some("fail_closed")
+    {
+        violations.push(format!(
+            "editor actionable gap queue case {case} must fail closed"
+        ));
+    }
+    if json_string_field(status, "next_safe_action").is_none() {
+        violations.push(format!(
+            "editor actionable gap queue case {case} must name a next_safe_action"
+        ));
+    }
+    for field in [
+        "runtime_adequacy_claim",
+        "mutation_proof_claim",
+        "policy_gate_claim",
+        "merge_readiness_claim",
+    ] {
+        if json_bool_field(status, field) != Some(false) {
+            violations.push(format!(
+                "editor actionable gap queue case {case} vscode-status must deny {field}"
+            ));
+        }
+    }
+    if editor_actionable_gap_queue_case_has_repair(case)
+        && json_string_field(
+            status.get("top_gap").unwrap_or(&Value::Null),
+            "canonical_gap_id",
+        )
+        .is_none()
+    {
+        violations.push(format!(
+            "editor actionable gap queue case {case} must name top_gap.canonical_gap_id"
+        ));
+    }
+    if case == "multiple_gaps_bounded"
+        && status
+            .get("actionable_gaps")
+            .and_then(Value::as_u64)
+            .unwrap_or_default()
+            < 2
+    {
+        violations.push(
+            "editor actionable gap queue case multiple_gaps_bounded must include multiple actionable gaps"
+                .to_string(),
+        );
+    }
+}
+
+fn validate_editor_actionable_gap_queue_actions(
+    case: &str,
+    actions: &Value,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(actions, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "editor actionable gap queue case {case} lsp-code-actions schema_version must be 0.1"
+        ));
+    }
+    let expected_fixture = format!("editor_actionable_gap_queue/{case}");
+    if json_string_field(actions, "fixture").as_deref() != Some(expected_fixture.as_str()) {
+        violations.push(format!(
+            "editor actionable gap queue case {case} lsp-code-actions fixture must be {expected_fixture}"
+        ));
+    }
+    let items = actions
+        .get("actions")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let commands = items
+        .iter()
+        .filter_map(|item| json_string_field(item, "command"))
+        .collect::<BTreeSet<_>>();
+    let allowed_commands = editor_actionable_gap_queue_allowed_commands(case);
+    for command in &commands {
+        if !allowed_commands.contains(command.as_str()) {
+            violations.push(format!(
+                "editor actionable gap queue case {case} includes unexpected command {command}"
+            ));
+        }
+    }
+    if !commands.contains("ripr.refresh") {
+        violations.push(format!(
+            "editor actionable gap queue case {case} must include refresh guidance"
+        ));
+    }
+    let repair_or_navigation = commands.contains("ripr.copyCurrentRepairPacket")
+        || commands.contains("ripr.openRelatedTest");
+    if editor_actionable_gap_queue_case_has_repair(case) {
+        for command in [
+            "ripr.copyCurrentRepairPacket",
+            "ripr.copyRepoGapMap",
+            "ripr.openRelatedTest",
+            "ripr.refresh",
+        ] {
+            if !commands.contains(command) {
+                violations.push(format!(
+                    "editor actionable gap queue case {case} must include {command}"
+                ));
+            }
+        }
+    } else {
+        if repair_or_navigation {
+            violations.push(format!(
+                "editor actionable gap queue case {case} must suppress repair/navigation actions"
+            ));
+        }
+        if editor_actionable_gap_queue_case_allows_repo_map(case)
+            && !commands.contains("ripr.copyRepoGapMap")
+        {
+            violations.push(format!(
+                "editor actionable gap queue case {case} must include ripr.copyRepoGapMap"
+            ));
+        }
+        if editor_actionable_gap_queue_case_fails_closed(case)
+            && commands.contains("ripr.copyRepoGapMap")
+        {
+            violations.push(format!(
+                "editor actionable gap queue case {case} must suppress repo gap map actions"
+            ));
+        }
+    }
+}
+
+fn validate_editor_actionable_gap_queue_receipt(
+    case: &str,
+    receipt: &Value,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(receipt, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "editor actionable gap queue case {case} receipt-status schema_version must be 0.1"
+        ));
+    }
+    let expected_fixture = format!("editor_actionable_gap_queue/{case}");
+    if json_string_field(receipt, "fixture").as_deref() != Some(expected_fixture.as_str()) {
+        violations.push(format!(
+            "editor actionable gap queue case {case} receipt-status fixture must be {expected_fixture}"
+        ));
+    }
+    let expected_state = match case {
+        "receipt_improved" | "receipt_unchanged" => "found",
+        "stale_actionable_packet" | "wrong_root_packet" | "malformed_packet" => "not_projected",
+        _ => "missing",
+    };
+    if json_string_field(receipt, "receipt_state").as_deref() != Some(expected_state) {
+        violations.push(format!(
+            "editor actionable gap queue case {case} receipt_state must be {expected_state}"
+        ));
+    }
+    let expected_movement = match case {
+        "receipt_improved" => "improved",
+        "receipt_unchanged" => "unchanged",
+        _ => "not_available",
+    };
+    if json_string_field(receipt, "movement").as_deref() != Some(expected_movement) {
+        violations.push(format!(
+            "editor actionable gap queue case {case} movement must be {expected_movement}"
+        ));
+    }
+    for field in [
+        "runtime_adequacy_claim",
+        "mutation_proof_claim",
+        "policy_gate_claim",
+    ] {
+        if json_bool_field(receipt, field) != Some(false) {
+            violations.push(format!(
+                "editor actionable gap queue case {case} receipt-status must deny {field}"
+            ));
+        }
+    }
+}
+
+fn validate_editor_actionable_gap_queue_repair_packet(
+    case: &str,
+    packet: &str,
+    violations: &mut Vec<String>,
+) {
+    if editor_actionable_gap_queue_case_has_repair(case) {
+        for heading in [
+            "Task",
+            "Context",
+            "Repair",
+            "Verification",
+            "Receipt",
+            "Stop conditions",
+            "Do not do",
+        ] {
+            if !packet.contains(heading) {
+                violations.push(format!(
+                    "editor actionable gap queue case {case} current repair packet is missing `{heading}`"
+                ));
+            }
+        }
+        if !packet.contains("canonical gap") {
+            violations.push(format!(
+                "editor actionable gap queue case {case} current repair packet must name the canonical gap"
+            ));
+        }
+    } else if !packet.contains("Current repair packet suppressed") {
+        violations.push(format!(
+            "editor actionable gap queue case {case} must suppress the current repair packet"
+        ));
+    }
+    for forbidden in [
+        "Ready to merge",
+        "Gate passed",
+        "runtime adequate",
+        "Mutation proof: yes",
+    ] {
+        if packet.contains(forbidden) {
+            violations.push(format!(
+                "editor actionable gap queue case {case} current repair packet must not claim `{forbidden}`"
+            ));
+        }
+    }
+}
+
+fn validate_editor_actionable_gap_queue_repo_map(
+    case: &str,
+    map: &str,
+    violations: &mut Vec<String>,
+) {
+    if editor_actionable_gap_queue_case_allows_repo_map(case) {
+        for required in [
+            "RIPR repo gap map",
+            "Scope",
+            "Safe next commands",
+            "Non-claims",
+            "not a gate decision",
+        ] {
+            if !map.contains(required) {
+                violations.push(format!(
+                    "editor actionable gap queue case {case} repo gap map is missing `{required}`"
+                ));
+            }
+        }
+    } else if !map.contains("Repo gap map suppressed") {
+        violations.push(format!(
+            "editor actionable gap queue case {case} must suppress the repo gap map"
+        ));
+    }
+    for forbidden in [
+        "Ready to merge",
+        "Gate passed",
+        "runtime adequate",
+        "Mutation proof: yes",
+    ] {
+        if map.contains(forbidden) {
+            violations.push(format!(
+                "editor actionable gap queue case {case} repo gap map must not claim `{forbidden}`"
+            ));
+        }
+    }
+}
+
+fn editor_actionable_gap_queue_case_has_repair(case: &str) -> bool {
+    matches!(
+        case,
+        "top_gap_ready" | "multiple_gaps_bounded" | "receipt_improved" | "receipt_unchanged"
+    )
+}
+
+fn editor_actionable_gap_queue_case_fails_closed(case: &str) -> bool {
+    matches!(
+        case,
+        "stale_actionable_packet" | "wrong_root_packet" | "malformed_packet"
+    )
+}
+
+fn editor_actionable_gap_queue_case_allows_repo_map(case: &str) -> bool {
+    !editor_actionable_gap_queue_case_fails_closed(case)
+}
+
+fn editor_actionable_gap_queue_allowed_commands(case: &str) -> BTreeSet<&'static str> {
+    let commands: &[&str] = if editor_actionable_gap_queue_case_has_repair(case) {
+        &[
+            "ripr.copyCurrentRepairPacket",
+            "ripr.copyRepoGapMap",
+            "ripr.openRelatedTest",
+            "ripr.refresh",
+        ]
+    } else if editor_actionable_gap_queue_case_allows_repo_map(case) {
+        &["ripr.copyRepoGapMap", "ripr.refresh"]
+    } else {
+        &["ripr.refresh"]
+    };
+    commands.iter().copied().collect()
 }
 
 fn validate_gap_decision_ledger_fixture_corpus(violations: &mut Vec<String>) -> Result<(), String> {
@@ -14415,6 +15678,23 @@ fn test_efficiency_report_json(
 }
 
 pub(crate) fn badge_artifacts_impl() -> Result<(), String> {
+    badge_artifacts_impl_with_runners(
+        read_badge_artifact_diff,
+        build_badge_artifact_binary,
+        run_badge_artifact_command,
+    )
+}
+
+fn badge_artifacts_impl_with_runners<DiffRunner, BuildRunner, Runner>(
+    mut read_diff: DiffRunner,
+    build_ripr: BuildRunner,
+    run_artifact: Runner,
+) -> Result<(), String>
+where
+    DiffRunner: FnMut() -> Result<String, String>,
+    BuildRunner: FnMut(Duration) -> Result<TimedOutput, String>,
+    Runner: FnMut(&Path, &str, &[String], Duration) -> Result<TimedOutput, String>,
+{
     let badge_dir = Path::new("target").join("ripr");
     fs::create_dir_all(&badge_dir).map_err(|err| {
         format!(
@@ -14424,7 +15704,7 @@ pub(crate) fn badge_artifacts_impl() -> Result<(), String> {
     })?;
 
     let badge_input_path = badge_dir.join("badge-input.diff");
-    let diff_output = run_output_optional("git", &["diff", "origin/main...HEAD"])?;
+    let diff_output = read_diff()?;
     fs::write(&badge_input_path, &diff_output).map_err(|err| {
         format!(
             "failed to write badge input diff {}: {err}",
@@ -14432,12 +15712,87 @@ pub(crate) fn badge_artifacts_impl() -> Result<(), String> {
         )
     })?;
 
+    let timeout = Duration::from_millis(badge_artifact_timeout_ms());
+    let binary = ripr_debug_binary();
+
+    write_badge_artifacts_after_build(&diff_output, &binary, timeout, build_ripr, run_artifact)
+}
+
+fn read_badge_artifact_diff() -> Result<String, String> {
+    run_output_optional("git", &["diff", "origin/main...HEAD"])
+}
+
+fn write_badge_artifacts_after_build<BuildRunner, Runner>(
+    diff_output: &str,
+    binary: &Path,
+    timeout: Duration,
+    mut build_ripr: BuildRunner,
+    run_artifact: Runner,
+) -> Result<(), String>
+where
+    BuildRunner: FnMut(Duration) -> Result<TimedOutput, String>,
+    Runner: FnMut(&Path, &str, &[String], Duration) -> Result<TimedOutput, String>,
+{
+    let build_output = build_ripr(timeout)?;
+    match build_output.status {
+        Some(status) if status.success() && !build_output.timed_out => {
+            write_badge_artifacts_from_diff(diff_output, binary, timeout, run_artifact)
+        }
+        Some(_) | None => write_limited_badge_artifact_reports(
+            "badge-build",
+            &badge_artifact_build_command_label(),
+            timeout,
+            diff_output.len(),
+            &build_output,
+        ),
+    }
+}
+
+fn write_badge_artifacts_from_diff<Runner>(
+    diff_output: &str,
+    binary: &Path,
+    timeout: Duration,
+    mut run_artifact: Runner,
+) -> Result<(), String>
+where
+    Runner: FnMut(&Path, &str, &[String], Duration) -> Result<TimedOutput, String>,
+{
+    clear_badge_artifact_limitation();
     let mut ripr_native_json = String::new();
     let mut ripr_plus_native_json = String::new();
 
     for job in badge_artifact_jobs() {
         let args = badge_artifact_command_args(job.format);
-        let output = run_output_owned("cargo", &args)?;
+        let command = badge_artifact_command_label(binary, &args);
+        let output = run_artifact(binary, job.format, &args, timeout)?;
+        if output.timed_out {
+            return write_limited_badge_artifact_reports(
+                job.format,
+                &command,
+                timeout,
+                diff_output.len(),
+                &output,
+            );
+        }
+        let Some(status) = output.status else {
+            return write_limited_badge_artifact_reports(
+                job.format,
+                &command,
+                timeout,
+                diff_output.len(),
+                &output,
+            );
+        };
+        if !status.success() {
+            return write_limited_badge_artifact_reports(
+                job.format,
+                &command,
+                timeout,
+                diff_output.len(),
+                &output,
+            );
+        }
+        let output = output.stdout;
         write_report(job.output_file, &output)?;
         match badge_artifact_native_slot(job.format) {
             Some(BadgeNativeSlot::Ripr) => ripr_native_json = output,
@@ -14449,6 +15804,9 @@ pub(crate) fn badge_artifacts_impl() -> Result<(), String> {
     let summary = badge_artifacts_summary_markdown(&ripr_native_json, &ripr_plus_native_json);
     write_report("ripr-badges.md", &summary)
 }
+
+const BADGE_ARTIFACT_TIMEOUT_ENV: &str = "RIPR_BADGE_ARTIFACT_TIMEOUT_MS";
+const BADGE_ARTIFACT_DEFAULT_TIMEOUT_MS: u64 = 90_000;
 
 #[derive(Debug, PartialEq, Eq)]
 struct BadgeArtifactJob {
@@ -14485,11 +15843,6 @@ fn badge_artifact_jobs() -> Vec<BadgeArtifactJob> {
 
 fn badge_artifact_command_args(format: &str) -> Vec<String> {
     vec![
-        "run".to_string(),
-        "-p".to_string(),
-        "ripr".to_string(),
-        "--quiet".to_string(),
-        "--".to_string(),
         "check".to_string(),
         "--root".to_string(),
         ".".to_string(),
@@ -14498,6 +15851,228 @@ fn badge_artifact_command_args(format: &str) -> Vec<String> {
         "--format".to_string(),
         format.to_string(),
     ]
+}
+
+fn badge_artifact_build_command_args() -> Vec<String> {
+    vec!["build".to_string(), "-p".to_string(), "ripr".to_string()]
+}
+
+fn badge_artifact_timeout_ms() -> u64 {
+    std::env::var(BADGE_ARTIFACT_TIMEOUT_ENV)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(BADGE_ARTIFACT_DEFAULT_TIMEOUT_MS)
+}
+
+fn build_badge_artifact_binary(timeout: Duration) -> Result<TimedOutput, String> {
+    let args = badge_artifact_build_command_args();
+    capture_output_with_timeout("cargo", &args, &[], timeout, "badge artifact binary build")
+}
+
+fn badge_artifact_build_command_label() -> String {
+    format!("cargo {}", badge_artifact_build_command_args().join(" "))
+}
+
+fn run_badge_artifact_command(
+    binary: &Path,
+    format: &str,
+    args: &[String],
+    timeout: Duration,
+) -> Result<TimedOutput, String> {
+    let binary_text = binary.display().to_string();
+    capture_output_with_timeout(
+        &binary_text,
+        args,
+        &[],
+        timeout,
+        &format!("badge artifact generation for {format}"),
+    )
+}
+
+fn write_limited_badge_artifact_reports(
+    format: &str,
+    command: &str,
+    timeout: Duration,
+    diff_bytes: usize,
+    output: &TimedOutput,
+) -> Result<(), String> {
+    clear_diff_badge_artifact_outputs();
+    write_report(
+        "badge-artifacts-limitation.json",
+        &limited_badge_artifacts_json(format, command, timeout, diff_bytes, output)?,
+    )?;
+    write_report(
+        "ripr-badges.md",
+        &limited_badge_artifacts_markdown(format, command, timeout, diff_bytes, output),
+    )
+}
+
+fn badge_artifact_command_label(binary: &Path, args: &[String]) -> String {
+    normalize_report_path(&format!("{} {}", binary.display(), args.join(" ")))
+}
+
+fn clear_badge_artifact_limitation() {
+    let _ = fs::remove_file(reports_dir().join("badge-artifacts-limitation.json"));
+}
+
+fn clear_diff_badge_artifact_outputs() {
+    for job in badge_artifact_jobs() {
+        let _ = fs::remove_file(reports_dir().join(job.output_file));
+    }
+    let _ = fs::remove_file(reports_dir().join("ripr-badges.md"));
+}
+
+fn limited_badge_artifacts_json(
+    format: &str,
+    command: &str,
+    timeout: Duration,
+    diff_bytes: usize,
+    output: &TimedOutput,
+) -> Result<String, String> {
+    let limitation = badge_artifacts_limited_kind(format, output);
+    let summary = badge_artifacts_limited_summary(limitation);
+    let repair_route = badge_artifacts_limited_repair_route(limitation);
+    let value = serde_json::json!({
+        "schema_version": "0.1",
+        "status": "warn",
+        "phase": "badge_artifacts",
+        "format": format,
+        "limitation": {
+            "category": limitation,
+            "summary": summary,
+            "repair_route": repair_route,
+        },
+        "input": {
+            "diff_path": "target/ripr/badge-input.diff",
+            "diff_bytes": diff_bytes,
+        },
+        "generation": {
+            "command": command,
+            "timeout_ms": timeout.as_millis(),
+            "duration_ms": output.duration.as_millis(),
+            "timed_out": output.timed_out,
+            "exit_code": output.status.and_then(|status| status.code()),
+            "stdout_bytes": output.stdout.len(),
+            "stderr_bytes": output.stderr.len(),
+        },
+        "non_claims": [
+            "no badge count claimed from this limited run",
+            "not runtime mutation confirmation",
+            "not merge approval",
+            "not user test debt"
+        ],
+    });
+    serde_json::to_string_pretty(&value)
+        .map(|json| format!("{json}\n"))
+        .map_err(|err| format!("failed to render badge artifact limitation JSON: {err}"))
+}
+
+fn badge_artifacts_limited_kind(format: &str, output: &TimedOutput) -> &'static str {
+    if format == "badge-build" {
+        return if output.timed_out {
+            "badge_artifacts_build_timeout"
+        } else {
+            "badge_artifacts_build_incomplete"
+        };
+    }
+    if output.timed_out {
+        "badge_artifacts_diff_analysis_timeout"
+    } else {
+        "badge_artifacts_generation_incomplete"
+    }
+}
+
+fn badge_artifacts_limited_summary(kind: &str) -> &'static str {
+    match kind {
+        "badge_artifacts_diff_analysis_timeout" => {
+            "Badge artifact generation timed out before a complete diff-scoped badge was available."
+        }
+        "badge_artifacts_build_timeout" => {
+            "Badge artifact generation timed out while building the ripr binary before diff analysis could run."
+        }
+        "badge_artifacts_build_incomplete" => {
+            "Badge artifact generation could not build the ripr binary before diff analysis could run."
+        }
+        "badge_artifacts_generation_incomplete" => {
+            "Badge artifact generation ended before producing a complete diff-scoped badge."
+        }
+        _ => "Badge artifact generation did not produce a complete diff-scoped badge.",
+    }
+}
+
+fn badge_artifacts_limited_repair_route(kind: &str) -> &'static str {
+    match kind {
+        "badge_artifacts_diff_analysis_timeout" => {
+            "inspect the diff-scoped badge runtime, narrow the diff input, or rerun with RIPR_BADGE_ARTIFACT_TIMEOUT_MS on a machine that can complete the analysis"
+        }
+        "badge_artifacts_build_timeout" => {
+            "inspect the cargo build output or rerun with RIPR_BADGE_ARTIFACT_TIMEOUT_MS on a machine that can build ripr before claiming badge counts from this run"
+        }
+        "badge_artifacts_build_incomplete" => {
+            "inspect the cargo build exit status and stdout/stderr before claiming badge counts from this run"
+        }
+        "badge_artifacts_generation_incomplete" => {
+            "inspect the badge artifact command exit status, stdout/stderr, and diff input before claiming badge counts from this run"
+        }
+        _ => "inspect badge artifact generation and rerun with bounded diagnostics",
+    }
+}
+
+fn limited_badge_artifacts_markdown(
+    format: &str,
+    command: &str,
+    timeout: Duration,
+    diff_bytes: usize,
+    output: &TimedOutput,
+) -> String {
+    let limitation = badge_artifacts_limited_kind(format, output);
+    let summary = badge_artifacts_limited_summary(limitation);
+    let repair_route = badge_artifacts_limited_repair_route(limitation);
+    let exit = output
+        .status
+        .and_then(|status| status.code())
+        .map(|code| code.to_string())
+        .unwrap_or_else(|| "n/a".to_string());
+    let mut out = String::new();
+    out.push_str("# ripr badges\n\n");
+    out.push_str("Status: warn\n\n");
+    out.push_str(summary);
+    out.push_str(" No badge count is claimed from this limited artifact.\n\n");
+    out.push_str("## Run Limitation\n\n");
+    out.push_str("| Field | Value |\n");
+    out.push_str("| --- | --- |\n");
+    out.push_str(&format!("| Category | `{limitation}` |\n"));
+    out.push_str(&format!("| Format | `{}` |\n", audit_markdown_cell(format)));
+    out.push_str(&format!("| Diff bytes | {diff_bytes} |\n"));
+    out.push_str(&format!("| Timeout | {} ms |\n", timeout.as_millis()));
+    out.push_str(&format!(
+        "| Duration | {} ms |\n",
+        output.duration.as_millis()
+    ));
+    out.push_str(&format!("| Exit code | {exit} |\n"));
+    out.push_str(&format!(
+        "| Command | `{}` |\n",
+        audit_markdown_cell(command)
+    ));
+    out.push_str(&format!("| Repair route | {repair_route} |\n\n"));
+    if !output.stderr.trim().is_empty() {
+        out.push_str("## Stderr Tail\n\n```text\n");
+        for line in output
+            .stderr
+            .lines()
+            .rev()
+            .take(8)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+        {
+            out.push_str(line);
+            out.push('\n');
+        }
+        out.push_str("```\n");
+    }
+    out
 }
 
 fn badge_artifact_native_slot(format: &str) -> Option<BadgeNativeSlot> {
@@ -17295,6 +18870,1037 @@ fn lane1_actionable_gap_packets_markdown(report: &Lane1EvidenceAuditReport) -> S
     out
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum RiprSwarmCommand {
+    Plan(RiprSwarmPlanArgs),
+    Attempt(RiprSwarmAttemptArgs),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RiprSwarmPlanArgs {
+    top: usize,
+    actionable_gaps_path: PathBuf,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RiprSwarmAttemptArgs {
+    packet_id: String,
+    actionable_gaps_path: PathBuf,
+    dry_run: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RiprSwarmPlanReport {
+    status: String,
+    input_state: String,
+    input_path: String,
+    input_limitation: Option<String>,
+    top_limit: usize,
+    source_summary: Value,
+    packets: Vec<RiprSwarmPlanPacket>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RiprSwarmPlanPacket {
+    packet_id: String,
+    canonical_gap_id: String,
+    evidence_class: String,
+    source_file: String,
+    repair_kind: String,
+    target_test_type: String,
+    assertion_shape: String,
+    confidence_basis: String,
+    swarm_state: String,
+    score: usize,
+    expected_canonical_gap_delta: usize,
+    readiness_reasons: Vec<String>,
+    blocked_reasons: Vec<String>,
+    missing_context: Vec<String>,
+    verify_command: Option<String>,
+    receipt_command_or_path: Option<String>,
+    related_test_or_observer_available: bool,
+    must_not_change_count: usize,
+    raw_findings_count: usize,
+    static_limitations_count: usize,
+    public_projection_eligible: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RiprSwarmAttemptDryRun {
+    packet_id: String,
+    canonical_gap_id: String,
+    evidence_class: String,
+    source_file: String,
+    swarm_state: String,
+    repair_kind: String,
+    repair_route: String,
+    target_test_type: String,
+    assertion_shape: String,
+    related_test_or_observer: String,
+    verify_command: String,
+    receipt_command_or_path: String,
+    must_not_change: Vec<String>,
+    raw_findings_count: usize,
+    static_limitations_count: usize,
+    confidence_basis: String,
+    expected_evidence_movement: String,
+}
+
+fn ripr_swarm(args: &[String]) -> Result<(), String> {
+    match parse_ripr_swarm_args(args)? {
+        RiprSwarmCommand::Plan(parsed) => ripr_swarm_plan_report(&parsed),
+        RiprSwarmCommand::Attempt(parsed) => ripr_swarm_attempt_dry_run(&parsed),
+    }
+}
+
+fn parse_ripr_swarm_args(args: &[String]) -> Result<RiprSwarmCommand, String> {
+    let Some(subcommand) = args.first() else {
+        return Err(ripr_swarm_usage());
+    };
+    match subcommand.as_str() {
+        "plan" => parse_ripr_swarm_plan_args(args).map(RiprSwarmCommand::Plan),
+        "attempt" => parse_ripr_swarm_attempt_args(args).map(RiprSwarmCommand::Attempt),
+        _ => Err(format!(
+            "unknown ripr-swarm subcommand `{subcommand}`\n{}",
+            ripr_swarm_usage()
+        )),
+    }
+}
+
+fn parse_ripr_swarm_plan_args(args: &[String]) -> Result<RiprSwarmPlanArgs, String> {
+    let Some(subcommand) = args.first() else {
+        return Err(ripr_swarm_usage());
+    };
+    if subcommand != "plan" {
+        return Err(format!(
+            "unknown ripr-swarm subcommand `{subcommand}`\n{}",
+            ripr_swarm_usage()
+        ));
+    }
+
+    let mut top = 10usize;
+    let mut actionable_gaps_path = PathBuf::from("target/ripr/reports/actionable-gaps.json");
+    let mut index = 1usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--top" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err("ripr-swarm plan --top requires a positive integer".to_string());
+                };
+                top = value.parse::<usize>().map_err(|err| {
+                    format!("ripr-swarm plan --top requires a positive integer: {err}")
+                })?;
+                if top == 0 {
+                    return Err("ripr-swarm plan --top must be greater than zero".to_string());
+                }
+            }
+            "--actionable-gaps" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err("ripr-swarm plan --actionable-gaps requires a path".to_string());
+                };
+                actionable_gaps_path = PathBuf::from(value);
+            }
+            other => {
+                return Err(format!(
+                    "unknown ripr-swarm plan argument `{other}`\n{}",
+                    ripr_swarm_usage()
+                ));
+            }
+        }
+        index += 1;
+    }
+
+    Ok(RiprSwarmPlanArgs {
+        top,
+        actionable_gaps_path,
+    })
+}
+
+fn parse_ripr_swarm_attempt_args(args: &[String]) -> Result<RiprSwarmAttemptArgs, String> {
+    let Some(subcommand) = args.first() else {
+        return Err(ripr_swarm_usage());
+    };
+    if subcommand != "attempt" {
+        return Err(format!(
+            "unknown ripr-swarm subcommand `{subcommand}`\n{}",
+            ripr_swarm_usage()
+        ));
+    }
+
+    let mut packet_id: Option<String> = None;
+    let mut actionable_gaps_path = PathBuf::from("target/ripr/reports/actionable-gaps.json");
+    let mut dry_run = false;
+    let mut index = 1usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--packet" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err("ripr-swarm attempt --packet requires a packet id".to_string());
+                };
+                if value.trim().is_empty() {
+                    return Err(
+                        "ripr-swarm attempt --packet requires a non-empty packet id".to_string()
+                    );
+                }
+                packet_id = Some(value.to_string());
+            }
+            "--dry-run" => {
+                dry_run = true;
+            }
+            "--actionable-gaps" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err("ripr-swarm attempt --actionable-gaps requires a path".to_string());
+                };
+                actionable_gaps_path = PathBuf::from(value);
+            }
+            other => {
+                return Err(format!(
+                    "unknown ripr-swarm attempt argument `{other}`\n{}",
+                    ripr_swarm_usage()
+                ));
+            }
+        }
+        index += 1;
+    }
+
+    let Some(packet_id) = packet_id else {
+        return Err("ripr-swarm attempt requires --packet <id>".to_string());
+    };
+    if !dry_run {
+        return Err("ripr-swarm attempt currently requires --dry-run".to_string());
+    }
+
+    Ok(RiprSwarmAttemptArgs {
+        packet_id,
+        actionable_gaps_path,
+        dry_run,
+    })
+}
+
+fn ripr_swarm_usage() -> String {
+    "usage: cargo xtask ripr-swarm plan [--top <n>] [--actionable-gaps <path>]\n       cargo xtask ripr-swarm attempt --packet <id> --dry-run [--actionable-gaps <path>]"
+        .to_string()
+}
+
+fn ripr_swarm_plan_report(args: &RiprSwarmPlanArgs) -> Result<(), String> {
+    let report = match fs::read_to_string(&args.actionable_gaps_path) {
+        Ok(text) => match serde_json::from_str::<Value>(&text) {
+            Ok(value) => ripr_swarm_plan_from_actionable_gaps_value(
+                args.top,
+                &args.actionable_gaps_path,
+                &value,
+            ),
+            Err(err) => ripr_swarm_plan_blocked_report(
+                args.top,
+                &args.actionable_gaps_path,
+                "malformed",
+                format!(
+                    "failed to parse actionable-gaps JSON: {err}; rerun `cargo xtask lane1-evidence-audit` before planning swarm repairs"
+                ),
+            ),
+        },
+        Err(err) => ripr_swarm_plan_blocked_report(
+            args.top,
+            &args.actionable_gaps_path,
+            "missing",
+            format!(
+                "failed to read {}: {err}; run `cargo xtask lane1-evidence-audit` to create actionable-gaps.json before planning swarm repairs",
+                args.actionable_gaps_path.display()
+            ),
+        ),
+    };
+
+    write_report("swarm-plan.json", &ripr_swarm_plan_json(&report)?)?;
+    write_report("swarm-plan.md", &ripr_swarm_plan_markdown(&report))
+}
+
+fn ripr_swarm_attempt_dry_run(args: &RiprSwarmAttemptArgs) -> Result<(), String> {
+    if !args.dry_run {
+        return Err("ripr-swarm attempt currently requires --dry-run".to_string());
+    }
+    let value = read_json_value(&args.actionable_gaps_path)?;
+    let attempt = ripr_swarm_attempt_dry_run_from_actionable_gaps_value(&value, &args.packet_id)?;
+    println!("{}", ripr_swarm_attempt_dry_run_markdown(&attempt));
+    Ok(())
+}
+
+fn ripr_swarm_attempt_dry_run_from_actionable_gaps_value(
+    value: &Value,
+    packet_id: &str,
+) -> Result<RiprSwarmAttemptDryRun, String> {
+    let packets = audit_get(value, &["packets"])
+        .and_then(Value::as_array)
+        .ok_or_else(|| "actionable-gaps JSON is missing a `packets` array".to_string())?;
+    let Some(packet) = packets
+        .iter()
+        .find(|packet| ripr_swarm_attempt_packet_matches(packet, packet_id))
+    else {
+        return Err(format!(
+            "ripr-swarm attempt could not find packet `{packet_id}` in actionable-gaps.json"
+        ));
+    };
+    Ok(ripr_swarm_attempt_dry_run_from_packet(packet))
+}
+
+fn ripr_swarm_attempt_packet_matches(packet: &Value, packet_id: &str) -> bool {
+    let mut requested = BTreeSet::new();
+    actionable_gap_push_id_candidate(&mut requested, packet_id);
+    let candidates = actionable_gap_id_candidates(packet);
+    requested
+        .iter()
+        .any(|requested| candidates.contains(requested))
+}
+
+fn ripr_swarm_attempt_dry_run_from_packet(packet: &Value) -> RiprSwarmAttemptDryRun {
+    let plan_packet = ripr_swarm_plan_packet_from_value(packet);
+    let repair_route = ripr_swarm_attempt_repair_route_summary(packet);
+    let related_test_or_observer = ripr_swarm_attempt_value_summary(
+        audit_get(packet, &["related_test_or_observer"])
+            .or_else(|| audit_get(packet, &["candidate_value_or_observer"])),
+    );
+    let must_not_change = audit_string_array(packet, &["must_not_change"]).unwrap_or_default();
+    let expected_evidence_movement = if plan_packet.swarm_state == "queued" {
+        format!(
+            "-{} actionable canonical gap if receipt-backed evidence movement resolves or improves this packet",
+            plan_packet.expected_canonical_gap_delta
+        )
+    } else {
+        format!(
+            "not repair-ready until blocked context is resolved: {}",
+            plan_packet.blocked_reasons.join(", ")
+        )
+    };
+
+    RiprSwarmAttemptDryRun {
+        packet_id: plan_packet.packet_id,
+        canonical_gap_id: plan_packet.canonical_gap_id,
+        evidence_class: plan_packet.evidence_class,
+        source_file: plan_packet.source_file,
+        swarm_state: plan_packet.swarm_state,
+        repair_kind: plan_packet.repair_kind,
+        repair_route,
+        target_test_type: plan_packet.target_test_type,
+        assertion_shape: plan_packet.assertion_shape,
+        related_test_or_observer,
+        verify_command: plan_packet
+            .verify_command
+            .unwrap_or_else(|| "verify_command_unknown".to_string()),
+        receipt_command_or_path: plan_packet
+            .receipt_command_or_path
+            .unwrap_or_else(|| "receipt_command_unknown".to_string()),
+        must_not_change,
+        raw_findings_count: plan_packet.raw_findings_count,
+        static_limitations_count: plan_packet.static_limitations_count,
+        confidence_basis: plan_packet.confidence_basis,
+        expected_evidence_movement,
+    }
+}
+
+fn ripr_swarm_attempt_repair_route_summary(packet: &Value) -> String {
+    match audit_get(packet, &["repair_route"]) {
+        Some(Value::Object(route)) => {
+            let repair_kind = route
+                .get("repair_kind")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .or_else(|| audit_non_empty_string(packet, &["repair_kind"]))
+                .unwrap_or_else(|| "repair_kind_unknown".to_string());
+            let target_test_type = route
+                .get("target_test_type")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .or_else(|| audit_non_empty_string(packet, &["target_test_type"]))
+                .unwrap_or_else(|| "target_test_type_unknown".to_string());
+            let assertion_shape = route
+                .get("assertion_shape")
+                .and_then(Value::as_str)
+                .or_else(|| route.get("suggested_assertion").and_then(Value::as_str))
+                .map(str::to_string)
+                .or_else(|| audit_non_empty_string(packet, &["assertion_shape"]))
+                .unwrap_or_else(|| "assertion_shape_unknown".to_string());
+            format!("{repair_kind} -> {target_test_type} -> {assertion_shape}")
+        }
+        Some(value) => ripr_swarm_attempt_value_summary(Some(value)),
+        None => "repair_route_unknown".to_string(),
+    }
+}
+
+fn ripr_swarm_attempt_value_summary(value: Option<&Value>) -> String {
+    match value {
+        Some(Value::String(value)) => value.clone(),
+        Some(Value::Object(object)) => {
+            if let (Some(file), Some(name)) = (
+                object.get("file").and_then(Value::as_str),
+                object.get("name").and_then(Value::as_str),
+            ) {
+                format!("{file}::{name}")
+            } else {
+                serde_json::to_string(&Value::Object(object.clone()))
+                    .unwrap_or_else(|_| "object".to_string())
+            }
+        }
+        Some(Value::Array(values)) => format!("{} item(s)", values.len()),
+        Some(Value::Number(value)) => value.to_string(),
+        Some(Value::Bool(value)) => value.to_string(),
+        Some(Value::Null) | None => "unknown".to_string(),
+    }
+}
+
+fn ripr_swarm_attempt_dry_run_markdown(attempt: &RiprSwarmAttemptDryRun) -> String {
+    let mut out = String::new();
+    out.push_str("# RIPR Swarm Attempt Dry Run\n\n");
+    out.push_str("This command prints bounded repair context only. It does not edit files, run tests, call providers, generate tests, create receipts, run mutation testing, merge code, or change public badge semantics.\n\n");
+    out.push_str("## Packet\n\n");
+    out.push_str("| Field | Value |\n");
+    out.push_str("| --- | --- |\n");
+    out.push_str(&format!(
+        "| Packet | `{}` |\n",
+        audit_markdown_cell(&attempt.packet_id)
+    ));
+    out.push_str(&format!(
+        "| Canonical gap | `{}` |\n",
+        audit_markdown_cell(&attempt.canonical_gap_id)
+    ));
+    out.push_str(&format!(
+        "| Evidence class | `{}` |\n",
+        audit_markdown_cell(&attempt.evidence_class)
+    ));
+    out.push_str(&format!(
+        "| Source file | `{}` |\n",
+        audit_markdown_cell(&attempt.source_file)
+    ));
+    out.push_str(&format!(
+        "| Swarm state | `{}` |\n",
+        audit_markdown_cell(&attempt.swarm_state)
+    ));
+    out.push_str(&format!(
+        "| Confidence | `{}` |\n",
+        audit_markdown_cell(&attempt.confidence_basis)
+    ));
+    out.push('\n');
+
+    out.push_str("## Repair Context\n\n");
+    out.push_str("| Field | Value |\n");
+    out.push_str("| --- | --- |\n");
+    out.push_str(&format!(
+        "| Repair kind | `{}` |\n",
+        audit_markdown_cell(&attempt.repair_kind)
+    ));
+    out.push_str(&format!(
+        "| Repair route | {} |\n",
+        audit_markdown_cell(&attempt.repair_route)
+    ));
+    out.push_str(&format!(
+        "| Target test type | `{}` |\n",
+        audit_markdown_cell(&attempt.target_test_type)
+    ));
+    out.push_str(&format!(
+        "| Assertion / observer shape | {} |\n",
+        audit_markdown_cell(&attempt.assertion_shape)
+    ));
+    out.push_str(&format!(
+        "| Related test / observer | {} |\n",
+        audit_markdown_cell(&attempt.related_test_or_observer)
+    ));
+    out.push_str(&format!(
+        "| Expected evidence movement | {} |\n\n",
+        audit_markdown_cell(&attempt.expected_evidence_movement)
+    ));
+
+    out.push_str("## Commands\n\n");
+    out.push_str(&format!(
+        "- Verify: `{}`\n",
+        audit_markdown_cell(&attempt.verify_command)
+    ));
+    out.push_str(&format!(
+        "- Receipt: `{}`\n\n",
+        audit_markdown_cell(&attempt.receipt_command_or_path)
+    ));
+
+    out.push_str("## Boundaries\n\n");
+    if attempt.must_not_change.is_empty() {
+        out.push_str("- `must_not_change` is missing; keep this packet blocked until Lane 1 emits boundaries.\n");
+    } else {
+        for boundary in &attempt.must_not_change {
+            out.push_str(&format!("- {}\n", audit_markdown_cell(boundary)));
+        }
+    }
+    out.push_str(&format!(
+        "- Raw findings are supporting evidence only: {} finding(s).\n",
+        attempt.raw_findings_count
+    ));
+    out.push_str(&format!(
+        "- Static limitations attached to packet: {}.\n",
+        attempt.static_limitations_count
+    ));
+    out
+}
+
+fn ripr_swarm_plan_blocked_report(
+    top_limit: usize,
+    path: &Path,
+    input_state: &str,
+    input_limitation: String,
+) -> RiprSwarmPlanReport {
+    RiprSwarmPlanReport {
+        status: "blocked".to_string(),
+        input_state: input_state.to_string(),
+        input_path: path.display().to_string(),
+        input_limitation: Some(input_limitation),
+        top_limit,
+        source_summary: Value::Null,
+        packets: Vec::new(),
+    }
+}
+
+fn ripr_swarm_plan_from_actionable_gaps_value(
+    top_limit: usize,
+    path: &Path,
+    value: &Value,
+) -> RiprSwarmPlanReport {
+    let packets = match audit_get(value, &["packets"]) {
+        Some(Value::Array(packets)) => packets
+            .iter()
+            .map(ripr_swarm_plan_packet_from_value)
+            .collect::<Vec<_>>(),
+        _ => {
+            return ripr_swarm_plan_blocked_report(
+                top_limit,
+                path,
+                "malformed",
+                "actionable-gaps JSON is missing a `packets` array; rerun `cargo xtask lane1-evidence-audit` before planning swarm repairs."
+                    .to_string(),
+            );
+        }
+    };
+    RiprSwarmPlanReport {
+        status: "advisory".to_string(),
+        input_state: "read".to_string(),
+        input_path: path.display().to_string(),
+        input_limitation: None,
+        top_limit,
+        source_summary: audit_get(value, &["summary"])
+            .cloned()
+            .unwrap_or(Value::Null),
+        packets,
+    }
+}
+
+fn ripr_swarm_plan_packet_from_value(packet: &Value) -> RiprSwarmPlanPacket {
+    let canonical_gap_id =
+        audit_non_empty_string(packet, &["canonical_gap_id"]).unwrap_or_default();
+    let evidence_class = audit_non_empty_string(packet, &["evidence_class"])
+        .unwrap_or_else(|| "unknown".to_string());
+    let source_file =
+        audit_non_empty_string(packet, &["source_file"]).unwrap_or_else(|| "unknown".to_string());
+    let repair_kind = audit_non_empty_string(packet, &["repair_kind"])
+        .unwrap_or_else(|| "repair_kind_unknown".to_string());
+    let target_test_type = audit_non_empty_string(packet, &["target_test_type"])
+        .unwrap_or_else(|| "target_test_type_unknown".to_string());
+    let assertion_shape = audit_non_empty_string(packet, &["assertion_shape"])
+        .unwrap_or_else(|| "assertion_shape_unknown".to_string());
+    let confidence_basis = audit_non_empty_string(packet, &["confidence_basis"])
+        .unwrap_or_else(|| "unknown".to_string());
+    let verify_command = audit_non_empty_string(packet, &["verify_command"]);
+    let receipt_command_or_path = audit_non_empty_string(packet, &["receipt_command_or_path"])
+        .or_else(|| audit_non_empty_string(packet, &["receipt_command"]));
+    let raw_findings_count = audit_array(packet, &["raw_findings"]).len();
+    let static_limitations_count = audit_array(packet, &["static_limitations"]).len();
+    let must_not_change_count = audit_array(packet, &["must_not_change"]).len();
+    let public_projection_eligible =
+        audit_bool(packet, &["public_projection_eligible"]).unwrap_or(false);
+    let related_test_or_observer_available = ripr_swarm_plan_related_context_present(packet);
+    let has_repair_route = ripr_swarm_plan_has_repair_route(packet);
+    let has_verify_command = verify_command
+        .as_deref()
+        .is_some_and(|command| !ripr_swarm_plan_field_missing(command));
+    let has_receipt_command = receipt_command_or_path
+        .as_deref()
+        .is_some_and(|command| !ripr_swarm_plan_field_missing(command));
+    let gap_state = audit_non_empty_string(packet, &["gap_state"]).unwrap_or_default();
+
+    let mut missing_context = Vec::new();
+    if canonical_gap_id.trim().is_empty() {
+        missing_context.push("canonical_gap_id".to_string());
+    }
+    if gap_state != "actionable" {
+        missing_context.push("actionable_gap_state".to_string());
+    }
+    if !has_repair_route {
+        missing_context.push("repair_route".to_string());
+    }
+    if !related_test_or_observer_available {
+        missing_context.push("related_test_or_observer".to_string());
+    }
+    if !has_verify_command {
+        missing_context.push("verify_command".to_string());
+    }
+    if !has_receipt_command {
+        missing_context.push("receipt_command".to_string());
+    }
+    if must_not_change_count == 0 {
+        missing_context.push("must_not_change".to_string());
+    }
+    if ripr_swarm_plan_field_missing(&confidence_basis) {
+        missing_context.push("confidence_basis".to_string());
+    }
+
+    let mut blocked_reasons = Vec::new();
+    let swarm_state = if static_limitations_count > 0 || gap_state == "static_limitation" {
+        blocked_reasons.push("static_limitation_present".to_string());
+        "blocked_by_static_limitation".to_string()
+    } else if !missing_context.is_empty() {
+        blocked_reasons.extend(
+            missing_context
+                .iter()
+                .map(|field| format!("missing_{field}")),
+        );
+        "blocked_by_missing_context".to_string()
+    } else {
+        "queued".to_string()
+    };
+
+    let mut readiness_reasons = Vec::new();
+    let mut score = 0usize;
+    if has_repair_route {
+        score += 20;
+        readiness_reasons.push("repair_route_present".to_string());
+    }
+    if has_verify_command {
+        score += 20;
+        readiness_reasons.push("verify_command_present".to_string());
+    }
+    if has_receipt_command {
+        score += 20;
+        readiness_reasons.push("receipt_command_present".to_string());
+    }
+    if related_test_or_observer_available {
+        score += 10;
+        readiness_reasons.push("related_test_or_observer_present".to_string());
+    }
+    if must_not_change_count > 0 {
+        score += 10;
+        readiness_reasons.push("must_not_change_present".to_string());
+    }
+    if public_projection_eligible {
+        score += 10;
+        readiness_reasons.push("public_projection_eligible".to_string());
+    }
+    if static_limitations_count == 0 {
+        score += 10;
+        readiness_reasons.push("no_static_limitation".to_string());
+    }
+    match confidence_basis.as_str() {
+        "fixture_backed" | "calibrated" | "runtime_calibrated" => {
+            score += 10;
+            readiness_reasons.push(format!("confidence_basis_{confidence_basis}"));
+        }
+        "static_only" => {
+            score += 3;
+            readiness_reasons.push("confidence_basis_static_only".to_string());
+        }
+        _ => {}
+    }
+
+    RiprSwarmPlanPacket {
+        packet_id: audit_non_empty_string(packet, &["packet_id"])
+            .unwrap_or_else(|| canonical_gap_id.clone()),
+        canonical_gap_id,
+        evidence_class,
+        source_file,
+        repair_kind,
+        target_test_type,
+        assertion_shape,
+        confidence_basis,
+        swarm_state: swarm_state.clone(),
+        score,
+        expected_canonical_gap_delta: usize::from(swarm_state == "queued"),
+        readiness_reasons,
+        blocked_reasons,
+        missing_context,
+        verify_command,
+        receipt_command_or_path,
+        related_test_or_observer_available,
+        must_not_change_count,
+        raw_findings_count,
+        static_limitations_count,
+        public_projection_eligible,
+    }
+}
+
+fn ripr_swarm_plan_has_repair_route(packet: &Value) -> bool {
+    let structured_route = audit_get(packet, &["repair_route"]).is_some_and(|route| {
+        route.is_object()
+            && ripr_swarm_plan_non_missing_field(route, "repair_kind")
+            && ripr_swarm_plan_non_missing_field(route, "target_test_type")
+            && ripr_swarm_plan_non_missing_any_field(
+                route,
+                &["assertion_shape", "suggested_assertion"],
+            )
+    });
+    structured_route
+        || (audit_non_empty_string(packet, &["repair_route_source"]).as_deref()
+            == Some("canonical_item.repair_route")
+            && ripr_swarm_plan_non_missing_field(packet, "repair_kind")
+            && ripr_swarm_plan_non_missing_field(packet, "target_test_type")
+            && ripr_swarm_plan_non_missing_any_field(
+                packet,
+                &["assertion_shape", "suggested_assertion"],
+            ))
+}
+
+fn ripr_swarm_plan_related_context_present(packet: &Value) -> bool {
+    ripr_swarm_plan_value_present(audit_get(packet, &["related_test_or_observer"]))
+        || audit_non_empty_string(packet, &["candidate_value_or_observer"])
+            .is_some_and(|field| !ripr_swarm_plan_field_missing(&field))
+}
+
+fn ripr_swarm_plan_non_missing_field(value: &Value, field: &str) -> bool {
+    audit_non_empty_string(value, &[field])
+        .is_some_and(|field_value| !ripr_swarm_plan_field_missing(&field_value))
+}
+
+fn ripr_swarm_plan_non_missing_any_field(value: &Value, fields: &[&str]) -> bool {
+    fields
+        .iter()
+        .any(|field| ripr_swarm_plan_non_missing_field(value, field))
+}
+
+fn ripr_swarm_plan_value_present(value: Option<&Value>) -> bool {
+    match value {
+        Some(Value::String(value)) => !ripr_swarm_plan_field_missing(value),
+        Some(Value::Array(values)) => !values.is_empty(),
+        Some(Value::Object(values)) => !values.is_empty(),
+        Some(Value::Null) | None => false,
+        Some(_) => true,
+    }
+}
+
+fn ripr_swarm_plan_field_missing(value: &str) -> bool {
+    audit_guidance_field_is_missing(value)
+        || matches!(
+            value.trim(),
+            "verify_command_unknown"
+                | "receipt_command_unknown"
+                | "receipt_path_unknown"
+                | "repair_route_unknown"
+                | "target_test_type_unknown"
+                | "assertion_shape_unknown"
+                | "confidence_basis_unknown"
+        )
+}
+
+fn ripr_swarm_plan_ready_packets(report: &RiprSwarmPlanReport) -> Vec<RiprSwarmPlanPacket> {
+    let mut packets = report
+        .packets
+        .iter()
+        .filter(|packet| packet.swarm_state == "queued")
+        .cloned()
+        .collect::<Vec<_>>();
+    packets.sort_by(ripr_swarm_plan_rank_order);
+    packets.truncate(report.top_limit);
+    packets
+}
+
+fn ripr_swarm_plan_blocked_packets(report: &RiprSwarmPlanReport) -> Vec<RiprSwarmPlanPacket> {
+    let mut packets = report
+        .packets
+        .iter()
+        .filter(|packet| packet.swarm_state != "queued")
+        .cloned()
+        .collect::<Vec<_>>();
+    packets.sort_by(|left, right| {
+        left.swarm_state
+            .cmp(&right.swarm_state)
+            .then_with(|| left.canonical_gap_id.cmp(&right.canonical_gap_id))
+    });
+    packets.truncate(report.top_limit);
+    packets
+}
+
+fn ripr_swarm_plan_missing_verify_or_receipt_packets(
+    report: &RiprSwarmPlanReport,
+) -> Vec<RiprSwarmPlanPacket> {
+    let mut packets = report
+        .packets
+        .iter()
+        .filter(|packet| {
+            packet.verify_command.is_none()
+                || packet
+                    .verify_command
+                    .as_deref()
+                    .is_some_and(ripr_swarm_plan_field_missing)
+                || packet.receipt_command_or_path.is_none()
+                || packet
+                    .receipt_command_or_path
+                    .as_deref()
+                    .is_some_and(ripr_swarm_plan_field_missing)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    packets.sort_by(|left, right| left.canonical_gap_id.cmp(&right.canonical_gap_id));
+    packets.truncate(report.top_limit);
+    packets
+}
+
+fn ripr_swarm_plan_rank_order(
+    left: &RiprSwarmPlanPacket,
+    right: &RiprSwarmPlanPacket,
+) -> std::cmp::Ordering {
+    right
+        .score
+        .cmp(&left.score)
+        .then_with(|| left.evidence_class.cmp(&right.evidence_class))
+        .then_with(|| left.source_file.cmp(&right.source_file))
+        .then_with(|| left.canonical_gap_id.cmp(&right.canonical_gap_id))
+}
+
+fn ripr_swarm_plan_packet_is_high_confidence(packet: &RiprSwarmPlanPacket) -> bool {
+    packet.swarm_state == "queued"
+        && packet.score >= 80
+        && matches!(
+            packet.confidence_basis.as_str(),
+            "fixture_backed" | "calibrated" | "runtime_calibrated"
+        )
+}
+
+fn ripr_swarm_plan_json(report: &RiprSwarmPlanReport) -> Result<String, String> {
+    let value = serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "report": "swarm-plan",
+        "scope": "repo",
+        "status": report.status,
+        "input": {
+            "actionable_gaps": report.input_path,
+            "state": report.input_state,
+            "limitation": report.input_limitation,
+        },
+        "source": "actionable-gaps.packets",
+        "source_summary": report.source_summary,
+        "top_limit": report.top_limit,
+        "summary": ripr_swarm_plan_summary_json(report),
+        "top_ready_packets": ripr_swarm_plan_packets_json(
+            &ripr_swarm_plan_ready_packets(report)
+        ),
+        "top_blocked_packets": ripr_swarm_plan_packets_json(
+            &ripr_swarm_plan_blocked_packets(report)
+        ),
+        "top_missing_verify_or_receipt": ripr_swarm_plan_packets_json(
+            &ripr_swarm_plan_missing_verify_or_receipt_packets(report)
+        ),
+        "must_not_infer": [
+            "do not consume raw findings as swarm work",
+            "do not rank static limitations as repair-ready",
+            "do not rank packets without receipt_command as swarm-ready",
+            "do not rank packets without verify_command as high confidence",
+            "do not edit files, call providers, generate tests, run mutation testing, or create receipts from this plan"
+        ],
+    });
+    serde_json::to_string_pretty(&value).map_err(|err| err.to_string())
+}
+
+fn ripr_swarm_plan_summary_json(report: &RiprSwarmPlanReport) -> Value {
+    let ready = report
+        .packets
+        .iter()
+        .filter(|packet| packet.swarm_state == "queued")
+        .count();
+    let missing_verify = report
+        .packets
+        .iter()
+        .filter(|packet| {
+            packet.verify_command.is_none()
+                || packet
+                    .verify_command
+                    .as_deref()
+                    .is_some_and(ripr_swarm_plan_field_missing)
+        })
+        .count();
+    let missing_receipt = report
+        .packets
+        .iter()
+        .filter(|packet| {
+            packet.receipt_command_or_path.is_none()
+                || packet
+                    .receipt_command_or_path
+                    .as_deref()
+                    .is_some_and(ripr_swarm_plan_field_missing)
+        })
+        .count();
+    serde_json::json!({
+        "packets_total": report.packets.len(),
+        "swarm_ready_packets": ready,
+        "blocked_packets": report.packets.len().saturating_sub(ready),
+        "missing_verify_command": missing_verify,
+        "missing_receipt_command": missing_receipt,
+        "missing_repair_route": report
+            .packets
+            .iter()
+            .filter(|packet| packet.missing_context.iter().any(|field| field == "repair_route"))
+            .count(),
+        "missing_must_not_change": report
+            .packets
+            .iter()
+            .filter(|packet| packet.missing_context.iter().any(|field| field == "must_not_change"))
+            .count(),
+        "related_context_missing": report
+            .packets
+            .iter()
+            .filter(|packet| !packet.related_test_or_observer_available)
+            .count(),
+        "static_limitation_packets": report
+            .packets
+            .iter()
+            .filter(|packet| packet.static_limitations_count > 0)
+            .count(),
+        "high_confidence_packets": report
+            .packets
+            .iter()
+            .filter(|packet| ripr_swarm_plan_packet_is_high_confidence(packet))
+            .count(),
+    })
+}
+
+fn ripr_swarm_plan_packets_json(packets: &[RiprSwarmPlanPacket]) -> Vec<Value> {
+    packets
+        .iter()
+        .map(|packet| {
+            serde_json::json!({
+                "packet_id": packet.packet_id,
+                "canonical_gap_id": packet.canonical_gap_id,
+                "evidence_class": packet.evidence_class,
+                "source_file": packet.source_file,
+                "repair_kind": packet.repair_kind,
+                "target_test_type": packet.target_test_type,
+                "assertion_shape": packet.assertion_shape,
+                "confidence_basis": packet.confidence_basis,
+                "swarm_state": packet.swarm_state,
+                "score": packet.score,
+                "expected_canonical_gap_delta": packet.expected_canonical_gap_delta,
+                "readiness_reasons": packet.readiness_reasons,
+                "blocked_reasons": packet.blocked_reasons,
+                "missing_context": packet.missing_context,
+                "verify_command": packet.verify_command,
+                "receipt_command": packet.receipt_command_or_path,
+                "related_test_or_observer_available": packet.related_test_or_observer_available,
+                "must_not_change_count": packet.must_not_change_count,
+                "raw_findings_count": packet.raw_findings_count,
+                "raw_findings_supporting_only": true,
+                "static_limitations_count": packet.static_limitations_count,
+                "public_projection_eligible": packet.public_projection_eligible,
+            })
+        })
+        .collect()
+}
+
+fn ripr_swarm_plan_markdown(report: &RiprSwarmPlanReport) -> String {
+    let summary = ripr_swarm_plan_summary_json(report);
+    let mut out = String::new();
+    out.push_str("# RIPR Swarm Plan\n\n");
+    out.push_str(
+        "Advisory dry-run plan over actionable canonical gap packets. Raw findings remain supporting evidence only.\n\n",
+    );
+    out.push_str("## Input\n\n");
+    out.push_str("| Field | Value |\n");
+    out.push_str("| --- | --- |\n");
+    out.push_str(&format!(
+        "| Actionable gaps | `{}` |\n",
+        audit_markdown_cell(&report.input_path)
+    ));
+    out.push_str(&format!(
+        "| State | `{}` |\n",
+        audit_markdown_cell(&report.input_state)
+    ));
+    if let Some(limitation) = &report.input_limitation {
+        out.push_str(&format!(
+            "| Limitation | {} |\n",
+            audit_markdown_cell(limitation)
+        ));
+    }
+    out.push('\n');
+    out.push_str("## Summary\n\n");
+    out.push_str("| Metric | Count |\n");
+    out.push_str("| --- | ---: |\n");
+    for key in [
+        "packets_total",
+        "swarm_ready_packets",
+        "blocked_packets",
+        "missing_verify_command",
+        "missing_receipt_command",
+        "missing_repair_route",
+        "missing_must_not_change",
+        "related_context_missing",
+        "static_limitation_packets",
+        "high_confidence_packets",
+    ] {
+        out.push_str(&format!(
+            "| {} | {} |\n",
+            key.replace('_', " "),
+            summary[key].as_u64().unwrap_or(0)
+        ));
+    }
+    out.push('\n');
+    ripr_swarm_plan_push_packet_table(
+        &mut out,
+        "Top Swarm-Ready Packets",
+        &ripr_swarm_plan_ready_packets(report),
+    );
+    ripr_swarm_plan_push_packet_table(
+        &mut out,
+        "Top Blocked Packets",
+        &ripr_swarm_plan_blocked_packets(report),
+    );
+    ripr_swarm_plan_push_packet_table(
+        &mut out,
+        "Top Packets Missing Verify Or Receipt",
+        &ripr_swarm_plan_missing_verify_or_receipt_packets(report),
+    );
+    out.push_str("## Must Not Infer\n\n");
+    out.push_str("- Do not consume raw findings as swarm work.\n");
+    out.push_str("- Do not rank static limitations as repair-ready.\n");
+    out.push_str("- Do not rank packets without `receipt_command` as swarm-ready.\n");
+    out.push_str("- Do not rank packets without `verify_command` as high confidence.\n");
+    out.push_str("- Do not edit files, call providers, generate tests, run mutation testing, or create receipts from this plan.\n");
+    out
+}
+
+fn ripr_swarm_plan_push_packet_table(
+    out: &mut String,
+    title: &str,
+    packets: &[RiprSwarmPlanPacket],
+) {
+    out.push_str(&format!("## {title}\n\n"));
+    if packets.is_empty() {
+        out.push_str("No packets in this section.\n\n");
+        return;
+    }
+    out.push_str("| Gap | State | Score | Repair | Verify | Receipt | Blocked reasons |\n");
+    out.push_str("| --- | --- | ---: | --- | --- | --- | --- |\n");
+    for packet in packets {
+        out.push_str(&format!(
+            "| `{}` | `{}` | {} | `{}` | {} | {} | {} |\n",
+            audit_markdown_cell(&packet.canonical_gap_id),
+            audit_markdown_cell(&packet.swarm_state),
+            packet.score,
+            audit_markdown_cell(&packet.repair_kind),
+            audit_markdown_cell(packet.verify_command.as_deref().unwrap_or("missing")),
+            audit_markdown_cell(
+                packet
+                    .receipt_command_or_path
+                    .as_deref()
+                    .unwrap_or("missing")
+            ),
+            audit_markdown_cell(&packet.blocked_reasons.join(", "))
+        ));
+    }
+    out.push('\n');
+}
+
 pub(crate) fn actionable_gap_outcomes_report_impl(args: &[String]) -> Result<(), String> {
     let parsed = parse_actionable_gap_outcomes_args(args)?;
     if !parsed.actionable_gaps.exists() {
@@ -17448,6 +20054,7 @@ fn actionable_gap_outcomes_report_from_values(
             )
         })
         .collect::<Vec<_>>();
+    let orphaned_receipts = actionable_gap_orphaned_receipts(&receipt_values, packet_items);
 
     Ok(ActionableGapOutcomesReport {
         actionable_gaps_path,
@@ -17455,6 +20062,7 @@ fn actionable_gap_outcomes_report_from_values(
         targeted_test_outcome_path,
         packets_total: packet_items.len(),
         outcomes,
+        orphaned_receipts,
     })
 }
 
@@ -17469,6 +20077,47 @@ fn actionable_gap_receipt_values(receipt: Option<&Value>) -> Vec<&Value> {
         return receipts.iter().collect();
     }
     vec![receipt]
+}
+
+fn actionable_gap_orphaned_receipts(
+    receipts: &[&Value],
+    packets: &[Value],
+) -> Vec<ActionableGapOrphanedReceipt> {
+    receipts
+        .iter()
+        .enumerate()
+        .filter(|(_, receipt)| !actionable_gap_receipt_matches_any_packet(receipt, packets))
+        .map(|(index, receipt)| actionable_gap_orphaned_receipt_from_value(index, receipt))
+        .collect()
+}
+
+fn actionable_gap_receipt_matches_any_packet(receipt: &Value, packets: &[Value]) -> bool {
+    packets.iter().any(|packet| {
+        let candidates = actionable_gap_id_candidates(packet);
+        actionable_gap_receipt_matches_packet(receipt, packet, &candidates)
+    })
+}
+
+fn actionable_gap_orphaned_receipt_from_value(
+    index: usize,
+    receipt: &Value,
+) -> ActionableGapOrphanedReceipt {
+    let seam_id = actionable_gap_receipt_seam_id(receipt);
+    let receipt_id = seam_id
+        .as_ref()
+        .map(|seam_id| format!("receipt:{seam_id}"))
+        .unwrap_or_else(|| format!("receipt:index-{index}"));
+    ActionableGapOrphanedReceipt {
+        receipt_id,
+        seam_id,
+        source_file: audit_non_empty_string(receipt, &["seam", "file"]),
+        line: audit_usize(receipt, &["seam", "line"]),
+        movement_direction: audit_non_empty_string(receipt, &["seam", "change"])
+            .or_else(|| audit_non_empty_string(receipt, &["provenance", "movement"]))
+            .or_else(|| audit_non_empty_string(receipt, &["summary", "next_action", "kind"])),
+        reason: "Receipt artifact did not match any current actionable canonical gap packet."
+            .to_string(),
+    }
 }
 
 fn actionable_gap_outcome_from_packet(
@@ -17566,6 +20215,9 @@ struct ActionableGapMovement {
 
 fn actionable_gap_id_candidates(packet: &Value) -> BTreeSet<String> {
     let mut candidates = BTreeSet::new();
+    if let Some(id) = audit_non_empty_string(packet, &["packet_id"]) {
+        actionable_gap_push_id_candidate(&mut candidates, &id);
+    }
     if let Some(id) = audit_non_empty_string(packet, &["canonical_gap_id"]) {
         actionable_gap_push_id_candidate(&mut candidates, &id);
     }
@@ -17759,13 +20411,16 @@ fn actionable_gap_outcomes_json(report: &ActionableGapOutcomesReport) -> Result<
             "unknown": state_counts.get("unknown").copied().unwrap_or(0),
             "receipts_present": report.outcomes.iter().filter(|outcome| outcome.receipt_state == "present").count(),
             "receipts_missing_after_input": report.outcomes.iter().filter(|outcome| outcome.receipt_state == "missing").count(),
+            "orphaned_receipts": report.orphaned_receipts.len(),
         },
         "outcomes": report.outcomes.iter().map(actionable_gap_outcome_json).collect::<Vec<_>>(),
+        "orphaned_receipts": report.orphaned_receipts.iter().map(actionable_gap_orphaned_receipt_json).collect::<Vec<_>>(),
         "must_not_infer": [
             "outcome reports join existing artifacts; they do not execute repairs",
             "raw findings remain supporting evidence, not user work",
             "targeted-test outcomes are static evidence movement, not mutation proof",
-            "missing receipts do not imply a repair failed"
+            "missing receipts do not imply a repair failed",
+            "orphaned receipts do not create new actionable gaps"
         ],
     });
     serde_json::to_string_pretty(&value)
@@ -17793,6 +20448,17 @@ fn actionable_gap_outcome_json(outcome: &ActionableGapOutcome) -> Value {
         "movement_direction": outcome.movement_direction,
         "evidence_delta": outcome.evidence_delta,
         "reason": outcome.reason,
+    })
+}
+
+fn actionable_gap_orphaned_receipt_json(receipt: &ActionableGapOrphanedReceipt) -> Value {
+    serde_json::json!({
+        "receipt_id": receipt.receipt_id,
+        "seam_id": receipt.seam_id,
+        "source_file": receipt.source_file,
+        "line": receipt.line,
+        "movement_direction": receipt.movement_direction,
+        "reason": receipt.reason,
     })
 }
 
@@ -17866,57 +20532,85 @@ fn actionable_gap_outcomes_markdown(report: &ActionableGapOutcomesReport) -> Str
             state_counts.get(state).copied().unwrap_or(0),
         );
     }
+    audit_push_count(
+        &mut out,
+        "orphaned_receipts",
+        report.orphaned_receipts.len(),
+    );
     out.push('\n');
 
     out.push_str("## Outcomes\n\n");
     if report.outcomes.is_empty() {
         out.push_str("No actionable-gap packets were present.\n");
-        return out;
+    } else {
+        for outcome in &report.outcomes {
+            out.push_str(&format!(
+                "### `{}`\n\n",
+                audit_markdown_cell(&outcome.canonical_gap_id)
+            ));
+            out.push_str("| Field | Value |\n");
+            out.push_str("| --- | --- |\n");
+            out.push_str(&format!(
+                "| Outcome state | `{}` |\n",
+                audit_markdown_cell(&outcome.outcome_state)
+            ));
+            out.push_str(&format!(
+                "| Evidence class | `{}` |\n",
+                audit_markdown_cell(&outcome.evidence_class)
+            ));
+            out.push_str(&format!(
+                "| Repair kind | `{}` |\n",
+                audit_markdown_cell(&outcome.repair_kind)
+            ));
+            out.push_str(&format!(
+                "| Verify command | `{}` |\n",
+                audit_markdown_cell(&outcome.verify_command)
+            ));
+            out.push_str(&format!(
+                "| Receipt state | `{}` |\n",
+                audit_markdown_cell(&outcome.receipt_state)
+            ));
+            out.push_str(&format!(
+                "| Movement source | {} |\n",
+                audit_markdown_cell(outcome.movement_source.as_deref().unwrap_or("none"))
+            ));
+            out.push_str(&format!(
+                "| Movement | {} |\n",
+                audit_markdown_cell(
+                    outcome
+                        .movement_direction
+                        .as_deref()
+                        .unwrap_or("no movement artifact")
+                )
+            ));
+            out.push_str(&format!(
+                "| Reason | {} |\n\n",
+                audit_markdown_cell(&outcome.reason)
+            ));
+        }
     }
-    for outcome in &report.outcomes {
-        out.push_str(&format!(
-            "### `{}`\n\n",
-            audit_markdown_cell(&outcome.canonical_gap_id)
-        ));
-        out.push_str("| Field | Value |\n");
-        out.push_str("| --- | --- |\n");
-        out.push_str(&format!(
-            "| Outcome state | `{}` |\n",
-            audit_markdown_cell(&outcome.outcome_state)
-        ));
-        out.push_str(&format!(
-            "| Evidence class | `{}` |\n",
-            audit_markdown_cell(&outcome.evidence_class)
-        ));
-        out.push_str(&format!(
-            "| Repair kind | `{}` |\n",
-            audit_markdown_cell(&outcome.repair_kind)
-        ));
-        out.push_str(&format!(
-            "| Verify command | `{}` |\n",
-            audit_markdown_cell(&outcome.verify_command)
-        ));
-        out.push_str(&format!(
-            "| Receipt state | `{}` |\n",
-            audit_markdown_cell(&outcome.receipt_state)
-        ));
-        out.push_str(&format!(
-            "| Movement source | {} |\n",
-            audit_markdown_cell(outcome.movement_source.as_deref().unwrap_or("none"))
-        ));
-        out.push_str(&format!(
-            "| Movement | {} |\n",
-            audit_markdown_cell(
-                outcome
-                    .movement_direction
-                    .as_deref()
-                    .unwrap_or("no movement artifact")
-            )
-        ));
-        out.push_str(&format!(
-            "| Reason | {} |\n\n",
-            audit_markdown_cell(&outcome.reason)
-        ));
+    if !report.orphaned_receipts.is_empty() {
+        out.push_str("## Orphaned Receipts\n\n");
+        out.push_str("Receipts in the input that did not match any current actionable canonical gap packet remain visible here. They do not create new actionable gaps.\n\n");
+        out.push_str("| Receipt | Seam | Location | Movement | Reason |\n");
+        out.push_str("| --- | --- | --- | --- | --- |\n");
+        for receipt in &report.orphaned_receipts {
+            let location = match (&receipt.source_file, receipt.line) {
+                (Some(file), Some(line)) => format!("{file}:{line}"),
+                (Some(file), None) => file.clone(),
+                (None, Some(line)) => format!("line {line}"),
+                (None, None) => "unknown".to_string(),
+            };
+            out.push_str(&format!(
+                "| `{}` | {} | {} | {} | {} |\n",
+                audit_markdown_cell(&receipt.receipt_id),
+                audit_markdown_cell(receipt.seam_id.as_deref().unwrap_or("unknown")),
+                audit_markdown_cell(&location),
+                audit_markdown_cell(receipt.movement_direction.as_deref().unwrap_or("unknown")),
+                audit_markdown_cell(&receipt.reason)
+            ));
+        }
+        out.push('\n');
     }
     out.push_str("This report is advisory and does not run repairs, generate tests, execute mutation testing, or change public badge semantics.\n");
     out
@@ -18337,10 +21031,19 @@ fn audit_actionable_gap_repair_route_fields(
         audit_non_empty_string(canonical_item, &["repair_route", "target_test_type"])
             .filter(|value| !audit_guidance_field_is_missing(value))
             .unwrap_or_else(|| "target_test_type_unknown".to_string());
-    let assertion_shape = audit_actionable_gap_assertion_shape(record, canonical_item);
+    let canonical_assertion_shape =
+        audit_non_empty_string(canonical_item, &["repair_route", "suggested_assertion"])
+            .filter(|value| !audit_guidance_field_is_missing(value));
+    let assertion_shape = canonical_assertion_shape
+        .clone()
+        .or_else(|| {
+            audit_non_empty_string(record, &["recommendation", "assertion_shape", "kind"])
+                .filter(|value| !audit_guidance_field_is_missing(value))
+        })
+        .unwrap_or_else(|| "assertion_shape_unknown".to_string());
     let source = if repair_kind != "repair_route_unknown"
         && target_test_type != "target_test_type_unknown"
-        && assertion_shape != "assertion_shape_unknown"
+        && canonical_assertion_shape.is_some()
     {
         "canonical_item.repair_route"
     } else {
@@ -18352,13 +21055,6 @@ fn audit_actionable_gap_repair_route_fields(
         assertion_shape,
         source.to_string(),
     )
-}
-
-fn audit_actionable_gap_assertion_shape(record: &Value, canonical_item: &Value) -> String {
-    audit_non_empty_string(canonical_item, &["repair_route", "suggested_assertion"])
-        .or_else(|| audit_non_empty_string(record, &["recommendation", "assertion_shape", "kind"]))
-        .filter(|value| !audit_guidance_field_is_missing(value))
-        .unwrap_or_else(|| "assertion_shape_unknown".to_string())
 }
 
 fn audit_actionable_gap_verify_command_with_source(
@@ -41360,6 +44056,7 @@ fn check_droid_review_config_impl() -> Result<(), String> {
 mod tests {
     use std::io::Read;
 
+    use super::RiprSwarmCommand;
     use super::XtaskCommand;
     use super::dispatch;
     use super::run::{
@@ -41389,7 +44086,8 @@ mod tests {
         TestOracleClass, WorktreeDoctorFinding, WorktreeDoctorSeverity,
         actionable_gap_outcomes_json, actionable_gap_outcomes_markdown,
         actionable_gap_outcomes_report_from_values, actionable_gap_outcomes_report_impl,
-        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
+        badge_artifact_command_args, badge_artifact_command_label, badge_artifact_jobs,
+        badge_artifact_native_slot, badge_artifacts_impl_with_runners,
         badge_artifacts_summary_markdown, badge_basis_derived_ripr_plus_snapshot,
         badge_basis_needs_repo_badge_plus_job, badge_basis_report_markdown,
         badge_basis_seam_native_counts, badge_diff_policy_violations, badge_native_audit_snapshot,
@@ -41435,26 +44133,28 @@ mod tests {
         lane1_evidence_audit_json, lane1_evidence_audit_limited_report,
         lane1_evidence_audit_markdown, lane1_evidence_audit_repo_exposure_args,
         lane1_evidence_audit_report_from_complete_repo_exposure,
-        lane1_evidence_audit_timeout_error, local_context_line_findings, local_markdown_target,
+        lane1_evidence_audit_timeout_error, limited_badge_artifacts_json,
+        limited_badge_artifacts_markdown, local_context_line_findings, local_markdown_target,
         lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
         markdown_links_in_text, mutation_calibration_report_json,
         mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
         next_spec_id_from_ids, no_panic_toml_string, non_rust_programming_retention_reason,
         normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
-        panic_family_from_pattern, parse_campaign_manifest, parse_file_policy_allowlist,
-        parse_gh_pr_status_args, parse_gh_pr_status_pull_request, parse_inline_array,
-        parse_mutation_calibration_args, parse_mutation_outcomes_json,
+        panic_family_from_pattern, parse_actionable_gap_outcomes_args, parse_campaign_manifest,
+        parse_file_policy_allowlist, parse_gh_pr_status_args, parse_gh_pr_status_pull_request,
+        parse_inline_array, parse_mutation_calibration_args, parse_mutation_outcomes_json,
         parse_no_panic_allowlist_toml, parse_no_panic_allowlist_toml_v2,
         parse_pr_triage_pull_requests, parse_reason, parse_repo_exposure_static_seams,
-        parse_repo_exposure_summary_counts, parse_required_status_contexts,
-        parse_sarif_policy_args, parse_sarif_policy_results, parse_static_language_allowlist,
-        parse_string_value, parse_targeted_test_outcome_args, pr_body_validation_warning,
-        pr_checks_summary, pr_ready_json, pr_ready_markdown, pr_ready_next_action, pr_ready_status,
-        pr_ready_status_from_report_status, pr_sensitive_file_reason, pr_shape_warnings,
-        pr_summary_body, pr_title_family, pr_triage_findings, pr_triage_json, pr_triage_markdown,
-        pr_triage_queue_dispositions, precommit_report_body, public_badge_basis_violations,
-        public_contract_rows, read_lsp_cockpit_json_value, read_mutation_input_json, receipt_json,
-        receipt_specs, receipt_status_from_reports, render_no_panic_allowlist_proposals_markdown,
+        parse_repo_exposure_summary_counts, parse_required_status_contexts, parse_ripr_swarm_args,
+        parse_ripr_swarm_plan_args, parse_sarif_policy_args, parse_sarif_policy_results,
+        parse_static_language_allowlist, parse_string_value, parse_targeted_test_outcome_args,
+        pr_body_validation_warning, pr_checks_summary, pr_ready_json, pr_ready_markdown,
+        pr_ready_next_action, pr_ready_status, pr_ready_status_from_report_status,
+        pr_sensitive_file_reason, pr_shape_warnings, pr_summary_body, pr_title_family,
+        pr_triage_findings, pr_triage_json, pr_triage_markdown, pr_triage_queue_dispositions,
+        precommit_report_body, public_badge_basis_violations, public_contract_rows,
+        read_lsp_cockpit_json_value, read_mutation_input_json, receipt_json, receipt_specs,
+        receipt_status_from_reports, render_no_panic_allowlist_proposals_markdown,
         render_no_panic_allowlist_proposals_toml, repo_badge_artifact_command_args,
         repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
         repo_exposure_latency_json, repo_exposure_latency_markdown, repo_exposure_latency_run,
@@ -41463,6 +44163,10 @@ mod tests {
         report_index_json, report_index_markdown, report_index_missing_expected,
         report_index_repo_ops_packets, report_index_repo_ops_status, report_status_from_text,
         ripr_command_literals_in_text, ripr_debug_binary, ripr_pre_commit_hook,
+        ripr_swarm_attempt_dry_run_from_actionable_gaps_value, ripr_swarm_attempt_dry_run_markdown,
+        ripr_swarm_plan_blocked_packets, ripr_swarm_plan_blocked_report,
+        ripr_swarm_plan_from_actionable_gaps_value, ripr_swarm_plan_json, ripr_swarm_plan_markdown,
+        ripr_swarm_plan_packet_is_high_confidence, ripr_swarm_plan_ready_packets,
         run_ci_full_evidence_gates, sarif_policy_report_json, sarif_policy_report_markdown,
         semantic_selector_matches, should_scan_static_language_path, should_skip_path,
         sorted_allowlist_content, sorted_capability_blocks_content, sorted_command_catalog_content,
@@ -41472,10 +44176,14 @@ mod tests {
         suspicious_runtime_file_names, targeted_test_outcome, targeted_test_outcome_report_json,
         targeted_test_outcome_report_markdown, test_efficiency_entry, test_efficiency_report_json,
         test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
-        test_oracle_tests_in_text, unknown_command_message, validate_local_context_allowlist,
+        test_oracle_tests_in_text, unknown_command_message,
+        validate_actionable_gap_outcomes_fixture_case,
+        validate_actionable_gap_outcomes_fixture_corpus, validate_local_context_allowlist,
+        validate_swarm_plan_packet_fixture_case, validate_swarm_plan_packet_fixture_corpus,
         vscode_compile_command, vscode_extension_dir, vscode_package_command,
         vscode_package_version, vscode_test_e2e_command, windows_absolute_path_tokens,
         workflow_runtime_violations, worktree, worktree_doctor_findings,
+        write_badge_artifacts_after_build, write_badge_artifacts_from_diff,
         write_evidence_health_report_with_runner, write_evidence_health_report_with_runners,
         write_lane1_evidence_audit_repo_exposure_with_runner, write_repo_exposure_latency_report,
     };
@@ -51539,11 +54247,6 @@ reason = "second"
     fn badge_artifact_command_args_matches_documented_invocation() -> Result<(), String> {
         let args = badge_artifact_command_args("badge-plus-json");
         let expected: Vec<String> = [
-            "run",
-            "-p",
-            "ripr",
-            "--quiet",
-            "--",
             "check",
             "--root",
             ".",
@@ -51575,11 +54278,6 @@ reason = "second"
             // The static prefix must be byte-identical across formats.
             let prefix = &args[..args.len() - 1];
             let expected_prefix: Vec<String> = [
-                "run",
-                "-p",
-                "ripr",
-                "--quiet",
-                "--",
                 "check",
                 "--root",
                 ".",
@@ -51596,6 +54294,324 @@ reason = "second"
                 ));
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn badge_artifacts_impl_with_runners_writes_diff_and_uses_built_binary() -> Result<(), String> {
+        with_temp_cwd("badge-artifacts-impl-with-runners", |_root| {
+            let diff = "diff --git a/fixture.json b/fixture.json\n+large fixture\n".to_string();
+            let expected_binary = ripr_debug_binary();
+            let mut build_calls = 0;
+            let mut formats = Vec::new();
+
+            badge_artifacts_impl_with_runners(
+                || Ok(diff.clone()),
+                |timeout| {
+                    build_calls += 1;
+                    assert_eq!(timeout.as_millis(), 90_000);
+                    Ok(TimedOutput {
+                        status: Some(success_exit_status()),
+                        stdout: String::new(),
+                        stderr: String::new(),
+                        duration: Duration::from_millis(12),
+                        timed_out: false,
+                    })
+                },
+                |binary, format, args, timeout| {
+                    formats.push(format.to_string());
+                    assert_eq!(binary, expected_binary.as_path());
+                    assert_eq!(args, badge_artifact_command_args(format).as_slice());
+                    assert_eq!(timeout.as_millis(), 90_000);
+                    let stdout = match format {
+                        "badge-json" => STUB_RIPR_NATIVE_JSON,
+                        "badge-plus-json" => STUB_RIPR_PLUS_NATIVE_JSON,
+                        _ => r#"{"label":"stub","message":"0","color":"brightgreen"}"#,
+                    };
+                    Ok(TimedOutput {
+                        status: Some(success_exit_status()),
+                        stdout: stdout.to_string(),
+                        stderr: String::new(),
+                        duration: Duration::from_millis(12),
+                        timed_out: false,
+                    })
+                },
+            )?;
+
+            assert_eq!(build_calls, 1);
+            assert_eq!(
+                formats,
+                vec![
+                    "badge-json",
+                    "badge-shields",
+                    "badge-plus-json",
+                    "badge-plus-shields"
+                ]
+            );
+            assert_eq!(
+                fs::read_to_string("target/ripr/badge-input.diff").unwrap(),
+                diff
+            );
+            assert!(Path::new("target/ripr/reports/ripr-badge.json").exists());
+            assert!(Path::new("target/ripr/reports/ripr-plus-badge.json").exists());
+            assert!(!Path::new("target/ripr/reports/badge-artifacts-limitation.json").exists());
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn badge_artifacts_timeout_writes_named_limitation_artifacts() -> Result<(), String> {
+        with_temp_cwd("badge-artifacts-timeout", |_root| {
+            write(
+                Path::new("target/ripr/reports/ripr-badge.json"),
+                "stale badge",
+            );
+            write_badge_artifacts_from_diff(
+                "diff --git a/fixture.json b/fixture.json\n+large fixture\n",
+                Path::new("target/debug/ripr"),
+                Duration::from_secs(90),
+                |binary, format, args, timeout| {
+                    assert_eq!(binary, Path::new("target/debug/ripr"));
+                    assert_eq!(format, "badge-json");
+                    assert_eq!(timeout.as_millis(), 90_000);
+                    assert_eq!(
+                        badge_artifact_command_label(binary, args),
+                        "target/debug/ripr check --root . --diff target/ripr/badge-input.diff --format badge-json"
+                    );
+                    Ok(TimedOutput {
+                        status: None,
+                        stdout: "partial stdout".to_string(),
+                        stderr: "still analyzing large fixture diff\n".to_string(),
+                        duration: Duration::from_millis(90_001),
+                        timed_out: true,
+                    })
+                },
+            )?;
+
+            let json_path = Path::new("target/ripr/reports/badge-artifacts-limitation.json");
+            let json = fs::read_to_string(json_path).map_err(|err| err.to_string())?;
+            let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+            assert_eq!(value["status"], "warn");
+            assert_eq!(value["phase"], "badge_artifacts");
+            assert_eq!(value["format"], "badge-json");
+            assert_eq!(
+                value["limitation"]["category"],
+                "badge_artifacts_diff_analysis_timeout"
+            );
+            assert_eq!(value["generation"]["timed_out"], true);
+            assert_eq!(value["input"]["diff_bytes"], 56);
+            assert_eq!(
+                value["non_claims"][0],
+                "no badge count claimed from this limited run"
+            );
+
+            let markdown = fs::read_to_string("target/ripr/reports/ripr-badges.md")
+                .map_err(|err| err.to_string())?;
+            assert!(markdown.contains("Status: warn"));
+            assert!(markdown.contains("badge_artifacts_diff_analysis_timeout"));
+            assert!(markdown.contains("No badge count is claimed"));
+            assert!(markdown.contains("still analyzing large fixture diff"));
+            assert!(
+                !Path::new("target/ripr/reports/ripr-badge.json").exists(),
+                "limited badge artifact generation must not leave stale diff badge output"
+            );
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn badge_artifacts_build_timeout_writes_limitation_without_running_artifacts()
+    -> Result<(), String> {
+        with_temp_cwd("badge-artifacts-build-timeout", |_root| {
+            write(
+                Path::new("target/ripr/reports/ripr-badge.json"),
+                "stale badge",
+            );
+            write_badge_artifacts_after_build(
+                "diff --git a/fixture.json b/fixture.json\n+large fixture\n",
+                Path::new("target/debug/ripr"),
+                Duration::from_secs(90),
+                |_timeout| {
+                    Ok(TimedOutput {
+                        status: Some(failure_exit_status()),
+                        stdout: String::new(),
+                        stderr: "build still compiling\n".to_string(),
+                        duration: Duration::from_millis(90_001),
+                        timed_out: true,
+                    })
+                },
+                |_binary, _format, _args, _timeout| {
+                    Err("artifact runner should not run after build timeout".to_string())
+                },
+            )?;
+
+            let json_path = Path::new("target/ripr/reports/badge-artifacts-limitation.json");
+            let json = fs::read_to_string(json_path).map_err(|err| err.to_string())?;
+            let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+            assert_eq!(value["format"], "badge-build");
+            assert_eq!(
+                value["limitation"]["category"],
+                "badge_artifacts_build_timeout"
+            );
+            assert_eq!(
+                value["limitation"]["summary"],
+                "Badge artifact generation timed out while building the ripr binary before diff analysis could run."
+            );
+            assert!(
+                value["limitation"]["repair_route"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("cargo build output")
+            );
+            assert!(
+                !value["limitation"]["repair_route"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("narrow the diff input")
+            );
+            assert_eq!(value["generation"]["command"], "cargo build -p ripr");
+            assert_eq!(value["generation"]["timed_out"], true);
+            assert!(
+                !Path::new("target/ripr/reports/ripr-badge.json").exists(),
+                "limited build must not leave stale diff badge output"
+            );
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn badge_artifacts_build_failure_writes_build_incomplete_limitation() -> Result<(), String> {
+        with_temp_cwd("badge-artifacts-build-failure", |_root| {
+            write_badge_artifacts_after_build(
+                "diff --git a/fixture.json b/fixture.json\n+large fixture\n",
+                Path::new("target/debug/ripr"),
+                Duration::from_secs(90),
+                |_timeout| {
+                    Ok(TimedOutput {
+                        status: Some(failure_exit_status()),
+                        stdout: String::new(),
+                        stderr: "build failed\n".to_string(),
+                        duration: Duration::from_millis(120),
+                        timed_out: false,
+                    })
+                },
+                |_binary, _format, _args, _timeout| {
+                    Err("artifact runner should not run after build failure".to_string())
+                },
+            )?;
+
+            let json_path = Path::new("target/ripr/reports/badge-artifacts-limitation.json");
+            let json = fs::read_to_string(json_path).map_err(|err| err.to_string())?;
+            let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+            assert_eq!(value["format"], "badge-build");
+            assert_eq!(
+                value["limitation"]["category"],
+                "badge_artifacts_build_incomplete"
+            );
+            assert_eq!(
+                value["limitation"]["summary"],
+                "Badge artifact generation could not build the ripr binary before diff analysis could run."
+            );
+            assert_eq!(value["generation"]["timed_out"], false);
+            assert_eq!(value["generation"]["exit_code"], 1);
+            assert!(
+                value["limitation"]["repair_route"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("cargo build exit status")
+            );
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn badge_artifacts_successful_build_runs_direct_ripr_binary() -> Result<(), String> {
+        with_temp_cwd("badge-artifacts-build-success", |_root| {
+            let mut artifact_runner_called = false;
+            write_badge_artifacts_after_build(
+                "diff --git a/fixture.json b/fixture.json\n+large fixture\n",
+                Path::new("target/debug/ripr"),
+                Duration::from_secs(90),
+                |_timeout| {
+                    Ok(TimedOutput {
+                        status: Some(success_exit_status()),
+                        stdout: String::new(),
+                        stderr: String::new(),
+                        duration: Duration::from_millis(12),
+                        timed_out: false,
+                    })
+                },
+                |binary, format, args, timeout| {
+                    artifact_runner_called = true;
+                    assert_eq!(binary, Path::new("target/debug/ripr"));
+                    assert_eq!(format, "badge-json");
+                    assert_eq!(timeout.as_millis(), 90_000);
+                    assert_eq!(
+                        badge_artifact_command_label(binary, args),
+                        "target/debug/ripr check --root . --diff target/ripr/badge-input.diff --format badge-json"
+                    );
+                    Ok(TimedOutput {
+                        status: None,
+                        stdout: "partial stdout".to_string(),
+                        stderr: "analysis timed out\n".to_string(),
+                        duration: Duration::from_millis(90_001),
+                        timed_out: true,
+                    })
+                },
+            )?;
+
+            if !artifact_runner_called {
+                return Err("expected successful build to run badge artifact command".to_string());
+            }
+            let json_path = Path::new("target/ripr/reports/badge-artifacts-limitation.json");
+            let json = fs::read_to_string(json_path).map_err(|err| err.to_string())?;
+            let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+            assert_eq!(value["format"], "badge-json");
+            assert_eq!(value["generation"]["timed_out"], true);
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn badge_artifacts_incomplete_output_names_limitation() -> Result<(), String> {
+        let output = TimedOutput {
+            status: None,
+            stdout: "partial stdout".to_string(),
+            stderr: "cargo failed before badge JSON\n".to_string(),
+            duration: Duration::from_millis(12),
+            timed_out: false,
+        };
+        let command = "cargo run -p ripr --quiet -- check --format badge-json";
+
+        let json = limited_badge_artifacts_json(
+            "badge-json",
+            command,
+            Duration::from_millis(90),
+            17,
+            &output,
+        )?;
+        let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(
+            value["limitation"]["category"],
+            "badge_artifacts_generation_incomplete"
+        );
+        assert_eq!(value["generation"]["timed_out"], false);
+        assert_eq!(value["generation"]["stderr_bytes"], 31);
+        assert_eq!(
+            value["limitation"]["repair_route"],
+            "inspect the badge artifact command exit status, stdout/stderr, and diff input before claiming badge counts from this run"
+        );
+
+        let markdown = limited_badge_artifacts_markdown(
+            "badge-json",
+            command,
+            Duration::from_millis(90),
+            17,
+            &output,
+        );
+        assert!(markdown.contains("badge_artifacts_generation_incomplete"));
+        assert!(markdown.contains("cargo failed before badge JSON"));
+        assert!(markdown.contains("No badge count is claimed"));
         Ok(())
     }
 
@@ -54862,15 +57878,6 @@ jobs:
                 XtaskCommand::Metrics,
                 XtaskCommand::TestOracleReport,
                 XtaskCommand::TestEfficiencyReport,
-                XtaskCommand::BadgeArtifacts,
-                XtaskCommand::RepoBadgeArtifacts(Vec::new()),
-                XtaskCommand::RepoSeamInventory,
-                XtaskCommand::RepoExposureReport,
-                XtaskCommand::RepoExposureLatencyReport,
-                XtaskCommand::EvidenceHealth,
-                XtaskCommand::Lane1EvidenceAudit,
-                XtaskCommand::EvidenceQualityScorecard,
-                XtaskCommand::EvidenceQualityTrend(Vec::new()),
                 XtaskCommand::ActionableGapOutcomes(Vec::new()),
                 XtaskCommand::AgentSeamPackets(Some(".".to_string())),
                 XtaskCommand::LspCockpitReport,
@@ -54879,12 +57886,23 @@ jobs:
                 XtaskCommand::TargetedTestOutcome(Vec::new()),
                 XtaskCommand::MutationCalibration(Vec::new()),
                 XtaskCommand::SarifPolicy(Vec::new()),
-                XtaskCommand::CheckBadgeEndpoints(Vec::new()),
                 XtaskCommand::Dogfood,
                 XtaskCommand::Critic,
                 XtaskCommand::Reports(vec!["index".to_string()]),
                 XtaskCommand::Receipts(Vec::new()),
                 XtaskCommand::GoldenDrift,
+            ];
+            let live_repo_analysis_commands = [
+                "badge-artifacts",
+                "repo-badge-artifacts",
+                "repo-seam-inventory",
+                "repo-exposure-report",
+                "repo-exposure-latency-report",
+                "evidence-health",
+                "lane1-evidence-audit",
+                "evidence-quality-scorecard",
+                "evidence-quality-trend",
+                "check-badge-endpoints",
             ];
 
             for command in commands {
@@ -54897,6 +57915,13 @@ jobs:
                             "{label} should either succeed or return an actionable error"
                         ));
                     }
+                }
+            }
+            for command_name in live_repo_analysis_commands {
+                if !known_xtask_command(command_name) {
+                    return Err(format!(
+                        "{command_name} should remain a known xtask command"
+                    ));
                 }
             }
 
@@ -56848,6 +59873,1376 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn ripr_swarm_plan_ranks_ready_packets_and_blocks_missing_context() -> Result<(), String> {
+        let actionable_gaps = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "report": "actionable-gaps",
+            "summary": {
+                "raw_signals": 8,
+                "canonical_items": 4,
+                "actionable_gaps": 4
+            },
+            "packets": [
+                {
+                    "packet_id": "packet:ready-boundary",
+                    "canonical_gap_id": "gap:ready-boundary",
+                    "evidence_class": "predicate_boundary",
+                    "gap_state": "actionable",
+                    "actionability": "extend_related_test",
+                    "source_file": "src/pricing.rs",
+                    "repair_kind": "add_boundary_assertion",
+                    "target_test_type": "boundary_discriminator",
+                    "assertion_shape": "assert_eq!(discounted_total(threshold), expected)",
+                    "repair_route_source": "canonical_item.repair_route",
+                    "verify_command": "cargo xtask evidence-quality-scorecard",
+                    "receipt_command_or_path": "cargo xtask receipts check",
+                    "related_test_or_observer": {"file": "tests/pricing.rs", "name": "threshold"},
+                    "confidence_basis": "fixture_backed",
+                    "must_not_change": ["Do not edit production code by default."],
+                    "raw_findings": [{"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed"}],
+                    "static_limitations": [],
+                    "public_projection_eligible": true
+                },
+                {
+                    "canonical_gap_id": "gap:missing-receipt",
+                    "evidence_class": "error_path",
+                    "gap_state": "actionable",
+                    "actionability": "add_exact_error_variant",
+                    "source_file": "src/parser.rs",
+                    "repair_kind": "add_exact_error_variant",
+                    "target_test_type": "error_variant",
+                    "assertion_shape": "matches!(..., Err(Error::Missing))",
+                    "repair_route_source": "canonical_item.repair_route",
+                    "verify_command": "cargo test parser_missing",
+                    "related_test_or_observer": {"file": "tests/parser.rs", "name": "missing"},
+                    "confidence_basis": "static_only",
+                    "must_not_change": ["Do not edit production code by default."],
+                    "raw_findings": [{"file": "src/parser.rs", "line": 10, "kind": "weakly_exposed"}],
+                    "static_limitations": []
+                },
+                {
+                    "canonical_gap_id": "gap:missing-verify",
+                    "evidence_class": "side_effect",
+                    "gap_state": "actionable",
+                    "actionability": "add_side_effect_observer",
+                    "source_file": "src/events.rs",
+                    "repair_kind": "add_side_effect_observer",
+                    "target_test_type": "side_effect_observer",
+                    "assertion_shape": "assert event emitted",
+                    "repair_route_source": "canonical_item.repair_route",
+                    "receipt_command_or_path": "cargo xtask receipts check",
+                    "related_test_or_observer": {"file": "tests/events.rs", "name": "event"},
+                    "confidence_basis": "static_only",
+                    "must_not_change": ["Do not edit production code by default."],
+                    "raw_findings": [{"file": "src/events.rs", "line": 7, "kind": "weakly_exposed"}],
+                    "static_limitations": []
+                },
+                {
+                    "canonical_gap_id": "gap:static-limit",
+                    "evidence_class": "config_or_policy_constant",
+                    "gap_state": "actionable",
+                    "actionability": "inspect_visibility",
+                    "source_file": "src/config.rs",
+                    "repair_kind": "inspect_visibility",
+                    "target_test_type": "output_observer",
+                    "assertion_shape": "trace config label",
+                    "repair_route_source": "canonical_item.repair_route",
+                    "verify_command": "cargo xtask evidence-quality-scorecard",
+                    "receipt_command_or_path": "cargo xtask receipts check",
+                    "related_test_or_observer": {"file": "tests/config.rs", "name": "config"},
+                    "confidence_basis": "static_only",
+                    "must_not_change": ["Do not edit production code by default."],
+                    "raw_findings": [{"file": "src/config.rs", "line": 3, "kind": "static_unknown"}],
+                    "static_limitations": [
+                        {"category": "opaque_helper_call", "repair_route": "add fixture-backed helper tracing"}
+                    ]
+                }
+            ]
+        });
+
+        let report = ripr_swarm_plan_from_actionable_gaps_value(
+            10,
+            Path::new("target/ripr/reports/actionable-gaps.json"),
+            &actionable_gaps,
+        );
+        let json = ripr_swarm_plan_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+
+        assert_eq!(value["report"], "swarm-plan");
+        assert_eq!(
+            value["summary"]["packets_total"],
+            serde_json::Value::from(4)
+        );
+        assert_eq!(
+            value["summary"]["swarm_ready_packets"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["summary"]["blocked_packets"],
+            serde_json::Value::from(3)
+        );
+        assert_eq!(
+            value["summary"]["missing_verify_command"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["summary"]["missing_receipt_command"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["summary"]["static_limitation_packets"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["summary"]["high_confidence_packets"],
+            serde_json::Value::from(1)
+        );
+        assert_eq!(
+            value["top_ready_packets"][0]["canonical_gap_id"],
+            "gap:ready-boundary"
+        );
+        assert_eq!(
+            value["top_ready_packets"][0]["receipt_command"],
+            "cargo xtask receipts check"
+        );
+        assert_eq!(value["top_ready_packets"][0]["swarm_state"], "queued");
+        assert_eq!(
+            value["top_blocked_packets"][0]["swarm_state"],
+            "blocked_by_missing_context"
+        );
+        let blocked_packets = value["top_blocked_packets"]
+            .as_array()
+            .ok_or_else(|| "top_blocked_packets must be an array".to_string())?;
+        assert!(
+            blocked_packets
+                .iter()
+                .any(|packet| packet["swarm_state"] == "blocked_by_static_limitation")
+        );
+        let missing_verify_or_receipt = value["top_missing_verify_or_receipt"]
+            .as_array()
+            .ok_or_else(|| "top_missing_verify_or_receipt must be an array".to_string())?;
+        assert_eq!(missing_verify_or_receipt.len(), 2);
+        let must_not_infer = value["must_not_infer"]
+            .as_array()
+            .ok_or_else(|| "must_not_infer must be an array".to_string())?;
+        assert!(
+            must_not_infer
+                .iter()
+                .any(|claim| claim == "do not rank packets without receipt_command as swarm-ready")
+        );
+
+        let markdown = ripr_swarm_plan_markdown(&report);
+        assert!(markdown.contains("# RIPR Swarm Plan"));
+        assert!(markdown.contains("gap:ready-boundary"));
+        assert!(markdown.contains("gap:static-limit"));
+        assert!(markdown.contains("Do not rank static limitations as repair-ready."));
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_command_parses_plan_args() {
+        let command = XtaskCommand::parse([
+            "ripr-swarm".to_string(),
+            "plan".to_string(),
+            "--top".to_string(),
+            "3".to_string(),
+        ]);
+        assert_eq!(
+            command,
+            XtaskCommand::RiprSwarm(vec![
+                "plan".to_string(),
+                "--top".to_string(),
+                "3".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn ripr_swarm_command_parses_attempt_dry_run_args() -> Result<(), String> {
+        let command = XtaskCommand::parse([
+            "ripr-swarm".to_string(),
+            "attempt".to_string(),
+            "--packet".to_string(),
+            "gap:ready-boundary".to_string(),
+            "--dry-run".to_string(),
+        ]);
+        assert_eq!(
+            command,
+            XtaskCommand::RiprSwarm(vec![
+                "attempt".to_string(),
+                "--packet".to_string(),
+                "gap:ready-boundary".to_string(),
+                "--dry-run".to_string()
+            ])
+        );
+
+        let parsed = parse_ripr_swarm_args(&[
+            "attempt".to_string(),
+            "--packet".to_string(),
+            "gap:ready-boundary".to_string(),
+            "--dry-run".to_string(),
+        ])?;
+        let RiprSwarmCommand::Attempt(args) = parsed else {
+            return Err("expected ripr-swarm attempt args".to_string());
+        };
+        assert_eq!(args.packet_id, "gap:ready-boundary");
+        assert!(args.dry_run);
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_attempt_requires_packet_and_dry_run() {
+        for (args, expected) in [
+            (
+                vec!["attempt".to_string(), "--dry-run".to_string()],
+                "requires --packet <id>",
+            ),
+            (
+                vec![
+                    "attempt".to_string(),
+                    "--packet".to_string(),
+                    "gap:ready-boundary".to_string(),
+                ],
+                "requires --dry-run",
+            ),
+            (
+                vec![
+                    "attempt".to_string(),
+                    "--packet".to_string(),
+                    "gap:ready-boundary".to_string(),
+                    "--apply".to_string(),
+                ],
+                "unknown ripr-swarm attempt argument",
+            ),
+        ] {
+            let error = parse_ripr_swarm_args(&args).expect_err("attempt args should fail");
+            assert!(
+                error.contains(expected),
+                "expected {expected:?} in {error:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn ripr_swarm_attempt_dry_run_renders_bounded_packet_context() -> Result<(), String> {
+        let actionable_gaps = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "report": "actionable-gaps",
+            "packets": [
+                {
+                    "packet_id": "packet:ready-boundary",
+                    "canonical_gap_id": "gap:ready-boundary",
+                    "evidence_class": "predicate_boundary",
+                    "gap_state": "actionable",
+                    "actionability": "extend_related_test",
+                    "source_file": "src/pricing.rs",
+                    "repair_kind": "add_boundary_assertion",
+                    "target_test_type": "boundary_discriminator",
+                    "assertion_shape": "assert_eq!(discounted_total(threshold), expected)",
+                    "repair_route": {
+                        "repair_kind": "add_boundary_assertion",
+                        "target_test_type": "boundary_discriminator",
+                        "assertion_shape": "assert_eq!(discounted_total(threshold), expected)"
+                    },
+                    "verify_command": "cargo test -p ripr pricing_threshold",
+                    "receipt_command": "cargo xtask receipts check",
+                    "related_test_or_observer": {
+                        "file": "tests/pricing.rs",
+                        "name": "pricing_threshold"
+                    },
+                    "confidence_basis": "fixture_backed",
+                    "must_not_change": [
+                        "Do not edit production code by default."
+                    ],
+                    "raw_findings": [
+                        {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed"}
+                    ],
+                    "static_limitations": [],
+                    "public_projection_eligible": true
+                }
+            ]
+        });
+
+        let attempt = ripr_swarm_attempt_dry_run_from_actionable_gaps_value(
+            &actionable_gaps,
+            "packet:ready-boundary",
+        )?;
+        assert_eq!(attempt.packet_id, "packet:ready-boundary");
+        assert_eq!(attempt.canonical_gap_id, "gap:ready-boundary");
+        assert_eq!(attempt.swarm_state, "queued");
+        assert_eq!(attempt.repair_kind, "add_boundary_assertion");
+        assert_eq!(
+            attempt.related_test_or_observer,
+            "tests/pricing.rs::pricing_threshold"
+        );
+        assert!(
+            attempt
+                .expected_evidence_movement
+                .contains("-1 actionable canonical gap")
+        );
+
+        let markdown = ripr_swarm_attempt_dry_run_markdown(&attempt);
+        for expected in [
+            "# RIPR Swarm Attempt Dry Run",
+            "gap:ready-boundary",
+            "add_boundary_assertion",
+            "cargo test -p ripr pricing_threshold",
+            "cargo xtask receipts check",
+            "Do not edit production code by default.",
+            "Raw findings are supporting evidence only: 1 finding(s).",
+            "does not edit files, run tests, call providers",
+        ] {
+            assert!(
+                markdown.contains(expected),
+                "expected dry-run markdown to contain {expected:?}:\n{markdown}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_attempt_dry_run_reports_blocked_packet_context() -> Result<(), String> {
+        let actionable_gaps = serde_json::json!({
+            "packets": [
+                {
+                    "canonical_gap_id": "gap:static-limit",
+                    "evidence_class": "config_or_policy_constant",
+                    "gap_state": "actionable",
+                    "source_file": "src/config.rs",
+                    "repair_kind": "inspect_visibility",
+                    "target_test_type": "output_observer",
+                    "assertion_shape": "trace config label",
+                    "repair_route_source": "canonical_item.repair_route",
+                    "verify_command": "cargo xtask evidence-quality-scorecard",
+                    "receipt_command_or_path": "cargo xtask receipts check",
+                    "related_test_or_observer": {"file": "tests/config.rs", "name": "config"},
+                    "confidence_basis": "static_only",
+                    "must_not_change": ["Do not edit production code by default."],
+                    "raw_findings": [{"file": "src/config.rs", "line": 3, "kind": "static_unknown"}],
+                    "static_limitations": [
+                        {"category": "opaque_helper_call", "repair_route": "add fixture-backed helper tracing"}
+                    ]
+                }
+            ]
+        });
+
+        let attempt = ripr_swarm_attempt_dry_run_from_actionable_gaps_value(
+            &actionable_gaps,
+            "gap:static-limit",
+        )?;
+        assert_eq!(attempt.swarm_state, "blocked_by_static_limitation");
+        assert!(
+            attempt
+                .expected_evidence_movement
+                .contains("not repair-ready")
+        );
+        assert_eq!(attempt.static_limitations_count, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_plan_reports_blocked_input_states() -> Result<(), String> {
+        let report = ripr_swarm_plan_blocked_report(
+            5,
+            Path::new("target/ripr/reports/actionable-gaps.json"),
+            "missing",
+            "run `cargo xtask lane1-evidence-audit` first".to_string(),
+        );
+
+        assert_eq!(report.status, "blocked");
+        assert_eq!(report.input_state, "missing");
+        assert_eq!(report.top_limit, 5);
+        assert!(report.packets.is_empty());
+
+        let json = ripr_swarm_plan_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(value["status"], "blocked");
+        assert_eq!(value["input"]["state"], "missing");
+        assert_eq!(
+            value["summary"]["packets_total"],
+            serde_json::Value::from(0)
+        );
+
+        let markdown = ripr_swarm_plan_markdown(&report);
+        assert!(markdown.contains("run `cargo xtask lane1-evidence-audit` first"));
+        assert!(markdown.contains("No packets in this section."));
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_plan_accepts_structured_routes_and_candidate_context() -> Result<(), String> {
+        let actionable_gaps = serde_json::json!({
+            "summary": {"actionable_gaps": 1},
+            "packets": [
+                {
+                    "canonical_gap_id": "gap:structured",
+                    "evidence_class": "predicate_boundary",
+                    "gap_state": "actionable",
+                    "source_file": "src/lib.rs",
+                    "repair_kind": "add_boundary_assertion",
+                    "target_test_type": "boundary_discriminator",
+                    "assertion_shape": "assert_eq!(value, expected)",
+                    "repair_route": {
+                        "repair_kind": "add_boundary_assertion",
+                        "target_test_type": "boundary_discriminator",
+                        "assertion_shape": "assert_eq!(value, expected)"
+                    },
+                    "verify_command": "cargo test structured",
+                    "receipt_command": "cargo xtask receipts check",
+                    "candidate_value_or_observer": "tests/lib.rs::structured",
+                    "confidence_basis": "calibrated",
+                    "must_not_change": ["Do not edit production code by default."],
+                    "raw_findings": [],
+                    "static_limitations": [],
+                    "public_projection_eligible": true
+                },
+                {
+                    "canonical_gap_id": "gap:report-only",
+                    "evidence_class": "static_unknown",
+                    "gap_state": "report_only",
+                    "source_file": "src/opaque.rs",
+                    "repair_kind": "repair_kind_unknown",
+                    "target_test_type": "target_test_type_unknown",
+                    "assertion_shape": "assertion_shape_unknown",
+                    "verify_command": "verify_command_unknown",
+                    "receipt_command": "receipt_command_unknown",
+                    "confidence_basis": "confidence_basis_unknown",
+                    "must_not_change": []
+                }
+            ]
+        });
+
+        let report = ripr_swarm_plan_from_actionable_gaps_value(
+            10,
+            Path::new("target/ripr/reports/actionable-gaps.json"),
+            &actionable_gaps,
+        );
+        let ready = ripr_swarm_plan_ready_packets(&report);
+        assert_eq!(ready.len(), 1);
+        assert_eq!(ready[0].canonical_gap_id, "gap:structured");
+        assert!(ready[0].related_test_or_observer_available);
+        assert!(ripr_swarm_plan_packet_is_high_confidence(&ready[0]));
+
+        let blocked = ripr_swarm_plan_blocked_packets(&report);
+        assert_eq!(blocked.len(), 1);
+        assert_eq!(blocked[0].swarm_state, "blocked_by_missing_context");
+        assert!(
+            blocked[0]
+                .missing_context
+                .iter()
+                .any(|field| field == "actionable_gap_state")
+        );
+        assert!(
+            blocked[0]
+                .missing_context
+                .iter()
+                .any(|field| field == "repair_route")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_plan_blocks_malformed_actionable_gap_reports() {
+        let report = ripr_swarm_plan_from_actionable_gaps_value(
+            10,
+            Path::new("target/ripr/reports/actionable-gaps.json"),
+            &serde_json::json!({"summary": {"actionable_gaps": 1}}),
+        );
+
+        assert_eq!(report.status, "blocked");
+        assert_eq!(report.input_state, "malformed");
+        assert!(report.packets.is_empty());
+        assert!(
+            report
+                .input_limitation
+                .as_deref()
+                .is_some_and(|limitation| limitation.contains("`packets` array"))
+        );
+    }
+
+    #[test]
+    fn ripr_swarm_plan_blocks_missing_related_context() {
+        let actionable_gaps = serde_json::json!({
+            "summary": {"actionable_gaps": 1},
+            "packets": [
+                {
+                    "canonical_gap_id": "gap:no-related-context",
+                    "evidence_class": "predicate_boundary",
+                    "gap_state": "actionable",
+                    "source_file": "src/lib.rs",
+                    "repair_kind": "add_boundary_assertion",
+                    "target_test_type": "boundary_discriminator",
+                    "assertion_shape": "assert_eq!(value, expected)",
+                    "repair_route": {
+                        "repair_kind": "add_boundary_assertion",
+                        "target_test_type": "boundary_discriminator",
+                        "assertion_shape": "assert_eq!(value, expected)"
+                    },
+                    "verify_command": "cargo test no_related_context",
+                    "receipt_command": "cargo xtask receipts check",
+                    "confidence_basis": "fixture_backed",
+                    "must_not_change": ["Do not edit production code by default."],
+                    "raw_findings": [],
+                    "static_limitations": [],
+                    "public_projection_eligible": true
+                }
+            ]
+        });
+
+        let report = ripr_swarm_plan_from_actionable_gaps_value(
+            10,
+            Path::new("target/ripr/reports/actionable-gaps.json"),
+            &actionable_gaps,
+        );
+        let blocked = ripr_swarm_plan_blocked_packets(&report);
+
+        assert_eq!(blocked.len(), 1);
+        assert_eq!(blocked[0].swarm_state, "blocked_by_missing_context");
+        assert!(
+            blocked[0]
+                .missing_context
+                .iter()
+                .any(|field| field == "related_test_or_observer")
+        );
+    }
+
+    #[test]
+    fn ripr_swarm_plan_blocks_incomplete_structured_repair_routes() {
+        let actionable_gaps = serde_json::json!({
+            "summary": {"actionable_gaps": 1},
+            "packets": [
+                {
+                    "canonical_gap_id": "gap:incomplete-route",
+                    "evidence_class": "predicate_boundary",
+                    "gap_state": "actionable",
+                    "source_file": "src/lib.rs",
+                    "repair_kind": "add_boundary_assertion",
+                    "target_test_type": "boundary_discriminator",
+                    "assertion_shape": "assert_eq!(value, expected)",
+                    "repair_route": {"repair_kind": "add_boundary_assertion"},
+                    "verify_command": "cargo test incomplete_route",
+                    "receipt_command": "cargo xtask receipts check",
+                    "related_test_or_observer": "tests/lib.rs::incomplete_route",
+                    "confidence_basis": "fixture_backed",
+                    "must_not_change": ["Do not edit production code by default."],
+                    "raw_findings": [],
+                    "static_limitations": [],
+                    "public_projection_eligible": true
+                }
+            ]
+        });
+
+        let report = ripr_swarm_plan_from_actionable_gaps_value(
+            10,
+            Path::new("target/ripr/reports/actionable-gaps.json"),
+            &actionable_gaps,
+        );
+        let blocked = ripr_swarm_plan_blocked_packets(&report);
+
+        assert_eq!(blocked.len(), 1);
+        assert_eq!(blocked[0].swarm_state, "blocked_by_missing_context");
+        assert!(
+            blocked[0]
+                .missing_context
+                .iter()
+                .any(|field| field == "repair_route")
+        );
+    }
+
+    #[test]
+    fn ripr_swarm_plan_accepts_structured_routes_with_suggested_assertion() {
+        let actionable_gaps = serde_json::json!({
+            "summary": {"actionable_gaps": 1},
+            "packets": [
+                {
+                    "canonical_gap_id": "gap:suggested-assertion",
+                    "evidence_class": "predicate_boundary",
+                    "gap_state": "actionable",
+                    "source_file": "src/lib.rs",
+                    "repair_kind": "add_boundary_assertion",
+                    "target_test_type": "boundary_discriminator",
+                    "assertion_shape": "assert_eq!(value, expected)",
+                    "repair_route": {
+                        "repair_kind": "add_boundary_assertion",
+                        "target_test_type": "boundary_discriminator",
+                        "suggested_assertion": "assert_eq!(value, expected)"
+                    },
+                    "verify_command": "cargo test suggested_assertion",
+                    "receipt_command": "cargo xtask receipts check",
+                    "related_test_or_observer": "tests/lib.rs::suggested_assertion",
+                    "confidence_basis": "fixture_backed",
+                    "must_not_change": ["Do not edit production code by default."],
+                    "raw_findings": [],
+                    "static_limitations": [],
+                    "public_projection_eligible": true
+                }
+            ]
+        });
+
+        let report = ripr_swarm_plan_from_actionable_gaps_value(
+            10,
+            Path::new("target/ripr/reports/actionable-gaps.json"),
+            &actionable_gaps,
+        );
+        let ready = ripr_swarm_plan_ready_packets(&report);
+
+        assert_eq!(ready.len(), 1);
+        assert_eq!(ready[0].canonical_gap_id, "gap:suggested-assertion");
+    }
+
+    #[test]
+    fn ripr_swarm_plan_packet_corpus_matches_expected_states() -> Result<(), String> {
+        with_repo_cwd(|| {
+            let mut violations = Vec::new();
+            validate_swarm_plan_packet_fixture_corpus(&mut violations)?;
+            if violations.is_empty() {
+                Ok(())
+            } else {
+                Err(format!(
+                    "swarm plan packet corpus violations:\n- {}",
+                    violations.join("\n- ")
+                ))
+            }
+        })
+    }
+
+    #[test]
+    fn actionable_gap_outcomes_fixture_corpus_matches_expected_states() -> Result<(), String> {
+        with_repo_cwd(|| {
+            let mut violations = Vec::new();
+            validate_actionable_gap_outcomes_fixture_corpus(&mut violations)?;
+            if violations.is_empty() {
+                Ok(())
+            } else {
+                Err(format!(
+                    "actionable gap outcomes corpus violations:\n- {}",
+                    violations.join("\n- ")
+                ))
+            }
+        })
+    }
+
+    #[test]
+    fn actionable_gap_outcomes_fixture_rejects_incomplete_receipt_command() -> Result<(), String> {
+        let case = serde_json::json!({
+            "id": "incomplete_receipt_command",
+            "description": "outcome fixture packet with an incomplete receipt command",
+            "actionable_gaps": {
+                "schema_version": "0.1",
+                "tool": "ripr",
+                "report": "actionable-gaps",
+                "packets": [
+                    {
+                        "canonical_gap_id": "gap:incomplete-receipt-command",
+                        "evidence_class": "predicate_boundary",
+                        "repair_kind": "add_boundary_assertion",
+                        "source_file": "src/lib.rs",
+                        "primary_anchor": {
+                            "file": "src/lib.rs",
+                            "line": 12
+                        },
+                        "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+                        "receipt_command_or_path": "ripr agent receipt --root . --json"
+                    }
+                ]
+            },
+            "agent_receipt": null,
+            "targeted_test_outcome": null,
+            "expected": {
+                "summary": {
+                    "packets_total": 1,
+                    "outcomes_total": 1,
+                    "not_attempted": 1,
+                    "receipt_present": 0,
+                    "evidence_improved": 0,
+                    "receipts_present": 0
+                },
+                "outcomes": [
+                    {
+                        "canonical_gap_id": "gap:incomplete-receipt-command",
+                        "outcome_state": "not_attempted",
+                        "receipt_state": "not_attempted",
+                        "movement_source": null
+                    }
+                ]
+            },
+            "must_not_claim": [
+                "Do not accept malformed receipt commands."
+            ]
+        });
+        let mut violations = Vec::new();
+        validate_actionable_gap_outcomes_fixture_case(
+            &case,
+            "incomplete_receipt_command",
+            &mut violations,
+        )?;
+
+        violations
+            .iter()
+            .any(|violation| violation.contains("unsupported receipt command"))
+            .then_some(())
+            .ok_or_else(|| format!("missing unsupported receipt command violation: {violations:?}"))
+    }
+
+    #[test]
+    fn ripr_swarm_plan_packet_corpus_rejects_unsupported_receipt_commands() {
+        let case = serde_json::json!({
+            "id": "unsupported_receipt_emit",
+            "description": "ready-looking packet with an unsupported receipt command",
+            "must_not_claim": ["Do not create receipts from the swarm plan."],
+            "packet": {
+                "canonical_gap_id": "gap:unsupported-receipt",
+                "evidence_class": "predicate_boundary",
+                "gap_state": "actionable",
+                "source_file": "src/lib.rs",
+                "repair_kind": "add_boundary_assertion",
+                "target_test_type": "boundary_discriminator",
+                "assertion_shape": "assert_eq!(value, expected)",
+                "repair_route": {
+                    "repair_kind": "add_boundary_assertion",
+                    "target_test_type": "boundary_discriminator",
+                    "assertion_shape": "assert_eq!(value, expected)"
+                },
+                "verify_command": "cargo test unsupported_receipt",
+                "receipt_command": "cargo xtask receipts emit --packet gap:unsupported-receipt",
+                "related_test_or_observer": "tests/lib.rs::unsupported_receipt",
+                "confidence_basis": "fixture_backed",
+                "must_not_change": ["Do not edit production code by default."],
+                "raw_findings": [
+                    {"kind": "weakly_exposed", "file": "src/lib.rs", "line": 12}
+                ],
+                "static_limitations": [],
+                "public_projection_eligible": true
+            },
+            "expected": {
+                "swarm_state": "queued",
+                "swarm_ready": true,
+                "high_confidence": true,
+                "missing_context": [],
+                "blocked_reasons": [],
+                "summary": {
+                    "swarm_ready_packets": 1,
+                    "blocked_packets": 0
+                }
+            }
+        });
+        let mut violations = Vec::new();
+        validate_swarm_plan_packet_fixture_case(&case, "unsupported_receipt_emit", &mut violations);
+
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("unsupported receipt_command"))
+        );
+    }
+
+    #[test]
+    fn ripr_swarm_plan_packet_corpus_rejects_incomplete_agent_receipt_commands() {
+        let case = serde_json::json!({
+            "id": "incomplete_agent_receipt",
+            "description": "ready-looking packet with an incomplete agent receipt command",
+            "must_not_claim": ["Do not accept malformed receipt commands."],
+            "packet": {
+                "canonical_gap_id": "gap:incomplete-agent-receipt",
+                "evidence_class": "predicate_boundary",
+                "gap_state": "actionable",
+                "source_file": "src/lib.rs",
+                "repair_kind": "add_boundary_assertion",
+                "target_test_type": "boundary_discriminator",
+                "assertion_shape": "assert_eq!(value, expected)",
+                "repair_route": {
+                    "repair_kind": "add_boundary_assertion",
+                    "target_test_type": "boundary_discriminator",
+                    "assertion_shape": "assert_eq!(value, expected)"
+                },
+                "verify_command": "cargo test incomplete_agent_receipt",
+                "receipt_command": "ripr agent receipt --root . --json",
+                "related_test_or_observer": "tests/lib.rs::incomplete_agent_receipt",
+                "confidence_basis": "fixture_backed",
+                "must_not_change": ["Do not edit production code by default."],
+                "raw_findings": [
+                    {"kind": "weakly_exposed", "file": "src/lib.rs", "line": 12}
+                ],
+                "static_limitations": [],
+                "public_projection_eligible": true
+            },
+            "expected": {
+                "swarm_state": "queued",
+                "swarm_ready": true,
+                "high_confidence": true,
+                "missing_context": [],
+                "blocked_reasons": [],
+                "summary": {
+                    "swarm_ready_packets": 1,
+                    "blocked_packets": 0
+                }
+            }
+        });
+        let mut violations = Vec::new();
+        validate_swarm_plan_packet_fixture_case(&case, "incomplete_agent_receipt", &mut violations);
+
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("unsupported receipt_command"))
+        );
+    }
+
+    #[test]
+    fn actionable_gap_outcomes_fixture_corpus_reports_contract_drift() -> Result<(), String> {
+        with_temp_cwd("actionable-gap-outcomes-corpus-drift", |_| {
+            let mut violations = Vec::new();
+            super::validate_actionable_gap_outcomes_fixture_corpus_at(
+                Path::new("missing-corpus.json"),
+                &mut violations,
+            )?;
+            assert!(
+                violations.iter().any(
+                    |violation| violation.contains("actionable gap outcomes corpus is missing")
+                ),
+                "missing corpus path should be reported: {violations:?}"
+            );
+
+            write(
+                Path::new("bad-corpus.json"),
+                r#"{
+  "schema_version": "bad",
+  "kind": "wrong",
+  "spec": "RIPR-SPEC-0000",
+  "related_spec": "RIPR-SPEC-0000",
+  "cases": [
+    {
+      "id": "bad-outcome",
+      "description": "Bad outcome case.",
+      "must_not_claim": ["Do not trust this malformed case."],
+      "actionable_gaps": {
+        "packets": [
+          {
+            "canonical_gap_id": "gap:bad-outcome",
+            "evidence_class": "predicate_boundary",
+            "repair_kind": "add_boundary_assertion",
+            "source_file": "src/lib.rs",
+            "primary_anchor": {"file": "src/lib.rs", "line": 1},
+            "verify_command": "ripr agent verify --json",
+            "receipt_command_or_path": "ripr agent receipt --seam-id bad-outcome"
+          }
+        ]
+      },
+      "agent_receipt": null,
+      "targeted_test_outcome": null,
+      "expected": {
+        "summary": {"packets_total": 2},
+        "outcomes": [
+          {
+            "canonical_gap_id": "gap:bad-outcome",
+            "outcome_state": "resolved",
+            "receipt_state": "present",
+            "movement_source": "agent_receipt"
+          }
+        ]
+      }
+    }
+  ]
+}"#,
+            );
+
+            let mut violations = Vec::new();
+            super::validate_actionable_gap_outcomes_fixture_corpus_at(
+                Path::new("bad-corpus.json"),
+                &mut violations,
+            )?;
+            for expected in [
+                "kind must be actionable_gap_outcomes_corpus",
+                "schema_version must be 0.1",
+                "spec must be RIPR-SPEC-0031",
+                "related_spec must be RIPR-SPEC-0057",
+                "outcome_state must be resolved, got not_attempted",
+                "receipt_state must be present, got not_attempted",
+                "summary.packets_total must be 2, got 1",
+                "corpus is missing case not_attempted_packet",
+            ] {
+                assert!(
+                    violations
+                        .iter()
+                        .any(|violation| violation.contains(expected)),
+                    "expected violation containing {expected:?}, got {violations:?}"
+                );
+            }
+
+            let mut violations = Vec::new();
+            super::validate_actionable_gap_outcomes_fixture_case(
+                &serde_json::json!({"id": "missing-fields"}),
+                "missing-fields",
+                &mut violations,
+            )?;
+            for expected in [
+                "missing description",
+                "must_not_claim must be a non-empty string array",
+                "is missing actionable_gaps object",
+            ] {
+                assert!(
+                    violations
+                        .iter()
+                        .any(|violation| violation.contains(expected)),
+                    "expected fixture-case violation containing {expected:?}, got {violations:?}"
+                );
+            }
+
+            let targeted_shape_case = serde_json::json!({
+                "id": "bad-targeted-shape",
+                "description": "Bad targeted-test outcome shape.",
+                "must_not_claim": ["Do not infer movement from malformed targeted-test outcome."],
+                "actionable_gaps": {
+                    "packets": [
+                        {
+                            "canonical_gap_id": "gap:bad-targeted-shape",
+                            "evidence_class": "predicate_boundary",
+                            "repair_kind": "add_boundary_assertion",
+                            "source_file": "src/lib.rs",
+                            "primary_anchor": {"file": "src/lib.rs", "line": 1},
+                            "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+                            "receipt_command_or_path": "ripr agent receipt --verify-json target/ripr/workflow/agent-verify.json --seam-id bad-targeted-shape --json"
+                        }
+                    ]
+                },
+                "agent_receipt": {"receipts": []},
+                "targeted_test_outcome": {
+                    "schema_version": "0.1",
+                    "moved": [
+                        {
+                            "seam_id": "bad-targeted-shape",
+                            "seam_kind": "predicate_boundary",
+                            "file": "src/lib.rs",
+                            "line": 1
+                        }
+                    ],
+                    "unchanged": [],
+                    "regressed": [],
+                    "removed": [
+                        {
+                            "seam_id": "bad-targeted-shape-removed",
+                            "seam_kind": "predicate_boundary",
+                            "file": "src/lib.rs",
+                            "line": 2,
+                            "before": "weakly_gripped"
+                        }
+                    ],
+                    "new": [
+                        {
+                            "seam_id": "bad-targeted-shape-new",
+                            "seam_kind": "predicate_boundary",
+                            "file": "src/lib.rs",
+                            "line": 3,
+                            "after": "ungripped"
+                        }
+                    ]
+                },
+                "expected": {
+                    "summary": {"packets_total": 1},
+                    "outcomes": [
+                        {
+                            "canonical_gap_id": "gap:bad-targeted-shape",
+                            "outcome_state": "evidence_improved",
+                            "receipt_state": "missing",
+                            "movement_source": "targeted_test_outcome",
+                            "movement_direction": "improved",
+                            "before": "weakly_gripped",
+                            "after": "strongly_gripped"
+                        }
+                    ]
+                }
+            });
+            let mut violations = Vec::new();
+            super::validate_actionable_gap_outcomes_fixture_case(
+                &targeted_shape_case,
+                "bad-targeted-shape",
+                &mut violations,
+            )?;
+            for expected in [
+                "targeted_test_outcome.moved item must include before",
+                "targeted_test_outcome.moved item must include after",
+                "targeted_test_outcome.moved item must include direction",
+                "targeted_test_outcome.removed item must include grip_class",
+                "targeted_test_outcome.removed item must use one-sided grip_class instead of before",
+                "targeted_test_outcome.new item must include grip_class",
+                "targeted_test_outcome.new item must use one-sided grip_class instead of after",
+                "outcome_state must be evidence_improved, got attempted_no_receipt",
+                "movement_direction must be \"improved\", got \"move\"",
+                "before must be \"weakly_gripped\", got null",
+                "after must be \"strongly_gripped\", got null",
+            ] {
+                assert!(
+                    violations
+                        .iter()
+                        .any(|violation| violation.contains(expected)),
+                    "expected targeted-shape violation containing {expected:?}, got {violations:?}"
+                );
+            }
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn actionable_gap_outcomes_fixture_corpus_reports_spec_wrapper_drift() -> Result<(), String> {
+        with_temp_cwd("actionable-gap-outcomes-wrapper-drift", |_| {
+            let mut violations = Vec::new();
+            super::validate_actionable_gap_outcomes_fixture_corpus(&mut violations)?;
+            for expected in [
+                "fixture corpus is missing fixtures/actionable-gap-outcomes-corpus/SPEC.md",
+                "fixture corpus is missing fixtures/actionable-gap-outcomes-corpus/corpus.json",
+                "corpus is missing fixtures/actionable-gap-outcomes-corpus/corpus.json",
+            ] {
+                assert!(
+                    violations
+                        .iter()
+                        .any(|violation| violation.contains(expected)),
+                    "expected wrapper violation containing {expected:?}, got {violations:?}"
+                );
+            }
+
+            write(
+                Path::new("fixtures/actionable-gap-outcomes-corpus/SPEC.md"),
+                "# Bad spec\n\n## Given\n",
+            );
+            let mut violations = Vec::new();
+            super::validate_actionable_gap_outcomes_fixture_corpus(&mut violations)?;
+            for expected in [
+                "is missing `Spec: RIPR-SPEC-0031`",
+                "is missing `Related: RIPR-SPEC-0057`",
+                "is missing `## When`",
+                "is missing `## Then`",
+                "is missing `## Must Not`",
+            ] {
+                assert!(
+                    violations
+                        .iter()
+                        .any(|violation| violation.contains(expected)),
+                    "expected spec violation containing {expected:?}, got {violations:?}"
+                );
+            }
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn actionable_gap_outcomes_fixture_corpus_reports_manifest_edge_states() -> Result<(), String> {
+        with_temp_cwd("actionable-gap-outcomes-corpus-edge-states", |_| {
+            write(Path::new("bad-json.json"), "{");
+            let mut violations = Vec::new();
+            super::validate_actionable_gap_outcomes_fixture_corpus_at(
+                Path::new("bad-json.json"),
+                &mut violations,
+            )?;
+            assert!(
+                !violations.is_empty(),
+                "invalid corpus JSON should be reported"
+            );
+
+            write(
+                Path::new("no-cases.json"),
+                r#"{
+  "schema_version": "0.1",
+  "kind": "actionable_gap_outcomes_corpus",
+  "spec": "RIPR-SPEC-0031",
+  "related_spec": "RIPR-SPEC-0057"
+}"#,
+            );
+            let mut violations = Vec::new();
+            super::validate_actionable_gap_outcomes_fixture_corpus_at(
+                Path::new("no-cases.json"),
+                &mut violations,
+            )?;
+            assert!(
+                violations
+                    .iter()
+                    .any(|violation| violation.contains("is missing cases array")),
+                "missing cases array should be reported: {violations:?}"
+            );
+
+            write(
+                Path::new("duplicate-case.json"),
+                r#"{
+  "schema_version": "0.1",
+  "kind": "actionable_gap_outcomes_corpus",
+  "spec": "RIPR-SPEC-0031",
+  "related_spec": "RIPR-SPEC-0057",
+  "cases": [
+    {
+      "id": "not_attempted_packet",
+      "description": "Duplicate case A.",
+      "must_not_claim": ["Do not treat duplicate cases as valid."],
+      "actionable_gaps": {
+        "packets": [
+          {
+            "canonical_gap_id": "gap:duplicate-a",
+            "evidence_class": "predicate_boundary",
+            "repair_kind": "add_boundary_assertion",
+            "source_file": "src/lib.rs",
+            "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+            "receipt_command_or_path": "ripr agent receipt --verify-json target/ripr/workflow/agent-verify.json --seam-id duplicate-a"
+          }
+        ]
+      },
+      "expected": {
+        "summary": {"packets_total": 1},
+        "outcomes": [
+          {"canonical_gap_id": "gap:duplicate-a", "outcome_state": "not_attempted", "receipt_state": "not_attempted"}
+        ]
+      }
+    },
+    {
+      "id": "not_attempted_packet",
+      "description": "Duplicate case B.",
+      "must_not_claim": ["Do not treat duplicate cases as valid."],
+      "actionable_gaps": {
+        "packets": [
+          {
+            "canonical_gap_id": "gap:duplicate-b",
+            "evidence_class": "predicate_boundary",
+            "repair_kind": "add_boundary_assertion",
+            "source_file": "src/lib.rs",
+            "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+            "receipt_command_or_path": "ripr agent receipt --verify-json target/ripr/workflow/agent-verify.json --seam-id duplicate-b"
+          }
+        ]
+      },
+      "expected": {
+        "summary": {"packets_total": 1},
+        "outcomes": [
+          {"canonical_gap_id": "gap:duplicate-b", "outcome_state": "receipt_present", "receipt_state": "present"}
+        ]
+      }
+    }
+  ]
+}"#,
+            );
+            let mut violations = Vec::new();
+            super::validate_actionable_gap_outcomes_fixture_corpus_at(
+                Path::new("duplicate-case.json"),
+                &mut violations,
+            )?;
+            for expected in [
+                "case not_attempted_packet is duplicated",
+                "case not_attempted_packet must have state not_attempted/not_attempted",
+            ] {
+                assert!(
+                    violations
+                        .iter()
+                        .any(|violation| violation.contains(expected)),
+                    "expected duplicate-case violation containing {expected:?}, got {violations:?}"
+                );
+            }
+
+            Ok::<(), String>(())
+        })
+    }
+
+    #[test]
+    fn actionable_gap_outcomes_fixture_case_reports_expected_shape_drift() -> Result<(), String> {
+        let base_packet = serde_json::json!({
+            "canonical_gap_id": "gap:expected-shape",
+            "evidence_class": "predicate_boundary",
+            "repair_kind": "add_boundary_assertion",
+            "source_file": "src/lib.rs",
+            "primary_anchor": {"file": "src/lib.rs", "line": 1},
+            "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+            "receipt_command_or_path": "ripr agent receipt --verify-json target/ripr/workflow/agent-verify.json --seam-id expected-shape --json"
+        });
+
+        for (case, expected) in [
+            (
+                serde_json::json!({
+                    "id": "empty-packets",
+                    "description": "Empty packet list.",
+                    "must_not_claim": ["Do not accept an empty packet list."],
+                    "actionable_gaps": {"packets": []}
+                }),
+                "actionable_gaps.packets must not be empty",
+            ),
+            (
+                serde_json::json!({
+                    "id": "missing-expected",
+                    "description": "Missing expected object.",
+                    "must_not_claim": ["Do not accept a missing expected object."],
+                    "actionable_gaps": {"packets": [base_packet.clone()]}
+                }),
+                "is missing expected object",
+            ),
+            (
+                serde_json::json!({
+                    "id": "empty-expected-outcomes",
+                    "description": "Empty expected outcomes.",
+                    "must_not_claim": ["Do not accept empty expected outcomes."],
+                    "actionable_gaps": {"packets": [base_packet.clone()]},
+                    "expected": {"summary": {"packets_total": 1}, "outcomes": []}
+                }),
+                "expected.outcomes must not be empty",
+            ),
+        ] {
+            let case_id = case.get("id").and_then(Value::as_str).unwrap_or_default();
+            let mut violations = Vec::new();
+            super::validate_actionable_gap_outcomes_fixture_case(&case, case_id, &mut violations)?;
+            assert!(
+                violations
+                    .iter()
+                    .any(|violation| violation.contains(expected)),
+                "expected fixture violation containing {expected:?}, got {violations:?}"
+            );
+        }
+
+        let case = serde_json::json!({
+            "id": "bad-expected-shape",
+            "description": "Malformed expected shape.",
+            "must_not_claim": ["Do not accept malformed expected outcome fields."],
+            "actionable_gaps": {"packets": [base_packet]},
+            "agent_receipt": null,
+            "targeted_test_outcome": null,
+            "expected": {
+                "summary": {"packets_total": "one", "outcomes_total": 2},
+                "outcomes": [
+                    {},
+                    {"canonical_gap_id": "gap:missing"},
+                    {"canonical_gap_id": "gap:expected-shape"}
+                ]
+            }
+        });
+        let mut violations = Vec::new();
+        super::validate_actionable_gap_outcomes_fixture_case(
+            &case,
+            "bad-expected-shape",
+            &mut violations,
+        )?;
+        for expected in [
+            "expected outcome is missing canonical_gap_id",
+            "did not produce outcome gap:missing",
+            "expected outcome gap:expected-shape is missing outcome_state",
+            "expected outcome gap:expected-shape is missing receipt_state",
+            "expected.summary.packets_total must be numeric",
+            "summary.outcomes_total must be 2, got 1",
+        ] {
+            assert!(
+                violations
+                    .iter()
+                    .any(|violation| violation.contains(expected)),
+                "expected malformed expected-shape violation containing {expected:?}, got {violations:?}"
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_plan_rejects_unsafe_argument_shapes() -> Result<(), String> {
+        expect_ripr_swarm_plan_arg_error(&[])?
+            .contains("usage: cargo xtask ripr-swarm plan")
+            .then_some(())
+            .ok_or_else(|| "missing ripr-swarm subcommand returned unexpected error".to_string())?;
+        expect_ripr_swarm_plan_arg_error(&["unknown"])?
+            .contains("unknown ripr-swarm subcommand")
+            .then_some(())
+            .ok_or_else(|| "unknown ripr-swarm subcommand returned unexpected error".to_string())?;
+        expect_ripr_swarm_plan_arg_error(&["plan", "--top"])?
+            .contains("--top requires a positive integer")
+            .then_some(())
+            .ok_or_else(|| "missing swarm plan top value returned unexpected error".to_string())?;
+        expect_ripr_swarm_plan_arg_error(&["plan", "--top", "0"])?
+            .contains("must be greater than zero")
+            .then_some(())
+            .ok_or_else(|| "zero swarm plan top value returned unexpected error".to_string())?;
+        expect_ripr_swarm_plan_arg_error(&["plan", "--actionable-gaps"])?
+            .contains("--actionable-gaps requires a path")
+            .then_some(())
+            .ok_or_else(|| "missing actionable-gaps path returned unexpected error".to_string())?;
+        Ok(())
+    }
+
+    fn expect_ripr_swarm_plan_arg_error(args: &[&str]) -> Result<String, String> {
+        let owned_args = args
+            .iter()
+            .map(|arg| (*arg).to_string())
+            .collect::<Vec<_>>();
+        match parse_ripr_swarm_plan_args(&owned_args) {
+            Ok(parsed) => Err(format!("accepted invalid ripr swarm plan args: {parsed:?}")),
+            Err(err) => Ok(err),
+        }
+    }
+
+    #[test]
+    fn lane1_actionable_gap_packets_require_canonical_assertion_for_public_projection()
+    -> Result<(), String> {
+        let report = lane1_evidence_audit_from_repo_exposure(
+            ".",
+            r#"{
+              "schema_version": "0.3",
+              "scope": "repo",
+              "seams": [
+                {
+                  "seam_id": "packet-fallback-assertion-gap",
+                  "headline_eligible": true,
+                  "file": "src/pricing.rs",
+                  "evidence_record": {
+                    "schema_version": "0.1",
+                    "seam_id": "packet-fallback-assertion-gap",
+                    "canonical_gap_id": "gap:packet-fallback-assertion-gap",
+                    "location": {"file": "src/pricing.rs", "line": 42},
+                    "recommendation": {
+                      "assertion_shape": {"kind": "exact_value"}
+                    },
+                    "raw_findings": [
+                      {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed", "expression": "amount >= discount_threshold"}
+                    ],
+                    "canonical_item": {
+                      "canonical_gap_id": "gap:packet-fallback-assertion-gap",
+                      "canonical_item_kind": "gap",
+                      "evidence_class": "predicate_boundary",
+                      "gap_state": "actionable",
+                      "actionability": "extend_related_test",
+                      "raw_findings": [
+                        {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed", "expression": "amount >= discount_threshold"}
+                      ],
+                      "why": "related tests reach the seam but miss equality at the threshold",
+                      "recommended_repair": "Add an equality-boundary assertion for the changed predicate.",
+                      "repair_route": {
+                        "repair_kind": "add_boundary_assertion",
+                        "target_test_type": "boundary_discriminator"
+                      },
+                      "verify_command": "cargo xtask evidence-quality-scorecard",
+                      "receipt_command": "cargo xtask receipts check",
+                      "confidence": {"basis": "static_only", "notes": []}
+                    }
+                  }
+                }
+              ]
+            }"#,
+        )?;
+
+        let packet_json = lane1_actionable_gap_packets_json(&report)?;
+        let packet_value: serde_json::Value =
+            serde_json::from_str(&packet_json).map_err(|err| err.to_string())?;
+        assert_eq!(packet_value["packets"][0]["assertion_shape"], "exact_value");
+        assert_eq!(packet_value["packets"][0]["repair_route_source"], "missing");
+        assert_eq!(
+            packet_value["packets"][0]["public_projection_eligible"],
+            serde_json::Value::Bool(false)
+        );
+        assert_eq!(
+            packet_value["packets"][0]["projection_exclusion_reasons"],
+            serde_json::json!(["missing_repair_route"])
+        );
+        assert_eq!(
+            packet_value["summary"]["public_projection_eligible_packets"],
+            serde_json::Value::from(0)
+        );
+        Ok(())
+    }
+
+    #[test]
     fn actionable_gap_outcomes_join_receipts_and_targeted_movement() -> Result<(), String> {
         let packets = serde_json::json!({
             "schema_version": "0.1",
@@ -57053,6 +61448,178 @@ covered_by = ["cargo xtask check-file-policy"]
             assert!(markdown.contains("gap:seam-a"));
             Ok(())
         })
+    }
+
+    #[test]
+    fn actionable_gap_outcomes_command_rejects_unsafe_argument_shapes() -> Result<(), String> {
+        for (args, expected) in [
+            (
+                vec!["--actionable-gaps"],
+                "missing value for `--actionable-gaps`",
+            ),
+            (
+                vec!["--agent-receipt"],
+                "missing value for `--agent-receipt`",
+            ),
+            (
+                vec!["--targeted-test-outcome"],
+                "missing value for `--targeted-test-outcome`",
+            ),
+            (vec!["--help"], "usage: cargo xtask actionable-gap-outcomes"),
+            (
+                vec!["--unknown"],
+                "unknown actionable-gap-outcomes option `--unknown`",
+            ),
+            (
+                vec!["positional"],
+                "unexpected positional argument `positional`",
+            ),
+        ] {
+            let owned_args = args
+                .iter()
+                .map(|arg| (*arg).to_string())
+                .collect::<Vec<_>>();
+            let err = parse_actionable_gap_outcomes_args(&owned_args)
+                .expect_err("invalid actionable-gap-outcomes args should be rejected");
+            assert!(
+                err.contains(expected),
+                "expected {expected:?} in error for {args:?}, got {err:?}"
+            );
+        }
+
+        with_temp_cwd("actionable-gap-outcomes-missing-input", |_| {
+            let err = actionable_gap_outcomes_report_impl(&[])
+                .expect_err("missing actionable-gaps artifact should fail closed");
+            assert!(
+                err.contains(
+                    "actionable-gap-outcomes requires `target/ripr/reports/actionable-gaps.json`"
+                ),
+                "missing artifact error should name regeneration target, got {err:?}"
+            );
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn actionable_gap_outcomes_join_receipt_arrays_anchor_and_unknown_movement()
+    -> Result<(), String> {
+        let packets = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "report": "actionable-gaps",
+            "packets": [
+                {
+                    "canonical_gap_id": "gap:anchor-only",
+                    "evidence_class": "predicate_boundary",
+                    "repair_kind": "add_boundary_assertion",
+                    "source_file": "src/anchor.rs",
+                    "primary_anchor": {"file": "src/anchor.rs", "line": 7},
+                    "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+                    "receipt_command_or_path": "ripr agent receipt --verify-json target/ripr/workflow/agent-verify.json --seam-id anchor-only"
+                },
+                {
+                    "canonical_gap_id": "gap:changed-target",
+                    "evidence_class": "predicate_boundary",
+                    "repair_kind": "add_boundary_assertion",
+                    "source_file": "src/target.rs",
+                    "primary_anchor": {"file": "src/target.rs", "line": 11},
+                    "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+                    "receipt_command_or_path": "ripr agent receipt --verify-json target/ripr/workflow/agent-verify.json --seam-id changed-target"
+                }
+            ]
+        });
+        let receipt = serde_json::json!([
+            {
+                "schema_version": "0.3",
+                "seam": {
+                    "file": "src/anchor.rs",
+                    "line": 7,
+                    "before": "weakly_gripped",
+                    "after": "weakly_gripped"
+                },
+                "summary": {"next_action": {"kind": "changed"}}
+            }
+        ]);
+        let targeted = serde_json::json!({
+            "schema_version": "0.1",
+            "moved": [
+                {
+                    "seam_id": "changed-target",
+                    "seam_kind": "predicate_boundary",
+                    "file": "src/target.rs",
+                    "line": 11,
+                    "before": "weakly_gripped",
+                    "after": "weakly_gripped",
+                    "direction": "changed",
+                    "evidence_delta": []
+                }
+            ],
+            "unchanged": [],
+            "regressed": [],
+            "removed": [],
+            "new": []
+        });
+
+        let report = actionable_gap_outcomes_report_from_values(
+            &packets,
+            Some(&receipt),
+            Some(&targeted),
+            "target/ripr/reports/actionable-gaps.json".to_string(),
+            Some("target/ripr/reports/agent-receipt.json".to_string()),
+            Some("target/ripr/reports/targeted-test-outcome.json".to_string()),
+        )?;
+        let json = actionable_gap_outcomes_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+
+        assert_eq!(value["summary"]["receipt_present"], 1);
+        assert_eq!(value["summary"]["attempted_no_receipt"], 1);
+        assert_eq!(value["summary"]["unknown"], 0);
+        assert_eq!(value["outcomes"][0]["canonical_gap_id"], "gap:anchor-only");
+        assert_eq!(value["outcomes"][0]["receipt_state"], "present");
+        assert_eq!(value["outcomes"][0]["outcome_state"], "receipt_present");
+        assert_eq!(value["outcomes"][0]["movement_direction"], "changed");
+        assert_eq!(
+            value["outcomes"][1]["canonical_gap_id"],
+            "gap:changed-target"
+        );
+        assert_eq!(value["outcomes"][1]["receipt_state"], "missing");
+        assert_eq!(
+            value["outcomes"][1]["outcome_state"],
+            "attempted_no_receipt"
+        );
+        assert_eq!(
+            value["outcomes"][1]["reason"],
+            "Matched targeted-test outcome `moved` bucket."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn actionable_gap_outcomes_render_empty_packet_set_as_no_action() -> Result<(), String> {
+        let packets = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "report": "actionable-gaps",
+            "packets": []
+        });
+        let report = actionable_gap_outcomes_report_from_values(
+            &packets,
+            None,
+            None,
+            "target/ripr/reports/actionable-gaps.json".to_string(),
+            None,
+            None,
+        )?;
+        let json = actionable_gap_outcomes_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert_eq!(value["summary"]["packets_total"], 0);
+        assert_eq!(value["summary"]["outcomes_total"], 0);
+
+        let markdown = actionable_gap_outcomes_markdown(&report);
+        assert!(markdown.contains("No actionable-gap packets were present."));
+        Ok(())
     }
 
     #[test]

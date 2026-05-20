@@ -116,6 +116,35 @@ target/ripr/reports/evidence-quality-trend.json
 The swarm may read these artifacts only as typed JSON contracts. Markdown is
 human explanation and must not decide actionability.
 
+## Actionable Packet Input Contract
+
+`actionable-gaps.json` is the only repair-queue input. A swarm runner consumes
+canonical actionable packets from that artifact and treats raw findings only as
+supporting evidence.
+
+Each consumed packet must expose the typed fields needed to route one bounded
+repair attempt:
+
+```text
+canonical_gap_id
+evidence_class
+gap_state
+repair_kind
+repair_route
+target_test_type or target_assertion_shape
+related_test_or_observer
+verify_command
+receipt_command
+static_limitations[]
+must_not_change[]
+confidence_basis
+raw_findings[] as supporting evidence
+```
+
+The runner may also use projection eligibility and prior outcome state for
+ranking and blocking decisions. It must not derive work items from raw findings,
+Markdown text, PR annotations, or static class labels.
+
 ## Required Packet Fields
 
 A packet is swarm-ready only when typed fields provide a closed repair loop.
@@ -148,11 +177,11 @@ Each packet has one swarm state.
 | `queued` | Packet is valid but not assigned. | Select, dry run, or skip. |
 | `assigned` | A human or agent has accepted the packet. | Attempt or release assignment. |
 | `attempted` | A repair was attempted, but verification or receipt is not complete. | Run verify and receipt commands. |
-| `receipt_present` | A receipt was emitted for the attempt, but joined evidence movement is not known yet. | Join evidence movement or keep the attempt visible as incomplete. |
+| `receipt_present` | A receipt exists for the attempt, but evidence movement has not been joined or is still unknown. | Join evidence movement or inspect missing movement context. |
 | `verified_improved` | Receipt and evidence movement indicate improvement. | Record outcome and refresh audit. |
 | `verified_unchanged` | Receipt exists but evidence did not improve. | Keep attempt visible and inspect repair fit. |
 | `verified_regressed` | Receipt exists and evidence worsened. | Stop, revert or inspect manually. |
-| `resolved` | The canonical actionable gap no longer appears as unresolved after receipt-backed movement. | Record closure and keep the before/after attempt visible. |
+| `resolved` | Receipt-backed evidence movement shows the canonical gap is no longer actionable. | Record resolution and refresh audit/scorecard. |
 | `failed_to_apply` | The repair could not be applied within packet boundaries. | Record failure and keep packet visible. |
 | `blocked_by_missing_context` | Required packet fields, related test, verify command, receipt command, or safe path context are missing. | Regenerate upstream artifacts or improve Lane 1 packet fields. |
 | `blocked_by_static_limitation` | The packet or class carries a named static limitation that prevents a safe repair attempt. | Close analyzer limitation or inspect manually. |
@@ -240,12 +269,14 @@ The swarm maps these outcome states into swarm attempt states:
 | `evidence_improved` | `verified_improved`. |
 | `evidence_unchanged` | `verified_unchanged`. |
 | `evidence_regressed` | `verified_regressed`. |
-| `resolved` | `resolved`; the canonical actionable gap is no longer unresolved. |
+| `resolved` | `resolved`. |
 | `unknown` | `attempted` or blocked, depending on missing context. |
 
 The same canonical gap may have multiple attempts. The latest attempt may be
 highlighted, but previous failed, unchanged, or regressed attempts remain
-visible.
+visible. A receipt that does not match any current canonical gap packet is
+reported as an orphaned receipt; it remains audit evidence and does not create
+a new actionable gap.
 
 ## Dry-Run Commands
 
@@ -323,9 +354,13 @@ resolved.
 Given a receipt-backed attempt with evidence movement `evidence_regressed`,
 `ripr-swarm` must stop and expose the regressed state for human review.
 
+Given a receipt artifact whose seam id or anchor does not match any current
+actionable packet, `actionable-gap-outcomes` must report it as an orphaned
+receipt rather than silently dropping it or creating a new repair packet.
+
 ## Fixture Expectations
 
-The first fixture corpus should include:
+`fixtures/swarm-plan-packet-corpus` pins the first packet-ranking corpus with:
 
 - high-confidence boundary assertion packet;
 - exact error variant packet;
@@ -333,8 +368,18 @@ The first fixture corpus should include:
 - blocked static limitation packet;
 - missing verify command packet;
 - missing receipt command packet;
-- must-not-change boundary packet;
-- prior attempt improved, unchanged, and regressed outcome rows.
+- must-not-change boundary packet.
+
+`fixtures/actionable-gap-outcomes-corpus` pins outcome reporting with:
+
+- not attempted packet;
+- receipt present without movement;
+- evidence improved;
+- evidence unchanged;
+- evidence regressed;
+- resolved;
+- attempted without a matching receipt.
+- orphaned receipt reporting.
 
 Must-not-claim guards:
 
@@ -343,30 +388,55 @@ Must-not-claim guards:
 - do not rank packet without `verify_command` as high confidence;
 - do not create a repair attempt from raw findings alone;
 - do not hide unchanged or regressed attempts;
+- do not create a new actionable gap from an orphaned receipt;
 - do not imply production-code edits are allowed by default.
 
 ## Test Mapping
 
-Initial docs-only scope has no implementation tests. Follow-up implementation
-PRs should add tests for:
+Current implementation coverage:
 
-- swarm-plan ranking readiness and blocked reasons;
-- dry-run attempt output;
+- `xtask::tests::ripr_swarm_plan_ranks_ready_packets_and_blocks_missing_context`
+  pins ready, missing-context, missing verify, missing receipt, and
+  static-limitation blocking behavior for `swarm-plan`;
+- `xtask::tests::ripr_swarm_plan_packet_corpus_matches_expected_states`
+  validates `fixtures/swarm-plan-packet-corpus/corpus.json` against the same
+  planner used by the report command;
+- `xtask::tests::actionable_gap_outcomes_fixture_corpus_matches_expected_states`
+  validates `fixtures/actionable-gap-outcomes-corpus/corpus.json` against the
+  same outcome joiner used by the report command;
+- `xtask::tests::actionable_gap_outcomes_fixture_corpus_reports_contract_drift`
+  pins missing, malformed, and mismatched outcome-corpus guardrails;
+- `xtask::tests::ripr_swarm_command_parses_plan_args` pins the
+  `cargo xtask ripr-swarm plan --top <n>` command shape.
+- `xtask::tests::ripr_swarm_command_parses_attempt_dry_run_args` pins the
+  `cargo xtask ripr-swarm attempt --packet <id> --dry-run` command shape;
+- `xtask::tests::ripr_swarm_attempt_requires_packet_and_dry_run` pins that the
+  attempt command stays dry-run-only and requires a packet id;
+- `xtask::tests::ripr_swarm_attempt_dry_run_renders_bounded_packet_context`
+  pins the dry-run context for a queued repair packet, including repair route,
+  related observer, verify command, receipt command, expected movement, and
+  must-not-change boundaries;
+- `xtask::tests::ripr_swarm_attempt_dry_run_reports_blocked_packet_context`
+  pins that blocked/static-limitation packets stay visible without becoming
+  repair-ready.
+
+Follow-up implementation PRs should add tests for:
+
 - packet validation failure modes;
 - receipt and outcome joins;
 - multiple attempts per canonical gap;
-- must-not-change boundary rendering;
-- static-limitation blocking.
+- richer must-not-change boundary rendering.
 
 ## Implementation Mapping
 
 This spec is the behavior contract for future repo-local automation. Expected
 implementation surfaces are:
 
-- `cargo xtask ripr-swarm plan --top <n>`;
-- `cargo xtask ripr-swarm attempt --packet <id> --dry-run`;
-- `target/ripr/reports/swarm-plan.json`;
-- `target/ripr/reports/swarm-plan.md`;
+- `cargo xtask ripr-swarm plan --top <n>` (implemented);
+- `cargo xtask ripr-swarm attempt --packet <id> --dry-run` (implemented);
+- `target/ripr/reports/swarm-plan.json` (implemented);
+- `target/ripr/reports/swarm-plan.md` (implemented);
+- `docs/RIPR_SWARM_HUMAN_WORKFLOW.md` (implemented);
 - existing `actionable-gaps` and `actionable-gap-outcomes` artifacts.
 
 No provider SDK, mutation executor, generated-test writer, PR/CI renderer,
@@ -386,4 +456,5 @@ Future reports should expose:
 - `swarm_verified_improved`;
 - `swarm_verified_unchanged`;
 - `swarm_verified_regressed`;
-- `swarm_failed_to_apply`.
+- `swarm_failed_to_apply`;
+- `swarm_orphaned_receipts`.

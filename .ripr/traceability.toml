@@ -2166,9 +2166,12 @@ tests = [
   "xtask::tests::lane1_evidence_audit_preserves_case_variant_discriminator_values_as_rows",
   "xtask::tests::lane1_actionable_gap_packets_emit_agent_safe_work_items",
   "xtask::tests::lane1_actionable_gap_packets_mark_public_projection_ready_with_receipt",
+  "xtask::tests::lane1_actionable_gap_packets_require_canonical_assertion_for_public_projection",
   "xtask::tests::lane1_actionable_gap_packets_keep_observed_gaps_out_of_public_projection",
   "xtask::tests::actionable_gap_outcomes_join_receipts_and_targeted_movement",
   "xtask::tests::actionable_gap_outcomes_command_writes_markdown_and_json",
+  "xtask::tests::actionable_gap_outcomes_fixture_corpus_matches_expected_states",
+  "xtask::tests::actionable_gap_outcomes_fixture_corpus_reports_contract_drift",
   "xtask::tests::lane1_evidence_audit_requires_structured_repair_route_for_actionable_items",
   "xtask::tests::lane1_evidence_audit_limits_static_top_reasons_to_actionable_items",
   "xtask::tests::lane1_evidence_audit_rejects_generic_static_unknown_limitation_category",
@@ -2180,7 +2183,9 @@ tests = [
   "xtask::tests::xtask_command_parse_preserves_compatibility_aliases",
   "xtask::tests::report_commands_dispatch_through_report_facades",
 ]
-fixtures = []
+fixtures = [
+  "fixtures/actionable-gap-outcomes-corpus",
+]
 code = [
   "xtask/src/command.rs",
   "xtask/src/dispatch.rs",
@@ -3511,9 +3516,43 @@ metrics = [
 id = "RIPR-SPEC-0055"
 name = "Editor actionable gap queue"
 spec = "docs/specs/RIPR-SPEC-0055-editor-actionable-gap-queue.md"
-tests = []
-fixtures = []
-code = []
+tests = [
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_validates_read_only_queue_inputs",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_allows_empty_no_action_queue",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_empty_queue_without_completed_summary",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_limited_run_artifacts",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_actionable_packet_without_identity",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_projection_excluded_actionable_packets",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_public_projection_exclusion_reasons",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_missing_repair_guidance",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_missing_receipt_command_or_path",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_missing_verify_command",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_compound_verify_command",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_missing_confidence_basis",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_disabled_language_in_later_packet",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_unsafe_related_path",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::actionable_gaps_report_rejects_unsafe_verify_command",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::workspace_gap_artifact_loader_validates_known_report_paths",
+  "editors/vscode/test/suite/extension.test.ts::actionable gap queue validation is read-only and fail-closed",
+  "editors/vscode/test/suite/extension.test.ts::status model projects actionable gap queue state without producing packets",
+  "editors/vscode/test/suite/extension.test.ts::copyCurrentRepairPacket copies bounded queue packet for safe actionable state",
+  "editors/vscode/test/suite/extension.test.ts::copyCurrentRepairPacket fails closed for no-action stale and unsafe queue states",
+  "editors/vscode/test/suite/extension.test.ts::copyRepoGapMap copies read-only orientation for safe queue states",
+  "editors/vscode/test/suite/extension.test.ts::copyRepoGapMap suppresses unsafe and mismatched queue artifacts",
+  "editors/vscode/test/suite/extension.test.ts::real extension actionable gap queue commands copy bounded packets for safe artifacts",
+  "editors/vscode/test/suite/extension.test.ts::real extension actionable gap queue commands fail closed for unsafe artifacts",
+  "editors/vscode/test/suite/extension.test.ts::editor adoption baseline keeps setup receipt and first-pr projection read-only",
+]
+fixtures = [
+  "fixtures/editor_actionable_gap_queue",
+]
+code = [
+  "crates/ripr/src/lsp/gap_artifacts.rs",
+  "editors/vscode/package.json",
+  "editors/vscode/src/extension.ts",
+  "editors/vscode/src/client.ts",
+  "xtask/src/main.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0055-editor-actionable-gap-queue.md",
   "docs/specs/README.md",
@@ -3522,11 +3561,17 @@ outputs = [
   "docs/adr/0017-editor-gap-queue-is-read-only.md",
   "docs/adr/README.md",
   "docs/lanes/LANE_3_EDITOR_LSP.md",
+  "docs/EDITOR_ACTIONABLE_GAP_QUEUE.md",
+  "docs/handoffs/2026-05-20-editor-actionable-gap-queue-receipts.md",
+  "docs/handoffs/2026-05-20-editor-actionable-gap-queue-closeout.md",
   "docs/DOCUMENTATION.md",
   "docs/README.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/CAPABILITY_MATRIX.md",
+  "fixtures/editor_actionable_gap_queue/SPEC.md",
+  "fixtures/README.md",
+  "fixtures/EXAMPLE_CORPUS.md",
   "plans/editor-actionable-gap-queue/implementation-plan.md",
   "plans/README.md",
   "metrics/capabilities.toml",
@@ -3597,12 +3642,38 @@ metrics = [
 id = "RIPR-SPEC-0057"
 name = "RIPR swarm repair loop"
 spec = "docs/specs/RIPR-SPEC-0057-ripr-swarm-repair-loop.md"
-tests = []
-fixtures = []
-code = []
+tests = [
+  "xtask::tests::ripr_swarm_plan_ranks_ready_packets_and_blocks_missing_context",
+  "xtask::tests::ripr_swarm_plan_packet_corpus_matches_expected_states",
+  "xtask::tests::actionable_gap_outcomes_fixture_corpus_matches_expected_states",
+  "xtask::tests::actionable_gap_outcomes_fixture_corpus_reports_contract_drift",
+  "xtask::tests::ripr_swarm_command_parses_plan_args",
+  "xtask::tests::ripr_swarm_command_parses_attempt_dry_run_args",
+  "xtask::tests::ripr_swarm_attempt_requires_packet_and_dry_run",
+  "xtask::tests::ripr_swarm_attempt_dry_run_renders_bounded_packet_context",
+  "xtask::tests::ripr_swarm_attempt_dry_run_reports_blocked_packet_context",
+]
+fixtures = [
+  "fixtures/swarm-plan-packet-corpus",
+  "fixtures/actionable-gap-outcomes-corpus",
+]
+code = [
+  "xtask/src/command.rs",
+  "xtask/src/dispatch.rs",
+  "xtask/src/main.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0057-ripr-swarm-repair-loop.md",
+  "docs/RIPR_SWARM_HUMAN_WORKFLOW.md",
+  "docs/handoffs/2026-05-20-0.7-swarm-repair-loop-dogfood.md",
+  "docs/handoffs/2026-05-20-0.7-release-readiness-closeout.md",
+  "README.md",
+  "docs/README.md",
+  "docs/DOCUMENTATION.md",
   "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0014-ripr-swarm-repair-loop.md",
+  "docs/proposals/README.md",
+  "docs/OUTPUT_SCHEMA.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
   ".ripr/traceability.toml",
@@ -3619,4 +3690,5 @@ metrics = [
   "swarm_verified_unchanged",
   "swarm_verified_regressed",
   "swarm_failed_to_apply",
+  "swarm_orphaned_receipts",
 ]

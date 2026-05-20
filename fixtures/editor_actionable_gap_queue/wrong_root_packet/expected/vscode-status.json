@@ -1,0 +1,14 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_actionable_gap_queue/wrong_root_packet",
+  "queue_status": "wrong_root",
+  "projection": "fail_closed",
+  "actionable_gaps": 1,
+  "report_only_gaps": 0,
+  "static_limit_only_gaps": 0,
+  "next_safe_action": "Select the correct workspace root or regenerate actionable-gaps for this root.",
+  "runtime_adequacy_claim": false,
+  "mutation_proof_claim": false,
+  "policy_gate_claim": false,
+  "merge_readiness_claim": false
+}

@@ -46,6 +46,8 @@
     "onCommand:ripr.showStatus",
     "onCommand:ripr.diagnoseSetup",
     "onCommand:ripr.startCurrentRepair",
+    "onCommand:ripr.copyCurrentRepairPacket",
+    "onCommand:ripr.copyRepoGapMap",
     "onCommand:ripr.openFirstPrPacket",
     "onCommand:ripr.copyFirstPrSummary",
     "onCommand:ripr.copyFirstPrRepairPacket",
@@ -161,6 +163,14 @@
       {
         "command": "ripr.startCurrentRepair",
         "title": "ripr: Start Current Repair"
+      },
+      {
+        "command": "ripr.copyCurrentRepairPacket",
+        "title": "ripr: Copy Current Repair Packet"
+      },
+      {
+        "command": "ripr.copyRepoGapMap",
+        "title": "ripr: Copy Repo Gap Map"
       },
       {
         "command": "ripr.openFirstPrPacket",

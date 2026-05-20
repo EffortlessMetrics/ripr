@@ -1,0 +1,524 @@
+{
+  "schema_version": "0.1",
+  "kind": "actionable_gap_outcomes_corpus",
+  "spec": "RIPR-SPEC-0031",
+  "related_spec": "RIPR-SPEC-0057",
+  "description": "Fixture-backed actionable gap outcome joins for ripr-swarm repair loop reporting.",
+  "limits": [
+    "advisory reporting only",
+    "no repair execution",
+    "no provider calls",
+    "no generated tests",
+    "no mutation execution",
+    "no public badge changes"
+  ],
+  "cases": [
+    {
+      "id": "not_attempted_packet",
+      "description": "A packet with no receipt input and no targeted movement remains not attempted.",
+      "actionable_gaps": {
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "report": "actionable-gaps",
+        "packets": [
+          {
+            "canonical_gap_id": "gap:not-attempted",
+            "evidence_class": "predicate_boundary",
+            "repair_kind": "add_boundary_assertion",
+            "source_file": "src/pricing.rs",
+            "primary_anchor": {
+              "file": "src/pricing.rs",
+              "line": 42
+            },
+            "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+            "receipt_command_or_path": "ripr agent receipt --verify-json target/ripr/workflow/agent-verify.json --seam-id not-attempted --json"
+          }
+        ]
+      },
+      "agent_receipt": null,
+      "targeted_test_outcome": null,
+      "expected": {
+        "summary": {
+          "packets_total": 1,
+          "outcomes_total": 1,
+          "not_attempted": 1,
+          "receipt_present": 0,
+          "evidence_improved": 0,
+          "receipts_present": 0
+        },
+        "outcomes": [
+          {
+            "canonical_gap_id": "gap:not-attempted",
+            "outcome_state": "not_attempted",
+            "receipt_state": "not_attempted",
+            "movement_source": null
+          }
+        ]
+      },
+      "must_not_claim": [
+        "Do not claim an attempt happened without a receipt or movement artifact.",
+        "Do not infer work from raw findings."
+      ]
+    },
+    {
+      "id": "receipt_present_without_movement",
+      "description": "A matching receipt without movement stays receipt_present.",
+      "actionable_gaps": {
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "report": "actionable-gaps",
+        "packets": [
+          {
+            "canonical_gap_id": "gap:receipt-present",
+            "evidence_class": "error_path",
+            "repair_kind": "add_exact_error_variant",
+            "source_file": "src/parser.rs",
+            "primary_anchor": {
+              "file": "src/parser.rs",
+              "line": 12
+            },
+            "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+            "receipt_command_or_path": "ripr agent receipt --verify-json target/ripr/workflow/agent-verify.json --seam-id receipt-present --json"
+          }
+        ]
+      },
+      "agent_receipt": {
+        "schema_version": "0.3",
+        "seam": {
+          "seam_id": "receipt-present",
+          "file": "src/parser.rs",
+          "line": 12
+        },
+        "provenance": {
+          "seam_id": "receipt-present"
+        }
+      },
+      "targeted_test_outcome": null,
+      "expected": {
+        "summary": {
+          "packets_total": 1,
+          "outcomes_total": 1,
+          "receipt_present": 1,
+          "evidence_improved": 0,
+          "receipts_present": 1
+        },
+        "outcomes": [
+          {
+            "canonical_gap_id": "gap:receipt-present",
+            "outcome_state": "receipt_present",
+            "receipt_state": "present",
+            "movement_source": null
+          }
+        ]
+      },
+      "must_not_claim": [
+        "Do not claim evidence improved from receipt presence alone.",
+        "Do not silently drop a receipt-only attempt."
+      ]
+    },
+    {
+      "id": "evidence_improved_from_receipt",
+      "description": "A matching receipt with improved movement becomes evidence_improved.",
+      "actionable_gaps": {
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "report": "actionable-gaps",
+        "packets": [
+          {
+            "canonical_gap_id": "gap:improved",
+            "evidence_class": "predicate_boundary",
+            "repair_kind": "add_boundary_assertion",
+            "source_file": "src/pricing.rs",
+            "primary_anchor": {
+              "file": "src/pricing.rs",
+              "line": 42
+            },
+            "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+            "receipt_command_or_path": "ripr agent receipt --verify-json target/ripr/workflow/agent-verify.json --seam-id improved --json"
+          }
+        ]
+      },
+      "agent_receipt": {
+        "schema_version": "0.3",
+        "seam": {
+          "seam_id": "improved",
+          "file": "src/pricing.rs",
+          "line": 42,
+          "before": "weakly_gripped",
+          "after": "strongly_gripped",
+          "change": "improved",
+          "evidence_delta": [
+            "missing discriminator no longer reported: threshold equality"
+          ]
+        },
+        "provenance": {
+          "seam_id": "improved",
+          "movement": "improved"
+        }
+      },
+      "targeted_test_outcome": null,
+      "expected": {
+        "summary": {
+          "packets_total": 1,
+          "outcomes_total": 1,
+          "evidence_improved": 1,
+          "receipts_present": 1
+        },
+        "outcomes": [
+          {
+            "canonical_gap_id": "gap:improved",
+            "outcome_state": "evidence_improved",
+            "receipt_state": "present",
+            "movement_source": "agent_receipt",
+            "movement_direction": "improved",
+            "before": "weakly_gripped",
+            "after": "strongly_gripped"
+          }
+        ]
+      },
+      "must_not_claim": [
+        "Do not treat receipt-backed static movement as mutation proof.",
+        "Do not hide the supporting evidence delta."
+      ]
+    },
+    {
+      "id": "evidence_unchanged_from_targeted_outcome",
+      "description": "A targeted-test unchanged bucket becomes evidence_unchanged.",
+      "actionable_gaps": {
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "report": "actionable-gaps",
+        "packets": [
+          {
+            "canonical_gap_id": "gap:unchanged",
+            "evidence_class": "error_path",
+            "repair_kind": "add_exact_error_variant",
+            "source_file": "src/parser.rs",
+            "primary_anchor": {
+              "file": "src/parser.rs",
+              "line": 12
+            },
+            "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+            "receipt_command_or_path": "ripr agent receipt --verify-json target/ripr/workflow/agent-verify.json --seam-id unchanged --json"
+          }
+        ]
+      },
+      "agent_receipt": {
+        "receipts": []
+      },
+      "targeted_test_outcome": {
+        "schema_version": "0.1",
+        "moved": [],
+        "unchanged": [
+          {
+            "seam_id": "unchanged",
+            "seam_kind": "error_path",
+            "file": "src/parser.rs",
+            "line": 12,
+            "before": "weakly_gripped",
+            "after": "weakly_gripped",
+            "direction": "unchanged",
+            "evidence_delta": []
+          }
+        ],
+        "regressed": [],
+        "removed": [],
+        "new": []
+      },
+      "expected": {
+        "summary": {
+          "packets_total": 1,
+          "outcomes_total": 1,
+          "evidence_unchanged": 1,
+          "receipts_missing_after_input": 1
+        },
+        "outcomes": [
+          {
+            "canonical_gap_id": "gap:unchanged",
+            "outcome_state": "evidence_unchanged",
+            "receipt_state": "missing",
+            "movement_source": "targeted_test_outcome",
+            "movement_direction": "unchanged",
+            "before": "weakly_gripped",
+            "after": "weakly_gripped"
+          }
+        ]
+      },
+      "must_not_claim": [
+        "Do not claim unchanged evidence reduced the actionable gap.",
+        "Do not hide missing receipt state when receipt input was provided."
+      ]
+    },
+    {
+      "id": "evidence_regressed_from_targeted_outcome",
+      "description": "A targeted-test regressed bucket becomes evidence_regressed.",
+      "actionable_gaps": {
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "report": "actionable-gaps",
+        "packets": [
+          {
+            "canonical_gap_id": "gap:regressed",
+            "evidence_class": "side_effect",
+            "repair_kind": "add_side_effect_observer",
+            "source_file": "src/audit.rs",
+            "primary_anchor": {
+              "file": "src/audit.rs",
+              "line": 9
+            },
+            "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+            "receipt_command_or_path": "ripr agent receipt --verify-json target/ripr/workflow/agent-verify.json --seam-id regressed --json"
+          }
+        ]
+      },
+      "agent_receipt": {
+        "receipts": []
+      },
+      "targeted_test_outcome": {
+        "schema_version": "0.1",
+        "moved": [],
+        "unchanged": [],
+        "regressed": [
+          {
+            "seam_id": "regressed",
+            "seam_kind": "side_effect",
+            "file": "src/audit.rs",
+            "line": 9,
+            "before": "weakly_gripped",
+            "after": "ungripped",
+            "direction": "regressed",
+            "evidence_delta": [
+              "side-effect observer no longer matched"
+            ]
+          }
+        ],
+        "removed": [],
+        "new": []
+      },
+      "expected": {
+        "summary": {
+          "packets_total": 1,
+          "outcomes_total": 1,
+          "evidence_regressed": 1,
+          "receipts_missing_after_input": 1
+        },
+        "outcomes": [
+          {
+            "canonical_gap_id": "gap:regressed",
+            "outcome_state": "evidence_regressed",
+            "receipt_state": "missing",
+            "movement_source": "targeted_test_outcome",
+            "movement_direction": "regressed",
+            "before": "weakly_gripped",
+            "after": "ungripped"
+          }
+        ]
+      },
+      "must_not_claim": [
+        "Do not silently retry a regressed repair attempt.",
+        "Do not classify regressed evidence as resolved."
+      ]
+    },
+    {
+      "id": "resolved_from_removed_targeted_outcome",
+      "description": "A targeted-test removed bucket becomes resolved.",
+      "actionable_gaps": {
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "report": "actionable-gaps",
+        "packets": [
+          {
+            "canonical_gap_id": "gap:resolved",
+            "evidence_class": "side_effect",
+            "repair_kind": "add_side_effect_observer",
+            "source_file": "src/audit.rs",
+            "primary_anchor": {
+              "file": "src/audit.rs",
+              "line": 9
+            },
+            "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+            "receipt_command_or_path": "ripr agent receipt --verify-json target/ripr/workflow/agent-verify.json --seam-id resolved --json"
+          }
+        ]
+      },
+      "agent_receipt": {
+        "receipts": []
+      },
+      "targeted_test_outcome": {
+        "schema_version": "0.1",
+        "moved": [],
+        "unchanged": [],
+        "regressed": [],
+        "removed": [
+          {
+            "seam_id": "resolved",
+            "seam_kind": "side_effect",
+            "file": "src/audit.rs",
+            "line": 9,
+            "grip_class": "weakly_gripped"
+          }
+        ],
+        "new": []
+      },
+      "expected": {
+        "summary": {
+          "packets_total": 1,
+          "outcomes_total": 1,
+          "resolved": 1,
+          "receipts_missing_after_input": 1
+        },
+        "outcomes": [
+          {
+            "canonical_gap_id": "gap:resolved",
+            "outcome_state": "resolved",
+            "receipt_state": "missing",
+            "movement_source": "targeted_test_outcome",
+            "movement_direction": "resolved",
+            "before": "weakly_gripped",
+            "after": null
+          }
+        ]
+      },
+      "must_not_claim": [
+        "Do not confuse resolved with unchanged.",
+        "Do not hide that the receipt is missing when only movement data matched."
+      ]
+    },
+    {
+      "id": "attempted_no_receipt_from_new_targeted_outcome",
+      "description": "A matching targeted-test new bucket without receipt becomes attempted_no_receipt.",
+      "actionable_gaps": {
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "report": "actionable-gaps",
+        "packets": [
+          {
+            "canonical_gap_id": "gap:attempted-no-receipt",
+            "evidence_class": "predicate_boundary",
+            "repair_kind": "add_boundary_assertion",
+            "source_file": "src/new_gap.rs",
+            "primary_anchor": {
+              "file": "src/new_gap.rs",
+              "line": 20
+            },
+            "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+            "receipt_command_or_path": "ripr agent receipt --verify-json target/ripr/workflow/agent-verify.json --seam-id attempted-no-receipt --json"
+          }
+        ]
+      },
+      "agent_receipt": {
+        "receipts": []
+      },
+      "targeted_test_outcome": {
+        "schema_version": "0.1",
+        "moved": [],
+        "unchanged": [],
+        "regressed": [],
+        "removed": [],
+        "new": [
+          {
+            "seam_id": "attempted-no-receipt",
+            "seam_kind": "predicate_boundary",
+            "file": "src/new_gap.rs",
+            "line": 20,
+            "grip_class": "ungripped"
+          }
+        ]
+      },
+      "expected": {
+        "summary": {
+          "packets_total": 1,
+          "outcomes_total": 1,
+          "attempted_no_receipt": 1,
+          "receipts_missing_after_input": 1
+        },
+        "outcomes": [
+          {
+            "canonical_gap_id": "gap:attempted-no-receipt",
+            "outcome_state": "attempted_no_receipt",
+            "receipt_state": "missing",
+            "movement_source": "targeted_test_outcome",
+            "movement_direction": "new",
+            "before": null,
+            "after": "ungripped"
+          }
+        ]
+      },
+      "must_not_claim": [
+        "Do not claim improvement when targeted movement is a new gap.",
+        "Do not hide missing receipt state for attempted work."
+      ]
+    },
+    {
+      "id": "orphaned_receipt_reported",
+      "description": "A receipt that matches no current actionable packet remains visible as orphaned evidence.",
+      "actionable_gaps": {
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "report": "actionable-gaps",
+        "packets": [
+          {
+            "canonical_gap_id": "gap:current-packet",
+            "evidence_class": "predicate_boundary",
+            "repair_kind": "add_boundary_assertion",
+            "source_file": "src/current.rs",
+            "primary_anchor": {
+              "file": "src/current.rs",
+              "line": 33
+            },
+            "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+            "receipt_command_or_path": "ripr agent receipt --verify-json target/ripr/workflow/agent-verify.json --seam-id current-packet --json"
+          }
+        ]
+      },
+      "agent_receipt": {
+        "receipts": [
+          {
+            "schema_version": "0.3",
+            "seam": {
+              "seam_id": "old-packet",
+              "file": "src/old.rs",
+              "line": 7,
+              "before": "weakly_gripped",
+              "after": "strongly_gripped",
+              "change": "improved"
+            },
+            "provenance": {
+              "seam_id": "old-packet",
+              "movement": "improved"
+            }
+          }
+        ]
+      },
+      "targeted_test_outcome": null,
+      "expected": {
+        "summary": {
+          "packets_total": 1,
+          "outcomes_total": 1,
+          "not_attempted": 1,
+          "receipts_missing_after_input": 1,
+          "orphaned_receipts": 1
+        },
+        "outcomes": [
+          {
+            "canonical_gap_id": "gap:current-packet",
+            "outcome_state": "not_attempted",
+            "receipt_state": "missing",
+            "movement_source": null
+          }
+        ],
+        "orphaned_receipts": [
+          {
+            "receipt_id": "receipt:old-packet",
+            "seam_id": "old-packet",
+            "movement_direction": "improved"
+          }
+        ]
+      },
+      "must_not_claim": [
+        "Do not silently drop receipts that no longer match a current packet.",
+        "Do not create a new actionable gap from an orphaned receipt."
+      ]
+    }
+  ]
+}
