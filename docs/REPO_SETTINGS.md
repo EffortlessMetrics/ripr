@@ -4,6 +4,19 @@ Some security and review controls live in GitHub settings instead of the git
 tree. This checklist records the expected settings so local automation, CI, and
 review policy do not drift apart.
 
+## Repository Role
+
+`EffortlessMetrics/ripr` is the public release and distribution authority.
+Normal development has moved to `EffortlessMetrics/ripr-swarm`, where trusted
+same-repo PRs use the routed swarm CI path. This source repository should accept
+only release, security, and explicit swarm-to-source promotion PRs unless a
+maintainer documents a source-only exception before opening the work.
+
+Release, publish, signing, and marketplace secrets stay in this source
+repository until a focused migration explicitly moves them. Do not copy those
+secrets or release environments to `ripr-swarm` as part of routine development
+cutover.
+
 ## Settings App Contract
 
 The reviewable Settings App contract lives in `.github/settings.yml`.
