@@ -144,7 +144,7 @@ On Windows, use `target\ripr\install-smoke-path\bin\ripr.exe`.
 Also confirm the generated CI and editor first-run front doors before release:
 
 ```bash
-cargo xtask release-readiness --version 0.6.0
+cargo xtask release-readiness --version 0.7.0
 ```
 
 The readiness report must show that generated GitHub CI includes `#### First-run
@@ -158,7 +158,7 @@ Use the version being verified so an older cached or latest crate cannot mask a
 release mistake:
 
 ```bash
-cargo install ripr --version 0.6.0 --locked --root target/ripr/install-smoke-cratesio --force
+cargo install ripr --version 0.7.0 --locked --root target/ripr/install-smoke-cratesio --force
 target/ripr/install-smoke-cratesio/bin/ripr --version
 target/ripr/install-smoke-cratesio/bin/ripr first-pr --help
 target/ripr/install-smoke-cratesio/bin/ripr pilot \

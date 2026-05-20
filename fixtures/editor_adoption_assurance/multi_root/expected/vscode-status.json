@@ -13,7 +13,7 @@
   "server": {
     "state": "compatible",
     "path": "ripr",
-    "version": "ripr 0.6.0",
+    "version": "ripr 0.7.0",
     "expected_version": "compatible",
     "protocol_features": ["diagnose_setup", "receipt_projection", "first_pr_packet_projection"],
     "supported_artifact_schemas": ["first-pr.start-here.v1", "agent-receipt.v1"]
