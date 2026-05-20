@@ -9,6 +9,11 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Public actionable projection docs now define internal badge-readiness stages:
+  packet readiness, scorecard readiness, and badge-basis readiness. The spec
+  records that Lane 1 scorecard/trend packet readiness is internal evidence
+  only and does not authorize public endpoint refreshes without the generated
+  badge workflow and an explicitly scoped badge PR.
 - Lane 1 evidence-quality scorecard and trend reports now carry actionable-gap
   packet public-projection readiness from the live audit. The scorecard reports
   eligible and excluded packet counts plus projection-exclusion reasons, and
