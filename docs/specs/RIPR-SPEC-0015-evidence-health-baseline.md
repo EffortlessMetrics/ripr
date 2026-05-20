@@ -63,11 +63,13 @@ All flags are optional except when callers want non-default paths:
 same default artifacts. If `target/ripr/reports/mutation-calibration.json`
 already exists, the xtask command includes it as optional calibration context.
 The facade bounds the live child process with
-`RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` (default 30 minutes). On timeout or incomplete
-child-process exit it removes stale or partial outputs and writes warning
-JSON/Markdown with the named `evidence_health_timeout` or
-`evidence_health_incomplete` run limitation instead of waiting forever or
-pretending missing counts mean no evidence debt.
+`RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` (default 30 minutes). This includes both the
+preflight `cargo build -p ripr` phase and the `ripr evidence-health` generation
+phase. On timeout or incomplete child-process exit it removes stale or partial
+outputs and writes warning JSON/Markdown with phase context such as
+`evidence_health_build` or `evidence_health_generation` plus the named
+`evidence_health_timeout` or `evidence_health_incomplete` run limitation instead
+of waiting forever or pretending missing counts mean no evidence debt.
 
 The command:
 
@@ -205,6 +207,9 @@ from missing health counts.
 - `xtask::tests::evidence_health_timeout_writes_named_limitation_reports`
   pins the bounded xtask timeout fallback, stale-output cleanup, named
   limitation category, and repair route.
+- `xtask::tests::evidence_health_build_timeout_writes_named_limitation_reports`
+  pins the bounded preflight build fallback, phase diagnostics, stale-output
+  cleanup, named limitation category, and repair route.
 - `xtask::tests::evidence_health_incomplete_exit_writes_named_limitation_reports`
   and
   `xtask::tests::evidence_health_nonzero_exit_writes_named_limitation_reports`

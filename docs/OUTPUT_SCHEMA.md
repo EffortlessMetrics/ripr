@@ -1402,13 +1402,15 @@ without changing analyzer behavior. The same report lands at
 `target/ripr/reports/evidence-health.md` when generated through
 `cargo xtask evidence-health`.
 
-The xtask facade bounds the live `ripr evidence-health` subprocess with
-`RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` (default 30 minutes). If the subprocess times
-out or exits before a complete report is available, xtask discards stale or
-partial outputs and writes warning JSON and Markdown with `status = "warn"` and
-a named `evidence_health_timeout` or `evidence_health_incomplete`
-`run_limitations[]` entry. That limited artifact is diagnostic only; it does
-not claim user test debt from missing health counts.
+The xtask facade bounds both the preflight `cargo build -p ripr` phase and the
+live `ripr evidence-health` subprocess with `RIPR_EVIDENCE_HEALTH_TIMEOUT_MS`
+(default 30 minutes). If either phase times out or exits before a complete
+report is available, xtask discards stale or partial outputs and writes warning
+JSON and Markdown with `status = "warn"`, phase context such as
+`evidence_health_build` or `evidence_health_generation`, and a named
+`evidence_health_timeout` or `evidence_health_incomplete` `run_limitations[]`
+entry. That limited artifact is diagnostic only; it does not claim user test
+debt from missing health counts.
 
 ```json
 {

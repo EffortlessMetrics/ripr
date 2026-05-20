@@ -9,6 +9,12 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- `cargo xtask evidence-health` now bounds its preflight `cargo build -p ripr`
+  phase with the evidence-health timeout and writes diagnostic warning reports
+  with `phase = evidence_health_build` if that phase times out or fails. This
+  prevents cold or pathological builds from consuming the outer shell timeout
+  without producing `evidence-health.json` / `.md`; the fallback artifact names
+  a limitation and does not claim user test debt.
 - Public actionable projection docs now define internal badge-readiness stages:
   packet readiness, scorecard readiness, and badge-basis readiness. The spec
   records that Lane 1 scorecard/trend packet readiness is internal evidence
