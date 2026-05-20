@@ -5,6 +5,9 @@
 //! only: it does not run mutation testing, make policy decisions, mutate
 //! baselines, or change seam grip classifications.
 
+use crate::agent::loop_commands::{
+    WORKFLOW_AGENT_RECEIPT_ARTIFACT, WORKFLOW_AGENT_VERIFY_ARTIFACT, agent_receipt_command,
+};
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::canonical_gap::CanonicalGapIdentity;
 use crate::analysis::seams::{SeamGripClass, SeamKind};
@@ -80,6 +83,7 @@ pub(crate) struct EvidenceRecordCanonicalItem {
     pub(crate) repair_route: Option<EvidenceRecordCanonicalRepairRoute>,
     pub(crate) related_test: Option<EvidenceRecordAlignmentRelatedTest>,
     pub(crate) verify_command: Option<String>,
+    pub(crate) receipt_command: Option<String>,
     pub(crate) confidence: EvidenceRecordAlignmentConfidence,
 }
 
@@ -533,6 +537,7 @@ fn canonical_item_for(
             .as_ref()
             .map(alignment_related_test_for),
         verify_command: recommendation.verify_command.clone(),
+        receipt_command: canonical_receipt_command_for(entry, gap_state),
         confidence: alignment_confidence_for(gap_state, static_limitations),
     }
 }
@@ -796,6 +801,19 @@ fn recommendation_for(
     }
 }
 
+fn canonical_receipt_command_for(entry: &ClassifiedSeam, gap_state: &str) -> Option<String> {
+    if gap_state != "actionable" {
+        return None;
+    }
+
+    Some(agent_receipt_command(
+        ".",
+        WORKFLOW_AGENT_VERIFY_ARTIFACT,
+        entry.seam.id().as_str(),
+        Some(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+    ))
+}
+
 fn recommended_test_record(test: RecommendedTest) -> EvidenceRecordRecommendedTest {
     EvidenceRecordRecommendedTest {
         name: test.name,
@@ -1035,6 +1053,7 @@ fn canonical_item_json(item: &EvidenceRecordCanonicalItem) -> Value {
             .as_ref()
             .map_or(Value::Null, alignment_related_test_json),
         "verify_command": item.verify_command.as_deref(),
+        "receipt_command": item.receipt_command.as_deref(),
         "confidence": {
             "basis": item.confidence.basis.as_str(),
             "notes": item
@@ -1377,6 +1396,16 @@ mod tests {
         );
         assert_eq!(json["canonical_item"]["confidence"]["basis"], "static_only");
         assert_eq!(json["canonical_item"]["verify_command"], VERIFY_COMMAND);
+        let expected_receipt_command = agent_receipt_command(
+            ".",
+            WORKFLOW_AGENT_VERIFY_ARTIFACT,
+            &seam_id,
+            Some(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+        );
+        assert_eq!(
+            json["canonical_item"]["receipt_command"],
+            expected_receipt_command
+        );
         assert!(json["presentation_text"].is_null());
         assert_eq!(json["evidence_path"]["activate"]["state"], "yes");
         assert_eq!(json["observed_values"][0]["context"], "function_argument");
@@ -1425,6 +1454,7 @@ mod tests {
         assert_eq!(json["canonical_item"]["gap_state"], "static_limitation");
         assert_eq!(json["canonical_item"]["actionability"], "static_limitation");
         assert_eq!(json["canonical_item"]["repair_route"], Value::Null);
+        assert_eq!(json["canonical_item"]["receipt_command"], Value::Null);
         assert_eq!(
             json["canonical_item"]["recommended_repair"],
             "Inspect static limitation `activation_static_unknown` via `analysis/static-limitation-taxonomy`."

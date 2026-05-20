@@ -3552,6 +3552,8 @@ tests = [
   "xtask::tests::public_badge_basis_guard_rejects_seam_native_repair_badge_copy",
   "xtask::tests::public_badge_basis_guard_allows_explicit_seam_inventory_badge_copy",
   "xtask::tests::check_badge_diff_policy_rejects_public_surface_seam_native_from_git_status",
+  "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_carries_identity_path_guidance_and_calibration_placeholder",
+  "xtask::tests::lane1_actionable_gap_packets_mark_public_projection_ready_with_receipt",
 ]
 fixtures = [
   "badges/ripr.json",

@@ -1324,12 +1324,15 @@ Field contract:
 - `seams[].evidence_record.canonical_item` - additive finding-alignment
   projection with `gap_state`, class-scoped `actionability`, `why`,
   `recommended_repair`, nullable structured `repair_route`, `related_test`,
-  `verify_command`, `confidence`, raw group size, nullable `primary_anchor`,
-  and `raw_spans`. Actionable canonical items carry
+  `verify_command`, nullable `receipt_command`, `confidence`, raw group size,
+  nullable `primary_anchor`, and `raw_spans`. Actionable canonical items carry
   `repair_route.repair_kind`, `target_test_type`, and `suggested_assertion`;
-  no-action, observed, limitation, and unknown items keep
-  `repair_route: null`. Downstream surfaces should render this canonical item
-  before treating raw findings as separate work.
+  no-action, observed, limitation, and unknown items keep `repair_route: null`.
+  Actionable items also carry a safe agent receipt command when the canonical
+  repair/verify loop is available, so public-projection readiness can be
+  assessed from canonical evidence rather than raw findings. Downstream
+  surfaces should render this canonical item before treating raw findings as
+  separate work.
 - `seams[].evidence_record.canonical_item.primary_anchor` - preferred
   placement hint for downstream surfaces when the canonical item has a safe
   source location. It is `null` only when RIPR cannot safely name a placement.
@@ -2164,11 +2167,9 @@ mutation execution.
     "internal_no_action": 0,
     "static_limitations": 26277,
     "packets_emitted": 25,
-    "public_projection_eligible_packets": 0,
-    "public_projection_excluded_packets": 25,
-    "projection_exclusion_reasons": [
-      {"label": "missing_receipt_path", "count": 25}
-    ],
+    "public_projection_eligible_packets": 25,
+    "public_projection_excluded_packets": 0,
+    "projection_exclusion_reasons": [],
     "raw_to_canonical_ratio": 1.24,
     "repair_route_unknowns": 0,
     "verify_command_unknowns": 0
@@ -2202,10 +2203,10 @@ mutation execution.
       "verify_command": "cargo xtask evidence-quality-scorecard",
       "repair_route_source": "canonical_item.repair_route",
       "verify_command_source": "canonical_item.verify_command",
-      "receipt_command_or_path": null,
-      "receipt_source": "missing",
-      "public_projection_eligible": false,
-      "projection_exclusion_reasons": ["missing_receipt_path"],
+      "receipt_command_or_path": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id probe:src_pricing_rs:42:predicate_boundary --json --out target/ripr/reports/agent-receipt.json",
+      "receipt_source": "canonical_item.receipt_command",
+      "public_projection_eligible": true,
+      "projection_exclusion_reasons": [],
       "raw_findings": [
         {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed"}
       ],
@@ -2233,11 +2234,11 @@ not fan it back out into separate user-facing work.
 the evidence record so agents do not have to infer the boundary or assertion
 target from a broader candidate-value hint.
 `public_projection_eligible` is an audit-only badge-readiness decision for the
-emitted packet. It is false until the packet has public-projection prerequisites
-such as canonical repair and verify fields plus a receipt command or path; the
-stable `projection_exclusion_reasons[]` values explain why an otherwise useful
-agent packet is not yet a public badge item. This does not change committed
-badge endpoint semantics.
+emitted packet. It is true only when the packet has public-projection
+prerequisites such as canonical repair and verify fields plus a receipt command
+or path; otherwise the stable `projection_exclusion_reasons[]` values explain
+why an otherwise useful agent packet is not yet a public badge item. This does
+not change committed badge endpoint semantics.
 
 ## Evidence Quality Scorecard
 

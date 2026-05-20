@@ -57,6 +57,12 @@ are scoped or reviewed.
   mistaken for public badge-ready items and does not change public badges,
   PR/CI rendering, gate policy, provider calls, generated tests, source edits,
   or mutation execution.
+- Actionable Lane 1 canonical evidence items now carry a canonical
+  `receipt_command` for the existing agent receipt loop. The audit packet layer
+  can now reduce `missing_receipt_path` exclusions from producer evidence
+  rather than a report-side guess while leaving public badges, PR/CI rendering,
+  gate policy, providers, generated tests, source edits, and mutation execution
+  unchanged.
 - Lane 1 run-reliability reports now emit bounded warning artifacts for the
   expensive live paths instead of leaving stale output or failing without a
   report on timeout. `cargo xtask lane1-evidence-audit` records a named
