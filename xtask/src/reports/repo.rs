@@ -1,3 +1,4 @@
+pub(crate) use crate::actionable_gap_outcomes_report_impl as actionable_gap_outcomes_report;
 pub(crate) use crate::agent_seam_packets_report_impl as agent_seam_packets_report;
 pub(crate) use crate::evidence_health_report_impl as evidence_health_report;
 pub(crate) use crate::evidence_quality_scorecard_report_impl as evidence_quality_scorecard_report;

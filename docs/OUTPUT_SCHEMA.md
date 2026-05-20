@@ -2240,6 +2240,82 @@ or path; otherwise the stable `projection_exclusion_reasons[]` values explain
 why an otherwise useful agent packet is not yet a public badge item. This does
 not change committed badge endpoint semantics.
 
+## Actionable Gap Outcomes
+
+`cargo xtask actionable-gap-outcomes` joins actionable-gap packets with optional
+agent receipt and targeted-test outcome artifacts:
+
+```text
+target/ripr/reports/actionable-gap-outcomes.json
+target/ripr/reports/actionable-gap-outcomes.md
+```
+
+The report is advisory. It does not run repairs, generate tests, execute
+mutation testing, change PR/CI rendering, or change public badge semantics.
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "report": "actionable-gap-outcomes",
+  "scope": "repo",
+  "status": "advisory",
+  "source": "actionable-gaps plus optional receipt and targeted-test outcome artifacts",
+  "inputs": {
+    "actionable_gaps": "target/ripr/reports/actionable-gaps.json",
+    "agent_receipt": "target/ripr/reports/agent-receipt.json",
+    "targeted_test_outcome": "target/ripr/reports/targeted-test-outcome.json"
+  },
+  "summary": {
+    "packets_total": 25,
+    "outcomes_total": 25,
+    "not_attempted": 22,
+    "attempted_no_receipt": 0,
+    "receipt_present": 0,
+    "evidence_improved": 1,
+    "evidence_unchanged": 1,
+    "evidence_regressed": 0,
+    "resolved": 1,
+    "unknown": 0,
+    "receipts_present": 1,
+    "receipts_missing_after_input": 24
+  },
+  "outcomes": [
+    {
+      "canonical_gap_id": "gap:abc",
+      "evidence_class": "predicate_boundary",
+      "repair_kind": "add_boundary_assertion",
+      "source_file": "src/pricing.rs",
+      "verify_command": "ripr agent verify --root . --before before.json --after after.json --json",
+      "receipt_command_or_path": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id abc --json --out target/ripr/reports/agent-receipt.json",
+      "receipt_state": "present",
+      "outcome_state": "evidence_improved",
+      "seam_id": "abc",
+      "before": "weakly_gripped",
+      "after": "strongly_gripped",
+      "movement_source": "agent_receipt",
+      "movement_direction": "improved",
+      "evidence_delta": [
+        "missing discriminator no longer reported: threshold equality"
+      ],
+      "reason": "Matched agent receipt artifact."
+    }
+  ],
+  "must_not_infer": [
+    "outcome reports join existing artifacts; they do not execute repairs",
+    "raw findings remain supporting evidence, not user work",
+    "targeted-test outcomes are static evidence movement, not mutation proof",
+    "missing receipts do not imply a repair failed"
+  ]
+}
+```
+
+`outcome_state` uses the bounded Lane 1 lifecycle states
+`not_attempted`, `attempted_no_receipt`, `receipt_present`,
+`evidence_improved`, `evidence_unchanged`, `evidence_regressed`, `resolved`,
+and `unknown`. Raw findings do not determine outcome state; the join is based
+on canonical packet identity, seam identity, or the packet primary anchor.
+
 ## Evidence Quality Scorecard
 
 `cargo xtask evidence-quality-scorecard` writes a repo-local Lane 1 scorecard
@@ -7620,6 +7696,15 @@ JSON shape:
       "command": "ripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --format json --out target/ripr/reports/targeted-test-outcome.json",
       "required": true,
       "summary": "Report has not been generated yet."
+    },
+    {
+      "name": "actionable gap outcomes",
+      "path": "target/ripr/reports/actionable-gap-outcomes.json",
+      "state": "missing",
+      "status": "missing",
+      "command": "cargo xtask actionable-gap-outcomes",
+      "required": true,
+      "summary": "Actionable packet outcome join has not been generated yet."
     },
     {
       "name": "mutation calibration",
