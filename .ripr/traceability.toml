@@ -3721,3 +3721,31 @@ metrics = [
   "swarm_agent_production_code_boundary_violations",
   "swarm_agent_orphaned_receipts",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0059"
+name = "Actionable surface translation"
+spec = "docs/specs/RIPR-SPEC-0059-actionable-surface-translation.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0059-actionable-surface-translation.md",
+  "docs/specs/README.md",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "repo_actionable_queue_count",
+  "pr_local_actionable_gap_count",
+  "actionable_gaps_new",
+  "actionable_gaps_resolved",
+  "actionable_gaps_blocked_static_limited",
+  "actionable_receipts_missing",
+  "actionable_receipts_orphaned",
+  "actionable_repairs_attempted_unchanged",
+  "swarm_ready_packets",
+  "outcome_delta_improved",
+  "outcome_delta_unchanged",
+  "outcome_delta_regressed",
+  "outcome_delta_resolved",
+]
