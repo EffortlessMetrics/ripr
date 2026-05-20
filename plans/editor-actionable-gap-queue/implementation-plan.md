@@ -19,11 +19,13 @@ repair packet, show receipt state, refresh, and inspect an existing first-pr
 packet.
 
 Lane 1 now emits `target/ripr/reports/actionable-gaps.{json,md}` as the typed
-source artifact for the current repair queue. Lane 3 should project that
-artifact after validating it; it should not rederive the queue, produce the
-artifact, or parse Markdown for action semantics.
+source artifact for the current repair queue. Lane 3 projects that artifact
+after validating it; it should not rederive the queue, produce the artifact, or
+parse Markdown for action semantics.
 
-No behavior PR should start until this source-of-truth stack lands.
+The source-of-truth stack and read-only artifact validation seam have landed.
+The active slice projects the validated queue state in `ripr: Show Status`
+without adding copy actions or packet generation.
 
 ## Hard Boundaries
 
@@ -51,8 +53,8 @@ No behavior PR should start until this source-of-truth stack lands.
 | --- | --- | --- | --- |
 | #1298 | `docs(lane3): open editor actionable gap queue stack` | closed | Source-of-truth proposal, spec, ADR, plan, indexes, lane tracker, traceability, and capability wiring landed before behavior work. |
 | #1299 | `test(lsp): pin post-adoption editor contract` | closed | Post-adoption Rust LSP projection, hover, actions, first-pr, receipt, and fail-closed behavior were pinned before queue validation. |
-| #1300 | `lsp(queue): validate actionable gap packet artifacts` | active | Add read-only validation for `target/ripr/reports/actionable-gaps.json`. |
-| #1301 | `lsp(queue): project repair queue in Show Status` | planned | Show bounded queue summary and no-action/fail-closed states. |
+| #1300 | `lsp(queue): validate actionable gap packet artifacts` | closed | Read-only validation for `target/ripr/reports/actionable-gaps.json` landed with success, no-action, missing, malformed, wrong-root, unsafe-path, unsafe-command, producer-exclusion, and run-limitation guards. |
+| #1301 | `lsp(queue): project repair queue in Show Status` | active | Show bounded queue summary and no-action/fail-closed states without adding copy actions or packet generation. |
 | #1302 | `lsp(queue): add Copy Current Repair Packet` | planned | Copy one bounded packet only for validated actionable gaps. |
 | #1303 | `lsp(queue): add Copy Repo Gap Map` | planned | Copy read-only orientation without gate/runtime/policy claims. |
 | #1304 | `fixtures(editor): add actionable gap queue corpus` | planned | Add success and fail-closed fixture cases. |

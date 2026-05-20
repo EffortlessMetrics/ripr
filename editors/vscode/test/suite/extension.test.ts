@@ -7,6 +7,7 @@ import {
   RiprClientRuntime,
   RiprAgentLoopCommandTarget,
   RiprWorkspaceRootState,
+  readActionableGapQueueStatus,
   readFirstPrPacketStatus
 } from '../../src/client';
 
@@ -1206,6 +1207,149 @@ suite('Extension Smoke', () => {
     assert.strictEqual(unsafeInputPath.state, 'unsafePath');
   });
 
+  test('actionable gap queue validation is read-only and fail-closed', async () => {
+    const workspaceRoot = path.resolve('queue-workspace');
+
+    const missing = await readActionableGapQueueStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {}));
+    assert.strictEqual(missing.state, 'missing');
+
+    const ready = await readActionableGapQueueStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/actionable-gaps.json': actionableGapsReport({})
+    }));
+    assert.strictEqual(ready.state, 'topActionableGap');
+    assert.strictEqual(ready.canonicalGapId, 'gap:rust:pricing:discount:threshold-boundary');
+    assert.strictEqual(ready.topRepair, 'add_boundary_assertion');
+    assert.strictEqual(ready.relatedTest, 'tests/pricing.rs::premium_customer_gets_discount');
+    assert.strictEqual(ready.verifyCommand, 'ripr agent verify --root . --json');
+
+    const missingIdentityPacket = JSON.parse(actionableGapsReport({})) as Record<string, unknown>;
+    delete (missingIdentityPacket.packets as Array<Record<string, unknown>>)[0].canonical_gap_id;
+    const missingIdentity = await readActionableGapQueueStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/actionable-gaps.json': JSON.stringify(missingIdentityPacket)
+    }));
+    assert.strictEqual(missingIdentity.state, 'blocked');
+
+    const noAction = await readActionableGapQueueStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/actionable-gaps.json': actionableGapsReport({
+        summary: {
+          actionable_gaps: 0,
+          packets_emitted: 0,
+          public_projection_eligible_packets: 0,
+          public_projection_excluded_packets: 0
+        },
+        packets: []
+      })
+    }));
+    assert.strictEqual(noAction.state, 'noAction');
+
+    const malformed = await readActionableGapQueueStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/actionable-gaps.json': '{not-json'
+    }));
+    assert.strictEqual(malformed.state, 'malformed');
+
+    const unsupportedSchema = await readActionableGapQueueStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/actionable-gaps.json': actionableGapsReport({ schema_version: '9.9' })
+    }));
+    assert.strictEqual(unsupportedSchema.state, 'unsupportedSchema');
+
+    const wrongRoot = await readActionableGapQueueStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/actionable-gaps.json': actionableGapsReport({ root: '../other-workspace' })
+    }));
+    assert.strictEqual(wrongRoot.state, 'wrongRoot');
+
+    const stale = await readActionableGapQueueStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/actionable-gaps.json': actionableGapsReport({ status: 'stale' })
+    }));
+    assert.strictEqual(stale.state, 'stale');
+
+    const limited = await readActionableGapQueueStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/actionable-gaps.json': actionableGapsReport({
+        run_limitations: [
+          {
+            category: 'lane1_repo_exposure_timeout',
+            phase: 'repo_exposure_generation'
+          }
+        ]
+      })
+    }));
+    assert.strictEqual(limited.state, 'blocked');
+
+    const reportOnly = await readActionableGapQueueStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/actionable-gaps.json': actionableGapsReport({
+        summary: {
+          actionable_gaps: 0,
+          packets_emitted: 1,
+          public_projection_eligible_packets: 0,
+          public_projection_excluded_packets: 0
+        },
+        packets: [
+          {
+            canonical_gap_id: 'gap:rust:pricing:report-only',
+            gap_state: 'report_only',
+            actionability: 'report_only',
+            source_file: 'src/pricing.rs'
+          }
+        ]
+      })
+    }));
+    assert.strictEqual(reportOnly.state, 'reportOnly');
+
+    const staticLimitOnly = await readActionableGapQueueStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/actionable-gaps.json': actionableGapsReport({
+        summary: {
+          actionable_gaps: 0,
+          packets_emitted: 1,
+          public_projection_eligible_packets: 0,
+          public_projection_excluded_packets: 0
+        },
+        packets: [
+          {
+            canonical_gap_id: 'gap:rust:pricing:static-limit',
+            gap_state: 'static_limit_only',
+            actionability: 'static_limit_only',
+            source_file: 'src/pricing.rs',
+            static_limit_kind: 'dynamic_dispatch'
+          }
+        ]
+      })
+    }));
+    assert.strictEqual(staticLimitOnly.state, 'staticLimitOnly');
+
+    const projectionExcludedPacket = JSON.parse(actionableGapsReport({})) as Record<string, unknown>;
+    const packets = projectionExcludedPacket.packets as Array<Record<string, unknown>>;
+    packets[0].repair_route_source = 'missing';
+    packets[0].public_projection_eligible = false;
+    packets[0].projection_exclusion_reasons = ['missing_repair_route'];
+    const projectionExcluded = await readActionableGapQueueStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/actionable-gaps.json': JSON.stringify(projectionExcludedPacket)
+    }));
+    assert.strictEqual(projectionExcluded.state, 'blocked');
+
+    const unsafeCommandPacket = JSON.parse(actionableGapsReport({})) as Record<string, unknown>;
+    (unsafeCommandPacket.packets as Array<Record<string, unknown>>)[0].verify_command =
+      'ripr agent verify --root . --json; cargo test';
+    const unsafeCommand = await readActionableGapQueueStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/actionable-gaps.json': JSON.stringify(unsafeCommandPacket)
+    }));
+    assert.strictEqual(unsafeCommand.state, 'unsafeCommand');
+
+    const unsafePathPacket = JSON.parse(actionableGapsReport({})) as Record<string, unknown>;
+    (unsafePathPacket.packets as Array<Record<string, unknown>>)[0].target_test =
+      '../outside.rs::test_escape';
+    const unsafePath = await readActionableGapQueueStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/actionable-gaps.json': JSON.stringify(unsafePathPacket)
+    }));
+    assert.strictEqual(unsafePath.state, 'unsafePath');
+
+    const unsafeReceiptPathPacket = JSON.parse(actionableGapsReport({})) as Record<string, unknown>;
+    (unsafeReceiptPathPacket.packets as Array<Record<string, unknown>>)[0].receipt_command_or_path =
+      '../outside/agent-receipt.json';
+    const unsafeReceiptPath = await readActionableGapQueueStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/actionable-gaps.json': JSON.stringify(unsafeReceiptPathPacket)
+    }));
+    assert.strictEqual(unsafeReceiptPath.state, 'unsafePath');
+  });
+
   test('status model projects first-pr packet state without producing packets', async () => {
     await withControllerTestContext({}, async (context) => {
       await context.controller.start();
@@ -1352,10 +1496,162 @@ suite('Extension Smoke', () => {
     });
   });
 
+  test('status model projects actionable gap queue state without producing packets', async () => {
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/actionable-gaps.json': actionableGapsReport({})
+      }
+    }, async (context) => {
+      await context.controller.start();
+      const statusOutput = await showStatusReport(context);
+      assertReportIncludes(statusOutput, [
+        'Actionable gap queue: top repair ready; target/ripr/reports/actionable-gaps.json is advisory.',
+        'Top repair: add_boundary_assertion',
+        'Gap identity: gap:rust:pricing:discount:threshold-boundary',
+        'Related test: tests/pricing.rs::premium_customer_gets_discount',
+        'Verify: ripr agent verify --root . --json',
+        'Receipt: ripr agent receipt --root . --json',
+        'does not prove runtime adequacy, mutation coverage, policy eligibility, or gate status'
+      ]);
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/actionable-gaps.json': actionableGapsReport({
+          summary: {
+            actionable_gaps: 0,
+            packets_emitted: 0,
+            public_projection_eligible_packets: 0,
+            public_projection_excluded_packets: 0
+          },
+          packets: []
+        })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      const statusOutput = await showStatusReport(context);
+      assert.ok(statusOutput.includes('Actionable gap queue: no actionable gap; target/ripr/reports/actionable-gaps.json reports zero safe repair packets.'));
+      assert.ok(statusOutput.includes('No local queue repair action is projected from this packet.'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/actionable-gaps.json': actionableGapsReport({
+          run_limitations: [
+            {
+              category: 'lane1_repo_exposure_timeout',
+              phase: 'repo_exposure_generation'
+            }
+          ]
+        })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      const statusOutput = await showStatusReport(context);
+      assert.ok(statusOutput.includes('Actionable gap queue: blocked; target/ripr/reports/actionable-gaps.json has bounded run limitations or producer exclusion reasons.'));
+      assert.ok(statusOutput.includes('Queue repair actions are suppressed.'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/actionable-gaps.json': '{not-json'
+      }
+    }, async (context) => {
+      await context.controller.start();
+      const statusOutput = await showStatusReport(context);
+      assert.ok(statusOutput.includes('Actionable gap queue: malformed; target/ripr/reports/actionable-gaps.json could not be parsed as an actionable-gaps packet.'));
+      assert.ok(statusOutput.includes('Queue repair actions are suppressed.'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/actionable-gaps.json': actionableGapsReport({ root: '../other-workspace' })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      const statusOutput = await showStatusReport(context);
+      assert.ok(statusOutput.includes('Actionable gap queue: wrong root; queue root ../other-workspace does not match this workspace.'));
+      assert.ok(statusOutput.includes('Queue repair actions are suppressed.'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/actionable-gaps.json': actionableGapsReport({ status: 'stale' })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      const statusOutput = await showStatusReport(context);
+      assert.ok(statusOutput.includes('Actionable gap queue: stale; target/ripr/reports/actionable-gaps.json reports stale upstream evidence.'));
+      assert.ok(statusOutput.includes('Queue repair actions are suppressed.'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/actionable-gaps.json': actionableGapsReport({
+          summary: {
+            actionable_gaps: 0,
+            packets_emitted: 1,
+            public_projection_eligible_packets: 0,
+            public_projection_excluded_packets: 0
+          },
+          packets: [
+            {
+              canonical_gap_id: 'gap:rust:pricing:report-only',
+              gap_state: 'report_only',
+              actionability: 'report_only',
+              source_file: 'src/pricing.rs'
+            }
+          ]
+        })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      const statusOutput = await showStatusReport(context);
+      assert.ok(statusOutput.includes('Actionable gap queue: report-only; target/ripr/reports/actionable-gaps.json has no repairable queue item.'));
+      assert.ok(statusOutput.includes('No local queue repair action is projected from report-only evidence.'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+
+    await withControllerTestContext({
+      files: {
+        'target/ripr/reports/actionable-gaps.json': actionableGapsReport({
+          summary: {
+            actionable_gaps: 0,
+            packets_emitted: 1,
+            public_projection_eligible_packets: 0,
+            public_projection_excluded_packets: 0
+          },
+          packets: [
+            {
+              canonical_gap_id: 'gap:rust:pricing:static-limit',
+              gap_state: 'static_limit_only',
+              actionability: 'static_limit_only',
+              source_file: 'src/pricing.rs',
+              static_limit_kind: 'dynamic_dispatch'
+            }
+          ]
+        })
+      }
+    }, async (context) => {
+      await context.controller.start();
+      const statusOutput = await showStatusReport(context);
+      assert.ok(statusOutput.includes('Actionable gap queue: static-limit-only; target/ripr/reports/actionable-gaps.json has no repairable queue item.'));
+      assert.ok(statusOutput.includes('Static-limit-only evidence is advisory and must not become a repair packet without a typed repair route.'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+    });
+  });
+
   test('editor adoption baseline keeps setup receipt and first-pr projection read-only', async () => {
     await withControllerTestContext({
       files: {
         'ripr.toml': '[languages]\nenabled = ["rust"]\n',
+        'target/ripr/reports/actionable-gaps.json': actionableGapsReport({}),
         'target/ripr/reports/first-useful-action.json': firstActionReport({}),
         'target/ripr/agent/agent-receipt.json': agentReceipt({ movement: 'improved' }),
         'target/ripr/first-pr/start-here.json': firstPrPacket({}),
@@ -1375,6 +1671,7 @@ suite('Extension Smoke', () => {
         'Config: ripr.toml (found',
         'Enabled languages: rust',
         'ripr validated 1 actionable gap artifact.',
+        'Actionable gap queue: top repair ready; target/ripr/reports/actionable-gaps.json is advisory.',
         'Next safe action: Open the related test or copy a bounded repair packet',
         'Receipt status: movement improved; matching receipt found for seam 67fc764ba37d77bd',
         'First PR packet: top repairable gap available; target/ripr/first-pr/start-here.json is advisory.'
@@ -1383,6 +1680,7 @@ suite('Extension Smoke', () => {
       const statusOutput = await showStatusReport(context);
       assertReportIncludes(statusOutput, [
         'ripr validated 1 actionable gap artifact.',
+        'Actionable gap queue: top repair ready; target/ripr/reports/actionable-gaps.json is advisory.',
         'Artifact first useful action report: target/ripr/reports/first-useful-action.json (found',
         'Receipt status: movement improved; matching receipt found for seam 67fc764ba37d77bd',
         'First PR packet: top repairable gap available; target/ripr/first-pr/start-here.json is advisory.',
@@ -2613,6 +2911,71 @@ function firstPrPacket(overrides: Record<string, unknown>): string {
     }
   }
   return JSON.stringify(packet);
+}
+
+function actionableGapsReport(overrides: Record<string, unknown>): string {
+  const report: Record<string, unknown> = {
+    schema_version: '0.1',
+    tool: 'ripr',
+    report: 'actionable-gaps',
+    root: '.',
+    scope: 'repo',
+    status: 'advisory',
+    summary: {
+      actionable_gaps: 1,
+      packets_emitted: 1,
+      public_projection_eligible_packets: 1,
+      public_projection_excluded_packets: 0
+    },
+    run_limitations: [],
+    packets: [
+      {
+        canonical_gap_id: 'gap:rust:pricing:discount:threshold-boundary',
+        evidence_class: 'predicate_boundary',
+        gap_state: 'actionable',
+        actionability: 'extend_related_test',
+        source_file: 'src/pricing.rs',
+        primary_anchor: {
+          file: 'src/pricing.rs',
+          line: 42
+        },
+        repair_kind: 'add_boundary_assertion',
+        target_test_type: 'boundary_discriminator',
+        target_test: 'tests/pricing.rs::premium_customer_gets_discount',
+        assertion_shape: 'assert_eq!(discount(100, 100), 90)',
+        related_test_or_observer: {
+          file: 'tests/pricing.rs',
+          name: 'premium_customer_gets_discount',
+          line: 12
+        },
+        verify_command: 'ripr agent verify --root . --json',
+        repair_route_source: 'canonical_item.repair_route',
+        verify_command_source: 'canonical_item.verify_command',
+        receipt_command_or_path: 'ripr agent receipt --root . --json',
+        receipt_source: 'canonical_item.receipt_command',
+        public_projection_eligible: true,
+        projection_exclusion_reasons: [],
+        raw_findings: [
+          {
+            file: 'src/pricing.rs',
+            line: 42,
+            kind: 'weakly_exposed',
+            language: 'rust',
+            language_status: 'stable'
+          }
+        ],
+        confidence_basis: 'static_only'
+      }
+    ]
+  };
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value === undefined) {
+      delete report[key];
+    } else {
+      report[key] = value;
+    }
+  }
+  return JSON.stringify(report);
 }
 
 function firstPrReadFile(
