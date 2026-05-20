@@ -408,15 +408,24 @@ Current implementation coverage:
   pins missing, malformed, and mismatched outcome-corpus guardrails;
 - `xtask::tests::ripr_swarm_command_parses_plan_args` pins the
   `cargo xtask ripr-swarm plan --top <n>` command shape.
+- `xtask::tests::ripr_swarm_command_parses_attempt_dry_run_args` pins the
+  `cargo xtask ripr-swarm attempt --packet <id> --dry-run` command shape;
+- `xtask::tests::ripr_swarm_attempt_requires_packet_and_dry_run` pins that the
+  attempt command stays dry-run-only and requires a packet id;
+- `xtask::tests::ripr_swarm_attempt_dry_run_renders_bounded_packet_context`
+  pins the dry-run context for a queued repair packet, including repair route,
+  related observer, verify command, receipt command, expected movement, and
+  must-not-change boundaries;
+- `xtask::tests::ripr_swarm_attempt_dry_run_reports_blocked_packet_context`
+  pins that blocked/static-limitation packets stay visible without becoming
+  repair-ready.
 
 Follow-up implementation PRs should add tests for:
 
-- dry-run attempt output;
 - packet validation failure modes;
 - receipt and outcome joins;
 - multiple attempts per canonical gap;
-- must-not-change boundary rendering;
-- static-limitation blocking.
+- richer must-not-change boundary rendering.
 
 ## Implementation Mapping
 
@@ -424,7 +433,7 @@ This spec is the behavior contract for future repo-local automation. Expected
 implementation surfaces are:
 
 - `cargo xtask ripr-swarm plan --top <n>` (implemented);
-- `cargo xtask ripr-swarm attempt --packet <id> --dry-run`;
+- `cargo xtask ripr-swarm attempt --packet <id> --dry-run` (implemented);
 - `target/ripr/reports/swarm-plan.json` (implemented);
 - `target/ripr/reports/swarm-plan.md` (implemented);
 - existing `actionable-gaps` and `actionable-gap-outcomes` artifacts.

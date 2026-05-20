@@ -1,9 +1,5 @@
 # kind|value|reason
 
-confidence|high|Confidence value.
-confidence|low|Confidence value.
-confidence|medium|Confidence value.
-confidence|unknown|Confidence value.
 confidence_label|ambiguous_runtime_join|Mutation calibration confidence label.
 confidence_label|contradicts_static_clean|Mutation calibration confidence label.
 confidence_label|contradicts_static_gap|Mutation calibration confidence label.
@@ -11,6 +7,10 @@ confidence_label|no_runtime_data|Mutation calibration confidence label.
 confidence_label|runtime_only_signal|Mutation calibration confidence label.
 confidence_label|supports_static_clean|Mutation calibration confidence label.
 confidence_label|supports_static_gap|Mutation calibration confidence label.
+confidence|high|Confidence value.
+confidence|low|Confidence value.
+confidence|medium|Confidence value.
+confidence|unknown|Confidence value.
 context_version|1.0|Current agent context packet version.
 delta|control|Delta kind value.
 delta|effect|Delta kind value.

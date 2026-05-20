@@ -3648,6 +3648,10 @@ tests = [
   "xtask::tests::actionable_gap_outcomes_fixture_corpus_matches_expected_states",
   "xtask::tests::actionable_gap_outcomes_fixture_corpus_reports_contract_drift",
   "xtask::tests::ripr_swarm_command_parses_plan_args",
+  "xtask::tests::ripr_swarm_command_parses_attempt_dry_run_args",
+  "xtask::tests::ripr_swarm_attempt_requires_packet_and_dry_run",
+  "xtask::tests::ripr_swarm_attempt_dry_run_renders_bounded_packet_context",
+  "xtask::tests::ripr_swarm_attempt_dry_run_reports_blocked_packet_context",
 ]
 fixtures = [
   "fixtures/swarm-plan-packet-corpus",

@@ -355,12 +355,13 @@ evidence = [
   "docs/proposals/RIPR-PROP-0014-ripr-swarm-repair-loop.md explains why swarm work starts as bounded repair coordination rather than raw-finding queues, arbitrary test generation, provider integration, or badge changes",
   "docs/specs/RIPR-SPEC-0057-ripr-swarm-repair-loop.md defines ripr-swarm as a bounded repair runner over actionable canonical gap packets rather than raw findings",
   "cargo xtask ripr-swarm plan --top <n> writes target/ripr/reports/swarm-plan.{json,md} from actionable-gaps.json with top ready packets, blocked packets, missing verify/receipt buckets, static-limitation blocking, high-confidence counts, and must-not-infer guardrails",
+  "cargo xtask ripr-swarm attempt --packet <id> --dry-run prints bounded packet context with repair route, target test/assertion shape, verify command, receipt command, expected evidence movement, and must-not-change boundaries without editing files or running commands",
   "fixtures/swarm-plan-packet-corpus pins ready boundary/error/output packets plus static-limitation, missing verify, missing receipt, and missing must-not-change blocking cases",
   "fixtures/actionable-gap-outcomes-corpus pins not-attempted, receipt-present, improved, unchanged, regressed, resolved, attempted-without-receipt, and orphaned-receipt outcome joins",
   "the implemented plan command is report-only and does not edit files, run tests, call providers, generate tests, create receipts, run mutation testing, change PR/CI rendering, change LSP/editor behavior, change gates, or change public badges"
 ]
 fixtures = ["fixtures/swarm-plan-packet-corpus", "fixtures/actionable-gap-outcomes-corpus"]
-next = "multi-attempt history and attempt dry-run"
+next = "multi-attempt history"
 metric = "swarm_ready_packets, swarm_blocked_packets, swarm_missing_verify_command, swarm_missing_receipt_command, swarm_static_limitation_packets, swarm_high_confidence_packets, swarm_attempted_packets, swarm_verified_improved, swarm_verified_unchanged, swarm_verified_regressed, swarm_failed_to_apply, swarm_orphaned_receipts"
 
 [[capability]]

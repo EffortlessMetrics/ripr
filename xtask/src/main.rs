@@ -18871,9 +18871,22 @@ fn lane1_actionable_gap_packets_markdown(report: &Lane1EvidenceAuditReport) -> S
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+enum RiprSwarmCommand {
+    Plan(RiprSwarmPlanArgs),
+    Attempt(RiprSwarmAttemptArgs),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct RiprSwarmPlanArgs {
     top: usize,
     actionable_gaps_path: PathBuf,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RiprSwarmAttemptArgs {
+    packet_id: String,
+    actionable_gaps_path: PathBuf,
+    dry_run: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -18912,9 +18925,46 @@ struct RiprSwarmPlanPacket {
     public_projection_eligible: bool,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RiprSwarmAttemptDryRun {
+    packet_id: String,
+    canonical_gap_id: String,
+    evidence_class: String,
+    source_file: String,
+    swarm_state: String,
+    repair_kind: String,
+    repair_route: String,
+    target_test_type: String,
+    assertion_shape: String,
+    related_test_or_observer: String,
+    verify_command: String,
+    receipt_command_or_path: String,
+    must_not_change: Vec<String>,
+    raw_findings_count: usize,
+    static_limitations_count: usize,
+    confidence_basis: String,
+    expected_evidence_movement: String,
+}
+
 fn ripr_swarm(args: &[String]) -> Result<(), String> {
-    let parsed = parse_ripr_swarm_plan_args(args)?;
-    ripr_swarm_plan_report(&parsed)
+    match parse_ripr_swarm_args(args)? {
+        RiprSwarmCommand::Plan(parsed) => ripr_swarm_plan_report(&parsed),
+        RiprSwarmCommand::Attempt(parsed) => ripr_swarm_attempt_dry_run(&parsed),
+    }
+}
+
+fn parse_ripr_swarm_args(args: &[String]) -> Result<RiprSwarmCommand, String> {
+    let Some(subcommand) = args.first() else {
+        return Err(ripr_swarm_usage());
+    };
+    match subcommand.as_str() {
+        "plan" => parse_ripr_swarm_plan_args(args).map(RiprSwarmCommand::Plan),
+        "attempt" => parse_ripr_swarm_attempt_args(args).map(RiprSwarmCommand::Attempt),
+        _ => Err(format!(
+            "unknown ripr-swarm subcommand `{subcommand}`\n{}",
+            ripr_swarm_usage()
+        )),
+    }
 }
 
 fn parse_ripr_swarm_plan_args(args: &[String]) -> Result<RiprSwarmPlanArgs, String> {
@@ -18968,8 +19018,72 @@ fn parse_ripr_swarm_plan_args(args: &[String]) -> Result<RiprSwarmPlanArgs, Stri
     })
 }
 
+fn parse_ripr_swarm_attempt_args(args: &[String]) -> Result<RiprSwarmAttemptArgs, String> {
+    let Some(subcommand) = args.first() else {
+        return Err(ripr_swarm_usage());
+    };
+    if subcommand != "attempt" {
+        return Err(format!(
+            "unknown ripr-swarm subcommand `{subcommand}`\n{}",
+            ripr_swarm_usage()
+        ));
+    }
+
+    let mut packet_id: Option<String> = None;
+    let mut actionable_gaps_path = PathBuf::from("target/ripr/reports/actionable-gaps.json");
+    let mut dry_run = false;
+    let mut index = 1usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--packet" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err("ripr-swarm attempt --packet requires a packet id".to_string());
+                };
+                if value.trim().is_empty() {
+                    return Err(
+                        "ripr-swarm attempt --packet requires a non-empty packet id".to_string()
+                    );
+                }
+                packet_id = Some(value.to_string());
+            }
+            "--dry-run" => {
+                dry_run = true;
+            }
+            "--actionable-gaps" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err("ripr-swarm attempt --actionable-gaps requires a path".to_string());
+                };
+                actionable_gaps_path = PathBuf::from(value);
+            }
+            other => {
+                return Err(format!(
+                    "unknown ripr-swarm attempt argument `{other}`\n{}",
+                    ripr_swarm_usage()
+                ));
+            }
+        }
+        index += 1;
+    }
+
+    let Some(packet_id) = packet_id else {
+        return Err("ripr-swarm attempt requires --packet <id>".to_string());
+    };
+    if !dry_run {
+        return Err("ripr-swarm attempt currently requires --dry-run".to_string());
+    }
+
+    Ok(RiprSwarmAttemptArgs {
+        packet_id,
+        actionable_gaps_path,
+        dry_run,
+    })
+}
+
 fn ripr_swarm_usage() -> String {
-    "usage: cargo xtask ripr-swarm plan [--top <n>] [--actionable-gaps <path>]".to_string()
+    "usage: cargo xtask ripr-swarm plan [--top <n>] [--actionable-gaps <path>]\n       cargo xtask ripr-swarm attempt --packet <id> --dry-run [--actionable-gaps <path>]"
+        .to_string()
 }
 
 fn ripr_swarm_plan_report(args: &RiprSwarmPlanArgs) -> Result<(), String> {
@@ -19002,6 +19116,228 @@ fn ripr_swarm_plan_report(args: &RiprSwarmPlanArgs) -> Result<(), String> {
 
     write_report("swarm-plan.json", &ripr_swarm_plan_json(&report)?)?;
     write_report("swarm-plan.md", &ripr_swarm_plan_markdown(&report))
+}
+
+fn ripr_swarm_attempt_dry_run(args: &RiprSwarmAttemptArgs) -> Result<(), String> {
+    if !args.dry_run {
+        return Err("ripr-swarm attempt currently requires --dry-run".to_string());
+    }
+    let value = read_json_value(&args.actionable_gaps_path)?;
+    let attempt = ripr_swarm_attempt_dry_run_from_actionable_gaps_value(&value, &args.packet_id)?;
+    println!("{}", ripr_swarm_attempt_dry_run_markdown(&attempt));
+    Ok(())
+}
+
+fn ripr_swarm_attempt_dry_run_from_actionable_gaps_value(
+    value: &Value,
+    packet_id: &str,
+) -> Result<RiprSwarmAttemptDryRun, String> {
+    let packets = audit_get(value, &["packets"])
+        .and_then(Value::as_array)
+        .ok_or_else(|| "actionable-gaps JSON is missing a `packets` array".to_string())?;
+    let Some(packet) = packets
+        .iter()
+        .find(|packet| ripr_swarm_attempt_packet_matches(packet, packet_id))
+    else {
+        return Err(format!(
+            "ripr-swarm attempt could not find packet `{packet_id}` in actionable-gaps.json"
+        ));
+    };
+    Ok(ripr_swarm_attempt_dry_run_from_packet(packet))
+}
+
+fn ripr_swarm_attempt_packet_matches(packet: &Value, packet_id: &str) -> bool {
+    let mut requested = BTreeSet::new();
+    actionable_gap_push_id_candidate(&mut requested, packet_id);
+    let candidates = actionable_gap_id_candidates(packet);
+    requested
+        .iter()
+        .any(|requested| candidates.contains(requested))
+}
+
+fn ripr_swarm_attempt_dry_run_from_packet(packet: &Value) -> RiprSwarmAttemptDryRun {
+    let plan_packet = ripr_swarm_plan_packet_from_value(packet);
+    let repair_route = ripr_swarm_attempt_repair_route_summary(packet);
+    let related_test_or_observer = ripr_swarm_attempt_value_summary(
+        audit_get(packet, &["related_test_or_observer"])
+            .or_else(|| audit_get(packet, &["candidate_value_or_observer"])),
+    );
+    let must_not_change = audit_string_array(packet, &["must_not_change"]).unwrap_or_default();
+    let expected_evidence_movement = if plan_packet.swarm_state == "queued" {
+        format!(
+            "-{} actionable canonical gap if receipt-backed evidence movement resolves or improves this packet",
+            plan_packet.expected_canonical_gap_delta
+        )
+    } else {
+        format!(
+            "not repair-ready until blocked context is resolved: {}",
+            plan_packet.blocked_reasons.join(", ")
+        )
+    };
+
+    RiprSwarmAttemptDryRun {
+        packet_id: plan_packet.packet_id,
+        canonical_gap_id: plan_packet.canonical_gap_id,
+        evidence_class: plan_packet.evidence_class,
+        source_file: plan_packet.source_file,
+        swarm_state: plan_packet.swarm_state,
+        repair_kind: plan_packet.repair_kind,
+        repair_route,
+        target_test_type: plan_packet.target_test_type,
+        assertion_shape: plan_packet.assertion_shape,
+        related_test_or_observer,
+        verify_command: plan_packet
+            .verify_command
+            .unwrap_or_else(|| "verify_command_unknown".to_string()),
+        receipt_command_or_path: plan_packet
+            .receipt_command_or_path
+            .unwrap_or_else(|| "receipt_command_unknown".to_string()),
+        must_not_change,
+        raw_findings_count: plan_packet.raw_findings_count,
+        static_limitations_count: plan_packet.static_limitations_count,
+        confidence_basis: plan_packet.confidence_basis,
+        expected_evidence_movement,
+    }
+}
+
+fn ripr_swarm_attempt_repair_route_summary(packet: &Value) -> String {
+    match audit_get(packet, &["repair_route"]) {
+        Some(Value::Object(route)) => {
+            let repair_kind = route
+                .get("repair_kind")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .or_else(|| audit_non_empty_string(packet, &["repair_kind"]))
+                .unwrap_or_else(|| "repair_kind_unknown".to_string());
+            let target_test_type = route
+                .get("target_test_type")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .or_else(|| audit_non_empty_string(packet, &["target_test_type"]))
+                .unwrap_or_else(|| "target_test_type_unknown".to_string());
+            let assertion_shape = route
+                .get("assertion_shape")
+                .and_then(Value::as_str)
+                .or_else(|| route.get("suggested_assertion").and_then(Value::as_str))
+                .map(str::to_string)
+                .or_else(|| audit_non_empty_string(packet, &["assertion_shape"]))
+                .unwrap_or_else(|| "assertion_shape_unknown".to_string());
+            format!("{repair_kind} -> {target_test_type} -> {assertion_shape}")
+        }
+        Some(value) => ripr_swarm_attempt_value_summary(Some(value)),
+        None => "repair_route_unknown".to_string(),
+    }
+}
+
+fn ripr_swarm_attempt_value_summary(value: Option<&Value>) -> String {
+    match value {
+        Some(Value::String(value)) => value.clone(),
+        Some(Value::Object(object)) => {
+            if let (Some(file), Some(name)) = (
+                object.get("file").and_then(Value::as_str),
+                object.get("name").and_then(Value::as_str),
+            ) {
+                format!("{file}::{name}")
+            } else {
+                serde_json::to_string(&Value::Object(object.clone()))
+                    .unwrap_or_else(|_| "object".to_string())
+            }
+        }
+        Some(Value::Array(values)) => format!("{} item(s)", values.len()),
+        Some(Value::Number(value)) => value.to_string(),
+        Some(Value::Bool(value)) => value.to_string(),
+        Some(Value::Null) | None => "unknown".to_string(),
+    }
+}
+
+fn ripr_swarm_attempt_dry_run_markdown(attempt: &RiprSwarmAttemptDryRun) -> String {
+    let mut out = String::new();
+    out.push_str("# RIPR Swarm Attempt Dry Run\n\n");
+    out.push_str("This command prints bounded repair context only. It does not edit files, run tests, call providers, generate tests, create receipts, run mutation testing, merge code, or change public badge semantics.\n\n");
+    out.push_str("## Packet\n\n");
+    out.push_str("| Field | Value |\n");
+    out.push_str("| --- | --- |\n");
+    out.push_str(&format!(
+        "| Packet | `{}` |\n",
+        audit_markdown_cell(&attempt.packet_id)
+    ));
+    out.push_str(&format!(
+        "| Canonical gap | `{}` |\n",
+        audit_markdown_cell(&attempt.canonical_gap_id)
+    ));
+    out.push_str(&format!(
+        "| Evidence class | `{}` |\n",
+        audit_markdown_cell(&attempt.evidence_class)
+    ));
+    out.push_str(&format!(
+        "| Source file | `{}` |\n",
+        audit_markdown_cell(&attempt.source_file)
+    ));
+    out.push_str(&format!(
+        "| Swarm state | `{}` |\n",
+        audit_markdown_cell(&attempt.swarm_state)
+    ));
+    out.push_str(&format!(
+        "| Confidence | `{}` |\n",
+        audit_markdown_cell(&attempt.confidence_basis)
+    ));
+    out.push('\n');
+
+    out.push_str("## Repair Context\n\n");
+    out.push_str("| Field | Value |\n");
+    out.push_str("| --- | --- |\n");
+    out.push_str(&format!(
+        "| Repair kind | `{}` |\n",
+        audit_markdown_cell(&attempt.repair_kind)
+    ));
+    out.push_str(&format!(
+        "| Repair route | {} |\n",
+        audit_markdown_cell(&attempt.repair_route)
+    ));
+    out.push_str(&format!(
+        "| Target test type | `{}` |\n",
+        audit_markdown_cell(&attempt.target_test_type)
+    ));
+    out.push_str(&format!(
+        "| Assertion / observer shape | {} |\n",
+        audit_markdown_cell(&attempt.assertion_shape)
+    ));
+    out.push_str(&format!(
+        "| Related test / observer | {} |\n",
+        audit_markdown_cell(&attempt.related_test_or_observer)
+    ));
+    out.push_str(&format!(
+        "| Expected evidence movement | {} |\n\n",
+        audit_markdown_cell(&attempt.expected_evidence_movement)
+    ));
+
+    out.push_str("## Commands\n\n");
+    out.push_str(&format!(
+        "- Verify: `{}`\n",
+        audit_markdown_cell(&attempt.verify_command)
+    ));
+    out.push_str(&format!(
+        "- Receipt: `{}`\n\n",
+        audit_markdown_cell(&attempt.receipt_command_or_path)
+    ));
+
+    out.push_str("## Boundaries\n\n");
+    if attempt.must_not_change.is_empty() {
+        out.push_str("- `must_not_change` is missing; keep this packet blocked until Lane 1 emits boundaries.\n");
+    } else {
+        for boundary in &attempt.must_not_change {
+            out.push_str(&format!("- {}\n", audit_markdown_cell(boundary)));
+        }
+    }
+    out.push_str(&format!(
+        "- Raw findings are supporting evidence only: {} finding(s).\n",
+        attempt.raw_findings_count
+    ));
+    out.push_str(&format!(
+        "- Static limitations attached to packet: {}.\n",
+        attempt.static_limitations_count
+    ));
+    out
 }
 
 fn ripr_swarm_plan_blocked_report(
@@ -19171,7 +19507,8 @@ fn ripr_swarm_plan_packet_from_value(packet: &Value) -> RiprSwarmPlanPacket {
     }
 
     RiprSwarmPlanPacket {
-        packet_id: canonical_gap_id.clone(),
+        packet_id: audit_non_empty_string(packet, &["packet_id"])
+            .unwrap_or_else(|| canonical_gap_id.clone()),
         canonical_gap_id,
         evidence_class,
         source_file,
@@ -19878,6 +20215,9 @@ struct ActionableGapMovement {
 
 fn actionable_gap_id_candidates(packet: &Value) -> BTreeSet<String> {
     let mut candidates = BTreeSet::new();
+    if let Some(id) = audit_non_empty_string(packet, &["packet_id"]) {
+        actionable_gap_push_id_candidate(&mut candidates, &id);
+    }
     if let Some(id) = audit_non_empty_string(packet, &["canonical_gap_id"]) {
         actionable_gap_push_id_candidate(&mut candidates, &id);
     }
@@ -43716,6 +44056,7 @@ fn check_droid_review_config_impl() -> Result<(), String> {
 mod tests {
     use std::io::Read;
 
+    use super::RiprSwarmCommand;
     use super::XtaskCommand;
     use super::dispatch;
     use super::run::{
@@ -43804,7 +44145,7 @@ mod tests {
         parse_inline_array, parse_mutation_calibration_args, parse_mutation_outcomes_json,
         parse_no_panic_allowlist_toml, parse_no_panic_allowlist_toml_v2,
         parse_pr_triage_pull_requests, parse_reason, parse_repo_exposure_static_seams,
-        parse_repo_exposure_summary_counts, parse_required_status_contexts,
+        parse_repo_exposure_summary_counts, parse_required_status_contexts, parse_ripr_swarm_args,
         parse_ripr_swarm_plan_args, parse_sarif_policy_args, parse_sarif_policy_results,
         parse_static_language_allowlist, parse_string_value, parse_targeted_test_outcome_args,
         pr_body_validation_warning, pr_checks_summary, pr_ready_json, pr_ready_markdown,
@@ -43822,6 +44163,7 @@ mod tests {
         report_index_json, report_index_markdown, report_index_missing_expected,
         report_index_repo_ops_packets, report_index_repo_ops_status, report_status_from_text,
         ripr_command_literals_in_text, ripr_debug_binary, ripr_pre_commit_hook,
+        ripr_swarm_attempt_dry_run_from_actionable_gaps_value, ripr_swarm_attempt_dry_run_markdown,
         ripr_swarm_plan_blocked_packets, ripr_swarm_plan_blocked_report,
         ripr_swarm_plan_from_actionable_gaps_value, ripr_swarm_plan_json, ripr_swarm_plan_markdown,
         ripr_swarm_plan_packet_is_high_confidence, ripr_swarm_plan_ready_packets,
@@ -59543,6 +59885,7 @@ covered_by = ["cargo xtask check-file-policy"]
             },
             "packets": [
                 {
+                    "packet_id": "packet:ready-boundary",
                     "canonical_gap_id": "gap:ready-boundary",
                     "evidence_class": "predicate_boundary",
                     "gap_state": "actionable",
@@ -59714,6 +60057,190 @@ covered_by = ["cargo xtask check-file-policy"]
                 "3".to_string()
             ])
         );
+    }
+
+    #[test]
+    fn ripr_swarm_command_parses_attempt_dry_run_args() -> Result<(), String> {
+        let command = XtaskCommand::parse([
+            "ripr-swarm".to_string(),
+            "attempt".to_string(),
+            "--packet".to_string(),
+            "gap:ready-boundary".to_string(),
+            "--dry-run".to_string(),
+        ]);
+        assert_eq!(
+            command,
+            XtaskCommand::RiprSwarm(vec![
+                "attempt".to_string(),
+                "--packet".to_string(),
+                "gap:ready-boundary".to_string(),
+                "--dry-run".to_string()
+            ])
+        );
+
+        let parsed = parse_ripr_swarm_args(&[
+            "attempt".to_string(),
+            "--packet".to_string(),
+            "gap:ready-boundary".to_string(),
+            "--dry-run".to_string(),
+        ])?;
+        let RiprSwarmCommand::Attempt(args) = parsed else {
+            return Err("expected ripr-swarm attempt args".to_string());
+        };
+        assert_eq!(args.packet_id, "gap:ready-boundary");
+        assert!(args.dry_run);
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_attempt_requires_packet_and_dry_run() {
+        for (args, expected) in [
+            (
+                vec!["attempt".to_string(), "--dry-run".to_string()],
+                "requires --packet <id>",
+            ),
+            (
+                vec![
+                    "attempt".to_string(),
+                    "--packet".to_string(),
+                    "gap:ready-boundary".to_string(),
+                ],
+                "requires --dry-run",
+            ),
+            (
+                vec![
+                    "attempt".to_string(),
+                    "--packet".to_string(),
+                    "gap:ready-boundary".to_string(),
+                    "--apply".to_string(),
+                ],
+                "unknown ripr-swarm attempt argument",
+            ),
+        ] {
+            let error = parse_ripr_swarm_args(&args).expect_err("attempt args should fail");
+            assert!(
+                error.contains(expected),
+                "expected {expected:?} in {error:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn ripr_swarm_attempt_dry_run_renders_bounded_packet_context() -> Result<(), String> {
+        let actionable_gaps = serde_json::json!({
+            "schema_version": "0.1",
+            "tool": "ripr",
+            "report": "actionable-gaps",
+            "packets": [
+                {
+                    "packet_id": "packet:ready-boundary",
+                    "canonical_gap_id": "gap:ready-boundary",
+                    "evidence_class": "predicate_boundary",
+                    "gap_state": "actionable",
+                    "actionability": "extend_related_test",
+                    "source_file": "src/pricing.rs",
+                    "repair_kind": "add_boundary_assertion",
+                    "target_test_type": "boundary_discriminator",
+                    "assertion_shape": "assert_eq!(discounted_total(threshold), expected)",
+                    "repair_route": {
+                        "repair_kind": "add_boundary_assertion",
+                        "target_test_type": "boundary_discriminator",
+                        "assertion_shape": "assert_eq!(discounted_total(threshold), expected)"
+                    },
+                    "verify_command": "cargo test -p ripr pricing_threshold",
+                    "receipt_command": "cargo xtask receipts check",
+                    "related_test_or_observer": {
+                        "file": "tests/pricing.rs",
+                        "name": "pricing_threshold"
+                    },
+                    "confidence_basis": "fixture_backed",
+                    "must_not_change": [
+                        "Do not edit production code by default."
+                    ],
+                    "raw_findings": [
+                        {"file": "src/pricing.rs", "line": 42, "kind": "weakly_exposed"}
+                    ],
+                    "static_limitations": [],
+                    "public_projection_eligible": true
+                }
+            ]
+        });
+
+        let attempt = ripr_swarm_attempt_dry_run_from_actionable_gaps_value(
+            &actionable_gaps,
+            "packet:ready-boundary",
+        )?;
+        assert_eq!(attempt.packet_id, "packet:ready-boundary");
+        assert_eq!(attempt.canonical_gap_id, "gap:ready-boundary");
+        assert_eq!(attempt.swarm_state, "queued");
+        assert_eq!(attempt.repair_kind, "add_boundary_assertion");
+        assert_eq!(
+            attempt.related_test_or_observer,
+            "tests/pricing.rs::pricing_threshold"
+        );
+        assert!(
+            attempt
+                .expected_evidence_movement
+                .contains("-1 actionable canonical gap")
+        );
+
+        let markdown = ripr_swarm_attempt_dry_run_markdown(&attempt);
+        for expected in [
+            "# RIPR Swarm Attempt Dry Run",
+            "gap:ready-boundary",
+            "add_boundary_assertion",
+            "cargo test -p ripr pricing_threshold",
+            "cargo xtask receipts check",
+            "Do not edit production code by default.",
+            "Raw findings are supporting evidence only: 1 finding(s).",
+            "does not edit files, run tests, call providers",
+        ] {
+            assert!(
+                markdown.contains(expected),
+                "expected dry-run markdown to contain {expected:?}:\n{markdown}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_swarm_attempt_dry_run_reports_blocked_packet_context() -> Result<(), String> {
+        let actionable_gaps = serde_json::json!({
+            "packets": [
+                {
+                    "canonical_gap_id": "gap:static-limit",
+                    "evidence_class": "config_or_policy_constant",
+                    "gap_state": "actionable",
+                    "source_file": "src/config.rs",
+                    "repair_kind": "inspect_visibility",
+                    "target_test_type": "output_observer",
+                    "assertion_shape": "trace config label",
+                    "repair_route_source": "canonical_item.repair_route",
+                    "verify_command": "cargo xtask evidence-quality-scorecard",
+                    "receipt_command_or_path": "cargo xtask receipts check",
+                    "related_test_or_observer": {"file": "tests/config.rs", "name": "config"},
+                    "confidence_basis": "static_only",
+                    "must_not_change": ["Do not edit production code by default."],
+                    "raw_findings": [{"file": "src/config.rs", "line": 3, "kind": "static_unknown"}],
+                    "static_limitations": [
+                        {"category": "opaque_helper_call", "repair_route": "add fixture-backed helper tracing"}
+                    ]
+                }
+            ]
+        });
+
+        let attempt = ripr_swarm_attempt_dry_run_from_actionable_gaps_value(
+            &actionable_gaps,
+            "gap:static-limit",
+        )?;
+        assert_eq!(attempt.swarm_state, "blocked_by_static_limitation");
+        assert!(
+            attempt
+                .expected_evidence_movement
+                .contains("not repair-ready")
+        );
+        assert_eq!(attempt.static_limitations_count, 1);
+        Ok(())
     }
 
     #[test]

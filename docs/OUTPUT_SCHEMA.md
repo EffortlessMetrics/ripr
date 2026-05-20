@@ -2352,6 +2352,41 @@ attempt. Packets missing required typed context use
 actionability; it starts from the canonical packet state already emitted by
 Lane 1.
 
+## RIPR Swarm Attempt Dry Run
+
+`cargo xtask ripr-swarm attempt --packet <id> --dry-run` reads
+`target/ripr/reports/actionable-gaps.json` by default, or the path supplied by
+`--actionable-gaps`, and prints bounded packet context to stdout. The packet id
+can be a `packet_id`, `canonical_gap_id`, or compatible unprefixed canonical
+identifier. The command does not edit files, run tests, call providers,
+generate tests, create receipts, run mutation testing, merge code, or change
+public badge semantics.
+
+The dry-run output includes:
+
+```text
+canonical_gap_id
+evidence_class
+source_file
+swarm_state
+confidence_basis
+repair_kind
+repair_route
+target_test_type
+assertion_or_observer_shape
+related_test_or_observer
+expected_evidence_movement
+verify_command
+receipt_command_or_path
+must_not_change boundaries
+raw_findings_count
+static_limitations_count
+```
+
+`queued` packets show the expected canonical-gap delta if receipt-backed
+evidence movement resolves or improves the item. Blocked packets remain visible
+with their `blocked_by_missing_context` or `blocked_by_static_limitation` state
+and are not promoted to repair-ready work.
 
 ## Actionable Gap Outcomes
 
