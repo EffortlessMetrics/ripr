@@ -60,6 +60,8 @@ The scorecard must summarize:
 - audit-derived actionable canonical gap top lists for classes, files, repair
   kinds, missing discriminator kinds, static limitation reasons on actionable
   gap records, and guidance-unknown classes;
+- audit-derived actionable-gap packet public-projection readiness counts,
+  including eligible packets, excluded packets, and exclusion reasons;
 - explicit unknowns when the audit or evidence-health input reports bounded
   run limitations, so zero or missing counts from limited artifacts are not
   treated as complete repo truth;
@@ -102,6 +104,9 @@ Each scorecard must include:
 - top actionable canonical gap lists copied from the Lane 1 audit so the
   scorecard shows the live shape of user work without reconstructing it from
   raw findings;
+- actionable-gap packet public-projection readiness copied from the Lane 1
+  audit so badge-readiness work can trend packet completeness without changing
+  public badge behavior;
 - a headline object that names
   `finding_alignment_actionable_unresolved_canonical_gaps` as the primary
   scorecard count while preserving raw signal, canonical item, no-action,
@@ -116,7 +121,8 @@ Each scorecard must include:
 - trend rows over current and previous scorecard or audit summary metrics when
   a previous artifact exists, including duplicate-looking groups, static
   limitations, low or opaque related-test choices, oracle unknown counts,
-  uncalibrated records, calibrated records, and missing evidence records;
+  uncalibrated records, calibrated records, missing evidence records, and
+  actionable-gap packet public-projection readiness;
 - an explicit no-history unknown when no previous trend input exists.
 
 The scorecard must not report a class as stable or calibrated unless the row
@@ -167,6 +173,7 @@ The JSON output includes:
 - `movement_availability`;
 - `calibration_coverage`;
 - `actionable_gap_top_lists`;
+- `actionable_gap_packet_public_projection`;
 - `recommended_repairs`;
 - `recent_audit_deltas`;
 - `unknowns`.
@@ -176,6 +183,7 @@ The Markdown output includes bounded sections for the same areas:
 - summary;
 - maturity by class;
 - actionable canonical gap top lists;
+- actionable-gap packet public-projection readiness;
 - top evidence-quality risks;
 - recommended Lane 1 repairs;
 - duplicate-looking and canonical group signals;
@@ -262,6 +270,12 @@ classes, files, repair kinds, missing discriminator kinds, static limitation
 reasons on actionable gap records, and guidance-unknown classes without
 inferring from raw findings.
 
+Given a Lane 1 audit with actionable-gap packet public-projection readiness,
+the scorecard carries the eligible/excluded packet counts and projection
+exclusion reasons forward. The trend report tracks eligible packets as
+higher-is-better and excluded packets as lower-is-better. Neither report
+changes public badge semantics.
+
 Given a Lane 1 audit or evidence-health artifact with `run_limitations[]`, the
 scorecard adds `lane1_evidence_audit_limited` or `evidence_health_limited` to
 `unknowns` so downstream users can see that the report is bounded diagnostic
@@ -300,6 +314,8 @@ any gate behavior.
   runtime confidence coverage by evidence class.
 - `xtask::tests::evidence_quality_scorecard_carries_actionable_gap_top_lists_from_audit`
   pins scorecard propagation of the audit-derived actionable gap top lists.
+- `xtask::tests::evidence_quality_scorecard_carries_actionable_packet_projection_readiness`
+  pins scorecard propagation of packet-level public-projection readiness.
 - `xtask::tests::evidence_quality_scorecard_surfaces_limited_inputs_as_unknowns`
   pins scorecard unknowns for bounded audit and evidence-health input
   limitations.
@@ -313,6 +329,8 @@ any gate behavior.
   pins metric direction semantics.
 - `xtask::tests::evidence_quality_trend_reports_static_limitation_category_deltas`
   pins normalized static-limitation category deltas.
+- `xtask::tests::evidence_quality_trend_reports_finding_alignment_presentation_text_deltas`
+  pins finding-alignment and packet-readiness metric deltas.
 
 ## Implementation Mapping
 
@@ -341,6 +359,8 @@ The scorecard feeds these Lane 1 metrics:
 - `lane1_evidence_scorecard_uncalibrated_classes`;
 - `lane1_evidence_scorecard_recent_delta_available`.
 - `lane1_evidence_scorecard_limited_input_unknowns`.
+- `lane1_evidence_scorecard_actionable_packet_projection_eligible`;
+- `lane1_evidence_scorecard_actionable_packet_projection_excluded`.
 
 The trend report feeds these Lane 1 metrics:
 
@@ -351,6 +371,8 @@ The trend report feeds these Lane 1 metrics:
 - `lane1_evidence_trend_unknown_metrics`;
 - `lane1_evidence_trend_no_history`;
 - `lane1_evidence_trend_static_limitation_category_rows`.
+- `lane1_evidence_trend_actionable_packet_projection_eligible`;
+- `lane1_evidence_trend_actionable_packet_projection_excluded`.
 
 ## Validation
 
