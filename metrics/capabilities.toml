@@ -652,6 +652,7 @@ evidence = [
   "CLI parser/help tests pin the evidence-health command surface",
   "cargo xtask evidence-health writes target/ripr/reports/evidence-health.json and evidence-health.md",
   "cargo xtask evidence-health bounds the child process and writes named evidence_health_timeout or evidence_health_incomplete run limitations instead of leaving stale or partial artifacts when the live report times out or exits nonzero",
+  "limited evidence-health artifacts carry bounded repo-exposure latency trace totals and tail rows so slow live-repo phases remain inspectable without treating the limitation as user test debt",
   "counts grip classes, stage states, missing discriminators, observed value contexts, related-test confidence, oracle strength, oracle kind, opaque oracles, and top static limitations",
   "folds durable Lane 1 audit fields into evidence-health from the shared evidence_record: canonical gap group totals, largest groups, duplicate-looking groups, actionability classes, static limitation reason/stage/category distributions, evidence-record calibration coverage, movement availability, and top evidence-quality risks",
   "optional imported mutation-calibration JSON contributes calibration availability counts without changing static classification",

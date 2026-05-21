@@ -202,7 +202,11 @@ status when available, and a repair route. The limited artifact records
 nonzero or missing status exits. When the child exits successfully but the
 artifacts are missing, malformed, or incomplete, the limited artifact records
 `inputs.generation.status = "pass_incomplete"` and a bounded
-`failure_reason`. Complete `ripr evidence-health` reports keep
+`failure_reason`. Limited artifacts also carry bounded
+`latency_trace_events_total` and `latency_trace_tail` fields on
+`inputs.generation` and `run_limitations[]` when repo-exposure latency trace
+lines were captured, so the active analyzer phase remains visible without
+scraping stderr. Complete `ripr evidence-health` reports keep
 `status = "advisory"` and omit the xtask-only `inputs.generation` wrapper
 rather than emitting an `"ok"` generation row. The limited artifact is
 diagnostic only and does not claim user test debt from missing health counts.
@@ -220,7 +224,8 @@ diagnostic only and does not claim user test debt from missing health counts.
   pins argument validation.
 - `xtask::tests::evidence_health_timeout_writes_named_limitation_reports`
   pins the bounded xtask timeout fallback, stale-output cleanup, named
-  limitation category, and repair route.
+  limitation category, repair route, and structured repo-exposure latency trace
+  tail.
 - `xtask::tests::evidence_health_build_timeout_writes_named_limitation_reports`
   pins the bounded preflight build fallback, phase diagnostics, stale-output
   cleanup, named limitation category, and repair route.

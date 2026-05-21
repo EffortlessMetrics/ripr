@@ -9,6 +9,11 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Limited `cargo xtask evidence-health` warning artifacts now expose structured
+  repo-exposure latency diagnostics. Timeout and incomplete reports carry
+  bounded `latency_trace_events_total` and `latency_trace_tail` fields on
+  `inputs.generation` and `run_limitations[]`, and Markdown includes the trace
+  tail so slow live-repo phases are visible without scraping stderr.
 - `cargo xtask evidence-health` now removes stale evidence-health artifacts
   before running the child report generator and validates zero-exit JSON and
   Markdown outputs before accepting success. Missing, malformed, or incomplete

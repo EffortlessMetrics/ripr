@@ -16176,6 +16176,7 @@ const EVIDENCE_HEALTH_SCHEMA_VERSION: &str = "0.2";
 const EVIDENCE_HEALTH_DEFAULT_TIMEOUT_MS: u64 = 1_200_000;
 const EVIDENCE_HEALTH_OUTPUT_EXCERPT_LINES: usize = 8;
 const EVIDENCE_HEALTH_OUTPUT_EXCERPT_CHARS: usize = 4_000;
+const EVIDENCE_HEALTH_LATENCY_TRACE_TAIL_LIMIT: usize = 12;
 
 fn evidence_health_args() -> Vec<String> {
     let mut args = vec![
@@ -16598,6 +16599,8 @@ fn limited_evidence_health_json(
     let limitation = evidence_health_limited_kind(output);
     let summary = evidence_health_limited_summary(limitation);
     let repair_route = evidence_health_limited_repair_route(limitation);
+    let (latency_trace_events_total, latency_trace_tail) =
+        evidence_health_latency_trace_tail(output);
     let value = serde_json::json!({
         "schema_version": EVIDENCE_HEALTH_SCHEMA_VERSION,
         "tool": "ripr",
@@ -16697,6 +16700,11 @@ fn limited_evidence_health_json(
                 "stdout_excerpt": evidence_health_output_excerpt(&output.stdout),
                 "stderr_excerpt": evidence_health_output_excerpt(&output.stderr),
                 "failure_reason": failure_reason,
+                "latency_trace_events_total": latency_trace_events_total,
+                "latency_trace_tail": latency_trace_tail
+                    .iter()
+                    .map(repo_exposure_latency_trace_json)
+                    .collect::<Vec<_>>(),
             }
         ],
     });
@@ -16713,6 +16721,8 @@ fn evidence_health_generation_json(
     generation_status: Option<&str>,
     failure_reason: Option<&str>,
 ) -> Value {
+    let (latency_trace_events_total, latency_trace_tail) =
+        evidence_health_latency_trace_tail(output);
     serde_json::json!({
         "command": command,
         "phase": phase,
@@ -16725,7 +16735,22 @@ fn evidence_health_generation_json(
         "stdout_excerpt": evidence_health_output_excerpt(&output.stdout),
         "stderr_excerpt": evidence_health_output_excerpt(&output.stderr),
         "failure_reason": failure_reason,
+        "latency_trace_events_total": latency_trace_events_total,
+        "latency_trace_tail": latency_trace_tail
+            .iter()
+            .map(repo_exposure_latency_trace_json)
+            .collect::<Vec<_>>(),
     })
+}
+
+fn evidence_health_latency_trace_tail(
+    output: &TimedOutput,
+) -> (usize, Vec<RepoExposureLatencyTrace>) {
+    let trace = repo_exposure_latency_trace(&output.stderr);
+    let trace_tail_start = trace
+        .len()
+        .saturating_sub(EVIDENCE_HEALTH_LATENCY_TRACE_TAIL_LIMIT);
+    (trace.len(), trace[trace_tail_start..].to_vec())
 }
 
 fn evidence_health_output_excerpt(text: &str) -> Option<String> {
@@ -16845,6 +16870,25 @@ fn limited_evidence_health_markdown(
             out.push('\n');
         }
         out.push_str("```\n");
+    }
+    let (latency_trace_events_total, latency_trace_tail) =
+        evidence_health_latency_trace_tail(output);
+    if !latency_trace_tail.is_empty() {
+        out.push_str("\n## Repo-exposure Latency Trace Tail\n\n");
+        out.push_str(&format!(
+            "Captured {} repo-exposure latency trace events.\n\n",
+            latency_trace_events_total
+        ));
+        out.push_str("| Phase | Status | Duration |\n");
+        out.push_str("| --- | --- | ---: |\n");
+        for trace in latency_trace_tail {
+            out.push_str(&format!(
+                "| `{}` | `{}` | {} ms |\n",
+                audit_markdown_cell(&trace.phase),
+                audit_markdown_cell(&trace.status),
+                trace.duration_ms
+            ));
+        }
     }
     out
 }
@@ -21938,6 +21982,10 @@ fn lane1_evidence_audit_run_limitation_json(limitation: &Lane1EvidenceAuditRunLi
 }
 
 fn lane1_evidence_audit_latency_trace_json(trace: &RepoExposureLatencyTrace) -> Value {
+    repo_exposure_latency_trace_json(trace)
+}
+
+fn repo_exposure_latency_trace_json(trace: &RepoExposureLatencyTrace) -> Value {
     serde_json::json!({
         "phase": trace.phase,
         "status": trace.status,
@@ -64804,7 +64852,11 @@ covered_by = ["cargo xtask check-file-policy"]
                     Ok(TimedOutput {
                         status: None,
                         stdout: "partial stdout".to_string(),
-                        stderr: "phase=inventory\nphase=evidence_health\n".to_string(),
+                        stderr: concat!(
+                            "ripr_repo_exposure_latency phase=inventory_seams status=ok duration_ms=3\n",
+                            "ripr_repo_exposure_latency phase=evidence_for_seams_progress status=processed_500_of_39021 duration_ms=7\n",
+                        )
+                        .to_string(),
                         duration: Duration::from_millis(8),
                         timed_out: true,
                     })
@@ -64829,7 +64881,27 @@ covered_by = ["cargo xtask check-file-policy"]
             );
             assert_eq!(
                 value["run_limitations"][0]["stderr_excerpt"],
-                "phase=inventory\nphase=evidence_health"
+                concat!(
+                    "ripr_repo_exposure_latency phase=inventory_seams status=ok duration_ms=3\n",
+                    "ripr_repo_exposure_latency phase=evidence_for_seams_progress status=processed_500_of_39021 duration_ms=7"
+                )
+            );
+            assert_eq!(
+                value["inputs"]["generation"]["latency_trace_events_total"],
+                2
+            );
+            assert_eq!(
+                value["inputs"]["generation"]["latency_trace_tail"][1]["phase"],
+                "evidence_for_seams_progress"
+            );
+            assert_eq!(
+                value["inputs"]["generation"]["latency_trace_tail"][1]["status"],
+                "processed_500_of_39021"
+            );
+            assert_eq!(value["run_limitations"][0]["latency_trace_events_total"], 2);
+            assert_eq!(
+                value["run_limitations"][0]["latency_trace_tail"][0]["phase"],
+                "inventory_seams"
             );
             assert_eq!(
                 value["top_static_limitations"][0]["repair_route"],
@@ -64841,6 +64913,8 @@ covered_by = ["cargo xtask check-file-policy"]
             assert!(markdown.contains("Status: warn"));
             assert!(markdown.contains("evidence_health_timeout"));
             assert!(markdown.contains("RIPR_EVIDENCE_HEALTH_TIMEOUT_MS"));
+            assert!(markdown.contains("Repo-exposure Latency Trace Tail"));
+            assert!(markdown.contains("processed_500_of_39021"));
             assert!(!markdown.contains("stale markdown"));
             Ok(())
         })
