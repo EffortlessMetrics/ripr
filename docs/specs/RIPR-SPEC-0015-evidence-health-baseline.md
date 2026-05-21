@@ -80,6 +80,14 @@ repo-exposure latency tracing; limited artifacts carry
 `latency_trace_events_total` and a bounded `latency_trace_tail` when the
 analyzer emits phase progress before timing out or failing.
 
+Operators must run live Lane 1 report validation sequentially in a shared
+worktree. `cargo xtask evidence-health` should not be launched at the same time
+as `lane1-evidence-audit`, `evidence-quality-scorecard`,
+`evidence-quality-trend`, or `ripr-swarm readiness` unless each process has an
+isolated `CARGO_TARGET_DIR` and isolated report output paths. The operational
+runbook is documented in
+[PR_AUTOMATION.md](../PR_AUTOMATION.md#lane-1-report-validation).
+
 The command:
 
 - loads repo configuration using normal precedence and defaults;
@@ -247,6 +255,8 @@ missing health counts.
   child process and writes timeout or incomplete-exit limitation fallback
   artifacts.
 - `docs/OUTPUT_SCHEMA.md` defines the public JSON and Markdown contract.
+- `docs/PR_AUTOMATION.md` defines the sequential live-report validation
+  runbook for shared Cargo target and report directories.
 
 ## Metrics
 
@@ -289,3 +299,8 @@ The implementation is pinned by:
 - `cargo xtask check-traceability`;
 - `cargo xtask check-capabilities`;
 - `cargo xtask check-pr`.
+
+Live validation should run the Lane 1 report commands sequentially in the order
+documented by [PR automation](../PR_AUTOMATION.md#lane-1-report-validation) so
+Cargo locks and shared report outputs do not create false timeout/failure
+signals.

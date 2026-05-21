@@ -23,6 +23,10 @@ are scoped or reviewed.
   unknown for completeness-affecting audit limitations. A completed audit that
   only skipped full classified seam cache storage keeps that limitation visible
   in the audit without marking scorecard counts as partial.
+- Documented the sequential Lane 1 live-report validation runbook so agents do
+  not overlap Cargo-backed audit, evidence-health, scorecard, trend, and swarm
+  readiness commands against the same target/report directories. Bounded warning
+  artifacts remain visible diagnostics, not passing evidence.
 
 ## 0.7.0 - 2026-05-20
 

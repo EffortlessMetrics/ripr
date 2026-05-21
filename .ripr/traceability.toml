@@ -1076,6 +1076,7 @@ code = [
 ]
 outputs = [
   "docs/OUTPUT_SCHEMA.md",
+  "docs/PR_AUTOMATION.md",
   "docs/lanes/LANE_1_EVIDENCE_ACCURACY.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
@@ -2337,6 +2338,7 @@ outputs = [
   "docs/lanes/LANE_1_EVIDENCE_QUALITY_LEADERSHIP.md",
   "docs/handoffs/2026-05-13-lane-1-evidence-quality-leadership-closeout.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/PR_AUTOMATION.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
   "CHANGELOG.md",
