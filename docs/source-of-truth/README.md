@@ -41,6 +41,8 @@ can answer these questions from the repository instead of from chat history:
 
 - [Source-of-truth control plane proposal](../proposals/RIPR-PROP-0015-source-of-truth-control-plane.md)
   explains why this repo is adopting the control-plane lane.
+- [Source-of-truth stack spec](../specs/RIPR-SPEC-0060-source-of-truth-stack.md)
+  defines the behavior contract for the linked artifact graph.
 - [Artifact taxonomy](artifact-taxonomy.md) defines each layer's ownership.
 - [Linking model](linking-model.md) defines how artifacts form one graph.
 - [Agent operating model](agent-operating-model.md) defines how Codex and other

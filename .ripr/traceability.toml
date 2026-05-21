@@ -3760,3 +3760,30 @@ metrics = [
   "outcome_delta_regressed",
   "outcome_delta_resolved",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0060"
+name = "Source-of-truth stack"
+spec = "docs/specs/RIPR-SPEC-0060-source-of-truth-stack.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/source-of-truth/README.md",
+  "docs/source-of-truth/artifact-taxonomy.md",
+  "docs/source-of-truth/linking-model.md",
+  "docs/source-of-truth/agent-operating-model.md",
+  "docs/specs/RIPR-SPEC-0060-source-of-truth-stack.md",
+  "docs/specs/README.md",
+  "docs/proposals/RIPR-PROP-0015-source-of-truth-control-plane.md",
+  "docs/proposals/README.md",
+  "docs/DOCUMENTATION.md",
+  ".ripr/traceability.toml",
+]
+metrics = [
+  "source_truth_registered_artifacts",
+  "source_truth_unresolved_links",
+  "source_truth_ready_items_without_proof",
+  "source_truth_stable_claims_without_proof",
+  "source_truth_policy_exceptions_missing_review",
+]

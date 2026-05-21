@@ -12,7 +12,7 @@ Linked proposal: n/a
 
 Linked specs:
 
-- Planned: `RIPR-SPEC-0060`: Source-of-truth stack contract
+- [`RIPR-SPEC-0060`: Source-of-truth stack](../specs/RIPR-SPEC-0060-source-of-truth-stack.md)
 
 Linked ADRs:
 
