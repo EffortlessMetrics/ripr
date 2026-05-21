@@ -2074,6 +2074,11 @@ Field contract:
 - `finding_alignment.coverage.same_line_duplicate_groups` - bounded raw
   finding groups sharing one file and line so maintainers can spot remaining
   duplicate user-action risks.
+- `finding_alignment.coverage.evidence_class_work_queue` - ranked evidence
+  classes that still need Lane 1 work, derived from alignment coverage rows.
+  Rows include `work_score`, `dominant_signal`, raw/canonical/actionable/
+  limitation/unknown/unaligned/duplicate counts, and `next_repair`. This is the
+  audit-local "choose the next class from live output" queue.
 - `finding_alignment.coverage.static_unknown_without_named_limitation` -
   count of static-unknown or limitation-shaped canonical items without a named
   static limitation category plus repair route. Generic `static_unknown` or
@@ -2842,6 +2847,10 @@ Field contract:
   exclusion reasons such as missing receipt paths. This is advisory
   badge-readiness evidence only; it does not switch public badges or PR/CI
   rendering.
+- `evidence_class_work_queue` - the audit-derived
+  `finding_alignment.coverage.evidence_class_work_queue` section carried
+  forward so the scorecard names the next evidence classes to burn down from
+  live output rather than static roadmap guesses.
 - `recommended_repairs` - bounded Lane 1 repair slices ordered by product risk
   priority first, then signal count. These are advisory next steps, not policy
   decisions.
@@ -2856,8 +2865,8 @@ Field contract:
 
 The Markdown sibling prints bounded sections for summary, finding-alignment and
 presentation-text quality, actionable canonical gap top lists, actionable-gap
-packet public-projection readiness, maturity by class, top evidence-quality
-risks, recommended repairs, duplicate/canonical group signals, static
+packet public-projection readiness, evidence-class work queue, maturity by
+class, top evidence-quality risks, recommended repairs, duplicate/canonical group signals, static
 limitations, missing discriminators, related-test and oracle distributions,
 movement and calibration coverage, recent deltas, and unknowns.
 

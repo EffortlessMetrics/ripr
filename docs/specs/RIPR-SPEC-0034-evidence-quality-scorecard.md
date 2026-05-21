@@ -174,6 +174,7 @@ The JSON output includes:
 - `calibration_coverage`;
 - `actionable_gap_top_lists`;
 - `actionable_gap_packet_public_projection`;
+- `evidence_class_work_queue`;
 - `recommended_repairs`;
 - `recent_audit_deltas`;
 - `unknowns`.
@@ -184,6 +185,7 @@ The Markdown output includes bounded sections for the same areas:
 - maturity by class;
 - actionable canonical gap top lists;
 - actionable-gap packet public-projection readiness;
+- evidence-class work queue;
 - top evidence-quality risks;
 - recommended Lane 1 repairs;
 - duplicate-looking and canonical group signals;
@@ -275,6 +277,11 @@ the scorecard carries the eligible/excluded packet counts and projection
 exclusion reasons forward. The trend report tracks eligible packets as
 higher-is-better and excluded packets as lower-is-better. Neither report
 changes public badge semantics.
+
+Given a Lane 1 audit with an evidence-class work queue, the scorecard carries
+that queue forward so operators can choose the next repair class from live
+actionable/static-limitation/unknown/unaligned/duplicate signals instead of a
+static roadmap guess. This queue does not change public badge semantics.
 
 Given a Lane 1 audit or evidence-health artifact with `run_limitations[]`, the
 scorecard adds `lane1_evidence_audit_limited` or `evidence_health_limited` to
