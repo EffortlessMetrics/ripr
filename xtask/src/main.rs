@@ -16538,6 +16538,7 @@ struct Lane1EvidenceAuditReport {
     unaligned_raw_findings_by_class: BTreeMap<String, usize>,
     top_unaligned_examples: Vec<Lane1EvidenceAuditUnalignedExample>,
     same_line_duplicate_groups: Vec<Lane1EvidenceAuditSameLineDuplicateGroup>,
+    evidence_class_work_queue: Vec<Lane1EvidenceClassWorkItem>,
     static_unknown_without_named_limitation: usize,
     canonical_items_without_repair_route: usize,
     canonical_items_without_verify_command: usize,
@@ -16712,6 +16713,21 @@ struct Lane1EvidenceAuditAlignmentClassCoverage {
     internal_no_action_items: usize,
     static_limitation_items: usize,
     unknown_items: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Lane1EvidenceClassWorkItem {
+    evidence_class: String,
+    work_score: usize,
+    dominant_signal: String,
+    raw_findings: usize,
+    canonical_items: usize,
+    duplicate_raw_signals: usize,
+    actionable_items: usize,
+    static_limitation_items: usize,
+    unknown_items: usize,
+    unaligned_raw_findings: usize,
+    next_repair: String,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -17846,6 +17862,8 @@ impl Lane1EvidenceAuditBuilder {
                 .cmp(&left.raw_findings)
                 .then_with(|| left.evidence_class.cmp(&right.evidence_class))
         });
+        let evidence_class_work_queue =
+            audit_evidence_class_work_queue(&alignment_coverage_by_class);
 
         let mut top_unaligned_examples = self.unaligned_examples;
         top_unaligned_examples.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
@@ -17923,6 +17941,7 @@ impl Lane1EvidenceAuditBuilder {
             unaligned_raw_findings_by_class: self.unaligned_raw_findings_by_class,
             top_unaligned_examples,
             same_line_duplicate_groups,
+            evidence_class_work_queue,
             static_unknown_without_named_limitation: self.static_unknown_without_named_limitation,
             canonical_items_without_repair_route: self.canonical_items_without_repair_route,
             canonical_items_without_verify_command: self.canonical_items_without_verify_command,
@@ -18028,6 +18047,11 @@ fn lane1_evidence_audit_json(report: &Lane1EvidenceAuditReport) -> Result<String
                     .same_line_duplicate_groups
                     .iter()
                     .map(audit_same_line_duplicate_group_json)
+                    .collect::<Vec<_>>(),
+                "evidence_class_work_queue": report
+                    .evidence_class_work_queue
+                    .iter()
+                    .map(audit_evidence_class_work_item_json)
                     .collect::<Vec<_>>(),
                 "static_unknown_without_named_limitation": report.static_unknown_without_named_limitation,
                 "canonical_items_without_repair_route": report.canonical_items_without_repair_route,
@@ -18321,6 +18345,7 @@ fn lane1_evidence_audit_markdown(report: &Lane1EvidenceAuditReport) -> String {
     );
     out.push('\n');
     audit_push_alignment_class_coverage_table(&mut out, &report.alignment_coverage_by_class);
+    audit_push_evidence_class_work_queue_table(&mut out, &report.evidence_class_work_queue);
     audit_push_runtime_confidence_by_class_table(&mut out, &report.runtime_confidence_by_class);
     audit_push_counts_table_limited(
         &mut out,
@@ -21277,6 +21302,22 @@ fn audit_alignment_class_coverage_json(row: &Lane1EvidenceAuditAlignmentClassCov
     })
 }
 
+fn audit_evidence_class_work_item_json(row: &Lane1EvidenceClassWorkItem) -> Value {
+    serde_json::json!({
+        "evidence_class": row.evidence_class,
+        "work_score": row.work_score,
+        "dominant_signal": row.dominant_signal,
+        "raw_findings": row.raw_findings,
+        "canonical_items": row.canonical_items,
+        "duplicate_raw_signals": row.duplicate_raw_signals,
+        "actionable_items": row.actionable_items,
+        "static_limitation_items": row.static_limitation_items,
+        "unknown_items": row.unknown_items,
+        "unaligned_raw_findings": row.unaligned_raw_findings,
+        "next_repair": row.next_repair,
+    })
+}
+
 fn audit_runtime_confidence_by_class_json(
     rows: &[Lane1EvidenceAuditRuntimeConfidenceClassCoverage],
 ) -> Vec<Value> {
@@ -22289,6 +22330,34 @@ fn audit_push_alignment_class_coverage_table(
     out.push('\n');
 }
 
+fn audit_push_evidence_class_work_queue_table(
+    out: &mut String,
+    rows: &[Lane1EvidenceClassWorkItem],
+) {
+    out.push_str("### Evidence Class Work Queue\n\n");
+    if rows.is_empty() {
+        out.push_str("No evidence-class work queue rows were reported.\n\n");
+        return;
+    }
+    out.push_str("| Evidence class | Work score | Dominant signal | Actionable | Limitations | Unknown | Unaligned | Duplicate raw | Next repair |\n");
+    out.push_str("| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |\n");
+    for row in rows {
+        out.push_str(&format!(
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
+            audit_markdown_cell(&row.evidence_class),
+            row.work_score,
+            audit_markdown_cell(&row.dominant_signal),
+            row.actionable_items,
+            row.static_limitation_items,
+            row.unknown_items,
+            row.unaligned_raw_findings,
+            row.duplicate_raw_signals,
+            audit_markdown_cell(&row.next_repair),
+        ));
+    }
+    out.push('\n');
+}
+
 fn audit_push_runtime_confidence_by_class_table(
     out: &mut String,
     rows: &[Lane1EvidenceAuditRuntimeConfidenceClassCoverage],
@@ -22561,6 +22630,7 @@ struct EvidenceQualityScorecardReport {
     calibration_coverage: Value,
     actionable_gap_top_lists: Value,
     actionable_gap_packet_public_projection: Value,
+    evidence_class_work_queue: Value,
     recommended_repairs: Vec<EvidenceQualityRepair>,
     recent_audit_deltas: EvidenceQualityDeltas,
     unknowns: Vec<EvidenceQualityUnknown>,
@@ -22923,6 +22993,11 @@ fn evidence_quality_scorecard_from_values(
                 "projection_exclusion_reasons": [],
             }),
         ),
+        evidence_class_work_queue: scorecard_value_or_default(
+            audit,
+            &["finding_alignment", "coverage", "evidence_class_work_queue"],
+            serde_json::json!([]),
+        ),
         recommended_repairs,
         recent_audit_deltas,
         unknowns,
@@ -23203,6 +23278,85 @@ fn finding_alignment_raw_to_canonical_ratio(
         summary.finding_alignment_raw_signals_total as f64
             / summary.finding_alignment_canonical_items_total as f64,
     )
+}
+
+fn audit_evidence_class_work_queue(
+    rows: &[Lane1EvidenceAuditAlignmentClassCoverage],
+) -> Vec<Lane1EvidenceClassWorkItem> {
+    let mut work_items = rows
+        .iter()
+        .filter_map(audit_evidence_class_work_item)
+        .collect::<Vec<_>>();
+    work_items.sort_by(|left, right| {
+        right
+            .work_score
+            .cmp(&left.work_score)
+            .then_with(|| right.actionable_items.cmp(&left.actionable_items))
+            .then_with(|| {
+                right
+                    .static_limitation_items
+                    .cmp(&left.static_limitation_items)
+            })
+            .then_with(|| left.evidence_class.cmp(&right.evidence_class))
+    });
+    work_items.truncate(LANE1_EVIDENCE_AUDIT_TOP_LIMIT);
+    work_items
+}
+
+fn audit_evidence_class_work_item(
+    row: &Lane1EvidenceAuditAlignmentClassCoverage,
+) -> Option<Lane1EvidenceClassWorkItem> {
+    let duplicate_raw_signals = row.raw_findings.saturating_sub(row.canonical_items);
+    let work_score = row.unaligned_raw_findings * 8
+        + row.actionable_items * 10
+        + row.static_limitation_items * 6
+        + row.unknown_items * 6
+        + duplicate_raw_signals * 2;
+    if work_score == 0 {
+        return None;
+    }
+    let dominant_signal = audit_evidence_class_dominant_signal(row, duplicate_raw_signals);
+    Some(Lane1EvidenceClassWorkItem {
+        evidence_class: row.evidence_class.clone(),
+        work_score,
+        dominant_signal: dominant_signal.to_string(),
+        raw_findings: row.raw_findings,
+        canonical_items: row.canonical_items,
+        duplicate_raw_signals,
+        actionable_items: row.actionable_items,
+        static_limitation_items: row.static_limitation_items,
+        unknown_items: row.unknown_items,
+        unaligned_raw_findings: row.unaligned_raw_findings,
+        next_repair: audit_evidence_class_next_repair(dominant_signal).to_string(),
+    })
+}
+
+fn audit_evidence_class_dominant_signal(
+    row: &Lane1EvidenceAuditAlignmentClassCoverage,
+    duplicate_raw_signals: usize,
+) -> &'static str {
+    [
+        ("unaligned_raw_findings", row.unaligned_raw_findings * 8),
+        ("actionable_canonical_gaps", row.actionable_items * 10),
+        ("static_limitations", row.static_limitation_items * 6),
+        ("unknown_items", row.unknown_items * 6),
+        ("duplicate_raw_signals", duplicate_raw_signals * 2),
+    ]
+    .into_iter()
+    .max_by(|left, right| left.1.cmp(&right.1).then_with(|| right.0.cmp(left.0)))
+    .map(|(signal, _)| signal)
+    .unwrap_or("none")
+}
+
+fn audit_evidence_class_next_repair(dominant_signal: &str) -> &'static str {
+    match dominant_signal {
+        "unaligned_raw_findings" => "analysis/finding-alignment-coverage",
+        "actionable_canonical_gaps" => "dogfood/actionable-gap-repair-loop",
+        "static_limitations" => "analysis/static-limitation-taxonomy",
+        "unknown_items" => "analysis/named-limitations",
+        "duplicate_raw_signals" => "analysis/canonical-grouping-audit",
+        _ => "report/evidence-class-work-queue",
+    }
 }
 
 fn evidence_quality_maturity_rows(
@@ -23854,6 +24008,7 @@ fn evidence_quality_scorecard_json(
         "calibration_coverage": report.calibration_coverage,
         "actionable_gap_top_lists": report.actionable_gap_top_lists,
         "actionable_gap_packet_public_projection": report.actionable_gap_packet_public_projection,
+        "evidence_class_work_queue": report.evidence_class_work_queue,
         "recommended_repairs": report.recommended_repairs.iter().map(|repair| {
             serde_json::json!({
                 "slice": repair.slice,
@@ -24183,6 +24338,37 @@ fn scorecard_push_top_count_table(out: &mut String, heading: &str, value: &Value
     out.push('\n');
 }
 
+fn scorecard_push_evidence_class_work_queue_table(out: &mut String, value: &Value) {
+    let rows = value.as_array().map_or(&[][..], Vec::as_slice);
+    if rows.is_empty() {
+        out.push_str("No evidence-class work queue rows were reported.\n\n");
+        return;
+    }
+    out.push_str("| Evidence class | Work score | Dominant signal | Actionable | Limitations | Unknown | Unaligned | Duplicate raw | Next repair |\n");
+    out.push_str("| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |\n");
+    for row in rows.iter().take(LANE1_EVIDENCE_AUDIT_TOP_LIMIT) {
+        let evidence_class =
+            audit_string(row, &["evidence_class"]).unwrap_or_else(|| "unknown".to_string());
+        let dominant_signal =
+            audit_string(row, &["dominant_signal"]).unwrap_or_else(|| "unknown".to_string());
+        let next_repair =
+            audit_string(row, &["next_repair"]).unwrap_or_else(|| "unknown".to_string());
+        out.push_str(&format!(
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
+            audit_markdown_cell(&evidence_class),
+            audit_usize(row, &["work_score"]).unwrap_or(0),
+            audit_markdown_cell(&dominant_signal),
+            audit_usize(row, &["actionable_items"]).unwrap_or(0),
+            audit_usize(row, &["static_limitation_items"]).unwrap_or(0),
+            audit_usize(row, &["unknown_items"]).unwrap_or(0),
+            audit_usize(row, &["unaligned_raw_findings"]).unwrap_or(0),
+            audit_usize(row, &["duplicate_raw_signals"]).unwrap_or(0),
+            audit_markdown_cell(&next_repair),
+        ));
+    }
+    out.push('\n');
+}
+
 fn scorecard_push_runtime_confidence_by_class_table(out: &mut String, value: &Value) {
     let rows = value
         .get("by_evidence_class")
@@ -24467,6 +24653,9 @@ fn evidence_quality_scorecard_markdown(report: &EvidenceQualityScorecardReport) 
         &report.actionable_gap_packet_public_projection,
         "projection_exclusion_reasons",
     );
+
+    out.push_str("## Evidence Class Work Queue\n\n");
+    scorecard_push_evidence_class_work_queue_table(&mut out, &report.evidence_class_work_queue);
 
     out.push_str("## Maturity By Class\n\n");
     out.push_str("| Class | Status | Proof source | Known limits | Next repair |\n");
@@ -59757,6 +59946,21 @@ covered_by = ["cargo xtask check-file-policy"]
             call_presence["static_limitation_items"],
             serde_json::Value::from(1)
         );
+        let work_queue = coverage["evidence_class_work_queue"]
+            .as_array()
+            .ok_or_else(|| "evidence class work queue should be an array".to_string())?;
+        let top_work_item = work_queue
+            .first()
+            .ok_or_else(|| "evidence class work queue should not be empty".to_string())?;
+        assert_eq!(top_work_item["evidence_class"], "predicate_boundary");
+        assert_eq!(
+            top_work_item["dominant_signal"],
+            "actionable_canonical_gaps"
+        );
+        assert_eq!(
+            top_work_item["next_repair"],
+            "dogfood/actionable-gap-repair-loop"
+        );
 
         let fields = value["evidence_record_field_health"]
             .as_array()
@@ -59767,6 +59971,52 @@ covered_by = ["cargo xtask check-file-policy"]
             .ok_or_else(|| "canonical_gap_id health missing".to_string())?;
         assert_eq!(canonical["present"], serde_json::Value::from(2));
         assert_eq!(canonical["null"], serde_json::Value::from(1));
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_class_work_queue_prefers_dominant_live_repair_signal() -> Result<(), String> {
+        let rows = vec![
+            super::Lane1EvidenceAuditAlignmentClassCoverage {
+                evidence_class: "predicate_boundary".to_string(),
+                raw_findings: 20,
+                canonical_items: 10,
+                aligned_raw_findings: 20,
+                unaligned_raw_findings: 0,
+                actionable_items: 3,
+                already_observed_items: 0,
+                internal_no_action_items: 0,
+                static_limitation_items: 0,
+                unknown_items: 0,
+            },
+            super::Lane1EvidenceAuditAlignmentClassCoverage {
+                evidence_class: "call_presence".to_string(),
+                raw_findings: 30,
+                canonical_items: 25,
+                aligned_raw_findings: 30,
+                unaligned_raw_findings: 0,
+                actionable_items: 0,
+                already_observed_items: 0,
+                internal_no_action_items: 0,
+                static_limitation_items: 8,
+                unknown_items: 0,
+            },
+        ];
+
+        let queue = super::audit_evidence_class_work_queue(&rows);
+        let top = queue
+            .first()
+            .ok_or_else(|| "work queue should contain scored rows".to_string())?;
+        assert_eq!(top.evidence_class, "call_presence");
+        assert_eq!(top.dominant_signal, "static_limitations");
+        assert_eq!(top.next_repair, "analysis/static-limitation-taxonomy");
+        assert!(
+            queue
+                .iter()
+                .any(|row| row.evidence_class == "predicate_boundary"
+                    && row.dominant_signal == "actionable_canonical_gaps"),
+            "actionable classes should remain visible even when static limitations dominate"
+        );
         Ok(())
     }
 
@@ -62854,6 +63104,7 @@ covered_by = ["cargo xtask check-file-policy"]
                 .get("actionable_gap_packet_public_projection")
                 .is_some()
         );
+        assert!(value.get("evidence_class_work_queue").is_some());
         assert!(value.get("recommended_repairs").is_some());
         assert!(value.get("recent_audit_deltas").is_some());
         assert!(value.get("unknowns").is_some());
@@ -63059,6 +63310,8 @@ covered_by = ["cargo xtask check-file-policy"]
             "Repair kind",
             "Actionable Gap Packet Public Projection Readiness",
             "Projection exclusion reason",
+            "Evidence Class Work Queue",
+            "Dominant signal",
             "Maturity By Class",
             "Top Evidence-Quality Risks",
             "Recommended Lane 1 Repairs",
@@ -63112,6 +63365,40 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("Actionable Canonical Gap Top Lists"));
         assert!(markdown.contains("add_boundary_assertion"));
         assert!(markdown.contains("No static limitation reason counts were reported."));
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_scorecard_carries_evidence_class_work_queue_from_audit()
+    -> Result<(), String> {
+        let audit = lane1_scorecard_sample_audit_value()?;
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(false),
+            &audit,
+            None,
+            None,
+        )?;
+        let json = evidence_quality_scorecard_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+
+        assert_eq!(
+            value["evidence_class_work_queue"][0]["evidence_class"],
+            "predicate_boundary"
+        );
+        assert_eq!(
+            value["evidence_class_work_queue"][0]["dominant_signal"],
+            "actionable_canonical_gaps"
+        );
+        assert_eq!(
+            value["evidence_class_work_queue"][0]["next_repair"],
+            "dogfood/actionable-gap-repair-loop"
+        );
+
+        let markdown = evidence_quality_scorecard_markdown(&report);
+        assert!(markdown.contains("Evidence Class Work Queue"));
+        assert!(markdown.contains("actionable_canonical_gaps"));
         Ok(())
     }
 

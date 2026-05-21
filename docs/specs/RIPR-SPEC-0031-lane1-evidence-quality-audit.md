@@ -153,6 +153,7 @@ The audit must summarize:
 - finding-alignment coverage by evidence class, unaligned raw finding examples,
   same-line duplicate groups, static-unknown items without named limitations,
   and canonical items missing repair or verification guidance;
+- evidence-class work queue rows with dominant signal and next repair route;
 - actionable canonical gap top lists for class, file, repair kind, missing
   discriminator kind, static limitation reason on actionable gap records,
   verify-command unknown, and repair-route unknown counts;
@@ -202,6 +203,12 @@ Given evidence records with and without `canonical_item`, the audit reports
 aligned, which raw findings remain unaligned, whether duplicate raw findings
 share a file and line, and whether canonical items lack repair routes,
 verification commands, or named static-limitation categories.
+
+Given alignment coverage rows, the audit reports bounded
+`evidence_class_work_queue` rows so the next class to improve is selected from
+live output. Rows must name the evidence class, dominant signal, work score,
+actionable/static-limitation/unknown/unaligned/duplicate counts, and next
+repair route.
 
 Given a static-unknown or limitation-shaped canonical item, a limitation is
 named only when it carries a non-generic category and repair route. Generic
