@@ -37,7 +37,7 @@ id = "context/proof-stack-reconciliation"
 status = "done"
 branch = "context-proof-stack-reconciliation"
 stackable = false
-acceptance = "Reconcile the proof-stack language into RIPR's existing context system without adding a runner-local goals namespace, `docs/source-of-truth`, or another operating namespace. `docs/agent-context/CONTEXT_SYSTEM.md` maps proposal, spec, ADR, implementation plan, active manifest, support tiers, policy ledgers, and closeouts to the repo-native files users and agents already consume."
+acceptance = "Reconcile the proof-stack language into RIPR's existing context system without adding a runner-local goals namespace, `docs/source-of-truth`, or another operating namespace. `docs/agent-context/CONTEXT_SYSTEM.md` maps proposal, spec, ADR, implementation plan, active manifest, support tiers, policy ledgers, and closeouts to the repo-native files users and agents already consume, and `docs/ROADMAP.md` states the product/control-plane end goal."
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",

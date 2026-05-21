@@ -256,6 +256,42 @@ the ADR. "What is the agent doing right now, or what campaign just closed
 without a selected successor?" wants the active manifest.
 "What shipped last week?" wants the handoff.
 
+## PR alignment cadence
+
+Every PR should leave enough repo state for the next agent or maintainer to
+continue without chat history. A PR should answer:
+
+```text
+1. What product or repo capability moves?
+2. What exact behavior or invariant changes?
+3. What proof command validates it?
+4. What user-facing claim changes, if any?
+5. What support tier changes, if any?
+6. What policy ledger or traceability entry changes, if any?
+7. What should the next PR do?
+```
+
+Most PRs should have one movement type:
+
+| PR type | Purpose |
+| --- | --- |
+| Capability PR | Improves analyzer or product behavior. |
+| Surface PR | Makes existing evidence easier to use. |
+| Proof PR | Adds fixtures, goldens, receipts, or dogfood. |
+| Control-plane PR | Makes repo alignment stricter. |
+| Claim PR | Updates support tier or public claim boundary after proof. |
+
+Avoid mixing movement types unless the second type is the evidence required to
+review the first. The expected closeout shape is:
+
+```text
+What landed:
+What proved it:
+What did not change:
+Support-tier impact:
+Next recommended PR:
+```
+
 ## Agent neutrality
 
 External agents (Codex `/goal`, Kiro specs/tasks, Claude Code's task
