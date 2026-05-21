@@ -16240,6 +16240,7 @@ where
             "evidence_health_build",
             timeout,
             &build_output,
+            None,
         );
     }
     match build_output.status {
@@ -16251,6 +16252,7 @@ where
             "evidence_health_build",
             timeout,
             &build_output,
+            None,
         ),
     }
 }
@@ -16264,13 +16266,32 @@ fn write_evidence_health_report_with_runner<F>(
 where
     F: FnMut(&Path, &[String], Duration) -> Result<TimedOutput, String>,
 {
+    clear_evidence_health_report_artifacts();
     let output = run_evidence_health(binary, args, timeout)?;
     if output.timed_out {
-        return write_limited_evidence_health_reports(binary, args, timeout, &output);
+        return write_limited_evidence_health_reports(binary, args, timeout, &output, None);
     }
     match output.status {
-        Some(status) if status.success() => Ok(()),
-        Some(_) | None => write_limited_evidence_health_reports(binary, args, timeout, &output),
+        Some(status) if status.success() => {
+            match validate_complete_evidence_health_report_artifacts() {
+                Ok(()) => Ok(()),
+                Err(err) => {
+                    eprintln!(
+                        "warning: evidence-health child exited successfully without complete report artifacts: {err}"
+                    );
+                    write_limited_evidence_health_reports(
+                        binary,
+                        args,
+                        timeout,
+                        &output,
+                        Some(&err),
+                    )
+                }
+            }
+        }
+        Some(_) | None => {
+            write_limited_evidence_health_reports(binary, args, timeout, &output, None)
+        }
     }
 }
 
@@ -16279,12 +16300,14 @@ fn write_limited_evidence_health_reports(
     args: &[String],
     timeout: Duration,
     output: &TimedOutput,
+    failure_reason: Option<&str>,
 ) -> Result<(), String> {
     write_limited_evidence_health_reports_for_command(
         &normalize_report_path(&format!("{} {}", binary.display(), args.join(" "))),
         "evidence_health_generation",
         timeout,
         output,
+        failure_reason,
     )
 }
 
@@ -16293,6 +16316,7 @@ fn write_limited_evidence_health_reports_for_command(
     phase: &str,
     timeout: Duration,
     output: &TimedOutput,
+    failure_reason: Option<&str>,
 ) -> Result<(), String> {
     let json_path = Path::new("target/ripr/reports/evidence-health.json");
     let md_path = Path::new("target/ripr/reports/evidence-health.md");
@@ -16300,11 +16324,11 @@ fn write_limited_evidence_health_reports_for_command(
     let _ = fs::remove_file(md_path);
     write_report(
         "evidence-health.json",
-        &limited_evidence_health_json(command, phase, timeout, output)?,
+        &limited_evidence_health_json(command, phase, timeout, output, failure_reason)?,
     )?;
     write_report(
         "evidence-health.md",
-        &limited_evidence_health_markdown(command, phase, timeout, output),
+        &limited_evidence_health_markdown(command, phase, timeout, output, failure_reason),
     )
 }
 
@@ -16313,6 +16337,7 @@ fn limited_evidence_health_json(
     phase: &str,
     timeout: Duration,
     output: &TimedOutput,
+    failure_reason: Option<&str>,
 ) -> Result<String, String> {
     let limitation = evidence_health_limited_kind(output);
     let summary = evidence_health_limited_summary(limitation);
@@ -16325,7 +16350,7 @@ fn limited_evidence_health_json(
         "inputs": {
             "root": ".",
             "mutation_calibration": null,
-            "generation": evidence_health_generation_json(command, timeout, output),
+            "generation": evidence_health_generation_json(command, timeout, output, failure_reason),
         },
         "metrics": {
             "seams_total": 0,
@@ -16406,6 +16431,9 @@ fn limited_evidence_health_json(
                 "exit_code": output.status.and_then(|status| status.code()),
                 "stdout_bytes": output.stdout.len(),
                 "stderr_bytes": output.stderr.len(),
+                "stdout_excerpt": bounded_output_excerpt(&output.stdout),
+                "stderr_excerpt": bounded_output_excerpt(&output.stderr),
+                "failure_reason": failure_reason,
             }
         ],
     });
@@ -16418,16 +16446,30 @@ fn evidence_health_generation_json(
     command: &str,
     timeout: Duration,
     output: &TimedOutput,
+    failure_reason: Option<&str>,
 ) -> Value {
     serde_json::json!({
         "command": command,
         "timeout_ms": timeout.as_millis(),
-        "status": if output.timed_out { "timeout" } else { "fail" },
+        "status": evidence_health_generation_status(output),
         "duration_ms": output.duration.as_millis(),
         "exit_code": output.status.and_then(|status| status.code()),
         "stdout_bytes": output.stdout.len(),
         "stderr_bytes": output.stderr.len(),
+        "stdout_excerpt": bounded_output_excerpt(&output.stdout),
+        "stderr_excerpt": bounded_output_excerpt(&output.stderr),
+        "failure_reason": failure_reason,
     })
+}
+
+fn evidence_health_generation_status(output: &TimedOutput) -> &'static str {
+    if output.timed_out {
+        "timeout"
+    } else if output.status.is_some_and(|status| status.success()) {
+        "pass_incomplete"
+    } else {
+        "fail"
+    }
 }
 
 fn evidence_health_limited_kind(output: &TimedOutput) -> &'static str {
@@ -16467,6 +16509,7 @@ fn limited_evidence_health_markdown(
     phase: &str,
     timeout: Duration,
     output: &TimedOutput,
+    failure_reason: Option<&str>,
 ) -> String {
     let limitation = evidence_health_limited_kind(output);
     let summary = evidence_health_limited_summary(limitation);
@@ -16498,6 +16541,12 @@ fn limited_evidence_health_markdown(
         "| Command | `{}` |\n",
         audit_markdown_cell(command)
     ));
+    if let Some(reason) = failure_reason {
+        out.push_str(&format!(
+            "| Failure reason | {} |\n",
+            audit_markdown_cell(reason)
+        ));
+    }
     out.push_str(&format!("| Repair route | {repair_route} |\n\n"));
     if !output.stderr.trim().is_empty() {
         out.push_str("## Stderr Tail\n\n```text\n");
@@ -16516,6 +16565,128 @@ fn limited_evidence_health_markdown(
         out.push_str("```\n");
     }
     out
+}
+
+fn clear_evidence_health_report_artifacts() {
+    let _ = fs::remove_file(evidence_health_json_report_path());
+    let _ = fs::remove_file(evidence_health_markdown_report_path());
+}
+
+fn evidence_health_json_report_path() -> PathBuf {
+    reports_dir().join("evidence-health.json")
+}
+
+fn evidence_health_markdown_report_path() -> PathBuf {
+    reports_dir().join("evidence-health.md")
+}
+
+fn validate_complete_evidence_health_report_artifacts() -> Result<(), String> {
+    let json_path = evidence_health_json_report_path();
+    let markdown_path = evidence_health_markdown_report_path();
+    let json_text = fs::read_to_string(&json_path).map_err(|err| {
+        format!(
+            "missing evidence-health JSON artifact {}: {err}",
+            normalize_path(&json_path)
+        )
+    })?;
+    let value = serde_json::from_str::<Value>(&json_text).map_err(|err| {
+        format!(
+            "invalid evidence-health JSON artifact {}: {err}",
+            normalize_path(&json_path)
+        )
+    })?;
+    validate_complete_evidence_health_json(&value)?;
+
+    let markdown = fs::read_to_string(&markdown_path).map_err(|err| {
+        format!(
+            "missing evidence-health Markdown artifact {}: {err}",
+            normalize_path(&markdown_path)
+        )
+    })?;
+    if !markdown.contains("# RIPR evidence health report") {
+        return Err(format!(
+            "incomplete evidence-health Markdown artifact {}: missing report heading",
+            normalize_path(&markdown_path)
+        ));
+    }
+    if !markdown.contains("| Status | advisory |") {
+        return Err(format!(
+            "incomplete evidence-health Markdown artifact {}: missing advisory status row",
+            normalize_path(&markdown_path)
+        ));
+    }
+    Ok(())
+}
+
+fn validate_complete_evidence_health_json(value: &Value) -> Result<(), String> {
+    if !value.is_object() {
+        return Err(
+            "incomplete evidence-health JSON artifact: top-level value is not an object"
+                .to_string(),
+        );
+    }
+    let status = value.get("status").and_then(Value::as_str).ok_or_else(|| {
+        "incomplete evidence-health JSON artifact: missing string `status`".to_string()
+    })?;
+    if status != "advisory" {
+        return Err(format!(
+            "incomplete evidence-health JSON artifact: expected status `advisory`, got `{status}`"
+        ));
+    }
+    for field in [
+        "schema_version",
+        "tool",
+        "scope",
+        "inputs",
+        "metrics",
+        "evidence_quality",
+        "calibration",
+        "top_static_limitations",
+    ] {
+        if value.get(field).is_none() {
+            return Err(format!(
+                "incomplete evidence-health JSON artifact: missing `{field}`"
+            ));
+        }
+    }
+    if !value["metrics"].is_object() {
+        return Err(
+            "incomplete evidence-health JSON artifact: `metrics` is not an object".to_string(),
+        );
+    }
+    if !value["evidence_quality"].is_object() {
+        return Err(
+            "incomplete evidence-health JSON artifact: `evidence_quality` is not an object"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+const EVIDENCE_HEALTH_OUTPUT_EXCERPT_LINE_LIMIT: usize = 8;
+const EVIDENCE_HEALTH_OUTPUT_EXCERPT_CHAR_LIMIT: usize = 4096;
+
+fn bounded_output_excerpt(output: &str) -> Option<String> {
+    let trimmed = output.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let lines = trimmed
+        .lines()
+        .rev()
+        .take(EVIDENCE_HEALTH_OUTPUT_EXCERPT_LINE_LIMIT)
+        .collect::<Vec<_>>();
+    let mut excerpt = lines.into_iter().rev().collect::<Vec<_>>().join("\n");
+    if excerpt.chars().count() > EVIDENCE_HEALTH_OUTPUT_EXCERPT_CHAR_LIMIT {
+        let mut chars = excerpt
+            .chars()
+            .rev()
+            .take(EVIDENCE_HEALTH_OUTPUT_EXCERPT_CHAR_LIMIT)
+            .collect::<Vec<_>>();
+        chars.reverse();
+        excerpt = chars.into_iter().collect();
+    }
+    Some(excerpt)
 }
 
 const LANE1_EVIDENCE_AUDIT_SCHEMA_VERSION: &str = "0.1";
@@ -59634,6 +59805,144 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn evidence_health_success_accepts_complete_report_artifacts() -> Result<(), String> {
+        with_temp_cwd("evidence-health-success-complete", |_root| {
+            let timeout = Duration::from_secs(90);
+            let args = evidence_health_args();
+            let json_path = Path::new("target/ripr/reports/evidence-health.json");
+            let md_path = Path::new("target/ripr/reports/evidence-health.md");
+
+            write_evidence_health_report_with_runner(
+                Path::new("ripr"),
+                &args,
+                timeout,
+                |_binary, _args, _timeout| {
+                    write(
+                        json_path,
+                        r#"{
+                          "schema_version": "0.2",
+                          "tool": "ripr",
+                          "scope": "repo",
+                          "status": "advisory",
+                          "inputs": {},
+                          "metrics": {},
+                          "evidence_quality": {},
+                          "calibration": {},
+                          "top_static_limitations": []
+                        }"#,
+                    );
+                    write(
+                        md_path,
+                        "# RIPR evidence health report\n\n| Field | Value |\n| --- | --- |\n| Status | advisory |\n",
+                    );
+                    Ok(TimedOutput {
+                        status: Some(success_exit_status()),
+                        stdout: "Wrote target/ripr/reports/evidence-health.json\n".to_string(),
+                        stderr: String::new(),
+                        duration: Duration::from_secs(4),
+                        timed_out: false,
+                    })
+                },
+            )?;
+
+            let json_text = fs::read_to_string(json_path).map_err(|err| err.to_string())?;
+            assert!(json_text.contains("\"status\": \"advisory\""));
+            let markdown = fs::read_to_string(md_path).map_err(|err| err.to_string())?;
+            assert!(markdown.contains("| Status | advisory |"));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn evidence_health_success_without_artifacts_writes_named_limitation_reports()
+    -> Result<(), String> {
+        with_temp_cwd("evidence-health-success-missing-artifacts", |_root| {
+            let timeout = Duration::from_secs(90);
+            let args = evidence_health_args();
+            let stale_json = Path::new("target/ripr/reports/evidence-health.json");
+            let stale_md = Path::new("target/ripr/reports/evidence-health.md");
+            write(stale_json, "stale json");
+            write(stale_md, "stale markdown");
+
+            write_evidence_health_report_with_runner(
+                Path::new("ripr"),
+                &args,
+                timeout,
+                |_binary, _args, _timeout| {
+                    Ok(TimedOutput {
+                        status: Some(success_exit_status()),
+                        stdout: "Wrote nothing\n".to_string(),
+                        stderr: "completed without artifacts\n".to_string(),
+                        duration: Duration::from_secs(2),
+                        timed_out: false,
+                    })
+                },
+            )?;
+
+            let json_text = fs::read_to_string(stale_json).map_err(|err| err.to_string())?;
+            let value: Value = serde_json::from_str(&json_text).map_err(|err| err.to_string())?;
+            assert_eq!(value["status"], "warn");
+            assert_eq!(
+                value["inputs"]["generation"]["status"],
+                serde_json::Value::from("pass_incomplete")
+            );
+            assert_eq!(
+                value["run_limitations"][0]["category"],
+                "evidence_health_incomplete"
+            );
+            assert!(
+                value["run_limitations"][0]["failure_reason"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("missing evidence-health JSON artifact")
+            );
+            assert_eq!(
+                value["inputs"]["generation"]["stderr_excerpt"],
+                serde_json::Value::from("completed without artifacts")
+            );
+            assert!(!json_text.contains("stale json"));
+
+            let markdown = fs::read_to_string(stale_md).map_err(|err| err.to_string())?;
+            assert!(markdown.contains("Status: warn"));
+            assert!(markdown.contains("evidence_health_incomplete"));
+            assert!(markdown.contains("Failure reason"));
+            assert!(!markdown.contains("stale markdown"));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn evidence_health_report_artifact_completion_validator_names_bad_shapes() {
+        let missing_status = serde_json::json!({
+            "schema_version": "0.2",
+            "tool": "ripr",
+            "scope": "repo",
+            "inputs": {},
+            "metrics": {},
+            "evidence_quality": {},
+            "calibration": {},
+            "top_static_limitations": []
+        });
+        let err = super::validate_complete_evidence_health_json(&missing_status)
+            .expect_err("missing status should fail validation");
+        assert!(err.contains("missing string `status`"), "{err}");
+
+        let missing_metrics = serde_json::json!({
+            "schema_version": "0.2",
+            "tool": "ripr",
+            "scope": "repo",
+            "status": "advisory",
+            "inputs": {},
+            "evidence_quality": {},
+            "calibration": {},
+            "top_static_limitations": []
+        });
+        let err = super::validate_complete_evidence_health_json(&missing_metrics)
+            .expect_err("missing metrics should fail validation");
+        assert!(err.contains("missing `metrics`"), "{err}");
+    }
+
+    #[test]
     fn evidence_health_build_timeout_writes_named_limitation_reports() -> Result<(), String> {
         with_temp_cwd("evidence-health-build-timeout", |_root| {
             let timeout = Duration::from_millis(7);
@@ -59784,6 +60093,10 @@ covered_by = ["cargo xtask check-file-policy"]
                 value["inputs"]["generation"]["status"],
                 serde_json::Value::from("fail")
             );
+            assert_eq!(
+                value["run_limitations"][0]["stderr_excerpt"],
+                serde_json::Value::from("phase=inventory\nphase=evidence_health")
+            );
             assert!(!json_text.contains("stale json"));
 
             let markdown = fs::read_to_string(stale_md).map_err(|err| err.to_string())?;
@@ -59838,6 +60151,10 @@ covered_by = ["cargo xtask check-file-policy"]
             assert_eq!(
                 value["inputs"]["generation"]["status"],
                 serde_json::Value::from("fail")
+            );
+            assert_eq!(
+                value["run_limitations"][0]["stderr_excerpt"],
+                serde_json::Value::from("error: evidence health failed")
             );
             assert!(!json_text.contains("stale json"));
 
