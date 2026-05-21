@@ -1,4 +1,4 @@
-use crate::domain::{ExposureClass, Finding, Summary};
+use crate::domain::{Finding, Summary};
 
 pub(crate) fn summarize_findings(changed_rust_files: usize, findings: &[Finding]) -> Summary {
     let mut summary = Summary {
@@ -9,15 +9,7 @@ pub(crate) fn summarize_findings(changed_rust_files: usize, findings: &[Finding]
     };
 
     for finding in findings {
-        match finding.class {
-            ExposureClass::Exposed => summary.exposed += 1,
-            ExposureClass::WeaklyExposed => summary.weakly_exposed += 1,
-            ExposureClass::ReachableUnrevealed => summary.reachable_unrevealed += 1,
-            ExposureClass::NoStaticPath => summary.no_static_path += 1,
-            ExposureClass::InfectionUnknown => summary.infection_unknown += 1,
-            ExposureClass::PropagationUnknown => summary.propagation_unknown += 1,
-            ExposureClass::StaticUnknown => summary.static_unknown += 1,
-        }
+        summary.increment_exposure_class(&finding.class);
     }
 
     summary
@@ -26,6 +18,7 @@ pub(crate) fn summarize_findings(changed_rust_files: usize, findings: &[Finding]
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::ExposureClass;
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, Probe, ProbeFamily, ProbeId, RevealEvidence,
         RiprEvidence, SourceLocation, StageEvidence, StageState,
