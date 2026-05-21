@@ -2037,7 +2037,11 @@ Field contract:
   successful exit with an empty or malformed output file, produces
   `lane1_repo_exposure_incomplete` with the same bounded diagnostics. Counts in
   such limited artifacts are not complete repo truth and downstream reports must
-  surface the limitation instead of treating zeros as absence of gaps.
+  surface the limitation instead of treating zeros as absence of gaps. A
+  completed audit may also report
+  `lane1_repo_exposure_cache_store_skipped_large_entry` when the live
+  repo-exposure run emitted complete evidence but skipped a full classified
+  seam cache store because the entry exceeded the bounded cache-store limit.
 - `summary.raw_headline_gaps` - count of seams that are headline-eligible in
   the record or top-level repo exposure row.
 - `finding_alignment.source` - source used for audit-local alignment counts;
