@@ -64,9 +64,9 @@ than one behavior contract or touches repo shape.
 | Editor Actionable Gap Queue (Lane 3 tracker) | Project existing actionable-gap artifacts into the editor as a bounded local repair queue. | Complete: [RIPR-PROP-0013](proposals/RIPR-PROP-0013-editor-actionable-gap-queue.md), [RIPR-SPEC-0055](specs/RIPR-SPEC-0055-editor-actionable-gap-queue.md), [ADR-0017](adr/0017-editor-gap-queue-is-read-only.md), and [the implementation plan](../plans/editor-actionable-gap-queue/implementation-plan.md) define the closed stack. Validation, Show Status queue projection, Copy Current Repair Packet, Copy Repo Gap Map, fixtures, VS Code smoke, [workflow docs](EDITOR_ACTIONABLE_GAP_QUEUE.md), dogfood receipts, and [closeout proof](handoffs/2026-05-20-editor-actionable-gap-queue-closeout.md) are in place. |
 
 The current machine-readable execution manifest is `.ripr/goals/active.toml`;
-its top-level status may be `closed` after a campaign closeout until a
-successor campaign is selected. The focused Lane 2 policy readiness tracker
-lives in
+its top-level status may be `closed` after a campaign closeout only when it
+also records `successor = "<campaign-id>"` or `no_current_goal = true`. The
+focused Lane 2 policy readiness tracker lives in
 `.ripr/goals/lane2-policy-readiness.toml` and
 [Policy readiness](policy/POLICY_READINESS.md); it is a GitHub issue/PR board,
 not the active execution manifest. The next focused Lane 2 tracker lives in

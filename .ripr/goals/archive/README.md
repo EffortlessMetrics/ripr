@@ -2,8 +2,9 @@
 
 `.ripr/goals/active.toml` names the current execution campaign. Its top-level
 `status` is `active` while work is being executed and `closed` after closeout
-when no successor campaign has been selected yet. When a campaign closes, a
-copy moves here so the active file does not become a graveyard.
+only when the manifest also records `successor = "<campaign-id>"` or
+`no_current_goal = true`. When a campaign closes, a copy moves here so the
+active file does not become a graveyard.
 
 ## Naming
 
@@ -21,6 +22,7 @@ proposed campaign
   -> copy into .ripr/goals/active.toml
   -> execute work items (one PR each)
   -> close campaign and set top-level status = "closed"
+  -> record successor = "<campaign-id>" or no_current_goal = true
   -> copy closed manifest here under YYYY-MM-DD-<campaign-id>.toml
   -> closeout handoff in docs/handoffs/YYYY-MM-DD-<campaign-id>-closeout.md
   -> next campaign manifest replaces active.toml

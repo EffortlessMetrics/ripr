@@ -65,8 +65,12 @@ Use these work-item statuses:
   new entries.
 - `superseded`: replaced by another work item or lane.
 
-Top-level manifests may use `active`, `paused`, or `closed`. A closed manifest
-should also have an archive copy when it represents completed lane history.
+The top-level active manifest uses `active` while work is current and `closed`
+only when the campaign has landed and either `successor = "<campaign-id>"`
+points at the next selected campaign or `no_current_goal = true` intentionally
+marks the repo idle. A closed manifest should also have an archive copy when it
+represents completed lane history. The freshness marker prevents agents from
+silently continuing from stale execution state.
 
 ## Validation
 
