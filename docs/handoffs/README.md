@@ -55,6 +55,7 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [0.7.0 Editor Marketplace Publish Proof](2026-05-20-0.7.0-editor-publish-proof.md)
 - [0.7.0 Server And VSIX Artifact Proof](2026-05-20-0.7.0-server-vsix-proof.md)
 - [0.7.0 Crate Publish Proof](2026-05-20-0.7.0-crate-publish-proof.md)
 - [0.7.0 Ship Decision](2026-05-20-0.7.0-ship-decision.md)
