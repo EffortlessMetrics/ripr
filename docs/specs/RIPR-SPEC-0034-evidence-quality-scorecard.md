@@ -85,6 +85,10 @@ instead of claiming improvement. When comparable history exists, the trend
 report must distinguish improvement, regression, unchanged, and unknown
 metrics. It must not redefine RIPR scores or change analyzer, gate, CI, PR,
 editor, source-edit, generated-test, provider, or runtime-execution behavior.
+When the current scorecard is itself a bounded diagnostic because its Lane 1
+audit input was limited or audit regeneration failed, the trend report must
+carry that current scorecard unknown forward and mark metric/category movement
+as `unknown` instead of comparing partial or zeroed current counts.
 
 ## Required Evidence
 
@@ -312,6 +316,11 @@ silently dropping the report.
 Given no previous scorecard or audit snapshot, the trend report marks history
 unavailable and emits `unknown` rather than claiming improvement.
 
+Given a current scorecard with `lane1_evidence_audit_limited` or
+`evidence_quality_scorecard_audit_regeneration_failed`, the trend report carries
+the current scorecard unknown forward and marks movement unknown even when a
+previous scorecard exists.
+
 Given a previous scorecard with fewer calibrated records and more
 duplicate-looking groups, the trend report marks calibrated records and
 duplicate-looking groups as improvement.
@@ -350,6 +359,9 @@ any gate behavior.
   no-history state.
 - `xtask::tests::evidence_quality_trend_distinguishes_improvement_regression_and_unchanged`
   pins metric direction semantics.
+- `xtask::tests::evidence_quality_trend_marks_limited_current_scorecard_movement_unknown`
+  pins current-scorecard bounded diagnostic propagation into trend unknowns and
+  prevents partial current counts from claiming movement.
 - `xtask::tests::evidence_quality_trend_reports_static_limitation_category_deltas`
   pins normalized static-limitation category deltas.
 - `xtask::tests::evidence_quality_trend_reports_finding_alignment_presentation_text_deltas`

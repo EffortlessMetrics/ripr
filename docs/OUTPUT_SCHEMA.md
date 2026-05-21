@@ -2900,6 +2900,10 @@ Operators may also pass `--current <path>` and `--previous <path>`. Missing
 history is reported explicitly as `unknown`; the command does not change
 analyzer behavior, gate policy, PR/CI projection, editor output, source files,
 generated tests, provider calls, score definitions, or runtime execution.
+If the current scorecard reports a completeness-affecting bounded diagnostic
+unknown such as `lane1_evidence_audit_limited`, trend movement is also reported
+as `unknown` so partial or zeroed current counts cannot be interpreted as
+improvement or regression.
 
 ```json
 {
@@ -2980,7 +2984,9 @@ Field contract:
 - `static_limitation_category_trends[]` - bounded category-level deltas for
   normalized static limitation classes.
 - `unknowns[]` - missing history or missing current metric fields that must
-  stay visible until later audit or scorecard inputs exist.
+  stay visible until later audit or scorecard inputs exist. Current scorecard
+  unknowns are carried forward except `recent_delta_unavailable`, which the
+  trend report replaces with its own history unknown.
 
 The Markdown sibling prints bounded sections for summary, metric trends,
 static limitation category trends, and unknowns.
