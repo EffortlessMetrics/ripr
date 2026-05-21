@@ -56,6 +56,32 @@ A doc lives in exactly one layer. A spec is not a plan; a plan is not a
 decision; an ADR is not a closeout. Layer separation is the discipline
 that lets agents read only what is relevant.
 
+## RIPR-native proof stack
+
+External planning language often uses words like PRD, proof stack, source of
+truth, policy ledger, or closeout. In this repo those ideas already have
+specific homes. Do not add a second operating model when a plan uses generic
+terms; translate it into the existing RIPR graph:
+
+| Generic plan term | RIPR-native source |
+| --- | --- |
+| Proposal / PRD | `docs/proposals/RIPR-PROP-*` |
+| Spec | `docs/specs/RIPR-SPEC-*` |
+| ADR | `docs/adr/` |
+| Implementation plan | `docs/IMPLEMENTATION_PLAN.md` and `docs/IMPLEMENTATION_CAMPAIGNS.md` |
+| Active goal manifest | `.ripr/goals/active.toml` |
+| Support tiers | `docs/status/SUPPORT_TIERS.md` |
+| Policy ledgers | `policy/*.toml`, `.ripr/traceability.toml`, `docs/CAPABILITY_MATRIX.md`, and `metrics/capabilities.toml` |
+| Closeout | `docs/handoffs/` |
+| Durable learning | `docs/LEARNINGS.md` |
+
+The rule is substitution, not duplication. If a handoff asks for a source of
+truth stack, use proposals, specs, ADRs, campaign docs, the active manifest,
+traceability, capability metadata, and handoffs. If a field is missing from
+that graph, add it to the appropriate existing artifact or validator instead
+of creating a runner-specific goals tree, a new source-of-truth directory, or
+another status ledger.
+
 ## Typed nodes
 
 The context graph has a small node vocabulary:

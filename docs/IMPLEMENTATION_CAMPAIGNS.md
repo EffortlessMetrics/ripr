@@ -3080,8 +3080,8 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `context/proof-stack-reconciliation` | ready | Reconcile proof-stack language into RIPR's existing context system without adding a runner-local goals namespace, `docs/source-of-truth`, or another operating namespace. |
-| `goals/active-freshness-validation` | blocked | Add or extend goal validation so a closed active campaign without a successor or explicit no-current-goal marker is reported as stale execution state. |
+| `context/proof-stack-reconciliation` | done | Reconciled proof-stack language into RIPR's existing context system without adding a runner-local goals namespace, `docs/source-of-truth`, or another operating namespace. |
+| `goals/active-freshness-validation` | ready | Add or extend goal validation so a closed active campaign without a successor or explicit no-current-goal marker is reported as stale execution state. |
 | `first-pr/front-door-polish` | blocked | Make `ripr first-pr --root . --base origin/main --head HEAD` the product front door with clear preflight recovery and next-command guidance. |
 | `first-pr/one-screen-recommendation` | blocked | Stabilize a golden-backed first screen for top gap/no-action, changed behavior, missing discriminator, focused proof intent, verify command, receipt command, and static-advisory boundary. |
 | `outcome/reviewer-native-receipts` | blocked | Make `ripr outcome` receipts explain before/after movement and reviewer claims without mutation, runtime, or coverage proof overclaiming. |
@@ -3123,10 +3123,9 @@ cargo xtask check-pr
 
 Next:
 
-- Start with `context/proof-stack-reconciliation`, then add active-goal
-  freshness validation, then move into the first-pr front-door and receipt
-  product loop. Do not spend the campaign only on doctrine, templates, or
-  validators.
+- Add active-goal freshness validation next, then move into the first-pr
+  front-door and receipt product loop. Do not spend the campaign only on
+  doctrine, templates, or validators.
 
 ## Focused Lane 1 Tracker: Evidence Quality Leadership
 
