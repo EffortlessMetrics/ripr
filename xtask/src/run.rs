@@ -27,6 +27,12 @@ pub(crate) struct TimedFileOutput {
     pub(crate) stdout_bytes: usize,
 }
 
+struct WaitOutcome {
+    status: ExitStatus,
+    duration: Duration,
+    timed_out: bool,
+}
+
 pub(crate) fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
     eprintln!("$ {} {}", program, args.join(" "));
     let status = Command::new(program)
@@ -211,41 +217,16 @@ pub(crate) fn capture_output_with_timeout(
         }
     });
 
-    loop {
-        if let Some(status) = child
-            .try_wait()
-            .map_err(|err| format!("failed to poll {error_context}: {err}"))?
-        {
-            let stdout = join_stream_reader(stdout_reader, "stdout", error_context)?;
-            let stderr = join_stream_reader(stderr_reader, "stderr", error_context)?;
-            return Ok(TimedOutput {
-                status: Some(status),
-                stdout,
-                stderr,
-                duration: started.elapsed(),
-                timed_out: false,
-            });
-        }
-
-        if started.elapsed() >= timeout {
-            let termination_requested = terminate_after_timeout(&mut child, error_context)?;
-            let status = child
-                .wait()
-                .map_err(|err| format!("failed to finish timed-out {error_context}: {err}"))?;
-            let timed_out = timeout_was_enforced(termination_requested, &status);
-            let stdout = join_stream_reader(stdout_reader, "stdout", error_context)?;
-            let stderr = join_stream_reader(stderr_reader, "stderr", error_context)?;
-            return Ok(TimedOutput {
-                status: Some(status),
-                stdout,
-                stderr,
-                duration: started.elapsed(),
-                timed_out,
-            });
-        }
-
-        thread::sleep(Duration::from_millis(100));
-    }
+    let wait_outcome = wait_for_child_with_timeout(&mut child, started, timeout, error_context)?;
+    let stdout = join_stream_reader(stdout_reader, "stdout", error_context)?;
+    let stderr = join_stream_reader(stderr_reader, "stderr", error_context)?;
+    Ok(TimedOutput {
+        status: Some(wait_outcome.status),
+        stdout,
+        stderr,
+        duration: wait_outcome.duration,
+        timed_out: wait_outcome.timed_out,
+    })
 }
 
 pub(crate) fn capture_stdout_to_file_with_timeout(
@@ -287,34 +268,44 @@ pub(crate) fn capture_stdout_to_file_with_timeout(
         }
     });
 
+    let wait_outcome = wait_for_child_with_timeout(&mut child, started, timeout, error_context)?;
+    let stderr = join_stream_reader(stderr_reader, "stderr", error_context)?;
+    Ok(TimedFileOutput {
+        status: Some(wait_outcome.status),
+        stderr,
+        duration: wait_outcome.duration,
+        timed_out: wait_outcome.timed_out,
+        stdout_bytes: stdout_file_len(stdout_path),
+    })
+}
+
+fn wait_for_child_with_timeout(
+    child: &mut Child,
+    started: Instant,
+    timeout: Duration,
+    error_context: &str,
+) -> Result<WaitOutcome, String> {
     loop {
         if let Some(status) = child
             .try_wait()
             .map_err(|err| format!("failed to poll {error_context}: {err}"))?
         {
-            let stderr = join_stream_reader(stderr_reader, "stderr", error_context)?;
-            return Ok(TimedFileOutput {
-                status: Some(status),
-                stderr,
+            return Ok(WaitOutcome {
+                status,
                 duration: started.elapsed(),
                 timed_out: false,
-                stdout_bytes: stdout_file_len(stdout_path),
             });
         }
 
         if started.elapsed() >= timeout {
-            let termination_requested = terminate_after_timeout(&mut child, error_context)?;
+            let termination_requested = terminate_after_timeout(child, error_context)?;
             let status = child
                 .wait()
                 .map_err(|err| format!("failed to finish timed-out {error_context}: {err}"))?;
-            let timed_out = timeout_was_enforced(termination_requested, &status);
-            let stderr = join_stream_reader(stderr_reader, "stderr", error_context)?;
-            return Ok(TimedFileOutput {
-                status: Some(status),
-                stderr,
+            return Ok(WaitOutcome {
+                status,
                 duration: started.elapsed(),
-                timed_out,
-                stdout_bytes: stdout_file_len(stdout_path),
+                timed_out: timeout_was_enforced(termination_requested, &status),
             });
         }
 
