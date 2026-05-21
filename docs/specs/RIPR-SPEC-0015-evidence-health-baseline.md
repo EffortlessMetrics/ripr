@@ -191,17 +191,21 @@ calibration section.
 Given no calibration input, the report marks calibration as `not_provided` and
 still succeeds.
 
-Given the xtask evidence-health child process times out or exits before a
-complete report is available, the command writes bounded warning artifacts with
+Given the xtask evidence-health child process times out, exits nonzero, exits
+without status, or exits successfully before complete JSON and Markdown reports
+are available, the command writes bounded warning artifacts with
 `status = "warn"`, a `run_limitations[].category = "evidence_health_timeout"` or
 `"evidence_health_incomplete"` entry, phase/input context,
 timeout/duration/output byte counts, bounded stdout/stderr excerpts, exit
 status when available, and a repair route. The limited artifact records
 `inputs.generation.status = "timeout"` for timed-out children and `"fail"` for
-nonzero or missing status exits. Complete `ripr evidence-health` reports keep
-`status = "advisory"` and omit the xtask-only `inputs.generation` wrapper rather
-than emitting an `"ok"` generation row. The limited artifact is diagnostic only
-and does not claim user test debt from missing health counts.
+nonzero or missing status exits. When the child exits successfully but the
+artifacts are missing, malformed, or incomplete, the limited artifact records
+`inputs.generation.status = "pass_incomplete"` and a bounded
+`failure_reason`. Complete `ripr evidence-health` reports keep
+`status = "advisory"` and omit the xtask-only `inputs.generation` wrapper
+rather than emitting an `"ok"` generation row. The limited artifact is
+diagnostic only and does not claim user test debt from missing health counts.
 
 ## Test Mapping
 
@@ -220,6 +224,12 @@ and does not claim user test debt from missing health counts.
 - `xtask::tests::evidence_health_build_timeout_writes_named_limitation_reports`
   pins the bounded preflight build fallback, phase diagnostics, stale-output
   cleanup, named limitation category, and repair route.
+- `xtask::tests::evidence_health_success_accepts_complete_report_artifacts`,
+  `xtask::tests::evidence_health_success_without_artifacts_writes_named_limitation_reports`,
+  and
+  `xtask::tests::evidence_health_report_artifact_completion_validator_names_bad_shapes`
+  pin zero-exit artifact validation, stale-output cleanup, and bounded
+  `pass_incomplete` diagnostics.
 - `xtask::tests::evidence_health_incomplete_exit_writes_named_limitation_reports`
   and
   `xtask::tests::evidence_health_nonzero_exit_writes_named_limitation_reports`

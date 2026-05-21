@@ -1604,9 +1604,10 @@ Field contract:
   `null` when not provided.
 - `inputs.generation` - present on bounded xtask fallback artifacts. It records
   `phase` (`evidence_health_build` or `evidence_health_generation`), bounded
-  command, `status` (`fail` or `timeout`), timeout/duration, exit code when
-  available, output byte counts, and bounded stdout/stderr excerpts. Complete
-  `ripr evidence-health` reports omit this wrapper field and keep the normal
+  command, `status` (`fail`, `timeout`, or `pass_incomplete`),
+  timeout/duration, exit code when available, output byte counts, optional
+  `failure_reason`, and bounded stdout/stderr excerpts. Complete `ripr
+  evidence-health` reports omit this wrapper field and keep the normal
   analyzer-health payload, so the current contract does not emit an `"ok"`
   generation status.
 - `metrics.grip_class_counts` - all `SeamGripClass` buckets, including zero
@@ -1667,8 +1668,12 @@ Field contract:
   `evidence_health_incomplete`, the `evidence_health_build` or
   `evidence_health_generation` phase,
   timeout/duration/output byte diagnostics, bounded stdout/stderr excerpts,
-  and a repair route for inspecting runtime, stdout/stderr, or increasing
-  `RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` on slower machines.
+  optional `failure_reason`, and a repair route for inspecting runtime,
+  stdout/stderr, or increasing `RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` on slower
+  machines. If the child exits successfully but the expected JSON/Markdown
+  artifacts are missing or incomplete, the fallback uses
+  `inputs.generation.status = "pass_incomplete"` and overwrites stale prior
+  artifacts.
 
 The Markdown sibling prints the same summary, grip-class, top missing
 discriminator, oracle-strength, related-test confidence, evidence-quality,

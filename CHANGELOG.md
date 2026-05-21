@@ -9,6 +9,12 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- `cargo xtask evidence-health` now removes stale evidence-health artifacts
+  before running the child report generator and validates zero-exit JSON and
+  Markdown outputs before accepting success. Missing, malformed, or incomplete
+  success-exit artifacts now become bounded `evidence_health_incomplete`
+  warning reports with `inputs.generation.status = "pass_incomplete"` and a
+  diagnostic failure reason.
 - Lane 1 evidence audit now validates zero-exit repo-exposure captures before
   treating them as complete. A truncated success-exit JSON capture is removed
   and downgraded to a bounded `lane1_repo_exposure_incomplete` warning artifact
