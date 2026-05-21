@@ -40,6 +40,10 @@ are scoped or reviewed.
   `lane1-evidence-audit.json` inputs with bounded diagnostic audit artifacts
   and still writes scorecard JSON/Markdown carrying the named
   `evidence_quality_scorecard_audit_input_unavailable` unknown.
+- `cargo xtask evidence-quality-scorecard` now treats malformed optional
+  `evidence-health.json` as bounded unavailable health context, writing
+  scorecard JSON/Markdown with the named
+  `evidence_quality_scorecard_evidence_health_input_unavailable` unknown.
 
 ## 0.7.0 - 2026-05-20
 

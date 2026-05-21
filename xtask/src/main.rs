@@ -16744,6 +16744,8 @@ const EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED: &str =
     "evidence_quality_scorecard_audit_regeneration_failed";
 const EVIDENCE_QUALITY_SCORECARD_AUDIT_INPUT_UNAVAILABLE: &str =
     "evidence_quality_scorecard_audit_input_unavailable";
+const EVIDENCE_QUALITY_SCORECARD_EVIDENCE_HEALTH_INPUT_UNAVAILABLE: &str =
+    "evidence_quality_scorecard_evidence_health_input_unavailable";
 const EVIDENCE_QUALITY_TREND_CURRENT_INPUT_UNAVAILABLE: &str =
     "evidence_quality_trend_current_scorecard_unavailable";
 
@@ -22740,6 +22742,13 @@ struct EvidenceQualityScorecardInputs {
     traceability: EvidenceQualityScorecardInput,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct ScorecardOptionalInput {
+    value: Option<Value>,
+    status: String,
+    note: String,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct EvidenceQualityScorecardSummary {
     raw_headline_gaps: usize,
@@ -22891,10 +22900,12 @@ pub(crate) fn evidence_quality_scorecard_report_impl() -> Result<(), String> {
         }
     };
 
-    let evidence_health = scorecard_optional_json(&evidence_health_path)?;
+    let evidence_health = scorecard_optional_evidence_health(&evidence_health_path);
     let inputs = evidence_quality_scorecard_inputs(
         &audit_path,
         &evidence_health_path,
+        &evidence_health.status,
+        &evidence_health.note,
         &scorecard_path,
         previous_scorecard.as_ref(),
     )?;
@@ -22902,7 +22913,7 @@ pub(crate) fn evidence_quality_scorecard_report_impl() -> Result<(), String> {
         evidence_quality_scorecard_generated_at()?,
         inputs,
         &audit,
-        evidence_health.as_ref(),
+        evidence_health.value.as_ref(),
         previous_scorecard.as_ref(),
     )?;
 
@@ -22951,10 +22962,12 @@ fn write_limited_evidence_quality_scorecard_for_audit_regeneration_failure(
     let audit: Value = serde_json::from_str(&audit_json).map_err(|err| {
         format!("failed to parse limited scorecard audit-regeneration JSON: {err}")
     })?;
-    let evidence_health = scorecard_optional_json(evidence_health_path)?;
+    let evidence_health = scorecard_optional_evidence_health(evidence_health_path);
     let inputs = evidence_quality_scorecard_inputs(
         audit_path,
         evidence_health_path,
+        &evidence_health.status,
+        &evidence_health.note,
         scorecard_path,
         previous_scorecard,
     )?;
@@ -22962,7 +22975,7 @@ fn write_limited_evidence_quality_scorecard_for_audit_regeneration_failure(
         evidence_quality_scorecard_generated_at()?,
         inputs,
         &audit,
-        evidence_health.as_ref(),
+        evidence_health.value.as_ref(),
         previous_scorecard,
     )?;
 
@@ -23001,10 +23014,12 @@ fn write_limited_evidence_quality_scorecard_for_audit_input_failure(
 
     let audit: Value = serde_json::from_str(&audit_json)
         .map_err(|err| format!("failed to parse limited scorecard audit-input JSON: {err}"))?;
-    let evidence_health = scorecard_optional_json(evidence_health_path)?;
+    let evidence_health = scorecard_optional_evidence_health(evidence_health_path);
     let inputs = evidence_quality_scorecard_inputs(
         audit_path,
         evidence_health_path,
+        &evidence_health.status,
+        &evidence_health.note,
         scorecard_path,
         previous_scorecard,
     )?;
@@ -23012,7 +23027,7 @@ fn write_limited_evidence_quality_scorecard_for_audit_input_failure(
         evidence_quality_scorecard_generated_at()?,
         inputs,
         &audit,
-        evidence_health.as_ref(),
+        evidence_health.value.as_ref(),
         previous_scorecard,
     )?;
 
@@ -23124,6 +23139,8 @@ fn evidence_quality_scorecard_error_summary(error: &str) -> String {
 fn evidence_quality_scorecard_inputs(
     audit_path: &Path,
     evidence_health_path: &Path,
+    evidence_health_status: &str,
+    evidence_health_note: &str,
     previous_scorecard_path: &Path,
     previous_scorecard: Option<&Value>,
 ) -> Result<EvidenceQualityScorecardInputs, String> {
@@ -23136,9 +23153,9 @@ fn evidence_quality_scorecard_inputs(
         )?,
         evidence_health: scorecard_input_artifact(
             evidence_health_path,
-            "optional",
+            evidence_health_status,
             None,
-            "optional durable evidence-health audit fields",
+            evidence_health_note,
         )?,
         previous_scorecard: scorecard_input_artifact(
             previous_scorecard_path,
@@ -23200,6 +23217,31 @@ fn scorecard_optional_json(path: &Path) -> Result<Option<Value>, String> {
         read_json_value(path).map(Some)
     } else {
         Ok(None)
+    }
+}
+
+fn scorecard_optional_evidence_health(path: &Path) -> ScorecardOptionalInput {
+    if !path.exists() {
+        return ScorecardOptionalInput {
+            value: None,
+            status: "missing".to_string(),
+            note: "optional durable evidence-health audit fields were not available".to_string(),
+        };
+    }
+    match read_json_value(path) {
+        Ok(value) => ScorecardOptionalInput {
+            value: Some(value),
+            status: "loaded".to_string(),
+            note: "optional durable evidence-health audit fields".to_string(),
+        },
+        Err(err) => ScorecardOptionalInput {
+            value: None,
+            status: "malformed".to_string(),
+            note: format!(
+                "optional evidence-health JSON could not be loaded: {}",
+                evidence_quality_scorecard_error_summary(&err)
+            ),
+        },
     }
 }
 
@@ -24115,7 +24157,14 @@ fn evidence_quality_unknowns(
             Some("report/evidence-quality-scorecard-bounded-diagnostics"),
         );
     }
-    if evidence_health.is_none() {
+    if inputs.evidence_health.status == "malformed" {
+        scorecard_push_unknown(
+            &mut unknowns,
+            EVIDENCE_QUALITY_SCORECARD_EVIDENCE_HEALTH_INPUT_UNAVAILABLE,
+            "Evidence-health JSON was present but could not be loaded, so health-only fields are diagnostic unavailable context rather than complete repo truth.",
+            Some("report/evidence-health-bounded-diagnostics"),
+        );
+    } else if evidence_health.is_none() {
         scorecard_push_unknown(
             &mut unknowns,
             "evidence_health_unavailable",
@@ -45176,6 +45225,7 @@ mod tests {
         DogfoodPreviewProjectionRuns, DogfoodReportInputs, DogfoodReportPacketIndexRun, DogfoodRun,
         EVIDENCE_QUALITY_SCORECARD_AUDIT_INPUT_UNAVAILABLE,
         EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED,
+        EVIDENCE_QUALITY_SCORECARD_EVIDENCE_HEALTH_INPUT_UNAVAILABLE,
         EVIDENCE_QUALITY_TREND_CURRENT_INPUT_UNAVAILABLE, EvidenceQualityScorecardInput,
         EvidenceQualityScorecardInputs, EvidenceQualityScorecardReport, EvidenceQualityTrendInputs,
         EvidenceQualityTrendReport, FixKind, GENERATED_CI_FIRST_ACTION_REPAIR,
@@ -64105,6 +64155,55 @@ covered_by = ["cargo xtask check-file-policy"]
                 scorecard_markdown.contains(EVIDENCE_QUALITY_SCORECARD_AUDIT_INPUT_UNAVAILABLE)
             );
             assert!(scorecard_markdown.contains("Unknowns And Unavailable Inputs"));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn evidence_quality_scorecard_malformed_evidence_health_stays_bounded() -> Result<(), String> {
+        with_temp_cwd("scorecard-malformed-evidence-health", |_root| {
+            let audit = lane1_scorecard_sample_audit_value()?;
+            let audit_json = serde_json::to_string(&audit).map_err(|err| err.to_string())?;
+            write(
+                Path::new("target/ripr/reports/lane1-evidence-audit.json"),
+                &audit_json,
+            );
+            write(
+                Path::new("target/ripr/reports/evidence-health.json"),
+                "{not-json",
+            );
+
+            evidence_quality_scorecard_report_impl()?;
+
+            let scorecard_json =
+                fs::read_to_string("target/ripr/reports/evidence-quality-scorecard.json")
+                    .map_err(|err| format!("read scorecard json: {err}"))?;
+            let scorecard: Value =
+                serde_json::from_str(&scorecard_json).map_err(|err| err.to_string())?;
+            assert_eq!(
+                scorecard["inputs"]["evidence_health"]["status"],
+                "malformed"
+            );
+            let kinds = scorecard["unknowns"]
+                .as_array()
+                .ok_or("unknowns must be an array")?
+                .iter()
+                .filter_map(|unknown| unknown["kind"].as_str())
+                .collect::<BTreeSet<_>>();
+            assert!(kinds.contains(EVIDENCE_QUALITY_SCORECARD_EVIDENCE_HEALTH_INPUT_UNAVAILABLE));
+            assert!(!kinds.contains("evidence_health_unavailable"));
+            assert_eq!(
+                scorecard["headline"]["primary_metric"],
+                "finding_alignment_actionable_unresolved_canonical_gaps"
+            );
+
+            let scorecard_markdown =
+                fs::read_to_string("target/ripr/reports/evidence-quality-scorecard.md")
+                    .map_err(|err| format!("read scorecard markdown: {err}"))?;
+            assert!(
+                scorecard_markdown
+                    .contains(EVIDENCE_QUALITY_SCORECARD_EVIDENCE_HEALTH_INPUT_UNAVAILABLE)
+            );
             Ok(())
         })
     }
