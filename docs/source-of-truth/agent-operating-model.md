@@ -50,10 +50,10 @@ later PR implements them and a run succeeds.
 
 ## Policy rule
 
-Do not invent repo policies. In particular, do not add fields such as
-`requires_human_merge`, stronger branch-protection claims, release authority
-changes, or new support-tier promises unless current repo docs and schemas
-explicitly define them.
+Do not invent repo policies. In particular, do not add fields that reserve
+merge completion for a special actor, stronger branch-protection claims,
+release authority changes, or new support-tier promises unless current repo
+docs and schemas explicitly define them.
 
 ## Claim rule
 
