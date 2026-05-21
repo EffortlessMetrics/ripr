@@ -1,9 +1,17 @@
+<p align="center">
+  <img src="assets/logo/ripr-icon-dark.svg" alt="ripr logo" width="120" />
+</p>
+
 <h1 align="center">ripr</h1>
 
 <p align="center">
   <a href="https://github.com/EffortlessMetrics/ripr/actions/workflows/ci.yml"><img src="https://github.com/EffortlessMetrics/ripr/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
   <a href="https://codecov.io/gh/EffortlessMetrics/ripr"><img src="https://codecov.io/gh/EffortlessMetrics/ripr/graph/badge.svg?branch=main" alt="Codecov" /></a>
-  <a href="https://github.com/EffortlessMetrics/ripr/blob/main/docs/BADGE_POLICY.md"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/EffortlessMetrics/ripr/main/badges/ripr-plus.json" alt="ripr+" /></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/EffortlessMetrics/ripr/blob/main/docs/BADGE_POLICY.md"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/EffortlessMetrics/ripr/main/badges/ripr.json" alt="ripr open gaps" /></a>
+  <a href="https://github.com/EffortlessMetrics/ripr/blob/main/docs/BADGE_POLICY.md"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/EffortlessMetrics/ripr/main/badges/ripr-plus.json" alt="ripr+ test-efficiency gaps" /></a>
 </p>
 
 <p align="center">
