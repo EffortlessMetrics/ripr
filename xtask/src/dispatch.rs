@@ -88,6 +88,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckArchitecture => super::check_architecture(),
         XtaskCommand::CheckPublicApi => super::check_public_api(),
         XtaskCommand::CheckOutputContracts => super::check_output_contracts(),
+        XtaskCommand::CheckDocArtifacts => super::check_doc_artifacts(),
         XtaskCommand::CheckDocIndex => super::check_doc_index(),
         XtaskCommand::CheckReadmeState => super::check_readme_state(),
         XtaskCommand::MarkdownLinks => super::markdown_links(),
