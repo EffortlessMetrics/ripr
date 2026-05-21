@@ -1055,6 +1055,11 @@ tests = [
   "crates/ripr/src/output/evidence_health.rs::tests::evidence_health_markdown_names_calibration_and_limitations",
   "xtask::tests::evidence_health_build_timeout_writes_named_limitation_reports",
   "xtask::tests::evidence_health_timeout_writes_named_limitation_reports",
+  "xtask::tests::evidence_health_incomplete_exit_writes_named_limitation_reports",
+  "xtask::tests::evidence_health_nonzero_exit_writes_named_limitation_reports",
+  "xtask::tests::evidence_health_success_accepts_complete_report_artifacts",
+  "xtask::tests::evidence_health_success_without_artifacts_writes_named_limitation_reports",
+  "xtask::tests::evidence_health_report_artifact_completion_validator_names_bad_shapes",
 ]
 fixtures = []
 code = [

@@ -1404,15 +1404,19 @@ without changing analyzer behavior. The same report lands at
 
 The xtask facade bounds both the preflight `cargo build -p ripr` phase and the
 live `ripr evidence-health` subprocess with `RIPR_EVIDENCE_HEALTH_TIMEOUT_MS`
-(default 5 minutes). If either phase times out or exits before a complete
-report is available, xtask discards stale or partial outputs and writes warning
-JSON and Markdown with `status = "warn"`, phase context such as
+(default 5 minutes). If either phase times out, exits before a complete report
+is available, or exits successfully without writing complete JSON and Markdown
+artifacts, xtask discards stale or partial outputs and writes warning JSON and
+Markdown with `status = "warn"`, phase context such as
 `evidence_health_build` or `evidence_health_generation`, and a named
 `evidence_health_timeout` or `evidence_health_incomplete` `run_limitations[]`
-entry. The default is deliberately below known pathological live-repo runtimes
-so the report produces bounded diagnostics before abnormal termination can drop
-the artifact. That limited artifact is diagnostic only; it does not claim user
-test debt from missing health counts.
+entry. Limited `inputs.generation.status` values are `timeout`, `fail`, or
+`pass_incomplete`; `pass_incomplete` means the child exited zero but the
+expected artifacts were missing or malformed. The default is deliberately
+below known pathological live-repo runtimes so the report produces bounded
+diagnostics before abnormal termination can drop the artifact. That limited
+artifact is diagnostic only; it does not claim user test debt from missing
+health counts.
 
 ```json
 {
@@ -1651,9 +1655,10 @@ Field contract:
 - `run_limitations` - present on bounded xtask fallback artifacts. Timeout and
   incomplete rows name `evidence_health_timeout` or
   `evidence_health_incomplete`, the `evidence_health_generation` phase,
-  timeout/duration/output byte diagnostics, and a repair route for inspecting
-  runtime, stdout/stderr, or increasing `RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` on
-  slower machines.
+  timeout/duration/output byte diagnostics, bounded stdout/stderr excerpts,
+  optional artifact-validation `failure_reason`, and a repair route for
+  inspecting runtime, stdout/stderr, malformed artifacts, or increasing
+  `RIPR_EVIDENCE_HEALTH_TIMEOUT_MS` on slower machines.
 
 The Markdown sibling prints the same summary, grip-class, top missing
 discriminator, oracle-strength, related-test confidence, evidence-quality,

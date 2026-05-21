@@ -9,7 +9,12 @@ are scoped or reviewed.
 
 ## Unreleased
 
-- Nothing yet.
+- `cargo xtask evidence-health` now validates that a zero-exit child run wrote
+  complete JSON and Markdown artifacts before accepting success. Missing or
+  malformed success artifacts overwrite stale outputs with a `status = "warn"`
+  limited report, `inputs.generation.status = "pass_incomplete"`, bounded
+  stdout/stderr excerpts, an artifact-validation failure reason, and the named
+  `evidence_health_incomplete` limitation.
 
 ## 0.7.0 - 2026-05-20
 

@@ -67,11 +67,15 @@ The facade bounds the live child process with
 preflight `cargo build -p ripr` phase and the `ripr evidence-health` generation
 phase. The default is intentionally conservative so pathological live-repo
 inputs degrade to a named limitation before they can silently drop the artifact.
-On timeout or incomplete child-process exit it removes stale or partial
+On timeout, incomplete child-process exit, or a zero-exit child run that does
+not write complete JSON and Markdown artifacts, it removes stale or partial
 outputs and writes warning JSON/Markdown with phase context such as
 `evidence_health_build` or `evidence_health_generation` plus the named
 `evidence_health_timeout` or `evidence_health_incomplete` run limitation instead
-of waiting forever or pretending missing counts mean no evidence debt.
+of waiting forever or pretending missing counts mean no evidence debt. The
+limited `inputs.generation.status` is `timeout`, `fail`, or
+`pass_incomplete`; `pass_incomplete` means the child process exited zero but
+artifact validation failed.
 
 The command:
 
@@ -187,13 +191,15 @@ calibration section.
 Given no calibration input, the report marks calibration as `not_provided` and
 still succeeds.
 
-Given the xtask evidence-health child process times out or exits before a
-complete report is available, the command writes bounded warning artifacts with
-`status = "warn"`, a `run_limitations[].category = "evidence_health_timeout"` or
+Given the xtask evidence-health child process times out, exits before a
+complete report is available, or exits zero without complete JSON and Markdown
+artifacts, the command writes bounded warning artifacts with `status = "warn"`,
+a `run_limitations[].category = "evidence_health_timeout"` or
 `"evidence_health_incomplete"` entry, phase/input context,
-timeout/duration/output byte counts, exit status when available, and a repair
-route. The limited artifact is diagnostic only and does not claim user test debt
-from missing health counts.
+timeout/duration/output byte counts, exit status when available, bounded
+stdout/stderr excerpts, an artifact-validation `failure_reason` when available,
+and a repair route. The limited artifact is diagnostic only and does not claim
+user test debt from missing health counts.
 
 ## Test Mapping
 
@@ -217,6 +223,14 @@ from missing health counts.
   `xtask::tests::evidence_health_nonzero_exit_writes_named_limitation_reports`
   pin incomplete-exit fallback artifacts, stale-output cleanup, exit-status
   diagnostics, named limitation category, and repair route.
+- `xtask::tests::evidence_health_success_accepts_complete_report_artifacts`
+  and
+  `xtask::tests::evidence_health_success_without_artifacts_writes_named_limitation_reports`
+  pin zero-exit artifact validation, stale-output cleanup, `pass_incomplete`
+  diagnostics, and bounded fallback artifacts.
+- `xtask::tests::evidence_health_report_artifact_completion_validator_names_bad_shapes`
+  pins actionable artifact-validation failure messages for malformed success
+  outputs.
 
 ## Implementation Mapping
 
