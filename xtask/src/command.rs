@@ -640,7 +640,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "report_only",
             "target/ripr/reports/swarm-readiness.{json,md}",
             false,
-            "Rolls up swarm plan and actionable-gap outcome artifacts into advisory repair-coordination readiness counts.",
+            "Rolls up swarm plan and actionable-gap outcome artifacts into advisory repair-coordination readiness counts and next actions.",
         ),
         command_entry(
             "lsp-cockpit-report",

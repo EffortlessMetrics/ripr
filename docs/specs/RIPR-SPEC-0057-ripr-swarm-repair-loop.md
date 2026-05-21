@@ -301,6 +301,15 @@ target/ripr/reports/swarm-readiness.json
 target/ripr/reports/swarm-readiness.md
 ```
 
+The readiness report must also emit a bounded `next_actions` queue derived
+from those same artifacts. It may recommend refreshing missing or malformed
+inputs, repairing missing verify or receipt command projections, reconciling
+orphaned receipts, inspecting unchanged or regressed attempts, routing static
+limitations to the Lane 1 analyzer backlog, or dry-running a top swarm-ready
+packet. These actions are advisory coordination hints; they must not execute
+repairs, consume raw findings as work, change badge semantics, or hide blocked
+or uncertain evidence.
+
 `attempt --dry-run` prints the bounded packet context and the commands a human
 or external agent would run. It does not edit files, run tests, call providers,
 or create receipts.

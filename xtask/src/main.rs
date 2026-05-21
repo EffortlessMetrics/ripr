@@ -19068,6 +19068,7 @@ struct RiprSwarmReadinessReport {
     actionable_gap_outcomes_state: String,
     actionable_gap_outcomes_limitation: Option<String>,
     summary: RiprSwarmReadinessSummary,
+    next_actions: Vec<RiprSwarmReadinessNextAction>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -19086,6 +19087,17 @@ struct RiprSwarmReadinessSummary {
     regressed_packets: usize,
     resolved_packets: usize,
     orphaned_receipts: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RiprSwarmReadinessNextAction {
+    kind: String,
+    packet_id: Option<String>,
+    canonical_gap_id: Option<String>,
+    evidence_class: Option<String>,
+    repair_kind: Option<String>,
+    command: Option<String>,
+    reason: String,
 }
 
 struct RiprSwarmReadinessInput<'a> {
@@ -20155,6 +20167,14 @@ fn ripr_swarm_readiness_from_values(
     actionable_gap_outcomes: RiprSwarmReadinessInput<'_>,
 ) -> RiprSwarmReadinessReport {
     let summary = ripr_swarm_readiness_summary(swarm_plan.value, actionable_gap_outcomes.value);
+    let next_actions = ripr_swarm_readiness_next_actions(
+        &summary,
+        swarm_plan.value,
+        &swarm_plan.state,
+        swarm_plan.limitation.as_deref(),
+        &actionable_gap_outcomes.state,
+        actionable_gap_outcomes.limitation.as_deref(),
+    );
     let status = if swarm_plan.value.is_some() {
         "advisory"
     } else {
@@ -20171,6 +20191,7 @@ fn ripr_swarm_readiness_from_values(
         actionable_gap_outcomes_state: actionable_gap_outcomes.state,
         actionable_gap_outcomes_limitation: actionable_gap_outcomes.limitation,
         summary,
+        next_actions,
     }
 }
 
@@ -20241,6 +20262,7 @@ fn ripr_swarm_readiness_json(report: &RiprSwarmReadinessReport) -> Result<String
             },
         },
         "summary": ripr_swarm_readiness_summary_json(&report.summary),
+        "next_actions": ripr_swarm_readiness_next_actions_json(&report.next_actions),
         "must_not_infer": [
             "readiness reports summarize existing swarm artifacts; they do not execute repairs",
             "raw findings remain supporting evidence, not swarm work",
@@ -20274,6 +20296,190 @@ fn ripr_swarm_readiness_summary_json(summary: &RiprSwarmReadinessSummary) -> Val
         "resolved_packets": summary.resolved_packets,
         "orphaned_receipts": summary.orphaned_receipts,
     })
+}
+
+const RIPR_SWARM_READINESS_NEXT_ACTION_PACKET_LIMIT: usize = 5;
+
+fn ripr_swarm_readiness_next_actions(
+    summary: &RiprSwarmReadinessSummary,
+    swarm_plan: Option<&Value>,
+    swarm_plan_state: &str,
+    swarm_plan_limitation: Option<&str>,
+    actionable_gap_outcomes_state: &str,
+    actionable_gap_outcomes_limitation: Option<&str>,
+) -> Vec<RiprSwarmReadinessNextAction> {
+    let mut actions = Vec::new();
+    if swarm_plan_state != "read" {
+        actions.push(RiprSwarmReadinessNextAction {
+            kind: "refresh_swarm_plan".to_string(),
+            packet_id: None,
+            canonical_gap_id: None,
+            evidence_class: None,
+            repair_kind: None,
+            command: Some("cargo xtask ripr-swarm plan --top 10".to_string()),
+            reason: swarm_plan_limitation
+                .unwrap_or("swarm-plan input is not readable")
+                .to_string(),
+        });
+    }
+    if actionable_gap_outcomes_state != "read" {
+        actions.push(RiprSwarmReadinessNextAction {
+            kind: "refresh_outcome_report".to_string(),
+            packet_id: None,
+            canonical_gap_id: None,
+            evidence_class: None,
+            repair_kind: None,
+            command: Some("cargo xtask actionable-gap-outcomes".to_string()),
+            reason: actionable_gap_outcomes_limitation
+                .unwrap_or("actionable-gap outcome input is not readable")
+                .to_string(),
+        });
+    }
+    if summary.missing_receipt_command > 0 {
+        actions.push(RiprSwarmReadinessNextAction {
+            kind: "fix_receipt_command_source".to_string(),
+            packet_id: None,
+            canonical_gap_id: None,
+            evidence_class: None,
+            repair_kind: None,
+            command: Some("cargo xtask lane1-evidence-audit".to_string()),
+            reason: format!(
+                "{} packet(s) are missing receipt commands; repair canonical_item.receipt_command projection before attempting swarm work",
+                summary.missing_receipt_command
+            ),
+        });
+    }
+    if summary.missing_verify_command > 0 {
+        actions.push(RiprSwarmReadinessNextAction {
+            kind: "fix_verify_command_source".to_string(),
+            packet_id: None,
+            canonical_gap_id: None,
+            evidence_class: None,
+            repair_kind: None,
+            command: Some("cargo xtask lane1-evidence-audit".to_string()),
+            reason: format!(
+                "{} packet(s) are missing verify commands; improve canonical item verify routing before ranking them as repair-ready",
+                summary.missing_verify_command
+            ),
+        });
+    }
+    if summary.orphaned_receipts > 0 {
+        actions.push(RiprSwarmReadinessNextAction {
+            kind: "reconcile_orphaned_receipts".to_string(),
+            packet_id: None,
+            canonical_gap_id: None,
+            evidence_class: None,
+            repair_kind: None,
+            command: Some("cargo xtask actionable-gap-outcomes".to_string()),
+            reason: format!(
+                "{} receipt(s) did not match a current actionable packet; inspect receipt identity before using outcome counts",
+                summary.orphaned_receipts
+            ),
+        });
+    }
+    if summary.regressed_packets > 0 {
+        actions.push(RiprSwarmReadinessNextAction {
+            kind: "inspect_regressed_attempts".to_string(),
+            packet_id: None,
+            canonical_gap_id: None,
+            evidence_class: None,
+            repair_kind: None,
+            command: Some("cargo xtask actionable-gap-outcomes".to_string()),
+            reason: format!(
+                "{} attempted packet(s) regressed evidence; inspect receipts and stop repeating that repair route",
+                summary.regressed_packets
+            ),
+        });
+    }
+    if summary.unchanged_packets > 0 {
+        actions.push(RiprSwarmReadinessNextAction {
+            kind: "inspect_unchanged_attempts".to_string(),
+            packet_id: None,
+            canonical_gap_id: None,
+            evidence_class: None,
+            repair_kind: None,
+            command: Some("cargo xtask actionable-gap-outcomes".to_string()),
+            reason: format!(
+                "{} attempted packet(s) left evidence unchanged; refine the repair route before retrying",
+                summary.unchanged_packets
+            ),
+        });
+    }
+    if summary.static_limitation_packets > 0 {
+        actions.push(RiprSwarmReadinessNextAction {
+            kind: "route_static_limitations".to_string(),
+            packet_id: None,
+            canonical_gap_id: None,
+            evidence_class: None,
+            repair_kind: None,
+            command: Some("cargo xtask lane1-evidence-audit".to_string()),
+            reason: format!(
+                "{} packet(s) are blocked by static limitations; route them to the Lane 1 analyzer backlog, not repair execution",
+                summary.static_limitation_packets
+            ),
+        });
+    }
+    if let Some(plan) = swarm_plan {
+        actions.extend(ripr_swarm_readiness_ready_packet_actions(plan));
+    }
+    if actions.is_empty() {
+        actions.push(RiprSwarmReadinessNextAction {
+            kind: "no_ready_action".to_string(),
+            packet_id: None,
+            canonical_gap_id: None,
+            evidence_class: None,
+            repair_kind: None,
+            command: None,
+            reason: "no ready packets or blocking readiness issues were reported".to_string(),
+        });
+    }
+    actions
+}
+
+fn ripr_swarm_readiness_ready_packet_actions(
+    swarm_plan: &Value,
+) -> Vec<RiprSwarmReadinessNextAction> {
+    audit_array(swarm_plan, &["top_ready_packets"])
+        .iter()
+        .take(RIPR_SWARM_READINESS_NEXT_ACTION_PACKET_LIMIT)
+        .map(|packet| {
+            let packet_id = audit_non_empty_string(packet, &["packet_id"])
+                .or_else(|| audit_non_empty_string(packet, &["canonical_gap_id"]));
+            let canonical_gap_id = audit_non_empty_string(packet, &["canonical_gap_id"]);
+            let evidence_class = audit_non_empty_string(packet, &["evidence_class"]);
+            let repair_kind = audit_non_empty_string(packet, &["repair_kind"]);
+            let command = packet_id
+                .as_ref()
+                .map(|id| format!("cargo xtask ripr-swarm attempt --packet {id} --dry-run"));
+            RiprSwarmReadinessNextAction {
+                kind: "attempt_ready_packet".to_string(),
+                packet_id,
+                canonical_gap_id,
+                evidence_class,
+                repair_kind,
+                command,
+                reason: "packet is queued with repair, verify, receipt, and no static limitation"
+                    .to_string(),
+            }
+        })
+        .collect()
+}
+
+fn ripr_swarm_readiness_next_actions_json(actions: &[RiprSwarmReadinessNextAction]) -> Vec<Value> {
+    actions
+        .iter()
+        .map(|action| {
+            serde_json::json!({
+                "kind": action.kind,
+                "packet_id": action.packet_id,
+                "canonical_gap_id": action.canonical_gap_id,
+                "evidence_class": action.evidence_class,
+                "repair_kind": action.repair_kind,
+                "command": action.command,
+                "reason": action.reason,
+            })
+        })
+        .collect()
 }
 
 fn ripr_swarm_readiness_markdown(report: &RiprSwarmReadinessReport) -> String {
@@ -20328,6 +20534,8 @@ fn ripr_swarm_readiness_markdown(report: &RiprSwarmReadinessReport) -> String {
             summary[key].as_u64().unwrap_or(0)
         ));
     }
+    out.push_str("\n## Next Actions\n\n");
+    ripr_swarm_readiness_push_next_actions_table(&mut out, &report.next_actions);
     out.push_str("\n## Must Not Infer\n\n");
     out.push_str(
         "- Readiness reports summarize existing swarm artifacts; they do not execute repairs.\n",
@@ -20337,6 +20545,31 @@ fn ripr_swarm_readiness_markdown(report: &RiprSwarmReadinessReport) -> String {
     out.push_str("- Readiness counts do not change public badge semantics.\n");
     out.push_str("- Static limitations and blocked packets are not repair-ready work.\n");
     out
+}
+
+fn ripr_swarm_readiness_push_next_actions_table(
+    out: &mut String,
+    actions: &[RiprSwarmReadinessNextAction],
+) {
+    out.push_str("| Kind | Packet | Evidence class | Repair | Command | Reason |\n");
+    out.push_str("| --- | --- | --- | --- | --- | --- |\n");
+    for action in actions {
+        out.push_str(&format!(
+            "| `{}` | {} | {} | {} | {} | {} |\n",
+            audit_markdown_cell(&action.kind),
+            audit_markdown_cell(
+                action
+                    .packet_id
+                    .as_deref()
+                    .or(action.canonical_gap_id.as_deref())
+                    .unwrap_or("")
+            ),
+            audit_markdown_cell(action.evidence_class.as_deref().unwrap_or("")),
+            audit_markdown_cell(action.repair_kind.as_deref().unwrap_or("")),
+            audit_markdown_cell(action.command.as_deref().unwrap_or("")),
+            audit_markdown_cell(&action.reason),
+        ));
+    }
 }
 
 pub(crate) fn actionable_gap_outcomes_report_impl(args: &[String]) -> Result<(), String> {
@@ -44772,18 +45005,18 @@ mod tests {
         ripr_swarm_plan_from_actionable_gaps_value, ripr_swarm_plan_json, ripr_swarm_plan_markdown,
         ripr_swarm_plan_packet_is_high_confidence, ripr_swarm_plan_ready_packets,
         ripr_swarm_read_optional_json, ripr_swarm_readiness_from_values, ripr_swarm_readiness_json,
-        ripr_swarm_readiness_markdown, ripr_swarm_readiness_summary, run_ci_full_evidence_gates,
-        sarif_policy_report_json, sarif_policy_report_markdown, semantic_selector_matches,
-        should_scan_static_language_path, should_skip_path, sorted_allowlist_content,
-        sorted_capability_blocks_content, sorted_command_catalog_content,
-        sorted_markdown_index_table_content, sorted_traceability_behavior_blocks_content,
-        spec_id_from_path, spec_ids_in_text, spec_numbering_violations, specs,
-        static_language_allowlist_covers, status_for_report, suggested_fixes_patch,
-        suspicious_runtime_file_names, targeted_test_outcome, targeted_test_outcome_report_json,
-        targeted_test_outcome_report_markdown, test_efficiency_entry, test_efficiency_report_json,
-        test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
-        test_oracle_tests_in_text, unknown_command_message,
-        validate_actionable_gap_outcomes_fixture_case,
+        ripr_swarm_readiness_markdown, ripr_swarm_readiness_next_actions,
+        ripr_swarm_readiness_summary, run_ci_full_evidence_gates, sarif_policy_report_json,
+        sarif_policy_report_markdown, semantic_selector_matches, should_scan_static_language_path,
+        should_skip_path, sorted_allowlist_content, sorted_capability_blocks_content,
+        sorted_command_catalog_content, sorted_markdown_index_table_content,
+        sorted_traceability_behavior_blocks_content, spec_id_from_path, spec_ids_in_text,
+        spec_numbering_violations, specs, static_language_allowlist_covers, status_for_report,
+        suggested_fixes_patch, suspicious_runtime_file_names, targeted_test_outcome,
+        targeted_test_outcome_report_json, targeted_test_outcome_report_markdown,
+        test_efficiency_entry, test_efficiency_report_json, test_efficiency_report_markdown,
+        test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
+        unknown_command_message, validate_actionable_gap_outcomes_fixture_case,
         validate_actionable_gap_outcomes_fixture_corpus, validate_local_context_allowlist,
         validate_swarm_plan_packet_fixture_case, validate_swarm_plan_packet_fixture_corpus,
         vscode_compile_command, vscode_extension_dir, vscode_package_command,
@@ -60911,7 +61144,15 @@ covered_by = ["cargo xtask check-file-policy"]
                 "missing_receipt_command": 0,
                 "static_limitation_packets": 2,
                 "high_confidence_packets": 4
-            }
+            },
+            "top_ready_packets": [
+                {
+                    "packet_id": "packet-boundary-001",
+                    "canonical_gap_id": "gap:boundary",
+                    "evidence_class": "predicate_boundary",
+                    "repair_kind": "add_boundary_assertion"
+                }
+            ]
         });
         let outcomes = serde_json::json!({
             "report": "actionable-gap-outcomes",
@@ -60972,9 +61213,26 @@ covered_by = ["cargo xtask check-file-policy"]
             value["summary"]["regressed_packets"],
             serde_json::Value::from(0)
         );
+        assert_eq!(
+            value["next_actions"][0]["kind"],
+            serde_json::Value::from("inspect_unchanged_attempts")
+        );
+        assert_eq!(
+            value["next_actions"][2]["kind"],
+            serde_json::Value::from("attempt_ready_packet")
+        );
+        assert_eq!(
+            value["next_actions"][2]["packet_id"],
+            serde_json::Value::from("packet-boundary-001")
+        );
         let markdown = ripr_swarm_readiness_markdown(&report);
         assert!(markdown.contains("# RIPR Swarm Readiness"));
         assert!(markdown.contains("actionable gaps total"));
+        assert!(markdown.contains("## Next Actions"));
+        assert!(
+            markdown
+                .contains("cargo xtask ripr-swarm attempt --packet packet-boundary-001 --dry-run")
+        );
         assert!(markdown.contains("Readiness counts do not change public badge semantics."));
         Ok(())
     }
@@ -61090,6 +61348,14 @@ covered_by = ["cargo xtask check-file-policy"]
             value["summary"]["attempted_packets"],
             serde_json::Value::from(3)
         );
+        assert_eq!(
+            value["next_actions"][0]["kind"],
+            serde_json::Value::from("refresh_swarm_plan")
+        );
+        assert_eq!(
+            value["next_actions"][1]["kind"],
+            serde_json::Value::from("reconcile_orphaned_receipts")
+        );
         Ok(())
     }
 
@@ -61120,6 +61386,30 @@ covered_by = ["cargo xtask check-file-policy"]
         assert_eq!(summary.static_limitation_packets, 3);
         assert_eq!(summary.high_confidence_packets, 4);
         assert_eq!(summary.attempted_packets, 0);
+
+        let actions = ripr_swarm_readiness_next_actions(
+            &summary,
+            Some(&swarm_plan),
+            "read",
+            None,
+            "missing",
+            Some("failed to read actionable gap outcomes"),
+        );
+        assert!(
+            actions
+                .iter()
+                .any(|action| action.kind == "fix_verify_command_source")
+        );
+        assert!(
+            actions
+                .iter()
+                .any(|action| action.kind == "fix_receipt_command_source")
+        );
+        assert!(
+            actions
+                .iter()
+                .any(|action| action.kind == "refresh_outcome_report")
+        );
     }
 
     #[test]

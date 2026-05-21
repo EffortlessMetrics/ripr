@@ -2549,6 +2549,17 @@ available yet; missing outcomes do not imply failed attempts.
     "resolved_packets": 1,
     "orphaned_receipts": 0
   },
+  "next_actions": [
+    {
+      "kind": "attempt_ready_packet",
+      "packet_id": "packet-boundary-001",
+      "canonical_gap_id": "gap:boundary",
+      "evidence_class": "predicate_boundary",
+      "repair_kind": "add_boundary_assertion",
+      "command": "cargo xtask ripr-swarm attempt --packet packet-boundary-001 --dry-run",
+      "reason": "packet is queued with repair, verify, receipt, and no static limitation"
+    }
+  ],
   "must_not_infer": [
     "readiness reports summarize existing swarm artifacts; they do not execute repairs",
     "raw findings remain supporting evidence, not swarm work",
@@ -2563,7 +2574,11 @@ The readiness report is the management dashboard for repair coordination. It
 summarizes whether actionable packets have enough typed context to be
 swarm-ready, whether attempts have been recorded, and whether receipt-backed
 outcomes improved, stayed unchanged, regressed, or resolved. It does not make
-badge-readiness claims by itself.
+badge-readiness claims by itself. `next_actions` is a bounded advisory queue
+derived from the same plan and outcome artifacts. It can point operators to a
+ready dry-run packet, missing verify/receipt source fields, orphaned receipts,
+unchanged or regressed attempts, or static-limitation backlog work, but it does
+not execute the action or consume raw findings as work.
 
 
 ## Evidence Quality Scorecard
