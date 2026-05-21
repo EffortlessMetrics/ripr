@@ -1074,10 +1074,15 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
 
     #[test]
     fn cache_store_status_label_is_trace_safe() {
-        assert_eq!(
-            cache_store_status_label("skipped_large_entry_seams_38124_limit_20000"),
-            "ignored_skipped_large_entry_seams_38124_limit_20000"
+        let skip_reason = format!(
+            "skipped_large_entry_seams_38124_limit_{}",
+            CLASSIFIED_SEAM_CACHE_STORE_LIMIT
         );
+        let expected_skip_label = format!(
+            "ignored_skipped_large_entry_seams_38124_limit_{}",
+            CLASSIFIED_SEAM_CACHE_STORE_LIMIT
+        );
+        assert_eq!(cache_store_status_label(&skip_reason), expected_skip_label);
         assert_eq!(
             cache_store_status_label("write cache failed: access denied"),
             "ignored_write_cache_failed__access_denied"

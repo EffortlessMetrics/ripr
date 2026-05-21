@@ -16855,6 +16855,9 @@ fn lane1_evidence_audit_report_from_complete_repo_exposure(
 ) -> Lane1EvidenceAuditReport {
     match lane1_evidence_audit_from_repo_exposure_file(root, path) {
         Ok(mut report) => {
+            if let Some(limitation) = lane1_repo_exposure_cache_store_limitation(&generation) {
+                report.run_limitations.push(limitation);
+            }
             report.repo_exposure_generation = Some(generation);
             report
         }
@@ -17034,6 +17037,37 @@ fn lane1_evidence_audit_limited_report(
         .static_limitation_repair_route_counts
         .insert("report/lane1-audit-bounded-diagnostics".to_string(), 1);
     report
+}
+
+fn lane1_repo_exposure_cache_store_limitation(
+    generation: &Lane1EvidenceAuditRepoExposureGeneration,
+) -> Option<Lane1EvidenceAuditRunLimitation> {
+    let trace = generation.latency_trace_tail.iter().rev().find(|trace| {
+        trace.phase == "cache_store"
+            && trace
+                .status
+                .starts_with("ignored_skipped_large_entry_seams_")
+    })?;
+    let input = trace
+        .status
+        .strip_prefix("ignored_skipped_large_entry_seams_")
+        .map(|suffix| format!("classified_seams_{suffix}"))
+        .unwrap_or_else(|| trace.status.clone());
+
+    Some(Lane1EvidenceAuditRunLimitation {
+        category: "lane1_repo_exposure_cache_store_skipped_large_entry".to_string(),
+        phase: "repo_exposure_cache_store".to_string(),
+        input,
+        summary: "Lane 1 repo-exposure skipped the full classified seam cache store because the classified seam count exceeded the bounded full-cache store limit; evidence was still emitted, but later full audit runs may cold-compute until the full cache path is narrowed.".to_string(),
+        repair_route: "keep using compact/count caches for count-only surfaces; add fixture-backed bounded full-cache serialization or payload narrowing before raising the full classified seam cache store limit".to_string(),
+        timeout_ms: Some(generation.timeout_ms),
+        duration_ms: Some(generation.duration_ms),
+        command: Some(generation.command.clone()),
+        exit_code: generation.exit_code,
+        stdout_bytes: Some(generation.stdout_bytes),
+        stderr_bytes: Some(generation.stderr_bytes),
+        latency_trace_tail: generation.latency_trace_tail.clone(),
+    })
 }
 
 struct Lane1LimitedRepoExposureLimitation {
@@ -58938,6 +58972,61 @@ covered_by = ["cargo xtask check-file-policy"]
             }
         );
 
+        Ok(())
+    }
+
+    #[test]
+    fn lane1_repo_exposure_cache_store_skip_becomes_named_run_limitation() -> Result<(), String> {
+        let generation = Lane1EvidenceAuditRepoExposureGeneration {
+            command: "target/debug/ripr check --format repo-exposure-json".to_string(),
+            timeout_ms: 1_200_000,
+            status: "pass".to_string(),
+            duration_ms: 1_086_312,
+            exit_code: Some(0),
+            stdout_bytes: 1_234,
+            stderr_bytes: 456,
+            latency_trace_events_total: 4,
+            latency_trace_tail: vec![
+                RepoExposureLatencyTrace {
+                    phase: "cold_compute".to_string(),
+                    status: "ok".to_string(),
+                    duration_ms: 1_001_581,
+                },
+                RepoExposureLatencyTrace {
+                    phase: "cache_store".to_string(),
+                    status: "start_classified_38927_limit_20000".to_string(),
+                    duration_ms: 0,
+                },
+                RepoExposureLatencyTrace {
+                    phase: "cache_store".to_string(),
+                    status: "ignored_skipped_large_entry_seams_38927_limit_20000".to_string(),
+                    duration_ms: 12,
+                },
+                RepoExposureLatencyTrace {
+                    phase: "total".to_string(),
+                    status: "computed".to_string(),
+                    duration_ms: 1_086_312,
+                },
+            ],
+        };
+
+        let Some(limitation) = super::lane1_repo_exposure_cache_store_limitation(&generation)
+        else {
+            return Err("cache-store skip trace should produce a named limitation".to_string());
+        };
+        assert_eq!(
+            limitation.category,
+            "lane1_repo_exposure_cache_store_skipped_large_entry"
+        );
+        assert_eq!(limitation.phase, "repo_exposure_cache_store");
+        assert_eq!(limitation.input, "classified_seams_38927_limit_20000");
+        assert!(
+            limitation
+                .repair_route
+                .contains("bounded full-cache serialization"),
+            "repair route should point at analyzer/cache work, got {}",
+            limitation.repair_route
+        );
         Ok(())
     }
 
