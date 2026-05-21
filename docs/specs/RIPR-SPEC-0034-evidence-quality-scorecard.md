@@ -283,10 +283,18 @@ that queue forward so operators can choose the next repair class from live
 actionable/static-limitation/unknown/unaligned/duplicate signals instead of a
 static roadmap guess. This queue does not change public badge semantics.
 
-Given a Lane 1 audit or evidence-health artifact with `run_limitations[]`, the
-scorecard adds `lane1_evidence_audit_limited` or `evidence_health_limited` to
-`unknowns` so downstream users can see that the report is bounded diagnostic
-evidence rather than complete repo truth.
+Given a Lane 1 audit artifact with completeness-affecting limitations such as
+`lane1_repo_exposure_timeout`, `lane1_repo_exposure_incomplete`, or
+`evidence_quality_scorecard_audit_regeneration_failed`, the scorecard adds
+`lane1_evidence_audit_limited` to `unknowns` so downstream users can see that
+the report is bounded diagnostic evidence rather than complete repo truth.
+Non-completeness audit limitations, such as skipped full-cache storage after a
+complete repo-exposure run, remain audit-visible but do not make scorecard
+counts partial.
+
+Given an evidence-health artifact with `run_limitations[]`, the scorecard adds
+`evidence_health_limited` to `unknowns` because evidence-health warning
+artifacts are intentionally diagnostic-only.
 
 Given a failed attempt to regenerate a missing Lane 1 audit, the scorecard
 emits a bounded diagnostic scorecard and adds

@@ -23990,7 +23990,7 @@ fn evidence_quality_unknowns(
     inputs: &EvidenceQualityScorecardInputs,
 ) -> Vec<EvidenceQualityUnknown> {
     let mut unknowns = Vec::new();
-    if report_has_run_limitations(audit) {
+    if lane1_audit_has_completeness_limitation(audit) {
         scorecard_push_unknown(
             &mut unknowns,
             "lane1_evidence_audit_limited",
@@ -24103,6 +24103,16 @@ fn report_has_run_limitations(value: &Value) -> bool {
         .get("run_limitations")
         .and_then(Value::as_array)
         .is_some_and(|items| !items.is_empty())
+}
+
+fn lane1_audit_has_completeness_limitation(value: &Value) -> bool {
+    [
+        "lane1_repo_exposure_timeout",
+        "lane1_repo_exposure_incomplete",
+        EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED,
+    ]
+    .iter()
+    .any(|category| report_has_run_limitation_category(value, category))
 }
 
 fn report_has_run_limitation_category(value: &Value, category: &str) -> bool {
@@ -63674,6 +63684,44 @@ covered_by = ["cargo xtask check-file-policy"]
 
         assert!(kinds.contains("lane1_evidence_audit_limited"));
         assert!(kinds.contains("evidence_health_limited"));
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_scorecard_does_not_treat_cache_store_skip_as_limited_audit()
+    -> Result<(), String> {
+        let mut audit = lane1_scorecard_sample_audit_value()?;
+        audit
+            .as_object_mut()
+            .ok_or_else(|| "sample audit must be an object".to_string())?
+            .insert(
+                "run_limitations".to_string(),
+                serde_json::json!([
+                    {
+                        "category": "lane1_repo_exposure_cache_store_skipped_large_entry",
+                        "phase": "repo_exposure_cache_store",
+                        "repair_route": "add bounded full-cache serialization"
+                    }
+                ]),
+            );
+        let report = evidence_quality_scorecard_from_values(
+            "unix_ms:1".to_string(),
+            scorecard_inputs_for_test(false),
+            &audit,
+            None,
+            None,
+        )?;
+        let json = evidence_quality_scorecard_json(&report)?;
+        let value: Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        let kinds = value["unknowns"]
+            .as_array()
+            .ok_or("unknowns must be an array")?
+            .iter()
+            .filter_map(|unknown| unknown["kind"].as_str())
+            .collect::<BTreeSet<_>>();
+
+        assert!(!kinds.contains("lane1_evidence_audit_limited"));
+        assert!(kinds.contains("evidence_health_unavailable"));
         Ok(())
     }
 
