@@ -2320,6 +2320,8 @@ tests = [
   "xtask::tests::evidence_quality_scorecard_does_not_treat_cache_store_skip_as_limited_audit",
   "xtask::tests::evidence_quality_scorecard_names_audit_regeneration_failure",
   "xtask::tests::evidence_quality_trend_reports_no_history_explicitly",
+  "xtask::tests::evidence_quality_trend_missing_current_writes_limited_report",
+  "xtask::tests::evidence_quality_trend_malformed_current_writes_limited_report",
   "xtask::tests::evidence_quality_trend_distinguishes_improvement_regression_and_unchanged",
   "xtask::tests::evidence_quality_trend_marks_limited_current_scorecard_movement_unknown",
   "xtask::tests::evidence_quality_trend_reports_static_limitation_category_deltas",

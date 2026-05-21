@@ -16742,6 +16742,8 @@ const LANE1_EVIDENCE_AUDIT_TIMEOUT_ENV: &str = "RIPR_LANE1_EVIDENCE_AUDIT_TIMEOU
 const LANE1_EVIDENCE_AUDIT_DEFAULT_TIMEOUT_MS: u64 = 1_200_000;
 const EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED: &str =
     "evidence_quality_scorecard_audit_regeneration_failed";
+const EVIDENCE_QUALITY_TREND_CURRENT_INPUT_UNAVAILABLE: &str =
+    "evidence_quality_trend_current_scorecard_unavailable";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct Lane1EvidenceAuditReport {
@@ -25123,19 +25125,36 @@ pub(crate) fn evidence_quality_trend_report_impl(args: &[String]) -> Result<(), 
         .unwrap_or_else(|| reports_dir().join("evidence-quality-scorecard.json"));
     if !current_path.exists() {
         if explicit_current {
-            return Err(format!(
-                "current evidence-quality scorecard not found: {}",
-                current_path.display()
-            ));
+            return write_limited_evidence_quality_trend_for_current_input_failure(
+                &current_path,
+                "missing",
+                &format!(
+                    "current evidence-quality scorecard not found: {}",
+                    current_path.display()
+                ),
+            );
         }
-        evidence_quality_scorecard_report_impl()?;
+        if let Err(err) = evidence_quality_scorecard_report_impl() {
+            return write_limited_evidence_quality_trend_for_current_input_failure(
+                &current_path,
+                "regeneration_failed",
+                &format!("failed to regenerate current evidence-quality scorecard: {err}"),
+            );
+        }
     }
-    let current = read_json_value(&current_path).map_err(|err| {
-        format!(
-            "evidence-quality-trend requires a current scorecard at {}; {err}",
-            current_path.display()
-        )
-    })?;
+    let current = match read_json_value(&current_path) {
+        Ok(current) => current,
+        Err(err) => {
+            return write_limited_evidence_quality_trend_for_current_input_failure(
+                &current_path,
+                "malformed",
+                &format!(
+                    "evidence-quality-trend requires a current scorecard at {}; {err}",
+                    current_path.display()
+                ),
+            );
+        }
+    };
 
     let explicit_previous = args.previous.is_some();
     let previous_path = args
@@ -25167,6 +25186,73 @@ pub(crate) fn evidence_quality_trend_report_impl(args: &[String]) -> Result<(), 
         previous.as_ref(),
     )?;
 
+    write_report(
+        "evidence-quality-trend.json",
+        &evidence_quality_trend_json(&report)?,
+    )?;
+    write_report(
+        "evidence-quality-trend.md",
+        &evidence_quality_trend_markdown(&report),
+    )
+}
+
+fn write_limited_evidence_quality_trend_for_current_input_failure(
+    current_path: &Path,
+    current_status: &str,
+    error: &str,
+) -> Result<(), String> {
+    let previous_path = evidence_quality_trend_default_previous_path()
+        .unwrap_or_else(|| reports_dir().join("evidence-quality-scorecard.previous.json"));
+    let inputs = EvidenceQualityTrendInputs {
+        current_scorecard: scorecard_input_artifact(
+            current_path,
+            current_status,
+            None,
+            "current evidence-quality scorecard unavailable; trend is diagnostic only",
+        )?,
+        previous_artifact: scorecard_input_artifact(
+            &previous_path,
+            "not_loaded",
+            None,
+            "optional previous scorecard or audit snapshot was not compared because the current input was unavailable",
+        )?,
+        capability_matrix: scorecard_input_artifact(
+            Path::new("docs/CAPABILITY_MATRIX.md"),
+            "loaded",
+            None,
+            "class-scoped capability maturity vocabulary",
+        )?,
+        traceability: scorecard_input_artifact(
+            Path::new(".ripr/traceability.toml"),
+            "loaded",
+            None,
+            "spec/test/code/output/metric linkage",
+        )?,
+    };
+    let mut unknowns = Vec::new();
+    trend_push_unknown(
+        &mut unknowns,
+        EVIDENCE_QUALITY_TREND_CURRENT_INPUT_UNAVAILABLE,
+        &format!(
+            "Evidence-quality trend could not load the current scorecard: {}. No movement or badge-readiness claim is made from this limited trend.",
+            evidence_quality_scorecard_error_summary(error)
+        ),
+        Some("report/evidence-quality-scorecard"),
+    );
+    let no_history = inputs.previous_artifact.status == "missing";
+    let report = EvidenceQualityTrendReport {
+        generated_at: evidence_quality_scorecard_generated_at()?,
+        root: ".".to_string(),
+        inputs,
+        summary: EvidenceQualityTrendSummary {
+            status: "unknown".to_string(),
+            no_history,
+            ..EvidenceQualityTrendSummary::default()
+        },
+        metric_trends: Vec::new(),
+        static_limitation_category_trends: Vec::new(),
+        unknowns,
+    };
     write_report(
         "evidence-quality-trend.json",
         &evidence_quality_trend_json(&report)?,
@@ -44983,7 +45069,8 @@ mod tests {
         DogfoodFirstActionRun, DogfoodFirstPrRun, DogfoodFrontPanelRun, DogfoodGateRun,
         DogfoodGeneratedCiCockpitRun, DogfoodLanguagePreviewRun, DogfoodPrInlineCommentRun,
         DogfoodPreviewProjectionRuns, DogfoodReportInputs, DogfoodReportPacketIndexRun, DogfoodRun,
-        EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED, EvidenceQualityScorecardInput,
+        EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED,
+        EVIDENCE_QUALITY_TREND_CURRENT_INPUT_UNAVAILABLE, EvidenceQualityScorecardInput,
         EvidenceQualityScorecardInputs, EvidenceQualityScorecardReport, EvidenceQualityTrendInputs,
         EvidenceQualityTrendReport, FixKind, GENERATED_CI_FIRST_ACTION_REPAIR,
         GENERATED_CI_FIRST_PR_REPAIR, GENERATED_CI_FRONT_PANEL_REPAIR,
@@ -45026,20 +45113,21 @@ mod tests {
         evidence_quality_scorecard_from_values, evidence_quality_scorecard_json,
         evidence_quality_scorecard_markdown, evidence_quality_trend_from_values,
         evidence_quality_trend_json, evidence_quality_trend_markdown,
-        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
-        extract_workflow_run_blocks, finding_alignment_raw_to_canonical_ratio,
-        finding_alignment_verify_command_is_missing, finish_worktree_doctor_report,
-        first_line_difference, forbidden_panic_patterns, generated_clean_violations,
-        gh_pr_safe_next_action, gh_pr_status_json, gh_pr_status_markdown, gh_pr_status_readiness,
-        github_event_pull_request_title_from_text, glob_matches, golden_changes_without_blessing,
-        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
-        help_message, install_hooks_in, is_badge_refresh_context, is_bdd_test_name,
-        is_campaign_path, is_dependency_surface_candidate, is_docs_path, is_evidence_path,
-        is_generated_candidate, is_known_campaign_command, is_non_rust_programming_candidate,
-        is_policy_path, is_production_path, is_public_badge_basis_surface, is_receipt_status,
-        is_ripr_managed_hook, is_snake_case_id, is_spec_id, is_stale_agent_boundary_scan_target,
-        json_escape, json_number_after, json_string_values_for_key, json_summary_count,
-        known_commands, known_xtask_command, lane1_actionable_gap_packets_json,
+        evidence_quality_trend_report_impl, extract_json_object_usize_map, extract_json_string,
+        extract_json_warnings, extract_workflow_run_blocks,
+        finding_alignment_raw_to_canonical_ratio, finding_alignment_verify_command_is_missing,
+        finish_worktree_doctor_report, first_line_difference, forbidden_panic_patterns,
+        generated_clean_violations, gh_pr_safe_next_action, gh_pr_status_json,
+        gh_pr_status_markdown, gh_pr_status_readiness, github_event_pull_request_title_from_text,
+        glob_matches, golden_changes_without_blessing, golden_drift_semantics,
+        guarded_allow_attribute_lints, guarded_allow_attributes_in_text, help_message,
+        install_hooks_in, is_badge_refresh_context, is_bdd_test_name, is_campaign_path,
+        is_dependency_surface_candidate, is_docs_path, is_evidence_path, is_generated_candidate,
+        is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
+        is_production_path, is_public_badge_basis_surface, is_receipt_status, is_ripr_managed_hook,
+        is_snake_case_id, is_spec_id, is_stale_agent_boundary_scan_target, json_escape,
+        json_number_after, json_string_values_for_key, json_summary_count, known_commands,
+        known_xtask_command, lane1_actionable_gap_packets_json,
         lane1_actionable_gap_packets_markdown, lane1_evidence_audit_from_repo_exposure,
         lane1_evidence_audit_json, lane1_evidence_audit_limited_report,
         lane1_evidence_audit_markdown, lane1_evidence_audit_repo_exposure_args,
@@ -64408,6 +64496,66 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("Metric Trends"));
         assert!(markdown.contains("Unknowns"));
         Ok(())
+    }
+
+    #[test]
+    fn evidence_quality_trend_missing_current_writes_limited_report() -> Result<(), String> {
+        with_temp_cwd("trend-missing-current", |_root| {
+            let args = vec![
+                "--current".to_string(),
+                "target/ripr/reports/missing-scorecard.json".to_string(),
+            ];
+
+            evidence_quality_trend_report_impl(&args)?;
+
+            let json = fs::read_to_string("target/ripr/reports/evidence-quality-trend.json")
+                .map_err(|err| format!("read trend json: {err}"))?;
+            let value: serde_json::Value =
+                serde_json::from_str(&json).map_err(|err| err.to_string())?;
+            assert_eq!(value["summary"]["status"], "unknown");
+            assert_eq!(value["inputs"]["current_scorecard"]["status"], "missing");
+            assert!(value["metric_trends"].as_array().is_some_and(Vec::is_empty));
+            assert!(value["unknowns"].as_array().is_some_and(|unknowns| {
+                unknowns.iter().any(|unknown| {
+                    unknown["kind"] == EVIDENCE_QUALITY_TREND_CURRENT_INPUT_UNAVAILABLE
+                })
+            }));
+            let markdown = fs::read_to_string("target/ripr/reports/evidence-quality-trend.md")
+                .map_err(|err| format!("read trend markdown: {err}"))?;
+            assert!(markdown.contains(EVIDENCE_QUALITY_TREND_CURRENT_INPUT_UNAVAILABLE));
+            assert!(markdown.contains("No movement or badge-readiness claim"));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn evidence_quality_trend_malformed_current_writes_limited_report() -> Result<(), String> {
+        with_temp_cwd("trend-malformed-current", |_root| {
+            write(
+                Path::new("target/ripr/reports/evidence-quality-scorecard.json"),
+                "{not-json",
+            );
+
+            evidence_quality_trend_report_impl(&[])?;
+
+            let json = fs::read_to_string("target/ripr/reports/evidence-quality-trend.json")
+                .map_err(|err| format!("read trend json: {err}"))?;
+            let value: serde_json::Value =
+                serde_json::from_str(&json).map_err(|err| err.to_string())?;
+            assert_eq!(value["summary"]["status"], "unknown");
+            assert_eq!(value["inputs"]["current_scorecard"]["status"], "malformed");
+            assert!(value["metric_trends"].as_array().is_some_and(Vec::is_empty));
+            assert!(value["unknowns"].as_array().is_some_and(|unknowns| {
+                unknowns.iter().any(|unknown| {
+                    unknown["kind"] == EVIDENCE_QUALITY_TREND_CURRENT_INPUT_UNAVAILABLE
+                })
+            }));
+            let markdown = fs::read_to_string("target/ripr/reports/evidence-quality-trend.md")
+                .map_err(|err| format!("read trend markdown: {err}"))?;
+            assert!(markdown.contains(EVIDENCE_QUALITY_TREND_CURRENT_INPUT_UNAVAILABLE));
+            assert!(markdown.contains("No movement or badge-readiness claim"));
+            Ok(())
+        })
     }
 
     #[test]

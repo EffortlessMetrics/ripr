@@ -2904,6 +2904,11 @@ If the current scorecard reports a completeness-affecting bounded diagnostic
 unknown such as `lane1_evidence_audit_limited`, trend movement is also reported
 as `unknown` so partial or zeroed current counts cannot be interpreted as
 improvement or regression.
+If the current scorecard path is missing, malformed, or cannot be regenerated,
+the command still writes bounded trend JSON/Markdown with
+`summary.status = "unknown"` and the named
+`evidence_quality_trend_current_scorecard_unavailable` unknown instead of
+exiting before producing a trend artifact.
 
 ```json
 {
@@ -2986,7 +2991,9 @@ Field contract:
 - `unknowns[]` - missing history or missing current metric fields that must
   stay visible until later audit or scorecard inputs exist. Current scorecard
   unknowns are carried forward except `recent_delta_unavailable`, which the
-  trend report replaces with its own history unknown.
+  trend report replaces with its own history unknown. Missing or malformed
+  current scorecards are reported as
+  `evidence_quality_trend_current_scorecard_unavailable`.
 
 The Markdown sibling prints bounded sections for summary, metric trends,
 static limitation category trends, and unknowns.

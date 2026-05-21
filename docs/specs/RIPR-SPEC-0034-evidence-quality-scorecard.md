@@ -89,6 +89,11 @@ When the current scorecard is itself a bounded diagnostic because its Lane 1
 audit input was limited or audit regeneration failed, the trend report must
 carry that current scorecard unknown forward and mark metric/category movement
 as `unknown` instead of comparing partial or zeroed current counts.
+When the current scorecard path is missing, malformed, or cannot be regenerated,
+the trend command must still write bounded JSON and Markdown artifacts with the
+named `evidence_quality_trend_current_scorecard_unavailable` unknown. It must
+not exit before producing a report artifact that explains why movement is
+unavailable.
 
 ## Required Evidence
 
@@ -321,6 +326,11 @@ Given a current scorecard with `lane1_evidence_audit_limited` or
 the current scorecard unknown forward and marks movement unknown even when a
 previous scorecard exists.
 
+Given a missing or malformed current scorecard input, the trend report emits a
+bounded diagnostic artifact with
+`evidence_quality_trend_current_scorecard_unavailable` instead of leaving stale
+or missing trend output.
+
 Given a previous scorecard with fewer calibrated records and more
 duplicate-looking groups, the trend report marks calibrated records and
 duplicate-looking groups as improvement.
@@ -357,6 +367,11 @@ any gate behavior.
   pins the scorecard headline counting model.
 - `xtask::tests::evidence_quality_trend_reports_no_history_explicitly` pins the
   no-history state.
+- `xtask::tests::evidence_quality_trend_missing_current_writes_limited_report`
+  and
+  `xtask::tests::evidence_quality_trend_malformed_current_writes_limited_report`
+  pin bounded diagnostic trend artifacts for unavailable current scorecard
+  inputs.
 - `xtask::tests::evidence_quality_trend_distinguishes_improvement_regression_and_unchanged`
   pins metric direction semantics.
 - `xtask::tests::evidence_quality_trend_marks_limited_current_scorecard_movement_unknown`
