@@ -28,6 +28,7 @@ use crate::cli::commands_agent_support::{
     read_agent_verify_snapshot, resolve_agent_brief_working_set,
     validate_agent_receipt_verify_path, validate_agent_verify_snapshot_path,
 };
+use crate::cli::commands_numeric::{parse_positive_u64, parse_positive_usize};
 use crate::cli::commands_options::*;
 use crate::cli::commands_timestamps::generated_at_unix_ms;
 
@@ -2578,26 +2579,6 @@ fn parse_pilot_options(args: &[String]) -> Result<PilotOptions, String> {
         i += 1;
     }
     Ok(options)
-}
-
-fn parse_positive_usize(value: &str, flag: &str) -> Result<usize, String> {
-    let parsed = value
-        .parse::<usize>()
-        .map_err(|err| format!("invalid {flag}: {err}"))?;
-    if parsed == 0 {
-        return Err(format!("invalid {flag}: expected a positive integer"));
-    }
-    Ok(parsed)
-}
-
-fn parse_positive_u64(value: &str, flag: &str) -> Result<u64, String> {
-    let parsed = value
-        .parse::<u64>()
-        .map_err(|err| format!("invalid {flag}: {err}"))?;
-    if parsed == 0 {
-        return Err(format!("invalid {flag}: expected a positive integer"));
-    }
-    Ok(parsed)
 }
 
 enum PilotAnalysisResult {
