@@ -572,3 +572,30 @@ document itself, and that is the point.
   the code.
 - Treat the conversation as latency; treat the repo as the durable
   conversation.
+
+## 2026-05-21: Repair Loop Is the Product-Critical Lane
+
+When parallel improvement ideas compete for attention, keep the `ripr-swarm`
+repair loop on the critical path:
+
+```text
+canonical actionable gap
+-> repair packet
+-> dry-run / attempt
+-> verify command
+-> receipt command
+-> outcome report
+-> readiness / next action
+```
+
+A repo control-plane/source-of-truth model is useful, but should be treated as
+supporting infrastructure unless it directly increases repair-loop operability.
+Durable product truth remains in repo-owned docs/spec/proposal/ADR/traceability
+surfaces (or a future `.ripr-spec/` namespace), while tool-local goal state
+remains operator state that references those durable artifacts.
+
+Practical sequencing rule:
+
+1. ship bounded repair-attempt evidence movement;
+2. then tighten proposal/spec/ADR/closeout templates and validators as a
+   separate infra lane.
