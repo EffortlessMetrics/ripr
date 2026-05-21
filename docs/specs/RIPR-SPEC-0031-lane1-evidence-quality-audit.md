@@ -224,7 +224,9 @@ with `run_limitations[].category = "lane1_repo_exposure_timeout"`,
 `phase = "repo_exposure_generation"`, phase/input diagnostics, the most recent
 latency trace entries, and a repair route. Downstream scorecards must surface
 that limitation and must not treat zero counts in the limited artifact as proof
-that no gaps exist.
+that no gaps exist. The named run limitation contributes to
+`summary.static_limitations_total` and `static_limitations.by_category` so the
+limited artifact cannot present a clean zero-limitation headline.
 Best-effort cache writes are not allowed to turn a completed analysis into an
 unbounded wait: large classified-seam cache entries may be skipped when the
 trace records a `cache_store` status such as

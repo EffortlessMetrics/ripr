@@ -17097,7 +17097,7 @@ fn lane1_evidence_audit_report_from_complete_repo_exposure(
     match lane1_evidence_audit_from_repo_exposure_file(root, path) {
         Ok(mut report) => {
             if let Some(limitation) = lane1_repo_exposure_cache_store_limitation(&generation) {
-                report.run_limitations.push(limitation);
+                lane1_evidence_audit_record_run_limitation(&mut report, limitation);
             }
             report.repo_exposure_generation = Some(generation);
             report
@@ -17255,9 +17255,9 @@ fn lane1_evidence_audit_limited_report(
     let mut report = Lane1EvidenceAuditBuilder::default().finish(root.to_string(), None);
     let limitation = lane1_limited_repo_exposure_limitation(&generation);
     report.repo_exposure_generation = Some(generation.clone());
-    report
-        .run_limitations
-        .push(Lane1EvidenceAuditRunLimitation {
+    lane1_evidence_audit_record_run_limitation(
+        &mut report,
+        Lane1EvidenceAuditRunLimitation {
             category: limitation.category.to_string(),
             phase: "repo_exposure_generation".to_string(),
             input: "repo-exposure-json".to_string(),
@@ -17270,14 +17270,25 @@ fn lane1_evidence_audit_limited_report(
             stdout_bytes: Some(generation.stdout_bytes),
             stderr_bytes: Some(generation.stderr_bytes),
             latency_trace_tail: generation.latency_trace_tail,
-        });
+        },
+    );
     report
-        .static_limitation_category_counts
-        .insert(limitation.category.to_string(), 1);
-    report
-        .static_limitation_repair_route_counts
-        .insert("report/lane1-audit-bounded-diagnostics".to_string(), 1);
-    report
+}
+
+fn lane1_evidence_audit_record_run_limitation(
+    report: &mut Lane1EvidenceAuditReport,
+    limitation: Lane1EvidenceAuditRunLimitation,
+) {
+    report.summary.static_limitations_total += 1;
+    audit_increment(
+        &mut report.static_limitation_category_counts,
+        &limitation.category,
+    );
+    audit_increment(
+        &mut report.static_limitation_repair_route_counts,
+        "report/lane1-audit-bounded-diagnostics",
+    );
+    report.run_limitations.push(limitation);
 }
 
 fn lane1_repo_exposure_cache_store_limitation(
@@ -23378,8 +23389,7 @@ fn evidence_quality_scorecard_summary(audit: &Value) -> EvidenceQualityScorecard
             &["summary", "missing_discriminators_total"],
         )
         .unwrap_or(0),
-        static_limitations_total: audit_usize(audit, &["summary", "static_limitations_total"])
-            .unwrap_or(0),
+        static_limitations_total: evidence_quality_scorecard_static_limitations_total(audit),
         related_tests_total: audit_usize(audit, &["summary", "related_tests_total"]).unwrap_or(0),
         low_or_opaque_top_related_tests: audit_usize(
             audit,
@@ -23584,6 +23594,21 @@ fn evidence_quality_scorecard_summary(audit: &Value) -> EvidenceQualityScorecard
         )
         .unwrap_or(0),
     }
+}
+
+fn evidence_quality_scorecard_static_limitations_total(audit: &Value) -> usize {
+    let summary_total = audit_usize(audit, &["summary", "static_limitations_total"]).unwrap_or(0);
+    let category_total = audit_get(audit, &["static_limitations", "by_category"])
+        .and_then(Value::as_object)
+        .map(|counts| {
+            counts
+                .values()
+                .filter_map(Value::as_u64)
+                .map(|count| count as usize)
+                .sum::<usize>()
+        })
+        .unwrap_or(0);
+    summary_total.max(category_total)
 }
 
 fn finding_alignment_summary_usize(
@@ -24441,7 +24466,7 @@ fn evidence_quality_scorecard_headline_json(summary: &EvidenceQualityScorecardSu
         "canonical_items": summary.finding_alignment_canonical_items_total,
         "already_observed": summary.finding_alignment_already_observed_total,
         "internal_no_action": summary.finding_alignment_internal_no_action_total,
-        "static_limitations": summary.finding_alignment_static_limitation_total,
+        "static_limitations": summary.static_limitations_total,
         "unknown": summary.finding_alignment_unknown_total,
         "raw_to_canonical_ratio": finding_alignment_raw_to_canonical_ratio(summary),
         "note": "Raw findings are diagnostic; actionable canonical gaps are the user-facing repair count."
@@ -60217,6 +60242,7 @@ covered_by = ["cargo xtask check-file-policy"]
             value["static_limitations"]["by_category"]["lane1_repo_exposure_timeout"],
             1
         );
+        assert_eq!(value["summary"]["static_limitations_total"], 1);
         assert_eq!(
             value["inputs"]["repo_exposure_generation"]["latency_trace_tail"][0]["phase"],
             "evidence_for_seams_progress"
@@ -60224,6 +60250,7 @@ covered_by = ["cargo xtask check-file-policy"]
 
         let markdown = lane1_evidence_audit_markdown(&report);
         assert!(markdown.contains("Run Limitations"));
+        assert!(markdown.contains("| Static limitations | 1 |"));
         assert!(markdown.contains("lane1_repo_exposure_timeout"));
         assert!(markdown.contains("processed_500_of_38445"));
         Ok(())
@@ -60262,8 +60289,10 @@ covered_by = ["cargo xtask check-file-policy"]
             value["static_limitations"]["by_category"]["lane1_repo_exposure_incomplete"],
             1
         );
+        assert_eq!(value["summary"]["static_limitations_total"], 1);
 
         let markdown = lane1_evidence_audit_markdown(&report);
+        assert!(markdown.contains("| Static limitations | 1 |"));
         assert!(markdown.contains("lane1_repo_exposure_incomplete"));
         assert!(markdown.contains("processed_28500_of_38521"));
         Ok(())
@@ -64053,19 +64082,33 @@ covered_by = ["cargo xtask check-file-policy"]
     #[test]
     fn evidence_quality_scorecard_surfaces_limited_inputs_as_unknowns() -> Result<(), String> {
         let mut audit = lane1_scorecard_sample_audit_value()?;
-        audit
+        let audit_object = audit
             .as_object_mut()
-            .ok_or_else(|| "sample audit must be an object".to_string())?
-            .insert(
-                "run_limitations".to_string(),
-                serde_json::json!([
-                    {
-                        "category": "lane1_repo_exposure_timeout",
-                        "phase": "repo_exposure_generation",
-                        "repair_route": "inspect repo-exposure latency trace"
-                    }
-                ]),
-            );
+            .ok_or_else(|| "sample audit must be an object".to_string())?;
+        audit_object.insert(
+            "run_limitations".to_string(),
+            serde_json::json!([
+                {
+                    "category": "lane1_repo_exposure_timeout",
+                    "phase": "repo_exposure_generation",
+                    "repair_route": "inspect repo-exposure latency trace"
+                }
+            ]),
+        );
+        audit_object.insert(
+            "static_limitations".to_string(),
+            serde_json::json!({
+                "by_reason": [],
+                "by_stage": {},
+                "by_category": {"lane1_repo_exposure_timeout": 1},
+                "repair_routes": {"report/lane1-audit-bounded-diagnostics": 1}
+            }),
+        );
+        audit_object
+            .get_mut("summary")
+            .and_then(Value::as_object_mut)
+            .ok_or_else(|| "sample audit summary must be an object".to_string())?
+            .insert("static_limitations_total".to_string(), Value::from(0));
         let evidence_health = serde_json::json!({
             "schema_version": "0.1",
             "status": "warn",
@@ -64095,6 +64138,12 @@ covered_by = ["cargo xtask check-file-policy"]
 
         assert!(kinds.contains("lane1_evidence_audit_limited"));
         assert!(kinds.contains("evidence_health_limited"));
+        assert_eq!(value["summary"]["static_limitations_total"], 1);
+        assert_eq!(value["headline"]["static_limitations"], 1);
+        assert_eq!(
+            value["static_limitation_categories"]["by_category"]["lane1_repo_exposure_timeout"],
+            1
+        );
         Ok(())
     }
 

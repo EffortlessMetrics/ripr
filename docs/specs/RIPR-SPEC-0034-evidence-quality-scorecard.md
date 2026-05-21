@@ -168,7 +168,10 @@ JSON/Markdown, and add
 `unknowns[].kind = "evidence_quality_scorecard_audit_input_unavailable"`. If
 the audit or evidence-health artifact exists but carries `run_limitations[]`,
 the scorecard must surface that as an unknown and must not let the limited
-artifact's zero or partial counts masquerade as complete repo truth.
+artifact's zero or partial counts masquerade as complete repo truth. Named
+audit run limitations that appear in `static_limitations.by_category` must
+contribute to the scorecard static-limitation headline even when an older or
+partial audit summary left `summary.static_limitations_total` at zero.
 If optional `evidence-health.json` exists but is malformed or unreadable, the
 scorecard must still write JSON/Markdown, mark
 `inputs.evidence_health.status = "malformed"`, and add

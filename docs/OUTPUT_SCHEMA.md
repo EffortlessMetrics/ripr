@@ -2051,6 +2051,10 @@ Field contract:
   `lane1_repo_exposure_cache_store_skipped_large_entry` when the live
   repo-exposure run emitted complete evidence but skipped a full classified
   seam cache store because the entry exceeded the bounded cache-store limit.
+  Named `run_limitations[]` entries also contribute to
+  `summary.static_limitations_total` and `static_limitations.by_category`, so a
+  limited audit cannot look like a clean zero-limitation run in headline
+  summaries.
 - `summary.raw_headline_gaps` - count of seams that are headline-eligible in
   the record or top-level repo exposure row.
 - `finding_alignment.source` - source used for audit-local alignment counts;
@@ -2596,6 +2600,12 @@ limited scorecard carries `unknowns[].kind =
 `run_limitations[]` entry with the same category. Counts in that artifact are
 diagnostic only and must not be treated as complete repo truth or user test
 debt.
+
+When a Lane 1 audit carries named `run_limitations[]`, the scorecard treats the
+matching `static_limitations.by_category` rows as static limitations even if an
+older or partial audit summary did not increment `summary.static_limitations_total`.
+This keeps limited artifacts visible in the headline static-limitation count
+instead of presenting a misleading zero.
 
 ```json
 {

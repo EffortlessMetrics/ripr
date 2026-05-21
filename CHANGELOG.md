@@ -49,6 +49,10 @@ are scoped or reviewed.
   malformed, carrying
   `evidence_quality_trend_previous_artifact_unavailable` instead of exiting
   before producing trend evidence.
+- Lane 1 audit run limitations now contribute to static-limitation headline
+  counts. Bounded audit artifacts and scorecards no longer show
+  `Static limitations: 0` while also carrying named timeout or incomplete
+  repo-exposure limitation rows.
 
 ## 0.7.0 - 2026-05-20
 
