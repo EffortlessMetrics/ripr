@@ -700,3 +700,23 @@ evidence without delaying Campaign 3:
 
 Analyzer work can now move through Codex Goals campaigns. Each campaign may span
 multiple PRs, while each work item should still follow the scoped PR contract.
+
+## Source-Of-Truth PR Body Scaffold
+
+Use the active goal manifest to draft a PR body for one bounded work item:
+
+```bash
+cargo xtask pr-body --work-item <id>
+```
+
+The command writes:
+
+```text
+target/ripr/reports/source-of-truth-pr-body.md
+```
+
+The scaffold links the active goal, work item, proposal/spec/plan references
+when present, acceptance text, non-goals, and proof commands. It deliberately
+leaves support-tier and policy impact checkboxes unchecked because those claims
+must be reviewed from the actual diff and proof, not inferred from active-goal
+metadata.

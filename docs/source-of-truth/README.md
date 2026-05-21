@@ -65,6 +65,11 @@ Reusable proof-stack bootstraps may choose another repo-specific active-goal
 path, but `ripr` agents should follow the repo-local `.ripr` path unless a
 later PR changes the schema and documentation together.
 
+`cargo xtask pr-body --work-item <id>` can generate
+`target/ripr/reports/source-of-truth-pr-body.md` from one active-goal work item.
+The generated body is a scaffold: support-tier and policy impact boxes stay
+unchecked until the PR author reviews the actual diff and proof.
+
 ## Enforcement state
 
 This docs slice defines doctrine only. It does not add validators or CI gates.

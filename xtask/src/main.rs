@@ -37968,18 +37968,22 @@ Work item: `{work_item_id}`
 
 ## Support-tier impact
 
-- [x] none
+- [ ] none
 - [ ] updates `docs/status/SUPPORT_TIERS.md`
+
+Review before checking a box; `pr-body` does not infer support-tier impact.
 
 ## Policy impact
 
-- [x] none
+- [ ] none
 - [ ] doc artifacts
 - [ ] CI lane
 - [ ] package boundary
 - [ ] lint / Clippy
 - [ ] no-panic
 - [ ] file policy
+
+Review before checking a box; `pr-body` does not infer policy impact.
 
 ## Proof
 
@@ -59222,6 +59226,15 @@ owner = "repo-infra"
             assert!(body.contains("Work item: `docs/report`"));
             assert!(body.contains("cargo xtask repo-contract-report"));
             assert!(body.contains("## Claim boundary"));
+            assert!(body.contains(
+                "Review before checking a box; `pr-body` does not infer support-tier impact."
+            ));
+            assert!(
+                body.contains(
+                    "Review before checking a box; `pr-body` does not infer policy impact."
+                )
+            );
+            assert!(!body.contains("- [x] none"));
             Ok(())
         })
     }
