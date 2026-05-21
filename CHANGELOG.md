@@ -15,6 +15,10 @@ are scoped or reviewed.
   limited report, `inputs.generation.status = "pass_incomplete"`, bounded
   stdout/stderr excerpts, an artifact-validation failure reason, and the named
   `evidence_health_incomplete` limitation.
+- `cargo xtask evidence-health` now enables repo-exposure latency tracing for
+  the child report generation path and includes bounded trace counts/tails in
+  limited warning reports, so live timeouts point at the slow analyzer phase
+  instead of returning an empty stderr excerpt.
 
 ## 0.7.0 - 2026-05-20
 

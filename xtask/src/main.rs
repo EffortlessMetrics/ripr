@@ -16213,10 +16213,11 @@ fn evidence_health_run_binary(
     timeout: Duration,
 ) -> Result<TimedOutput, String> {
     let binary_text = binary.display().to_string();
+    let envs = [(REPO_EXPOSURE_LATENCY_TRACE_ENV, "1")];
     capture_output_with_timeout(
         &binary_text,
         args,
-        &[],
+        &envs,
         timeout,
         "Lane 1 evidence-health report",
     )
@@ -16342,6 +16343,7 @@ fn limited_evidence_health_json(
     let limitation = evidence_health_limited_kind(output);
     let summary = evidence_health_limited_summary(limitation);
     let repair_route = evidence_health_limited_repair_route(limitation);
+    let (latency_trace_events_total, latency_trace_tail) = evidence_health_latency_trace(output);
     let value = serde_json::json!({
         "schema_version": "0.1",
         "tool": "ripr",
@@ -16434,6 +16436,11 @@ fn limited_evidence_health_json(
                 "stdout_excerpt": bounded_output_excerpt(&output.stdout),
                 "stderr_excerpt": bounded_output_excerpt(&output.stderr),
                 "failure_reason": failure_reason,
+                "latency_trace_events_total": latency_trace_events_total,
+                "latency_trace_tail": latency_trace_tail
+                    .iter()
+                    .map(evidence_health_latency_trace_json)
+                    .collect::<Vec<_>>(),
             }
         ],
     });
@@ -16448,6 +16455,7 @@ fn evidence_health_generation_json(
     output: &TimedOutput,
     failure_reason: Option<&str>,
 ) -> Value {
+    let (latency_trace_events_total, latency_trace_tail) = evidence_health_latency_trace(output);
     serde_json::json!({
         "command": command,
         "timeout_ms": timeout.as_millis(),
@@ -16459,6 +16467,11 @@ fn evidence_health_generation_json(
         "stdout_excerpt": bounded_output_excerpt(&output.stdout),
         "stderr_excerpt": bounded_output_excerpt(&output.stderr),
         "failure_reason": failure_reason,
+        "latency_trace_events_total": latency_trace_events_total,
+        "latency_trace_tail": latency_trace_tail
+            .iter()
+            .map(evidence_health_latency_trace_json)
+            .collect::<Vec<_>>(),
     })
 }
 
@@ -16514,6 +16527,7 @@ fn limited_evidence_health_markdown(
     let limitation = evidence_health_limited_kind(output);
     let summary = evidence_health_limited_summary(limitation);
     let repair_route = evidence_health_limited_repair_route(limitation);
+    let (_, latency_trace_tail) = evidence_health_latency_trace(output);
     let mut out = String::new();
     out.push_str("# RIPR evidence health report\n\n");
     out.push_str("Status: warn\n\n");
@@ -16563,6 +16577,19 @@ fn limited_evidence_health_markdown(
             out.push('\n');
         }
         out.push_str("```\n");
+    }
+    if !latency_trace_tail.is_empty() {
+        out.push_str("\n## Repo-exposure Latency Trace Tail\n\n");
+        out.push_str("| Phase | Status | Duration |\n");
+        out.push_str("| --- | --- | ---: |\n");
+        for trace in latency_trace_tail {
+            out.push_str(&format!(
+                "| `{}` | `{}` | {} ms |\n",
+                audit_markdown_cell(&trace.phase),
+                audit_markdown_cell(&trace.status),
+                trace.duration_ms
+            ));
+        }
     }
     out
 }
@@ -16665,6 +16692,7 @@ fn validate_complete_evidence_health_json(value: &Value) -> Result<(), String> {
 
 const EVIDENCE_HEALTH_OUTPUT_EXCERPT_LINE_LIMIT: usize = 8;
 const EVIDENCE_HEALTH_OUTPUT_EXCERPT_CHAR_LIMIT: usize = 4096;
+const EVIDENCE_HEALTH_LATENCY_TRACE_TAIL_LIMIT: usize = 12;
 
 fn bounded_output_excerpt(output: &str) -> Option<String> {
     let trimmed = output.trim();
@@ -16687,6 +16715,22 @@ fn bounded_output_excerpt(output: &str) -> Option<String> {
         excerpt = chars.into_iter().collect();
     }
     Some(excerpt)
+}
+
+fn evidence_health_latency_trace(output: &TimedOutput) -> (usize, Vec<RepoExposureLatencyTrace>) {
+    let trace = repo_exposure_latency_trace(&output.stderr);
+    let trace_tail_start = trace
+        .len()
+        .saturating_sub(EVIDENCE_HEALTH_LATENCY_TRACE_TAIL_LIMIT);
+    (trace.len(), trace[trace_tail_start..].to_vec())
+}
+
+fn evidence_health_latency_trace_json(trace: &RepoExposureLatencyTrace) -> Value {
+    serde_json::json!({
+        "phase": trace.phase,
+        "status": trace.status,
+        "duration_ms": trace.duration_ms,
+    })
 }
 
 const LANE1_EVIDENCE_AUDIT_SCHEMA_VERSION: &str = "0.1";
@@ -60019,7 +60063,7 @@ covered_by = ["cargo xtask check-file-policy"]
                     Ok(TimedOutput {
                         status: None,
                         stdout: "partial stdout".to_string(),
-                        stderr: "phase=inventory\nphase=evidence_health\n".to_string(),
+                        stderr: "phase=inventory\nripr_repo_exposure_latency phase=evidence_for_seams_progress status=processed_500_of_38927 duration_ms=10248\nripr_repo_exposure_latency phase=evidence_for_seams_progress status=processed_1000_of_38927 duration_ms=14826\n".to_string(),
                         duration: Duration::from_millis(8),
                         timed_out: true,
                     })
@@ -60037,12 +60081,26 @@ covered_by = ["cargo xtask check-file-policy"]
                 value["top_static_limitations"][0]["repair_route"],
                 "inspect evidence-health runtime, increase RIPR_EVIDENCE_HEALTH_TIMEOUT_MS for slower machines, or add a narrower fixture-backed analyzer path"
             );
+            assert_eq!(
+                value["inputs"]["generation"]["latency_trace_events_total"],
+                serde_json::Value::from(2)
+            );
+            assert_eq!(
+                value["inputs"]["generation"]["latency_trace_tail"][1]["status"],
+                serde_json::Value::from("processed_1000_of_38927")
+            );
+            assert_eq!(
+                value["run_limitations"][0]["latency_trace_events_total"],
+                serde_json::Value::from(2)
+            );
             assert!(!json_text.contains("stale json"));
 
             let markdown = fs::read_to_string(stale_md).map_err(|err| err.to_string())?;
             assert!(markdown.contains("Status: warn"));
             assert!(markdown.contains("evidence_health_timeout"));
             assert!(markdown.contains("RIPR_EVIDENCE_HEALTH_TIMEOUT_MS"));
+            assert!(markdown.contains("Repo-exposure Latency Trace Tail"));
+            assert!(markdown.contains("processed_1000_of_38927"));
             assert!(!markdown.contains("stale markdown"));
             Ok(())
         })
