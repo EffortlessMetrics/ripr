@@ -38374,6 +38374,454 @@ impl CampaignManifestPrBodyExt for CampaignManifest {
     }
 }
 
+#[derive(Debug, Eq, PartialEq)]
+struct CloseoutWriteResult {
+    handoff_path: PathBuf,
+    archive_path: PathBuf,
+}
+
+fn closeout(args: &[String]) -> Result<(), String> {
+    let goal_id = parse_closeout_args(args)?;
+    let date = current_utc_date()?;
+    let result = closeout_from_root(Path::new("."), &goal_id, &date)?;
+    println!("wrote {}", normalize_path(&result.handoff_path));
+    println!("wrote {}", normalize_path(&result.archive_path));
+    Ok(())
+}
+
+fn parse_closeout_args(args: &[String]) -> Result<String, String> {
+    match args {
+        [flag, value] if flag == "--goal" && !value.trim().is_empty() => Ok(value.clone()),
+        _ => Err("usage: cargo xtask closeout --goal <goal-id>".to_string()),
+    }
+}
+
+fn closeout_from_root(
+    root: &Path,
+    goal_id: &str,
+    date: &str,
+) -> Result<CloseoutWriteResult, String> {
+    validate_closeout_date(date)?;
+    let active_path = root.join(".ripr/goals/active.toml");
+    let active_text = read_text_lossy(&active_path)?;
+    let (manifest, parse_violations) = parse_campaign_manifest(&active_path)?;
+    if !parse_violations.is_empty() {
+        return Err(format!(
+            "{} has parse violations:\n- {}",
+            display_repo_path(root, &active_path),
+            parse_violations.join("\n- ")
+        ));
+    }
+    let active_goal_id = manifest.active_id();
+    if active_goal_id != goal_id {
+        return Err(format!(
+            "{} records active goal `{active_goal_id}`, not `{goal_id}`",
+            display_repo_path(root, &active_path)
+        ));
+    }
+    validate_closeout_archivable_manifest(&manifest)?;
+
+    let slug = closeout_slug(goal_id)?;
+    let handoff_path = root.join(format!("docs/handoffs/{date}-{slug}-closeout.md"));
+    let archive_path = root.join(format!(".ripr/goals/archive/{date}-{slug}.toml"));
+    let handoff = closeout_markdown(&manifest, goal_id, date, &handoff_path, &archive_path);
+    let archive = closeout_archive_text(&active_text, goal_id, date);
+
+    ensure_new_text_file(&handoff_path)?;
+    ensure_new_text_file(&archive_path)?;
+    write_text_file(&handoff_path, &handoff)?;
+    write_text_file(&archive_path, &archive)?;
+
+    Ok(CloseoutWriteResult {
+        handoff_path,
+        archive_path,
+    })
+}
+
+fn validate_closeout_archivable_manifest(manifest: &CampaignManifest) -> Result<(), String> {
+    let id = manifest.active_id();
+    if manifest.status.as_deref() != Some("closed") {
+        return Err(format!(
+            "closeout requires active goal `{id}` to have status `closed` before archiving"
+        ));
+    }
+
+    let unfinished = manifest
+        .work_items
+        .iter()
+        .filter_map(|item| {
+            let item_id = item.id.as_deref().unwrap_or("<missing>");
+            (item.status.as_deref() != Some("done")).then_some(item_id)
+        })
+        .collect::<Vec<_>>();
+    if !unfinished.is_empty() {
+        return Err(format!(
+            "closeout requires all work items to be done before archiving; unfinished: {}",
+            unfinished.join(", ")
+        ));
+    }
+
+    let successor = manifest
+        .successor
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if successor.is_none() && manifest.no_current_goal != Some(true) {
+        return Err(
+            "closeout requires closed active goal to declare `successor = \"<campaign-id>\"` or `no_current_goal = true` before archiving"
+                .to_string(),
+        );
+    }
+
+    Ok(())
+}
+
+fn closeout_markdown(
+    manifest: &CampaignManifest,
+    goal_id: &str,
+    date: &str,
+    handoff_path: &Path,
+    archive_path: &Path,
+) -> String {
+    let title = manifest.title.as_deref().unwrap_or(goal_id);
+    let status = manifest.status.as_deref().unwrap_or("<missing>");
+    let proposals = closeout_collect_values(&manifest.work_items, |item| item.proposal.as_deref());
+    let specs = closeout_collect_specs(&manifest.work_items);
+    let plans = closeout_collect_values(&manifest.work_items, |item| item.plan.as_deref());
+    let receipts = closeout_collect_values(&manifest.work_items, |item| item.receipt.as_deref());
+    let closeouts = closeout_collect_values(&manifest.work_items, |item| item.closeout.as_deref());
+    let proof_commands = closeout_collect_commands(&manifest.work_items);
+    let done_items = manifest
+        .work_items
+        .iter()
+        .filter(|item| item.status.as_deref() == Some("done"))
+        .collect::<Vec<_>>();
+    let remaining_items = manifest
+        .work_items
+        .iter()
+        .filter(|item| item.status.as_deref() != Some("done"))
+        .collect::<Vec<_>>();
+    let non_goals =
+        pr_body_manifest_list(&manifest.non_goals, "No explicit non-goals are recorded.");
+    let next_recommended = closeout_next_recommendation(manifest, &remaining_items);
+
+    let mut body = String::new();
+    body.push_str(&format!("# Closeout: {}\n\n", markdown_inline(title)));
+    body.push_str("Status: generated\n\n");
+    body.push_str("Owner: repo-infra\n\n");
+    body.push_str(&format!("Created: {date}\n\n"));
+    body.push_str(&format!("Active goal: `{}`\n\n", markdown_inline(goal_id)));
+    body.push_str(&format!("Goal status at generation: `{status}`\n\n"));
+    body.push_str(&format!(
+        "Linked proposals: {}\n\n",
+        closeout_inline_values(&proposals, "See work item details.")
+    ));
+    body.push_str(&format!(
+        "Linked specs: {}\n\n",
+        closeout_inline_values(&specs, "See work item details.")
+    ));
+    body.push_str("Linked ADRs: none recorded in the active goal manifest.\n\n");
+    body.push_str(&format!(
+        "Linked plans: {}\n\n",
+        closeout_inline_values(&plans, "See work item details.")
+    ));
+    body.push_str("Support-tier impact: review `docs/status/SUPPORT_TIERS.md` before promoting any claim.\n\n");
+    body.push_str("Policy impact: review `policy/` ledgers before recording policy changes.\n\n");
+    body.push_str("Required evidence:\n\n");
+    body.push_str(&closeout_bullet_list(
+        &proof_commands,
+        "No proof commands are recorded.",
+    ));
+    body.push_str("\nNon-goals:\n\n");
+    body.push_str(&non_goals);
+    body.push_str("\n\nClaim boundary:\n\n");
+    body.push_str("This generated closeout records the active goal contract and proof commands. It does not claim the goal is complete until maintainers replace generated notes with actual pass/fail evidence and review any support-tier or policy changes.\n\n");
+    body.push_str("Rollback:\n\n");
+    body.push_str(
+        "Remove the generated handoff and archive files, then rerun `cargo xtask closeout --goal ",
+    );
+    body.push_str(goal_id);
+    body.push_str("` after correcting the active goal manifest.\n\n");
+
+    body.push_str("## What landed\n\n");
+    write_closeout_work_items(&mut body, &done_items, "No done work items are recorded.");
+
+    body.push_str("## Proof executed\n\n");
+    body.push_str("Generated scaffold: replace this section with exact pass/fail states and receipt paths before final closeout.\n\n");
+    body.push_str("```bash\n");
+    body.push_str(&pr_body_proof_block(&proof_commands));
+    body.push_str("\n```\n\n");
+
+    body.push_str("## Claim changes\n\n");
+    body.push_str("No claim change is generated automatically. Record any product-claim movement here and map it in `docs/status/SUPPORT_TIERS.md`.\n\n");
+
+    body.push_str("## Policy changes\n\n");
+    body.push_str("No policy change is generated automatically. Record any CI, lint, file, package, or no-panic policy changes here and update the relevant ledger under `policy/`.\n\n");
+
+    body.push_str("## Remaining work\n\n");
+    write_closeout_work_items(
+        &mut body,
+        &remaining_items,
+        "No remaining work items are recorded.",
+    );
+
+    body.push_str("## Archive updates\n\n");
+    body.push_str(&format!("- Handoff: `{}`\n", normalize_path(handoff_path)));
+    body.push_str(&format!(
+        "- Archived active goal manifest: `{}`\n",
+        normalize_path(archive_path)
+    ));
+    if !receipts.is_empty() {
+        body.push_str(&format!(
+            "- Recorded receipts: {}\n",
+            closeout_inline_values(&receipts, "none")
+        ));
+    }
+    if !closeouts.is_empty() {
+        body.push_str(&format!(
+            "- Prior closeout references: {}\n",
+            closeout_inline_values(&closeouts, "none")
+        ));
+    }
+    body.push('\n');
+
+    body.push_str("## Next recommended goal\n\n");
+    body.push_str(&next_recommended);
+    body.push('\n');
+    body
+}
+
+fn write_closeout_work_items(body: &mut String, items: &[&CampaignWorkItem], fallback: &str) {
+    if items.is_empty() {
+        body.push_str(fallback);
+        body.push_str("\n\n");
+        return;
+    }
+    for item in items {
+        let id = item.id.as_deref().unwrap_or("<missing>");
+        let status = item.status.as_deref().unwrap_or("<missing>");
+        let branch = item.branch.as_deref().unwrap_or("<missing>");
+        let acceptance = item
+            .acceptance
+            .as_deref()
+            .unwrap_or("No acceptance text is recorded.");
+        body.push_str(&format!(
+            "- `{}` (`{status}`, branch `{}`): {}\n",
+            markdown_inline(id),
+            markdown_inline(branch),
+            markdown_inline(acceptance)
+        ));
+        if !item.commands.is_empty() {
+            body.push_str(&format!(
+                "  Proof: {}\n",
+                closeout_inline_values(&item.commands, "none")
+            ));
+        }
+        if !item.blocked_by.is_empty() {
+            body.push_str(&format!(
+                "  Blocked by: {}\n",
+                closeout_inline_values(&item.blocked_by, "none")
+            ));
+        }
+        if let Some(reason) = item.blocked_reason.as_deref() {
+            body.push_str(&format!("  Blocked reason: {}\n", markdown_inline(reason)));
+        }
+    }
+    body.push('\n');
+}
+
+fn closeout_collect_values<F>(items: &[CampaignWorkItem], mut field: F) -> Vec<String>
+where
+    F: FnMut(&CampaignWorkItem) -> Option<&str>,
+{
+    let mut values = Vec::new();
+    for item in items {
+        if let Some(value) = field(item) {
+            push_unique_value(&mut values, value);
+        }
+    }
+    values
+}
+
+fn closeout_collect_specs(items: &[CampaignWorkItem]) -> Vec<String> {
+    let mut values = Vec::new();
+    for item in items {
+        if let Some(spec) = item.spec.as_deref() {
+            push_unique_value(&mut values, spec);
+        }
+        for spec in &item.specs {
+            push_unique_value(&mut values, spec);
+        }
+    }
+    values
+}
+
+fn closeout_collect_commands(items: &[CampaignWorkItem]) -> Vec<String> {
+    let mut values = Vec::new();
+    for item in items {
+        for command in &item.commands {
+            push_unique_value(&mut values, command);
+        }
+    }
+    values
+}
+
+fn push_unique_value(values: &mut Vec<String>, value: &str) {
+    if !value.trim().is_empty() && !values.iter().any(|existing| existing == value) {
+        values.push(value.to_string());
+    }
+}
+
+fn closeout_inline_values(values: &[String], fallback: &str) -> String {
+    if values.is_empty() {
+        fallback.to_string()
+    } else {
+        values
+            .iter()
+            .map(|value| format!("`{}`", markdown_inline(value)))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+fn closeout_bullet_list(values: &[String], fallback: &str) -> String {
+    if values.is_empty() {
+        format!("- {fallback}\n")
+    } else {
+        values
+            .iter()
+            .map(|value| format!("- `{}`\n", markdown_inline(value)))
+            .collect::<String>()
+    }
+}
+
+fn closeout_next_recommendation(
+    manifest: &CampaignManifest,
+    remaining_items: &[&CampaignWorkItem],
+) -> String {
+    if let Some(successor) = manifest.successor.as_deref() {
+        return format!("Next successor recorded in active manifest: `{successor}`.\n");
+    }
+    if manifest.no_current_goal == Some(true) {
+        return "The active manifest explicitly records no current successor goal.\n".to_string();
+    }
+    if let Some(item) = remaining_items.iter().find(|item| {
+        matches!(
+            item.status.as_deref(),
+            Some("ready") | Some("active") | Some("blocked")
+        )
+    }) {
+        let id = item.id.as_deref().unwrap_or("<missing>");
+        let status = item.status.as_deref().unwrap_or("<missing>");
+        return format!(
+            "No successor goal is recorded; next unresolved work item is `{id}` (`{status}`).\n"
+        );
+    }
+    "No next goal is selected in `.ripr/goals/active.toml`.\n".to_string()
+}
+
+fn closeout_archive_text(active_text: &str, goal_id: &str, date: &str) -> String {
+    let mut body = String::new();
+    body.push_str(&format!(
+        "# Archived by `cargo xtask closeout --goal {goal_id}` on {date}.\n"
+    ));
+    body.push_str(active_text.trim_end());
+    body.push('\n');
+    body
+}
+
+fn closeout_slug(goal_id: &str) -> Result<String, String> {
+    let mut slug = String::new();
+    let mut last_dash = false;
+    for ch in goal_id.trim().chars() {
+        let next = if ch.is_ascii_alphanumeric() || ch == '_' {
+            Some(ch.to_ascii_lowercase())
+        } else if ch == '-' || ch == '/' || ch == '.' || ch.is_whitespace() {
+            Some('-')
+        } else {
+            None
+        };
+        if let Some(ch) = next {
+            if ch == '-' {
+                if !last_dash && !slug.is_empty() {
+                    slug.push(ch);
+                    last_dash = true;
+                }
+            } else {
+                slug.push(ch);
+                last_dash = false;
+            }
+        }
+    }
+    while slug.ends_with('-') {
+        slug.pop();
+    }
+    if slug.is_empty() {
+        Err(format!(
+            "goal id `{goal_id}` cannot be used in a closeout path"
+        ))
+    } else {
+        Ok(slug)
+    }
+}
+
+fn validate_closeout_date(date: &str) -> Result<(), String> {
+    let bytes = date.as_bytes();
+    let valid = bytes.len() == 10
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && bytes
+            .iter()
+            .enumerate()
+            .all(|(index, byte)| index == 4 || index == 7 || byte.is_ascii_digit());
+    if valid {
+        Ok(())
+    } else {
+        Err(format!("closeout date `{date}` must use YYYY-MM-DD"))
+    }
+}
+
+fn ensure_new_text_file(path: &Path) -> Result<(), String> {
+    if path.exists() {
+        return Err(format!("{} already exists", normalize_path(path)));
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|err| format!("failed to create {}: {err}", normalize_path(parent)))?;
+    }
+    Ok(())
+}
+
+fn write_text_file(path: &Path, body: &str) -> Result<(), String> {
+    fs::write(path, body).map_err(|err| format!("failed to write {}: {err}", normalize_path(path)))
+}
+
+fn current_utc_date() -> Result<String, String> {
+    let elapsed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| format!("system clock is before Unix epoch: {err}"))?;
+    Ok(utc_date_from_unix_days((elapsed.as_secs() / 86_400) as i64))
+}
+
+fn utc_date_from_unix_days(days: i64) -> String {
+    let (year, month, day) = civil_from_unix_days(days);
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
+fn civil_from_unix_days(days: i64) -> (i64, i64, i64) {
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let year = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = mp + if mp < 10 { 3 } else { -9 };
+    let year = year + if month <= 2 { 1 } else { 0 };
+    (year, month, day)
+}
+
 fn validate_readme_support_tier_pointer(
     root: &Path,
     violations: &mut Vec<String>,
@@ -58099,6 +58547,21 @@ blocked_reason = "Waiting on runner proof."
         }
     }
 
+    fn mark_repo_contract_active_goal_closed(root: &Path) -> Result<(), String> {
+        let path = root.join(".ripr/goals/active.toml");
+        let text = fs::read_to_string(&path)
+            .map_err(|err| format!("active goal fixture should be readable: {err}"))?;
+        let text = text
+            .replace(
+                "status = \"active\"",
+                "status = \"closed\"\nno_current_goal = true",
+            )
+            .replace("status = \"ready\"", "status = \"done\"")
+            .replace("status = \"blocked\"", "status = \"done\"");
+        write(&path, &text);
+        Ok(())
+    }
+
     #[test]
     fn doc_artifacts_rejects_duplicate_artifact_id() -> Result<(), String> {
         with_temp_cwd("doc-artifacts-duplicate", |root| {
@@ -59547,6 +60010,172 @@ owner = "repo-infra"
         let error = super::parse_pr_body_args(&["--work-item".to_string()])
             .expect_err("missing work item id should fail argument parsing");
         assert!(error.contains("cargo xtask pr-body --work-item <id>"));
+    }
+
+    #[test]
+    fn closeout_writes_handoff_and_archive_from_goal_contract() -> Result<(), String> {
+        with_temp_cwd("closeout-command", |root| {
+            write_repo_contract_report_fixture(root, true);
+            mark_repo_contract_active_goal_closed(root)?;
+
+            let result =
+                super::closeout_from_root(root, "source-of-truth-control-plane", "2026-05-21")?;
+
+            let handoff = fs::read_to_string(&result.handoff_path)
+                .map_err(|err| format!("failed to read generated closeout: {err}"))?;
+            let archive = fs::read_to_string(&result.archive_path)
+                .map_err(|err| format!("failed to read archived goal manifest: {err}"))?;
+            assert!(
+                result.handoff_path.ends_with(
+                    "docs/handoffs/2026-05-21-source-of-truth-control-plane-closeout.md"
+                )
+            );
+            assert!(
+                result
+                    .archive_path
+                    .ends_with(".ripr/goals/archive/2026-05-21-source-of-truth-control-plane.toml")
+            );
+            assert!(handoff.contains("# Closeout: Source of Truth Control Plane"));
+            assert!(handoff.contains("Active goal: `source-of-truth-control-plane`"));
+            assert!(handoff.contains("## What landed"));
+            assert!(handoff.contains("`docs/ledger`"));
+            assert!(handoff.contains("## Remaining work"));
+            assert!(handoff.contains("No remaining work items are recorded."));
+            assert!(handoff.contains("cargo xtask repo-contract-report"));
+            assert!(handoff.contains("docs/status/SUPPORT_TIERS.md"));
+            assert!(
+                handoff
+                    .contains("The active manifest explicitly records no current successor goal.")
+            );
+            assert!(archive.contains("id = \"source-of-truth-control-plane\""));
+            assert!(archive.contains("status = \"closed\""));
+            assert!(archive.contains("no_current_goal = true"));
+            assert!(archive.contains("cargo xtask closeout --goal source-of-truth-control-plane"));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn closeout_rejects_active_goal_before_archive() -> Result<(), String> {
+        with_temp_cwd("closeout-active-goal", |root| {
+            write_repo_contract_report_fixture(root, true);
+
+            let error = match super::closeout_from_root(
+                root,
+                "source-of-truth-control-plane",
+                "2026-05-21",
+            ) {
+                Ok(_) => return Err("active goal should not be archived".to_string()),
+                Err(error) => error,
+            };
+            assert!(error.contains("status `closed`"), "{error}");
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn closeout_rejects_closed_goal_without_successor_marker() -> Result<(), String> {
+        with_temp_cwd("closeout-closed-without-successor", |root| {
+            write_repo_contract_report_fixture(root, true);
+            let path = root.join(".ripr/goals/active.toml");
+            let text = fs::read_to_string(&path)
+                .map_err(|err| format!("active goal fixture should be readable: {err}"))?;
+            let text = text
+                .replace("status = \"active\"", "status = \"closed\"")
+                .replace("status = \"ready\"", "status = \"done\"")
+                .replace("status = \"blocked\"", "status = \"done\"");
+            write(&path, &text);
+
+            let error = match super::closeout_from_root(
+                root,
+                "source-of-truth-control-plane",
+                "2026-05-21",
+            ) {
+                Ok(_) => {
+                    return Err(
+                        "closed goal without successor marker should not be archived".to_string(),
+                    );
+                }
+                Err(error) => error,
+            };
+            assert!(
+                error.contains("successor = \"<campaign-id>\"")
+                    && error.contains("no_current_goal = true"),
+                "{error}"
+            );
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn closeout_rejects_mismatched_goal_id() {
+        with_temp_cwd("closeout-wrong-goal", |root| {
+            write_repo_contract_report_fixture(root, true);
+
+            let error = super::closeout_from_root(root, "wrong-goal", "2026-05-21")
+                .expect_err("mismatched goal id should fail closeout generation");
+            assert!(
+                error.contains(
+                    "records active goal `source-of-truth-control-plane`, not `wrong-goal`"
+                ),
+                "{error}"
+            );
+        });
+    }
+
+    #[test]
+    fn closeout_refuses_to_overwrite_existing_files() -> Result<(), String> {
+        with_temp_cwd("closeout-existing-file", |root| {
+            write_repo_contract_report_fixture(root, true);
+            mark_repo_contract_active_goal_closed(root)?;
+            super::closeout_from_root(root, "source-of-truth-control-plane", "2026-05-21")?;
+
+            let error =
+                super::closeout_from_root(root, "source-of-truth-control-plane", "2026-05-21")
+                    .expect_err("existing closeout files should not be overwritten");
+            assert!(error.contains("already exists"), "{error}");
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn closeout_preflights_all_outputs_before_writing() -> Result<(), String> {
+        with_temp_cwd("closeout-existing-archive-only", |root| {
+            write_repo_contract_report_fixture(root, true);
+            mark_repo_contract_active_goal_closed(root)?;
+            let handoff_path =
+                root.join("docs/handoffs/2026-05-21-source-of-truth-control-plane-closeout.md");
+            let archive_path =
+                root.join(".ripr/goals/archive/2026-05-21-source-of-truth-control-plane.toml");
+            if let Some(parent) = archive_path.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|err| format!("failed to create archive parent: {err}"))?;
+            }
+            fs::write(&archive_path, "existing archive")
+                .map_err(|err| format!("failed to write existing archive: {err}"))?;
+
+            let error =
+                super::closeout_from_root(root, "source-of-truth-control-plane", "2026-05-21")
+                    .expect_err("existing archive should fail before writing handoff");
+            assert!(error.contains("already exists"), "{error}");
+            assert!(
+                !handoff_path.exists(),
+                "closeout should not write a handoff when any output path is unsafe"
+            );
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn closeout_requires_goal_argument() {
+        let error = super::parse_closeout_args(&["--goal".to_string()])
+            .expect_err("missing goal id should fail argument parsing");
+        assert!(error.contains("cargo xtask closeout --goal <goal-id>"));
+    }
+
+    #[test]
+    fn closeout_date_from_unix_days_handles_epoch() {
+        assert_eq!(super::utc_date_from_unix_days(0), "1970-01-01");
     }
 
     #[test]
@@ -62643,6 +63272,17 @@ jobs:
                 "docs/report".to_string(),
             ]),
             XtaskCommand::PrBody(vec!["--work-item".to_string(), "docs/report".to_string()])
+        );
+        assert_eq!(
+            XtaskCommand::parse([
+                "closeout".to_string(),
+                "--goal".to_string(),
+                "source-of-truth-control-plane".to_string(),
+            ]),
+            XtaskCommand::Closeout(vec![
+                "--goal".to_string(),
+                "source-of-truth-control-plane".to_string()
+            ])
         );
         assert_eq!(
             XtaskCommand::parse(["pr-triage-report".to_string()]),

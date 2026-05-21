@@ -67,8 +67,12 @@ later PR changes the schema and documentation together.
 
 `cargo xtask pr-body --work-item <id>` can generate
 `target/ripr/reports/source-of-truth-pr-body.md` from one active-goal work item.
-The generated body is a scaffold: support-tier and policy impact boxes stay
-unchecked until the PR author reviews the actual diff and proof.
+`cargo xtask closeout --goal <goal-id>` can generate a handoff scaffold under
+`docs/handoffs/` and an archive copy under `.ripr/goals/archive/`.
+
+Both commands produce scaffolds. Support-tier impact, policy impact, proof
+results, and final closeout status stay unchecked until the PR author reviews
+the actual diff and validation evidence.
 
 ## Enforcement state
 
