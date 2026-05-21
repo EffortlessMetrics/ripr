@@ -27,6 +27,10 @@ are scoped or reviewed.
   not overlap Cargo-backed audit, evidence-health, scorecard, trend, and swarm
   readiness commands against the same target/report directories. Bounded warning
   artifacts remain visible diagnostics, not passing evidence.
+- Evidence-quality trend reports now carry current scorecard bounded-diagnostic
+  unknowns forward. If the current scorecard is limited because the Lane 1 audit
+  input is incomplete or regeneration failed, metric and category movement stay
+  `unknown` instead of comparing partial counts against previous history.
 
 ## 0.7.0 - 2026-05-20
 

@@ -25268,11 +25268,17 @@ fn evidence_quality_trend_from_values(
     let root = audit_string(current, &["scope", "root"])
         .or_else(|| audit_string(current, &["inputs", "root"]))
         .unwrap_or_else(|| ".".to_string());
-    let metric_trends = evidence_quality_metric_trends(current, previous);
-    let static_limitation_category_trends =
-        evidence_quality_static_limitation_category_trends(current, previous);
+    let current_completeness_limited =
+        evidence_quality_current_scorecard_completeness_limited(current);
+    let metric_trends =
+        evidence_quality_metric_trends(current, previous, current_completeness_limited);
+    let static_limitation_category_trends = evidence_quality_static_limitation_category_trends(
+        current,
+        previous,
+        current_completeness_limited,
+    );
     let summary = evidence_quality_trend_summary(previous, &metric_trends);
-    let unknowns = evidence_quality_trend_unknowns(previous, &metric_trends);
+    let unknowns = evidence_quality_trend_unknowns(current, previous, &metric_trends);
 
     Ok(EvidenceQualityTrendReport {
         generated_at,
@@ -25288,6 +25294,7 @@ fn evidence_quality_trend_from_values(
 fn evidence_quality_metric_trends(
     current: &Value,
     previous: Option<&Value>,
+    current_completeness_limited: bool,
 ) -> Vec<EvidenceQualityTrendMetric> {
     let mut trends = [
         EvidenceQualityTrendMetricSpec {
@@ -25531,7 +25538,9 @@ fn evidence_quality_metric_trends(
         },
     ]
     .into_iter()
-    .map(|spec| evidence_quality_metric_trend(current, previous, spec))
+    .map(|spec| {
+        evidence_quality_metric_trend(current, previous, spec, current_completeness_limited)
+    })
     .collect::<Vec<_>>();
     trends.sort_by(|left, right| left.metric.cmp(&right.metric));
     trends
@@ -25541,6 +25550,7 @@ fn evidence_quality_metric_trend(
     current: &Value,
     previous: Option<&Value>,
     spec: EvidenceQualityTrendMetricSpec<'_>,
+    current_completeness_limited: bool,
 ) -> EvidenceQualityTrendMetric {
     let after = if spec.metric == "oracle_unknown_count" {
         Some(evidence_quality_oracle_unknown_count(current))
@@ -25554,8 +25564,19 @@ fn evidence_quality_metric_trend(
             audit_usize(previous, spec.previous_path)
         }
     });
-    let (delta, direction) = evidence_quality_trend_direction(before, after, spec.lower_is_better);
-    let interpretation = evidence_quality_metric_interpretation(spec.metric, &direction);
+    let (delta, direction, interpretation) = if current_completeness_limited {
+        (
+            None,
+            "unknown".to_string(),
+            "Current scorecard carries a bounded completeness limitation; movement from partial counts is unavailable."
+                .to_string(),
+        )
+    } else {
+        let (delta, direction) =
+            evidence_quality_trend_direction(before, after, spec.lower_is_better);
+        let interpretation = evidence_quality_metric_interpretation(spec.metric, &direction);
+        (delta, direction, interpretation)
+    };
     EvidenceQualityTrendMetric {
         metric: spec.metric.to_string(),
         label: spec.label.to_string(),
@@ -25680,6 +25701,7 @@ fn evidence_quality_oracle_unknown_count(value: &Value) -> usize {
 fn evidence_quality_static_limitation_category_trends(
     current: &Value,
     previous: Option<&Value>,
+    current_completeness_limited: bool,
 ) -> Vec<EvidenceQualityTrendMetric> {
     let current_counts = evidence_quality_static_category_counts(current);
     let previous_counts = previous
@@ -25695,7 +25717,22 @@ fn evidence_quality_static_limitation_category_trends(
         .map(|category| {
             let after = current_counts.get(category).copied();
             let before = previous_counts.get(category).copied();
-            let (delta, direction) = evidence_quality_trend_direction(before, after, true);
+            let (delta, direction, interpretation) = if current_completeness_limited {
+                (
+                    None,
+                    "unknown".to_string(),
+                    "Current scorecard carries a bounded completeness limitation; category movement from partial counts is unavailable."
+                        .to_string(),
+                )
+            } else {
+                let (delta, direction) = evidence_quality_trend_direction(before, after, true);
+                (
+                    delta,
+                    direction,
+                    "Lower category counts indicate fewer analyzer limitations of this class."
+                        .to_string(),
+                )
+            };
             EvidenceQualityTrendMetric {
                 metric: format!("static_limitation_category:{category}"),
                 label: category.clone(),
@@ -25703,9 +25740,7 @@ fn evidence_quality_static_limitation_category_trends(
                 after,
                 delta,
                 direction,
-                interpretation:
-                    "Lower category counts indicate fewer analyzer limitations of this class."
-                        .to_string(),
+                interpretation,
             }
         })
         .collect::<Vec<_>>();
@@ -25788,6 +25823,7 @@ fn evidence_quality_trend_summary(
 }
 
 fn evidence_quality_trend_unknowns(
+    current: &Value,
     previous: Option<&Value>,
     metric_trends: &[EvidenceQualityTrendMetric],
 ) -> Vec<EvidenceQualityTrendUnknown> {
@@ -25800,6 +25836,9 @@ fn evidence_quality_trend_unknowns(
             Some("report/evidence-quality-trend"),
         );
     }
+    for unknown in evidence_quality_current_scorecard_unknowns(current) {
+        unknowns.push(unknown);
+    }
     for trend in metric_trends
         .iter()
         .filter(|trend| trend.direction == "unknown" && trend.after.is_none())
@@ -25810,6 +25849,58 @@ fn evidence_quality_trend_unknowns(
             &format!("Current scorecard is missing metric `{}`.", trend.metric),
             Some("report/evidence-quality-scorecard"),
         );
+    }
+    unknowns
+}
+
+fn evidence_quality_current_scorecard_completeness_limited(current: &Value) -> bool {
+    evidence_quality_current_scorecard_has_unknown_kind(current, "lane1_evidence_audit_limited")
+        || evidence_quality_current_scorecard_has_unknown_kind(
+            current,
+            EVIDENCE_QUALITY_SCORECARD_AUDIT_REGENERATION_FAILED,
+        )
+}
+
+fn evidence_quality_current_scorecard_has_unknown_kind(current: &Value, kind: &str) -> bool {
+    current
+        .get("unknowns")
+        .and_then(Value::as_array)
+        .is_some_and(|items| {
+            items
+                .iter()
+                .any(|item| item.get("kind").and_then(Value::as_str) == Some(kind))
+        })
+}
+
+fn evidence_quality_current_scorecard_unknowns(
+    current: &Value,
+) -> Vec<EvidenceQualityTrendUnknown> {
+    let Some(items) = current.get("unknowns").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let mut seen = BTreeSet::new();
+    let mut unknowns = Vec::new();
+    for item in items {
+        let Some(kind) = item.get("kind").and_then(Value::as_str) else {
+            continue;
+        };
+        let kind = kind.trim();
+        if kind.is_empty() || kind == "recent_delta_unavailable" || !seen.insert(kind.to_string()) {
+            continue;
+        }
+        let summary = item
+            .get("summary")
+            .and_then(Value::as_str)
+            .unwrap_or("Current scorecard reported an unknown evidence-quality condition.");
+        let next_repair = item
+            .get("next_repair")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        unknowns.push(EvidenceQualityTrendUnknown {
+            kind: kind.to_string(),
+            summary: format!("Current scorecard reported `{kind}`: {summary}"),
+            next_repair,
+        });
     }
     unknowns
 }
@@ -64360,6 +64451,62 @@ covered_by = ["cargo xtask check-file-policy"]
     }
 
     #[test]
+    fn evidence_quality_trend_marks_limited_current_scorecard_movement_unknown()
+    -> Result<(), String> {
+        let mut current = scorecard_minimal_audit_value(0, 0, 0, 5, 1);
+        let previous = scorecard_minimal_audit_value(0, 3, 3, 2, 6);
+        push_scorecard_unknown(
+            &mut current,
+            "lane1_evidence_audit_limited",
+            "Lane 1 evidence audit reported a bounded run limitation, so zero or partial counts from that artifact must not be treated as complete repo truth.",
+            Some("report/lane1-audit-bounded-diagnostics"),
+        )?;
+
+        let report = evidence_quality_trend_from_values(
+            "unix_ms:1".to_string(),
+            trend_inputs_for_test(true),
+            &current,
+            Some(&previous),
+        )?;
+
+        assert_eq!(report.summary.status, "unknown");
+        assert_eq!(report.summary.compared_metrics, 0);
+        let duplicate_trend = report
+            .metric_trends
+            .iter()
+            .find(|trend| trend.metric == "duplicate_looking_groups_total")
+            .ok_or_else(|| "missing duplicate-looking group trend".to_string())?;
+        assert_eq!(duplicate_trend.before, Some(3));
+        assert_eq!(duplicate_trend.after, Some(0));
+        assert_eq!(duplicate_trend.delta, None);
+        assert_eq!(duplicate_trend.direction, "unknown");
+        assert!(
+            duplicate_trend
+                .interpretation
+                .contains("bounded completeness limitation")
+        );
+        assert!(report.unknowns.iter().any(|unknown| {
+            unknown.kind == "lane1_evidence_audit_limited"
+                && unknown
+                    .summary
+                    .contains("Current scorecard reported `lane1_evidence_audit_limited`")
+        }));
+
+        let json = evidence_quality_trend_json(&report)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|err| err.to_string())?;
+        assert!(value["unknowns"].as_array().is_some_and(|unknowns| {
+            unknowns
+                .iter()
+                .any(|unknown| unknown["kind"] == "lane1_evidence_audit_limited")
+        }));
+        let markdown = evidence_quality_trend_markdown(&report);
+        assert!(markdown.contains("lane1_evidence_audit_limited"));
+        assert!(markdown.contains("bounded completeness limitation"));
+        Ok(())
+    }
+
+    #[test]
     fn evidence_quality_trend_reports_static_limitation_category_deltas() -> Result<(), String> {
         let mut current = scorecard_minimal_audit_value(0, 2, 0, 1, 1);
         let mut previous = scorecard_minimal_audit_value(0, 5, 0, 1, 1);
@@ -64674,6 +64821,28 @@ covered_by = ["cargo xtask check-file-policy"]
             .and_then(serde_json::Value::as_object_mut)
             .ok_or_else(|| "missing summary object".to_string())?;
         summary.insert(metric.to_string(), serde_json::json!(count));
+        Ok(())
+    }
+
+    fn push_scorecard_unknown(
+        value: &mut serde_json::Value,
+        kind: &str,
+        summary: &str,
+        next_repair: Option<&str>,
+    ) -> Result<(), String> {
+        let object = value
+            .as_object_mut()
+            .ok_or_else(|| "scorecard test value should be an object".to_string())?;
+        let unknowns = object
+            .entry("unknowns")
+            .or_insert_with(|| serde_json::json!([]))
+            .as_array_mut()
+            .ok_or_else(|| "unknowns should be an array".to_string())?;
+        unknowns.push(serde_json::json!({
+            "kind": kind,
+            "summary": summary,
+            "next_repair": next_repair,
+        }));
         Ok(())
     }
 
