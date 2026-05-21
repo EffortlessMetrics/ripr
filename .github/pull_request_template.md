@@ -10,8 +10,7 @@ Spec:
 ADR:
 Plan item:
 Active goal:
-Support-tier impact:
-Policy impact:
+Issue:
 
 ## Scope
 
@@ -40,6 +39,43 @@ Single acceptance criterion:
 -
 
 Non-goals:
+
+-
+
+## Support-tier Impact
+
+- [ ] none
+- [ ] updates `docs/status/SUPPORT_TIERS.md`
+- [ ] changes a README, release, docs, CLI, JSON, editor, CI, or package claim
+
+Claim/proof notes:
+
+-
+
+## Policy Impact
+
+- [ ] none
+- [ ] doc artifacts
+- [ ] CI lane
+- [ ] package boundary
+- [ ] lint / Clippy
+- [ ] no-panic
+- [ ] file policy
+- [ ] generated artifact
+- [ ] dependency
+- [ ] process/network
+
+Ledger or exception notes:
+
+-
+
+## Proof
+
+```bash
+# commands run
+```
+
+Result, failures, or skipped proof:
 
 -
 
@@ -113,6 +149,8 @@ normal CI cannot validate the revert, document that explicitly.
 - [ ] `cargo package -p ripr --list`
 - [ ] `cargo publish -p ripr --dry-run`
 - [ ] `cargo xtask check-static-language`
+- [ ] `cargo xtask check-doc-artifacts`
+- [ ] `cargo xtask check-support-tiers`
 - [ ] `cargo xtask check-no-panic-family`
 - [ ] `cargo xtask check-allow-attributes`
 - [ ] `cargo xtask check-local-context`
