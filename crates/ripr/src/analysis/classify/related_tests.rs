@@ -42,7 +42,7 @@ pub(in crate::analysis) fn find_related_tests<'a>(
         }
     }
 
-    related.sort_by(|a, b| a.name.cmp(&b.name));
+    related.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.file.cmp(&b.file)));
     related.dedup_by(|a, b| a.name == b.name && a.file == b.file);
     related
 }
@@ -105,6 +105,25 @@ mod tests {
 
         assert_eq!(related.len(), 1);
         assert_eq!(related[0].name, "crate_a_score_test");
+    }
+
+    #[test]
+    fn given_same_named_tests_when_finding_related_then_orders_by_file_path() {
+        let owner = function("src/lib.rs", "score");
+        let index = RustIndex {
+            tests: vec![
+                test("tests/z_case.rs", "score_shared", "score(3)"),
+                test("tests/a_case.rs", "score_shared", "score(1)"),
+            ],
+            ..RustIndex::default()
+        };
+        let probe = probe("src/lib.rs", "score + 1");
+
+        let related = find_related_tests(&probe, Some(&owner), &index);
+
+        assert_eq!(related.len(), 2);
+        assert_eq!(related[0].file, PathBuf::from("tests/a_case.rs"));
+        assert_eq!(related[1].file, PathBuf::from("tests/z_case.rs"));
     }
 
     #[test]
