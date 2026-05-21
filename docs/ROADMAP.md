@@ -22,6 +22,42 @@ Developer changes Rust behavior
 probes. It does not become a full mutation runner, a coverage dashboard, a proof
 system, a second rust-analyzer, or a generic test generator.
 
+## End Goal
+
+`ripr`'s end goal is to be a repo-native, proof-carrying static exposure
+assistant.
+
+For users, `ripr` should make changed behavior test gaps obvious and
+repairable:
+
+```text
+one changed behavior
+-> one missing discriminator
+-> one focused proof
+-> one verification command
+-> one receipt
+```
+
+For maintainers and agents, `ripr` should carry its own operating truth:
+
+```text
+proposal/spec/ADR/campaign/active goal/support tier/policy/evidence/closeout
+-> linked and checked PR by PR
+```
+
+A PR is aligned when it moves one bounded capability, proves the movement,
+states the claim boundary, and leaves the next slice discoverable from the
+repo. The near-term product target is that a Rust PR author can use RIPR from
+CLI, CI, VS Code, or agent handoff and get the same top repairable gap, the
+same focused test intent, the same verification command, and the same receipt
+boundary.
+
+The support-tier system remains the public claim boundary. Improvements only
+change what users may believe when the supporting spec, fixture, golden,
+dogfood receipt, or validation command is strong enough. `ripr` should never
+imply full test adequacy, runtime mutation confirmation, coverage adequacy,
+merge approval, or proof of correctness from static evidence alone.
+
 ## Current Position
 
 The current alpha has the product shape in place:

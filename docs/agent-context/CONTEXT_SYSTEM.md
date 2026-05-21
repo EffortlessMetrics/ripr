@@ -56,6 +56,32 @@ A doc lives in exactly one layer. A spec is not a plan; a plan is not a
 decision; an ADR is not a closeout. Layer separation is the discipline
 that lets agents read only what is relevant.
 
+## RIPR-native proof stack
+
+External planning language often uses words like PRD, proof stack, source of
+truth, policy ledger, or closeout. In this repo those ideas already have
+specific homes. Do not add a second operating model when a plan uses generic
+terms; translate it into the existing RIPR graph:
+
+| Generic plan term | RIPR-native source |
+| --- | --- |
+| Proposal / PRD | `docs/proposals/RIPR-PROP-*` |
+| Spec | `docs/specs/RIPR-SPEC-*` |
+| ADR | `docs/adr/` |
+| Implementation plan | `docs/IMPLEMENTATION_PLAN.md` and `docs/IMPLEMENTATION_CAMPAIGNS.md` |
+| Active goal manifest | `.ripr/goals/active.toml` |
+| Support tiers | `docs/status/SUPPORT_TIERS.md` |
+| Policy ledgers | `policy/*.toml`, `.ripr/traceability.toml`, `docs/CAPABILITY_MATRIX.md`, and `metrics/capabilities.toml` |
+| Closeout | `docs/handoffs/` |
+| Durable learning | `docs/LEARNINGS.md` |
+
+The rule is substitution, not duplication. If a handoff asks for a source of
+truth stack, use proposals, specs, ADRs, campaign docs, the active manifest,
+traceability, capability metadata, and handoffs. If a field is missing from
+that graph, add it to the appropriate existing artifact or validator instead
+of creating a runner-specific goals tree, a new source-of-truth directory, or
+another status ledger.
+
 ## Typed nodes
 
 The context graph has a small node vocabulary:
@@ -229,6 +255,42 @@ for the doc. A reader asking "why does this exist?" wants the proposal.
 the ADR. "What is the agent doing right now, or what campaign just closed
 without a selected successor?" wants the active manifest.
 "What shipped last week?" wants the handoff.
+
+## PR alignment cadence
+
+Every PR should leave enough repo state for the next agent or maintainer to
+continue without chat history. A PR should answer:
+
+```text
+1. What product or repo capability moves?
+2. What exact behavior or invariant changes?
+3. What proof command validates it?
+4. What user-facing claim changes, if any?
+5. What support tier changes, if any?
+6. What policy ledger or traceability entry changes, if any?
+7. What should the next PR do?
+```
+
+Most PRs should have one movement type:
+
+| PR type | Purpose |
+| --- | --- |
+| Capability PR | Improves analyzer or product behavior. |
+| Surface PR | Makes existing evidence easier to use. |
+| Proof PR | Adds fixtures, goldens, receipts, or dogfood. |
+| Control-plane PR | Makes repo alignment stricter. |
+| Claim PR | Updates support tier or public claim boundary after proof. |
+
+Avoid mixing movement types unless the second type is the evidence required to
+review the first. The expected closeout shape is:
+
+```text
+What landed:
+What proved it:
+What did not change:
+Support-tier impact:
+Next recommended PR:
+```
 
 ## Agent neutrality
 
