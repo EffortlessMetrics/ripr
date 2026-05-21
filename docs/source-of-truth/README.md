@@ -39,6 +39,8 @@ can answer these questions from the repository instead of from chat history:
 
 ## Documents
 
+- [Source-of-truth control plane proposal](../proposals/RIPR-PROP-0015-source-of-truth-control-plane.md)
+  explains why this repo is adopting the control-plane lane.
 - [Artifact taxonomy](artifact-taxonomy.md) defines each layer's ownership.
 - [Linking model](linking-model.md) defines how artifacts form one graph.
 - [Agent operating model](agent-operating-model.md) defines how Codex and other

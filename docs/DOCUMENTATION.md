@@ -218,6 +218,7 @@ Current explanation docs:
 - [Editor actionable gap queue](EDITOR_ACTIONABLE_GAP_QUEUE.md)
 - [Editor actionable gap queue proposal](proposals/RIPR-PROP-0013-editor-actionable-gap-queue.md)
 - [Editor actionable gap queue plan](../plans/editor-actionable-gap-queue/implementation-plan.md)
+- [Source-of-truth control plane proposal](proposals/RIPR-PROP-0015-source-of-truth-control-plane.md)
 - [Codex Goals](CODEX_GOALS.md)
 - [Scoped PR contract](SCOPED_PR_CONTRACT.md)
 - [PR automation](PR_AUTOMATION.md)

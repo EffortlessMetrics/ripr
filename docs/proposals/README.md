@@ -90,3 +90,4 @@ Start new proposals from
 | [RIPR-PROP-0012](RIPR-PROP-0012-editor-adoption-assurance.md) | accepted | Editor adoption assurance |
 | [RIPR-PROP-0013](RIPR-PROP-0013-editor-actionable-gap-queue.md) | accepted | Editor actionable gap queue |
 | [RIPR-PROP-0014](RIPR-PROP-0014-ripr-swarm-repair-loop.md) | proposed | RIPR swarm repair loop |
+| [RIPR-PROP-0015](RIPR-PROP-0015-source-of-truth-control-plane.md) | proposed | Source-of-truth control plane |
