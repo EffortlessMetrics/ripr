@@ -9,6 +9,10 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Lane 1 evidence audit now validates zero-exit repo-exposure captures before
+  treating them as complete. A truncated success-exit JSON capture is removed
+  and downgraded to a bounded `lane1_repo_exposure_incomplete` warning artifact
+  instead of leaving only a partial temp artifact.
 - `cargo xtask reports index` now surfaces Lane 1 evidence readiness for
   evidence-health, Lane 1 audit, actionable-gap, scorecard, trend, and
   badge-basis artifacts. Missing or limited artifacts warn with regeneration

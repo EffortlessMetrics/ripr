@@ -2192,6 +2192,8 @@ tests = [
   "xtask::tests::lane1_evidence_audit_markdown_names_required_sections",
   "xtask::tests::lane1_evidence_audit_limited_report_names_timeout_limitation",
   "xtask::tests::lane1_evidence_audit_limits_incomplete_success_repo_exposure_artifact",
+  "xtask::tests::lane1_evidence_audit_repo_exposure_generation_limits_incomplete_success_json",
+  "xtask::tests::lane1_evidence_audit_repo_exposure_generation_limits_missing_success_json",
   "xtask::tests::lane1_evidence_audit_rejects_repo_exposure_without_seams",
   "xtask::tests::lane1_repo_exposure_file_completion_check_requires_seams_and_closing_brace",
   "xtask::tests::xtask_command_parse_preserves_compatibility_aliases",
